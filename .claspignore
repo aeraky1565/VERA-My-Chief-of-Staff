@@ -6,6 +6,7 @@
 README.md
 push.ps1
 dashboard.html
-WebApp/
+WebApp/**
+**/WebApp/**
 *.ps1
 *.md
