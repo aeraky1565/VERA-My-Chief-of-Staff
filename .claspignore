@@ -1,0 +1,9 @@
+**/.claude/**
+.claude/**
+.claude/
+**/.git/**
+.git/**
+README.md
+push.ps1
+*.ps1
+*.md
