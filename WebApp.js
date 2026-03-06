@@ -12,17 +12,15 @@
 //   6. Set VERA_WEB_TOKEN in Script Properties (any random string)
 //      All requests must include ?token=YOUR_TOKEN
 //
-// GET  endpoints:
+// GET endpoints (all operations use GET to avoid CORS preflight):
 //   ?action=status               → flag counts + last run date
 //   ?action=flags                → all flags
 //   ?action=flags&filter=active  → unacknowledged + unresolved only
 //   ?action=tasks                → open tasks
 //   ?action=summaries            → summaries tab
-//
-// POST endpoints (JSON body):
-//   { action: 'acknowledge', id: 'FLAG-xxx' }
-//   { action: 'snooze',      id: 'FLAG-xxx', days: 2 }
-//   { action: 'resolve',     id: 'FLAG-xxx' }
+//   ?action=acknowledge&id=FLAG-xxx
+//   ?action=snooze&id=FLAG-xxx&days=2
+//   ?action=resolve&id=FLAG-xxx
 // ============================================================
 
 // ---- Auth ------------------------------------------------------------------
@@ -49,20 +47,25 @@ function errOut_(msg, code) {
   return jsonOut_({ ok: false, error: msg, code: code || 400 });
 }
 
-// ---- doGet — read-only operations ------------------------------------------
+// ---- doGet — all operations (GET avoids CORS preflight from file://) -------
 
 function doGet(e) {
   if (!isAuthorized_(e)) return errOut_('Unauthorized', 401);
 
   const action = (e.parameter && e.parameter.action) || 'status';
+  const id     = e.parameter && e.parameter.id;
+  const days   = e.parameter && e.parameter.days;
 
   try {
     switch (action) {
-      case 'status':    return jsonOut_(webGetStatus_());
-      case 'flags':     return jsonOut_(webGetFlags_(e));
-      case 'tasks':     return jsonOut_(webGetTasks_());
-      case 'summaries': return jsonOut_(webGetSummaries_());
-      default:          return errOut_('Unknown action: ' + action);
+      case 'status':      return jsonOut_(webGetStatus_());
+      case 'flags':       return jsonOut_(webGetFlags_(e));
+      case 'tasks':       return jsonOut_(webGetTasks_());
+      case 'summaries':   return jsonOut_(webGetSummaries_());
+      case 'acknowledge': return jsonOut_(webAcknowledge_(id));
+      case 'snooze':      return jsonOut_(webSnooze_(id, days));
+      case 'resolve':     return jsonOut_(webResolve_(id));
+      default:            return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
     Logger.log('doGet error: ' + err.message + '\n' + err.stack);

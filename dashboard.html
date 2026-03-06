@@ -375,15 +375,9 @@ async function apiGet(apiUrl, token, params) {
   return json;
 }
 
-async function apiPost(apiUrl, token, body) {
-  const res = await fetch(makeUrl(apiUrl, token), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!json.ok) throw new Error(json.error || 'API error');
-  return json;
+// All write operations use GET to avoid CORS preflight from file:// origin
+async function apiAction(apiUrl, token, action, params) {
+  return apiGet(apiUrl, token, Object.assign({ action }, params));
 }
 
 function fmtDate(d) {
@@ -662,9 +656,9 @@ function App() {
     setBusy(true);
     setError(null);
     try {
-      const body = { action, id };
-      if (days != null) body.days = days;
-      await apiPost(apiUrl, apiToken, body);
+      const params = { id };
+      if (days != null) params.days = days;
+      await apiAction(apiUrl, apiToken, action, params);
       await loadAll(apiUrl, apiToken, filterActive);
     } catch (err) {
       setError('Action failed: ' + err.message);
