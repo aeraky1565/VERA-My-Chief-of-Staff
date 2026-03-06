@@ -185,7 +185,10 @@ function webGetTasks_() {
 // ---- Summaries -------------------------------------------------------------
 
 function webGetSummaries_() {
-  const summaries = getSummaries(); // reuse Code.js
+  // Read Summaries tab only (life intelligence: SAT, Transactions, external sheets).
+  // Metrics tab (VERA's internal counts) is intentionally excluded from the dashboard.
+  const ss        = getSpreadsheet();
+  const summaries = readSummaryTab_(ss, TABS.SUMMARIES);
   return { ok: true, count: summaries.length, summaries: summaries };
 }
 
