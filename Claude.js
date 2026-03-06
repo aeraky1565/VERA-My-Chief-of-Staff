@@ -60,8 +60,21 @@ function buildPrompt(events, tasks, summaries) {
       const dateStr = e.start.split(' ')[0];
 
       let line = '- ' + e.title + ' | ' + dateStr + ' ' + timeStr + ' [' + dayLabel + ']';
-      if (e.location)     line += ' @ ' + e.location;
-      if (e.calendarName) line += ' (calendar: ' + e.calendarName + ')';
+      if (e.location) line += ' @ ' + e.location;
+
+      // Calendar ownership and RSVP context
+      const calType = e.isOwnedCalendar ? 'my calendar' : 'shared: ' + e.calendarName;
+      line += ' (' + calType + ')';
+
+      // RSVP status — flag unresponded invites
+      if (e.myStatus && e.myStatus !== 'organizer' && e.myStatus !== 'accepted') {
+        line += ' [RSVP: ' + e.myStatus + ']';
+      }
+
+      // Event color tag — user applies these manually to categorize events
+      if (e.eventColor) {
+        line += ' [tagged: ' + e.eventColor + ']';
+      }
 
       return line;
     }).join('\n');
@@ -125,6 +138,12 @@ function buildPrompt(events, tasks, summaries) {
     '- Are there dependencies between calendar events and open tasks?\n' +
     '- What financial or recurring obligations are due soon?\n' +
     '- What patterns or conflicts would Ahmed not immediately notice on his own?\n\n' +
+
+    'CALENDAR CONTEXT RULES:\n' +
+    '- Events marked "(my calendar)" are Ahmed\'s own — treat these as his primary obligations.\n' +
+    '- Events marked "(shared: X)" are from a calendar shared with him — use these as context but only flag them if they directly affect Ahmed (e.g. he needs to prepare something, attend, or respond).\n' +
+    '- Events with [RSVP: invited (no response)] or [RSVP: tentative] mean Ahmed has not confirmed — flag these if the event is soon.\n' +
+    '- Events with [tagged: Color] have a color label Ahmed applied manually — treat colored events as higher-intent or categorized items worth noting.\n\n' +
 
     '=== UPCOMING CALENDAR EVENTS (next ' + CONFIG.CALENDAR_DAYS_AHEAD + ' days) ===\n' +
     eventsSection + '\n\n' +
