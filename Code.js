@@ -462,6 +462,15 @@ function morningNudge() {
       Logger.log('Logo load failed (continuing without it): ' + logoErr);
     }
 
+    // ---- Optional dashboard button (set VERA_DASHBOARD_URL in Script Properties) ----
+    const dashboardUrl = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || '';
+    const dashboardBtn = dashboardUrl
+      ? '<tr><td style="padding:0 0 24px 0;">' +
+          '<a href="' + dashboardUrl + '" style="display:inline-block;background:#0d1b3e;color:#c9a84c;font-size:14px;font-weight:700;letter-spacing:1px;padding:12px 28px;border-radius:6px;text-decoration:none;border:2px solid #c9a84c;">Open VERA Dashboard &rarr;</a>' +
+        '</td></tr>'
+      : '';
+    const dashboardPlainText = dashboardUrl ? '\nDashboard: ' + dashboardUrl : '';
+
     // ---- HTML body ------------------------------------------------------
     const htmlBody =
       '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
@@ -479,7 +488,8 @@ function morningNudge() {
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
       '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
-      '<p style="margin:0;font-size:14px;color:#888888;">Open your <a href="https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID + '" style="color:#0d1b3e;font-weight:bold;text-decoration:underline;">VERA Life OS sheet</a> to review and acknowledge flags.</p>' +
+      '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
+      '<p style="margin:0;font-size:14px;color:#888888;">Or open your <a href="https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID + '" style="color:#0d1b3e;font-weight:bold;text-decoration:underline;">VERA Life OS sheet</a> directly.</p>' +
       '</td></tr>' +
 
       // Footer
@@ -501,6 +511,7 @@ function morningNudge() {
       '',
       'Open your VERA Life OS sheet to review and acknowledge flags:',
       'https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID,
+      dashboardPlainText,
       '',
       '— VERA',
     ].filter(function(l) { return l !== false; }).join('\n');
