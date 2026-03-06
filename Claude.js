@@ -139,8 +139,9 @@ function buildPrompt(events, tasks, summaries) {
     '- What patterns or conflicts would Ahmed not immediately notice on his own?\n\n' +
 
     'CALENDAR CONTEXT RULES:\n' +
-    '- Events marked "(my calendar)" are Ahmed\'s own — treat these as his primary obligations.\n' +
-    '- Events marked "(shared: X)" are from a calendar shared with him — use these as context but only flag them if they directly affect Ahmed (e.g. he needs to prepare something, attend, or respond).\n' +
+    '- Events labeled "personal (...)" or with a label that explicitly names Ahmed are from his own calendars — treat these as his primary obligations.\n' +
+    '- Events labeled "shared: X" come from calendars not owned by Ahmed\'s personal Google account. This includes his Verizon work calendar (shared from his employer\'s Google Workspace), Victoria\'s calendar, and shared family calendars. Do NOT assume "shared" means Victoria\'s — read the calendar name carefully. Events from a Verizon calendar belong to Ahmed.\n' +
+    '- Flag "shared" calendar events only when they directly affect Ahmed (he needs to prepare, attend, RSVP, or take action).\n' +
     '- Events with [RSVP: invited (no response)] or [RSVP: tentative] mean Ahmed has not confirmed — flag these if the event is soon.\n' +
     '- Events with [tagged: Color] have a color label Ahmed applied manually — treat colored events as higher-intent or categorized items worth noting.\n\n' +
 
@@ -160,14 +161,15 @@ function buildPrompt(events, tasks, summaries) {
     'Return ONLY a raw JSON array. ' +
     'No markdown. No code fences. No explanation before or after. Just the JSON array itself, starting with [ and ending with ].\n\n' +
 
-    'Each object must have exactly these four fields:\n' +
+    'Each object must have exactly these five fields:\n' +
     '  "source"  — one of: "Calendar", "Tasks", "Finance", "Summaries", "General"\n' +
     '  "flag"    — short action-oriented title, max 10 words\n' +
     '  "reason"  — specific explanation of why this matters right now, 1-2 sentences\n' +
-    '  "urgency" — exactly one of: "High", "Medium", "Low"\n\n' +
+    '  "urgency" — exactly one of: "High", "Medium", "Low"\n' +
+    '  "key"     — a stable snake_case identifier for this specific issue, used for deduplication across nights. Use the format topic_date where helpful (e.g. "verizon_bill_march_13", "apartment_cleaning_march_9", "ramadan_iftar", "sti_payout_march_11"). Keep this IDENTICAL night-to-night for the same recurring issue so duplicates are suppressed.\n\n' +
 
     'Example of the expected format (do not include this in your response):\n' +
-    '[{"source":"Calendar","flag":"Book restaurant before anniversary fills up","reason":"Anniversary dinner is 4 days away and no reservation task exists. Popular venues fill quickly on weekends.","urgency":"High"}]\n\n' +
+    '[{"source":"Calendar","flag":"Book restaurant before anniversary fills up","reason":"Anniversary dinner is 4 days away and no reservation task exists. Popular venues fill quickly on weekends.","urgency":"High","key":"anniversary_dinner_march_9"}]\n\n' +
 
     'Generate the flags for Ahmed now:';
 
@@ -306,6 +308,7 @@ function parseFlags(rawContent) {
         flag:    String(f.flag   || '').trim(),
         reason:  String(f.reason || '').trim(),
         urgency: urgency,
+        key:     String(f.key    || '').toLowerCase().replace(/[^a-z0-9_]/g, '').trim(),
       };
     })
     .slice(0, CONFIG.MAX_FLAGS); // Enforce max flag cap

@@ -168,6 +168,7 @@ function webGetFlags_(e) {
       acknowledged: String(r[6]).toLowerCase() === 'yes',
       snoozedUntil: formatDateVal_(r[7]),
       resolved:     String(r[8]).toLowerCase() === 'yes',
+      key:          String(r[9] || ''),
     };
   });
 
