@@ -337,8 +337,10 @@ function getSummaries() {
 // ============================================================
 
 /**
- * Sends a brief morning email if there are unacknowledged flags.
- * Deliberately contains no flag details — detail lives in the sheet.
+ * Sends a branded HTML morning email if there are unacknowledged flags.
+ * Includes VERA logo (loaded from Drive via VERA_LOGO_FILE_ID script property),
+ * urgency breakdown, and a plain-text fallback.
+ * Sender display name is set to "VERA".
  */
 function morningNudge() {
   try {
@@ -372,22 +374,86 @@ function morningNudge() {
 
     const subject = 'Good morning, Ahmed — VERA has ' + total + (total === 1 ? ' thing' : ' things') + ' for your attention';
 
-    const lines = [
+    // ---- Build urgency rows for HTML ------------------------------------
+    function urgencyRow(color, dot, label, count) {
+      return count > 0
+        ? '<tr><td style="padding:6px 0;">' +
+            '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + color + ';margin-right:10px;vertical-align:middle;"></span>' +
+            '<span style="font-size:15px;color:#333333;vertical-align:middle;">' + label + ': <strong>' + count + '</strong></span>' +
+          '</td></tr>'
+        : '';
+    }
+
+    const urgencyRows =
+      urgencyRow('#e53935', '●', 'High priority',   highCount) +
+      urgencyRow('#f9a825', '●', 'Medium priority', medCount)  +
+      urgencyRow('#43a047', '●', 'Low priority',    lowCount);
+
+    // ---- Try to load logo from Drive ------------------------------------
+    let inlineImages = {};
+    let logoTag = '';
+    try {
+      const logoFileId = PropertiesService.getScriptProperties().getProperty('VERA_LOGO_FILE_ID');
+      if (logoFileId) {
+        const logoBlob = DriveApp.getFileById(logoFileId).getBlob();
+        inlineImages = { veraLogo: logoBlob };
+        logoTag = '<img src="cid:veraLogo" alt="VERA" style="width:100%;display:block;border:0;" />';
+      }
+    } catch (logoErr) {
+      Logger.log('Logo load failed (continuing without it): ' + logoErr.message);
+    }
+
+    // ---- HTML body ------------------------------------------------------
+    const htmlBody =
+      '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
+      '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f0f5;padding:24px 0;">' +
+      '<tr><td align="center">' +
+      '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.10);">' +
+
+      // Logo header
+      (logoTag
+        ? '<tr><td style="padding:0;background:#0d1b3e;">' + logoTag + '</td></tr>'
+        : '<tr><td style="padding:24px 40px;background:#0d1b3e;text-align:center;"><span style="color:#ffffff;font-size:28px;font-weight:bold;letter-spacing:4px;">VERA</span><br><span style="color:#c9a84c;font-size:11px;letter-spacing:2px;">YOUR PERSONAL CHIEF OF STAFF</span></td></tr>') +
+
+      // Body
+      '<tr><td style="padding:36px 40px;">' +
+      '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
+      '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
+      '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
+      '<p style="margin:0;font-size:14px;color:#888888;">Open your <strong>VERA Life OS sheet</strong> to review and acknowledge flags.</p>' +
+      '</td></tr>' +
+
+      // Footer
+      '<tr><td style="padding:16px 40px;background:#f7f7fa;border-top:1px solid #eeeeee;">' +
+      '<p style="margin:0;font-size:12px;color:#aaaaaa;text-align:center;">Sent by VERA &mdash; Virtual Executive &amp; Reminder Assistant</p>' +
+      '</td></tr>' +
+
+      '</table></td></tr></table></body></html>';
+
+    // ---- Plain text fallback --------------------------------------------
+    const plainText = [
       'Good morning, Ahmed.',
       '',
       'VERA flagged ' + total + (total === 1 ? ' item' : ' items') + ' overnight:',
       '',
-    ];
-    if (highCount > 0) lines.push('  HIGH priority:   ' + highCount);
-    if (medCount  > 0) lines.push('  MEDIUM priority: ' + medCount);
-    if (lowCount  > 0) lines.push('  LOW priority:    ' + lowCount);
-    lines.push('');
-    lines.push('Open your VERA Life OS sheet to review and acknowledge flags.');
-    lines.push('');
-    lines.push('— VERA');
+      highCount > 0 ? '  High priority:   ' + highCount : '',
+      medCount  > 0 ? '  Medium priority: ' + medCount  : '',
+      lowCount  > 0 ? '  Low priority:    ' + lowCount  : '',
+      '',
+      'Open your VERA Life OS sheet to review and acknowledge flags.',
+      '',
+      '— VERA',
+    ].filter(function(l) { return l !== false; }).join('\n');
 
-    MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, lines.join('\n'));
-    Logger.log('Morning nudge sent: ' + total + ' active flags.');
+    // ---- Send -----------------------------------------------------------
+    const mailOptions = {
+      name:        'VERA',
+      htmlBody:    htmlBody,
+      inlineImages: inlineImages,
+    };
+
+    MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions);
+    Logger.log('Morning nudge sent (HTML): ' + total + ' active flags.');
 
   } catch (e) {
     Logger.log('morningNudge ERROR: ' + e.message);
