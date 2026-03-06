@@ -5,5 +5,6 @@
 .git/**
 README.md
 push.ps1
+dashboard.html
 *.ps1
 *.md

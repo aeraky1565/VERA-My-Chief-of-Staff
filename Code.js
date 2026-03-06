@@ -400,7 +400,7 @@ function morningNudge() {
         logoTag = '<img src="cid:veraLogo" alt="VERA" style="width:100%;display:block;border:0;" />';
       }
     } catch (logoErr) {
-      Logger.log('Logo load failed (continuing without it): ' + logoErr.message);
+      Logger.log('Logo load failed (continuing without it): ' + logoErr);
     }
 
     // ---- HTML body ------------------------------------------------------
@@ -420,7 +420,7 @@ function morningNudge() {
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
       '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
-      '<p style="margin:0;font-size:14px;color:#888888;">Open your <strong>VERA Life OS sheet</strong> to review and acknowledge flags.</p>' +
+      '<p style="margin:0;font-size:14px;color:#888888;">Open your <a href="https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID + '" style="color:#0d1b3e;font-weight:bold;text-decoration:underline;">VERA Life OS sheet</a> to review and acknowledge flags.</p>' +
       '</td></tr>' +
 
       // Footer
@@ -440,7 +440,8 @@ function morningNudge() {
       medCount  > 0 ? '  Medium priority: ' + medCount  : '',
       lowCount  > 0 ? '  Low priority:    ' + lowCount  : '',
       '',
-      'Open your VERA Life OS sheet to review and acknowledge flags.',
+      'Open your VERA Life OS sheet to review and acknowledge flags:',
+      'https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID,
       '',
       '— VERA',
     ].filter(function(l) { return l !== false; }).join('\n');
