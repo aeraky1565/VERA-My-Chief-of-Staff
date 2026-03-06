@@ -62,9 +62,8 @@ function buildPrompt(events, tasks, summaries) {
       let line = '- ' + e.title + ' | ' + dateStr + ' ' + timeStr + ' [' + dayLabel + ']';
       if (e.location) line += ' @ ' + e.location;
 
-      // Calendar ownership and RSVP context
-      const calType = e.isOwnedCalendar ? 'my calendar' : 'shared: ' + e.calendarName;
-      line += ' (' + calType + ')';
+      // Calendar label (from Config tab, or auto-detected fallback)
+      line += ' (' + (e.calLabel || e.calendarName) + ')';
 
       // RSVP status — flag unresponded invites
       if (e.myStatus && e.myStatus !== 'organizer' && e.myStatus !== 'accepted') {

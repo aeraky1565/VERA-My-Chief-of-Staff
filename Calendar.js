@@ -4,7 +4,6 @@
 // ============================================================
 
 // Maps Google Calendar event color IDs to human-readable names.
-// Used to surface color tags in the Claude prompt.
 const EVENT_COLOR_NAMES = {
   '1':  'Lavender',
   '2':  'Sage',
@@ -23,10 +22,12 @@ const EVENT_COLOR_NAMES = {
  * Fetches all calendar events across all of the user's calendars
  * for the next CALENDAR_DAYS_AHEAD days.
  *
- * Each event includes:
- *   - isOwnedCalendar: true if Ahmed owns this calendar, false if it's shared
- *   - myStatus: Ahmed's RSVP status (organizer / accepted / tentative / invited / declined)
- *   - eventColor: the color tag applied directly to this event (if any)
+ * Calendar labeling (for Claude context) is driven by the Config tab:
+ *   skip_calendars           → comma-separated calendar names to ignore entirely
+ *   calendar_label:CalName   → custom label for a calendar (e.g. "family (shared)")
+ *
+ * If no label is defined for a calendar, falls back to auto-detecting
+ * owned vs shared using Google's calendar ownership API.
  *
  * @returns {Array} Sorted array of event objects
  */
@@ -36,26 +37,62 @@ function getUpcomingEvents() {
     const endDate = new Date(now.getTime() + CONFIG.CALENDAR_DAYS_AHEAD * 24 * 60 * 60 * 1000);
     const tz      = Session.getScriptTimeZone();
 
-    // Build a set of calendar IDs that Ahmed owns (vs shared with him)
+    // ---- Read config -------------------------------------------------------
+    const cfg = getConfigValues();
+
+    // Calendars to skip entirely (exact name match, case-insensitive)
+    const skipList = (cfg['skip_calendars'] || '')
+      .split(',')
+      .map(function(s) { return s.trim().toLowerCase(); })
+      .filter(function(s) { return s !== ''; });
+
+    // calendar_label:* entries — build a lookup: calendarName → label
+    const calendarLabels = {};
+    Object.keys(cfg).forEach(function(key) {
+      if (key.indexOf('calendar_label:') === 0) {
+        const calName = key.substring('calendar_label:'.length).trim();
+        calendarLabels[calName.toLowerCase()] = cfg[key].trim();
+      }
+    });
+
+    // Owned calendar IDs for fallback detection (only used when no label defined)
     const ownedIds = {};
     CalendarApp.getAllOwnedCalendars().forEach(function(c) {
       ownedIds[c.getId()] = true;
     });
 
+    // ---- Fetch events ------------------------------------------------------
     const events    = [];
     const calendars = CalendarApp.getAllCalendars();
 
     calendars.forEach(function(calendar) {
+      const calNameRaw   = calendar.getName();
+      const calNameLower = calNameRaw.toLowerCase();
+
+      // Skip calendars on the skip list
+      if (skipList.indexOf(calNameLower) !== -1) {
+        Logger.log('Skipping calendar (skip_calendars): "' + calNameRaw + '"');
+        return;
+      }
+
       let calEvents;
       try {
         calEvents = calendar.getEvents(now, endDate);
       } catch (calErr) {
-        // Some shared/read-only calendars can throw — skip gracefully
-        Logger.log('Skipping calendar "' + calendar.getName() + '": ' + calErr.message);
+        Logger.log('Skipping calendar "' + calNameRaw + '" (error): ' + calErr.message);
         return;
       }
 
-      const isOwned = !!ownedIds[calendar.getId()];
+      // Determine the label for this calendar
+      // Priority: Config label → auto-detect owned/shared
+      let calLabel;
+      if (calendarLabels[calNameLower]) {
+        calLabel = calendarLabels[calNameLower];
+      } else if (ownedIds[calendar.getId()]) {
+        calLabel = 'personal (' + calNameRaw + ')';
+      } else {
+        calLabel = 'shared: ' + calNameRaw;
+      }
 
       calEvents.forEach(function(event) {
         const startTime = event.getStartTime();
@@ -75,11 +112,9 @@ function getUpcomingEvents() {
           else if (statusObj === CalendarApp.GuestStatus.MAYBE)   myStatus = 'tentative';
           else if (statusObj === CalendarApp.GuestStatus.INVITED) myStatus = 'invited (no response)';
           else if (statusObj === CalendarApp.GuestStatus.OWNER)   myStatus = 'organizer';
-        } catch (e) { /* leave as 'organizer' */ }
+        } catch (e) { /* leave as organizer */ }
 
-        // ---- Event color tag ---------------------------------------------
-        // A color set directly on the event (not the calendar color).
-        // Empty string means "uses calendar color" — no specific tag.
+        // ---- Event color tag (manually applied by Ahmed) -----------------
         let eventColor = '';
         try {
           const colorId = event.getColor();
@@ -87,16 +122,16 @@ function getUpcomingEvents() {
         } catch (e) { /* no color */ }
 
         events.push({
-          title:           event.getTitle() || '(No title)',
-          start:           Utilities.formatDate(startTime,        tz, 'yyyy-MM-dd HH:mm'),
-          end:             Utilities.formatDate(event.getEndTime(), tz, 'yyyy-MM-dd HH:mm'),
-          daysUntil:       Math.max(0, daysUntil),
-          isAllDay:        event.isAllDayEvent(),
-          location:        event.getLocation() || '',
-          calendarName:    calendar.getName(),
-          isOwnedCalendar: isOwned,
-          myStatus:        myStatus,
-          eventColor:      eventColor,
+          title:        event.getTitle() || '(No title)',
+          start:        Utilities.formatDate(startTime,          tz, 'yyyy-MM-dd HH:mm'),
+          end:          Utilities.formatDate(event.getEndTime(), tz, 'yyyy-MM-dd HH:mm'),
+          daysUntil:    Math.max(0, daysUntil),
+          isAllDay:     event.isAllDayEvent(),
+          location:     event.getLocation() || '',
+          calendarName: calNameRaw,
+          calLabel:     calLabel,
+          myStatus:     myStatus,
+          eventColor:   eventColor,
         });
       });
     });
@@ -106,10 +141,7 @@ function getUpcomingEvents() {
       return a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
     });
 
-    const ownedCount  = events.filter(function(e) { return e.isOwnedCalendar;  }).length;
-    const sharedCount = events.filter(function(e) { return !e.isOwnedCalendar; }).length;
-    Logger.log('Calendar: fetched ' + events.length + ' events (' + ownedCount + ' owned, ' + sharedCount + ' shared) across ' + calendars.length + ' calendars.');
-
+    Logger.log('Calendar: fetched ' + events.length + ' events across ' + calendars.length + ' calendars.');
     return events;
 
   } catch (e) {

@@ -9,7 +9,7 @@
 //   See setup instructions for how to set it safely.
 // ----------------------------------------------------------------------------
 const CONFIG = {
-  SHEET_ID: 'YOUR_SHEET_ID_HERE',       // <-- Replace after creating your sheet
+  SHEET_ID: '1FlNnxQltktinV1qnGQJ0QZ_4s5G4EA45GI61ul92er0',       // <-- Replace after creating your sheet
   CALENDAR_DAYS_AHEAD: 7,
   TASK_AGE_THRESHOLD: 7,                 // Days before a task is considered neglected
   MAX_FLAGS: 8,
@@ -67,6 +67,10 @@ function createSheetTabs(ss) {
     ['snooze_default_days',    '2'],
     ['finance_review_day',     '1'],
     ['active_sources',         'Calendar,Tasks,Summaries'],
+    ['skip_calendars',         'Holidays in United States'],
+    // Add rows like: calendar_label:Eraky Family | family (shared, not Ahmed's direct obligations)
+    // Add rows like: calendar_label:Ahmed         | personal
+    // Add rows like: calendar_label:Victoria       | household partner
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -249,6 +253,47 @@ function colorCodeFlags(sheet) {
 
     sheet.getRange(rowNum, 1, 1, FLAG_HEADERS.length).setBackground(bgColor);
   });
+}
+
+// ============================================================
+// GET CONFIG VALUES — Read the Config tab into a key-value map
+// ============================================================
+
+/**
+ * Reads all rows from the Config tab and returns them as a plain object.
+ * Skips blank or malformed rows.
+ *
+ * Example output:
+ * {
+ *   "calendar_days_ahead": "7",
+ *   "skip_calendars": "Holidays in United States",
+ *   "calendar_label:Eraky Family": "family (shared, not Ahmed's direct obligations)",
+ *   "calendar_label:Ahmed": "personal"
+ * }
+ *
+ * @returns {Object} Key-value map of all Config settings
+ */
+function getConfigValues() {
+  try {
+    const ss    = getSpreadsheet();
+    const sheet = ss.getSheetByName(TABS.CONFIG);
+    if (!sheet || sheet.getLastRow() < 2) return {};
+
+    const numRows = sheet.getLastRow() - 1;
+    const data    = sheet.getRange(2, 1, numRows, 2).getValues();
+    const config  = {};
+
+    data.forEach(function(row) {
+      const key   = String(row[0] || '').trim();
+      const value = String(row[1] || '').trim();
+      if (key !== '') config[key] = value;
+    });
+
+    return config;
+  } catch (e) {
+    Logger.log('getConfigValues error: ' + e.message);
+    return {};
+  }
 }
 
 // ============================================================
