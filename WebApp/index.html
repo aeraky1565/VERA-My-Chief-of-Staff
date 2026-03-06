@@ -344,6 +344,32 @@
       font-weight: 600;
       padding: 2px 8px;
     }
+
+    /* ---- Toast notification ---- */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: #0f3020;
+      border: 1px solid #43a047;
+      border-radius: 10px;
+      color: #69f0ae;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 14px 22px;
+      z-index: 300;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      animation: slideUp 0.2s ease;
+    }
+    .toast.error {
+      background: #3d1515;
+      border-color: #e53935;
+      color: #ff8a80;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -619,6 +645,8 @@ function App() {
   const [flags,      setFlags]      = useState([]);
   const [tasks,      setTasks]      = useState([]);
   const [summaries,  setSummaries]  = useState([]);
+  const [toast,      setToast]      = useState(null);
+  const toastTimer = useRef(null);
 
   const loadAll = useCallback(async (url, token, activeOnly) => {
     if (!url || !token) return;
@@ -652,16 +680,45 @@ function App() {
     if (apiUrl && apiToken) loadAll(apiUrl, apiToken, filterActive);
   }, [apiUrl, apiToken, filterActive, loadAll]);
 
+  function showToast(msg, isError) {
+    setToast({ msg, isError: !!isError });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  }
+
   async function handleAction(action, id, days) {
     setBusy(true);
     setError(null);
+
+    // Optimistic UI update — show result immediately so the user
+    // sees the badge change before loadAll re-filters the list
+    setFlags(prev => prev.map(f => {
+      if (f.id !== id) return f;
+      if (action === 'acknowledge') return { ...f, acknowledged: true };
+      if (action === 'resolve')     return { ...f, resolved: true };
+      if (action === 'snooze')      return { ...f, snoozedUntil: 'soon' };
+      return f;
+    }));
+
     try {
       const params = { id };
       if (days != null) params.days = days;
       await apiAction(apiUrl, apiToken, action, params);
-      await loadAll(apiUrl, apiToken, filterActive);
+
+      const labels = {
+        acknowledge: '✓ Flag acknowledged',
+        resolve:     '✓ Flag resolved',
+        snooze:      '💤 Flag snoozed for ' + (days || 2) + 'd',
+      };
+      showToast(labels[action] || '✓ Done');
+
+      // Short delay lets the user see the state change badge before
+      // loadAll re-fetches and filters the flag out of the active view
+      setTimeout(() => loadAll(apiUrl, apiToken, filterActive), 1500);
     } catch (err) {
       setError('Action failed: ' + err.message);
+      // Revert optimistic update by re-fetching real state
+      await loadAll(apiUrl, apiToken, filterActive);
     }
     setBusy(false);
   }
@@ -797,6 +854,13 @@ function App() {
             )}
           </div>
         </>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`toast${toast.isError ? ' error' : ''}`}>
+          {toast.msg}
+        </div>
       )}
     </>
   );
