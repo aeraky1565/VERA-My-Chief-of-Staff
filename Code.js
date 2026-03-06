@@ -203,6 +203,8 @@ function nightlyRun() {
 
 /**
  * Appends flag rows to the Flags tab and color-codes by urgency.
+ * Skips any flag whose source + text fingerprint matches an existing
+ * unresolved flag, to prevent nightly duplicates for ongoing issues.
  * @param {Array} flags - Array of flag objects from generateFlags()
  */
 function writeFlags(flags) {
@@ -212,8 +214,25 @@ function writeFlags(flags) {
   const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const timestamp = dateStr.replace(/-/g, '');
 
-  flags.forEach(function(flag, index) {
-    const id = 'FLAG-' + timestamp + '-' + String(index + 1).padStart(2, '0');
+  // Build fingerprint set of all existing unresolved flags
+  const existing = getExistingFlagFingerprints_(sheet);
+
+  let written = 0;
+  let skipped = 0;
+  let seqNum  = 1;
+
+  flags.forEach(function(flag) {
+    const fp = makeFlagFingerprint_(flag.source, flag.flag);
+
+    if (existing.has(fp)) {
+      Logger.log('Dedup: skipping existing flag [' + flag.source + '] ' + flag.flag);
+      skipped++;
+      return;
+    }
+
+    const id = 'FLAG-' + timestamp + '-' + String(seqNum).padStart(2, '0');
+    seqNum++;
+
     const row = [
       id,                     // A: ID
       dateStr,                // B: Date
@@ -226,9 +245,49 @@ function writeFlags(flags) {
       'No',                   // I: Resolved
     ];
     sheet.appendRow(row);
+    existing.add(fp); // Prevent dupes within the same batch
+    written++;
   });
 
-  colorCodeFlags(sheet);
+  if (written > 0) colorCodeFlags(sheet);
+  Logger.log('writeFlags: ' + written + ' new flags written, ' + skipped + ' duplicates skipped.');
+}
+
+/**
+ * Returns a Set of fingerprints for all unresolved flags currently in the sheet.
+ * Resolved flags are excluded so a recurring issue can be re-flagged after resolution.
+ */
+function getExistingFlagFingerprints_(sheet) {
+  const fingerprints = new Set();
+  if (!sheet || sheet.getLastRow() < 2) return fingerprints;
+
+  const numRows = sheet.getLastRow() - 1;
+  const data    = sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues();
+
+  data.forEach(function(row) {
+    const resolved = String(row[8] || '').toLowerCase();
+    if (resolved === 'yes') return; // Resolved = allow re-flagging if it recurs
+    fingerprints.add(makeFlagFingerprint_(row[2], row[3]));
+  });
+
+  return fingerprints;
+}
+
+/**
+ * Creates a short fingerprint from source + first 8 words of flag text.
+ * Strips punctuation and lowercases so minor wording changes don't create dupes.
+ */
+function makeFlagFingerprint_(source, flagText) {
+  const src  = String(source   || '').toLowerCase().trim();
+  const text = String(flagText || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .slice(0, 8)
+    .join(' ');
+  return src + '|' + text;
 }
 
 /**
