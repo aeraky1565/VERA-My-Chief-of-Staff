@@ -1,25 +1,34 @@
 // ============================================================
-// VERA — Summaries.js  (Phase 5)
-// Auto-populates the Summaries tab nightly from live data
+// VERA — Summaries.js  (Phase 5, updated)
+// Nightly auto-population of the Metrics and Summaries tabs
 // ============================================================
 //
-// CONVENTION:
+// TWO-TAB ARCHITECTURE:
+//
+//   Metrics tab   — VERA's self-monitoring counts (Tasks/Calendar/Flags).
+//                   Written automatically every night. No user setup needed.
+//
+//   Summaries tab — External life intelligence feed (Finance, Fitness, Kenz Box, etc.).
+//                   Populated from external Google Sheets via Config rows.
+//                   This is the original "pre-digested intelligence" concept.
+//
+// CONVENTION — [AUTO] rows:
 //   Rows whose Source column starts with "[AUTO]" are owned by this script.
 //   They are wiped and rewritten fresh each night.
-//   Rows WITHOUT the "[AUTO]" prefix are your manual notes — never touched.
+//   Rows WITHOUT "[AUTO]" prefix are your manual notes — never touched.
 //
-// HOW TO ADD EXTERNAL SHEET SOURCES:
-//   In your Config tab add one row per metric, with this exact format:
+// HOW TO ADD EXTERNAL SHEET SOURCES (Summaries tab):
+//   In your Config tab, add one row per metric in this format:
 //
 //     Setting                          | Value
 //     summary_sheet:SimpleAssTracker   | SHEET_ID|TabName|CellRef|metric_name
 //
-//   Example:
+//   Example rows:
 //     summary_sheet:SimpleAssTracker   | 1aBc...XyZ|Budget|B2|checking_balance
-//     summary_sheet:SimpleAssTracker   | 1aBc...XyZ|Budget|B5|monthly_spend
+//     summary_sheet:SimpleAssTracker   | 1aBc...XyZ|Budget|B5|groceries_actual_vs_budget
+//     summary_sheet:Fitness            | 1xYz...AbC|Log|D4|gym_sessions_this_week
 //
-//   The external sheet must be shared (at least viewer access) with your
-//   Google account (aaeleraky@gmail.com).
+//   The external sheet must be shared (at least viewer access) with aaeleraky@gmail.com.
 // ============================================================
 
 var AUTO_PREFIX = '[AUTO]';
@@ -29,44 +38,111 @@ var AUTO_PREFIX = '[AUTO]';
 // ============================================================
 
 /**
- * Clears all [AUTO] Summaries rows then writes a fresh nightly snapshot.
- * Runs BEFORE getSummaries() + generateFlags() so Claude sees current data.
+ * Orchestrates both nightly writes:
+ *   1. Auto-counts → Metrics tab
+ *   2. External sheet data → Summaries tab
+ *
+ * Runs BEFORE getSummaries() + generateFlags() so Claude sees fresh data.
  */
 function writeSummarySnapshot() {
   try {
-    Logger.log('Summaries: starting auto-snapshot...');
+    const ss = getSpreadsheet();
+    writeMetrics_(ss);
+    writeSummaries_(ss);
+  } catch (e) {
+    Logger.log('writeSummarySnapshot error: ' + e.message + '\n' + e.stack);
+  }
+}
 
-    const ss    = getSpreadsheet();
-    const sheet = ss.getSheetByName(TABS.SUMMARIES);
+// ============================================================
+// METRICS TAB — auto-counts from VERA's own data
+// ============================================================
+
+/**
+ * Clears and rewrites [AUTO] rows in the Metrics tab.
+ * Sources: Tasks tab, Calendar, Flags tab.
+ */
+function writeMetrics_(ss) {
+  try {
+    Logger.log('Metrics: starting auto-snapshot...');
+
+    // Create Metrics tab on first run if it doesn't exist yet
+    let sheet = ss.getSheetByName(TABS.METRICS);
     if (!sheet) {
-      Logger.log('Summaries: tab not found — skipping snapshot.');
-      return;
+      sheet = ss.insertSheet(TABS.METRICS);
+      const headerRange = sheet.getRange(1, 1, 1, METRIC_HEADERS.length);
+      headerRange.setValues([METRIC_HEADERS])
+        .setFontWeight('bold')
+        .setBackground('#1a1a2e')
+        .setFontColor('#ffffff');
+      sheet.setFrozenRows(1);
+      Logger.log('Metrics: tab created.');
     }
 
-    // 1. Wipe previous [AUTO] rows
-    clearAutoSummaries_(sheet);
+    clearAutoRows_(sheet, 'Metrics');
 
-    // 2. Build fresh rows from every source
     const rows = [];
-    appendAll_(rows, buildTaskSummaries_());
-    appendAll_(rows, buildCalendarSummaries_());
-    appendAll_(rows, buildFlagSummaries_(ss));
-    appendAll_(rows, buildExternalSheetSummaries_());
+    appendAll_(rows, buildTaskMetrics_());
+    appendAll_(rows, buildCalendarMetrics_());
+    appendAll_(rows, buildFlagMetrics_(ss));
 
-    // 3. Insert at row 2 (just below header) so auto rows appear at the top
     if (rows.length > 0) {
       sheet.insertRowsBefore(2, rows.length);
-      sheet.getRange(2, 1, rows.length, SUMMARY_HEADERS.length).setValues(rows);
-      // Subtle blue-tint background so auto rows are visually distinct
-      sheet.getRange(2, 1, rows.length, SUMMARY_HEADERS.length)
+      sheet.getRange(2, 1, rows.length, METRIC_HEADERS.length)
+        .setValues(rows)
         .setBackground('#eef2ff')
         .setFontColor('#333333');
     }
 
-    Logger.log('Summaries: wrote ' + rows.length + ' auto-snapshot rows.');
+    Logger.log('Metrics: wrote ' + rows.length + ' auto-rows.');
 
   } catch (e) {
-    Logger.log('writeSummarySnapshot error: ' + e.message + '\n' + e.stack);
+    Logger.log('writeMetrics_ error: ' + e.message);
+  }
+}
+
+// ============================================================
+// SUMMARIES TAB — external life intelligence feed
+// ============================================================
+
+/**
+ * Clears and rewrites [AUTO] rows in the Summaries tab.
+ * Sources: external Google Sheets defined in the Config tab via summary_sheet: rows.
+ * Manual rows (no [AUTO] prefix) are never touched.
+ */
+function writeSummaries_(ss) {
+  try {
+    Logger.log('Summaries: starting external sheet snapshot...');
+
+    // Create Summaries tab on first run if it doesn't exist yet
+    let sheet = ss.getSheetByName(TABS.SUMMARIES);
+    if (!sheet) {
+      sheet = ss.insertSheet(TABS.SUMMARIES);
+      const headerRange = sheet.getRange(1, 1, 1, SUMMARY_HEADERS.length);
+      headerRange.setValues([SUMMARY_HEADERS])
+        .setFontWeight('bold')
+        .setBackground('#1a1a2e')
+        .setFontColor('#ffffff');
+      sheet.setFrozenRows(1);
+      Logger.log('Summaries: tab created.');
+    }
+
+    clearAutoRows_(sheet, 'Summaries');
+
+    const rows = buildExternalSheetRows_();
+
+    if (rows.length > 0) {
+      sheet.insertRowsBefore(2, rows.length);
+      sheet.getRange(2, 1, rows.length, SUMMARY_HEADERS.length)
+        .setValues(rows)
+        .setBackground('#eef2ff')
+        .setFontColor('#333333');
+    }
+
+    Logger.log('Summaries: wrote ' + rows.length + ' external rows.');
+
+  } catch (e) {
+    Logger.log('writeSummaries_ error: ' + e.message);
   }
 }
 
@@ -75,16 +151,18 @@ function writeSummarySnapshot() {
 // ============================================================
 
 /**
- * Deletes every row in the Summaries tab whose Source starts with AUTO_PREFIX.
+ * Deletes every row in a tab whose Source column starts with AUTO_PREFIX.
  * Iterates bottom-up so row numbers don't shift during deletion.
+ *
+ * @param {Sheet}  sheet   - The sheet to clear [AUTO] rows from
+ * @param {string} tabDesc - Human-readable name for log messages
  */
-function clearAutoSummaries_(sheet) {
+function clearAutoRows_(sheet, tabDesc) {
   if (!sheet || sheet.getLastRow() < 2) return;
 
   const numRows = sheet.getLastRow() - 1;
   const sources = sheet.getRange(2, 1, numRows, 1).getValues();
 
-  // Collect 1-indexed sheet row numbers, then reverse so we delete bottom-up
   const toDelete = [];
   sources.forEach(function(row, i) {
     if (String(row[0]).indexOf(AUTO_PREFIX) === 0) {
@@ -96,23 +174,21 @@ function clearAutoSummaries_(sheet) {
     sheet.deleteRow(rowNum);
   });
 
-  Logger.log('Summaries: cleared ' + toDelete.length + ' stale [AUTO] rows.');
+  Logger.log(tabDesc + ': cleared ' + toDelete.length + ' stale [AUTO] rows.');
 }
 
 // ============================================================
-// SNAPSHOT BUILDERS — one per data source
+// METRICS BUILDERS — data sourced from within VERA's own sheet
 // ============================================================
 
 /**
- * Task metrics derived from the Tasks tab.
- *
- * Metrics written:
+ * Task health metrics from the Tasks tab.
  *   open_count          — total non-completed tasks
  *   overdue_count       — tasks past their due date
- *   due_within_7_days   — not yet overdue but due within the week
- *   neglected_count     — tasks older than TASK_AGE_THRESHOLD with no due date soon
+ *   due_within_7_days   — not yet overdue but due this week
+ *   neglected_count     — tasks older than TASK_AGE_THRESHOLD
  */
-function buildTaskSummaries_() {
+function buildTaskMetrics_() {
   try {
     const tasks     = getOpenTasks();
     const today     = todayStr_();
@@ -123,54 +199,47 @@ function buildTaskSummaries_() {
     }).length;
 
     return [
-      row_(AUTO_PREFIX + ' Tasks', 'open_count',         tasks.length, today),
-      row_(AUTO_PREFIX + ' Tasks', 'overdue_count',       overdue,      today),
-      row_(AUTO_PREFIX + ' Tasks', 'due_within_7_days',   dueSoon,      today),
-      row_(AUTO_PREFIX + ' Tasks', 'neglected_count',     neglected,    today),
+      row_(AUTO_PREFIX + ' Tasks', 'open_count',        tasks.length, today),
+      row_(AUTO_PREFIX + ' Tasks', 'overdue_count',      overdue,      today),
+      row_(AUTO_PREFIX + ' Tasks', 'due_within_7_days',  dueSoon,      today),
+      row_(AUTO_PREFIX + ' Tasks', 'neglected_count',    neglected,    today),
     ];
   } catch (e) {
-    Logger.log('buildTaskSummaries_ error: ' + e.message);
+    Logger.log('buildTaskMetrics_ error: ' + e.message);
     return [];
   }
 }
 
 /**
- * Calendar metrics derived from upcoming events.
- *
- * Metrics written:
+ * Calendar health metrics from upcoming events.
  *   events_next_7_days   — total events across all calendars
  *   events_today         — events happening today
- *   events_with_location — events that have a location (proxy for "needs travel/prep")
+ *   events_with_location — events with a location (proxy for travel/prep needed)
  */
-function buildCalendarSummaries_() {
+function buildCalendarMetrics_() {
   try {
-    const events  = getUpcomingEvents();
-    const today   = todayStr_();
-
-    const todayCount    = events.filter(function(ev) { return ev.daysUntil === 0;   }).length;
-    const withLocation  = events.filter(function(ev) { return ev.location !== '';    }).length;
+    const events = getUpcomingEvents();
+    const today  = todayStr_();
 
     return [
-      row_(AUTO_PREFIX + ' Calendar', 'events_next_7_days',   events.length, today),
-      row_(AUTO_PREFIX + ' Calendar', 'events_today',          todayCount,    today),
-      row_(AUTO_PREFIX + ' Calendar', 'events_with_location',  withLocation,  today),
+      row_(AUTO_PREFIX + ' Calendar', 'events_next_7_days',   events.length,                                                                           today),
+      row_(AUTO_PREFIX + ' Calendar', 'events_today',          events.filter(function(ev) { return ev.daysUntil === 0;  }).length,                       today),
+      row_(AUTO_PREFIX + ' Calendar', 'events_with_location',  events.filter(function(ev) { return ev.location !== ''; }).length,                        today),
     ];
   } catch (e) {
-    Logger.log('buildCalendarSummaries_ error: ' + e.message);
+    Logger.log('buildCalendarMetrics_ error: ' + e.message);
     return [];
   }
 }
 
 /**
  * Active flag counts from the Flags tab.
- * Gives Claude a longitudinal view: if active flags keep rising, that's a signal.
- *
- * Metrics written:
- *   active_count   — flags that are neither acknowledged nor resolved
- *   high_count     — subset with urgency = High
- *   medium_count   — subset with urgency = Medium
+ * Gives Claude longitudinal signal — a rising active count means the backlog is growing.
+ *   active_count  — flags not acknowledged AND not resolved
+ *   high_count    — subset with urgency = High
+ *   medium_count  — subset with urgency = Medium
  */
-function buildFlagSummaries_(ss) {
+function buildFlagMetrics_(ss) {
   try {
     const sheet = ss.getSheetByName(TABS.FLAGS);
     if (!sheet || sheet.getLastRow() < 2) return [];
@@ -180,35 +249,42 @@ function buildFlagSummaries_(ss) {
     const data    = sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues();
 
     const active = data.filter(function(r) {
-      return String(r[6]).toLowerCase() !== 'yes' &&   // not acknowledged
-             String(r[8]).toLowerCase() !== 'yes';     // not resolved
+      return String(r[6]).toLowerCase() !== 'yes' &&
+             String(r[8]).toLowerCase() !== 'yes';
     });
 
-    const high   = active.filter(function(r) { return r[5] === 'High';   }).length;
-    const medium = active.filter(function(r) { return r[5] === 'Medium'; }).length;
-
     return [
-      row_(AUTO_PREFIX + ' Flags', 'active_count',   active.length, today),
-      row_(AUTO_PREFIX + ' Flags', 'high_count',      high,          today),
-      row_(AUTO_PREFIX + ' Flags', 'medium_count',    medium,        today),
+      row_(AUTO_PREFIX + ' Flags', 'active_count',   active.length,                                                               today),
+      row_(AUTO_PREFIX + ' Flags', 'high_count',      active.filter(function(r) { return r[5] === 'High';   }).length, today),
+      row_(AUTO_PREFIX + ' Flags', 'medium_count',    active.filter(function(r) { return r[5] === 'Medium'; }).length, today),
     ];
   } catch (e) {
-    Logger.log('buildFlagSummaries_ error: ' + e.message);
+    Logger.log('buildFlagMetrics_ error: ' + e.message);
     return [];
   }
 }
 
+// ============================================================
+// SUMMARIES BUILDER — data sourced from external Google Sheets
+// ============================================================
+
 /**
  * Reads arbitrary cells from external Google Sheets defined in the Config tab.
+ * Results go into the Summaries tab — the life intelligence feed for Claude.
  *
  * Config row format (Setting | Value):
  *   summary_sheet:SourceName  |  SheetID|TabName|CellRef|metric_name
  *
- * Multiple rows with the same SourceName are all read (one per metric).
- * If the external sheet is inaccessible the row is skipped with a log entry —
- * the rest of the snapshot still runs normally.
+ * Multiple rows with the same SourceName are all read (one row per metric).
+ * If the external sheet is inaccessible, that row is skipped — the rest still runs.
+ *
+ * Example Config rows:
+ *   summary_sheet:Finance         | 1aBc...|Budget|B5|groceries_actual_vs_budget
+ *   summary_sheet:Finance         | 1aBc...|Budget|C2|wedding_fund_progress
+ *   summary_sheet:SimpleAssTracker | 1xYz...|March|D8|checking_balance
+ *   summary_sheet:Fitness         | 1mNb...|Log|E4|gym_sessions_this_week
  */
-function buildExternalSheetSummaries_() {
+function buildExternalSheetRows_() {
   const rows  = [];
   const today = todayStr_();
 
@@ -250,7 +326,7 @@ function buildExternalSheetSummaries_() {
     });
 
   } catch (e) {
-    Logger.log('buildExternalSheetSummaries_ error: ' + e.message);
+    Logger.log('buildExternalSheetRows_ error: ' + e.message);
   }
 
   return rows;
@@ -265,12 +341,12 @@ function todayStr_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
-/** Builds a single Summaries row array: [Source, Metric, Value, As Of] */
+/** Builds a single tab row array: [Source, Metric, Value, As Of] */
 function row_(source, metric, value, asOf) {
   return [source, metric, value, asOf];
 }
 
-/** Appends all elements of src array into dest array (Array.push.apply polyfill). */
+/** Appends all elements of src into dest. */
 function appendAll_(dest, src) {
   src.forEach(function(item) { dest.push(item); });
 }

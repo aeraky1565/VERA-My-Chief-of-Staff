@@ -22,7 +22,8 @@ const CONFIG = {
 const TABS = {
   FLAGS:        'Flags',
   TASKS:        'Tasks',
-  SUMMARIES:    'Summaries',
+  METRICS:      'Metrics',      // Auto-populated VERA health counts (Tasks, Calendar, Flags)
+  SUMMARIES:    'Summaries',    // External life intelligence feed (Finance, Fitness, Kenz Box, etc.)
   TRANSACTIONS: 'Transactions',
   CONFIG:       'Config',
 };
@@ -30,7 +31,8 @@ const TABS = {
 // ---- Column Headers --------------------------------------------------------
 const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key'];
 const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
-const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];
+const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
+const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab
 const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags', 'Amount'];
 const CONFIG_HEADERS      = ['Setting', 'Value'];
 
@@ -75,6 +77,7 @@ function createSheetTabs(ss) {
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
   ensureSheet(ss, TABS.TASKS,        TASK_HEADERS);
+  ensureSheet(ss, TABS.METRICS,      METRIC_HEADERS);
   ensureSheet(ss, TABS.SUMMARIES,    SUMMARY_HEADERS);
   ensureSheet(ss, TABS.TRANSACTIONS, TRANSACTION_HEADERS);
   ensureSheet(ss, TABS.CONFIG,       CONFIG_HEADERS, configDefaults);
@@ -382,35 +385,48 @@ function getConfigValues() {
 // ============================================================
 
 /**
- * Reads all rows from the Summaries tab.
+ * Reads all rows from BOTH the Metrics tab (auto-counts) and the Summaries tab
+ * (external life intelligence feed) and returns them combined for Claude.
+ *
  * @returns {Array} Array of {source, metric, value, asOf} objects
  */
 function getSummaries() {
   try {
-    const ss    = getSpreadsheet();
-    const sheet = ss.getSheetByName(TABS.SUMMARIES);
-    if (!sheet || sheet.getLastRow() < 2) return [];
-
-    const numRows = sheet.getLastRow() - 1;
-    const data    = sheet.getRange(2, 1, numRows, SUMMARY_HEADERS.length).getValues();
-
-    return data
-      .filter(function(row) { return row[0] !== ''; }) // skip blank rows
-      .map(function(row) {
-        return {
-          source: String(row[0] || ''),
-          metric: String(row[1] || ''),
-          value:  String(row[2] || ''),
-          asOf:   row[3] instanceof Date
-            ? Utilities.formatDate(row[3], Session.getScriptTimeZone(), 'yyyy-MM-dd')
-            : String(row[3] || ''),
-        };
-      });
-
+    const ss = getSpreadsheet();
+    return readSummaryTab_(ss, TABS.METRICS).concat(readSummaryTab_(ss, TABS.SUMMARIES));
   } catch (e) {
     Logger.log('getSummaries error: ' + e.message);
     return [];
   }
+}
+
+/**
+ * Reads all non-blank rows from a single tab that shares the Source/Metric/Value/As Of schema.
+ * Used by getSummaries() to read both Metrics and Summaries tabs.
+ *
+ * @param {Spreadsheet} ss       - The spreadsheet object
+ * @param {string}      tabName  - Tab name to read (e.g. TABS.METRICS or TABS.SUMMARIES)
+ * @returns {Array} Array of {source, metric, value, asOf} objects
+ */
+function readSummaryTab_(ss, tabName) {
+  const sheet = ss.getSheetByName(tabName);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  const numRows = sheet.getLastRow() - 1;
+  const data    = sheet.getRange(2, 1, numRows, SUMMARY_HEADERS.length).getValues();
+
+  return data
+    .filter(function(row) { return row[0] !== ''; })
+    .map(function(row) {
+      return {
+        source: String(row[0] || ''),
+        metric: String(row[1] || ''),
+        value:  String(row[2] || ''),
+        asOf:   row[3] instanceof Date
+          ? Utilities.formatDate(row[3], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+          : String(row[3] || ''),
+      };
+    });
 }
 
 // ============================================================
@@ -554,8 +570,22 @@ function morningNudge() {
 }
 
 // ============================================================
-// ONE-TIME MIGRATION — Run once after deploying the Key column update
+// ONE-TIME MIGRATIONS — Run each once after deploying the relevant update
 // ============================================================
+
+/**
+ * Creates the Metrics tab (with headers) for users who ran setupVERA() before
+ * the Metrics/Summaries split was introduced. Safe to re-run.
+ *
+ * After running this, the nightly run will automatically:
+ *   - Write auto-counts (Tasks/Calendar/Flags) into the new Metrics tab
+ *   - Clear the old [AUTO] rows from the Summaries tab (which now holds external data)
+ */
+function addMetricsTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.METRICS, METRIC_HEADERS);
+  Logger.log('✅ Metrics tab created (or already exists). Run testRun() to populate it.');
+}
 
 /**
  * Adds the "Key" header to Column J of the Flags tab.
