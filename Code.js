@@ -161,6 +161,9 @@ function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
 
+    // Step 0: Auto-populate Summaries tab from live data (Phase 5)
+    writeSummarySnapshot();
+
     // Step 1: Collect
     const events    = getUpcomingEvents();
     const tasks     = getOpenTasks();
