@@ -145,6 +145,14 @@ function buildPrompt(events, tasks, summaries) {
     '- Events with [RSVP: invited (no response)] or [RSVP: tentative] mean Ahmed has not confirmed — flag these if the event is soon.\n' +
     '- Events with [tagged: Color] have a color label Ahmed applied manually — treat colored events as higher-intent or categorized items worth noting.\n\n' +
 
+    'FINANCE CONTEXT RULES:\n' +
+    '- The Summaries section includes spending data from the Transactions sheet. Format is: "Category — Month: $current vs $prev mo (+/-%)"\n' +
+    '- Flag any spending category where current month is MORE than 20% over last month AND the absolute increase is at least $30. Use source "Finance".\n' +
+    '- If a category shows a very large spike (>50% or >$200 over), flag it as High urgency — otherwise Medium.\n' +
+    '- Simple Ass Tracker (SAT) rows show Ahmed and Victoria\'s net income, expenses, and disposable income for the current budget period.\n' +
+    '- Flag if Shared Disposable Income or either person\'s Disposable Income is unexpectedly low (e.g. near zero or negative).\n' +
+    '- Do NOT flag normal month-to-month variation (<20% or <$30 difference).\n\n' +
+
     '=== UPCOMING CALENDAR EVENTS (next ' + CONFIG.CALENDAR_DAYS_AHEAD + ' days) ===\n' +
     eventsSection + '\n\n' +
 

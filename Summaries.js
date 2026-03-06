@@ -129,7 +129,7 @@ function writeSummaries_(ss) {
 
     clearAutoRows_(sheet, 'Summaries');
 
-    const rows = buildExternalSheetRows_();
+    const rows = buildExternalSheetRows_().concat(getFinanceSummaries());
 
     if (rows.length > 0) {
       sheet.insertRowsBefore(2, rows.length);
