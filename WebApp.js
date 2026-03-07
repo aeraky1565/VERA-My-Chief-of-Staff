@@ -255,6 +255,14 @@ function findTaskRow_(id) {
   const sheet = ss.getSheetByName(TABS.TASKS);
   if (!sheet || sheet.getLastRow() < 2) throw new Error('Tasks sheet is empty');
 
+  // Row-based fallback ID (tasks without a Column A value get TASK-R{sheetRow})
+  if (String(id).indexOf('TASK-R') === 0) {
+    const rowNum = parseInt(String(id).substring(6), 10);
+    if (!isNaN(rowNum) && rowNum >= 2) return { sheet: sheet, rowNum: rowNum };
+    throw new Error('Invalid row-based task ID: ' + id);
+  }
+
+  // Normal: search Column A for the explicit ID
   const numRows = sheet.getLastRow() - 1;
   const ids     = sheet.getRange(2, 1, numRows, 1).getValues();
 

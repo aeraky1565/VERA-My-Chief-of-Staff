@@ -33,7 +33,7 @@ function getOpenTasks() {
 
     const tasks = [];
 
-    data.forEach(function(row) {
+    data.forEach(function(row, index) {
       const id        = row[0];
       const taskText  = row[1];
       const addedRaw  = row[2];
@@ -73,7 +73,7 @@ function getOpenTasks() {
       const isNeglected = ageInDays >= CONFIG.TASK_AGE_THRESHOLD;
 
       tasks.push({
-        id:          String(id || ''),
+        id:          String(id || '') || ('TASK-R' + (index + 2)), // fallback: row-based ID
         task:        String(taskText),
         addedDate:   addedDate ? Utilities.formatDate(addedDate, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(addedRaw || ''),
         dueDate:     dueDate   ? Utilities.formatDate(dueDate,   Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(dueRaw   || ''),
