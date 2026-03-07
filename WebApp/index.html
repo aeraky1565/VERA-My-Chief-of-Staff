@@ -232,7 +232,31 @@
       gap: 14px;
       margin-bottom: 10px;
       padding: 14px 16px;
+      transition: opacity .3s;
     }
+    .task-card.completing { opacity: 0.45; }
+
+    .task-check {
+      background: none;
+      border: 2px solid #2a3a5e;
+      border-radius: 50%;
+      color: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 700;
+      height: 22px;
+      width: 22px;
+      margin-top: 1px;
+      padding: 0;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .task-check:hover:not(:disabled) { border-color: #43a047; color: #43a047; }
+    .task-check.completing { background: #43a047; border-color: #43a047; color: #fff; }
+    .task-check:disabled { cursor: not-allowed; }
     .task-age {
       background: #13244d;
       border-radius: 6px;
@@ -572,7 +596,7 @@ function FlagCard({ flag, onAction, busy }) {
 
 // ---- Task card --------------------------------------------------------------
 
-function TaskCard({ task }) {
+function TaskCard({ task, onComplete, completing }) {
   const ageClass = task.isOverdue ? 'overdue' : task.isNeglected ? 'neglected' : '';
   const ageLabel = task.isOverdue
     ? `${Math.abs(task.daysUntilDue)}d late`
@@ -581,9 +605,17 @@ function TaskCard({ task }) {
       : '';
 
   return (
-    <div className="task-card">
+    <div className={`task-card${completing ? ' completing' : ''}`}>
+      <button
+        className={`task-check${completing ? ' completing' : ''}`}
+        disabled={completing || !task.id}
+        onClick={() => onComplete && onComplete(task.id)}
+        title="Mark as done"
+      >
+        {completing ? '✓' : ''}
+      </button>
       <div className={`task-age ${ageClass}`}>{ageLabel}</div>
-      <div className="task-info">
+      <div className="task-info" style={completing ? { textDecoration: 'line-through', color: '#4d6080' } : {}}>
         <div className="task-title">{task.task}</div>
         <div className="task-meta">
           {task.status && <span style={{ marginRight: 12 }}>Status: {task.status}</span>}
@@ -645,7 +677,8 @@ function App() {
   const [flags,      setFlags]      = useState([]);
   const [tasks,      setTasks]      = useState([]);
   const [summaries,  setSummaries]  = useState([]);
-  const [toast,      setToast]      = useState(null);
+  const [toast,         setToast]         = useState(null);
+  const [completingIds, setCompletingIds] = useState({});
   const toastTimer = useRef(null);
 
   const loadAll = useCallback(async (url, token, activeOnly) => {
@@ -721,6 +754,19 @@ function App() {
       await loadAll(apiUrl, apiToken, filterActive);
     }
     setBusy(false);
+  }
+
+  async function handleComplete(id) {
+    if (!id) return;
+    setCompletingIds(prev => ({ ...prev, [id]: true }));
+    try {
+      await apiAction(apiUrl, apiToken, 'complete_task', { id });
+      showToast('✓ Task marked done');
+      setTimeout(() => loadAll(apiUrl, apiToken, filterActive), 1500);
+    } catch (err) {
+      setError('Could not complete task: ' + err.message);
+      setCompletingIds(prev => { const n = { ...prev }; delete n[id]; return n; });
+    }
   }
 
   function handleConnect(url, token) {
@@ -841,7 +887,14 @@ function App() {
                   ? <div className="loading-text">Loading tasks…</div>
                   : tasks.length === 0
                     ? <div className="empty-state">No open tasks found in the Tasks tab.</div>
-                    : tasks.map((task, i) => <TaskCard key={i} task={task} />)
+                    : tasks.map((task, i) => (
+                        <TaskCard
+                          key={task.id || i}
+                          task={task}
+                          onComplete={handleComplete}
+                          completing={!!completingIds[task.id]}
+                        />
+                      ))
                 }
               </>
             )}

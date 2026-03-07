@@ -62,10 +62,11 @@ function doGet(e) {
       case 'flags':       return jsonOut_(webGetFlags_(e));
       case 'tasks':       return jsonOut_(webGetTasks_());
       case 'summaries':   return jsonOut_(webGetSummaries_());
-      case 'acknowledge': return jsonOut_(webAcknowledge_(id));
-      case 'snooze':      return jsonOut_(webSnooze_(id, days));
-      case 'resolve':     return jsonOut_(webResolve_(id));
-      default:            return errOut_('Unknown action: ' + action);
+      case 'acknowledge':    return jsonOut_(webAcknowledge_(id));
+      case 'snooze':         return jsonOut_(webSnooze_(id, days));
+      case 'resolve':        return jsonOut_(webResolve_(id));
+      case 'complete_task':  return jsonOut_(webCompleteTask_(id));
+      default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
     Logger.log('doGet error: ' + err.message + '\n' + err.stack);
@@ -243,6 +244,32 @@ function webResolve_(id) {
   const found = findFlagRow_(id);
   found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I
   return { ok: true, id: id, action: 'resolved' };
+}
+
+// ---- Complete task ----------------------------------------------------------
+
+function findTaskRow_(id) {
+  if (!id) throw new Error('Missing task ID');
+
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.TASKS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Tasks sheet is empty');
+
+  const numRows = sheet.getLastRow() - 1;
+  const ids     = sheet.getRange(2, 1, numRows, 1).getValues();
+
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) {
+      return { sheet: sheet, rowNum: i + 2 };
+    }
+  }
+  throw new Error('Task not found: ' + id);
+}
+
+function webCompleteTask_(id) {
+  const found = findTaskRow_(id);
+  found.sheet.getRange(found.rowNum, 5).setValue('Done'); // Column E = Status
+  return { ok: true, id: id, action: 'completed' };
 }
 
 // ============================================================
