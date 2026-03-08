@@ -328,9 +328,65 @@ function logSATData() {
   var rows = getSATSummaries_();
   if (rows.length === 0) {
     Logger.log('No rows found. Check SAT_SHEET_ID is set and labels match.');
+    Logger.log('→ Run debugSATLabels() to see the actual labels in your sheet.');
   } else {
     rows.forEach(function(r) { Logger.log(r[1] + ': ' + r[2]); });
   }
+}
+
+/**
+ * Prints every non-empty label in the SAT label column so you can see
+ * exactly what text appears in the sheet. Run this from the Apps Script
+ * editor to diagnose why getSATSummaries_() finds 0 metrics.
+ *
+ * Copy the labels you want VERA to track and add them to the `targets`
+ * object inside getSATSummaries_() (all lowercase).
+ */
+function debugSATLabels() {
+  var id = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  if (!id) { Logger.log('SAT_SHEET_ID not set.'); return; }
+
+  var sheet = SpreadsheetApp.openById(id).getSheetByName('Tracker');
+  if (!sheet) { Logger.log('Tab "Tracker" not found.'); return; }
+
+  var data = sheet.getDataRange().getValues();
+
+  // Find header row (where Ahmed/Victoria appear in same row)
+  var headerRowIdx = -1;
+  var sectionCols  = {};
+  for (var r = 0; r < data.length; r++) {
+    var rowSections = {};
+    for (var c = 0; c < data[r].length; c++) {
+      var v = String(data[r][c] || '').trim().toLowerCase();
+      if      (v === 'ahmed')                                         rowSections['Ahmed']    = c;
+      else if (v === 'victoria')                                      rowSections['Victoria'] = c;
+      else if (v === 'shared' || v === 'household' || v === 'joint') rowSections['Shared']   = c;
+    }
+    if (Object.keys(rowSections).length >= 2) { sectionCols = rowSections; headerRowIdx = r; break; }
+  }
+
+  if (headerRowIdx === -1) {
+    Logger.log('Could not detect a header row with 2+ section names (Ahmed/Victoria/Shared).');
+    Logger.log('Dumping all non-empty column A values:');
+    for (var r = 0; r < data.length; r++) {
+      var v = String(data[r][0] || '').trim();
+      if (v) Logger.log('  Row ' + (r + 1) + ': "' + v + '"');
+    }
+    return;
+  }
+
+  // Determine label column (left of the first section column)
+  var minSectionCol = Math.min.apply(null, Object.keys(sectionCols).map(function(s) { return sectionCols[s]; }));
+  var labelCol = minSectionCol > 0 ? minSectionCol - 1 : 0;
+
+  Logger.log('Header row: ' + (headerRowIdx + 1) + ' | Sections: ' + JSON.stringify(sectionCols) + ' | Label col: ' + labelCol);
+  Logger.log('--- Labels found after header row (col ' + labelCol + ') ---');
+  for (var r = headerRowIdx + 1; r < data.length; r++) {
+    var label = String(data[r][labelCol] || '').trim();
+    if (label) Logger.log('  Row ' + (r + 1) + ': "' + label + '"  (lowercase: "' + label.toLowerCase() + '")');
+  }
+  Logger.log('--- End of labels ---');
+  Logger.log('Add the ones you want to the targets{} object in getSATSummaries_() (all lowercase).');
 }
 
 function logTransactionData() {
