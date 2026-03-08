@@ -66,6 +66,16 @@ function processTelegramUpdate_(update) {
   var msg = update.message;
   if (!msg || !msg.text) return; // ignore non-text (photos, stickers, etc.)
 
+  // ---- Deduplication: Telegram retries if Apps Script is slow (>5s) -------
+  // Claude calls can take 10-15s, causing duplicate deliveries. Skip repeats.
+  var updateId = String(update.update_id);
+  var cache    = CacheService.getScriptCache();
+  if (cache.get('TG_UPD_' + updateId)) {
+    Logger.log('Telegram: skipping duplicate update_id ' + updateId);
+    return;
+  }
+  cache.put('TG_UPD_' + updateId, '1', 600); // 10-minute dedup window
+
   var chatId    = String(msg.chat.id);
   var text      = msg.text.trim();
   var allowedId = getTelegramAllowedChatId_();
@@ -74,11 +84,10 @@ function processTelegramUpdate_(update) {
   if (!allowedId) {
     sendTelegramMessage_(chatId,
       'Hi! VERA here.\n\n' +
-      'To activate me, do this:\n\n' +
-      '1. Go to Apps Script editor\n' +
-      '2. Project Settings → Script Properties\n' +
-      '3. Add: TELEGRAM_ALLOWED_CHAT_ID = ' + chatId + '\n' +
-      '4. Push + redeploy, then message me again.'
+      'To activate me:\n\n' +
+      '1. Apps Script editor → Project Settings → Script Properties\n' +
+      '2. Add: TELEGRAM_ALLOWED_CHAT_ID = ' + chatId + '\n' +
+      '3. Push + redeploy, then message me again.'
     );
     return;
   }
@@ -92,13 +101,13 @@ function processTelegramUpdate_(update) {
   // ---- Built-in commands ---------------------------------------------------
   if (text === '/start' || text === '/help') {
     sendTelegramMessage_(chatId,
-      'VERA is online.\n\n' +
+      'VERA is online.\n' +
+      'Your chat ID: ' + chatId + '\n\n' +
       'Talk to me naturally:\n' +
       '• "What are my active flags?"\n' +
       '• "Resolve the Verizon flag"\n' +
       '• "What tasks are overdue?"\n' +
-      '• "Mark the grocery task done"\n' +
-      '• "Snooze the Amazon flag 3 days"\n\n' +
+      '• "Mark the grocery task done"\n\n' +
       '/status — quick flag + task count\n' +
       '/clear — reset conversation history'
     );
