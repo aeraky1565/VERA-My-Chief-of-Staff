@@ -113,24 +113,49 @@ function getSATSummaries_() {
     // ======================================================
     // HORIZONTAL LAYOUT — sections are column headers
     // ======================================================
-    // The label column is the column immediately left of the first section column.
+    // Each section (Ahmed, Victoria, Shared) may span multiple columns
+    // (e.g. Ahmed = B–C, Shared = E–G, Victoria = I–J).
+    // We compute each section's column RANGE as [startCol, nextSectionStartCol).
+    // For each metric row we scan the full range and take the first non-zero value.
+
     var sectionColIndices = Object.keys(sectionCols).map(function(s) { return sectionCols[s]; });
     var minSectionCol     = Math.min.apply(null, sectionColIndices);
     var labelCol          = minSectionCol > 0 ? minSectionCol - 1 : 0;
 
-    Logger.log('Finance: SAT horizontal layout detected — sections: ' + JSON.stringify(sectionCols) + ', label col: ' + labelCol);
+    // Build ranges: sort sections by their start column, then each range ends
+    // where the next section begins (or at the last column of the sheet).
+    var sortedSections = Object.keys(sectionCols).sort(function(a, b) {
+      return sectionCols[a] - sectionCols[b];
+    });
+    var sectionRanges = {}; // { 'Ahmed': { start: 1, end: 4 }, ... }
+    for (var i = 0; i < sortedSections.length; i++) {
+      var sec   = sortedSections[i];
+      var start = sectionCols[sec];
+      var end   = (i + 1 < sortedSections.length)
+        ? sectionCols[sortedSections[i + 1]]
+        : (data[headerRowIdx] ? data[headerRowIdx].length : start + 3);
+      sectionRanges[sec] = { start: start, end: end };
+    }
+
+    Logger.log('Finance: SAT horizontal layout — ranges: ' + JSON.stringify(sectionRanges) + ', label col: ' + labelCol);
 
     for (var r = headerRowIdx + 1; r < data.length; r++) {
       var label    = String(data[r][labelCol] || '').trim();
       var labelLow = label.toLowerCase();
       if (!targets[labelLow]) continue;
 
-      Object.keys(sectionCols).forEach(function(section) {
-        var raw = data[r][sectionCols[section]];
-        var n   = typeof raw === 'number'
-          ? raw
-          : parseFloat(String(raw || '').replace(/[$,\s]/g, '').replace(/\(([^)]+)\)/, '-$1'));
-        if (isNaN(n) || n === 0) return;
+      Object.keys(sectionRanges).forEach(function(section) {
+        var range = sectionRanges[section];
+        // Scan the section's full column range for the first non-zero numeric value
+        var n = null;
+        for (var c = range.start; c < range.end; c++) {
+          var raw    = data[r][c];
+          var parsed = typeof raw === 'number'
+            ? raw
+            : parseFloat(String(raw || '').replace(/[$,\s]/g, '').replace(/\(([^)]+)\)/, '-$1'));
+          if (!isNaN(parsed) && parsed !== 0) { n = parsed; break; }
+        }
+        if (n === null) return;
 
         var key = section + '|' + labelLow;
         if (usedKeys[key]) return;
