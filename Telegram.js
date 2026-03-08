@@ -146,6 +146,41 @@ function processTelegramUpdate_(update) {
 }
 
 // ============================================================
+// DEFERRED PROCESSOR  (triggered ~1s after doPost returns 200)
+// ============================================================
+
+/**
+ * Fires from a one-time trigger created in doPost.
+ * Processes all queued Telegram updates from Script Properties.
+ * This runs in its own execution with the full 6-minute timeout,
+ * so Claude calls (10-15s) complete without hitting Telegram's 5s limit.
+ */
+function telegramProcessDeferred_() {
+  // Self-cleanup: remove all triggers pointing to this function
+  ScriptApp.getProjectTriggers()
+    .filter(function(t) { return t.getHandlerFunction() === 'telegramProcessDeferred_'; })
+    .forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  // Find and process all pending TG_MSG_* entries
+  var allProps = PropertiesService.getScriptProperties().getProperties();
+  var keys     = Object.keys(allProps).filter(function(k) { return k.indexOf('TG_MSG_') === 0; });
+
+  keys.forEach(function(key) {
+    var raw = allProps[key];
+    PropertiesService.getScriptProperties().deleteProperty(key); // remove before processing
+
+    var update;
+    try { update = JSON.parse(raw); } catch (e) { return; }
+
+    try {
+      processTelegramUpdate_(update);
+    } catch (e) {
+      Logger.log('telegramProcessDeferred_ error: ' + e.message + '\n' + e.stack);
+    }
+  });
+}
+
+// ============================================================
 // ONE-TIME SETUP FUNCTIONS  (run from Apps Script editor)
 // ============================================================
 

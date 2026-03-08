@@ -90,14 +90,23 @@ function doPost(e) {
     return errOut_('Invalid JSON body: ' + parseErr.message);
   }
 
-  // Telegram sends webhook POSTs without a token — detect by update_id field
+  // Telegram sends webhook POSTs without a token — detect by update_id field.
+  // IMPORTANT: Telegram has a 5s webhook timeout; Claude calls take 10-15s.
+  // We queue the update and return 200 immediately, then process via a trigger.
   if (body && body.update_id !== undefined) {
     try {
-      processTelegramUpdate_(body);
+      const updateKey = 'TG_MSG_' + String(body.update_id);
+      const props     = PropertiesService.getScriptProperties();
+      if (!props.getProperty(updateKey)) {
+        // First time we've seen this update — queue it and schedule processing
+        props.setProperty(updateKey, JSON.stringify(body));
+        ScriptApp.newTrigger('telegramProcessDeferred_').timeBased().after(1).create();
+      }
+      // If already queued, Telegram is retrying — ignore; trigger already scheduled
     } catch (err) {
-      Logger.log('Telegram update error: ' + err.message + '\n' + err.stack);
+      Logger.log('Telegram queue error: ' + err.message);
     }
-    return jsonOut_({ ok: true }); // always return 200 to Telegram
+    return jsonOut_({ ok: true }); // immediate 200 — Telegram is satisfied
   }
 
   // VERA dashboard actions require auth
