@@ -41,7 +41,7 @@ function getApiKey() {
  * @param {Array} summaries - From getSummaries()
  * @returns {string} The full prompt string
  */
-function buildPrompt(events, tasks, summaries) {
+function buildPrompt(events, tasks, summaries, ptoStats) {
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
 
@@ -145,6 +145,14 @@ function buildPrompt(events, tasks, summaries) {
     '- Events with [RSVP: invited (no response)] or [RSVP: tentative] mean Ahmed has not confirmed — flag these if the event is soon.\n' +
     '- Events with [tagged: Color] have a color label Ahmed applied manually — treat colored events as higher-intent or categorized items worth noting.\n\n' +
 
+    'PTO CONTEXT RULES (when PTO STATUS section is present):\n' +
+    '- Flag if burn-down pace gap is more than 2 days behind ideal (paceStatus = behind).\n' +
+    '- Flag if personal hours remaining are >24 hrs and we are past October 1 (year-end expiry risk).\n' +
+    '- Flag if there is no upcoming PTO and vacation balance is >5 days AND current date is after August 1.\n' +
+    '- Flag if a 3-2-1 target category shows 0 planned AND 0 used with fewer than 3 months left in the year.\n' +
+    '- Flag if the gap since last PTO is >60 days with no upcoming PTO.\n' +
+    '- Use source "Tasks" for PTO flags (they are action items for Ahmed to schedule).\n\n' +
+
     'FINANCE CONTEXT RULES:\n' +
     '- The Summaries section includes spending data from the Transactions sheet. Format is: "Category — Month: $current vs $prev mo (+/-%)"\n' +
     '- Flag any spending category where current month is MORE than 20% over last month AND the absolute increase is at least $30. Use source "Finance".\n' +
@@ -161,6 +169,9 @@ function buildPrompt(events, tasks, summaries) {
 
     '=== LIFE SUMMARIES & METRICS ===\n' +
     summariesSection + '\n\n' +
+
+    // ---- PTO Status (injected when available) ----------------------------
+    (ptoStats ? '=== PTO STATUS ===\n' + ptoSummaryForClaude_(ptoStats) + '\n\n' : '') +
 
     'Based on this data, generate up to ' + CONFIG.MAX_FLAGS + ' intelligent, actionable flags for Ahmed. ' +
     'Prioritize items that are time-sensitive, high-stakes, have dependencies, or have been neglected.\n\n' +
@@ -191,14 +202,15 @@ function buildPrompt(events, tasks, summaries) {
 /**
  * Calls the Anthropic Claude API and parses the returned flag objects.
  *
- * @param {Array} events    - From getUpcomingEvents()
- * @param {Array} tasks     - From getOpenTasks()
- * @param {Array} summaries - From getSummaries()
+ * @param {Array}  events    - From getUpcomingEvents()
+ * @param {Array}  tasks     - From getOpenTasks()
+ * @param {Array}  summaries - From getSummaries()
+ * @param {Object} ptoStats  - From writePTOSnapshot_() (optional, may be null)
  * @returns {Array} Parsed and validated array of flag objects
  */
-function generateFlags(events, tasks, summaries) {
+function generateFlags(events, tasks, summaries, ptoStats) {
   const apiKey = getApiKey();
-  const prompt = buildPrompt(events, tasks, summaries);
+  const prompt = buildPrompt(events, tasks, summaries, ptoStats);
 
   const requestBody = {
     model:      CLAUDE_MODEL,

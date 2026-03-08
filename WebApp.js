@@ -70,8 +70,19 @@ function doGet(e) {
       case 'acknowledge':    return jsonOut_(webAcknowledge_(id));
       case 'snooze':         return jsonOut_(webSnooze_(id, days));
       case 'resolve':        return jsonOut_(webResolve_(id));
-      case 'complete_task':  return jsonOut_(webCompleteTask_(id));
-      case 'chat':           return jsonOut_(webProcessChat_(e));
+      case 'complete_task':         return jsonOut_(webCompleteTask_(id));
+      case 'add_task':              return jsonOut_(webAddTask_(e));
+      case 'update_task':           return jsonOut_(webUpdateTask_(e));
+      case 'shopping':        return jsonOut_(webGetShopping_());
+      case 'shopping_toggle': return jsonOut_(webToggleShoppingItem_(e));
+      case 'projects':              return jsonOut_(webGetProjects_());
+      case 'complete_project_task': return jsonOut_(webCompleteProjectTask_(e.parameter.row));
+      case 'add_project_task':      return jsonOut_(webAddProjectTask_(e));
+      case 'update_project_task':   return jsonOut_(webUpdateProjectTask_(e));
+      case 'delete_project_task':   return jsonOut_(webDeleteProjectTask_(e));
+      case 'pto':                   return jsonOut_(webGetPTO_());
+      case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
+      case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -91,22 +102,16 @@ function doPost(e) {
   }
 
   // Telegram sends webhook POSTs without a token — detect by update_id field.
-  // IMPORTANT: Telegram has a 5s webhook timeout; Claude calls take 10-15s.
-  // We queue the update and return 200 immediately, then process via a trigger.
+  // processTelegramUpdate_ sends "⏳ Thinking..." immediately via UrlFetchApp so
+  // the user sees instant feedback, then edits the message with Claude's real answer.
+  // Deduplication (CacheService) inside processTelegramUpdate_ prevents retry loops.
   if (body && body.update_id !== undefined) {
     try {
-      const updateKey = 'TG_MSG_' + String(body.update_id);
-      const props     = PropertiesService.getScriptProperties();
-      if (!props.getProperty(updateKey)) {
-        // First time we've seen this update — queue it and schedule processing
-        props.setProperty(updateKey, JSON.stringify(body));
-        ScriptApp.newTrigger('telegramProcessDeferred_').timeBased().after(1).create();
-      }
-      // If already queued, Telegram is retrying — ignore; trigger already scheduled
+      processTelegramUpdate_(body);
     } catch (err) {
-      Logger.log('Telegram queue error: ' + err.message);
+      Logger.log('Telegram processing error: ' + err.message);
     }
-    return jsonOut_({ ok: true }); // immediate 200 — Telegram is satisfied
+    return jsonOut_({ ok: true });
   }
 
   // VERA dashboard actions require auth
@@ -304,6 +309,175 @@ function webCompleteTask_(id) {
   const found = findTaskRow_(id);
   found.sheet.getRange(found.rowNum, 5).setValue('Done'); // Column E = Status
   return { ok: true, id: id, action: 'completed' };
+}
+
+// ---- Add / Update task -----------------------------------------------------
+
+function webAddTask_(e) {
+  const taskText = ((e.parameter && e.parameter.task)    || '').trim();
+  const dueDate  =  (e.parameter && e.parameter.dueDate) || '';
+  const notes    =  (e.parameter && e.parameter.notes)   || '';
+  if (!taskText) throw new Error('Task text is required');
+
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.TASKS);
+  if (!sheet) throw new Error('Tasks sheet not found');
+
+  // Generate ID: TASK-YYYYMMDD-NN
+  const tz      = Session.getScriptTimeZone();
+  const today   = new Date();
+  const dateStr = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  const addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  let seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    const idData = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    idData.forEach(function(r) {
+      if (String(r[0] || '').indexOf('TASK-' + dateStr) === 0) seq++;
+    });
+  }
+  const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged
+  const row = [taskId, taskText, addedStr, dueDate, 'Open', '', notes, ''];
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([row]);
+
+  return { ok: true, id: taskId, action: 'created' };
+}
+
+function webUpdateTask_(e) {
+  const id      = (e.parameter && e.parameter.id)      || '';
+  const found   = findTaskRow_(id);
+
+  // TASK_HEADERS: ID(1) | Task(2) | Added Date(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)
+  if (e.parameter.task    != null) found.sheet.getRange(found.rowNum, 2).setValue(e.parameter.task);
+  if (e.parameter.dueDate != null) found.sheet.getRange(found.rowNum, 4).setValue(e.parameter.dueDate);
+  if (e.parameter.notes   != null) found.sheet.getRange(found.rowNum, 7).setValue(e.parameter.notes);
+
+  return { ok: true, id: id, action: 'updated' };
+}
+
+// ---- Shopping --------------------------------------------------------------
+
+function webGetShopping_() {
+  const stores = getShoppingList_();
+  return { ok: true, count: stores.length, stores: stores };
+}
+
+function webToggleShoppingItem_(e) {
+  const tabId = (e.parameter && e.parameter.tabId) || '';
+  const index = (e.parameter && e.parameter.index) || 0;
+  return toggleShoppingItem_(tabId, index);
+}
+
+// ---- Projects --------------------------------------------------------------
+
+function webGetProjects_() {
+  const projects = getProjects_();
+  return { ok: true, count: projects.length, projects: projects };
+}
+
+function webCompleteProjectTask_(rowNum) {
+  return completeProjectTask_(rowNum);
+}
+
+function webAddProjectTask_(e) {
+  var projectId = ((e.parameter && e.parameter.projectId) || '').trim();
+  var taskText  = ((e.parameter && e.parameter.task)      || '').trim();
+  var priority  = ((e.parameter && e.parameter.priority)  || 'Medium').trim();
+  var dueDate   =  (e.parameter && e.parameter.dueDate)   || '';
+  var notes     =  (e.parameter && e.parameter.notes)     || '';
+  if (!projectId) throw new Error('projectId is required');
+  if (!taskText)  throw new Error('Task text is required');
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
+  if (!sheet) throw new Error('Projects tab not found');
+
+  // Look up project name from existing rows
+  var projectName = '';
+  if (sheet.getLastRow() >= 2) {
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][0]) === projectId) { projectName = data[i][1]; break; }
+    }
+  }
+  if (!projectName) throw new Error('Project not found: ' + projectId);
+
+  // PROJECT_HEADERS: Project ID | Project Name | Task | Status | Priority | Due Date | Notes
+  var row = [projectId, projectName, taskText, 'Pending', priority, dueDate, notes];
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, PROJECT_HEADERS.length).setValues([row]);
+  return { ok: true, projectId: projectId, action: 'created' };
+}
+
+function webUpdateProjectTask_(e) {
+  var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + e.parameter.row);
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
+  if (!sheet) throw new Error('Projects tab not found');
+
+  // PROJ_COL is 0-indexed; sheet columns are 1-indexed (PROJ_COL.X + 1)
+  if (e.parameter.task     != null) sheet.getRange(rowNum, PROJ_COL.TASK     + 1).setValue(e.parameter.task);
+  if (e.parameter.priority != null) sheet.getRange(rowNum, PROJ_COL.PRIORITY + 1).setValue(e.parameter.priority);
+  if (e.parameter.dueDate  != null) sheet.getRange(rowNum, PROJ_COL.DUE      + 1).setValue(e.parameter.dueDate);
+  if (e.parameter.notes    != null) sheet.getRange(rowNum, PROJ_COL.NOTES    + 1).setValue(e.parameter.notes);
+
+  return { ok: true, rowNum: rowNum, action: 'updated' };
+}
+
+function webDeleteProjectTask_(e) {
+  var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + e.parameter.row);
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
+  if (!sheet) throw new Error('Projects tab not found');
+
+  sheet.deleteRow(rowNum);
+  return { ok: true, rowNum: rowNum, action: 'deleted' };
+}
+
+// ---- PTO -------------------------------------------------------------------
+
+/**
+ * Returns live PTO stats computed fresh from Google Calendar.
+ * Called by the 🌴 PTO tab on dashboard open.
+ */
+function webGetPTO_() {
+  var cfg      = readPTOConfig_();
+  var ptoResult = getPTOEvents_(cfg);
+  var travel   = getUpcomingTravel_(cfg);
+  var gapCals  = getGapCalendars_(cfg);
+  var today    = new Date();
+  var stats    = computePTOStats_(ptoResult, cfg, today);
+
+  // Attach live clear windows + milestones (may have changed since last nightly run)
+  stats.clearWindows  = findClearWindows_(gapCals, today, 90, 3);
+  stats.milestones    = getMilestones_(gapCals, cfg, today);
+  stats.upcomingTravel = travel;
+
+  return { ok: true, stats: stats };
+}
+
+/**
+ * Decrements the PTO buffer-remaining count in the Config tab by 1.
+ * Called when Ahmed clicks "Trigger a Buffer Day" in the dashboard.
+ * Returns the new remaining count and the date triggered.
+ */
+function webTriggerBuffer_(e) {
+  var cfg       = readPTOConfig_();
+  var current   = readPTOBufferRemaining_(cfg);
+
+  if (current <= 0) {
+    return { ok: false, error: 'No buffer days remaining.', remaining: 0 };
+  }
+
+  var newVal = current - 1;
+  setPTOBufferRemaining_(newVal);
+
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  Logger.log('PTO Buffer Day triggered. Remaining: ' + newVal + '. Date: ' + today);
+
+  return { ok: true, remaining: newVal, triggeredOn: today };
 }
 
 // ---- Chat ------------------------------------------------------------------

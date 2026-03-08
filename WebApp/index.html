@@ -474,6 +474,91 @@
       from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* ---- Date input dark theme ---- */
+    input[type="date"].form-input {
+      color-scheme: dark;
+    }
+    .btn-edit {
+      background: none;
+      border: none;
+      color: #4d6080;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .btn-edit:hover { color: #c9a84c; background: #13244d; }
+
+    /* ---- PTO tab ---- */
+    .pto-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 620px) { .pto-grid-2 { grid-template-columns: 1fr; } }
+    .pto-card {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .pto-section {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .pto-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #8a9abf;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .pto-balance-num {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .pto-balance-sub { font-size: 12px; color: #6b7fa8; margin-bottom: 12px; }
+    .pto-bar-track {
+      height: 5px;
+      background: #1e3060;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .pto-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s;
+    }
+    .pto-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 0;
+    }
+    .pto-row + .pto-row { border-top: 1px solid #13244d; }
+    .pto-pill {
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+    .pto-dot {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -674,9 +759,168 @@ function FlagCard({ flag, onAction, busy }) {
   );
 }
 
+// ---- Task form modal (add + edit) -------------------------------------------
+
+function TaskFormModal({ task, onSave, onClose, busy }) {
+  const isEdit = !!task;
+  const [taskText, setTaskText] = useState(isEdit ? task.task    : '');
+  const [dueDate,  setDueDate]  = useState(isEdit ? task.dueDate : '');
+  const [notes,    setNotes]    = useState(isEdit ? task.notes   : '');
+
+  function save() {
+    if (!taskText.trim()) return;
+    onSave({ id: task?.id, task: taskText.trim(), dueDate, notes });
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>{isEdit ? '✏️ Edit Task' : '+ New Task'}</h2>
+        <p>{isEdit ? 'Update the task details below.' : 'Add a new task to your list.'}</p>
+
+        <div className="form-group">
+          <label className="form-label">Task</label>
+          <input
+            className="form-input"
+            value={taskText}
+            onChange={e => setTaskText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="What needs to be done?"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Due Date</label>
+          <input
+            className="form-input"
+            type="date"
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Notes</label>
+          <input
+            className="form-input"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Optional notes…"
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={save}
+            disabled={busy || !taskText.trim()}
+          >
+            {isEdit ? 'Save Changes' : 'Add Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Project task form modal (add + edit) -----------------------------------
+
+function ProjectTaskModal({ mode, task, onSave, onClose, busy }) {
+  const isEdit = mode === 'edit';
+  const [taskText, setTaskText] = useState(isEdit ? (task?.task     || '') : '');
+  const [priority, setPriority] = useState(isEdit ? (task?.priority || 'Medium') : 'Medium');
+  const [dueDate,  setDueDate]  = useState(isEdit ? (task?.dueDate  || '') : '');
+  const [notes,    setNotes]    = useState(isEdit ? (task?.notes    || '') : '');
+
+  function save() {
+    if (!taskText.trim()) return;
+    onSave({ task: taskText.trim(), priority, dueDate, notes });
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>{isEdit ? '✏️ Edit Task' : '+ New Task'}</h2>
+        <p>{isEdit ? 'Update this project task.' : 'Add a task to this project.'}</p>
+
+        <div className="form-group">
+          <label className="form-label">Task</label>
+          <input
+            className="form-input"
+            value={taskText}
+            onChange={e => setTaskText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="What needs to be done?"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Priority</label>
+          <select
+            className="form-input"
+            value={priority}
+            onChange={e => setPriority(e.target.value)}
+            style={{ appearance: 'auto' }}
+          >
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Due Date</label>
+          <input
+            className="form-input"
+            type="date"
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Notes</label>
+          <input
+            className="form-input"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Optional notes…"
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={save}
+            disabled={busy || !taskText.trim()}
+          >
+            {isEdit ? 'Save Changes' : 'Add Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Task card --------------------------------------------------------------
 
-function TaskCard({ task, onComplete, completing }) {
+function TaskCard({ task, onComplete, onEdit, completing }) {
   const ageClass = task.isOverdue ? 'overdue' : task.isNeglected ? 'neglected' : '';
   const ageLabel = task.isOverdue
     ? `${Math.abs(task.daysUntilDue)}d late`
@@ -707,6 +951,15 @@ function TaskCard({ task, onComplete, completing }) {
           {task.notes && <span style={{ marginLeft: 12, color: '#4d6080' }}>{task.notes}</span>}
         </div>
       </div>
+      {!completing && (
+        <button
+          className="btn-edit"
+          onClick={() => onEdit && onEdit(task)}
+          title="Edit task"
+        >
+          ✏️
+        </button>
+      )}
     </div>
   );
 }
@@ -804,6 +1057,556 @@ function ChatPanel({ apiUrl, apiToken }) {
   );
 }
 
+// ---- Shopping tab -----------------------------------------------------------
+
+function ShoppingTab({ stores, onToggle, busy }) {
+  const [activeStore, setActiveStore] = React.useState(null);
+
+  React.useEffect(() => {
+    if (stores.length > 0) {
+      setActiveStore(prev =>
+        stores.find(s => s.tabId === prev) ? prev : stores[0].tabId
+      );
+    } else {
+      setActiveStore(null);
+    }
+  }, [stores]);
+
+  if (!stores.length) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🛒</div>
+        <div>No shopping list connected.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Set <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>SHOPPING_LIST_DOC_ID</code> in Script Properties to connect your Google Doc.
+        </div>
+      </div>
+    );
+  }
+
+  const current = stores.find(s => s.tabId === activeStore);
+
+  return (
+    <div>
+      {/* Store sub-tabs */}
+      <div style={{
+        display: 'flex', gap: 2, flexWrap: 'wrap',
+        borderBottom: '1px solid #1e3060', marginBottom: 20,
+      }}>
+        {stores.map(s => {
+          const pending  = s.items.filter(i => !i.done).length;
+          const isActive = s.tabId === activeStore;
+          return (
+            <button
+              key={s.tabId}
+              onClick={() => setActiveStore(s.tabId)}
+              style={{
+                background: isActive ? '#0d1b3e' : 'none',
+                border: 'none', cursor: 'pointer',
+                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                color: isActive ? '#c9a84c' : '#8a9abf',
+                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
+                borderRadius: '4px 4px 0 0',
+              }}
+            >
+              {s.storeName}
+              <span style={{
+                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
+                color: pending === 0 ? '#43a047' : '#c9a84c',
+                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
+              }}>
+                {pending === 0 ? '✓' : pending}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Item list */}
+      {current && (
+        current.items.length === 0
+          ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
+          : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {current.items.map((item, i) => (
+                <div
+                  key={i}
+                  onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '11px 16px', borderRadius: 8,
+                    background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
+                    border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
+                    cursor: busy ? 'wait' : 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    readOnly
+                    style={{ accentColor: '#43a047', width: 16, height: 16, pointerEvents: 'none', flexShrink: 0 }}
+                  />
+                  <span style={{
+                    flex: 1, fontSize: 14,
+                    color: item.done ? '#4a5a7a' : '#dde1f0',
+                    textDecoration: item.done ? 'line-through' : 'none',
+                  }}>
+                    {item.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Projects tab -----------------------------------------------------------
+
+const PRIORITY_COLORS = { High: '#e53935', Medium: '#f9a825', Low: '#43a047' };
+
+function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDeleteTask, busy }) {
+  const [activeProject, setActiveProject] = React.useState(null);
+
+  // Auto-select first project when list loads or changes
+  React.useEffect(() => {
+    if (projects.length > 0) {
+      setActiveProject(prev =>
+        projects.find(p => p.projectId === prev) ? prev : projects[0].projectId
+      );
+    } else {
+      setActiveProject(null);
+    }
+  }, [projects]);
+
+  if (!projects.length) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 32, marginBottom: 12 }}>📂</div>
+        <div>No projects yet — ask VERA in the Chat tab to create one.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Try: "Create a project for planning our Europe trip"
+        </div>
+      </div>
+    );
+  }
+
+  const current = projects.find(p => p.projectId === activeProject);
+
+  return (
+    <div>
+      {/* Project sub-tabs */}
+      <div style={{
+        display: 'flex', gap: 2, flexWrap: 'wrap',
+        borderBottom: '1px solid #1e3060', marginBottom: 20,
+      }}>
+        {projects.map(p => {
+          const pending  = p.tasks.filter(t => t.status !== 'Done').length;
+          const isActive = p.projectId === activeProject;
+          return (
+            <button
+              key={p.projectId}
+              onClick={() => setActiveProject(p.projectId)}
+              style={{
+                background: isActive ? '#0d1b3e' : 'none',
+                border: 'none', cursor: 'pointer',
+                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                color: isActive ? '#c9a84c' : '#8a9abf',
+                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
+                borderRadius: '4px 4px 0 0',
+              }}
+            >
+              {p.projectName}
+              <span style={{
+                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
+                color: pending === 0 ? '#43a047' : '#c9a84c',
+                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
+              }}>
+                {pending === 0 ? '✓' : pending}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected project task list */}
+      {current && (
+        <div>
+          {/* Toolbar: task count + Add Task button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: '#6b7fa8' }}>
+              {current.tasks.filter(t => t.status !== 'Done').length} pending · {current.tasks.length} total
+            </span>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: 12 }}
+              disabled={busy}
+              onClick={() => onAddTask && onAddTask(current)}
+            >
+              + Add Task
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {current.tasks.map((t, i) => {
+              const done = t.status === 'Done';
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', borderRadius: 8,
+                  background: done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
+                  border: '1px solid ' + (done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={done}
+                    disabled={done || busy}
+                    onChange={() => !done && onCompleteTask(t.rowNum)}
+                    style={{ accentColor: '#43a047', width: 16, height: 16, cursor: done ? 'default' : 'pointer', flexShrink: 0 }}
+                  />
+                  <span style={{
+                    flex: 1, fontSize: 14,
+                    color: done ? '#4a5a7a' : '#dde1f0',
+                    textDecoration: done ? 'line-through' : 'none',
+                  }}>
+                    {t.task}
+                  </span>
+                  {t.priority && !done && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: PRIORITY_COLORS[t.priority] || '#8a9abf',
+                    }}>
+                      {t.priority}
+                    </span>
+                  )}
+                  {t.dueDate && !done && (
+                    <span style={{ fontSize: 11, color: '#6b7fa8' }}>{t.dueDate}</span>
+                  )}
+                  {!done && (
+                    <>
+                      <button
+                        className="btn-edit"
+                        disabled={busy}
+                        onClick={() => onEditTask && onEditTask(t)}
+                        title="Edit task"
+                        style={{ fontSize: 13 }}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="btn-edit"
+                        disabled={busy}
+                        onClick={() => onDeleteTask && onDeleteTask(t.rowNum)}
+                        title="Delete task"
+                        style={{ fontSize: 13, opacity: 0.7 }}
+                      >
+                        🗑️
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Progress bar */}
+          {(() => {
+            const total = current.tasks.length;
+            const done  = current.tasks.filter(t => t.status === 'Done').length;
+            const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+            return (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7fa8', marginBottom: 6 }}>
+                  <span>{done} of {total} tasks complete</span>
+                  <span>{pct}%</span>
+                </div>
+                <div style={{ height: 4, background: '#1e3060', borderRadius: 2 }}>
+                  <div style={{ height: '100%', width: pct + '%', background: pct === 100 ? '#43a047' : '#c9a84c', borderRadius: 2, transition: 'width 0.3s' }} />
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- PTO tab ----------------------------------------------------------------
+
+function PTOTab({ stats, onTriggerBuffer, busy }) {
+  if (!stats) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🌴</div>
+        <div>No PTO data loaded yet.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Make sure <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>pto_*</code> rows are seeded in the Config tab, then refresh.
+        </div>
+      </div>
+    );
+  }
+
+  const { used, planned, remaining, config: cfg, burnDown: bd, threeToOneStatus: tto,
+          bufferStatus, nextPTO, events, holidays, clearWindows, milestones, upcomingTravel, year } = stats;
+
+  const vacTotal     = (cfg.vacationDays  || 20) + (cfg.rolloverDays || 0);
+  const persTotal    = cfg.personalHours  || 48;
+  const persUsed     = used.personalHours    || 0;
+  const persPlanned  = planned.personalHours || 0;
+  const persRemain   = remaining.personalHours ?? (persTotal - persUsed - persPlanned);
+
+  function hrsLabel(hrs) {
+    if (!hrs) return '0 hrs';
+    const d = hrs / 8;
+    const days = Number.isInteger(d) ? d + ' day' + (d !== 1 ? 's' : '') : d.toFixed(1) + ' days';
+    return hrs + ' hrs (' + days + ')';
+  }
+
+  const paceColor = (bd?.paceStatus === 'ahead') ? '#43a047'
+                  : (bd?.paceStatus === 'behind') ? '#e53935' : '#f9a825';
+
+  function pctBar(val, max, color) {
+    const pct = max > 0 ? Math.min(100, (val / max) * 100) : 0;
+    return (
+      <div className="pto-bar-track">
+        <div className="pto-bar-fill" style={{ width: pct + '%', background: color }} />
+      </div>
+    );
+  }
+
+  function DotRow({ label, target, usedN, plannedN }) {
+    const dots = Array.from({ length: target }).map((_, i) => {
+      let bg = 'transparent', border;
+      if (i < usedN)               { bg = '#c9a84c'; border = '#c9a84c'; }
+      else if (i < usedN + plannedN) { bg = '#3d5fa0'; border = '#3d5fa0'; }
+      else                          { border = '#2a3a5e'; }
+      return (
+        <span key={i} className="pto-dot"
+          style={{ background: bg, border: '2px solid ' + border }}
+          title={i < usedN ? 'Used' : i < usedN + plannedN ? 'Planned' : 'Needed'}
+        />
+      );
+    });
+    const done  = usedN + plannedN;
+    const left  = target - done;
+    return (
+      <div className="pto-row">
+        <span style={{ flex: 1, fontSize: 13, color: '#dde1f0' }}>{label}</span>
+        <span>{dots}</span>
+        <span style={{ fontSize: 11, color: '#6b7fa8', minWidth: 110, textAlign: 'right' }}>
+          {done}/{target}
+          {usedN > 0 ? ' (' + usedN + ' used' : ''}
+          {plannedN > 0 ? (usedN > 0 ? ', ' : ' (') + plannedN + ' planned' : ''}
+          {(usedN > 0 || plannedN > 0) ? ')' : ''}
+          {left > 0 ? ' · ' + left + ' to go' : ''}
+        </span>
+      </div>
+    );
+  }
+
+  const plannedEvents  = (events || []).filter(ev => ev.status === 'Planned');
+  const usedEvents     = (events || []).filter(ev => ev.status === 'Used');
+  const allPTOEvents   = [...plannedEvents, ...usedEvents];
+  const upcomingHols   = (holidays || []).filter(h => {
+    const d = h.date ? new Date(h.date + 'T00:00:00') : null;
+    return d && d >= new Date();
+  });
+
+  return (
+    <div>
+      {/* Section 1: Balance Cards */}
+      <div className="pto-grid-2">
+        {/* Vacation */}
+        <div className="pto-card">
+          <div className="pto-section-title">🏖️ Vacation</div>
+          <div className="pto-balance-num" style={{ color: '#c9a84c' }}>
+            {remaining.vacationDays}
+            <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8', marginLeft: 6 }}>days left</span>
+          </div>
+          <div className="pto-balance-sub">
+            {used.vacationDays} used · {planned.vacationDays} planned · {vacTotal} total allotted
+          </div>
+          {pctBar(used.vacationDays + planned.vacationDays, vacTotal, '#c9a84c')}
+        </div>
+
+        {/* Personal Time */}
+        <div className="pto-card">
+          <div className="pto-section-title">☀️ Personal Time</div>
+          <div className="pto-balance-num" style={{ color: '#5c9eff' }}>
+            {persRemain}
+            <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8', marginLeft: 6 }}>hrs left</span>
+          </div>
+          <div className="pto-balance-sub">
+            {hrsLabel(persUsed)} used · {persTotal} hrs total ({Math.floor(persTotal / 8)} days)
+          </div>
+          {pctBar(persUsed + persPlanned, persTotal, '#5c9eff')}
+        </div>
+      </div>
+
+      {/* Section 2: Burn-Down Pace */}
+      <div className="pto-section">
+        <div className="pto-section-title">📉 Burn-Down Pace ({year})</div>
+        {[
+          { label: 'Ideal used by today', val: (bd?.idealUsedToDate || 0).toFixed(1) + 'd', pct: cfg.vacationDays ? Math.min(100, ((bd?.idealUsedToDate || 0) / cfg.vacationDays) * 100) : 0, color: '#6b7fa8', badge: null },
+          { label: 'Actually used',       val: (bd?.actualUsedToDate || 0).toFixed(1) + 'd', pct: cfg.vacationDays ? Math.min(100, ((bd?.actualUsedToDate || 0) / cfg.vacationDays) * 100) : 0, color: paceColor,
+            badge: bd?.paceGap > 0 ? '✅ +' + Math.abs(bd.paceGap).toFixed(1) + 'd ahead'
+                 : bd?.paceGap < 0 ? '⚠ ' + Math.abs(bd.paceGap).toFixed(1) + 'd behind'
+                 : '✓ on track' },
+          { label: 'Projected year-end', val: (bd?.projectedYearEnd || 0).toFixed(1) + 'd', pct: cfg.vacationDays ? Math.min(100, ((bd?.projectedYearEnd || 0) / cfg.vacationDays) * 100) : 0,
+            color: (bd?.projectedUnused || 0) > 1 ? '#f9a825' : '#43a047',
+            badge: (bd?.projectedUnused || 0) > 0 ? '(' + (bd.projectedUnused).toFixed(1) + ' unused — risk)' : null },
+        ].map((row, i) => (
+          <div key={i} style={{ marginBottom: i < 2 ? 14 : 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+              <span style={{ color: '#8a9abf' }}>{row.label}</span>
+              <span style={{ color: row.color, fontWeight: 700 }}>
+                {row.val}
+                {row.badge && <span style={{ color: '#8a9abf', fontWeight: 400, marginLeft: 6 }}>{row.badge}</span>}
+              </span>
+            </div>
+            <div className="pto-bar-track">
+              <div className="pto-bar-fill" style={{ width: row.pct + '%', background: row.color }} />
+            </div>
+          </div>
+        ))}
+        {nextPTO && (
+          <div style={{ marginTop: 14, fontSize: 12, color: '#6b7fa8' }}>
+            Next PTO: <span style={{ color: '#c9a84c', fontWeight: 600 }}>{nextPTO.label}</span>
+            {' · '}{nextPTO.startDate}{' · '}{nextPTO.daysUntil} days away
+          </div>
+        )}
+      </div>
+
+      {/* Section 3: 3-2-1 Strategy */}
+      <div className="pto-section">
+        <div className="pto-section-title">🎯 3-2-1 PTO Strategy</div>
+        <DotRow label="3 Long Weekends (1–3 workdays)"    target={tto?.longWeekends?.target || 3} usedN={tto?.longWeekends?.used || 0} plannedN={tto?.longWeekends?.planned || 0} />
+        <DotRow label="2 Mid-Size Weeks (4–7 workdays)"   target={tto?.midSizeWeeks?.target  || 2} usedN={tto?.midSizeWeeks?.used  || 0} plannedN={tto?.midSizeWeeks?.planned  || 0} />
+        <DotRow label="1 Big Pivot (8+ workdays)"          target={tto?.bigPivot?.target      || 1} usedN={tto?.bigPivot?.used      || 0} plannedN={tto?.bigPivot?.planned      || 0} />
+      </div>
+
+      {/* Section 4: Buffer Status */}
+      <div className="pto-section">
+        <div className="pto-section-title">🛡️ Buffer Days</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            {Array.from({ length: bufferStatus?.total || 3 }).map((_, i) => (
+              <span key={i} className="pto-dot"
+                style={{ background: i < (bufferStatus?.remaining || 0) ? '#c9a84c' : '#1e3060',
+                         border: '2px solid ' + (i < (bufferStatus?.remaining || 0) ? '#c9a84c' : '#2a3a5e'),
+                         marginRight: 8 }}
+              />
+            ))}
+            <span style={{ fontSize: 13, color: '#8a9abf', verticalAlign: 'middle' }}>
+              {bufferStatus?.remaining ?? '?'}/{bufferStatus?.total ?? 3} available
+            </span>
+          </div>
+          {(bufferStatus?.remaining || 0) > 0 && (
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 12, marginLeft: 'auto' }}
+              disabled={busy}
+              onClick={onTriggerBuffer}
+            >
+              🛡️ Trigger a Buffer Day
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Section 5: VERA Suggestions */}
+      {(clearWindows || []).length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">💡 VERA-Suggested PTO Windows</div>
+          {(clearWindows || []).map((w, i) => (
+            <div key={i} className="pto-row">
+              <span style={{ fontWeight: 700, color: '#c9a84c', fontSize: 14, minWidth: 150 }}>
+                {w.startDate} – {w.endDate}
+              </span>
+              <span className="pto-pill" style={{ background: '#13244d', color: '#8a9abf' }}>
+                {w.workdays} workdays
+              </span>
+              <span style={{ fontSize: 12, color: '#43a047', marginLeft: 'auto' }}>← added to Vera calendar</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 6: Upcoming PTO Events */}
+      {allPTOEvents.length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">📅 PTO Events ({year})</div>
+          {allPTOEvents.map((ev, i) => (
+            <div key={i} className="pto-row">
+              <span className="pto-pill"
+                style={{ background: ev.status === 'Used' ? '#0f3020' : '#1e3060',
+                         color: ev.status === 'Used' ? '#69f0ae' : '#c9d9ff', minWidth: 60, textAlign: 'center' }}>
+                {ev.status === 'Used' ? '✓ Done' : 'Planned'}
+              </span>
+              <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{ev.label}</span>
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>{ev.startDate}{ev.endDate && ev.endDate !== ev.startDate ? ' – ' + ev.endDate : ''}</span>
+              <span style={{ fontSize: 12, color: '#c9a84c', fontWeight: 700 }}>
+                {ev.type === 'Vacation' ? (ev.weekdays || '?') + 'd' : (ev.hours || '?') + 'h'}
+              </span>
+              <span className="pto-pill"
+                style={{ background: ev.type === 'Vacation' ? '#1e3060' : '#3d2e10',
+                         color: ev.type === 'Vacation' ? '#8ab0d8' : '#ffd54f' }}>
+                {ev.type === 'Vacation' ? 'Vacation' : 'Personal'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 7: Shared Chaos Travel */}
+      {(upcomingTravel || []).length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">✈️ Upcoming Travel (Shared Chaos)</div>
+          {(upcomingTravel || []).map((t, i) => (
+            <div key={i} className="pto-row">
+              <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{t.label}</span>
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</span>
+              <span style={{ fontSize: 12, color: '#5c9eff' }}>{t.daysAway} days away</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 8: Milestone Countdowns */}
+      {(milestones || []).length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">📍 Upcoming Milestones</div>
+          {(milestones || []).map((m, i) => (
+            <div key={i} className="pto-row">
+              <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{m.label}</span>
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>{m.calendarName}</span>
+              <span style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700 }}>{m.daysUntil} days</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 9: Company Holidays */}
+      {upcomingHols.length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">🏢 Remaining Company Holidays ({year})</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {upcomingHols.map((h, i) => (
+              <span key={i} style={{ background: '#13244d', border: '1px solid #1e3060', borderRadius: 6, padding: '4px 10px', fontSize: 12 }}>
+                <span style={{ color: '#6b7fa8', marginRight: 6 }}>{h.date}</span>
+                <span style={{ color: '#dde1f0' }}>{h.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 function App() {
@@ -820,8 +1623,13 @@ function App() {
   const [flags,      setFlags]      = useState([]);
   const [tasks,      setTasks]      = useState([]);
   const [summaries,  setSummaries]  = useState([]);
+  const [projects,   setProjects]   = useState([]);
+  const [shopping,   setShopping]   = useState([]);
+  const [pto,        setPTO]        = useState(null);
   const [toast,         setToast]         = useState(null);
   const [completingIds, setCompletingIds] = useState({});
+  const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
+  const [projectTaskModal, setProjectTaskModal] = useState(null); // null | { mode:'add', project } | { mode:'edit', task }
   const toastTimer = useRef(null);
 
   const loadAll = useCallback(async (url, token, activeOnly) => {
@@ -912,6 +1720,137 @@ function App() {
     }
   }
 
+  async function loadProjects(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'projects' });
+      setProjects(data.projects || []);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function loadShopping(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'shopping' });
+      setShopping(data.stores || []);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function loadPTO(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'pto' });
+      setPTO(data.stats || null);
+    } catch (err) {
+      setError('PTO load failed: ' + err.message);
+    }
+  }
+
+  async function handleTriggerBuffer() {
+    if (!window.confirm('Use one buffer day? This will decrement your buffer count.')) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'pto_trigger_buffer' });
+      showToast('🛡️ Buffer day triggered — ' + data.remaining + ' remaining');
+      // Refresh PTO stats so the dot count updates
+      await loadPTO(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not trigger buffer day: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleToggleShopping(tabId, itemIndex, currentlyDone) {
+    // Optimistic update
+    setShopping(prev => prev.map(store =>
+      store.tabId !== tabId ? store : {
+        ...store,
+        items: store.items.map(item =>
+          item.index !== itemIndex ? item : { ...item, done: !currentlyDone }
+        ),
+      }
+    ));
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_toggle', { tabId, index: itemIndex });
+    } catch (err) {
+      setError('Could not update item: ' + err.message);
+      await loadShopping(apiUrl, apiToken); // revert to real state
+    }
+  }
+
+  async function handleSaveTask({ id, task, dueDate, notes }) {
+    setBusy(true);
+    try {
+      if (id) {
+        await apiAction(apiUrl, apiToken, 'update_task', { id, task, dueDate: dueDate || '', notes: notes || '' });
+        showToast('✓ Task updated');
+      } else {
+        await apiAction(apiUrl, apiToken, 'add_task', { task, dueDate: dueDate || '', notes: notes || '' });
+        showToast('✓ Task added');
+      }
+      setTaskModal(null);
+      await loadAll(apiUrl, apiToken, filterActive);
+    } catch (err) {
+      setError('Could not save task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleCompleteProjectTask(rowNum) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'complete_project_task', row: rowNum });
+      showToast('✓ Task marked done');
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not complete task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleSaveProjectTask({ task, priority, dueDate, notes }) {
+    setBusy(true);
+    try {
+      if (projectTaskModal.mode === 'edit') {
+        await apiGet(apiUrl, apiToken, {
+          action: 'update_project_task',
+          row: projectTaskModal.task.rowNum,
+          task, priority, dueDate: dueDate || '', notes: notes || '',
+        });
+        showToast('✓ Task updated');
+      } else {
+        await apiGet(apiUrl, apiToken, {
+          action: 'add_project_task',
+          projectId: projectTaskModal.project.projectId,
+          task, priority, dueDate: dueDate || '', notes: notes || '',
+        });
+        showToast('✓ Task added');
+      }
+      setProjectTaskModal(null);
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not save task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteProjectTask(rowNum) {
+    if (!window.confirm('Delete this task? This cannot be undone.')) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_project_task', row: rowNum });
+      showToast('✓ Task deleted');
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not delete task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
   function handleConnect(url, token) {
     setApiUrl(url);
     setApiToken(token);
@@ -949,6 +1888,27 @@ function App() {
         </div>
       </div>
 
+      {/* Task add/edit modal */}
+      {taskModal && (
+        <TaskFormModal
+          task={taskModal.task || null}
+          onSave={handleSaveTask}
+          onClose={() => setTaskModal(null)}
+          busy={busy}
+        />
+      )}
+
+      {/* Project task add/edit modal */}
+      {projectTaskModal && (
+        <ProjectTaskModal
+          mode={projectTaskModal.mode}
+          task={projectTaskModal.task || null}
+          onSave={handleSaveProjectTask}
+          onClose={() => setProjectTaskModal(null)}
+          busy={busy}
+        />
+      )}
+
       {/* Settings modal */}
       {showSettings && (
         <SettingsModal
@@ -975,16 +1935,24 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['flags', 'tasks', 'summaries', 'chat'].map(tab => (
+            {['flags', 'tasks', 'summaries', 'chat', 'projects', 'shopping', 'pto'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab === 'projects') loadProjects(apiUrl, apiToken);
+                  if (tab === 'shopping') loadShopping(apiUrl, apiToken);
+                  if (tab === 'pto')      loadPTO(apiUrl, apiToken);
+                }}
               >
-                {tab === 'flags'     ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
-                {tab === 'tasks'     ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
-                {tab === 'summaries' ? `📊 Summaries` : ''}
-                {tab === 'chat'      ? `💬 Chat` : ''}
+                {tab === 'flags'    ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
+                {tab === 'tasks'    ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
+                {tab === 'summaries'? `📊 Summaries` : ''}
+                {tab === 'chat'     ? `💬 Chat` : ''}
+                {tab === 'projects' ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'shopping' ? `🛒 Shopping` : ''}
+                {tab === 'pto'      ? `🌴 PTO` : ''}
               </button>
             ))}
           </div>
@@ -1027,6 +1995,16 @@ function App() {
             {/* Tasks tab */}
             {activeTab === 'tasks' && (
               <>
+                <div className="toolbar">
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 12 }}
+                    onClick={() => setTaskModal({ mode: 'add' })}
+                  >
+                    + Add Task
+                  </button>
+                  <span className="count-badge">{tasks.length} open</span>
+                </div>
                 {loading && tasks.length === 0
                   ? <div className="loading-text">Loading tasks…</div>
                   : tasks.length === 0
@@ -1036,6 +2014,7 @@ function App() {
                           key={task.id || i}
                           task={task}
                           onComplete={handleComplete}
+                          onEdit={t => setTaskModal({ mode: 'edit', task: t })}
                           completing={!!completingIds[task.id]}
                         />
                       ))
@@ -1053,6 +2032,36 @@ function App() {
             {/* Chat tab */}
             {activeTab === 'chat' && (
               <ChatPanel apiUrl={apiUrl} apiToken={apiToken} />
+            )}
+
+            {/* Projects tab */}
+            {activeTab === 'projects' && (
+              <ProjectsTab
+                projects={projects}
+                onCompleteTask={handleCompleteProjectTask}
+                onAddTask={p => setProjectTaskModal({ mode: 'add', project: p })}
+                onEditTask={t => setProjectTaskModal({ mode: 'edit', task: t })}
+                onDeleteTask={handleDeleteProjectTask}
+                busy={busy}
+              />
+            )}
+
+            {/* Shopping tab */}
+            {activeTab === 'shopping' && (
+              <ShoppingTab
+                stores={shopping}
+                onToggle={handleToggleShopping}
+                busy={busy}
+              />
+            )}
+
+            {/* PTO tab */}
+            {activeTab === 'pto' && (
+              <PTOTab
+                stats={pto}
+                onTriggerBuffer={handleTriggerBuffer}
+                busy={busy}
+              />
             )}
           </div>
         </>
