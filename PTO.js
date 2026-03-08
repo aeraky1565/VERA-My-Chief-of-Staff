@@ -10,6 +10,7 @@
 //      - All-day + title contains "PTO"      → personal time (8 hrs, pool of 48)
 //      - Timed   + title contains "PTO"      → personal hours (actual duration)
 //      - All-day + no keyword                → company holiday (auto-detected)
+//      - Events matching pto_ignore_keywords (default: "Pay Day") → skipped entirely
 //   3. testPTO() — verify stats in Logger
 //   4. Push + redeploy WebApp
 // ============================================================
@@ -43,9 +44,13 @@ function readPTOConfig_() {
     year:              parseInt(raw['year'] || String(new Date().getFullYear()), 10),
     rolloverDays:      parseInt(raw['rollover_days']  || '0',  10),
     bufferDays:        parseInt(raw['buffer_days']    || '3',  10),
-    gapCalendarsRaw:   raw['gap_calendars'] || 'Verizon Calendar,Shared Chaos',
+    gapCalendarsRaw:   raw['gap_calendars'] || 'Verizon Calendar,AE&VV - Our Joint Chaos',
     milestoneKeywords: (raw['milestone_keywords'] || 'Wedding,Graduation,Trip,Travel,Concert,Birthday')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }),
+    // Events in the work calendar whose titles contain any of these strings are
+    // completely skipped — not counted as PTO or company holidays.
+    ignoreKeywords:    (raw['ignore_keywords'] || 'Pay Day')
+                       .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
   };
 }
 
@@ -165,12 +170,23 @@ function getPTOEvents_(cfg) {
   var today      = new Date();
   today.setHours(0, 0, 0, 0);
 
+  var ignoreKws = cfg.ignoreKeywords || [];
+
+  /** Returns true if the event title should be completely skipped. */
+  function isIgnored_(titleLower) {
+    for (var k = 0; k < ignoreKws.length; k++) {
+      if (ignoreKws[k] && titleLower.indexOf(ignoreKws[k]) !== -1) return true;
+    }
+    return false;
+  }
+
   // ---- Pass 1: collect company holidays -----------------------------------
   for (var i = 0; i < allEvents.length; i++) {
     var ev     = allEvents[i];
     var title  = ev.getTitle().trim();
     var tLower = title.toLowerCase();
     if (!ev.isAllDayEvent()) continue;
+    if (isIgnored_(tLower)) continue;                     // e.g. "Pay Day(V)" — skip entirely
     if (tLower.indexOf('vacation') === -1 && tLower.indexOf('pto') === -1) {
       // No PTO keyword → company holiday
       var hDate    = ev.getAllDayStartDate();
@@ -187,6 +203,7 @@ function getPTOEvents_(cfg) {
     var ev2    = allEvents[j];
     var title2 = ev2.getTitle().trim();
     var tLow2  = title2.toLowerCase();
+    if (isIgnored_(tLow2)) continue;                      // skip ignored events in all passes
 
     if (ev2.isAllDayEvent()) {
       if (tLow2.indexOf('vacation') !== -1) {
@@ -271,38 +288,64 @@ function getPTOEvents_(cfg) {
 // ---- Shared Chaos travel ----------------------------------------------------
 
 /**
- * Reads multi-day all-day events from "Shared Chaos" for the next 180 days.
- * @returns {Array} [{ label, startDate, endDate, daysAway }]
+ * Reads multi-day all-day events from all gap calendars (excluding the work
+ * PTO calendar itself) for the next 180 days.
+ * Gap calendars are config-driven via pto_gap_calendars (e.g. "AE&VV - Our Joint Chaos").
+ * @returns {Array} [{ label, startDate, endDate, daysAway, calendarName }]
  */
 function getUpcomingTravel_(cfg) {
-  var chaos = getCalendarByName_('Shared Chaos');
-  if (!chaos) return [];
-
   var tz    = Session.getScriptTimeZone();
   var today = new Date();
   today.setHours(0, 0, 0, 0);
   var end = new Date(today.getTime() + 180 * 24 * 60 * 60 * 1000);
 
-  var events = chaos.getEvents(today, end);
+  // Use gap calendars from config, but skip the work/PTO calendar — travel
+  // entries should only come from shared/family calendars.
+  var gapCalNames = (cfg.gapCalendarsRaw || '').split(',')
+    .map(function(n) { return n.trim(); })
+    .filter(function(n) { return n && n !== cfg.calendarName; });
+
+  var seen   = {};  // deduplicate by label+date in case event appears on multiple calendars
   var travel = [];
 
-  for (var i = 0; i < events.length; i++) {
-    var ev = events[i];
-    if (!ev.isAllDayEvent()) continue;
-    var evStart  = ev.getAllDayStartDate();
-    var evEndExcl = ev.getAllDayEndDate();
-    var durationDays = (evEndExcl.getTime() - evStart.getTime()) / (24 * 60 * 60 * 1000);
-    if (durationDays < 2) continue; // skip single-day events
+  for (var c = 0; c < gapCalNames.length; c++) {
+    var cal = getCalendarByName_(gapCalNames[c]);
+    if (!cal) {
+      Logger.log('getUpcomingTravel_: calendar not found — "' + gapCalNames[c] + '"');
+      continue;
+    }
 
-    var evEndIncl = new Date(evEndExcl.getTime() - 24 * 60 * 60 * 1000);
-    var daysAway  = Math.round((evStart.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-    travel.push({
-      label:     ev.getTitle().trim(),
-      startDate: Utilities.formatDate(evStart,   tz, 'yyyy-MM-dd'),
-      endDate:   Utilities.formatDate(evEndIncl, tz, 'yyyy-MM-dd'),
-      daysAway:  daysAway,
-    });
+    var events = cal.getEvents(today, end);
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (!ev.isAllDayEvent()) continue;
+
+      var evStart   = ev.getAllDayStartDate();
+      var evEndExcl = ev.getAllDayEndDate();
+      var durationDays = (evEndExcl.getTime() - evStart.getTime()) / (24 * 60 * 60 * 1000);
+      if (durationDays < 2) continue; // skip single-day events
+
+      var evEndIncl = new Date(evEndExcl.getTime() - 24 * 60 * 60 * 1000);
+      var daysAway  = Math.round((evStart.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+      var label     = ev.getTitle().trim();
+      var startStr  = Utilities.formatDate(evStart,   tz, 'yyyy-MM-dd');
+      var key       = label + '|' + startStr;
+
+      if (!seen[key]) {
+        seen[key] = true;
+        travel.push({
+          label:        label,
+          startDate:    startStr,
+          endDate:      Utilities.formatDate(evEndIncl, tz, 'yyyy-MM-dd'),
+          daysAway:     daysAway,
+          calendarName: gapCalNames[c],
+        });
+      }
+    }
   }
+
+  // Sort by start date
+  travel.sort(function(a, b) { return a.startDate < b.startDate ? -1 : 1; });
   return travel;
 }
 
