@@ -41,9 +41,23 @@ function getFinanceSummaries() {
 
 /**
  * Reads the "Tracker" tab in the Simple Ass Tracker sheet.
- * Uses a label-search approach: scans every cell for known metric labels
- * and tracks section context (Ahmed / Victoria / Shared) from headers.
- * Returns one summary row per metric found.
+ *
+ * Handles two common layouts automatically:
+ *
+ *   HORIZONTAL (column-per-person):
+ *     Row N:   [Label col]  [Ahmed]      [Victoria]
+ *     Row N+1: Net Income   $5,000       $4,000
+ *     → Ahmed and Victoria appear as column headers in the SAME row.
+ *     → Values are read from each person's column for every metric row.
+ *
+ *   VERTICAL (section-per-person):
+ *     Row 5:  Ahmed          ← section header row
+ *     Row 6:  Net Income  $5,000
+ *     Row 12: Victoria       ← section header row
+ *     Row 13: Net Income  $4,000
+ *     → Each person's header appears alone in its own row above their metrics.
+ *
+ * Returns one summary row per (person × metric) combination found.
  */
 function getSATSummaries_() {
   var id = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
@@ -72,37 +86,92 @@ function getSATSummaries_() {
     'total shared disposable income':  true,
   };
 
-  var results        = [];
-  var currentSection = '';
-  var found          = {}; // "section|metric" → true, prevents duplicate rows
+  var results  = [];
+  var usedKeys = {}; // "section|metric" → true, prevents duplicates
+
+  // ---- Detect layout: horizontal (column headers) vs vertical (row headers) ----
+  // Horizontal is detected when 2+ section names appear in the SAME row.
+  var sectionCols  = {}; // { 'Ahmed': colIdx, 'Victoria': colIdx } — horizontal only
+  var headerRowIdx = -1;
 
   for (var r = 0; r < data.length; r++) {
+    var rowSections = {};
     for (var c = 0; c < data[r].length; c++) {
-      var cell    = String(data[r][c] || '').trim();
-      var cellLow = cell.toLowerCase();
+      var v = String(data[r][c] || '').trim().toLowerCase();
+      if      (v === 'ahmed')                                          rowSections['Ahmed']    = c;
+      else if (v === 'victoria')                                       rowSections['Victoria'] = c;
+      else if (v === 'shared' || v === 'household' || v === 'joint')  rowSections['Shared']   = c;
+    }
+    if (Object.keys(rowSections).length >= 2) {
+      sectionCols  = rowSections;
+      headerRowIdx = r;
+      break;
+    }
+  }
 
-      // Detect person/section header
-      if (cellLow === 'ahmed')                                         { currentSection = 'Ahmed';    continue; }
-      if (cellLow === 'victoria')                                      { currentSection = 'Victoria'; continue; }
-      if (cellLow === 'shared' || cellLow === 'household' || cellLow === 'joint') { currentSection = 'Shared';   continue; }
+  if (headerRowIdx !== -1) {
+    // ======================================================
+    // HORIZONTAL LAYOUT — sections are column headers
+    // ======================================================
+    // The label column is the column immediately left of the first section column.
+    var sectionColIndices = Object.keys(sectionCols).map(function(s) { return sectionCols[s]; });
+    var minSectionCol     = Math.min.apply(null, sectionColIndices);
+    var labelCol          = minSectionCol > 0 ? minSectionCol - 1 : 0;
 
-      if (!targets[cellLow]) continue;
+    Logger.log('Finance: SAT horizontal layout detected — sections: ' + JSON.stringify(sectionCols) + ', label col: ' + labelCol);
 
-      // Dedup: same label in same section only counted once
-      var dedupKey = currentSection + '|' + cellLow;
-      if (found[dedupKey]) continue;
+    for (var r = headerRowIdx + 1; r < data.length; r++) {
+      var label    = String(data[r][labelCol] || '').trim();
+      var labelLow = label.toLowerCase();
+      if (!targets[labelLow]) continue;
 
-      // Look for first non-zero numeric value to the right in the same row
-      var value = findFirstNumericInRow_(data[r], c + 1);
-      if (value === null) continue;
+      Object.keys(sectionCols).forEach(function(section) {
+        var raw = data[r][sectionCols[section]];
+        var n   = typeof raw === 'number'
+          ? raw
+          : parseFloat(String(raw || '').replace(/[$,\s]/g, '').replace(/\(([^)]+)\)/, '-$1'));
+        if (isNaN(n) || n === 0) return;
 
-      found[dedupKey] = true;
+        var key = section + '|' + labelLow;
+        if (usedKeys[key]) return;
+        usedKeys[key] = true;
 
-      var metricLabel = currentSection
-        ? currentSection + ' — ' + toTitleCase_(cell)
-        : toTitleCase_(cell);
+        results.push(row_(AUTO_PREFIX + ' Simple Ass Tracker',
+          section + ' — ' + toTitleCase_(label), fmtCurrency_(n), today));
+      });
+    }
 
-      results.push(row_(AUTO_PREFIX + ' Simple Ass Tracker', metricLabel, fmtCurrency_(value), today));
+  } else {
+    // ======================================================
+    // VERTICAL LAYOUT — each section header in its own row
+    // ======================================================
+    Logger.log('Finance: SAT vertical layout detected — scanning row by row');
+
+    var currentSection = '';
+
+    for (var r = 0; r < data.length; r++) {
+      for (var c = 0; c < data[r].length; c++) {
+        var cell    = String(data[r][c] || '').trim();
+        var cellLow = cell.toLowerCase();
+
+        if      (cellLow === 'ahmed')                                          { currentSection = 'Ahmed';    continue; }
+        else if (cellLow === 'victoria')                                       { currentSection = 'Victoria'; continue; }
+        else if (cellLow === 'shared' || cellLow === 'household' || cellLow === 'joint') { currentSection = 'Shared'; continue; }
+
+        if (!targets[cellLow]) continue;
+
+        var key = currentSection + '|' + cellLow;
+        if (usedKeys[key]) continue;
+
+        var value = findFirstNumericInRow_(data[r], c + 1);
+        if (value === null) continue;
+
+        usedKeys[key] = true;
+        var metricLabel = currentSection
+          ? currentSection + ' — ' + toTitleCase_(cell)
+          : toTitleCase_(cell);
+        results.push(row_(AUTO_PREFIX + ' Simple Ass Tracker', metricLabel, fmtCurrency_(value), today));
+      }
     }
   }
 

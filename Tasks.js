@@ -87,18 +87,37 @@ function getOpenTasks() {
       });
     });
 
+    // ---- Deduplication: skip rows whose Column A ID already appeared --------
+    // If the same ID is entered in the sheet twice (e.g. copy-paste error),
+    // keep only the first occurrence.  Row-based fallback IDs (TASK-Rn) are
+    // never considered explicit IDs so they don't trigger dedup against each other.
+    const idSeen  = {};
+    const deduped = [];
+    tasks.forEach(function(t) {
+      const hasExplicitId = t.id.indexOf('TASK-R') !== 0;
+      if (hasExplicitId) {
+        const norm = t.id.toLowerCase().trim();
+        if (idSeen[norm]) {
+          Logger.log('Tasks: dedup — duplicate ID "' + t.id + '" ignored (keeping first row).');
+          return;
+        }
+        idSeen[norm] = true;
+      }
+      deduped.push(t);
+    });
+
     // Sort: overdue first → then by age descending (oldest neglected tasks surface first)
-    tasks.sort(function(a, b) {
+    deduped.sort(function(a, b) {
       if (a.isOverdue && !b.isOverdue) return -1;
       if (!a.isOverdue && b.isOverdue) return 1;
       return b.ageInDays - a.ageInDays;
     });
 
-    Logger.log('Tasks: ' + tasks.length + ' open tasks found (' +
-      tasks.filter(function(t) { return t.isOverdue;    }).length + ' overdue, ' +
-      tasks.filter(function(t) { return t.isNeglected;  }).length + ' neglected).');
+    Logger.log('Tasks: ' + deduped.length + ' open tasks found (' +
+      deduped.filter(function(t) { return t.isOverdue;    }).length + ' overdue, ' +
+      deduped.filter(function(t) { return t.isNeglected;  }).length + ' neglected).');
 
-    return tasks;
+    return deduped;
 
   } catch (e) {
     Logger.log('getOpenTasks error: ' + e.message);
