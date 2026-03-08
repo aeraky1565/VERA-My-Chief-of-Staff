@@ -647,6 +647,56 @@ function computePTOStats_(ptoResult, cfg, today) {
 
 // ---- VERA Calendar recommendations ------------------------------------------
 
+// ============================================================
+// PTO MEMORY — stateful suggestion store
+// ============================================================
+
+/**
+ * Loads the PTO Memory tab into an array of objects.
+ * Returns [] if the tab is missing or has no data rows.
+ * Columns: Start Date | End Date | Workdays | GCal Event ID | Status | Suggested On
+ */
+function loadPTOMemory_(ss) {
+  var sheet = ss.getSheetByName(TABS.PTO_MEMORY);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+  return rows
+    .filter(function(r) { return r[0] !== ''; })
+    .map(function(r) {
+      return {
+        startDate:   String(r[0]).trim(),
+        endDate:     String(r[1]).trim(),
+        workdays:    Number(r[2]) || 0,
+        eventId:     String(r[3]).trim(),
+        status:      String(r[4]).trim(),   // 'suggested' | 'declined'
+        suggestedOn: String(r[5]).trim(),
+      };
+    });
+}
+
+/**
+ * Persists PTO Memory back to the sheet.
+ * Only writes `declined` entries — `suggested` entries are regenerated each run
+ * so there is no need to persist them across nights.
+ */
+function savePTOMemory_(ss, entries) {
+  var sheet = ss.getSheetByName(TABS.PTO_MEMORY);
+  if (!sheet) return; // tab not created yet — silent skip
+
+  // Clear existing data rows
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).clearContent();
+  }
+
+  var toSave = entries.filter(function(e) { return e.status === 'declined'; });
+  if (toSave.length === 0) return;
+
+  var rows = toSave.map(function(e) {
+    return [e.startDate, e.endDate, e.workdays, e.eventId, e.status, e.suggestedOn];
+  });
+  sheet.getRange(2, 1, rows.length, 6).setValues(rows);
+}
+
 /**
  * Writes (or refreshes) 3 types of events in the "Vera" calendar:
  *   Type 1 — PTO Suggestions (clear windows mapped to 3-2-1 needs)
@@ -654,8 +704,10 @@ function computePTOStats_(ptoResult, cfg, today) {
  *   Type 3 — Milestone Countdowns (from gap calendars, keyword-matched)
  *
  * Clears previous VERA-managed events before rewriting.
+ * Accepts optional `ss` (Spreadsheet) and `memory` (loaded PTO Memory) for
+ * stateful declined-window tracking.
  */
-function writeVERARecommendations_(stats, cfg) {
+function writeVERARecommendations_(stats, cfg, ss, memory) {
   var vera = getCalendarByName_(cfg.veraCalendarName);
   if (!vera) {
     Logger.log('PTO: "' + cfg.veraCalendarName + '" calendar not found — skipping recommendations.');
@@ -671,21 +723,63 @@ function writeVERARecommendations_(stats, cfg) {
 
   var existing = vera.getEvents(scanFrom, scanTo);
 
-  // ---- Type 1: PTO Suggestions --------------------------------------------
+  // ---- Type 1: PTO Suggestions (stateful — respects declined windows) ------
+
+  // a. Build set of GCal event IDs currently on the Vera calendar
+  var currentEventIds = {};
+  var todayStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+  for (var ci = 0; ci < existing.length; ci++) {
+    if (existing[ci].getTitle().indexOf('VERA Suggestion:') === 0) {
+      currentEventIds[existing[ci].getId()] = true;
+    }
+  }
+
+  // b. Reconcile memory: detect deletions (= user declined the suggestion)
+  var workingMemory = memory ? memory.slice() : [];
+  for (var mi = 0; mi < workingMemory.length; mi++) {
+    var mem = workingMemory[mi];
+    if (mem.status !== 'suggested') continue;          // already declined — skip
+    if (mem.startDate < todayStr)   { workingMemory.splice(mi--, 1); continue; } // expired — drop
+    if (!currentEventIds[mem.eventId]) {
+      // Event is GONE — user deleted it → mark declined
+      mem.status = 'declined';
+      Logger.log('PTO Memory: window ' + mem.startDate + ' was declined (event deleted).');
+    }
+    // If still present → keep as 'suggested' (user has not acted on it yet)
+  }
+
+  // c. Build declined set from updated memory
+  var declinedSet = {};
+  for (var di = 0; di < workingMemory.length; di++) {
+    if (workingMemory[di].status === 'declined') {
+      declinedSet[workingMemory[di].startDate] = true;
+    }
+  }
+
+  // d. Delete all existing suggestion events from calendar (clean slate for recreation)
   for (var i = 0; i < existing.length; i++) {
     if (existing[i].getTitle().indexOf('VERA Suggestion:') === 0) {
       try { existing[i].deleteEvent(); } catch(e) {}
     }
   }
 
-  var t31       = stats.threeToOneStatus;
+  // e. Recreate suggestions — skip any window the user has declined
+  var t31        = stats.threeToOneStatus;
   var longNeeded = Math.max(0, t31.longWeekends.target - t31.longWeekends.used - t31.longWeekends.planned);
   var midNeeded  = Math.max(0, t31.midSizeWeeks.target  - t31.midSizeWeeks.used  - t31.midSizeWeeks.planned);
   var bigNeeded  = Math.max(0, t31.bigPivot.target      - t31.bigPivot.used      - t31.bigPivot.planned);
 
+  // Remove stale 'suggested' entries from previous run (they'll be re-added below with fresh IDs)
+  workingMemory = workingMemory.filter(function(e) { return e.status === 'declined'; });
+
   var windows = stats.clearWindows || [];
   for (var w = 0; w < windows.length; w++) {
     var win    = windows[w];
+    if (declinedSet[win.startDate]) {
+      Logger.log('PTO Memory: skipping declined window ' + win.startDate);
+      continue; // user said no — honour it
+    }
+
     var days   = win.workdays;
     var type31 = days <= 3 ? 'Long Weekend' : days <= 7 ? 'Mid-Size Week' : 'Big Pivot';
     var needed = type31 === 'Long Weekend' ? longNeeded : type31 === 'Mid-Size Week' ? midNeeded : bigNeeded;
@@ -699,10 +793,22 @@ function writeVERARecommendations_(stats, cfg) {
     try {
       var newEvent = vera.createAllDayEvent(title, evStart, evEnd);
       newEvent.setColor(CalendarApp.EventColor.SAGE);
+      // f. Record new suggestion in memory
+      workingMemory.push({
+        startDate:   win.startDate,
+        endDate:     win.endDate,
+        workdays:    win.workdays,
+        eventId:     newEvent.getId(),
+        status:      'suggested',
+        suggestedOn: todayStr,
+      });
     } catch(e) {
       Logger.log('PTO: could not create suggestion event: ' + e.message);
     }
   }
+
+  // g. Persist memory (only declined entries survive; suggested are ephemeral)
+  if (ss) savePTOMemory_(ss, workingMemory);
 
   // ---- Type 2: Buffer Day Alert -------------------------------------------
   for (var i2 = 0; i2 < existing.length; i2++) {
@@ -797,14 +903,25 @@ function writePTOSnapshot_() {
   var today = new Date();
   today.setHours(0, 0, 0, 0);
   var tz    = Session.getScriptTimeZone();
+  var ss    = getSpreadsheet();
+
+  // Load PTO Memory early — needed to filter declined windows from all outputs
+  var memory      = loadPTOMemory_(ss);
+  var declinedSet = {};
+  for (var mi = 0; mi < memory.length; mi++) {
+    if (memory[mi].status === 'declined') declinedSet[memory[mi].startDate] = true;
+  }
 
   // Collect data
   var ptoResult  = getPTOEvents_(cfg);
   var travel     = getUpcomingTravel_(cfg);
   var gapCals    = getGapCalendars_(cfg);
-  var windows    = findClearWindows_(gapCals, today, 90, 3);
+  var allWindows = findClearWindows_(gapCals, today, 90, 3);
   var milestones = getMilestones_(gapCals, cfg, today);
   var stats      = computePTOStats_(ptoResult, cfg, today);
+
+  // Filter out windows the user has declined — dashboard + Claude also see the filtered list
+  var windows = allWindows.filter(function(w) { return !declinedSet[w.startDate]; });
 
   // Attach computed extras
   stats.clearWindows   = windows;
@@ -812,7 +929,6 @@ function writePTOSnapshot_() {
   stats.upcomingTravel = travel;
 
   // Write PTO sheet tab
-  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PTO);
   if (!sheet) {
     sheet = ss.insertSheet(TABS.PTO);
@@ -845,15 +961,16 @@ function writePTOSnapshot_() {
     sheet.getRange(2, 1, rows.length, PTO_HEADERS.length).setValues(rows);
   }
 
-  // Update Vera calendar
+  // Update Vera calendar (pass ss + memory for stateful declined-window tracking)
   try {
-    writeVERARecommendations_(stats, cfg);
+    writeVERARecommendations_(stats, cfg, ss, memory);
   } catch(e) {
     Logger.log('PTO: writeVERARecommendations_ error: ' + e.message);
   }
 
   Logger.log('PTO snapshot done: ' + ptoResult.events.length + ' PTO events, ' +
-             windows.length + ' windows, ' + milestones.length + ' milestones.');
+             windows.length + ' windows (of ' + allWindows.length + ' found, ' +
+             Object.keys(declinedSet).length + ' declined), ' + milestones.length + ' milestones.');
   return stats;
 }
 

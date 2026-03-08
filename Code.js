@@ -30,6 +30,7 @@ const TABS = {
   CONFIG:       'Config',
   PROJECTS:     'Projects',     // Multi-step projects with Claude-generated subtasks
   PTO:          'PTO',          // PTO planner snapshot (written nightly by writePTOSnapshot_)
+  PTO_MEMORY:   'PTO Memory',   // Stateful PTO suggestion history (declined windows blacklist)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -41,6 +42,7 @@ const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summarie
 const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags', 'Amount'];
 const CONFIG_HEADERS      = ['Setting', 'Value'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
+const PTO_MEMORY_HEADERS  = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -88,6 +90,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TRANSACTIONS, TRANSACTION_HEADERS);
   ensureSheet(ss, TABS.PROJECTS,     PROJECT_HEADERS);
   ensureSheet(ss, TABS.PTO,          PTO_HEADERS);
+  ensureSheet(ss, TABS.PTO_MEMORY,   PTO_MEMORY_HEADERS);
   ensureSheet(ss, TABS.CONFIG,       CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -626,6 +629,16 @@ function addPTOTab() {
   const ss = getSpreadsheet();
   ensureSheet(ss, TABS.PTO, PTO_HEADERS);
   Logger.log('✅ PTO tab created (or already exists). Seed Config tab with pto_* rows, then run testPTO().');
+}
+
+/**
+ * Migration helper — run once from Apps Script editor to create the PTO Memory tab.
+ * Safe to re-run; ensureSheet() is idempotent.
+ */
+function addPTOMemoryTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.PTO_MEMORY, PTO_MEMORY_HEADERS);
+  Logger.log('✅ PTO Memory tab created (or already exists). Stateful PTO suggestions are now active.');
 }
 
 /**
