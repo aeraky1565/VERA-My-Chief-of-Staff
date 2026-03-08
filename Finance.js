@@ -75,16 +75,25 @@ function getSATSummaries_() {
   var data  = sheet.getDataRange().getValues();
   var today = todayStr_();
 
-  // Metric labels to search for (lowercase)
-  var targets = {
-    'net income':                      true,
-    'net expenses':                    true,
-    'disposable income':               true,
+  // Labels to find inside Ahmed's / Victoria's column ranges
+  var personalTargets = {
+    'net expenses':      true,
+    'disposable income': true,
+  };
+
+  // Labels to find inside the Shared column range
+  // (Shared columns are attributed to "Shared" regardless of which detected section they fall in)
+  var sharedTargets = {
     'total shared expenses':           true,
     'total shared savings':            true,
     'total shared net income':         true,
     'total shared disposable income':  true,
   };
+
+  // Combined lookup for quick "is this a target?" checks
+  var allTargets = {};
+  Object.keys(personalTargets).forEach(function(k) { allTargets[k] = 'personal'; });
+  Object.keys(sharedTargets).forEach(function(k)   { allTargets[k] = 'shared';   });
 
   var results  = [];
   var usedKeys = {}; // "section|metric" → true, prevents duplicates
@@ -137,33 +146,54 @@ function getSATSummaries_() {
       sectionRanges[sec] = { start: start, end: end };
     }
 
-    Logger.log('Finance: SAT horizontal layout — ranges: ' + JSON.stringify(sectionRanges) + ', label col: ' + labelCol);
+    Logger.log('Finance: SAT horizontal layout — ranges: ' + JSON.stringify(sectionRanges));
 
+    // Scan every cell in every row after the header.
+    // Labels (e.g. "Net Expenses") sit INSIDE each section's column range;
+    // the value is in the first non-zero numeric cell to their right in the same row.
+    // - Personal labels (Net Expenses, Disposable Income) → attributed to whichever
+    //   detected section column range the label cell falls in (Ahmed or Victoria).
+    // - Shared labels (Total Shared …) → always attributed to "Shared", regardless
+    //   of which detected section range they fall in.
     for (var r = headerRowIdx + 1; r < data.length; r++) {
-      var label    = String(data[r][labelCol] || '').trim();
-      var labelLow = label.toLowerCase();
-      if (!targets[labelLow]) continue;
+      for (var c = 0; c < data[r].length; c++) {
+        var cellLabel = String(data[r][c] || '').trim();
+        var cellLow   = cellLabel.toLowerCase();
+        var targetType = allTargets[cellLow]; // 'personal' | 'shared' | undefined
+        if (!targetType) continue;
 
-      Object.keys(sectionRanges).forEach(function(section) {
-        var range = sectionRanges[section];
-        // Scan the section's full column range for the first non-zero numeric value
+        // Value = first non-zero numeric cell to the right of this label in the same row
         var n = null;
-        for (var c = range.start; c < range.end; c++) {
-          var raw    = data[r][c];
+        for (var vc = c + 1; vc < data[r].length; vc++) {
+          var raw    = data[r][vc];
           var parsed = typeof raw === 'number'
             ? raw
             : parseFloat(String(raw || '').replace(/[$,\s]/g, '').replace(/\(([^)]+)\)/, '-$1'));
           if (!isNaN(parsed) && parsed !== 0) { n = parsed; break; }
         }
-        if (n === null) return;
+        if (n === null) continue;
 
-        var key = section + '|' + labelLow;
-        if (usedKeys[key]) return;
+        var section;
+        if (targetType === 'shared') {
+          section = 'Shared';
+        } else {
+          // Identify which detected section owns column c
+          section = null;
+          var sKeys = Object.keys(sectionRanges);
+          for (var si = 0; si < sKeys.length; si++) {
+            var range = sectionRanges[sKeys[si]];
+            if (c >= range.start && c < range.end) { section = sKeys[si]; break; }
+          }
+          if (!section) continue; // label is outside all known section ranges — skip
+        }
+
+        var key = section + '|' + cellLow;
+        if (usedKeys[key]) continue;
         usedKeys[key] = true;
 
         results.push(row_(AUTO_PREFIX + ' Simple Ass Tracker',
-          section + ' — ' + toTitleCase_(label), fmtCurrency_(n), today));
-      });
+          section + ' — ' + toTitleCase_(cellLabel), fmtCurrency_(n), today));
+      }
     }
 
   } else {
@@ -183,7 +213,7 @@ function getSATSummaries_() {
         else if (cellLow === 'victoria')                                       { currentSection = 'Victoria'; continue; }
         else if (cellLow === 'shared' || cellLow === 'household' || cellLow === 'joint') { currentSection = 'Shared'; continue; }
 
-        if (!targets[cellLow]) continue;
+        if (!allTargets[cellLow]) continue;
 
         var key = currentSection + '|' + cellLow;
         if (usedKeys[key]) continue;
