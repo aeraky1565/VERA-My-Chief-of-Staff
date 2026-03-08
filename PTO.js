@@ -49,8 +49,12 @@ function readPTOConfig_() {
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }),
     // Events in the work calendar whose titles contain any of these strings are
     // completely skipped — not counted as PTO or company holidays.
-    ignoreKeywords:    (raw['ignore_keywords'] || 'Pay Day')
-                       .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    ignoreKeywords:        (raw['ignore_keywords'] || 'Pay Day')
+                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    // Multi-day events on gap calendars whose titles contain any of these strings
+    // are excluded from the "Upcoming Travel" section (religious observances, etc.)
+    travelIgnoreKeywords:  (raw['travel_ignore_keywords'] || 'Ramadan,Eid,Lent,Holiday,Observance,Fast,Christmas,Hanukkah,Diwali,Passover')
+                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
   };
 }
 
@@ -305,6 +309,7 @@ function getUpcomingTravel_(cfg) {
     .map(function(n) { return n.trim(); })
     .filter(function(n) { return n && n !== cfg.calendarName; });
 
+  var travelIgnore = cfg.travelIgnoreKeywords || [];
   var seen   = {};  // deduplicate by label+date in case event appears on multiple calendars
   var travel = [];
 
@@ -320,6 +325,19 @@ function getUpcomingTravel_(cfg) {
       var ev = events[i];
       if (!ev.isAllDayEvent()) continue;
 
+      var label    = ev.getTitle().trim();
+      var labelLow = label.toLowerCase();
+
+      // Skip religious observances and other non-travel multi-day events
+      var ignored = false;
+      for (var ki = 0; ki < travelIgnore.length; ki++) {
+        if (travelIgnore[ki] && labelLow.indexOf(travelIgnore[ki]) !== -1) {
+          ignored = true;
+          break;
+        }
+      }
+      if (ignored) continue;
+
       var evStart   = ev.getAllDayStartDate();
       var evEndExcl = ev.getAllDayEndDate();
       var durationDays = (evEndExcl.getTime() - evStart.getTime()) / (24 * 60 * 60 * 1000);
@@ -327,8 +345,7 @@ function getUpcomingTravel_(cfg) {
 
       var evEndIncl = new Date(evEndExcl.getTime() - 24 * 60 * 60 * 1000);
       var daysAway  = Math.round((evStart.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-      var label     = ev.getTitle().trim();
-      var startStr  = Utilities.formatDate(evStart,   tz, 'yyyy-MM-dd');
+      var startStr  = Utilities.formatDate(evStart, tz, 'yyyy-MM-dd');
       var key       = label + '|' + startStr;
 
       if (!seen[key]) {
