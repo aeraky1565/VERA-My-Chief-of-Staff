@@ -47,6 +47,13 @@ function readPTOConfig_() {
     gapCalendarsRaw:   raw['gap_calendars'] || 'Verizon Calendar,AE&VV - Our Joint Chaos',
     milestoneKeywords: (raw['milestone_keywords'] || 'Wedding,Graduation,Trip,Travel,Concert,Birthday')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }),
+    // Only all-day events whose titles contain one of these strings are treated
+    // as company holidays. Everything else that isn't Vacation/PTO is ignored.
+    // Covers: Memorial Day, Independence Day, Labor Day, Thanksgiving Day,
+    // Christmas Day, New Year's Day, MLK Day, Presidents' Day, Veterans Day,
+    // Juneteenth, Columbus Day, Company Holiday, Floating Holiday, etc.
+    holidayKeywords:       (raw['holiday_keywords'] || 'Day,Holiday,Floating,Closure')
+                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     // Events in the work calendar whose titles contain any of these strings are
     // completely skipped — not counted as PTO or company holidays.
     ignoreKeywords:        (raw['ignore_keywords'] || 'Pay Day')
@@ -174,9 +181,10 @@ function getPTOEvents_(cfg) {
   var today      = new Date();
   today.setHours(0, 0, 0, 0);
 
-  var ignoreKws = cfg.ignoreKeywords || [];
+  var ignoreKws  = cfg.ignoreKeywords  || [];
+  var holidayKws = cfg.holidayKeywords || ['day', 'holiday', 'floating', 'closure'];
 
-  /** Returns true if the event title should be completely skipped. */
+  /** Returns true if the event title should be completely skipped (ignore list). */
   function isIgnored_(titleLower) {
     for (var k = 0; k < ignoreKws.length; k++) {
       if (ignoreKws[k] && titleLower.indexOf(ignoreKws[k]) !== -1) return true;
@@ -184,21 +192,33 @@ function getPTOEvents_(cfg) {
     return false;
   }
 
+  /** Returns true if the title looks like a company holiday (allowlist). */
+  function isHoliday_(titleLower) {
+    for (var k = 0; k < holidayKws.length; k++) {
+      if (holidayKws[k] && titleLower.indexOf(holidayKws[k]) !== -1) return true;
+    }
+    return false;
+  }
+
   // ---- Pass 1: collect company holidays -----------------------------------
+  // Only all-day events that match holidayKeywords are treated as holidays.
+  // Events matching ignoreKeywords (e.g. "Pay Day") are dropped first.
+  // Everything else (STI payout, grants, performance reviews, etc.) is ignored.
   for (var i = 0; i < allEvents.length; i++) {
     var ev     = allEvents[i];
     var title  = ev.getTitle().trim();
     var tLower = title.toLowerCase();
     if (!ev.isAllDayEvent()) continue;
-    if (isIgnored_(tLower)) continue;                     // e.g. "Pay Day(V)" — skip entirely
-    if (tLower.indexOf('vacation') === -1 && tLower.indexOf('pto') === -1) {
-      // No PTO keyword → company holiday
-      var hDate    = ev.getAllDayStartDate();
-      var hDateStr = Utilities.formatDate(hDate, tz, 'yyyy-MM-dd');
-      if (!holidaySet.has(hDateStr)) {
-        holidaySet.add(hDateStr);
-        holidays.push({ label: title, date: hDateStr });
-      }
+    if (isIgnored_(tLower)) continue;                        // "Pay Day(V)" etc. — drop entirely
+    if (tLower.indexOf('vacation') !== -1) continue;         // handled in Pass 2
+    if (tLower.indexOf('pto')      !== -1) continue;         // handled in Pass 2
+    if (!isHoliday_(tLower)) continue;                       // not a holiday keyword — ignore
+
+    var hDate    = ev.getAllDayStartDate();
+    var hDateStr = Utilities.formatDate(hDate, tz, 'yyyy-MM-dd');
+    if (!holidaySet.has(hDateStr)) {
+      holidaySet.add(hDateStr);
+      holidays.push({ label: title, date: hDateStr });
     }
   }
 
