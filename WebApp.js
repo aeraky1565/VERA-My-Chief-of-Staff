@@ -21,6 +21,11 @@
 //   ?action=acknowledge&id=FLAG-xxx
 //   ?action=snooze&id=FLAG-xxx&days=2
 //   ?action=resolve&id=FLAG-xxx
+//   ?action=chat&message=...&session=dashboard  → VERA chat (Phase 4)
+//
+// POST endpoints:
+//   { action: 'acknowledge'|'snooze'|'resolve', id: '...', days?: N }
+//   Telegram webhook POSTs are detected automatically (no token needed)
 // ============================================================
 
 // ---- Auth ------------------------------------------------------------------
@@ -66,6 +71,7 @@ function doGet(e) {
       case 'snooze':         return jsonOut_(webSnooze_(id, days));
       case 'resolve':        return jsonOut_(webResolve_(id));
       case 'complete_task':  return jsonOut_(webCompleteTask_(id));
+      case 'chat':           return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -74,17 +80,28 @@ function doGet(e) {
   }
 }
 
-// ---- doPost — write operations ---------------------------------------------
+// ---- doPost — Telegram webhook + write operations --------------------------
 
 function doPost(e) {
-  if (!isAuthorized_(e)) return errOut_('Unauthorized', 401);
-
   let body;
   try {
     body = JSON.parse(e.postData.contents);
   } catch (parseErr) {
     return errOut_('Invalid JSON body: ' + parseErr.message);
   }
+
+  // Telegram sends webhook POSTs without a token — detect by update_id field
+  if (body && body.update_id !== undefined) {
+    try {
+      processTelegramUpdate_(body);
+    } catch (err) {
+      Logger.log('Telegram update error: ' + err.message + '\n' + err.stack);
+    }
+    return jsonOut_({ ok: true }); // always return 200 to Telegram
+  }
+
+  // VERA dashboard actions require auth
+  if (!isAuthorized_(e)) return errOut_('Unauthorized', 401);
 
   const action = body && body.action;
 
@@ -278,6 +295,14 @@ function webCompleteTask_(id) {
   const found = findTaskRow_(id);
   found.sheet.getRange(found.rowNum, 5).setValue('Done'); // Column E = Status
   return { ok: true, id: id, action: 'completed' };
+}
+
+// ---- Chat ------------------------------------------------------------------
+
+function webProcessChat_(e) {
+  const message   = (e.parameter && e.parameter.message)  || '';
+  const sessionId = (e.parameter && e.parameter.session)  || 'dashboard';
+  return processChat_(message, sessionId);
 }
 
 // ============================================================

@@ -369,6 +369,86 @@
       padding: 2px 8px;
     }
 
+    /* ---- Chat panel ---- */
+    .chat-wrap {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 215px);
+      min-height: 400px;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-msg {
+      max-width: 78%;
+      padding: 11px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-msg.vera {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-bottom-left-radius: 4px;
+      color: #dde1f0;
+      align-self: flex-start;
+    }
+    .chat-msg.user {
+      background: #1e3878;
+      border: 1px solid #3d5fa0;
+      border-bottom-right-radius: 4px;
+      color: #c9d9ff;
+      align-self: flex-end;
+    }
+    .chat-msg.vera-typing {
+      color: #6b7fa8;
+      font-style: italic;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+      padding-top: 14px;
+      border-top: 1px solid #1e3060;
+    }
+    .chat-input {
+      flex: 1;
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      color: #e8ecf8;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+      outline: none;
+      padding: 10px 14px;
+      resize: none;
+      transition: border-color .15s;
+    }
+    .chat-input:focus { border-color: #c9a84c; }
+    .chat-input::placeholder { color: #3d5280; }
+    .chat-send {
+      background: #c9a84c;
+      border: none;
+      border-radius: 10px;
+      color: #0d1b3e;
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 0 18px;
+      align-self: flex-end;
+      height: 44px;
+      transition: opacity .15s;
+    }
+    .chat-send:hover { opacity: 0.85; }
+    .chat-send:disabled { opacity: 0.35; cursor: not-allowed; }
+
     /* ---- Toast notification ---- */
     .toast {
       position: fixed;
@@ -661,6 +741,69 @@ function SummariesTab({ summaries }) {
   );
 }
 
+// ---- Chat panel -------------------------------------------------------------
+
+function ChatPanel({ apiUrl, apiToken }) {
+  const WELCOME = 'Hi Ahmed — ask me about your flags, tasks, or summaries, or tell me to take action on something. (Shift+Enter for a new line, Enter to send.)';
+  const [messages, setMessages] = useState([{ role: 'vera', text: WELCOME }]);
+  const [input,    setInput]    = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function send() {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    setLoading(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text });
+      setMessages(prev => [...prev, { role: 'vera', text: data.reply }]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'vera', text: '⚠ Error: ' + e.message }]);
+    }
+    setLoading(false);
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  return (
+    <div className="chat-wrap">
+      <div className="chat-messages">
+        {messages.map((m, i) => (
+          <div key={i} className={`chat-msg ${m.role}`}>{m.text}</div>
+        ))}
+        {loading && <div className="chat-msg vera vera-typing">VERA is thinking…</div>}
+        <div ref={bottomRef} />
+      </div>
+      <div className="chat-input-row">
+        <textarea
+          className="chat-input"
+          rows={2}
+          placeholder="Ask VERA anything…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          disabled={loading}
+        />
+        <button
+          className="chat-send"
+          onClick={send}
+          disabled={!input.trim() || loading}
+        >
+          ↑
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 function App() {
@@ -832,7 +975,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['flags', 'tasks', 'summaries'].map(tab => (
+            {['flags', 'tasks', 'summaries', 'chat'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -841,6 +984,7 @@ function App() {
                 {tab === 'flags'     ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
                 {tab === 'tasks'     ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
                 {tab === 'summaries' ? `📊 Summaries` : ''}
+                {tab === 'chat'      ? `💬 Chat` : ''}
               </button>
             ))}
           </div>
@@ -904,6 +1048,11 @@ function App() {
               loading && summaries.length === 0
                 ? <div className="loading-text">Loading summaries…</div>
                 : <SummariesTab summaries={summaries} />
+            )}
+
+            {/* Chat tab */}
+            {activeTab === 'chat' && (
+              <ChatPanel apiUrl={apiUrl} apiToken={apiToken} />
             )}
           </div>
         </>
