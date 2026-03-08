@@ -1377,7 +1377,7 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
     );
   }
 
-  function DotRow({ label, target, usedN, plannedN }) {
+  function DotRow({ label, target, usedN, plannedN, hint }) {
     const dots = Array.from({ length: target }).map((_, i) => {
       let bg = 'transparent', border;
       if (i < usedN)               { bg = '#c9a84c'; border = '#c9a84c'; }
@@ -1386,7 +1386,13 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
       return (
         <span key={i} className="pto-dot"
           style={{ background: bg, border: '2px solid ' + border }}
-          title={i < usedN ? 'Used' : i < usedN + plannedN ? 'Planned' : 'Needed'}
+          title={
+            i < usedN
+              ? '🟡 Used — this block has already been taken'
+              : i < usedN + plannedN
+              ? '🔵 Planned — on the calendar but not yet taken'
+              : '⬜ To schedule — book this to hit your target'
+          }
         />
       );
     });
@@ -1394,7 +1400,10 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
     const left  = target - done;
     return (
       <div className="pto-row">
-        <span style={{ flex: 1, fontSize: 13, color: '#dde1f0' }}>{label}</span>
+        <span style={{ flex: 1, fontSize: 13, color: '#dde1f0', cursor: hint ? 'help' : 'default' }}
+              title={hint || undefined}>
+          {label}{hint ? ' ℹ️' : ''}
+        </span>
         <span>{dots}</span>
         <span style={{ fontSize: 11, color: '#6b7fa8', minWidth: 110, textAlign: 'right' }}>
           {done}/{target}
@@ -1482,15 +1491,32 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
 
       {/* Section 3: 3-2-1 Strategy */}
       <div className="pto-section">
-        <div className="pto-section-title">🎯 3-2-1 PTO Strategy</div>
-        <DotRow label="3 Long Weekends (1–3 workdays)"    target={tto?.longWeekends?.target || 3} usedN={tto?.longWeekends?.used || 0} plannedN={tto?.longWeekends?.planned || 0} />
-        <DotRow label="2 Mid-Size Weeks (4–7 workdays)"   target={tto?.midSizeWeeks?.target  || 2} usedN={tto?.midSizeWeeks?.used  || 0} plannedN={tto?.midSizeWeeks?.planned  || 0} />
-        <DotRow label="1 Big Pivot (8+ workdays)"          target={tto?.bigPivot?.target      || 1} usedN={tto?.bigPivot?.used      || 0} plannedN={tto?.bigPivot?.planned      || 0} />
+        <div className="pto-section-title"
+             style={{ cursor: 'help' }}
+             title="A balanced PTO strategy: 3 short breaks + 2 full weeks + 1 long trip per year. Gold dots = used, blue = planned, empty = still to schedule.">
+          🎯 3-2-1 PTO Strategy
+        </div>
+        <DotRow
+          label="3 Long Weekends"
+          hint="1–3 workdays off. Take a Friday or Monday to turn a weekend into a 3–4 day break without burning many days."
+          target={tto?.longWeekends?.target || 3} usedN={tto?.longWeekends?.used || 0} plannedN={tto?.longWeekends?.planned || 0} />
+        <DotRow
+          label="2 Mid-Size Weeks"
+          hint="4–7 workdays off. A full week away — enough time to truly decompress and recharge."
+          target={tto?.midSizeWeeks?.target  || 2} usedN={tto?.midSizeWeeks?.used  || 0} plannedN={tto?.midSizeWeeks?.planned  || 0} />
+        <DotRow
+          label="1 Big Pivot"
+          hint="8+ workdays off. One extended trip or reset each year. Book early — these windows are hard to find later in the year."
+          target={tto?.bigPivot?.target      || 1} usedN={tto?.bigPivot?.used      || 0} plannedN={tto?.bigPivot?.planned      || 0} />
       </div>
 
       {/* Section 4: Buffer Status */}
       <div className="pto-section">
-        <div className="pto-section-title">🛡️ Buffer Days</div>
+        <div className="pto-section-title"
+             style={{ cursor: 'help' }}
+             title="Buffer days are flexible personal days held in reserve for last-minute needs — an unexpected sick day, a mental health break, or a spontaneous long weekend. Click 'Trigger a Buffer Day' to log one.">
+          🛡️ Buffer Days
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <div>
             {Array.from({ length: bufferStatus?.total || 3 }).map((_, i) => (
@@ -1498,6 +1524,11 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
                 style={{ background: i < (bufferStatus?.remaining || 0) ? '#c9a84c' : '#1e3060',
                          border: '2px solid ' + (i < (bufferStatus?.remaining || 0) ? '#c9a84c' : '#2a3a5e'),
                          marginRight: 8 }}
+                title={
+                  i < (bufferStatus?.remaining || 0)
+                    ? '🟡 Buffer day available — use for an unexpected personal need or a spontaneous day off'
+                    : '⬫ Buffer day used'
+                }
               />
             ))}
             <span style={{ fontSize: 13, color: '#8a9abf', verticalAlign: 'middle' }}>

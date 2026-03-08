@@ -4,16 +4,18 @@
 // ============================================================
 
 // ---- CONFIG ----------------------------------------------------------------
-// SHEET_ID: Paste your Life OS Google Sheet ID here after creating the sheet.
+// SHEET_ID and MORNING_NUDGE_EMAIL are loaded from Script Properties.
 // CLAUDE_API_KEY is NOT stored here — it is loaded from Script Properties.
-//   See setup instructions for how to set it safely.
+//   In Apps Script editor: Project Settings → Script Properties → Add:
+//     VERA_SHEET_ID      → your Life OS Google Sheet ID
+//     MORNING_NUDGE_EMAIL → your email address
 // ----------------------------------------------------------------------------
 const CONFIG = {
-  SHEET_ID: '1FlNnxQltktinV1qnGQJ0QZ_4s5G4EA45GI61ul92er0',       // <-- Replace after creating your sheet
+  SHEET_ID: PropertiesService.getScriptProperties().getProperty('VERA_SHEET_ID') || '',
   CALENDAR_DAYS_AHEAD: 7,
   TASK_AGE_THRESHOLD: 7,                 // Days before a task is considered neglected
   MAX_FLAGS: 8,
-  MORNING_NUDGE_EMAIL: 'aaeleraky@gmail.com',
+  MORNING_NUDGE_EMAIL: PropertiesService.getScriptProperties().getProperty('MORNING_NUDGE_EMAIL') || '',
   MORNING_NUDGE_HOUR: 7,
   NIGHTLY_RUN_HOUR: 23,
 };
