@@ -168,6 +168,9 @@ function nightlyRun() {
 
     Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length);
 
+    // Step 1b: Suggest due dates for undated tasks (writes back to sheet)
+    suggestDueDates(tasks);
+
     // Step 2 & 3: Package + Reason (Claude)
     const flags = generateFlags(events, tasks, summaries);
 
