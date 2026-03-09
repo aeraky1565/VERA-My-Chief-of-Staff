@@ -29,6 +29,7 @@ const TABS = {
   TRANSACTIONS: 'Transactions',
   CONFIG:       'Config',
   PROJECTS:     'Projects',     // Multi-step projects with Claude-generated subtasks
+  GOALS:        'Goals',        // Yearly goals Kanban board
   PTO:          'PTO',          // PTO planner snapshot (written nightly by writePTOSnapshot_)
   PTO_MEMORY:   'PTO Memory',   // Stateful PTO suggestion history (declined windows blacklist)
 };
@@ -41,6 +42,7 @@ const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics 
 const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab
 const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags', 'Amount'];
 const CONFIG_HEADERS      = ['Setting', 'Value'];
+const GOAL_HEADERS        = ['ID', 'Title', 'Description', 'Status', 'Category', 'Year', 'Progress', 'Notes'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
 const PTO_MEMORY_HEADERS  = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
 
@@ -89,6 +91,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.SUMMARIES,    SUMMARY_HEADERS);
   ensureSheet(ss, TABS.TRANSACTIONS, TRANSACTION_HEADERS);
   ensureSheet(ss, TABS.PROJECTS,     PROJECT_HEADERS);
+  ensureSheet(ss, TABS.GOALS,        GOAL_HEADERS);
   ensureSheet(ss, TABS.PTO,          PTO_HEADERS);
   ensureSheet(ss, TABS.PTO_MEMORY,   PTO_MEMORY_HEADERS);
   ensureSheet(ss, TABS.CONFIG,       CONFIG_HEADERS, configDefaults);

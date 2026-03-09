@@ -81,6 +81,10 @@ function doGet(e) {
       case 'add_project_task':      return jsonOut_(webAddProjectTask_(e));
       case 'update_project_task':   return jsonOut_(webUpdateProjectTask_(e));
       case 'delete_project_task':   return jsonOut_(webDeleteProjectTask_(e));
+      case 'goals':        return jsonOut_(webGetGoals_());
+      case 'add_goal':    return jsonOut_(webAddGoal_(e));
+      case 'update_goal': return jsonOut_(webUpdateGoal_(e));
+      case 'delete_goal': return jsonOut_(webDeleteGoal_(e));
       case 'pto':                   return jsonOut_(webGetPTO_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
@@ -514,6 +518,48 @@ function webProcessChat_(e) {
 // ============================================================
 // UTILITIES
 // ============================================================
+
+// ---- Goals (Yearly Goals Kanban) -------------------------------------------
+
+function webGetGoals_() {
+  const goals = getGoals_();
+  return { ok: true, count: goals.length, goals: goals };
+}
+
+function webAddGoal_(e) {
+  const p = e.parameter || {};
+  const goal = createGoal_(
+    p.title || '',
+    p.description || '',
+    p.status || 'To Do',
+    p.category || '',
+    p.year || '',
+    p.notes || ''
+  );
+  return { ok: true, goal: goal };
+}
+
+function webUpdateGoal_(e) {
+  const p  = e.parameter || {};
+  const id = (p.id || '').trim();
+  if (!id) throw new Error('Goal ID is required');
+
+  const fields = {};
+  ['title', 'description', 'status', 'category', 'year', 'progress', 'notes'].forEach(function(k) {
+    if (p[k] != null) fields[k] = p[k];
+  });
+
+  const updated = updateGoal_(id, fields);
+  if (!updated) return { ok: false, error: 'Goal not found: ' + id };
+  return { ok: true, goal: updated };
+}
+
+function webDeleteGoal_(e) {
+  const id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('Goal ID is required');
+  const deleted = deleteGoal_(id);
+  return { ok: deleted, id: id, action: 'deleted' };
+}
 
 function formatDateVal_(val) {
   if (!val || val === '') return '';
