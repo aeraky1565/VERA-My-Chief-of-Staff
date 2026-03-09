@@ -4,16 +4,18 @@
 // ============================================================
 
 // ---- CONFIG ----------------------------------------------------------------
-// SHEET_ID: Paste your Life OS Google Sheet ID here after creating the sheet.
+// SHEET_ID and MORNING_NUDGE_EMAIL are loaded from Script Properties.
 // CLAUDE_API_KEY is NOT stored here — it is loaded from Script Properties.
-//   See setup instructions for how to set it safely.
+//   In Apps Script editor: Project Settings → Script Properties → Add:
+//     VERA_SHEET_ID      → your Life OS Google Sheet ID
+//     MORNING_NUDGE_EMAIL → your email address
 // ----------------------------------------------------------------------------
 const CONFIG = {
-  SHEET_ID: '1FlNnxQltktinV1qnGQJ0QZ_4s5G4EA45GI61ul92er0',       // <-- Replace after creating your sheet
+  SHEET_ID: PropertiesService.getScriptProperties().getProperty('VERA_SHEET_ID') || '',
   CALENDAR_DAYS_AHEAD: 7,
   TASK_AGE_THRESHOLD: 7,                 // Days before a task is considered neglected
   MAX_FLAGS: 8,
-  MORNING_NUDGE_EMAIL: 'aaeleraky@gmail.com',
+  MORNING_NUDGE_EMAIL: PropertiesService.getScriptProperties().getProperty('MORNING_NUDGE_EMAIL') || '',
   MORNING_NUDGE_HOUR: 7,
   NIGHTLY_RUN_HOUR: 23,
 };
@@ -26,15 +28,21 @@ const TABS = {
   SUMMARIES:    'Summaries',    // External life intelligence feed (Finance, Fitness, Kenz Box, etc.)
   TRANSACTIONS: 'Transactions',
   CONFIG:       'Config',
+  PROJECTS:     'Projects',     // Multi-step projects with Claude-generated subtasks
+  PTO:          'PTO',          // PTO planner snapshot (written nightly by writePTOSnapshot_)
+  PTO_MEMORY:   'PTO Memory',   // Stateful PTO suggestion history (declined windows blacklist)
 };
 
 // ---- Column Headers --------------------------------------------------------
-const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key'];
+const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
+const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes'];
 const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
 const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
 const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab
 const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags', 'Amount'];
 const CONFIG_HEADERS      = ['Setting', 'Value'];
+const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
+const PTO_MEMORY_HEADERS  = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -80,6 +88,9 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.METRICS,      METRIC_HEADERS);
   ensureSheet(ss, TABS.SUMMARIES,    SUMMARY_HEADERS);
   ensureSheet(ss, TABS.TRANSACTIONS, TRANSACTION_HEADERS);
+  ensureSheet(ss, TABS.PROJECTS,     PROJECT_HEADERS);
+  ensureSheet(ss, TABS.PTO,          PTO_HEADERS);
+  ensureSheet(ss, TABS.PTO_MEMORY,   PTO_MEMORY_HEADERS);
   ensureSheet(ss, TABS.CONFIG,       CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -164,8 +175,24 @@ function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
 
+    // Step -1: Escalate aged unacknowledged flags (Issue #5)
+    try {
+      escalateAgedFlags_();
+    } catch (escErr) {
+      Logger.log('escalateAgedFlags_ error (non-fatal): ' + escErr.message);
+    }
+
     // Step 0: Auto-populate Summaries tab from live data (Phase 5)
     writeSummarySnapshot();
+
+    // Step 0b: PTO snapshot + Vera calendar recommendations (Issue #19)
+    var ptoStats = null;
+    try {
+      ptoStats = writePTOSnapshot_();
+      Logger.log('PTO snapshot written — vacation used: ' + (ptoStats && ptoStats.used ? ptoStats.used.vacationDays : '?') + ' days.');
+    } catch (ptoErr) {
+      Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
+    }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();
@@ -175,7 +202,7 @@ function nightlyRun() {
     Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length);
 
     // Step 2 & 3: Package + Reason (Claude)
-    const flags = generateFlags(events, tasks, summaries);
+    const flags = generateFlags(events, tasks, summaries, ptoStats);
 
     // Step 4: Write
     if (flags && flags.length > 0) {
@@ -250,6 +277,7 @@ function writeFlags(flags) {
       '',                     // H: Snoozed Until
       'No',                   // I: Resolved
       flag.key     || '',     // J: Key (stable dedup identifier)
+      '',                     // K: Escalated (3d / 7d once aged)
     ];
     sheet.appendRow(row);
     existing.add(fp); // Prevent dupes within the same batch
@@ -285,25 +313,29 @@ function getExistingFlagFingerprints_(sheet) {
  * Creates a deduplication fingerprint for a flag.
  *
  * When a stable "key" field is present (generated by Claude, e.g. "verizon_bill_march_13"),
- * uses source + key — this survives Claude rephrasing the same issue across nights.
+ * uses the key ALONE as the fingerprint — no source prefix. This means the same key
+ * always produces the same fingerprint regardless of how the source label is worded
+ * across different nightly runs, preventing duplicates like "verizon_bill_march_13"
+ * appearing twice because the source changed from "Finance" to "Finance/Verizon".
  *
  * Falls back to source + first 8 words of flag text for legacy rows that pre-date
  * the key field, so old unresolved flags still block re-duplication.
  *
- * @param {string} source   - Flag source (e.g. "Calendar", "Finance")
+ * @param {string} source   - Flag source (e.g. "Calendar", "Finance") — only used in fallback
  * @param {string} flagText - Flag title text (used as fallback)
- * @param {string} key      - Stable snake_case key from Claude (preferred)
+ * @param {string} key      - Stable snake_case key from Claude (preferred; globally unique)
  */
 function makeFlagFingerprint_(source, flagText, key) {
-  const src = String(source || '').toLowerCase().trim();
-
-  // Preferred path: stable key provided by Claude
+  // Preferred path: stable key provided by Claude — key alone is the fingerprint.
+  // Keys are designed to be globally unique (e.g. "verizon_bill_march_13"), so no
+  // source prefix is needed and including one only causes false mismatches.
   if (key && String(key).trim() !== '') {
     const safeKey = String(key).toLowerCase().replace(/[^a-z0-9_]/g, '').trim();
-    return src + '|key:' + safeKey;
+    return 'key:' + safeKey;
   }
 
-  // Legacy fallback: first 8 words of flag text
+  // Legacy fallback: source + first 8 words of flag text (for rows with no key)
+  const src  = String(source || '').toLowerCase().trim();
   const text = String(flagText || '')
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, '')
@@ -337,6 +369,97 @@ function colorCodeFlags(sheet) {
 
     sheet.getRange(rowNum, 1, 1, FLAG_HEADERS.length).setBackground(bgColor);
   });
+}
+
+// ============================================================
+// FLAG ESCALATION — Age-based urgency bumps
+// ============================================================
+
+/**
+ * Scans unresolved, unacknowledged flags and escalates aged ones:
+ *   ≥ 3 days → bump urgency (Low→Medium, Medium→High); set Escalated = '3d'
+ *   ≥ 7 days → append stale note to Reason; set Escalated = '7d'
+ *
+ * The 'Escalated' column (K) tracks state so each threshold fires once.
+ * Snoozed flags are skipped while the snooze window is active.
+ */
+function escalateAgedFlags_() {
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.FLAGS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const numRows = sheet.getLastRow() - 1;
+  const numCols = FLAG_HEADERS.length; // includes Escalated (col K = index 10)
+  const data    = sheet.getRange(2, 1, numRows, numCols).getValues();
+
+  // Column indices (0-based within data row; 1-based for sheet.getRange)
+  const COL_DATE      = 1;  // B
+  const COL_REASON    = 4;  // E
+  const COL_URGENCY   = 5;  // F
+  const COL_ACK       = 6;  // G
+  const COL_SNOOZE    = 7;  // H
+  const COL_RESOLVED  = 8;  // I
+  const COL_ESCALATED = 10; // K
+
+  const urgencyUp = { 'Low': 'Medium', 'Medium': 'High', 'High': 'High' };
+
+  let escalated = 0;
+
+  data.forEach(function(row, i) {
+    // Skip resolved or acknowledged flags
+    if (String(row[COL_RESOLVED] || '').toLowerCase() === 'yes') return;
+    if (String(row[COL_ACK]      || '').toLowerCase() === 'yes') return;
+
+    // Skip while snoozed
+    const snoozeVal = row[COL_SNOOZE];
+    if (snoozeVal) {
+      var snoozeDate = new Date(snoozeVal);
+      if (!isNaN(snoozeDate.getTime()) && snoozeDate > today) return;
+    }
+
+    // Calculate age in days
+    const flagDate = new Date(row[COL_DATE]);
+    if (isNaN(flagDate.getTime())) return;
+    flagDate.setHours(0, 0, 0, 0);
+    const ageDays = Math.floor((today - flagDate) / (1000 * 60 * 60 * 24));
+
+    const rowNum           = i + 2; // 1-indexed sheet row
+    const currentEscalated = String(row[COL_ESCALATED] || '').trim();
+    const currentUrgency   = String(row[COL_URGENCY]   || 'Low').trim();
+    const flagText         = String(row[3] || '');
+
+    if (ageDays >= 7 && currentEscalated !== '7d') {
+      // Mark 7-day stale
+      sheet.getRange(rowNum, COL_ESCALATED + 1).setValue('7d');
+      const reason = String(row[COL_REASON] || '');
+      if (reason.indexOf('[Stale:') === -1) {
+        sheet.getRange(rowNum, COL_REASON + 1).setValue(
+          reason + (reason ? ' ' : '') + '[Stale: open for 7+ days — needs attention]'
+        );
+      }
+      Logger.log('escalateAgedFlags_: 7d stale — row ' + rowNum + ' "' + flagText + '"');
+      escalated++;
+
+    } else if (ageDays >= 3 && currentEscalated === '') {
+      // First escalation: bump urgency at 3 days
+      const newUrgency = urgencyUp[currentUrgency] || currentUrgency;
+      sheet.getRange(rowNum, COL_URGENCY   + 1).setValue(newUrgency);
+      sheet.getRange(rowNum, COL_ESCALATED + 1).setValue('3d');
+      Logger.log('escalateAgedFlags_: 3d bump ' + currentUrgency + '→' + newUrgency +
+                 ' — row ' + rowNum + ' "' + flagText + '"');
+      escalated++;
+    }
+  });
+
+  if (escalated > 0) {
+    colorCodeFlags(sheet);
+    Logger.log('escalateAgedFlags_: escalated ' + escalated + ' flag(s).');
+  } else {
+    Logger.log('escalateAgedFlags_: no flags needed escalation tonight.');
+  }
 }
 
 // ============================================================
@@ -585,6 +708,36 @@ function addMetricsTab() {
   const ss = getSpreadsheet();
   ensureSheet(ss, TABS.METRICS, METRIC_HEADERS);
   Logger.log('✅ Metrics tab created (or already exists). Run testRun() to populate it.');
+}
+
+/**
+ * Creates the Projects tab for users who ran setupVERA() before Phase 6.
+ * Run once from the Apps Script editor after pushing this update.
+ */
+function addProjectsTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.PROJECTS, PROJECT_HEADERS);
+  Logger.log('✅ Projects tab created (or already exists).');
+}
+
+/**
+ * Creates the PTO tab for users who ran setupVERA() before Issue #19.
+ * Run once from the Apps Script editor after pushing this update.
+ */
+function addPTOTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.PTO, PTO_HEADERS);
+  Logger.log('✅ PTO tab created (or already exists). Seed Config tab with pto_* rows, then run testPTO().');
+}
+
+/**
+ * Migration helper — run once from Apps Script editor to create the PTO Memory tab.
+ * Safe to re-run; ensureSheet() is idempotent.
+ */
+function addPTOMemoryTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.PTO_MEMORY, PTO_MEMORY_HEADERS);
+  Logger.log('✅ PTO Memory tab created (or already exists). Stateful PTO suggestions are now active.');
 }
 
 /**

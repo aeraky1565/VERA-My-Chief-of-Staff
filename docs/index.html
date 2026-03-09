@@ -1,0 +1,2445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VERA Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #080f1e;
+      color: #dde1f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ---- Scrollbar ---- */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0d1b3e; }
+    ::-webkit-scrollbar-thumb { background: #2a3a5e; border-radius: 3px; }
+
+    /* ---- Header ---- */
+    .header {
+      background: linear-gradient(135deg, #0d1b3e 0%, #152547 100%);
+      border-bottom: 1px solid #1e3060;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .logo-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #fff;
+    }
+    .logo-sub {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #c9a84c;
+      text-transform: uppercase;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .last-updated {
+      font-size: 11px;
+      color: #6b7fa8;
+    }
+
+    /* ---- Status bar ---- */
+    .status-bar {
+      background: #0d1b3e;
+      border-bottom: 1px solid #1e3060;
+      padding: 12px 28px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: #13244d;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 13px;
+    }
+    .stat-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+    .stat-count { font-weight: 700; color: #fff; }
+    .stat-label { color: #8a9abf; }
+
+    /* ---- Tabs ---- */
+    .tabs {
+      background: #0d1b3e;
+      border-bottom: 1px solid #1e3060;
+      padding: 0 28px;
+      display: flex;
+      gap: 4px;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: #6b7fa8;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      padding: 12px 16px;
+      text-transform: uppercase;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn:hover { color: #c9a84c; }
+    .tab-btn.active { color: #c9a84c; border-bottom-color: #c9a84c; }
+
+    /* ---- Main content ---- */
+    .main { padding: 24px 28px; max-width: 960px; }
+
+    /* ---- Toolbar ---- */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .filter-toggle {
+      background: #13244d;
+      border: 1px solid #1e3060;
+      border-radius: 20px;
+      color: #8a9abf;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 14px;
+      transition: all .15s;
+    }
+    .filter-toggle.on { background: #1e3878; border-color: #3d5fa0; color: #c9d9ff; }
+    .count-badge {
+      background: #13244d;
+      border-radius: 10px;
+      color: #6b7fa8;
+      font-size: 12px;
+      margin-left: auto;
+      padding: 3px 10px;
+    }
+
+    /* ---- Flag card ---- */
+    .flag-card {
+      border-radius: 10px;
+      border-left: 4px solid;
+      margin-bottom: 12px;
+      padding: 16px 18px;
+      transition: opacity .2s;
+    }
+    .flag-card.high   { background: #1f0e0e; border-color: #e53935; }
+    .flag-card.medium { background: #1f1608; border-color: #f9a825; }
+    .flag-card.low    { background: #0a1f10; border-color: #43a047; }
+    .flag-card.done   { opacity: 0.45; }
+
+    .flag-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .urgency-badge {
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      text-transform: uppercase;
+    }
+    .urgency-badge.high   { background: #e53935; color: #fff; }
+    .urgency-badge.medium { background: #f9a825; color: #1a1000; }
+    .urgency-badge.low    { background: #43a047; color: #fff; }
+
+    .source-badge {
+      background: #1e3060;
+      border-radius: 4px;
+      color: #8ab0d8;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+    }
+    .flag-date { color: #6b7fa8; font-size: 11px; margin-left: auto; }
+
+    .flag-title {
+      color: #e8ecf8;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    .flag-reason { color: #8a9abf; font-size: 13px; line-height: 1.5; }
+
+    .flag-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    /* ---- Buttons ---- */
+    .btn {
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-ack     { background: #1e3878; color: #c9d9ff; }
+    .btn-snooze  { background: #3d2e10; color: #ffd54f; }
+    .btn-resolve { background: #0f3020; color: #69f0ae; }
+    .btn-primary { background: #c9a84c; color: #0d1b3e; }
+    .btn-ghost   { background: #13244d; color: #8a9abf; }
+    .btn-refresh { background: #13244d; border: 1px solid #1e3060; color: #8a9abf; }
+    .btn-settings{ background: none; border: none; color: #6b7fa8; cursor: pointer; font-size: 18px; padding: 4px 8px; }
+    .btn-settings:hover { color: #c9a84c; }
+
+    /* ---- Task card ---- */
+    .task-card {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 10px;
+      padding: 14px 16px;
+      transition: opacity .3s;
+    }
+    .task-card.completing { opacity: 0.45; }
+
+    .task-check {
+      background: none;
+      border: 2px solid #2a3a5e;
+      border-radius: 50%;
+      color: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 700;
+      height: 22px;
+      width: 22px;
+      margin-top: 1px;
+      padding: 0;
+      transition: all .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .task-check:hover:not(:disabled) { border-color: #43a047; color: #43a047; }
+    .task-check.completing { background: #43a047; border-color: #43a047; color: #fff; }
+    .task-check:disabled { cursor: not-allowed; }
+    .task-age {
+      background: #13244d;
+      border-radius: 6px;
+      color: #6b7fa8;
+      font-size: 11px;
+      font-weight: 700;
+      min-width: 48px;
+      padding: 4px 8px;
+      text-align: center;
+    }
+    .task-age.overdue  { background: #3d1515; color: #ff6b6b; }
+    .task-age.neglected{ background: #3d2e10; color: #ffd54f; }
+    .task-info { flex: 1; }
+    .task-title { color: #e8ecf8; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .task-meta  { color: #6b7fa8; font-size: 12px; }
+    .task-due   { color: #ff6b6b; }
+
+    /* ---- Summaries table ---- */
+    .summaries-table {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      overflow: hidden;
+      width: 100%;
+    }
+    .summaries-table th {
+      background: #13244d;
+      color: #6b7fa8;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 10px 16px;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    .summaries-table td {
+      border-top: 1px solid #1e3060;
+      color: #dde1f0;
+      font-size: 13px;
+      padding: 10px 16px;
+    }
+    .summaries-table tr:hover td { background: #13244d; }
+    .summary-value { color: #c9a84c; font-weight: 600; }
+
+    /* ---- Settings modal ---- */
+    .modal-overlay {
+      background: rgba(0,0,0,0.75);
+      bottom: 0; left: 0; right: 0; top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      z-index: 200;
+    }
+    .modal {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 14px;
+      padding: 32px;
+      width: 480px;
+      max-width: 95vw;
+    }
+    .modal h2 { color: #fff; font-size: 18px; margin-bottom: 6px; }
+    .modal p  { color: #6b7fa8; font-size: 13px; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { color: #8a9abf; display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase; }
+    .form-input {
+      background: #13244d;
+      border: 1px solid #1e3060;
+      border-radius: 8px;
+      color: #e8ecf8;
+      font-family: monospace;
+      font-size: 13px;
+      outline: none;
+      padding: 10px 14px;
+      transition: border-color .15s;
+      width: 100%;
+    }
+    .form-input:focus { border-color: #c9a84c; }
+    .form-hint { color: #4d6080; font-size: 11px; margin-top: 4px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+    /* ---- States ---- */
+    .empty-state {
+      background: #0d1b3e;
+      border: 1px dashed #1e3060;
+      border-radius: 10px;
+      color: #4d6080;
+      font-size: 14px;
+      padding: 48px;
+      text-align: center;
+    }
+    .error-banner {
+      background: #3d1515;
+      border: 1px solid #e53935;
+      border-radius: 8px;
+      color: #ff8a80;
+      font-size: 13px;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+    }
+    .loading-text { color: #6b7fa8; font-size: 13px; padding: 48px; text-align: center; }
+
+    .snoozed-label {
+      background: #3d2e10;
+      border-radius: 4px;
+      color: #ffd54f;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+    }
+
+    /* ---- Chat panel ---- */
+    .chat-wrap {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 215px);
+      min-height: 400px;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-msg {
+      max-width: 78%;
+      padding: 11px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-msg.vera {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-bottom-left-radius: 4px;
+      color: #dde1f0;
+      align-self: flex-start;
+    }
+    .chat-msg.user {
+      background: #1e3878;
+      border: 1px solid #3d5fa0;
+      border-bottom-right-radius: 4px;
+      color: #c9d9ff;
+      align-self: flex-end;
+    }
+    .chat-msg.vera-typing {
+      color: #6b7fa8;
+      font-style: italic;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+      padding-top: 14px;
+      border-top: 1px solid #1e3060;
+    }
+    .chat-input {
+      flex: 1;
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      color: #e8ecf8;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+      outline: none;
+      padding: 10px 14px;
+      resize: none;
+      transition: border-color .15s;
+    }
+    .chat-input:focus { border-color: #c9a84c; }
+    .chat-input::placeholder { color: #3d5280; }
+    .chat-send {
+      background: #c9a84c;
+      border: none;
+      border-radius: 10px;
+      color: #0d1b3e;
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 0 18px;
+      align-self: flex-end;
+      height: 44px;
+      transition: opacity .15s;
+    }
+    .chat-send:hover { opacity: 0.85; }
+    .chat-send:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ---- Toast notification ---- */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: #0f3020;
+      border: 1px solid #43a047;
+      border-radius: 10px;
+      color: #69f0ae;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 14px 22px;
+      z-index: 300;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      animation: slideUp 0.2s ease;
+    }
+    .toast.error {
+      background: #3d1515;
+      border-color: #e53935;
+      color: #ff8a80;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---- Date input dark theme ---- */
+    input[type="date"].form-input {
+      color-scheme: dark;
+    }
+    .btn-edit {
+      background: none;
+      border: none;
+      color: #4d6080;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .btn-edit:hover { color: #c9a84c; background: #13244d; }
+
+    /* ---- PTO tab ---- */
+    .pto-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 620px) { .pto-grid-2 { grid-template-columns: 1fr; } }
+    .pto-card {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .pto-section {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .pto-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #8a9abf;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .pto-balance-num {
+      font-size: 28px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .pto-balance-sub { font-size: 12px; color: #6b7fa8; margin-bottom: 12px; }
+    .pto-bar-track {
+      height: 5px;
+      background: #1e3060;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .pto-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s;
+    }
+    .pto-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 9px 0;
+    }
+    .pto-row + .pto-row { border-top: 1px solid #13244d; }
+    .pto-pill {
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 2px 8px;
+    }
+    .pto-dot {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    /* ---- Home tab bento grid ---- */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    @media (max-width: 620px) { .bento-grid { grid-template-columns: 1fr; } }
+    .bento-card {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 20px;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s;
+    }
+    .bento-card:hover { border-color: #3d5fa0; transform: translateY(-2px); }
+    .bento-card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #8a9abf;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .bento-card-main {
+      font-size: 28px;
+      font-weight: 800;
+      color: #c9a84c;
+      margin-bottom: 4px;
+    }
+    .bento-card-sub { font-size: 12px; color: #6b7fa8; margin-bottom: 10px; }
+    .bento-card-list { display: flex; flex-direction: column; gap: 4px; }
+    .bento-item {
+      font-size: 13px;
+      color: #dde1f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+const VERA_CHAT_WELCOME = 'Hi Ahmed — ask me about your flags, tasks, or summaries, or tell me to take action on something. (Shift+Enter for a new line, Enter to send.)';
+
+// ---- Helpers ----------------------------------------------------------------
+
+function stored(key, fallback = '') {
+  return localStorage.getItem(key) || fallback;
+}
+
+function urgencyClass(u) {
+  return (u || '').toLowerCase();
+}
+
+function makeUrl(base, token, params = {}) {
+  const url = new URL(base);
+  url.searchParams.set('token', token);
+  Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
+  return url.toString();
+}
+
+async function apiGet(apiUrl, token, params) {
+  const res = await fetch(makeUrl(apiUrl, token, params));
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  return json;
+}
+
+// All write operations use GET to avoid CORS preflight from file:// origin
+async function apiAction(apiUrl, token, action, params) {
+  return apiGet(apiUrl, token, Object.assign({ action }, params));
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  return d;
+}
+
+function timeAgo(dt) {
+  if (!dt) return '';
+  const diff = Math.round((Date.now() - dt.getTime()) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  return Math.floor(diff / 3600) + 'h ago';
+}
+
+// ---- Settings modal ---------------------------------------------------------
+
+function SettingsModal({ initial, onSave, onClose }) {
+  const [url, setUrl]     = useState(initial.url);
+  const [token, setToken] = useState(initial.token);
+
+  function save() {
+    const u = url.trim();
+    const t = token.trim();
+    if (!u || !t) return;
+    localStorage.setItem('vera_url', u);
+    localStorage.setItem('vera_token', t);
+    onSave(u, t);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose && onClose()}>
+      <div className="modal">
+        <h2>⚙️ Connect to VERA API</h2>
+        <p>Enter your Apps Script Web App URL and the token from Script Properties.</p>
+
+        <div className="form-group">
+          <label className="form-label">Web App URL</label>
+          <input
+            className="form-input"
+            placeholder="https://script.google.com/macros/s/.../exec"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">VERA_WEB_TOKEN</label>
+          <input
+            className="form-input"
+            placeholder="vera-b479..."
+            type="password"
+            value={token}
+            onChange={e => setToken(e.target.value)}
+          />
+          <div className="form-hint">Set in Apps Script → Project Settings → Script Properties</div>
+        </div>
+
+        <div className="modal-actions">
+          {onClose && <button className="btn btn-ghost" onClick={onClose}>Cancel</button>}
+          <button className="btn btn-primary" onClick={save} disabled={!url.trim() || !token.trim()}>
+            Connect
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Status bar -------------------------------------------------------------
+
+function StatusBar({ status, loading }) {
+  if (!status) return null;
+  return (
+    <div className="status-bar">
+      <div className="stat-pill">
+        <div className="stat-dot" style={{ background: '#5c7cff' }} />
+        <span className="stat-count">{status.activeFlags}</span>
+        <span className="stat-label">active</span>
+      </div>
+      {status.high > 0 && (
+        <div className="stat-pill">
+          <div className="stat-dot" style={{ background: '#e53935' }} />
+          <span className="stat-count">{status.high}</span>
+          <span className="stat-label">high</span>
+        </div>
+      )}
+      {status.medium > 0 && (
+        <div className="stat-pill">
+          <div className="stat-dot" style={{ background: '#f9a825' }} />
+          <span className="stat-count">{status.medium}</span>
+          <span className="stat-label">medium</span>
+        </div>
+      )}
+      {status.low > 0 && (
+        <div className="stat-pill">
+          <div className="stat-dot" style={{ background: '#43a047' }} />
+          <span className="stat-count">{status.low}</span>
+          <span className="stat-label">low</span>
+        </div>
+      )}
+      <div className="stat-pill" style={{ marginLeft: 'auto' }}>
+        <div className="stat-dot" style={{ background: '#6b7fa8' }} />
+        <span className="stat-count">{status.totalFlags}</span>
+        <span className="stat-label">total all-time</span>
+      </div>
+      {status.lastRun && (
+        <span className="last-updated" style={{ fontSize: 11 }}>
+          Last run: {status.lastRun}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---- Flag card --------------------------------------------------------------
+
+function FlagCard({ flag, onAction, busy }) {
+  const uc = urgencyClass(flag.urgency);
+  const isDone = flag.acknowledged || flag.resolved;
+
+  return (
+    <div className={`flag-card ${uc} ${isDone ? 'done' : ''}`}>
+      <div className="flag-meta">
+        <span className={`urgency-badge ${uc}`}>{flag.urgency}</span>
+        <span className="source-badge">{flag.source}</span>
+        {flag.snoozedUntil && (
+          <span className="snoozed-label">💤 until {flag.snoozedUntil}</span>
+        )}
+        {flag.acknowledged && <span className="snoozed-label" style={{ background: '#1e3878', color: '#c9d9ff' }}>✓ ack</span>}
+        {flag.resolved     && <span className="snoozed-label" style={{ background: '#0f3020', color: '#69f0ae' }}>✓ resolved</span>}
+        <span className="flag-date">{fmtDate(flag.date)}</span>
+      </div>
+
+      <div className="flag-title">{flag.flag}</div>
+      <div className="flag-reason">{flag.reason}</div>
+
+      {!isDone && (
+        <div className="flag-actions">
+          <button
+            className="btn btn-ack"
+            disabled={busy}
+            onClick={() => onAction('acknowledge', flag.id)}
+          >
+            ✓ Acknowledge
+          </button>
+          <button
+            className="btn btn-snooze"
+            disabled={busy}
+            onClick={() => onAction('snooze', flag.id, 2)}
+          >
+            💤 Snooze 2d
+          </button>
+          <button
+            className="btn btn-resolve"
+            disabled={busy}
+            onClick={() => onAction('resolve', flag.id)}
+          >
+            ✅ Resolve
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Task form modal (add + edit) -------------------------------------------
+
+function TaskFormModal({ task, onSave, onClose, busy }) {
+  const isEdit = !!task;
+  const [taskText, setTaskText] = useState(isEdit ? task.task    : '');
+  const [dueDate,  setDueDate]  = useState(isEdit ? task.dueDate : '');
+  const [notes,    setNotes]    = useState(isEdit ? task.notes   : '');
+
+  function save() {
+    if (!taskText.trim()) return;
+    onSave({ id: task?.id, task: taskText.trim(), dueDate, notes });
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>{isEdit ? '✏️ Edit Task' : '+ New Task'}</h2>
+        <p>{isEdit ? 'Update the task details below.' : 'Add a new task to your list.'}</p>
+
+        <div className="form-group">
+          <label className="form-label">Task</label>
+          <input
+            className="form-input"
+            value={taskText}
+            onChange={e => setTaskText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="What needs to be done?"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Due Date</label>
+          <input
+            className="form-input"
+            type="date"
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Notes</label>
+          <input
+            className="form-input"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Optional notes…"
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={save}
+            disabled={busy || !taskText.trim()}
+          >
+            {isEdit ? 'Save Changes' : 'Add Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Project task form modal (add + edit) -----------------------------------
+
+function ProjectTaskModal({ mode, task, onSave, onClose, busy }) {
+  const isEdit = mode === 'edit';
+  const [taskText, setTaskText] = useState(isEdit ? (task?.task     || '') : '');
+  const [priority, setPriority] = useState(isEdit ? (task?.priority || 'Medium') : 'Medium');
+  const [dueDate,  setDueDate]  = useState(isEdit ? (task?.dueDate  || '') : '');
+  const [notes,    setNotes]    = useState(isEdit ? (task?.notes    || '') : '');
+
+  function save() {
+    if (!taskText.trim()) return;
+    onSave({ task: taskText.trim(), priority, dueDate, notes });
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>{isEdit ? '✏️ Edit Task' : '+ New Task'}</h2>
+        <p>{isEdit ? 'Update this project task.' : 'Add a task to this project.'}</p>
+
+        <div className="form-group">
+          <label className="form-label">Task</label>
+          <input
+            className="form-input"
+            value={taskText}
+            onChange={e => setTaskText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="What needs to be done?"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Priority</label>
+          <select
+            className="form-input"
+            value={priority}
+            onChange={e => setPriority(e.target.value)}
+            style={{ appearance: 'auto' }}
+          >
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Due Date</label>
+          <input
+            className="form-input"
+            type="date"
+            value={dueDate}
+            onChange={e => setDueDate(e.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Notes</label>
+          <input
+            className="form-input"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Optional notes…"
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={save}
+            disabled={busy || !taskText.trim()}
+          >
+            {isEdit ? 'Save Changes' : 'Add Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Task card --------------------------------------------------------------
+
+function TaskCard({ task, onComplete, onEdit, completing }) {
+  const ageClass = task.isOverdue ? 'overdue' : task.isNeglected ? 'neglected' : '';
+  const ageLabel = task.isOverdue
+    ? `${Math.abs(task.daysUntilDue)}d late`
+    : task.ageInDays != null
+      ? `${task.ageInDays}d old`
+      : '';
+
+  return (
+    <div className={`task-card${completing ? ' completing' : ''}`}>
+      <button
+        className={`task-check${completing ? ' completing' : ''}`}
+        disabled={completing || !task.id}
+        onClick={() => onComplete && onComplete(task.id)}
+        title="Mark as done"
+      >
+        {completing ? '✓' : ''}
+      </button>
+      <div className={`task-age ${ageClass}`}>{ageLabel}</div>
+      <div className="task-info" style={completing ? { textDecoration: 'line-through', color: '#4d6080' } : {}}>
+        <div className="task-title">{task.task}</div>
+        <div className="task-meta">
+          {task.status && <span style={{ marginRight: 12 }}>Status: {task.status}</span>}
+          {task.dueDate && (
+            <span className={task.isOverdue ? 'task-due' : ''}>
+              Due: {task.dueDate}
+            </span>
+          )}
+          {task.notes && <span style={{ marginLeft: 12, color: '#4d6080' }}>{task.notes}</span>}
+        </div>
+      </div>
+      {!completing && (
+        <button
+          className="btn-edit"
+          onClick={() => onEdit && onEdit(task)}
+          title="Edit task"
+        >
+          ✏️
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---- Summaries table --------------------------------------------------------
+
+function SummariesTab({ summaries }) {
+  if (!summaries.length) {
+    return <div className="empty-state">No summaries in the Summaries tab yet.</div>;
+  }
+  return (
+    <table className="summaries-table" cellSpacing="0">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Metric</th>
+          <th>Value</th>
+          <th>As Of</th>
+        </tr>
+      </thead>
+      <tbody>
+        {summaries.map((s, i) => (
+          <tr key={i}>
+            <td><span className="source-badge">{s.source}</span></td>
+            <td>{s.metric}</td>
+            <td className="summary-value">{s.value}</td>
+            <td style={{ color: '#6b7fa8' }}>{s.asOf}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+// ---- Chat panel -------------------------------------------------------------
+
+function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput }) {
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function send() {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text }]);
+    setLoading(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text });
+      setMessages(prev => [...prev, { role: 'vera', text: data.reply }]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'vera', text: '⚠ Error: ' + e.message }]);
+    }
+    setLoading(false);
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  return (
+    <div className="chat-wrap">
+      <div className="chat-messages">
+        {messages.map((m, i) => (
+          <div key={i} className={`chat-msg ${m.role}`}>{m.text}</div>
+        ))}
+        {loading && <div className="chat-msg vera vera-typing">VERA is thinking…</div>}
+        <div ref={bottomRef} />
+      </div>
+      <div className="chat-input-row">
+        <textarea
+          className="chat-input"
+          rows={2}
+          placeholder="Ask VERA anything…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          disabled={loading}
+        />
+        <button
+          className="chat-send"
+          onClick={send}
+          disabled={!input.trim() || loading}
+        >
+          ↑
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Shopping tab -----------------------------------------------------------
+
+function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
+  const [activeStore, setActiveStore] = React.useState(null);
+
+  React.useEffect(() => {
+    if (stores.length > 0) {
+      setActiveStore(prev =>
+        stores.find(s => s.tabId === prev) ? prev : stores[0].tabId
+      );
+    } else {
+      setActiveStore(null);
+    }
+  }, [stores]);
+
+  if (!stores.length) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🛒</div>
+        <div>No shopping list connected.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Set <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>SHOPPING_LIST_DOC_ID</code> in Script Properties to connect your Google Doc.
+        </div>
+      </div>
+    );
+  }
+
+  const current = stores.find(s => s.tabId === activeStore);
+
+  return (
+    <div>
+      {/* Store sub-tabs */}
+      <div style={{
+        display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
+        borderBottom: '1px solid #1e3060', marginBottom: 20,
+      }}>
+        {stores.map(s => {
+          const pending  = s.items.filter(i => !i.done).length;
+          const isActive = s.tabId === activeStore;
+          return (
+            <button
+              key={s.tabId}
+              onClick={() => setActiveStore(s.tabId)}
+              style={{
+                background: isActive ? '#0d1b3e' : 'none',
+                border: 'none', cursor: 'pointer',
+                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                color: isActive ? '#c9a84c' : '#8a9abf',
+                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
+                borderRadius: '4px 4px 0 0',
+              }}
+            >
+              {s.storeName}
+              <span style={{
+                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
+                color: pending === 0 ? '#43a047' : '#c9a84c',
+                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
+              }}>
+                {pending === 0 ? '✓' : pending}
+              </span>
+            </button>
+          );
+        })}
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
+          disabled={busy}
+          onClick={() => onAddItem && onAddItem()}
+        >
+          + Add Item
+        </button>
+      </div>
+
+      {/* Item list */}
+      {current && (
+        current.items.length === 0
+          ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
+          : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {current.items.map((item, i) => (
+                <div
+                  key={i}
+                  onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '11px 16px', borderRadius: 8,
+                    background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
+                    border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
+                    cursor: busy ? 'wait' : 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    readOnly
+                    style={{ accentColor: '#43a047', width: 16, height: 16, pointerEvents: 'none', flexShrink: 0 }}
+                  />
+                  <span style={{
+                    flex: 1, fontSize: 14,
+                    color: item.done ? '#4a5a7a' : '#dde1f0',
+                    textDecoration: item.done ? 'line-through' : 'none',
+                  }}>
+                    {item.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Add shopping item modal ------------------------------------------------
+
+function AddItemModal({ stores, onSave, onClose, busy }) {
+  const [selectedStore, setSelectedStore] = React.useState(stores[0]?.tabId || '');
+  const [text, setText] = React.useState('');
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (text.trim() && selectedStore) onSave(selectedStore, text.trim()); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>+ Add Shopping Item</h2>
+        <p>Choose a store and type the item to add.</p>
+
+        <div className="form-group">
+          <label className="form-label">Store</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {stores.map(s => (
+              <button
+                key={s.tabId}
+                onClick={() => setSelectedStore(s.tabId)}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', border: 'none',
+                  background: selectedStore === s.tabId ? '#c9a84c' : '#13244d',
+                  color: selectedStore === s.tabId ? '#0d1b3e' : '#8a9abf',
+                }}
+              >
+                {s.storeName}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Item</label>
+          <input
+            className="form-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Item name…"
+            autoFocus
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={() => text.trim() && selectedStore && onSave(selectedStore, text.trim())}
+            disabled={busy || !text.trim() || !selectedStore}
+          >
+            Add Item
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Projects tab -----------------------------------------------------------
+
+const PRIORITY_COLORS = { High: '#e53935', Medium: '#f9a825', Low: '#43a047' };
+
+function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDeleteTask, busy }) {
+  const [activeProject, setActiveProject] = React.useState(null);
+
+  // Auto-select first project when list loads or changes
+  React.useEffect(() => {
+    if (projects.length > 0) {
+      setActiveProject(prev =>
+        projects.find(p => p.projectId === prev) ? prev : projects[0].projectId
+      );
+    } else {
+      setActiveProject(null);
+    }
+  }, [projects]);
+
+  if (!projects.length) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 32, marginBottom: 12 }}>📂</div>
+        <div>No projects yet — ask VERA in the Chat tab to create one.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Try: "Create a project for planning our Europe trip"
+        </div>
+      </div>
+    );
+  }
+
+  const current = projects.find(p => p.projectId === activeProject);
+
+  return (
+    <div>
+      {/* Project sub-tabs */}
+      <div style={{
+        display: 'flex', gap: 2, flexWrap: 'wrap',
+        borderBottom: '1px solid #1e3060', marginBottom: 20,
+      }}>
+        {projects.map(p => {
+          const pending  = p.tasks.filter(t => t.status !== 'Done').length;
+          const isActive = p.projectId === activeProject;
+          return (
+            <button
+              key={p.projectId}
+              onClick={() => setActiveProject(p.projectId)}
+              style={{
+                background: isActive ? '#0d1b3e' : 'none',
+                border: 'none', cursor: 'pointer',
+                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                color: isActive ? '#c9a84c' : '#8a9abf',
+                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
+                borderRadius: '4px 4px 0 0',
+              }}
+            >
+              {p.projectName}
+              <span style={{
+                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
+                color: pending === 0 ? '#43a047' : '#c9a84c',
+                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
+              }}>
+                {pending === 0 ? '✓' : pending}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected project task list */}
+      {current && (
+        <div>
+          {/* Toolbar: task count + Add Task button */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 12, color: '#6b7fa8' }}>
+              {current.tasks.filter(t => t.status !== 'Done').length} pending · {current.tasks.length} total
+            </span>
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: 12 }}
+              disabled={busy}
+              onClick={() => onAddTask && onAddTask(current)}
+            >
+              + Add Task
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {current.tasks.map((t, i) => {
+              const done = t.status === 'Done';
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', borderRadius: 8,
+                  background: done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
+                  border: '1px solid ' + (done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={done}
+                    disabled={done || busy}
+                    onChange={() => !done && onCompleteTask(t.rowNum)}
+                    style={{ accentColor: '#43a047', width: 16, height: 16, cursor: done ? 'default' : 'pointer', flexShrink: 0 }}
+                  />
+                  <span style={{
+                    flex: 1, fontSize: 14,
+                    color: done ? '#4a5a7a' : '#dde1f0',
+                    textDecoration: done ? 'line-through' : 'none',
+                  }}>
+                    {t.task}
+                  </span>
+                  {t.priority && !done && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: PRIORITY_COLORS[t.priority] || '#8a9abf',
+                    }}>
+                      {t.priority}
+                    </span>
+                  )}
+                  {t.dueDate && !done && (
+                    <span style={{ fontSize: 11, color: '#6b7fa8' }}>{t.dueDate}</span>
+                  )}
+                  {!done && (
+                    <>
+                      <button
+                        className="btn-edit"
+                        disabled={busy}
+                        onClick={() => onEditTask && onEditTask(t)}
+                        title="Edit task"
+                        style={{ fontSize: 13 }}
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        className="btn-edit"
+                        disabled={busy}
+                        onClick={() => onDeleteTask && onDeleteTask(t.rowNum)}
+                        title="Delete task"
+                        style={{ fontSize: 13, opacity: 0.7 }}
+                      >
+                        🗑️
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Progress bar */}
+          {(() => {
+            const total = current.tasks.length;
+            const done  = current.tasks.filter(t => t.status === 'Done').length;
+            const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+            return (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7fa8', marginBottom: 6 }}>
+                  <span>{done} of {total} tasks complete</span>
+                  <span>{pct}%</span>
+                </div>
+                <div style={{ height: 4, background: '#1e3060', borderRadius: 2 }}>
+                  <div style={{ height: '100%', width: pct + '%', background: pct === 100 ? '#43a047' : '#c9a84c', borderRadius: 2, transition: 'width 0.3s' }} />
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- PTO tab ----------------------------------------------------------------
+
+function PTOTab({ stats, onTriggerBuffer, busy }) {
+  if (!stats) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🌴</div>
+        <div>No PTO data loaded yet.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Make sure <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>pto_*</code> rows are seeded in the Config tab, then refresh.
+        </div>
+      </div>
+    );
+  }
+
+  const { used, planned, remaining, config: cfg, burnDown: bd, threeToOneStatus: tto,
+          bufferStatus, nextPTO, events, holidays, clearWindows, milestones, upcomingTravel, year } = stats;
+
+  const vacTotal     = (cfg.vacationDays  || 20) + (cfg.rolloverDays || 0);
+  const persTotal    = cfg.personalHours  || 48;
+  const persUsed     = used.personalHours    || 0;
+  const persPlanned  = planned.personalHours || 0;
+  const persRemain   = remaining.personalHours ?? (persTotal - persUsed - persPlanned);
+
+  function hrsLabel(hrs) {
+    if (!hrs) return '0 hrs';
+    const d = hrs / 8;
+    const days = Number.isInteger(d) ? d + ' day' + (d !== 1 ? 's' : '') : d.toFixed(1) + ' days';
+    return hrs + ' hrs (' + days + ')';
+  }
+
+  const paceColor = (bd?.paceStatus === 'ahead') ? '#43a047'
+                  : (bd?.paceStatus === 'behind') ? '#e53935' : '#f9a825';
+
+  function pctBar(val, max, color) {
+    const pct = max > 0 ? Math.min(100, (val / max) * 100) : 0;
+    return (
+      <div className="pto-bar-track">
+        <div className="pto-bar-fill" style={{ width: pct + '%', background: color }} />
+      </div>
+    );
+  }
+
+  function DotRow({ label, target, usedN, plannedN, hint }) {
+    const dots = Array.from({ length: target }).map((_, i) => {
+      let bg = 'transparent', border;
+      if (i < usedN)               { bg = '#c9a84c'; border = '#c9a84c'; }
+      else if (i < usedN + plannedN) { bg = '#3d5fa0'; border = '#3d5fa0'; }
+      else                          { border = '#2a3a5e'; }
+      return (
+        <span key={i} className="pto-dot"
+          style={{ background: bg, border: '2px solid ' + border }}
+          title={
+            i < usedN
+              ? '🟡 Used — this block has already been taken'
+              : i < usedN + plannedN
+              ? '🔵 Planned — on the calendar but not yet taken'
+              : '⬜ To schedule — book this to hit your target'
+          }
+        />
+      );
+    });
+    const done  = usedN + plannedN;
+    const left  = target - done;
+    return (
+      <div className="pto-row">
+        <span style={{ flex: 1, fontSize: 13, color: '#dde1f0', cursor: hint ? 'help' : 'default' }}
+              title={hint || undefined}>
+          {label}{hint ? ' ℹ️' : ''}
+        </span>
+        <span>{dots}</span>
+        <span style={{ fontSize: 11, color: '#6b7fa8', minWidth: 110, textAlign: 'right' }}>
+          {done}/{target}
+          {usedN > 0 ? ' (' + usedN + ' used' : ''}
+          {plannedN > 0 ? (usedN > 0 ? ', ' : ' (') + plannedN + ' planned' : ''}
+          {(usedN > 0 || plannedN > 0) ? ')' : ''}
+          {left > 0 ? ' · ' + left + ' to go' : ''}
+        </span>
+      </div>
+    );
+  }
+
+  const plannedEvents  = (events || []).filter(ev => ev.status === 'Planned');
+  const usedEvents     = (events || []).filter(ev => ev.status === 'Used');
+  const allPTOEvents   = [...plannedEvents, ...usedEvents];
+  const upcomingHols   = (holidays || []).filter(h => {
+    const d = h.date ? new Date(h.date + 'T00:00:00') : null;
+    return d && d >= new Date();
+  });
+
+  return (
+    <div>
+      {/* Section 1: Balance Cards */}
+      <div className="pto-grid-2">
+        {/* Vacation */}
+        <div className="pto-card">
+          <div className="pto-section-title">🏖️ Vacation</div>
+          <div className="pto-balance-num" style={{ color: '#c9a84c' }}>
+            {remaining.vacationDays}
+            <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8', marginLeft: 6 }}>days left</span>
+          </div>
+          <div className="pto-balance-sub">
+            {used.vacationDays} used · {planned.vacationDays} planned · {vacTotal} total allotted
+          </div>
+          {pctBar(used.vacationDays + planned.vacationDays, vacTotal, '#c9a84c')}
+        </div>
+
+        {/* Personal Time */}
+        <div className="pto-card">
+          <div className="pto-section-title">☀️ Personal Time</div>
+          <div className="pto-balance-num" style={{ color: '#5c9eff' }}>
+            {persRemain}
+            <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8', marginLeft: 6 }}>hrs left</span>
+          </div>
+          <div className="pto-balance-sub">
+            {hrsLabel(persUsed)} used · {persTotal} hrs total ({Math.floor(persTotal / 8)} days)
+          </div>
+          {pctBar(persUsed + persPlanned, persTotal, '#5c9eff')}
+        </div>
+      </div>
+
+      {/* Section 2: Burn-Down Pace */}
+      <div className="pto-section">
+        <div className="pto-section-title">📉 Burn-Down Pace ({year})</div>
+        {[
+          { label: 'Ideal used by today', val: (bd?.idealUsedToDate || 0).toFixed(1) + 'd', pct: cfg.vacationDays ? Math.min(100, ((bd?.idealUsedToDate || 0) / cfg.vacationDays) * 100) : 0, color: '#6b7fa8', badge: null },
+          { label: 'Actually used',       val: (bd?.actualUsedToDate || 0).toFixed(1) + 'd', pct: cfg.vacationDays ? Math.min(100, ((bd?.actualUsedToDate || 0) / cfg.vacationDays) * 100) : 0, color: paceColor,
+            badge: bd?.paceGap > 0 ? '✅ +' + Math.abs(bd.paceGap).toFixed(1) + 'd ahead'
+                 : bd?.paceGap < 0 ? '⚠ ' + Math.abs(bd.paceGap).toFixed(1) + 'd behind'
+                 : '✓ on track' },
+          { label: 'Projected year-end', val: (bd?.projectedYearEnd || 0).toFixed(1) + 'd', pct: cfg.vacationDays ? Math.min(100, ((bd?.projectedYearEnd || 0) / cfg.vacationDays) * 100) : 0,
+            color: (bd?.projectedUnused || 0) > 1 ? '#f9a825' : '#43a047',
+            badge: (bd?.projectedUnused || 0) > 0 ? '(' + (bd.projectedUnused).toFixed(1) + ' unused — risk)' : null },
+        ].map((row, i) => (
+          <div key={i} style={{ marginBottom: i < 2 ? 14 : 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+              <span style={{ color: '#8a9abf' }}>{row.label}</span>
+              <span style={{ color: row.color, fontWeight: 700 }}>
+                {row.val}
+                {row.badge && <span style={{ color: '#8a9abf', fontWeight: 400, marginLeft: 6 }}>{row.badge}</span>}
+              </span>
+            </div>
+            <div className="pto-bar-track">
+              <div className="pto-bar-fill" style={{ width: row.pct + '%', background: row.color }} />
+            </div>
+          </div>
+        ))}
+        {nextPTO && (
+          <div style={{ marginTop: 14, fontSize: 12, color: '#6b7fa8' }}>
+            Next PTO: <span style={{ color: '#c9a84c', fontWeight: 600 }}>{nextPTO.label}</span>
+            {' · '}{nextPTO.startDate}{' · '}{nextPTO.daysUntil} days away
+          </div>
+        )}
+      </div>
+
+      {/* Section 3: 3-2-1 Strategy */}
+      <div className="pto-section">
+        <div className="pto-section-title"
+             style={{ cursor: 'help' }}
+             title="A balanced PTO strategy: 3 short breaks + 2 full weeks + 1 long trip per year. Gold dots = used, blue = planned, empty = still to schedule.">
+          🎯 3-2-1 PTO Strategy
+        </div>
+        <DotRow
+          label="3 Long Weekends"
+          hint="1–3 workdays off. Take a Friday or Monday to turn a weekend into a 3–4 day break without burning many days."
+          target={tto?.longWeekends?.target || 3} usedN={tto?.longWeekends?.used || 0} plannedN={tto?.longWeekends?.planned || 0} />
+        <DotRow
+          label="2 Mid-Size Weeks"
+          hint="4–7 workdays off. A full week away — enough time to truly decompress and recharge."
+          target={tto?.midSizeWeeks?.target  || 2} usedN={tto?.midSizeWeeks?.used  || 0} plannedN={tto?.midSizeWeeks?.planned  || 0} />
+        <DotRow
+          label="1 Big Pivot"
+          hint="8+ workdays off. One extended trip or reset each year. Book early — these windows are hard to find later in the year."
+          target={tto?.bigPivot?.target      || 1} usedN={tto?.bigPivot?.used      || 0} plannedN={tto?.bigPivot?.planned      || 0} />
+      </div>
+
+      {/* Section 4: Buffer Status */}
+      <div className="pto-section">
+        <div className="pto-section-title"
+             style={{ cursor: 'help' }}
+             title="Buffer days are flexible personal days held in reserve for last-minute needs — an unexpected sick day, a mental health break, or a spontaneous long weekend. Click 'Trigger a Buffer Day' to log one.">
+          🛡️ Buffer Days
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            {Array.from({ length: bufferStatus?.total || 3 }).map((_, i) => (
+              <span key={i} className="pto-dot"
+                style={{ background: i < (bufferStatus?.remaining || 0) ? '#c9a84c' : '#1e3060',
+                         border: '2px solid ' + (i < (bufferStatus?.remaining || 0) ? '#c9a84c' : '#2a3a5e'),
+                         marginRight: 8 }}
+                title={
+                  i < (bufferStatus?.remaining || 0)
+                    ? '🟡 Buffer day available — use for an unexpected personal need or a spontaneous day off'
+                    : '⬫ Buffer day used'
+                }
+              />
+            ))}
+            <span style={{ fontSize: 13, color: '#8a9abf', verticalAlign: 'middle' }}>
+              {bufferStatus?.remaining ?? '?'}/{bufferStatus?.total ?? 3} available
+            </span>
+          </div>
+          {(bufferStatus?.remaining || 0) > 0 && (
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: 12, marginLeft: 'auto' }}
+              disabled={busy}
+              onClick={onTriggerBuffer}
+            >
+              🛡️ Trigger a Buffer Day
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Section 5: VERA Suggestions */}
+      {(clearWindows || []).length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">💡 VERA-Suggested PTO Windows</div>
+          {(clearWindows || []).map((w, i) => (
+            <div key={i} className="pto-row">
+              <span style={{ fontWeight: 700, color: '#c9a84c', fontSize: 14, minWidth: 150 }}>
+                {w.startDate} – {w.endDate}
+              </span>
+              <span className="pto-pill" style={{ background: '#13244d', color: '#8a9abf' }}>
+                {w.workdays} workdays
+              </span>
+              <span style={{ fontSize: 12, color: '#43a047', marginLeft: 'auto' }}>← added to Vera calendar</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 6: Upcoming PTO Events */}
+      {allPTOEvents.length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">📅 PTO Events ({year})</div>
+          {allPTOEvents.map((ev, i) => (
+            <div key={i} className="pto-row">
+              <span className="pto-pill"
+                style={{ background: ev.status === 'Used' ? '#0f3020' : '#1e3060',
+                         color: ev.status === 'Used' ? '#69f0ae' : '#c9d9ff', minWidth: 60, textAlign: 'center' }}>
+                {ev.status === 'Used' ? '✓ Done' : 'Planned'}
+              </span>
+              <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{ev.label}</span>
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>{ev.startDate}{ev.endDate && ev.endDate !== ev.startDate ? ' – ' + ev.endDate : ''}</span>
+              <span style={{ fontSize: 12, color: '#c9a84c', fontWeight: 700 }}>
+                {ev.type === 'Vacation' ? (ev.weekdays || '?') + 'd' : (ev.hours || '?') + 'h'}
+              </span>
+              <span className="pto-pill"
+                style={{ background: ev.type === 'Vacation' ? '#1e3060' : '#3d2e10',
+                         color: ev.type === 'Vacation' ? '#8ab0d8' : '#ffd54f' }}>
+                {ev.type === 'Vacation' ? 'Vacation' : 'Personal'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 7: Shared Chaos Travel */}
+      {(upcomingTravel || []).length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">✈️ Upcoming Travel (Shared Chaos)</div>
+          {(upcomingTravel || []).map((t, i) => (
+            <div key={i} className="pto-row">
+              <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{t.label}</span>
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</span>
+              <span style={{ fontSize: 12, color: '#5c9eff' }}>{t.daysAway} days away</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 8: Milestone Countdowns */}
+      {(milestones || []).length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">📍 Upcoming Milestones</div>
+          {(milestones || []).map((m, i) => (
+            <div key={i} className="pto-row">
+              <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{m.label}</span>
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>{m.calendarName}</span>
+              <span style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700 }}>{m.daysUntil} days</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section 9: Company Holidays */}
+      {upcomingHols.length > 0 && (
+        <div className="pto-section">
+          <div className="pto-section-title">🏢 Remaining Company Holidays ({year})</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {upcomingHols.map((h, i) => (
+              <span key={i} style={{ background: '#13244d', border: '1px solid #1e3060', borderRadius: 6, padding: '4px 10px', fontSize: 12 }}>
+                <span style={{ color: '#6b7fa8', marginRight: 6 }}>{h.date}</span>
+                <span style={{ color: '#dde1f0' }}>{h.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Home tab ---------------------------------------------------------------
+
+function HomeTab({ flags, tasks, projects, shopping, pto, summaries, status, onNavigate }) {
+  const activeFlags    = flags.filter(f => !f.resolved && !f.acknowledged);
+  const highFlags      = activeFlags.filter(f => f.urgency === 'High');
+  const topFlag        = highFlags[0] || activeFlags[0];
+  const pendingTasks   = tasks;
+  const overdueTasks   = tasks.filter(t => t.isOverdue);
+  const nextTask       = pendingTasks.find(t => t.dueDate) || pendingTasks[0];
+  const pendingShopping = shopping.reduce((sum, s) => sum + s.items.filter(i => !i.done).length, 0);
+  const vacRemaining   = pto?.remaining?.vacationDays;
+  const persRemaining  = pto?.remaining?.personalHours;
+  const nextPTO        = pto?.nextPTO;
+  const topMetrics     = summaries.slice(0, 5);
+
+  return (
+    <div className="bento-grid">
+      {/* Flags */}
+      <div className="bento-card" onClick={() => onNavigate('flags')}>
+        <div className="bento-card-title">🚩 Active Flags</div>
+        {activeFlags.length === 0 ? (
+          <div style={{ fontSize: 15, color: '#43a047', fontWeight: 600 }}>✓ All clear</div>
+        ) : (
+          <>
+            <div className="bento-card-main">{activeFlags.length}</div>
+            <div className="bento-card-sub">
+              {status?.high   > 0 && <span style={{ color: '#e53935', fontWeight: 700, marginRight: 8 }}>{status.high} high</span>}
+              {status?.medium > 0 && <span style={{ color: '#f9a825', fontWeight: 700, marginRight: 8 }}>{status.medium} med</span>}
+              {status?.low    > 0 && <span style={{ color: '#43a047', fontWeight: 700 }}>{status.low} low</span>}
+            </div>
+            {topFlag && <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>{topFlag.flag}</div>}
+          </>
+        )}
+      </div>
+
+      {/* Tasks */}
+      <div className="bento-card" onClick={() => onNavigate('tasks')}>
+        <div className="bento-card-title">✅ Tasks</div>
+        <div className="bento-card-main">{pendingTasks.length}</div>
+        <div className="bento-card-sub">
+          {overdueTasks.length > 0
+            ? <span style={{ color: '#ff6b6b' }}>{overdueTasks.length} overdue</span>
+            : 'open tasks'}
+        </div>
+        {nextTask && (
+          <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>Next: {nextTask.task}</div>
+        )}
+      </div>
+
+      {/* Projects */}
+      <div className="bento-card" onClick={() => onNavigate('projects')}>
+        <div className="bento-card-title">📂 Projects</div>
+        {projects.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No projects yet</div>
+        ) : (
+          <>
+            <div className="bento-card-main">{projects.length}</div>
+            <div className="bento-card-sub">active projects</div>
+            <div className="bento-card-list">
+              {projects.slice(0, 3).map(p => {
+                const pending = p.tasks.filter(t => t.status !== 'Done').length;
+                return (
+                  <div key={p.projectId} className="bento-item">
+                    {p.projectName}
+                    {pending > 0 && <span style={{ color: '#c9a84c', marginLeft: 6 }}>({pending})</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Shopping */}
+      <div className="bento-card" onClick={() => onNavigate('shopping')}>
+        <div className="bento-card-title">🛒 Shopping</div>
+        {shopping.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No lists connected</div>
+        ) : (
+          <>
+            <div className="bento-card-main">{pendingShopping}</div>
+            <div className="bento-card-sub">items to get</div>
+            <div className="bento-card-list">
+              {shopping.map(s => {
+                const n = s.items.filter(i => !i.done).length;
+                return (
+                  <div key={s.tabId} className="bento-item">
+                    {s.storeName}
+                    <span style={{ color: n === 0 ? '#43a047' : '#c9a84c', marginLeft: 6 }}>{n === 0 ? '✓' : n}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* PTO */}
+      <div className="bento-card" onClick={() => onNavigate('pto')}>
+        <div className="bento-card-title">🌴 PTO</div>
+        {pto == null ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Click to load PTO data</div>
+        ) : (
+          <>
+            <div className="bento-card-main" style={{ fontSize: 24 }}>
+              {vacRemaining} <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8' }}>vacation days</span>
+            </div>
+            {persRemaining != null && (
+              <div className="bento-card-sub">{persRemaining} personal hrs remaining</div>
+            )}
+            {nextPTO && (
+              <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>
+                Next: {nextPTO.label} · {nextPTO.daysUntil}d away
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Key Metrics */}
+      <div className="bento-card" onClick={() => onNavigate('summaries')}>
+        <div className="bento-card-title">📊 Key Metrics</div>
+        {topMetrics.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No summaries loaded yet</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {topMetrics.map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#8a9abf', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.metric}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#c9a84c', flexShrink: 0 }}>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- App --------------------------------------------------------------------
+
+function App() {
+  const [apiUrl,   setApiUrl]   = useState(() => stored('vera_url'));
+  const [apiToken, setApiToken] = useState(() => stored('vera_token'));
+  const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
+  const [activeTab,    setActiveTab]    = useState('home');
+  const [filterActive, setFilterActive] = useState(true);
+  const [loading,  setLoading]  = useState(false);
+  const [tabLoading, setTabLoading] = useState({});
+  const [busy,     setBusy]     = useState(false);
+  const [error,    setError]    = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [status,     setStatus]     = useState(null);
+  const [flags,      setFlags]      = useState([]);
+  const [tasks,      setTasks]      = useState([]);
+  const [summaries,  setSummaries]  = useState([]);
+  const [projects,   setProjects]   = useState([]);
+  const [shopping,   setShopping]   = useState([]);
+  const [pto,        setPTO]        = useState(null);
+  const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
+  const [chatInput,    setChatInput]    = useState('');
+  const [addItemModal, setAddItemModal] = useState(false);
+  const [toast,         setToast]         = useState(null);
+  const [completingIds, setCompletingIds] = useState({});
+  const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
+  const [projectTaskModal, setProjectTaskModal] = useState(null); // null | { mode:'add', project } | { mode:'edit', task }
+  const toastTimer = useRef(null);
+
+  const loadAll = useCallback(async (url, token, activeOnly) => {
+    if (!url || !token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [s, f, t, sm] = await Promise.all([
+        apiGet(url, token, { action: 'status' }),
+        apiGet(url, token, { action: 'flags', filter: activeOnly ? 'active' : '' }),
+        apiGet(url, token, { action: 'tasks' }),
+        apiGet(url, token, { action: 'summaries' }),
+      ]);
+      setStatus(s);
+      // Sort flags: High first, then Medium, then Low
+      const order = { High: 0, Medium: 1, Low: 2 };
+      const sorted = (f.flags || []).sort((a, b) =>
+        (order[a.urgency] ?? 3) - (order[b.urgency] ?? 3)
+      );
+      setFlags(sorted);
+      setTasks(t.tasks || []);
+      setSummaries(sm.summaries || []);
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  }, []);
+
+  // Load on mount and when filter changes
+  useEffect(() => {
+    if (apiUrl && apiToken) loadAll(apiUrl, apiToken, filterActive);
+  }, [apiUrl, apiToken, filterActive, loadAll]);
+
+  // Pre-load lazy tab data so the Home tab has something to show
+  useEffect(() => {
+    if (apiUrl && apiToken) {
+      loadProjects(apiUrl, apiToken);
+      loadShopping(apiUrl, apiToken);
+      loadPTO(apiUrl, apiToken);
+    }
+  }, [apiUrl, apiToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function showToast(msg, isError) {
+    setToast({ msg, isError: !!isError });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  }
+
+  async function handleAction(action, id, days) {
+    setBusy(true);
+    setError(null);
+
+    // Optimistic UI update — show result immediately so the user
+    // sees the badge change before loadAll re-filters the list
+    setFlags(prev => prev.map(f => {
+      if (f.id !== id) return f;
+      if (action === 'acknowledge') return { ...f, acknowledged: true };
+      if (action === 'resolve')     return { ...f, resolved: true };
+      if (action === 'snooze')      return { ...f, snoozedUntil: 'soon' };
+      return f;
+    }));
+
+    try {
+      const params = { id };
+      if (days != null) params.days = days;
+      await apiAction(apiUrl, apiToken, action, params);
+
+      const labels = {
+        acknowledge: '✓ Flag acknowledged',
+        resolve:     '✓ Flag resolved',
+        snooze:      '💤 Flag snoozed for ' + (days || 2) + 'd',
+      };
+      showToast(labels[action] || '✓ Done');
+
+      // Short delay lets the user see the state change badge before
+      // loadAll re-fetches and filters the flag out of the active view
+      setTimeout(() => loadAll(apiUrl, apiToken, filterActive), 1500);
+    } catch (err) {
+      setError('Action failed: ' + err.message);
+      // Revert optimistic update by re-fetching real state
+      await loadAll(apiUrl, apiToken, filterActive);
+    }
+    setBusy(false);
+  }
+
+  async function handleComplete(id) {
+    if (!id) return;
+    setCompletingIds(prev => ({ ...prev, [id]: true }));
+    try {
+      await apiAction(apiUrl, apiToken, 'complete_task', { id });
+      showToast('✓ Task marked done');
+      setTimeout(() => loadAll(apiUrl, apiToken, filterActive), 1500);
+    } catch (err) {
+      setError('Could not complete task: ' + err.message);
+      setCompletingIds(prev => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  }
+
+  async function loadProjects(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, projects: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'projects' });
+      setProjects(data.projects || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, projects: false }));
+  }
+
+  async function loadShopping(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, shopping: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'shopping' });
+      setShopping(data.stores || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, shopping: false }));
+  }
+
+  async function loadPTO(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, pto: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'pto' });
+      setPTO(data.stats || null);
+    } catch (err) {
+      setError('PTO load failed: ' + err.message);
+    }
+    setTabLoading(prev => ({ ...prev, pto: false }));
+  }
+
+  async function handleTriggerBuffer() {
+    if (!window.confirm('Use one buffer day? This will decrement your buffer count.')) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'pto_trigger_buffer' });
+      showToast('🛡️ Buffer day triggered — ' + data.remaining + ' remaining');
+      // Refresh PTO stats so the dot count updates
+      await loadPTO(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not trigger buffer day: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleToggleShopping(tabId, itemIndex, currentlyDone) {
+    // Optimistic update
+    setShopping(prev => prev.map(store =>
+      store.tabId !== tabId ? store : {
+        ...store,
+        items: store.items.map(item =>
+          item.index !== itemIndex ? item : { ...item, done: !currentlyDone }
+        ),
+      }
+    ));
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_toggle', { tabId, index: itemIndex });
+    } catch (err) {
+      setError('Could not update item: ' + err.message);
+      await loadShopping(apiUrl, apiToken); // revert to real state
+    }
+  }
+
+  async function handleAddShoppingItem(tabId, text) {
+    setBusy(true);
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_add', { tabId, text });
+      showToast('✓ Item added');
+      setAddItemModal(false);
+      await loadShopping(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add item: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleSaveTask({ id, task, dueDate, notes }) {
+    setBusy(true);
+    try {
+      if (id) {
+        await apiAction(apiUrl, apiToken, 'update_task', { id, task, dueDate: dueDate || '', notes: notes || '' });
+        showToast('✓ Task updated');
+      } else {
+        await apiAction(apiUrl, apiToken, 'add_task', { task, dueDate: dueDate || '', notes: notes || '' });
+        showToast('✓ Task added');
+      }
+      setTaskModal(null);
+      await loadAll(apiUrl, apiToken, filterActive);
+    } catch (err) {
+      setError('Could not save task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleCompleteProjectTask(rowNum) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'complete_project_task', row: rowNum });
+      showToast('✓ Task marked done');
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not complete task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleSaveProjectTask({ task, priority, dueDate, notes }) {
+    setBusy(true);
+    try {
+      if (projectTaskModal.mode === 'edit') {
+        await apiGet(apiUrl, apiToken, {
+          action: 'update_project_task',
+          row: projectTaskModal.task.rowNum,
+          task, priority, dueDate: dueDate || '', notes: notes || '',
+        });
+        showToast('✓ Task updated');
+      } else {
+        await apiGet(apiUrl, apiToken, {
+          action: 'add_project_task',
+          projectId: projectTaskModal.project.projectId,
+          task, priority, dueDate: dueDate || '', notes: notes || '',
+        });
+        showToast('✓ Task added');
+      }
+      setProjectTaskModal(null);
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not save task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteProjectTask(rowNum) {
+    if (!window.confirm('Delete this task? This cannot be undone.')) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_project_task', row: rowNum });
+      showToast('✓ Task deleted');
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not delete task: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  function handleConnect(url, token) {
+    setApiUrl(url);
+    setApiToken(token);
+    setShowSettings(false);
+    loadAll(url, token, filterActive);
+    loadProjects(url, token);
+    loadShopping(url, token);
+    loadPTO(url, token);
+  }
+
+  // ---- Render ----
+
+  const isConfigured = apiUrl && apiToken;
+
+  return (
+    <>
+      {/* Header */}
+      <div className="header">
+        <div className="logo">
+          <span className="logo-name">VERA</span>
+          <span className="logo-sub">Chief of Staff</span>
+        </div>
+        <div className="header-actions">
+          {lastUpdated && (
+            <span className="last-updated">Updated {timeAgo(lastUpdated)}</span>
+          )}
+          {isConfigured && (
+            <button
+              className="btn btn-refresh"
+              style={{ fontSize: 12, padding: '5px 14px' }}
+              disabled={loading}
+              onClick={() => loadAll(apiUrl, apiToken, filterActive)}
+            >
+              {loading ? '⟳ Loading…' : '⟳ Refresh'}
+            </button>
+          )}
+          <button className="btn-settings" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
+        </div>
+      </div>
+
+      {/* Task add/edit modal */}
+      {taskModal && (
+        <TaskFormModal
+          task={taskModal.task || null}
+          onSave={handleSaveTask}
+          onClose={() => setTaskModal(null)}
+          busy={busy}
+        />
+      )}
+
+      {/* Project task add/edit modal */}
+      {projectTaskModal && (
+        <ProjectTaskModal
+          mode={projectTaskModal.mode}
+          task={projectTaskModal.task || null}
+          onSave={handleSaveProjectTask}
+          onClose={() => setProjectTaskModal(null)}
+          busy={busy}
+        />
+      )}
+
+      {/* Add shopping item modal */}
+      {addItemModal && shopping.length > 0 && (
+        <AddItemModal
+          stores={shopping}
+          onSave={handleAddShoppingItem}
+          onClose={() => setAddItemModal(false)}
+          busy={busy}
+        />
+      )}
+
+      {/* Settings modal */}
+      {showSettings && (
+        <SettingsModal
+          initial={{ url: apiUrl, token: apiToken }}
+          onSave={handleConnect}
+          onClose={isConfigured ? () => setShowSettings(false) : null}
+        />
+      )}
+
+      {/* Not connected yet */}
+      {!isConfigured && !showSettings && (
+        <div className="main">
+          <div className="empty-state">
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🔌</div>
+            <div style={{ fontSize: 16, color: '#dde1f0', marginBottom: 8 }}>Not connected</div>
+            <div style={{ marginBottom: 20 }}>Click the ⚙ icon to add your API URL and token</div>
+          </div>
+        </div>
+      )}
+
+      {/* Connected UI */}
+      {isConfigured && (
+        <>
+          <StatusBar status={status} loading={loading} />
+
+          <div className="tabs">
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'summaries'].map(tab => (
+              <button
+                key={tab}
+                className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab === 'projects') loadProjects(apiUrl, apiToken);
+                  if (tab === 'shopping') loadShopping(apiUrl, apiToken);
+                  if (tab === 'pto')      loadPTO(apiUrl, apiToken);
+                }}
+              >
+                {tab === 'home'     ? `🏠 Home` : ''}
+                {tab === 'chat'     ? `💬 Chat` : ''}
+                {tab === 'flags'    ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
+                {tab === 'tasks'    ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
+                {tab === 'projects' ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'shopping' ? `🛒 Shopping` : ''}
+                {tab === 'pto'      ? `🌴 PTO Planner` : ''}
+                {tab === 'summaries'? `📊 Summaries` : ''}
+              </button>
+            ))}
+          </div>
+
+          <div className="main">
+            {error && <div className="error-banner">⚠️ {error}</div>}
+
+            {/* Flags tab */}
+            {activeTab === 'flags' && (
+              <>
+                <div className="toolbar">
+                  <button
+                    className={`filter-toggle ${filterActive ? 'on' : ''}`}
+                    onClick={() => setFilterActive(v => !v)}
+                  >
+                    {filterActive ? '● Active only' : '○ All flags'}
+                  </button>
+                  <span className="count-badge">{flags.length} shown</span>
+                </div>
+
+                {loading && flags.length === 0
+                  ? <div className="loading-text">Loading flags…</div>
+                  : flags.length === 0
+                    ? <div className="empty-state">
+                        <div style={{ fontSize: 32, marginBottom: 12 }}>🎉</div>
+                        <div>No {filterActive ? 'active ' : ''}flags — you're all clear!</div>
+                      </div>
+                    : flags.map(flag => (
+                        <FlagCard
+                          key={flag.id}
+                          flag={flag}
+                          onAction={handleAction}
+                          busy={busy}
+                        />
+                      ))
+                }
+              </>
+            )}
+
+            {/* Tasks tab */}
+            {activeTab === 'tasks' && (
+              <>
+                <div className="toolbar">
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 12 }}
+                    onClick={() => setTaskModal({ mode: 'add' })}
+                  >
+                    + Add Task
+                  </button>
+                  <span className="count-badge">{tasks.length} open</span>
+                </div>
+                {loading && tasks.length === 0
+                  ? <div className="loading-text">Loading tasks…</div>
+                  : tasks.length === 0
+                    ? <div className="empty-state">No open tasks found in the Tasks tab.</div>
+                    : tasks.map((task, i) => (
+                        <TaskCard
+                          key={task.id || i}
+                          task={task}
+                          onComplete={handleComplete}
+                          onEdit={t => setTaskModal({ mode: 'edit', task: t })}
+                          completing={!!completingIds[task.id]}
+                        />
+                      ))
+                }
+              </>
+            )}
+
+            {/* Summaries tab */}
+            {activeTab === 'summaries' && (
+              loading && summaries.length === 0
+                ? <div className="loading-text">Loading summaries…</div>
+                : <SummariesTab summaries={summaries} />
+            )}
+
+            {/* Home tab */}
+            {activeTab === 'home' && (
+              <HomeTab
+                flags={flags}
+                tasks={tasks}
+                projects={projects}
+                shopping={shopping}
+                pto={pto}
+                summaries={summaries}
+                status={status}
+                onNavigate={tab => {
+                  setActiveTab(tab);
+                  if (tab === 'projects') loadProjects(apiUrl, apiToken);
+                  if (tab === 'shopping') loadShopping(apiUrl, apiToken);
+                  if (tab === 'pto')      loadPTO(apiUrl, apiToken);
+                }}
+              />
+            )}
+
+            {/* Chat tab */}
+            {activeTab === 'chat' && (
+              <ChatPanel
+                apiUrl={apiUrl}
+                apiToken={apiToken}
+                messages={chatMessages}
+                setMessages={setChatMessages}
+                input={chatInput}
+                setInput={setChatInput}
+              />
+            )}
+
+            {/* Projects tab */}
+            {activeTab === 'projects' && (
+              tabLoading.projects
+                ? <div className="loading-text">Loading projects…</div>
+                : <ProjectsTab
+                    projects={projects}
+                    onCompleteTask={handleCompleteProjectTask}
+                    onAddTask={p => setProjectTaskModal({ mode: 'add', project: p })}
+                    onEditTask={t => setProjectTaskModal({ mode: 'edit', task: t })}
+                    onDeleteTask={handleDeleteProjectTask}
+                    busy={busy}
+                  />
+            )}
+
+            {/* Shopping tab */}
+            {activeTab === 'shopping' && (
+              tabLoading.shopping
+                ? <div className="loading-text">Loading shopping lists…</div>
+                : <ShoppingTab
+                    stores={shopping}
+                    onToggle={handleToggleShopping}
+                    onAddItem={() => setAddItemModal(true)}
+                    busy={busy}
+                  />
+            )}
+
+            {/* PTO tab */}
+            {activeTab === 'pto' && (
+              tabLoading.pto
+                ? <div className="loading-text">Loading PTO data…</div>
+                : <PTOTab
+                    stats={pto}
+                    onTriggerBuffer={handleTriggerBuffer}
+                    busy={busy}
+                  />
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`toast${toast.isError ? ' error' : ''}`}>
+          {toast.msg}
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
