@@ -41,7 +41,7 @@ function getApiKey() {
  * @param {Array} summaries - From getSummaries()
  * @returns {string} The full prompt string
  */
-function buildPrompt(events, tasks, summaries, ptoStats) {
+function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
 
@@ -123,6 +123,17 @@ function buildPrompt(events, tasks, summaries, ptoStats) {
     }).join('\n');
   }
 
+  // ---- Format: Shared Interest Ledger ------------------------------------
+  const ledgerEntries = Array.isArray(ledger) ? ledger : [];
+  let ledgerSection;
+  if (ledgerEntries.length === 0) {
+    ledgerSection = 'No interests logged yet.';
+  } else {
+    ledgerSection = ledgerEntries.slice(0, 20).map(function(i) {
+      return '- ' + i.person + ': ' + i.interest + ' [' + i.category + ', logged ' + i.date + ']';
+    }).join('\n');
+  }
+
   // ---- Assemble the Full Prompt -------------------------------------------
   const prompt =
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
@@ -161,6 +172,13 @@ function buildPrompt(events, tasks, summaries, ptoStats) {
     '- Flag if Shared Disposable Income or either person\'s Disposable Income is unexpectedly low (e.g. near zero or negative).\n' +
     '- Do NOT flag normal month-to-month variation (<20% or <$30 difference).\n\n' +
 
+    'SHARED INTEREST LEDGER RULES:\n' +
+    '- The ledger below records things Ahmed and Victoria have specifically mentioned wanting or liking.\n' +
+    '- Cross-reference it against calendar events and tasks. If a connection exists — a relevant venue, event, experience, or opportunity — generate a flag.\n' +
+    '- Example triggers: a food festival nearby when Victoria logged "Ethiopian food"; a free weekend when Ahmed logged "boutique fitness class"; a travel event when either logged a destination.\n' +
+    '- Use source "General" for interest-driven flags. Urgency is usually Low or Medium unless time-sensitive (e.g. tickets close tonight).\n' +
+    '- Do NOT flag interests that already have an open task or upcoming calendar event addressing them.\n\n' +
+
     '=== UPCOMING CALENDAR EVENTS (next ' + CONFIG.CALENDAR_DAYS_AHEAD + ' days) ===\n' +
     eventsSection + '\n\n' +
 
@@ -169,6 +187,9 @@ function buildPrompt(events, tasks, summaries, ptoStats) {
 
     '=== LIFE SUMMARIES & METRICS ===\n' +
     summariesSection + '\n\n' +
+
+    '=== SHARED INTEREST LEDGER ===\n' +
+    ledgerSection + '\n\n' +
 
     // ---- PTO Status (injected when available) ----------------------------
     (ptoStats ? '=== PTO STATUS ===\n' + ptoSummaryForClaude_(ptoStats) + '\n\n' : '') +
@@ -206,11 +227,12 @@ function buildPrompt(events, tasks, summaries, ptoStats) {
  * @param {Array}  tasks     - From getOpenTasks()
  * @param {Array}  summaries - From getSummaries()
  * @param {Object} ptoStats  - From writePTOSnapshot_() (optional, may be null)
+ * @param {Array}  ledger    - From getSharedInterestLedger_() (optional)
  * @returns {Array} Parsed and validated array of flag objects
  */
-function generateFlags(events, tasks, summaries, ptoStats) {
+function generateFlags(events, tasks, summaries, ptoStats, ledger) {
   const apiKey = getApiKey();
-  const prompt = buildPrompt(events, tasks, summaries, ptoStats);
+  const prompt = buildPrompt(events, tasks, summaries, ptoStats, ledger);
 
   const requestBody = {
     model:      CLAUDE_MODEL,

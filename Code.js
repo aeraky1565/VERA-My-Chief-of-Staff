@@ -221,14 +221,15 @@ function nightlyRun() {
     const events    = getUpcomingEvents();
     const tasks     = getOpenTasks();
     const summaries = getSummaries();
+    const ledger    = getSharedInterestLedger_();
 
-    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length);
+    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length);
 
     // Step 1b: Suggest due dates for undated tasks (writes back to sheet)
     suggestDueDates(tasks);
 
     // Step 2 & 3: Package + Reason (Claude)
-    const flags = generateFlags(events, tasks, summaries, ptoStats);
+    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger);
 
     // Step 4: Write
     if (flags && flags.length > 0) {
