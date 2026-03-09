@@ -96,6 +96,15 @@ function processTelegramUpdate_(update) {
   var hasPhoto = !!(msg && msg.photo && msg.photo.length > 0);
   if (!hasText && !hasPhoto) return; // ignore stickers, voice, etc.
 
+  // ---- Stale message filter: drop anything older than 5 minutes ----------
+  // Telegram queues undelivered messages and replays them once the bot is live.
+  // Silently discard the backlog so only fresh messages get processed.
+  var msgAgeSecs = Math.floor(Date.now() / 1000) - (msg.date || 0);
+  if (msgAgeSecs > 300) {
+    Logger.log('Telegram: ignoring stale message (' + msgAgeSecs + 's old)');
+    return;
+  }
+
   // ---- Deduplication: Telegram retries if Apps Script is slow (>5s) -------
   // Claude calls can take 10-15s, causing duplicate deliveries. Skip repeats.
   var updateId = String(update.update_id);
@@ -110,16 +119,18 @@ function processTelegramUpdate_(update) {
   var text      = hasText ? msg.text.trim() : '';
   var allowedId = getTelegramAllowedChatId_();
 
-  // ---- First-time setup: reveal the chat ID --------------------------------
+  // ---- First-time setup: only respond to /start when not configured -------
   if (!allowedId) {
-    sendTelegramMessage_(chatId,
-      'Hi! VERA here.\n\n' +
-      'To activate me:\n\n' +
-      '1. Apps Script editor → Project Settings → Script Properties\n' +
-      '2. Add: TELEGRAM_ALLOWED_CHAT_ID = ' + chatId + '\n' +
-      '3. Push + redeploy, then message me again.'
-    );
-    return;
+    if (hasText && msg.text.trim() === '/start') {
+      sendTelegramMessage_(chatId,
+        'Hi! VERA here.\n\n' +
+        'To activate me:\n\n' +
+        '1. Apps Script editor → Project Settings → Script Properties\n' +
+        '2. Add: TELEGRAM_ALLOWED_CHAT_ID = ' + chatId + '\n' +
+        '3. Push + redeploy, then message me again.'
+      );
+    }
+    return; // silently ignore everything else when not yet configured
   }
 
   // ---- Security: silently block all other senders -------------------------
