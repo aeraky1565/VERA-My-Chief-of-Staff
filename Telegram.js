@@ -236,7 +236,7 @@ function setTelegramWebhook() {
   var opts = {
     method:             'post',
     contentType:        'application/json',
-    payload:            JSON.stringify({ url: webAppUrl.trim() }),
+    payload:            JSON.stringify({ url: webAppUrl.trim(), drop_pending_updates: true }),
     muteHttpExceptions: true,
   };
 
