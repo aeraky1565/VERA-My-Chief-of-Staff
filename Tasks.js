@@ -126,6 +126,143 @@ function getOpenTasks() {
 }
 
 // ============================================================
+// SUGGEST DUE DATES — Ask Claude to fill in missing due dates
+// ============================================================
+
+/**
+ * For tasks with no due date, calls Claude to suggest one, then writes
+ * the suggestion back to the Tasks tab (Due Date column).
+ * Also prepends a "[VERA: reason]" tag to the Notes column so the user
+ * knows the date was auto-suggested and why.
+ *
+ * @param {Array} tasks - From getOpenTasks()
+ * @returns {number} Number of due dates written
+ */
+function suggestDueDates(tasks) {
+  const undated = tasks.filter(function(t) { return !t.dueDate || t.dueDate.trim() === ''; });
+  if (undated.length === 0) {
+    Logger.log('suggestDueDates: all tasks already have due dates.');
+    return 0;
+  }
+
+  Logger.log('suggestDueDates: requesting due dates for ' + undated.length + ' undated task(s).');
+
+  const tz       = Session.getScriptTimeZone();
+  const todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const todayFmt = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
+
+  // Build a compact JSON description of each undated task for the prompt
+  const taskLines = undated.map(function(t) {
+    const obj = { id: t.id, task: t.task };
+    if (t.ageInDays > 0)  obj.age_days  = t.ageInDays;
+    if (t.notes)          obj.notes     = t.notes;
+    if (t.recurring)      obj.recurring = t.recurring;
+    return JSON.stringify(obj);
+  }).join('\n');
+
+  const prompt =
+    'Today is ' + todayFmt + ' (' + todayStr + ').\n\n' +
+    'Suggest a realistic due date for each undated task below. Consider:\n' +
+    '- Task urgency and type (admin, shopping, planning, health, etc.)\n' +
+    '- How long the task has been open (age_days field)\n' +
+    '- Whether the task recurs regularly\n' +
+    'All suggested dates must be in the future (on or after ' + todayStr + ').\n\n' +
+    'Tasks:\n' + taskLines + '\n\n' +
+    'Return ONLY a raw JSON array. No markdown, no explanation. Each object:\n' +
+    '{"id":"<task id>","suggestedDueDate":"YYYY-MM-DD","reason":"brief 1-sentence rationale"}';
+
+  // ---- Call Claude ---------------------------------------------------------
+  const apiKey = getApiKey();
+  const fetchOptions = {
+    method:             'post',
+    contentType:        'application/json',
+    headers: {
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    payload: JSON.stringify({
+      model:      CLAUDE_MODEL,
+      max_tokens: 1024,
+      messages:   [{ role: 'user', content: prompt }],
+    }),
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+  if (response.getResponseCode() !== 200) {
+    Logger.log('suggestDueDates: Claude API error ' + response.getResponseCode() + ' — ' + response.getContentText().substring(0, 200));
+    return 0;
+  }
+
+  // ---- Parse response -------------------------------------------------------
+  let suggestions;
+  try {
+    const apiJson = JSON.parse(response.getContentText());
+    let raw = apiJson.content[0].text.trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    const startIdx = raw.indexOf('[');
+    const endIdx   = raw.lastIndexOf(']');
+    if (startIdx === -1 || endIdx === -1) throw new Error('No JSON array found');
+    suggestions = JSON.parse(raw.substring(startIdx, endIdx + 1));
+  } catch (e) {
+    Logger.log('suggestDueDates: failed to parse Claude response — ' + e.message);
+    return 0;
+  }
+
+  if (!Array.isArray(suggestions) || suggestions.length === 0) return 0;
+
+  // ---- Write back to sheet -------------------------------------------------
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.TASKS);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+
+  const numRows = sheet.getLastRow() - 1;
+  const data    = sheet.getRange(2, 1, numRows, TASK_HEADERS.length).getValues();
+
+  // Map task ID → sheet row number (1-indexed, accounting for header)
+  const rowMap = {};
+  data.forEach(function(row, i) {
+    const id = String(row[0] || '').trim();
+    if (id) rowMap[id] = i + 2;
+  });
+
+  const DUE_DATE_COL = 4; // Column D
+  const NOTES_COL    = 7; // Column G
+
+  let written = 0;
+  suggestions.forEach(function(s) {
+    if (!s.id || !s.suggestedDueDate) return;
+
+    // Validate date format (YYYY-MM-DD) and that it is not in the past
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s.suggestedDueDate)) return;
+    if (s.suggestedDueDate < todayStr) return;
+
+    const rowNum = rowMap[String(s.id).trim()];
+    if (!rowNum) return;
+
+    // Only write if the Due Date cell is still blank (don't overwrite manual entries)
+    const existing = String(sheet.getRange(rowNum, DUE_DATE_COL).getValue() || '').trim();
+    if (existing !== '') return;
+
+    sheet.getRange(rowNum, DUE_DATE_COL).setValue(s.suggestedDueDate);
+
+    const veraNote  = '[VERA: ' + (s.reason || 'auto-suggested due date') + ']';
+    const notesCell = sheet.getRange(rowNum, NOTES_COL);
+    const notesCur  = String(notesCell.getValue() || '').trim();
+    notesCell.setValue(notesCur ? veraNote + '  ' + notesCur : veraNote);
+
+    Logger.log('suggestDueDates: ' + s.id + ' → ' + s.suggestedDueDate + ' (' + (s.reason || '') + ')');
+    written++;
+  });
+
+  Logger.log('suggestDueDates: ' + written + ' due date(s) written to Tasks tab.');
+  return written;
+}
+
+// ============================================================
 // Helper — parse dates from sheet cells flexibly
 // ============================================================
 
