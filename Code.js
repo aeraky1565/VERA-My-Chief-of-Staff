@@ -29,9 +29,10 @@ const TABS = {
   TRANSACTIONS: 'Transactions',
   CONFIG:       'Config',
   PROJECTS:     'Projects',     // Multi-step projects with Claude-generated subtasks
-  GOALS:        'Goals',        // Yearly goals Kanban board
-  PTO:          'PTO',          // PTO planner snapshot (written nightly by writePTOSnapshot_)
-  PTO_MEMORY:   'PTO Memory',   // Stateful PTO suggestion history (declined windows blacklist)
+  GOALS:            'Goals',            // Yearly goals Kanban board
+  PTO:              'PTO',              // PTO planner snapshot (written nightly by writePTOSnapshot_)
+  PTO_MEMORY:       'PTO Memory',       // Stateful PTO suggestion history (declined windows blacklist)
+  REMINDERS_MEMORY: 'Reminders Memory', // Reminders.js cooldown log (Anticipator + Explorer)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -44,7 +45,8 @@ const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags
 const CONFIG_HEADERS      = ['Setting', 'Value'];
 const GOAL_HEADERS        = ['ID', 'Title', 'Description', 'Status', 'Category', 'Year', 'Progress', 'Notes'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
-const PTO_MEMORY_HEADERS  = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
+const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
+const REMINDERS_MEMORY_HEADERS = ['Rule Key', 'Sent At', 'Message'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -93,8 +95,9 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PROJECTS,     PROJECT_HEADERS);
   ensureSheet(ss, TABS.GOALS,        GOAL_HEADERS);
   ensureSheet(ss, TABS.PTO,          PTO_HEADERS);
-  ensureSheet(ss, TABS.PTO_MEMORY,   PTO_MEMORY_HEADERS);
-  ensureSheet(ss, TABS.CONFIG,       CONFIG_HEADERS, configDefaults);
+  ensureSheet(ss, TABS.PTO_MEMORY,       PTO_MEMORY_HEADERS);
+  ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
+  ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
 }
@@ -142,7 +145,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -163,7 +166,14 @@ function setupTriggers() {
     .inTimezone(Session.getScriptTimeZone())
     .create();
 
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am.');
+  // Hourly Anticipator — evaluates reminder rules every hour
+  ScriptApp.newTrigger('hourlyCheck')
+    .timeBased()
+    .everyHours(1)
+    .inTimezone(Session.getScriptTimeZone())
+    .create();
+
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour.');
 }
 
 // ============================================================
@@ -195,6 +205,13 @@ function nightlyRun() {
       Logger.log('PTO snapshot written — vacation used: ' + (ptoStats && ptoStats.used ? ptoStats.used.vacationDays : '?') + ' days.');
     } catch (ptoErr) {
       Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
+    }
+
+    // Step 0c: Explorer — daily AI discovery bulletin (Reminders.js)
+    try {
+      runExplorer_();
+    } catch (expErr) {
+      Logger.log('runExplorer_ error (non-fatal): ' + expErr.message);
     }
 
     // Step 1: Collect
@@ -744,6 +761,16 @@ function addPTOMemoryTab() {
   const ss = getSpreadsheet();
   ensureSheet(ss, TABS.PTO_MEMORY, PTO_MEMORY_HEADERS);
   Logger.log('✅ PTO Memory tab created (or already exists). Stateful PTO suggestions are now active.');
+}
+
+/**
+ * Creates the Reminders Memory tab for users who ran setupVERA() before Issue #26.
+ * Safe to re-run — ensureSheet() is idempotent.
+ */
+function addRemindersMemoryTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
+  Logger.log('✅ Reminders Memory tab created (or already exists). Run setupTriggers() to install the hourlyCheck trigger.');
 }
 
 /**
