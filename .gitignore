@@ -1,0 +1,5 @@
+# Claude Code worktrees (temp directories, never commit)
+.claude/worktrees/
+
+# Node / build artifacts (if any)
+node_modules/
