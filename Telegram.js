@@ -37,6 +37,10 @@ function getTelegramAllowedChatId_() {
 
 // ---- Send a Telegram message -----------------------------------------------
 
+/**
+ * Sends a message to a Telegram chat.
+ * @returns {number|null} The message_id of the sent message, or null on failure.
+ */
 function sendTelegramMessage_(chatId, text) {
   var token    = getTelegramToken_();
   var url      = TELEGRAM_API_BASE + token + '/sendMessage';
@@ -53,7 +57,31 @@ function sendTelegramMessage_(chatId, text) {
   if (resp.getResponseCode() !== 200) {
     Logger.log('sendTelegramMessage_ error (' + resp.getResponseCode() + '): ' +
                resp.getContentText().substring(0, 300));
+    return null;
   }
+  var json = JSON.parse(resp.getContentText());
+  return (json && json.result) ? json.result.message_id : null;
+}
+
+// ---- Edit an existing Telegram message -------------------------------------
+
+/**
+ * Replaces the text of a previously sent message (e.g. the "⏳ Thinking..." placeholder).
+ * @param {string|number} chatId     - The chat ID
+ * @param {number}        messageId  - The message_id returned by sendTelegramMessage_
+ * @param {string}        text       - The new text content
+ */
+function editTelegramMessage_(chatId, messageId, text) {
+  var token    = getTelegramToken_();
+  var url      = TELEGRAM_API_BASE + token + '/editMessageText';
+  var safeText = String(text).substring(0, 4000);
+
+  UrlFetchApp.fetch(url, {
+    method:             'post',
+    contentType:        'application/json',
+    payload:            JSON.stringify({ chat_id: chatId, message_id: messageId, text: safeText }),
+    muteHttpExceptions: true,
+  });
 }
 
 // ---- Handle an incoming Telegram update ------------------------------------
@@ -63,8 +91,10 @@ function sendTelegramMessage_(chatId, text) {
  * @param {Object} update - The parsed Telegram Update object
  */
 function processTelegramUpdate_(update) {
-  var msg = update.message;
-  if (!msg || !msg.text) return; // ignore non-text (photos, stickers, etc.)
+  var msg      = update.message;
+  var hasText  = !!(msg && msg.text);
+  var hasPhoto = !!(msg && msg.photo && msg.photo.length > 0);
+  if (!hasText && !hasPhoto) return; // ignore stickers, voice, etc.
 
   // ---- Deduplication: Telegram retries if Apps Script is slow (>5s) -------
   // Claude calls can take 10-15s, causing duplicate deliveries. Skip repeats.
@@ -77,7 +107,7 @@ function processTelegramUpdate_(update) {
   cache.put('TG_UPD_' + updateId, '1', 600); // 10-minute dedup window
 
   var chatId    = String(msg.chat.id);
-  var text      = msg.text.trim();
+  var text      = hasText ? msg.text.trim() : '';
   var allowedId = getTelegramAllowedChatId_();
 
   // ---- First-time setup: reveal the chat ID --------------------------------
@@ -98,6 +128,22 @@ function processTelegramUpdate_(update) {
     return;
   }
 
+  // ---- Smart Scheduler: pending confirmation (user replying to photo extraction) ----
+  if (hasText) {
+    var pendingKey = SCHEDULER_PENDING_KEY_PREFIX + chatId;
+    if (CacheService.getScriptCache().get(pendingKey)) {
+      var schedReply = handleSchedulerReply_(msg.text.trim(), chatId);
+      sendTelegramMessage_(chatId, schedReply);
+      return;
+    }
+  }
+
+  // ---- Smart Scheduler: incoming photo → extract events --------------------
+  if (hasPhoto) {
+    processSchedulerPhoto_(msg, chatId);
+    return;
+  }
+
   // ---- Built-in commands ---------------------------------------------------
   if (text === '/start' || text === '/help') {
     sendTelegramMessage_(chatId,
@@ -108,6 +154,7 @@ function processTelegramUpdate_(update) {
       '• "Resolve the Verizon flag"\n' +
       '• "What tasks are overdue?"\n' +
       '• "Mark the grocery task done"\n\n' +
+      '📷 Send a photo or screenshot with dates and I\'ll extract events and add them to your calendar.\n\n' +
       '/status — quick flag + task count\n' +
       '/clear — reset conversation history'
     );
@@ -135,49 +182,23 @@ function processTelegramUpdate_(update) {
     return;
   }
 
-  // ---- Regular message — route through VERA chat --------------------------
+  // ---- Regular message — show "Thinking..." immediately, then edit with real answer ----
+  // This avoids Telegram's webhook retry loop: we return 200 quickly from doPost
+  // (after this function returns), and the user sees instant feedback while Claude processes.
+  var thinkingId = sendTelegramMessage_(chatId, '⏳ Thinking...');
   try {
     var result = processChat_(text, chatId);
-    sendTelegramMessage_(chatId, result.reply);
+    if (thinkingId) {
+      editTelegramMessage_(chatId, thinkingId, result.reply);
+    } else {
+      sendTelegramMessage_(chatId, result.reply); // fallback if initial send failed
+    }
   } catch (e) {
     Logger.log('Telegram chat error: ' + e.message + '\n' + e.stack);
-    sendTelegramMessage_(chatId, 'Sorry, something went wrong: ' + e.message);
+    var errMsg = 'Sorry, something went wrong: ' + e.message;
+    if (thinkingId) editTelegramMessage_(chatId, thinkingId, errMsg);
+    else sendTelegramMessage_(chatId, errMsg);
   }
-}
-
-// ============================================================
-// DEFERRED PROCESSOR  (triggered ~1s after doPost returns 200)
-// ============================================================
-
-/**
- * Fires from a one-time trigger created in doPost.
- * Processes all queued Telegram updates from Script Properties.
- * This runs in its own execution with the full 6-minute timeout,
- * so Claude calls (10-15s) complete without hitting Telegram's 5s limit.
- */
-function telegramProcessDeferred_() {
-  // Self-cleanup: remove all triggers pointing to this function
-  ScriptApp.getProjectTriggers()
-    .filter(function(t) { return t.getHandlerFunction() === 'telegramProcessDeferred_'; })
-    .forEach(function(t) { ScriptApp.deleteTrigger(t); });
-
-  // Find and process all pending TG_MSG_* entries
-  var allProps = PropertiesService.getScriptProperties().getProperties();
-  var keys     = Object.keys(allProps).filter(function(k) { return k.indexOf('TG_MSG_') === 0; });
-
-  keys.forEach(function(key) {
-    var raw = allProps[key];
-    PropertiesService.getScriptProperties().deleteProperty(key); // remove before processing
-
-    var update;
-    try { update = JSON.parse(raw); } catch (e) { return; }
-
-    try {
-      processTelegramUpdate_(update);
-    } catch (e) {
-      Logger.log('telegramProcessDeferred_ error: ' + e.message + '\n' + e.stack);
-    }
-  });
 }
 
 // ============================================================
