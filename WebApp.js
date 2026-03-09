@@ -75,6 +75,7 @@ function doGet(e) {
       case 'update_task':           return jsonOut_(webUpdateTask_(e));
       case 'shopping':        return jsonOut_(webGetShopping_());
       case 'shopping_toggle': return jsonOut_(webToggleShoppingItem_(e));
+      case 'shopping_add':    return jsonOut_(webAddShoppingItem_(e));
       case 'projects':              return jsonOut_(webGetProjects_());
       case 'complete_project_task': return jsonOut_(webCompleteProjectTask_(e.parameter.row));
       case 'add_project_task':      return jsonOut_(webAddProjectTask_(e));
@@ -106,10 +107,25 @@ function doPost(e) {
   // the user sees instant feedback, then edits the message with Claude's real answer.
   // Deduplication (CacheService) inside processTelegramUpdate_ prevents retry loops.
   if (body && body.update_id !== undefined) {
+    // Return 200 OK immediately so Telegram never times out waiting for Claude.
+    // Queue the update in ScriptCache and fire a one-shot trigger to process it.
+    // Without this, the 10-20s Claude call causes Telegram to retry the delivery,
+    // creating concurrent executions that result in a 302 on the next message.
     try {
-      processTelegramUpdate_(body);
-    } catch (err) {
-      Logger.log('Telegram processing error: ' + err.message);
+      var sc  = CacheService.getScriptCache();
+      var qId = String(body.update_id);
+      sc.put('TG_Q_' + qId, JSON.stringify(body), 120);
+      var existing = sc.get('TG_Q_IDS') || '';
+      sc.put('TG_Q_IDS', existing ? existing + ',' + qId : qId, 120);
+      // One trigger at a time — delete any existing queue trigger first
+      ScriptApp.getProjectTriggers().forEach(function(t) {
+        if (t.getHandlerFunction() === 'processTelegramQueue_') ScriptApp.deleteTrigger(t);
+      });
+      ScriptApp.newTrigger('processTelegramQueue_').timeBased().after(100).create();
+    } catch (qErr) {
+      // Fallback: process synchronously if queuing/trigger creation fails
+      Logger.log('Queue fallback (sync): ' + qErr.message);
+      try { processTelegramUpdate_(body); } catch (e) { Logger.log('Sync error: ' + e.message); }
     }
     return jsonOut_({ ok: true });
   }
@@ -368,6 +384,13 @@ function webToggleShoppingItem_(e) {
   const tabId = (e.parameter && e.parameter.tabId) || '';
   const index = (e.parameter && e.parameter.index) || 0;
   return toggleShoppingItem_(tabId, index);
+}
+
+function webAddShoppingItem_(e) {
+  const tabId = ((e.parameter && e.parameter.tabId) || '').trim();
+  const text  = ((e.parameter && e.parameter.text)  || '').trim();
+  if (!tabId || !text) throw new Error('tabId and text are required.');
+  return addShoppingItem_(tabId, text);
 }
 
 // ---- Projects --------------------------------------------------------------

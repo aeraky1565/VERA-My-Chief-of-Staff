@@ -559,12 +559,54 @@
       margin-right: 5px;
       vertical-align: middle;
     }
+
+    /* ---- Home tab bento grid ---- */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    @media (max-width: 620px) { .bento-grid { grid-template-columns: 1fr; } }
+    .bento-card {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 20px;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s;
+    }
+    .bento-card:hover { border-color: #3d5fa0; transform: translateY(-2px); }
+    .bento-card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #8a9abf;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .bento-card-main {
+      font-size: 28px;
+      font-weight: 800;
+      color: #c9a84c;
+      margin-bottom: 4px;
+    }
+    .bento-card-sub { font-size: 12px; color: #6b7fa8; margin-bottom: 10px; }
+    .bento-card-list { display: flex; flex-direction: column; gap: 4px; }
+    .bento-item {
+      font-size: 13px;
+      color: #dde1f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
+
+const VERA_CHAT_WELCOME = 'Hi Ahmed — ask me about your flags, tasks, or summaries, or tell me to take action on something. (Shift+Enter for a new line, Enter to send.)';
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -996,11 +1038,8 @@ function SummariesTab({ summaries }) {
 
 // ---- Chat panel -------------------------------------------------------------
 
-function ChatPanel({ apiUrl, apiToken }) {
-  const WELCOME = 'Hi Ahmed — ask me about your flags, tasks, or summaries, or tell me to take action on something. (Shift+Enter for a new line, Enter to send.)';
-  const [messages, setMessages] = useState([{ role: 'vera', text: WELCOME }]);
-  const [input,    setInput]    = useState('');
-  const [loading,  setLoading]  = useState(false);
+function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput }) {
+  const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -1059,7 +1098,7 @@ function ChatPanel({ apiUrl, apiToken }) {
 
 // ---- Shopping tab -----------------------------------------------------------
 
-function ShoppingTab({ stores, onToggle, busy }) {
+function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
   const [activeStore, setActiveStore] = React.useState(null);
 
   React.useEffect(() => {
@@ -1090,7 +1129,7 @@ function ShoppingTab({ stores, onToggle, busy }) {
     <div>
       {/* Store sub-tabs */}
       <div style={{
-        display: 'flex', gap: 2, flexWrap: 'wrap',
+        display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
         borderBottom: '1px solid #1e3060', marginBottom: 20,
       }}>
         {stores.map(s => {
@@ -1121,6 +1160,14 @@ function ShoppingTab({ stores, onToggle, busy }) {
             </button>
           );
         })}
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
+          disabled={busy}
+          onClick={() => onAddItem && onAddItem()}
+        >
+          + Add Item
+        </button>
       </div>
 
       {/* Item list */}
@@ -1158,6 +1205,70 @@ function ShoppingTab({ stores, onToggle, busy }) {
               ))}
             </div>
       )}
+    </div>
+  );
+}
+
+// ---- Add shopping item modal ------------------------------------------------
+
+function AddItemModal({ stores, onSave, onClose, busy }) {
+  const [selectedStore, setSelectedStore] = React.useState(stores[0]?.tabId || '');
+  const [text, setText] = React.useState('');
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (text.trim() && selectedStore) onSave(selectedStore, text.trim()); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>+ Add Shopping Item</h2>
+        <p>Choose a store and type the item to add.</p>
+
+        <div className="form-group">
+          <label className="form-label">Store</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {stores.map(s => (
+              <button
+                key={s.tabId}
+                onClick={() => setSelectedStore(s.tabId)}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', border: 'none',
+                  background: selectedStore === s.tabId ? '#c9a84c' : '#13244d',
+                  color: selectedStore === s.tabId ? '#0d1b3e' : '#8a9abf',
+                }}
+              >
+                {s.storeName}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Item</label>
+          <input
+            className="form-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Item name…"
+            autoFocus
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={() => text.trim() && selectedStore && onSave(selectedStore, text.trim())}
+            disabled={busy || !text.trim() || !selectedStore}
+          >
+            Add Item
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1638,15 +1749,157 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
   );
 }
 
+// ---- Home tab ---------------------------------------------------------------
+
+function HomeTab({ flags, tasks, projects, shopping, pto, summaries, status, onNavigate }) {
+  const activeFlags    = flags.filter(f => !f.resolved && !f.acknowledged);
+  const highFlags      = activeFlags.filter(f => f.urgency === 'High');
+  const topFlag        = highFlags[0] || activeFlags[0];
+  const pendingTasks   = tasks;
+  const overdueTasks   = tasks.filter(t => t.isOverdue);
+  const nextTask       = pendingTasks.find(t => t.dueDate) || pendingTasks[0];
+  const pendingShopping = shopping.reduce((sum, s) => sum + s.items.filter(i => !i.done).length, 0);
+  const vacRemaining   = pto?.remaining?.vacationDays;
+  const persRemaining  = pto?.remaining?.personalHours;
+  const nextPTO        = pto?.nextPTO;
+  const topMetrics     = summaries.slice(0, 5);
+
+  return (
+    <div className="bento-grid">
+      {/* Flags */}
+      <div className="bento-card" onClick={() => onNavigate('flags')}>
+        <div className="bento-card-title">🚩 Active Flags</div>
+        {activeFlags.length === 0 ? (
+          <div style={{ fontSize: 15, color: '#43a047', fontWeight: 600 }}>✓ All clear</div>
+        ) : (
+          <>
+            <div className="bento-card-main">{activeFlags.length}</div>
+            <div className="bento-card-sub">
+              {status?.high   > 0 && <span style={{ color: '#e53935', fontWeight: 700, marginRight: 8 }}>{status.high} high</span>}
+              {status?.medium > 0 && <span style={{ color: '#f9a825', fontWeight: 700, marginRight: 8 }}>{status.medium} med</span>}
+              {status?.low    > 0 && <span style={{ color: '#43a047', fontWeight: 700 }}>{status.low} low</span>}
+            </div>
+            {topFlag && <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>{topFlag.flag}</div>}
+          </>
+        )}
+      </div>
+
+      {/* Tasks */}
+      <div className="bento-card" onClick={() => onNavigate('tasks')}>
+        <div className="bento-card-title">✅ Tasks</div>
+        <div className="bento-card-main">{pendingTasks.length}</div>
+        <div className="bento-card-sub">
+          {overdueTasks.length > 0
+            ? <span style={{ color: '#ff6b6b' }}>{overdueTasks.length} overdue</span>
+            : 'open tasks'}
+        </div>
+        {nextTask && (
+          <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>Next: {nextTask.task}</div>
+        )}
+      </div>
+
+      {/* Projects */}
+      <div className="bento-card" onClick={() => onNavigate('projects')}>
+        <div className="bento-card-title">📂 Projects</div>
+        {projects.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No projects yet</div>
+        ) : (
+          <>
+            <div className="bento-card-main">{projects.length}</div>
+            <div className="bento-card-sub">active projects</div>
+            <div className="bento-card-list">
+              {projects.slice(0, 3).map(p => {
+                const pending = p.tasks.filter(t => t.status !== 'Done').length;
+                return (
+                  <div key={p.projectId} className="bento-item">
+                    {p.projectName}
+                    {pending > 0 && <span style={{ color: '#c9a84c', marginLeft: 6 }}>({pending})</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Shopping */}
+      <div className="bento-card" onClick={() => onNavigate('shopping')}>
+        <div className="bento-card-title">🛒 Shopping</div>
+        {shopping.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No lists connected</div>
+        ) : (
+          <>
+            <div className="bento-card-main">{pendingShopping}</div>
+            <div className="bento-card-sub">items to get</div>
+            <div className="bento-card-list">
+              {shopping.map(s => {
+                const n = s.items.filter(i => !i.done).length;
+                return (
+                  <div key={s.tabId} className="bento-item">
+                    {s.storeName}
+                    <span style={{ color: n === 0 ? '#43a047' : '#c9a84c', marginLeft: 6 }}>{n === 0 ? '✓' : n}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* PTO */}
+      <div className="bento-card" onClick={() => onNavigate('pto')}>
+        <div className="bento-card-title">🌴 PTO</div>
+        {pto == null ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Click to load PTO data</div>
+        ) : (
+          <>
+            <div className="bento-card-main" style={{ fontSize: 24 }}>
+              {vacRemaining} <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8' }}>vacation days</span>
+            </div>
+            {persRemaining != null && (
+              <div className="bento-card-sub">{persRemaining} personal hrs remaining</div>
+            )}
+            {nextPTO && (
+              <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>
+                Next: {nextPTO.label} · {nextPTO.daysUntil}d away
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Key Metrics */}
+      <div className="bento-card" onClick={() => onNavigate('summaries')}>
+        <div className="bento-card-title">📊 Key Metrics</div>
+        {topMetrics.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No summaries loaded yet</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {topMetrics.map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#8a9abf', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.metric}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#c9a84c', flexShrink: 0 }}>{s.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 function App() {
   const [apiUrl,   setApiUrl]   = useState(() => stored('vera_url'));
   const [apiToken, setApiToken] = useState(() => stored('vera_token'));
   const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
-  const [activeTab,    setActiveTab]    = useState('flags');
+  const [activeTab,    setActiveTab]    = useState('home');
   const [filterActive, setFilterActive] = useState(true);
   const [loading,  setLoading]  = useState(false);
+  const [tabLoading, setTabLoading] = useState({});
   const [busy,     setBusy]     = useState(false);
   const [error,    setError]    = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -1657,6 +1910,9 @@ function App() {
   const [projects,   setProjects]   = useState([]);
   const [shopping,   setShopping]   = useState([]);
   const [pto,        setPTO]        = useState(null);
+  const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
+  const [chatInput,    setChatInput]    = useState('');
+  const [addItemModal, setAddItemModal] = useState(false);
   const [toast,         setToast]         = useState(null);
   const [completingIds, setCompletingIds] = useState({});
   const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
@@ -1694,6 +1950,15 @@ function App() {
   useEffect(() => {
     if (apiUrl && apiToken) loadAll(apiUrl, apiToken, filterActive);
   }, [apiUrl, apiToken, filterActive, loadAll]);
+
+  // Pre-load lazy tab data so the Home tab has something to show
+  useEffect(() => {
+    if (apiUrl && apiToken) {
+      loadProjects(apiUrl, apiToken);
+      loadShopping(apiUrl, apiToken);
+      loadPTO(apiUrl, apiToken);
+    }
+  }, [apiUrl, apiToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function showToast(msg, isError) {
     setToast({ msg, isError: !!isError });
@@ -1753,32 +2018,38 @@ function App() {
 
   async function loadProjects(url, token) {
     if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, projects: true }));
     try {
       const data = await apiGet(url, token, { action: 'projects' });
       setProjects(data.projects || []);
     } catch (err) {
       setError(err.message);
     }
+    setTabLoading(prev => ({ ...prev, projects: false }));
   }
 
   async function loadShopping(url, token) {
     if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, shopping: true }));
     try {
       const data = await apiGet(url, token, { action: 'shopping' });
       setShopping(data.stores || []);
     } catch (err) {
       setError(err.message);
     }
+    setTabLoading(prev => ({ ...prev, shopping: false }));
   }
 
   async function loadPTO(url, token) {
     if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, pto: true }));
     try {
       const data = await apiGet(url, token, { action: 'pto' });
       setPTO(data.stats || null);
     } catch (err) {
       setError('PTO load failed: ' + err.message);
     }
+    setTabLoading(prev => ({ ...prev, pto: false }));
   }
 
   async function handleTriggerBuffer() {
@@ -1811,6 +2082,19 @@ function App() {
       setError('Could not update item: ' + err.message);
       await loadShopping(apiUrl, apiToken); // revert to real state
     }
+  }
+
+  async function handleAddShoppingItem(tabId, text) {
+    setBusy(true);
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_add', { tabId, text });
+      showToast('✓ Item added');
+      setAddItemModal(false);
+      await loadShopping(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add item: ' + err.message);
+    }
+    setBusy(false);
   }
 
   async function handleSaveTask({ id, task, dueDate, notes }) {
@@ -1887,6 +2171,9 @@ function App() {
     setApiToken(token);
     setShowSettings(false);
     loadAll(url, token, filterActive);
+    loadProjects(url, token);
+    loadShopping(url, token);
+    loadPTO(url, token);
   }
 
   // ---- Render ----
@@ -1940,6 +2227,16 @@ function App() {
         />
       )}
 
+      {/* Add shopping item modal */}
+      {addItemModal && shopping.length > 0 && (
+        <AddItemModal
+          stores={shopping}
+          onSave={handleAddShoppingItem}
+          onClose={() => setAddItemModal(false)}
+          busy={busy}
+        />
+      )}
+
       {/* Settings modal */}
       {showSettings && (
         <SettingsModal
@@ -1966,7 +2263,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['flags', 'tasks', 'summaries', 'chat', 'projects', 'shopping', 'pto'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'summaries'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -1977,13 +2274,14 @@ function App() {
                   if (tab === 'pto')      loadPTO(apiUrl, apiToken);
                 }}
               >
+                {tab === 'home'     ? `🏠 Home` : ''}
+                {tab === 'chat'     ? `💬 Chat` : ''}
                 {tab === 'flags'    ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
                 {tab === 'tasks'    ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
-                {tab === 'summaries'? `📊 Summaries` : ''}
-                {tab === 'chat'     ? `💬 Chat` : ''}
                 {tab === 'projects' ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
                 {tab === 'shopping' ? `🛒 Shopping` : ''}
-                {tab === 'pto'      ? `🌴 PTO` : ''}
+                {tab === 'pto'      ? `🌴 PTO Planner` : ''}
+                {tab === 'summaries'? `📊 Summaries` : ''}
               </button>
             ))}
           </div>
@@ -2060,39 +2358,72 @@ function App() {
                 : <SummariesTab summaries={summaries} />
             )}
 
+            {/* Home tab */}
+            {activeTab === 'home' && (
+              <HomeTab
+                flags={flags}
+                tasks={tasks}
+                projects={projects}
+                shopping={shopping}
+                pto={pto}
+                summaries={summaries}
+                status={status}
+                onNavigate={tab => {
+                  setActiveTab(tab);
+                  if (tab === 'projects') loadProjects(apiUrl, apiToken);
+                  if (tab === 'shopping') loadShopping(apiUrl, apiToken);
+                  if (tab === 'pto')      loadPTO(apiUrl, apiToken);
+                }}
+              />
+            )}
+
             {/* Chat tab */}
             {activeTab === 'chat' && (
-              <ChatPanel apiUrl={apiUrl} apiToken={apiToken} />
+              <ChatPanel
+                apiUrl={apiUrl}
+                apiToken={apiToken}
+                messages={chatMessages}
+                setMessages={setChatMessages}
+                input={chatInput}
+                setInput={setChatInput}
+              />
             )}
 
             {/* Projects tab */}
             {activeTab === 'projects' && (
-              <ProjectsTab
-                projects={projects}
-                onCompleteTask={handleCompleteProjectTask}
-                onAddTask={p => setProjectTaskModal({ mode: 'add', project: p })}
-                onEditTask={t => setProjectTaskModal({ mode: 'edit', task: t })}
-                onDeleteTask={handleDeleteProjectTask}
-                busy={busy}
-              />
+              tabLoading.projects
+                ? <div className="loading-text">Loading projects…</div>
+                : <ProjectsTab
+                    projects={projects}
+                    onCompleteTask={handleCompleteProjectTask}
+                    onAddTask={p => setProjectTaskModal({ mode: 'add', project: p })}
+                    onEditTask={t => setProjectTaskModal({ mode: 'edit', task: t })}
+                    onDeleteTask={handleDeleteProjectTask}
+                    busy={busy}
+                  />
             )}
 
             {/* Shopping tab */}
             {activeTab === 'shopping' && (
-              <ShoppingTab
-                stores={shopping}
-                onToggle={handleToggleShopping}
-                busy={busy}
-              />
+              tabLoading.shopping
+                ? <div className="loading-text">Loading shopping lists…</div>
+                : <ShoppingTab
+                    stores={shopping}
+                    onToggle={handleToggleShopping}
+                    onAddItem={() => setAddItemModal(true)}
+                    busy={busy}
+                  />
             )}
 
             {/* PTO tab */}
             {activeTab === 'pto' && (
-              <PTOTab
-                stats={pto}
-                onTriggerBuffer={handleTriggerBuffer}
-                busy={busy}
-              />
+              tabLoading.pto
+                ? <div className="loading-text">Loading PTO data…</div>
+                : <PTOTab
+                    stats={pto}
+                    onTriggerBuffer={handleTriggerBuffer}
+                    busy={busy}
+                  />
             )}
           </div>
         </>
