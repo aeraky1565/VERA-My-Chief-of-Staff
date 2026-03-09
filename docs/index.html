@@ -575,6 +575,61 @@
     .goal-progress-fill { height: 100%; background: #c9a84c; border-radius: 2px; transition: width 0.3s; }
     .goal-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
+    /* ---- Interests tab ---- */
+    .interests-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+    .person-pill {
+      font-size: 12px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid #2a4580;
+      background: transparent;
+      color: #8ab4f8;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .person-pill.active { background: #1e3a6e; border-color: #8ab4f8; color: #fff; }
+    .person-pill:hover:not(.active) { border-color: #c9a84c; color: #c9a84c; }
+    .interests-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .interest-card {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.15s;
+    }
+    .interest-card:hover { border-color: #2a4580; }
+    .interest-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .interest-text { font-size: 13px; color: #e0e8f8; font-weight: 500; line-height: 1.4; flex: 1; }
+    .interest-card-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .interest-person-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .interest-person-badge.ahmed   { background: #1e3a6e; color: #8ab4f8; }
+    .interest-person-badge.victoria { background: #3a1e5e; color: #c9a8f8; }
+    .interest-cat-pill {
+      font-size: 10px;
+      background: #152547;
+      border: 1px solid #2a4580;
+      border-radius: 10px;
+      padding: 1px 7px;
+      color: #c9a84c;
+    }
+    .interest-date { font-size: 10px; color: #4d6080; margin-left: auto; }
+    .interest-notes { font-size: 11px; color: #6b7fa8; font-style: italic; }
+    .btn-archive { background: none; border: none; cursor: pointer; font-size: 14px; opacity: 0.5; padding: 2px 4px; transition: opacity 0.15s; flex-shrink: 0; }
+    .btn-archive:hover { opacity: 1; }
+
     /* ---- PTO tab ---- */
     .pto-grid-2 {
       display: grid;
@@ -2099,6 +2154,137 @@ function HomeTab({ flags, tasks, projects, shopping, pto, summaries, status, onN
   );
 }
 
+// ---- Shared Interest Ledger tab (Issue #28) ----------------------------------
+
+const INTEREST_CATEGORIES_UI = ['Food', 'Travel', 'Fitness', 'Culture', 'Hobbies', 'Learning', 'Other'];
+
+function SharedInterestTab({ interests, onDelete, onAdd, busy }) {
+  const [personFilter, setPersonFilter] = React.useState('All');
+
+  const filtered = personFilter === 'All'
+    ? interests
+    : interests.filter(i => i.person === personFilter);
+
+  return (
+    <div>
+      <div className="interests-toolbar">
+        {['All', 'Ahmed', 'Victoria'].map(p => (
+          <button
+            key={p}
+            className={`person-pill${personFilter === p ? ' active' : ''}`}
+            onClick={() => setPersonFilter(p)}
+          >
+            {p}
+          </button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={onAdd} disabled={busy}>
+          + Log Interest
+        </button>
+        <span className="count-badge">{filtered.length} {personFilter === 'All' ? 'total' : ''}</span>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>💛</div>
+          <div>No interests logged yet. Add one or ask VERA in chat!</div>
+        </div>
+      ) : (
+        <div className="interests-grid">
+          {filtered.map(interest => (
+            <div key={interest.id} className="interest-card">
+              <div className="interest-card-top">
+                <div className="interest-text">{interest.interest}</div>
+                <button
+                  className="btn-archive"
+                  title="Archive"
+                  disabled={busy}
+                  onClick={() => onDelete(interest.id)}
+                >
+                  🗑
+                </button>
+              </div>
+              <div className="interest-card-meta">
+                <span className={`interest-person-badge ${interest.person.toLowerCase()}`}>
+                  {interest.person}
+                </span>
+                {interest.category && (
+                  <span className="interest-cat-pill">{interest.category}</span>
+                )}
+                <span className="interest-date">{interest.date}</span>
+              </div>
+              {interest.notes && (
+                <div className="interest-notes">{interest.notes}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddInterestModal({ onSave, onClose, busy }) {
+  const [person,   setPerson]   = React.useState('Ahmed');
+  const [interest, setInterest] = React.useState('');
+  const [category, setCategory] = React.useState('Other');
+  const [notes,    setNotes]    = React.useState('');
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && interest.trim()) onSave({ person, interest, category, notes });
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 400 }}>
+        <h2>Log Interest</h2>
+
+        <label className="form-label">Person *</label>
+        <select className="form-input" value={person} onChange={e => setPerson(e.target.value)}>
+          <option value="Ahmed">Ahmed</option>
+          <option value="Victoria">Victoria</option>
+        </select>
+
+        <label className="form-label">Interest *</label>
+        <input
+          className="form-input"
+          value={interest}
+          onChange={e => setInterest(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="e.g. specialty coffee, visit Round Rock TX"
+          autoFocus
+        />
+
+        <label className="form-label">Category</label>
+        <select className="form-input" value={category} onChange={e => setCategory(e.target.value)}>
+          {INTEREST_CATEGORIES_UI.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <label className="form-label">Notes (optional)</label>
+        <input
+          className="form-input"
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="e.g. mentioned during grocery trip"
+        />
+
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            disabled={!interest.trim() || busy}
+            onClick={() => onSave({ person, interest, category, notes })}
+          >
+            Log Interest
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 function App() {
@@ -2118,6 +2304,7 @@ function App() {
   const [summaries,  setSummaries]  = useState([]);
   const [projects,   setProjects]   = useState([]);
   const [goals,      setGoals]      = useState([]);
+  const [interests,  setInterests]  = useState([]);
   const [shopping,   setShopping]   = useState([]);
   const [pto,        setPTO]        = useState(null);
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
@@ -2128,6 +2315,7 @@ function App() {
   const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
   const [projectTaskModal, setProjectTaskModal] = useState(null); // null | { mode:'add', project } | { mode:'edit', task }
   const [goalModal,        setGoalModal]        = useState(null); // null | { mode:'add', status? } | { mode:'edit', goal }
+  const [interestModal,    setInterestModal]    = useState(false); // true = show AddInterestModal
   const [dragGoalId,       setDragGoalId]       = useState(null);
   const [dragOverCol,      setDragOverCol]      = useState(null);
   const toastTimer = useRef(null);
@@ -2252,6 +2440,18 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, goals: false }));
+  }
+
+  async function loadInterests(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, interests: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'interests' });
+      setInterests(data.interests || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, interests: false }));
   }
 
   async function loadShopping(url, token) {
@@ -2416,6 +2616,33 @@ function App() {
     setBusy(false);
   }
 
+  async function handleSaveInterest({ person, interest, category, notes }) {
+    if (!interest.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'interests_add', person, interest, category, notes });
+      showToast('💛 Interest logged');
+      setInterestModal(false);
+      loadInterests(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not log interest: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteInterest(id) {
+    if (!window.confirm('Archive this interest?')) return;
+    // Optimistic remove
+    setInterests(prev => prev.filter(i => i.id !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'interests_delete', id });
+      showToast('✓ Interest archived');
+    } catch (err) {
+      setError('Could not archive interest: ' + err.message);
+      loadInterests(apiUrl, apiToken); // revert
+    }
+  }
+
   function handleConnect(url, token) {
     setApiUrl(url);
     setApiToken(token);
@@ -2423,6 +2650,7 @@ function App() {
     loadAll(url, token, filterActive);
     loadProjects(url, token);
     loadGoals(url, token);
+    loadInterests(url, token);
     loadShopping(url, token);
     loadPTO(url, token);
   }
@@ -2514,27 +2742,29 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'goals', 'summaries'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'goals', 'interests', 'summaries'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab);
-                  if (tab === 'projects') loadProjects(apiUrl, apiToken);
-                  if (tab === 'goals')    loadGoals(apiUrl, apiToken);
-                  if (tab === 'shopping') loadShopping(apiUrl, apiToken);
-                  if (tab === 'pto')      loadPTO(apiUrl, apiToken);
+                  if (tab === 'projects')  loadProjects(apiUrl, apiToken);
+                  if (tab === 'goals')     loadGoals(apiUrl, apiToken);
+                  if (tab === 'interests') loadInterests(apiUrl, apiToken);
+                  if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
+                  if (tab === 'pto')       loadPTO(apiUrl, apiToken);
                 }}
               >
-                {tab === 'home'     ? `🏠 Home` : ''}
-                {tab === 'chat'     ? `💬 Chat` : ''}
-                {tab === 'flags'    ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
-                {tab === 'tasks'    ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
-                {tab === 'projects' ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
-                {tab === 'goals'    ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
-                {tab === 'shopping' ? `🛒 Shopping` : ''}
-                {tab === 'pto'      ? `🌴 PTO Planner` : ''}
-                {tab === 'summaries'? `📊 Summaries` : ''}
+                {tab === 'home'      ? `🏠 Home` : ''}
+                {tab === 'chat'      ? `💬 Chat` : ''}
+                {tab === 'flags'     ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
+                {tab === 'tasks'     ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
+                {tab === 'projects'  ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'goals'     ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
+                {tab === 'interests' ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
+                {tab === 'shopping'  ? `🛒 Shopping` : ''}
+                {tab === 'pto'       ? `🌴 PTO Planner` : ''}
+                {tab === 'summaries' ? `📊 Summaries` : ''}
               </button>
             ))}
           </div>
@@ -2696,6 +2926,18 @@ function App() {
                   />
             )}
 
+            {/* Shared Interests tab */}
+            {activeTab === 'interests' && (
+              tabLoading.interests
+                ? <div className="loading-text">Loading interests…</div>
+                : <SharedInterestTab
+                    interests={interests}
+                    onDelete={handleDeleteInterest}
+                    onAdd={() => setInterestModal(true)}
+                    busy={busy}
+                  />
+            )}
+
             {/* Shopping tab */}
             {activeTab === 'shopping' && (
               tabLoading.shopping
@@ -2730,6 +2972,15 @@ function App() {
           defaultStatus={goalModal.status}
           onSave={handleSaveGoal}
           onClose={() => setGoalModal(null)}
+          busy={busy}
+        />
+      )}
+
+      {/* Add Interest modal */}
+      {interestModal && (
+        <AddInterestModal
+          onSave={handleSaveInterest}
+          onClose={() => setInterestModal(false)}
           busy={busy}
         />
       )}

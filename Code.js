@@ -33,6 +33,7 @@ const TABS = {
   PTO:              'PTO',              // PTO planner snapshot (written nightly by writePTOSnapshot_)
   PTO_MEMORY:       'PTO Memory',       // Stateful PTO suggestion history (declined windows blacklist)
   REMINDERS_MEMORY: 'Reminders Memory', // Reminders.js cooldown log (Anticipator + Explorer)
+  INTEREST_LEDGER:  'Shared Interests', // Shared Interest Ledger (Issue #28)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -46,7 +47,8 @@ const CONFIG_HEADERS      = ['Setting', 'Value'];
 const GOAL_HEADERS        = ['ID', 'Title', 'Description', 'Status', 'Category', 'Year', 'Progress', 'Notes'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
 const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
-const REMINDERS_MEMORY_HEADERS = ['Rule Key', 'Sent At', 'Message'];
+const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
+const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -97,6 +99,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PTO,          PTO_HEADERS);
   ensureSheet(ss, TABS.PTO_MEMORY,       PTO_MEMORY_HEADERS);
   ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
+  ensureSheet(ss, TABS.INTEREST_LEDGER,  INTEREST_LEDGER_HEADERS);
   ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -771,6 +774,16 @@ function addRemindersMemoryTab() {
   const ss = getSpreadsheet();
   ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
   Logger.log('✅ Reminders Memory tab created (or already exists). Run setupTriggers() to install the hourlyCheck trigger.');
+}
+
+/**
+ * Creates the Shared Interests tab for users who ran setupVERA() before Issue #28.
+ * Safe to re-run — ensureSheet() is idempotent.
+ */
+function addInterestLedgerTab() {
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.INTEREST_LEDGER, INTEREST_LEDGER_HEADERS);
+  Logger.log('✅ Shared Interests tab created (or already exists). VERA will now track Ahmed & Victoria\'s interests.');
 }
 
 /**

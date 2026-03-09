@@ -97,6 +97,7 @@ function processTelegramUpdate_(update) {
   // Telegram sends images as msg.document when shared as a file (e.g. iPhone screenshots)
   var hasDoc   = !!(msg && msg.document && msg.document.mime_type &&
                     msg.document.mime_type.indexOf('image/') === 0);
+
   if (!hasText && !hasPhoto && !hasDoc) return; // ignore stickers, voice, etc.
 
   // ---- Stale message filter: drop anything older than 5 minutes ----------
@@ -213,6 +214,35 @@ function processTelegramUpdate_(update) {
     if (thinkingId) editTelegramMessage_(chatId, thinkingId, errMsg);
     else sendTelegramMessage_(chatId, errMsg);
   }
+}
+
+// ============================================================
+// ASYNC QUEUE PROCESSOR  (called by time-based trigger)
+// ============================================================
+
+/**
+ * Processes all Telegram updates queued by doPost.
+ * Called by a one-shot time trigger ~100ms after each webhook POST,
+ * so doPost can return 200 OK immediately without waiting for Claude.
+ */
+function processTelegramQueue_() {
+  var sc     = CacheService.getScriptCache();
+  var idsStr = sc.get('TG_Q_IDS') || '';
+  if (!idsStr) return;
+  sc.remove('TG_Q_IDS');
+
+  idsStr.split(',').forEach(function(id) {
+    id = id.trim();
+    if (!id) return;
+    var json = sc.get('TG_Q_' + id);
+    if (!json) return;
+    sc.remove('TG_Q_' + id);
+    try {
+      processTelegramUpdate_(JSON.parse(json));
+    } catch (e) {
+      Logger.log('processTelegramQueue_ error for update ' + id + ': ' + e.message);
+    }
+  });
 }
 
 // ============================================================

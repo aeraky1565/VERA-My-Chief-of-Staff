@@ -85,6 +85,9 @@ function doGet(e) {
       case 'add_goal':    return jsonOut_(webAddGoal_(e));
       case 'update_goal': return jsonOut_(webUpdateGoal_(e));
       case 'delete_goal': return jsonOut_(webDeleteGoal_(e));
+      case 'interests':        return jsonOut_(webGetInterests_());
+      case 'interests_add':    return jsonOut_(webAddInterest_(e));
+      case 'interests_delete': return jsonOut_(webDeleteInterest_(e));
       case 'pto':                   return jsonOut_(webGetPTO_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
@@ -559,6 +562,31 @@ function webDeleteGoal_(e) {
   if (!id) throw new Error('Goal ID is required');
   const deleted = deleteGoal_(id);
   return { ok: deleted, id: id, action: 'deleted' };
+}
+
+// ---- Shared Interest Ledger (Issue #28) ------------------------------------
+
+function webGetInterests_() {
+  const interests = getSharedInterestLedger_();
+  return { ok: true, count: interests.length, interests: interests };
+}
+
+function webAddInterest_(e) {
+  const p        = e.parameter || {};
+  const person   = (p.person   || 'Ahmed').trim();
+  const interest = (p.interest || '').trim();
+  const category = (p.category || 'Other').trim();
+  const notes    = (p.notes    || '').trim();
+  if (!interest) throw new Error('Interest text is required.');
+  const created = createInterest_(person, interest, category, 'Manual', notes);
+  return { ok: true, interest: created };
+}
+
+function webDeleteInterest_(e) {
+  const id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('Interest ID is required.');
+  const archived = deleteInterest_(id);
+  return { ok: archived, id: id, action: 'archived' };
 }
 
 function formatDateVal_(val) {

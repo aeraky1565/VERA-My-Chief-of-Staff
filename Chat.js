@@ -44,6 +44,8 @@ function buildChatSystemPrompt_(context) {
         return '  [' + s.source + '] ' + s.metric + ': ' + s.value;
       }).join('\n');
 
+  var projectsLine = context.projectsSummary || '  (none)';
+
   return (
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
     'You are the personal chief of staff for Ahmed (and his partner Victoria).\n\n' +
@@ -53,17 +55,22 @@ function buildChatSystemPrompt_(context) {
     'ACTIVE FLAGS (' + context.flags.length + '):\n' + flagLines + '\n\n' +
     'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + '\n\n' +
     'SUMMARIES:\n' + summaryLines + '\n\n' +
+    'PROJECTS:\n  ' + projectsLine + '\n\n' +
 
     'AVAILABLE ACTIONS — include these exact lines in your response to take action:\n' +
     'ACTION:complete_task|{taskId}\n' +
     'ACTION:acknowledge_flag|{flagId}\n' +
     'ACTION:snooze_flag|{flagId}|{days}\n' +
-    'ACTION:resolve_flag|{flagId}\n\n' +
+    'ACTION:resolve_flag|{flagId}\n' +
+    'ACTION:create_project|{project name}|{task 1}~{task 2}~{task 3}\n' +
+    'ACTION:log_interest|{person}|{interest}|{category}\n\n' +
 
     'RULES:\n' +
     '- Be concise and conversational. This is a chat interface, not an email.\n' +
     '- Address Ahmed directly by name when appropriate.\n' +
     '- If taking an action, include the ACTION line anywhere in your response, then confirm in plain text what you did.\n' +
+    '- For create_project: before generating the plan, ask 2–4 targeted clarifying questions to understand scope, timeline, and constraints. Wait for the answers before emitting the ACTION line. Only skip questions if Ahmed has already provided enough context, or explicitly says "just create it" / "go ahead". Once you have the details, generate a comprehensive, exhaustive checklist — the goal is that Ahmed misses nothing. Think through every phase: planning, logistics, dependencies, admin/paperwork, communications, day-of execution, and follow-up. Explicitly include steps people commonly overlook. Aim for 20–30 tasks for complex projects. Order tasks chronologically. Assign priorities naturally (High for time-sensitive or blocking steps, Low for nice-to-haves). Separate tasks with ~ and optionally append |High or |Low to each task.\n' +
+    '- For log_interest: when Ahmed or Victoria mentions liking something, wanting to try something, or expresses interest in a place, food, activity, or experience, log it automatically with ACTION:log_interest. Use person "Ahmed" or "Victoria". Pick the best category from: Food, Travel, Fitness, Culture, Hobbies, Learning, Other. Example: "Victoria mentioned she wants to visit Wimberley" → ACTION:log_interest|Victoria|visit Wimberley TX|Travel\n' +
     '- Never fabricate data not present in the current state above.\n' +
     '- If asked about something not in the current state, say so honestly.\n'
   );
@@ -100,8 +107,9 @@ function buildChatContext_() {
 
   var tasks     = getOpenTasks();
   var summaries = readSummaryTab_(ss, TABS.SUMMARIES);
+  var projectsSummary = getProjectsSummaryForContext_();
 
-  return { flags: activeFlags, tasks: tasks, summaries: summaries };
+  return { flags: activeFlags, tasks: tasks, summaries: summaries, projectsSummary: projectsSummary };
 }
 
 // ============================================================
@@ -134,7 +142,7 @@ function callClaudeChat_(userMessage, history, systemPrompt) {
 
   var requestBody = {
     model:      CLAUDE_MODEL,
-    max_tokens: 1024,
+    max_tokens: 2048,
     system:     systemPrompt,
     messages:   messages,
   };
@@ -174,9 +182,12 @@ function callClaudeChat_(userMessage, history, systemPrompt) {
 function executeActions_(rawText) {
   var lines    = rawText.split('\n');
   var executed = [];
+  var errors   = [];
 
   lines.forEach(function(line) {
-    var m = line.match(/^ACTION:(\w+)\|(.+)$/);
+    // Strip leading whitespace/backticks Claude sometimes adds around code lines
+    var trimmed = line.replace(/^[\s`]+/, '').replace(/[`]+$/, '');
+    var m = trimmed.match(/^ACTION:(\w+)\|(.+)$/);
     if (!m) return;
 
     var type = m[1];
@@ -187,12 +198,31 @@ function executeActions_(rawText) {
       else if (type === 'acknowledge_flag') { webAcknowledge_(args[0]);                        executed.push(type); }
       else if (type === 'snooze_flag')     { webSnooze_(args[0], parseInt(args[1], 10) || 2); executed.push(type); }
       else if (type === 'resolve_flag')    { webResolve_(args[0]);                             executed.push(type); }
+      else if (type === 'create_project')  {
+        // Split on first pipe only — project name | tasks (tasks may contain |High, |Medium, |Low)
+        var firstPipe = m[2].indexOf('|');
+        var projName  = (firstPipe === -1 ? m[2] : m[2].substring(0, firstPipe)).trim() || 'Untitled Project';
+        var tasksRaw  = firstPipe === -1 ? '' : m[2].substring(firstPipe + 1).trim();
+        var taskNames = tasksRaw ? tasksRaw.split('~') : [];
+        createProject_(projName, taskNames);
+        executed.push(type);
+      }
+      else if (type === 'log_interest') {
+        var person   = (args[0] || 'Ahmed').trim();
+        var interest = (args[1] || '').trim();
+        var category = (args[2] || 'Other').trim();
+        if (interest) {
+          createInterest_(person, interest, category, 'Chat', '');
+          executed.push(type);
+        }
+      }
     } catch (e) {
       Logger.log('Action error [' + type + ']: ' + e.message);
+      errors.push(type + ': ' + e.message);
     }
   });
 
-  return executed;
+  return { executed: executed, errors: errors };
 }
 
 function stripActions_(text) {
@@ -222,12 +252,18 @@ function processChat_(userMessage, sessionId) {
   var context   = buildChatContext_();
   var sysPrompt = buildChatSystemPrompt_(context);
   var rawReply  = callClaudeChat_(userMessage.trim(), history, sysPrompt);
+  Logger.log('VERA raw reply:\n' + rawReply); // visible in Apps Script Execution Log
 
   // Execute any actions Claude embedded
-  executeActions_(rawReply);
+  var actionResult = executeActions_(rawReply);
 
   // Strip ACTION lines before returning to user
   var cleanReply = stripActions_(rawReply);
+
+  // Surface any action failures so the user knows something went wrong
+  if (actionResult.errors.length > 0) {
+    cleanReply += '\n\n⚠️ Note: some actions could not be completed — ' + actionResult.errors.join('; ') + '.';
+  }
 
   // Persist this exchange
   saveChatHistory_(sessionId, userMessage.trim(), cleanReply);

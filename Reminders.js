@@ -271,8 +271,9 @@ function runExplorer_() {
   var summaries = getSummaries();
   var interests = cfg['explorer_interests'] ||
     'specialty coffee, Egyptian culture, boutique fitness, local events, home improvement';
+  var ledger    = getSharedInterestLedger_().slice(0, 20); // top 20 active entries
 
-  var prompt    = buildExplorerPrompt_(goals, tasks, events, summaries, interests);
+  var prompt    = buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger);
   var discovery = callClaudeExplorer_(prompt);
 
   if (!discovery) {
@@ -286,9 +287,16 @@ function runExplorer_() {
 
 /**
  * Builds the Claude prompt for the Explorer mode.
- * Injects goals, tasks, calendar, summaries, and interests.
+ * Injects goals, tasks, calendar, summaries, interests, and the Shared Interest Ledger.
+ *
+ * @param {Array}  goals     - From getGoals_()
+ * @param {Array}  tasks     - From getOpenTasks()
+ * @param {Array}  events    - From getUpcomingEvents()
+ * @param {Array}  summaries - From getSummaries()
+ * @param {string} interests - Config string of general interests
+ * @param {Array}  ledger    - From getSharedInterestLedger_() (top 20 active entries)
  */
-function buildExplorerPrompt_(goals, tasks, events, summaries, interests) {
+function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger) {
   var tz    = Session.getScriptTimeZone();
   var today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
 
@@ -316,13 +324,27 @@ function buildExplorerPrompt_(goals, tasks, events, summaries, interests) {
         return '  [' + s.source + '] ' + s.metric + ': ' + s.value;
       }).join('\n');
 
+  var ledger_   = ledger || [];
+  var ledgerLines = ledger_.length === 0
+    ? '  (none logged yet)'
+    : ledger_.map(function(i) {
+        return '  - ' + i.person + ' wants/likes: ' + i.interest +
+               ' (' + i.category + ', logged ' + i.date + ')';
+      }).join('\n');
+
   return (
     'You are VERA in "discovery mode". Today is ' + today + '.\n\n' +
     'Ahmed\'s yearly goals:\n' + goalLines + '\n\n' +
     'Open tasks (top 10):\n' + taskLines + '\n\n' +
     'Upcoming calendar (next 7 days):\n' + eventLines + '\n\n' +
     'Life context (summaries):\n' + summaryLines + '\n\n' +
-    'Ahmed\'s interests: ' + interests + '\n\n' +
+    'Ahmed\'s general interests: ' + interests + '\n\n' +
+    'Shared Interest Ledger (specific things Ahmed and Victoria have mentioned wanting or liking):\n' +
+    ledgerLines + '\n\n' +
+    'When surfacing discoveries, cross-reference the Shared Interest Ledger. ' +
+    'If you find a match between a discovery and a logged interest, call it out naturally — ' +
+    'e.g. "Victoria mentioned wanting to visit Round Rock — there\'s a farmers market there this weekend." ' +
+    'Personalised connections are far more valuable than generic suggestions.\n\n' +
     'Surface 2-3 non-obvious, forward-looking observations or suggestions that:\n' +
     '- Connect dots across goals, tasks, and calendar in ways Ahmed might not immediately notice\n' +
     '- Are specific and actionable (not generic advice like "get enough sleep")\n' +
