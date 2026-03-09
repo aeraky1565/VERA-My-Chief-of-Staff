@@ -269,10 +269,12 @@ function handleSchedulerReply_(text, chatId) {
  * @param {Object} msg    Telegram message object (with .photo array)
  * @param {string} chatId Telegram chat ID
  */
-function processSchedulerPhoto_(msg, chatId) {
-  // Use the highest-resolution version (last item in the photo array)
-  var photoArray = msg.photo;
-  var fileId     = photoArray[photoArray.length - 1].file_id;
+function processSchedulerPhoto_(msg, chatId, hasPhoto) {
+  // Use the highest-resolution photo when sent as a photo; fall back to document for
+  // images shared as files (e.g. iPhone screenshots sent via "File" in Telegram).
+  var fileId = hasPhoto
+    ? msg.photo[msg.photo.length - 1].file_id
+    : msg.document.file_id;
 
   var thinkingId = sendTelegramMessage_(chatId, '📷 Analyzing image...');
 

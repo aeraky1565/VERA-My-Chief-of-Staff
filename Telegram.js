@@ -94,7 +94,10 @@ function processTelegramUpdate_(update) {
   var msg      = update.message;
   var hasText  = !!(msg && msg.text);
   var hasPhoto = !!(msg && msg.photo && msg.photo.length > 0);
-  if (!hasText && !hasPhoto) return; // ignore stickers, voice, etc.
+  // Telegram sends images as msg.document when shared as a file (e.g. iPhone screenshots)
+  var hasDoc   = !!(msg && msg.document && msg.document.mime_type &&
+                    msg.document.mime_type.indexOf('image/') === 0);
+  if (!hasText && !hasPhoto && !hasDoc) return; // ignore stickers, voice, etc.
 
   // ---- Stale message filter: drop anything older than 5 minutes ----------
   // Telegram queues undelivered messages and replays them once the bot is live.
@@ -149,9 +152,9 @@ function processTelegramUpdate_(update) {
     }
   }
 
-  // ---- Smart Scheduler: incoming photo → extract events --------------------
-  if (hasPhoto) {
-    processSchedulerPhoto_(msg, chatId);
+  // ---- Smart Scheduler: incoming photo or image document → extract events --
+  if (hasPhoto || hasDoc) {
+    processSchedulerPhoto_(msg, chatId, hasPhoto);
     return;
   }
 
