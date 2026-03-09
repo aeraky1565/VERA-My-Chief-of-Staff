@@ -492,6 +492,89 @@
     }
     .btn-edit:hover { color: #c9a84c; background: #13244d; }
 
+    /* ---- Yearly Goals Kanban ---- */
+    .kanban-board {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      padding-bottom: 12px;
+      align-items: flex-start;
+    }
+    .kanban-col {
+      flex: 0 0 220px;
+      background: #0d1b3e;
+      border-radius: 10px;
+      padding: 12px;
+      border: 2px solid #1e3a6e;
+      transition: border-color 0.15s;
+    }
+    .kanban-col.drag-over { border-color: #c9a84c; }
+    .kanban-col-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .kanban-col-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #c9a84c;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .kanban-col-count {
+      font-size: 11px;
+      background: #1e3a6e;
+      color: #8ab4f8;
+      border-radius: 10px;
+      padding: 2px 7px;
+    }
+    .kanban-add-btn {
+      width: 100%;
+      background: none;
+      border: 1px dashed #2a4580;
+      border-radius: 6px;
+      color: #4d6080;
+      font-size: 12px;
+      padding: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .kanban-add-btn:hover { border-color: #c9a84c; color: #c9a84c; }
+    .goal-card {
+      background: #1a2744;
+      border: 1px solid #2a4580;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      cursor: grab;
+      user-select: none;
+      transition: opacity 0.15s, box-shadow 0.15s;
+    }
+    .goal-card:active { cursor: grabbing; }
+    .goal-card.dragging { opacity: 0.4; }
+    .goal-card-title { font-size: 13px; color: #e0e8f8; font-weight: 600; margin-bottom: 6px; line-height: 1.3; }
+    .goal-card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+    .goal-cat-pill {
+      font-size: 10px;
+      background: #0d1b3e;
+      border: 1px solid #2a4580;
+      border-radius: 10px;
+      padding: 1px 7px;
+      color: #8ab4f8;
+    }
+    .goal-year-badge { font-size: 10px; color: #4d6080; }
+    .goal-progress-bar {
+      height: 4px;
+      background: #1e3a6e;
+      border-radius: 2px;
+      margin-bottom: 6px;
+      overflow: hidden;
+    }
+    .goal-progress-fill { height: 100%; background: #c9a84c; border-radius: 2px; transition: width 0.3s; }
+    .goal-card-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
     /* ---- PTO tab ---- */
     .pto-grid-2 {
       display: grid;
@@ -1273,6 +1356,132 @@ function AddItemModal({ stores, onSave, onClose, busy }) {
   );
 }
 
+// ---- Yearly Goals Kanban tab ------------------------------------------------
+
+const GOAL_STATUSES = ['Resolutions', 'To Do', 'Doing', 'Parked', 'Done'];
+const GOAL_COL_COLORS = {
+  'Resolutions': '#7c5cbf',
+  'To Do':       '#1565c0',
+  'Doing':       '#c9a84c',
+  'Parked':      '#4d6080',
+  'Done':        '#43a047',
+};
+
+function GoalsTab({ goals, dragGoalId, dragOverCol, onDragStart, onDragOver, onDrop, onAddGoal, onEditGoal, onDeleteGoal, busy }) {
+  return (
+    <div>
+      <div style={{ marginBottom: 14, color: '#8ab4f8', fontSize: 13 }}>
+        Drag goal cards between columns to update their status.
+      </div>
+      <div className="kanban-board">
+        {GOAL_STATUSES.map(col => {
+          const colGoals = goals.filter(g => g.status === col);
+          const isOver   = dragOverCol === col;
+          return (
+            <div
+              key={col}
+              className={`kanban-col${isOver ? ' drag-over' : ''}`}
+              onDragOver={e => { e.preventDefault(); onDragOver(col); }}
+              onDrop={e => { e.preventDefault(); onDrop(col); }}
+              onDragLeave={() => { if (dragOverCol === col) onDragOver(null); }}
+            >
+              <div className="kanban-col-header">
+                <span className="kanban-col-title" style={{ color: GOAL_COL_COLORS[col] }}>{col}</span>
+                <span className="kanban-col-count">{colGoals.length}</span>
+              </div>
+
+              {colGoals.map(goal => (
+                <div
+                  key={goal.id}
+                  className={`goal-card${dragGoalId === goal.id ? ' dragging' : ''}`}
+                  draggable
+                  onDragStart={() => onDragStart(goal.id)}
+                  onDragEnd={() => { onDragStart(null); onDragOver(null); }}
+                >
+                  <div className="goal-card-title">{goal.title}</div>
+                  <div className="goal-card-meta">
+                    {goal.category && <span className="goal-cat-pill">{goal.category}</span>}
+                    <span className="goal-year-badge">{goal.year}</span>
+                  </div>
+                  {goal.progress > 0 && (
+                    <div className="goal-progress-bar">
+                      <div className="goal-progress-fill" style={{ width: goal.progress + '%' }} />
+                    </div>
+                  )}
+                  <div className="goal-card-actions">
+                    <button className="btn-edit" title="Edit" disabled={busy} onClick={() => onEditGoal(goal)}>✏️</button>
+                    <button className="btn-edit" title="Delete" disabled={busy} onClick={() => onDeleteGoal(goal.id)} style={{ color: '#e53935' }}>🗑</button>
+                  </div>
+                </div>
+              ))}
+
+              <button className="kanban-add-btn" onClick={() => onAddGoal(col)}>+ Add goal</button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GoalModal({ mode, goal, defaultStatus, onSave, onClose, busy }) {
+  const [title,       setTitle]       = React.useState(goal?.title       || '');
+  const [description, setDescription] = React.useState(goal?.description || '');
+  const [status,      setStatus]      = React.useState(goal?.status      || defaultStatus || 'To Do');
+  const [category,    setCategory]    = React.useState(goal?.category    || '');
+  const [year,        setYear]        = React.useState(goal?.year        || new Date().getFullYear());
+  const [progress,    setProgress]    = React.useState(goal?.progress    ?? 0);
+  const [notes,       setNotes]       = React.useState(goal?.notes       || '');
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <h2>{mode === 'edit' ? 'Edit Goal' : 'Add Goal'}</h2>
+        <label className="form-label">Title *</label>
+        <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="Goal title" autoFocus />
+
+        <label className="form-label">Description</label>
+        <textarea className="form-input" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional detail" style={{ resize: 'vertical' }} />
+
+        <label className="form-label">Status</label>
+        <select className="form-input" value={status} onChange={e => setStatus(e.target.value)}>
+          {GOAL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label className="form-label">Category</label>
+            <input className="form-input" value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Health" />
+          </div>
+          <div style={{ width: 80 }}>
+            <label className="form-label">Year</label>
+            <input className="form-input" type="number" value={year} onChange={e => setYear(e.target.value)} />
+          </div>
+        </div>
+
+        {mode === 'edit' && (
+          <>
+            <label className="form-label">Progress ({progress}%)</label>
+            <input type="range" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))}
+              style={{ width: '100%', accentColor: '#c9a84c', marginBottom: 12 }} />
+          </>
+        )}
+
+        <label className="form-label">Notes</label>
+        <textarea className="form-input" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes" style={{ resize: 'vertical' }} />
+
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!title.trim() || busy}
+            onClick={() => onSave({ title, description, status, category, year, progress, notes })}>
+            {mode === 'edit' ? 'Save Changes' : 'Add Goal'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Projects tab -----------------------------------------------------------
 
 const PRIORITY_COLORS = { High: '#e53935', Medium: '#f9a825', Low: '#43a047' };
@@ -1908,6 +2117,7 @@ function App() {
   const [tasks,      setTasks]      = useState([]);
   const [summaries,  setSummaries]  = useState([]);
   const [projects,   setProjects]   = useState([]);
+  const [goals,      setGoals]      = useState([]);
   const [shopping,   setShopping]   = useState([]);
   const [pto,        setPTO]        = useState(null);
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
@@ -1917,6 +2127,9 @@ function App() {
   const [completingIds, setCompletingIds] = useState({});
   const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
   const [projectTaskModal, setProjectTaskModal] = useState(null); // null | { mode:'add', project } | { mode:'edit', task }
+  const [goalModal,        setGoalModal]        = useState(null); // null | { mode:'add', status? } | { mode:'edit', goal }
+  const [dragGoalId,       setDragGoalId]       = useState(null);
+  const [dragOverCol,      setDragOverCol]      = useState(null);
   const toastTimer = useRef(null);
 
   const loadAll = useCallback(async (url, token, activeOnly) => {
@@ -1955,6 +2168,7 @@ function App() {
   useEffect(() => {
     if (apiUrl && apiToken) {
       loadProjects(apiUrl, apiToken);
+      loadGoals(apiUrl, apiToken);
       loadShopping(apiUrl, apiToken);
       loadPTO(apiUrl, apiToken);
     }
@@ -2026,6 +2240,18 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, projects: false }));
+  }
+
+  async function loadGoals(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, goals: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'goals' });
+      setGoals(data.goals || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, goals: false }));
   }
 
   async function loadShopping(url, token) {
@@ -2166,12 +2392,37 @@ function App() {
     setBusy(false);
   }
 
+  async function handleSaveGoal({ title, description, status, category, year, progress, notes }) {
+    if (!title.trim()) return;
+    setBusy(true);
+    try {
+      if (goalModal.mode === 'edit') {
+        await apiGet(apiUrl, apiToken, {
+          action: 'update_goal', id: goalModal.goal.id,
+          title, description, status, category, year, progress, notes,
+        });
+        showToast('✓ Goal updated');
+      } else {
+        await apiGet(apiUrl, apiToken, {
+          action: 'add_goal', title, description, status, category, year, notes,
+        });
+        showToast('✓ Goal added');
+      }
+      setGoalModal(null);
+      loadGoals(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not save goal: ' + err.message);
+    }
+    setBusy(false);
+  }
+
   function handleConnect(url, token) {
     setApiUrl(url);
     setApiToken(token);
     setShowSettings(false);
     loadAll(url, token, filterActive);
     loadProjects(url, token);
+    loadGoals(url, token);
     loadShopping(url, token);
     loadPTO(url, token);
   }
@@ -2263,13 +2514,14 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'summaries'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'goals', 'shopping', 'pto', 'summaries'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab);
                   if (tab === 'projects') loadProjects(apiUrl, apiToken);
+                  if (tab === 'goals')    loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping') loadShopping(apiUrl, apiToken);
                   if (tab === 'pto')      loadPTO(apiUrl, apiToken);
                 }}
@@ -2279,6 +2531,7 @@ function App() {
                 {tab === 'flags'    ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
                 {tab === 'tasks'    ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
                 {tab === 'projects' ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'goals'    ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
                 {tab === 'shopping' ? `🛒 Shopping` : ''}
                 {tab === 'pto'      ? `🌴 PTO Planner` : ''}
                 {tab === 'summaries'? `📊 Summaries` : ''}
@@ -2403,6 +2656,46 @@ function App() {
                   />
             )}
 
+            {/* Yearly Goals tab */}
+            {activeTab === 'goals' && (
+              tabLoading.goals
+                ? <div className="loading-text">Loading goals…</div>
+                : <GoalsTab
+                    goals={goals}
+                    dragGoalId={dragGoalId}
+                    dragOverCol={dragOverCol}
+                    onDragStart={id => setDragGoalId(id)}
+                    onDragOver={col => setDragOverCol(col)}
+                    onDrop={async (newStatus) => {
+                      if (!dragGoalId || !newStatus) { setDragGoalId(null); setDragOverCol(null); return; }
+                      const id = dragGoalId;
+                      setDragGoalId(null);
+                      setDragOverCol(null);
+                      // Optimistic update
+                      setGoals(prev => prev.map(g => g.id === id ? { ...g, status: newStatus } : g));
+                      try {
+                        await apiGet(apiUrl, apiToken, { action: 'update_goal', id, status: newStatus });
+                      } catch (err) {
+                        setError('Failed to move goal: ' + err.message);
+                        loadGoals(apiUrl, apiToken);
+                      }
+                    }}
+                    onAddGoal={status => setGoalModal({ mode: 'add', status: status || 'To Do' })}
+                    onEditGoal={g => setGoalModal({ mode: 'edit', goal: g })}
+                    onDeleteGoal={async (id) => {
+                      if (!window.confirm('Delete this goal?')) return;
+                      setGoals(prev => prev.filter(g => g.id !== id));
+                      try {
+                        await apiGet(apiUrl, apiToken, { action: 'delete_goal', id });
+                      } catch (err) {
+                        setError('Failed to delete goal: ' + err.message);
+                        loadGoals(apiUrl, apiToken);
+                      }
+                    }}
+                    busy={busy}
+                  />
+            )}
+
             {/* Shopping tab */}
             {activeTab === 'shopping' && (
               tabLoading.shopping
@@ -2427,6 +2720,18 @@ function App() {
             )}
           </div>
         </>
+      )}
+
+      {/* Goal modal */}
+      {goalModal && (
+        <GoalModal
+          mode={goalModal.mode}
+          goal={goalModal.goal}
+          defaultStatus={goalModal.status}
+          onSave={handleSaveGoal}
+          onClose={() => setGoalModal(null)}
+          busy={busy}
+        />
       )}
 
       {/* Toast notification */}
