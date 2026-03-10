@@ -664,7 +664,7 @@ function morningNudge() {
         '</td></tr>'
       : '';
     const dashboardPlainText = dashboardUrl ? '\nDashboard: ' + dashboardUrl : '';
-    const veraLink = dashboardUrl || ('https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID);
+    const veraLink = dashboardUrl || 'https://aeraky1565.github.io/VERA-My-Chief-of-Staff/';
 
     // ---- Weather ticker (graceful — empty string if not configured) -----
     const weatherTicker = getWeatherTicker_();
