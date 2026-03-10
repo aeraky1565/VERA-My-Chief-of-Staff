@@ -737,6 +737,50 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    /* ============================================================
+       RESPONSIVE — tablet  (≤ 768px)
+       ============================================================ */
+    @media (max-width: 768px) {
+      .header     { padding: 0 16px; }
+      .status-bar { padding: 10px 16px; }
+      .tabs       { padding: 0 8px; }
+      .main       { padding: 18px 16px; }
+    }
+
+    /* ============================================================
+       RESPONSIVE — phone  (≤ 480px)
+       ============================================================ */
+    @media (max-width: 480px) {
+      /* Header — tighten + hide low-priority chrome */
+      .header       { padding: 0 12px; height: 54px; }
+      .logo-sub     { display: none; }
+      .last-updated { display: none; }
+
+      /* Status bar — allow pills to wrap to a second row */
+      .status-bar { padding: 8px 12px; flex-wrap: wrap; gap: 8px; }
+      .stat-pill  { padding: 4px 10px; font-size: 12px; }
+
+      /* Nav tabs — swipeable horizontal scroll, no visible scrollbar */
+      .tabs { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab-btn { padding: 10px 14px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+      /* Main content area */
+      .main { padding: 14px 12px; }
+
+      /* Toolbar — filter pills wrap on narrow screens */
+      .toolbar { flex-wrap: wrap; gap: 8px; }
+
+      /* Modals — reduce inner padding */
+      .modal { padding: 20px; border-radius: 10px; }
+
+      /* Chat bubbles — use more of the available width */
+      .chat-msg { max-width: 90%; }
+
+      /* Interests grid — single column */
+      .interests-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
