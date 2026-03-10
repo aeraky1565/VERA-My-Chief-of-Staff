@@ -503,9 +503,14 @@ function formatWeekendMemoForTelegram_(fullMemo) {
 function createWeekendMemoEvent_(saturdayDate, memo) {
   clearOldWeekendMemoEvents_();
 
-  var cal = CalendarApp.getDefaultCalendar();
+  var ptoCfg = readPTOConfig_();
+  var cal    = getCalendarByName_(ptoCfg.veraCalendarName);
+  if (!cal) {
+    Logger.log('createWeekendMemoEvent_: "' + ptoCfg.veraCalendarName + '" calendar not found — skipping event creation');
+    return;
+  }
   cal.createAllDayEvent('VERA Weekend Memo', saturdayDate, { description: memo });
-  Logger.log('createWeekendMemoEvent_: event created on ' +
+  Logger.log('createWeekendMemoEvent_: event created in "' + ptoCfg.veraCalendarName + '" on ' +
              Utilities.formatDate(saturdayDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
 }
 
@@ -518,7 +523,9 @@ function clearOldWeekendMemoEvents_() {
   var start = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
   var end   = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
 
-  var cal    = CalendarApp.getDefaultCalendar();
+  var ptoCfg = readPTOConfig_();
+  var cal    = getCalendarByName_(ptoCfg.veraCalendarName);
+  if (!cal) { return; }
   var events = cal.getEvents(start, end, { search: 'VERA Weekend Memo' });
 
   var removed = 0;
