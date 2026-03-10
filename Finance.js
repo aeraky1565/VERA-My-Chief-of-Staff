@@ -262,7 +262,25 @@ function getSATSummaries_() {
  *
  * Columns expected: Date | Account | Description | Category | Tags | Amount
  * Sign convention: positive = expense, negative = income/credit (skipped).
+ *
+ * Supports two sheet layouts (Issue #51):
+ *   New: "Transactions - Ahmed" + "Transactions - Victoria" tabs (per-person)
+ *   Legacy: single "Transactions" tab (backward compatible)
  */
+
+/**
+ * Reads one Transactions tab and returns rows tagged with the person's name.
+ * Each returned row is [Date, Account, Description, Category, Tags, Amount, Person].
+ * @param {GoogleAppsScript.Spreadsheet.Sheet|null} sheet
+ * @param {string} person  e.g. 'Ahmed', 'Victoria', or '' for legacy
+ * @return {Array[]}
+ */
+function readTransactionTab_(sheet, person) {
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var raw = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+  return raw.map(function(row) { return row.concat([person]); });
+}
+
 function getTransactionSummaries_() {
   var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
   if (!id) {
@@ -270,10 +288,26 @@ function getTransactionSummaries_() {
     return [];
   }
 
-  var sheet = SpreadsheetApp.openById(id).getSheetByName('Transactions');
-  if (!sheet || sheet.getLastRow() < 2) return [];
+  var ss            = SpreadsheetApp.openById(id);
+  var sheetAhmed    = ss.getSheetByName('Transactions - Ahmed');
+  var sheetVictoria = ss.getSheetByName('Transactions - Victoria');
+  var data;
 
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+  if (sheetAhmed || sheetVictoria) {
+    // New format: per-person tabs — merge into one dataset (Issue #51)
+    data = readTransactionTab_(sheetAhmed,    'Ahmed')
+      .concat(readTransactionTab_(sheetVictoria, 'Victoria'));
+    Logger.log('Finance: reading per-person tabs — Ahmed: ' +
+      (sheetAhmed    ? sheetAhmed.getLastRow()    - 1 : 0) + ' rows, Victoria: ' +
+      (sheetVictoria ? sheetVictoria.getLastRow() - 1 : 0) + ' rows');
+  } else {
+    // Legacy fallback: single "Transactions" tab
+    var sheetLegacy = ss.getSheetByName('Transactions');
+    data = readTransactionTab_(sheetLegacy, '');
+    Logger.log('Finance: reading legacy "Transactions" tab — ' + data.length + ' rows');
+  }
+
+  if (data.length === 0) return [];
 
   // ---- Build skip list from Config tab (or fall back to hardcoded defaults) --------
   var cfg_     = getConfigValues();
