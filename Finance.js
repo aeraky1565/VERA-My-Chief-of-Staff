@@ -277,7 +277,8 @@ function getTransactionSummaries_() {
 
     var cat    = String(row[3] || 'Uncategorized').trim();
     var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
-    if (isNaN(amount) || amount <= 0) return; // skip income/credits/zero
+    if (isNaN(amount) || amount >= 0) return; // skip income/credits/zero — positive = inbound
+    amount = Math.abs(amount);               // convert expense (negative) to positive for summation
     if (SKIP_CATEGORIES_.indexOf(cat.toLowerCase()) !== -1) return;
 
     var monthKey = d.getFullYear() * 100 + d.getMonth();
