@@ -2057,6 +2057,134 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
   );
 }
 
+// ---- Spending chart (Home tab) ----------------------------------------------
+
+function SpendingChart({ summaries }) {
+  const txRows   = summaries.filter(s => s.source === '[AUTO] Transactions');
+  const totalRow = txRows.find(s => s.metric.startsWith('Total Spending'));
+  const otherRow = txRows.find(s => s.metric.startsWith('Other ('));
+  const catRows  = txRows.filter(s =>
+    !s.metric.startsWith('Total Spending') && !s.metric.startsWith('Other (')
+  );
+
+  // Parse "$1,234 [full month] vs $2,345 in Jan (±N%)" or "$1,234 (first month)"
+  function parseDollars(value = '') {
+    const dollars  = [...value.matchAll(/\$([0-9,]+)/g)].map(m => parseInt(m[1].replace(/,/g, '')));
+    const hasPrev  = /\bvs\s+\$/.test(value);
+    const curr     = dollars[0] || 0;
+    const prev     = hasPrev ? (dollars[1] || 0) : 0;
+    const prevMon  = (value.match(/\bin\s+([A-Z][a-z]{2})\b/) || [])[1] || null;
+    return { curr, prev, prevMon };
+  }
+
+  const totalData  = totalRow ? parseDollars(totalRow.value) : null;
+  const mthMatch   = (catRows[0] || totalRow)?.metric.match(/—\s+(\w+)$/);
+  const currMonth  = mthMatch ? mthMatch[1] : '';
+  const prevMonth  = totalData?.prevMon ||
+    catRows.map(r => parseDollars(r.value).prevMon).find(Boolean) || '';
+
+  const data = catRows.map(s => ({
+    label: s.metric.replace(/\s+—\s+\w+$/, ''),
+    ...parseDollars(s.value),
+  }));
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.curr, d.prev)), 1);
+  const otherMatch = otherRow?.metric.match(/Other \((\d+)/);
+  const otherCount = otherMatch ? otherMatch[1] : null;
+  const otherAmt   = otherRow ? parseDollars(otherRow.value).curr : 0;
+
+  return (
+    <div className="bento-card" style={{ gridColumn: '1 / -1', cursor: 'default' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+        <div className="bento-card-title" style={{ marginBottom: 0 }}>
+          💸 Spending — {currMonth || '…'}
+        </div>
+        {totalData && totalData.curr > 0 && (
+          <div style={{ textAlign: 'right' }}>
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#c9a84c' }}>
+              ${totalData.curr.toLocaleString()}
+            </span>
+            {prevMonth && totalData.prev > 0 && (
+              <span style={{ fontSize: 11, color: '#6b7fa8', marginLeft: 8 }}>
+                vs ${totalData.prev.toLocaleString()} in {prevMonth}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {data.length === 0 ? (
+        <div style={{ fontSize: 13, color: '#4d6080' }}>No transaction data yet</div>
+      ) : (
+        <>
+          {/* Category bars */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {data.map((d, i) => {
+              const currW    = (d.curr / maxVal * 100).toFixed(1);
+              const prevW    = (d.prev / maxVal * 100).toFixed(1);
+              const delta    = d.prev > 0 ? Math.round(((d.curr - d.prev) / d.prev) * 100) : null;
+              const deltaClr = delta == null ? '#6b7fa8'
+                : delta > 20  ? '#ef5350'
+                : delta < -10 ? '#66bb6a'
+                : '#6b7fa8';
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 13, color: '#dde1f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>
+                      {d.label}
+                    </span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexShrink: 0 }}>
+                      {d.prev > 0 && <span style={{ fontSize: 11, color: '#4d6080' }}>${d.prev.toLocaleString()}</span>}
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#c9a84c' }}>${d.curr.toLocaleString()}</span>
+                      {delta != null && (
+                        <span style={{ fontSize: 11, color: deltaClr, minWidth: 36, textAlign: 'right' }}>
+                          {delta >= 0 ? '+' : ''}{delta}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Current month bar — gold */}
+                  <div style={{ height: 7, background: '#13244d', borderRadius: 4, overflow: 'hidden', marginBottom: 2 }}>
+                    <div style={{ height: '100%', width: currW + '%', background: '#c9a84c', borderRadius: 4, transition: 'width 0.5s ease' }} />
+                  </div>
+                  {/* Prior month bar — steel blue */}
+                  {d.prev > 0 && (
+                    <div style={{ height: 4, background: '#0d1b3e', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: prevW + '%', background: '#3d5fa0', borderRadius: 2, transition: 'width 0.5s ease' }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legend + Other footnote */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: '1px solid #1e3060', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 12, height: 7, background: '#c9a84c', borderRadius: 2 }} />
+                <span style={{ fontSize: 11, color: '#6b7fa8' }}>{currMonth}</span>
+              </div>
+              {prevMonth && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 12, height: 4, background: '#3d5fa0', borderRadius: 2 }} />
+                  <span style={{ fontSize: 11, color: '#6b7fa8' }}>{prevMonth}</span>
+                </div>
+              )}
+            </div>
+            {otherCount && otherAmt > 0 && (
+              <span style={{ fontSize: 11, color: '#4d6080' }}>
+                + {otherCount} other categories: ${otherAmt.toLocaleString()}
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---- Home tab ---------------------------------------------------------------
 
 function HomeTab({ flags, tasks, projects, shopping, pto, summaries, status, onNavigate }) {
@@ -2070,7 +2198,6 @@ function HomeTab({ flags, tasks, projects, shopping, pto, summaries, status, onN
   const vacRemaining   = pto?.remaining?.vacationDays;
   const persRemaining  = pto?.remaining?.personalHours;
   const nextPTO        = pto?.nextPTO;
-  const topMetrics     = summaries.slice(0, 5);
 
   return (
     <div className="bento-grid">
@@ -2176,24 +2303,8 @@ function HomeTab({ flags, tasks, projects, shopping, pto, summaries, status, onN
         )}
       </div>
 
-      {/* Key Metrics */}
-      <div className="bento-card" onClick={() => onNavigate('summaries')}>
-        <div className="bento-card-title">📊 Key Metrics</div>
-        {topMetrics.length === 0 ? (
-          <div style={{ fontSize: 13, color: '#4d6080' }}>No summaries loaded yet</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {topMetrics.map((s, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 12, color: '#8a9abf', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {s.metric}
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#c9a84c', flexShrink: 0 }}>{s.value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Spending Chart */}
+      <SpendingChart summaries={summaries} />
     </div>
   );
 }
