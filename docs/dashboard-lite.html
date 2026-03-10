@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VERA — Shopping</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #080f1e;
+      color: #dde1f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ---- Scrollbar ---- */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0d1b3e; }
+    ::-webkit-scrollbar-thumb { background: #2a3a5e; border-radius: 3px; }
+
+    /* ---- Header ---- */
+    .header {
+      background: linear-gradient(135deg, #0d1b3e 0%, #152547 100%);
+      border-bottom: 1px solid #1e3060;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-name {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #fff;
+    }
+    .logo-sub {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #c9a84c;
+      text-transform: uppercase;
+    }
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* ---- Buttons ---- */
+    .btn {
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover  { opacity: 0.85; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-primary  { background: #c9a84c; color: #0d1b3e; }
+    .btn-ghost    { background: #13244d; color: #8a9abf; }
+    .btn-refresh  { background: #13244d; border: 1px solid #1e3060; color: #8a9abf; }
+    .btn-settings { background: none; border: none; color: #6b7fa8; cursor: pointer; font-size: 18px; padding: 4px 8px; }
+    .btn-settings:hover { color: #c9a84c; }
+
+    /* ---- Modal ---- */
+    .modal-overlay {
+      background: rgba(0,0,0,0.75);
+      bottom: 0; left: 0; right: 0; top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      z-index: 200;
+    }
+    .modal {
+      background: #0d1b3e;
+      border: 1px solid #1e3060;
+      border-radius: 14px;
+      padding: 32px;
+      width: 480px;
+      max-width: 95vw;
+    }
+    .modal h2 { color: #fff; font-size: 18px; margin-bottom: 6px; }
+    .modal p  { color: #6b7fa8; font-size: 13px; margin-bottom: 24px; }
+    .form-group  { margin-bottom: 16px; }
+    .form-label  { color: #8a9abf; display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; text-transform: uppercase; }
+    .form-input  {
+      background: #13244d;
+      border: 1px solid #1e3060;
+      border-radius: 8px;
+      color: #e8ecf8;
+      font-family: monospace;
+      font-size: 13px;
+      outline: none;
+      padding: 10px 14px;
+      transition: border-color .15s;
+      width: 100%;
+    }
+    .form-input:focus { border-color: #c9a84c; }
+    .form-hint   { color: #4d6080; font-size: 11px; margin-top: 4px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+    /* ---- Feedback states ---- */
+    .empty-state {
+      background: #0d1b3e;
+      border: 1px dashed #1e3060;
+      border-radius: 10px;
+      color: #4d6080;
+      font-size: 14px;
+      padding: 48px;
+      text-align: center;
+    }
+    .error-banner {
+      background: #3d1515;
+      border: 1px solid #e53935;
+      border-radius: 8px;
+      color: #ff8a80;
+      font-size: 13px;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .error-dismiss {
+      background: none;
+      border: none;
+      color: #ff8a80;
+      cursor: pointer;
+      font-size: 16px;
+      flex-shrink: 0;
+      padding: 0 4px;
+    }
+
+    /* ---- Toast ---- */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: #0f3020;
+      border: 1px solid #43a047;
+      border-radius: 10px;
+      color: #69f0ae;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 14px 22px;
+      z-index: 300;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      animation: slideUp 0.2s ease;
+    }
+    .toast.error { background: #3d1515; border-color: #e53935; color: #ff8a80; }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 768px) {
+      .header { padding: 0 16px; }
+    }
+    @media (max-width: 480px) {
+      .header { padding: 0 12px; height: 54px; }
+      .logo-sub { display: none; }
+      .modal { padding: 20px; border-radius: 10px; }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ---- Helpers ----------------------------------------------------------------
+
+function stored(key, fallback = '') {
+  return localStorage.getItem(key) || fallback;
+}
+
+function makeUrl(base, token, params = {}) {
+  const url = new URL(base);
+  url.searchParams.set('token', token);
+  Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
+  return url.toString();
+}
+
+async function apiGet(apiUrl, token, params) {
+  const res = await fetch(makeUrl(apiUrl, token, params));
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  return json;
+}
+
+// All write operations use GET to avoid CORS preflight from file:// origin
+async function apiAction(apiUrl, token, action, params) {
+  return apiGet(apiUrl, token, Object.assign({ action }, params));
+}
+
+// ---- Settings modal ---------------------------------------------------------
+
+function SettingsModal({ initial, onSave, onClose }) {
+  const [url, setUrl]     = useState(initial.url);
+  const [token, setToken] = useState(initial.token);
+
+  function save() {
+    const u = url.trim();
+    const t = token.trim();
+    if (!u || !t) return;
+    localStorage.setItem('vera_url', u);
+    localStorage.setItem('vera_token', t);
+    onSave(u, t);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose && onClose()}>
+      <div className="modal">
+        <h2>⚙️ Connect to VERA API</h2>
+        <p>Enter your Apps Script Web App URL and the token from Script Properties.</p>
+
+        <div className="form-group">
+          <label className="form-label">Web App URL</label>
+          <input
+            className="form-input"
+            placeholder="https://script.google.com/macros/s/.../exec"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">VERA_WEB_TOKEN</label>
+          <input
+            className="form-input"
+            placeholder="vera-b479..."
+            type="password"
+            value={token}
+            onChange={e => setToken(e.target.value)}
+          />
+          <div className="form-hint">Set in Apps Script → Project Settings → Script Properties</div>
+        </div>
+
+        <div className="modal-actions">
+          {onClose && <button className="btn btn-ghost" onClick={onClose}>Cancel</button>}
+          <button className="btn btn-primary" onClick={save} disabled={!url.trim() || !token.trim()}>
+            Connect
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Shopping tab -----------------------------------------------------------
+
+function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
+  const [activeStore, setActiveStore] = React.useState(null);
+
+  React.useEffect(() => {
+    if (stores.length > 0) {
+      setActiveStore(prev =>
+        stores.find(s => s.tabId === prev) ? prev : stores[0].tabId
+      );
+    } else {
+      setActiveStore(null);
+    }
+  }, [stores]);
+
+  if (!stores.length) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🛒</div>
+        <div>No shopping list connected.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Set <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>SHOPPING_LIST_DOC_ID</code> in Script Properties to connect your Google Doc.
+        </div>
+      </div>
+    );
+  }
+
+  const current = stores.find(s => s.tabId === activeStore);
+
+  return (
+    <div>
+      {/* Store sub-tabs */}
+      <div style={{
+        display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
+        borderBottom: '1px solid #1e3060', marginBottom: 20,
+      }}>
+        {stores.map(s => {
+          const pending  = s.items.filter(i => !i.done).length;
+          const isActive = s.tabId === activeStore;
+          return (
+            <button
+              key={s.tabId}
+              onClick={() => setActiveStore(s.tabId)}
+              style={{
+                background: isActive ? '#0d1b3e' : 'none',
+                border: 'none', cursor: 'pointer',
+                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                color: isActive ? '#c9a84c' : '#8a9abf',
+                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
+                borderRadius: '4px 4px 0 0',
+              }}
+            >
+              {s.storeName}
+              <span style={{
+                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
+                color: pending === 0 ? '#43a047' : '#c9a84c',
+                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
+              }}>
+                {pending === 0 ? '✓' : pending}
+              </span>
+            </button>
+          );
+        })}
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
+          disabled={busy}
+          onClick={() => onAddItem && onAddItem()}
+        >
+          + Add Item
+        </button>
+      </div>
+
+      {/* Item list */}
+      {current && (
+        current.items.length === 0
+          ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
+          : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {current.items.map((item, i) => (
+                <div
+                  key={i}
+                  onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '11px 16px', borderRadius: 8,
+                    background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
+                    border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
+                    cursor: busy ? 'wait' : 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    readOnly
+                    style={{ accentColor: '#43a047', width: 16, height: 16, pointerEvents: 'none', flexShrink: 0 }}
+                  />
+                  <span style={{
+                    flex: 1, fontSize: 14,
+                    color: item.done ? '#4a5a7a' : '#dde1f0',
+                    textDecoration: item.done ? 'line-through' : 'none',
+                  }}>
+                    {item.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Add shopping item modal ------------------------------------------------
+
+function AddItemModal({ stores, onSave, onClose, busy }) {
+  const [selectedStore, setSelectedStore] = React.useState(stores[0]?.tabId || '');
+  const [text, setText] = React.useState('');
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (text.trim() && selectedStore) onSave(selectedStore, text.trim()); }
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h2>+ Add Shopping Item</h2>
+        <p>Choose a store and type the item to add.</p>
+
+        <div className="form-group">
+          <label className="form-label">Store</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {stores.map(s => (
+              <button
+                key={s.tabId}
+                onClick={() => setSelectedStore(s.tabId)}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', border: 'none',
+                  background: selectedStore === s.tabId ? '#c9a84c' : '#13244d',
+                  color: selectedStore === s.tabId ? '#0d1b3e' : '#8a9abf',
+                }}
+              >
+                {s.storeName}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Item</label>
+          <input
+            className="form-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="Item name…"
+            autoFocus
+          />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={() => text.trim() && selectedStore && onSave(selectedStore, text.trim())}
+            disabled={busy || !text.trim() || !selectedStore}
+          >
+            Add Item
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- App --------------------------------------------------------------------
+
+function App() {
+  const [apiUrl,       setApiUrl]       = useState(() => stored('vera_url'));
+  const [apiToken,     setApiToken]     = useState(() => stored('vera_token'));
+  const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
+  const [shopping,     setShopping]     = useState([]);
+  const [busy,         setBusy]         = useState(false);
+  const [error,        setError]        = useState(null);
+  const [addItemModal, setAddItemModal] = useState(false);
+  const [toast,        setToast]        = useState(null);
+  const toastTimer = useRef(null);
+
+  function showToast(msg, isError) {
+    setToast({ msg, isError: !!isError });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  }
+
+  async function loadShopping(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'shopping' });
+      setShopping(data.stores || []);
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  useEffect(() => {
+    if (apiUrl && apiToken) loadShopping(apiUrl, apiToken);
+  }, [apiUrl, apiToken]);
+
+  async function handleToggle(tabId, itemIndex, currentlyDone) {
+    // Optimistic update
+    setShopping(prev => prev.map(store =>
+      store.tabId !== tabId ? store : {
+        ...store,
+        items: store.items.map(item =>
+          item.index !== itemIndex ? item : { ...item, done: !currentlyDone }
+        ),
+      }
+    ));
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_toggle', { tabId, index: itemIndex });
+    } catch (err) {
+      setError('Could not update item: ' + err.message);
+      await loadShopping(apiUrl, apiToken); // revert on error
+    }
+  }
+
+  async function handleAdd(tabId, text) {
+    setBusy(true);
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_add', { tabId, text });
+      showToast('✓ Item added');
+      setAddItemModal(false);
+      await loadShopping(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add item: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <>
+      {/* Header */}
+      <div className="header">
+        <div className="logo">
+          <span className="logo-name">VERA</span>
+          <span className="logo-sub">Shopping</span>
+        </div>
+        <div className="header-actions">
+          <button
+            className="btn btn-refresh"
+            onClick={() => loadShopping(apiUrl, apiToken)}
+            disabled={!apiUrl || !apiToken}
+            title="Refresh list"
+          >
+            ↺
+          </button>
+          <button
+            className="btn-settings"
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+          >
+            ⚙
+          </button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 28px' }}>
+        {error && (
+          <div className="error-banner">
+            <span>{error}</span>
+            <button className="error-dismiss" onClick={() => setError(null)}>✕</button>
+          </div>
+        )}
+
+        <ShoppingTab
+          stores={shopping}
+          onToggle={handleToggle}
+          onAddItem={() => setAddItemModal(true)}
+          busy={busy}
+        />
+      </div>
+
+      {/* Settings modal */}
+      {showSettings && (
+        <SettingsModal
+          initial={{ url: apiUrl, token: apiToken }}
+          onSave={(u, t) => {
+            setApiUrl(u);
+            setApiToken(t);
+            setShowSettings(false);
+            loadShopping(u, t);
+          }}
+          onClose={apiUrl ? () => setShowSettings(false) : null}
+        />
+      )}
+
+      {/* Add item modal */}
+      {addItemModal && shopping.length > 0 && (
+        <AddItemModal
+          stores={shopping}
+          onSave={handleAdd}
+          onClose={() => setAddItemModal(false)}
+          busy={busy}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className={`toast${toast.isError ? ' error' : ''}`}>
+          {toast.msg}
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
