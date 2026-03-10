@@ -52,26 +52,39 @@ function weatherEmoji_(conditionMain) {
  * Accepts formats like "Austin, TX", "Austin Texas", "Austin,US", "New York City", etc.
  */
 function geocodeLocation_(location, apiKey) {
-  var url = 'https://api.openweathermap.org/geo/1.0/direct?q=' +
-            encodeURIComponent(location) +
-            '&limit=1&appid=' + encodeURIComponent(apiKey);
-  try {
-    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) {
-      Logger.log('Geocoding HTTP ' + response.getResponseCode() + ': ' +
-                 response.getContentText().substring(0, 200));
-      return null;
-    }
-    var results = JSON.parse(response.getContentText());
-    if (!results || results.length === 0) {
-      Logger.log('Geocoding: no results for "' + location + '"');
-      return null;
-    }
-    return { lat: results[0].lat, lon: results[0].lon };
-  } catch (e) {
-    Logger.log('geocodeLocation_ error: ' + e.message);
-    return null;
+  // Normalize: remove spaces after commas ("Fairfax, VA" → "Fairfax,VA")
+  var compact = location.replace(/,\s+/g, ',');
+
+  // Build candidate queries to try in order:
+  // 1. Normalized form (e.g. "Fairfax,VA")
+  // 2. If it looks like "City,ST" (2-letter suffix, no country yet), also try "City,ST,US"
+  var candidates = [compact];
+  if (/^[^,]+,[A-Za-z]{2}$/.test(compact)) {
+    candidates.push(compact + ',US');
   }
+
+  for (var i = 0; i < candidates.length; i++) {
+    var url = 'https://api.openweathermap.org/geo/1.0/direct?q=' +
+              encodeURIComponent(candidates[i]) +
+              '&limit=1&appid=' + encodeURIComponent(apiKey);
+    try {
+      var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      if (response.getResponseCode() !== 200) {
+        Logger.log('Geocoding HTTP ' + response.getResponseCode() + ' for "' + candidates[i] + '": ' +
+                   response.getContentText().substring(0, 200));
+        continue;
+      }
+      var results = JSON.parse(response.getContentText());
+      if (results && results.length > 0) {
+        return { lat: results[0].lat, lon: results[0].lon };
+      }
+    } catch (e) {
+      Logger.log('geocodeLocation_ error for "' + candidates[i] + '": ' + e.message);
+    }
+  }
+
+  Logger.log('Geocoding: no results for "' + location + '" (tried: ' + candidates.join(', ') + ')');
+  return null;
 }
 
 /**
