@@ -1906,7 +1906,11 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
             <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8', marginLeft: 6 }}>days left</span>
           </div>
           <div className="pto-balance-sub">
-            {used.vacationDays} used · {planned.vacationDays} planned · {vacTotal} total allotted
+            {used.vacationDays} used · {planned.vacationDays} planned
+            {cfg.rolloverDays > 0
+              ? <> · <span style={{color:'#c9a84c'}}>{cfg.vacationDays}d annual + {cfg.rolloverDays}d rollover = {vacTotal}d total</span></>
+              : <> · {vacTotal} total allotted</>
+            }
           </div>
           {pctBar(used.vacationDays + planned.vacationDays, vacTotal, '#c9a84c')}
         </div>

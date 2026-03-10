@@ -87,6 +87,11 @@ function createSheetTabs(ss) {
     // Add rows like: calendar_label:Eraky Family | family (shared, not Ahmed's direct obligations)
     // Add rows like: calendar_label:Ahmed         | personal
     // Add rows like: calendar_label:Victoria       | household partner
+    // PTO settings
+    ['pto_vacation_days',      '20'],  // annual vacation allocation (days)
+    ['pto_rollover_days',      '0'],   // days carried over from prior year (Issue #49)
+    ['pto_personal_hours',     '48'],  // annual personal time (hours)
+    ['pto_buffer_days',        '3'],   // reserve days held back from planning
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -765,6 +770,44 @@ function addPTOMemoryTab() {
   const ss = getSpreadsheet();
   ensureSheet(ss, TABS.PTO_MEMORY, PTO_MEMORY_HEADERS);
   Logger.log('✅ PTO Memory tab created (or already exists). Stateful PTO suggestions are now active.');
+}
+
+/**
+ * Migration helper — run once from Apps Script editor to seed PTO config rows.
+ * Issue #49: Adds pto_vacation_days, pto_rollover_days, and other PTO settings
+ * to the Config tab so they are visible and editable without hunting through code.
+ * Safe to re-run — skips rows that already exist.
+ */
+function addPTOConfig() {
+  var ss  = getSpreadsheet();
+  var sh  = ss.getSheetByName(TABS.CONFIG);
+  if (!sh) { Logger.log('Config tab not found.'); return; }
+
+  var rows = [
+    ['pto_calendar_name',          'Verizon Calendar'],
+    ['pto_vera_calendar',          'Vera'],
+    ['pto_vacation_days',          '20'],   // annual vacation allocation (days)
+    ['pto_personal_hours',         '48'],   // annual personal time (hours)
+    ['pto_rollover_days',          '0'],    // days carried over from prior year
+    ['pto_buffer_days',            '3'],    // reserve days held back from planning
+    ['pto_year',                   String(new Date().getFullYear())],
+    ['gap_calendars',              'Verizon Calendar'],
+    ['milestone_keywords',         'Wedding,Graduation,Trip,Travel,Concert,Birthday'],
+    ['holiday_keywords',           'Day,Holiday,Floating,Closure'],
+    ['ignore_keywords',            'Pay Day'],
+  ];
+
+  var existing = sh.getDataRange().getValues()
+    .map(function(r) { return String(r[0]).trim(); });
+
+  var added = 0;
+  rows.forEach(function(row) {
+    if (existing.indexOf(row[0]) === -1) {
+      sh.appendRow(row);
+      added++;
+    }
+  });
+  Logger.log('✅ addPTOConfig: added ' + added + ' row(s) (skipped ' + (rows.length - added) + ' already present).');
 }
 
 /**

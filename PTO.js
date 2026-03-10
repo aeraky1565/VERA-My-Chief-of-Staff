@@ -1017,7 +1017,11 @@ function ptoSummaryForClaude_(stats) {
   return (
     'PTO STATUS (' + stats.year + '): ' +
     'Vacation: ' + stats.used.vacationDays + ' used / ' + stats.planned.vacationDays + ' planned / ' +
-    stats.remaining.vacationDays + ' remaining of ' + stats.config.vacationDays + ' days. ' +
+    stats.remaining.vacationDays + ' remaining of ' +
+    (stats.config.vacationDays + stats.config.rolloverDays) + ' days' +
+    (stats.config.rolloverDays > 0
+      ? ' (' + stats.config.vacationDays + ' annual + ' + stats.config.rolloverDays + ' carried over from prior year)'
+      : '') + '. ' +
     'Burn-down pace: ' + paceLabel + '.' + projLine + ' ' +
     'Personal time: ' + stats.used.personalHours + ' hrs used / ' +
     stats.remaining.personalHours + ' hrs remaining of ' + stats.config.personalHours + ' hrs. ' +
