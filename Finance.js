@@ -13,11 +13,20 @@
 //   logTransactionData()   → Transactions only
 // ============================================================
 
-// Categories to skip when calculating spending (income, transfers, etc.)
-var SKIP_CATEGORIES_ = [
+// Default skip categories — used as fallback when 'finance_skip_categories' is not
+// set in the Config tab. To customise without touching code, add a Config tab row:
+//   Setting                    | Value
+//   finance_skip_categories    | Transfers,Securities Trades,Credit Card Payments,...
+// Categories are matched case-insensitively and must be exact category names.
+var SKIP_CATEGORIES_DEFAULT_ = [
   'income', 'paycheck', 'salary', 'direct deposit',
-  'transfer', 'credit card payment', 'payment',
-  'investments', 'savings', 'refund',
+  'transfer', 'transfers',
+  'credit card payment', 'credit card payments',
+  'payment',
+  'investments', 'investment income',
+  'savings',
+  'refund',
+  'securities trades',
 ];
 
 // ============================================================
@@ -266,6 +275,15 @@ function getTransactionSummaries_() {
 
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
 
+  // ---- Build skip list from Config tab (or fall back to hardcoded defaults) --------
+  var cfg_     = getConfigValues();
+  var skipRaw  = cfg_['finance_skip_categories'] || '';
+  var skipList = skipRaw
+    ? skipRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean)
+    : SKIP_CATEGORIES_DEFAULT_;
+
+  Logger.log('Finance: skip list (' + skipList.length + '): ' + skipList.join(', '));
+
   // ---- Step 1: Parse into per-month buckets ----------------------------------------
   // Key: year * 100 + month (e.g. 202601 = Feb 2026) — sorts reliably numerically.
   var buckets = {};
@@ -279,7 +297,7 @@ function getTransactionSummaries_() {
     var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
     if (isNaN(amount) || amount >= 0) return; // skip income/credits/zero — positive = inbound
     amount = Math.abs(amount);               // convert expense (negative) to positive for summation
-    if (SKIP_CATEGORIES_.indexOf(cat.toLowerCase()) !== -1) return;
+    if (skipList.indexOf(cat.toLowerCase()) !== -1) return;
 
     var monthKey = d.getFullYear() * 100 + d.getMonth();
     if (!buckets[monthKey]) buckets[monthKey] = { year: d.getFullYear(), month: d.getMonth(), spending: {} };

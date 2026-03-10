@@ -858,6 +858,53 @@ function addWeekendPlannerConfig() {
 }
 
 // ============================================================
+// MIGRATION — Finance Config
+// ============================================================
+
+/**
+ * Seeds the Config tab with Finance default settings.
+ * Run ONCE from the Apps Script editor after pushing this update.
+ * Safe to re-run — skips any key that already exists.
+ *
+ * To customise which categories are excluded from the spending pivot,
+ * edit the 'finance_skip_categories' row in the Config tab directly.
+ * Values are comma-separated and matched case-insensitively.
+ */
+function addFinanceConfig() {
+  const ss     = getSpreadsheet();
+  const sheet  = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) throw new Error('Config tab not found.');
+
+  const defaults = [
+    [
+      'finance_skip_categories',
+      'Income,Paycheck,Salary,Direct Deposit,Transfer,Transfers,' +
+      'Credit Card Payment,Credit Card Payments,Payment,' +
+      'Investments,Investment Income,Savings,Refund,Securities Trades',
+    ],
+  ];
+
+  const existing = new Set();
+  const lastRow  = sheet.getLastRow();
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function(row) {
+      existing.add(String(row[0] || '').trim());
+    });
+  }
+
+  let added = 0;
+  defaults.forEach(function(pair) {
+    if (!existing.has(pair[0])) {
+      sheet.appendRow(pair);
+      added++;
+    }
+  });
+
+  Logger.log('✅ addFinanceConfig: added ' + added + ' row(s). ' +
+             (added < defaults.length ? (defaults.length - added) + ' already existed.' : ''));
+}
+
+// ============================================================
 // MANUAL TEST — Call this to do a full dry run before going live
 // ============================================================
 
