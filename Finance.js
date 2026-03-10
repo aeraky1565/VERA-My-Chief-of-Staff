@@ -240,8 +240,16 @@ function getSATSummaries_() {
 
 /**
  * Reads the "Transactions" tab (Empower CSV format).
- * Groups spending by category, calculates current month vs last month totals.
- * Returns one summary row per category with delta % for Claude to assess.
+ * Groups spending by category for the two most recent complete months found in
+ * the data (auto-detected — does NOT use today's date). This handles end-of-month
+ * CSV uploads correctly: the latest month in the sheet is always a complete month.
+ *
+ * Outputs:
+ *   1. One "Total Spending" row (latest month total vs prior month total)
+ *   2. Top 10 categories sorted by latest-month spend (descending)
+ *   3. One "Other (N categories)" bucket for the rest (if significant)
+ *
+ * All amounts formatted via fmtCurrency_() → "$1,234" style.
  *
  * Columns expected: Date | Account | Description | Category | Tags | Amount
  * Sign convention: positive = expense, negative = income/credit (skipped).
@@ -258,14 +266,9 @@ function getTransactionSummaries_() {
 
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
 
-  var now       = new Date();
-  var thisMonth = now.getMonth();
-  var thisYear  = now.getFullYear();
-  var lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-  var lastYear  = thisMonth === 0 ? thisYear - 1 : thisYear;
-
-  var curr = {}; // category → total spend this month
-  var prev = {}; // category → total spend last month
+  // ---- Step 1: Parse into per-month buckets ----------------------------------------
+  // Key: year * 100 + month (e.g. 202601 = Feb 2026) — sorts reliably numerically.
+  var buckets = {};
 
   data.forEach(function(row) {
     var dateVal = row[0];
@@ -274,43 +277,91 @@ function getTransactionSummaries_() {
 
     var cat    = String(row[3] || 'Uncategorized').trim();
     var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
-
     if (isNaN(amount) || amount <= 0) return; // skip income/credits/zero
     if (SKIP_CATEGORIES_.indexOf(cat.toLowerCase()) !== -1) return;
 
-    var m = d.getMonth();
-    var y = d.getFullYear();
-
-    if (m === thisMonth && y === thisYear)     { curr[cat] = (curr[cat] || 0) + amount; }
-    else if (m === lastMonth && y === lastYear) { prev[cat] = (prev[cat] || 0) + amount; }
+    var monthKey = d.getFullYear() * 100 + d.getMonth();
+    if (!buckets[monthKey]) buckets[monthKey] = { year: d.getFullYear(), month: d.getMonth(), spending: {} };
+    buckets[monthKey].spending[cat] = (buckets[monthKey].spending[cat] || 0) + amount;
   });
 
-  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var currName = MONTHS[thisMonth];
+  if (Object.keys(buckets).length === 0) return [];
+
+  // ---- Step 2: Identify the two most recent months ---------------------------------
+  var sortedKeys = Object.keys(buckets).map(Number).sort(function(a, b) { return a - b; });
+  var latestKey  = sortedKeys[sortedKeys.length - 1];
+  var prevKey    = sortedKeys.length >= 2 ? sortedKeys[sortedKeys.length - 2] : null;
+
+  var latestInfo = buckets[latestKey];
+  var curr       = latestInfo.spending;
+  var prev       = prevKey ? buckets[prevKey].spending : {};
+
+  var MONTHS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var currName = MONTHS[latestInfo.month];
+  var prevName = prevKey ? MONTHS[buckets[prevKey].month] : null;
   var today    = todayStr_();
   var rows     = [];
 
-  // All categories from either month, sorted alphabetically
+  // ---- Step 3: Overall Total Spending row (first) ----------------------------------
+  var totalCurr = Object.keys(curr).reduce(function(s, c) { return s + curr[c]; }, 0);
+  var totalPrev = prevName
+    ? Object.keys(prev).reduce(function(s, c) { return s + (prev[c] || 0); }, 0)
+    : 0;
+
+  var totalStr;
+  if (totalPrev > 0) {
+    var totalPct = Math.round(((totalCurr - totalPrev) / totalPrev) * 100);
+    totalStr = fmtCurrency_(totalCurr) + ' full month' +
+      ' vs ' + fmtCurrency_(totalPrev) + ' in ' + prevName +
+      ' (' + (totalPct >= 0 ? '+' : '') + totalPct + '%)';
+  } else {
+    totalStr = fmtCurrency_(totalCurr) + ' (no prior month data)';
+  }
+  rows.push(row_(AUTO_PREFIX + ' Transactions', 'Total Spending — ' + currName, totalStr, today));
+
+  // ---- Step 4: Sort categories by latest-month spend, take top 10 ------------------
+  var TOP_N   = 10;
   var allCats = {};
   Object.keys(curr).forEach(function(c) { allCats[c] = true; });
   Object.keys(prev).forEach(function(c) { allCats[c] = true; });
 
-  Object.keys(allCats).sort().forEach(function(cat) {
+  var catList = Object.keys(allCats).sort(function(a, b) {
+    return (curr[b] || 0) - (curr[a] || 0); // descending by current spend
+  });
+
+  var topCats  = catList.slice(0, TOP_N);
+  var restCats = catList.slice(TOP_N);
+
+  // ---- Step 5: Per-category rows (top 10) ------------------------------------------
+  topCats.forEach(function(cat) {
     var c = curr[cat] || 0;
     var p = prev[cat] || 0;
-
     var valueStr;
     if (p > 0) {
       var pct = Math.round(((c - p) / p) * 100);
-      valueStr = '$' + Math.round(c) + ' vs $' + Math.round(p) + ' prev mo (' + (pct >= 0 ? '+' : '') + pct + '%)';
+      valueStr = fmtCurrency_(c) + ' vs ' + fmtCurrency_(p) + ' in ' + prevName +
+        ' (' + (pct >= 0 ? '+' : '') + pct + '%)';
     } else {
-      valueStr = '$' + Math.round(c) + ' (new this month)';
+      valueStr = fmtCurrency_(c) + ' (first month)';
     }
-
     rows.push(row_(AUTO_PREFIX + ' Transactions', cat + ' — ' + currName, valueStr, today));
   });
 
-  Logger.log('Finance: Transactions found ' + rows.length + ' categories');
+  // ---- Step 6: "Other" bucket for remaining categories -----------------------------
+  if (restCats.length > 0) {
+    var otherCurr = restCats.reduce(function(s, c) { return s + (curr[c] || 0); }, 0);
+    var otherPrev = restCats.reduce(function(s, c) { return s + (prev[c] || 0); }, 0);
+    if (otherCurr >= 5) {
+      var otherPct = otherPrev > 0 ? Math.round(((otherCurr - otherPrev) / otherPrev) * 100) : null;
+      var otherStr = fmtCurrency_(otherCurr) + ' across ' + restCats.length + ' other categories' +
+        (otherPct !== null ? ' (' + (otherPct >= 0 ? '+' : '') + otherPct + '% vs ' + prevName + ')' : '');
+      rows.push(row_(AUTO_PREFIX + ' Transactions',
+        'Other (' + restCats.length + ' categories) — ' + currName, otherStr, today));
+    }
+  }
+
+  Logger.log('Finance: Transactions — ' + currName + ' vs ' + (prevName || 'no prev') +
+    ', ' + topCats.length + ' top cats + ' + restCats.length + ' other, total=' + rows.length);
   return rows;
 }
 

@@ -165,8 +165,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
     '- Use source "Tasks" for PTO flags (they are action items for Ahmed to schedule).\n\n' +
 
     'FINANCE CONTEXT RULES:\n' +
-    '- The Summaries section includes spending data from the Transactions sheet. Format is: "Category — Month: $current vs $prev mo (+/-%)"\n' +
-    '- Flag any spending category where current month is MORE than 20% over last month AND the absolute increase is at least $30. Use source "Finance".\n' +
+    '- The Summaries section includes spending data from Empower CSV exports (uploaded end-of-month). The "Total Spending" row shows the full-month total. Top 10 categories follow, then an "Other" bucket.\n' +
+    '- Spending rows format: "Category — Month: $latest vs $prev in PrevMonth (+/-%)". Both months are complete months.\n' +
+    '- Flag any spending category where latest month is MORE than 20% over prior month AND the absolute increase is at least $30. Use source "Finance".\n' +
     '- If a category shows a very large spike (>50% or >$200 over), flag it as High urgency — otherwise Medium.\n' +
     '- Simple Ass Tracker (SAT) rows show Ahmed and Victoria\'s net income, expenses, and disposable income for the current budget period.\n' +
     '- Flag if Shared Disposable Income or either person\'s Disposable Income is unexpectedly low (e.g. near zero or negative).\n' +
