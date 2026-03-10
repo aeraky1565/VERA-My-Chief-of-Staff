@@ -288,6 +288,14 @@ function getTransactionSummaries_() {
   if (Object.keys(buckets).length === 0) return [];
 
   // ---- Step 2: Identify the two most recent months ---------------------------------
+  // Always exclude the current calendar month — it's in-progress and will appear
+  // sparse even if the CSV export happens to include a few early transactions.
+  var _now = new Date();
+  var currentMonthKey = _now.getFullYear() * 100 + _now.getMonth();
+  delete buckets[currentMonthKey];
+
+  if (Object.keys(buckets).length === 0) return [];
+
   var sortedKeys = Object.keys(buckets).map(Number).sort(function(a, b) { return a - b; });
   var latestKey  = sortedKeys[sortedKeys.length - 1];
   var prevKey    = sortedKeys.length >= 2 ? sortedKeys[sortedKeys.length - 2] : null;
