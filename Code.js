@@ -92,6 +92,7 @@ function createSheetTabs(ss) {
     ['pto_rollover_days',      '0'],   // days carried over from prior year (Issue #49)
     ['pto_personal_hours',     '48'],  // annual personal time (hours)
     ['pto_buffer_days',        '3'],   // reserve days held back from planning
+    ['weather_location',       ''],    // city name for weather ticker, e.g. "Austin, TX"
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -663,6 +664,61 @@ function morningNudge() {
         '</td></tr>'
       : '';
     const dashboardPlainText = dashboardUrl ? '\nDashboard: ' + dashboardUrl : '';
+    const veraLink = dashboardUrl || ('https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID);
+
+    // ---- Weather ticker (graceful — empty string if not configured) -----
+    const weatherTicker = getWeatherTicker_();
+
+    // ---- Today's calendar events ----------------------------------------
+    let todayEvents = [];
+    try {
+      todayEvents = getUpcomingEvents().filter(function(e) { return e.daysUntil === 0; }).slice(0, 5);
+    } catch (calErr) { Logger.log('morningNudge: calendar fetch error — ' + calErr.message); }
+
+    let calendarSection = '';
+    if (todayEvents.length > 0) {
+      const calRows = todayEvents.map(function(e) {
+        const timeStr = e.isAllDay ? 'All day' : (e.start.split(' ')[1] || '');
+        const calName = e.calLabel || e.calendarName || '';
+        const detail  = [timeStr, calName].filter(Boolean).join(' · ');
+        return '<p style="margin:0 0 5px;font-size:14px;color:#444444;">' +
+               '<strong>' + e.title + '</strong>' +
+               (detail ? ' <span style="color:#888888;font-size:13px;">· ' + detail + '</span>' : '') +
+               '</p>';
+      }).join('');
+      calendarSection =
+        '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">' +
+        '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">📅 Today</p>' +
+        calRows +
+        '</div>';
+    } else {
+      calendarSection =
+        '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">' +
+        '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">📅 Today</p>' +
+        '<p style="margin:0;font-size:14px;color:#aaaaaa;font-style:italic;">Nothing on the calendar today.</p>' +
+        '</div>';
+    }
+
+    // ---- Tasks: overdue + due today count -------------------------------
+    let overdueCount   = 0;
+    let dueTodayCount  = 0;
+    try {
+      const openTasks = getOpenTasks();
+      overdueCount  = openTasks.filter(function(t) { return t.isOverdue; }).length;
+      dueTodayCount = openTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
+    } catch (taskErr) { Logger.log('morningNudge: task fetch error — ' + taskErr.message); }
+
+    let taskBadges = '';
+    if (overdueCount > 0 || dueTodayCount > 0) {
+      taskBadges = '<div style="margin-top:14px;">';
+      if (overdueCount > 0) {
+        taskBadges += '<span style="display:inline-block;background:#fdecea;color:#c62828;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;margin-right:8px;">⚠ ' + overdueCount + ' overdue</span>';
+      }
+      if (dueTodayCount > 0) {
+        taskBadges += '<span style="display:inline-block;background:#fff8e1;color:#e65100;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;">📋 ' + dueTodayCount + ' due today</span>';
+      }
+      taskBadges += '</div>';
+    }
 
     // ---- HTML body ------------------------------------------------------
     const htmlBody =
@@ -676,13 +732,18 @@ function morningNudge() {
         ? '<tr><td style="padding:0;background:#0d1b3e;">' + logoTag + '</td></tr>'
         : '<tr><td style="padding:24px 40px;background:#0d1b3e;text-align:center;"><span style="color:#ffffff;font-size:28px;font-weight:bold;letter-spacing:4px;">VERA</span><br><span style="color:#c9a84c;font-size:11px;letter-spacing:2px;">YOUR PERSONAL CHIEF OF STAFF</span></td></tr>') +
 
+      // Weather ticker (empty string → nothing rendered)
+      weatherTicker +
+
       // Body
       '<tr><td style="padding:36px 40px;">' +
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
       '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
-      '<p style="margin:0;font-size:14px;color:#888888;">Or open your <a href="https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID + '" style="color:#0d1b3e;font-weight:bold;text-decoration:underline;">VERA Life OS sheet</a> directly.</p>' +
+      '<p style="margin:0;font-size:14px;color:#888888;">Or open <a href="' + veraLink + '" style="color:#0d1b3e;font-weight:bold;text-decoration:underline;">VERA</a> directly.</p>' +
+      calendarSection +
+      taskBadges +
       '</td></tr>' +
 
       // Footer
@@ -693,6 +754,19 @@ function morningNudge() {
       '</table></td></tr></table></body></html>';
 
     // ---- Plain text fallback --------------------------------------------
+    const calPlainText = todayEvents.length > 0
+      ? '\nToday:\n' + todayEvents.map(function(e) {
+          const t = e.isAllDay ? 'All day' : (e.start.split(' ')[1] || '');
+          return '  ' + e.title + (t ? ' · ' + t : '');
+        }).join('\n')
+      : '';
+    const taskPlainText = (overdueCount > 0 || dueTodayCount > 0)
+      ? '\nTasks: ' +
+        (overdueCount  > 0 ? overdueCount  + ' overdue'   : '') +
+        (overdueCount  > 0 && dueTodayCount > 0 ? ' · ' : '') +
+        (dueTodayCount > 0 ? dueTodayCount + ' due today' : '')
+      : '';
+
     const plainText = [
       'Good morning, Ahmed.',
       '',
@@ -701,9 +775,10 @@ function morningNudge() {
       highCount > 0 ? '  High priority:   ' + highCount : '',
       medCount  > 0 ? '  Medium priority: ' + medCount  : '',
       lowCount  > 0 ? '  Low priority:    ' + lowCount  : '',
+      calPlainText,
+      taskPlainText,
       '',
-      'Open your VERA Life OS sheet to review and acknowledge flags:',
-      'https://docs.google.com/spreadsheets/d/' + CONFIG.SHEET_ID,
+      'Open VERA: ' + veraLink,
       dashboardPlainText,
       '',
       '— VERA',
@@ -945,6 +1020,43 @@ function addFinanceConfig() {
 
   Logger.log('✅ addFinanceConfig: added ' + added + ' row(s). ' +
              (added < defaults.length ? (defaults.length - added) + ' already existed.' : ''));
+}
+
+// ============================================================
+// MIGRATION — Weather Ticker Config (Issue #12)
+// ============================================================
+
+/**
+ * Seeds the Config tab with the weather_location row introduced in Issue #12.
+ * Run ONCE from the Apps Script editor after pushing this update.
+ * Safe to re-run — skips the row if it already exists.
+ *
+ * After running:
+ *   1. Set weather_location value in the Config tab (e.g. "Austin, TX")
+ *   2. Set WEATHER_API_KEY in Apps Script → Project Settings → Script Properties
+ *      (free key from openweathermap.org)
+ */
+function addWeatherConfig() {
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) { Logger.log('Config tab not found.'); return; }
+
+  const existing = new Set();
+  const lastRow  = sheet.getLastRow();
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function(row) {
+      existing.add(String(row[0] || '').trim());
+    });
+  }
+
+  let added = 0;
+  if (!existing.has('weather_location')) {
+    sheet.appendRow(['weather_location', '']);
+    added++;
+  }
+
+  Logger.log('✅ addWeatherConfig: added ' + added + ' row(s). ' +
+             'Set the weather_location value and WEATHER_API_KEY Script Property to enable the weather ticker.');
 }
 
 // ============================================================

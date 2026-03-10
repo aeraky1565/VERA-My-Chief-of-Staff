@@ -1,0 +1,218 @@
+// ============================================================
+// VERA — Weather.js
+// Morning email weather ticker — OpenWeatherMap + Open-Meteo
+//
+// Script Properties required:
+//   WEATHER_API_KEY — free key from openweathermap.org
+//
+// Config tab required:
+//   weather_location — city name (e.g. "Austin, TX")
+//
+// Data sources:
+//   9am/6pm forecast + rain chance → OWM /data/2.5/forecast (free tier)
+//   Air Quality Index              → OWM /data/2.5/air_pollution (free tier)
+//   UV Index                       → Open-Meteo (no key required)
+// ============================================================
+
+// AQI scale — OWM air_pollution returns 1 (Good) … 5 (Very Poor)
+var AQI_LABELS = ['', 'Good',    'Fair',    'Moderate', 'Poor',    'Very Poor'];
+var AQI_COLORS = ['', '#43a047', '#8bc34a', '#f9a825',  '#e53935', '#7b1fa2'  ];
+
+// ---- Helpers ------------------------------------------------
+
+/**
+ * Maps OpenWeatherMap weather[0].main string to an emoji.
+ */
+function weatherEmoji_(conditionMain) {
+  var map = {
+    'Clear':        '☀️',
+    'Clouds':       '⛅',
+    'Rain':         '🌧️',
+    'Drizzle':      '🌦️',
+    'Thunderstorm': '⛈️',
+    'Snow':         '❄️',
+    'Mist':         '🌫️',
+    'Smoke':        '🌫️',
+    'Haze':         '🌫️',
+    'Dust':         '🌫️',
+    'Fog':          '🌫️',
+    'Sand':         '🌫️',
+    'Ash':          '🌫️',
+    'Squall':       '💨',
+    'Tornado':      '🌪️',
+  };
+  return map[conditionMain] || '🌡️';
+}
+
+// ---- API calls ----------------------------------------------
+
+/**
+ * Calls OWM /forecast with cnt=8 (next 24 h, 3-hour intervals).
+ * Returns parsed JSON or null.
+ */
+function fetchWeatherForecast_(location, apiKey) {
+  var url = 'https://api.openweathermap.org/data/2.5/forecast?q=' +
+            encodeURIComponent(location) +
+            '&appid=' + encodeURIComponent(apiKey) +
+            '&units=imperial&cnt=8';
+  try {
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      Logger.log('Weather forecast HTTP ' + response.getResponseCode() + ': ' +
+                 response.getContentText().substring(0, 200));
+      return null;
+    }
+    return JSON.parse(response.getContentText());
+  } catch (e) {
+    Logger.log('fetchWeatherForecast_ error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * From a 3-hour forecast list, returns the entry whose local time hour
+ * is closest to targetHour (0–23). Uses the city timezone offset from OWM.
+ */
+function findForecastSlot_(list, targetHour, tzOffsetSec) {
+  var best     = null;
+  var bestDiff = 999;
+  list.forEach(function(entry) {
+    var localTs   = entry.dt + tzOffsetSec;
+    var localHour = Math.floor((localTs % 86400 + 86400) % 86400 / 3600);
+    var diff = Math.abs(localHour - targetHour);
+    if (diff < bestDiff) { bestDiff = diff; best = entry; }
+  });
+  return best;
+}
+
+/**
+ * Calls OWM /air_pollution. Returns { index, label, color } or null.
+ */
+function fetchAQI_(lat, lon, apiKey) {
+  var url = 'https://api.openweathermap.org/data/2.5/air_pollution?lat=' +
+            lat + '&lon=' + lon + '&appid=' + encodeURIComponent(apiKey);
+  try {
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) return null;
+    var data = JSON.parse(response.getContentText());
+    var idx  = (data.list && data.list[0]) ? data.list[0].main.aqi : null;
+    if (!idx) return null;
+    return { index: idx, label: AQI_LABELS[idx] || 'Unknown', color: AQI_COLORS[idx] || '#888888' };
+  } catch (e) {
+    Logger.log('fetchAQI_ error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Calls Open-Meteo (no key needed) for the UV index at the current local hour.
+ * Returns integer UV value or null.
+ */
+function fetchUVIndex_(lat, lon) {
+  var url = 'https://api.open-meteo.com/v1/forecast' +
+            '?latitude=' + lat + '&longitude=' + lon +
+            '&hourly=uv_index&forecast_days=1&timezone=auto';
+  try {
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) return null;
+    var data = JSON.parse(response.getContentText());
+    if (!data.hourly || !data.hourly.uv_index) return null;
+    var hour = parseInt(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'H'), 10);
+    return Math.round(data.hourly.uv_index[hour] || 0);
+  } catch (e) {
+    Logger.log('fetchUVIndex_ error: ' + e.message);
+    return null;
+  }
+}
+
+// ---- HTML builder -------------------------------------------
+
+/**
+ * Assembles the ticker <tr> row from forecast data.
+ * Returns '' if no meaningful data is available.
+ */
+function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi) {
+  var sep   = '<span style="color:rgba(201,168,76,0.6);margin:0 10px;">|</span>';
+  var parts = [];
+
+  if (slot9am) {
+    var e9 = weatherEmoji_(slot9am.weather[0].main);
+    var t9 = Math.round(slot9am.main.temp);
+    parts.push(e9 + '&nbsp;<strong style="color:#ffffff;">9AM</strong>&nbsp;' + t9 + '&deg;F');
+  }
+  if (slot6pm) {
+    var e6 = weatherEmoji_(slot6pm.weather[0].main);
+    var t6 = Math.round(slot6pm.main.temp);
+    parts.push(e6 + '&nbsp;<strong style="color:#ffffff;">6PM</strong>&nbsp;' + t6 + '&deg;F');
+  }
+
+  parts.push('🌧️&nbsp;Rain&nbsp;<strong style="color:#ffffff;">' + rainPct + '%</strong>');
+
+  if (aqi) {
+    parts.push('🌿&nbsp;AQI&nbsp;<strong style="color:' + aqi.color + ';">' + aqi.label + '</strong>');
+  }
+
+  if (uvi !== null && uvi !== undefined) {
+    var uvColor = uvi <= 2 ? '#43a047' : uvi <= 5 ? '#f9a825' : uvi <= 7 ? '#e53935' : '#7b1fa2';
+    parts.push('☀️&nbsp;UV&nbsp;<strong style="color:' + uvColor + ';">' + uvi + '</strong>');
+  }
+
+  if (parts.length === 0) return '';
+
+  return (
+    '<tr>' +
+    '<td style="background:#0d1b3e;padding:10px 24px;border-top:1px solid rgba(201,168,76,0.25);">' +
+    '<p style="margin:0;text-align:center;font-size:13px;color:#cccccc;letter-spacing:0.3px;">' +
+    parts.join(sep) +
+    '</p>' +
+    '</td>' +
+    '</tr>'
+  );
+}
+
+// ---- Main entry point ----------------------------------------
+
+/**
+ * Builds and returns the weather ticker <tr> HTML string.
+ * Returns '' (empty string) if not configured or if any error occurs,
+ * so the morning email always sends even without weather data.
+ */
+function getWeatherTicker_() {
+  try {
+    var cfg      = getConfigValues();
+    var location = (cfg['weather_location'] || '').trim();
+    var apiKey   = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
+    if (!location || !apiKey) return '';
+
+    var forecast = fetchWeatherForecast_(location, apiKey);
+    if (!forecast) return '';
+
+    var lat      = forecast.city.coord.lat;
+    var lon      = forecast.city.coord.lon;
+    var tzOffset = forecast.city.timezone;  // seconds from UTC
+
+    var slot9am = findForecastSlot_(forecast.list, 9,  tzOffset);
+    var slot6pm = findForecastSlot_(forecast.list, 18, tzOffset);
+    var rainPct = Math.round(((slot9am && slot9am.pop) ? slot9am.pop : 0) * 100);
+
+    var aqi = fetchAQI_(lat, lon, apiKey);
+    var uvi = fetchUVIndex_(lat, lon);
+
+    return buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi);
+  } catch (e) {
+    Logger.log('getWeatherTicker_ error: ' + e.message);
+    return '';
+  }
+}
+
+// ---- Debug helper -------------------------------------------
+
+function testWeather() {
+  var ticker = getWeatherTicker_();
+  if (!ticker) {
+    Logger.log('testWeather: no ticker returned — check weather_location Config row and WEATHER_API_KEY Script Property.');
+  } else {
+    Logger.log('testWeather: ticker HTML length = ' + ticker.length + ' chars.');
+    Logger.log(ticker);
+  }
+}
