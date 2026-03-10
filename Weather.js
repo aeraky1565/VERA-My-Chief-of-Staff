@@ -47,12 +47,43 @@ function weatherEmoji_(conditionMain) {
 // ---- API calls ----------------------------------------------
 
 /**
+ * Converts a human-readable city name (any format) to lat/lon via OWM Geocoding API.
+ * Returns { lat, lon } or null on any error.
+ * Accepts formats like "Austin, TX", "Austin Texas", "Austin,US", "New York City", etc.
+ */
+function geocodeLocation_(location, apiKey) {
+  var url = 'https://api.openweathermap.org/geo/1.0/direct?q=' +
+            encodeURIComponent(location) +
+            '&limit=1&appid=' + encodeURIComponent(apiKey);
+  try {
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      Logger.log('Geocoding HTTP ' + response.getResponseCode() + ': ' +
+                 response.getContentText().substring(0, 200));
+      return null;
+    }
+    var results = JSON.parse(response.getContentText());
+    if (!results || results.length === 0) {
+      Logger.log('Geocoding: no results for "' + location + '"');
+      return null;
+    }
+    return { lat: results[0].lat, lon: results[0].lon };
+  } catch (e) {
+    Logger.log('geocodeLocation_ error: ' + e.message);
+    return null;
+  }
+}
+
+/**
  * Calls OWM /forecast with cnt=8 (next 24 h, 3-hour intervals).
+ * Geocodes the city name first to get lat/lon (OWM recommends lat/lon over q= city name).
  * Returns parsed JSON or null.
  */
 function fetchWeatherForecast_(location, apiKey) {
-  var url = 'https://api.openweathermap.org/data/2.5/forecast?q=' +
-            encodeURIComponent(location) +
+  var coords = geocodeLocation_(location, apiKey);
+  if (!coords) return null;
+  var url = 'https://api.openweathermap.org/data/2.5/forecast?' +
+            'lat=' + coords.lat + '&lon=' + coords.lon +
             '&appid=' + encodeURIComponent(apiKey) +
             '&units=imperial&cnt=8';
   try {
