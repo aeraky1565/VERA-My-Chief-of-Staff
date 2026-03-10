@@ -31,10 +31,13 @@ const EVENT_COLOR_NAMES = {
  *
  * @returns {Array} Sorted array of event objects
  */
-function getUpcomingEvents() {
+function getUpcomingEvents(daysAheadOverride) {
   try {
-    const now     = new Date();
-    const endDate = new Date(now.getTime() + CONFIG.CALENDAR_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+    const now        = new Date();
+    const daysToScan = (typeof daysAheadOverride === 'number' && daysAheadOverride > 0)
+      ? daysAheadOverride
+      : CONFIG.CALENDAR_DAYS_AHEAD;
+    const endDate = new Date(now.getTime() + daysToScan * 24 * 60 * 60 * 1000);
     const tz      = Session.getScriptTimeZone();
 
     // ---- Read config -------------------------------------------------------

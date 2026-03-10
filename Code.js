@@ -816,6 +816,48 @@ function addKeyColumnToFlags() {
 }
 
 // ============================================================
+// MIGRATION — Weekend Planner Config (Issue #20)
+// ============================================================
+
+/**
+ * Seeds the Config tab with Weekend Planner default settings.
+ * Run ONCE from the Apps Script editor after pushing this update.
+ * Safe to re-run — skips any key that already exists.
+ */
+function addWeekendPlannerConfig() {
+  const ss     = getSpreadsheet();
+  const sheet  = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) throw new Error('Config tab not found.');
+
+  const defaults = [
+    ['weekend_planner_enabled',       'true'],
+    ['weekend_planner_lookahead_days', '21'],
+    ['weekend_planner_hour',           '8'],
+    ['weekend_planner_home_city',      'Austin, TX'],
+  ];
+
+  // Read existing keys so we don't overwrite manual edits
+  const existing = new Set();
+  const lastRow  = sheet.getLastRow();
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function(row) {
+      existing.add(String(row[0] || '').trim());
+    });
+  }
+
+  let added = 0;
+  defaults.forEach(function(pair) {
+    if (!existing.has(pair[0])) {
+      sheet.appendRow(pair);
+      added++;
+    }
+  });
+
+  Logger.log('✅ addWeekendPlannerConfig: added ' + added + ' row(s). ' +
+             (added < defaults.length ? (defaults.length - added) + ' row(s) already existed.' : ''));
+}
+
+// ============================================================
 // MANUAL TEST — Call this to do a full dry run before going live
 // ============================================================
 
