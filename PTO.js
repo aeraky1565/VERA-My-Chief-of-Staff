@@ -180,6 +180,7 @@ function getPTOEvents_(cfg) {
   var ptoEvents  = [];
   var today      = new Date();
   today.setHours(0, 0, 0, 0);
+  var yesterday  = new Date(today.getTime() - 24 * 60 * 60 * 1000);
 
   var ignoreKws  = cfg.ignoreKeywords  || [];
   var holidayKws = cfg.holidayKeywords || ['day', 'holiday', 'floating', 'closure'];
@@ -235,45 +236,127 @@ function getPTOEvents_(cfg) {
         var vStart   = ev2.getAllDayStartDate();
         var vEndExcl = ev2.getAllDayEndDate(); // exclusive
         var vEndIncl = new Date(vEndExcl.getTime() - 24 * 60 * 60 * 1000);
-        var vDays    = countWeekdays_(vStart, vEndIncl, holidaySet);
-        var vStatus  = vEndIncl < today ? 'Used' : 'Planned';
-        ptoEvents.push({
-          type:      'Vacation',
-          label:     title2,
-          startDate: Utilities.formatDate(vStart,   tz, 'yyyy-MM-dd'),
-          endDate:   Utilities.formatDate(vEndIncl, tz, 'yyyy-MM-dd'),
-          isAllDay:  true,
-          weekdays:  vDays,
-          hours:     null,
-          status:    vStatus,
-        });
+
+        if (vEndIncl < today) {
+          // Entirely past → Used
+          ptoEvents.push({
+            type:      'Vacation',
+            label:     title2,
+            startDate: Utilities.formatDate(vStart,   tz, 'yyyy-MM-dd'),
+            endDate:   Utilities.formatDate(vEndIncl, tz, 'yyyy-MM-dd'),
+            isAllDay:  true,
+            weekdays:  countWeekdays_(vStart, vEndIncl, holidaySet),
+            hours:     null,
+            status:    'Used',
+          });
+        } else if (vStart < today) {
+          // In-progress: started before today, ends today or later → split at today boundary
+          var vUsedDays    = countWeekdays_(vStart,     yesterday, holidaySet);
+          var vPlannedDays = countWeekdays_(today,      vEndIncl,  holidaySet);
+          if (vUsedDays > 0) {
+            ptoEvents.push({
+              type:      'Vacation',
+              label:     title2,
+              startDate: Utilities.formatDate(vStart,    tz, 'yyyy-MM-dd'),
+              endDate:   Utilities.formatDate(yesterday, tz, 'yyyy-MM-dd'),
+              isAllDay:  true,
+              weekdays:  vUsedDays,
+              hours:     null,
+              status:    'Used',
+            });
+          }
+          ptoEvents.push({
+            type:      'Vacation',
+            label:     title2,
+            startDate: Utilities.formatDate(today,    tz, 'yyyy-MM-dd'),
+            endDate:   Utilities.formatDate(vEndIncl, tz, 'yyyy-MM-dd'),
+            isAllDay:  true,
+            weekdays:  vPlannedDays,
+            hours:     null,
+            status:    'Planned',
+          });
+        } else {
+          // Entirely future → Planned
+          ptoEvents.push({
+            type:      'Vacation',
+            label:     title2,
+            startDate: Utilities.formatDate(vStart,   tz, 'yyyy-MM-dd'),
+            endDate:   Utilities.formatDate(vEndIncl, tz, 'yyyy-MM-dd'),
+            isAllDay:  true,
+            weekdays:  countWeekdays_(vStart, vEndIncl, holidaySet),
+            hours:     null,
+            status:    'Planned',
+          });
+        }
 
       } else if (tLow2.indexOf('pto') !== -1) {
         // All-day PTO = 8 hrs per calendar day
         var pStart   = ev2.getAllDayStartDate();
         var pEndExcl = ev2.getAllDayEndDate();
         var pEndIncl = new Date(pEndExcl.getTime() - 24 * 60 * 60 * 1000);
-        var pStatus  = pEndIncl < today ? 'Used' : 'Planned';
 
-        // Count calendar days (each = 8 hrs, regardless of weekday)
-        var pDayCount = 0;
-        var pd = new Date(pStart.getTime());
-        pd.setHours(0, 0, 0, 0);
-        var pdEnd = new Date(pEndIncl.getTime());
-        pdEnd.setHours(0, 0, 0, 0);
-        while (pd <= pdEnd) { pDayCount++; pd.setDate(pd.getDate() + 1); }
-        var pHours = pDayCount * 8;
+        /** Count calendar days from d1 to d2 inclusive. */
+        function countCalDays_(d1, d2) {
+          var d = new Date(d1.getTime()); d.setHours(0, 0, 0, 0);
+          var e = new Date(d2.getTime()); e.setHours(0, 0, 0, 0);
+          var n = 0;
+          while (d <= e) { n++; d.setDate(d.getDate() + 1); }
+          return n;
+        }
 
-        ptoEvents.push({
-          type:      'PTO-Personal',
-          label:     title2,
-          startDate: Utilities.formatDate(pStart,   tz, 'yyyy-MM-dd'),
-          endDate:   Utilities.formatDate(pEndIncl, tz, 'yyyy-MM-dd'),
-          isAllDay:  true,
-          weekdays:  pDayCount,
-          hours:     pHours,
-          status:    pStatus,
-        });
+        if (pEndIncl < today) {
+          // Entirely past → Used
+          var pDays = countCalDays_(pStart, pEndIncl);
+          ptoEvents.push({
+            type:      'PTO-Personal',
+            label:     title2,
+            startDate: Utilities.formatDate(pStart,   tz, 'yyyy-MM-dd'),
+            endDate:   Utilities.formatDate(pEndIncl, tz, 'yyyy-MM-dd'),
+            isAllDay:  true,
+            weekdays:  pDays,
+            hours:     pDays * 8,
+            status:    'Used',
+          });
+        } else if (pStart < today) {
+          // In-progress → split at today boundary
+          var pUsedDays    = countCalDays_(pStart,     yesterday);
+          var pPlannedDays = countCalDays_(today,      pEndIncl);
+          if (pUsedDays > 0) {
+            ptoEvents.push({
+              type:      'PTO-Personal',
+              label:     title2,
+              startDate: Utilities.formatDate(pStart,    tz, 'yyyy-MM-dd'),
+              endDate:   Utilities.formatDate(yesterday, tz, 'yyyy-MM-dd'),
+              isAllDay:  true,
+              weekdays:  pUsedDays,
+              hours:     pUsedDays * 8,
+              status:    'Used',
+            });
+          }
+          ptoEvents.push({
+            type:      'PTO-Personal',
+            label:     title2,
+            startDate: Utilities.formatDate(today,    tz, 'yyyy-MM-dd'),
+            endDate:   Utilities.formatDate(pEndIncl, tz, 'yyyy-MM-dd'),
+            isAllDay:  true,
+            weekdays:  pPlannedDays,
+            hours:     pPlannedDays * 8,
+            status:    'Planned',
+          });
+        } else {
+          // Entirely future → Planned
+          var pDays = countCalDays_(pStart, pEndIncl);
+          ptoEvents.push({
+            type:      'PTO-Personal',
+            label:     title2,
+            startDate: Utilities.formatDate(pStart,   tz, 'yyyy-MM-dd'),
+            endDate:   Utilities.formatDate(pEndIncl, tz, 'yyyy-MM-dd'),
+            isAllDay:  true,
+            weekdays:  pDays,
+            hours:     pDays * 8,
+            status:    'Planned',
+          });
+        }
       }
       // else: holiday — already captured in pass 1
 
