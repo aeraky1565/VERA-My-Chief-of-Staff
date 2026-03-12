@@ -654,14 +654,20 @@ function computePTOStats_(ptoResult, cfg, today) {
   var remPersHrs   = totalPersHrs - usedPersHrs  - plannedPersHrs;
 
   // ---- Burn-down pace -----------------------------------------------------
+  // Combine vacation days + PTO-Personal hours (÷8 per day) so that events
+  // named "PTO" (personal pool) are included alongside "Vacation" events.
+  var usedAllDays    = Math.round((usedVacDays    + usedPersHrs    / 8) * 10) / 10;
+  var plannedAllDays = Math.round((plannedVacDays + plannedPersHrs / 8) * 10) / 10;
+  var totalAllDays   = Math.round((totalVacDays   + totalPersHrs   / 8) * 10) / 10;
+
   var yearStart  = new Date(cfg.year, 0, 1);
   var dayOfYear  = Math.max(1, Math.round((today.getTime() - yearStart.getTime()) / (24 * 60 * 60 * 1000)));
   var totalDays  = 365;
-  var idealUsed  = Math.round((dayOfYear / totalDays) * totalVacDays * 10) / 10;
-  var paceGap    = Math.round((usedVacDays - idealUsed) * 10) / 10;
+  var idealUsed  = Math.round((dayOfYear / totalDays) * totalAllDays * 10) / 10;
+  var paceGap    = Math.round((usedAllDays - idealUsed) * 10) / 10;
   var paceStatus = paceGap >= 1 ? 'ahead' : paceGap <= -2 ? 'behind' : 'on-track';
-  var projYearEnd = usedVacDays + plannedVacDays;
-  var projUnused  = totalVacDays - projYearEnd;
+  var projYearEnd = usedAllDays + plannedAllDays;
+  var projUnused  = totalAllDays - projYearEnd;
 
   // ---- 3-2-1 classification -----------------------------------------------
   var threeToOne = {
@@ -713,7 +719,7 @@ function computePTOStats_(ptoResult, cfg, today) {
       dayOfYear:        dayOfYear,
       totalDays:        totalDays,
       idealUsedToDate:  idealUsed,
-      actualUsedToDate: usedVacDays,
+      actualUsedToDate: usedAllDays,
       paceGap:          paceGap,
       paceStatus:       paceStatus,
       projectedYearEnd: projYearEnd,
