@@ -507,6 +507,27 @@
       border: 1px solid rgba(255,255,255,.1);
     }
 
+    /* ---- Travel sub-tab pills ---- */
+    .subtab-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .subtab-btn {
+      background: none;
+      border: 1px solid #1e3060;
+      border-radius: 20px;
+      color: #6b7fa8;
+      font-size: 12px;
+      padding: 5px 14px;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+      white-space: nowrap;
+    }
+    .subtab-btn:hover  { border-color: #3d5fa0; color: #c9d9ff; }
+    .subtab-btn.active { border-color: #c9a84c; color: #c9a84c; background: rgba(201,168,76,.08); }
+
     /* ---- Toast notification ---- */
     .toast {
       position: fixed;
@@ -1482,6 +1503,87 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
   );
 }
 
+// ---- Travel tab -------------------------------------------------------------
+
+function TravelTab({ pto }) {
+  const [sub, setSub] = React.useState('trips');
+
+  const upcomingTravel = (pto && pto.upcomingTravel) || [];
+
+  const subTabs = [
+    { id: 'trips',      label: '✈️ My Trips' },
+    { id: 'itinerary',  label: '🗺️ Itinerary' },
+    { id: 'packing',    label: '🎒 Packing' },
+    { id: 'budget',     label: '💰 Budget' },
+    { id: 'bucketlist', label: '🪣 Bucket List' },
+  ];
+
+  return (
+    <div>
+      {/* Sub-tab pills */}
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button
+            key={s.id}
+            className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}
+          >{s.label}</button>
+        ))}
+      </div>
+
+      {/* My Trips — live from PTO upcomingTravel */}
+      {sub === 'trips' && (
+        upcomingTravel.length === 0
+          ? (
+            <div className="empty-state">
+              <div style={{ fontSize: 36, marginBottom: 12 }}>✈️</div>
+              <div>No upcoming travel found.</div>
+              <div style={{ fontSize: 12, color: '#4d6080', marginTop: 8 }}>
+                Travel events are pulled from your shared "AE&amp;VV - Our Joint Chaos" calendar.
+              </div>
+            </div>
+          )
+          : (
+            <div>
+              {upcomingTravel.map((t, i) => (
+                <div key={i} className="bento-card" style={{ cursor: 'default' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>{t.label}</div>
+                      <div style={{ fontSize: 12, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#5c9eff', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days away`}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+      )}
+
+      {/* Placeholder sub-tabs */}
+      {sub !== 'trips' && (
+        <div className="empty-state">
+          <div style={{ fontSize: 36, marginBottom: 12 }}>
+            {sub === 'itinerary'  ? '🗺️'
+           : sub === 'packing'    ? '🎒'
+           : sub === 'budget'     ? '💰'
+           : '🪣'}
+          </div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>
+            {sub === 'itinerary'  ? 'Itinerary'
+           : sub === 'packing'    ? 'Packing List'
+           : sub === 'budget'     ? 'Trip Budget'
+           : 'Bucket List'}
+          </div>
+          <div style={{ fontSize: 12, color: '#4d6080' }}>Coming soon</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Shopping tab -----------------------------------------------------------
 
 function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
@@ -2258,6 +2360,74 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
                 <span style={{ color: '#dde1f0' }}>{h.label}</span>
               </span>
             ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Finances tab -----------------------------------------------------------
+
+function FinancesTab({ summaries }) {
+  // Finance summaries = user-configured external sheet rows (e.g. Simple Ass Tracker, KenzBox)
+  // Excludes VERA's own auto-generated metrics, calendar, and generic summaries
+  const financeSummaries = summaries.filter(s =>
+    s.source !== '[AUTO] Metrics' &&
+    s.source !== '[AUTO] Calendar' &&
+    s.source !== '[AUTO] Summaries'
+  );
+
+  const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
+
+  return (
+    <div>
+      {/* Spending chart — reuses existing SpendingChart component */}
+      {hasTxData
+        ? <SpendingChart summaries={summaries} />
+        : (
+          <div className="bento-card" style={{ gridColumn: '1 / -1', cursor: 'default', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, color: '#4d6080', padding: '12px 0' }}>
+              💸 No transaction data yet — connect your Transactions sheet in Config.
+            </div>
+          </div>
+        )
+      }
+
+      {/* Finance summary rows from user-configured external sheets (e.g. budget tracker) */}
+      {financeSummaries.length > 0 && (
+        <div className="bento-card" style={{ marginTop: 16, cursor: 'default' }}>
+          <div className="bento-card-title">📋 Finance Summaries</div>
+          <table className="summaries-table" cellSpacing="0" style={{ marginTop: 12 }}>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Metric</th>
+                <th>Value</th>
+                <th>As Of</th>
+              </tr>
+            </thead>
+            <tbody>
+              {financeSummaries.map((s, i) => (
+                <tr key={i}>
+                  <td><span className="source-badge">{s.source}</span></td>
+                  <td>{s.metric}</td>
+                  <td className="summary-value">{s.value}</td>
+                  <td style={{ color: '#6b7fa8' }}>{s.asOf}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Full empty state — no transaction data and no external finance sheets configured */}
+      {!hasTxData && financeSummaries.length === 0 && (
+        <div className="empty-state" style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>💰</div>
+          <div style={{ color: '#dde1f0', marginBottom: 8 }}>No finance data yet</div>
+          <div style={{ fontSize: 12, color: '#4d6080', maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
+            Connect your Transactions sheet and budget trackers via the Config tab to populate this view.
           </div>
         </div>
       )}
@@ -3211,7 +3381,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'milestones', 'goals', 'interests', 'summaries'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'travel', 'finances', 'milestones', 'goals', 'interests', 'summaries'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -3222,6 +3392,7 @@ function App() {
                   if (tab === 'interests') loadInterests(apiUrl, apiToken);
                   if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
                   if (tab === 'pto')       loadPTO(apiUrl, apiToken);
+                  if (tab === 'travel')    loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
                 }}
               >
                 {tab === 'home'      ? `🏠 Home` : ''}
@@ -3232,7 +3403,9 @@ function App() {
                 {tab === 'goals'     ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
                 {tab === 'interests' ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
                 {tab === 'shopping'  ? `🛒 Shopping` : ''}
-                {tab === 'pto'        ? `🌴 PTO Planner` : ''}
+                {tab === 'pto'       ? `🌴 PTO Planner` : ''}
+                {tab === 'travel'    ? `✈️ Travel` : ''}
+                {tab === 'finances'  ? `💰 Finances` : ''}
                 {tab === 'milestones' ? `🎯 Milestones${milestones.length ? ` (${milestones.length})` : ''}` : ''}
                 {tab === 'summaries'  ? `📊 Summaries` : ''}
               </button>
@@ -3430,6 +3603,20 @@ function App() {
                     onTriggerBuffer={handleTriggerBuffer}
                     busy={busy}
                   />
+            )}
+
+            {/* Travel tab */}
+            {activeTab === 'travel' && (
+              tabLoading.pto
+                ? <div className="loading-text">Loading travel data…</div>
+                : <TravelTab pto={pto} />
+            )}
+
+            {/* Finances tab */}
+            {activeTab === 'finances' && (
+              loading && summaries.length === 0
+                ? <div className="loading-text">Loading finance data…</div>
+                : <FinancesTab summaries={summaries} />
             )}
 
             {/* Milestones tab */}
