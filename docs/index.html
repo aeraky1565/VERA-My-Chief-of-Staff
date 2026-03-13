@@ -2369,24 +2369,27 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
 
 // ---- Finances tab -----------------------------------------------------------
 
-function FinancesTab({ summaries }) {
-  // Finance summaries = user-configured external sheet rows (e.g. Simple Ass Tracker, KenzBox)
-  // Excludes VERA's own auto-generated metrics, calendar, and generic summaries
-  const financeSummaries = summaries.filter(s =>
-    s.source !== '[AUTO] Metrics' &&
-    s.source !== '[AUTO] Calendar' &&
-    s.source !== '[AUTO] Summaries'
-  );
-
+function FinancesTab({ summaries, budget, budgetLoading }) {
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
+
+  // Format a cell value as currency (numbers → $X,XXX) or dash (null/empty)
+  function fmtMoney(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'number') return '$' + Math.round(v).toLocaleString();
+    return String(v);
+  }
+
+  const budgetRows    = (budget && budget.rows)    || [];
+  const budgetReady   = budget !== null;
+  const budgetMissing = budget && !budget.configured;
 
   return (
     <div>
-      {/* Spending chart — reuses existing SpendingChart component */}
+      {/* ── Spending Chart ─────────────────────────────── */}
       {hasTxData
         ? <SpendingChart summaries={summaries} />
         : (
-          <div className="bento-card" style={{ gridColumn: '1 / -1', cursor: 'default', textAlign: 'center' }}>
+          <div className="bento-card" style={{ cursor: 'default', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#4d6080', padding: '12px 0' }}>
               💸 No transaction data yet — connect your Transactions sheet in Config.
             </div>
@@ -2394,43 +2397,74 @@ function FinancesTab({ summaries }) {
         )
       }
 
-      {/* Finance summary rows from user-configured external sheets (e.g. budget tracker) */}
-      {financeSummaries.length > 0 && (
-        <div className="bento-card" style={{ marginTop: 16, cursor: 'default' }}>
-          <div className="bento-card-title">📋 Finance Summaries</div>
-          <table className="summaries-table" cellSpacing="0" style={{ marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th>Source</th>
-                <th>Metric</th>
-                <th>Value</th>
-                <th>As Of</th>
-              </tr>
-            </thead>
+      {/* ── Monthly Budget (Simple Ass Tracker) ─────────── */}
+      <div className="bento-card" style={{ marginTop: 16, cursor: 'default' }}>
+        <div className="bento-card-title" style={{ marginBottom: 14 }}>📊 Monthly Budget</div>
+
+        {budgetLoading && (
+          <div style={{ fontSize: 13, color: '#6b7fa8', padding: '8px 0' }}>Loading budget…</div>
+        )}
+
+        {!budgetLoading && budgetMissing && (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>
+            SAT_SHEET_ID not configured — set it in Apps Script → Script Properties.
+          </div>
+        )}
+
+        {!budgetLoading && budgetReady && !budgetMissing && budgetRows.length === 0 && (
+          <div style={{ fontSize: 13, color: '#4d6080' }}>No rows found in the Budget tab.</div>
+        )}
+
+        {!budgetLoading && budgetRows.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <tbody>
-              {financeSummaries.map((s, i) => (
-                <tr key={i}>
-                  <td><span className="source-badge">{s.source}</span></td>
-                  <td>{s.metric}</td>
-                  <td className="summary-value">{s.value}</td>
-                  <td style={{ color: '#6b7fa8' }}>{s.asOf}</td>
-                </tr>
-              ))}
+              {budgetRows.map((r, i) => {
+                const isHeader = r.value === null;
+                const hasSplit = r.ahmed !== null || r.victoria !== null;
+                return isHeader
+                  ? (
+                    <tr key={i}>
+                      <td colSpan={hasSplit ? 4 : 2} style={{
+                        paddingTop: i === 0 ? 0 : 14,
+                        paddingBottom: 4,
+                        fontWeight: 700,
+                        fontSize: 11,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        color: '#c9a84c',
+                        borderBottom: '1px solid #1e3060',
+                      }}>{r.label}</td>
+                    </tr>
+                  )
+                  : (
+                    <tr key={i} style={{ borderBottom: '1px solid #0d1b3e' }}>
+                      <td style={{ padding: '7px 0', color: '#dde1f0', width: '55%' }}>{r.label}</td>
+                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 600, color: '#c9a84c' }}>
+                        {fmtMoney(r.value)}
+                      </td>
+                      {hasSplit && (
+                        <React.Fragment>
+                          <td style={{ padding: '7px 0 7px 16px', textAlign: 'right', color: '#5c9eff', fontSize: 12 }}>
+                            {fmtMoney(r.ahmed)}
+                          </td>
+                          <td style={{ padding: '7px 0 7px 8px', textAlign: 'right', color: '#c97ef2', fontSize: 12 }}>
+                            {fmtMoney(r.victoria)}
+                          </td>
+                        </React.Fragment>
+                      )}
+                    </tr>
+                  );
+              })}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
 
-      {/* Full empty state — no transaction data and no external finance sheets configured */}
-      {!hasTxData && financeSummaries.length === 0 && (
-        <div className="empty-state" style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>💰</div>
-          <div style={{ color: '#dde1f0', marginBottom: 8 }}>No finance data yet</div>
-          <div style={{ fontSize: 12, color: '#4d6080', maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
-            Connect your Transactions sheet and budget trackers via the Config tab to populate this view.
+        {!budgetReady && !budgetLoading && (
+          <div style={{ fontSize: 12, color: '#4d6080' }}>
+            Click the Finances tab to load budget data.
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -2944,6 +2978,7 @@ function App() {
   const [interests,  setInterests]  = useState([]);
   const [shopping,   setShopping]   = useState([]);
   const [pto,        setPTO]        = useState(null);
+  const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -3115,6 +3150,18 @@ function App() {
       setError('PTO load failed: ' + err.message);
     }
     setTabLoading(prev => ({ ...prev, pto: false }));
+  }
+
+  async function loadBudget(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, finances: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'budget' });
+      setBudget(data || null);
+    } catch (err) {
+      setError('Budget load failed: ' + err.message);
+    }
+    setTabLoading(prev => ({ ...prev, finances: false }));
   }
 
   async function handleTriggerBuffer() {
@@ -3393,6 +3440,7 @@ function App() {
                   if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
                   if (tab === 'pto')       loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')    loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
+                  if (tab === 'finances')  loadBudget(apiUrl, apiToken);
                 }}
               >
                 {tab === 'home'      ? `🏠 Home` : ''}
@@ -3614,9 +3662,11 @@ function App() {
 
             {/* Finances tab */}
             {activeTab === 'finances' && (
-              loading && summaries.length === 0
-                ? <div className="loading-text">Loading finance data…</div>
-                : <FinancesTab summaries={summaries} />
+              <FinancesTab
+                summaries={summaries}
+                budget={budget}
+                budgetLoading={!!tabLoading.finances}
+              />
             )}
 
             {/* Milestones tab */}

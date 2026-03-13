@@ -90,6 +90,7 @@ function doGet(e) {
       case 'interests_delete': return jsonOut_(webDeleteInterest_(e));
       case 'pto':                   return jsonOut_(webGetPTO_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
+      case 'budget':                return jsonOut_(webGetBudget_());
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -509,6 +510,47 @@ function webTriggerBuffer_(e) {
   Logger.log('PTO Buffer Day triggered. Remaining: ' + newVal + '. Date: ' + today);
 
   return { ok: true, remaining: newVal, triggeredOn: today };
+}
+
+// ---- Budget (Simple Ass Tracker) -------------------------------------------
+
+/**
+ * Reads the entire Budget tab from Simple Ass Tracker and returns structured rows.
+ * Col A = label, Col B = value (empty → section header), Col C = Ahmed, Col D = Victoria.
+ * SAT_SHEET_ID must be set in Script Properties.
+ */
+function webGetBudget_() {
+  var sheetId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  if (!sheetId) return { ok: true, rows: [], configured: false };
+
+  try {
+    var ss    = SpreadsheetApp.openById(sheetId);
+    var sheet = ss.getSheetByName('Budget');
+    if (!sheet) return { ok: true, rows: [], configured: false, error: 'Budget tab not found' };
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 1) return { ok: true, rows: [], configured: true };
+
+    var numCols = Math.min(sheet.getLastColumn(), 4); // A-D: label, value, ahmed, victoria
+    var data    = sheet.getRange(1, 1, lastRow, numCols).getValues();
+
+    var rows = [];
+    data.forEach(function(row) {
+      var label = String(row[0] || '').trim();
+      if (!label) return; // skip fully empty rows
+      rows.push({
+        label:    label,
+        value:    (row.length > 1 && row[1] !== '') ? row[1] : null,
+        ahmed:    (row.length > 2 && row[2] !== '') ? row[2] : null,
+        victoria: (row.length > 3 && row[3] !== '') ? row[3] : null,
+      });
+    });
+
+    return { ok: true, rows: rows, configured: true };
+  } catch (err) {
+    Logger.log('webGetBudget_ error: ' + err.message);
+    return { ok: false, error: err.message, rows: [] };
+  }
 }
 
 // ---- Chat ------------------------------------------------------------------
