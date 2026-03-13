@@ -411,11 +411,13 @@
       color: #6b7fa8;
       font-style: italic;
     }
+    .chat-input-area {
+      border-top: 1px solid #1e3060;
+      padding-top: 12px;
+    }
     .chat-input-row {
       display: flex;
       gap: 10px;
-      padding-top: 14px;
-      border-top: 1px solid #1e3060;
     }
     .chat-input {
       flex: 1;
@@ -448,6 +450,62 @@
     }
     .chat-send:hover { opacity: 0.85; }
     .chat-send:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ---- Image attachment (chat) ---- */
+    .chat-img-preview {
+      position: relative;
+      display: inline-flex;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .chat-img-preview img {
+      max-height: 80px;
+      max-width: 120px;
+      border-radius: 8px;
+      border: 1px solid #1e3060;
+      object-fit: cover;
+    }
+    .chat-img-remove {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: #e53935;
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      font-size: 11px;
+      cursor: pointer;
+      line-height: 18px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .chat-attach {
+      background: none;
+      border: 1px solid #2a4070;
+      border-radius: 10px;
+      color: #8899cc;
+      font-size: 18px;
+      padding: 0 12px;
+      cursor: pointer;
+      align-self: flex-end;
+      height: 44px;
+      transition: border-color .15s, color .15s;
+    }
+    .chat-attach:hover  { border-color: #c9a84c; color: #c9a84c; }
+    .chat-attach:disabled { opacity: .4; cursor: not-allowed; }
+    .chat-msg-img {
+      display: block;
+      max-width: 200px;
+      max-height: 140px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,.1);
+    }
 
     /* ---- Toast notification ---- */
     .toast {
@@ -861,6 +919,38 @@ async function apiAction(apiUrl, token, action, params) {
   return apiGet(apiUrl, token, Object.assign({ action }, params));
 }
 
+// POST without Content-Type header → browser sends text/plain → simple CORS request (no preflight).
+// Apps Script doPost parses the body with JSON.parse(e.postData.contents) regardless of content-type.
+async function apiPost(apiUrl, token, body) {
+  const url = new URL(apiUrl);
+  url.searchParams.set('token', token);
+  const res = await fetch(url.toString(), { method: 'POST', body: JSON.stringify(body) });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'API error');
+  return json;
+}
+
+// Resize an image File to maxDim on its longest side and re-encode as JPEG @ 85% quality.
+// Keeps the upload comfortably under Claude's vision API size limits.
+function resizeImage(file, maxDim = 1600) {
+  return new Promise(resolve => {
+    const img    = new Image();
+    const blobUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const w = Math.round(img.width  * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(blobUrl);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg', preview: dataUrl });
+    };
+    img.src = blobUrl;
+  });
+}
+
 function fmtDate(d) {
   if (!d) return '';
   return d;
@@ -1272,21 +1362,43 @@ function SummariesTab({ summaries }) {
 // ---- Chat panel -------------------------------------------------------------
 
 function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput }) {
-  const [loading, setLoading] = useState(false);
+  const [loading,      setLoading]      = useState(false);
+  const [pendingImage, setPendingImage] = useState(null); // {base64, mimeType, preview} | null
   const bottomRef = useRef(null);
+  const fileRef   = useRef(null);
 
   useEffect(() => {
     if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   async function send() {
-    const text = input.trim();
-    if (!text || loading) return;
+    const text     = input.trim();
+    const imgSnap  = pendingImage;
+    if ((!text && !imgSnap) || loading) return;
+
+    // Clear input immediately for snappy feel
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', text }]);
+    setPendingImage(null);
+
+    // Append user bubble — include thumbnail preview if image attached
+    setMessages(prev => [...prev, { role: 'user', text, image: imgSnap ? imgSnap.preview : null }]);
     setLoading(true);
+
     try {
-      const data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text });
+      let data;
+      if (imgSnap) {
+        // Use POST for image payloads (base64 too large for URL params)
+        data = await apiPost(apiUrl, apiToken, {
+          action:       'chat',
+          message:      text,
+          session:      'dashboard',
+          imageBase64:  imgSnap.base64,
+          imageMimeType: imgSnap.mimeType,
+        });
+      } else {
+        // Text-only: keep the existing GET path (no CORS concerns)
+        data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text });
+      }
       setMessages(prev => [...prev, { role: 'vera', text: data.reply }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'vera', text: '⚠ Error: ' + e.message }]);
@@ -1298,32 +1410,73 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
+  async function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = ''; // allow re-selecting the same file
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Image too large (max 10 MB). Please choose a smaller image.');
+      return;
+    }
+    const result = await resizeImage(file);
+    setPendingImage(result);
+  }
+
   return (
     <div className="chat-wrap">
+      {/* Hidden file input — triggered programmatically by the 📎 button */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+
       <div className="chat-messages">
         {messages.map((m, i) => (
-          <div key={i} className={`chat-msg ${m.role}`}>{m.text}</div>
+          <div key={i} className={`chat-msg ${m.role}`}>
+            {m.image && <img src={m.image} className="chat-msg-img" alt="attachment" />}
+            {m.text  && <span>{m.text}</span>}
+          </div>
         ))}
         {loading && <div className="chat-msg vera vera-typing">VERA is thinking…</div>}
         <div ref={bottomRef} />
       </div>
-      <div className="chat-input-row">
-        <textarea
-          className="chat-input"
-          rows={2}
-          placeholder="Ask VERA anything…"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          disabled={loading}
-        />
-        <button
-          className="chat-send"
-          onClick={send}
-          disabled={!input.trim() || loading}
-        >
-          ↑
-        </button>
+
+      <div className="chat-input-area">
+        {/* Image preview strip — shown when a file has been picked */}
+        {pendingImage && (
+          <div className="chat-img-preview">
+            <img src={pendingImage.preview} alt="attachment" />
+            <button className="chat-img-remove" onClick={() => setPendingImage(null)} title="Remove image">×</button>
+          </div>
+        )}
+
+        <div className="chat-input-row">
+          <button
+            className="chat-attach"
+            onClick={() => fileRef.current.click()}
+            disabled={loading}
+            title="Attach image"
+          >📎</button>
+          <textarea
+            className="chat-input"
+            rows={2}
+            placeholder="Ask VERA anything…"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            disabled={loading}
+          />
+          <button
+            className="chat-send"
+            onClick={send}
+            disabled={(!input.trim() && !pendingImage) || loading}
+          >
+            ↑
+          </button>
+        </div>
       </div>
     </div>
   );

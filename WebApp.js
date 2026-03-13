@@ -144,6 +144,7 @@ function doPost(e) {
 
   try {
     switch (action) {
+      case 'chat':        return jsonOut_(webProcessChat_(body));
       case 'acknowledge': return jsonOut_(webAcknowledge_(body.id));
       case 'snooze':      return jsonOut_(webSnooze_(body.id, body.days));
       case 'resolve':     return jsonOut_(webResolve_(body.id));
@@ -512,10 +513,17 @@ function webTriggerBuffer_(e) {
 
 // ---- Chat ------------------------------------------------------------------
 
-function webProcessChat_(e) {
-  const message   = (e.parameter && e.parameter.message)  || '';
-  const sessionId = (e.parameter && e.parameter.session)  || 'dashboard';
-  return processChat_(message, sessionId);
+/**
+ * Chat handler — accepts both GET (text-only, existing path) and POST (with optional image).
+ * @param {Object} source - Either the Apps Script event `e` (GET) or a parsed POST body object
+ */
+function webProcessChat_(source) {
+  // GET: params are in source.parameter; POST: params are top-level on the body object
+  const message       = source.message       || (source.parameter && source.parameter.message)  || '';
+  const sessionId     = source.session       || (source.parameter && source.parameter.session)  || 'dashboard';
+  const imageBase64   = source.imageBase64   || null;
+  const imageMimeType = source.imageMimeType || null;
+  return processChat_(message, sessionId, imageBase64, imageMimeType);
 }
 
 // ============================================================

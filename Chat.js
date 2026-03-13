@@ -224,9 +224,29 @@ function saveChatHistory_(sessionId, userMsg, replyText) {
 // CLAUDE API  (messages format, with conversation history)
 // ============================================================
 
-function callClaudeChat_(userMessage, history, systemPrompt) {
-  var apiKey   = getApiKey();
-  var messages = history.concat([{ role: 'user', content: userMessage }]);
+/**
+ * @param {string}      userMessage   - User's text (may be empty when image-only)
+ * @param {Array}       history       - Prior message objects
+ * @param {string}      systemPrompt  - VERA system prompt
+ * @param {string|null} imageBase64   - Optional base64-encoded image
+ * @param {string|null} imageMimeType - e.g. 'image/jpeg', 'image/png'
+ */
+function callClaudeChat_(userMessage, history, systemPrompt, imageBase64, imageMimeType) {
+  var apiKey = getApiKey();
+
+  // Build user content: multimodal array when image present, plain string otherwise
+  var userContent;
+  if (imageBase64 && imageMimeType) {
+    userContent = [
+      { type: 'image', source: { type: 'base64', media_type: imageMimeType, data: imageBase64 } },
+      { type: 'text',  text: userMessage ||
+          'Please analyze this image and tell me what actions I should take or what useful information you can extract.' }
+    ];
+  } else {
+    userContent = userMessage;
+  }
+
+  var messages = history.concat([{ role: 'user', content: userContent }]);
 
   var requestBody = {
     model:      CLAUDE_MODEL,
@@ -362,24 +382,31 @@ function stripActions_(text) {
 // ============================================================
 
 /**
- * Process a single user message and return VERA's reply.
+ * Process a single user message (and optional image) and return VERA's reply.
  * Loads history, calls Claude, executes any actions, saves history.
  *
- * @param {string} userMessage  - The user's message
- * @param {string} sessionId    - 'dashboard' or Telegram chatId
+ * @param {string}      userMessage   - The user's text (may be empty when image is provided)
+ * @param {string}      sessionId     - 'dashboard' or Telegram chatId
+ * @param {string|null} imageBase64   - Optional base64-encoded image data
+ * @param {string|null} imageMimeType - MIME type of image (e.g. 'image/jpeg', 'image/png')
  * @returns {{ ok: boolean, reply: string }}
  */
-function processChat_(userMessage, sessionId) {
+function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   sessionId = sessionId || 'dashboard';
 
-  if (!userMessage || !userMessage.trim()) {
+  // Allow image-only messages (no text required when an image is attached)
+  if (!userMessage && !imageBase64) {
     return { ok: true, reply: 'What can I help you with?' };
   }
 
   var history   = loadChatHistory_(sessionId);
   var context   = buildChatContext_();
   var sysPrompt = buildChatSystemPrompt_(context);
-  var rawReply  = callClaudeChat_(userMessage.trim(), history, sysPrompt);
+  var rawReply  = callClaudeChat_(
+    (userMessage || '').trim(), history, sysPrompt,
+    imageBase64   || null,
+    imageMimeType || null
+  );
   Logger.log('VERA raw reply:\n' + rawReply); // visible in Apps Script Execution Log
 
   // Execute any actions Claude embedded
@@ -393,8 +420,11 @@ function processChat_(userMessage, sessionId) {
     cleanReply += '\n\n⚠️ Note: some actions could not be completed — ' + actionResult.errors.join('; ') + '.';
   }
 
-  // Persist this exchange
-  saveChatHistory_(sessionId, userMessage.trim(), cleanReply);
+  // Persist this exchange — store [Image attached] placeholder, NEVER raw base64
+  // (Script Properties have a 9 KB-per-property limit; base64 images are 100 KB+)
+  var historyText = (userMessage || '').trim();
+  if (imageBase64) historyText = (historyText ? historyText + ' ' : '') + '[Image attached]';
+  saveChatHistory_(sessionId, historyText, cleanReply);
 
   return { ok: true, reply: cleanReply };
 }
