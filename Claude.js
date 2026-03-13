@@ -207,10 +207,16 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
     '  "flag"    — short action-oriented title, max 10 words\n' +
     '  "reason"  — specific explanation of why this matters right now, 1-2 sentences\n' +
     '  "urgency" — exactly one of: "High", "Medium", "Low"\n' +
-    '  "key"     — a stable snake_case identifier for this specific issue, used for deduplication across nights. Use the format topic_date where helpful (e.g. "verizon_bill_march_13", "apartment_cleaning_march_9", "ramadan_iftar", "sti_payout_march_11"). Keep this IDENTICAL night-to-night for the same recurring issue so duplicates are suppressed.\n\n' +
+    '  "key"     — a SHORT, STABLE, TOPIC-BASED snake_case identifier (2–4 words MAX). Rules:\n' +
+    '    • NEVER include dates, months, or numbers — bad: "verizon_bill_march_13", good: "verizon_payment_due"\n' +
+    '    • NEVER include dates, months, or numbers — bad: "dentist_task_march_9", good: "overdue_dentist_task"\n' +
+    '    • Keep it IDENTICAL night-to-night for the same ongoing issue so the deduplication system blocks it\n' +
+    '    • If an issue is genuinely new or a fresh recurrence, append a short qualifier: "verizon_payment_due_q2" or "dentist_followup"\n' +
+    '    • Good examples: "verizon_payment_due", "anniversary_dinner", "ramadan_iftar", "sti_payout", "apartment_cleaning"\n' +
+    '    • Bad examples: "verizon_bill_march_13", "upcoming_anniversary_dinner_march_9", "sti_payout_march_11"\n\n' +
 
     'Example of the expected format (do not include this in your response):\n' +
-    '[{"source":"Calendar","flag":"Book restaurant before anniversary fills up","reason":"Anniversary dinner is 4 days away and no reservation task exists. Popular venues fill quickly on weekends.","urgency":"High","key":"anniversary_dinner_march_9"}]\n\n' +
+    '[{"source":"Calendar","flag":"Book restaurant before anniversary fills up","reason":"Anniversary dinner is 4 days away and no reservation task exists. Popular venues fill quickly on weekends.","urgency":"High","key":"anniversary_dinner"}]\n\n' +
 
     'Generate the flags for Ahmed now:';
 

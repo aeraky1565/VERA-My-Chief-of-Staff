@@ -273,6 +273,49 @@ function nightlyRun() {
  * unresolved flag, to prevent nightly duplicates for ongoing issues.
  * @param {Array} flags - Array of flag objects from generateFlags()
  */
+/**
+ * Returns true if newKey shares ≥ 60% of its meaningful tokens with any
+ * existing key-based fingerprint in the set.
+ *
+ * Month names and standalone numbers are stripped before comparison so
+ * date-drifted keys (e.g. verizon_bill_march_13 vs verizon_bill_march_14)
+ * are treated as the same issue.
+ *
+ * @param {string} newKey              - The candidate key from Claude
+ * @param {Set}    existingFingerprints - Set returned by getExistingFlagFingerprints_()
+ * @returns {boolean}
+ */
+function keysAreSimilar_(newKey, existingFingerprints) {
+  if (!newKey) return false;
+
+  function normalize(k) {
+    return String(k).toLowerCase()
+      // Remove month names (full and abbreviated)
+      .replace(/jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(tember)?|oct(ober)?|nov(ember)?|dec(ember)?/g, '')
+      // Remove standalone numbers
+      .replace(/\b\d+\b/g, '')
+      // Collapse repeated underscores
+      .replace(/_+/g, '_')
+      // Trim leading/trailing underscores
+      .replace(/^_|_$/g, '');
+  }
+
+  var newTokens = normalize(newKey).split('_').filter(function(t) { return t.length > 2; });
+  if (newTokens.length === 0) return false;
+
+  var similar = false;
+  existingFingerprints.forEach(function(fp) {
+    if (similar) return; // Already found a match — short-circuit
+    if (fp.indexOf('key:') !== 0) return; // Only compare against key-based fingerprints
+    var existingTokens = normalize(fp.slice(4)).split('_').filter(function(t) { return t.length > 2; });
+    if (existingTokens.length === 0) return;
+    var matches = newTokens.filter(function(t) { return existingTokens.indexOf(t) !== -1; });
+    var minLen  = Math.min(newTokens.length, existingTokens.length);
+    if (minLen > 0 && matches.length / minLen >= 0.6) similar = true;
+  });
+  return similar;
+}
+
 function writeFlags(flags) {
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.FLAGS);
@@ -280,7 +323,7 @@ function writeFlags(flags) {
   const dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   const timestamp = dateStr.replace(/-/g, '');
 
-  // Build fingerprint set of all existing unresolved flags
+  // Build fingerprint set of ALL flags ever written (open, ack, snoozed, resolved)
   const existing = getExistingFlagFingerprints_(sheet);
 
   let written = 0;
@@ -291,7 +334,15 @@ function writeFlags(flags) {
     const fp = makeFlagFingerprint_(flag.source, flag.flag, flag.key);
 
     if (existing.has(fp)) {
-      Logger.log('Dedup: skipping existing flag [' + flag.source + '] ' + (flag.key || flag.flag));
+      Logger.log('Dedup (exact): skipping [' + (flag.key || flag.flag) + ']');
+      skipped++;
+      return;
+    }
+
+    // Fuzzy check: reject keys that share ≥60% token overlap with any existing key
+    // (catches date-drifted variants like verizon_bill_march_13 vs verizon_bill_march_14)
+    if (flag.key && keysAreSimilar_(flag.key, existing)) {
+      Logger.log('Dedup (fuzzy): skipping similar key [' + flag.key + ']');
       skipped++;
       return;
     }
@@ -322,8 +373,13 @@ function writeFlags(flags) {
 }
 
 /**
- * Returns a Set of fingerprints for all unresolved flags currently in the sheet.
- * Resolved flags are excluded so a recurring issue can be re-flagged after resolution.
+ * Returns a Set of fingerprints for ALL flags ever written to the sheet,
+ * regardless of their status (open, acknowledged, snoozed, or resolved).
+ *
+ * Once a key has been written — in any state — it is permanently blocked
+ * from re-appearing. This prevents the same issue from cycling back after
+ * the user resolves it. If the issue genuinely recurs later, Claude should
+ * generate a new key (e.g. add a _q2 or _apr suffix).
  */
 function getExistingFlagFingerprints_(sheet) {
   const fingerprints = new Set();
@@ -333,8 +389,6 @@ function getExistingFlagFingerprints_(sheet) {
   const data    = sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues();
 
   data.forEach(function(row) {
-    const resolved = String(row[8] || '').toLowerCase();
-    if (resolved === 'yes') return; // Resolved = allow re-flagging if it recurs
     const key = String(row[9] || '').trim(); // Column J: stable key (may be empty for legacy rows)
     fingerprints.add(makeFlagFingerprint_(row[2], row[3], key));
   });
@@ -465,15 +519,16 @@ function escalateAgedFlags_() {
     const flagText         = String(row[3] || '');
 
     if (ageDays >= 7 && currentEscalated !== '7d') {
-      // Mark 7-day stale
+      // Mark 7-day stale: force urgency to High + append stale note
       sheet.getRange(rowNum, COL_ESCALATED + 1).setValue('7d');
+      sheet.getRange(rowNum, COL_URGENCY   + 1).setValue('High'); // force High — no more Medium after 7d
       const reason = String(row[COL_REASON] || '');
       if (reason.indexOf('[Stale:') === -1) {
         sheet.getRange(rowNum, COL_REASON + 1).setValue(
           reason + (reason ? ' ' : '') + '[Stale: open for 7+ days — needs attention]'
         );
       }
-      Logger.log('escalateAgedFlags_: 7d stale — row ' + rowNum + ' "' + flagText + '"');
+      Logger.log('escalateAgedFlags_: 7d stale + forced High — row ' + rowNum + ' "' + flagText + '"');
       escalated++;
 
     } else if (ageDays >= 3 && currentEscalated === '') {
@@ -741,7 +796,6 @@ function morningNudge() {
       '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
-      '<p style="margin:0;font-size:14px;color:#888888;">Or open <a href="' + veraLink + '" style="color:#0d1b3e;font-weight:bold;text-decoration:underline;">VERA</a> directly.</p>' +
       calendarSection +
       taskBadges +
       '</td></tr>' +
