@@ -2387,7 +2387,7 @@ function FinancesTab({ summaries, budget, budgetLoading }) {
     <div>
       {/* ── Spending Chart ─────────────────────────────── */}
       {hasTxData
-        ? <SpendingChart summaries={summaries} />
+        ? <SpendingChart summaries={summaries} budget={budget} />
         : (
           <div className="bento-card" style={{ cursor: 'default', textAlign: 'center' }}>
             <div style={{ fontSize: 13, color: '#4d6080', padding: '12px 0' }}>
@@ -2539,7 +2539,7 @@ function MilestonesTab({ milestones, flags, tasks, onAction, busy }) {
 
 // ---- Spending chart (Home tab) ----------------------------------------------
 
-function SpendingChart({ summaries }) {
+function SpendingChart({ summaries, budget }) {
   const txRows   = summaries.filter(s => s.source === '[AUTO] Transactions');
   const totalRow = txRows.find(s => s.metric.startsWith('Total Spending'));
   const otherRow = txRows.find(s => s.metric.startsWith('Other ('));
@@ -2572,6 +2572,19 @@ function SpendingChart({ summaries }) {
   const otherMatch = otherRow?.metric.match(/Other \((\d+)/);
   const otherCount = otherMatch ? otherMatch[1] : null;
   const otherAmt   = otherRow ? parseDollars(otherRow.value).curr : 0;
+
+  // Build budget lookup: normalised label → numeric monthly budget amount
+  const budgetMap = {};
+  if (budget && budget.rows) {
+    budget.rows.forEach(function(r) {
+      if (r.value === null) return; // skip section headers
+      var key = String(r.label).toLowerCase().trim();
+      var num = typeof r.value === 'number'
+        ? r.value
+        : parseFloat(String(r.value).replace(/[$,]/g, '')) || null;
+      if (num !== null) budgetMap[key] = num;
+    });
+  }
 
   return (
     <div className="bento-card" style={{ gridColumn: '1 / -1', cursor: 'default' }}>
@@ -2608,6 +2621,8 @@ function SpendingChart({ summaries }) {
                 : delta > 20  ? '#ef5350'
                 : delta < -10 ? '#66bb6a'
                 : '#6b7fa8';
+              const budgeted = budgetMap[d.label.toLowerCase().trim()] ?? null;
+              const variance = budgeted !== null ? Math.round(d.curr - budgeted) : null;
               return (
                 <div key={i}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'baseline' }}>
@@ -2632,6 +2647,17 @@ function SpendingChart({ summaries }) {
                   {d.prev > 0 && (
                     <div style={{ height: 4, background: '#0d1b3e', borderRadius: 2, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: prevW + '%', background: '#3d5fa0', borderRadius: 2, transition: 'width 0.5s ease' }} />
+                    </div>
+                  )}
+                  {/* Budget vs. actual annotation — only when a matching budget row is found */}
+                  {budgeted !== null && (
+                    <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: 11 }}>
+                      <span style={{ color: '#4d6080' }}>Budget: ${Math.round(budgeted).toLocaleString()}</span>
+                      {variance !== null && (
+                        <span style={{ color: variance > 0 ? '#ef5350' : '#66bb6a', fontWeight: 600 }}>
+                          {variance > 0 ? '▲' : '▼'} ${Math.abs(variance).toLocaleString()} {variance > 0 ? 'over' : 'under'}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
