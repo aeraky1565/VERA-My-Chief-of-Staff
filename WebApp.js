@@ -93,6 +93,10 @@ function doGet(e) {
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
+      case 'recipes':               return jsonOut_(webGetRecipes_());
+      case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
+      case 'homesteward':           return jsonOut_(webGetHomesteward_());
+      case 'homesteward_service':   return jsonOut_(webRecordService_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -617,6 +621,115 @@ function webToggleBill_(e) {
 
   cell.setValue(newVal);
   return { ok: true, row: rowNum, paid: newVal !== '' };
+}
+
+// ---- Recipes (Issue #46) ---------------------------------------------------
+
+function webGetRecipes_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.RECIPES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, recipes: [] };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
+  var recipes = [];
+  data.forEach(function(row, idx) {
+    var name = String(row[0] || '').trim();
+    if (!name) return;
+    recipes.push({
+      row:         idx + 2,
+      name:        name,
+      cuisine:     String(row[1] || '').trim(),
+      servings:    row[2] !== '' ? String(row[2]).trim() : null,
+      prepTime:    String(row[3] || '').trim(),
+      link:        String(row[4] || '').trim(),
+      ingredients: String(row[5] || '').trim(),
+      tags:        String(row[6] || '').trim(),
+      notes:       String(row[7] || '').trim(),
+    });
+  });
+  return { ok: true, recipes: recipes };
+}
+
+function webRecipeToShopping_(e) {
+  var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.RECIPES);
+  if (!sheet) throw new Error('Recipes tab not found');
+  var raw = String(sheet.getRange(rowNum, 6).getValue() || '').trim(); // Col F = Ingredients
+  if (!raw) return { ok: false, error: 'No ingredients listed for this recipe.' };
+  var ingredients = raw.split(';').map(function(s) { return s.trim(); }).filter(Boolean);
+  return addRecipeIngredients_(ingredients);
+}
+
+// ---- Home Steward (Issue #21) ----------------------------------------------
+
+function webGetHomesteward_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HOME_ITEMS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
+  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var tz    = Session.getScriptTimeZone();
+
+  function fmtDate(v) {
+    if (!v) return '';
+    try { return Utilities.formatDate(new Date(v), tz, 'yyyy-MM-dd'); } catch (ex) { return ''; }
+  }
+  function daysDiff(v) {
+    if (!v) return null;
+    try { var d = new Date(v); return Math.round((d - today) / 86400000); } catch (ex) { return null; }
+  }
+
+  var items = [];
+  data.forEach(function(row, idx) {
+    var item = String(row[0] || '').trim();
+    if (!item) return;
+    items.push({
+      row:            idx + 2,
+      item:           item,
+      category:       String(row[1] || '').trim(),
+      purchaseDate:   fmtDate(row[2]),
+      warrantyExpiry: fmtDate(row[3]),
+      lastService:    fmtDate(row[4]),
+      nextService:    fmtDate(row[5]),
+      intervalMonths: row[6] !== '' ? Number(row[6]) : null,
+      notes:          String(row[7] || '').trim(),
+      warrantyDays:   daysDiff(row[3]),
+      serviceDays:    daysDiff(row[5]),
+    });
+  });
+  return { ok: true, items: items };
+}
+
+function webRecordService_(e) {
+  var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HOME_ITEMS);
+  if (!sheet) throw new Error('Home Items tab not found');
+
+  var tz       = Session.getScriptTimeZone();
+  var today    = new Date();
+  var todayStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+  sheet.getRange(rowNum, 5).setValue(todayStr); // Col E = Last Service
+
+  var interval = Number(sheet.getRange(rowNum, 7).getValue() || 0); // Col G = Interval
+  var nextStr  = '';
+  var eventId  = '';
+
+  if (interval > 0) {
+    var next = new Date(today);
+    next.setMonth(next.getMonth() + interval);
+    nextStr = Utilities.formatDate(next, tz, 'yyyy-MM-dd');
+    sheet.getRange(rowNum, 6).setValue(nextStr); // Col F = Next Service
+    var itemName = String(sheet.getRange(rowNum, 1).getValue() || 'Item');
+    var calEvent = CalendarApp.getDefaultCalendar().createAllDayEvent(
+      '🔧 Service: ' + itemName, next,
+      { description: 'VERA scheduled service reminder for ' + itemName }
+    );
+    eventId = calEvent.getId();
+  }
+  return { ok: true, lastService: todayStr, nextService: nextStr, calEventId: eventId };
 }
 
 // ---- Chat ------------------------------------------------------------------

@@ -137,6 +137,42 @@ function addShoppingItem_(tabId, text) {
 
 // ---- Debug -----------------------------------------------------------------
 
+// ---- Recipe shopping helpers (Issue #40) -----------------------------------
+
+/**
+ * Finds the "Recipe" tab in the Shopping Google Doc, creating it if absent.
+ * @returns {string|null} Tab ID, or null if SHOPPING_LIST_DOC_ID is not set.
+ */
+function ensureRecipeTab_() {
+  var docId = getShoppingDocId_();
+  if (!docId) return null;
+  var doc  = DocumentApp.openById(docId);
+  var tabs = doc.getTabs();
+  for (var t = 0; t < tabs.length; t++) {
+    if (tabs[t].getTitle() === 'Recipe') return tabs[t].getId();
+  }
+  // Create the tab if it doesn't exist
+  var newTab = doc.addTab({ title: 'Recipe' });
+  return newTab.getId();
+}
+
+/**
+ * Appends each ingredient string as a bullet item to the "Recipe" shopping tab.
+ * @param {string[]} ingredients
+ * @returns {{ ok: boolean, count: number, tabId: string }}
+ */
+function addRecipeIngredients_(ingredients) {
+  var tabId = ensureRecipeTab_();
+  if (!tabId) throw new Error('SHOPPING_LIST_DOC_ID not configured in Script Properties.');
+  ingredients.forEach(function(ing) {
+    var text = String(ing).trim();
+    if (text) addShoppingItem_(tabId, text);
+  });
+  return { ok: true, count: ingredients.length, tabId: tabId };
+}
+
+// ---- Debug -----------------------------------------------------------------
+
 /**
  * Run from Apps Script editor to verify the shopping doc connection.
  */

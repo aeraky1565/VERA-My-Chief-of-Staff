@@ -2542,6 +2542,182 @@ function BillTrackerView({ bills, billsLoading, onToggle }) {
   );
 }
 
+// ---- Home Front tab (Issues #21, #40, #46, #47) -----------------------------
+
+function HomestewardView({ items, loading, busy, onRecordService }) {
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading home items…</div>;
+  if (!items.length) return (
+    <div className="empty-state" style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🏠</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No home items yet</div>
+      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Home Items tab in your Life OS sheet.</div>
+    </div>
+  );
+
+  function warrantyBadge(days) {
+    if (days === null || days === undefined) return null;
+    if (days < 0)  return { label: '🔴 Expired',       color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (days <= 30) return { label: `🟡 Expires in ${days}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    return { label: '🟢 Valid',           color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
+  }
+  function serviceBadge(days) {
+    if (days === null || days === undefined) return null;
+    if (days < 0)  return { label: '🔴 Overdue',      color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (days <= 14) return { label: `🟡 Due in ${days}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    return { label: '🟢 Scheduled',       color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
+  }
+  function badge(b, label, color, bg) {
+    return <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, border: `1px solid ${color}`, color, background: bg, whiteSpace: 'nowrap' }}>{label}</span>;
+  }
+
+  // Group by category
+  const grouped = {}, uncategorised = [];
+  items.forEach(item => {
+    const cat = (item.category || '').trim();
+    if (!cat) { uncategorised.push(item); return; }
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(item);
+  });
+  const cats = Object.keys(grouped).sort();
+  if (uncategorised.length) cats.push('');
+
+  // Alert: items with overdue service
+  const overdueCount = items.filter(i => i.serviceDays !== null && i.serviceDays < 0).length;
+  const dueSoonCount = items.filter(i => i.serviceDays !== null && i.serviceDays >= 0 && i.serviceDays <= 14).length;
+
+  return (
+    <div>
+      {overdueCount > 0 && (
+        <div style={{ background: 'rgba(239,83,80,.1)', border: '1px solid rgba(239,83,80,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#ef5350' }}>
+          🔴 {overdueCount} item{overdueCount > 1 ? 's' : ''} overdue for service
+        </div>
+      )}
+      {!overdueCount && dueSoonCount > 0 && (
+        <div style={{ background: 'rgba(245,166,35,.1)', border: '1px solid rgba(245,166,35,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#f5a623' }}>
+          🟡 {dueSoonCount} item{dueSoonCount > 1 ? 's' : ''} due for service within 14 days
+        </div>
+      )}
+
+      {cats.map(cat => {
+        const catItems = (cat ? grouped[cat] : uncategorised);
+        return (
+          <div key={cat || '__none'} style={{ marginBottom: 20 }}>
+            {cat && (
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#c9a84c', borderBottom: '1px solid #1e3060', paddingBottom: 4, marginBottom: 8 }}>
+                {cat}
+              </div>
+            )}
+            {catItems.map((item, i) => {
+              const wb = warrantyBadge(item.warrantyDays);
+              const sb = serviceBadge(item.serviceDays);
+              return (
+                <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #0d1b3e' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0', flex: 1, minWidth: 120 }}>{item.item}</span>
+                    {item.warrantyExpiry && wb && badge(null, wb.label, wb.color, wb.bg)}
+                    {item.nextService && sb && badge(null, sb.label, sb.color, sb.bg)}
+                    <button
+                      style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid #2a4070', background: 'none', color: '#8899cc', cursor: item.intervalMonths ? 'pointer' : 'not-allowed', opacity: item.intervalMonths ? 1 : 0.4, whiteSpace: 'nowrap' }}
+                      onClick={() => item.intervalMonths && onRecordService(item.row)}
+                      disabled={busy || !item.intervalMonths}
+                      title={item.intervalMonths ? 'Record service & schedule next' : 'Set Interval (mo) to enable scheduling'}
+                    >✓ Record Service</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
+                    {item.warrantyExpiry && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🛡️ Warranty: {item.warrantyExpiry}</span>}
+                    {item.lastService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🔧 Last: {item.lastService}</span>}
+                    {item.nextService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>📅 Next: {item.nextService}</span>}
+                    {item.intervalMonths && <span style={{ fontSize: 11, color: '#6b7fa8' }}>↻ Every {item.intervalMonths}mo</span>}
+                  </div>
+                  {item.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 2 }}>{item.notes}</div>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RecipeView({ recipes, loading, busy, onAddToShopping }) {
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading recipes…</div>;
+  if (!recipes.length) return (
+    <div className="empty-state" style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🍽️</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No recipes yet</div>
+      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Recipes tab in your Life OS sheet.</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {recipes.map((r, i) => {
+        const ingCount = r.ingredients ? r.ingredients.split(';').filter(s => s.trim()).length : 0;
+        return (
+          <div key={i} style={{ padding: '12px 0', borderBottom: '1px solid #0d1b3e' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0', flex: 1, minWidth: 120 }}>{r.name}</span>
+              {r.cuisine && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, border: '1px solid #2a4070', color: '#8899cc' }}>{r.cuisine}</span>}
+              {r.link && (
+                <a href={r.link} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }}>🔗 Open</a>
+              )}
+              <button
+                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid #2a4070', background: 'none', color: '#8899cc', cursor: ingCount ? 'pointer' : 'not-allowed', opacity: ingCount ? 1 : 0.4, whiteSpace: 'nowrap' }}
+                onClick={() => ingCount && onAddToShopping(r.row, r.name)}
+                disabled={busy || !ingCount}
+                title={ingCount ? `Add ${ingCount} ingredients to Shopping List` : 'No ingredients listed'}
+              >📋 Add to Shopping</button>
+            </div>
+            <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
+              {r.servings  && <span style={{ fontSize: 11, color: '#6b7fa8' }}>👥 {r.servings} servings</span>}
+              {r.prepTime  && <span style={{ fontSize: 11, color: '#6b7fa8' }}>⏱ {r.prepTime}</span>}
+              {ingCount > 0 && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🥕 {ingCount} ingredient{ingCount !== 1 ? 's' : ''}</span>}
+              {r.tags      && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🏷 {r.tags}</span>}
+            </div>
+            {r.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 3 }}>{r.notes}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping }) {
+  const [sub, setSub] = React.useState('steward');
+  const subTabs = [
+    { id: 'steward', label: '🏠 Steward' },
+    { id: 'recipes', label: '🍽️ Recipes' },
+  ];
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}>{s.label}</button>
+        ))}
+      </div>
+      {sub === 'steward' && (
+        <HomestewardView
+          items={(homeFront && homeFront.items) || []}
+          loading={loading}
+          busy={busy}
+          onRecordService={onRecordService}
+        />
+      )}
+      {sub === 'recipes' && (
+        <RecipeView
+          recipes={(homeFront && homeFront.recipes) || []}
+          loading={loading}
+          busy={busy}
+          onAddToShopping={onRecipeToShopping}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Finances tab -----------------------------------------------------------
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle }) {
@@ -3203,6 +3379,7 @@ function App() {
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
+  const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -3400,6 +3577,21 @@ function App() {
     setTabLoading(prev => ({ ...prev, bills: false }));
   }
 
+  async function loadHomeFront(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, home_front: true }));
+    try {
+      const [rData, hData] = await Promise.all([
+        apiGet(url, token, { action: 'recipes' }),
+        apiGet(url, token, { action: 'homesteward' }),
+      ]);
+      setHomeFront({ recipes: rData.recipes || [], items: hData.items || [] });
+    } catch (err) {
+      setError('Home Front load failed: ' + err.message);
+    }
+    setTabLoading(prev => ({ ...prev, home_front: false }));
+  }
+
   async function handleBillToggle(row) {
     setBusy(true);
     try {
@@ -3407,6 +3599,29 @@ function App() {
       await loadBills(apiUrl, apiToken);
     } catch (err) {
       setError('Could not update bill: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleRecordService(row) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'homesteward_service', row });
+      await loadHomeFront(apiUrl, apiToken);
+    } catch (err) {
+      setError('Service update failed: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleRecipeToShopping(row, recipeName) {
+    setBusy(true);
+    try {
+      const res = await apiGet(apiUrl, apiToken, { action: 'recipe_to_shopping', row });
+      if (res.ok) showToast(`🛒 ${res.count} ingredients added for "${recipeName}"`);
+      else setError(res.error || 'Could not add to shopping list');
+    } catch (err) {
+      setError('Shopping list update failed: ' + err.message);
     }
     setBusy(false);
   }
@@ -3675,32 +3890,34 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'pto', 'travel', 'finances', 'milestones', 'goals', 'interests', 'summaries'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'milestones', 'goals', 'interests', 'summaries'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab);
-                  if (tab === 'projects')  loadProjects(apiUrl, apiToken);
-                  if (tab === 'goals')     loadGoals(apiUrl, apiToken);
-                  if (tab === 'interests') loadInterests(apiUrl, apiToken);
-                  if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
-                  if (tab === 'pto')       loadPTO(apiUrl, apiToken);
-                  if (tab === 'travel')    loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
+                  if (tab === 'projects')   loadProjects(apiUrl, apiToken);
+                  if (tab === 'goals')      loadGoals(apiUrl, apiToken);
+                  if (tab === 'interests')  loadInterests(apiUrl, apiToken);
+                  if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
+                  if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
+                  if (tab === 'pto')        loadPTO(apiUrl, apiToken);
+                  if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); }
                 }}
               >
-                {tab === 'home'      ? `🏠 Home` : ''}
-                {tab === 'chat'      ? `💬 Chat` : ''}
-                {tab === 'flags'     ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
-                {tab === 'tasks'     ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
-                {tab === 'projects'  ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
-                {tab === 'goals'     ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
-                {tab === 'interests' ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
-                {tab === 'shopping'  ? `🛒 Shopping` : ''}
-                {tab === 'pto'       ? `🌴 PTO Planner` : ''}
-                {tab === 'travel'    ? `✈️ Travel` : ''}
-                {tab === 'finances'  ? `💰 Finances` : ''}
+                {tab === 'home'       ? `🏠 Home` : ''}
+                {tab === 'chat'       ? `💬 Chat` : ''}
+                {tab === 'flags'      ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
+                {tab === 'tasks'      ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
+                {tab === 'projects'   ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'goals'      ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
+                {tab === 'interests'  ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
+                {tab === 'shopping'   ? `🛒 Shopping` : ''}
+                {tab === 'home_front' ? `🏡 Home Front` : ''}
+                {tab === 'pto'        ? `🌴 PTO Planner` : ''}
+                {tab === 'travel'     ? `✈️ Travel` : ''}
+                {tab === 'finances'   ? `💰 Finances` : ''}
                 {tab === 'milestones' ? `🎯 Milestones${milestones.length ? ` (${milestones.length})` : ''}` : ''}
                 {tab === 'summaries'  ? `📊 Summaries` : ''}
               </button>
@@ -3887,6 +4104,17 @@ function App() {
                     onAddItem={() => setAddItemModal(true)}
                     busy={busy}
                   />
+            )}
+
+            {/* Home Front tab */}
+            {activeTab === 'home_front' && (
+              <HomeFrontTab
+                homeFront={homeFront}
+                loading={!!tabLoading.home_front}
+                busy={busy}
+                onRecordService={handleRecordService}
+                onRecipeToShopping={handleRecipeToShopping}
+              />
             )}
 
             {/* PTO tab */}

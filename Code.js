@@ -34,6 +34,8 @@ const TABS = {
   REMINDERS_MEMORY: 'Reminders Memory', // Reminders.js cooldown log (Anticipator + Explorer)
   INTEREST_LEDGER:  'Shared Interests', // Shared Interest Ledger (Issue #28)
   BILLS:            'Bills',            // Recurring bill tracker (Issue #57)
+  RECIPES:          'Recipes',          // Recipe list (Issue #46)
+  HOME_ITEMS:       'Home Items',       // Warranties + service log (Issue #21)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -49,6 +51,8 @@ const BILL_HEADERS        = ['Bill', 'Amount', 'Due Day', 'Frequency', 'Category
 const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
 const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
+const RECIPE_HEADERS            = ['Name', 'Cuisine', 'Servings', 'Prep Time', 'Link', 'Ingredients', 'Tags', 'Notes'];
+const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -106,6 +110,8 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
   ensureSheet(ss, TABS.INTEREST_LEDGER,  INTEREST_LEDGER_HEADERS);
   ensureSheet(ss, TABS.BILLS,            BILL_HEADERS);
+  ensureSheet(ss, TABS.RECIPES,          RECIPE_HEADERS);
+  ensureSheet(ss, TABS.HOME_ITEMS,       HOME_ITEM_HEADERS);
   ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
