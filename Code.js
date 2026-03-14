@@ -26,7 +26,6 @@ const TABS = {
   TASKS:        'Tasks',
   METRICS:      'Metrics',      // Auto-populated VERA health counts (Tasks, Calendar, Flags)
   SUMMARIES:    'Summaries',    // External life intelligence feed (Finance, Fitness, Kenz Box, etc.)
-  TRANSACTIONS: 'Transactions',
   CONFIG:       'Config',
   PROJECTS:     'Projects',     // Multi-step projects with Claude-generated subtasks
   GOALS:            'Goals',            // Yearly goals Kanban board
@@ -43,7 +42,6 @@ const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Pr
 const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
 const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
 const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab
-const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags', 'Amount'];
 const CONFIG_HEADERS      = ['Setting', 'Value'];
 const GOAL_HEADERS        = ['ID', 'Title', 'Description', 'Status', 'Category', 'Year', 'Progress', 'Notes'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
@@ -101,7 +99,6 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TASKS,        TASK_HEADERS);
   ensureSheet(ss, TABS.METRICS,      METRIC_HEADERS);
   ensureSheet(ss, TABS.SUMMARIES,    SUMMARY_HEADERS);
-  ensureSheet(ss, TABS.TRANSACTIONS, TRANSACTION_HEADERS);
   ensureSheet(ss, TABS.PROJECTS,     PROJECT_HEADERS);
   ensureSheet(ss, TABS.GOALS,        GOAL_HEADERS);
   ensureSheet(ss, TABS.PTO,          PTO_HEADERS);
