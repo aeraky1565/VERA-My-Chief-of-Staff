@@ -2369,7 +2369,108 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
 
 // ---- Finances tab -----------------------------------------------------------
 
-function FinancesTab({ summaries, budget, budgetLoading }) {
+// ---- Bill Tracker sub-view --------------------------------------------------
+
+function BillTrackerView({ bills, billsLoading, onToggle }) {
+  const today    = new Date().getDate();
+  const billList = (bills && bills.bills) || [];
+
+  function ordinal(n) {
+    const s = ['th','st','nd','rd'], v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
+  }
+
+  function statusBadge(b) {
+    if (b.paid) return { label: '✅ Paid',    color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
+    const d = b.dueDay != null ? b.dueDay - today : null;
+    if (d != null && d < 0)           return { label: '🔴 Overdue', color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (d != null && d >= 0 && d <= 5) return { label: d === 0 ? '⚠️ Due today' : `⚠️ Due in ${d}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    return { label: b.dueDay ? `📅 ${b.dueDay}${ordinal(b.dueDay)}` : '📅 —', color: '#5c9eff', bg: 'rgba(92,158,255,.10)' };
+  }
+
+  if (billsLoading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading bills…</div>;
+  if (!bills)       return <div style={{ fontSize: 13, color: '#4d6080', padding: 16 }}>Click the Finances tab to load bills.</div>;
+  if (billList.length === 0) return (
+    <div className="empty-state" style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🧾</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No bills yet</div>
+      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Bills tab in your Life OS sheet.</div>
+    </div>
+  );
+
+  // Group by category; uncategorised bills go last
+  const grouped = {};
+  const uncategorised = [];
+  billList.forEach(b => {
+    const cat = (b.category || '').trim();
+    if (!cat) { uncategorised.push(b); return; }
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(b);
+  });
+  const cats = Object.keys(grouped).sort();
+  if (uncategorised.length) cats.push('');
+
+  const unpaidSoon = billList.filter(b => !b.paid && b.dueDay != null && (b.dueDay - today) >= 0 && (b.dueDay - today) <= 5).length;
+
+  return (
+    <div>
+      {unpaidSoon > 0 && (
+        <div style={{ background: 'rgba(245,166,35,.1)', border: '1px solid rgba(245,166,35,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#f5a623' }}>
+          ⚠️ {unpaidSoon} bill{unpaidSoon > 1 ? 's' : ''} due within 5 days
+        </div>
+      )}
+
+      {cats.map(cat => {
+        const items = (cat ? grouped[cat] : uncategorised).slice().sort((a, b) => (a.dueDay || 99) - (b.dueDay || 99));
+        return (
+          <div key={cat || '__none'} style={{ marginBottom: 18 }}>
+            {cat && (
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#c9a84c', borderBottom: '1px solid #1e3060', paddingBottom: 4, marginBottom: 8 }}>
+                {cat}
+              </div>
+            )}
+            {items.map((b, i) => {
+              const badge   = statusBadge(b);
+              const acctClr = b.account === 'Ahmed' ? '#5c9eff' : b.account === 'Victoria' ? '#c97ef2' : '#2bb5a0';
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #0d1b3e' }}>
+                  {/* Name + account chip + notes */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                      <span style={{ fontSize: 13, color: b.paid ? '#4d6080' : '#dde1f0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.bill}</span>
+                      {b.account && (
+                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, border: `1px solid ${acctClr}`, color: acctClr, whiteSpace: 'nowrap', flexShrink: 0 }}>{b.account}</span>
+                      )}
+                    </div>
+                    {b.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1 }}>{b.notes}</div>}
+                  </div>
+                  {/* Amount */}
+                  <div style={{ fontSize: 13, fontWeight: 700, color: b.paid ? '#4d6080' : '#c9a84c', whiteSpace: 'nowrap' }}>
+                    {b.amount != null ? '$' + b.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                  </div>
+                  {/* Frequency (non-monthly) or due day */}
+                  <div style={{ fontSize: 11, color: '#6b7fa8', whiteSpace: 'nowrap', width: 60, textAlign: 'center' }}>
+                    {b.frequency && b.frequency !== 'Monthly' ? b.frequency : (b.dueDay ? `${b.dueDay}${ordinal(b.dueDay)}` : '')}
+                  </div>
+                  {/* Paid/status badge — click to toggle */}
+                  <button
+                    style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: `1px solid ${badge.color}`, background: badge.bg, color: badge.color, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 92 }}
+                    onClick={() => onToggle(b.row)}
+                  >{badge.label}</button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Finances tab -----------------------------------------------------------
+
+function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle }) {
+  const [sub, setSub] = React.useState('overview');
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
 
   // Format a cell value as currency (numbers → $X,XXX) or dash (null/empty)
@@ -2383,88 +2484,109 @@ function FinancesTab({ summaries, budget, budgetLoading }) {
   const budgetReady   = budget !== null;
   const budgetMissing = budget && !budget.configured;
 
+  const subTabs = [
+    { id: 'overview', label: '💸 Overview' },
+    { id: 'bills',    label: '🧾 Bills' },
+  ];
+
   return (
     <div>
-      {/* ── Spending Chart ─────────────────────────────── */}
-      {hasTxData
-        ? <SpendingChart summaries={summaries} budget={budget} />
-        : (
-          <div className="bento-card" style={{ cursor: 'default', textAlign: 'center' }}>
-            <div style={{ fontSize: 13, color: '#4d6080', padding: '12px 0' }}>
-              💸 No transaction data yet — connect your Transactions sheet in Config.
-            </div>
-          </div>
-        )
-      }
-
-      {/* ── Monthly Budget (Simple Ass Tracker) ─────────── */}
-      <div className="bento-card" style={{ marginTop: 16, cursor: 'default' }}>
-        <div className="bento-card-title" style={{ marginBottom: 14 }}>📊 Monthly Budget</div>
-
-        {budgetLoading && (
-          <div style={{ fontSize: 13, color: '#6b7fa8', padding: '8px 0' }}>Loading budget…</div>
-        )}
-
-        {!budgetLoading && budgetMissing && (
-          <div style={{ fontSize: 13, color: '#4d6080' }}>
-            SAT_SHEET_ID not configured — set it in Apps Script → Script Properties.
-          </div>
-        )}
-
-        {!budgetLoading && budgetReady && !budgetMissing && budgetRows.length === 0 && (
-          <div style={{ fontSize: 13, color: '#4d6080' }}>No rows found in the Budget tab.</div>
-        )}
-
-        {!budgetLoading && budgetRows.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <tbody>
-              {budgetRows.map((r, i) => {
-                const isHeader = r.value === null;
-                const hasSplit = r.ahmed !== null || r.victoria !== null;
-                return isHeader
-                  ? (
-                    <tr key={i}>
-                      <td colSpan={hasSplit ? 4 : 2} style={{
-                        paddingTop: i === 0 ? 0 : 14,
-                        paddingBottom: 4,
-                        fontWeight: 700,
-                        fontSize: 11,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        color: '#c9a84c',
-                        borderBottom: '1px solid #1e3060',
-                      }}>{r.label}</td>
-                    </tr>
-                  )
-                  : (
-                    <tr key={i} style={{ borderBottom: '1px solid #0d1b3e' }}>
-                      <td style={{ padding: '7px 0', color: '#dde1f0', width: '55%' }}>{r.label}</td>
-                      <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 600, color: '#c9a84c' }}>
-                        {fmtMoney(r.value)}
-                      </td>
-                      {hasSplit && (
-                        <React.Fragment>
-                          <td style={{ padding: '7px 0 7px 16px', textAlign: 'right', color: '#5c9eff', fontSize: 12 }}>
-                            {fmtMoney(r.ahmed)}
-                          </td>
-                          <td style={{ padding: '7px 0 7px 8px', textAlign: 'right', color: '#c97ef2', fontSize: 12 }}>
-                            {fmtMoney(r.victoria)}
-                          </td>
-                        </React.Fragment>
-                      )}
-                    </tr>
-                  );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        {!budgetReady && !budgetLoading && (
-          <div style={{ fontSize: 12, color: '#4d6080' }}>
-            Click the Finances tab to load budget data.
-          </div>
-        )}
+      {/* Sub-tab pills */}
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}>{s.label}</button>
+        ))}
       </div>
+
+      {/* ── Overview: Spending Chart + Monthly Budget ─────── */}
+      {sub === 'overview' && (
+        <div>
+          {hasTxData
+            ? <SpendingChart summaries={summaries} budget={budget} />
+            : (
+              <div className="bento-card" style={{ cursor: 'default', textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: '#4d6080', padding: '12px 0' }}>
+                  💸 No transaction data yet — connect your Transactions sheet in Config.
+                </div>
+              </div>
+            )
+          }
+
+          <div className="bento-card" style={{ marginTop: 16, cursor: 'default' }}>
+            <div className="bento-card-title" style={{ marginBottom: 14 }}>📊 Monthly Budget</div>
+
+            {budgetLoading && (
+              <div style={{ fontSize: 13, color: '#6b7fa8', padding: '8px 0' }}>Loading budget…</div>
+            )}
+
+            {!budgetLoading && budgetMissing && (
+              <div style={{ fontSize: 13, color: '#4d6080' }}>
+                SAT_SHEET_ID not configured — set it in Apps Script → Script Properties.
+              </div>
+            )}
+
+            {!budgetLoading && budgetReady && !budgetMissing && budgetRows.length === 0 && (
+              <div style={{ fontSize: 13, color: '#4d6080' }}>No rows found in the Budget tab.</div>
+            )}
+
+            {!budgetLoading && budgetRows.length > 0 && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <tbody>
+                  {budgetRows.map((r, i) => {
+                    const isHeader = r.value === null;
+                    const hasSplit = r.ahmed !== null || r.victoria !== null;
+                    return isHeader
+                      ? (
+                        <tr key={i}>
+                          <td colSpan={hasSplit ? 4 : 2} style={{
+                            paddingTop: i === 0 ? 0 : 14,
+                            paddingBottom: 4,
+                            fontWeight: 700,
+                            fontSize: 11,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06em',
+                            color: '#c9a84c',
+                            borderBottom: '1px solid #1e3060',
+                          }}>{r.label}</td>
+                        </tr>
+                      )
+                      : (
+                        <tr key={i} style={{ borderBottom: '1px solid #0d1b3e' }}>
+                          <td style={{ padding: '7px 0', color: '#dde1f0', width: '55%' }}>{r.label}</td>
+                          <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 600, color: '#c9a84c' }}>
+                            {fmtMoney(r.value)}
+                          </td>
+                          {hasSplit && (
+                            <React.Fragment>
+                              <td style={{ padding: '7px 0 7px 16px', textAlign: 'right', color: '#5c9eff', fontSize: 12 }}>
+                                {fmtMoney(r.ahmed)}
+                              </td>
+                              <td style={{ padding: '7px 0 7px 8px', textAlign: 'right', color: '#c97ef2', fontSize: 12 }}>
+                                {fmtMoney(r.victoria)}
+                              </td>
+                            </React.Fragment>
+                          )}
+                        </tr>
+                      );
+                  })}
+                </tbody>
+              </table>
+            )}
+
+            {!budgetReady && !budgetLoading && (
+              <div style={{ fontSize: 12, color: '#4d6080' }}>
+                Click the Finances tab to load budget data.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Bill Tracker ─────────────────────────────────── */}
+      {sub === 'bills' && (
+        <BillTrackerView bills={bills} billsLoading={billsLoading} onToggle={onBillToggle} />
+      )}
     </div>
   );
 }
@@ -3005,6 +3127,7 @@ function App() {
   const [shopping,   setShopping]   = useState([]);
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
+  const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -3188,6 +3311,29 @@ function App() {
       setError('Budget load failed: ' + err.message);
     }
     setTabLoading(prev => ({ ...prev, finances: false }));
+  }
+
+  async function loadBills(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, bills: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'bills' });
+      setBills(data || null);
+    } catch (err) {
+      setError('Bills load failed: ' + err.message);
+    }
+    setTabLoading(prev => ({ ...prev, bills: false }));
+  }
+
+  async function handleBillToggle(row) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'bills_toggle', row: row });
+      await loadBills(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not update bill: ' + err.message);
+    }
+    setBusy(false);
   }
 
   async function handleTriggerBuffer() {
@@ -3466,7 +3612,7 @@ function App() {
                   if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
                   if (tab === 'pto')       loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')    loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
-                  if (tab === 'finances')  loadBudget(apiUrl, apiToken);
+                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); }
                 }}
               >
                 {tab === 'home'      ? `🏠 Home` : ''}
@@ -3692,6 +3838,9 @@ function App() {
                 summaries={summaries}
                 budget={budget}
                 budgetLoading={!!tabLoading.finances}
+                bills={bills}
+                billsLoading={!!tabLoading.bills}
+                onBillToggle={handleBillToggle}
               />
             )}
 

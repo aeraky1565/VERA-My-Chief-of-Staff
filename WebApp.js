@@ -91,6 +91,8 @@ function doGet(e) {
       case 'pto':                   return jsonOut_(webGetPTO_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
+      case 'bills':                 return jsonOut_(webGetBills_());
+      case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -551,6 +553,70 @@ function webGetBudget_() {
     Logger.log('webGetBudget_ error: ' + err.message);
     return { ok: false, error: err.message, rows: [] };
   }
+}
+
+// ---- Bills (Issue #57) -----------------------------------------------------
+
+/**
+ * Returns all rows from the Bills tab in the Life OS sheet.
+ * Columns: A=Bill, B=Amount, C=Due Day, D=Frequency, E=Category,
+ *          F=Account, G=Paid (YYYY-MM), H=Notes
+ * paid = true when Paid column equals current YYYY-MM (auto-resets each month).
+ */
+function webGetBills_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, bills: [] };
+
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, BILL_HEADERS.length).getValues();
+
+  var tz        = Session.getScriptTimeZone();
+  var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+
+  var bills = [];
+  data.forEach(function(row, idx) {
+    var bill = String(row[0] || '').trim();
+    if (!bill) return;
+    var paidVal = String(row[6] || '').trim();
+    bills.push({
+      row:       idx + 2,
+      bill:      bill,
+      amount:    row[1] !== '' ? Number(row[1]) : null,
+      dueDay:    row[2] !== '' ? Number(row[2]) : null,
+      frequency: String(row[3] || 'Monthly').trim(),
+      category:  String(row[4] || '').trim(),
+      account:   String(row[5] || '').trim(),
+      paid:      paidVal === currMonth,
+      notes:     String(row[7] || '').trim(),
+    });
+  });
+
+  return { ok: true, bills: bills, currentMonth: currMonth };
+}
+
+/**
+ * Toggles the Paid status of a bill for the current month.
+ * If already paid this month → clears the field.
+ * If not paid → sets to current YYYY-MM.
+ */
+function webToggleBill_(e) {
+  var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + e.parameter.row);
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet) throw new Error('Bills tab not found');
+
+  var tz        = Session.getScriptTimeZone();
+  var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+
+  var cell    = sheet.getRange(rowNum, 7); // Column G = Paid
+  var current = String(cell.getValue() || '').trim();
+  var newVal  = (current === currMonth) ? '' : currMonth;
+
+  cell.setValue(newVal);
+  return { ok: true, row: rowNum, paid: newVal !== '' };
 }
 
 // ---- Chat ------------------------------------------------------------------

@@ -34,6 +34,7 @@ const TABS = {
   PTO_MEMORY:       'PTO Memory',       // Stateful PTO suggestion history (declined windows blacklist)
   REMINDERS_MEMORY: 'Reminders Memory', // Reminders.js cooldown log (Anticipator + Explorer)
   INTEREST_LEDGER:  'Shared Interests', // Shared Interest Ledger (Issue #28)
+  BILLS:            'Bills',            // Recurring bill tracker (Issue #57)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -46,6 +47,7 @@ const TRANSACTION_HEADERS = ['Date', 'Account', 'Description', 'Category', 'Tags
 const CONFIG_HEADERS      = ['Setting', 'Value'];
 const GOAL_HEADERS        = ['ID', 'Title', 'Description', 'Status', 'Category', 'Year', 'Progress', 'Notes'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
+const BILL_HEADERS        = ['Bill', 'Amount', 'Due Day', 'Frequency', 'Category', 'Account', 'Paid', 'Notes'];
 const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
 const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
@@ -106,6 +108,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PTO_MEMORY,       PTO_MEMORY_HEADERS);
   ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
   ensureSheet(ss, TABS.INTEREST_LEDGER,  INTEREST_LEDGER_HEADERS);
+  ensureSheet(ss, TABS.BILLS,            BILL_HEADERS);
   ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
