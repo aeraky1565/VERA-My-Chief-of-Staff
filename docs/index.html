@@ -497,6 +497,36 @@
     }
     .chat-attach:hover  { border-color: #c9a84c; color: #c9a84c; }
     .chat-attach:disabled { opacity: .4; cursor: not-allowed; }
+    .chat-mic {
+      background: none;
+      border: 1px solid #2a4070;
+      border-radius: 10px;
+      color: #8899cc;
+      font-size: 18px;
+      padding: 0 12px;
+      cursor: pointer;
+      align-self: flex-end;
+      height: 44px;
+      transition: border-color .15s, color .15s;
+    }
+    .chat-mic:hover   { border-color: #c9a84c; color: #c9a84c; }
+    .chat-mic:disabled { opacity: .4; cursor: not-allowed; }
+    .chat-mic.listening {
+      border-color: #ef5350;
+      color: #ef5350;
+      animation: mic-pulse 1s ease-in-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+    .voice-status {
+      font-size: 11px;
+      color: #ef5350;
+      margin-bottom: 4px;
+      padding-left: 2px;
+      letter-spacing: 0.03em;
+    }
     .chat-msg-img {
       display: block;
       max-width: 200px;
@@ -1385,16 +1415,17 @@ function SummariesTab({ summaries }) {
 function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput }) {
   const [loading,      setLoading]      = useState(false);
   const [pendingImage, setPendingImage] = useState(null); // {base64, mimeType, preview} | null
+  const [listening,    setListening]    = useState(false);
   const bottomRef = useRef(null);
   const fileRef   = useRef(null);
+  const recogRef  = useRef(null);
 
   useEffect(() => {
     if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  async function send() {
-    const text     = input.trim();
-    const imgSnap  = pendingImage;
+  // Core send — accepts explicit text + image so voice can bypass stale state
+  async function sendWithText(text, imgSnap) {
     if ((!text && !imgSnap) || loading) return;
 
     // Clear input immediately for snappy feel
@@ -1410,10 +1441,10 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
       if (imgSnap) {
         // Use POST for image payloads (base64 too large for URL params)
         data = await apiPost(apiUrl, apiToken, {
-          action:       'chat',
-          message:      text,
-          session:      'dashboard',
-          imageBase64:  imgSnap.base64,
+          action:        'chat',
+          message:       text,
+          session:       'dashboard',
+          imageBase64:   imgSnap.base64,
           imageMimeType: imgSnap.mimeType,
         });
       } else {
@@ -1427,8 +1458,45 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
     setLoading(false);
   }
 
+  function send() { sendWithText(input.trim(), pendingImage); }
+
   function handleKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+
+  function startVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
+      return;
+    }
+    // Toggle off if already listening
+    if (listening) {
+      recogRef.current && recogRef.current.stop();
+      setListening(false);
+      return;
+    }
+    const recog = new SR();
+    recog.continuous      = false;
+    recog.interimResults  = false;
+    recog.lang            = 'en-US';
+
+    recog.onstart  = () => setListening(true);
+    recog.onend    = () => setListening(false);
+
+    recog.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.trim();
+      setInput(transcript);           // show text in box
+      sendWithText(transcript, null); // auto-send immediately
+    };
+
+    recog.onerror = (event) => {
+      console.error('VERA voice error:', event.error);
+      setListening(false);
+    };
+
+    recogRef.current = recog;
+    recog.start();
   }
 
   async function handleFileChange(e) {
@@ -1474,6 +1542,7 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
           </div>
         )}
 
+        {listening && <div className="voice-status">🔴 Listening…</div>}
         <div className="chat-input-row">
           <button
             className="chat-attach"
@@ -1490,6 +1559,12 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
             onKeyDown={handleKey}
             disabled={loading}
           />
+          <button
+            className={`chat-mic${listening ? ' listening' : ''}`}
+            onClick={startVoice}
+            disabled={loading}
+            title={listening ? 'Stop listening' : 'Speak to VERA'}
+          >🎤</button>
           <button
             className="chat-send"
             onClick={send}
