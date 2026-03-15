@@ -131,7 +131,27 @@ function buildChatSystemPrompt_(context) {
         return '  [' + s.source + '] ' + s.metric + ': ' + s.value;
       }).join('\n');
 
-  var projectsLine = context.projectsSummary || '  (none)';
+  var projectsLine;
+  if (!context.projects || context.projects.length === 0) {
+    projectsLine = '  (none)';
+  } else {
+    var activeProjList = context.projects.filter(function(p) {
+      return p.tasks.some(function(t) { return t.status !== 'Done'; });
+    });
+    if (activeProjList.length === 0) {
+      projectsLine = '  (all projects complete)';
+    } else {
+      projectsLine = activeProjList.map(function(p) {
+        var pending = p.tasks.filter(function(t) { return t.status !== 'Done'; });
+        return '  ' + p.projectName + ' (' + pending.length + ' task' + (pending.length === 1 ? '' : 's') + ' pending):\n' +
+          pending.map(function(t) {
+            return '    [' + t.status + '] ' + t.task +
+                   (t.priority && t.priority !== 'Medium' ? ' [' + t.priority + ']' : '') +
+                   (t.dueDate ? ' due:' + t.dueDate : '');
+          }).join('\n');
+      }).join('\n');
+    }
+  }
 
   // Calendar events — same format as Claude.js lines 53–79
   var calLines;
@@ -229,7 +249,7 @@ function buildChatSystemPrompt_(context) {
     'ACTIVE FLAGS (' + context.flags.length + '):\n' + flagLines + '\n\n' +
     'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + '\n\n' +
     'SUMMARIES:\n' + summaryLines + '\n\n' +
-    'PROJECTS:\n  ' + projectsLine + '\n\n' +
+    'PROJECTS:\n' + projectsLine + '\n\n' +
     'UPCOMING CALENDAR EVENTS:\n' + calLines + '\n\n' +
     'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' +
     'YEARLY GOALS (active):\n' + goalLines + '\n\n' +
@@ -239,6 +259,43 @@ function buildChatSystemPrompt_(context) {
     'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' +
     'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
+
+    (function() {
+      var travel = context.travel;
+      if (!travel || !travel.trips || travel.trips.length === 0) {
+        return 'UPCOMING TRIPS:\n  (No upcoming trips found)\n\n';
+      }
+      var lines = 'UPCOMING TRIPS:\n';
+      travel.trips.forEach(function(t) {
+        var tk  = t.startDate + '|' + t.label;
+        var ctx = (travel.tripContextMap && travel.tripContextMap[tk]) || '';
+        lines += 'Trip: ' + t.label + ' (' + t.startDate + ' \u2013 ' + t.endDate + ')' +
+                 (ctx ? ' | Context: ' + ctx : '') + ' | TripKey: ' + tk + '\n';
+        var items = (travel.itinByTrip && travel.itinByTrip[tk]) || [];
+        if (items.length > 0) {
+          lines += '  Itinerary (' + items.length + ' item' + (items.length === 1 ? '' : 's') + '):\n';
+          items.forEach(function(it) {
+            lines += '    [' + it.id + '] ' + it.date + ' [' + it.type + '] ' + it.title +
+                     (it.location ? ' @ ' + it.location : '') +
+                     (it.startTime ? ' (' + it.startTime + ')' : '') + '\n';
+          });
+        } else {
+          lines += '  Itinerary: (none)\n';
+        }
+        var pItems = (travel.packByTrip && travel.packByTrip[tk]) || [];
+        if (pItems.length > 0) {
+          var packed = pItems.filter(function(p) { return p.checked; }).length;
+          lines += '  Packing (' + pItems.length + ' item' + (pItems.length === 1 ? '' : 's') + ', ' + packed + ' packed):\n';
+          pItems.forEach(function(p) {
+            lines += '    [' + p.id + '] ' + p.person + ' / ' + p.category + ' \u2014 ' + p.item +
+                     (p.checked ? ' [packed]' : ' [unpacked]') + '\n';
+          });
+        } else {
+          lines += '  Packing: (none)\n';
+        }
+      });
+      return lines + '\n';
+    })() +
 
     'AVAILABLE ACTIONS — include these exact lines in your response to take action:\n' +
     'ACTION:complete_task|{taskId}\n' +
@@ -264,7 +321,28 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_interest|{interestId}\n' +
     'ACTION:add_idea|{idea text}|{category}|{tags}\n' +
     'ACTION:promote_idea|{ideaId}\n' +
-    'ACTION:archive_idea|{ideaId}\n\n' +
+    'ACTION:archive_idea|{ideaId}\n' +
+    // Travel — Itinerary
+    'ACTION:add_itinerary_item|{tripKey}|{type}|{title}|{date YYYY-MM-DD}|{startTime HH:MM or blank}|{endTime HH:MM or blank}|{location or blank}|{notes or blank}\n' +
+    '  \u2014 type options: flight, train, cruise, ferry, hotel, dining, museum, beach, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n' +
+    'ACTION:update_itinerary_item|{id}|{field}|{value}  \u2014 fields: title, date, startTime, endTime, location, notes\n' +
+    'ACTION:delete_itinerary_item|{id}\n' +
+    'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +
+    // Travel — Packing
+    'ACTION:add_packing_item|{tripKey}|{person}|{category}|{item}  \u2014 person: ahmed / victoria / shared\n' +
+    'ACTION:check_packing_item|{id}|{true or false}  \u2014 mark a packing item as packed or unpacked\n' +
+    'ACTION:delete_packing_item|{id}\n' +
+    'ACTION:generate_packing_list|{tripKey}|{startDate YYYY-MM-DD}|{endDate YYYY-MM-DD}  \u2014 AI-generates full list using itinerary + context + weather\n' +
+    // Project tasks
+    'ACTION:add_project_task|{projectName}|{task description}|{priority: High/Medium/Low}|{dueDate YYYY-MM-DD or blank}\n' +
+    'ACTION:complete_project_task|{projectName}|{task description}\n' +
+    'ACTION:delete_project_task|{projectName}|{task description}\n' +
+    // Existing gaps
+    'ACTION:recipe_to_shopping|{row_number}  \u2014 add recipe ingredients to the shopping list\n' +
+    'ACTION:delete_home_item|{row_number}\n' +
+    'ACTION:update_idea|{ideaId}|{field}|{value}  \u2014 fields: idea, category, tags, notes\n' +
+    'ACTION:toggle_shopping_item|{store_name}|{item_text}  \u2014 mark a shopping item as purchased/unpurchased\n' +
+    '\n' +
 
     'RULES:\n' +
     '- Be concise and conversational. This is a chat interface, not an email.\n' +
@@ -288,6 +366,18 @@ function buildChatSystemPrompt_(context) {
     '- For add_idea: capture any unstructured thought, half-formed plan, or "park this for later" request. Category options: General/Home/Finance/Health/Career/Personal/Travel/Other. Tags are optional, comma-separated. Use when Ahmed says "note this", "park this idea", "I want to eventually...", etc.\n' +
     '- For promote_idea: converts the idea to a real open task. Use the idea ID from IDEA BRAINDUMP above. Confirm with Ahmed which idea to promote if it is ambiguous.\n' +
     '- For archive_idea: marks the idea as Archived (no longer shown). Always confirm the idea with Ahmed before archiving.\n' +
+    '- For update_idea: valid fields are "idea" (text), "category", "tags", "notes". Use the idea ID from IDEA BRAINDUMP above.\n' +
+    '- For add_itinerary_item: use the TripKey exactly as shown in UPCOMING TRIPS (e.g., "2026-06-19|Alaska Cruise"). Date must be YYYY-MM-DD. Use blank for optional time/location/notes.\n' +
+    '- For update_itinerary_item / delete_itinerary_item: use the item ID (e.g., ITIN-20260101-01) shown in UPCOMING TRIPS above.\n' +
+    '- For set_trip_context: use the TripKey exactly as shown. Context should describe the trip sentiment (Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends, Visiting Family, Solo Adventure, Girls Trip, Group Trip, etc.).\n' +
+    '- For add_packing_item: person must be "ahmed", "victoria", or "shared". Use the TripKey exactly as shown.\n' +
+    '- For check_packing_item / delete_packing_item: use the item ID (e.g., PACK-20260101-01) shown in UPCOMING TRIPS above.\n' +
+    '- For generate_packing_list: triggers an AI-powered packing list generation (may take 15\u201330s). Use trip startDate/endDate from UPCOMING TRIPS. Warn Ahmed it may take a moment.\n' +
+    '- For add_project_task: use the project name exactly as shown in PROJECTS above. Priority defaults to Medium if not specified.\n' +
+    '- For complete_project_task / delete_project_task: use the project name and a substring of the task text to match. For delete, always confirm the task with Ahmed first.\n' +
+    '- For recipe_to_shopping: use the row number from RECIPES above (e.g., "2" for [row:2]). This adds all ingredients to the Recipe shopping tab.\n' +
+    '- For delete_home_item: use the row number from HOME ITEMS above. Always confirm the item with Ahmed before deleting.\n' +
+    '- For toggle_shopping_item: store_name must partially match one of the SHOPPING STORES above. item_text must partially match the item. This toggles purchased/unpurchased.\n' +
     '- WEB SEARCH: When you call web_search, briefly tell Ahmed you\'re looking it up. ' +
     'Synthesize results naturally — do not dump raw snippets. If results are empty ' +
     'or unhelpful, say so. Only search when context data is insufficient.\n' +
@@ -446,11 +536,71 @@ function buildChatContext_() {
     }
   } catch (e) { Logger.log('Chat context: ideas — ' + e.message); }
 
+  // Full projects array (for detailed task display + action lookups)
+  var projects = [];
+  try { projects = getProjects_(); }
+  catch (e) { Logger.log('Chat context: projects full — ' + e.message); }
+
+  // ---- Travel (itinerary + packing + trip context) -------------------------
+  var travelTrips = [];
+  try {
+    var travelCfg = readPTOConfig_();
+    travelTrips = getUpcomingTravel_(travelCfg);
+  } catch(e) { Logger.log('Chat context: travel trips — ' + e.message); }
+
+  var itinByTrip = {};
+  try {
+    var itinSheet = ss.getSheetByName(TABS.ITINERARY);
+    if (itinSheet && itinSheet.getLastRow() >= 2) {
+      var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+      itinRows.forEach(function(r) {
+        var tk = String(r[1]).trim();
+        if (!itinByTrip[tk]) itinByTrip[tk] = [];
+        itinByTrip[tk].push({
+          id: String(r[0]).trim(), type: String(r[2]).trim(),
+          title: String(r[3]).trim(), date: String(r[4]).trim(),
+          startTime: String(r[5]).trim(), location: String(r[7]).trim(),
+        });
+      });
+    }
+  } catch(e) { Logger.log('Chat context: itinerary — ' + e.message); }
+
+  var packByTrip = {};
+  try {
+    var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+    if (packSheet && packSheet.getLastRow() >= 2) {
+      var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+      packRows.forEach(function(r) {
+        var tk = String(r[1]).trim();
+        if (!packByTrip[tk]) packByTrip[tk] = [];
+        packByTrip[tk].push({
+          id: String(r[0]).trim(), person: String(r[2]).trim(),
+          category: String(r[3]).trim(), item: String(r[4]).trim(),
+          checked: String(r[5]).toUpperCase() === 'TRUE',
+        });
+      });
+    }
+  } catch(e) { Logger.log('Chat context: packing — ' + e.message); }
+
+  var tripContextMap = {};
+  try {
+    var metaSheet = ss.getSheetByName(TABS.TRIP_META);
+    if (metaSheet && metaSheet.getLastRow() >= 2) {
+      var metaRows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+      metaRows.forEach(function(r) {
+        tripContextMap[String(r[0]).trim()] = String(r[1]).trim();
+      });
+    }
+  } catch(e) { Logger.log('Chat context: trip meta — ' + e.message); }
+
+  var travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
     summaries:       summaries,
     projectsSummary: projectsSummary,
+    projects:        projects,
     calendarEvents:  calendarEvents,
     interests:       interests,
     ptoStats:        ptoStats,
@@ -460,6 +610,7 @@ function buildChatContext_() {
     homeItems:       homeItems,
     shoppingStores:  shoppingStores,
     ideas:           ideas,
+    travel:          travel,
   };
 }
 
@@ -576,6 +727,46 @@ function callClaudeChat_(userMessage, history, systemPrompt, imageBase64, imageM
 
   // Fallback (shouldn't reach under normal use)
   return { text: '', sources: sources };
+}
+
+// ============================================================
+// ACTION EXECUTION HELPERS
+// ============================================================
+
+/** Wraps params into a fake Apps Script event object for calling WebApp.js functions directly. */
+function makeFakeEvent_(params) {
+  return { parameter: params || {} };
+}
+
+/** Returns the projectId for a given project name (case-insensitive first match). */
+function findProjectIdByName_(projectName) {
+  var projects = getProjects_();
+  var query    = (projectName || '').toLowerCase().trim();
+  for (var i = 0; i < projects.length; i++) {
+    if (projects[i].projectName.toLowerCase().trim() === query) return projects[i].projectId;
+  }
+  return null;
+}
+
+/**
+ * Returns the 1-based sheet row number for a pending task within a project.
+ * Matches project name exactly and task text as a substring (case-insensitive).
+ */
+function findProjectTaskRow_(projectName, taskText) {
+  var projects = getProjects_();
+  var pName    = (projectName || '').toLowerCase().trim();
+  var tText    = (taskText    || '').toLowerCase().trim();
+  for (var i = 0; i < projects.length; i++) {
+    if (projects[i].projectName.toLowerCase().trim() !== pName) continue;
+    var tasks = projects[i].tasks;
+    for (var j = 0; j < tasks.length; j++) {
+      if (tasks[j].status !== 'Done' &&
+          tasks[j].task.toLowerCase().indexOf(tText) >= 0) {
+        return tasks[j].rowNum;
+      }
+    }
+  }
+  return null;
 }
 
 // ============================================================
@@ -860,6 +1051,130 @@ function executeActions_(rawText) {
         var arFound = findIdeaRow_(arId);
         arFound.sheet.getRange(arFound.rowNum, 7).setValue('Archived');
         executed.push(type + ' (' + arId + ')');
+      }
+
+      // ---- Itinerary --------------------------------------------------------
+      else if (type === 'add_itinerary_item') {
+        webAddItineraryItem_(makeFakeEvent_({
+          tripKey:   args[0] || '',
+          type:      args[1] || 'manual',
+          title:     args[2] || '',
+          date:      args[3] || '',
+          startTime: args[4] || '',
+          endTime:   args[5] || '',
+          location:  args[6] || '',
+          notes:     args[7] || '',
+        }));
+        executed.push('add_itinerary_item (' + (args[2] || '') + ' on ' + (args[3] || '') + ')');
+      }
+      else if (type === 'update_itinerary_item') {
+        var uitParams = { id: args[0] || '' };
+        uitParams[args[1] || ''] = args[2] || '';
+        webUpdateItineraryItem_(makeFakeEvent_(uitParams));
+        executed.push('update_itinerary_item (' + args[0] + ' ' + args[1] + '=' + args[2] + ')');
+      }
+      else if (type === 'delete_itinerary_item') {
+        webDeleteItineraryItem_(makeFakeEvent_({ id: args[0] || '' }));
+        executed.push('delete_itinerary_item (' + args[0] + ')');
+      }
+      else if (type === 'set_trip_context') {
+        webSetTripMeta_(makeFakeEvent_({ tripKey: args[0] || '', context: args[1] || '', notes: '' }));
+        executed.push('set_trip_context (' + args[0] + ' \u2192 ' + args[1] + ')');
+      }
+
+      // ---- Packing ----------------------------------------------------------
+      else if (type === 'add_packing_item') {
+        webAddPackingItem_(makeFakeEvent_({
+          tripKey:  args[0] || '',
+          person:   args[1] || 'shared',
+          category: args[2] || 'General',
+          item:     args[3] || '',
+        }));
+        executed.push('add_packing_item (' + (args[3] || '') + ' for ' + (args[1] || 'shared') + ')');
+      }
+      else if (type === 'check_packing_item') {
+        webUpdatePackingItem_(makeFakeEvent_({ id: args[0] || '', checked: args[1] || 'true' }));
+        executed.push('check_packing_item (' + args[0] + ' = ' + args[1] + ')');
+      }
+      else if (type === 'delete_packing_item') {
+        webDeletePackingItem_(makeFakeEvent_({ id: args[0] || '' }));
+        executed.push('delete_packing_item (' + args[0] + ')');
+      }
+      else if (type === 'generate_packing_list') {
+        webGeneratePacking_(makeFakeEvent_({ tripKey: args[0] || '', startDate: args[1] || '', endDate: args[2] || '' }));
+        executed.push('generate_packing_list (' + args[0] + ')');
+      }
+
+      // ---- Project tasks ----------------------------------------------------
+      else if (type === 'add_project_task') {
+        var ptProjId = findProjectIdByName_(args[0]);
+        if (!ptProjId) throw new Error('Project not found: ' + args[0]);
+        webAddProjectTask_(makeFakeEvent_({
+          projectId: ptProjId,
+          task:      args[1] || '',
+          priority:  args[2] || 'Medium',
+          dueDate:   args[3] || '',
+        }));
+        executed.push('add_project_task (' + (args[1] || '') + ' \u2192 ' + args[0] + ')');
+      }
+      else if (type === 'complete_project_task') {
+        var cptRow = findProjectTaskRow_(args[0], args[1]);
+        if (!cptRow) throw new Error('Project task not found: ' + args[1] + ' in ' + args[0]);
+        webCompleteProjectTask_(cptRow);
+        executed.push('complete_project_task (' + (args[1] || '') + ')');
+      }
+      else if (type === 'delete_project_task') {
+        var dptRow = findProjectTaskRow_(args[0], args[1]);
+        if (!dptRow) throw new Error('Project task not found: ' + args[1] + ' in ' + args[0]);
+        webDeleteProjectTask_(makeFakeEvent_({ row: String(dptRow) }));
+        executed.push('delete_project_task (' + (args[1] || '') + ')');
+      }
+
+      // ---- Existing gaps ---------------------------------------------------
+      else if (type === 'recipe_to_shopping') {
+        var rtsRow = parseInt(args[0], 10);
+        if (isNaN(rtsRow) || rtsRow < 2) throw new Error('Invalid recipe row: ' + args[0]);
+        var rtsSheet = getSpreadsheet().getSheetByName(TABS.RECIPES);
+        if (!rtsSheet) throw new Error('Recipes tab not found');
+        var rtsIngrRaw = String(rtsSheet.getRange(rtsRow, 6).getValue() || '').trim();
+        var rtsIngr    = rtsIngrRaw.split(';').map(function(s) { return s.trim(); }).filter(Boolean);
+        if (rtsIngr.length === 0) throw new Error('No ingredients found in recipe row ' + rtsRow);
+        addRecipeIngredients_(rtsIngr);
+        executed.push('recipe_to_shopping (row ' + rtsRow + ', ' + rtsIngr.length + ' ingredients)');
+      }
+      else if (type === 'delete_home_item') {
+        webDeleteHomeItem_(makeFakeEvent_({ row: args[0] || '' }));
+        executed.push('delete_home_item (row ' + args[0] + ')');
+      }
+      else if (type === 'update_idea') {
+        var uiParams = { id: args[0] || '' };
+        uiParams[args[1] || ''] = args[2] || '';
+        webUpdateIdea_(makeFakeEvent_(uiParams));
+        executed.push('update_idea (' + args[0] + ' ' + args[1] + '=' + args[2] + ')');
+      }
+      else if (type === 'toggle_shopping_item') {
+        var allStores = getShoppingList_();
+        var storeQ    = (args[0] || '').toLowerCase();
+        var tgtStore  = null;
+        for (var tsi = 0; tsi < allStores.length; tsi++) {
+          if (allStores[tsi].storeName.toLowerCase().indexOf(storeQ) >= 0 ||
+              allStores[tsi].tabId.toLowerCase().indexOf(storeQ) >= 0) {
+            tgtStore = allStores[tsi];
+            break;
+          }
+        }
+        if (!tgtStore) throw new Error('Shopping store not found: ' + args[0]);
+        var itemQ   = (args[1] || '').toLowerCase();
+        var tgtItem = null;
+        for (var tii = 0; tii < tgtStore.items.length; tii++) {
+          if (tgtStore.items[tii].text.toLowerCase().indexOf(itemQ) >= 0) {
+            tgtItem = tgtStore.items[tii];
+            break;
+          }
+        }
+        if (!tgtItem) throw new Error('Shopping item not found: ' + args[1] + ' in ' + args[0]);
+        webToggleShoppingItem_(makeFakeEvent_({ tabId: tgtStore.tabId, index: tgtItem.index }));
+        executed.push('toggle_shopping_item (' + args[1] + ' in ' + args[0] + ')');
       }
 
     } catch (e) {
