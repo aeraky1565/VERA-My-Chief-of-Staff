@@ -1634,14 +1634,311 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
 
 // ---- Travel tab -------------------------------------------------------------
 
-function TravelTab({ pto }) {
+// ---- Itinerary helpers & components (Issue #63) ------------------------------
+
+function formatAgendaDate(dateStr) {
+  try {
+    const d = new Date(dateStr + 'T12:00:00'); // noon avoids TZ edge cases
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  } catch (e) { return dateStr; }
+}
+
+const ITIN_TYPE_ICON = {
+  flight:      '✈',
+  hotel:       '🏨',
+  reservation: '🍽',
+  transport:   '🚗',
+  calendar:    '📅',
+  manual:      '📝',
+};
+
+const ITIN_TYPES = ['flight', 'hotel', 'reservation', 'transport', 'manual'];
+
+function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
+  const isEdit = !!item;
+  const [type,      setType]      = React.useState(isEdit ? (item.type      || 'manual') : 'manual');
+  const [title,     setTitle]     = React.useState(isEdit ? (item.title     || '')       : '');
+  const [date,      setDate]      = React.useState(isEdit ? (item.date      || '')       : '');
+  const [startTime, setStartTime] = React.useState(isEdit ? (item.startTime || '')       : '');
+  const [endTime,   setEndTime]   = React.useState(isEdit ? (item.endTime   || '')       : '');
+  const [location,  setLocation]  = React.useState(isEdit ? (item.location  || '')       : '');
+  const [notes,     setNotes]     = React.useState(isEdit ? (item.notes     || '')       : '');
+  // Flight-specific (stored in metadata JSON)
+  const initMeta = isEdit && item.metadata ? (() => { try { return JSON.parse(item.metadata); } catch(e) { return {}; } })() : {};
+  const [airline,    setAirline]    = React.useState(initMeta.airline    || '');
+  const [flightNum,  setFlightNum]  = React.useState(initMeta.flightNum  || '');
+  const [origin,     setOrigin]     = React.useState(initMeta.origin     || '');
+  const [dest,       setDest]       = React.useState(initMeta.dest       || '');
+  const [confirm,    setConfirm]    = React.useState(initMeta.confirmation || '');
+
+  function buildMetadata() {
+    if (type !== 'flight') return '';
+    const m = {};
+    if (airline)   m.airline      = airline.trim();
+    if (flightNum) m.flightNum    = flightNum.trim();
+    if (origin)    m.origin       = origin.trim();
+    if (dest)      m.dest         = dest.trim();
+    if (confirm)   m.confirmation = confirm.trim();
+    return Object.keys(m).length ? JSON.stringify(m) : '';
+  }
+
+  function handleSave() {
+    if (!title.trim()) return;
+    onSave({
+      id: item?.id,
+      tripKey,
+      type, title: title.trim(), date, startTime, endTime,
+      location: location.trim(), notes: notes.trim(),
+      metadata: buildMetadata(),
+    });
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Escape') onClose();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 520 }}>
+        <h2>{isEdit ? '✏️ Edit Itinerary Item' : '+ Add Itinerary Item'}</h2>
+
+        {/* Type selector */}
+        <div className="form-group">
+          <label className="form-label">Type</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {ITIN_TYPES.map(t => (
+              <button key={t} onClick={() => setType(t)}
+                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                         fontSize: 12, fontWeight: 600,
+                         background: type === t ? '#8ab4f8' : '#1e2a3a',
+                         color: type === t ? '#0d1117' : '#8ab4f8' }}>
+                {ITIN_TYPE_ICON[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Title */}
+        <div className="form-group">
+          <label className="form-label">Title *</label>
+          <input className="form-input" value={title} autoFocus
+            onChange={e => setTitle(e.target.value)} onKeyDown={handleKey}
+            placeholder={type === 'flight' ? 'e.g. AA102 – JFK → CDG'
+              : type === 'hotel' ? 'e.g. Hotel Check-In – Le Meurice'
+              : 'Title'} />
+        </div>
+
+        {/* Flight-specific fields */}
+        {type === 'flight' && (
+          <div style={{ background: '#131e2e', borderRadius: 8, padding: '10px 12px',
+                        marginBottom: 12, border: '1px solid #1e2a3a' }}>
+            <div style={{ color: '#8ab4f8', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+              ✈ Flight Details (optional — for future import)
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <input className="form-input" value={airline} placeholder="Airline (e.g. AA)"
+                onChange={e => setAirline(e.target.value)} style={{ flex: 1 }} />
+              <input className="form-input" value={flightNum} placeholder="Flight # (e.g. 102)"
+                onChange={e => setFlightNum(e.target.value)} style={{ flex: 1 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <input className="form-input" value={origin} placeholder="From (e.g. JFK)"
+                onChange={e => setOrigin(e.target.value)} style={{ flex: 1 }} />
+              <input className="form-input" value={dest} placeholder="To (e.g. CDG)"
+                onChange={e => setDest(e.target.value)} style={{ flex: 1 }} />
+            </div>
+            <input className="form-input" value={confirm} placeholder="Confirmation code"
+              onChange={e => setConfirm(e.target.value)} />
+          </div>
+        )}
+
+        {/* Date + Times */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
+            <label className="form-label">Date</label>
+            <input className="form-input" type="date" value={date}
+              onChange={e => setDate(e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="form-label">Start</label>
+            <input className="form-input" type="time" value={startTime}
+              onChange={e => setStartTime(e.target.value)} />
+          </div>
+          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="form-label">End</label>
+            <input className="form-input" type="time" value={endTime}
+              onChange={e => setEndTime(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Location */}
+        <div className="form-group">
+          <label className="form-label">Location</label>
+          <input className="form-input" value={location}
+            onChange={e => setLocation(e.target.value)} onKeyDown={handleKey}
+            placeholder="Optional" />
+        </div>
+
+        {/* Notes */}
+        <div className="form-group">
+          <label className="form-label">Notes</label>
+          <input className="form-input" value={notes}
+            onChange={e => setNotes(e.target.value)} onKeyDown={handleKey}
+            placeholder="Optional" />
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave}
+            disabled={busy || !title.trim()}>
+            {isEdit ? 'Save Changes' : 'Add to Itinerary'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete }) {
+  if (loading) return <div className="loading-text">Loading itinerary…</div>;
+
+  const items = (itinerary && itinerary.items) || [];
+
+  // Group by date
+  const byDay = {};
+  items.forEach(item => {
+    const d = item.date || 'undated';
+    if (!byDay[d]) byDay[d] = [];
+    byDay[d].push(item);
+  });
+  const days = Object.keys(byDay).sort();
+
+  return (
+    <div>
+      {/* Trip header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
+                    paddingBottom: 12, borderBottom: '1px solid #2a3a50' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: '#e8eaed' }}>{trip.label}</div>
+          <div style={{ color: '#8ab4f8', fontSize: 13 }}>{trip.startDate} → {trip.endDate}</div>
+        </div>
+        <button onClick={onAdd} disabled={busy}
+          style={{ padding: '6px 16px', borderRadius: 6, border: 'none',
+                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600,
+                   cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>
+          + Add Item
+        </button>
+      </div>
+
+      {/* Empty state */}
+      {items.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🗺️</div>
+          <div>No itinerary items yet.</div>
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            Add flights, hotels, or notes above. Calendar events within the trip dates appear automatically.
+          </div>
+        </div>
+      )}
+
+      {/* Day groups */}
+      {days.map(day => (
+        <div key={day} style={{ marginBottom: 24 }}>
+          {/* Day header */}
+          <div style={{ fontWeight: 700, color: '#8ab4f8', fontSize: 13,
+                        borderBottom: '1px solid #2a3a50', paddingBottom: 6,
+                        marginBottom: 10, letterSpacing: 0.3 }}>
+            {day === 'undated' ? 'Undated' : formatAgendaDate(day)}
+          </div>
+
+          {/* Items */}
+          {byDay[day].map(item => (
+            <div key={item.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 10,
+              padding: '9px 6px', borderBottom: '1px solid #1a2435',
+            }}>
+              {/* Time */}
+              <div style={{ width: 42, flexShrink: 0, textAlign: 'right',
+                            color: '#6b7fa8', fontSize: 12, paddingTop: 3, fontVariantNumeric: 'tabular-nums' }}>
+                {item.startTime || <span style={{ color: '#3a4a60' }}>·</span>}
+              </div>
+              {/* Icon */}
+              <div style={{ fontSize: 17, flexShrink: 0, paddingTop: 1 }}>
+                {ITIN_TYPE_ICON[item.type] || '📝'}
+              </div>
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#e8eaed', fontSize: 14, fontWeight: 500,
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {item.title}
+                  {item.endTime && item.startTime && (
+                    <span style={{ color: '#6b7fa8', fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
+                      → {item.endTime}
+                    </span>
+                  )}
+                </div>
+                {item.location && (
+                  <div style={{ color: '#9aa0a6', fontSize: 12, marginTop: 2 }}>
+                    📍 {item.location}
+                  </div>
+                )}
+                {item.notes && (
+                  <div style={{ color: '#5f6368', fontSize: 12, fontStyle: 'italic', marginTop: 2 }}>
+                    {item.notes}
+                  </div>
+                )}
+                {/* Show calendar source */}
+                {item.type === 'calendar' && item.metadata && (() => {
+                  try {
+                    const m = JSON.parse(item.metadata);
+                    return m.calendarName
+                      ? <div style={{ color: '#4d6080', fontSize: 11, marginTop: 2 }}>
+                          📅 {m.calendarName}
+                        </div>
+                      : null;
+                  } catch(e) { return null; }
+                })()}
+              </div>
+              {/* Edit/delete (manual items only) */}
+              {item.source !== 'calendar' && (
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => onEdit(item)} disabled={busy}
+                    title="Edit"
+                    style={{ background: 'transparent', border: 'none', color: '#8ab4f8',
+                             cursor: 'pointer', fontSize: 14, padding: '2px 6px' }}>
+                    ✏️
+                  </button>
+                  <button onClick={() => onDelete(item.id)} disabled={busy}
+                    title="Delete"
+                    style={{ background: 'transparent', border: 'none', color: '#9aa0a6',
+                             cursor: 'pointer', fontSize: 14, padding: '2px 6px' }}>
+                    🗑
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TravelTab({ pto, selectedTrip, itinerary, itinLoading, busy,
+                     onSelectTrip, onAddItinItem, onEditItinItem, onDeleteItinItem }) {
   const [sub, setSub] = React.useState('trips');
 
   const upcomingTravel = (pto && pto.upcomingTravel) || [];
 
+  function handleTripClick(t) {
+    const tripKey = `${t.startDate}|${t.label}`;
+    onSelectTrip({ ...t, tripKey });
+    setSub('itinerary');
+  }
+
   const subTabs = [
     { id: 'trips',      label: '✈️ My Trips' },
-    { id: 'itinerary',  label: '🗺️ Itinerary' },
+    { id: 'itinerary',  label: selectedTrip ? `🗺️ ${selectedTrip.label}` : '🗺️ Itinerary' },
     { id: 'packing',    label: '🎒 Packing' },
     { id: 'budget',     label: '💰 Budget' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
@@ -1675,14 +1972,21 @@ function TravelTab({ pto }) {
           : (
             <div>
               {upcomingTravel.map((t, i) => (
-                <div key={i} className="bento-card" style={{ cursor: 'default' }}>
+                <div key={i} className="bento-card"
+                  style={{ cursor: 'pointer', transition: 'border-color .15s' }}
+                  onClick={() => handleTripClick(t)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>{t.label}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>
+                        {t.label}
+                      </div>
                       <div style={{ fontSize: 12, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</div>
                     </div>
-                    <div style={{ fontSize: 13, color: '#5c9eff', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days away`}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ fontSize: 13, color: '#5c9eff', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days away`}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#8ab4f8' }}>View Itinerary →</div>
                     </div>
                   </div>
                 </div>
@@ -1691,20 +1995,34 @@ function TravelTab({ pto }) {
           )
       )}
 
+      {/* Itinerary sub-tab */}
+      {sub === 'itinerary' && (
+        selectedTrip
+          ? <ItineraryView
+              trip={selectedTrip}
+              itinerary={itinerary}
+              loading={itinLoading}
+              busy={busy}
+              onAdd={() => onAddItinItem({ tripKey: selectedTrip.tripKey })}
+              onEdit={onEditItinItem}
+              onDelete={onDeleteItinItem}
+            />
+          : (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>👈</div>
+              Select a trip from "My Trips" to view its itinerary.
+            </div>
+          )
+      )}
+
       {/* Placeholder sub-tabs */}
-      {sub !== 'trips' && (
+      {sub !== 'trips' && sub !== 'itinerary' && (
         <div className="empty-state">
           <div style={{ fontSize: 36, marginBottom: 12 }}>
-            {sub === 'itinerary'  ? '🗺️'
-           : sub === 'packing'    ? '🎒'
-           : sub === 'budget'     ? '💰'
-           : '🪣'}
+            {sub === 'packing' ? '🎒' : sub === 'budget' ? '💰' : '🪣'}
           </div>
           <div style={{ color: '#dde1f0', marginBottom: 6 }}>
-            {sub === 'itinerary'  ? 'Itinerary'
-           : sub === 'packing'    ? 'Packing List'
-           : sub === 'budget'     ? 'Trip Budget'
-           : 'Bucket List'}
+            {sub === 'packing' ? 'Packing List' : sub === 'budget' ? 'Trip Budget' : 'Bucket List'}
           </div>
           <div style={{ fontSize: 12, color: '#4d6080' }}>Coming soon</div>
         </div>
@@ -3600,6 +3918,9 @@ function App() {
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
+  const [selectedTrip,  setSelectedTrip]  = useState(null); // { label, startDate, endDate, tripKey }
+  const [itinerary,     setItinerary]     = useState(null); // { items } | null  (Issue #63)
+  const [itinItemModal, setItinItemModal] = useState(null); // null | { mode:'add', tripKey } | { mode:'edit', item }
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -3763,6 +4084,19 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, ideas: false }));
+  }
+
+  async function loadItinerary(tripKey, startDate, endDate) {
+    if (!tripKey || !apiUrl || !apiToken) return;
+    setTabLoading(prev => ({ ...prev, itinerary: true }));
+    try {
+      const data = await apiGet(apiUrl, apiToken,
+        { action: 'itinerary', tripKey, startDate, endDate });
+      setItinerary(data);
+    } catch (err) {
+      setError('Could not load itinerary: ' + err.message);
+    }
+    setTabLoading(prev => ({ ...prev, itinerary: false }));
   }
 
   async function loadShopping(url, token) {
@@ -4071,6 +4405,39 @@ function App() {
       setError('Could not archive idea: ' + err.message);
       loadIdeas(apiUrl, apiToken); // revert
     }
+  }
+
+  async function handleAddItineraryItem(params) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_itinerary_item', ...params });
+      showToast('✓ Itinerary item added');
+      setItinItemModal(null);
+      if (selectedTrip) loadItinerary(selectedTrip.tripKey, selectedTrip.startDate, selectedTrip.endDate);
+    } catch (err) { setError('Could not add itinerary item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateItineraryItem(params) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_itinerary_item', ...params });
+      showToast('✓ Updated');
+      setItinItemModal(null);
+      if (selectedTrip) loadItinerary(selectedTrip.tripKey, selectedTrip.startDate, selectedTrip.endDate);
+    } catch (err) { setError('Could not update itinerary item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteItineraryItem(id) {
+    if (!confirm('Delete this itinerary item?')) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_itinerary_item', id });
+      showToast('🗑 Deleted');
+      if (selectedTrip) loadItinerary(selectedTrip.tripKey, selectedTrip.startDate, selectedTrip.endDate);
+    } catch (err) { setError('Could not delete itinerary item: ' + err.message); }
+    setBusy(false);
   }
 
   function handleConnect(url, token) {
@@ -4430,7 +4797,21 @@ function App() {
             {activeTab === 'travel' && (
               tabLoading.pto
                 ? <div className="loading-text">Loading travel data…</div>
-                : <TravelTab pto={pto} />
+                : <TravelTab
+                    pto={pto}
+                    selectedTrip={selectedTrip}
+                    itinerary={itinerary}
+                    itinLoading={!!tabLoading.itinerary}
+                    busy={busy}
+                    onSelectTrip={(trip) => {
+                      setSelectedTrip(trip);
+                      setItinerary(null);
+                      loadItinerary(trip.tripKey, trip.startDate, trip.endDate);
+                    }}
+                    onAddItinItem={() => selectedTrip && setItinItemModal({ mode: 'add', tripKey: selectedTrip.tripKey })}
+                    onEditItinItem={(item) => setItinItemModal({ mode: 'edit', item })}
+                    onDeleteItinItem={handleDeleteItineraryItem}
+                  />
             )}
 
             {/* Finances tab */}
@@ -4476,6 +4857,19 @@ function App() {
         <AddInterestModal
           onSave={handleSaveInterest}
           onClose={() => setInterestModal(false)}
+          busy={busy}
+        />
+      )}
+
+      {/* Add / Edit Itinerary Item modal */}
+      {itinItemModal && (
+        <AddItineraryItemModal
+          mode={itinItemModal.mode}
+          item={itinItemModal.item}
+          tripKey={itinItemModal.tripKey || (selectedTrip && selectedTrip.tripKey)}
+          tripStartDate={selectedTrip && selectedTrip.startDate}
+          onSave={itinItemModal.mode === 'edit' ? handleUpdateItineraryItem : handleAddItineraryItem}
+          onClose={() => setItinItemModal(null)}
           busy={busy}
         />
       )}

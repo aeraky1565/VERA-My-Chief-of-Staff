@@ -108,6 +108,10 @@ function doGet(e) {
       case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
       case 'delete_home_item':      return jsonOut_(webDeleteHomeItem_(e));
+      case 'itinerary':             return jsonOut_(webGetItinerary_(e));
+      case 'add_itinerary_item':    return jsonOut_(webAddItineraryItem_(e));
+      case 'update_itinerary_item': return jsonOut_(webUpdateItineraryItem_(e));
+      case 'delete_itinerary_item': return jsonOut_(webDeleteItineraryItem_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -923,6 +927,163 @@ function webDeleteHomeItem_(e) {
   if (!sheet) throw new Error('Home Items tab not found');
   sheet.deleteRow(rowNum);
   return { ok: true, row: rowNum, action: 'deleted' };
+}
+
+// ---- Itinerary (Issue #63) --------------------------------------------------
+
+function findItineraryRow_(id) {
+  if (!id) throw new Error('Missing itinerary item ID');
+  const sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Itinerary tab is empty');
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return { sheet, rowNum: i + 2 };
+  }
+  throw new Error('Itinerary item not found: ' + id);
+}
+
+/**
+ * Returns all stored itinerary items for a trip + auto-pulled calendar events
+ * within the trip date range.
+ * Params: tripKey (required), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD)
+ */
+function webGetItinerary_(e) {
+  const p       = e.parameter || {};
+  const tripKey = (p.tripKey   || '').trim();
+  const start   = (p.startDate || '').trim();
+  const end     = (p.endDate   || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  const tz    = Session.getScriptTimeZone();
+  const items = [];
+
+  // 1. Stored itinerary items
+  const sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  if (sheet && sheet.getLastRow() >= 2) {
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    data.forEach(function(row, idx) {
+      if (!String(row[0]).trim()) return;           // blank row
+      if (String(row[1]).trim() !== tripKey) return; // different trip
+      const meta = String(row[9] || '').trim();
+      items.push({
+        id:        String(row[0]).trim(),
+        tripKey:   String(row[1]).trim(),
+        type:      String(row[2]).trim() || 'manual',
+        title:     String(row[3]).trim(),
+        date:      String(row[4]).trim(),
+        startTime: String(row[5]).trim(),
+        endTime:   String(row[6]).trim(),
+        location:  String(row[7]).trim(),
+        notes:     String(row[8]).trim(),
+        metadata:  meta,
+        source:    'manual',
+        row:       idx + 2,
+      });
+    });
+  }
+
+  // 2. Auto-pull calendar events within trip date range (read-only, not stored)
+  if (start && end) {
+    try {
+      const startDt = new Date(start + 'T00:00:00');
+      const endDt   = new Date(end   + 'T23:59:59');
+      CalendarApp.getAllCalendars().forEach(function(cal) {
+        try {
+          cal.getEvents(startDt, endDt).forEach(function(ev) {
+            const evStart = ev.getStartTime();
+            const evDate  = Utilities.formatDate(evStart, tz, 'yyyy-MM-dd');
+            const evTime  = ev.isAllDayEvent() ? '' : Utilities.formatDate(evStart, tz, 'HH:mm');
+            const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), tz, 'HH:mm');
+            const evTitle = (ev.getTitle() || '(No title)').trim();
+            items.push({
+              id:        'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16),
+              tripKey:   tripKey,
+              type:      'calendar',
+              title:     evTitle,
+              date:      evDate,
+              startTime: evTime,
+              endTime:   evEnd,
+              location:  (ev.getLocation() || '').trim(),
+              notes:     '',
+              metadata:  JSON.stringify({ calendarName: cal.getName() }),
+              source:    'calendar',
+              row:       null,
+            });
+          });
+        } catch (calErr) { /* skip inaccessible calendar */ }
+      });
+    } catch (calEx) {
+      Logger.log('Itinerary: calendar pull failed — ' + calEx.message);
+    }
+  }
+
+  // 3. Sort ascending by date + startTime (events with no time sort to start of day)
+  items.sort(function(a, b) {
+    const ak = a.date + '|' + (a.startTime || '00:00');
+    const bk = b.date + '|' + (b.startTime || '00:00');
+    return ak < bk ? -1 : ak > bk ? 1 : 0;
+  });
+
+  return { ok: true, tripKey: tripKey, items: items };
+}
+
+function webAddItineraryItem_(e) {
+  const p       = e.parameter || {};
+  const tripKey = (p.tripKey || '').trim();
+  const title   = (p.title   || '').trim();
+  if (!tripKey || !title) throw new Error('tripKey and title are required');
+
+  const sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  if (!sheet) throw new Error('Itinerary tab not found');
+
+  const tz      = Session.getScriptTimeZone();
+  const today   = new Date();
+  const dateKey = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  const lastRow = sheet.getLastRow();
+  let seq = 1;
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function(r) {
+      if (String(r[0]).indexOf('ITIN-' + dateKey) === 0) seq++;
+    });
+  }
+  const id = 'ITIN-' + dateKey + '-' + String(seq).padStart(2, '0');
+
+  // ITINERARY_HEADERS: ID|Trip Key|Type|Title|Date|Start Time|End Time|Location|Notes|Metadata
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, ITINERARY_HEADERS.length).setValues([[
+    id,
+    tripKey,
+    (p.type      || 'manual').trim(),
+    title,
+    (p.date      || '').trim(),
+    (p.startTime || '').trim(),
+    (p.endTime   || '').trim(),
+    (p.location  || '').trim(),
+    (p.notes     || '').trim(),
+    (p.metadata  || '').trim(),
+  ]]);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateItineraryItem_(e) {
+  const p     = e.parameter || {};
+  const found = findItineraryRow_((p.id || '').trim());
+  // ITINERARY_HEADERS: ID(1)|TripKey(2)|Type(3)|Title(4)|Date(5)|StartTime(6)|EndTime(7)|Location(8)|Notes(9)|Metadata(10)
+  if (p.type      != null) found.sheet.getRange(found.rowNum, 3).setValue(p.type.trim());
+  if (p.title     != null) found.sheet.getRange(found.rowNum, 4).setValue(p.title.trim());
+  if (p.date      != null) found.sheet.getRange(found.rowNum, 5).setValue(p.date.trim());
+  if (p.startTime != null) found.sheet.getRange(found.rowNum, 6).setValue(p.startTime.trim());
+  if (p.endTime   != null) found.sheet.getRange(found.rowNum, 7).setValue(p.endTime.trim());
+  if (p.location  != null) found.sheet.getRange(found.rowNum, 8).setValue(p.location.trim());
+  if (p.notes     != null) found.sheet.getRange(found.rowNum, 9).setValue(p.notes.trim());
+  if (p.metadata  != null) found.sheet.getRange(found.rowNum, 10).setValue(p.metadata.trim());
+  return { ok: true, id: p.id, action: 'updated' };
+}
+
+function webDeleteItineraryItem_(e) {
+  const id    = ((e.parameter && e.parameter.id) || '').trim();
+  const found = findItineraryRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
 }
 
 // ---- Ideas / Braindump (Issue #18) -----------------------------------------
