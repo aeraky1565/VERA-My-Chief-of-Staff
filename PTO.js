@@ -394,11 +394,167 @@ function getPTOEvents_(cfg) {
 
 // ---- Shared Chaos travel ----------------------------------------------------
 
+// ---- Cruise Detection -------------------------------------------------------
+
+/**
+ * Keywords identifying cruise boarding events (title must START with one of these).
+ * Ordered longest-first so e.g. "embarking" is checked before "embark".
+ */
+var CRUISE_BOARD_KEYWORDS    = ['embarking', 'boarding', 'embark', 'board'];
+var CRUISE_DISEMBARK_KEYWORDS = ['disembarking', 'disembarkation', 'disembark'];
+
+/** Returns true if the event title starts with a cruise boarding keyword. */
+function isBoardingEvent_(title) {
+  var low = title.toLowerCase();
+  return CRUISE_BOARD_KEYWORDS.some(function(kw) {
+    return low === kw || low.indexOf(kw + ' ') === 0;
+  });
+}
+
+/** Returns true if the event title starts with a cruise disembarkation keyword. */
+function isDisembarkEvent_(title) {
+  var low = title.toLowerCase();
+  return CRUISE_DISEMBARK_KEYWORDS.some(function(kw) {
+    return low === kw || low.indexOf(kw + ' ') === 0;
+  });
+}
+
+/**
+ * Extracts the cruise/ship name from a boarding or disembarkation event title
+ * by stripping the leading keyword and optional "the".
+ *
+ * Examples:
+ *   "Board Norwegian Bliss"        → "Norwegian Bliss"
+ *   "Boarding the Carnival Vista"  → "Carnival Vista"
+ *   "Embarking on Celebrity Edge"  → "on Celebrity Edge" (kept — user chose that phrasing)
+ *   "Disembarking Norwegian Bliss" → "Norwegian Bliss"
+ *
+ * @param {string} title
+ * @returns {string}
+ */
+function extractCruiseName_(title) {
+  var low    = title.toLowerCase();
+  var allKw  = CRUISE_BOARD_KEYWORDS.concat(CRUISE_DISEMBARK_KEYWORDS);
+  var result = title;
+  for (var i = 0; i < allKw.length; i++) {
+    var kw = allKw[i];
+    if (low.indexOf(kw + ' ') === 0) {
+      result = title.substring(kw.length).trim();
+      break;
+    }
+    if (low === kw) { result = ''; break; }
+  }
+  // Strip optional leading "the "
+  result = result.replace(/^the\s+/i, '').trim();
+  return result;
+}
+
+/**
+ * Scans raw Google Calendar events to detect cruise trips from
+ * boarding / disembarkation event pairs.
+ *
+ * Detection logic:
+ *   a) "Board*" / "Embark*" event followed by a "Disembark*" event
+ *      within 30 days → paired into one cruise span.
+ *   b) "Board*" / "Embark*" event that is multi-day (≥2 days) with
+ *      no matching Disembark → treated as a self-contained cruise
+ *      (the event itself spans the whole trip).
+ *   c) Single-day "Board*" event with no Disembark → skipped
+ *      (can't determine cruise end date).
+ *
+ * @param {Array}  rawEvents  - All Google Calendar event objects to scan
+ * @param {string} tz         - Script timezone
+ * @param {Date}   today      - Today at midnight local time
+ * @returns {{ cruises: Array, skipKeys: Object, spans: Array }}
+ *   cruises  — synthetic trip objects with isCruise: true
+ *   skipKeys — { "title|startStr": true } — events to omit from regular travel
+ *   spans    — [{ startStr, endStr }] date ranges for suppressing in-cruise events
+ */
+function detectCruises_(rawEvents, tz, today) {
+  var boardings     = [];
+  var disembarkings = [];
+
+  rawEvents.forEach(function(ev) {
+    if (!ev.isAllDayEvent()) return;
+    var title    = ev.getTitle().trim();
+    var startD   = ev.getAllDayStartDate();
+    var endExcl  = ev.getAllDayEndDate();
+    var endIncl  = new Date(endExcl.getTime() - 86400000);
+    var dur      = Math.round((endExcl.getTime() - startD.getTime()) / 86400000);
+    var startStr = Utilities.formatDate(startD,  tz, 'yyyy-MM-dd');
+    var endStr   = Utilities.formatDate(endIncl, tz, 'yyyy-MM-dd');
+
+    if (isBoardingEvent_(title)) {
+      boardings.push({ title: title, start: startD, startStr: startStr, endStr: endStr, dur: dur });
+    } else if (isDisembarkEvent_(title)) {
+      disembarkings.push({ title: title, start: startD, startStr: startStr, endStr: endStr, dur: dur });
+    }
+  });
+
+  var cruises  = [];
+  var skipKeys = {};
+  var spans    = [];
+
+  boardings.forEach(function(b) {
+    var shipName = extractCruiseName_(b.title);
+
+    // Find the nearest Disembark event that occurs AFTER this boarding (within 30 days)
+    var matchD = null;
+    disembarkings.forEach(function(d) {
+      if (d.start.getTime() <= b.start.getTime()) return;
+      var daysDiff = Math.round((d.start.getTime() - b.start.getTime()) / 86400000);
+      if (daysDiff > 30) return;
+      if (!matchD || d.start.getTime() < matchD.start.getTime()) matchD = d;
+    });
+
+    var cruiseEndStr;
+    if (matchD) {
+      // Paired: use the disembarkation day as the inclusive end
+      cruiseEndStr = matchD.endStr;
+      skipKeys[matchD.title + '|' + matchD.startStr] = true;
+    } else if (b.dur >= 2) {
+      // No disembark found — the boarding event itself spans the full cruise
+      cruiseEndStr = b.endStr;
+    } else {
+      // Single-day boarding with no matching Disembark — skip
+      Logger.log('detectCruises_: boarding "' + b.title +
+                 '" has no Disembark within 30 days and is single-day — skipping');
+      return;
+    }
+
+    skipKeys[b.title + '|' + b.startStr] = true;
+
+    var daysAway = Math.round((b.start.getTime() - today.getTime()) / 86400000);
+    // Avoid doubling "Cruise" if the ship name already contains the word
+    var label = shipName
+      ? (/cruise/i.test(shipName) ? shipName : shipName + ' (Cruise)')
+      : 'Cruise';
+
+    cruises.push({
+      label:        label,
+      startDate:    b.startStr,
+      endDate:      cruiseEndStr,
+      daysAway:     daysAway,
+      calendarName: '',
+      isCruise:     true,
+    });
+
+    spans.push({ startStr: b.startStr, endStr: cruiseEndStr });
+    Logger.log('detectCruises_: "' + label + '" ' + b.startStr + ' – ' + cruiseEndStr);
+  });
+
+  return { cruises: cruises, skipKeys: skipKeys, spans: spans };
+}
+
+// ---- Travel collection ------------------------------------------------------
+
 /**
  * Reads multi-day all-day events from all gap calendars (excluding the work
  * PTO calendar itself) for the next 180 days.
  * Gap calendars are config-driven via pto_gap_calendars (e.g. "AE&VV - Our Joint Chaos").
- * @returns {Array} [{ label, startDate, endDate, daysAway, calendarName }]
+ * Cruise trips (Board* … Disembark* event pairs) are detected and returned as
+ * synthetic entries with isCruise: true and a normalised label.
+ * @returns {Array} [{ label, startDate, endDate, daysAway, calendarName, isCruise? }]
  */
 function getUpcomingTravel_(cfg) {
   var tz    = Session.getScriptTimeZone();
@@ -413,54 +569,83 @@ function getUpcomingTravel_(cfg) {
     .filter(function(n) { return n && n !== cfg.calendarName; });
 
   var travelIgnore = cfg.travelIgnoreKeywords || [];
-  var seen   = {};  // deduplicate by label+date in case event appears on multiple calendars
-  var travel = [];
 
+  // ---- Phase 1: Collect ALL events from all gap calendars (including single-day)
+  // We need single-day events too so cruise Board/Disembark days can be detected.
+  var allCalEvents = [];   // [{ ev, calName }]
   for (var c = 0; c < gapCalNames.length; c++) {
     var cal = getCalendarByName_(gapCalNames[c]);
     if (!cal) {
       Logger.log('getUpcomingTravel_: calendar not found — "' + gapCalNames[c] + '"');
       continue;
     }
+    var rawEvs = cal.getEvents(today, end);
+    for (var i = 0; i < rawEvs.length; i++) {
+      allCalEvents.push({ ev: rawEvs[i], calName: gapCalNames[c] });
+    }
+  }
 
-    var events = cal.getEvents(today, end);
-    for (var i = 0; i < events.length; i++) {
-      var ev = events[i];
-      if (!ev.isAllDayEvent()) continue;
+  // ---- Phase 2: Detect cruise trips from Board*/Disembark* event pairs
+  var rawOnly     = allCalEvents.map(function(e) { return e.ev; });
+  var cruiseData  = detectCruises_(rawOnly, tz, today);
 
-      var label    = ev.getTitle().trim();
-      var labelLow = label.toLowerCase();
+  // Seed the travel list with the synthetic cruise entries
+  var travel = cruiseData.cruises.slice();
+  var seen   = {};   // deduplicate regular events by "label|startStr"
 
-      // Skip religious observances and other non-travel multi-day events
-      var ignored = false;
-      for (var ki = 0; ki < travelIgnore.length; ki++) {
-        if (travelIgnore[ki] && labelLow.indexOf(travelIgnore[ki]) !== -1) {
-          ignored = true;
-          break;
-        }
+  // ---- Phase 3: Collect regular multi-day non-cruise events
+  for (var ei = 0; ei < allCalEvents.length; ei++) {
+    var ev      = allCalEvents[ei].ev;
+    var calName = allCalEvents[ei].calName;
+
+    if (!ev.isAllDayEvent()) continue;
+
+    var label    = ev.getTitle().trim();
+    var labelLow = label.toLowerCase();
+
+    // Skip religious observances and other non-travel multi-day events
+    var ignored = false;
+    for (var ki = 0; ki < travelIgnore.length; ki++) {
+      if (travelIgnore[ki] && labelLow.indexOf(travelIgnore[ki]) !== -1) {
+        ignored = true;
+        break;
       }
-      if (ignored) continue;
+    }
+    if (ignored) continue;
 
-      var evStart   = ev.getAllDayStartDate();
-      var evEndExcl = ev.getAllDayEndDate();
-      var durationDays = (evEndExcl.getTime() - evStart.getTime()) / (24 * 60 * 60 * 1000);
-      if (durationDays < 2) continue; // skip single-day events
+    var evStart      = ev.getAllDayStartDate();
+    var evEndExcl    = ev.getAllDayEndDate();
+    var durationDays = (evEndExcl.getTime() - evStart.getTime()) / (24 * 60 * 60 * 1000);
+    if (durationDays < 2) continue; // skip single-day events
 
-      var evEndIncl = new Date(evEndExcl.getTime() - 24 * 60 * 60 * 1000);
-      var daysAway  = Math.round((evStart.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-      var startStr  = Utilities.formatDate(evStart, tz, 'yyyy-MM-dd');
-      var key       = label + '|' + startStr;
+    var evEndIncl = new Date(evEndExcl.getTime() - 24 * 60 * 60 * 1000);
+    var daysAway  = Math.round((evStart.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    var startStr  = Utilities.formatDate(evStart, tz, 'yyyy-MM-dd');
+    var endStr    = Utilities.formatDate(evEndIncl, tz, 'yyyy-MM-dd');
+    var key       = label + '|' + startStr;
 
-      if (!seen[key]) {
-        seen[key] = true;
-        travel.push({
-          label:        label,
-          startDate:    startStr,
-          endDate:      Utilities.formatDate(evEndIncl, tz, 'yyyy-MM-dd'),
-          daysAway:     daysAway,
-          calendarName: gapCalNames[c],
-        });
-      }
+    // Skip events already captured as cruise components (Board / Disembark events)
+    if (cruiseData.skipKeys[key]) continue;
+
+    // Skip multi-day excursions or shore stays that fall entirely within a cruise span
+    var withinCruise = cruiseData.spans.some(function(span) {
+      return startStr >= span.startStr && endStr <= span.endStr;
+    });
+    if (withinCruise) {
+      Logger.log('getUpcomingTravel_: suppressed "' + label + '" (' + startStr +
+                 ' – ' + endStr + ') — falls within a cruise span');
+      continue;
+    }
+
+    if (!seen[key]) {
+      seen[key] = true;
+      travel.push({
+        label:        label,
+        startDate:    startStr,
+        endDate:      endStr,
+        daysAway:     daysAway,
+        calendarName: calName,
+      });
     }
   }
 
@@ -531,7 +716,9 @@ function filterSubEvents_(trips) {
     var dur = duration(trip);
     // Suppress only if a STRICTLY longer accepted trip is nearby
     // (equal-duration consecutive trips are kept — they are separate destinations)
-    var isSubEvent = accepted.some(function(acc) {
+    // Cruise entries are never suppressed — they are the primary representation
+    // of the cruise period and have already absorbed their component events.
+    var isSubEvent = !trip.isCruise && accepted.some(function(acc) {
       return duration(acc) > dur && isNearby(acc, trip);
     });
 
