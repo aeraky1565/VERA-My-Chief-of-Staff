@@ -1946,7 +1946,8 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
   const [origin,     setOrigin]     = React.useState(initMeta.origin     || '');
   const [dest,       setDest]       = React.useState(initMeta.dest       || '');
   const [confirm,    setConfirm]    = React.useState(initMeta.confirmation || '');
-  const [timezone,   setTimezone]   = React.useState(initMeta.timezone   || '');
+  const [timezone,     setTimezone]     = React.useState(initMeta.timezone     || '');
+  const [checkoutDate, setCheckoutDate] = React.useState(initMeta.checkoutDate || '');
 
   function buildMetadata() {
     const m = {};
@@ -1957,6 +1958,9 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
       if (origin)    m.origin       = origin.trim();
       if (dest)      m.dest         = dest.trim();
       if (confirm)   m.confirmation = confirm.trim();
+    }
+    if (type === 'hotel') {
+      if (checkoutDate) m.checkoutDate = checkoutDate;
     }
     return Object.keys(m).length ? JSON.stringify(m) : '';
   }
@@ -2046,20 +2050,35 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
           </div>
         )}
 
+        {/* Hotel-specific fields */}
+        {type === 'hotel' && (
+          <div style={{ background: '#131e2e', borderRadius: 8, padding: '10px 12px',
+                        marginBottom: 12, border: '1px solid #1e2a3a' }}>
+            <div style={{ color: '#8ab4f8', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+              🏨 Hotel Stay
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">Check-out Date</label>
+              <input className="form-input" type="date" value={checkoutDate}
+                onChange={e => setCheckoutDate(e.target.value)} />
+            </div>
+          </div>
+        )}
+
         {/* Date + Times */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
-            <label className="form-label">Date</label>
+            <label className="form-label">{type === 'hotel' ? 'Check-in Date' : 'Date'}</label>
             <input className="form-input" type="date" value={date}
               onChange={e => setDate(e.target.value)} />
           </div>
           <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-            <label className="form-label">Start</label>
+            <label className="form-label">{type === 'hotel' ? 'Check-in' : 'Start'}</label>
             <input className="form-input" type="time" value={startTime}
               onChange={e => setStartTime(e.target.value)} />
           </div>
           <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-            <label className="form-label">End</label>
+            <label className="form-label">{type === 'hotel' ? 'Check-out' : 'End'}</label>
             <input className="form-input" type="time" value={endTime}
               onChange={e => setEndTime(e.target.value)} />
           </div>
@@ -2120,6 +2139,14 @@ function ItineraryView({ trip, itinerary, loading, busy,
 
   // ── Build ordered day list ─────────────────────────────────────────────────
   const tripDays = getDayRange(trip.startDate, trip.endDate);
+
+  // Pre-compute hotel checkout date map: itemId → checkoutDate
+  var hotelCheckoutDates = {};
+  items.forEach(function(item) {
+    if (item.type !== 'hotel' || !item.metadata) return;
+    try { var m = JSON.parse(item.metadata); if (m.checkoutDate) hotelCheckoutDates[item.id] = m.checkoutDate; } catch(e) {}
+  });
+
   const byDay    = {};
   items.forEach(function(item) {
     const d = item.date || '__other__';
@@ -2128,6 +2155,26 @@ function ItineraryView({ trip, itinerary, loading, busy,
   });
   // Ensure every trip day exists in byDay (even if empty)
   tripDays.forEach(function(d) { if (!byDay[d]) byDay[d] = []; });
+
+  // Inject synthetic hotel checkout entries so checkout day shows "Check out" row
+  items.forEach(function(item) {
+    var cd = hotelCheckoutDates[item.id];
+    if (!cd) return;
+    if (!byDay[cd]) byDay[cd] = [];
+    byDay[cd].push({
+      _synthetic: true,
+      id: item.id + '_checkout',
+      type: 'hotel',
+      title: item.title,
+      date: cd,
+      startTime: item.endTime || '',
+      endTime: '',
+      location: item.location || '',
+      notes: '',
+      source: item.source,
+      metadata: item.metadata,
+    });
+  });
 
   // Full ordered list: pre-trip days → trip days → post-trip days → undated
   const outOfRange = Object.keys(byDay)
@@ -2282,14 +2329,22 @@ function ItineraryView({ trip, itinerary, loading, busy,
                     {dayItems.length} event{dayItems.length !== 1 ? 's' : ''} scheduled
                   </div>
                   {timedItems.concat(dayItems.filter(function(i) { return !i.startTime; })).map(function(item) {
+                    var hotelLabel = item.type === 'hotel'
+                      ? (item._synthetic ? 'Check out — ' : hotelCheckoutDates[item.id] ? 'Check in — ' : null)
+                      : null;
                     return (
                       <div key={item.id} style={{ fontSize: 13, color: '#dde1f0', marginBottom: 5,
                                                   display: 'flex', gap: 8, alignItems: 'baseline' }}>
                         <span style={{ fontSize: 15 }}>{ITIN_TYPE_ICON[item.type] || '📝'}</span>
-                        <span style={{ flex: 1 }}>{item.title}</span>
+                        <span style={{ flex: 1 }}>
+                          {hotelLabel && (
+                            <span style={{ color: '#8ab4f8', fontSize: 11, fontWeight: 600 }}>{hotelLabel}</span>
+                          )}
+                          {item.title}
+                        </span>
                         {item.startTime && (
                           <span style={{ color: '#6b7fa8', fontSize: 12, flexShrink: 0 }}>
-                            {item.startTime}{item.endTime ? ' → ' + item.endTime : ''}
+                            {item.startTime}{item.endTime && !item._synthetic && !hotelCheckoutDates[item.id] ? ' → ' + item.endTime : ''}
                           </span>
                         )}
                       </div>
@@ -2393,8 +2448,15 @@ function ItineraryView({ trip, itinerary, loading, busy,
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#e8eaed', fontSize: 14, fontWeight: 500,
                                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.type === 'hotel' && (item._synthetic || hotelCheckoutDates[item.id]) && (
+                        <span style={{ color: '#8ab4f8', fontSize: 10, fontWeight: 600,
+                                       display: 'block', textTransform: 'uppercase', letterSpacing: 0.5,
+                                       marginBottom: 1, overflow: 'visible', whiteSpace: 'nowrap' }}>
+                          {item._synthetic ? '← Check out' : 'Check in →'}
+                        </span>
+                      )}
                       {item.title}
-                      {item.endTime && item.startTime && (
+                      {item.endTime && item.startTime && !item._synthetic && !hotelCheckoutDates[item.id] && (
                         <span style={{ color: '#6b7fa8', fontWeight: 400, fontSize: 12, marginLeft: 8 }}>
                           → {item.endTime}
                         </span>
@@ -2418,8 +2480,8 @@ function ItineraryView({ trip, itinerary, loading, busy,
                       } catch(e) { return null; }
                     })()}
                   </div>
-                  {/* Edit/delete (manual items only) */}
-                  {item.source !== 'calendar' && (
+                  {/* Edit/delete (manual items only, not synthetic checkout rows) */}
+                  {item.source !== 'calendar' && !item._synthetic && (
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <button onClick={function() { onEdit(item); }} disabled={busy} title="Edit"
                         style={{ background: 'transparent', border: 'none', color: '#8ab4f8',
