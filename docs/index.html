@@ -1924,21 +1924,131 @@ function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete
   );
 }
 
-function TravelTab({ pto, selectedTrip, itinerary, itinLoading, busy,
-                     onSelectTrip, onAddItinItem, onEditItinItem, onDeleteItinItem }) {
-  const [sub, setSub] = React.useState('trips');
+// Accordion panel: all trips as expandable sections within "My Itinerary" sub-tab
+function TravelItineraryPanel({
+  trips, itineraries, busy, autoExpandKey,
+  onExpandTrip, onAddItinItem, onEditItinItem, onDeleteItinItem
+}) {
+  const [expanded, setExpanded] = React.useState(function() {
+    return autoExpandKey ? new Set([autoExpandKey]) : new Set();
+  });
+
+  // Auto-expand when user clicks a trip card in My Trips
+  React.useEffect(function() {
+    if (!autoExpandKey) return;
+    setExpanded(function(prev) {
+      if (prev.has(autoExpandKey)) return prev;
+      const next = new Set(prev);
+      next.add(autoExpandKey);
+      return next;
+    });
+  }, [autoExpandKey]);
+
+  function toggleTrip(tripKey, t) {
+    setExpanded(function(prev) {
+      const next = new Set(prev);
+      if (next.has(tripKey)) {
+        next.delete(tripKey);
+      } else {
+        next.add(tripKey);
+        // Lazy-load on first open (undefined = never touched; 'loading' = in-flight)
+        if (!itineraries[tripKey]) onExpandTrip(t);
+      }
+      return next;
+    });
+  }
+
+  if (!trips || trips.length === 0) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 36, marginBottom: 12 }}>✈️</div>
+        <div>No upcoming trips found.</div>
+        <div style={{ fontSize: 12, color: '#4d6080', marginTop: 8 }}>
+          Add multi-day travel events to your calendar to see them here.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {trips.map(function(t) {
+        const tripKey   = `${t.startDate}|${t.label}`;
+        const isOpen    = expanded.has(tripKey);
+        const tripData  = itineraries[tripKey];
+        const isLoading = tripData === 'loading';
+
+        return (
+          <div key={tripKey} style={{ marginBottom: 12, border: '1px solid #2a3a50',
+                                      borderRadius: 10, overflow: 'hidden' }}>
+
+            {/* Accordion header */}
+            <div onClick={() => toggleTrip(tripKey, t)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                       background: isOpen ? '#131e2e' : '#0d1117', cursor: 'pointer',
+                       userSelect: 'none', transition: 'background .15s' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0' }}>{t.label}</div>
+                <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 2 }}>{t.startDate} – {t.endDate}</div>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#5c9eff', background: '#0d2040',
+                            borderRadius: 12, padding: '3px 10px', whiteSpace: 'nowrap' }}>
+                {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days`}
+              </div>
+              <div style={{ fontSize: 16, color: '#8ab4f8',
+                            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform .2s', lineHeight: 1 }}>
+                ▾
+              </div>
+            </div>
+
+            {/* Accordion body */}
+            {isOpen && (
+              <div style={{ padding: '0 16px 16px', background: '#0d1117',
+                            borderTop: '1px solid #2a3a50' }}>
+                {isLoading ? (
+                  <div style={{ padding: '24px 0', textAlign: 'center',
+                                color: '#6b7fa8', fontSize: 13 }}>
+                    Loading itinerary…
+                  </div>
+                ) : (
+                  <ItineraryView
+                    trip={{ ...t, tripKey }}
+                    itinerary={tripData}
+                    loading={false}
+                    busy={busy}
+                    onAdd={() => onAddItinItem(tripKey, t.startDate, t.endDate)}
+                    onEdit={item => onEditItinItem(item, tripKey, t.startDate, t.endDate)}
+                    onDelete={id => onDeleteItinItem(id, tripKey)}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TravelTab({ pto, itineraries, busy,
+                     onSelectTrip, onExpandTrip,
+                     onAddItinItem, onEditItinItem, onDeleteItinItem }) {
+  const [sub,           setSub]           = React.useState('trips');
+  const [autoExpandKey, setAutoExpandKey] = React.useState(null);
 
   const upcomingTravel = (pto && pto.upcomingTravel) || [];
 
   function handleTripClick(t) {
     const tripKey = `${t.startDate}|${t.label}`;
-    onSelectTrip({ ...t, tripKey });
+    onSelectTrip({ ...t, tripKey }); // triggers loadItinerary if not cached
+    setAutoExpandKey(tripKey);       // tells accordion to open this trip
     setSub('itinerary');
   }
 
   const subTabs = [
     { id: 'trips',      label: '✈️ My Trips' },
-    { id: 'itinerary',  label: selectedTrip ? `🗺️ ${selectedTrip.label}` : '🗺️ Itinerary' },
+    { id: 'itinerary',  label: '🗺️ My Itinerary' },   // fixed label
     { id: 'packing',    label: '🎒 Packing' },
     { id: 'budget',     label: '💰 Budget' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
@@ -1995,24 +2105,18 @@ function TravelTab({ pto, selectedTrip, itinerary, itinLoading, busy,
           )
       )}
 
-      {/* Itinerary sub-tab */}
+      {/* My Itinerary — accordion across all trips */}
       {sub === 'itinerary' && (
-        selectedTrip
-          ? <ItineraryView
-              trip={selectedTrip}
-              itinerary={itinerary}
-              loading={itinLoading}
-              busy={busy}
-              onAdd={() => onAddItinItem({ tripKey: selectedTrip.tripKey })}
-              onEdit={onEditItinItem}
-              onDelete={onDeleteItinItem}
-            />
-          : (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>👈</div>
-              Select a trip from "My Trips" to view its itinerary.
-            </div>
-          )
+        <TravelItineraryPanel
+          trips={upcomingTravel}
+          itineraries={itineraries}
+          busy={busy}
+          autoExpandKey={autoExpandKey}
+          onExpandTrip={onExpandTrip}
+          onAddItinItem={onAddItinItem}
+          onEditItinItem={onEditItinItem}
+          onDeleteItinItem={onDeleteItinItem}
+        />
       )}
 
       {/* Placeholder sub-tabs */}
@@ -3918,9 +4022,8 @@ function App() {
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
-  const [selectedTrip,  setSelectedTrip]  = useState(null); // { label, startDate, endDate, tripKey }
-  const [itinerary,     setItinerary]     = useState(null); // { items } | null  (Issue #63)
-  const [itinItemModal, setItinItemModal] = useState(null); // null | { mode:'add', tripKey } | { mode:'edit', item }
+  const [itineraries,   setItineraries]   = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
+  const [itinItemModal, setItinItemModal] = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -4088,15 +4191,21 @@ function App() {
 
   async function loadItinerary(tripKey, startDate, endDate) {
     if (!tripKey || !apiUrl || !apiToken) return;
-    setTabLoading(prev => ({ ...prev, itinerary: true }));
+    // Mark as loading with sentinel string (truthy, prevents double-load)
+    setItineraries(prev => ({ ...prev, [tripKey]: 'loading' }));
     try {
       const data = await apiGet(apiUrl, apiToken,
         { action: 'itinerary', tripKey, startDate, endDate });
-      setItinerary(data);
+      // Store result alongside tripMeta so handlers can reload without selectedTrip
+      setItineraries(prev => ({
+        ...prev,
+        [tripKey]: { ...data, tripMeta: { startDate, endDate } }
+      }));
     } catch (err) {
       setError('Could not load itinerary: ' + err.message);
+      // Remove sentinel on error so user can retry
+      setItineraries(prev => { const n = { ...prev }; delete n[tripKey]; return n; });
     }
-    setTabLoading(prev => ({ ...prev, itinerary: false }));
   }
 
   async function loadShopping(url, token) {
@@ -4413,7 +4522,8 @@ function App() {
       await apiGet(apiUrl, apiToken, { action: 'add_itinerary_item', ...params });
       showToast('✓ Itinerary item added');
       setItinItemModal(null);
-      if (selectedTrip) loadItinerary(selectedTrip.tripKey, selectedTrip.startDate, selectedTrip.endDate);
+      const meta = itineraries[params.tripKey] && itineraries[params.tripKey].tripMeta;
+      if (meta) loadItinerary(params.tripKey, meta.startDate, meta.endDate);
     } catch (err) { setError('Could not add itinerary item: ' + err.message); }
     setBusy(false);
   }
@@ -4424,18 +4534,20 @@ function App() {
       await apiGet(apiUrl, apiToken, { action: 'update_itinerary_item', ...params });
       showToast('✓ Updated');
       setItinItemModal(null);
-      if (selectedTrip) loadItinerary(selectedTrip.tripKey, selectedTrip.startDate, selectedTrip.endDate);
+      const meta = itineraries[params.tripKey] && itineraries[params.tripKey].tripMeta;
+      if (meta) loadItinerary(params.tripKey, meta.startDate, meta.endDate);
     } catch (err) { setError('Could not update itinerary item: ' + err.message); }
     setBusy(false);
   }
 
-  async function handleDeleteItineraryItem(id) {
+  async function handleDeleteItineraryItem(id, tripKey) {
     if (!confirm('Delete this itinerary item?')) return;
     setBusy(true);
     try {
       await apiGet(apiUrl, apiToken, { action: 'delete_itinerary_item', id });
       showToast('🗑 Deleted');
-      if (selectedTrip) loadItinerary(selectedTrip.tripKey, selectedTrip.startDate, selectedTrip.endDate);
+      const meta = tripKey && itineraries[tripKey] && itineraries[tripKey].tripMeta;
+      if (meta) loadItinerary(tripKey, meta.startDate, meta.endDate);
     } catch (err) { setError('Could not delete itinerary item: ' + err.message); }
     setBusy(false);
   }
@@ -4799,17 +4911,22 @@ function App() {
                 ? <div className="loading-text">Loading travel data…</div>
                 : <TravelTab
                     pto={pto}
-                    selectedTrip={selectedTrip}
-                    itinerary={itinerary}
-                    itinLoading={!!tabLoading.itinerary}
+                    itineraries={itineraries}
                     busy={busy}
-                    onSelectTrip={(trip) => {
-                      setSelectedTrip(trip);
-                      setItinerary(null);
-                      loadItinerary(trip.tripKey, trip.startDate, trip.endDate);
+                    onSelectTrip={trip => {
+                      if (!itineraries[trip.tripKey])
+                        loadItinerary(trip.tripKey, trip.startDate, trip.endDate);
                     }}
-                    onAddItinItem={() => selectedTrip && setItinItemModal({ mode: 'add', tripKey: selectedTrip.tripKey })}
-                    onEditItinItem={(item) => setItinItemModal({ mode: 'edit', item })}
+                    onExpandTrip={trip => {
+                      if (!itineraries[trip.tripKey])
+                        loadItinerary(trip.tripKey, trip.startDate, trip.endDate);
+                    }}
+                    onAddItinItem={(tripKey, sd, ed) =>
+                      setItinItemModal({ mode: 'add', tripKey, tripStartDate: sd, tripEndDate: ed })
+                    }
+                    onEditItinItem={(item, tripKey, sd, ed) =>
+                      setItinItemModal({ mode: 'edit', item, tripKey, tripStartDate: sd, tripEndDate: ed })
+                    }
                     onDeleteItinItem={handleDeleteItineraryItem}
                   />
             )}
@@ -4866,8 +4983,7 @@ function App() {
         <AddItineraryItemModal
           mode={itinItemModal.mode}
           item={itinItemModal.item}
-          tripKey={itinItemModal.tripKey || (selectedTrip && selectedTrip.tripKey)}
-          tripStartDate={selectedTrip && selectedTrip.startDate}
+          tripKey={itinItemModal.tripKey}
           onSave={itinItemModal.mode === 'edit' ? handleUpdateItineraryItem : handleAddItineraryItem}
           onClose={() => setItinItemModal(null)}
           busy={busy}

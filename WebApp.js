@@ -931,6 +931,73 @@ function webDeleteHomeItem_(e) {
 
 // ---- Itinerary (Issue #63) --------------------------------------------------
 
+/**
+ * Decides whether a calendar event is travel-relevant for a trip itinerary.
+ * @param {string} title     - Event title
+ * @param {string} location  - Event location (may be empty string)
+ * @param {string} tripLabel - Trip label extracted from tripKey (e.g. "Alaska Trip")
+ * @returns {{ include: boolean, type: string }}
+ */
+function isItineraryCalendarRelevant_(title, location, tripLabel) {
+  var titleLower    = (title    || '').toLowerCase();
+  var locationLower = (location || '').toLowerCase();
+
+  var AIRLINE_REGEX   = /\b(AA|UA|DL|SW|BA|EK|LH|AF|QR|AC|AS|B6|F9|WN|NK|G4)\s*\d+/;
+  var FLIGHT_WORDS    = ['flight', 'flying', 'depart', 'arrive', '\u2708'];
+  var TRANSPORT_WORDS = ['train', 'amtrak', 'eurostar', 'rail', 'thalys', 'bus', 'shuttle',
+                         'transfer', 'car rental', 'rental car', 'lyft', 'uber', 'taxi'];
+  var HOTEL_WORDS     = ['hotel', 'check-in', 'check in', 'check-out', 'check out',
+                         'airbnb', 'vrbo', 'resort', 'inn', 'hostel', 'motel', 'lodge'];
+  var VIRTUAL_LOCS    = ['zoom', 'google meet', 'teams', 'webex', 'skype',
+                         'conference room', 'meet.google', 'whereby'];
+  var STOP_WORDS      = { trip:1, travel:1, vacation:1, holiday:1, weekend:1, adventure:1,
+                          getaway:1, visit:1, tour:1, journey:1, with:1, to:1, a:1, an:1,
+                          the:1, my:1, our:1, and:1, 'in':1, at:1, for:1 };
+
+  var i;
+
+  // 1. Virtual/remote location → always exclude
+  if (locationLower) {
+    for (i = 0; i < VIRTUAL_LOCS.length; i++) {
+      if (locationLower.indexOf(VIRTUAL_LOCS[i]) !== -1) return { include: false };
+    }
+  }
+
+  // 2. Airline code + flight number (e.g. "AA 102", "UA123")
+  if (AIRLINE_REGEX.test(title.toUpperCase())) return { include: true, type: 'flight' };
+
+  // 3. Generic flight keywords
+  for (i = 0; i < FLIGHT_WORDS.length; i++) {
+    if (titleLower.indexOf(FLIGHT_WORDS[i]) !== -1) return { include: true, type: 'flight' };
+  }
+
+  // 4. Hotel / lodging keywords
+  for (i = 0; i < HOTEL_WORDS.length; i++) {
+    if (titleLower.indexOf(HOTEL_WORDS[i]) !== -1) return { include: true, type: 'hotel' };
+  }
+
+  // 5. Transport keywords
+  for (i = 0; i < TRANSPORT_WORDS.length; i++) {
+    if (titleLower.indexOf(TRANSPORT_WORDS[i]) !== -1) return { include: true, type: 'transport' };
+  }
+
+  // 6. Destination keyword extraction (words ≥3 chars not in stop list)
+  var destKeywords = (tripLabel || '').toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(function(w) { return w.length >= 3 && !STOP_WORDS[w]; });
+
+  // 7–9. Location-based match
+  if (locationLower) {
+    for (i = 0; i < destKeywords.length; i++) {
+      if (locationLower.indexOf(destKeywords[i]) !== -1) return { include: true, type: 'calendar' };
+    }
+    return { include: false }; // location present but doesn't match destination
+  }
+
+  // 9. No location, no travel keyword → exclude
+  return { include: false };
+}
+
 function findItineraryRow_(id) {
   if (!id) throw new Error('Missing itinerary item ID');
   const sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
@@ -982,28 +1049,35 @@ function webGetItinerary_(e) {
     });
   }
 
-  // 2. Auto-pull calendar events within trip date range (read-only, not stored)
+  // 2. Auto-pull calendar events within trip date range (smart-filtered, read-only)
   if (start && end) {
     try {
-      const startDt = new Date(start + 'T00:00:00');
-      const endDt   = new Date(end   + 'T23:59:59');
+      const startDt   = new Date(start + 'T00:00:00');
+      const endDt     = new Date(end   + 'T23:59:59');
+      const tripLabel = tripKey.split('|')[1] || ''; // e.g. "Alaska Trip" from "2026-05-10|Alaska Trip"
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
           cal.getEvents(startDt, endDt).forEach(function(ev) {
+            const evTitle    = (ev.getTitle()    || '(No title)').trim();
+            const evLocation = (ev.getLocation() || '').trim();
+
+            // Smart filter: only keep travel-relevant events
+            var relevance = isItineraryCalendarRelevant_(evTitle, evLocation, tripLabel);
+            if (!relevance.include) return;
+
             const evStart = ev.getStartTime();
             const evDate  = Utilities.formatDate(evStart, tz, 'yyyy-MM-dd');
             const evTime  = ev.isAllDayEvent() ? '' : Utilities.formatDate(evStart, tz, 'HH:mm');
             const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), tz, 'HH:mm');
-            const evTitle = (ev.getTitle() || '(No title)').trim();
             items.push({
               id:        'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16),
               tripKey:   tripKey,
-              type:      'calendar',
+              type:      relevance.type,    // 'flight' / 'hotel' / 'transport' / 'calendar'
               title:     evTitle,
               date:      evDate,
               startTime: evTime,
               endTime:   evEnd,
-              location:  (ev.getLocation() || '').trim(),
+              location:  evLocation,
               notes:     '',
               metadata:  JSON.stringify({ calendarName: cal.getName() }),
               source:    'calendar',
