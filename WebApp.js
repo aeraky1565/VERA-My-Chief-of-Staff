@@ -347,10 +347,105 @@ function findTaskRow_(id) {
   throw new Error('Task not found: ' + id);
 }
 
+// ---- Recurring helper — compute next due date from a frequency string --------
+/**
+ * Given a base date and a recurring frequency string, returns the next Date.
+ * Understands: Daily, Weekly, Bi-Weekly, Monthly, Quarterly, Semi-Annual,
+ * Yearly/Annual, "Every N days/weeks/months", and plain "N days/weeks/months".
+ * Returns null if the recurring string is empty or unrecognised as recurring.
+ */
+function computeNextDueDate_(fromDate, recurringStr) {
+  var s = String(recurringStr || '').trim().toLowerCase();
+  if (!s || s === 'no' || s === 'false' || s === '0') return null;
+
+  var base = fromDate instanceof Date ? new Date(fromDate) : new Date();
+  base.setHours(0, 0, 0, 0);
+  var next = new Date(base);
+
+  if (s === 'daily') {
+    next.setDate(next.getDate() + 1);
+  } else if (s === 'weekly') {
+    next.setDate(next.getDate() + 7);
+  } else if (s === 'bi-weekly' || s === 'biweekly' || s === 'every 2 weeks' || s === 'fortnightly') {
+    next.setDate(next.getDate() + 14);
+  } else if (s === 'monthly') {
+    next.setMonth(next.getMonth() + 1);
+  } else if (s === 'quarterly' || s === 'every 3 months') {
+    next.setMonth(next.getMonth() + 3);
+  } else if (s === 'semi-annual' || s === 'semi annual' || s === 'every 6 months') {
+    next.setMonth(next.getMonth() + 6);
+  } else if (s === 'yearly' || s === 'annual' || s === 'annually' || s === 'every year') {
+    next.setFullYear(next.getFullYear() + 1);
+  } else {
+    // "every N days/weeks/months" or "N days/weeks/months"
+    var m;
+    if ((m = s.match(/^(?:every\s+)?(\d+)\s*days?$/))) {
+      next.setDate(next.getDate() + parseInt(m[1]));
+    } else if ((m = s.match(/^(?:every\s+)?(\d+)\s*weeks?$/))) {
+      next.setDate(next.getDate() + parseInt(m[1]) * 7);
+    } else if ((m = s.match(/^(?:every\s+)?(\d+)\s*months?$/))) {
+      next.setMonth(next.getMonth() + parseInt(m[1]));
+    } else {
+      // Unknown string but non-empty — treat as monthly
+      next.setMonth(next.getMonth() + 1);
+    }
+  }
+  return next;
+}
+
 function webCompleteTask_(id) {
   const found = findTaskRow_(id);
   found.sheet.getRange(found.rowNum, 5).setValue('Done'); // Column E = Status
-  return { ok: true, id: id, action: 'completed' };
+
+  // ---- Auto-regenerate if recurring --------------------------------------
+  // TASK_HEADERS: ID(1) | Task(2) | Added Date(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)
+  const rowData      = found.sheet.getRange(found.rowNum, 1, 1, TASK_HEADERS.length).getValues()[0];
+  const taskText     = String(rowData[1] || '').trim();
+  const dueRaw       = rowData[3];
+  const recurringVal = String(rowData[5] || '').trim();
+  const notes        = String(rowData[6] || '').trim();
+
+  const isRecurring = recurringVal !== '' &&
+    recurringVal.toLowerCase() !== 'no' &&
+    recurringVal.toLowerCase() !== 'false' &&
+    recurringVal !== '0';
+
+  if (!isRecurring || !taskText) {
+    return { ok: true, id: id, action: 'completed' };
+  }
+
+  const tz      = Session.getScriptTimeZone();
+  const today   = new Date(); today.setHours(0, 0, 0, 0);
+  const baseDate = dueRaw ? new Date(dueRaw) : today;
+  // If original due date has already passed, advance from today instead
+  const fromDate = baseDate < today ? today : baseDate;
+  const nextDate = computeNextDueDate_(fromDate, recurringVal);
+
+  if (!nextDate) {
+    return { ok: true, id: id, action: 'completed' };
+  }
+
+  const nextDateStr = Utilities.formatDate(nextDate, tz, 'yyyy-MM-dd');
+  const todayStr    = Utilities.formatDate(today,    tz, 'yyyy-MM-dd');
+  const dateKey     = Utilities.formatDate(today,    tz, 'yyyyMMdd');
+
+  // Generate new task ID
+  const sheet   = found.sheet;
+  const lastRow = sheet.getLastRow();
+  let seq = 1;
+  if (lastRow >= 2) {
+    sheet.getRange(2, 1, lastRow - 1, 1).getValues().forEach(function(r) {
+      if (String(r[0] || '').indexOf('TASK-' + dateKey) === 0) seq++;
+    });
+  }
+  const newId = 'TASK-' + dateKey + '-' + String(seq).padStart(2, '0');
+
+  // Append the regenerated task
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[
+    newId, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, ''
+  ]]);
+
+  return { ok: true, id: id, action: 'completed', recurring: true, nextTaskId: newId, nextDueDate: nextDateStr };
 }
 
 function webDeleteTask_(id) {
@@ -362,9 +457,10 @@ function webDeleteTask_(id) {
 // ---- Add / Update task -----------------------------------------------------
 
 function webAddTask_(e) {
-  const taskText = ((e.parameter && e.parameter.task)    || '').trim();
-  const dueDate  =  (e.parameter && e.parameter.dueDate) || '';
-  const notes    =  (e.parameter && e.parameter.notes)   || '';
+  const taskText  = ((e.parameter && e.parameter.task)      || '').trim();
+  const dueDate   =  (e.parameter && e.parameter.dueDate)   || '';
+  const notes     =  (e.parameter && e.parameter.notes)     || '';
+  const recurring =  (e.parameter && e.parameter.recurring) || '';
   if (!taskText) throw new Error('Task text is required');
 
   const ss    = getSpreadsheet();
@@ -372,9 +468,9 @@ function webAddTask_(e) {
   if (!sheet) throw new Error('Tasks sheet not found');
 
   // Generate ID: TASK-YYYYMMDD-NN
-  const tz      = Session.getScriptTimeZone();
-  const today   = new Date();
-  const dateStr = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  const tz       = Session.getScriptTimeZone();
+  const today    = new Date();
+  const dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
   const addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
 
   let seq = 1;
@@ -387,7 +483,7 @@ function webAddTask_(e) {
   const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
 
   // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged
-  const row = [taskId, taskText, addedStr, dueDate, 'Open', '', notes, ''];
+  const row = [taskId, taskText, addedStr, dueDate, 'Open', recurring, notes, ''];
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([row]);
 
   return { ok: true, id: taskId, action: 'created' };
@@ -398,9 +494,11 @@ function webUpdateTask_(e) {
   const found   = findTaskRow_(id);
 
   // TASK_HEADERS: ID(1) | Task(2) | Added Date(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)
-  if (e.parameter.task    != null) found.sheet.getRange(found.rowNum, 2).setValue(e.parameter.task);
-  if (e.parameter.dueDate != null) found.sheet.getRange(found.rowNum, 4).setValue(e.parameter.dueDate);
-  if (e.parameter.notes   != null) found.sheet.getRange(found.rowNum, 7).setValue(e.parameter.notes);
+  if (e.parameter.task      != null) found.sheet.getRange(found.rowNum, 2).setValue(e.parameter.task);
+  if (e.parameter.dueDate   != null) found.sheet.getRange(found.rowNum, 4).setValue(e.parameter.dueDate);
+  if (e.parameter.status    != null) found.sheet.getRange(found.rowNum, 5).setValue(e.parameter.status);
+  if (e.parameter.recurring != null) found.sheet.getRange(found.rowNum, 6).setValue(e.parameter.recurring);
+  if (e.parameter.notes     != null) found.sheet.getRange(found.rowNum, 7).setValue(e.parameter.notes);
 
   return { ok: true, id: id, action: 'updated' };
 }

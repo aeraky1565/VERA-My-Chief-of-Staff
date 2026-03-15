@@ -1177,15 +1177,25 @@ function FlagCard({ flag, onAction, busy }) {
 
 // ---- Task form modal (add + edit) -------------------------------------------
 
+const RECURRING_PRESETS = ['', 'Daily', 'Weekly', 'Bi-Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Yearly'];
+
 function TaskFormModal({ task, onSave, onClose, busy }) {
-  const isEdit = !!task;
-  const [taskText, setTaskText] = useState(isEdit ? task.task    : '');
-  const [dueDate,  setDueDate]  = useState(isEdit ? task.dueDate : '');
-  const [notes,    setNotes]    = useState(isEdit ? task.notes   : '');
+  const isEdit    = !!task;
+  const [taskText,  setTaskText]  = useState(isEdit ? task.task      : '');
+  const [dueDate,   setDueDate]   = useState(isEdit ? task.dueDate   : '');
+  const [notes,     setNotes]     = useState(isEdit ? task.notes     : '');
+  const [recurring, setRecurring] = useState(isEdit ? (task.recurring || '') : '');
+  const [customRec, setCustomRec] = useState(
+    isEdit && task.recurring && RECURRING_PRESETS.indexOf(task.recurring) === -1
+      ? task.recurring : ''
+  );
+
+  // The effective recurring value: custom text overrides preset
+  const effectiveRecurring = customRec.trim() || recurring;
 
   function save() {
     if (!taskText.trim()) return;
-    onSave({ id: task?.id, task: taskText.trim(), dueDate, notes });
+    onSave({ id: task?.id, task: taskText.trim(), dueDate, notes, recurring: effectiveRecurring });
   }
 
   function handleKey(e) {
@@ -1219,6 +1229,39 @@ function TaskFormModal({ task, onSave, onClose, busy }) {
             value={dueDate}
             onChange={e => setDueDate(e.target.value)}
           />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Recurring</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select
+              className="form-input"
+              value={customRec ? 'custom' : recurring}
+              onChange={e => {
+                if (e.target.value === 'custom') { setCustomRec(recurring || ''); setRecurring(''); }
+                else { setRecurring(e.target.value); setCustomRec(''); }
+              }}
+              style={{ flex: '0 0 160px' }}
+            >
+              <option value="">One-time</option>
+              {RECURRING_PRESETS.filter(Boolean).map(p => <option key={p} value={p}>{p}</option>)}
+              <option value="custom">Custom…</option>
+            </select>
+            {customRec !== '' && (
+              <input
+                className="form-input"
+                value={customRec}
+                onChange={e => setCustomRec(e.target.value)}
+                placeholder="e.g. Every 6 weeks"
+                style={{ flex: 1 }}
+              />
+            )}
+          </div>
+          {effectiveRecurring && (
+            <div style={{ fontSize: 12, color: '#8ab4f8', marginTop: 4 }}>
+              🔁 Will auto-regenerate as "{effectiveRecurring}" after completion
+            </div>
+          )}
         </div>
 
         <div className="form-group">
@@ -1356,7 +1399,18 @@ function TaskCard({ task, onComplete, onEdit, completing }) {
       </button>
       <div className={`task-age ${ageClass}`}>{ageLabel}</div>
       <div className="task-info" style={completing ? { textDecoration: 'line-through', color: '#4d6080' } : {}}>
-        <div className="task-title">{task.task}</div>
+        <div className="task-title">
+          {task.task}
+          {task.recurring && (
+            <span title={`Recurring: ${task.recurring}`} style={{
+              marginLeft: 8, fontSize: 11, padding: '1px 7px', borderRadius: 10,
+              background: '#1a3050', color: '#8ab4f8', border: '1px solid #8ab4f8',
+              fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap'
+            }}>
+              🔁 {task.recurring}
+            </span>
+          )}
+        </div>
         <div className="task-meta">
           {task.status && <span style={{ marginRight: 12 }}>Status: {task.status}</span>}
           {task.dueDate && (
@@ -3650,8 +3704,12 @@ function App() {
     if (!id) return;
     setCompletingIds(prev => ({ ...prev, [id]: true }));
     try {
-      await apiAction(apiUrl, apiToken, 'complete_task', { id });
-      showToast('✓ Task marked done');
+      const res = await apiAction(apiUrl, apiToken, 'complete_task', { id });
+      if (res.recurring && res.nextDueDate) {
+        showToast(`✓ Done! 🔁 Next occurrence scheduled for ${res.nextDueDate}`);
+      } else {
+        showToast('✓ Task marked done');
+      }
       setTimeout(() => loadAll(apiUrl, apiToken, filterActive), 1500);
     } catch (err) {
       setError('Could not complete task: ' + err.message);
@@ -3849,15 +3907,19 @@ function App() {
     setBusy(false);
   }
 
-  async function handleSaveTask({ id, task, dueDate, notes }) {
+  async function handleSaveTask({ id, task, dueDate, notes, recurring }) {
     setBusy(true);
     try {
       if (id) {
-        await apiAction(apiUrl, apiToken, 'update_task', { id, task, dueDate: dueDate || '', notes: notes || '' });
+        await apiAction(apiUrl, apiToken, 'update_task', {
+          id, task, dueDate: dueDate || '', notes: notes || '', recurring: recurring || ''
+        });
         showToast('✓ Task updated');
       } else {
-        await apiAction(apiUrl, apiToken, 'add_task', { task, dueDate: dueDate || '', notes: notes || '' });
-        showToast('✓ Task added');
+        await apiAction(apiUrl, apiToken, 'add_task', {
+          task, dueDate: dueDate || '', notes: notes || '', recurring: recurring || ''
+        });
+        showToast(recurring ? `✓ Recurring task added (${recurring})` : '✓ Task added');
       }
       setTaskModal(null);
       await loadAll(apiUrl, apiToken, filterActive);

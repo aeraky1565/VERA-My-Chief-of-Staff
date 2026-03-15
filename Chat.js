@@ -35,6 +35,7 @@ function buildChatSystemPrompt_(context) {
         var line = '  - ' + t.task + ' (ID: ' + t.id + ')';
         if (t.dueDate)   line += ' | due: ' + t.dueDate;
         if (t.isOverdue) line += ' ⚠ OVERDUE';
+        if (t.recurring) line += ' 🔁 ' + t.recurring;
         return line;
       }).join('\n');
 
@@ -162,7 +163,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:resolve_flag|{flagId}\n' +
     'ACTION:create_project|{project name}|{task 1}~{task 2}~{task 3}\n' +
     'ACTION:log_interest|{person}|{interest}|{category}\n' +
-    'ACTION:create_task|{task text}|{due date YYYY-MM-DD}\n' +
+    'ACTION:create_task|{task text}|{due date YYYY-MM-DD}|{recurring interval or blank}\n' +
     'ACTION:create_calendar_event|{title}|{YYYY-MM-DD}|{HH:MM or all-day}|{duration_minutes}\n' +
     'ACTION:add_bill|{name}|{amount}|{due_day}|{frequency}|{category}|{account}\n' +
     'ACTION:mark_bill_paid|{row_number_or_bill_name}\n' +
@@ -183,9 +184,9 @@ function buildChatSystemPrompt_(context) {
     '- Be concise and conversational. This is a chat interface, not an email.\n' +
     '- Address Ahmed directly by name when appropriate.\n' +
     '- If taking an action, include the ACTION line anywhere in your response, then confirm in plain text what you did.\n' +
-    '- For complete_task / delete_task: match task by ID from OPEN TASKS above.\n' +
-    '- For update_task: valid fields are "task" (rename the task text), "dueDate" (YYYY-MM-DD), "notes", "status" (Open/Done/Paused).\n' +
-    '- For create_task: use when Ahmed asks to add, create, or remember a task. Include due date if one was mentioned (format YYYY-MM-DD). Omit the due date field if none was specified.\n' +
+    '- For complete_task / delete_task: match task by ID from OPEN TASKS above. When completing a recurring task, VERA will automatically create the next occurrence — mention the new due date to Ahmed in your reply.\n' +
+    '- For create_task: use when Ahmed asks to add, create, or remember a task. Include due date if mentioned (YYYY-MM-DD). For the recurring field (3rd arg), pass the interval if Ahmed says "every month / weekly / daily / quarterly / yearly / every 2 weeks / every N days" etc. — use plain English like "Monthly", "Weekly", "Quarterly", "Yearly", "Bi-Weekly". Leave blank (empty string) for one-time tasks.\n' +
+    '- For update_task: valid fields are "task" (rename), "dueDate" (YYYY-MM-DD), "status" (Open/Done/Paused), "recurring" (frequency string, or empty string to make it one-time), "notes".\n' +
     '- For create_calendar_event: VERA can and does create Google Calendar events directly via the Apps Script backend. Use this whenever Ahmed asks to schedule, block time, or add an event to his calendar. If the time is not mentioned, default to "all-day". If title or date are missing, ask for them before emitting the ACTION line. Never say you cannot create calendar events — you can.\n' +
     '- For create_project: before generating the plan, ask 2–4 targeted clarifying questions to understand scope, timeline, and constraints. Wait for the answers before emitting the ACTION line. Only skip questions if Ahmed has already provided enough context, or explicitly says "just create it" / "go ahead". Once you have the details, generate a comprehensive, exhaustive checklist — the goal is that Ahmed misses nothing. Think through every phase: planning, logistics, dependencies, admin/paperwork, communications, day-of execution, and follow-up. Explicitly include steps people commonly overlook. Aim for 20–30 tasks for complex projects. Order tasks chronologically. Assign priorities naturally (High for time-sensitive or blocking steps, Low for nice-to-haves). Separate tasks with ~ and optionally append |High or |Low to each task.\n' +
     '- For log_interest: when Ahmed or Victoria mentions liking something, wanting to try something, or expresses interest in a place, food, activity, or experience, log it automatically with ACTION:log_interest. Use person "Ahmed" or "Victoria". Pick the best category from: Food, Travel, Fitness, Culture, Hobbies, Learning, Other. Example: "Victoria mentioned she wants to visit Wimberley" → ACTION:log_interest|Victoria|visit Wimberley TX|Travel\n' +
@@ -473,7 +474,10 @@ function executeActions_(rawText) {
     var args = m[2].split('|');
 
     try {
-      if      (type === 'complete_task')    { webCompleteTask_(args[0]);                       executed.push(type); }
+      if      (type === 'complete_task') {
+        var ctRes = webCompleteTask_(args[0]);
+        executed.push(type + ' (' + args[0] + ')' + (ctRes.recurring ? ' → 🔁 next due ' + ctRes.nextDueDate : ''));
+      }
       else if (type === 'acknowledge_flag') { webAcknowledge_(args[0]);                        executed.push(type); }
       else if (type === 'snooze_flag')     { webSnooze_(args[0], parseInt(args[1], 10) || 2); executed.push(type); }
       else if (type === 'resolve_flag')    { webResolve_(args[0]);                             executed.push(type); }
@@ -496,25 +500,12 @@ function executeActions_(rawText) {
         }
       }
       else if (type === 'create_task') {
-        var taskText = (args[0] || '').trim();
-        var dueDate  = (args[1] || '').trim();
-        if (!taskText) throw new Error('Task text is required');
-        var taskSheet = getSpreadsheet().getSheetByName(TABS.TASKS);
-        if (!taskSheet) throw new Error('Tasks sheet not found');
-        var tz2      = Session.getScriptTimeZone();
-        var now2     = new Date();
-        var dateStr2 = Utilities.formatDate(now2, tz2, 'yyyyMMdd');
-        var addedStr = Utilities.formatDate(now2, tz2, 'yyyy-MM-dd');
-        var seq2     = 1;
-        if (taskSheet.getLastRow() >= 2) {
-          taskSheet.getRange(2, 1, taskSheet.getLastRow() - 1, 1).getValues()
-            .forEach(function(r) { if (String(r[0] || '').indexOf('TASK-' + dateStr2) === 0) seq2++; });
-        }
-        var taskId2 = 'TASK-' + dateStr2 + '-' + String(seq2).padStart(2, '0');
-        // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged
-        taskSheet.getRange(taskSheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length)
-                 .setValues([[taskId2, taskText, addedStr, dueDate, 'Open', '', '', '']]);
-        executed.push(type + ' (' + taskId2 + ')');
+        var ctText = (args[0] || '').trim();
+        var ctDue  = (args[1] || '').trim();
+        var ctRec  = (args[2] || '').trim();
+        if (!ctText) throw new Error('Task text is required');
+        var ctResult = webAddTask_({ parameter: { task: ctText, dueDate: ctDue, recurring: ctRec } });
+        executed.push(type + ' (' + ctResult.id + ')' + (ctRec ? ' 🔁 ' + ctRec : ''));
       }
       else if (type === 'create_calendar_event') {
         var evTitle    = (args[0] || '').trim();
@@ -548,9 +539,9 @@ function executeActions_(rawText) {
         var utVal   = (args[2] || '').trim();
         var utFound = findTaskRow_(utId);
         // TASK_HEADERS: ID(1) | Task(2) | Added(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)
-        var utColMap = { task: 2, text: 2, duedate: 4, notes: 7, status: 5 };
+        var utColMap = { task: 2, text: 2, duedate: 4, due: 4, status: 5, recurring: 6, notes: 7 };
         var utCol    = utColMap[utField];
-        if (!utCol) throw new Error('Unknown task field: ' + utField + '. Valid: task, dueDate, notes, status');
+        if (!utCol) throw new Error('Unknown task field: ' + utField + '. Valid: task, dueDate, status, recurring, notes');
         utFound.sheet.getRange(utFound.rowNum, utCol).setValue(utVal);
         executed.push(type + ' (' + utId + ')');
       }
