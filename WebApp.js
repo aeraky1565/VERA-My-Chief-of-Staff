@@ -1032,14 +1032,23 @@ function webGetItinerary_(e) {
       if (!String(row[0]).trim()) return;           // blank row
       if (String(row[1]).trim() !== tripKey) return; // different trip
       const meta = String(row[9] || '').trim();
+      // Cells that were auto-converted to Date by Sheets must be re-formatted as strings
+      function fmtDate_(v) {
+        if (!v && v !== 0) return '';
+        return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim();
+      }
+      function fmtTime_(v) {
+        if (!v && v !== 0) return '';
+        return v instanceof Date ? Utilities.formatDate(v, tz, 'HH:mm') : String(v).trim();
+      }
       items.push({
         id:        String(row[0]).trim(),
         tripKey:   String(row[1]).trim(),
         type:      String(row[2]).trim() || 'manual',
         title:     String(row[3]).trim(),
-        date:      String(row[4]).trim(),
-        startTime: String(row[5]).trim(),
-        endTime:   String(row[6]).trim(),
+        date:      fmtDate_(row[4]),
+        startTime: fmtTime_(row[5]),
+        endTime:   fmtTime_(row[6]),
         location:  String(row[7]).trim(),
         notes:     String(row[8]).trim(),
         metadata:  meta,
@@ -1123,7 +1132,11 @@ function webAddItineraryItem_(e) {
   const id = 'ITIN-' + dateKey + '-' + String(seq).padStart(2, '0');
 
   // ITINERARY_HEADERS: ID|Trip Key|Type|Title|Date|Start Time|End Time|Location|Notes|Metadata
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, ITINERARY_HEADERS.length).setValues([[
+  const newRow = sheet.getLastRow() + 1;
+  // Force Date (col 5), Start Time (col 6), End Time (col 7) to Plain Text so Sheets
+  // does not auto-convert date/time strings to date serial numbers (Dec 30 1899 = serial 0 bug)
+  sheet.getRange(newRow, 5, 1, 3).setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, ITINERARY_HEADERS.length).setValues([[
     id,
     tripKey,
     (p.type      || 'manual').trim(),
@@ -1144,9 +1157,9 @@ function webUpdateItineraryItem_(e) {
   // ITINERARY_HEADERS: ID(1)|TripKey(2)|Type(3)|Title(4)|Date(5)|StartTime(6)|EndTime(7)|Location(8)|Notes(9)|Metadata(10)
   if (p.type      != null) found.sheet.getRange(found.rowNum, 3).setValue(p.type.trim());
   if (p.title     != null) found.sheet.getRange(found.rowNum, 4).setValue(p.title.trim());
-  if (p.date      != null) found.sheet.getRange(found.rowNum, 5).setValue(p.date.trim());
-  if (p.startTime != null) found.sheet.getRange(found.rowNum, 6).setValue(p.startTime.trim());
-  if (p.endTime   != null) found.sheet.getRange(found.rowNum, 7).setValue(p.endTime.trim());
+  if (p.date      != null) { var dc = found.sheet.getRange(found.rowNum, 5); dc.setNumberFormat('@'); dc.setValue(p.date.trim()); }
+  if (p.startTime != null) { var sc = found.sheet.getRange(found.rowNum, 6); sc.setNumberFormat('@'); sc.setValue(p.startTime.trim()); }
+  if (p.endTime   != null) { var ec = found.sheet.getRange(found.rowNum, 7); ec.setNumberFormat('@'); ec.setValue(p.endTime.trim()); }
   if (p.location  != null) found.sheet.getRange(found.rowNum, 8).setValue(p.location.trim());
   if (p.notes     != null) found.sheet.getRange(found.rowNum, 9).setValue(p.notes.trim());
   if (p.metadata  != null) found.sheet.getRange(found.rowNum, 10).setValue(p.metadata.trim());

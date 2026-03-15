@@ -1654,6 +1654,42 @@ const ITIN_TYPE_ICON = {
 
 const ITIN_TYPES = ['flight', 'hotel', 'reservation', 'transport', 'manual'];
 
+// Timezone options for the itinerary time picker
+const ITIN_TZ_OPTIONS = [
+  { value: '',                   label: '— timezone —' },
+  { value: 'America/New_York',   label: 'ET  — New York / Miami' },
+  { value: 'America/Chicago',    label: 'CT  — Chicago / Dallas' },
+  { value: 'America/Denver',     label: 'MT  — Denver / Phoenix' },
+  { value: 'America/Los_Angeles',label: 'PT  — Los Angeles / Seattle' },
+  { value: 'America/Anchorage',  label: 'AKT — Anchorage' },
+  { value: 'America/Honolulu',   label: 'HT  — Honolulu' },
+  { value: 'UTC',                label: 'UTC' },
+  { value: 'Europe/London',      label: 'GMT — London' },
+  { value: 'Europe/Paris',       label: 'CET — Paris / Rome / Madrid' },
+  { value: 'Europe/Istanbul',    label: 'TRT — Istanbul / Riyadh' },
+  { value: 'Europe/Moscow',      label: 'MSK — Moscow' },
+  { value: 'Africa/Cairo',       label: 'EET — Cairo / Athens' },
+  { value: 'Asia/Dubai',         label: 'GST — Dubai / Abu Dhabi' },
+  { value: 'Asia/Kolkata',       label: 'IST — India' },
+  { value: 'Asia/Bangkok',       label: 'ICT — Bangkok / Jakarta' },
+  { value: 'Asia/Tokyo',         label: 'JST — Tokyo' },
+  { value: 'Asia/Shanghai',      label: 'CST — Beijing / Shanghai' },
+  { value: 'Asia/Singapore',     label: 'SGT — Singapore / KL' },
+  { value: 'Australia/Sydney',   label: 'AEST — Sydney / Melbourne' },
+  { value: 'Pacific/Auckland',   label: 'NZST — Auckland' },
+];
+
+// Short abbreviation to display next to a time in ItineraryView
+const ITIN_TZ_ABBR = {
+  'America/New_York':    'ET',  'America/Chicago':     'CT',  'America/Denver':      'MT',
+  'America/Los_Angeles': 'PT',  'America/Anchorage':   'AKT', 'America/Honolulu':    'HT',
+  'UTC':                 'UTC', 'Europe/London':       'GMT', 'Europe/Paris':        'CET',
+  'Europe/Istanbul':     'TRT', 'Europe/Moscow':       'MSK', 'Africa/Cairo':        'EET',
+  'Asia/Dubai':          'GST', 'Asia/Kolkata':        'IST', 'Asia/Bangkok':        'ICT',
+  'Asia/Tokyo':          'JST', 'Asia/Shanghai':       'CST', 'Asia/Singapore':      'SGT',
+  'Australia/Sydney':    'AEST','Pacific/Auckland':    'NZST',
+};
+
 function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
   const isEdit = !!item;
   const [type,      setType]      = React.useState(isEdit ? (item.type      || 'manual') : 'manual');
@@ -1663,22 +1699,25 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
   const [endTime,   setEndTime]   = React.useState(isEdit ? (item.endTime   || '')       : '');
   const [location,  setLocation]  = React.useState(isEdit ? (item.location  || '')       : '');
   const [notes,     setNotes]     = React.useState(isEdit ? (item.notes     || '')       : '');
-  // Flight-specific (stored in metadata JSON)
+  // Flight-specific + timezone (all stored in metadata JSON)
   const initMeta = isEdit && item.metadata ? (() => { try { return JSON.parse(item.metadata); } catch(e) { return {}; } })() : {};
   const [airline,    setAirline]    = React.useState(initMeta.airline    || '');
   const [flightNum,  setFlightNum]  = React.useState(initMeta.flightNum  || '');
   const [origin,     setOrigin]     = React.useState(initMeta.origin     || '');
   const [dest,       setDest]       = React.useState(initMeta.dest       || '');
   const [confirm,    setConfirm]    = React.useState(initMeta.confirmation || '');
+  const [timezone,   setTimezone]   = React.useState(initMeta.timezone   || '');
 
   function buildMetadata() {
-    if (type !== 'flight') return '';
     const m = {};
-    if (airline)   m.airline      = airline.trim();
-    if (flightNum) m.flightNum    = flightNum.trim();
-    if (origin)    m.origin       = origin.trim();
-    if (dest)      m.dest         = dest.trim();
-    if (confirm)   m.confirmation = confirm.trim();
+    if (timezone) m.timezone = timezone;
+    if (type === 'flight') {
+      if (airline)   m.airline      = airline.trim();
+      if (flightNum) m.flightNum    = flightNum.trim();
+      if (origin)    m.origin       = origin.trim();
+      if (dest)      m.dest         = dest.trim();
+      if (confirm)   m.confirmation = confirm.trim();
+    }
     return Object.keys(m).length ? JSON.stringify(m) : '';
   }
 
@@ -1771,6 +1810,17 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
           </div>
         </div>
 
+        {/* Timezone (optional — shown next to time in agenda) */}
+        <div className="form-group">
+          <label className="form-label">Timezone <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+          <select className="form-input" value={timezone} onChange={e => setTimezone(e.target.value)}
+            style={{ color: timezone ? '#e8eaed' : '#6b7fa8' }}>
+            {ITIN_TZ_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Location */}
         <div className="form-group">
           <label className="form-label">Location</label>
@@ -1857,11 +1907,23 @@ function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete
               display: 'flex', alignItems: 'flex-start', gap: 10,
               padding: '9px 6px', borderBottom: '1px solid #1a2435',
             }}>
-              {/* Time */}
-              <div style={{ width: 42, flexShrink: 0, textAlign: 'right',
-                            color: '#6b7fa8', fontSize: 12, paddingTop: 3, fontVariantNumeric: 'tabular-nums' }}>
-                {item.startTime || <span style={{ color: '#3a4a60' }}>·</span>}
-              </div>
+              {/* Time + optional TZ badge */}
+              {(() => {
+                let tz = '';
+                if (item.metadata) { try { tz = (JSON.parse(item.metadata).timezone) || ''; } catch(e){} }
+                const tzLabel = tz ? (ITIN_TZ_ABBR[tz] || tz.split('/').pop()) : '';
+                return (
+                  <div style={{ width: 54, flexShrink: 0, textAlign: 'right',
+                                paddingTop: 3, fontVariantNumeric: 'tabular-nums' }}>
+                    <div style={{ color: '#6b7fa8', fontSize: 12 }}>
+                      {item.startTime || <span style={{ color: '#3a4a60' }}>·</span>}
+                    </div>
+                    {tzLabel && (
+                      <div style={{ fontSize: 10, color: '#4d6080', marginTop: 1 }}>{tzLabel}</div>
+                    )}
+                  </div>
+                );
+              })()}
               {/* Icon */}
               <div style={{ fontSize: 17, flexShrink: 0, paddingTop: 1 }}>
                 {ITIN_TYPE_ICON[item.type] || '📝'}
