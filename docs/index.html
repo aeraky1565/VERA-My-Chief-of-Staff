@@ -1661,15 +1661,51 @@ function formatAgendaDate(dateStr) {
 }
 
 const ITIN_TYPE_ICON = {
+  // Transport
   flight:      '✈',
+  train:       '🚆',
+  cruise:      '🚢',
+  ferry:       '⛴️',
+  car:         '🚕',
+  bus:         '🚌',
+  walking:     '🚶',
+  bicycle:     '🚲',
+  // Accommodation
   hotel:       '🏨',
+  // Food & Drink
   reservation: '🍽',
+  dining:      '🍴',
+  coffee:      '☕',
+  nightlife:   '🍸',
+  winery:      '🍷',
+  // Activities
+  city_tour:   '🏙️',
+  museum:      '🏛️',
+  beach:       '🏖️',
+  mountain:    '⛰️',
+  camera:      '📸',
+  show:        '🎭',
+  spa:         '💆',
+  skiing:      '⛷️',
+  snorkeling:  '🤿',
+  theme_park:  '🎢',
+  // Shopping & Services
+  shopping:    '🛍️',
+  market:      '🛒',
+  // Catch-all
   transport:   '🚗',
   calendar:    '📅',
   manual:      '📝',
 };
 
-const ITIN_TYPES = ['flight', 'hotel', 'reservation', 'transport', 'manual'];
+const ITIN_TYPES = [
+  'flight', 'train', 'cruise', 'ferry', 'car', 'bus', 'walking', 'bicycle',
+  'hotel',
+  'reservation', 'dining', 'coffee', 'nightlife', 'winery',
+  'city_tour', 'museum', 'beach', 'mountain', 'camera', 'show', 'spa', 'skiing', 'snorkeling', 'theme_park',
+  'shopping', 'market',
+  'transport', 'manual',
+];
 
 // Timezone options for the itinerary time picker
 const ITIN_TZ_OPTIONS = [
@@ -1758,17 +1794,22 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
       <div className="modal" style={{ maxWidth: 520 }}>
         <h2>{isEdit ? '✏️ Edit Itinerary Item' : '+ Add Itinerary Item'}</h2>
 
-        {/* Type selector */}
+        {/* Type selector — compact emoji-grid palette */}
         <div className="form-group">
-          <label className="form-label">Type</label>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <label className="form-label">
+            Type — <span style={{ fontWeight: 700, color: '#8ab4f8' }}>
+              {ITIN_TYPE_ICON[type]} {type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+            </span>
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {ITIN_TYPES.map(t => (
               <button key={t} onClick={() => setType(t)}
-                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                         fontSize: 12, fontWeight: 600,
-                         background: type === t ? '#8ab4f8' : '#1e2a3a',
-                         color: type === t ? '#0d1117' : '#8ab4f8' }}>
-                {ITIN_TYPE_ICON[t]} {t.charAt(0).toUpperCase() + t.slice(1)}
+                title={t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                style={{ width: 38, height: 38, borderRadius: 8, cursor: 'pointer', fontSize: 19, lineHeight: 1,
+                         border: type === t ? '2px solid #5c9eff' : '2px solid transparent',
+                         background: type === t ? '#0d2040' : '#1e2a3a',
+                         display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {ITIN_TYPE_ICON[t]}
               </button>
             ))}
           </div>
@@ -1779,9 +1820,19 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
           <label className="form-label">Title *</label>
           <input className="form-input" value={title} autoFocus
             onChange={e => setTitle(e.target.value)} onKeyDown={handleKey}
-            placeholder={type === 'flight' ? 'e.g. AA102 – JFK → CDG'
-              : type === 'hotel' ? 'e.g. Hotel Check-In – Le Meurice'
-              : 'Title'} />
+            placeholder={
+              type === 'flight'     ? 'e.g. AA102 – JFK → CDG'            :
+              type === 'train'      ? 'e.g. Eurostar – London → Paris'     :
+              type === 'cruise'     ? 'e.g. Caribbean Cruise – Day 1'      :
+              type === 'hotel'      ? 'e.g. Hotel Check-In – Le Meurice'   :
+              type === 'dining'     ? 'e.g. Dinner – Le Jules Verne'       :
+              type === 'museum'     ? 'e.g. Louvre Museum'                 :
+              type === 'beach'      ? 'e.g. Playa del Carmen'              :
+              type === 'show'       ? 'e.g. Hamilton at the Lyceum'        :
+              type === 'skiing'     ? 'e.g. Morning Ski Run – Val Thorens' :
+              type === 'snorkeling' ? 'e.g. Snorkeling – Great Barrier Reef':
+              'Title'
+            } />
         </div>
 
         {/* Flight-specific fields */}
