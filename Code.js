@@ -40,6 +40,7 @@ const TABS = {
   ITINERARY:        'Itinerary',        // Trip itinerary items (Issue #63)
   TRIP_META:        'TripMeta',         // Trip context / sentiment notes (Issue #64)
   PACKING_ITEMS:    'PackingItems',     // Per-trip packing list items (Issue #64)
+  COUNTRIES:        'Countries',        // Countries visited tracker (Issue #74)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -61,6 +62,7 @@ const IDEA_HEADERS              = ['ID', 'Date Added', 'Idea', 'Category', 'Tags
 const ITINERARY_HEADERS         = ['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start Time', 'End Time', 'Location', 'Notes', 'Metadata'];
 const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date'];
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
+const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -130,6 +132,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.ITINERARY,        ITINERARY_HEADERS);
   ensureSheet(ss, TABS.TRIP_META,        TRIP_META_HEADERS);
   ensureSheet(ss, TABS.PACKING_ITEMS,    PACKING_ITEM_HEADERS);
+  ensureSheet(ss, TABS.COUNTRIES,        COUNTRIES_HEADERS);
   ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');

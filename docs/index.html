@@ -1707,6 +1707,43 @@ const ITIN_TYPES = [
   'transport', 'manual',
 ];
 
+// ── Countries visited — flag emoji helpers (Issue #74) ────────────────────
+const COUNTRY_ISO_MAP = {
+  'Afghanistan':'AF','Albania':'AL','Algeria':'DZ','Argentina':'AR','Armenia':'AM',
+  'Australia':'AU','Austria':'AT','Azerbaijan':'AZ','Bahamas':'BS','Bahrain':'BH',
+  'Bangladesh':'BD','Belgium':'BE','Bolivia':'BO','Bosnia and Herzegovina':'BA',
+  'Brazil':'BR','Bulgaria':'BG','Cambodia':'KH','Canada':'CA','Chile':'CL',
+  'China':'CN','Colombia':'CO','Costa Rica':'CR','Croatia':'HR','Cuba':'CU',
+  'Czech Republic':'CZ','Denmark':'DK','Dominican Republic':'DO','Ecuador':'EC',
+  'Egypt':'EG','El Salvador':'SV','Estonia':'EE','Ethiopia':'ET','Finland':'FI',
+  'France':'FR','Georgia':'GE','Germany':'DE','Ghana':'GH','Greece':'GR',
+  'Guatemala':'GT','Honduras':'HN','Hungary':'HU','Iceland':'IS','India':'IN',
+  'Indonesia':'ID','Iran':'IR','Iraq':'IQ','Ireland':'IE','Israel':'IL',
+  'Italy':'IT','Jamaica':'JM','Japan':'JP','Jordan':'JO','Kazakhstan':'KZ',
+  'Kenya':'KE','Kuwait':'KW','Latvia':'LV','Lebanon':'LB','Lithuania':'LT',
+  'Luxembourg':'LU','Malaysia':'MY','Maldives':'MV','Malta':'MT','Mexico':'MX',
+  'Moldova':'MD','Monaco':'MC','Montenegro':'ME','Morocco':'MA','Nepal':'NP',
+  'Netherlands':'NL','New Zealand':'NZ','Nicaragua':'NI','Nigeria':'NG',
+  'North Macedonia':'MK','Norway':'NO','Oman':'OM','Panama':'PA','Paraguay':'PY',
+  'Peru':'PE','Philippines':'PH','Poland':'PL','Portugal':'PT','Qatar':'QA',
+  'Romania':'RO','Russia':'RU','Saudi Arabia':'SA','Serbia':'RS','Singapore':'SG',
+  'Slovakia':'SK','Slovenia':'SI','South Africa':'ZA','South Korea':'KR',
+  'Spain':'ES','Sri Lanka':'LK','Sweden':'SE','Switzerland':'CH','Taiwan':'TW',
+  'Tanzania':'TZ','Thailand':'TH','Tunisia':'TN','Turkey':'TR','Uganda':'UG',
+  'Ukraine':'UA','United Arab Emirates':'AE','United Kingdom':'GB',
+  'United States':'US','Uruguay':'UY','Uzbekistan':'UZ','Venezuela':'VE',
+  'Vietnam':'VN','Yemen':'YE','Zambia':'ZM','Zimbabwe':'ZW',
+};
+
+function countryToFlag(name) {
+  var iso = COUNTRY_ISO_MAP[name];
+  if (!iso) return '🌍';
+  var A = 0x1F1E6;
+  return String.fromCodePoint(A + iso.charCodeAt(0) - 65) +
+         String.fromCodePoint(A + iso.charCodeAt(1) - 65);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Timezone options for the itinerary time picker
 const ITIN_TZ_OPTIONS = [
   { value: '',                   label: '— timezone —' },
@@ -2981,15 +3018,397 @@ function PackingPanel({
   );
 }
 
+// ---- Countries Visited (Issue #74) ------------------------------------------
+
+function AddCountryModal({ upcomingTravel, existingCountries, onSave, onClose, busy }) {
+  var currentYear = new Date().getFullYear();
+  var [country,   setCountry]   = React.useState('');
+  var [city,      setCity]      = React.useState('');
+  var [year,      setYear]      = React.useState(String(currentYear));
+  var [traveller, setTraveller] = React.useState('Both');
+  var [tripKey,   setTripKey]   = React.useState('');
+  var [occasion,  setOccasion]  = React.useState('');
+
+  // Autocomplete: list of known countries from existing entries
+  var knownCountries = React.useMemo(function() {
+    var seen = {};
+    (existingCountries || []).forEach(function(e) { if (e.Country) seen[e.Country] = true; });
+    return Object.keys(seen).sort();
+  }, [existingCountries]);
+
+  var flagPreview = country.trim() ? countryToFlag(country.trim()) : null;
+
+  function handleSave() {
+    if (!country.trim() || !year) return;
+    onSave({ country: country.trim(), city: city.trim(), year: parseInt(year, 10),
+             traveller, tripKey, notes: occasion.trim() });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <h2>🌍 Add Country Visit</h2>
+
+        {/* Country */}
+        <div className="form-group">
+          <label className="form-label">
+            Country *
+            {flagPreview && flagPreview !== '🌍' && (
+              <span style={{ marginLeft: 8, fontSize: 20 }}>{flagPreview}</span>
+            )}
+          </label>
+          <input className="form-input" list="country-autocomplete" value={country} autoFocus
+            onChange={function(e) { setCountry(e.target.value); }}
+            placeholder="e.g. France, Japan, United States…" />
+          <datalist id="country-autocomplete">
+            {knownCountries.map(function(c) { return React.createElement('option', { key: c, value: c }); })}
+          </datalist>
+        </div>
+
+        {/* City */}
+        <div className="form-group">
+          <label className="form-label">City <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+          <input className="form-input" value={city}
+            onChange={function(e) { setCity(e.target.value); }}
+            placeholder="e.g. Paris, Tokyo, New York…" />
+        </div>
+
+        {/* Year + Traveller */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="form-label">Year *</label>
+            <input className="form-input" type="number" value={year} min="1950" max="2099"
+              onChange={function(e) { setYear(e.target.value); }} />
+          </div>
+          <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
+            <label className="form-label">Who *</label>
+            <div style={{ display: 'flex', gap: 6, paddingTop: 6 }}>
+              {['Ahmed', 'Victoria', 'Both'].map(function(t) {
+                var colors = t === 'Ahmed'   ? { on: '#5c9eff', bg: '#0d2040', off: '#1e2a3a' }
+                           : t === 'Victoria'? { on: '#b87cff', bg: '#1a0d30', off: '#1e2a3a' }
+                           :                  { on: '#4a9060', bg: '#0d1a10', off: '#1e2a3a' };
+                return (
+                  <button key={t} onClick={function() { setTraveller(t); }}
+                    style={{ flex: 1, padding: '6px 0', borderRadius: 7, cursor: 'pointer',
+                             fontSize: 12, fontWeight: 600,
+                             border: traveller === t ? '2px solid ' + colors.on : '2px solid transparent',
+                             background: traveller === t ? colors.bg : colors.off,
+                             color: traveller === t ? colors.on : '#6b7fa8' }}>
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Trip (optional dropdown) */}
+        <div className="form-group">
+          <label className="form-label">Trip <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional — links to itinerary)</span></label>
+          <select className="form-input" value={tripKey}
+            onChange={function(e) { setTripKey(e.target.value); }}
+            style={{ color: tripKey ? '#e8eaed' : '#6b7fa8' }}>
+            <option value="">— no trip link —</option>
+            {(upcomingTravel || []).map(function(t) {
+              var tk = t.startDate + '|' + t.label;
+              return <option key={tk} value={tk}>{t.label} ({t.startDate})</option>;
+            })}
+          </select>
+        </div>
+
+        {/* Occasion */}
+        <div className="form-group">
+          <label className="form-label">Occasion <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+          <input className="form-input" value={occasion}
+            onChange={function(e) { setOccasion(e.target.value); }}
+            placeholder="e.g. Honeymoon, Engagement, In-Laws Trip, Solo Adventure…" />
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid #2a3a50',
+                     background: 'transparent', color: '#8ab4f8', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={busy || !country.trim() || !year}
+            style={{ padding: '8px 18px', borderRadius: 7, border: 'none',
+                     background: !country.trim() || !year ? '#1e2a3a' : '#8ab4f8',
+                     color: !country.trim() || !year ? '#4a5a70' : '#0d1117',
+                     fontWeight: 600, cursor: !country.trim() || !year ? 'default' : 'pointer' }}>
+            Save Visit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CountriesVisitedPanel({ entries, upcomingTravel, busy, loaded, onLoad, onAdd, onDelete, onGoToItinerary }) {
+  var [filterYear,      setFilterYear]      = React.useState('all');
+  var [filterTraveller, setFilterTraveller] = React.useState('all');
+  var [expanded,        setExpanded]        = React.useState(new Set());
+  var [showModal,       setShowModal]       = React.useState(false);
+
+  // Lazy-load on first mount
+  React.useEffect(function() {
+    if (!loaded && onLoad) onLoad();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  var allEntries = entries || [];
+
+  // Distinct years (desc)
+  var years = React.useMemo(function() {
+    var seen = {};
+    allEntries.forEach(function(e) { if (e.Year) seen[String(e.Year)] = true; });
+    return Object.keys(seen).sort(function(a, b) { return b - a; });
+  }, [allEntries]);
+
+  // Apply filters
+  var filtered = allEntries.filter(function(e) {
+    if (filterYear      !== 'all' && String(e.Year)      !== filterYear)      return false;
+    if (filterTraveller !== 'all' && e.Traveller !== filterTraveller) return false;
+    return true;
+  });
+
+  // Group by country
+  var byCountry = {};
+  filtered.forEach(function(e) {
+    var c = e.Country || '(Unknown)';
+    if (!byCountry[c]) byCountry[c] = [];
+    byCountry[c].push(e);
+  });
+  var countryNames = Object.keys(byCountry).sort();
+
+  // Lifetime stats (not affected by filter)
+  var statCountries   = new Set(allEntries.map(function(e) { return e.Country; })).size;
+  var statAhmed       = new Set(allEntries.filter(function(e) { return e.Traveller === 'Ahmed';    }).map(function(e) { return e.Country; })).size;
+  var statVictoria    = new Set(allEntries.filter(function(e) { return e.Traveller === 'Victoria'; }).map(function(e) { return e.Country; })).size;
+  var statBoth        = new Set(allEntries.filter(function(e) { return e.Traveller === 'Both';     }).map(function(e) { return e.Country; })).size;
+
+  function toggleExpand(c) {
+    setExpanded(function(prev) {
+      var next = new Set(prev);
+      if (next.has(c)) next.delete(c); else next.add(c);
+      return next;
+    });
+  }
+
+  var TRAVELLER_STYLE = {
+    Ahmed:    { color: '#5c9eff', bg: '#0d2040' },
+    Victoria: { color: '#b87cff', bg: '#1a0d30' },
+    Both:     { color: '#4a9060', bg: '#0d1a10' },
+  };
+
+  function TravellerPill(props) {
+    var s = TRAVELLER_STYLE[props.who] || { color: '#8ab4f8', bg: '#0d2040' };
+    return (
+      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 10,
+                     color: s.color, background: s.bg, whiteSpace: 'nowrap' }}>
+        {props.who}
+      </span>
+    );
+  }
+
+  if (!loaded) {
+    return <div className="loading-text">Loading countries…</div>;
+  }
+
+  return (
+    <div>
+      {/* Header bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 13, color: '#8ab4f8', fontWeight: 600 }}>
+          🌍 {statCountries} {statCountries === 1 ? 'country' : 'countries'}
+          <span style={{ color: '#4a5a70', fontWeight: 400, marginLeft: 10 }}>
+            👤 Ahmed: {statAhmed} &nbsp;·&nbsp; 👤 Victoria: {statVictoria} &nbsp;·&nbsp; 👫 Together: {statBoth}
+          </span>
+        </div>
+        <button onClick={function() { setShowModal(true); }} disabled={busy}
+          style={{ padding: '5px 14px', borderRadius: 6, border: 'none',
+                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600,
+                   cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>
+          + Add Visit
+        </button>
+      </div>
+
+      {/* Filter row */}
+      <div style={{ marginBottom: 14 }}>
+        {/* Year filter */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: '#5f6368', marginRight: 2 }}>Year:</span>
+          {['all'].concat(years).map(function(y) {
+            var active = filterYear === y;
+            return (
+              <button key={y} onClick={function() { setFilterYear(y); }}
+                style={{ padding: '3px 10px', borderRadius: 12, cursor: 'pointer', fontSize: 11,
+                         border: active ? '1.5px solid #5c9eff' : '1.5px solid #2a3a50',
+                         background: active ? '#0d2040' : 'transparent',
+                         color: active ? '#8ab4f8' : '#5f6368', fontWeight: active ? 600 : 400 }}>
+                {y === 'all' ? 'All' : y}
+              </button>
+            );
+          })}
+        </div>
+        {/* Traveller filter */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: '#5f6368', marginRight: 2 }}>Who:</span>
+          {[['all','All','#5f6368','transparent'],
+            ['Ahmed','Ahmed','#5c9eff','#0d2040'],
+            ['Victoria','Victoria','#b87cff','#1a0d30'],
+            ['Both','Together','#4a9060','#0d1a10']].map(function(opt) {
+            var key = opt[0], label = opt[1], activeColor = opt[2], activeBg = opt[3];
+            var active = filterTraveller === key;
+            return (
+              <button key={key} onClick={function() { setFilterTraveller(key); }}
+                style={{ padding: '3px 10px', borderRadius: 12, cursor: 'pointer', fontSize: 11,
+                         border: active ? '1.5px solid ' + activeColor : '1.5px solid #2a3a50',
+                         background: active ? activeBg : 'transparent',
+                         color: active ? activeColor : '#5f6368', fontWeight: active ? 600 : 400 }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {allEntries.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🌍</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>No countries recorded yet.</div>
+          <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 16 }}>
+            Start building your travel history.
+          </div>
+          <button onClick={function() { setShowModal(true); }}
+            style={{ padding: '8px 20px', borderRadius: 7, border: 'none',
+                     background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer' }}>
+            + Add First Visit
+          </button>
+        </div>
+      )}
+
+      {/* No results after filter */}
+      {allEntries.length > 0 && countryNames.length === 0 && (
+        <div style={{ color: '#4d6080', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>
+          No entries match the current filter.
+        </div>
+      )}
+
+      {/* Country accordion list */}
+      {countryNames.map(function(cName) {
+        var cEntries  = byCountry[cName];
+        var flag      = countryToFlag(cName);
+        var isOpen    = expanded.has(cName);
+        // Collect distinct traveller types for this country
+        var travTypes = Array.from(new Set(cEntries.map(function(e) { return e.Traveller; }))).sort();
+
+        return (
+          <div key={cName} style={{ background: '#0a1220', border: '1px solid #2a3a50',
+                                    borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
+            {/* Country header row — clickable to expand */}
+            <div onClick={function() { toggleExpand(cName); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10,
+                       padding: '12px 16px', cursor: 'pointer',
+                       borderBottom: isOpen ? '1px solid #2a3a50' : 'none' }}>
+              <span style={{ fontSize: 22, flexShrink: 0 }}>{flag}</span>
+              <span style={{ fontWeight: 700, fontSize: 14, color: '#e8eaed', flex: 1 }}>{cName}</span>
+              <span style={{ fontSize: 11, color: '#5f6368', marginRight: 6 }}>
+                ×{cEntries.length} {cEntries.length === 1 ? 'visit' : 'visits'}
+              </span>
+              <div style={{ display: 'flex', gap: 4, marginRight: 6 }}>
+                {travTypes.map(function(t) { return <TravellerPill key={t} who={t} />; })}
+              </div>
+              <span style={{ color: '#4a5a70', fontSize: 13 }}>{isOpen ? '▲' : '▼'}</span>
+            </div>
+
+            {/* Expanded city rows */}
+            {isOpen && (
+              <div style={{ background: '#0d1520' }}>
+                {cEntries
+                  .slice()
+                  .sort(function(a, b) { return b.Year - a.Year; })
+                  .map(function(entry) {
+                    var ts         = TRAVELLER_STYLE[entry.Traveller] || TRAVELLER_STYLE.Both;
+                    var hasTripKey = entry['Trip Key'] && String(entry['Trip Key']).trim();
+                    var tripLabel  = hasTripKey
+                      ? (upcomingTravel || []).find(function(t) {
+                          return (t.startDate + '|' + t.label) === entry['Trip Key'];
+                        })
+                      : null;
+                    var tripName   = tripLabel ? tripLabel.label : (hasTripKey ? hasTripKey.split('|')[1] || hasTripKey : null);
+
+                    return (
+                      <div key={entry.ID}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                                 padding: '8px 16px 8px 48px', borderBottom: '1px solid #131e2e' }}
+                        onMouseEnter={function(ev) { ev.currentTarget.querySelector('.del-btn') && (ev.currentTarget.querySelector('.del-btn').style.opacity = '1'); }}
+                        onMouseLeave={function(ev) { ev.currentTarget.querySelector('.del-btn') && (ev.currentTarget.querySelector('.del-btn').style.opacity = '0'); }}>
+                        <span style={{ color: '#8ab4f8', fontSize: 13, marginRight: 2 }}>📍</span>
+                        <span style={{ fontSize: 13, color: '#dde1f0', fontWeight: 500, minWidth: 0, flex: '0 0 auto' }}>
+                          {entry.City || <span style={{ color: '#3a4a60', fontStyle: 'italic' }}>no city</span>}
+                        </span>
+                        <span style={{ fontSize: 12, color: '#5f6368' }}>{entry.Year}</span>
+                        {entry.Notes && (
+                          <span style={{ fontSize: 11, color: '#c8a84a', fontStyle: 'italic' }}>
+                            ✨ {entry.Notes}
+                          </span>
+                        )}
+                        <TravellerPill who={entry.Traveller} />
+                        {hasTripKey && (
+                          <span onClick={function(ev) {
+                                  ev.stopPropagation();
+                                  if (onGoToItinerary) onGoToItinerary(entry['Trip Key']);
+                                }}
+                            style={{ fontSize: 11, color: '#8ab4f8', cursor: 'pointer',
+                                     textDecoration: 'underline', flexShrink: 0 }}>
+                            → {tripName}
+                          </span>
+                        )}
+                        <button className="del-btn" onClick={function(ev) {
+                                  ev.stopPropagation();
+                                  if (window.confirm('Delete this visit entry?')) onDelete(entry.ID);
+                                }}
+                          style={{ marginLeft: 'auto', background: 'transparent', border: 'none',
+                                   color: '#9aa0a6', cursor: 'pointer', fontSize: 14, padding: '0 4px',
+                                   opacity: 0, transition: 'opacity 0.15s', flexShrink: 0 }}>
+                          🗑
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Add Visit modal */}
+      {showModal && (
+        <AddCountryModal
+          upcomingTravel={upcomingTravel}
+          existingCountries={allEntries}
+          busy={busy}
+          onSave={function(data) { onAdd(data); setShowModal(false); }}
+          onClose={function() { setShowModal(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Travel Tab -------------------------------------------------------------
 
 function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, busy,
+                     countries, countriesLoaded,
                      onSelectTrip, onExpandTrip,
                      onAddItinItem, onEditItinItem, onDeleteItinItem,
                      onSetTripMeta, onLoadTripMeta,
                      onLoadPacking, onGeneratePacking,
                      onTogglePackingItem, onAddPackingItem, onDeletePackingItem,
-                     onGoToPacking }) {
+                     onGoToPacking,
+                     onLoadCountries, onAddCountry, onDeleteCountry }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
 
@@ -3011,8 +3430,9 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
 
   const subTabs = [
     { id: 'trips',      label: '✈️ My Trips' },
-    { id: 'itinerary',  label: '🗺️ My Itinerary' },   // fixed label
+    { id: 'itinerary',  label: '🗺️ My Itinerary' },
     { id: 'packing',    label: '🎒 Packing' },
+    { id: 'countries',  label: '🌍 Countries' },
     { id: 'budget',     label: '💰 Budget' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
   ];
@@ -3103,8 +3523,31 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
         />
       )}
 
+      {/* Countries visited sub-tab */}
+      {sub === 'countries' && (
+        <CountriesVisitedPanel
+          entries={countries}
+          upcomingTravel={upcomingTravel}
+          busy={busy}
+          loaded={countriesLoaded}
+          onLoad={onLoadCountries}
+          onAdd={onAddCountry}
+          onDelete={onDeleteCountry}
+          onGoToItinerary={function(tripKey) {
+            var trip = upcomingTravel.find(function(t) {
+              return (t.startDate + '|' + t.label) === tripKey;
+            });
+            if (trip) {
+              onSelectTrip(Object.assign({}, trip, { tripKey: tripKey }));
+              setAutoExpandKey(tripKey);
+            }
+            setSub('itinerary');
+          }}
+        />
+      )}
+
       {/* Placeholder sub-tabs (Budget, Bucket List) */}
-      {sub !== 'trips' && sub !== 'itinerary' && sub !== 'packing' && (
+      {sub !== 'trips' && sub !== 'itinerary' && sub !== 'packing' && sub !== 'countries' && (
         <div className="empty-state">
           <div style={{ fontSize: 36, marginBottom: 12 }}>
             {sub === 'budget' ? '💰' : '🪣'}
@@ -5011,6 +5454,8 @@ function App() {
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
   const [tripMeta,         setTripMeta]         = useState({}); // { [tripKey]: { context, notes } | 'loading' }
   const [packingFocusTripKey, setPackingFocusTripKey] = useState(null);
+  const [countries,        setCountries]        = useState([]);   // country visit entries (Issue #74)
+  const [countriesLoaded,  setCountriesLoaded]  = useState(false);
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -5174,6 +5619,57 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, ideas: false }));
+  }
+
+  async function loadCountries() {
+    if (!apiUrl || !apiToken) return;
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'countries' });
+      setCountries(data.entries || []);
+      setCountriesLoaded(true);
+    } catch (err) {
+      setError('Could not load countries: ' + err.message);
+      setCountriesLoaded(true); // still mark loaded so we don't loop
+    }
+  }
+
+  async function handleAddCountry(fields) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, {
+        action: 'add_country',
+        country:   fields.country,
+        city:      fields.city      || '',
+        year:      String(fields.year),
+        traveller: fields.traveller || 'Both',
+        tripKey:   fields.tripKey   || '',
+        notes:     fields.notes     || '',
+      });
+      if (data.ok) setCountries(prev => [...prev, data.entry]);
+      else setError(data.error || 'Could not add country entry.');
+    } catch (err) {
+      setError('Could not add country: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteCountry(id) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    // Optimistic remove
+    setCountries(prev => prev.filter(function(e) { return e.ID !== id; }));
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'delete_country', id });
+      if (!data.ok) {
+        setError(data.error || 'Could not delete entry.');
+        loadCountries(); // restore on failure
+      }
+    } catch (err) {
+      setError('Could not delete country: ' + err.message);
+      loadCountries();
+    }
+    setBusy(false);
   }
 
   async function loadItinerary(tripKey, startDate, endDate) {
@@ -6020,6 +6516,8 @@ function App() {
                     packingItems={packingItems}
                     tripMeta={tripMeta}
                     packingFocusTripKey={packingFocusTripKey}
+                    countries={countries}
+                    countriesLoaded={countriesLoaded}
                     busy={busy}
                     onSelectTrip={function(trip) {
                       if (!itineraries[trip.tripKey])
@@ -6044,6 +6542,9 @@ function App() {
                     onAddPackingItem={handleAddPackingItem}
                     onDeletePackingItem={handleDeletePackingItem}
                     onGoToPacking={handleGoToPacking}
+                    onLoadCountries={loadCountries}
+                    onAddCountry={handleAddCountry}
+                    onDeleteCountry={handleDeleteCountry}
                   />
             )}
 

@@ -119,6 +119,9 @@ function doGet(e) {
       case 'update_packing_item':   return jsonOut_(webUpdatePackingItem_(e));
       case 'delete_packing_item':   return jsonOut_(webDeletePackingItem_(e));
       case 'generate_packing':      return jsonOut_(webGeneratePacking_(e));
+      case 'countries':             return jsonOut_(webGetCountries_());
+      case 'add_country':           return jsonOut_(webAddCountry_(e));
+      case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -1951,6 +1954,58 @@ function webDeleteGoal_(e) {
   if (!id) throw new Error('Goal ID is required');
   const deleted = deleteGoal_(id);
   return { ok: deleted, id: id, action: 'deleted' };
+}
+
+// ---- Countries Visited (Issue #74) -----------------------------------------
+
+function webGetCountries_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.COUNTRIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, entries: [] };
+  var rows    = sheet.getDataRange().getValues();
+  var headers = rows[0];
+  var entries = rows.slice(1)
+    .filter(function(r) { return r[0] !== ''; })
+    .map(function(r) {
+      var obj = {};
+      headers.forEach(function(h, i) { obj[h] = r[i]; });
+      return obj;
+    });
+  return { ok: true, entries: entries };
+}
+
+function webAddCountry_(e) {
+  var p         = e.parameter || {};
+  var country   = (p.country   || '').trim();
+  var city      = (p.city      || '').trim();
+  var year      = parseInt(p.year,  10) || new Date().getFullYear();
+  var traveller = (p.traveller || 'Both').trim();
+  var tripKey   = (p.tripKey   || '').trim();
+  var notes     = (p.notes     || '').trim();
+  if (!country) throw new Error('Country is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.COUNTRIES);
+  if (!sheet) throw new Error('Countries tab not found. Run setupVERA() first.');
+  var id = 'c_' + Date.now();
+  sheet.appendRow([id, country, city, year, traveller, tripKey, notes]);
+  return { ok: true, entry: { ID: id, Country: country, City: city, Year: year,
+                               Traveller: traveller, 'Trip Key': tripKey, Notes: notes } };
+}
+
+function webDeleteCountry_(e) {
+  var id    = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('Country entry ID is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.COUNTRIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Entry not found.' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, id: id, action: 'deleted' };
+    }
+  }
+  return { ok: false, error: 'Entry not found: ' + id };
 }
 
 // ---- Shared Interest Ledger (Issue #28) ------------------------------------
