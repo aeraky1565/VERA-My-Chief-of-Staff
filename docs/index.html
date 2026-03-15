@@ -2003,12 +2003,13 @@ function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete
   // Ensure every trip day exists in byDay (even if empty)
   tripDays.forEach(function(d) { if (!byDay[d]) byDay[d] = []; });
 
-  // Full ordered list: trip days in order, then any out-of-range dated items, then undated
-  const orderedDays = tripDays.concat(
-    Object.keys(byDay)
-      .filter(function(d) { return d !== '__other__' && tripDays.indexOf(d) === -1; })
-      .sort()
-  );
+  // Full ordered list: pre-trip days → trip days → post-trip days → undated
+  const outOfRange = Object.keys(byDay)
+    .filter(function(d) { return d !== '__other__' && tripDays.indexOf(d) === -1; })
+    .sort();
+  const preTripDays  = outOfRange.filter(function(d) { return trip.startDate && d < trip.startDate; });
+  const postTripDays = outOfRange.filter(function(d) { return !trip.startDate || d > (trip.endDate || trip.startDate); });
+  const orderedDays  = preTripDays.concat(tripDays).concat(postTripDays);
   if (byDay['__other__'] && byDay['__other__'].length) orderedDays.push('__other__');
   // ──────────────────────────────────────────────────────────────────────────
 
