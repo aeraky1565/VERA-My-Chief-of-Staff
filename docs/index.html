@@ -1505,7 +1505,9 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
         // Text-only: keep the existing GET path (no CORS concerns)
         data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text });
       }
-      setMessages(prev => [...prev, { role: 'vera', text: data.reply }]);
+      const veraMsg = { role: 'vera', text: data.reply };
+      if (data.sources && data.sources.length > 0) veraMsg.sources = data.sources;
+      setMessages(prev => [...prev, veraMsg]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'vera', text: '⚠ Error: ' + e.message }]);
     }
@@ -1581,6 +1583,21 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
           <div key={i} className={`chat-msg ${m.role}`}>
             {m.image && <img src={m.image} className="chat-msg-img" alt="attachment" />}
             {m.text  && <span>{m.text}</span>}
+            {m.sources && m.sources.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #1e2d42', fontSize: 12 }}>
+                <div style={{ color: '#6b7fa8', fontWeight: 600, marginBottom: 5 }}>🌐 Web Sources</div>
+                {m.sources.map(function(s, si) {
+                  return (
+                    <a key={si} href={s.link} target="_blank" rel="noopener noreferrer"
+                       style={{ display: 'block', color: '#5c9eff', marginBottom: 4,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                maxWidth: '100%' }}>
+                      {s.title || s.link}
+                    </a>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ))}
         {loading && <div className="chat-msg vera vera-typing">VERA is thinking…</div>}

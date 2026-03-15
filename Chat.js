@@ -15,6 +15,92 @@
 var CHAT_HISTORY_PREFIX = 'CHAT_HISTORY_';
 var CHAT_MAX_EXCHANGES  = 10; // keep last 10 back-and-forths (20 messages)
 
+// ---- Web Search Tool (Issue #62) ------------------------------------------
+
+var WEB_SEARCH_TOOL_ = {
+  name: 'web_search',
+  description:
+    'Search the web for real-time or location-specific information. ' +
+    'Use ONLY when the user needs current data (live prices, today\'s news, ' +
+    'event status, local services) that is NOT in the provided context data. ' +
+    'SECURITY RULE: The query MUST NOT contain personal identifiers — no names, ' +
+    'email addresses, phone numbers, or home addresses. Use only generic public ' +
+    'terms (city name, topic, year). ' +
+    'Example: "Where do I vote?" → query "polling stations in Austin TX 2026", ' +
+    'NOT "where does Ahmed vote".',
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'Concise web search query, max 200 chars, zero personal data.'
+      }
+    },
+    required: ['query']
+  }
+};
+
+/** Returns [WEB_SEARCH_TOOL_] if VERA_SEARCH_API_KEY is configured, else []. */
+function getSearchTools_() {
+  var key = PropertiesService.getScriptProperties()
+              .getProperty('VERA_SEARCH_API_KEY') || '';
+  return key ? [WEB_SEARCH_TOOL_] : [];
+}
+
+/**
+ * Execute a web search via Serper.dev (default) or Tavily.
+ * Engine selected by Script Property VERA_SEARCH_ENGINE ('serper'|'tavily').
+ * Applies PII regex scrub before the query leaves the server.
+ * Returns array of { title, snippet, link } (up to 3), or [] on error.
+ */
+function doWebSearch_(rawQuery) {
+  var apiKey = PropertiesService.getScriptProperties()
+                 .getProperty('VERA_SEARCH_API_KEY') || '';
+  var engine = PropertiesService.getScriptProperties()
+                 .getProperty('VERA_SEARCH_ENGINE') || 'serper';
+  if (!apiKey) return [];
+
+  // ── PII scrub (syntactic safety net) ──────────────────────────────────────
+  var q = (rawQuery || '').trim().substring(0, 200);
+  q = q.replace(/\b[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}\b/g, '[redacted]'); // email
+  q = q.replace(/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g,   '[redacted]'); // phone
+  q = q.replace(/\b\d{3}-\d{2}-\d{4}\b/g,               '[redacted]'); // SSN
+  if (q.indexOf('[redacted]') !== -1) {
+    Logger.log('VERA web_search PII redacted. Original: ' + rawQuery);
+  }
+  Logger.log('VERA web_search query: ' + q);
+  // ──────────────────────────────────────────────────────────────────────────
+
+  try {
+    if (engine === 'tavily') {
+      var tvResp = UrlFetchApp.fetch('https://api.tavily.com/search', {
+        method: 'post',
+        headers: { 'Content-Type': 'application/json' },
+        payload: JSON.stringify({ api_key: apiKey, query: q, max_results: 3 }),
+        muteHttpExceptions: true
+      });
+      var tvData = JSON.parse(tvResp.getContentText());
+      return (tvData.results || []).slice(0, 3).map(function(r) {
+        return { title: r.title || '', snippet: r.content || '', link: r.url || '' };
+      });
+    }
+    // Default: Serper.dev
+    var srResp = UrlFetchApp.fetch('https://google.serper.dev/search', {
+      method: 'post',
+      headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ q: q, num: 3 }),
+      muteHttpExceptions: true
+    });
+    var srData = JSON.parse(srResp.getContentText());
+    return (srData.organic || []).slice(0, 3).map(function(r) {
+      return { title: r.title || '', snippet: r.snippet || '', link: r.link || '' };
+    });
+  } catch (e) {
+    Logger.log('VERA web_search error: ' + e.message);
+    return [];
+  }
+}
+
 // ============================================================
 // SYSTEM PROMPT
 // ============================================================
@@ -202,6 +288,11 @@ function buildChatSystemPrompt_(context) {
     '- For add_idea: capture any unstructured thought, half-formed plan, or "park this for later" request. Category options: General/Home/Finance/Health/Career/Personal/Travel/Other. Tags are optional, comma-separated. Use when Ahmed says "note this", "park this idea", "I want to eventually...", etc.\n' +
     '- For promote_idea: converts the idea to a real open task. Use the idea ID from IDEA BRAINDUMP above. Confirm with Ahmed which idea to promote if it is ambiguous.\n' +
     '- For archive_idea: marks the idea as Archived (no longer shown). Always confirm the idea with Ahmed before archiving.\n' +
+    '- WEB SEARCH: When you call web_search, briefly tell Ahmed you\'re looking it up. ' +
+    'Synthesize results naturally — do not dump raw snippets. If results are empty ' +
+    'or unhelpful, say so. Only search when context data is insufficient.\n' +
+    '- NEVER include personal identifiers (names, emails, phones, addresses) in a ' +
+    'search query. Generic terms only: city name, topic, event type, year.\n' +
     '- Never fabricate data not present in the current state above.\n' +
     '- If asked about something not in the current state, say so honestly.\n'
   );
@@ -405,6 +496,7 @@ function saveChatHistory_(sessionId, userMsg, replyText) {
  */
 function callClaudeChat_(userMessage, history, systemPrompt, imageBase64, imageMimeType) {
   var apiKey = getApiKey();
+  var tools  = getSearchTools_();
 
   // Build user content: multimodal array when image present, plain string otherwise
   var userContent;
@@ -419,39 +511,71 @@ function callClaudeChat_(userMessage, history, systemPrompt, imageBase64, imageM
   }
 
   var messages = history.concat([{ role: 'user', content: userContent }]);
+  var sources  = [];
 
-  var requestBody = {
-    model:      CLAUDE_MODEL,
-    max_tokens: 2048,
-    system:     systemPrompt,
-    messages:   messages,
-  };
+  for (var iter = 0; iter < 3; iter++) {   // cap: 3 tool-call iterations
+    var requestBody = {
+      model:      CLAUDE_MODEL,
+      max_tokens: 2048,
+      system:     systemPrompt,
+      messages:   messages,
+    };
+    if (tools.length > 0) requestBody.tools = tools;
 
-  var fetchOptions = {
-    method:             'post',
-    contentType:        'application/json',
-    headers: {
-      'x-api-key':         apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    payload:            JSON.stringify(requestBody),
-    muteHttpExceptions: true,
-  };
+    var fetchOptions = {
+      method:             'post',
+      contentType:        'application/json',
+      headers: {
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      payload:            JSON.stringify(requestBody),
+      muteHttpExceptions: true,
+    };
 
-  var response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
-  var code     = response.getResponseCode();
-  var text     = response.getContentText();
+    var response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+    var httpCode = response.getResponseCode();
+    var bodyText = response.getContentText();
 
-  if (code !== 200) {
-    throw new Error('Claude API returned HTTP ' + code + ': ' + text.substring(0, 300));
+    if (httpCode !== 200) {
+      throw new Error('Claude API returned HTTP ' + httpCode + ': ' + bodyText.substring(0, 300));
+    }
+
+    var json = JSON.parse(bodyText);
+
+    // ── Tool-use turn ──────────────────────────────────────────────────────
+    if (json.stop_reason === 'tool_use') {
+      var toolResults = [];
+      for (var ci = 0; ci < json.content.length; ci++) {
+        var blk = json.content[ci];
+        if (blk.type === 'tool_use' && blk.name === 'web_search') {
+          var results = doWebSearch_(blk.input.query);
+          sources = sources.concat(results);
+          toolResults.push({
+            type:        'tool_result',
+            tool_use_id: blk.id,
+            content:     JSON.stringify(results)  // '[]' on failure — Claude handles gracefully
+          });
+        }
+      }
+      messages = messages.concat([
+        { role: 'assistant', content: json.content },
+        { role: 'user',      content: toolResults  }
+      ]);
+      continue;   // loop: give Claude the search results
+    }
+
+    // ── Final text response ────────────────────────────────────────────────
+    var replyText = '';
+    for (var ti = 0; ti < json.content.length; ti++) {
+      if (json.content[ti].type === 'text') replyText += json.content[ti].text;
+    }
+    if (!replyText) throw new Error('Unexpected Claude API response structure');
+    return { text: replyText.trim(), sources: sources };
   }
 
-  var json = JSON.parse(text);
-  if (!json.content || !json.content[0] || !json.content[0].text) {
-    throw new Error('Unexpected Claude API response structure');
-  }
-
-  return json.content[0].text.trim();
+  // Fallback (shouldn't reach under normal use)
+  return { text: '', sources: sources };
 }
 
 // ============================================================
@@ -776,11 +900,13 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   var history   = loadChatHistory_(sessionId);
   var context   = buildChatContext_();
   var sysPrompt = buildChatSystemPrompt_(context);
-  var rawReply  = callClaudeChat_(
+  var callResult = callClaudeChat_(
     (userMessage || '').trim(), history, sysPrompt,
     imageBase64   || null,
     imageMimeType || null
   );
+  var rawReply = callResult.text;
+  var sources  = callResult.sources || [];
   Logger.log('VERA raw reply:\n' + rawReply); // visible in Apps Script Execution Log
 
   // Execute any actions Claude embedded
@@ -800,7 +926,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   if (imageBase64) historyText = (historyText ? historyText + ' ' : '') + '[Image attached]';
   saveChatHistory_(sessionId, historyText, cleanReply);
 
-  return { ok: true, reply: cleanReply };
+  return { ok: true, reply: cleanReply, sources: sources };
 }
 
 // ============================================================
