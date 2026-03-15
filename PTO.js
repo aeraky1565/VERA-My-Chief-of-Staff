@@ -466,7 +466,87 @@ function getUpcomingTravel_(cfg) {
 
   // Sort by start date
   travel.sort(function(a, b) { return a.startDate < b.startDate ? -1 : 1; });
+
+  // Filter out sub-events (hotel stays, pre-trip accommodations, etc.) that are
+  // adjacent to or contained within a longer trip on the same calendar period.
+  travel = filterSubEvents_(travel);
+
   return travel;
+}
+
+/**
+ * Suppresses shorter multi-day events that are adjacent to or overlapping
+ * a STRICTLY longer event — removes hotel stays, pre-trip accommodations, etc.
+ * from appearing as standalone trips when they are part of a larger journey.
+ *
+ * Adjacency tolerance: 1 day (handles check-out day N / check-in day N+1 patterns).
+ * Equal-duration events are NEVER suppressed (two back-to-back trips of equal
+ * length are both kept as separate entries).
+ *
+ * Algorithm:
+ *   1. Sort by duration descending (longer trips first)
+ *   2. For each event, if a STRICTLY longer accepted event is already nearby, suppress it
+ *   3. Re-sort by startDate ascending for output
+ *
+ * @param {Array} trips - Sorted array of trip objects from getUpcomingTravel_()
+ * @returns {Array} Filtered array with sub-events removed
+ */
+function filterSubEvents_(trips) {
+  if (trips.length <= 1) return trips;
+
+  // Parse a yyyy-MM-dd string into a local midnight Date (avoids TZ parsing issues)
+  function parseDateStr(s) {
+    var p = s.split('-');
+    return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+  }
+
+  // Inclusive duration in days (endDate is already stored as inclusive)
+  function duration(t) {
+    return Math.round((parseDateStr(t.endDate) - parseDateStr(t.startDate)) / 86400000) + 1;
+  }
+
+  // Returns true if two trips overlap or are separated by ≤ 1 day
+  // (handles hotel check-out day N immediately before trip start day N+1)
+  function isNearby(a, b) {
+    var aEnd   = parseDateStr(a.endDate);
+    var bStart = parseDateStr(b.startDate);
+    var bEnd   = parseDateStr(b.endDate);
+    var aStart = parseDateStr(a.startDate);
+    // Gap from a's end to b's start (negative = overlap; 0 = back-to-back; 1 = 1-day gap)
+    var gapAB = Math.round((bStart - aEnd) / 86400000);
+    // Gap from b's end to a's start (negative = overlap)
+    var gapBA = Math.round((aStart - bEnd) / 86400000);
+    return gapAB <= 1 && gapBA <= 1;
+  }
+
+  // Sort by duration descending so longer "parent" trips are evaluated first
+  var sorted = trips.slice().sort(function(a, b) {
+    var dd = duration(b) - duration(a);
+    if (dd !== 0) return dd;
+    return a.startDate < b.startDate ? -1 : 1; // tie-break: earlier start first
+  });
+
+  var accepted = [];
+  sorted.forEach(function(trip) {
+    var dur = duration(trip);
+    // Suppress only if a STRICTLY longer accepted trip is nearby
+    // (equal-duration consecutive trips are kept — they are separate destinations)
+    var isSubEvent = accepted.some(function(acc) {
+      return duration(acc) > dur && isNearby(acc, trip);
+    });
+
+    if (isSubEvent) {
+      Logger.log('getUpcomingTravel_: suppressed sub-event "' + trip.label +
+                 '" (' + trip.startDate + ' – ' + trip.endDate + ', ' + dur + 'd)' +
+                 ' — absorbed into a nearby longer trip');
+    } else {
+      accepted.push(trip);
+    }
+  });
+
+  // Re-sort by startDate ascending for consistent output order
+  accepted.sort(function(a, b) { return a.startDate < b.startDate ? -1 : 1; });
+  return accepted;
 }
 
 // ---- 3-2-1 classification ---------------------------------------------------
