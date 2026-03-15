@@ -29,6 +29,11 @@ const EVENT_COLOR_NAMES = {
  * If no label is defined for a calendar, falls back to auto-detecting
  * owned vs shared using Google's calendar ownership API.
  *
+ * Times are shown in each event's own timezone (e.g. "09:00 EST" for a NYC
+ * departure, "11:30 PST" for an LA arrival) using per-event timezone data
+ * from the Calendar REST API.  Falls back to the script timezone if the
+ * per-event timezone is not available.
+ *
  * @returns {Array} Sorted array of event objects
  */
 function getUpcomingEvents(daysAheadOverride) {
@@ -64,19 +69,85 @@ function getUpcomingEvents(daysAheadOverride) {
       ownedIds[c.getId()] = true;
     });
 
-    // ---- Fetch events ------------------------------------------------------
-    const events    = [];
-    const calendars = CalendarApp.getAllCalendars();
-
-    calendars.forEach(function(calendar) {
+    // ---- Phase 1: Filter calendars -----------------------------------------
+    // Separate the filtering pass so we can batch-fetch timezone info in parallel.
+    const activeCalendars = [];   // [{ calendar, calNameRaw, calLabel }]
+    CalendarApp.getAllCalendars().forEach(function(calendar) {
       const calNameRaw   = calendar.getName();
       const calNameLower = calNameRaw.toLowerCase();
 
-      // Skip calendars on the skip list
       if (skipList.indexOf(calNameLower) !== -1) {
         Logger.log('Skipping calendar (skip_calendars): "' + calNameRaw + '"');
         return;
       }
+
+      let calLabel;
+      if (calendarLabels[calNameLower]) {
+        calLabel = calendarLabels[calNameLower];
+      } else if (ownedIds[calendar.getId()]) {
+        calLabel = 'personal (' + calNameRaw + ')';
+      } else {
+        calLabel = 'shared: ' + calNameRaw;
+      }
+
+      activeCalendars.push({ calendar: calendar, calNameRaw: calNameRaw, calLabel: calLabel });
+    });
+
+    // ---- Phase 2: Batch-fetch per-event timezone info via Calendar REST API --
+    // Each event may have its own timezone (e.g. a flight arriving in PST).
+    // CalendarApp doesn't expose per-event timezone, so we call the REST API.
+    // UrlFetchApp.fetchAll() fires all requests in parallel — one per calendar.
+    var calTzMaps = {};   // calendarId → { eventId: { startTz, endTz } }
+    try {
+      const token = ScriptApp.getOAuthToken();
+      const tzRequests = activeCalendars.map(function(c) {
+        return {
+          url: 'https://www.googleapis.com/calendar/v3/calendars/'
+            + encodeURIComponent(c.calendar.getId())
+            + '/events?singleEvents=true&maxResults=500'
+            + '&timeMin=' + encodeURIComponent(now.toISOString())
+            + '&timeMax=' + encodeURIComponent(endDate.toISOString())
+            + '&fields=' + encodeURIComponent('items(id,start/timeZone,end/timeZone)'),
+          headers:             { 'Authorization': 'Bearer ' + token },
+          muteHttpExceptions:  true,
+        };
+      });
+
+      const tzResponses = UrlFetchApp.fetchAll(tzRequests);
+
+      activeCalendars.forEach(function(c, idx) {
+        const map  = {};
+        const resp = tzResponses[idx];
+        if (resp && resp.getResponseCode() === 200) {
+          try {
+            const items = JSON.parse(resp.getContentText()).items || [];
+            items.forEach(function(item) {
+              if (item.id) {
+                map[item.id] = {
+                  startTz: (item.start && item.start.timeZone) || null,
+                  endTz:   (item.end   && item.end.timeZone)   || null,
+                };
+              }
+            });
+          } catch (parseErr) {
+            Logger.log('Calendar: timezone parse error for "' + c.calNameRaw + '" — ' + parseErr.message);
+          }
+        } else if (resp) {
+          Logger.log('Calendar: timezone fetch HTTP ' + resp.getResponseCode() + ' for "' + c.calNameRaw + '"');
+        }
+        calTzMaps[c.calendar.getId()] = map;
+      });
+    } catch (tzErr) {
+      Logger.log('Calendar: batch timezone fetch failed — ' + tzErr.message + ' — times shown in script TZ.');
+    }
+
+    // ---- Phase 3: Fetch events and format with per-event timezone -----------
+    const events = [];
+
+    activeCalendars.forEach(function(calInfo) {
+      const calendar   = calInfo.calendar;
+      const calNameRaw = calInfo.calNameRaw;
+      const calLabel   = calInfo.calLabel;
 
       let calEvents;
       try {
@@ -86,16 +157,7 @@ function getUpcomingEvents(daysAheadOverride) {
         return;
       }
 
-      // Determine the label for this calendar
-      // Priority: Config label → auto-detect owned/shared
-      let calLabel;
-      if (calendarLabels[calNameLower]) {
-        calLabel = calendarLabels[calNameLower];
-      } else if (ownedIds[calendar.getId()]) {
-        calLabel = 'personal (' + calNameRaw + ')';
-      } else {
-        calLabel = 'shared: ' + calNameRaw;
-      }
+      const eventTzMap = calTzMaps[calendar.getId()] || {};
 
       calEvents.forEach(function(event) {
         const startTime = event.getStartTime();
@@ -124,10 +186,25 @@ function getUpcomingEvents(daysAheadOverride) {
           eventColor = EVENT_COLOR_NAMES[colorId] || '';
         } catch (e) { /* no color */ }
 
+        // ---- Timezone-aware time formatting --------------------------------
+        // Per-event timezone comes from the Calendar REST API response.
+        // Falls back to the script's timezone if not set.
+        // All-day events have no time component — formatted as date only.
+        const tzInfo  = eventTzMap[event.getId()] || {};
+        const startTz = tzInfo.startTz || tz;
+        const endTz   = tzInfo.endTz   || tz;
+
+        const startFmt = event.isAllDayEvent()
+          ? Utilities.formatDate(startTime,          tz,      'yyyy-MM-dd')
+          : Utilities.formatDate(startTime,          startTz, 'yyyy-MM-dd HH:mm z');
+        const endFmt = event.isAllDayEvent()
+          ? Utilities.formatDate(event.getEndTime(), tz,    'yyyy-MM-dd')
+          : Utilities.formatDate(event.getEndTime(), endTz, 'yyyy-MM-dd HH:mm z');
+
         events.push({
           title:        event.getTitle() || '(No title)',
-          start:        Utilities.formatDate(startTime,          tz, 'yyyy-MM-dd HH:mm'),
-          end:          Utilities.formatDate(event.getEndTime(), tz, 'yyyy-MM-dd HH:mm'),
+          start:        startFmt,
+          end:          endFmt,
           daysUntil:    Math.max(0, daysUntil),
           isAllDay:     event.isAllDayEvent(),
           location:     event.getLocation() || '',
@@ -144,7 +221,7 @@ function getUpcomingEvents(daysAheadOverride) {
       return a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
     });
 
-    Logger.log('Calendar: fetched ' + events.length + ' events across ' + calendars.length + ' calendars.');
+    Logger.log('Calendar: fetched ' + events.length + ' events across ' + activeCalendars.length + ' calendars.');
     return events;
 
   } catch (e) {
