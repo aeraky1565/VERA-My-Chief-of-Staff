@@ -2176,6 +2176,37 @@ function ItineraryView({ trip, itinerary, loading, busy,
     });
   });
 
+  // ── Resolve default hotel check-in / check-out times ─────────────────────
+  // For multiday hotel stays with no explicit times:
+  //   Check-in  default = 15:00, pushed later if a flight arrives after 15:00 that day
+  //   Check-out default = 10:00, pulled earlier if a flight/train departs before 10:00 that day
+  Object.keys(byDay).forEach(function(d) {
+    var snapshot = byDay[d].slice(); // read originals before map replaces entries
+    byDay[d] = byDay[d].map(function(item) {
+      if (item.type !== 'hotel') return item;
+      if (item._synthetic) {
+        // Checkout row — resolve default time
+        if (item.startTime) return item; // explicit time already set
+        var co = '10:00';
+        snapshot.forEach(function(o) {
+          if (o._synthetic) return;
+          if ((o.type === 'flight' || o.type === 'train') && o.startTime && o.startTime < co) co = o.startTime;
+        });
+        return Object.assign({}, item, { startTime: co, _defaultTime: true });
+      } else if (hotelCheckoutDates[item.id]) {
+        // Check-in row — resolve default time
+        if (item.startTime) return item; // explicit time already set
+        var ci = '15:00';
+        snapshot.forEach(function(o) {
+          if (o.type === 'flight' && !o._synthetic && o.endTime && o.endTime > ci) ci = o.endTime;
+        });
+        return Object.assign({}, item, { startTime: ci, _defaultTime: true });
+      }
+      return item;
+    });
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Full ordered list: pre-trip days → trip days → post-trip days → undated
   const outOfRange = Object.keys(byDay)
     .filter(function(d) { return d !== '__other__' && tripDays.indexOf(d) === -1; })
@@ -2343,7 +2374,9 @@ function ItineraryView({ trip, itinerary, loading, busy,
                           {item.title}
                         </span>
                         {item.startTime && (
-                          <span style={{ color: '#6b7fa8', fontSize: 12, flexShrink: 0 }}>
+                          <span style={{ color: item._defaultTime ? '#4a5870' : '#6b7fa8',
+                                         fontSize: 12, flexShrink: 0,
+                                         fontStyle: item._defaultTime ? 'italic' : 'normal' }}>
                             {item.startTime}{item.endTime && !item._synthetic && !hotelCheckoutDates[item.id] ? ' → ' + item.endTime : ''}
                           </span>
                         )}
@@ -2431,7 +2464,8 @@ function ItineraryView({ trip, itinerary, loading, busy,
                     return (
                       <div style={{ width: 54, flexShrink: 0, textAlign: 'right',
                                     paddingTop: 3, fontVariantNumeric: 'tabular-nums' }}>
-                        <div style={{ color: '#6b7fa8', fontSize: 12 }}>
+                        <div style={{ color: item._defaultTime ? '#4a5870' : '#6b7fa8',
+                                      fontSize: 12, fontStyle: item._defaultTime ? 'italic' : 'normal' }}>
                           {item.startTime || React.createElement('span', { style: { color: '#3a4a60' } }, '·')}
                         </div>
                         {tzLabel && (
