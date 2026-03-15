@@ -97,6 +97,11 @@ function doGet(e) {
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
+      case 'ideas':                 return jsonOut_(webGetIdeas_());
+      case 'add_idea':              return jsonOut_(webAddIdea_(e));
+      case 'update_idea':           return jsonOut_(webUpdateIdea_(e));
+      case 'delete_idea':           return jsonOut_(webDeleteIdea_(e));
+      case 'promote_idea':          return jsonOut_(webPromoteIdea_(e));
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
       case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
@@ -820,6 +825,149 @@ function webDeleteHomeItem_(e) {
   if (!sheet) throw new Error('Home Items tab not found');
   sheet.deleteRow(rowNum);
   return { ok: true, row: rowNum, action: 'deleted' };
+}
+
+// ---- Ideas / Braindump (Issue #18) -----------------------------------------
+
+function findIdeaRow_(id) {
+  if (!id) throw new Error('Missing idea ID');
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.IDEAS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Ideas sheet is empty');
+  const numRows = sheet.getLastRow() - 1;
+  const ids     = sheet.getRange(2, 1, numRows, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) {
+      return { sheet: sheet, rowNum: i + 2 };
+    }
+  }
+  throw new Error('Idea not found: ' + id);
+}
+
+function webGetIdeas_() {
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.IDEAS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, ideas: [] };
+
+  const numRows = sheet.getLastRow() - 1;
+  const data    = sheet.getRange(2, 1, numRows, IDEA_HEADERS.length).getValues();
+  const ideas   = [];
+
+  data.forEach(function(row, idx) {
+    const id = String(row[0] || '').trim();
+    if (!id) return;
+    ideas.push({
+      row:       idx + 2,
+      id:        id,
+      dateAdded: formatDateVal_(row[1]),
+      idea:      String(row[2] || '').trim(),
+      category:  String(row[3] || '').trim(),
+      tags:      String(row[4] || '').trim(),
+      notes:     String(row[5] || '').trim(),
+      status:    String(row[6] || 'New').trim(),
+    });
+  });
+
+  return { ok: true, ideas: ideas };
+}
+
+function webAddIdea_(e) {
+  const p        = e.parameter || {};
+  const ideaText = (p.idea || '').trim();
+  if (!ideaText) throw new Error('Idea text is required');
+
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.IDEAS);
+  if (!sheet) throw new Error('Ideas tab not found');
+
+  // Generate ID: IDEA-YYYYMMDD-NN
+  const tz       = Session.getScriptTimeZone();
+  const today    = new Date();
+  const dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  const addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  let seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0] || '').indexOf('IDEA-' + dateStr) === 0) seq++; });
+  }
+  const ideaId = 'IDEA-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  // IDEA_HEADERS: ID | Date Added | Idea | Category | Tags | Notes | Status
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, IDEA_HEADERS.length).setValues([[
+    ideaId, addedStr, ideaText,
+    (p.category || 'General').trim(),
+    (p.tags  || '').trim(),
+    (p.notes || '').trim(),
+    'New',
+  ]]);
+
+  return { ok: true, id: ideaId, action: 'created' };
+}
+
+function webUpdateIdea_(e) {
+  const p     = e.parameter || {};
+  const id    = (p.id || '').trim();
+  const found = findIdeaRow_(id);
+
+  // IDEA_HEADERS: ID(1) | Date Added(2) | Idea(3) | Category(4) | Tags(5) | Notes(6) | Status(7)
+  if (p.idea     != null) found.sheet.getRange(found.rowNum, 3).setValue(p.idea.trim());
+  if (p.category != null) found.sheet.getRange(found.rowNum, 4).setValue(p.category.trim());
+  if (p.tags     != null) found.sheet.getRange(found.rowNum, 5).setValue(p.tags.trim());
+  if (p.notes    != null) found.sheet.getRange(found.rowNum, 6).setValue(p.notes.trim());
+  if (p.status   != null) found.sheet.getRange(found.rowNum, 7).setValue(p.status.trim());
+
+  return { ok: true, id: id, action: 'updated' };
+}
+
+function webDeleteIdea_(e) {
+  const id    = ((e.parameter && e.parameter.id) || '').trim();
+  const found = findIdeaRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+/**
+ * Promotes an idea to a new open task in the Tasks tab.
+ * Marks the idea Status = "Promoted".
+ */
+function webPromoteIdea_(e) {
+  const p  = e.parameter || {};
+  const id = (p.id || p.ideaId || '').trim();
+  if (!id) throw new Error('Idea ID is required');
+
+  // 1. Find the idea row
+  const found    = findIdeaRow_(id);
+  const ideaData = found.sheet.getRange(found.rowNum, 1, 1, IDEA_HEADERS.length).getValues()[0];
+  // IDEA_HEADERS: ID(0) | Date Added(1) | Idea(2) | Category(3) | Tags(4) | Notes(5) | Status(6)
+  const ideaText  = String(ideaData[2] || '').trim();
+  const ideaNotes = String(ideaData[5] || '').trim();
+  if (!ideaText) throw new Error('Idea text is empty for: ' + id);
+
+  // 2. Create a task — pattern mirrors webAddTask_
+  const taskSheet = getSpreadsheet().getSheetByName(TABS.TASKS);
+  if (!taskSheet) throw new Error('Tasks tab not found');
+
+  const tz       = Session.getScriptTimeZone();
+  const today    = new Date();
+  const dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  const addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  let seq = 1;
+  if (taskSheet.getLastRow() >= 2) {
+    taskSheet.getRange(2, 1, taskSheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0] || '').indexOf('TASK-' + dateStr) === 0) seq++; });
+  }
+  const taskId = 'TASK-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  // TASK_HEADERS: ID | Task | Added Date | Due Date | Status | Recurring | Notes | Flagged
+  taskSheet.getRange(taskSheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length)
+    .setValues([[taskId, ideaText, addedStr, '', 'Open', '', ideaNotes, '']]);
+
+  // 3. Mark idea as Promoted
+  found.sheet.getRange(found.rowNum, 7).setValue('Promoted'); // Col G = Status
+
+  return { ok: true, ideaId: id, taskId: taskId, action: 'promoted' };
 }
 
 // ---- Chat ------------------------------------------------------------------

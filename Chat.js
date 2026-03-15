@@ -119,6 +119,15 @@ function buildChatSystemPrompt_(context) {
     ? '(none configured)'
     : context.shoppingStores.join(', ');
 
+  var ideaLines = (!context.ideas || context.ideas.length === 0)
+    ? '  (none parked)'
+    : context.ideas.map(function(i) {
+        return '  [' + i.id + '] ' + i.idea +
+               (i.category ? ' [' + i.category + ']' : '') +
+               (i.status !== 'New' ? ' (' + i.status + ')' : '') +
+               (i.tags ? ' — ' + i.tags : '');
+      }).join('\n');
+
   return (
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
     'You are the personal chief of staff for Ahmed (and his partner Victoria).\n\n' +
@@ -142,6 +151,7 @@ function buildChatSystemPrompt_(context) {
     'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' +
     'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' +
     'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
+    'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
     'AVAILABLE ACTIONS — include these exact lines in your response to take action:\n' +
     'ACTION:complete_task|{taskId}\n' +
@@ -164,7 +174,10 @@ function buildChatSystemPrompt_(context) {
     'ACTION:add_goal|{title}|{category}|{description}\n' +
     'ACTION:update_goal|{goalId}|{field}|{value}\n' +
     'ACTION:delete_goal|{goalId}\n' +
-    'ACTION:delete_interest|{interestId}\n\n' +
+    'ACTION:delete_interest|{interestId}\n' +
+    'ACTION:add_idea|{idea text}|{category}|{tags}\n' +
+    'ACTION:promote_idea|{ideaId}\n' +
+    'ACTION:archive_idea|{ideaId}\n\n' +
 
     'RULES:\n' +
     '- Be concise and conversational. This is a chat interface, not an email.\n' +
@@ -185,6 +198,9 @@ function buildChatSystemPrompt_(context) {
     '- For add_shopping_item: store_name must partially match one of the SHOPPING STORES listed above.\n' +
     '- For update_goal: valid fields are "status" (To Do/In Progress/Done/Paused), "title", "category", "progress", "notes". Use goal ID from YEARLY GOALS above.\n' +
     '- For delete_goal / delete_interest: always confirm the item name with Ahmed before deleting.\n' +
+    '- For add_idea: capture any unstructured thought, half-formed plan, or "park this for later" request. Category options: General/Home/Finance/Health/Career/Personal/Travel/Other. Tags are optional, comma-separated. Use when Ahmed says "note this", "park this idea", "I want to eventually...", etc.\n' +
+    '- For promote_idea: converts the idea to a real open task. Use the idea ID from IDEA BRAINDUMP above. Confirm with Ahmed which idea to promote if it is ambiguous.\n' +
+    '- For archive_idea: marks the idea as Archived (no longer shown). Always confirm the idea with Ahmed before archiving.\n' +
     '- Never fabricate data not present in the current state above.\n' +
     '- If asked about something not in the current state, say so honestly.\n'
   );
@@ -319,6 +335,25 @@ function buildChatContext_() {
   try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
   catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); }
 
+  // Ideas braindump — all non-archived ideas (Issue #18)
+  var ideas = [];
+  try {
+    var ideaSheet = ss.getSheetByName(TABS.IDEAS);
+    if (ideaSheet && ideaSheet.getLastRow() >= 2) {
+      var ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
+      ideas = ideaData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        return { row: idx + 2,
+                 id:        String(r[0]||'').trim(),
+                 dateAdded: String(r[1]||'').trim(),
+                 idea:      String(r[2]||'').trim(),
+                 category:  String(r[3]||'').trim(),
+                 tags:      String(r[4]||'').trim(),
+                 notes:     String(r[5]||'').trim(),
+                 status:    String(r[6]||'New').trim() };
+      }).filter(function(i) { return i.status !== 'Archived'; });
+    }
+  } catch (e) { Logger.log('Chat context: ideas — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -332,6 +367,7 @@ function buildChatContext_() {
     recipes:         recipes,
     homeItems:       homeItems,
     shoppingStores:  shoppingStores,
+    ideas:           ideas,
   };
 }
 
@@ -671,6 +707,44 @@ function executeActions_(rawText) {
         if (!diId) throw new Error('Interest ID required');
         deleteInterest_(diId);
         executed.push(type + ' (' + diId + ')');
+      }
+
+      // ---- Ideas ------------------------------------------------------------
+      else if (type === 'add_idea') {
+        var aiText = (args[0] || '').trim();
+        if (!aiText) throw new Error('Idea text required');
+        var aiSheet = getSpreadsheet().getSheetByName(TABS.IDEAS);
+        if (!aiSheet) throw new Error('Ideas tab not found');
+        var aiTz      = Session.getScriptTimeZone();
+        var aiNow     = new Date();
+        var aiDateStr = Utilities.formatDate(aiNow, aiTz, 'yyyy-MM-dd');
+        var aiDateKey = Utilities.formatDate(aiNow, aiTz, 'yyyyMMdd');
+        var aiLastRow = aiSheet.getLastRow();
+        var aiCount   = 1;
+        if (aiLastRow >= 2) {
+          var aiIds = aiSheet.getRange(2, 1, aiLastRow - 1, 1).getValues();
+          aiIds.forEach(function(r) {
+            if (String(r[0]).indexOf('IDEA-' + aiDateKey) === 0) aiCount++;
+          });
+        }
+        var aiId = 'IDEA-' + aiDateKey + '-' + (aiCount < 10 ? '0' + aiCount : String(aiCount));
+        aiSheet.getRange(aiLastRow + 1, 1, 1, IDEA_HEADERS.length).setValues([[
+          aiId, aiDateStr, aiText, (args[1] || '').trim(), (args[2] || '').trim(), '', 'New'
+        ]]);
+        executed.push(type + ' (' + aiId + ')');
+      }
+      else if (type === 'promote_idea') {
+        var piId = (args[0] || '').trim();
+        if (!piId) throw new Error('Idea ID required');
+        var piResult = webPromoteIdea_({ parameter: { id: piId } });
+        executed.push(type + ' (task: ' + piResult.taskId + ')');
+      }
+      else if (type === 'archive_idea') {
+        var arId = (args[0] || '').trim();
+        if (!arId) throw new Error('Idea ID required');
+        var arFound = findIdeaRow_(arId);
+        arFound.sheet.getRange(arFound.rowNum, 7).setValue('Archived');
+        executed.push(type + ' (' + arId + ')');
       }
 
     } catch (e) {

@@ -134,6 +134,28 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
     }).join('\n');
   }
 
+  // ---- Format: Idea Braindump (Issue #18) ---------------------------------
+  let ideasSection;
+  try {
+    const ideaSheet = getSpreadsheet().getSheetByName(TABS.IDEAS);
+    const newIdeas  = [];
+    if (ideaSheet && ideaSheet.getLastRow() >= 2) {
+      const ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
+      ideaData.forEach(function(r) {
+        if (String(r[0]).trim() && String(r[6]).trim() === 'New') newIdeas.push(r);
+      });
+    }
+    ideasSection = newIdeas.length === 0
+      ? 'No unreviewed ideas.'
+      : newIdeas.slice(0, 10).map(function(r) {
+          return '- [' + (r[3] || 'General') + '] ' + r[2] +
+                 (r[4] ? ' (tags: ' + r[4] + ')' : '') +
+                 (r[5] ? ' — ' + r[5] : '');
+        }).join('\n');
+  } catch (ideaErr) {
+    ideasSection = '(unavailable)';
+  }
+
   // ---- Assemble the Full Prompt -------------------------------------------
   const prompt =
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
@@ -173,6 +195,12 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
     '- Flag if Shared Disposable Income or either person\'s Disposable Income is unexpectedly low (e.g. near zero or negative).\n' +
     '- Do NOT flag normal month-to-month variation (<20% or <$30 difference).\n\n' +
 
+    'IDEA BRAINDUMP RULES:\n' +
+    '- The Ideas section lists unstructured thoughts Ahmed has parked for later.\n' +
+    '- Cross-reference ideas against calendar events, tasks, and summaries.\n' +
+    '- If an idea aligns with an upcoming event, a gap in planning, or a recurring theme, suggest converting it to a task — surface this as a Low-urgency General flag.\n' +
+    '- Do NOT flag an idea if it already has a corresponding open task or ongoing project.\n\n' +
+
     'SHARED INTEREST LEDGER RULES:\n' +
     '- The ledger below records things Ahmed and Victoria have specifically mentioned wanting or liking.\n' +
     '- Cross-reference it against calendar events and tasks. If a connection exists — a relevant venue, event, experience, or opportunity — generate a flag.\n' +
@@ -191,6 +219,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
 
     '=== SHARED INTEREST LEDGER ===\n' +
     ledgerSection + '\n\n' +
+
+    '=== IDEA BRAINDUMP (top 10 unreviewed) ===\n' +
+    ideasSection + '\n\n' +
 
     // ---- PTO Status (injected when available) ----------------------------
     (ptoStats ? '=== PTO STATUS ===\n' + ptoSummaryForClaude_(ptoStats) + '\n\n' : '') +
@@ -343,7 +374,7 @@ function parseFlags(rawContent) {
   }
 
   const VALID_URGENCIES = ['High', 'Medium', 'Low'];
-  const VALID_SOURCES   = ['Calendar', 'Tasks', 'Finance', 'Summaries', 'General'];
+  const VALID_SOURCES   = ['Calendar', 'Tasks', 'Finance', 'Summaries', 'General', 'Ideas'];
 
   const validated = parsed
     .filter(function(f) {

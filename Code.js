@@ -36,6 +36,7 @@ const TABS = {
   BILLS:            'Bills',            // Recurring bill tracker (Issue #57)
   RECIPES:          'Recipes',          // Recipe list (Issue #46)
   HOME_ITEMS:       'Home Items',       // Warranties + service log (Issue #21)
+  IDEAS:            'Ideas',            // Braindump repo (Issue #18)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -53,6 +54,7 @@ const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
 const RECIPE_HEADERS            = ['Name', 'Cuisine', 'Servings', 'Prep Time', 'Link', 'Ingredients', 'Tags', 'Notes'];
 const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
+const IDEA_HEADERS              = ['ID', 'Date Added', 'Idea', 'Category', 'Tags', 'Notes', 'Status'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -112,6 +114,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.BILLS,            BILL_HEADERS);
   ensureSheet(ss, TABS.RECIPES,          RECIPE_HEADERS);
   ensureSheet(ss, TABS.HOME_ITEMS,       HOME_ITEM_HEADERS);
+  ensureSheet(ss, TABS.IDEAS,            IDEA_HEADERS);
   ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');

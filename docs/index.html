@@ -3224,6 +3224,171 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   );
 }
 
+// ---- Ideas Braindump tab (Issue #18) -----------------------------------------
+
+const IDEA_CATEGORIES_UI = ['General', 'Home', 'Finance', 'Health', 'Career', 'Personal', 'Travel', 'Other'];
+const IDEA_STATUS_COLORS  = { New: '#8ab4f8', Promoted: '#43a047', Archived: '#4d6080' };
+
+function IdeasTab({ ideas, onAdd, onPromote, onArchive, busy }) {
+  const [filterStatus, setFilterStatus] = React.useState('New');
+  const [showForm,    setShowForm]    = React.useState(false);
+  const [form, setForm] = React.useState({ idea: '', category: 'General', tags: '', notes: '' });
+
+  const filtered = filterStatus === 'All'
+    ? ideas
+    : ideas.filter(i => i.status === filterStatus);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.idea.trim()) return;
+    onAdd(form);
+    setForm({ idea: '', category: 'General', tags: '', notes: '' });
+    setShowForm(false);
+  }
+
+  return (
+    <div>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {['All', 'New', 'Promoted'].map(s => (
+            <button key={s}
+              onClick={() => setFilterStatus(s)}
+              style={{
+                padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
+                background: filterStatus === s ? '#8ab4f8' : '#1e2a3a',
+                color: filterStatus === s ? '#0d1117' : '#8ab4f8',
+              }}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <button
+          disabled={busy}
+          onClick={() => setShowForm(v => !v)}
+          style={{ marginLeft: 'auto', padding: '6px 16px', borderRadius: 6, border: 'none',
+                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+          {showForm ? '✕ Cancel' : '+ Park an Idea'}
+        </button>
+      </div>
+
+      {/* Quick add form */}
+      {showForm && (
+        <form onSubmit={handleSubmit}
+          style={{ background: '#1e2a3a', borderRadius: 8, padding: '14px 16px', marginBottom: 16,
+                   border: '1px solid #2a3a50', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <textarea
+            placeholder="Describe the idea…"
+            value={form.idea}
+            onChange={e => setForm(p => ({ ...p, idea: e.target.value }))}
+            rows={3}
+            style={{ background: '#0d1117', border: '1px solid #2a3a50', borderRadius: 6, color: '#e8eaed',
+                     padding: '8px 10px', fontSize: 13, resize: 'vertical', width: '100%', boxSizing: 'border-box' }}
+          />
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))}
+              style={{ background: '#0d1117', border: '1px solid #2a3a50', borderRadius: 6, color: '#e8eaed',
+                       padding: '6px 8px', fontSize: 13, flex: '0 0 140px' }}>
+              {IDEA_CATEGORIES_UI.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <input
+              placeholder="Tags (comma-separated)"
+              value={form.tags}
+              onChange={e => setForm(p => ({ ...p, tags: e.target.value }))}
+              style={{ background: '#0d1117', border: '1px solid #2a3a50', borderRadius: 6, color: '#e8eaed',
+                       padding: '6px 8px', fontSize: 13, flex: 1 }}
+            />
+          </div>
+          <input
+            placeholder="Notes (optional)"
+            value={form.notes}
+            onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+            style={{ background: '#0d1117', border: '1px solid #2a3a50', borderRadius: 6, color: '#e8eaed',
+                     padding: '6px 8px', fontSize: 13 }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2a3a50',
+                       background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 13 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={busy || !form.idea.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none',
+                       background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              💡 Park It
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Ideas list */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>
+          {filterStatus === 'New'
+            ? 'No unreviewed ideas. Add one above or tell VERA in chat.'
+            : `No ideas with status "${filterStatus}".`}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filtered.map(idea => (
+            <div key={idea.id} style={{
+              background: '#1e2a3a', borderRadius: 8, padding: '12px 14px',
+              border: '1px solid #2a3a50', display: 'flex', alignItems: 'flex-start', gap: 12
+            }}>
+              {/* Left: content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, color: '#e8eaed', fontSize: 14 }}>{idea.idea}</span>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                                 background: '#0d1117', color: IDEA_STATUS_COLORS[idea.status] || '#8ab4f8',
+                                 border: '1px solid ' + (IDEA_STATUS_COLORS[idea.status] || '#8ab4f8') }}>
+                    {idea.status}
+                  </span>
+                  {idea.category && (
+                    <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                                   background: '#1a3050', color: '#8ab4f8' }}>
+                      {idea.category}
+                    </span>
+                  )}
+                </div>
+                {idea.tags && (
+                  <div style={{ color: '#5f6368', fontSize: 12, marginBottom: 2 }}>🏷 {idea.tags}</div>
+                )}
+                {idea.notes && (
+                  <div style={{ color: '#9aa0a6', fontSize: 12, fontStyle: 'italic' }}>{idea.notes}</div>
+                )}
+                <div style={{ color: '#5f6368', fontSize: 11, marginTop: 4 }}>{idea.id} · {idea.dateAdded}</div>
+              </div>
+              {/* Right: actions */}
+              {idea.status === 'New' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                  <button
+                    disabled={busy}
+                    onClick={() => onPromote(idea.id, idea.idea)}
+                    title="Promote to Task"
+                    style={{ padding: '5px 12px', borderRadius: 6, border: 'none',
+                             background: '#1a4a2a', color: '#43a047', cursor: 'pointer', fontSize: 12,
+                             fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    ✅ Make Task
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => onArchive(idea.id)}
+                    title="Archive Idea"
+                    style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #2a3a50',
+                             background: 'transparent', color: '#9aa0a6', cursor: 'pointer', fontSize: 12 }}>
+                    Archive
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Shared Interest Ledger tab (Issue #28) ----------------------------------
 
 const INTEREST_CATEGORIES_UI = ['Food', 'Travel', 'Fitness', 'Culture', 'Hobbies', 'Learning', 'Other'];
@@ -3380,6 +3545,7 @@ function App() {
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
+  const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -3527,6 +3693,18 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, interests: false }));
+  }
+
+  async function loadIdeas(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, ideas: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'ideas' });
+      setIdeas(data.ideas || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, ideas: false }));
   }
 
   async function loadShopping(url, token) {
@@ -3791,6 +3969,48 @@ function App() {
     }
   }
 
+  async function handleAddIdea({ idea, category, tags, notes }) {
+    if (!idea.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_idea', idea, category, tags, notes });
+      showToast('💡 Idea parked');
+      loadIdeas(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not save idea: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handlePromoteIdea(id, ideaText) {
+    if (!window.confirm(`Promote "${ideaText}" to a task?`)) return;
+    setBusy(true);
+    // Optimistic update
+    setIdeas(prev => prev.map(i => i.id === id ? { ...i, status: 'Promoted' } : i));
+    try {
+      const res = await apiGet(apiUrl, apiToken, { action: 'promote_idea', id });
+      showToast('✅ Promoted to task: ' + res.taskId);
+      loadIdeas(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not promote idea: ' + err.message);
+      loadIdeas(apiUrl, apiToken); // revert
+    }
+    setBusy(false);
+  }
+
+  async function handleArchiveIdea(id) {
+    if (!window.confirm('Archive this idea?')) return;
+    // Optimistic remove
+    setIdeas(prev => prev.filter(i => i.id !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_idea', id, status: 'Archived' });
+      showToast('✓ Idea archived');
+    } catch (err) {
+      setError('Could not archive idea: ' + err.message);
+      loadIdeas(apiUrl, apiToken); // revert
+    }
+  }
+
   function handleConnect(url, token) {
     setApiUrl(url);
     setApiToken(token);
@@ -3799,6 +4019,7 @@ function App() {
     loadProjects(url, token);
     loadGoals(url, token);
     loadInterests(url, token);
+    loadIdeas(url, token);
     loadShopping(url, token);
     loadPTO(url, token);
   }
@@ -3890,7 +4111,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'milestones', 'goals', 'interests', 'summaries'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'milestones', 'goals', 'interests', 'ideas', 'summaries'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -3899,6 +4120,7 @@ function App() {
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
                   if (tab === 'goals')      loadGoals(apiUrl, apiToken);
                   if (tab === 'interests')  loadInterests(apiUrl, apiToken);
+                  if (tab === 'ideas')      loadIdeas(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
@@ -3913,6 +4135,7 @@ function App() {
                 {tab === 'projects'   ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
                 {tab === 'goals'      ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
                 {tab === 'interests'  ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
+                {tab === 'ideas'      ? `💡 Ideas${ideas.length ? ` (${ideas.length})` : ''}` : ''}
                 {tab === 'shopping'   ? `🛒 Shopping` : ''}
                 {tab === 'home_front' ? `🏡 Home Front` : ''}
                 {tab === 'pto'        ? `🌴 PTO Planner` : ''}
@@ -4090,6 +4313,19 @@ function App() {
                     interests={interests}
                     onDelete={handleDeleteInterest}
                     onAdd={() => setInterestModal(true)}
+                    busy={busy}
+                  />
+            )}
+
+            {/* Ideas tab */}
+            {activeTab === 'ideas' && (
+              tabLoading.ideas
+                ? <div className="loading-text">Loading ideas…</div>
+                : <IdeasTab
+                    ideas={ideas}
+                    onAdd={handleAddIdea}
+                    onPromote={handlePromoteIdea}
+                    onArchive={handleArchiveIdea}
                     busy={busy}
                   />
             )}
