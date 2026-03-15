@@ -65,11 +65,12 @@ function buildChatSystemPrompt_(context) {
     }).join('\n');
   }
 
-  // Shared Interest Ledger — same format as WeekendPlanner.js line 325
+  // Shared Interest Ledger — include ID so Claude can reference for delete_interest
   var interestLines = (!context.interests || context.interests.length === 0)
     ? '  (none logged yet)'
     : context.interests.map(function(i) {
-        return '  - ' + i.person + ': ' + i.interest + ' [' + i.category + ', logged ' + i.date + ']';
+        return '  - [ID:' + i.id + '] ' + i.person + ': ' + i.interest +
+               ' [' + i.category + ', logged ' + i.date + ']';
       }).join('\n');
 
   // PTO — delegate to existing ptoSummaryForClaude_() (PTO.js)
@@ -77,12 +78,46 @@ function buildChatSystemPrompt_(context) {
     ? ptoSummaryForClaude_(context.ptoStats)
     : '  (unavailable — PTO calendar may not be configured)';
 
-  // Yearly goals — same format as WeekendPlanner.js lines 337–338
+  // Yearly goals — include ID so Claude can reference them in update_goal / delete_goal
   var goalLines = (!context.goals || context.goals.length === 0)
     ? '  (none active)'
     : context.goals.map(function(g) {
-        return '  - [' + g.status + '] ' + g.title + (g.category ? ' (' + g.category + ')' : '');
+        return '  - [' + g.status + '] ' + g.title +
+               (g.category ? ' (' + g.category + ')' : '') + ' (ID: ' + g.id + ')';
       }).join('\n');
+
+  var billLines = (!context.bills || context.bills.length === 0)
+    ? '  (none)'
+    : context.bills.map(function(b) {
+        return '  [row:' + b.row + '] ' + b.bill +
+               (b.amount ? ' $' + b.amount : '') +
+               ' (' + b.frequency + ')' +
+               (b.dueDay ? ' due day ' + b.dueDay : '') +
+               (b.paid ? ' ✓ PAID this month' : ' — UNPAID');
+      }).join('\n');
+
+  var recipeLines = (!context.recipes || context.recipes.length === 0)
+    ? '  (none)'
+    : context.recipes.map(function(r) {
+        var ingCount = r.ingredients ? r.ingredients.split(';').length : 0;
+        return '  [row:' + r.row + '] ' + r.name +
+               (r.cuisine ? ' (' + r.cuisine + ')' : '') +
+               (ingCount > 0 ? ' — ' + ingCount + ' ingredients' : '');
+      }).join('\n');
+
+  var homeItemLines = (!context.homeItems || context.homeItems.length === 0)
+    ? '  (none)'
+    : context.homeItems.map(function(h) {
+        var svc = h.nextService ? ' next service: ' + h.nextService : '';
+        if (h.serviceDays !== null && h.serviceDays < 0) svc += ' ⚠ OVERDUE';
+        else if (h.serviceDays !== null && h.serviceDays <= 14) svc += ' (due soon)';
+        return '  [row:' + h.row + '] ' + h.item +
+               (h.category ? ' [' + h.category + ']' : '') + svc;
+      }).join('\n');
+
+  var shoppingStoresList = (!context.shoppingStores || context.shoppingStores.length === 0)
+    ? '(none configured)'
+    : context.shoppingStores.join(', ');
 
   return (
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
@@ -103,25 +138,53 @@ function buildChatSystemPrompt_(context) {
     'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' +
     'YEARLY GOALS (active):\n' + goalLines + '\n\n' +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
+    'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' +
+    'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' +
+    'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' +
+    'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
 
     'AVAILABLE ACTIONS — include these exact lines in your response to take action:\n' +
     'ACTION:complete_task|{taskId}\n' +
+    'ACTION:delete_task|{taskId}\n' +
+    'ACTION:update_task|{taskId}|{field}|{value}\n' +
     'ACTION:acknowledge_flag|{flagId}\n' +
     'ACTION:snooze_flag|{flagId}|{days}\n' +
     'ACTION:resolve_flag|{flagId}\n' +
     'ACTION:create_project|{project name}|{task 1}~{task 2}~{task 3}\n' +
     'ACTION:log_interest|{person}|{interest}|{category}\n' +
     'ACTION:create_task|{task text}|{due date YYYY-MM-DD}\n' +
-    'ACTION:create_calendar_event|{title}|{YYYY-MM-DD}|{HH:MM or all-day}|{duration_minutes}\n\n' +
+    'ACTION:create_calendar_event|{title}|{YYYY-MM-DD}|{HH:MM or all-day}|{duration_minutes}\n' +
+    'ACTION:add_bill|{name}|{amount}|{due_day}|{frequency}|{category}|{account}\n' +
+    'ACTION:mark_bill_paid|{row_number_or_bill_name}\n' +
+    'ACTION:add_recipe|{name}|{cuisine}|{servings}|{prep_time}|{ingredients_semicolon_sep}|{tags}\n' +
+    'ACTION:delete_recipe|{row_number}\n' +
+    'ACTION:add_home_item|{item_name}|{category}|{warranty_expiry_YYYY-MM-DD}|{interval_months}|{notes}\n' +
+    'ACTION:record_home_service|{row_number_or_item_name}\n' +
+    'ACTION:add_shopping_item|{store_name}|{item_text}\n' +
+    'ACTION:add_goal|{title}|{category}|{description}\n' +
+    'ACTION:update_goal|{goalId}|{field}|{value}\n' +
+    'ACTION:delete_goal|{goalId}\n' +
+    'ACTION:delete_interest|{interestId}\n\n' +
 
     'RULES:\n' +
     '- Be concise and conversational. This is a chat interface, not an email.\n' +
     '- Address Ahmed directly by name when appropriate.\n' +
     '- If taking an action, include the ACTION line anywhere in your response, then confirm in plain text what you did.\n' +
+    '- For complete_task / delete_task: match task by ID from OPEN TASKS above.\n' +
+    '- For update_task: valid fields are "task" (rename the task text), "dueDate" (YYYY-MM-DD), "notes", "status" (Open/Done/Paused).\n' +
     '- For create_task: use when Ahmed asks to add, create, or remember a task. Include due date if one was mentioned (format YYYY-MM-DD). Omit the due date field if none was specified.\n' +
     '- For create_calendar_event: VERA can and does create Google Calendar events directly via the Apps Script backend. Use this whenever Ahmed asks to schedule, block time, or add an event to his calendar. If the time is not mentioned, default to "all-day". If title or date are missing, ask for them before emitting the ACTION line. Never say you cannot create calendar events — you can.\n' +
     '- For create_project: before generating the plan, ask 2–4 targeted clarifying questions to understand scope, timeline, and constraints. Wait for the answers before emitting the ACTION line. Only skip questions if Ahmed has already provided enough context, or explicitly says "just create it" / "go ahead". Once you have the details, generate a comprehensive, exhaustive checklist — the goal is that Ahmed misses nothing. Think through every phase: planning, logistics, dependencies, admin/paperwork, communications, day-of execution, and follow-up. Explicitly include steps people commonly overlook. Aim for 20–30 tasks for complex projects. Order tasks chronologically. Assign priorities naturally (High for time-sensitive or blocking steps, Low for nice-to-haves). Separate tasks with ~ and optionally append |High or |Low to each task.\n' +
     '- For log_interest: when Ahmed or Victoria mentions liking something, wanting to try something, or expresses interest in a place, food, activity, or experience, log it automatically with ACTION:log_interest. Use person "Ahmed" or "Victoria". Pick the best category from: Food, Travel, Fitness, Culture, Hobbies, Learning, Other. Example: "Victoria mentioned she wants to visit Wimberley" → ACTION:log_interest|Victoria|visit Wimberley TX|Travel\n' +
+    '- For add_bill: use empty string for optional fields (amount, dueDay, category, account) when not provided.\n' +
+    '- For mark_bill_paid: pass the row number from BILLS above (e.g., "2" for [row:2]). This toggles: paid→unpaid, unpaid→paid.\n' +
+    '- For add_recipe: ingredients must be semicolon-separated (e.g., "Pasta 400g; Beef 500g; Tomatoes 2 cans"). Use empty string for unknown fields.\n' +
+    '- For delete_recipe: use the row number from RECIPES above. Always confirm the recipe name with Ahmed before deleting.\n' +
+    '- For add_home_item: use empty string for warranty_expiry and interval_months if not provided.\n' +
+    '- For record_home_service: pass the row number from HOME ITEMS above, OR the item name. Sets Last Service=today, computes Next Service, creates a GCal reminder.\n' +
+    '- For add_shopping_item: store_name must partially match one of the SHOPPING STORES listed above.\n' +
+    '- For update_goal: valid fields are "status" (To Do/In Progress/Done/Paused), "title", "category", "progress", "notes". Use goal ID from YEARLY GOALS above.\n' +
+    '- For delete_goal / delete_interest: always confirm the item name with Ahmed before deleting.\n' +
     '- Never fabricate data not present in the current state above.\n' +
     '- If asked about something not in the current state, say so honestly.\n'
   );
@@ -188,6 +251,74 @@ function buildChatContext_() {
     }).slice(0, 8);
   } catch (e) { Logger.log('Chat context: goals — ' + e.message); }
 
+  // Bills (for chat context)
+  var bills = [];
+  try {
+    var billSheet = ss.getSheetByName(TABS.BILLS);
+    if (billSheet && billSheet.getLastRow() >= 2) {
+      var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+      var tzB       = Session.getScriptTimeZone();
+      var currMonth = Utilities.formatDate(new Date(), tzB, 'yyyy-MM');
+      bills = billData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        return {
+          row:       idx + 2,
+          bill:      String(r[0] || '').trim(),
+          amount:    r[1] !== '' ? Number(r[1]) : null,
+          dueDay:    r[2] !== '' ? Number(r[2]) : null,
+          frequency: String(r[3] || 'Monthly').trim(),
+          paid:      String(r[6] || '').trim() === currMonth,
+        };
+      });
+    }
+  } catch (e) { Logger.log('Chat context: bills — ' + e.message); }
+
+  // Recipes
+  var recipes = [];
+  try {
+    var recSheet = ss.getSheetByName(TABS.RECIPES);
+    if (recSheet && recSheet.getLastRow() >= 2) {
+      var recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
+      recipes = recData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        return {
+          row:         idx + 2,
+          name:        String(r[0] || '').trim(),
+          cuisine:     String(r[1] || '').trim(),
+          ingredients: String(r[5] || '').trim(),
+          tags:        String(r[6] || '').trim(),
+        };
+      });
+    }
+  } catch (e) { Logger.log('Chat context: recipes — ' + e.message); }
+
+  // Home Items
+  var homeItems = [];
+  try {
+    var hiSheet = ss.getSheetByName(TABS.HOME_ITEMS);
+    if (hiSheet && hiSheet.getLastRow() >= 2) {
+      var hiData   = hiSheet.getRange(2, 1, hiSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+      var todayHI  = new Date(); todayHI.setHours(0, 0, 0, 0);
+      homeItems = hiData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        var svcDays = null;
+        if (r[5]) {
+          try { svcDays = Math.round((new Date(r[5]) - todayHI) / 86400000); } catch (ex) {}
+        }
+        return {
+          row:            idx + 2,
+          item:           String(r[0] || '').trim(),
+          category:       String(r[1] || '').trim(),
+          nextService:    r[5] ? String(r[5]).substring(0, 10) : '',
+          intervalMonths: r[6] !== '' ? Number(r[6]) : null,
+          serviceDays:    svcDays,
+        };
+      });
+    }
+  } catch (e) { Logger.log('Chat context: homeItems — ' + e.message); }
+
+  // Shopping store names (so Claude knows which stores to add items to)
+  var shoppingStores = [];
+  try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
+  catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -197,6 +328,10 @@ function buildChatContext_() {
     interests:       interests,
     ptoStats:        ptoStats,
     goals:           goals,
+    bills:           bills,
+    recipes:         recipes,
+    homeItems:       homeItems,
+    shoppingStores:  shoppingStores,
   };
 }
 
@@ -364,6 +499,180 @@ function executeActions_(rawText) {
         }
         executed.push(type + ' ("' + evTitle + '" on ' + evDate + ')');
       }
+
+      // ---- Tasks (extended) ------------------------------------------------
+      else if (type === 'delete_task') {
+        var dtFound = findTaskRow_(args[0]);
+        dtFound.sheet.deleteRow(dtFound.rowNum);
+        executed.push(type + ' (' + args[0] + ')');
+      }
+      else if (type === 'update_task') {
+        var utId    = (args[0] || '').trim();
+        var utField = (args[1] || '').trim().toLowerCase();
+        var utVal   = (args[2] || '').trim();
+        var utFound = findTaskRow_(utId);
+        // TASK_HEADERS: ID(1) | Task(2) | Added(3) | Due Date(4) | Status(5) | Recurring(6) | Notes(7) | Flagged(8)
+        var utColMap = { task: 2, text: 2, duedate: 4, notes: 7, status: 5 };
+        var utCol    = utColMap[utField];
+        if (!utCol) throw new Error('Unknown task field: ' + utField + '. Valid: task, dueDate, notes, status');
+        utFound.sheet.getRange(utFound.rowNum, utCol).setValue(utVal);
+        executed.push(type + ' (' + utId + ')');
+      }
+
+      // ---- Bills ------------------------------------------------------------
+      else if (type === 'add_bill') {
+        var abName = (args[0] || '').trim();
+        if (!abName) throw new Error('Bill name required');
+        var abSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+        if (!abSheet) throw new Error('Bills tab not found');
+        // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes
+        abSheet.getRange(abSheet.getLastRow() + 1, 1, 1, BILL_HEADERS.length).setValues([[
+          abName,
+          args[1] !== undefined ? (Number(args[1]) || '') : '',
+          args[2] !== undefined ? (Number(args[2]) || '') : '',
+          (args[3] || 'Monthly').trim(),
+          (args[4] || '').trim(),
+          (args[5] || '').trim(),
+          '', ''
+        ]]);
+        executed.push(type + ' (' + abName + ')');
+      }
+      else if (type === 'mark_bill_paid') {
+        var mbArg   = (args[0] || '').trim();
+        var mbSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+        if (!mbSheet || mbSheet.getLastRow() < 2) throw new Error('Bills tab is empty');
+        var mbTz    = Session.getScriptTimeZone();
+        var mbMonth = Utilities.formatDate(new Date(), mbTz, 'yyyy-MM');
+        var mbRow   = parseInt(mbArg, 10);
+        if (isNaN(mbRow) || mbRow < 2) {
+          var mbVals = mbSheet.getRange(2, 1, mbSheet.getLastRow() - 1, 1).getValues();
+          for (var mbi = 0; mbi < mbVals.length; mbi++) {
+            if (String(mbVals[mbi][0]).toLowerCase().indexOf(mbArg.toLowerCase()) !== -1) {
+              mbRow = mbi + 2; break;
+            }
+          }
+        }
+        if (!mbRow || mbRow < 2) throw new Error('Bill not found: ' + mbArg);
+        var mbCell = mbSheet.getRange(mbRow, 7); // Col G = Paid
+        mbCell.setValue(String(mbCell.getValue() || '').trim() === mbMonth ? '' : mbMonth);
+        executed.push(type + ' (row ' + mbRow + ')');
+      }
+
+      // ---- Recipes ----------------------------------------------------------
+      else if (type === 'add_recipe') {
+        var arName = (args[0] || '').trim();
+        if (!arName) throw new Error('Recipe name required');
+        var arSheet = getSpreadsheet().getSheetByName(TABS.RECIPES);
+        if (!arSheet) throw new Error('Recipes tab not found');
+        // RECIPE_HEADERS: Name | Cuisine | Servings | Prep Time | Link | Ingredients | Tags | Notes
+        arSheet.getRange(arSheet.getLastRow() + 1, 1, 1, RECIPE_HEADERS.length).setValues([[
+          arName,
+          (args[1] || '').trim(),   // cuisine
+          (args[2] || '').trim(),   // servings
+          (args[3] || '').trim(),   // prep time
+          '',                       // link (not supplied via chat)
+          (args[4] || '').trim(),   // ingredients (semicolon-sep)
+          (args[5] || '').trim(),   // tags
+          ''                        // notes
+        ]]);
+        executed.push(type + ' (' + arName + ')');
+      }
+      else if (type === 'delete_recipe') {
+        var drRow = parseInt(args[0], 10);
+        if (isNaN(drRow) || drRow < 2) throw new Error('Invalid recipe row: ' + args[0]);
+        var drSheet = getSpreadsheet().getSheetByName(TABS.RECIPES);
+        if (!drSheet) throw new Error('Recipes tab not found');
+        drSheet.deleteRow(drRow);
+        executed.push(type + ' (row ' + drRow + ')');
+      }
+
+      // ---- Home Items -------------------------------------------------------
+      else if (type === 'add_home_item') {
+        var ahItem = (args[0] || '').trim();
+        if (!ahItem) throw new Error('Item name required');
+        var ahSheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+        if (!ahSheet) throw new Error('Home Items tab not found');
+        // HOME_ITEM_HEADERS: Item | Category | Purchase Date | Warranty Expiry | Last Service | Next Service | Interval (mo) | Notes
+        ahSheet.getRange(ahSheet.getLastRow() + 1, 1, 1, HOME_ITEM_HEADERS.length).setValues([[
+          ahItem,
+          (args[1] || '').trim(),   // category
+          '',                       // purchase date (not supplied via chat)
+          (args[2] || '').trim(),   // warranty expiry
+          '', '',                   // last/next service
+          args[3] !== undefined ? (Number(args[3]) || '') : '',  // interval months
+          (args[4] || '').trim()    // notes
+        ]]);
+        executed.push(type + ' (' + ahItem + ')');
+      }
+      else if (type === 'record_home_service') {
+        var rhArg   = (args[0] || '').trim();
+        var rhSheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+        if (!rhSheet || rhSheet.getLastRow() < 2) throw new Error('Home Items tab is empty');
+        var rhRow   = parseInt(rhArg, 10);
+        if (isNaN(rhRow) || rhRow < 2) {
+          var rhVals = rhSheet.getRange(2, 1, rhSheet.getLastRow() - 1, 1).getValues();
+          for (var rhi = 0; rhi < rhVals.length; rhi++) {
+            if (String(rhVals[rhi][0]).toLowerCase().indexOf(rhArg.toLowerCase()) !== -1) {
+              rhRow = rhi + 2; break;
+            }
+          }
+        }
+        if (!rhRow || rhRow < 2) throw new Error('Home item not found: ' + rhArg);
+        var rhResult = webRecordService_({ parameter: { row: rhRow } });
+        executed.push(type + ' (next: ' + (rhResult.nextService || 'N/A — no interval set') + ')');
+      }
+
+      // ---- Shopping ---------------------------------------------------------
+      else if (type === 'add_shopping_item') {
+        var asStore = (args[0] || '').trim();
+        var asText  = (args[1] || '').trim();
+        if (!asStore || !asText) throw new Error('Store name and item text are both required');
+        var asStores = getShoppingList_();
+        var asFound  = null;
+        for (var asi = 0; asi < asStores.length; asi++) {
+          if (asStores[asi].storeName.toLowerCase().indexOf(asStore.toLowerCase()) !== -1) {
+            asFound = asStores[asi]; break;
+          }
+        }
+        if (!asFound) throw new Error('Store not found: ' + asStore + '. Available: ' +
+          asStores.map(function(s) { return s.storeName; }).join(', '));
+        addShoppingItem_(asFound.tabId, asText);
+        executed.push(type + ' (' + asText + ' → ' + asFound.storeName + ')');
+      }
+
+      // ---- Goals ------------------------------------------------------------
+      else if (type === 'add_goal') {
+        var agTitle = (args[0] || '').trim();
+        if (!agTitle) throw new Error('Goal title required');
+        // createGoal_(title, description, status, category, year, notes)
+        createGoal_(agTitle, (args[2] || '').trim(), 'To Do', (args[1] || '').trim(), '', '');
+        executed.push(type + ' (' + agTitle + ')');
+      }
+      else if (type === 'update_goal') {
+        var ugId    = (args[0] || '').trim();
+        var ugField = (args[1] || '').trim();
+        var ugVal   = (args[2] || '').trim();
+        if (!ugId) throw new Error('Goal ID required');
+        var ugFields = {};
+        ugFields[ugField] = ugVal;
+        updateGoal_(ugId, ugFields);
+        executed.push(type + ' (' + ugId + ')');
+      }
+      else if (type === 'delete_goal') {
+        var dgId = (args[0] || '').trim();
+        if (!dgId) throw new Error('Goal ID required');
+        deleteGoal_(dgId);
+        executed.push(type + ' (' + dgId + ')');
+      }
+
+      // ---- Interests --------------------------------------------------------
+      else if (type === 'delete_interest') {
+        var diId = (args[0] || '').trim();
+        if (!diId) throw new Error('Interest ID required');
+        deleteInterest_(diId);
+        executed.push(type + ' (' + diId + ')');
+      }
+
     } catch (e) {
       Logger.log('Action error [' + type + ']: ' + e.message);
       errors.push(type + ': ' + e.message);

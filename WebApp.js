@@ -97,6 +97,12 @@ function doGet(e) {
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
+      case 'delete_task':           return jsonOut_(webDeleteTask_(id));
+      case 'add_bill':              return jsonOut_(webAddBill_(e));
+      case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
+      case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
+      case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
+      case 'delete_home_item':      return jsonOut_(webDeleteHomeItem_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -340,6 +346,12 @@ function webCompleteTask_(id) {
   const found = findTaskRow_(id);
   found.sheet.getRange(found.rowNum, 5).setValue('Done'); // Column E = Status
   return { ok: true, id: id, action: 'completed' };
+}
+
+function webDeleteTask_(id) {
+  const found = findTaskRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
 }
 
 // ---- Add / Update task -----------------------------------------------------
@@ -623,6 +635,26 @@ function webToggleBill_(e) {
   return { ok: true, row: rowNum, paid: newVal !== '' };
 }
 
+function webAddBill_(e) {
+  const p        = e.parameter || {};
+  const billName = (p.bill || p.name || '').trim();
+  if (!billName) throw new Error('Bill name is required');
+  const sheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+  if (!sheet) throw new Error('Bills tab not found');
+  // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, BILL_HEADERS.length).setValues([[
+    billName,
+    p.amount  !== undefined ? (Number(p.amount)  || '') : '',
+    p.dueDay  !== undefined ? (Number(p.dueDay)  || '') : '',
+    (p.frequency || 'Monthly').trim(),
+    (p.category  || '').trim(),
+    (p.account   || '').trim(),
+    '',
+    (p.notes     || '').trim(),
+  ]]);
+  return { ok: true, bill: billName, action: 'created' };
+}
+
 // ---- Recipes (Issue #46) ---------------------------------------------------
 
 function webGetRecipes_() {
@@ -659,6 +691,35 @@ function webRecipeToShopping_(e) {
   if (!raw) return { ok: false, error: 'No ingredients listed for this recipe.' };
   var ingredients = raw.split(';').map(function(s) { return s.trim(); }).filter(Boolean);
   return addRecipeIngredients_(ingredients);
+}
+
+function webAddRecipe_(e) {
+  const p    = e.parameter || {};
+  const name = (p.name || '').trim();
+  if (!name) throw new Error('Recipe name is required');
+  const sheet = getSpreadsheet().getSheetByName(TABS.RECIPES);
+  if (!sheet) throw new Error('Recipes tab not found');
+  // RECIPE_HEADERS: Name | Cuisine | Servings | Prep Time | Link | Ingredients | Tags | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, RECIPE_HEADERS.length).setValues([[
+    name,
+    (p.cuisine      || '').trim(),
+    (p.servings     || '').trim(),
+    (p.prepTime     || '').trim(),
+    (p.link         || '').trim(),
+    (p.ingredients  || '').trim(),
+    (p.tags         || '').trim(),
+    (p.notes        || '').trim(),
+  ]]);
+  return { ok: true, name: name, action: 'created' };
+}
+
+function webDeleteRecipe_(e) {
+  const rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + rowNum);
+  const sheet = getSpreadsheet().getSheetByName(TABS.RECIPES);
+  if (!sheet) throw new Error('Recipes tab not found');
+  sheet.deleteRow(rowNum);
+  return { ok: true, row: rowNum, action: 'deleted' };
 }
 
 // ---- Home Steward (Issue #21) ----------------------------------------------
@@ -730,6 +791,35 @@ function webRecordService_(e) {
     eventId = calEvent.getId();
   }
   return { ok: true, lastService: todayStr, nextService: nextStr, calEventId: eventId };
+}
+
+function webAddHomeItem_(e) {
+  const p    = e.parameter || {};
+  const item = (p.item || p.name || '').trim();
+  if (!item) throw new Error('Item name is required');
+  const sheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+  if (!sheet) throw new Error('Home Items tab not found');
+  // HOME_ITEM_HEADERS: Item | Category | Purchase Date | Warranty Expiry | Last Service | Next Service | Interval (mo) | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, HOME_ITEM_HEADERS.length).setValues([[
+    item,
+    (p.category       || '').trim(),
+    (p.purchaseDate   || '').trim(),
+    (p.warrantyExpiry || '').trim(),
+    '',   // Last Service
+    '',   // Next Service
+    p.intervalMonths !== undefined ? (Number(p.intervalMonths) || '') : '',
+    (p.notes || '').trim(),
+  ]]);
+  return { ok: true, item: item, action: 'created' };
+}
+
+function webDeleteHomeItem_(e) {
+  const rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + rowNum);
+  const sheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+  if (!sheet) throw new Error('Home Items tab not found');
+  sheet.deleteRow(rowNum);
+  return { ok: true, row: rowNum, action: 'deleted' };
 }
 
 // ---- Chat ------------------------------------------------------------------
