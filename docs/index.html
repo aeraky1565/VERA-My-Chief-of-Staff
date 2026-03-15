@@ -1743,6 +1743,125 @@ const ITIN_TZ_ABBR = {
   'Australia/Sydney':    'AEST','Pacific/Auckland':    'NZST',
 };
 
+// ── Packing constants ─────────────────────────────────────────────────────────
+const PACK_CAT_ICON = {
+  'Documents':     '📄', 'Clothing':      '👕', 'Shoes':         '👟',
+  'Toiletries':    '🧴', 'Electronics':   '🔌', 'Medications':   '💊',
+  'Entertainment': '🎧', 'Beach/Pool':    '🏖', 'Outdoor/Hiking':'🥾',
+  'Formal/Dress':  '👔', 'Snacks':        '🍫', 'Baby/Kids':     '🧸',
+  'Romantic':      '💝',
+};
+
+const CONTEXT_PRESETS = [
+  'Family Trip', 'Anniversary Trip', 'Romantic Couples Getaway', 'Work Trip',
+  'Visiting Friends', 'Visiting Family', 'Solo Adventure', 'Honeymoon',
+  "Girls Trip", 'Group Trip',
+];
+
+const CONTEXT_COLORS = {
+  'Anniversary Trip':          '#ff6b9d',
+  'Romantic Couples Getaway':  '#ff6b9d',
+  'Honeymoon':                 '#ff6b9d',
+  'Work Trip':                 '#4d8af0',
+  'Family Trip':               '#56cc9d',
+  'Visiting Family':           '#56cc9d',
+  'Visiting Friends':          '#f7c948',
+  "Girls Trip":                '#c084fc',
+  'Group Trip':                '#94a3b8',
+  'Solo Adventure':            '#fb923c',
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * TripContextBadge — inline editable chip for trip context/sentiment.
+ * Shows "Add trip context" link when empty; coloured chip when set.
+ * Clicking opens a popover with presets + free-text input.
+ */
+function TripContextBadge({ context, onSetContext, busy }) {
+  const [editing, setEditing] = React.useState(false);
+  const [custom,  setCustom]  = React.useState('');
+  const color = CONTEXT_COLORS[context] || '#5c9eff';
+
+  if (editing) {
+    return (
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <div style={{
+          position: 'absolute', top: '110%', left: 0, zIndex: 200,
+          background: '#131e2e', border: '1px solid #2a3a50', borderRadius: 8,
+          padding: 12, minWidth: 230, boxShadow: '0 4px 20px rgba(0,0,0,.6)',
+        }}>
+          <div style={{ fontSize: 11, color: '#6b7fa8', fontWeight: 600, marginBottom: 8, letterSpacing: .4 }}>
+            SELECT CONTEXT
+          </div>
+          {CONTEXT_PRESETS.map(function(preset) {
+            return (
+              <div key={preset}
+                onClick={function() { onSetContext(preset); setEditing(false); setCustom(''); }}
+                style={{
+                  padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+                  color: '#dde1f0', marginBottom: 2,
+                  background: context === preset ? '#0d2040' : 'transparent',
+                  fontWeight: context === preset ? 700 : 400,
+                }}>
+                {preset}
+              </div>
+            );
+          })}
+          <div style={{ borderTop: '1px solid #2a3a50', marginTop: 8, paddingTop: 8 }}>
+            <input
+              type="text" placeholder="Custom context…" value={custom}
+              onChange={function(ev) { setCustom(ev.target.value); }}
+              onKeyDown={function(ev) {
+                if (ev.key === 'Enter' && custom.trim()) {
+                  onSetContext(custom.trim()); setEditing(false); setCustom('');
+                }
+                if (ev.key === 'Escape') setEditing(false);
+              }}
+              autoFocus
+              style={{
+                width: '100%', background: '#0d1117', border: '1px solid #2a3a50',
+                borderRadius: 6, padding: '5px 8px', color: '#e8eaed', fontSize: 12,
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <button onClick={function() { setEditing(false); setCustom(''); }}
+            style={{ marginTop: 8, fontSize: 11, color: '#6b7fa8', background: 'none',
+                     border: 'none', cursor: 'pointer' }}>
+            Cancel
+          </button>
+        </div>
+        {/* invisible backdrop */}
+        <div onClick={function() { setEditing(false); setCustom(''); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 199 }} />
+      </div>
+    );
+  }
+
+  if (!context) {
+    return (
+      <span onClick={function() { if (!busy) setEditing(true); }}
+        style={{ fontSize: 12, color: '#4d6080', cursor: busy ? 'default' : 'pointer',
+                 textDecoration: 'underline dotted', userSelect: 'none' }}>
+        + Add trip context
+      </span>
+    );
+  }
+
+  return (
+    <span onClick={function() { if (!busy) setEditing(true); }}
+      style={{
+        fontSize: 12, fontWeight: 600, color: color,
+        background: color + '22', borderRadius: 20,
+        padding: '3px 10px', cursor: busy ? 'default' : 'pointer',
+        border: '1px solid ' + color + '44', userSelect: 'none',
+      }}>
+      {context}
+    </span>
+  );
+}
+
 // ── Issue #64 helpers ────────────────────────────────────────────────────────
 
 function getDayRange(startDate, endDate) {
@@ -1985,12 +2104,19 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
   );
 }
 
-function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete }) {
+function ItineraryView({ trip, itinerary, loading, busy,
+                         tripContext, onSetContext, onLoadContext, onGoToPacking,
+                         onAdd, onEdit, onDelete }) {
   if (loading) return <div className="loading-text">Loading itinerary…</div>;
 
   const items   = (itinerary && itinerary.items) || [];
   const notices = computeItineraryNotices(items);
   const [viewMode, setViewMode] = React.useState('agenda'); // 'agenda' | 'summary'
+
+  // Lazy-load trip context on first render if not already fetched
+  React.useEffect(function() {
+    if (tripContext === undefined && onLoadContext) onLoadContext();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Build ordered day list ─────────────────────────────────────────────────
   const tripDays = getDayRange(trip.startDate, trip.endDate);
@@ -2016,24 +2142,42 @@ function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete
   return (
     <div>
       {/* Trip header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
-                    paddingBottom: 12, borderBottom: '1px solid #2a3a50' }}>
-        <div style={{ flex: 1 }}>
+      <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #2a3a50' }}>
+        {/* Row 1: title + dates */}
+        <div style={{ marginBottom: 8 }}>
           <div style={{ fontWeight: 700, fontSize: 16, color: '#e8eaed' }}>{trip.label}</div>
           <div style={{ color: '#8ab4f8', fontSize: 13 }}>{trip.startDate} → {trip.endDate}</div>
         </div>
-        <button onClick={function() { setViewMode(viewMode === 'agenda' ? 'summary' : 'agenda'); }}
-          style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #2a3a50',
-                   background: 'transparent', color: '#8ab4f8', fontWeight: 600,
-                   cursor: 'pointer', fontSize: 13, flexShrink: 0, marginRight: 6 }}>
-          {viewMode === 'agenda' ? '📋 Summary' : '🗒 Agenda'}
-        </button>
-        <button onClick={onAdd} disabled={busy}
-          style={{ padding: '6px 16px', borderRadius: 6, border: 'none',
-                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600,
-                   cursor: 'pointer', fontSize: 13, flexShrink: 0 }}>
-          + Add Item
-        </button>
+        {/* Row 2: context badge + action buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <TripContextBadge
+            context={tripContext && tripContext !== 'loading' ? tripContext.context : ''}
+            onSetContext={function(ctx) { if (onSetContext) onSetContext(ctx); }}
+            busy={busy}
+          />
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
+            {onGoToPacking && (
+              <button onClick={onGoToPacking} disabled={busy}
+                style={{ padding: '5px 11px', borderRadius: 6, border: '1px solid #2a3a50',
+                         background: 'transparent', color: '#8ab4f8', fontWeight: 600,
+                         cursor: 'pointer', fontSize: 13 }}>
+                🧳 Packing
+              </button>
+            )}
+            <button onClick={function() { setViewMode(viewMode === 'agenda' ? 'summary' : 'agenda'); }}
+              style={{ padding: '5px 11px', borderRadius: 6, border: '1px solid #2a3a50',
+                       background: 'transparent', color: '#8ab4f8', fontWeight: 600,
+                       cursor: 'pointer', fontSize: 13 }}>
+              {viewMode === 'agenda' ? '📋 Summary' : '🗒 Agenda'}
+            </button>
+            <button onClick={onAdd} disabled={busy}
+              style={{ padding: '5px 14px', borderRadius: 6, border: 'none',
+                       background: '#8ab4f8', color: '#0d1117', fontWeight: 600,
+                       cursor: 'pointer', fontSize: 13 }}>
+              + Add Item
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Empty state */}
@@ -2297,8 +2441,9 @@ function ItineraryView({ trip, itinerary, loading, busy, onAdd, onEdit, onDelete
 
 // Accordion panel: all trips as expandable sections within "My Itinerary" sub-tab
 function TravelItineraryPanel({
-  trips, itineraries, busy, autoExpandKey,
-  onExpandTrip, onAddItinItem, onEditItinItem, onDeleteItinItem
+  trips, itineraries, tripMeta, busy, autoExpandKey,
+  onExpandTrip, onAddItinItem, onEditItinItem, onDeleteItinItem,
+  onSetTripMeta, onLoadTripMeta, onGoToPacking,
 }) {
   const [expanded, setExpanded] = React.useState(function() {
     return autoExpandKey ? new Set([autoExpandKey]) : new Set();
@@ -2322,8 +2467,10 @@ function TravelItineraryPanel({
         next.delete(tripKey);
       } else {
         next.add(tripKey);
-        // Lazy-load on first open (undefined = never touched; 'loading' = in-flight)
+        // Lazy-load itinerary on first open
         if (!itineraries[tripKey]) onExpandTrip(t);
+        // Lazy-load trip meta on first open
+        if (onLoadTripMeta && tripMeta && tripMeta[tripKey] === undefined) onLoadTripMeta(tripKey);
       }
       return next;
     });
@@ -2388,9 +2535,13 @@ function TravelItineraryPanel({
                     itinerary={tripData}
                     loading={false}
                     busy={busy}
-                    onAdd={() => onAddItinItem(tripKey, t.startDate, t.endDate)}
-                    onEdit={item => onEditItinItem(item, tripKey, t.startDate, t.endDate)}
-                    onDelete={id => onDeleteItinItem(id, tripKey)}
+                    tripContext={tripMeta ? tripMeta[tripKey] : undefined}
+                    onSetContext={function(ctx) { if (onSetTripMeta) onSetTripMeta(tripKey, ctx, ''); }}
+                    onLoadContext={function() { if (onLoadTripMeta) onLoadTripMeta(tripKey); }}
+                    onGoToPacking={function() { if (onGoToPacking) onGoToPacking(tripKey); }}
+                    onAdd={function() { onAddItinItem(tripKey, t.startDate, t.endDate); }}
+                    onEdit={function(item) { onEditItinItem(item, tripKey, t.startDate, t.endDate); }}
+                    onDelete={function(id) { onDeleteItinItem(id, tripKey); }}
                   />
                 )}
               </div>
@@ -2402,13 +2553,358 @@ function TravelItineraryPanel({
   );
 }
 
-function TravelTab({ pto, itineraries, busy,
+// ---- Packing Panel ----------------------------------------------------------
+
+function PackingPanel({
+  trips, packingItems, tripMeta, busy, focusTripKey,
+  onLoadPacking, onSetTripMeta, onGeneratePacking,
+  onToggleItem, onAddItem, onDeleteItem,
+}) {
+  const [expanded,   setExpanded]   = React.useState(function() {
+    return focusTripKey ? new Set([focusTripKey]) : new Set();
+  });
+  const [personTab,  setPersonTab]  = React.useState({}); // { [tripKey]: 'all'|'ahmed'|'victoria'|'shared' }
+  const [addForm,    setAddForm]    = React.useState(null); // null | { tripKey, person, category, item }
+
+  // Auto-expand when focusTripKey changes
+  React.useEffect(function() {
+    if (!focusTripKey) return;
+    setExpanded(function(prev) {
+      const next = new Set(prev);
+      next.add(focusTripKey);
+      return next;
+    });
+    if (!packingItems[focusTripKey]) onLoadPacking(focusTripKey);
+  }, [focusTripKey]);
+
+  function toggleEntry(tripKey) {
+    setExpanded(function(prev) {
+      const next = new Set(prev);
+      if (next.has(tripKey)) {
+        next.delete(tripKey);
+      } else {
+        next.add(tripKey);
+        if (!packingItems[tripKey]) onLoadPacking(tripKey);
+      }
+      return next;
+    });
+  }
+
+  if (!trips || trips.length === 0) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🎒</div>
+        <div>No upcoming trips found.</div>
+        <div style={{ fontSize: 12, color: '#4d6080', marginTop: 8 }}>
+          Trips pulled from your shared calendar will appear here.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {trips.map(function(t) {
+        const tripKey   = t.startDate + '|' + t.label;
+        const isOpen    = expanded.has(tripKey);
+        const packData  = packingItems[tripKey];
+        const isLoading = packData === 'loading';
+        const items     = (packData && packData !== 'loading') ? packData.items : [];
+        const meta      = (tripMeta && tripMeta[tripKey] && tripMeta[tripKey] !== 'loading')
+                          ? tripMeta[tripKey] : { context: '', notes: '' };
+
+        const total   = items.length;
+        const checked = items.filter(function(it) { return it.checked; }).length;
+        const pct     = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+        const curPerson = (personTab[tripKey] || 'all');
+        const filteredItems = curPerson === 'all'
+          ? items
+          : items.filter(function(it) { return it.person === curPerson; });
+
+        // Group by person + category
+        function buildSections(itemList) {
+          const personOrder = ['ahmed', 'victoria', 'shared'];
+          const sections    = {};
+          itemList.forEach(function(it) {
+            const p = it.person || 'shared';
+            if (!sections[p]) sections[p] = {};
+            if (!sections[p][it.category]) sections[p][it.category] = [];
+            sections[p][it.category].push(it);
+          });
+          return curPerson === 'all'
+            ? personOrder.filter(function(p) { return sections[p]; }).map(function(p) { return { person: p, cats: sections[p] }; })
+            : (sections[curPerson] ? [{ person: curPerson, cats: sections[curPerson] }] : []);
+        }
+        const sections = buildSections(filteredItems);
+
+        const PERSON_LABEL = { ahmed: '👤 Ahmed', victoria: '👤 Victoria', shared: '🤝 Shared' };
+
+        const hasAiItems = items.some(function(it) { return it.source === 'ai'; });
+
+        return (
+          <div key={tripKey} style={{ marginBottom: 12, border: '1px solid #2a3a50',
+                                      borderRadius: 10, overflow: 'hidden' }}>
+            {/* Accordion header */}
+            <div onClick={function() { toggleEntry(tripKey); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                       background: isOpen ? '#131e2e' : '#0d1117', cursor: 'pointer',
+                       userSelect: 'none', transition: 'background .15s' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0' }}>{t.label}</div>
+                <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 2 }}>{t.startDate} – {t.endDate}</div>
+              </div>
+              {meta.context && (
+                <span style={{
+                  fontSize: 11, fontWeight: 600,
+                  color: CONTEXT_COLORS[meta.context] || '#5c9eff',
+                  background: (CONTEXT_COLORS[meta.context] || '#5c9eff') + '22',
+                  borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap',
+                }}>
+                  {meta.context}
+                </span>
+              )}
+              {total > 0 && (
+                <span style={{ fontSize: 12, color: pct === 100 ? '#56cc9d' : '#6b7fa8', whiteSpace: 'nowrap' }}>
+                  {checked}/{total} packed
+                </span>
+              )}
+              <div style={{ fontSize: 16, color: '#8ab4f8',
+                            transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform .2s', lineHeight: 1 }}>▾</div>
+            </div>
+
+            {/* Accordion body */}
+            {isOpen && (
+              <div style={{ padding: '14px 16px', background: '#0d1117',
+                            borderTop: '1px solid #2a3a50' }}>
+
+                {/* Context editor */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                  <span style={{ fontSize: 12, color: '#6b7fa8', flexShrink: 0 }}>Trip context:</span>
+                  <TripContextBadge
+                    context={meta.context}
+                    onSetContext={function(ctx) { onSetTripMeta(tripKey, ctx, meta.notes || ''); }}
+                    busy={busy}
+                  />
+                </div>
+
+                {/* Progress bar */}
+                {total > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ height: 6, background: '#1a2435', borderRadius: 3, overflow: 'hidden', marginBottom: 5 }}>
+                      <div style={{
+                        height: '100%', width: pct + '%',
+                        background: pct === 100 ? '#56cc9d' : '#5c9eff',
+                        transition: 'width .3s ease', borderRadius: 3,
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: '#6b7fa8' }}>
+                      {checked} of {total} items packed ({pct}%)
+                    </div>
+                  </div>
+                )}
+
+                {/* Person filter pills */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                  {['all', 'ahmed', 'victoria', 'shared'].map(function(p) {
+                    const label = p === 'all' ? 'All' : p === 'ahmed' ? 'Ahmed' : p === 'victoria' ? 'Victoria' : 'Shared';
+                    const active = curPerson === p;
+                    return (
+                      <button key={p}
+                        onClick={function() { setPersonTab(function(prev) { return Object.assign({}, prev, { [tripKey]: p }); }); }}
+                        style={{
+                          padding: '4px 12px', borderRadius: 12, border: 'none', fontSize: 12,
+                          fontWeight: active ? 700 : 400, cursor: 'pointer',
+                          background: active ? '#1e3a5f' : '#131e2e',
+                          color: active ? '#8ab4f8' : '#6b7fa8',
+                        }}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Generate button */}
+                <button
+                  disabled={busy || isLoading}
+                  onClick={function() {
+                    if (hasAiItems && !window.confirm('Regenerating will replace VERA\'s suggestions. Manually added items are kept. Continue?')) return;
+                    onGeneratePacking(tripKey, t.startDate, t.endDate);
+                  }}
+                  style={{
+                    padding: '7px 14px', borderRadius: 6, border: '1px solid #2a3a50',
+                    background: '#0d1a2e', color: '#8ab4f8', fontWeight: 600,
+                    cursor: busy || isLoading ? 'default' : 'pointer', fontSize: 13,
+                    marginBottom: 16, opacity: busy || isLoading ? .5 : 1,
+                  }}>
+                  {isLoading ? '⏳ Generating…' : (hasAiItems ? '✨ Regenerate' : '✨ Generate with VERA')}
+                </button>
+
+                {/* Loading state */}
+                {isLoading && (
+                  <div style={{ color: '#6b7fa8', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
+                    VERA is building your packing list…
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!isLoading && total === 0 && (
+                  <div style={{ color: '#3a4a60', fontSize: 13, fontStyle: 'italic',
+                                textAlign: 'center', padding: '12px 0' }}>
+                    No items yet. Click Generate to build your packing list.
+                  </div>
+                )}
+
+                {/* Item list — grouped by person section → category */}
+                {!isLoading && sections.map(function(sec) {
+                  const catNames = Object.keys(sec.cats).sort();
+                  return (
+                    <div key={sec.person} style={{ marginBottom: 16 }}>
+                      {curPerson === 'all' && (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#4d6080',
+                                      letterSpacing: .5, marginBottom: 8, paddingTop: 4,
+                                      borderTop: '1px solid #1a2435' }}>
+                          {PERSON_LABEL[sec.person] || sec.person.toUpperCase()}
+                        </div>
+                      )}
+                      {catNames.map(function(cat) {
+                        return (
+                          <div key={cat} style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 11, color: '#5c7090', fontWeight: 600,
+                                          marginBottom: 4, letterSpacing: .3 }}>
+                              {PACK_CAT_ICON[cat] || '📦'} {cat}
+                            </div>
+                            {sec.cats[cat].map(function(it) {
+                              return (
+                                <div key={it.id} style={{
+                                  display: 'flex', alignItems: 'center', gap: 8,
+                                  padding: '4px 0', borderBottom: '1px solid #111a28',
+                                }}>
+                                  <input type="checkbox" checked={it.checked}
+                                    onChange={function() { onToggleItem(it.id, tripKey, it.checked); }}
+                                    style={{ cursor: 'pointer', accentColor: '#5c9eff', flexShrink: 0 }}
+                                  />
+                                  <span style={{
+                                    flex: 1, fontSize: 13,
+                                    color: it.checked ? '#4d6080' : '#dde1f0',
+                                    textDecoration: it.checked ? 'line-through' : 'none',
+                                  }}>
+                                    {it.item}
+                                    {it.source === 'manual' && (
+                                      <span style={{ fontSize: 10, color: '#3a5070',
+                                                     marginLeft: 6, fontStyle: 'italic' }}>manual</span>
+                                    )}
+                                  </span>
+                                  <button onClick={function() { onDeleteItem(it.id, tripKey); }}
+                                    style={{ background: 'none', border: 'none', color: '#3a4a60',
+                                             cursor: 'pointer', fontSize: 14, padding: '0 4px',
+                                             lineHeight: 1 }}>
+                                    🗑
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+
+                {/* Add item form */}
+                {addForm && addForm.tripKey === tripKey ? (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10,
+                                padding: '10px 12px', background: '#0a1220',
+                                borderRadius: 8, border: '1px solid #2a3a50' }}>
+                    <select value={addForm.person}
+                      onChange={function(ev) { setAddForm(function(prev) { return Object.assign({}, prev, { person: ev.target.value }); }); }}
+                      style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #2a3a50',
+                               background: '#131e2e', color: '#dde1f0', fontSize: 12 }}>
+                      <option value="ahmed">Ahmed</option>
+                      <option value="victoria">Victoria</option>
+                      <option value="shared">Shared</option>
+                    </select>
+                    <input type="text" placeholder="Category" value={addForm.category}
+                      list={'pack-cats-' + tripKey}
+                      onChange={function(ev) { setAddForm(function(prev) { return Object.assign({}, prev, { category: ev.target.value }); }); }}
+                      style={{ width: 120, padding: '5px 8px', borderRadius: 6, border: '1px solid #2a3a50',
+                               background: '#131e2e', color: '#dde1f0', fontSize: 12 }}
+                    />
+                    <datalist id={'pack-cats-' + tripKey}>
+                      {Object.keys(PACK_CAT_ICON).map(function(c) { return <option key={c} value={c} />; })}
+                    </datalist>
+                    <input type="text" placeholder="Item name" value={addForm.item}
+                      onChange={function(ev) { setAddForm(function(prev) { return Object.assign({}, prev, { item: ev.target.value }); }); }}
+                      onKeyDown={function(ev) {
+                        if (ev.key === 'Enter' && addForm.item.trim() && addForm.category.trim()) {
+                          onAddItem(tripKey, addForm.person, addForm.category.trim(), addForm.item.trim());
+                          setAddForm(null);
+                        }
+                        if (ev.key === 'Escape') setAddForm(null);
+                      }}
+                      style={{ flex: 1, minWidth: 120, padding: '5px 8px', borderRadius: 6,
+                               border: '1px solid #2a3a50', background: '#131e2e',
+                               color: '#dde1f0', fontSize: 12 }}
+                    />
+                    <button
+                      disabled={busy || !addForm.item.trim() || !addForm.category.trim()}
+                      onClick={function() {
+                        if (!addForm.item.trim() || !addForm.category.trim()) return;
+                        onAddItem(tripKey, addForm.person, addForm.category.trim(), addForm.item.trim());
+                        setAddForm(null);
+                      }}
+                      style={{ padding: '5px 12px', borderRadius: 6, border: 'none',
+                               background: '#5c9eff', color: '#0d1117', fontWeight: 700,
+                               cursor: 'pointer', fontSize: 13 }}>
+                      + Add
+                    </button>
+                    <button onClick={function() { setAddForm(null); }}
+                      style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #2a3a50',
+                               background: 'none', color: '#6b7fa8', cursor: 'pointer', fontSize: 12 }}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={function() {
+                      setAddForm({ tripKey, person: curPerson === 'all' ? 'ahmed' : curPerson, category: '', item: '' });
+                    }}
+                    style={{ marginTop: 8, padding: '5px 12px', borderRadius: 6,
+                             border: '1px dashed #2a3a50', background: 'transparent',
+                             color: '#6b7fa8', cursor: 'pointer', fontSize: 12 }}>
+                    ➕ Add item
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Travel Tab -------------------------------------------------------------
+
+function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, busy,
                      onSelectTrip, onExpandTrip,
-                     onAddItinItem, onEditItinItem, onDeleteItinItem }) {
+                     onAddItinItem, onEditItinItem, onDeleteItinItem,
+                     onSetTripMeta, onLoadTripMeta,
+                     onLoadPacking, onGeneratePacking,
+                     onTogglePackingItem, onAddPackingItem, onDeletePackingItem,
+                     onGoToPacking }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
 
   const upcomingTravel = (pto && pto.upcomingTravel) || [];
+
+  // Auto-switch to packing sub-tab when packingFocusTripKey changes
+  React.useEffect(function() {
+    if (!packingFocusTripKey) return;
+    setSub('packing');
+    setAutoExpandKey(packingFocusTripKey);
+  }, [packingFocusTripKey]);
 
   function handleTripClick(t) {
     const tripKey = `${t.startDate}|${t.label}`;
@@ -2481,23 +2977,44 @@ function TravelTab({ pto, itineraries, busy,
         <TravelItineraryPanel
           trips={upcomingTravel}
           itineraries={itineraries}
+          tripMeta={tripMeta}
           busy={busy}
           autoExpandKey={autoExpandKey}
           onExpandTrip={onExpandTrip}
           onAddItinItem={onAddItinItem}
           onEditItinItem={onEditItinItem}
           onDeleteItinItem={onDeleteItinItem}
+          onSetTripMeta={onSetTripMeta}
+          onLoadTripMeta={onLoadTripMeta}
+          onGoToPacking={onGoToPacking}
         />
       )}
 
-      {/* Placeholder sub-tabs */}
-      {sub !== 'trips' && sub !== 'itinerary' && (
+      {/* Packing sub-tab */}
+      {sub === 'packing' && (
+        <PackingPanel
+          trips={upcomingTravel}
+          packingItems={packingItems}
+          tripMeta={tripMeta}
+          busy={busy}
+          focusTripKey={autoExpandKey}
+          onLoadPacking={onLoadPacking}
+          onSetTripMeta={onSetTripMeta}
+          onGeneratePacking={onGeneratePacking}
+          onToggleItem={onTogglePackingItem}
+          onAddItem={onAddPackingItem}
+          onDeleteItem={onDeletePackingItem}
+        />
+      )}
+
+      {/* Placeholder sub-tabs (Budget, Bucket List) */}
+      {sub !== 'trips' && sub !== 'itinerary' && sub !== 'packing' && (
         <div className="empty-state">
           <div style={{ fontSize: 36, marginBottom: 12 }}>
-            {sub === 'packing' ? '🎒' : sub === 'budget' ? '💰' : '🪣'}
+            {sub === 'budget' ? '💰' : '🪣'}
           </div>
           <div style={{ color: '#dde1f0', marginBottom: 6 }}>
-            {sub === 'packing' ? 'Packing List' : sub === 'budget' ? 'Trip Budget' : 'Bucket List'}
+            {sub === 'budget' ? 'Trip Budget' : 'Bucket List'}
           </div>
           <div style={{ fontSize: 12, color: '#4d6080' }}>Coming soon</div>
         </div>
@@ -4393,8 +4910,11 @@ function App() {
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
-  const [itineraries,   setItineraries]   = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
-  const [itinItemModal, setItinItemModal] = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
+  const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
+  const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
+  const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
+  const [tripMeta,         setTripMeta]         = useState({}); // { [tripKey]: { context, notes } | 'loading' }
+  const [packingFocusTripKey, setPackingFocusTripKey] = useState(null);
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -4923,6 +5443,124 @@ function App() {
     setBusy(false);
   }
 
+  // ---- Packing handlers -------------------------------------------------------
+
+  async function loadTripMeta(tripKey) {
+    if (!tripKey || !apiUrl || !apiToken) return;
+    setTripMeta(function(prev) { return Object.assign({}, prev, { [tripKey]: 'loading' }); });
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'get_trip_meta', tripKey });
+      setTripMeta(function(prev) {
+        return Object.assign({}, prev, { [tripKey]: { context: data.context || '', notes: data.notes || '' } });
+      });
+    } catch(err) {
+      setTripMeta(function(prev) { const n = Object.assign({}, prev); delete n[tripKey]; return n; });
+    }
+  }
+
+  async function handleSetTripMeta(tripKey, context, notes) {
+    if (!apiUrl || !apiToken) return;
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'set_trip_meta', tripKey, context: context || '', notes: notes || '' });
+      setTripMeta(function(prev) {
+        return Object.assign({}, prev, { [tripKey]: { context: context || '', notes: notes || '' } });
+      });
+    } catch(err) { setError('Could not save trip context: ' + err.message); }
+  }
+
+  async function loadPacking(tripKey) {
+    if (!tripKey || !apiUrl || !apiToken) return;
+    setPackingItems(function(prev) { return Object.assign({}, prev, { [tripKey]: 'loading' }); });
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'get_packing', tripKey });
+      setPackingItems(function(prev) { return Object.assign({}, prev, { [tripKey]: { items: data.items || [] } }); });
+      if (data.meta && data.meta.context !== undefined) {
+        setTripMeta(function(prev) {
+          return Object.assign({}, prev, { [tripKey]: { context: data.meta.context || '', notes: data.meta.notes || '' } });
+        });
+      }
+    } catch(err) {
+      setPackingItems(function(prev) { const n = Object.assign({}, prev); delete n[tripKey]; return n; });
+      setError('Could not load packing list: ' + err.message);
+    }
+  }
+
+  async function handleGeneratePacking(tripKey, startDate, endDate) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    setPackingItems(function(prev) { return Object.assign({}, prev, { [tripKey]: 'loading' }); });
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'generate_packing', tripKey, startDate, endDate });
+      setPackingItems(function(prev) { return Object.assign({}, prev, { [tripKey]: { items: data.items || [] } }); });
+      if (data.meta) {
+        setTripMeta(function(prev) {
+          return Object.assign({}, prev, { [tripKey]: { context: (data.meta.context || ''), notes: '' } });
+        });
+      }
+      showToast('✨ Packing list generated by VERA');
+    } catch(err) {
+      setPackingItems(function(prev) { const n = Object.assign({}, prev); delete n[tripKey]; return n; });
+      setError('Generate failed: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleTogglePackingItem(id, tripKey, currentChecked) {
+    // Optimistic update
+    setPackingItems(function(prev) {
+      const entry = prev[tripKey];
+      if (!entry || entry === 'loading') return prev;
+      return Object.assign({}, prev, {
+        [tripKey]: Object.assign({}, entry, {
+          items: entry.items.map(function(it) {
+            return it.id === id ? Object.assign({}, it, { checked: !currentChecked }) : it;
+          }),
+        }),
+      });
+    });
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_packing_item', id, checked: String(!currentChecked) });
+    } catch(err) {
+      setError('Could not update item');
+      loadPacking(tripKey); // revert
+    }
+  }
+
+  async function handleAddPackingItem(tripKey, person, category, item) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_packing_item', tripKey, person, category, item });
+      await loadPacking(tripKey);
+    } catch(err) { setError('Could not add packing item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeletePackingItem(id, tripKey) {
+    // Optimistic remove
+    setPackingItems(function(prev) {
+      const entry = prev[tripKey];
+      if (!entry || entry === 'loading') return prev;
+      return Object.assign({}, prev, {
+        [tripKey]: Object.assign({}, entry, { items: entry.items.filter(function(it) { return it.id !== id; }) }),
+      });
+    });
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_packing_item', id });
+    } catch(err) {
+      setError('Could not delete packing item');
+      loadPacking(tripKey);
+    }
+  }
+
+  function handleGoToPacking(tripKey) {
+    // Force re-trigger even if same key by clearing first
+    setPackingFocusTripKey(null);
+    setTimeout(function() { setPackingFocusTripKey(tripKey); }, 0);
+  }
+
+  // ---- End packing handlers ---------------------------------------------------
+
   function handleConnect(url, token) {
     setApiUrl(url);
     setApiToken(token);
@@ -5283,22 +5921,33 @@ function App() {
                 : <TravelTab
                     pto={pto}
                     itineraries={itineraries}
+                    packingItems={packingItems}
+                    tripMeta={tripMeta}
+                    packingFocusTripKey={packingFocusTripKey}
                     busy={busy}
-                    onSelectTrip={trip => {
+                    onSelectTrip={function(trip) {
                       if (!itineraries[trip.tripKey])
                         loadItinerary(trip.tripKey, trip.startDate, trip.endDate);
                     }}
-                    onExpandTrip={trip => {
+                    onExpandTrip={function(trip) {
                       if (!itineraries[trip.tripKey])
                         loadItinerary(trip.tripKey, trip.startDate, trip.endDate);
                     }}
-                    onAddItinItem={(tripKey, sd, ed) =>
-                      setItinItemModal({ mode: 'add', tripKey, tripStartDate: sd, tripEndDate: ed })
-                    }
-                    onEditItinItem={(item, tripKey, sd, ed) =>
-                      setItinItemModal({ mode: 'edit', item, tripKey, tripStartDate: sd, tripEndDate: ed })
-                    }
+                    onAddItinItem={function(tripKey, sd, ed) {
+                      setItinItemModal({ mode: 'add', tripKey, tripStartDate: sd, tripEndDate: ed });
+                    }}
+                    onEditItinItem={function(item, tripKey, sd, ed) {
+                      setItinItemModal({ mode: 'edit', item, tripKey, tripStartDate: sd, tripEndDate: ed });
+                    }}
                     onDeleteItinItem={handleDeleteItineraryItem}
+                    onSetTripMeta={handleSetTripMeta}
+                    onLoadTripMeta={loadTripMeta}
+                    onLoadPacking={loadPacking}
+                    onGeneratePacking={handleGeneratePacking}
+                    onTogglePackingItem={handleTogglePackingItem}
+                    onAddPackingItem={handleAddPackingItem}
+                    onDeletePackingItem={handleDeletePackingItem}
+                    onGoToPacking={handleGoToPacking}
                   />
             )}
 

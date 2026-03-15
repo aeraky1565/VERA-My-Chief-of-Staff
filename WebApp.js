@@ -112,6 +112,13 @@ function doGet(e) {
       case 'add_itinerary_item':    return jsonOut_(webAddItineraryItem_(e));
       case 'update_itinerary_item': return jsonOut_(webUpdateItineraryItem_(e));
       case 'delete_itinerary_item': return jsonOut_(webDeleteItineraryItem_(e));
+      case 'get_trip_meta':         return jsonOut_(webGetTripMeta_(e));
+      case 'set_trip_meta':         return jsonOut_(webSetTripMeta_(e));
+      case 'get_packing':           return jsonOut_(webGetPacking_(e));
+      case 'add_packing_item':      return jsonOut_(webAddPackingItem_(e));
+      case 'update_packing_item':   return jsonOut_(webUpdatePackingItem_(e));
+      case 'delete_packing_item':   return jsonOut_(webDeletePackingItem_(e));
+      case 'generate_packing':      return jsonOut_(webGeneratePacking_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -1171,6 +1178,548 @@ function webDeleteItineraryItem_(e) {
   const found = findItineraryRow_(id);
   found.sheet.deleteRow(found.rowNum);
   return { ok: true, id: id, action: 'deleted' };
+}
+
+// ---- Packing + Trip Context (Issue #64) ------------------------------------
+
+/**
+ * Find a row in PackingItems by ID. Mirrors findItineraryRow_.
+ */
+function findPackingRow_(id) {
+  if (!id) throw new Error('Missing packing item ID');
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('PackingItems tab is empty');
+  const numRows = sheet.getLastRow() - 1;
+  const ids     = sheet.getRange(2, 1, numRows, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return { sheet, rowNum: i + 2 };
+  }
+  throw new Error('Packing item not found: ' + id);
+}
+
+/**
+ * GET get_trip_meta — params: tripKey
+ * Returns { ok, tripKey, context, notes }
+ */
+function webGetTripMeta_(e) {
+  const p       = (e && e.parameter) ? e.parameter : {};
+  const tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.TRIP_META, TRIP_META_HEADERS);
+  const sheet = ss.getSheetByName(TABS.TRIP_META);
+
+  if (sheet.getLastRow() >= 2) {
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim() === tripKey) {
+        return { ok: true, tripKey, context: String(data[i][1] || ''), notes: String(data[i][2] || '') };
+      }
+    }
+  }
+  return { ok: true, tripKey, context: '', notes: '' };
+}
+
+/**
+ * GET set_trip_meta — params: tripKey, context, notes
+ * Upserts TripMeta row. Returns { ok }
+ */
+function webSetTripMeta_(e) {
+  const p       = (e && e.parameter) ? e.parameter : {};
+  const tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  const ss    = getSpreadsheet();
+  ensureSheet(ss, TABS.TRIP_META, TRIP_META_HEADERS);
+  const sheet = ss.getSheetByName(TABS.TRIP_META);
+  const tz    = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  if (sheet.getLastRow() >= 2) {
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() === tripKey) {
+        const rowNum = i + 2;
+        sheet.getRange(rowNum, 2).setValue((p.context || '').trim());
+        sheet.getRange(rowNum, 3).setValue((p.notes   || '').trim());
+        const dc = sheet.getRange(rowNum, 4);
+        dc.setNumberFormat('@');
+        dc.setValue(today);
+        return { ok: true };
+      }
+    }
+  }
+
+  // Append new row
+  const newRow = sheet.getLastRow() + 1;
+  const dateCell = sheet.getRange(newRow, 4);
+  dateCell.setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, TRIP_META_HEADERS.length).setValues([[
+    tripKey,
+    (p.context || '').trim(),
+    (p.notes   || '').trim(),
+    today,
+  ]]);
+  return { ok: true };
+}
+
+/**
+ * GET get_packing — params: tripKey
+ * Returns { ok, tripKey, items: [...], meta: { context, notes } }
+ */
+function webGetPacking_(e) {
+  const p       = (e && e.parameter) ? e.parameter : {};
+  const tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.PACKING_ITEMS, PACKING_ITEM_HEADERS);
+  const sheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+
+  const items = [];
+  if (sheet.getLastRow() >= 2) {
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+    data.forEach(function(row) {
+      if (String(row[1]).trim() !== tripKey) return;
+      items.push({
+        id:        String(row[0]).trim(),
+        tripKey:   String(row[1]).trim(),
+        person:    String(row[2]).trim(),
+        category:  String(row[3]).trim(),
+        item:      String(row[4]).trim(),
+        checked:   String(row[5]).toUpperCase() === 'TRUE',
+        source:    String(row[6]).trim() || 'manual',
+        addedDate: String(row[7]).trim(),
+      });
+    });
+  }
+
+  // Sort: ahmed → victoria → shared, then category, then item
+  const personOrder = { ahmed: 0, victoria: 1, shared: 2 };
+  items.sort(function(a, b) {
+    const pa = personOrder[a.person] !== undefined ? personOrder[a.person] : 99;
+    const pb = personOrder[b.person] !== undefined ? personOrder[b.person] : 99;
+    if (pa !== pb) return pa - pb;
+    if (a.category < b.category) return -1;
+    if (a.category > b.category) return  1;
+    if (a.item < b.item) return -1;
+    if (a.item > b.item) return  1;
+    return 0;
+  });
+
+  // Also fetch trip meta (context)
+  let meta = { context: '', notes: '' };
+  try {
+    const metaResult = webGetTripMeta_(e);
+    meta = { context: metaResult.context || '', notes: metaResult.notes || '' };
+  } catch(err) { /* graceful */ }
+
+  return { ok: true, tripKey, items, meta };
+}
+
+/**
+ * GET add_packing_item — params: tripKey, person, category, item
+ * Returns { ok, id }
+ */
+function webAddPackingItem_(e) {
+  const p        = (e && e.parameter) ? e.parameter : {};
+  const tripKey  = (p.tripKey  || '').trim();
+  const person   = (p.person   || '').trim();
+  const category = (p.category || '').trim();
+  const item     = (p.item     || '').trim();
+  if (!tripKey || !person || !category || !item) {
+    throw new Error('tripKey, person, category and item are required');
+  }
+
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.PACKING_ITEMS, PACKING_ITEM_HEADERS);
+  const sheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  const tz    = Session.getScriptTimeZone();
+
+  // Generate ID: PACK-YYYYMMDD-NN
+  const dateKey = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+  let seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function(r) {
+      if (String(r[0]).indexOf('PACK-' + dateKey) === 0) seq++;
+    });
+  }
+  const id = 'PACK-' + dateKey + '-' + String(seq).padStart(2, '0');
+
+  const newRow    = sheet.getLastRow() + 1;
+  const addedDate = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  // Prevent Sheets auto-converting Checked and Added Date columns
+  sheet.getRange(newRow, 6).setNumberFormat('@');
+  sheet.getRange(newRow, 8).setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, PACKING_ITEM_HEADERS.length).setValues([[
+    id, tripKey, person, category, item, 'FALSE', 'manual', addedDate,
+  ]]);
+
+  return { ok: true, id };
+}
+
+/**
+ * GET update_packing_item — params: id, checked?, item?, category?
+ * Returns { ok, id }
+ */
+function webUpdatePackingItem_(e) {
+  const p     = (e && e.parameter) ? e.parameter : {};
+  const id    = (p.id || '').trim();
+  const found = findPackingRow_(id);
+
+  if (p.checked != null) {
+    const val   = (p.checked === 'true' || p.checked === 'TRUE') ? 'TRUE' : 'FALSE';
+    const cell  = found.sheet.getRange(found.rowNum, 6);
+    cell.setNumberFormat('@');
+    cell.setValue(val);
+  }
+  if (p.item     != null) found.sheet.getRange(found.rowNum, 5).setValue(p.item.trim());
+  if (p.category != null) found.sheet.getRange(found.rowNum, 4).setValue(p.category.trim());
+
+  return { ok: true, id };
+}
+
+/**
+ * GET delete_packing_item — params: id
+ * Returns { ok, id }
+ */
+function webDeletePackingItem_(e) {
+  const p     = (e && e.parameter) ? e.parameter : {};
+  const id    = (p.id || '').trim();
+  const found = findPackingRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  return { ok: true, id };
+}
+
+/**
+ * Geocode a destination string via Open-Meteo geocoding API.
+ * Returns { lat, lon, name } or null on failure.
+ */
+function geocodePackingDestination_(destination) {
+  if (!destination) return null;
+  try {
+    const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
+                encodeURIComponent(destination) + '&count=1&language=en&format=json';
+    const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const data = JSON.parse(resp.getContentText());
+    if (!data.results || data.results.length === 0) return null;
+    const r = data.results[0];
+    return { lat: r.latitude, lon: r.longitude, name: r.name };
+  } catch(err) {
+    Logger.log('Packing geocode error: ' + err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch weather summary for packing. Uses Open-Meteo forecast (≤14 days)
+ * or prior-year archive (>14 days). Returns plain-English string or ''.
+ */
+function getPackingWeather_(destination, startDate, endDate) {
+  if (!destination) return '';
+  try {
+    const geo = geocodePackingDestination_(destination);
+    if (!geo) return '';
+    const lat = geo.lat, lon = geo.lon;
+
+    const today      = new Date();
+    const tripStart  = new Date(startDate + 'T00:00:00');
+    const daysUntil  = Math.floor((tripStart - today) / 86400000);
+    const useForecast = daysUntil <= 14;
+
+    let weatherUrl;
+    let isArchive = false;
+    if (useForecast) {
+      weatherUrl =
+        'https://api.open-meteo.com/v1/forecast' +
+        '?latitude=' + lat + '&longitude=' + lon +
+        '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code' +
+        '&start_date=' + startDate + '&end_date=' + endDate +
+        '&timezone=auto&temperature_unit=fahrenheit';
+    } else {
+      isArchive = true;
+      const yearOffset = parseInt(startDate.substring(0, 4), 10) - 1;
+      const prevStart  = yearOffset + startDate.substring(4);
+      const prevEnd    = yearOffset + endDate.substring(4);
+      weatherUrl =
+        'https://archive-api.open-meteo.com/v1/archive' +
+        '?latitude=' + lat + '&longitude=' + lon +
+        '&start_date=' + prevStart + '&end_date=' + prevEnd +
+        '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum' +
+        '&temperature_unit=fahrenheit';
+    }
+
+    const wResp = UrlFetchApp.fetch(weatherUrl, { muteHttpExceptions: true });
+    const wData = JSON.parse(wResp.getContentText());
+    if (!wData.daily) return '';
+
+    const maxTemps  = wData.daily.temperature_2m_max  || [];
+    const minTemps  = wData.daily.temperature_2m_min  || [];
+    const rainSums  = wData.daily.precipitation_sum   || [];
+    if (maxTemps.length === 0) return '';
+
+    const maxTemp  = Math.round(Math.max.apply(null, maxTemps.filter(function(x) { return x != null; })));
+    const minTemp  = Math.round(Math.min.apply(null, minTemps.filter(function(x) { return x != null; })));
+    const rainDays = rainSums.filter(function(x) { return x != null && x > 1; }).length;
+    const tripDays = rainSums.length || 1;
+    const rainFrac = rainDays / tripDays;
+
+    let rainDesc;
+    if (rainFrac >= 0.5)      rainDesc = 'frequent rain';
+    else if (rainFrac >= 0.3) rainDesc = 'some rain';
+    else if (rainFrac > 0)    rainDesc = 'minimal rain';
+    else                      rainDesc = 'dry';
+
+    let tempNote;
+    if (maxTemp > 85)       tempNote = 'Hot — pack light breathable clothing.';
+    else if (maxTemp > 70)  tempNote = 'Warm — light layers recommended.';
+    else if (minTemp < 40)  tempNote = 'Cold — pack warm layers and a coat.';
+    else                    tempNote = 'Mild — a light jacket should suffice.';
+
+    let summary = (isArchive ? '(Seasonal average) ' : '') +
+                  'Expected: ' + minTemp + '\u2013' + maxTemp + '\u00b0F, ' + rainDesc + '. ' + tempNote;
+    Logger.log('Packing weather for ' + destination + ': ' + summary);
+    return summary;
+  } catch(err) {
+    Logger.log('getPackingWeather_ error: ' + err.message);
+    return '';
+  }
+}
+
+/**
+ * Build the Claude prompt for packing list generation.
+ */
+function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights, context, itinerarySummary, weatherSummary) {
+  const contextLine = context ? 'Trip Context: ' + context : 'Trip Context: General travel';
+  const weatherLine = weatherSummary
+    ? 'Weather: ' + weatherSummary
+    : 'Weather: Unknown \u2014 pack for general conditions';
+
+  return (
+    'You are VERA, a smart packing assistant for Ahmed and Victoria, a US-based couple.\n\n' +
+    'Trip: ' + tripLabel + '\n' +
+    'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
+    contextLine + '\n' +
+    weatherLine + '\n\n' +
+    (itinerarySummary ? '=== ITINERARY ===\n' + itinerarySummary + '\n\n' : '') +
+    'Generate a practical packing list split across "ahmed", "victoria", and "shared"\n' +
+    '(shared = items only needed once: adapters, sunscreen, first aid kit, travel umbrella, etc.).\n' +
+    'Group by category. Use concise names like: Documents, Clothing, Shoes, Toiletries,\n' +
+    'Electronics, Medications, Entertainment, Beach/Pool, Outdoor/Hiking, Formal/Dress, Snacks, Romantic.\n\n' +
+    'RULES:\n' +
+    '- Match context: Anniversary/Romantic/Honeymoon \u2192 nicer clothes + Romantic category;\n' +
+    '  Work Trip \u2192 laptop, charger, business clothes; Family \u2192 shared snacks/kids items if relevant.\n' +
+    '- Match weather: rain \u2192 rain jacket; hot \u2192 sunscreen + light clothes; cold \u2192 layers + coat.\n' +
+    '- 30\u201360 total items max. Keep item names concise (e.g. "3 T-shirts", not "t-shirt 1, t-shirt 2").\n' +
+    '- Do NOT include basic everyday items unless travel-specific (e.g. include "travel toothbrush" not just "toothbrush").\n\n' +
+    'CRITICAL \u2014 RESPONSE FORMAT:\n' +
+    'Return ONLY a raw JSON object. No markdown. No code fences. No explanation.\n' +
+    'Start with { and end with }.\n\n' +
+    '{"ahmed":[{"category":"Documents","item":"Passport"},{"category":"Clothing","item":"3 T-shirts"}],' +
+    '"victoria":[{"category":"Documents","item":"Passport"},{"category":"Clothing","item":"Swimsuit"}],' +
+    '"shared":[{"category":"Electronics","item":"Universal adapter"},{"category":"Toiletries","item":"Sunscreen SPF 50"}]}\n\n' +
+    'Generate the packing list now:'
+  );
+}
+
+/**
+ * Defensively parse Claude packing response. Returns { ahmed, victoria, shared } arrays.
+ */
+function parsePackingResponse_(rawContent) {
+  try {
+    let cleaned = (rawContent || '').trim()
+      .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    const start = cleaned.indexOf('{');
+    const end   = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('No JSON object found');
+    const parsed = JSON.parse(cleaned.substring(start, end + 1));
+    return {
+      ahmed:    Array.isArray(parsed.ahmed)    ? parsed.ahmed    : [],
+      victoria: Array.isArray(parsed.victoria) ? parsed.victoria : [],
+      shared:   Array.isArray(parsed.shared)   ? parsed.shared   : [],
+    };
+  } catch(err) {
+    Logger.log('parsePackingResponse_ failed: ' + err.message + ' | raw: ' + (rawContent || '').substring(0, 200));
+    return { ahmed: [], victoria: [], shared: [] };
+  }
+}
+
+/**
+ * GET generate_packing — params: tripKey, startDate, endDate
+ * Generates a Claude-powered packing list (with weather context), saves to PackingItems tab.
+ * Returns { ok, items: [...] }
+ */
+function webGeneratePacking_(e) {
+  const p         = (e && e.parameter) ? e.parameter : {};
+  const tripKey   = (p.tripKey   || '').trim();
+  const startDate = (p.startDate || '').trim();
+  const endDate   = (p.endDate   || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  // Step 1 — Parse trip label from tripKey ("YYYY-MM-DD|Label")
+  const pipeIdx  = tripKey.indexOf('|');
+  const tripLabel = pipeIdx >= 0 ? tripKey.substring(pipeIdx + 1) : tripKey;
+
+  // Duration in nights
+  let durationNights = '?';
+  if (startDate && endDate) {
+    try {
+      const diff = (new Date(endDate + 'T00:00:00') - new Date(startDate + 'T00:00:00')) / 86400000;
+      durationNights = Math.max(0, Math.round(diff)).toString();
+    } catch(err) { /* ignore */ }
+  }
+
+  // Step 2 — Load itinerary items and build summary string
+  const ss       = getSpreadsheet();
+  const itinSheet = ss.getSheetByName(TABS.ITINERARY);
+  let itinerarySummary = '';
+  if (itinSheet && itinSheet.getLastRow() >= 2) {
+    const itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    const lines = [];
+    itinData.forEach(function(row) {
+      if (String(row[1]).trim() !== tripKey) return;
+      const date  = String(row[4]).trim();
+      const type  = String(row[2]).trim();
+      const title = String(row[3]).trim();
+      const loc   = String(row[7]).trim();
+      let line = '\u2022 [' + type + '] ' + title;
+      if (date) line = date + ' ' + line;
+      if (loc)  line += ' @ ' + loc;
+      lines.push(line);
+    });
+    itinerarySummary = lines.join('\n');
+  }
+
+  // Step 3 — Load trip context
+  let context = '';
+  try {
+    const metaResult = webGetTripMeta_(e);
+    context = metaResult.context || '';
+  } catch(err) { /* graceful */ }
+
+  // Step 4 — Infer destination for weather
+  let destination = '';
+  if (!destination && itinSheet && itinSheet.getLastRow() >= 2) {
+    const itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    // a. Flight metadata.dest
+    for (let i = 0; i < itinData.length; i++) {
+      const row = itinData[i];
+      if (String(row[1]).trim() !== tripKey) continue;
+      if (String(row[2]).trim() === 'flight' && row[9]) {
+        try {
+          const meta = JSON.parse(String(row[9]));
+          if (meta.dest) { destination = meta.dest; break; }
+        } catch(err) { /* skip */ }
+      }
+    }
+    // b. Hotel location
+    if (!destination) {
+      for (let i = 0; i < itinData.length; i++) {
+        const row = itinData[i];
+        if (String(row[1]).trim() !== tripKey) continue;
+        if (String(row[2]).trim() === 'hotel' && String(row[7]).trim()) {
+          destination = String(row[7]).trim(); break;
+        }
+      }
+    }
+  }
+  // c. Trip label (strip generic words)
+  if (!destination) {
+    destination = tripLabel
+      .replace(/\b(trip|adventure|vacation|holiday|weekend|getaway|tour|visit)\b/gi, '')
+      .trim();
+  }
+
+  // Step 5 — Weather
+  const weatherSummary = getPackingWeather_(destination, startDate || '', endDate || '');
+
+  // Step 6 — Build prompt
+  const prompt = buildPackingPrompt_(tripLabel, startDate, endDate, durationNights, context, itinerarySummary, weatherSummary);
+
+  // Step 7 — Call Claude
+  const apiKey = getApiKey();
+  const requestBody = {
+    model:      CLAUDE_MODEL,
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: prompt }],
+  };
+  const fetchOptions = {
+    method:  'post',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    payload:            JSON.stringify(requestBody),
+    muteHttpExceptions: true,
+  };
+  const response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+  const json     = JSON.parse(response.getContentText());
+  if (!json.content || !json.content[0]) throw new Error('Claude API returned unexpected response');
+  const rawText = json.content[0].text || '';
+
+  // Step 8 — Parse response
+  const packingData = parsePackingResponse_(rawText);
+
+  // Step 9 — Clear existing AI items for this trip (bottom-to-top to avoid row shifting)
+  ensureSheet(ss, TABS.PACKING_ITEMS, PACKING_ITEM_HEADERS);
+  const packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  if (packSheet.getLastRow() >= 2) {
+    const allRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+    const rowsToDelete = [];
+    for (let i = 0; i < allRows.length; i++) {
+      if (String(allRows[i][1]).trim() === tripKey && String(allRows[i][6]).trim() === 'ai') {
+        rowsToDelete.push(i + 2); // 1-based row number
+      }
+    }
+    rowsToDelete.sort(function(a, b) { return b - a; }); // descending
+    rowsToDelete.forEach(function(rowNum) { packSheet.deleteRow(rowNum); });
+  }
+
+  // Step 10 — Batch-append new AI items
+  const tz      = Session.getScriptTimeZone();
+  const dateKey = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+  const addedDate = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  let seq = 1;
+  if (packSheet.getLastRow() >= 2) {
+    packSheet.getRange(2, 1, packSheet.getLastRow() - 1, 1).getValues().forEach(function(r) {
+      if (String(r[0]).indexOf('PACK-' + dateKey) === 0) seq++;
+    });
+  }
+
+  const allNewItems = [];
+  [['ahmed', packingData.ahmed], ['victoria', packingData.victoria], ['shared', packingData.shared]]
+    .forEach(function(pair) {
+      const person = pair[0];
+      const list   = pair[1];
+      list.forEach(function(entry) {
+        if (!entry.item) return;
+        allNewItems.push([
+          'PACK-' + dateKey + '-' + String(seq++).padStart(2, '0'),
+          tripKey,
+          person,
+          entry.category || 'General',
+          entry.item,
+          'FALSE',
+          'ai',
+          addedDate,
+        ]);
+      });
+    });
+
+  if (allNewItems.length > 0) {
+    const startRow = packSheet.getLastRow() + 1;
+    // Set plain-text format on Checked (col 6) and Added Date (col 8) for all new rows
+    packSheet.getRange(startRow, 6, allNewItems.length, 1).setNumberFormat('@');
+    packSheet.getRange(startRow, 8, allNewItems.length, 1).setNumberFormat('@');
+    packSheet.getRange(startRow, 1, allNewItems.length, PACKING_ITEM_HEADERS.length).setValues(allNewItems);
+  }
+
+  // Return all items for this trip
+  return webGetPacking_(e);
 }
 
 // ---- Ideas / Braindump (Issue #18) -----------------------------------------
