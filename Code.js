@@ -73,6 +73,12 @@ const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item
 function setupVERA() {
   const ss = getSpreadsheet();
   createSheetTabs(ss);
+  // Ensure Signal Learning tab exists (Issue #24 — active intelligence)
+  try {
+    ensureSignalLearningTab_();
+  } catch (slErr) {
+    Logger.log('ensureSignalLearningTab_ error (non-fatal): ' + slErr.message);
+  }
   setupTriggers();
   Logger.log('✅ VERA setup complete. All tabs created and triggers installed.');
   Logger.log('   Next step: set your CLAUDE_API_KEY in Script Properties.');
@@ -241,6 +247,24 @@ function nightlyRun() {
       Logger.log('runExplorer_ error (non-fatal): ' + expErr.message);
     }
 
+    // Step 0d: Signal Learning — get suppressed patterns to filter noise (Issue #24)
+    var suppressedPatterns = [];
+    try {
+      suppressedPatterns = getSuppressedKeyPatterns_();
+      if (suppressedPatterns.length > 0) {
+        Logger.log('SignalLearning: suppressing ' + suppressedPatterns.length + ' noise pattern(s): ' + suppressedPatterns.join(', '));
+      }
+    } catch (slErr) {
+      Logger.log('getSuppressedKeyPatterns_ error (non-fatal): ' + slErr.message);
+    }
+
+    // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
+    try {
+      recordExpiredFlags_();
+    } catch (expFlagErr) {
+      Logger.log('recordExpiredFlags_ error (non-fatal): ' + expFlagErr.message);
+    }
+
     // Step 1: Collect
     const events    = getUpcomingEvents();
     const tasks     = getOpenTasks();
@@ -252,13 +276,21 @@ function nightlyRun() {
     // Step 1b: Suggest due dates for undated tasks (writes back to sheet)
     suggestDueDates(tasks);
 
-    // Step 2 & 3: Package + Reason (Claude)
-    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger);
+    // Step 2 & 3: Package + Reason (Claude) — pass suppressed patterns for noise filtering
+    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns);
 
     // Step 4: Write
     if (flags && flags.length > 0) {
       writeFlags(flags);
       Logger.log('Wrote ' + flags.length + ' flags to sheet.');
+
+      // Step 4b: Signal Learning — record generated flag keys as "seen"
+      try {
+        var flagKeys = flags.map(function(f) { return f.key || ''; }).filter(function(k) { return k; });
+        if (flagKeys.length > 0) recordFlagsGenerated_(flagKeys);
+      } catch (slErr) {
+        Logger.log('recordFlagsGenerated_ error (non-fatal): ' + slErr.message);
+      }
     } else {
       Logger.log('No flags generated tonight — nothing to write.');
     }
@@ -477,6 +509,64 @@ function colorCodeFlags(sheet) {
 }
 
 // ============================================================
+// SIGNAL LEARNING HELPERS — Expired flag recording
+// ============================================================
+
+/**
+ * Scans the Flags tab for flags that have been open for >30 days
+ * with no acknowledgement, snooze, or resolution — these are "expired/ignored".
+ * Records them in SignalLearning so the pattern gets a noise score penalty.
+ * Only records once per flag (Escalated column shows '7d' when stale).
+ */
+function recordExpiredFlags_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.FLAGS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, FLAG_HEADERS.length).getValues();
+
+  var expiredCount = 0;
+  data.forEach(function(row) {
+    var resolved  = String(row[8]  || '').toLowerCase(); // Col I: Resolved
+    var ack       = String(row[6]  || '').toLowerCase(); // Col G: Acknowledged
+    var snoozed   = String(row[7]  || '').trim();        // Col H: Snoozed Until
+    var flagKey   = String(row[9]  || '').trim();        // Col J: Key
+    var escalated = String(row[10] || '').trim();        // Col K: Escalated
+
+    // Only flag unresolved, unacknowledged, unsnoozed rows
+    if (resolved === 'yes' || ack === 'yes' || snoozed) return;
+
+    // Must have a key to track pattern
+    if (!flagKey) return;
+
+    // Calculate age
+    var flagDate = new Date(row[1]); // Col B: Date
+    if (isNaN(flagDate.getTime())) return;
+    flagDate.setHours(0, 0, 0, 0);
+    var ageDays = Math.floor((today - flagDate) / (1000 * 60 * 60 * 24));
+
+    // Record as expired if open >30 days (the 7d escalation marks it as stale)
+    // Use escalated = '7d' as a proxy that means "VERA tried, user never responded"
+    if (ageDays >= 30 || escalated === '7d') {
+      try {
+        recordFlagOutcome_(flagKey, 'expired');
+        expiredCount++;
+      } catch (e) {
+        Logger.log('recordExpiredFlags_: error for key "' + flagKey + '": ' + e.message);
+      }
+    }
+  });
+
+  if (expiredCount > 0) {
+    Logger.log('recordExpiredFlags_: recorded ' + expiredCount + ' expired flag(s).');
+  }
+}
+
+// ============================================================
 // FLAG ESCALATION — Age-based urgency bumps
 // ============================================================
 
@@ -659,6 +749,155 @@ function readSummaryTab_(ss, tabName) {
 }
 
 // ============================================================
+// MORNING INTELLIGENCE — Issue #24
+// ============================================================
+
+/**
+ * Builds a TODAY'S FOCUS / MAINTENANCE / TRAVEL HTML section for the morning email.
+ * Only renders sections that have content — silently skips empty ones.
+ *
+ * @returns {string} HTML string (may be empty if nothing urgent)
+ */
+function buildMorningIntelligence_() {
+  var html     = '';
+  var tz       = Session.getScriptTimeZone();
+  var today    = new Date(); today.setHours(0, 0, 0, 0);
+  var dayOfMon = today.getDate();
+
+  var focusRows = [];
+  var maintRows = [];
+  var travelRows = [];
+
+  // ---- Today's Focus: Overdue tasks by name --------------------------------
+  try {
+    var openTasks = getOpenTasks();
+    var overdueTasks = openTasks.filter(function(t) { return t.isOverdue; })
+      .sort(function(a, b) { return Math.abs(b.daysUntilDue || 0) - Math.abs(a.daysUntilDue || 0); })
+      .slice(0, 3);
+
+    overdueTasks.forEach(function(t) {
+      var days = Math.abs(t.daysUntilDue || 0);
+      focusRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
+        escapeHtml_(t.task) + '</strong> <span style="color:#c62828;font-size:13px;">— ' +
+        days + ' day' + (days === 1 ? '' : 's') + ' overdue</span></p>');
+    });
+  } catch (e) { Logger.log('buildMorningIntelligence_: tasks — ' + e.message); }
+
+  // ---- Today's Focus: Bills due within 5 days -----------------------------
+  try {
+    var billsSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+    if (billsSheet && billsSheet.getLastRow() >= 2) {
+      var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+      var billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+      billsData.forEach(function(r) {
+        var name   = String(r[0] || '').trim();
+        if (!name) return;
+        var dueDay = r[2] !== '' ? Number(r[2]) : null;
+        var paid   = String(r[6] || '').trim() === currMonth;
+        if (paid || dueDay === null) return;
+        var daysUntil = dueDay - dayOfMon;
+        if (daysUntil < 0) daysUntil += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        if (daysUntil > 5) return;
+        var amtStr = r[1] !== '' ? ' ($' + Number(r[1]) + ')' : '';
+        var dueStr = daysUntil === 0 ? 'DUE TODAY' : 'due in ' + daysUntil + ' day' + (daysUntil === 1 ? '' : 's');
+        focusRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
+          escapeHtml_(name) + amtStr + '</strong> <span style="color:#e65100;font-size:13px;">— ' + dueStr + '</span></p>');
+      });
+    }
+  } catch (e) { Logger.log('buildMorningIntelligence_: bills — ' + e.message); }
+
+  // ---- Maintenance: Home items overdue or due within 14 days ---------------
+  try {
+    var homeSheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+    if (homeSheet && homeSheet.getLastRow() >= 2) {
+      var homeData = homeSheet.getRange(2, 1, homeSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+      homeData.forEach(function(r) {
+        var item = String(r[0] || '').trim();
+        if (!item) return;
+        var serviceDays = null;
+        if (r[5]) { try { serviceDays = Math.round((new Date(r[5]) - today) / 86400000); } catch(e2) {} }
+        if (serviceDays === null || serviceDays > 14) return;
+        var statusStr;
+        if (serviceDays < 0)   statusStr = Math.abs(serviceDays) + ' day' + (Math.abs(serviceDays) === 1 ? '' : 's') + ' overdue';
+        else if (serviceDays === 0) statusStr = 'DUE TODAY';
+        else                   statusStr = 'due in ' + serviceDays + ' day' + (serviceDays === 1 ? '' : 's');
+        var textColor = serviceDays < 0 ? '#c62828' : '#777777';
+        maintRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
+          escapeHtml_(item) + '</strong> <span style="color:' + textColor + ';font-size:13px;">— ' + statusStr + '</span></p>');
+      });
+    }
+  } catch (e) { Logger.log('buildMorningIntelligence_: home — ' + e.message); }
+
+  // ---- Travel: Upcoming trips within 14 days --------------------------------
+  try {
+    var travelCfg   = readPTOConfig_();
+    var travelTrips = getUpcomingTravel_(travelCfg);
+    var ss_t = getSpreadsheet();
+
+    travelTrips.forEach(function(trip) {
+      var daysAway = trip.daysAway !== undefined ? trip.daysAway
+        : (trip.startDate ? Math.round((new Date(trip.startDate) - today) / 86400000) : null);
+      if (daysAway === null || daysAway > 14 || daysAway < 0) return;
+
+      var tripKey = trip.startDate + '|' + trip.label;
+      var packTotal = 0, packDone = 0;
+      try {
+        var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
+        if (packSheet && packSheet.getLastRow() >= 2) {
+          packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues().forEach(function(r) {
+            if (String(r[1]).trim() !== tripKey) return;
+            packTotal++;
+            if (String(r[5]).toLowerCase() === 'true' || String(r[5]).toLowerCase() === 'yes') packDone++;
+          });
+        }
+      } catch(pe) {}
+
+      var packStr = packTotal === 0 ? '⚠ packing not started' : (packDone + '/' + packTotal + ' packed');
+      var daysStr = daysAway === 0 ? 'TODAY' : (daysAway + ' days away');
+      travelRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
+        escapeHtml_(trip.label) + '</strong> <span style="color:#555555;font-size:13px;">— ' +
+        daysStr + ' · ' + packStr + '</span></p>');
+    });
+  } catch (e) { Logger.log('buildMorningIntelligence_: travel — ' + e.message); }
+
+  // ---- Assemble HTML -------------------------------------------------------
+  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0) return '';
+
+  html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">';
+
+  if (focusRows.length > 0) {
+    html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">🎯 Today\'s Focus</p>';
+    html += focusRows.join('');
+  }
+
+  if (maintRows.length > 0) {
+    if (focusRows.length > 0) html += '<div style="margin-top:12px;"></div>';
+    html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">🔧 Maintenance</p>';
+    html += maintRows.join('');
+  }
+
+  if (travelRows.length > 0) {
+    if (focusRows.length > 0 || maintRows.length > 0) html += '<div style="margin-top:12px;"></div>';
+    html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">🧳 Travel</p>';
+    html += travelRows.join('');
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * HTML-escapes a string for safe insertion into an HTML email.
+ */
+function escapeHtml_(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ============================================================
 // MORNING NUDGE — 7am email summary
 // ============================================================
 
@@ -793,6 +1032,14 @@ function morningNudge() {
       taskBadges += '</div>';
     }
 
+    // ---- Morning Intelligence section (Issue #24) -------------------------
+    let intelligenceSection = '';
+    try {
+      intelligenceSection = buildMorningIntelligence_();
+    } catch (intErr) {
+      Logger.log('morningNudge: buildMorningIntelligence_ error (non-fatal) — ' + intErr.message);
+    }
+
     // ---- HTML body ------------------------------------------------------
     const htmlBody =
       '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
@@ -816,6 +1063,7 @@ function morningNudge() {
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
       calendarSection +
       taskBadges +
+      intelligenceSection +
       '</td></tr>' +
 
       // Footer

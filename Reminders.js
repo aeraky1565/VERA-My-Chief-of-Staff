@@ -83,6 +83,11 @@ function runAnticipatorRules_(now, hour, isWeekday, cfg) {
     function() { checkHydration_(hour, isWeekday, cfg); },
     function() { checkCalendarOpportunity_(now, hour, isWeekday, cfg); },
     function() { checkEveningMobility_(now, hour, cfg); },
+    // Issue #24 — Active Intelligence Anticipators
+    function() { checkBillsDue_(now, hour, cfg); },
+    function() { checkTripPackingReminder_(now, hour, cfg); },
+    function() { checkGoalCheckin_(now, hour, cfg); },
+    function() { checkHomeServiceDue_(now, hour, cfg); },
   ];
 
   rules.forEach(function(rule) {
@@ -247,6 +252,245 @@ function checkEveningMobility_(now, hour, cfg) {
     '🧘 Evening check-in: did you get your mobility or movement session in today?\n\n' +
     'Even 10 minutes of stretching counts. Make it happen before the night winds down!'
   );
+}
+
+// ---- Rule: Bills due soon (Issue #24) -------------------------------------
+
+/**
+ * Fires once daily in the morning window when an unpaid bill is due within 5 days.
+ * Checks signal suppression before sending — if the user has consistently ignored
+ * bill reminders, the pattern will be suppressed.
+ */
+function checkBillsDue_(now, hour, cfg) {
+  if (hour < 8 || hour > 9) return; // Morning window only (8–9am)
+
+  var tz        = Session.getScriptTimeZone();
+  var dateStr   = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var today     = new Date(now); today.setHours(0, 0, 0, 0);
+  var dayOfMonth = today.getDate();
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var currMonth    = Utilities.formatDate(now, tz, 'yyyy-MM');
+  var suppressed   = [];
+  try { suppressed = getSuppressedKeyPatterns_(); } catch(e) {}
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+
+  data.forEach(function(row) {
+    var billName = String(row[0] || '').trim();
+    if (!billName) return;
+
+    var dueDay   = row[2] !== '' ? Number(row[2]) : null;
+    var amount   = row[1] !== '' ? Number(row[1]) : null;
+    var paidVal  = String(row[6] || '').trim();
+    var paid     = paidVal === currMonth;
+
+    if (paid || dueDay === null) return;
+
+    var daysUntilDue = dueDay - dayOfMonth;
+    if (daysUntilDue < 0) daysUntilDue += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    if (daysUntilDue > 5) return;
+
+    // Build rule key and check suppression
+    var ruleKey = 'bill_due_' + billName.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + dateStr;
+    var pattern = 'bill_due_' + billName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    if (suppressed.indexOf(pattern) !== -1) {
+      Logger.log('checkBillsDue_: suppressed — ' + pattern);
+      return;
+    }
+    if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day per bill
+
+    var amtStr = amount !== null ? ' ($' + amount + ')' : '';
+    var dayStr = daysUntilDue === 0 ? 'DUE TODAY' : 'due in ' + daysUntilDue + ' day' + (daysUntilDue === 1 ? '' : 's');
+
+    sendNudge_(
+      ruleKey,
+      'Bill reminder: ' + billName,
+      '💰 Bill reminder: ' + billName + amtStr + ' is ' + dayStr + '.\n\nMark it paid in VERA once done.'
+    );
+  });
+}
+
+// ---- Rule: Trip packing reminder (Issue #24) --------------------------------
+
+/**
+ * Fires once daily if an upcoming trip within 7 days has an empty packing list.
+ * Suppression-aware.
+ */
+function checkTripPackingReminder_(now, hour, cfg) {
+  if (hour < 8 || hour > 9) return; // Morning window only
+
+  var tz      = Session.getScriptTimeZone();
+  var today   = new Date(now); today.setHours(0, 0, 0, 0);
+  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+
+  var suppressed = [];
+  try { suppressed = getSuppressedKeyPatterns_(); } catch(e) {}
+
+  var travelTrips = [];
+  try {
+    var travelCfg = readPTOConfig_();
+    travelTrips   = getUpcomingTravel_(travelCfg);
+  } catch(e) {
+    Logger.log('checkTripPackingReminder_: could not read trips — ' + e.message);
+    return;
+  }
+
+  var ss        = getSpreadsheet();
+  var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+
+  travelTrips.forEach(function(trip) {
+    var daysAway = trip.daysAway !== undefined ? trip.daysAway
+      : (trip.startDate ? Math.round((new Date(trip.startDate) - today) / 86400000) : null);
+
+    if (daysAway === null || daysAway > 7 || daysAway < 0) return;
+
+    var tripKey = trip.startDate + '|' + trip.label;
+    var pattern = 'packing_not_started';
+    if (suppressed.indexOf(pattern) !== -1) return;
+
+    // Count packing items for this trip
+    var packCount = 0;
+    if (packSheet && packSheet.getLastRow() >= 2) {
+      var packData = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+      packData.forEach(function(r) { if (String(r[1]).trim() === tripKey) packCount++; });
+    }
+
+    if (packCount > 0) return; // Already has items
+
+    var ruleKey = 'trip_packing_' + tripKey.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '_' + dateStr;
+    if (wasRecentlySent_(ruleKey, 1440)) return;
+
+    sendNudge_(
+      ruleKey,
+      trip.label + ' — packing list empty',
+      '🧳 Your ' + trip.label + ' trip is in ' + daysAway + ' day' + (daysAway === 1 ? '' : 's') + '.\n\n' +
+      'Packing list isn\'t started yet! Open VERA chat and say "generate packing list for ' + trip.label + '" to get started.'
+    );
+  });
+}
+
+// ---- Rule: Goal check-in (Issue #24) ----------------------------------------
+
+/**
+ * Fires once weekly on Monday morning for any goal in 'Doing' status
+ * that was created in a prior month (potentially stalling).
+ * Suppression-aware.
+ */
+function checkGoalCheckin_(now, hour, cfg) {
+  var day = now.getDay(); // 0=Sun, 1=Mon
+  if (day !== 1) return; // Mondays only
+  if (hour !== Number(cfg['weekend_planner_hour'] || 8)) return; // Same window as weekend planner
+
+  var tz      = Session.getScriptTimeZone();
+  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+
+  var suppressed = [];
+  try { suppressed = getSuppressedKeyPatterns_(); } catch(e) {}
+
+  if (suppressed.indexOf('goal_stall') !== -1) return;
+
+  var currentYear  = now.getFullYear();
+  var currentMonth = now.getMonth(); // 0-indexed
+
+  var goals = [];
+  try { goals = getGoals_(); } catch(e) {
+    Logger.log('checkGoalCheckin_: could not read goals — ' + e.message);
+    return;
+  }
+
+  var stalledGoals = goals.filter(function(g) {
+    if (g.year !== currentYear) return false;
+    if (g.status !== 'Doing' && g.status !== 'In Progress') return false;
+
+    // Extract creation month from ID (format GOAL-YYYYMMDD-NN)
+    var idMatch = g.id.match(/GOAL-(\d{4})(\d{2})\d{2}/);
+    if (!idMatch) return true; // Unknown creation date — flag conservatively
+    var goalYear  = parseInt(idMatch[1], 10);
+    var goalMonth = parseInt(idMatch[2], 10) - 1; // 0-indexed
+    return (goalYear === currentYear && goalMonth < currentMonth) || (goalYear < currentYear);
+  });
+
+  if (stalledGoals.length === 0) return;
+
+  var ruleKey = 'goal_checkin_' + dateStr;
+  if (wasRecentlySent_(ruleKey, 10080)) return; // Once per week (7 days * 1440 min)
+
+  var goalList = stalledGoals.slice(0, 3).map(function(g) {
+    return '• ' + g.title + (g.category ? ' [' + g.category + ']' : '');
+  }).join('\n');
+
+  sendNudge_(
+    ruleKey,
+    'Goal check-in: ' + stalledGoals.length + ' goal(s) stalling',
+    '🎯 Goal check-in!\n\n' +
+    'These goal' + (stalledGoals.length === 1 ? '' : 's') + ' have been in progress for a while:\n\n' +
+    goalList + '\n\n' +
+    'Make any moves this week? Open VERA chat to update progress or add tasks.'
+  );
+}
+
+// ---- Rule: Home service due (Issue #24) -------------------------------------
+
+/**
+ * Fires once daily in the morning window when a home item service is overdue
+ * or due within 7 days.
+ * Suppression-aware.
+ */
+function checkHomeServiceDue_(now, hour, cfg) {
+  if (hour < 8 || hour > 9) return; // Morning window only
+
+  var tz      = Session.getScriptTimeZone();
+  var today   = new Date(now); today.setHours(0, 0, 0, 0);
+  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+
+  var suppressed = [];
+  try { suppressed = getSuppressedKeyPatterns_(); } catch(e) {}
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HOME_ITEMS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+
+  data.forEach(function(row) {
+    var itemName = String(row[0] || '').trim();
+    if (!itemName) return;
+
+    var serviceDays = null;
+    if (row[5]) {
+      try { serviceDays = Math.round((new Date(row[5]) - today) / 86400000); } catch(e2) {}
+    }
+
+    if (serviceDays === null) return;
+    if (serviceDays > 7) return; // Not due soon enough
+
+    var pattern = 'home_service_' + itemName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    if (suppressed.indexOf(pattern) !== -1) return;
+    if (suppressed.indexOf('home_service') !== -1) return;
+
+    var ruleKey  = pattern + '_' + dateStr;
+    if (wasRecentlySent_(ruleKey, 1440)) return;
+
+    var statusStr;
+    if (serviceDays < 0) {
+      statusStr = '⚠ service is ' + Math.abs(serviceDays) + ' day' + (Math.abs(serviceDays) === 1 ? '' : 's') + ' OVERDUE';
+    } else if (serviceDays === 0) {
+      statusStr = 'service is DUE TODAY';
+    } else {
+      statusStr = 'service due in ' + serviceDays + ' day' + (serviceDays === 1 ? '' : 's');
+    }
+
+    sendNudge_(
+      ruleKey,
+      'Home maintenance: ' + itemName,
+      '🔧 Home maintenance reminder: ' + itemName + ' — ' + statusStr + '.\n\n' +
+      'Open VERA chat and say "record service for ' + itemName + '" once done.'
+    );
+  });
 }
 
 // ============================================================

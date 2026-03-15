@@ -102,6 +102,128 @@ function doWebSearch_(rawQuery) {
 }
 
 // ============================================================
+// PROACTIVE INSIGHTS — Issue #24
+// ============================================================
+
+/**
+ * Pre-computes time-sensitive insights from context data.
+ * Returns a formatted string for injection into the system prompt as VERA NOTICES.
+ * Only surfaces HIGH-signal items so VERA can mention them proactively.
+ *
+ * @param {Object} context - The chat context object from buildChatContext_()
+ * @returns {string} Formatted notices string, or '(nothing urgent right now)'
+ */
+function computeProactiveInsights_(context) {
+  var notices = [];
+  var today   = new Date(); today.setHours(0, 0, 0, 0);
+  var tz      = Session.getScriptTimeZone();
+
+  // 1. Tasks overdue >3 days (by name)
+  try {
+    if (context.tasks) {
+      var overdueTasks = context.tasks.filter(function(t) {
+        return t.isOverdue && t.daysUntilDue !== null && Math.abs(t.daysUntilDue) >= 3;
+      }).sort(function(a, b) {
+        return Math.abs(b.daysUntilDue) - Math.abs(a.daysUntilDue);
+      }).slice(0, 3);
+
+      overdueTasks.forEach(function(t) {
+        var days = Math.abs(t.daysUntilDue);
+        var urgency = days >= 7 ? 'HIGH' : 'MEDIUM';
+        notices.push({ urgency: urgency, text: '⚠ Task overdue ' + days + ' days: "' + t.task + '"' });
+      });
+    }
+  } catch (e) { Logger.log('computeProactiveInsights_: tasks — ' + e.message); }
+
+  // 2. Bills due within 7 days (unpaid)
+  try {
+    if (context.bills) {
+      var dayOfMonth = today.getDate();
+      context.bills.forEach(function(b) {
+        if (b.paid || b.dueDay === null) return;
+        var daysUntilDue = b.dueDay - dayOfMonth;
+        // Handle month-wrap: if dueDay < today, bill is due next month — only flag if close
+        if (daysUntilDue < 0) daysUntilDue += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        if (daysUntilDue <= 7) {
+          var urgency = daysUntilDue <= 2 ? 'HIGH' : (daysUntilDue <= 5 ? 'MEDIUM' : 'LOW');
+          var amtStr  = b.amount !== null ? ' ($' + b.amount + ')' : '';
+          notices.push({ urgency: urgency, text: '💰 Bill due in ' + daysUntilDue + ' days: ' + b.bill + amtStr });
+        }
+      });
+    }
+  } catch (e) { Logger.log('computeProactiveInsights_: bills — ' + e.message); }
+
+  // 3. Upcoming trips within 7 days + packing status
+  try {
+    if (context.travel && context.travel.trips) {
+      context.travel.trips.forEach(function(trip) {
+        var daysAway = trip.daysAway !== undefined ? trip.daysAway : null;
+        if (daysAway === null && trip.startDate) {
+          try { daysAway = Math.round((new Date(trip.startDate) - today) / 86400000); } catch(te) {}
+        }
+        if (daysAway === null || daysAway > 14) return;
+
+        var tripKey   = trip.startDate + '|' + trip.label;
+        var packItems = context.travel.packByTrip && context.travel.packByTrip[tripKey]
+          ? context.travel.packByTrip[tripKey] : [];
+        var itinItems = context.travel.itinByTrip && context.travel.itinByTrip[tripKey]
+          ? context.travel.itinByTrip[tripKey] : [];
+
+        if (daysAway <= 7 && packItems.length === 0) {
+          notices.push({ urgency: 'HIGH', text: '🧳 ' + trip.label + ' is in ' + daysAway + ' days — packing list not started!' });
+        } else if (daysAway <= 7) {
+          var unpacked = packItems.filter(function(p) { return !p.checked; }).length;
+          if (unpacked > 0) {
+            notices.push({ urgency: 'MEDIUM', text: '🧳 ' + trip.label + ' in ' + daysAway + ' days — ' + unpacked + ' packing item(s) unpacked' });
+          }
+        }
+        if (daysAway <= 14 && itinItems.length === 0) {
+          notices.push({ urgency: 'MEDIUM', text: '📅 ' + trip.label + ' has no itinerary yet (' + daysAway + ' days away)' });
+        }
+      });
+    }
+  } catch (e) { Logger.log('computeProactiveInsights_: trips — ' + e.message); }
+
+  // 4. Home items overdue or due within 7 days
+  try {
+    if (context.homeItems) {
+      context.homeItems.forEach(function(h) {
+        if (h.serviceDays === null) return;
+        if (h.serviceDays < 0) {
+          notices.push({ urgency: 'HIGH', text: '🔧 Home: ' + h.item + ' service overdue by ' + Math.abs(h.serviceDays) + ' days' });
+        } else if (h.serviceDays <= 7) {
+          notices.push({ urgency: 'LOW', text: '🔧 Home: ' + h.item + ' service due in ' + h.serviceDays + ' days' });
+        }
+      });
+    }
+  } catch (e) { Logger.log('computeProactiveInsights_: home items — ' + e.message); }
+
+  // 5. Projects with overdue tasks
+  try {
+    if (context.projects) {
+      context.projects.forEach(function(p) {
+        var pending = p.tasks.filter(function(t) { return t.status !== 'Done'; });
+        var overdue = pending.filter(function(t) {
+          if (!t.dueDate) return false;
+          try { return new Date(t.dueDate) < today; } catch(e2) { return false; }
+        });
+        if (overdue.length > 0) {
+          notices.push({ urgency: 'MEDIUM', text: '📌 Project "' + p.projectName + '" has ' + overdue.length + ' overdue task(s)' });
+        }
+      });
+    }
+  } catch (e) { Logger.log('computeProactiveInsights_: projects — ' + e.message); }
+
+  if (notices.length === 0) return '(nothing urgent right now)';
+
+  // Sort: HIGH first, then MEDIUM, then LOW
+  var order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+  notices.sort(function(a, b) { return (order[a.urgency] || 2) - (order[b.urgency] || 2); });
+
+  return notices.map(function(n) { return '[' + n.urgency + '] ' + n.text; }).join('\n');
+}
+
+// ============================================================
 // SYSTEM PROMPT
 // ============================================================
 
@@ -297,6 +419,20 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
+    // ---- VERA NOTICES — proactive time-sensitive insights (Issue #24) --------
+    (function() {
+      try {
+        var notices = computeProactiveInsights_(context);
+        return 'VERA NOTICES (time-sensitive items requiring attention):\n' + notices + '\n\n' +
+          'When answering ANY message, scan the VERA NOTICES above. If any item is truly time-sensitive ' +
+          '(urgency = HIGH), briefly mention it in your response — even if Ahmed didn\'t ask about it directly. ' +
+          'Example: "Done! Also — your Alaska trip is in 3 days and packing list isn\'t started. Want me to generate it now?"\n\n';
+      } catch (noticesErr) {
+        Logger.log('Chat: computeProactiveInsights_ error (non-fatal): ' + noticesErr.message);
+        return '';
+      }
+    })() +
+
     'AVAILABLE ACTIONS — include these exact lines in your response to take action:\n' +
     'ACTION:complete_task|{taskId}\n' +
     'ACTION:delete_task|{taskId}\n' +
@@ -384,7 +520,20 @@ function buildChatSystemPrompt_(context) {
     '- NEVER include personal identifiers (names, emails, phones, addresses) in a ' +
     'search query. Generic terms only: city name, topic, event type, year.\n' +
     '- Never fabricate data not present in the current state above.\n' +
-    '- If asked about something not in the current state, say so honestly.\n'
+    '- If asked about something not in the current state, say so honestly.\n' +
+    '- PROACTIVE BEHAVIOR: You are an active personal assistant, not just a record keeper. ' +
+    'When you see HIGH-urgency items in VERA NOTICES, mention them naturally in your response. ' +
+    'High-urgency items → always mention. Medium → mention if relevant to the conversation. ' +
+    'Low → only mention if the user asks or there\'s nothing else to add.\n' +
+    '- CONNECT THE DOTS: When the user asks about a topic, check other domains for relevant connections. ' +
+    'Example: user asks about weekend plans → check clear windows + active goals + interests. ' +
+    'Example: user adds a task for "prepare slides" → check calendar for when the related meeting is.\n' +
+    '- NEXT STEPS: After completing an action, suggest a logical next step when one is obvious. ' +
+    'Example: after adding a packing item → "Should I also generate the full list for this trip?" ' +
+    'Example: after completing a task → "You have 2 other tasks due this week — want to review them?"\n' +
+    '- CLOSING THE LOOP: When Ahmed mentions something in conversation, offer to record it in the ' +
+    'relevant system. Example: "Victoria mentioned she wants to try Thai food" → ACTION:log_interest. ' +
+    'Example: "I need to call the doctor" → offer ACTION:create_task. Do this naturally, not intrusively.\n'
   );
 }
 

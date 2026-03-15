@@ -306,6 +306,15 @@ function findFlagRow_(id) {
 function webAcknowledge_(id) {
   const found = findFlagRow_(id);
   found.sheet.getRange(found.rowNum, 7).setValue('Yes'); // Column G
+
+  // Signal Learning: record outcome so VERA can learn from user engagement
+  try {
+    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
+    if (flagKey) recordFlagOutcome_(String(flagKey), 'acknowledged');
+  } catch (slErr) {
+    Logger.log('SignalLearning: ack hook error (non-fatal) — ' + slErr.message);
+  }
+
   return { ok: true, id: id, action: 'acknowledged' };
 }
 
@@ -319,6 +328,15 @@ function webSnooze_(id, days) {
   const untilStr  = Utilities.formatDate(until, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
   found.sheet.getRange(found.rowNum, 8).setValue(untilStr); // Column H
+
+  // Signal Learning: record outcome
+  try {
+    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
+    if (flagKey) recordFlagOutcome_(String(flagKey), 'snoozed');
+  } catch (slErr) {
+    Logger.log('SignalLearning: snooze hook error (non-fatal) — ' + slErr.message);
+  }
+
   return { ok: true, id: id, action: 'snoozed', snoozedUntil: untilStr };
 }
 
@@ -327,6 +345,15 @@ function webSnooze_(id, days) {
 function webResolve_(id) {
   const found = findFlagRow_(id);
   found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I
+
+  // Signal Learning: record outcome
+  try {
+    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
+    if (flagKey) recordFlagOutcome_(String(flagKey), 'resolved');
+  } catch (slErr) {
+    Logger.log('SignalLearning: resolve hook error (non-fatal) — ' + slErr.message);
+  }
+
   return { ok: true, id: id, action: 'resolved' };
 }
 

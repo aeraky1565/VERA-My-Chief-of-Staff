@@ -41,7 +41,7 @@ function getApiKey() {
  * @param {Array} summaries - From getSummaries()
  * @returns {string} The full prompt string
  */
-function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
+function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatterns) {
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
 
@@ -134,6 +134,189 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
     }).join('\n');
   }
 
+  // ---- Format: Bills (Issue #24 intelligence) --------------------------------
+  var billsForPrompt = [];
+  var billsSectionStr = '';
+  try {
+    var billsSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+    if (billsSheet && billsSheet.getLastRow() >= 2) {
+      var tz_b     = Session.getScriptTimeZone();
+      var currMonth = Utilities.formatDate(new Date(), tz_b, 'yyyy-MM');
+      var billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+      billsData.forEach(function(r) {
+        var name = String(r[0] || '').trim();
+        if (!name) return;
+        var paidVal = String(r[6] || '').trim();
+        billsForPrompt.push({
+          bill:      name,
+          amount:    r[1] !== '' ? Number(r[1]) : null,
+          dueDay:    r[2] !== '' ? Number(r[2]) : null,
+          frequency: String(r[3] || 'Monthly').trim(),
+          paid:      paidVal === currMonth,
+          notes:     String(r[7] || '').trim(),
+        });
+      });
+    }
+    billsSectionStr = billsForPrompt.length === 0
+      ? 'No bills tracked.'
+      : billsForPrompt.map(function(b) {
+          var line = '- ' + b.bill;
+          if (b.amount !== null) line += ' ($' + b.amount + ')';
+          if (b.dueDay !== null) line += ' due day ' + b.dueDay;
+          line += b.paid ? ' [PAID this month]' : ' [UNPAID]';
+          if (b.frequency !== 'Monthly') line += ' [' + b.frequency + ']';
+          return line;
+        }).join('\n');
+  } catch (billErr) {
+    billsSectionStr = '(unavailable)';
+  }
+
+  // ---- Format: Home Items (Issue #24 intelligence) ---------------------------
+  var homeItemsForPrompt = [];
+  var homeItemsSectionStr = '';
+  try {
+    var homeSheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+    if (homeSheet && homeSheet.getLastRow() >= 2) {
+      var today_h = new Date(); today_h.setHours(0, 0, 0, 0);
+      var homeData = homeSheet.getRange(2, 1, homeSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+      homeData.forEach(function(r) {
+        var item = String(r[0] || '').trim();
+        if (!item) return;
+        var serviceDays = null;
+        if (r[5]) { try { var nd = new Date(r[5]); serviceDays = Math.round((nd - today_h) / 86400000); } catch(e2) {} }
+        homeItemsForPrompt.push({
+          item:           item,
+          category:       String(r[1] || '').trim(),
+          nextService:    r[5] ? String(r[5]).trim() : '',
+          serviceDays:    serviceDays,
+          intervalMonths: r[6] !== '' ? Number(r[6]) : null,
+        });
+      });
+    }
+    homeItemsSectionStr = homeItemsForPrompt.length === 0
+      ? 'No home items tracked.'
+      : homeItemsForPrompt.map(function(h) {
+          var line = '- ' + h.item;
+          if (h.category) line += ' [' + h.category + ']';
+          if (h.serviceDays !== null) {
+            if (h.serviceDays < 0)     line += ' ⚠ SERVICE OVERDUE by ' + Math.abs(h.serviceDays) + ' days';
+            else if (h.serviceDays <= 14) line += ' (service in ' + h.serviceDays + ' days)';
+            else                       line += ' (service in ~' + h.serviceDays + ' days)';
+          } else if (h.nextService) {
+            line += ' (next service: ' + h.nextService + ')';
+          } else {
+            line += ' (no service date set)';
+          }
+          return line;
+        }).join('\n');
+  } catch (homeErr) {
+    homeItemsSectionStr = '(unavailable)';
+  }
+
+  // ---- Format: Goals (Issue #24 intelligence) --------------------------------
+  var goalsForPrompt = [];
+  var goalsSectionStr = '';
+  try {
+    goalsForPrompt = getGoals_();
+    var currentYear = new Date().getFullYear();
+    var currentMonth = new Date().getMonth(); // 0-indexed
+    goalsSectionStr = goalsForPrompt.length === 0
+      ? 'No goals tracked.'
+      : goalsForPrompt.filter(function(g) { return g.year === currentYear; })
+          .map(function(g) {
+            // Estimate creation month from ID (format GOAL-YYYYMMDD-NN)
+            var createdPriorMonth = false;
+            var idMatch = g.id.match(/GOAL-(\d{4})(\d{2})\d{2}/);
+            if (idMatch) {
+              var goalYear  = parseInt(idMatch[1], 10);
+              var goalMonth = parseInt(idMatch[2], 10) - 1; // 0-indexed
+              createdPriorMonth = (goalYear === currentYear && goalMonth < currentMonth) ||
+                                  (goalYear < currentYear);
+            }
+            var line = '- [' + g.status + '] ' + g.title;
+            if (g.category) line += ' [' + g.category + ']';
+            if (g.progress > 0) line += ' (' + g.progress + '% done)';
+            if (createdPriorMonth && (g.status === 'Doing' || g.status === 'To Do'))
+              line += ' ⚠ IN PROGRESS SINCE PRIOR MONTH';
+            return line;
+          }).join('\n') || 'No current-year goals.';
+  } catch (goalErr) {
+    goalsSectionStr = '(unavailable)';
+  }
+
+  // ---- Format: Projects (Issue #24 intelligence) ----------------------------
+  var projectsForPrompt = [];
+  var projectsSectionStr = '';
+  try {
+    var today_p = new Date(); today_p.setHours(0, 0, 0, 0);
+    projectsForPrompt = getProjects_();
+    projectsSectionStr = projectsForPrompt.length === 0
+      ? 'No active projects.'
+      : projectsForPrompt.map(function(p) {
+          var pending = p.tasks.filter(function(t) { return t.status !== 'Done'; });
+          if (pending.length === 0) return null; // All done — skip
+          var hasOverdue = pending.some(function(t) {
+            if (!t.dueDate) return false;
+            try { return new Date(t.dueDate) < today_p; } catch(e2) { return false; }
+          });
+          var noDueDates = pending.every(function(t) { return !t.dueDate; });
+          var line = '- ' + p.projectName + ' (' + pending.length + ' pending task(s))';
+          if (hasOverdue)  line += ' ⚠ HAS OVERDUE TASKS';
+          if (noDueDates && pending.length >= 2) line += ' [no due dates — may be abandoned]';
+          return line;
+        }).filter(function(l) { return l !== null; }).join('\n') || 'No active projects.';
+  } catch (projErr) {
+    projectsSectionStr = '(unavailable)';
+  }
+
+  // ---- Format: Upcoming Trips (Issue #24 intelligence) -----------------------
+  var tripsForPrompt = [];
+  var tripsSectionStr = '';
+  try {
+    var travelCfg = readPTOConfig_();
+    tripsForPrompt = getUpcomingTravel_(travelCfg);
+    var ss_t = getSpreadsheet();
+    var today_t = new Date(); today_t.setHours(0, 0, 0, 0);
+
+    tripsSectionStr = tripsForPrompt.length === 0
+      ? 'No upcoming trips.'
+      : tripsForPrompt.map(function(trip) {
+          var daysAway = trip.daysAway !== undefined ? trip.daysAway
+            : (trip.startDate ? Math.round((new Date(trip.startDate) - today_t) / 86400000) : null);
+          var tripKey  = trip.startDate + '|' + trip.label;
+          var line     = '- ' + trip.label + ' (starts: ' + trip.startDate + ')';
+          if (daysAway !== null) line += ' [' + daysAway + ' days away]';
+          line += ' | TripKey: ' + tripKey;
+
+          // Count packing items
+          var packCount = 0;
+          try {
+            var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
+            if (packSheet && packSheet.getLastRow() >= 2) {
+              var packData = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+              packData.forEach(function(r) { if (String(r[1]).trim() === tripKey) packCount++; });
+            }
+          } catch(pe) {}
+
+          // Count itinerary items
+          var itinCount = 0;
+          try {
+            var itinSheet = ss_t.getSheetByName(TABS.ITINERARY);
+            if (itinSheet && itinSheet.getLastRow() >= 2) {
+              var itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+              itinData.forEach(function(r) { if (String(r[1]).trim() === tripKey) itinCount++; });
+            }
+          } catch(ie) {}
+
+          line += ' | packing: ' + packCount + ' items, itinerary: ' + itinCount + ' items';
+          if (daysAway !== null && daysAway <= 7 && packCount === 0) line += ' ⚠ NO PACKING LIST';
+          if (daysAway !== null && daysAway <= 14 && itinCount === 0) line += ' ⚠ NO ITINERARY';
+          return line;
+        }).join('\n');
+  } catch (tripErr) {
+    tripsSectionStr = '(unavailable)';
+  }
+
   // ---- Format: Idea Braindump (Issue #18) ---------------------------------
   let ideasSection;
   try {
@@ -208,6 +391,60 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
     '- Use source "General" for interest-driven flags. Urgency is usually Low or Medium unless time-sensitive (e.g. tickets close tonight).\n' +
     '- Do NOT flag interests that already have an open task or upcoming calendar event addressing them.\n\n' +
 
+    'BILLS INTELLIGENCE RULES:\n' +
+    '- The Bills section lists recurring household payments tracked by Ahmed.\n' +
+    '- Flag any bill where dueDay falls within 7 days of today\'s date AND it is marked UNPAID this month.\n' +
+    '  Urgency: ≤2 days = High, ≤5 days = Medium, ≤7 days = Low.\n' +
+    '- Do NOT flag bills marked PAID this month.\n' +
+    '- Use source "Finance". Key format: bill_due_[bill_name_snake].\n\n' +
+
+    'HOME MAINTENANCE INTELLIGENCE RULES:\n' +
+    '- The Home Maintenance section lists household items with scheduled service intervals.\n' +
+    '- Flag any item where service is OVERDUE (serviceDays < 0) — urgency = High.\n' +
+    '- Flag any item where service is due within 14 days — urgency = Low.\n' +
+    '- Use source "General". Key format: home_service_[item_name_snake].\n\n' +
+
+    'GOALS STATUS RULES:\n' +
+    '- The Goals section lists Ahmed\'s yearly goals.\n' +
+    '- Flag any goal marked ⚠ IN PROGRESS SINCE PRIOR MONTH if it has no matching open task or recent calendar event.\n' +
+    '  This suggests the goal may be stalling. Urgency = Low.\n' +
+    '- Use source "General". Key format: goal_stall_[goal_title_snake].\n\n' +
+
+    'PROJECTS STATUS RULES:\n' +
+    '- The Projects section shows multi-step projects Ahmed is tracking.\n' +
+    '- Flag any project marked ⚠ HAS OVERDUE TASKS — urgency = Medium.\n' +
+    '- Flag any project marked [no due dates — may be abandoned] — urgency = Low.\n' +
+    '- Use source "Tasks". Key format: project_overdue_[name_snake] or project_abandoned_[name_snake].\n\n' +
+
+    'PRE-TRIP INTELLIGENCE RULES:\n' +
+    '- The Upcoming Trips section shows travel on Ahmed\'s calendar.\n' +
+    '- If a trip is ⚠ NO PACKING LIST within 7 days: urgency = High, flag "{{trip}} in N days — packing list not started".\n' +
+    '- If a trip is ⚠ NO ITINERARY within 14 days: urgency = Medium, flag "{{trip}} has no itinerary yet".\n' +
+    '- If a trip is within 3 days AND has packing/itinerary items: urgency = Low, "Final prep check for {{trip}}".\n' +
+    '- Use source "General". Key format: packing_not_started_[trip_slug], itinerary_empty_[trip_slug], trip_final_check_[trip_slug].\n\n' +
+
+    'TASK NEGLECT RULES (enhanced — flag by name):\n' +
+    '- If a task has been open for >14 days (marked [NEGLECTED]), flag it specifically by name:\n' +
+    '  "Task \'{{name}}\' has been open for N days — still relevant? Complete, update, or delete."\n' +
+    '- Limit to the top 3 most neglected tasks (by age) to avoid flag spam.\n' +
+    '- Urgency: <21 days = Low, 21–30 days = Medium, >30 days = High.\n' +
+    '- Use source "Tasks". Key format: task_neglect_[task_id_or_name_snake].\n\n' +
+
+    (suppressedPatterns && suppressedPatterns.length > 0
+      ? 'SUPPRESSED TOPICS (user has consistently indicated these are not useful — do NOT generate flags for them):\n' +
+        suppressedPatterns.map(function(p) { return '  - ' + p; }).join('\n') + '\n\n'
+      : '') +
+
+    (function() {
+      try {
+        var topPatterns = getTopSignalPatterns_(5);
+        if (topPatterns.length === 0) return '';
+        return 'SIGNAL LEARNING (what Ahmed engages with most — prioritize these topics):\n' +
+          topPatterns.map(function(p) { return '  - ' + p.pattern + ' (score: ' + Math.round(p.score) + ')'; }).join('\n') +
+          '\nUse these scores to weight flag importance — higher score patterns matter more to Ahmed.\n\n';
+      } catch(slErr) { return ''; }
+    })() +
+
     '=== UPCOMING CALENDAR EVENTS (next ' + CONFIG.CALENDAR_DAYS_AHEAD + ' days) ===\n' +
     eventsSection + '\n\n' +
 
@@ -225,6 +462,31 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
 
     // ---- PTO Status (injected when available) ----------------------------
     (ptoStats ? '=== PTO STATUS ===\n' + ptoSummaryForClaude_(ptoStats) + '\n\n' : '') +
+
+    // ---- New data sections for Issue #24 intelligence -------------------
+    '=== BILLS (' + billsForPrompt.length + ' tracked) ===\n' +
+    billsSectionStr + '\n\n' +
+
+    '=== HOME MAINTENANCE (' + homeItemsForPrompt.length + ' items) ===\n' +
+    homeItemsSectionStr + '\n\n' +
+
+    '=== YEARLY GOALS ===\n' +
+    goalsSectionStr + '\n\n' +
+
+    '=== PROJECTS ===\n' +
+    projectsSectionStr + '\n\n' +
+
+    '=== UPCOMING TRIPS ===\n' +
+    tripsSectionStr + '\n\n' +
+
+    'CROSS-DOMAIN SYNTHESIS:\n' +
+    'Before finalizing your flags, spend one reasoning pass looking for connections between domains:\n' +
+    '- Calendar event + Task alignment: Is there an important meeting approaching with no prep task?\n' +
+    '- Trip + Shopping or Packing: Is there a trip soon where packing hasn\'t started?\n' +
+    '- Bill + Finance: Is there a bill due AND any indication of tight finances in Summaries?\n' +
+    '- Goal + Calendar: Is there a clear free window this week that aligns with an active goal?\n' +
+    '- Interest Ledger + Calendar: Has Ahmed/Victoria expressed interest in something with a nearby opportunity?\n' +
+    'Generate up to 2 cross-domain flags from this synthesis — these are often the most valuable insights.\n\n' +
 
     'Based on this data, generate up to ' + CONFIG.MAX_FLAGS + ' intelligent, actionable flags for Ahmed. ' +
     'Prioritize items that are time-sensitive, high-stakes, have dependencies, or have been neglected.\n\n' +
@@ -268,9 +530,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger) {
  * @param {Array}  ledger    - From getSharedInterestLedger_() (optional)
  * @returns {Array} Parsed and validated array of flag objects
  */
-function generateFlags(events, tasks, summaries, ptoStats, ledger) {
+function generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns) {
   const apiKey = getApiKey();
-  const prompt = buildPrompt(events, tasks, summaries, ptoStats, ledger);
+  const prompt = buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatterns || []);
 
   const requestBody = {
     model:      CLAUDE_MODEL,
