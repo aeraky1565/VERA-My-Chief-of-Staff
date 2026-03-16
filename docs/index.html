@@ -1808,6 +1808,61 @@ const CONTEXT_COLORS = {
   'Solo Adventure':            '#fb923c',
 };
 
+/**
+ * Detects structural planning gaps across the full trip date range:
+ *   - missing_hotel:    interior trip days (not first/last) with no accommodation
+ *   - missing_transport: first day with no arrival transport, last day with no departure transport
+ *
+ * @param {Array}  items              All itinerary items for the trip
+ * @param {Array}  tripDays           Ordered array of YYYY-MM-DD strings for the full trip range
+ * @param {Object} hotelCheckoutDates Map of itemId → checkoutDate (YYYY-MM-DD) for multi-night hotels
+ * @returns {Array} gap objects: { type, date, subtype? }
+ */
+function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
+  var gaps = [];
+  if (!tripDays || tripDays.length < 2) return gaps; // no meaningful gaps on a 1-day trip
+
+  // Build hotel-covered date set (check-in through checkout, inclusive)
+  var hotelCovered = {};
+  items.forEach(function(item) {
+    if (item._synthetic) return;
+    if (item.type === 'hotel') {
+      var checkIn  = item.date;
+      var checkOut = hotelCheckoutDates[item.id] || item.date;
+      var d   = new Date(checkIn  + 'T00:00:00');
+      var end = new Date(checkOut + 'T00:00:00');
+      while (d <= end) {
+        hotelCovered[d.toISOString().slice(0, 10)] = true;
+        d.setDate(d.getDate() + 1);
+      }
+    }
+    // Cruise = sleeping on the ship; covers its own date
+    if (item.type === 'cruise' && item.date) hotelCovered[item.date] = true;
+  });
+
+  // Build per-day transport map (any transport type = covered)
+  var TRANSPORT = { flight:1, train:1, bus:1, car:1, ferry:1, cruise:1, walking:1, bicycle:1 };
+  var dayTransport = {};
+  items.forEach(function(item) {
+    if (TRANSPORT[item.type] && item.date) dayTransport[item.date] = true;
+  });
+
+  var firstDay = tripDays[0];
+  var lastDay  = tripDays[tripDays.length - 1];
+
+  // Missing hotel: flag every interior day without accommodation
+  tripDays.forEach(function(d) {
+    if (d === firstDay || d === lastDay) return;
+    if (!hotelCovered[d]) gaps.push({ type: 'missing_hotel', date: d });
+  });
+
+  // Missing transport: arrival day and departure day
+  if (!dayTransport[firstDay]) gaps.push({ type: 'missing_transport', date: firstDay, subtype: 'arrival' });
+  if (!dayTransport[lastDay])  gaps.push({ type: 'missing_transport', date: lastDay,  subtype: 'departure' });
+
+  return gaps;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -2231,6 +2286,18 @@ function ItineraryView({ trip, itinerary, loading, busy,
     try { var m = JSON.parse(item.metadata); if (m.checkoutDate) hotelCheckoutDates[item.id] = m.checkoutDate; } catch(e) {}
   });
 
+  // ── Gap detection (missing hotel / missing transport) ──────────────────────
+  var gaps = computeItineraryGaps(items, tripDays, hotelCheckoutDates);
+  var missingHotelDays     = {};
+  var missingTransportDays = {};
+  gaps.forEach(function(g) {
+    if (g.type === 'missing_hotel')     missingHotelDays[g.date]     = true;
+    if (g.type === 'missing_transport') missingTransportDays[g.date] = g.subtype;
+  });
+  // Merge gaps into the notices array so the "💡 VERA Notices" block shows them too
+  var allNotices = notices.concat(gaps);
+  // ──────────────────────────────────────────────────────────────────────────
+
   const byDay    = {};
   items.forEach(function(item) {
     const d = item.date || '__other__';
@@ -2354,13 +2421,13 @@ function ItineraryView({ trip, itinerary, loading, busy,
       )}
 
       {/* VERA Notices */}
-      {notices.length > 0 && (
+      {allNotices.length > 0 && (
         <div style={{ background: '#0a1a2e', border: '1px solid #1e3a5f', borderRadius: 8,
                       padding: '10px 14px', marginBottom: 16 }}>
           <div style={{ fontWeight: 700, color: '#8ab4f8', fontSize: 12, marginBottom: 8 }}>
             💡 VERA Notices
           </div>
-          {notices.map(function(n, ni) {
+          {allNotices.map(function(n, ni) {
             var hrs    = Math.floor((n.gapMins || 0) / 60);
             var mins   = (n.gapMins || 0) % 60;
             var gapStr = hrs > 0 ? hrs + 'h' + (mins ? ' ' + mins + 'm' : '') : mins + 'm';
@@ -2384,6 +2451,21 @@ function ItineraryView({ trip, itinerary, loading, busy,
               return (
                 <div key={ni} style={{ color: '#6b7fa8', fontSize: 12, marginBottom: 5 }}>
                   ⏱ {dateStr}{gapStr} free after "{n.from.title}" ({n.from.endTime || n.from.startTime} → {n.to.startTime})
+                </div>
+              );
+            }
+            if (n.type === 'missing_hotel') {
+              return (
+                <div key={ni} style={{ color: '#e05a5a', fontSize: 12, marginBottom: 5 }}>
+                  🏨 {dateStr}No accommodation planned
+                </div>
+              );
+            }
+            if (n.type === 'missing_transport') {
+              var tLabel = n.subtype === 'arrival' ? 'No arrival transport planned' : 'No departure transport planned';
+              return (
+                <div key={ni} style={{ color: '#e05a5a', fontSize: 12, marginBottom: 5 }}>
+                  ✈ {dateStr}{tLabel}
                 </div>
               );
             }
@@ -2475,8 +2557,11 @@ function ItineraryView({ trip, itinerary, loading, busy,
             }
           }
 
+          var hasGap = missingHotelDays[day] || missingTransportDays[day];
+
           return (
-            <div key={day} style={{ background: '#0a1220', border: '1px solid #2a3a50',
+            <div key={day} style={{ background: '#0a1220',
+                                    border: '1px solid ' + (hasGap ? '#3a1a1a' : '#2a3a50'),
                                     borderRadius: 10, padding: '14px 16px', marginBottom: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <div style={{ fontWeight: 700, color: '#8ab4f8', fontSize: 14 }}>
@@ -2533,6 +2618,23 @@ function ItineraryView({ trip, itinerary, loading, busy,
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Gap warnings: shown regardless of whether day has items */}
+              {hasGap && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #2a1515' }}>
+                  {missingHotelDays[day] && (
+                    <div style={{ fontSize: 11, color: '#c05050', fontWeight: 600, marginBottom: 3 }}>
+                      🏨 No accommodation planned
+                    </div>
+                  )}
+                  {missingTransportDays[day] && (
+                    <div style={{ fontSize: 11, color: '#c05050', fontWeight: 600, marginBottom: 3 }}>
+                      {missingTransportDays[day] === 'arrival'
+                        ? '✈ No arrival transport planned'
+                        : '✈ No departure transport planned'}
                     </div>
                   )}
                 </div>
