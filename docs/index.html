@@ -1735,12 +1735,22 @@ const COUNTRY_ISO_MAP = {
   'Vietnam':'VN','Yemen':'YE','Zambia':'ZM','Zimbabwe':'ZW',
 };
 
-function countryToFlag(name) {
-  var iso = COUNTRY_ISO_MAP[name];
-  if (!iso) return '🌍';
-  var A = 0x1F1E6;
-  return String.fromCodePoint(A + iso.charCodeAt(0) - 65) +
-         String.fromCodePoint(A + iso.charCodeAt(1) - 65);
+function countryToIso(name) {
+  return COUNTRY_ISO_MAP[name] || null;
+}
+
+// Renders a country flag <img> from flagcdn.com, or a fallback globe emoji.
+function CountryFlag({ name, size }) {
+  var iso = countryToIso(name);
+  if (!iso) return React.createElement('span', { style: { fontSize: size || 22 } }, '🌍');
+  var h = Math.round((size || 22) * 0.75);
+  return React.createElement('img', {
+    src: 'https://flagcdn.com/h' + (h * 2) + '/' + iso.toLowerCase() + '.png',
+    width: size || 22,
+    height: h,
+    alt: iso,
+    style: { objectFit: 'contain', verticalAlign: 'middle', borderRadius: 2 },
+  });
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -3375,7 +3385,7 @@ function AddCountryModal({ upcomingTravel, existingCountries, onSave, onClose, b
     return Object.keys(seen).sort();
   }, [existingCountries]);
 
-  var flagPreview = country.trim() ? countryToFlag(country.trim()) : null;
+  var flagPreview = country.trim() ? countryToIso(country.trim()) : null;
 
   function handleSave() {
     if (!country.trim() || !year) return;
@@ -3392,8 +3402,8 @@ function AddCountryModal({ upcomingTravel, existingCountries, onSave, onClose, b
         <div className="form-group">
           <label className="form-label">
             Country *
-            {flagPreview && flagPreview !== '🌍' && (
-              <span style={{ marginLeft: 8, fontSize: 20 }}>{flagPreview}</span>
+            {flagPreview && (
+              <span style={{ marginLeft: 8 }}><CountryFlag name={country.trim()} size={20} /></span>
             )}
           </label>
           <input className="form-input" list="country-autocomplete" value={country} autoFocus
@@ -3638,7 +3648,7 @@ function CountriesVisitedPanel({ entries, upcomingTravel, busy, loaded, onLoad, 
       {/* Country accordion list */}
       {countryNames.map(function(cName) {
         var cEntries  = byCountry[cName];
-        var flag      = countryToFlag(cName);
+        // flag rendered inline via CountryFlag component
         var isOpen    = expanded.has(cName);
         // Collect distinct traveller types for this country
         var travTypes = Array.from(new Set(cEntries.map(function(e) { return e.Traveller; }))).sort();
@@ -3651,7 +3661,7 @@ function CountriesVisitedPanel({ entries, upcomingTravel, busy, loaded, onLoad, 
               style={{ display: 'flex', alignItems: 'center', gap: 10,
                        padding: '12px 16px', cursor: 'pointer',
                        borderBottom: isOpen ? '1px solid #2a3a50' : 'none' }}>
-              <span style={{ fontSize: 22, flexShrink: 0 }}>{flag}</span>
+              <span style={{ flexShrink: 0, lineHeight: 0 }}><CountryFlag name={cName} size={28} /></span>
               <span style={{ fontWeight: 700, fontSize: 14, color: '#e8eaed', flex: 1 }}>{cName}</span>
               <span style={{ fontSize: 11, color: '#5f6368', marginRight: 6 }}>
                 ×{cEntries.length} {cEntries.length === 1 ? 'visit' : 'visits'}
