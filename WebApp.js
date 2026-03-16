@@ -1102,6 +1102,45 @@ function webGetItinerary_(e) {
       const startDt   = new Date(start + 'T00:00:00');
       const endDt     = new Date(end   + 'T23:59:59');
       const tripLabel = tripKey.split('|')[1] || ''; // e.g. "Alaska Trip" from "2026-05-10|Alaska Trip"
+
+      // Batch-fetch per-event timezone from Calendar REST API.
+      // CalendarApp doesn't expose per-event timezone, so we need the REST API.
+      // A flight from NYC departs in ET and arrives in CET — each end has its own TZ.
+      // Pattern reused from Calendar.js phase 2.
+      var eventTzMap = {};  // eventId → { startTz, endTz }
+      try {
+        var tzToken    = ScriptApp.getOAuthToken();
+        var allCals    = CalendarApp.getAllCalendars();
+        var tzRequests = allCals.map(function(cal) {
+          return {
+            url: 'https://www.googleapis.com/calendar/v3/calendars/'
+              + encodeURIComponent(cal.getId())
+              + '/events?singleEvents=true&maxResults=500'
+              + '&timeMin=' + encodeURIComponent(startDt.toISOString())
+              + '&timeMax=' + encodeURIComponent(endDt.toISOString())
+              + '&fields=' + encodeURIComponent('items(id,start/timeZone,end/timeZone)'),
+            headers: { 'Authorization': 'Bearer ' + tzToken },
+            muteHttpExceptions: true,
+          };
+        });
+        UrlFetchApp.fetchAll(tzRequests).forEach(function(resp) {
+          if (!resp || resp.getResponseCode() !== 200) return;
+          try {
+            var parsed = JSON.parse(resp.getContentText());
+            (parsed.items || []).forEach(function(item) {
+              if (item.id) {
+                eventTzMap[item.id] = {
+                  startTz: (item.start && item.start.timeZone) || null,
+                  endTz:   (item.end   && item.end.timeZone)   || null,
+                };
+              }
+            });
+          } catch (e) { /* skip parse errors */ }
+        });
+      } catch (tzErr) {
+        Logger.log('Itinerary: per-event TZ fetch failed — ' + tzErr.message + ' (times will use script TZ)');
+      }
+
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
           cal.getEvents(startDt, endDt).forEach(function(ev) {
@@ -1112,10 +1151,19 @@ function webGetItinerary_(e) {
             var relevance = isItineraryCalendarRelevant_(evTitle, evLocation, tripLabel);
             if (!relevance.include) return;
 
-            const evStart = ev.getStartTime();
-            const evDate  = Utilities.formatDate(evStart, tz, 'yyyy-MM-dd');
-            const evTime  = ev.isAllDayEvent() ? '' : Utilities.formatDate(evStart, tz, 'HH:mm');
-            const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), tz, 'HH:mm');
+            const evStart  = ev.getStartTime();
+            // Use per-event timezones: departure city TZ for start, arrival city TZ for end.
+            // Falls back to script TZ if the event has no explicit timezone.
+            var evTzInfo  = eventTzMap[ev.getId()] || {};
+            var evStartTz = evTzInfo.startTz || tz;
+            var evEndTz   = evTzInfo.endTz   || tz;
+            const evDate  = Utilities.formatDate(evStart, evStartTz, 'yyyy-MM-dd');
+            const evTime  = ev.isAllDayEvent() ? '' : Utilities.formatDate(evStart, evStartTz, 'HH:mm');
+            const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), evEndTz, 'HH:mm');
+            // Build metadata: always include calendarName; include startTz/endTz when available
+            var evMeta = { calendarName: cal.getName() };
+            if (evTzInfo.startTz) evMeta.startTz = evTzInfo.startTz;
+            if (evTzInfo.endTz && evTzInfo.endTz !== evTzInfo.startTz) evMeta.endTz = evTzInfo.endTz;
             items.push({
               id:        'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16),
               tripKey:   tripKey,
@@ -1126,7 +1174,7 @@ function webGetItinerary_(e) {
               endTime:   evEnd,
               location:  evLocation,
               notes:     '',
-              metadata:  JSON.stringify({ calendarName: cal.getName() }),
+              metadata:  JSON.stringify(evMeta),
               source:    'calendar',
               row:       null,
             });
