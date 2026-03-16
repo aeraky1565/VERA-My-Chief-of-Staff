@@ -53,7 +53,7 @@ const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summarie
 const CONFIG_HEADERS      = ['Setting', 'Value'];
 const GOAL_HEADERS        = ['ID', 'Title', 'Description', 'Status', 'Category', 'Year', 'Progress', 'Notes'];
 const PTO_HEADERS         = ['Type', 'Label', 'Start Date', 'End Date', 'Weekdays', 'Hours', 'Status'];
-const BILL_HEADERS        = ['Bill', 'Amount', 'Due Day', 'Frequency', 'Category', 'Account', 'Paid', 'Notes'];
+const BILL_HEADERS        = ['Bill', 'Amount', 'Due Day', 'Frequency', 'Category', 'Account', 'Paid', 'Notes', 'Type'];
 const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Event ID', 'Status', 'Suggested On'];
 const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
@@ -1418,6 +1418,36 @@ function listCalendarsForConfig() {
       '  color='  + cal.getColor());
   });
   Logger.log('=== Copy the "name" values (or "id" values) into Config tab bill_calendars, comma-separated ===');
+}
+
+// ============================================================
+// MIGRATION — Bills Type column (Cashflow feature)
+// ============================================================
+
+/**
+ * Adds a 'Type' header to column I of the Bills tab (col 9).
+ * Run ONCE from the Apps Script editor after pushing this update.
+ * Safe to re-run — skips if the column already exists.
+ *
+ * Existing bills default to blank which is treated as 'Expense'.
+ * After running, use the "+ Add Bill" modal to add Income entries
+ * (e.g. Victoria's bi-weekly paycheck).
+ */
+function addBillTypeColumn() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet) { Logger.log('Bills tab not found. Run setupVERA() first.'); return; }
+
+  var lastCol = sheet.getLastColumn();
+  if (lastCol >= 9) {
+    var existing = String(sheet.getRange(1, 9).getValue()).trim();
+    if (existing === 'Type') {
+      Logger.log('addBillTypeColumn: Type column already exists — no action needed.');
+      return;
+    }
+  }
+  sheet.getRange(1, 9).setValue('Type');
+  Logger.log('✅ addBillTypeColumn: Type column added to Bills tab (col I). Existing rows default to Expense.');
 }
 
 // ============================================================

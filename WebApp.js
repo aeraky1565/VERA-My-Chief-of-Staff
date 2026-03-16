@@ -96,6 +96,9 @@ function doGet(e) {
       case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
       case 'bills_toggle_cal':        return jsonOut_(webToggleCalBill_(e));
       case 'bills_sync_transactions': return jsonOut_(webSyncBillsFromTransactions_());
+      case 'cashflow':                return jsonOut_(webGetCashflow_(e));
+      case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
+      case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
       case 'recipes':               return jsonOut_(webGetRecipes_());
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
@@ -758,11 +761,14 @@ function webGetBills_() {
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, bills: [] };
 
   var numRows = sheet.getLastRow() - 1;
-  var data    = sheet.getRange(2, 1, numRows, BILL_HEADERS.length).getValues();
+  // Read up to BILL_HEADERS.length cols; graceful if Type col not yet added
+  var numCols = Math.min(sheet.getLastColumn(), BILL_HEADERS.length);
+  var data    = sheet.getRange(2, 1, numRows, numCols).getValues();
 
   var tz        = Session.getScriptTimeZone();
   var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
   var txList    = getTransactionMatchMap_(currMonth); // [] if TRANSACTIONS_SHEET_ID not set
+  var aliasMap  = getConfigAliases_();               // { keyword: 'Bill Name', ... }
 
   var bills = [];
   data.forEach(function(row, idx) {
@@ -779,7 +785,8 @@ function webGetBills_() {
       account:   String(row[5] || '').trim(),
       paid:      paidVal === currMonth,
       notes:     String(row[7] || '').trim(),
-      txMatch:   findTxMatch_(bill, txList), // { description, amount } or null
+      type:      String(row[8] || 'Expense').trim() || 'Expense', // 'Expense'|'Income'
+      txMatch:   findTxMatch_(bill, txList, aliasMap), // { description, amount } or null
     });
   });
 
@@ -824,8 +831,10 @@ function webSyncBillsFromTransactions_() {
   var tz        = Session.getScriptTimeZone();
   var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
   var numRows   = sheet.getLastRow() - 1;
-  var data      = sheet.getRange(2, 1, numRows, BILL_HEADERS.length).getValues();
+  var numCols   = Math.min(sheet.getLastColumn(), BILL_HEADERS.length);
+  var data      = sheet.getRange(2, 1, numRows, numCols).getValues();
   var txList    = getTransactionMatchMap_(currMonth);
+  var aliasMap  = getConfigAliases_();
   var synced    = 0;
 
   data.forEach(function(row, idx) {
@@ -834,7 +843,7 @@ function webSyncBillsFromTransactions_() {
     var paidVal = String(row[6] || '').trim();
     if (paidVal === currMonth) return; // already paid this month
 
-    var match = findTxMatch_(bill, txList);
+    var match = findTxMatch_(bill, txList, aliasMap);
     if (!match) return;
 
     sheet.getRange(idx + 2, 7).setValue(currMonth); // Column G = Paid
@@ -850,7 +859,7 @@ function webAddBill_(e) {
   if (!billName) throw new Error('Bill name is required');
   const sheet = getSpreadsheet().getSheetByName(TABS.BILLS);
   if (!sheet) throw new Error('Bills tab not found');
-  // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes
+  // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes | Type
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, BILL_HEADERS.length).setValues([[
     billName,
     p.amount  !== undefined ? (Number(p.amount)  || '') : '',
@@ -860,6 +869,7 @@ function webAddBill_(e) {
     (p.account   || '').trim(),
     '',
     (p.notes     || '').trim(),
+    (p.type      || 'Expense').trim(),  // 'Expense' | 'Income'
   ]]);
   return { ok: true, bill: billName, action: 'created' };
 }
@@ -927,22 +937,307 @@ function getTransactionMatchMap_(currMonth) {
  *   3. Any word in the bill name that is >3 chars appears in the transaction description
  * Returns { description, amount } or null.
  */
-function findTxMatch_(billName, txList) {
+/**
+ * Reads all Config rows with key `tx_alias:KEYWORD` and returns a map:
+ * { lowercasedKeyword: 'Bill Name', ... }
+ * e.g. { 'anthropic': 'Claude Subscription', 'payroll verizon': 'Verizon Paycheck' }
+ * Returns {} gracefully if Config tab not found.
+ */
+function getConfigAliases_() {
+  var aliasMap = {};
+  try {
+    var ss    = getSpreadsheet();
+    var sheet = ss.getSheetByName(TABS.CONFIG);
+    if (!sheet || sheet.getLastRow() < 2) return aliasMap;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    rows.forEach(function(row) {
+      var key = String(row[0] || '').trim();
+      var val = String(row[1] || '').trim();
+      if (key.indexOf('tx_alias:') === 0 && val) {
+        var keyword = key.slice('tx_alias:'.length).trim().toLowerCase();
+        if (keyword) aliasMap[keyword] = val;
+      }
+    });
+  } catch (e) { Logger.log('getConfigAliases_: ' + e.message); }
+  return aliasMap;
+}
+
+/**
+ * Checks whether any transaction in txList matches the bill name.
+ * Matching order:
+ *   0. Alias map (Config tx_alias:KEYWORD → BillName): if any alias for this bill
+ *      appears as a substring in a transaction description → immediate match
+ *   1. Bill name is a substring of the transaction description
+ *   2. Transaction description is a substring of the bill name
+ *   3. Any word in the bill name that is >3 chars appears in the transaction description
+ * Returns the first matching { description, amount } object, or null.
+ *
+ * @param {string} billName
+ * @param {Array}  txList    — from getTransactionMatchMap_()
+ * @param {Object} [aliasMap] — from getConfigAliases_() (optional, defaults to {})
+ */
+function findTxMatch_(billName, txList, aliasMap) {
   if (!billName || !txList || txList.length === 0) return null;
+  aliasMap = aliasMap || {};
   var nameLow = billName.toLowerCase();
   var words   = nameLow.split(/\s+/).filter(function(w) { return w.length > 3; });
+
+  // Build list of alias keywords that map to THIS bill name (case-insensitive)
+  var billAliasKeywords = Object.keys(aliasMap).filter(function(kw) {
+    return aliasMap[kw].toLowerCase() === nameLow;
+  });
 
   for (var i = 0; i < txList.length; i++) {
     var tx      = txList[i];
     var descLow = tx.description; // already lowercased
 
+    // Rule 0: alias match — any alias keyword for this bill appears in the tx description
+    for (var a = 0; a < billAliasKeywords.length; a++) {
+      if (descLow.indexOf(billAliasKeywords[a]) !== -1)
+        return { description: tx.rawDescription, amount: tx.amount };
+    }
+
+    // Rule 1: bill name is substring of description
     if (descLow.indexOf(nameLow) !== -1)  return { description: tx.rawDescription, amount: tx.amount };
+    // Rule 2: description is substring of bill name
     if (nameLow.indexOf(descLow) !== -1)  return { description: tx.rawDescription, amount: tx.amount };
+    // Rule 3: any significant word from bill name appears in description
     for (var w = 0; w < words.length; w++) {
       if (descLow.indexOf(words[w]) !== -1) return { description: tx.rawDescription, amount: tx.amount };
     }
   }
   return null;
+}
+
+// ---- Cashflow Endpoint (Income + Expense timeline) -------------------------
+
+/**
+ * Returns the day numbers (1-based) within a month on which a bill/income event falls.
+ * @param {number} dueDay       1-31 canonical day from Bills sheet
+ * @param {string} frequency    'Monthly'|'Bi-weekly'|'Quarterly'|'Annual'|'One-time'
+ * @param {number} daysInMonth  actual days in the target month
+ */
+function projectDays_(dueDay, frequency, daysInMonth) {
+  var safeDay = Math.min(dueDay, daysInMonth);
+  switch (frequency) {
+    case 'Bi-weekly': {
+      var days = [];
+      for (var offset = -14; offset <= 28; offset += 14) {
+        var d = dueDay + offset;
+        if (d >= 1 && d <= daysInMonth) days.push(d);
+      }
+      return days;
+    }
+    case 'Monthly':
+    case 'Quarterly':
+    case 'Annual':
+    case 'One-time':
+    default:
+      return [safeDay];
+  }
+}
+
+/**
+ * Cashflow endpoint — returns projected income + expense events for a given month.
+ * Query params: action=cashflow, month=YYYY-MM (optional, defaults to current month)
+ *
+ * Income sources:
+ *   (a) Bills sheet rows with Type='Income' — projected dates via projectDays_()
+ *   (b) Transactions sheet — positive amounts in the month (actual paychecks)
+ *   Dedup: if a transaction fuzzy-matches a Bills income entry, prefer the actual
+ *          tx amount/day and mark confirmed=true on the Bills entry.
+ *   Unmatched transactions: added as confirmed income, flagged unrecognized=true
+ *          if they have no corresponding Bills income entry at all.
+ *
+ * Expense sources:
+ *   Bills sheet rows with Type='Expense' (or empty) — projected dates via projectDays_()
+ *
+ * Returns: { ok, month, income: [{name,amount,day,source,confirmed,unrecognized}],
+ *            expenses: [{name,amount,day,source}], totals: {income,expenses,net} }
+ */
+function webGetCashflow_(e) {
+  var tz = Session.getScriptTimeZone();
+  var p  = (e && e.parameter) ? e.parameter : {};
+
+  var month = (p.month || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(month))
+    month = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+
+  var parts       = month.split('-');
+  var year        = parseInt(parts[0], 10);
+  var mon         = parseInt(parts[1], 10);
+  var daysInMonth = new Date(year, mon, 0).getDate();
+
+  // ---- 1. Read Bills sheet -----------------------------------------------
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BILLS);
+  var billsData = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var numCols = Math.min(sheet.getLastColumn(), BILL_HEADERS.length);
+    billsData = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
+  }
+
+  var aliasMap = getConfigAliases_();
+
+  // ---- 2. Project Bills income + expense events ---------------------------
+  var incomeProjected  = [];  // from Bills sheet (Type=Income)
+  var expenseEvents    = [];  // from Bills sheet (Type=Expense)
+
+  billsData.forEach(function(row) {
+    var name      = String(row[0] || '').trim();
+    if (!name) return;
+    var amount    = row[1] !== '' ? Number(row[1]) : null;
+    var dueDay    = row[2] !== '' ? Number(row[2]) : null;
+    var frequency = String(row[3] || 'Monthly').trim();
+    var type      = String(row[8] || 'Expense').trim() || 'Expense';
+
+    if (!dueDay || dueDay < 1) return;
+    var days = projectDays_(dueDay, frequency, daysInMonth);
+
+    days.forEach(function(day) {
+      if (type === 'Income') {
+        incomeProjected.push({ name: name, amount: amount, day: day, source: 'bills', confirmed: false, unrecognized: false });
+      } else {
+        expenseEvents.push({ name: name, amount: amount, day: day, source: 'bills' });
+      }
+    });
+  });
+
+  // ---- 3. Read actual transactions for the month (positive = income) ------
+  var txIncome = [];
+  var txId = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  if (txId) {
+    try {
+      var txSS   = SpreadsheetApp.openById(txId);
+      var sheetA = txSS.getSheetByName('Transactions - Ahmed');
+      var sheetV = txSS.getSheetByName('Transactions - Victoria');
+      var rawRows = [];
+      function readTxTab_(s) {
+        if (!s || s.getLastRow() < 2) return;
+        s.getRange(2, 1, s.getLastRow() - 1, 6).getValues().forEach(function(r) { rawRows.push(r); });
+      }
+      if (sheetA || sheetV) { readTxTab_(sheetA); readTxTab_(sheetV); }
+      else                  { readTxTab_(txSS.getSheetByName('Transactions')); }
+
+      rawRows.forEach(function(row) {
+        var dateVal = row[0];
+        var d = (dateVal instanceof Date) ? dateVal : new Date(dateVal);
+        if (isNaN(d.getTime())) return;
+        if (Utilities.formatDate(d, tz, 'yyyy-MM') !== month) return;
+        var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
+        if (isNaN(amount) || amount <= 0) return;
+        var desc = String(row[2] || '').trim();
+        if (!desc) return;
+        txIncome.push({ name: desc, amount: amount, day: d.getDate(), source: 'transaction', confirmed: true });
+      });
+    } catch (txErr) {
+      Logger.log('webGetCashflow_: transaction read failed — ' + txErr.message);
+    }
+  }
+
+  // ---- 4. Dedup: match tx income against Bills income projections ----------
+  var matchedTxIdx = {};
+  var incomeEvents = incomeProjected.map(function(ev) {
+    var evLow  = ev.name.toLowerCase();
+    var words  = evLow.split(/\s+/).filter(function(w) { return w.length > 3; });
+    var aliasKws = Object.keys(aliasMap).filter(function(kw) {
+      return aliasMap[kw].toLowerCase() === evLow;
+    });
+
+    for (var i = 0; i < txIncome.length; i++) {
+      if (matchedTxIdx[i]) continue;
+      var txLow = txIncome[i].name.toLowerCase();
+
+      var hit = aliasKws.some(function(kw) { return txLow.indexOf(kw) !== -1; })
+             || txLow.indexOf(evLow) !== -1
+             || evLow.indexOf(txLow) !== -1
+             || words.some(function(w) { return txLow.indexOf(w) !== -1; });
+
+      if (hit) {
+        matchedTxIdx[i] = true;
+        return { name: ev.name, amount: txIncome[i].amount, day: txIncome[i].day,
+                 source: 'transaction', confirmed: true, unrecognized: false };
+      }
+    }
+    return ev; // unmatched Bills income entry → keep projected
+  });
+
+  // Remaining unmatched transactions (no Bills income entry for them)
+  txIncome.forEach(function(tx, i) {
+    if (!matchedTxIdx[i]) {
+      incomeEvents.push({ name: tx.name, amount: tx.amount, day: tx.day,
+                          source: 'transaction', confirmed: true, unrecognized: true });
+    }
+  });
+
+  // ---- 5. Totals ----------------------------------------------------------
+  function sumAmt(arr) { return arr.reduce(function(s, ev) { return s + (ev.amount || 0); }, 0); }
+  incomeEvents.sort(function(a, b)  { return a.day - b.day; });
+  expenseEvents.sort(function(a, b) { return a.day - b.day; });
+
+  return {
+    ok:       true,
+    month:    month,
+    income:   incomeEvents,
+    expenses: expenseEvents,
+    totals:   { income: sumAmt(incomeEvents), expenses: sumAmt(expenseEvents),
+                net: sumAmt(incomeEvents) - sumAmt(expenseEvents) },
+  };
+}
+
+// ---- Transaction Alias Management ------------------------------------------
+
+/**
+ * Returns all tx_alias entries from the Config tab.
+ * Response: { ok, aliases: [{keyword, bill}] }
+ */
+function webGetTxAliases_() {
+  var aliasMap = getConfigAliases_();
+  var aliases  = Object.keys(aliasMap).map(function(kw) {
+    return { keyword: kw, bill: aliasMap[kw] };
+  });
+  aliases.sort(function(a, b) { return a.keyword.localeCompare(b.keyword); });
+  return { ok: true, aliases: aliases };
+}
+
+/**
+ * Creates or updates a tx_alias in the Config tab.
+ * Params: keyword (the transaction text to match), bill (the bill/income name)
+ * If bill is empty, deletes the alias row.
+ */
+function webSetTxAlias_(e) {
+  var p       = (e && e.parameter) ? e.parameter : {};
+  var keyword = (p.keyword || '').trim();
+  var bill    = (p.bill    || '').trim();
+  if (!keyword) throw new Error('keyword is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) throw new Error('Config tab not found');
+
+  var configKey = 'tx_alias:' + keyword;
+  var lastRow   = sheet.getLastRow();
+  var existingRow = -1;
+
+  if (lastRow >= 2) {
+    var keys = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < keys.length; i++) {
+      if (String(keys[i][0]).trim() === configKey) { existingRow = i + 2; break; }
+    }
+  }
+
+  if (!bill) {
+    // Delete: if row exists, clear it (or delete the row)
+    if (existingRow > 0) sheet.deleteRow(existingRow);
+    return { ok: true, action: 'deleted', keyword: keyword };
+  }
+
+  if (existingRow > 0) {
+    sheet.getRange(existingRow, 2).setValue(bill);
+    return { ok: true, action: 'updated', keyword: keyword, bill: bill };
+  }
+  sheet.appendRow([configKey, bill]);
+  return { ok: true, action: 'created', keyword: keyword, bill: bill };
 }
 
 // ---- Calendar Bills (Issue #76) --------------------------------------------

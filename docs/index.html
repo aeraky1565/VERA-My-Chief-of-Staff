@@ -5280,7 +5280,7 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
 function AddBillModal({ onClose, onSave, busy }) {
   const [form, setForm] = React.useState({
     bill: '', amount: '', dueDay: '', frequency: 'Monthly',
-    category: '', account: 'Shared', notes: '',
+    category: '', account: 'Shared', notes: '', type: 'Expense',
   });
   function set(k, v) { setForm(function(p) { return Object.assign({}, p, { [k]: v }); }); }
 
@@ -5295,25 +5295,48 @@ function AddBillModal({ onClose, onSave, busy }) {
       category:  form.category.trim(),
       account:   form.account,
       notes:     form.notes.trim(),
+      type:      form.type,
     });
   }
 
-  var freqOptions = ['Monthly', 'Quarterly', 'Annual', 'One-time'];
+  var freqOptions = ['Monthly', 'Bi-weekly', 'Quarterly', 'Annual', 'One-time'];
   var acctOptions = [
     { label: 'Ahmed',    color: '#5c9eff', bg: '#0d2040' },
     { label: 'Victoria', color: '#b87cff', bg: '#1a0d30' },
     { label: 'Shared',   color: '#4a9060', bg: '#0d1a10' },
   ];
+  var isIncome = form.type === 'Income';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth: 420 }} onClick={function(e) { e.stopPropagation(); }}>
-        <div style={{ fontWeight: 700, fontSize: 16, color: '#dde1f0', marginBottom: 16 }}>+ Add Bill</div>
+        <div style={{ fontWeight: 700, fontSize: 16, color: '#dde1f0', marginBottom: 16 }}>
+          {isIncome ? '+ Add Income' : '+ Add Bill'}
+        </div>
         <form onSubmit={handleSubmit}>
+          {/* Type toggle */}
           <div className="form-group">
-            <label className="form-label">Bill Name *</label>
+            <label className="form-label">Type</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['Expense', 'Income'].map(function(t) {
+                var active = form.type === t;
+                var color  = t === 'Income' ? '#66bb6a' : '#ef5350';
+                return (
+                  <button key={t} type="button" onClick={function() { set('type', t); }}
+                    style={{ padding: '4px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                             border: active ? '1.5px solid ' + color : '1.5px solid #2a3a4a',
+                             background: active ? ('rgba(' + (t === 'Income' ? '102,187,106' : '239,83,80') + ',.12)') : '#1e2a3a',
+                             color: active ? color : '#6b7fa8' }}>
+                    {t === 'Income' ? '💰 Income' : '📤 Expense'}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">{isIncome ? 'Income Name *' : 'Bill Name *'}</label>
             <input className="form-input" value={form.bill} onChange={function(e) { set('bill', e.target.value); }}
-              placeholder="e.g. Netflix, Rent, Car Insurance" autoFocus />
+              placeholder={isIncome ? 'e.g. Verizon Paycheck, Freelance' : 'e.g. Netflix, Rent, Car Insurance'} autoFocus />
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <div className="form-group" style={{ flex: 1 }}>
@@ -5323,7 +5346,7 @@ function AddBillModal({ onClose, onSave, busy }) {
                 placeholder="Variable / unknown" />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label">Due Day (1–31)</label>
+              <label className="form-label">{isIncome ? 'Pay Day (1–31)' : 'Due Day (1–31)'}</label>
               <input className="form-input" type="number" min="1" max="31" value={form.dueDay}
                 onChange={function(e) { set('dueDay', e.target.value); }}
                 placeholder="e.g. 15" />
@@ -5350,7 +5373,7 @@ function AddBillModal({ onClose, onSave, busy }) {
             <label className="form-label">Category</label>
             <input className="form-input" value={form.category}
               onChange={function(e) { set('category', e.target.value); }}
-              placeholder="e.g. Subscriptions, Utilities, Insurance" />
+              placeholder={isIncome ? 'e.g. Salary, Freelance' : 'e.g. Subscriptions, Utilities, Insurance'} />
           </div>
           <div className="form-group">
             <label className="form-label">Account</label>
@@ -5380,10 +5403,10 @@ function AddBillModal({ onClose, onSave, busy }) {
               style={{ padding: '8px 18px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a',
                        color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button type="submit" disabled={busy || !form.bill.trim()}
-              style={{ padding: '8px 18px', borderRadius: 8, background: '#5c9eff', border: 'none',
-                       color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+              style={{ padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                       background: isIncome ? '#2e6e35' : '#5c9eff', color: '#fff',
                        opacity: busy || !form.bill.trim() ? 0.5 : 1 }}>
-              {busy ? 'Saving…' : 'Add Bill'}
+              {busy ? 'Saving…' : (isIncome ? 'Add Income' : 'Add Bill')}
             </button>
           </div>
         </form>
@@ -5750,8 +5773,378 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
 
 // ---- Finances tab -----------------------------------------------------------
 
+// ---- TxAliasPicker modal ---------------------------------------------------
+
+function TxAliasPicker({ txName, bills, onSave, onClose, busy }) {
+  var [selected, setSelected] = React.useState('');
+  var billNames = ((bills && bills.bills) || []).map(function(b) { return b.bill; });
+  // deduplicate
+  billNames = billNames.filter(function(n, i) { return billNames.indexOf(n) === i; }).sort();
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 380 }} onClick={function(e) { e.stopPropagation(); }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 8 }}>Map Transaction</div>
+        <div style={{ fontSize: 12, color: '#6b7fa8', marginBottom: 14 }}>
+          Map "<span style={{ color: '#dde1f0' }}>{txName}</span>" to which bill or income entry?
+        </div>
+        <select value={selected} onChange={function(e) { setSelected(e.target.value); }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e',
+                   border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, marginBottom: 14 }}>
+          <option value="">— select a bill / income —</option>
+          {billNames.map(function(n) {
+            return <option key={n} value={n}>{n}</option>;
+          })}
+        </select>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a',
+                     color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+          <button type="button" disabled={!selected || busy} onClick={function() { if (selected) onSave(txName, selected); }}
+            style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                     color: '#fff', cursor: selected ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 600,
+                     opacity: (!selected || busy) ? 0.5 : 1 }}>
+            {busy ? 'Saving…' : 'Save Mapping'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- CashflowView -----------------------------------------------------------
+
+function CashflowView({ apiUrl, apiToken, bills }) {
+  var [cashflow,    setCashflow]    = React.useState(null);
+  var [aliases,     setAliases]     = React.useState([]);
+  var [loading,     setLoading]     = React.useState(false);
+  var [aliasTarget, setAliasTarget] = React.useState(null); // { txName } for picker modal
+  var [busy,        setBusy]        = React.useState(false);
+  var [showAliases, setShowAliases] = React.useState(false);
+
+  var todayMonth = new Date().toISOString().slice(0, 7);
+  var [month, setMonth] = React.useState(todayMonth);
+
+  var MONTH_NAMES = ['January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+  var monthLabel = MONTH_NAMES[parseInt(month.slice(5,7),10)-1] + ' ' + month.slice(0,4);
+
+  function loadData() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    Promise.all([
+      apiGet(apiUrl, apiToken, { action: 'cashflow', month: month }),
+      apiGet(apiUrl, apiToken, { action: 'tx_aliases' }),
+    ]).then(function(results) {
+      setCashflow(results[0]);
+      setAliases((results[1] && results[1].aliases) || []);
+    }).catch(function() {}).finally(function() { setLoading(false); });
+  }
+
+  React.useEffect(function() { loadData(); }, [month, apiUrl, apiToken]);
+
+  function prevMonth() {
+    var d = new Date(month + '-15'); d.setMonth(d.getMonth()-1);
+    setMonth(d.toISOString().slice(0,7));
+  }
+  function nextMonth() {
+    var d = new Date(month + '-15'); d.setMonth(d.getMonth()+1);
+    setMonth(d.toISOString().slice(0,7));
+  }
+
+  function fmtMoney(n) {
+    if (n == null) return '—';
+    return '$' + Math.round(Math.abs(n)).toLocaleString();
+  }
+
+  async function handleSaveAlias(txName, billName) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'set_tx_alias', keyword: txName, bill: billName });
+      setAliasTarget(null);
+      loadData();
+    } catch(e) {}
+    setBusy(false);
+  }
+
+  async function handleDeleteAlias(keyword) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'set_tx_alias', keyword: keyword, bill: '' });
+      loadData();
+    } catch(e) {}
+    setBusy(false);
+  }
+
+  var t = cashflow && cashflow.totals;
+  var income   = (cashflow && cashflow.income)   || [];
+  var expenses = (cashflow && cashflow.expenses) || [];
+  var year        = parseInt(month.slice(0,4),10);
+  var mon         = parseInt(month.slice(5,7),10);
+  var daysInMonth = new Date(year, mon, 0).getDate();
+
+  // Group events by day for timeline
+  var incByDay = {}, expByDay = {};
+  income.forEach(function(ev)   { if (!incByDay[ev.day])  incByDay[ev.day]  = []; incByDay[ev.day].push(ev); });
+  expenses.forEach(function(ev) { if (!expByDay[ev.day])  expByDay[ev.day]  = []; expByDay[ev.day].push(ev); });
+  var allDays = [];
+  Object.keys(incByDay).concat(Object.keys(expByDay)).forEach(function(d) {
+    if (allDays.indexOf(parseInt(d,10)) === -1) allDays.push(parseInt(d,10));
+  });
+  allDays.sort(function(a,b) { return a-b; });
+
+  // Unrecognized transactions (from actual tx, no Bills income entry matched)
+  var unrecognized = income.filter(function(ev) { return ev.unrecognized; });
+
+  // Running balance
+  var allEvents = income.map(function(ev)   { return { day: ev.day, delta: +(ev.amount||0) }; })
+    .concat(expenses.map(function(ev) { return { day: ev.day, delta: -(ev.amount||0) }; }));
+  allEvents.sort(function(a,b) { return a.day-b.day; });
+  var segments = [];
+  var bal = 0, prevDay = 0;
+  allEvents.forEach(function(ev) {
+    if (ev.day > prevDay) segments.push({ fromDay: prevDay, toDay: ev.day, balance: bal });
+    bal += ev.delta; prevDay = ev.day;
+  });
+  segments.push({ fromDay: prevDay, toDay: daysInMonth, balance: bal });
+  var maxBal = Math.max(1, Math.max.apply(null, segments.map(function(s) { return Math.abs(s.balance); })));
+
+  return (
+    <div>
+      {/* Month nav */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <button onClick={prevMonth}
+          style={{ padding: '5px 12px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#6b7fa8', cursor: 'pointer', fontSize: 14 }}>←</button>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#dde1f0', minWidth: 150, textAlign: 'center' }}>{monthLabel}</span>
+        <button onClick={nextMonth}
+          style={{ padding: '5px 12px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#6b7fa8', cursor: 'pointer', fontSize: 14 }}>→</button>
+        {loading && <span style={{ fontSize: 11, color: '#4d6080' }}>Loading…</span>}
+      </div>
+
+      {/* Summary cards */}
+      {t && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 110, background: 'rgba(102,187,106,.08)', border: '1px solid rgba(102,187,106,.3)', borderRadius: 10, padding: '12px 16px' }}>
+            <div style={{ fontSize: 11, color: '#66bb6a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>💰 Income</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#66bb6a' }}>{fmtMoney(t.income)}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 110, background: 'rgba(239,83,80,.08)', border: '1px solid rgba(239,83,80,.3)', borderRadius: 10, padding: '12px 16px' }}>
+            <div style={{ fontSize: 11, color: '#ef5350', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>📤 Bills</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#ef5350' }}>{fmtMoney(t.expenses)}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 110,
+            background: t.net >= 0 ? 'rgba(102,187,106,.08)' : 'rgba(239,83,80,.08)',
+            border: '1px solid ' + (t.net >= 0 ? 'rgba(102,187,106,.3)' : 'rgba(239,83,80,.3)'),
+            borderRadius: 10, padding: '12px 16px' }}>
+            <div style={{ fontSize: 11, color: t.net >= 0 ? '#66bb6a' : '#ef5350', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>📊 Net</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: t.net >= 0 ? '#66bb6a' : '#ef5350' }}>
+              {t.net >= 0 ? '+' : '-'}{fmtMoney(t.net)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      {cashflow && (income.length > 0 || expenses.length > 0) && (
+        <div className="bento-card" style={{ cursor: 'default', marginBottom: 16, overflowX: 'auto' }}>
+          <div className="bento-card-title" style={{ marginBottom: 10 }}>📅 Monthly Timeline</div>
+          <div style={{ position: 'relative', minHeight: 200, minWidth: 500 }}>
+            {/* Axis line */}
+            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, background: '#1e3060', transform: 'translateY(-50%)' }} />
+            {/* Day ticks */}
+            {[1,5,10,15,20,25,daysInMonth].filter(function(d,i,a) { return a.indexOf(d)===i; }).map(function(d) {
+              var lp = ((d-1)/(daysInMonth-1)*100).toFixed(1)+'%';
+              return (
+                <div key={d} style={{ position: 'absolute', left: lp, top: '50%', transform: 'translate(-50%,-50%)' }}>
+                  <div style={{ width: 1, height: 10, background: '#3d5fa0', margin: '0 auto' }} />
+                  <div style={{ fontSize: 9, color: '#4d6080', textAlign: 'center', marginTop: 2, userSelect: 'none' }}>{d}</div>
+                </div>
+              );
+            })}
+            {/* Event pills */}
+            {allDays.map(function(day) {
+              var lp    = ((day-1)/(Math.max(daysInMonth-1,1))*100).toFixed(1)+'%';
+              var inc   = incByDay[day]  || [];
+              var exp   = expByDay[day]  || [];
+              return (
+                <div key={day} style={{ position: 'absolute', left: lp, transform: 'translateX(-50%)', top: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  {/* Income above axis */}
+                  <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3, alignItems: 'center', flex: 1, justifyContent: 'flex-end', paddingBottom: 12 }}>
+                    {inc.map(function(ev, i) {
+                      var opacity = ev.confirmed ? 1 : 0.55;
+                      return (
+                        <div key={i} title={ev.name + (ev.amount ? ' — $'+ev.amount.toLocaleString() : '')}
+                          style={{ padding: '2px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600,
+                                   background: 'rgba(102,187,106,0.15)', color: '#66bb6a',
+                                   border: '1px solid rgba(102,187,106,' + (ev.confirmed ? '0.7' : '0.35') + ')',
+                                   whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis',
+                                   opacity: opacity, cursor: 'default' }}>
+                          {ev.name.length > 9 ? ev.name.slice(0,9)+'…' : ev.name}
+                          {ev.amount ? ' $'+Math.round(ev.amount/1000)+'k' : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Expense below axis */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center', flex: 1, justifyContent: 'flex-start', paddingTop: 12 }}>
+                    {exp.map(function(ev, i) {
+                      return (
+                        <div key={i} title={ev.name + (ev.amount ? ' — $'+ev.amount.toLocaleString() : '')}
+                          style={{ padding: '2px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600,
+                                   background: 'rgba(245,166,35,0.12)', color: '#f5a623',
+                                   border: '1px solid rgba(245,166,35,0.45)',
+                                   whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
+                          {ev.name.length > 9 ? ev.name.slice(0,9)+'…' : ev.name}
+                          {ev.amount ? ' $'+Math.round(ev.amount) : ''}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingTop: 8, borderTop: '1px solid #1e3060', fontSize: 11, color: '#6b7fa8', flexWrap: 'wrap' }}>
+            <span>💚 Income confirmed</span>
+            <span style={{ opacity: 0.6 }}>💚 Income projected</span>
+            <span>🟡 Bills (projected due date)</span>
+          </div>
+        </div>
+      )}
+
+      {/* Running balance */}
+      {cashflow && segments.length > 1 && (
+        <div className="bento-card" style={{ cursor: 'default', marginBottom: 16 }}>
+          <div className="bento-card-title" style={{ marginBottom: 10 }}>💹 Running Balance</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 56, padding: '0 4px' }}>
+            {segments.map(function(seg, i) {
+              var w   = seg.toDay - seg.fromDay;
+              var h   = Math.max(3, Math.round(Math.abs(seg.balance) / maxBal * 52));
+              var clr = seg.balance >= 0 ? '#66bb6a' : '#ef5350';
+              return (
+                <div key={i} style={{ flex: Math.max(w,1), display: 'flex', alignItems: 'flex-end' }}
+                     title={'Day '+(seg.fromDay||1)+'–'+seg.toDay+': '+(seg.balance>=0?'+':'')+Math.round(seg.balance).toLocaleString()}>
+                  <div style={{ width: '100%', height: h+'px', background: clr, borderRadius: 2, opacity: 0.85 }} />
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: '#4d6080' }}>
+            <span>Day 1</span>
+            <span style={{ fontWeight: 700, color: bal >= 0 ? '#66bb6a' : '#ef5350' }}>
+              End of month: {bal >= 0 ? '+' : '-'}{fmtMoney(bal)}
+            </span>
+            <span>Day {daysInMonth}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Event list */}
+      {cashflow && (income.length > 0 || expenses.length > 0) && (
+        <div className="bento-card" style={{ cursor: 'default', marginBottom: 16 }}>
+          <div className="bento-card-title" style={{ marginBottom: 10 }}>📋 Events</div>
+          {income.map(function(ev)   { return Object.assign({}, ev, { isIncome: true  }); })
+           .concat(expenses.map(function(ev) { return Object.assign({}, ev, { isIncome: false }); }))
+           .sort(function(a,b) { return a.day - b.day; })
+           .map(function(ev, i) {
+            var color = ev.isIncome ? '#66bb6a' : '#f5a623';
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #0d1b3e', fontSize: 13 }}>
+                <div style={{ width: 26, fontSize: 11, color: '#4d6080', flexShrink: 0 }}>{ev.day}</div>
+                <div style={{ flex: 1, color: '#dde1f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.name}</div>
+                {ev.isIncome && ev.confirmed && (
+                  <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(102,187,106,.1)', border: '1px solid rgba(102,187,106,.3)', color: '#66bb6a', flexShrink: 0 }}>✓</span>
+                )}
+                <div style={{ fontSize: 13, fontWeight: 700, color: color, flexShrink: 0 }}>
+                  {ev.isIncome ? '+' : '-'}{ev.amount != null ? '$'+Math.round(ev.amount).toLocaleString() : '—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Unrecognized transactions */}
+      {unrecognized.length > 0 && (
+        <div className="bento-card" style={{ cursor: 'default', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <div className="bento-card-title" style={{ margin: 0 }}>❓ Unrecognized Income</div>
+            <span style={{ fontSize: 11, color: '#4d6080' }}>Map these to a bill/income entry to track them</span>
+          </div>
+          {unrecognized.map(function(ev, i) {
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #0d1b3e', fontSize: 13 }}>
+                <div style={{ flex: 1, color: '#dde1f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.name}</div>
+                <div style={{ fontWeight: 700, color: '#66bb6a', flexShrink: 0 }}>+${Math.round(ev.amount).toLocaleString()}</div>
+                <button onClick={function() { setAliasTarget({ txName: ev.name }); }}
+                  style={{ padding: '3px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060',
+                           color: '#5c9eff', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
+                  Map to Bill
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Aliases management */}
+      {aliases.length > 0 && (
+        <div className="bento-card" style={{ cursor: 'default', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAliases ? 10 : 0 }}>
+            <div className="bento-card-title" style={{ margin: 0 }}>🔗 Transaction Mappings ({aliases.length})</div>
+            <button onClick={function() { setShowAliases(!showAliases); }}
+              style={{ fontSize: 11, padding: '2px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#6b7fa8', cursor: 'pointer' }}>
+              {showAliases ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {showAliases && aliases.map(function(a, i) {
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid #0d1b3e', fontSize: 12 }}>
+                <div style={{ flex: 1, color: '#6b7fa8', fontFamily: 'monospace' }}>{a.keyword}</div>
+                <div style={{ color: '#4d6080' }}>→</div>
+                <div style={{ flex: 1, color: '#dde1f0' }}>{a.bill}</div>
+                <button onClick={function() { handleDeleteAlias(a.keyword); }} disabled={busy}
+                  style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: 'rgba(239,83,80,.1)', border: '1px solid rgba(239,83,80,.3)', color: '#ef5350', cursor: 'pointer' }}>
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {cashflow && income.length === 0 && expenses.length === 0 && (
+        <div className="empty-state" style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 28, marginBottom: 10 }}>💰</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>No cashflow data for {monthLabel}</div>
+          <div style={{ fontSize: 12, color: '#4d6080' }}>
+            Add income entries via "+ Add Bill" (select Income type) to see your cashflow timeline.
+            Expenses come from your Bills sheet due dates.
+          </div>
+        </div>
+      )}
+
+      {/* TxAliasPicker modal */}
+      {aliasTarget && (
+        <TxAliasPicker
+          txName={aliasTarget.txName}
+          bills={bills}
+          busy={busy}
+          onSave={handleSaveAlias}
+          onClose={function() { setAliasTarget(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---- Finances Tab -----------------------------------------------------------
+
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
-                       calBills, onCalBillToggle, onAddBill, onSyncTransactions, busy }) {
+                       calBills, onCalBillToggle, onAddBill, onSyncTransactions, busy,
+                       apiUrl, apiToken }) {
   const [sub, setSub]           = React.useState('overview');
   const [showAddBill, setShowAddBill] = React.useState(false);
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
@@ -5770,8 +6163,9 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
   const budgetMissing = budget && !budget.configured;
 
   const subTabs = [
-    { id: 'overview', label: '💸 Overview' },
-    { id: 'bills',    label: '🧾 Bills' },
+    { id: 'overview',  label: '💸 Overview' },
+    { id: 'bills',     label: '🧾 Bills' },
+    { id: 'cashflow',  label: '💰 Cashflow' },
   ];
 
   return (
@@ -5906,6 +6300,11 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
             />
           )}
         </div>
+      )}
+
+      {/* ── Cashflow ─────────────────────────────────────── */}
+      {sub === 'cashflow' && (
+        <CashflowView apiUrl={apiUrl} apiToken={apiToken} bills={bills} />
       )}
     </div>
   );
@@ -8082,6 +8481,8 @@ function App() {
                 onCalBillToggle={handleCalendarBillToggle}
                 onAddBill={handleAddBill}
                 onSyncTransactions={handleSyncBillsFromTransactions}
+                apiUrl={apiUrl}
+                apiToken={apiToken}
                 busy={busy}
               />
             )}
