@@ -891,9 +891,12 @@ function webGetCalendarBills_() {
 
   allCals.forEach(function(cal) {
     var calName = cal.getName();
+    var calId   = cal.getId(); // usually the email address for personal calendars
     // Filter to specific calendars if configured
+    // Match against both display name AND calendar ID (email) so either works in Config
     if (billCalendars.length > 0 &&
-        billCalendars.indexOf(calName.toLowerCase()) === -1) return;
+        billCalendars.indexOf(calName.toLowerCase()) === -1 &&
+        billCalendars.indexOf(calId.toLowerCase())   === -1) return;
 
     var events = cal.getEvents(start, end);
     events.forEach(function(ev) {
