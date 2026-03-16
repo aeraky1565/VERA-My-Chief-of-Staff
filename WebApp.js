@@ -839,7 +839,20 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
     return a.amtDiff - b.amtDiff;
   });
 
-  // Greedy assign — each bill index and tx index claimed at most once
+  // Step A: collect ALL scored candidates per bill before greedy assignment.
+  // pairs is already sorted best-first, so allCandidatesMap[bIdx][0] is the
+  // highest-quality match for that bill regardless of conflicts with other bills.
+  var allCandidatesMap = {};
+  pairs.forEach(function(pair) {
+    if (!allCandidatesMap[pair.bIdx]) allCandidatesMap[pair.bIdx] = [];
+    var tx = txList[pair.tIdx];
+    allCandidatesMap[pair.bIdx].push({
+      description: tx.rawDescription || tx.rawAccount,
+      amount:      tx.amount
+    });
+  });
+
+  // Step B: greedy assign — each bill index and tx index claimed at most once
   var usedBills = {}, usedTxs = {}, result = {};
   pairs.forEach(function(pair) {
     if (usedBills[pair.bIdx] || usedTxs[pair.tIdx]) return;
@@ -850,7 +863,8 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
       // Prefer raw description; fall back to account name (for CC payment rows
       // where description is generic "Automatic Payment - Thank You")
       description: tx.rawDescription || tx.rawAccount,
-      amount:      tx.amount
+      amount:      tx.amount,
+      candidates:  allCandidatesMap[pair.bIdx] || []  // full sorted list for chip cycling
     };
   });
   return result;
@@ -895,7 +909,8 @@ function webGetBills_() {
       paid:      paidVal === currMonth,
       notes:     String(row[7] || '').trim(),
       type:      String(row[8] || 'Expense').trim() || 'Expense', // 'Expense'|'Income'
-      txMatch:   matchMap[idx] || null,
+      txMatch:      matchMap[idx] ? { description: matchMap[idx].description, amount: matchMap[idx].amount } : null,
+      txCandidates: matchMap[idx] ? (matchMap[idx].candidates || []) : [],
     });
   });
 

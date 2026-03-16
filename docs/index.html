@@ -5421,6 +5421,7 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
   var todayDate  = new Date().getDate();
   var todayStr   = new Date().toISOString().slice(0, 10);
   var [hoveredRow, setHoveredRow] = React.useState(null);
+  var [txOverrides, setTxOverrides] = React.useState({}); // { rowKey: candidateIdx }
 
   function ordinal(n) {
     const s = ['th','st','nd','rd'], v = n % 100;
@@ -5440,6 +5441,14 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
     if (d != null && d >= 0 && d <= 5) return { label: d === 0 ? '⚠️ Due today' : '⚠️ Due in ' + d + 'd', color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
     if (b.dueDate) return { label: '📅 ' + b.dueDate.slice(5), color: '#5c9eff', bg: 'rgba(92,158,255,.10)' };
     return { label: b.dueDay ? '📅 ' + b.dueDay + ordinal(b.dueDay) : '📅 —', color: '#5c9eff', bg: 'rgba(92,158,255,.10)' };
+  }
+
+  function handleChipClick(candidates, rowKey, e) {
+    e.stopPropagation();
+    if (!candidates || candidates.length <= 1) return;
+    var current = txOverrides[rowKey] !== undefined ? txOverrides[rowKey] : 0;
+    var next    = (current + 1) % candidates.length;
+    setTxOverrides(function(prev) { var u = Object.assign({}, prev); u[rowKey] = next; return u; });
   }
 
   if (billsLoading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading bills…</div>;
@@ -5467,7 +5476,8 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
       notes:     (match && match.notes)    || c.notes || '',
       source:    'calendar',
       isRecurring: c.isRecurring,
-      txMatch:   match ? (match.txMatch || null) : null,
+      txMatch:      match ? (match.txMatch || null) : null,
+      txCandidates: match ? (match.txCandidates || []) : [],
       _calBill:  c,  // original cal object for toggle
     };
   });
@@ -5560,12 +5570,37 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
                           {b.isRecurring ? '↻' : '1×'} Cal
                         </span>
                       )}
-                      {/* Transaction match chip */}
-                      {b.txMatch && (
-                        <span title={b.txMatch.description} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, border: '1px solid rgba(102,187,106,0.4)', color: '#66bb6a', background: 'rgba(102,187,106,0.08)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          {'💳 $' + Math.abs(b.txMatch.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                        </span>
-                      )}
+                      {/* Transaction match chip — click to cycle candidates */}
+                      {(function() {
+                        var candidates  = b.txCandidates || [];
+                        var overrideIdx = txOverrides[rowKey];
+                        var effectiveTx = (overrideIdx !== undefined && candidates.length > 0)
+                          ? (candidates[overrideIdx] || null)
+                          : (b.txMatch || null);
+                        if (!effectiveTx) return null;
+                        var isOverridden = overrideIdx !== undefined && (
+                          !b.txMatch ||
+                          effectiveTx.description !== b.txMatch.description ||
+                          effectiveTx.amount      !== b.txMatch.amount
+                        );
+                        var canCycle = candidates.length > 1;
+                        var color    = isOverridden ? '#f5a623'                : '#66bb6a';
+                        var border   = isOverridden ? 'rgba(245,166,35,0.4)'  : 'rgba(102,187,106,0.4)';
+                        var bg       = isOverridden ? 'rgba(245,166,35,0.08)' : 'rgba(102,187,106,0.08)';
+                        var label    = (isOverridden ? '↺ 💳 $' : '💳 $') +
+                                       Math.abs(effectiveTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                        var tipText  = (effectiveTx.description || '') + (canCycle ? ' · click to try next match' : '');
+                        return (
+                          <span
+                            title={tipText}
+                            onClick={canCycle ? function(e) { handleChipClick(candidates, rowKey, e); } : undefined}
+                            style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                     border: '1px solid ' + border, color: color, background: bg,
+                                     whiteSpace: 'nowrap', flexShrink: 0,
+                                     cursor: canCycle ? 'pointer' : 'default' }}
+                          >{label}</span>
+                        );
+                      })()}
                     </div>
                     {b.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
                   </div>
