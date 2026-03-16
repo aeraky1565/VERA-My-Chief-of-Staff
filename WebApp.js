@@ -93,6 +93,8 @@ function doGet(e) {
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
+      case 'calendar_bills':        return jsonOut_(webGetCalendarBills_());
+      case 'bills_toggle_cal':      return jsonOut_(webToggleCalBill_(e));
       case 'recipes':               return jsonOut_(webGetRecipes_());
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
@@ -823,6 +825,170 @@ function webAddBill_(e) {
     (p.notes     || '').trim(),
   ]]);
   return { ok: true, bill: billName, action: 'created' };
+}
+
+// ---- Calendar Bills (Issue #76) --------------------------------------------
+
+/**
+ * Parses a dollar amount from a text string.
+ * e.g. "Netflix Subscription $15.99" → 15.99, "$1,200" → 1200
+ */
+function parseAmountFromText_(text) {
+  var match = String(text || '').match(/\$([\d,]+(?:\.\d{2})?)/);
+  if (!match) return null;
+  var val = parseFloat(match[1].replace(/,/g, ''));
+  return isNaN(val) ? null : val;
+}
+
+/**
+ * Infers a bill category from which keyword matched the event title.
+ */
+function inferBillCategory_(title) {
+  var t = title.toLowerCase();
+  if (t.indexOf('rent') !== -1 || t.indexOf('mortgage') !== -1) return 'Housing';
+  if (t.indexOf('subscription') !== -1)                          return 'Subscriptions';
+  if (t.indexOf('insurance') !== -1)                             return 'Insurance';
+  if (t.indexOf('utilit') !== -1)                                return 'Utilities';
+  if (t.indexOf('payment') !== -1)                               return 'Payments';
+  return 'Bills';
+}
+
+/**
+ * Reads all-day calendar events in a rolling window whose title contains a
+ * bill keyword. Returns them as a structured list for the Bills dashboard.
+ */
+function webGetCalendarBills_() {
+  var ss  = getSpreadsheet();
+  var tz  = Session.getScriptTimeZone();
+
+  // Read config
+  var keywords      = ['bill', 'subscription', 'payment', 'rent', 'insurance', 'mortgage', 'utility', 'utilities'];
+  var billCalendars = []; // empty = all calendars
+  try {
+    var cfgSheet = ss.getSheetByName(TABS.CONFIG);
+    if (cfgSheet) {
+      var cfgData = cfgSheet.getDataRange().getValues();
+      for (var ci = 0; ci < cfgData.length; ci++) {
+        var cfgKey = String(cfgData[ci][0]).trim();
+        var cfgVal = String(cfgData[ci][1]).trim();
+        if (cfgKey === 'bill_keywords' && cfgVal)
+          keywords = cfgVal.split(',').map(function(k) { return k.trim().toLowerCase(); });
+        if (cfgKey === 'bill_calendars' && cfgVal)
+          billCalendars = cfgVal.split(',').map(function(c) { return c.trim().toLowerCase(); });
+      }
+    }
+  } catch(e) {}
+
+  // Date window: 5 days back → 40 days ahead
+  var start = new Date();
+  start.setDate(start.getDate() - 5);
+  var end = new Date();
+  end.setDate(end.getDate() + 40);
+
+  var allCals = CalendarApp.getAllCalendars();
+  var seen    = {};
+  var bills   = [];
+
+  allCals.forEach(function(cal) {
+    var calName = cal.getName();
+    // Filter to specific calendars if configured
+    if (billCalendars.length > 0 &&
+        billCalendars.indexOf(calName.toLowerCase()) === -1) return;
+
+    var events = cal.getEvents(start, end);
+    events.forEach(function(ev) {
+      if (!ev.isAllDayEvent()) return;
+      var title = ev.getTitle();
+      var titleLow = title.toLowerCase();
+
+      // Check if any keyword matches
+      var matched = keywords.some(function(kw) { return titleLow.indexOf(kw) !== -1; });
+      if (!matched) return;
+
+      var id = ev.getId();
+      if (seen[id]) return;
+      seen[id] = true;
+
+      // Parse amount from title then description
+      var desc   = ev.getDescription() || '';
+      var amount = parseAmountFromText_(title) || parseAmountFromText_(desc) || null;
+
+      bills.push({
+        id:          id,
+        title:       title,
+        date:        Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd'),
+        isRecurring: ev.isRecurringEvent(),
+        amount:      amount,
+        notes:       desc,
+        category:    inferBillCategory_(title),
+        calendarName: calName,
+      });
+    });
+  });
+
+  // Sort by date
+  bills.sort(function(a, b) { return a.date.localeCompare(b.date); });
+
+  return { ok: true, bills: bills };
+}
+
+/**
+ * Toggles paid status for a calendar-sourced bill.
+ * Auto-creates a Bills sheet row on first toggle if no matching row exists.
+ */
+function webToggleCalBill_(e) {
+  var p     = e.parameter || {};
+  var title = (p.title || '').trim();
+  if (!title) throw new Error('title is required');
+
+  var ss        = getSpreadsheet();
+  var sheet     = ss.getSheetByName(TABS.BILLS);
+  if (!sheet) throw new Error('Bills tab not found');
+
+  var tz        = Session.getScriptTimeZone();
+  var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+
+  // Find existing sheet row by bill name (case-insensitive)
+  var rowNum = -1;
+  if (sheet.getLastRow() >= 2) {
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim().toLowerCase() === title.toLowerCase()) {
+        rowNum = i + 2; break;
+      }
+    }
+  }
+
+  // Auto-create row if not found
+  if (rowNum === -1) {
+    var dueDay = '';
+    if (p.dueDay) {
+      dueDay = Number(p.dueDay) || '';
+    } else if (p.date) {
+      // Derive due day from calendar event date
+      dueDay = parseInt(p.date.split('-')[2], 10) || '';
+    }
+    var newRow = [
+      title,
+      p.amount ? (parseFloat(String(p.amount).replace(/,/g, '')) || '') : '',
+      dueDay,
+      p.frequency || (p.isRecurring === 'true' ? 'Recurring' : 'One-time'),
+      (p.category || '').trim(),
+      '',   // account — user can enrich later
+      '',   // paid — will be set below
+      (p.notes || '').trim(),
+    ];
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, BILL_HEADERS.length).setValues([newRow]);
+    rowNum = sheet.getLastRow();
+  }
+
+  // Toggle paid
+  var cell    = sheet.getRange(rowNum, 7);
+  var current = String(cell.getValue() || '').trim();
+  var newVal  = (current === currMonth) ? '' : currMonth;
+  cell.setValue(newVal);
+
+  return { ok: true, row: rowNum, paid: newVal !== '' };
 }
 
 // ---- Recipes (Issue #46) ---------------------------------------------------

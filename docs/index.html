@@ -5275,11 +5275,128 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
 
 // ---- Finances tab -----------------------------------------------------------
 
+// ---- Add Bill Modal ---------------------------------------------------------
+
+function AddBillModal({ onClose, onSave, busy }) {
+  const [form, setForm] = React.useState({
+    bill: '', amount: '', dueDay: '', frequency: 'Monthly',
+    category: '', account: 'Shared', notes: '',
+  });
+  function set(k, v) { setForm(function(p) { return Object.assign({}, p, { [k]: v }); }); }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.bill.trim()) return;
+    onSave({
+      bill:      form.bill.trim(),
+      amount:    form.amount !== '' ? form.amount : undefined,
+      dueDay:    form.dueDay !== '' ? form.dueDay : undefined,
+      frequency: form.frequency,
+      category:  form.category.trim(),
+      account:   form.account,
+      notes:     form.notes.trim(),
+    });
+  }
+
+  var freqOptions = ['Monthly', 'Quarterly', 'Annual', 'One-time'];
+  var acctOptions = [
+    { label: 'Ahmed',    color: '#5c9eff', bg: '#0d2040' },
+    { label: 'Victoria', color: '#b87cff', bg: '#1a0d30' },
+    { label: 'Shared',   color: '#4a9060', bg: '#0d1a10' },
+  ];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 420 }} onClick={function(e) { e.stopPropagation(); }}>
+        <div style={{ fontWeight: 700, fontSize: 16, color: '#dde1f0', marginBottom: 16 }}>+ Add Bill</div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">Bill Name *</label>
+            <input className="form-input" value={form.bill} onChange={function(e) { set('bill', e.target.value); }}
+              placeholder="e.g. Netflix, Rent, Car Insurance" autoFocus />
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Amount ($)</label>
+              <input className="form-input" type="number" min="0" step="0.01" value={form.amount}
+                onChange={function(e) { set('amount', e.target.value); }}
+                placeholder="Variable / unknown" />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Due Day (1–31)</label>
+              <input className="form-input" type="number" min="1" max="31" value={form.dueDay}
+                onChange={function(e) { set('dueDay', e.target.value); }}
+                placeholder="e.g. 15" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Frequency</label>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {freqOptions.map(function(f) {
+                var active = form.frequency === f;
+                return (
+                  <button key={f} type="button"
+                    onClick={function() { set('frequency', f); }}
+                    style={{ padding: '4px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                             border: active ? '1.5px solid #5c9eff' : '1.5px solid #2a3a4a',
+                             background: active ? '#0d2040' : '#1e2a3a', color: active ? '#5c9eff' : '#6b7fa8' }}>
+                    {f}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Category</label>
+            <input className="form-input" value={form.category}
+              onChange={function(e) { set('category', e.target.value); }}
+              placeholder="e.g. Subscriptions, Utilities, Insurance" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Account</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {acctOptions.map(function(a) {
+                var active = form.account === a.label;
+                return (
+                  <button key={a.label} type="button"
+                    onClick={function() { set('account', a.label); }}
+                    style={{ padding: '4px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+                             border: active ? '1.5px solid ' + a.color : '1.5px solid #2a3a4a',
+                             background: active ? a.bg : '#1e2a3a', color: active ? a.color : '#6b7fa8' }}>
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <input className="form-input" value={form.notes}
+              onChange={function(e) { set('notes', e.target.value); }}
+              placeholder="Optional notes" />
+          </div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button type="button" onClick={onClose}
+              style={{ padding: '8px 18px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a',
+                       color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button type="submit" disabled={busy || !form.bill.trim()}
+              style={{ padding: '8px 18px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                       color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                       opacity: busy || !form.bill.trim() ? 0.5 : 1 }}>
+              {busy ? 'Saving…' : 'Add Bill'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ---- Bill Tracker sub-view --------------------------------------------------
 
-function BillTrackerView({ bills, billsLoading, onToggle }) {
-  const today    = new Date().getDate();
-  const billList = (bills && bills.bills) || [];
+function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle }) {
+  var todayDate  = new Date().getDate();
+  var todayStr   = new Date().toISOString().slice(0, 10);
 
   function ordinal(n) {
     const s = ['th','st','nd','rd'], v = n % 100;
@@ -5287,36 +5404,92 @@ function BillTrackerView({ bills, billsLoading, onToggle }) {
   }
 
   function statusBadge(b) {
-    if (b.paid) return { label: '✅ Paid',    color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
-    const d = b.dueDay != null ? b.dueDay - today : null;
-    if (d != null && d < 0)           return { label: '🔴 Overdue', color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
-    if (d != null && d >= 0 && d <= 5) return { label: d === 0 ? '⚠️ Due today' : `⚠️ Due in ${d}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
-    return { label: b.dueDay ? `📅 ${b.dueDay}${ordinal(b.dueDay)}` : '📅 —', color: '#5c9eff', bg: 'rgba(92,158,255,.10)' };
+    if (b.paid) return { label: '✅ Paid', color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
+    // For calendar bills, use the actual due date string for comparison
+    var d = null;
+    if (b.dueDate) {
+      d = Math.round((new Date(b.dueDate + 'T12:00:00') - new Date(todayStr + 'T12:00:00')) / 86400000);
+    } else if (b.dueDay != null) {
+      d = b.dueDay - todayDate;
+    }
+    if (d != null && d < 0)            return { label: '🔴 Overdue',  color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (d != null && d >= 0 && d <= 5) return { label: d === 0 ? '⚠️ Due today' : '⚠️ Due in ' + d + 'd', color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    if (b.dueDate) return { label: '📅 ' + b.dueDate.slice(5), color: '#5c9eff', bg: 'rgba(92,158,255,.10)' };
+    return { label: b.dueDay ? '📅 ' + b.dueDay + ordinal(b.dueDay) : '📅 —', color: '#5c9eff', bg: 'rgba(92,158,255,.10)' };
   }
 
   if (billsLoading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading bills…</div>;
-  if (!bills)       return <div style={{ fontSize: 13, color: '#4d6080', padding: 16 }}>Click the Finances tab to load bills.</div>;
-  if (billList.length === 0) return (
+
+  // ── Merge calendar + sheet bills ─────────────────────────────────────────
+  var sheetByTitle = {};
+  ((bills && bills.bills) || []).forEach(function(b) {
+    sheetByTitle[b.bill.toLowerCase()] = b;
+  });
+
+  // Calendar bills — merge sheet row if title matches
+  var calMerged = (calBills || []).map(function(c) {
+    var match = sheetByTitle[c.title.toLowerCase()];
+    return {
+      bill:      c.title,
+      title:     c.title,
+      amount:    match ? match.amount : c.amount,
+      dueDay:    match ? match.dueDay : null,
+      dueDate:   c.date,
+      frequency: c.isRecurring ? 'Recurring' : 'One-time',
+      category:  (match && match.category) || c.category || '',
+      account:   (match && match.account)  || '',
+      paid:      match ? match.paid : false,
+      row:       match ? match.row  : null,
+      notes:     (match && match.notes)    || c.notes || '',
+      source:    'calendar',
+      isRecurring: c.isRecurring,
+      _calBill:  c,  // original cal object for toggle
+    };
+  });
+
+  // Sheet-only bills (no calendar match)
+  var sheetOnly = ((bills && bills.bills) || []).filter(function(b) {
+    return !calMerged.find(function(c) { return c.bill.toLowerCase() === b.bill.toLowerCase(); });
+  }).map(function(b) { return Object.assign({}, b, { source: 'manual' }); });
+
+  var allBills = calMerged.concat(sheetOnly);
+
+  if (allBills.length === 0) return (
     <div className="empty-state" style={{ marginTop: 8 }}>
       <div style={{ fontSize: 32, marginBottom: 12 }}>🧾</div>
-      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No bills yet</div>
-      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Bills tab in your Life OS sheet.</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No bills found</div>
+      <div style={{ fontSize: 12, color: '#4d6080' }}>Add bill events to your calendar or click "+ Add Bill".</div>
     </div>
   );
 
-  // Group by category; uncategorised bills go last
-  const grouped = {};
-  const uncategorised = [];
-  billList.forEach(b => {
-    const cat = (b.category || '').trim();
+  // Group by category
+  var grouped = {}, uncategorised = [];
+  allBills.forEach(function(b) {
+    var cat = (b.category || '').trim();
     if (!cat) { uncategorised.push(b); return; }
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(b);
   });
-  const cats = Object.keys(grouped).sort();
+  var cats = Object.keys(grouped).sort();
   if (uncategorised.length) cats.push('');
 
-  const unpaidSoon = billList.filter(b => !b.paid && b.dueDay != null && (b.dueDay - today) >= 0 && (b.dueDay - today) <= 5).length;
+  var unpaidSoon = allBills.filter(function(b) {
+    if (b.paid) return false;
+    if (b.dueDate) {
+      var d = Math.round((new Date(b.dueDate + 'T12:00:00') - new Date(todayStr + 'T12:00:00')) / 86400000);
+      return d >= 0 && d <= 5;
+    }
+    return b.dueDay != null && (b.dueDay - todayDate) >= 0 && (b.dueDay - todayDate) <= 5;
+  }).length;
+
+  function handleToggle(b) {
+    if (b.source === 'calendar' && b.row === null) {
+      // Not yet in sheet — auto-create on first toggle
+      if (onCalToggle) onCalToggle(b._calBill);
+    } else {
+      if (onToggle) onToggle(b.row);
+    }
+  }
 
   return (
     <div>
@@ -5325,9 +5498,13 @@ function BillTrackerView({ bills, billsLoading, onToggle }) {
           ⚠️ {unpaidSoon} bill{unpaidSoon > 1 ? 's' : ''} due within 5 days
         </div>
       )}
-
-      {cats.map(cat => {
-        const items = (cat ? grouped[cat] : uncategorised).slice().sort((a, b) => (a.dueDay || 99) - (b.dueDay || 99));
+      {cats.map(function(cat) {
+        var items = (cat ? grouped[cat] : uncategorised).slice().sort(function(a, b) {
+          // Sort calendar bills by due date first, then sheet bills by due day
+          var da = a.dueDate || (a.dueDay ? todayStr.slice(0,8) + String(a.dueDay).padStart(2,'0') : '9999');
+          var db = b.dueDate || (b.dueDay ? todayStr.slice(0,8) + String(b.dueDay).padStart(2,'0') : '9999');
+          return da.localeCompare(db);
+        });
         return (
           <div key={cat || '__none'} style={{ marginBottom: 18 }}>
             {cat && (
@@ -5335,33 +5512,42 @@ function BillTrackerView({ bills, billsLoading, onToggle }) {
                 {cat}
               </div>
             )}
-            {items.map((b, i) => {
-              const badge   = statusBadge(b);
-              const acctClr = b.account === 'Ahmed' ? '#5c9eff' : b.account === 'Victoria' ? '#c97ef2' : '#2bb5a0';
+            {items.map(function(b, i) {
+              var badge   = statusBadge(b);
+              var acctClr = b.account === 'Ahmed' ? '#5c9eff' : b.account === 'Victoria' ? '#c97ef2' : '#2bb5a0';
               return (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #0d1b3e' }}>
-                  {/* Name + account chip + notes */}
+                  {/* Name + badges + notes */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' }}>
                       <span style={{ fontSize: 13, color: b.paid ? '#4d6080' : '#dde1f0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.bill}</span>
+                      {/* Account chip */}
                       {b.account && (
-                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, border: `1px solid ${acctClr}`, color: acctClr, whiteSpace: 'nowrap', flexShrink: 0 }}>{b.account}</span>
+                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, border: '1px solid ' + acctClr, color: acctClr, whiteSpace: 'nowrap', flexShrink: 0 }}>{b.account}</span>
+                      )}
+                      {/* Source badge */}
+                      {b.source === 'calendar' && (
+                        <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: '#0d1a2a', border: '1px solid #1e3a5a', color: '#4a7aa8', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {b.isRecurring ? '↻' : '1×'} Cal
+                        </span>
                       )}
                     </div>
-                    {b.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1 }}>{b.notes}</div>}
+                    {b.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
                   </div>
                   {/* Amount */}
                   <div style={{ fontSize: 13, fontWeight: 700, color: b.paid ? '#4d6080' : '#c9a84c', whiteSpace: 'nowrap' }}>
-                    {b.amount != null ? '$' + b.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
+                    {b.amount != null ? '$' + Number(b.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
                   </div>
-                  {/* Frequency (non-monthly) or due day */}
+                  {/* Frequency or due day */}
                   <div style={{ fontSize: 11, color: '#6b7fa8', whiteSpace: 'nowrap', width: 60, textAlign: 'center' }}>
-                    {b.frequency && b.frequency !== 'Monthly' ? b.frequency : (b.dueDay ? `${b.dueDay}${ordinal(b.dueDay)}` : '')}
+                    {b.source === 'calendar'
+                      ? (b.isRecurring ? 'Recurring' : 'One-time')
+                      : (b.frequency && b.frequency !== 'Monthly' ? b.frequency : (b.dueDay ? b.dueDay + ordinal(b.dueDay) : ''))}
                   </div>
-                  {/* Paid/status badge — click to toggle */}
+                  {/* Paid / status toggle */}
                   <button
-                    style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: `1px solid ${badge.color}`, background: badge.bg, color: badge.color, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 92 }}
-                    onClick={() => onToggle(b.row)}
+                    style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid ' + badge.color, background: badge.bg, color: badge.color, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 92 }}
+                    onClick={function() { handleToggle(b); }}
                   >{badge.label}</button>
                 </div>
               );
@@ -5551,8 +5737,10 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
 
 // ---- Finances tab -----------------------------------------------------------
 
-function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle }) {
-  const [sub, setSub] = React.useState('overview');
+function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
+                       calBills, onCalBillToggle, onAddBill, busy }) {
+  const [sub, setSub]           = React.useState('overview');
+  const [showAddBill, setShowAddBill] = React.useState(false);
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
 
   // Format a cell value as currency (numbers → $X,XXX) or dash (null/empty)
@@ -5667,7 +5855,33 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
 
       {/* ── Bill Tracker ─────────────────────────────────── */}
       {sub === 'bills' && (
-        <BillTrackerView bills={bills} billsLoading={billsLoading} onToggle={onBillToggle} />
+        <div>
+          {/* Header row with Add Bill button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button onClick={function() { setShowAddBill(true); }}
+              style={{ padding: '6px 14px', borderRadius: 8, background: '#0d2040', border: '1px solid #5c9eff',
+                       color: '#5c9eff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              + Add Bill
+            </button>
+          </div>
+          <BillTrackerView
+            bills={bills}
+            calBills={calBills}
+            billsLoading={billsLoading}
+            onToggle={onBillToggle}
+            onCalToggle={onCalBillToggle}
+          />
+          {showAddBill && (
+            <AddBillModal
+              busy={busy}
+              onClose={function() { setShowAddBill(false); }}
+              onSave={function(fields) {
+                if (onAddBill) onAddBill(fields);
+                setShowAddBill(false);
+              }}
+            />
+          )}
+        </div>
       )}
     </div>
   );
@@ -6602,6 +6816,7 @@ function App() {
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
+  const [calBills,   setCalBills]   = useState(null); // calendar-sourced bills | null = not loaded
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
@@ -6957,6 +7172,47 @@ function App() {
       setError('Bills load failed: ' + err.message);
     }
     setTabLoading(prev => ({ ...prev, bills: false }));
+  }
+
+  async function loadCalendarBills(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'calendar_bills' });
+      setCalBills(data?.bills || []);
+    } catch (err) {
+      setError('Calendar bills load failed: ' + err.message);
+    }
+  }
+
+  async function handleAddBill(fields) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, Object.assign({ action: 'add_bill' }, fields));
+      await loadBills(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add bill: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleCalendarBillToggle(calBill) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, {
+        action:      'bills_toggle_cal',
+        title:       calBill.title,
+        amount:      calBill.amount != null ? calBill.amount : '',
+        date:        calBill.date || '',
+        frequency:   calBill.isRecurring ? 'Recurring' : 'One-time',
+        category:    calBill.category || '',
+        notes:       calBill.notes   || '',
+        isRecurring: String(!!calBill.isRecurring),
+      });
+      await loadBills(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not update bill: ' + err.message);
+    }
+    setBusy(false);
   }
 
   async function loadHomeFront(url, token) {
@@ -7487,7 +7743,7 @@ function App() {
                   if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
-                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); }
+                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); }
                 }}
               >
                 {tab === 'home'       ? `🏠 Home` : ''}
@@ -7786,6 +8042,10 @@ function App() {
                 bills={bills}
                 billsLoading={!!tabLoading.bills}
                 onBillToggle={handleBillToggle}
+                calBills={calBills}
+                onCalBillToggle={handleCalendarBillToggle}
+                onAddBill={handleAddBill}
+                busy={busy}
               />
             )}
 
