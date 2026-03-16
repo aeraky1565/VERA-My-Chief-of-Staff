@@ -5909,6 +5909,23 @@ function CashflowView({ apiUrl, apiToken, bills }) {
   segments.push({ fromDay: prevDay, toDay: daysInMonth, balance: bal });
   var maxBal = Math.max(1, Math.max.apply(null, segments.map(function(s) { return Math.abs(s.balance); })));
 
+  // Bar chart per-day totals
+  var dayIncTotals = {}, dayExpTotals = {}, dayIncConfirmed = {};
+  income.forEach(function(ev) {
+    if (!ev.amount) return;
+    dayIncTotals[ev.day] = (dayIncTotals[ev.day] || 0) + ev.amount;
+    if (ev.confirmed) dayIncConfirmed[ev.day] = true;
+  });
+  expenses.forEach(function(ev) {
+    if (!ev.amount) return;
+    dayExpTotals[ev.day] = (dayExpTotals[ev.day] || 0) + ev.amount;
+  });
+  var maxIncDay = 1, maxExpDay = 1;
+  Object.keys(dayIncTotals).forEach(function(k) { if (dayIncTotals[k] > maxIncDay) maxIncDay = dayIncTotals[k]; });
+  Object.keys(dayExpTotals).forEach(function(k) { if (dayExpTotals[k] > maxExpDay) maxExpDay = dayExpTotals[k]; });
+  var BAR_H = 75;
+  var labelDaysSet = [1, 5, 10, 15, 20, 25, daysInMonth];
+
   return (
     <div>
       {/* Month nav */}
@@ -5944,71 +5961,66 @@ function CashflowView({ apiUrl, apiToken, bills }) {
         </div>
       )}
 
-      {/* Timeline */}
+      {/* Timeline — vertical bar chart */}
       {cashflow && (income.length > 0 || expenses.length > 0) && (
         <div className="bento-card" style={{ cursor: 'default', marginBottom: 16, overflowX: 'auto' }}>
-          <div className="bento-card-title" style={{ marginBottom: 10 }}>📅 Monthly Timeline</div>
-          <div style={{ position: 'relative', minHeight: 200, minWidth: 500 }}>
-            {/* Axis line */}
-            <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 2, background: '#1e3060', transform: 'translateY(-50%)' }} />
-            {/* Day ticks */}
-            {[1,5,10,15,20,25,daysInMonth].filter(function(d,i,a) { return a.indexOf(d)===i; }).map(function(d) {
-              var lp = ((d-1)/(daysInMonth-1)*100).toFixed(1)+'%';
-              return (
-                <div key={d} style={{ position: 'absolute', left: lp, top: '50%', transform: 'translate(-50%,-50%)' }}>
-                  <div style={{ width: 1, height: 10, background: '#3d5fa0', margin: '0 auto' }} />
-                  <div style={{ fontSize: 9, color: '#4d6080', textAlign: 'center', marginTop: 2, userSelect: 'none' }}>{d}</div>
-                </div>
-              );
-            })}
-            {/* Event pills */}
-            {allDays.map(function(day) {
-              var lp    = ((day-1)/(Math.max(daysInMonth-1,1))*100).toFixed(1)+'%';
-              var inc   = incByDay[day]  || [];
-              var exp   = expByDay[day]  || [];
-              return (
-                <div key={day} style={{ position: 'absolute', left: lp, transform: 'translateX(-50%)', top: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                  {/* Income above axis */}
-                  <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: 3, alignItems: 'center', flex: 1, justifyContent: 'flex-end', paddingBottom: 12 }}>
-                    {inc.map(function(ev, i) {
-                      var opacity = ev.confirmed ? 1 : 0.55;
-                      return (
-                        <div key={i} title={ev.name + (ev.amount ? ' — $'+ev.amount.toLocaleString() : '')}
-                          style={{ padding: '2px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600,
-                                   background: 'rgba(102,187,106,0.15)', color: '#66bb6a',
-                                   border: '1px solid rgba(102,187,106,' + (ev.confirmed ? '0.7' : '0.35') + ')',
-                                   whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis',
-                                   opacity: opacity, cursor: 'default' }}>
-                          {ev.name.length > 9 ? ev.name.slice(0,9)+'…' : ev.name}
-                          {ev.amount ? ' $'+Math.round(ev.amount/1000)+'k' : ''}
-                        </div>
-                      );
-                    })}
+          <div className="bento-card-title" style={{ marginBottom: 12 }}>📅 Monthly Timeline</div>
+          <div style={{ minWidth: 500, padding: '0 2px' }}>
+            <div style={{ display: 'flex', alignItems: 'stretch', height: BAR_H * 2 + 20, gap: 1 }}>
+              {Array.from({ length: daysInMonth }, function(_, i) {
+                var day     = i + 1;
+                var incAmt  = dayIncTotals[day] || 0;
+                var expAmt  = dayExpTotals[day] || 0;
+                var incH    = incAmt > 0 ? Math.max(3, Math.round(incAmt / maxIncDay * BAR_H)) : 0;
+                var expH    = expAmt > 0 ? Math.max(3, Math.round(expAmt / maxExpDay * BAR_H)) : 0;
+                var confirmed = !!dayIncConfirmed[day];
+                var showLbl   = labelDaysSet.indexOf(day) !== -1;
+                var ttLines   = (incByDay[day] || []).map(function(e) {
+                  return '+ ' + e.name + (e.amount ? ' $'+Math.round(e.amount).toLocaleString() : '');
+                }).concat((expByDay[day] || []).map(function(e) {
+                  return '- ' + e.name + (e.amount ? ' $'+Math.round(e.amount).toLocaleString() : '');
+                }));
+                return (
+                  <div key={day} title={ttLines.length ? ttLines.join('\n') : undefined}
+                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 0, cursor: ttLines.length ? 'default' : undefined }}>
+                    {/* Income bar — grows upward from center axis */}
+                    <div style={{ height: BAR_H, width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      {incH > 0 && (
+                        <div style={{
+                          width: '72%', height: incH,
+                          background: confirmed ? '#66bb6a' : 'rgba(102,187,106,0.35)',
+                          borderRadius: '3px 3px 0 0',
+                          border: confirmed ? 'none' : '1px dashed rgba(102,187,106,0.6)',
+                          boxSizing: 'border-box'
+                        }} />
+                      )}
+                    </div>
+                    {/* Center axis */}
+                    <div style={{ height: 2, width: '100%', background: '#1e3060', flexShrink: 0 }} />
+                    {/* Expense bar — grows downward from center axis */}
+                    <div style={{ height: BAR_H, width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'center' }}>
+                      {expH > 0 && (
+                        <div style={{
+                          width: '72%', height: expH,
+                          background: 'rgba(245,166,35,0.8)',
+                          borderRadius: '0 0 3px 3px'
+                        }} />
+                      )}
+                    </div>
+                    {/* Day label */}
+                    <div style={{ height: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+                      {showLbl && <span style={{ fontSize: 9, color: '#4d6080', userSelect: 'none' }}>{day}</span>}
+                    </div>
                   </div>
-                  {/* Expense below axis */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center', flex: 1, justifyContent: 'flex-start', paddingTop: 12 }}>
-                    {exp.map(function(ev, i) {
-                      return (
-                        <div key={i} title={ev.name + (ev.amount ? ' — $'+ev.amount.toLocaleString() : '')}
-                          style={{ padding: '2px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600,
-                                   background: 'rgba(245,166,35,0.12)', color: '#f5a623',
-                                   border: '1px solid rgba(245,166,35,0.45)',
-                                   whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>
-                          {ev.name.length > 9 ? ev.name.slice(0,9)+'…' : ev.name}
-                          {ev.amount ? ' $'+Math.round(ev.amount) : ''}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
           {/* Legend */}
           <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingTop: 8, borderTop: '1px solid #1e3060', fontSize: 11, color: '#6b7fa8', flexWrap: 'wrap' }}>
-            <span>💚 Income confirmed</span>
-            <span style={{ opacity: 0.6 }}>💚 Income projected</span>
-            <span>🟡 Bills (projected due date)</span>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#66bb6a', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Income (confirmed)</span>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(102,187,106,0.35)', border: '1px dashed rgba(102,187,106,0.6)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle', boxSizing: 'border-box' }} />Income (projected)</span>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(245,166,35,0.8)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Bills</span>
           </div>
         </div>
       )}
