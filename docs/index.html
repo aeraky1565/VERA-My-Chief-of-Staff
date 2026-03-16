@@ -5462,7 +5462,7 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
       frequency: c.isRecurring ? 'Recurring' : 'One-time',
       category:  (match && match.category) || c.category || '',
       account:   (match && match.account)  || '',
-      paid:      match ? match.paid : false,
+      paid:      match ? match.paid : (c.paid || false),
       row:       match ? match.row  : null,
       notes:     (match && match.notes)    || c.notes || '',
       source:    'calendar',
@@ -5543,10 +5543,9 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
               var rowKey  = b.row || (b.bill + '__' + (b.dueDate || b.dueDay || ''));
               return (
                 <div key={i}
-                  onClick={function() { handleToggle(b); }}
                   onMouseEnter={function() { setHoveredRow(rowKey); }}
                   onMouseLeave={function() { setHoveredRow(null); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px', margin: '0 -4px', borderBottom: '1px solid #0d1b3e', cursor: 'pointer', borderRadius: 4, background: hoveredRow === rowKey ? 'rgba(92,158,255,0.05)' : 'transparent', transition: 'background 0.15s' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px', margin: '0 -4px', borderBottom: '1px solid #0d1b3e', cursor: 'default', borderRadius: 4, background: hoveredRow === rowKey ? 'rgba(92,158,255,0.05)' : 'transparent', transition: 'background 0.15s' }}>
                   {/* Name + badges + notes */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' }}>
@@ -5580,10 +5579,10 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
                       ? (b.isRecurring ? 'Recurring' : 'One-time')
                       : (b.frequency && b.frequency !== 'Monthly' ? b.frequency : (b.dueDay ? b.dueDay + ordinal(b.dueDay) : ''))}
                   </div>
-                  {/* Paid / status toggle — stopPropagation prevents double-toggle with row onClick */}
+                  {/* Paid / status toggle — only the pill button toggles paid state */}
                   <button
                     style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid ' + badge.color, background: badge.bg, color: badge.color, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 92 }}
-                    onClick={function(e) { e.stopPropagation(); handleToggle(b); }}
+                    onClick={function() { handleToggle(b); }}
                   >{badge.label}</button>
                 </div>
               );
@@ -7656,9 +7655,11 @@ function App() {
         isRecurring: String(!!calBill.isRecurring),
       });
       await loadBills(apiUrl, apiToken);
+      await loadCalendarBills(apiUrl, apiToken);
     } catch (err) {
       setError('Could not update bill: ' + err.message);
-      await loadBills(apiUrl, apiToken); // revert on error
+      await loadBills(apiUrl, apiToken);        // revert on error
+      await loadCalendarBills(apiUrl, apiToken); // sync paid state
     }
     setBusy(false);
   }
