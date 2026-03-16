@@ -1836,8 +1836,17 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
         d.setDate(d.getDate() + 1);
       }
     }
-    // Cruise = sleeping on the ship; covers its own date
-    if (item.type === 'cruise' && item.date) hotelCovered[item.date] = true;
+    // Cruise = sleeping on the ship; covers full embark→disembark range
+    if (item.type === 'cruise' && item.date) {
+      var cruiseIn  = item.date;
+      var cruiseOut = hotelCheckoutDates[item.id] || item.date;
+      var cd   = new Date(cruiseIn  + 'T00:00:00');
+      var cend = new Date(cruiseOut + 'T00:00:00');
+      while (cd <= cend) {
+        hotelCovered[cd.toISOString().slice(0, 10)] = true;
+        cd.setDate(cd.getDate() + 1);
+      }
+    }
   });
 
   // Build per-day transport map (any transport type = covered)
@@ -2167,15 +2176,15 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
           </div>
         )}
 
-        {/* Hotel-specific fields */}
-        {type === 'hotel' && (
+        {/* Hotel/Cruise-specific fields */}
+        {(type === 'hotel' || type === 'cruise') && (
           <div style={{ background: '#131e2e', borderRadius: 8, padding: '10px 12px',
                         marginBottom: 12, border: '1px solid #1e2a3a' }}>
             <div style={{ color: '#8ab4f8', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-              🏨 Hotel Stay
+              {type === 'cruise' ? '🚢 Cruise Stay' : '🏨 Hotel Stay'}
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Check-out Date</label>
+              <label className="form-label">{type === 'cruise' ? 'Disembarkation Date' : 'Check-out Date'}</label>
               <input className="form-input" type="date" value={checkoutDate}
                 onChange={e => setCheckoutDate(e.target.value)} />
             </div>
@@ -2185,7 +2194,7 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
         {/* Date + Times */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
-            <label className="form-label">{type === 'hotel' ? 'Check-in Date' : 'Date'}</label>
+            <label className="form-label">{type === 'hotel' ? 'Check-in Date' : type === 'cruise' ? 'Embarkation Date' : 'Date'}</label>
             <input className="form-input" type="date" value={date}
               onChange={e => setDate(e.target.value)} />
           </div>
@@ -2282,7 +2291,7 @@ function ItineraryView({ trip, itinerary, loading, busy,
   // Pre-compute hotel checkout date map: itemId → checkoutDate
   var hotelCheckoutDates = {};
   items.forEach(function(item) {
-    if (item.type !== 'hotel' || !item.metadata) return;
+    if ((item.type !== 'hotel' && item.type !== 'cruise') || !item.metadata) return;
     try { var m = JSON.parse(item.metadata); if (m.checkoutDate) hotelCheckoutDates[item.id] = m.checkoutDate; } catch(e) {}
   });
 
