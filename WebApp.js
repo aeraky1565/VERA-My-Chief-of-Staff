@@ -799,14 +799,31 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
         }
       }
 
+      // Account-name matching — same 4-tier rules applied to tx.account (column B)
+      // Catches credit-card payment rows where the account IS the card name
+      // e.g. bill "Bilt World Elite Mastercard" matches account "Bilt World Elite Mastercard - Ending in 2335"
+      var acctLow   = tx.account || '';
+      var acctMatch = false;
+      for (var aa = 0; aa < aliasKws.length; aa++) {
+        if (acctLow.indexOf(aliasKws[aa]) !== -1) { acctMatch = true; break; }
+      }
+      if (!acctMatch && acctLow.indexOf(nameLow) !== -1) acctMatch = true; // bill name ⊆ account
+      if (!acctMatch && nameLow.indexOf(acctLow) !== -1) acctMatch = true; // account ⊆ bill name
+      if (!acctMatch) {
+        for (var wa = 0; wa < words.length; wa++) {
+          if (acctLow.indexOf(words[wa]) !== -1) { acctMatch = true; break; }
+        }
+      }
+
+      var nameMatch = descMatch || acctMatch;
       var txAbsAmt = Math.abs(tx.amount);
       var amtDiff  = billAmt != null ? Math.abs(txAbsAmt - billAmt) : Infinity;
       var amtPct   = billAmt != null && billAmt !== 0 ? amtDiff / billAmt : Infinity;
       var amtMatch = amtPct <= 0.20;
-      if (!descMatch && !amtMatch) return;
+      if (!nameMatch && !amtMatch) return;
 
       var exactAmt = billAmt != null && amtDiff <= 1;
-      var score    = descMatch ? (exactAmt ? 3 : amtMatch ? 2 : 1) : 0;
+      var score    = nameMatch ? (exactAmt ? 3 : amtMatch ? 2 : 1) : 0;
       pairs.push({ bIdx: bIdx, tIdx: tIdx, score: score, amtDiff: amtDiff });
     });
   });
@@ -823,9 +840,12 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
     if (usedBills[pair.bIdx] || usedTxs[pair.tIdx]) return;
     usedBills[pair.bIdx] = true;
     usedTxs[pair.tIdx]   = true;
+    var tx = txList[pair.tIdx];
     result[pair.bIdx] = {
-      description: txList[pair.tIdx].rawDescription,
-      amount:      txList[pair.tIdx].amount
+      // Prefer raw description; fall back to account name (for CC payment rows
+      // where description is generic "Automatic Payment - Thank You")
+      description: tx.rawDescription || tx.rawAccount,
+      amount:      tx.amount
     };
   });
   return result;
@@ -1008,7 +1028,14 @@ function getTransactionMatchMap_(currMonth) {
     var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
     if (!desc || isNaN(amount)) return;
 
-    txList.push({ description: desc.toLowerCase(), rawDescription: desc, amount: amount });
+    var acct = String(row[1] || '').trim();
+    txList.push({
+      description:    desc.toLowerCase(),
+      rawDescription: desc,
+      amount:         amount,
+      account:        acct.toLowerCase(),
+      rawAccount:     acct,
+    });
   });
   return txList;
 }
