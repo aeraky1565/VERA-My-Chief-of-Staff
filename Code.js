@@ -1392,6 +1392,35 @@ function addWeatherConfig() {
 }
 
 // ============================================================
+// DIAGNOSTIC — Calendar names for Config tab setup
+// ============================================================
+
+/**
+ * Run this ONCE from the Apps Script editor (not from the dashboard).
+ * Check the Execution Log to see the exact name and ID for every calendar
+ * on your account — use these values in the Config tab's bill_calendars row.
+ *
+ * Example output:
+ *   [Cal 1] name="aaeleraky@gmail.com"  id="aaeleraky@gmail.com"  owned=true
+ *   [Cal 2] name="AE&VV - Our Joint Chaos"  id="abc123@group.calendar.google.com"  owned=true
+ *
+ * TIP: If you want to scan ALL calendars, just delete or blank out the
+ *      bill_calendars row in your Config tab — no filtering will be applied.
+ */
+function listCalendarsForConfig() {
+  var cals = CalendarApp.getAllCalendars();
+  Logger.log('=== ' + cals.length + ' calendars found ===');
+  cals.forEach(function(cal, i) {
+    Logger.log('[Cal ' + (i + 1) + ']' +
+      '  name="'  + cal.getName()          + '"' +
+      '  id="'    + cal.getId()            + '"' +
+      '  owned='  + cal.isOwnedByMe()      +
+      '  color='  + cal.getColor());
+  });
+  Logger.log('=== Copy the "name" values (or "id" values) into Config tab bill_calendars, comma-separated ===');
+}
+
+// ============================================================
 // MANUAL TEST — Call this to do a full dry run before going live
 // ============================================================
 
