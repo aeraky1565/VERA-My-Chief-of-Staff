@@ -5397,6 +5397,7 @@ function AddBillModal({ onClose, onSave, busy }) {
 function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle }) {
   var todayDate  = new Date().getDate();
   var todayStr   = new Date().toISOString().slice(0, 10);
+  var [hoveredRow, setHoveredRow] = React.useState(null);
 
   function ordinal(n) {
     const s = ['th','st','nd','rd'], v = n % 100;
@@ -5443,6 +5444,7 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
       notes:     (match && match.notes)    || c.notes || '',
       source:    'calendar',
       isRecurring: c.isRecurring,
+      txMatch:   match ? (match.txMatch || null) : null,
       _calBill:  c,  // original cal object for toggle
     };
   });
@@ -5515,8 +5517,13 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
             {items.map(function(b, i) {
               var badge   = statusBadge(b);
               var acctClr = b.account === 'Ahmed' ? '#5c9eff' : b.account === 'Victoria' ? '#c97ef2' : '#2bb5a0';
+              var rowKey  = b.row || (b.bill + '__' + (b.dueDate || b.dueDay || ''));
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid #0d1b3e' }}>
+                <div key={i}
+                  onClick={function() { handleToggle(b); }}
+                  onMouseEnter={function() { setHoveredRow(rowKey); }}
+                  onMouseLeave={function() { setHoveredRow(null); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px', margin: '0 -4px', borderBottom: '1px solid #0d1b3e', cursor: 'pointer', borderRadius: 4, background: hoveredRow === rowKey ? 'rgba(92,158,255,0.05)' : 'transparent', transition: 'background 0.15s' }}>
                   {/* Name + badges + notes */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap' }}>
@@ -5529,6 +5536,12 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
                       {b.source === 'calendar' && (
                         <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: '#0d1a2a', border: '1px solid #1e3a5a', color: '#4a7aa8', whiteSpace: 'nowrap', flexShrink: 0 }}>
                           {b.isRecurring ? '↻' : '1×'} Cal
+                        </span>
+                      )}
+                      {/* Transaction match chip */}
+                      {b.txMatch && (
+                        <span title={b.txMatch.description} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, border: '1px solid rgba(102,187,106,0.4)', color: '#66bb6a', background: 'rgba(102,187,106,0.08)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {'💳 $' + Math.abs(b.txMatch.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </span>
                       )}
                     </div>
@@ -5544,10 +5557,10 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
                       ? (b.isRecurring ? 'Recurring' : 'One-time')
                       : (b.frequency && b.frequency !== 'Monthly' ? b.frequency : (b.dueDay ? b.dueDay + ordinal(b.dueDay) : ''))}
                   </div>
-                  {/* Paid / status toggle */}
+                  {/* Paid / status toggle — stopPropagation prevents double-toggle with row onClick */}
                   <button
                     style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid ' + badge.color, background: badge.bg, color: badge.color, cursor: 'pointer', whiteSpace: 'nowrap', minWidth: 92 }}
-                    onClick={function() { handleToggle(b); }}
+                    onClick={function(e) { e.stopPropagation(); handleToggle(b); }}
                   >{badge.label}</button>
                 </div>
               );
@@ -5738,10 +5751,12 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
 // ---- Finances tab -----------------------------------------------------------
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
-                       calBills, onCalBillToggle, onAddBill, busy }) {
+                       calBills, onCalBillToggle, onAddBill, onSyncTransactions, busy }) {
   const [sub, setSub]           = React.useState('overview');
   const [showAddBill, setShowAddBill] = React.useState(false);
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
+  // Count sheet bills that have a transaction match but aren't yet paid this month
+  const syncCount = ((bills && bills.bills) || []).filter(function(b) { return b.txMatch && !b.paid; }).length;
 
   // Format a cell value as currency (numbers → $X,XXX) or dash (null/empty)
   function fmtMoney(v) {
@@ -5856,8 +5871,17 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
       {/* ── Bill Tracker ─────────────────────────────────── */}
       {sub === 'bills' && (
         <div>
-          {/* Header row with Add Bill button */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          {/* Header row: transaction sync pill (left) + Add Bill button (right) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            {syncCount > 0 && onSyncTransactions
+              ? (
+                <button onClick={onSyncTransactions} disabled={busy}
+                  style={{ padding: '5px 12px', borderRadius: 12, background: 'rgba(102,187,106,0.10)', border: '1px solid rgba(102,187,106,0.4)', color: '#66bb6a', fontSize: 11, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+                  💳 {syncCount} matched — Sync
+                </button>
+              )
+              : <div />
+            }
             <button onClick={function() { setShowAddBill(true); }}
               style={{ padding: '6px 14px', borderRadius: 8, background: '#0d2040', border: '1px solid #5c9eff',
                        color: '#5c9eff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -7241,6 +7265,18 @@ function App() {
     setBusy(false);
   }
 
+  async function handleSyncBillsFromTransactions() {
+    setBusy(true);
+    try {
+      const result = await apiGet(apiUrl, apiToken, { action: 'bills_sync_transactions' });
+      if (result && result.ok) {
+        showToast('💳 ' + result.synced + ' bill' + (result.synced !== 1 ? 's' : '') + ' marked paid');
+        await loadBills(apiUrl, apiToken);
+      }
+    } catch (err) { setError('Sync failed: ' + err.message); }
+    setBusy(false);
+  }
+
   async function handleRecordService(row) {
     setBusy(true);
     try {
@@ -8045,6 +8081,7 @@ function App() {
                 calBills={calBills}
                 onCalBillToggle={handleCalendarBillToggle}
                 onAddBill={handleAddBill}
+                onSyncTransactions={handleSyncBillsFromTransactions}
                 busy={busy}
               />
             )}

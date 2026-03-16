@@ -93,8 +93,9 @@ function doGet(e) {
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
-      case 'calendar_bills':        return jsonOut_(webGetCalendarBills_());
-      case 'bills_toggle_cal':      return jsonOut_(webToggleCalBill_(e));
+      case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
+      case 'bills_toggle_cal':        return jsonOut_(webToggleCalBill_(e));
+      case 'bills_sync_transactions': return jsonOut_(webSyncBillsFromTransactions_());
       case 'recipes':               return jsonOut_(webGetRecipes_());
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
@@ -761,6 +762,7 @@ function webGetBills_() {
 
   var tz        = Session.getScriptTimeZone();
   var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var txList    = getTransactionMatchMap_(currMonth); // [] if TRANSACTIONS_SHEET_ID not set
 
   var bills = [];
   data.forEach(function(row, idx) {
@@ -777,6 +779,7 @@ function webGetBills_() {
       account:   String(row[5] || '').trim(),
       paid:      paidVal === currMonth,
       notes:     String(row[7] || '').trim(),
+      txMatch:   findTxMatch_(bill, txList), // { description, amount } or null
     });
   });
 
@@ -807,6 +810,40 @@ function webToggleBill_(e) {
   return { ok: true, row: rowNum, paid: newVal !== '' };
 }
 
+/**
+ * For every Bills sheet row where a transaction match is found AND the bill is
+ * not already paid for the current month, writes the current YYYY-MM to the
+ * Paid column. Idempotent — safe to call multiple times.
+ * Returns { ok: true, synced: N }.
+ */
+function webSyncBillsFromTransactions_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BILLS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, synced: 0 };
+
+  var tz        = Session.getScriptTimeZone();
+  var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var numRows   = sheet.getLastRow() - 1;
+  var data      = sheet.getRange(2, 1, numRows, BILL_HEADERS.length).getValues();
+  var txList    = getTransactionMatchMap_(currMonth);
+  var synced    = 0;
+
+  data.forEach(function(row, idx) {
+    var bill    = String(row[0] || '').trim();
+    if (!bill) return;
+    var paidVal = String(row[6] || '').trim();
+    if (paidVal === currMonth) return; // already paid this month
+
+    var match = findTxMatch_(bill, txList);
+    if (!match) return;
+
+    sheet.getRange(idx + 2, 7).setValue(currMonth); // Column G = Paid
+    synced++;
+  });
+
+  return { ok: true, synced: synced };
+}
+
 function webAddBill_(e) {
   const p        = e.parameter || {};
   const billName = (p.bill || p.name || '').trim();
@@ -825,6 +862,87 @@ function webAddBill_(e) {
     (p.notes     || '').trim(),
   ]]);
   return { ok: true, bill: billName, action: 'created' };
+}
+
+// ---- Transaction Matching Helpers ------------------------------------------
+
+/**
+ * Reads current-month transactions from the Transactions sheet and returns a
+ * flat list of { description (lowercased), rawDescription, amount } objects.
+ * Returns [] gracefully if TRANSACTIONS_SHEET_ID is not set or sheet is inaccessible.
+ */
+function getTransactionMatchMap_(currMonth) {
+  var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  if (!id) return [];
+
+  var ss;
+  try { ss = SpreadsheetApp.openById(id); }
+  catch (e) { Logger.log('Bills txMatch: cannot open TRANSACTIONS_SHEET_ID — ' + e.message); return []; }
+
+  // Support per-person tabs (new) and legacy single tab — mirrors Finance.js pattern
+  var sheetA = ss.getSheetByName('Transactions - Ahmed');
+  var sheetV = ss.getSheetByName('Transactions - Victoria');
+  var rawRows = [];
+
+  function readTab(sheet) {
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+    rows.forEach(function(r) { rawRows.push(r); });
+  }
+
+  if (sheetA || sheetV) {
+    readTab(sheetA);
+    readTab(sheetV);
+  } else {
+    readTab(ss.getSheetByName('Transactions'));
+  }
+
+  // Columns: Date(0) | Account(1) | Description(2) | Category(3) | Tags(4) | Amount(5)
+  var tz = Session.getScriptTimeZone();
+  var txList = [];
+  rawRows.forEach(function(row) {
+    var dateVal = row[0];
+    var dateStr = '';
+    if (dateVal instanceof Date) {
+      dateStr = Utilities.formatDate(dateVal, tz, 'yyyy-MM');
+    } else {
+      dateStr = String(dateVal || '').slice(0, 7);
+    }
+    if (dateStr !== currMonth) return;
+
+    var desc   = String(row[2] || '').trim();
+    var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
+    if (!desc || isNaN(amount)) return;
+
+    txList.push({ description: desc.toLowerCase(), rawDescription: desc, amount: amount });
+  });
+  return txList;
+}
+
+/**
+ * Returns the first transaction in txList whose description matches billName,
+ * using three progressively broader rules (all case-insensitive):
+ *   1. Bill name is a substring of the transaction description
+ *   2. Transaction description is a substring of the bill name
+ *   3. Any word in the bill name that is >3 chars appears in the transaction description
+ * Returns { description, amount } or null.
+ */
+function findTxMatch_(billName, txList) {
+  if (!billName || !txList || txList.length === 0) return null;
+  var nameLow = billName.toLowerCase();
+  var words   = nameLow.split(/\s+/).filter(function(w) { return w.length > 3; });
+
+  for (var i = 0; i < txList.length; i++) {
+    var tx      = txList[i];
+    var descLow = tx.description; // already lowercased
+
+    if (descLow.indexOf(nameLow) !== -1)  return { description: tx.rawDescription, amount: tx.amount };
+    if (nameLow.indexOf(descLow) !== -1)  return { description: tx.rawDescription, amount: tx.amount };
+    for (var w = 0; w < words.length; w++) {
+      if (descLow.indexOf(words[w]) !== -1) return { description: tx.rawDescription, amount: tx.amount };
+    }
+  }
+  return null;
 }
 
 // ---- Calendar Bills (Issue #76) --------------------------------------------
