@@ -1743,13 +1743,13 @@ function countryToIso(name) {
 function CountryFlag({ name, size }) {
   var iso = countryToIso(name);
   if (!iso) return React.createElement('span', { style: { fontSize: size || 22 } }, '🌍');
-  var h = Math.round((size || 22) * 0.75);
+  // flagcdn.com width-based endpoint: w20, w40, w80 are the standard sizes
+  var w = (size || 22) <= 24 ? 40 : 80;
   return React.createElement('img', {
-    src: 'https://flagcdn.com/h' + (h * 2) + '/' + iso.toLowerCase() + '.png',
+    src: 'https://flagcdn.com/w' + w + '/' + iso.toLowerCase() + '.png',
     width: size || 22,
-    height: h,
     alt: iso,
-    style: { objectFit: 'contain', verticalAlign: 'middle', borderRadius: 2 },
+    style: { verticalAlign: 'middle', borderRadius: 2 },
   });
 }
 // ─────────────────────────────────────────────────────────────────────────────
