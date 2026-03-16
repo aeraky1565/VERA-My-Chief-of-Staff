@@ -5456,12 +5456,12 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
   // ── Merge calendar + sheet bills ─────────────────────────────────────────
   var sheetByTitle = {};
   ((bills && bills.bills) || []).forEach(function(b) {
-    sheetByTitle[b.bill.toLowerCase()] = b;
+    sheetByTitle[b.bill.trim().toLowerCase()] = b;
   });
 
   // Calendar bills — merge sheet row if title matches
   var calMerged = (calBills || []).map(function(c) {
-    var match = sheetByTitle[c.title.toLowerCase()];
+    var match = sheetByTitle[c.title.trim().toLowerCase()];
     return {
       bill:      c.title,
       title:     c.title,
@@ -7679,7 +7679,7 @@ function App() {
     ));
     setBusy(true);
     try {
-      await apiGet(apiUrl, apiToken, {
+      const toggleResult = await apiGet(apiUrl, apiToken, {
         action:      'bills_toggle_cal',
         title:       calBill.title,
         amount:      calBill.amount != null ? calBill.amount : '',
@@ -7690,11 +7690,26 @@ function App() {
         isRecurring: String(!!calBill.isRecurring),
       });
       await loadBills(apiUrl, apiToken);
+      // Force the server's authoritative paid value — guards against stale sheet
+      // reads in loadBills when SpreadsheetApp.flush() hasn't been deployed yet
+      if (toggleResult && toggleResult.ok) {
+        const titleLow = (calBill.title || '').trim().toLowerCase();
+        const paid     = !!toggleResult.paid;
+        setBills(prev => {
+          if (!prev || !prev.bills) return prev;
+          return { ...prev, bills: prev.bills.map(b =>
+            b.bill.trim().toLowerCase() === titleLow ? { ...b, paid } : b
+          )};
+        });
+        setCalBills(prev => (prev || []).map(b =>
+          b.title.trim().toLowerCase() === titleLow ? { ...b, paid } : b
+        ));
+      }
       await loadCalendarBills(apiUrl, apiToken);
     } catch (err) {
       setError('Could not update bill: ' + err.message);
       await loadBills(apiUrl, apiToken);        // revert on error
-      await loadCalendarBills(apiUrl, apiToken); // sync paid state
+      await loadCalendarBills(apiUrl, apiToken);
     }
     setBusy(false);
   }
@@ -7722,13 +7737,21 @@ function App() {
     });
     setBusy(true);
     try {
-      await apiGet(apiUrl, apiToken, { action: 'bills_toggle', row: row });
-      await loadBills(apiUrl, apiToken);           // server truth overwrites optimistic state
-      await loadCalendarBills(apiUrl, apiToken);   // keep calBills paid in sync
+      const toggleResult = await apiGet(apiUrl, apiToken, { action: 'bills_toggle', row: row });
+      await loadBills(apiUrl, apiToken);
+      // Force the server's authoritative paid value after reload
+      if (toggleResult && toggleResult.ok) {
+        const paid = !!toggleResult.paid;
+        setBills(prev => {
+          if (!prev || !prev.bills) return prev;
+          return { ...prev, bills: prev.bills.map(b => b.row === row ? { ...b, paid } : b) };
+        });
+      }
+      await loadCalendarBills(apiUrl, apiToken);
     } catch (err) {
       setError('Could not update bill: ' + err.message);
-      await loadBills(apiUrl, apiToken);           // revert optimistic state on error
-      await loadCalendarBills(apiUrl, apiToken);   // revert calBills too
+      await loadBills(apiUrl, apiToken);
+      await loadCalendarBills(apiUrl, apiToken);
     }
     setBusy(false);
   }

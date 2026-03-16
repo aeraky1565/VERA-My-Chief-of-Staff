@@ -828,7 +828,21 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
       if (billAmt != null && billAmt > 0 && txAbsAmt > billAmt * 5 && !amtMatch) return;
 
       var exactAmt = billAmt != null && amtDiff <= 1;
-      var score    = nameMatch ? (exactAmt ? 3 : amtMatch ? 2 : 1) : 0;
+
+      // Score 4: CC autopay keyword in description + name match + exact amount.
+      // "Automatic Payment" / "Autopay Payment" / "Autopay" exclusively appear on
+      // credit card payment transactions — this ensures the card's own payment record
+      // always beats a generic description match on the same bill.
+      var isCCAutopay = descLow.indexOf('automatic payment') !== -1 ||
+                        descLow.indexOf('autopay payment')   !== -1 ||
+                        descLow.indexOf('autopay')           !== -1;
+      var score;
+      if (nameMatch && isCCAutopay && exactAmt) score = 4; // CC autopay + name + exact → highest
+      else if (nameMatch && exactAmt)           score = 3;
+      else if (nameMatch && isCCAutopay && amtMatch) score = 3; // CC autopay + name + near
+      else if (nameMatch && amtMatch)           score = 2;
+      else if (nameMatch)                       score = 1;
+      else                                      score = 0; // amount-only
       pairs.push({ bIdx: bIdx, tIdx: tIdx, score: score, amtDiff: amtDiff });
     });
   });
