@@ -786,7 +786,7 @@ function webGetBills_() {
       paid:      paidVal === currMonth,
       notes:     String(row[7] || '').trim(),
       type:      String(row[8] || 'Expense').trim() || 'Expense', // 'Expense'|'Income'
-      txMatch:   findTxMatch_(bill, txList, aliasMap), // { description, amount } or null
+      txMatch:   findTxMatch_(bill, txList, aliasMap, row[1] !== '' ? Number(row[1]) : null),
     });
   });
 
@@ -843,7 +843,8 @@ function webSyncBillsFromTransactions_() {
     var paidVal = String(row[6] || '').trim();
     if (paidVal === currMonth) return; // already paid this month
 
-    var match = findTxMatch_(bill, txList, aliasMap);
+    var billAmt = row[1] !== '' ? Number(row[1]) : null;
+    var match   = findTxMatch_(bill, txList, aliasMap, billAmt);
     if (!match) return;
 
     sheet.getRange(idx + 2, 7).setValue(currMonth); // Column G = Paid
@@ -976,9 +977,11 @@ function getConfigAliases_() {
  * @param {Array}  txList    — from getTransactionMatchMap_()
  * @param {Object} [aliasMap] — from getConfigAliases_() (optional, defaults to {})
  */
-function findTxMatch_(billName, txList, aliasMap) {
+function findTxMatch_(billName, txList, aliasMap, billAmount) {
   if (!billName || !txList || txList.length === 0) return null;
-  aliasMap = aliasMap || {};
+  aliasMap   = aliasMap || {};
+  billAmount = (billAmount != null && billAmount > 0) ? Number(billAmount) : null;
+
   var nameLow = billName.toLowerCase();
   var words   = nameLow.split(/\s+/).filter(function(w) { return w.length > 3; });
 
@@ -987,25 +990,62 @@ function findTxMatch_(billName, txList, aliasMap) {
     return aliasMap[kw].toLowerCase() === nameLow;
   });
 
+  // Collect ALL description-matching candidates (rules 0–3), respecting _used flag
+  var descCandidates = [];
   for (var i = 0; i < txList.length; i++) {
+    if (txList[i]._used) continue; // already claimed by another bill
     var tx      = txList[i];
     var descLow = tx.description; // already lowercased
+    var hit     = false;
 
-    // Rule 0: alias match — any alias keyword for this bill appears in the tx description
+    // Rule 0: alias match
     for (var a = 0; a < billAliasKeywords.length; a++) {
-      if (descLow.indexOf(billAliasKeywords[a]) !== -1)
-        return { description: tx.rawDescription, amount: tx.amount };
+      if (descLow.indexOf(billAliasKeywords[a]) !== -1) { hit = true; break; }
     }
-
     // Rule 1: bill name is substring of description
-    if (descLow.indexOf(nameLow) !== -1)  return { description: tx.rawDescription, amount: tx.amount };
+    if (!hit && descLow.indexOf(nameLow) !== -1) hit = true;
     // Rule 2: description is substring of bill name
-    if (nameLow.indexOf(descLow) !== -1)  return { description: tx.rawDescription, amount: tx.amount };
+    if (!hit && nameLow.indexOf(descLow) !== -1) hit = true;
     // Rule 3: any significant word from bill name appears in description
-    for (var w = 0; w < words.length; w++) {
-      if (descLow.indexOf(words[w]) !== -1) return { description: tx.rawDescription, amount: tx.amount };
+    if (!hit) {
+      for (var w = 0; w < words.length; w++) {
+        if (descLow.indexOf(words[w]) !== -1) { hit = true; break; }
+      }
+    }
+    if (hit) descCandidates.push({ idx: i, tx: tx });
+  }
+
+  // Pick best description candidate — when bill has an amount, pick closest-amount tx
+  if (descCandidates.length > 0) {
+    var best = descCandidates[0];
+    if (billAmount !== null && descCandidates.length > 1) {
+      var bestDiff = Math.abs(Math.abs(best.tx.amount) - billAmount);
+      for (var c = 1; c < descCandidates.length; c++) {
+        var diff = Math.abs(Math.abs(descCandidates[c].tx.amount) - billAmount);
+        if (diff < bestDiff) { bestDiff = diff; best = descCandidates[c]; }
+      }
+    }
+    txList[best.idx]._used = true; // mark claimed so another bill can't reuse it
+    return { description: best.tx.rawDescription, amount: best.tx.amount };
+  }
+
+  // Rule 4: amount-only fallback — for bills with generic descriptions (e.g. utility payments)
+  // Matches the transaction whose amount is within 20% of the bill amount (closest wins)
+  if (billAmount !== null) {
+    var amtBest = null, amtBestDiff = Infinity;
+    for (var j = 0; j < txList.length; j++) {
+      if (txList[j]._used) continue;
+      var adiff = Math.abs(Math.abs(txList[j].amount) - billAmount);
+      if (adiff / billAmount <= 0.20 && adiff < amtBestDiff) {
+        amtBestDiff = adiff; amtBest = j;
+      }
+    }
+    if (amtBest !== null) {
+      txList[amtBest]._used = true;
+      return { description: txList[amtBest].rawDescription, amount: txList[amtBest].amount };
     }
   }
+
   return null;
 }
 
@@ -1147,27 +1187,57 @@ function webGetCashflow_(e) {
   // ---- 4. Dedup: match tx income against Bills income projections ----------
   var matchedTxIdx = {};
   var incomeEvents = incomeProjected.map(function(ev) {
-    var evLow  = ev.name.toLowerCase();
-    var words  = evLow.split(/\s+/).filter(function(w) { return w.length > 3; });
+    var evLow    = ev.name.toLowerCase();
+    var evAmt    = (ev.amount != null && ev.amount > 0) ? ev.amount : null;
+    var words    = evLow.split(/\s+/).filter(function(w) { return w.length > 3; });
     var aliasKws = Object.keys(aliasMap).filter(function(kw) {
       return aliasMap[kw].toLowerCase() === evLow;
     });
 
+    // Collect description-match candidates
+    var candidates = [];
     for (var i = 0; i < txIncome.length; i++) {
       if (matchedTxIdx[i]) continue;
       var txLow = txIncome[i].name.toLowerCase();
-
       var hit = aliasKws.some(function(kw) { return txLow.indexOf(kw) !== -1; })
              || txLow.indexOf(evLow) !== -1
              || evLow.indexOf(txLow) !== -1
              || words.some(function(w) { return txLow.indexOf(w) !== -1; });
+      if (hit) candidates.push(i);
+    }
 
-      if (hit) {
-        matchedTxIdx[i] = true;
-        return { name: ev.name, amount: txIncome[i].amount, day: txIncome[i].day,
+    // Pick best candidate — closest amount when multiple description matches
+    var bestIdx = candidates.length > 0 ? candidates[0] : -1;
+    if (evAmt !== null && candidates.length > 1) {
+      var bestDiff = Math.abs((txIncome[candidates[0]].amount || 0) - evAmt);
+      for (var c = 1; c < candidates.length; c++) {
+        var diff = Math.abs((txIncome[candidates[c]].amount || 0) - evAmt);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = candidates[c]; }
+      }
+    }
+    if (bestIdx >= 0) {
+      matchedTxIdx[bestIdx] = true;
+      return { name: ev.name, amount: txIncome[bestIdx].amount, day: txIncome[bestIdx].day,
+               source: 'transaction', confirmed: true, unrecognized: false };
+    }
+
+    // Amount-only fallback (20% tolerance) for income with no description match
+    if (evAmt !== null) {
+      var amtBest = -1, amtBestDiff = Infinity;
+      for (var j = 0; j < txIncome.length; j++) {
+        if (matchedTxIdx[j]) continue;
+        var adiff = Math.abs((txIncome[j].amount || 0) - evAmt);
+        if (adiff / evAmt <= 0.20 && adiff < amtBestDiff) {
+          amtBestDiff = adiff; amtBest = j;
+        }
+      }
+      if (amtBest >= 0) {
+        matchedTxIdx[amtBest] = true;
+        return { name: ev.name, amount: txIncome[amtBest].amount, day: txIncome[amtBest].day,
                  source: 'transaction', confirmed: true, unrecognized: false };
       }
     }
+
     return ev; // unmatched Bills income entry → keep projected
   });
 
@@ -1402,6 +1472,7 @@ function webToggleCalBill_(e) {
       '',   // account — user can enrich later
       '',   // paid — will be set below
       (p.notes || '').trim(),
+      'Expense', // Type column (col 9) — calendar bills are always expenses
     ];
     sheet.getRange(sheet.getLastRow() + 1, 1, 1, BILL_HEADERS.length).setValues([newRow]);
     rowNum = sheet.getLastRow();
