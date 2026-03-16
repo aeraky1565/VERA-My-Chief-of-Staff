@@ -1118,7 +1118,7 @@ function webGetItinerary_(e) {
               + '/events?singleEvents=true&maxResults=500'
               + '&timeMin=' + encodeURIComponent(startDt.toISOString())
               + '&timeMax=' + encodeURIComponent(endDt.toISOString())
-              + '&fields=' + encodeURIComponent('items(id,start/timeZone,end/timeZone)'),
+              + '&fields=' + encodeURIComponent('items(id,iCalUID,start/timeZone,end/timeZone)'),
             headers: { 'Authorization': 'Bearer ' + tzToken },
             muteHttpExceptions: true,
           };
@@ -1128,12 +1128,14 @@ function webGetItinerary_(e) {
           try {
             var parsed = JSON.parse(resp.getContentText());
             (parsed.items || []).forEach(function(item) {
-              if (item.id) {
-                eventTzMap[item.id] = {
-                  startTz: (item.start && item.start.timeZone) || null,
-                  endTz:   (item.end   && item.end.timeZone)   || null,
-                };
-              }
+              var tzEntry = {
+                startTz: (item.start && item.start.timeZone) || null,
+                endTz:   (item.end   && item.end.timeZone)   || null,
+              };
+              // Key by both resource id and iCalUID — ev.getId() returns iCalUID,
+              // but REST API item.id is the resource ID; cover both to avoid mismatch.
+              if (item.id)      eventTzMap[item.id]      = tzEntry;
+              if (item.iCalUID) eventTzMap[item.iCalUID] = tzEntry;
             });
           } catch (e) { /* skip parse errors */ }
         });

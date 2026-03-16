@@ -1824,6 +1824,7 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
 
   // Build hotel-covered date set (check-in through checkout, inclusive)
   var hotelCovered = {};
+  var cruiseDates  = [];
   items.forEach(function(item) {
     if (item._synthetic) return;
     if (item.type === 'hotel') {
@@ -1836,18 +1837,20 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
         d.setDate(d.getDate() + 1);
       }
     }
-    // Cruise = sleeping on the ship; covers full embark→disembark range
-    if (item.type === 'cruise' && item.date) {
-      var cruiseIn  = item.date;
-      var cruiseOut = hotelCheckoutDates[item.id] || item.date;
-      var cd   = new Date(cruiseIn  + 'T00:00:00');
-      var cend = new Date(cruiseOut + 'T00:00:00');
-      while (cd <= cend) {
-        hotelCovered[cd.toISOString().slice(0, 10)] = true;
-        cd.setDate(cd.getDate() + 1);
-      }
-    }
+    // Collect cruise item dates — we'll cover the full Board→Disembark span below
+    if (item.type === 'cruise' && item.date) cruiseDates.push(item.date);
   });
+
+  // Cruise: cover every day from the earliest cruise item (Board) to the latest (Disembark)
+  if (cruiseDates.length > 0) {
+    cruiseDates.sort();
+    var cd   = new Date(cruiseDates[0]                         + 'T00:00:00');
+    var cend = new Date(cruiseDates[cruiseDates.length - 1]    + 'T00:00:00');
+    while (cd <= cend) {
+      hotelCovered[cd.toISOString().slice(0, 10)] = true;
+      cd.setDate(cd.getDate() + 1);
+    }
+  }
 
   // Build per-day transport map (any transport type = covered)
   var TRANSPORT = { flight:1, train:1, bus:1, car:1, ferry:1, cruise:1, walking:1, bicycle:1 };
