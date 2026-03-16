@@ -122,6 +122,7 @@ function doGet(e) {
       case 'countries':             return jsonOut_(webGetCountries_());
       case 'add_country':           return jsonOut_(webAddCountry_(e));
       case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
+      case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -2006,6 +2007,31 @@ function webDeleteCountry_(e) {
     }
   }
   return { ok: false, error: 'Entry not found: ' + id };
+}
+
+// ---- Flight Status (Issue #66) ---------------------------------------------
+
+/**
+ * Returns the flight_status object from metadata for every flight item in a trip.
+ * GET ?action=flight_statuses&tripKey=ENCODED_TRIP_KEY
+ * Response: { ok: true, statuses: { itemId: { status, dep_scheduled, ... }, ... } }
+ */
+function webGetFlightStatuses_(e) {
+  var tripKey = (e.parameter && e.parameter.tripKey) || '';
+  if (!tripKey) return { ok: false, error: 'Missing tripKey' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  if (!sheet) return { ok: true, statuses: {} };
+  var rows = sheet.getDataRange().getValues();
+  var statuses = {};
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][1] || '') !== tripKey) continue;   // col B = Trip Key
+    if (String(rows[i][2] || '') !== 'flight') continue;  // col C = Type
+    var id   = String(rows[i][0] || '');                  // col A = ID
+    var meta = {};
+    try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch(e_) {}
+    if (meta.flight_status) statuses[id] = meta.flight_status;
+  }
+  return { ok: true, statuses: statuses };
 }
 
 // ---- Shared Interest Ledger (Issue #28) ------------------------------------

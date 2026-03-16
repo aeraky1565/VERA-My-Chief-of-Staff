@@ -1811,6 +1811,31 @@ const CONTEXT_COLORS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * FlightStatusBadge — small pill badge showing live flight status.
+ * Props: { status } — the flight_status object stored in item metadata
+ */
+function FlightStatusBadge({ status }) {
+  if (!status) return null;
+  var s     = status.status || 'scheduled';
+  var delay = status.delay_min || 0;
+  var label, color, bg;
+  if (s === 'cancelled')       { label = 'Cancelled';               color = '#ff6b6b'; bg = '#2a0a0a'; }
+  else if (s === 'diverted')   { label = 'Diverted';                color = '#ff9444'; bg = '#1a0f00'; }
+  else if (s === 'landed')     { label = 'Landed ✓';                color = '#4ac89a'; bg = '#0a1a14'; }
+  else if (delay > 0)          { label = 'Delayed +' + delay + 'min'; color = '#e8b44a'; bg = '#1a1200'; }
+  else if (s === 'active')     { label = 'On Time ✓';               color = '#4ac84a'; bg = '#0a1a0a'; }
+  else                         { label = 'Scheduled';               color = '#6b7fa8'; bg = '#1a2030'; }
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                   color: color, background: bg, letterSpacing: 0.3, whiteSpace: 'nowrap' }}>
+      {label}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
  * TripContextBadge — inline editable chip for trip context/sentiment.
  * Shows "Add trip context" link when empty; coloured chip when set.
  * Clicking opens a popover with presets + free-text input.
@@ -2162,12 +2187,34 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
 
 function ItineraryView({ trip, itinerary, loading, busy,
                          tripContext, onSetContext, onLoadContext, onGoToPacking,
-                         onAdd, onEdit, onDelete }) {
+                         onAdd, onEdit, onDelete,
+                         apiUrl, apiToken }) {
   if (loading) return <div className="loading-text">Loading itinerary…</div>;
 
   const items   = (itinerary && itinerary.items) || [];
   const notices = computeItineraryNotices(items);
   const [viewMode, setViewMode] = React.useState('agenda'); // 'agenda' | 'summary'
+
+  // ── Flight status state ────────────────────────────────────────────────────
+  const [flightStatuses, setFlightStatuses] = React.useState({});
+  const [statusLoading,  setStatusLoading]  = React.useState(false);
+  const [expandedFlight, setExpandedFlight] = React.useState(null);
+
+  function refreshFlightStatuses() {
+    if (!trip || !trip.tripKey || !apiUrl || !apiToken || statusLoading) return;
+    setStatusLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'flight_statuses', tripKey: trip.tripKey })
+      .then(function(r) { if (r.ok) setFlightStatuses(r.statuses || {}); })
+      .catch(function() {})
+      .finally(function() { setStatusLoading(false); });
+  }
+
+  React.useEffect(function() {
+    refreshFlightStatuses();
+    var timer = setInterval(refreshFlightStatuses, 120000); // auto-refresh every 2 min
+    return function() { clearInterval(timer); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ──────────────────────────────────────────────────────────────────────────
 
   // Lazy-load trip context on first render if not already fetched
   React.useEffect(function() {
@@ -2345,6 +2392,60 @@ function ItineraryView({ trip, itinerary, loading, busy,
         </div>
       )}
 
+      {/* ── Live Flight Status Ticker ────────────────────────────────────── */}
+      {Object.keys(flightStatuses).length > 0 && (function() {
+        var now     = Date.now();
+        var tickerFlights = items.filter(function(item) {
+          if (item.type !== 'flight' || !flightStatuses[item.id]) return false;
+          var depMs = new Date((item.date || '') + 'T' + (item.startTime || '00:00') + ':00').getTime();
+          return !isNaN(depMs) && (depMs - now) < 24 * 60 * 60 * 1000 && (depMs - now) > -2 * 60 * 60 * 1000;
+        });
+        if (tickerFlights.length === 0) return null;
+        return (
+          <div style={{ background: '#071428', border: '1px solid #1e3a5f', borderRadius: 8,
+                        padding: '10px 14px', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          marginBottom: 8 }}>
+              <div style={{ fontWeight: 700, color: '#8ab4f8', fontSize: 12 }}>
+                ✈ LIVE FLIGHT STATUS
+              </div>
+              <button onClick={refreshFlightStatuses} disabled={statusLoading}
+                style={{ background: 'transparent', border: 'none', color: '#8ab4f8',
+                         cursor: 'pointer', fontSize: 11, padding: '2px 6px' }}>
+                {statusLoading ? 'Refreshing…' : '🔄 Refresh'}
+              </button>
+            </div>
+            {tickerFlights.map(function(item) {
+              var fs = flightStatuses[item.id];
+              var meta = {};
+              try { meta = JSON.parse(item.metadata || '{}'); } catch(e) {}
+              var flightNum = (meta.flightNum || '').toUpperCase();
+              var depTime = fs.dep_estimated || fs.dep_scheduled || item.startTime || '';
+              var lastMin = fs.lastChecked ? Math.round((Date.now() - fs.lastChecked) / 60000) : null;
+              return (
+                <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                            padding: '4px 0', borderTop: '1px solid #1a2a3a',
+                                            fontSize: 12 }}>
+                  <span style={{ fontWeight: 700, color: '#e8eaed', minWidth: 60 }}>{flightNum || item.title}</span>
+                  <FlightStatusBadge status={fs} />
+                  {fs.gate && (
+                    <span style={{ color: '#6b7fa8' }}>Gate {fs.gate}</span>
+                  )}
+                  {depTime && (
+                    <span style={{ color: '#9aa0a6' }}>Departs {depTime}</span>
+                  )}
+                  {lastMin !== null && (
+                    <span style={{ color: '#3a4a60', marginLeft: 'auto', fontSize: 10 }}>
+                      {lastMin < 1 ? 'just now' : lastMin + 'min ago'}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* ── Summary mode ────────────────────────────────────────────────── */}
       {viewMode === 'summary' && orderedDays
         .filter(function(d) { return d !== '__other__'; })
@@ -2518,7 +2619,11 @@ function ItineraryView({ trip, itinerary, loading, busy,
                   {/* Content */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#e8eaed', fontSize: 14, fontWeight: 500,
-                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                  cursor: item.type === 'flight' && flightStatuses[item.id] ? 'pointer' : 'default' }}
+                         onClick={item.type === 'flight' && flightStatuses[item.id]
+                           ? function() { setExpandedFlight(expandedFlight === item.id ? null : item.id); }
+                           : undefined}>
                       {item.type === 'hotel' && (item._synthetic || hotelCheckoutDates[item.id]) && (
                         <span style={{ color: '#8ab4f8', fontSize: 10, fontWeight: 600,
                                        display: 'block', textTransform: 'uppercase', letterSpacing: 0.5,
@@ -2533,6 +2638,55 @@ function ItineraryView({ trip, itinerary, loading, busy,
                         </span>
                       )}
                     </div>
+                    {/* Flight status badge */}
+                    {item.type === 'flight' && flightStatuses[item.id] && (
+                      <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <FlightStatusBadge status={flightStatuses[item.id]} />
+                        <span style={{ fontSize: 10, color: '#3a4a60' }}>tap for details</span>
+                      </div>
+                    )}
+                    {/* Expandable flight detail */}
+                    {item.type === 'flight' && expandedFlight === item.id && flightStatuses[item.id] && (function() {
+                      var fs  = flightStatuses[item.id];
+                      var lastMin = fs.lastChecked ? Math.round((Date.now() - fs.lastChecked) / 60000) : null;
+                      return (
+                        <div style={{ background: '#071428', border: '1px solid #1a2a3a', borderRadius: 6,
+                                      padding: '8px 10px', marginTop: 6, fontSize: 12, color: '#9aa0a6' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '4px 8px' }}>
+                            <span style={{ color: '#6b7fa8' }}>Departure</span>
+                            <span>
+                              {fs.dep_scheduled && <span>Sched {fs.dep_scheduled}</span>}
+                              {fs.dep_estimated && fs.dep_estimated !== fs.dep_scheduled && (
+                                <span style={{ color: fs.delay_min > 0 ? '#e8b44a' : '#4ac84a' }}>
+                                  {' → '}{fs.dep_estimated}
+                                  {fs.delay_min > 0 && <span> (+{fs.delay_min}min)</span>}
+                                </span>
+                              )}
+                              {fs.dep_actual && <span style={{ color: '#4ac89a' }}> · Actual {fs.dep_actual}</span>}
+                            </span>
+                            <span style={{ color: '#6b7fa8' }}>Arrival</span>
+                            <span>
+                              {fs.arr_scheduled && <span>Sched {fs.arr_scheduled}</span>}
+                              {fs.arr_estimated && fs.arr_estimated !== fs.arr_scheduled && (
+                                <span style={{ color: '#9ab4d8' }}>{' → '}{fs.arr_estimated}</span>
+                              )}
+                              {fs.arr_actual && <span style={{ color: '#4ac89a' }}> · Actual {fs.arr_actual}</span>}
+                            </span>
+                            {(fs.gate || fs.terminal) && (
+                              <>
+                                <span style={{ color: '#6b7fa8' }}>Gate / Terminal</span>
+                                <span>{fs.gate || '—'} / {fs.terminal || '—'}</span>
+                              </>
+                            )}
+                          </div>
+                          {lastMin !== null && (
+                            <div style={{ color: '#3a4a60', marginTop: 6, fontSize: 10 }}>
+                              Last updated: {lastMin < 1 ? 'just now' : lastMin + ' min ago'}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {item.location && (
                       <div style={{ color: '#9aa0a6', fontSize: 12, marginTop: 2 }}>📍 {item.location}</div>
                     )}
@@ -2577,6 +2731,7 @@ function TravelItineraryPanel({
   trips, itineraries, tripMeta, busy, autoExpandKey,
   onExpandTrip, onAddItinItem, onEditItinItem, onDeleteItinItem,
   onSetTripMeta, onLoadTripMeta, onGoToPacking,
+  apiUrl, apiToken,
 }) {
   const [expanded, setExpanded] = React.useState(function() {
     return autoExpandKey ? new Set([autoExpandKey]) : new Set();
@@ -2675,6 +2830,8 @@ function TravelItineraryPanel({
                     onAdd={function() { onAddItinItem(tripKey, t.startDate, t.endDate); }}
                     onEdit={function(item) { onEditItinItem(item, tripKey, t.startDate, t.endDate); }}
                     onDelete={function(id) { onDeleteItinItem(id, tripKey); }}
+                    apiUrl={apiUrl}
+                    apiToken={apiToken}
                   />
                 )}
               </div>
@@ -3408,7 +3565,8 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      onLoadPacking, onGeneratePacking,
                      onTogglePackingItem, onAddPackingItem, onDeletePackingItem,
                      onGoToPacking,
-                     onLoadCountries, onAddCountry, onDeleteCountry }) {
+                     onLoadCountries, onAddCountry, onDeleteCountry,
+                     apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
 
@@ -3503,6 +3661,8 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
           onSetTripMeta={onSetTripMeta}
           onLoadTripMeta={onLoadTripMeta}
           onGoToPacking={onGoToPacking}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
         />
       )}
 
@@ -6545,6 +6705,8 @@ function App() {
                     onLoadCountries={loadCountries}
                     onAddCountry={handleAddCountry}
                     onDeleteCountry={handleDeleteCountry}
+                    apiUrl={apiUrl}
+                    apiToken={apiToken}
                   />
             )}
 

@@ -181,7 +181,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -209,7 +209,13 @@ function setupTriggers() {
     .inTimezone(Session.getScriptTimeZone())
     .create();
 
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour.');
+  // Flight status monitor — polls AviationStack for flights within 24h of departure
+  ScriptApp.newTrigger('checkFlightStatuses_')
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min.');
 }
 
 // ============================================================
