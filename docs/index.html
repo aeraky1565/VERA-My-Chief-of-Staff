@@ -2083,6 +2083,7 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
   const [confirm,    setConfirm]    = React.useState(initMeta.confirmation || '');
   const [timezone,     setTimezone]     = React.useState(initMeta.timezone     || '');
   const [checkoutDate, setCheckoutDate] = React.useState(initMeta.checkoutDate || '');
+  const [traveler,     setTraveler]     = React.useState(initMeta.traveler     || 'Both');
 
   function buildMetadata() {
     const m = {};
@@ -2094,9 +2095,10 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
       if (dest)      m.dest         = dest.trim();
       if (confirm)   m.confirmation = confirm.trim();
     }
-    if (type === 'hotel') {
+    if (type === 'hotel' || type === 'cruise') {
       if (checkoutDate) m.checkoutDate = checkoutDate;
     }
+    if (traveler && traveler !== 'Both') m.traveler = traveler;
     return Object.keys(m).length ? JSON.stringify(m) : '';
   }
 
@@ -2246,6 +2248,28 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
             placeholder="Optional" />
         </div>
 
+        {/* Who */}
+        <div className="form-group">
+          <label className="form-label">Who</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['Ahmed', 'Victoria', 'Both'].map(function(t) {
+              var colors = t === 'Ahmed'    ? { on: '#5c9eff', bg: '#0d2040' }
+                         : t === 'Victoria' ? { on: '#b87cff', bg: '#1a0d30' }
+                         :                   { on: '#4a9060', bg: '#0d1a10' };
+              return (
+                <button key={t} type="button" onClick={function() { setTraveler(t); }}
+                  style={{ flex: 1, padding: '6px 0', borderRadius: 7, cursor: 'pointer',
+                           fontSize: 12, fontWeight: 600,
+                           border: traveler === t ? '2px solid ' + colors.on : '2px solid transparent',
+                           background: traveler === t ? colors.bg : '#1e2a3a',
+                           color: traveler === t ? colors.on : '#6b7fa8' }}>
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="modal-actions">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSave}
@@ -2266,7 +2290,8 @@ function ItineraryView({ trip, itinerary, loading, busy,
 
   const items   = (itinerary && itinerary.items) || [];
   const notices = computeItineraryNotices(items);
-  const [viewMode, setViewMode] = React.useState('agenda'); // 'agenda' | 'summary'
+  const [viewMode,       setViewMode]       = React.useState('agenda'); // 'agenda' | 'summary'
+  const [travelerFilter, setTravelerFilter] = React.useState('Both');   // 'Ahmed' | 'Victoria' | 'Both'
 
   // ── Flight status state ────────────────────────────────────────────────────
   const [flightStatuses, setFlightStatuses] = React.useState({});
@@ -2316,8 +2341,17 @@ function ItineraryView({ trip, itinerary, loading, busy,
   var allNotices = notices.concat(gaps);
   // ──────────────────────────────────────────────────────────────────────────
 
+  // Apply traveler filter — synthetic rows always pass; untagged items show for all filters
+  var displayItems = travelerFilter === 'Both' ? items : items.filter(function(item) {
+    if (item._synthetic) return true;
+    var m = {};
+    try { m = JSON.parse(item.metadata || '{}'); } catch(e) {}
+    var t = m.traveler || 'Both';
+    return t === 'Both' || t === travelerFilter;
+  });
+
   const byDay    = {};
-  items.forEach(function(item) {
+  displayItems.forEach(function(item) {
     const d = item.date || '__other__';
     if (!byDay[d]) byDay[d] = [];
     byDay[d].push(item);
@@ -2402,6 +2436,24 @@ function ItineraryView({ trip, itinerary, loading, busy,
             onSetContext={function(ctx) { if (onSetContext) onSetContext(ctx); }}
             busy={busy}
           />
+          {/* Traveler filter toggle */}
+          <div style={{ display: 'flex', gap: 4 }}>
+            {['Ahmed', 'Victoria', 'Both'].map(function(t) {
+              var colors = t === 'Ahmed'    ? { on: '#5c9eff', bg: '#0d2040' }
+                         : t === 'Victoria' ? { on: '#b87cff', bg: '#1a0d30' }
+                         :                   { on: '#4a9060', bg: '#0d1a10' };
+              return (
+                <button key={t} onClick={function() { setTravelerFilter(t); }}
+                  style={{ padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                           fontSize: 11, fontWeight: 600,
+                           border: travelerFilter === t ? '1.5px solid ' + colors.on : '1.5px solid transparent',
+                           background: travelerFilter === t ? colors.bg : '#1e2a3a',
+                           color: travelerFilter === t ? colors.on : '#6b7fa8' }}>
+                  {t}
+                </button>
+              );
+            })}
+          </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
             {onGoToPacking && (
               <button onClick={onGoToPacking} disabled={busy}
