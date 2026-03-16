@@ -1079,6 +1079,13 @@ function webGetCashflow_(e) {
 
   var aliasMap = getConfigAliases_();
 
+  // Build category skip list — same config key used by Finance.js spending filter
+  var cfgVals_  = getConfigValues();
+  var skipRaw_  = String(cfgVals_['finance_skip_categories'] || '').trim();
+  var skipList_ = skipRaw_
+    ? skipRaw_.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean)
+    : SKIP_CATEGORIES_DEFAULT_;
+
   // ---- 2. Project Bills income + expense events ---------------------------
   var incomeProjected  = [];  // from Bills sheet (Type=Income)
   var expenseEvents    = [];  // from Bills sheet (Type=Expense)
@@ -1126,6 +1133,8 @@ function webGetCashflow_(e) {
         if (Utilities.formatDate(d, tz, 'yyyy-MM') !== month) return;
         var amount = parseFloat(String(row[5]).replace(/[$,]/g, ''));
         if (isNaN(amount) || amount <= 0) return;
+        var cat = String(row[3] || '').trim().toLowerCase();
+        if (cat && skipList_.indexOf(cat) !== -1) return;
         var desc = String(row[2] || '').trim();
         if (!desc) return;
         txIncome.push({ name: desc, amount: amount, day: d.getDate(), source: 'transaction', confirmed: true });
