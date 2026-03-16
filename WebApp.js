@@ -1152,6 +1152,17 @@ function webGetItinerary_(e) {
             var evMeta = { calendarName: cal.getName() };
             if (evTzInfo.startTz) evMeta.startTz = evTzInfo.startTz;
             if (evTzInfo.endTz && evTzInfo.endTz !== evTzInfo.startTz) evMeta.endTz = evTzInfo.endTz;
+            // For multi-day events (e.g. hotel stays spanning several nights), store the checkout
+            // date in metadata so the frontend gap detector covers the full date range.
+            if (ev.isAllDayEvent()) {
+              var allDayEnd = new Date(ev.getEndTime());
+              allDayEnd.setDate(allDayEnd.getDate() - 1); // GAS all-day end is exclusive
+              var allDayEndStr = Utilities.formatDate(allDayEnd, tz, 'yyyy-MM-dd');
+              if (allDayEndStr !== evDate) evMeta.checkoutDate = allDayEndStr;
+            } else {
+              var timedEndDate = Utilities.formatDate(ev.getEndTime(), evEndTz, 'yyyy-MM-dd');
+              if (timedEndDate !== evDate) evMeta.checkoutDate = timedEndDate;
+            }
             items.push({
               id:        'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16),
               tripKey:   tripKey,
