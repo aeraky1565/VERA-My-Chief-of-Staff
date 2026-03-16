@@ -1142,6 +1142,7 @@ function webGetItinerary_(e) {
       } catch (tzErr) {
         Logger.log('Itinerary: per-event TZ fetch failed — ' + tzErr.message + ' (times will use script TZ)');
       }
+      Logger.log('Itinerary: eventTzMap has ' + Object.keys(eventTzMap).length + ' entries. Sample keys: ' + Object.keys(eventTzMap).slice(0,3).join(', '));
 
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
@@ -1157,6 +1158,7 @@ function webGetItinerary_(e) {
             // Use per-event timezones: departure city TZ for start, arrival city TZ for end.
             // Falls back to script TZ if the event has no explicit timezone.
             var evTzInfo  = eventTzMap[ev.getId()] || {};
+            Logger.log('Itinerary TZ debug: "' + evTitle + '" ev.getId()=' + ev.getId() + ' → startTz=' + evTzInfo.startTz + ' endTz=' + evTzInfo.endTz);
             var evStartTz = evTzInfo.startTz || tz;
             var evEndTz   = evTzInfo.endTz   || tz;
             const evDate  = Utilities.formatDate(evStart, evStartTz, 'yyyy-MM-dd');

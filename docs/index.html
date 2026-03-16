@@ -1823,10 +1823,11 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
   if (!tripDays || tripDays.length < 2) return gaps; // no meaningful gaps on a 1-day trip
 
   // Build hotel-covered date set (check-in through checkout, inclusive)
-  var hotelCovered = {};
-  var cruiseDates  = [];
+  var hotelCovered  = {};
+  var boardDate     = null;   // earliest item whose title contains "board"
+  var disembarkDate = null;   // latest item whose title contains "disembark"
   items.forEach(function(item) {
-    if (item._synthetic) return;
+    if (item._synthetic || !item.date) return;
     if (item.type === 'hotel') {
       var checkIn  = item.date;
       var checkOut = hotelCheckoutDates[item.id] || item.date;
@@ -1837,15 +1838,20 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
         d.setDate(d.getDate() + 1);
       }
     }
-    // Collect cruise item dates — we'll cover the full Board→Disembark span below
-    if (item.type === 'cruise' && item.date) cruiseDates.push(item.date);
+    // Cruise: detect embarkation / disembarkation by title keywords
+    var titleLc = (item.title || '').toLowerCase();
+    if (titleLc.indexOf('board') !== -1 && (!boardDate || item.date < boardDate)) {
+      boardDate = item.date;
+    }
+    if (titleLc.indexOf('disembark') !== -1 && (!disembarkDate || item.date > disembarkDate)) {
+      disembarkDate = item.date;
+    }
   });
 
-  // Cruise: cover every day from the earliest cruise item (Board) to the latest (Disembark)
-  if (cruiseDates.length > 0) {
-    cruiseDates.sort();
-    var cd   = new Date(cruiseDates[0]                         + 'T00:00:00');
-    var cend = new Date(cruiseDates[cruiseDates.length - 1]    + 'T00:00:00');
+  // Cruise: cover every day from Board date to Disembark date (inclusive)
+  if (boardDate && disembarkDate && boardDate <= disembarkDate) {
+    var cd   = new Date(boardDate     + 'T00:00:00');
+    var cend = new Date(disembarkDate + 'T00:00:00');
     while (cd <= cend) {
       hotelCovered[cd.toISOString().slice(0, 10)] = true;
       cd.setDate(cd.getDate() + 1);
