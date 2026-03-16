@@ -923,6 +923,7 @@ function webToggleBill_(e) {
   var newVal  = (current === currMonth) ? '' : currMonth;
 
   cell.setValue(newVal);
+  SpreadsheetApp.flush(); // ensure write is committed before caller reads it back
   return { ok: true, row: rowNum, paid: newVal !== '' };
 }
 
@@ -1613,6 +1614,7 @@ function webToggleCalBill_(e) {
   var current = String(cell.getValue() || '').trim();
   var newVal  = (current === currMonth) ? '' : currMonth;
   cell.setValue(newVal);
+  SpreadsheetApp.flush(); // ensure write is committed before caller reads it back
 
   return { ok: true, row: rowNum, paid: newVal !== '' };
 }
