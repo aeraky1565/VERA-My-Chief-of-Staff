@@ -3751,8 +3751,18 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
+  const [tripTravelers, setTripTravelers] = React.useState({});  // { [tripKey]: 'Ahmed'|'Victoria'|'Both' }
 
   const upcomingTravel = (pto && pto.upcomingTravel) || [];
+
+  // Load tripMeta for all trips when the My Trips tab is active
+  React.useEffect(function() {
+    if (sub !== 'trips' || !onLoadTripMeta) return;
+    upcomingTravel.forEach(function(t) {
+      var tk = t.startDate + '|' + t.label;
+      if (!tripMeta || tripMeta[tk] === undefined) onLoadTripMeta(tk);
+    });
+  }, [sub, upcomingTravel.length]);
 
   // Auto-switch to packing sub-tab when packingFocusTripKey changes
   React.useEffect(function() {
@@ -3804,26 +3814,59 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
           )
           : (
             <div>
-              {upcomingTravel.map((t, i) => (
-                <div key={i} className="bento-card"
-                  style={{ cursor: 'pointer', transition: 'border-color .15s' }}
-                  onClick={() => handleTripClick(t)}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>
-                        {t.label}
+              {upcomingTravel.map((t, i) => {
+                const tripKey = `${t.startDate}|${t.label}`;
+                const meta    = tripMeta && tripMeta[tripKey] && tripMeta[tripKey] !== 'loading'
+                                  ? tripMeta[tripKey] : null;
+                const traveler = tripTravelers[tripKey] || 'Both';
+                return (
+                  <div key={i} className="bento-card"
+                    style={{ cursor: 'pointer', transition: 'border-color .15s' }}
+                    onClick={() => handleTripClick(t)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>
+                          {t.label}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#6b7fa8', marginBottom: 8 }}>{t.startDate} – {t.endDate}</div>
+                        {/* Trip context badge + traveler toggle */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                          onClick={function(e) { e.stopPropagation(); }}>
+                          <TripContextBadge
+                            context={meta ? meta.context : ''}
+                            onSetContext={function(ctx) { if (onSetTripMeta) onSetTripMeta(tripKey, ctx, meta ? (meta.notes || '') : ''); }}
+                            busy={busy}
+                          />
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {['Ahmed', 'Victoria', 'Both'].map(function(tv) {
+                              var colors = tv === 'Ahmed'    ? { on: '#5c9eff', bg: '#0d2040' }
+                                         : tv === 'Victoria' ? { on: '#b87cff', bg: '#1a0d30' }
+                                         :                    { on: '#4a9060', bg: '#0d1a10' };
+                              return (
+                                <button key={tv} type="button"
+                                  onClick={function() { setTripTravelers(function(prev) { return Object.assign({}, prev, { [tripKey]: tv }); }); }}
+                                  style={{ padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+                                           fontSize: 11, fontWeight: 600,
+                                           border: traveler === tv ? '1.5px solid ' + colors.on : '1.5px solid transparent',
+                                           background: traveler === tv ? colors.bg : '#1e2a3a',
+                                           color: traveler === tv ? colors.on : '#6b7fa8' }}>
+                                  {tv}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 12, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ fontSize: 13, color: '#5c9eff', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days away`}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ fontSize: 13, color: '#5c9eff', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days away`}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#8ab4f8' }}>View Itinerary →</div>
                       </div>
-                      <div style={{ fontSize: 12, color: '#8ab4f8' }}>View Itinerary →</div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )
       )}
