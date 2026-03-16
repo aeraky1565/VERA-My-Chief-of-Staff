@@ -5897,7 +5897,7 @@ function SpendingChart({ summaries, budget }) {
 
 // ---- Active Travel Card (shown on Home tab when a trip is in progress) ------
 
-function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary }) {
+function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, transitBuffer, customsBuffer }) {
   var tripKey = trip.startDate + '|' + trip.label;
   var today   = new Date().toISOString().slice(0, 10);
 
@@ -5945,8 +5945,8 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary }) {
 
   var isDepartureDay = today === trip.startDate;
   var isReturnDay    = today === trip.endDate;
-  var TRANSIT_MIN    = 120;
-  var CUSTOMS_MIN    = 60;
+  var TRANSIT_MIN    = transitBuffer || 120;
+  var CUSTOMS_MIN    = customsBuffer || 60;
 
   function addMinutes(timeStr, delta) {
     if (!timeStr) return null;
@@ -6241,6 +6241,8 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           trip={activeTrip}
           apiUrl={apiUrl}
           apiToken={apiToken}
+          transitBuffer={status && status.transitBuffer}
+          customsBuffer={status && status.customsBuffer}
           onViewItinerary={function() { onNavigate('pto'); }}
         />
       )}

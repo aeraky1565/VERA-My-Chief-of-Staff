@@ -203,8 +203,25 @@ function webGetStatus_() {
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.FLAGS);
 
+  // Read travel config from Config tab
+  var transitBuffer = 120; // default 2 hours
+  var customsBuffer = 60;  // default 1 hour
+  try {
+    var cfgSheet = ss.getSheetByName(TABS.CONFIG);
+    if (cfgSheet) {
+      var cfgData = cfgSheet.getDataRange().getValues();
+      for (var ci = 0; ci < cfgData.length; ci++) {
+        var key = String(cfgData[ci][0]).trim();
+        var val = parseInt(String(cfgData[ci][1]).trim(), 10);
+        if (key === 'travel_transit_buffer' && !isNaN(val)) transitBuffer = val;
+        if (key === 'travel_customs_buffer'  && !isNaN(val)) customsBuffer  = val;
+      }
+    }
+  } catch(e) {}
+
   if (!sheet || sheet.getLastRow() < 2) {
-    return { ok: true, totalFlags: 0, activeFlags: 0, high: 0, medium: 0, low: 0, lastRun: null };
+    return { ok: true, totalFlags: 0, activeFlags: 0, high: 0, medium: 0, low: 0, lastRun: null,
+             transitBuffer: transitBuffer, customsBuffer: customsBuffer };
   }
 
   const numRows = sheet.getLastRow() - 1;
@@ -220,13 +237,15 @@ function webGetStatus_() {
   const lastRun = all.length > 0 ? all[all.length - 1][1] : null;
 
   return {
-    ok:          true,
-    totalFlags:  all.length,
-    activeFlags: active.length,
-    high:        active.filter(function(r) { return r[5] === 'High';   }).length,
-    medium:      active.filter(function(r) { return r[5] === 'Medium'; }).length,
-    low:         active.filter(function(r) { return r[5] === 'Low';    }).length,
-    lastRun:     formatDateVal_(lastRun),
+    ok:             true,
+    totalFlags:     all.length,
+    activeFlags:    active.length,
+    high:           active.filter(function(r) { return r[5] === 'High';   }).length,
+    medium:         active.filter(function(r) { return r[5] === 'Medium'; }).length,
+    low:            active.filter(function(r) { return r[5] === 'Low';    }).length,
+    lastRun:        formatDateVal_(lastRun),
+    transitBuffer:  transitBuffer,
+    customsBuffer:  customsBuffer,
   };
 }
 
