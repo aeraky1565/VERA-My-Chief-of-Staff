@@ -96,6 +96,7 @@ function doGet(e) {
       case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
       case 'bills_toggle_cal':        return jsonOut_(webToggleCalBill_(e));
       case 'bills_sync_transactions': return jsonOut_(webSyncBillsFromTransactions_());
+      case 'tx_list':                 return jsonOut_(webGetTxList_());
       case 'cashflow':                return jsonOut_(webGetCashflow_(e));
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
@@ -1073,6 +1074,22 @@ function getTransactionMatchMap_(currMonth) {
     });
   });
   return txList;
+}
+
+/**
+ * Returns current-month transactions for the bill tracker's "link transaction" picker.
+ * Provides description + amount for each tx so the user can manually map a bill to a tx.
+ */
+function webGetTxList_() {
+  var tz        = Session.getScriptTimeZone();
+  var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var txList    = getTransactionMatchMap_(currMonth);
+  return {
+    ok: true,
+    transactions: txList.map(function(tx) {
+      return { description: tx.rawDescription || tx.rawAccount, amount: tx.amount };
+    })
+  };
 }
 
 /**

@@ -5415,13 +5415,72 @@ function AddBillModal({ onClose, onSave, busy }) {
   );
 }
 
+// ---- TxPicker modal (select a transaction to link to a fixed-amount bill) ----
+
+function TxPicker({ billName, billAmount, txList, onSelect, onClose }) {
+  var [selectedIdx, setSelectedIdx] = React.useState('');
+
+  // Sort: if bill amount is known, show closest-amount transactions first
+  var sorted = (txList || []).slice().sort(function(a, b) {
+    if (billAmount != null) {
+      var da = Math.abs(Math.abs(a.amount) - billAmount);
+      var db = Math.abs(Math.abs(b.amount) - billAmount);
+      return da - db;
+    }
+    return 0;
+  });
+
+  function confirm() {
+    var idx = parseInt(selectedIdx, 10);
+    if (!isNaN(idx) && sorted[idx]) onSelect(sorted[idx]);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 440 }} onClick={function(e) { e.stopPropagation(); }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 8 }}>Link Transaction</div>
+        <div style={{ fontSize: 12, color: '#6b7fa8', marginBottom: 14 }}>
+          Which transaction corresponds to "<span style={{ color: '#dde1f0' }}>{billName}</span>"?
+        </div>
+        {sorted.length === 0
+          ? <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 14 }}>No transactions loaded — visit Finances tab first.</div>
+          : (
+            <select value={selectedIdx} onChange={function(e) { setSelectedIdx(e.target.value); }}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e',
+                       border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, marginBottom: 14 }}>
+              <option value="">— select a transaction —</option>
+              {sorted.map(function(tx, i) {
+                var amt = Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return <option key={i} value={String(i)}>{tx.description}   ${amt}</option>;
+              })}
+            </select>
+          )
+        }
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a',
+                     color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+          <button type="button" disabled={selectedIdx === ''} onClick={confirm}
+            style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                     color: '#fff', cursor: selectedIdx !== '' ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 600,
+                     opacity: selectedIdx === '' ? 0.5 : 1 }}>
+            Link
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Bill Tracker sub-view --------------------------------------------------
 
-function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle }) {
+function BillTrackerView({ bills, calBills, billsLoading, txList, onToggle, onCalToggle }) {
   var todayDate  = new Date().getDate();
   var todayStr   = new Date().toISOString().slice(0, 10);
-  var [hoveredRow, setHoveredRow] = React.useState(null);
-  var [txOverrides, setTxOverrides] = React.useState({}); // { rowKey: candidateIdx }
+  var [hoveredRow,    setHoveredRow]    = React.useState(null);
+  var [txOverrides,   setTxOverrides]   = React.useState({}); // { rowKey: candidateIdx } — variable bills cycling
+  var [txManualMap,   setTxManualMap]   = React.useState({}); // { rowKey: {description,amount} } — manually linked tx for fixed bills
+  var [txPickerTarget, setTxPickerTarget] = React.useState(null); // { rowKey, billName, billAmount } | null
 
   function ordinal(n) {
     const s = ['th','st','nd','rd'], v = n % 100;
@@ -5445,10 +5504,21 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
 
   function handleChipClick(candidates, rowKey, e) {
     e.stopPropagation();
-    if (!candidates || candidates.length <= 1) return;
-    var current = txOverrides[rowKey] !== undefined ? txOverrides[rowKey] : 0;
-    var next    = (current + 1) % candidates.length;
-    setTxOverrides(function(prev) { var u = Object.assign({}, prev); u[rowKey] = next; return u; });
+    if (!candidates || candidates.length === 0) return;
+    var overrideIdx = txOverrides[rowKey];
+    var next;
+    if (overrideIdx === undefined) {
+      next = 0;  // first click: start at candidates[0]
+    } else if (overrideIdx >= candidates.length) {
+      next = undefined;  // was at "none" slot: wrap back to default (txMatch)
+    } else {
+      next = overrideIdx + 1;  // advance to next candidate or none slot
+    }
+    setTxOverrides(function(prev) {
+      var u = Object.assign({}, prev);
+      if (next === undefined) { delete u[rowKey]; } else { u[rowKey] = next; }
+      return u;
+    });
   }
 
   if (billsLoading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading bills…</div>;
@@ -5570,37 +5640,91 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
                           {b.isRecurring ? '↻' : '1×'} Cal
                         </span>
                       )}
-                      {/* Transaction match chip — click to cycle candidates */}
-                      {(function() {
-                        var candidates  = b.txCandidates || [];
-                        var overrideIdx = txOverrides[rowKey];
-                        var effectiveTx = (overrideIdx !== undefined && candidates.length > 0)
-                          ? (candidates[overrideIdx] || null)
-                          : (b.txMatch || null);
-                        if (!effectiveTx) return null;
-                        var isOverridden = overrideIdx !== undefined && (
-                          !b.txMatch ||
-                          effectiveTx.description !== b.txMatch.description ||
-                          effectiveTx.amount      !== b.txMatch.amount
-                        );
-                        var canCycle = candidates.length > 1;
-                        var color    = isOverridden ? '#f5a623'                : '#66bb6a';
-                        var border   = isOverridden ? 'rgba(245,166,35,0.4)'  : 'rgba(102,187,106,0.4)';
-                        var bg       = isOverridden ? 'rgba(245,166,35,0.08)' : 'rgba(102,187,106,0.08)';
-                        var label    = (isOverridden ? '↺ 💳 $' : '💳 $') +
-                                       Math.abs(effectiveTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-                        var tipText  = (effectiveTx.description || '') + (canCycle ? ' · click to try next match' : '');
-                        return (
-                          <span
-                            title={tipText}
-                            onClick={canCycle ? function(e) { handleChipClick(candidates, rowKey, e); } : undefined}
-                            style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
-                                     border: '1px solid ' + border, color: color, background: bg,
-                                     whiteSpace: 'nowrap', flexShrink: 0,
-                                     cursor: canCycle ? 'pointer' : 'default' }}
-                          >{label}</span>
-                        );
-                      })()}
+                      {/* Transaction chip — two modes based on whether amount is known */}
+                      {b.amount !== null
+                        /* ── Fixed-amount bill: manual "Link tx" button or linked chip ── */
+                        ? (function() {
+                            var manualTx = txManualMap[rowKey];
+                            if (manualTx) {
+                              var amt = Math.abs(manualTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                              return (
+                                <span
+                                  title={manualTx.description + ' · click to change'}
+                                  onClick={function(e) { e.stopPropagation(); setTxPickerTarget({ rowKey: rowKey, billName: b.bill, billAmount: b.amount }); }}
+                                  style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                           border: '1px solid rgba(92,158,255,0.4)', color: '#5c9eff',
+                                           background: 'rgba(92,158,255,0.08)', whiteSpace: 'nowrap',
+                                           flexShrink: 0, cursor: 'pointer' }}>
+                                  🔗 ${amt}
+                                </span>
+                              );
+                            }
+                            if (!txList || txList.length === 0) return null;
+                            return (
+                              <span
+                                title="Click to link a transaction to this bill"
+                                onClick={function(e) { e.stopPropagation(); setTxPickerTarget({ rowKey: rowKey, billName: b.bill, billAmount: b.amount }); }}
+                                style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                         border: '1px solid rgba(107,127,168,0.3)', color: '#6b7fa8',
+                                         background: 'transparent', whiteSpace: 'nowrap',
+                                         flexShrink: 0, cursor: 'pointer' }}>
+                                🔗 Link tx
+                              </span>
+                            );
+                          })()
+                        /* ── Variable-amount bill: auto-match cycling chip ── */
+                        : (function() {
+                            var candidates  = b.txCandidates || [];
+                            var overrideIdx = txOverrides[rowKey];
+                            // Determine effective transaction (none slot = overrideIdx >= candidates.length)
+                            var effectiveTx;
+                            if (overrideIdx === undefined) {
+                              effectiveTx = b.txMatch || null;
+                            } else if (overrideIdx >= candidates.length) {
+                              effectiveTx = null; // "none" slot
+                            } else {
+                              effectiveTx = candidates[overrideIdx] || null;
+                            }
+                            var canCycle = candidates.length > 0; // always cycle if candidates exist
+                            // "none" slot: show faint cleared chip so user can restore
+                            if (!effectiveTx && overrideIdx !== undefined) {
+                              return (
+                                <span
+                                  title="No transaction linked · click to restore auto-match"
+                                  onClick={function(e) { handleChipClick(candidates, rowKey, e); }}
+                                  style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                           border: '1px solid rgba(107,127,168,0.25)', color: '#4d6080',
+                                           background: 'transparent', whiteSpace: 'nowrap',
+                                           flexShrink: 0, cursor: 'pointer' }}>
+                                  💳 ∅
+                                </span>
+                              );
+                            }
+                            if (!effectiveTx) return null;
+                            var isOverridden = overrideIdx !== undefined && overrideIdx < candidates.length && (
+                              !b.txMatch ||
+                              effectiveTx.description !== b.txMatch.description ||
+                              effectiveTx.amount      !== b.txMatch.amount
+                            );
+                            var color  = isOverridden ? '#f5a623'                : '#66bb6a';
+                            var border = isOverridden ? 'rgba(245,166,35,0.4)'  : 'rgba(102,187,106,0.4)';
+                            var bg     = isOverridden ? 'rgba(245,166,35,0.08)' : 'rgba(102,187,106,0.08)';
+                            var label  = (isOverridden ? '↺ 💳 $' : '💳 $') +
+                                         Math.abs(effectiveTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                            var tip    = (effectiveTx.description || '') + (canCycle ? ' · click to try next / clear' : '');
+                            return (
+                              <span
+                                title={tip}
+                                onClick={canCycle ? function(e) { handleChipClick(candidates, rowKey, e); } : undefined}
+                                style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                         border: '1px solid ' + border, color: color, background: bg,
+                                         whiteSpace: 'nowrap', flexShrink: 0,
+                                         cursor: canCycle ? 'pointer' : 'default' }}>
+                                {label}
+                              </span>
+                            );
+                          })()
+                      }
                     </div>
                     {b.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
                   </div>
@@ -5625,6 +5749,23 @@ function BillTrackerView({ bills, calBills, billsLoading, onToggle, onCalToggle 
           </div>
         );
       })}
+      {/* TxPicker modal — inside the outer div so it renders in context */}
+      {txPickerTarget && (
+        <TxPicker
+          billName={txPickerTarget.billName}
+          billAmount={txPickerTarget.billAmount}
+          txList={txList}
+          onSelect={function(tx) {
+            setTxManualMap(function(prev) {
+              var u = Object.assign({}, prev);
+              u[txPickerTarget.rowKey] = tx;
+              return u;
+            });
+            setTxPickerTarget(null);
+          }}
+          onClose={function() { setTxPickerTarget(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -6189,8 +6330,8 @@ function CashflowView({ apiUrl, apiToken, bills }) {
 // ---- Finances Tab -----------------------------------------------------------
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
-                       calBills, onCalBillToggle, onAddBill, onSyncTransactions, busy,
-                       apiUrl, apiToken }) {
+                       calBills, onCalBillToggle, onAddBill, onSyncTransactions, txList,
+                       busy, apiUrl, apiToken }) {
   const [sub, setSub]           = React.useState('overview');
   const [showAddBill, setShowAddBill] = React.useState(false);
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
@@ -6332,6 +6473,7 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
             bills={bills}
             calBills={calBills}
             billsLoading={billsLoading}
+            txList={txList || []}
             onToggle={onBillToggle}
             onCalToggle={onCalBillToggle}
           />
@@ -7286,6 +7428,7 @@ function App() {
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
   const [calBills,   setCalBills]   = useState(null); // calendar-sourced bills | null = not loaded
+  const [txList,     setTxList]     = useState([]);   // current-month transactions for manual linking
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
@@ -7308,6 +7451,10 @@ function App() {
   const [dragGoalId,       setDragGoalId]       = useState(null);
   const [dragOverCol,      setDragOverCol]      = useState(null);
   const toastTimer = useRef(null);
+  // Accumulates confirmed paid states so loadBills never reverts a previously-toggled bill,
+  // even when SpreadsheetApp.flush() hasn't been deployed and the sheet read is stale.
+  // Keys: 'row:N' (sheet bills) or 'title:lowercasedTitle' (calendar-only bills).
+  const paidLocksRef = useRef({});
 
   const milestones = pto?.milestones || [];
 
@@ -7636,6 +7783,18 @@ function App() {
     setTabLoading(prev => ({ ...prev, bills: true }));
     try {
       const data = await apiGet(url, token, { action: 'bills' });
+      // Apply paidLocksRef so previously-toggled bills are never reverted by a stale sheet read
+      if (data && data.bills) {
+        const locks = paidLocksRef.current;
+        data.bills = data.bills.map(function(b) {
+          if (b.row != null && locks['row:'+b.row] !== undefined)
+            return Object.assign({}, b, { paid: locks['row:'+b.row] });
+          const tl = (b.bill || '').trim().toLowerCase();
+          if (locks['title:'+tl] !== undefined)
+            return Object.assign({}, b, { paid: locks['title:'+tl] });
+          return b;
+        });
+      }
       setBills(data || null);
     } catch (err) {
       setError('Bills load failed: ' + err.message);
@@ -7647,9 +7806,30 @@ function App() {
     if (!url || !token) return;
     try {
       const data = await apiGet(url, token, { action: 'calendar_bills' });
-      setCalBills(data?.bills || []);
+      let arr = data?.bills || [];
+      // Apply paidLocksRef to guard against stale calendar bill reads
+      const locks = paidLocksRef.current;
+      if (arr.length > 0 && Object.keys(locks).length > 0) {
+        arr = arr.map(function(b) {
+          const tl = (b.title || '').trim().toLowerCase();
+          if (locks['title:'+tl] !== undefined)
+            return Object.assign({}, b, { paid: locks['title:'+tl] });
+          return b;
+        });
+      }
+      setCalBills(arr);
     } catch (err) {
       setError('Calendar bills load failed: ' + err.message);
+    }
+  }
+
+  async function loadTxList(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'tx_list' });
+      setTxList((data && data.transactions) || []);
+    } catch (err) {
+      // silently ignore — tx_list is optional; picker will show empty state
     }
   }
 
@@ -7689,9 +7869,14 @@ function App() {
         notes:       calBill.notes   || '',
         isRecurring: String(!!calBill.isRecurring),
       });
+      // Lock the authoritative paid value BEFORE loadBills so the stale sheet read
+      // can never revert this bill (or any other previously-toggled bill in the locks map)
+      if (toggleResult && toggleResult.ok) {
+        const titleLow = (calBill.title || '').trim().toLowerCase();
+        paidLocksRef.current['title:'+titleLow] = !!toggleResult.paid;
+      }
       await loadBills(apiUrl, apiToken);
-      // Force the server's authoritative paid value — guards against stale sheet
-      // reads in loadBills when SpreadsheetApp.flush() hasn't been deployed yet
+      // Belt-and-suspenders: force the correct paid state one more time after reload
       if (toggleResult && toggleResult.ok) {
         const titleLow = (calBill.title || '').trim().toLowerCase();
         const paid     = !!toggleResult.paid;
@@ -7707,8 +7892,11 @@ function App() {
       }
       await loadCalendarBills(apiUrl, apiToken);
     } catch (err) {
+      // Remove the lock so the next reload shows the real sheet state
+      const titleLow = (calBill.title || '').trim().toLowerCase();
+      delete paidLocksRef.current['title:'+titleLow];
       setError('Could not update bill: ' + err.message);
-      await loadBills(apiUrl, apiToken);        // revert on error
+      await loadBills(apiUrl, apiToken);
       await loadCalendarBills(apiUrl, apiToken);
     }
     setBusy(false);
@@ -7738,8 +7926,12 @@ function App() {
     setBusy(true);
     try {
       const toggleResult = await apiGet(apiUrl, apiToken, { action: 'bills_toggle', row: row });
+      // Lock authoritative paid value BEFORE loadBills to protect all previously-toggled bills
+      if (toggleResult && toggleResult.ok) {
+        paidLocksRef.current['row:'+row] = !!toggleResult.paid;
+      }
       await loadBills(apiUrl, apiToken);
-      // Force the server's authoritative paid value after reload
+      // Belt-and-suspenders: force correct paid state one more time after reload
       if (toggleResult && toggleResult.ok) {
         const paid = !!toggleResult.paid;
         setBills(prev => {
@@ -7749,6 +7941,7 @@ function App() {
       }
       await loadCalendarBills(apiUrl, apiToken);
     } catch (err) {
+      delete paidLocksRef.current['row:'+row];
       setError('Could not update bill: ' + err.message);
       await loadBills(apiUrl, apiToken);
       await loadCalendarBills(apiUrl, apiToken);
@@ -8270,7 +8463,7 @@ function App() {
                   if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
-                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); }
+                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); }
                 }}
               >
                 {tab === 'home'       ? `🏠 Home` : ''}
@@ -8573,6 +8766,7 @@ function App() {
                 onCalBillToggle={handleCalendarBillToggle}
                 onAddBill={handleAddBill}
                 onSyncTransactions={handleSyncBillsFromTransactions}
+                txList={txList}
                 apiUrl={apiUrl}
                 apiToken={apiToken}
                 busy={busy}
