@@ -122,6 +122,10 @@ function doGet(e) {
       case 'countries':             return jsonOut_(webGetCountries_());
       case 'add_country':           return jsonOut_(webAddCountry_(e));
       case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
+      case 'get_bucket_list':       return jsonOut_(webGetBucketList_());
+      case 'add_bucket_item':       return jsonOut_(webAddBucketItem_(e));
+      case 'update_bucket_item':    return jsonOut_(webUpdateBucketItem_(e));
+      case 'delete_bucket_item':    return jsonOut_(webDeleteBucketItem_(e));
       case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
@@ -2045,6 +2049,86 @@ function webDeleteCountry_(e) {
   if (!id) throw new Error('Country entry ID is required.');
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.COUNTRIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Entry not found.' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, id: id, action: 'deleted' };
+    }
+  }
+  return { ok: false, error: 'Entry not found: ' + id };
+}
+
+// ---- Bucket List (Travel wishlist) -----------------------------------------
+
+function webGetBucketList_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, entries: [] };
+  var rows    = sheet.getDataRange().getValues();
+  var headers = rows[0];
+  var entries = rows.slice(1)
+    .filter(function(r) { return r[0] !== ''; })
+    .map(function(r) {
+      var obj = {};
+      headers.forEach(function(h, i) { obj[h] = r[i]; });
+      return obj;
+    });
+  return { ok: true, entries: entries };
+}
+
+function webAddBucketItem_(e) {
+  var p          = e.parameter || {};
+  var country    = (p.country    || '').trim();
+  var city       = (p.city       || '').trim();
+  var targetYear = parseInt(p.targetYear, 10) || '';
+  var traveller  = (p.traveller  || 'Both').trim();
+  var stars      = parseInt(p.stars, 10) || '';
+  var dreamTrip  = (p.dreamTrip  || '').trim();
+  var notes      = (p.notes      || '').trim();
+  if (!country) throw new Error('Country is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
+  if (!sheet) throw new Error('Bucket List tab not found. Run setupVERA() first.');
+  var id = 'b_' + Date.now();
+  sheet.appendRow([id, country, city, targetYear, traveller, stars, dreamTrip, notes, '']);
+  return { ok: true, entry: { ID: id, Country: country, City: city,
+    'Target Year': targetYear, Traveller: traveller, Stars: stars,
+    'Dream Trip': dreamTrip, Notes: notes, Visited: '' } };
+}
+
+function webUpdateBucketItem_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('Bucket item ID is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Entry not found.' };
+  var rows    = sheet.getDataRange().getValues();
+  var headers = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      // Update only the fields present in params
+      if (p.visited !== undefined) {
+        var visitedCol = headers.indexOf('Visited');
+        if (visitedCol >= 0) sheet.getRange(i + 1, visitedCol + 1).setValue(p.visited);
+      }
+      if (p.stars !== undefined) {
+        var starsCol = headers.indexOf('Stars');
+        if (starsCol >= 0) sheet.getRange(i + 1, starsCol + 1).setValue(parseInt(p.stars, 10) || '');
+      }
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'Entry not found: ' + id };
+}
+
+function webDeleteBucketItem_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('Bucket item ID is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
   if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Entry not found.' };
   var rows = sheet.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {

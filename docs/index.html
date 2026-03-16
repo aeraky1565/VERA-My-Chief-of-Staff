@@ -3747,6 +3747,509 @@ function CountriesVisitedPanel({ entries, upcomingTravel, busy, loaded, onLoad, 
   );
 }
 
+// ---- Bucket List components -------------------------------------------------
+
+function AddBucketItemModal({ entries, onSave, onClose, busy }) {
+  var [country,   setCountry]   = React.useState('');
+  var [city,      setCity]      = React.useState('');
+  var [targetYear, setTargetYear] = React.useState('');
+  var [traveller, setTraveller] = React.useState('Both');
+  var [stars,     setStars]     = React.useState(0);
+  var [dreamTrip, setDreamTrip] = React.useState('');
+  var [notes,     setNotes]     = React.useState('');
+
+  // Autocomplete: countries and dream trips from existing entries
+  var knownCountries = React.useMemo(function() {
+    var seen = {};
+    (entries || []).forEach(function(e) { if (e.Country) seen[e.Country] = true; });
+    return Object.keys(seen).sort();
+  }, [entries]);
+  var knownDreamTrips = React.useMemo(function() {
+    var seen = {};
+    (entries || []).forEach(function(e) { if (e['Dream Trip']) seen[e['Dream Trip']] = true; });
+    return Object.keys(seen).sort();
+  }, [entries]);
+
+  var flagPreview = country.trim() ? countryToIso(country.trim()) : null;
+
+  function handleSave() {
+    if (!country.trim()) return;
+    onSave({ country: country.trim(), city: city.trim(),
+             targetYear: targetYear ? parseInt(targetYear, 10) : '',
+             traveller, stars: stars || '', dreamTrip: dreamTrip.trim(), notes: notes.trim() });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 480 }}>
+        <h2>🪣 Add Bucket List Destination</h2>
+
+        {/* Country */}
+        <div className="form-group">
+          <label className="form-label">
+            Country *
+            {flagPreview && <span style={{ marginLeft: 8 }}><CountryFlag name={country.trim()} size={20} /></span>}
+          </label>
+          <input className="form-input" list="bl-country-ac" value={country} autoFocus
+            onChange={function(e) { setCountry(e.target.value); }}
+            placeholder="e.g. Japan, France, New Zealand…" />
+          <datalist id="bl-country-ac">
+            {knownCountries.map(function(c) { return React.createElement('option', { key: c, value: c }); })}
+          </datalist>
+        </div>
+
+        {/* City */}
+        <div className="form-group">
+          <label className="form-label">City <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+          <input className="form-input" value={city}
+            onChange={function(e) { setCity(e.target.value); }}
+            placeholder="e.g. Tokyo, Paris, Queenstown…" />
+        </div>
+
+        {/* Target Year + Who */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+            <label className="form-label">Target Year <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+            <input className="form-input" type="number" value={targetYear} min="2024" max="2099"
+              onChange={function(e) { setTargetYear(e.target.value); }}
+              placeholder="2027" />
+          </div>
+          <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
+            <label className="form-label">Who</label>
+            <div style={{ display: 'flex', gap: 6, paddingTop: 6 }}>
+              {['Ahmed', 'Victoria', 'Both'].map(function(t) {
+                var colors = t === 'Ahmed'   ? { on: '#5c9eff', bg: '#0d2040' }
+                           : t === 'Victoria'? { on: '#b87cff', bg: '#1a0d30' }
+                           :                  { on: '#4a9060', bg: '#0d1a10' };
+                return (
+                  <button key={t} onClick={function() { setTraveller(t); }}
+                    style={{ flex: 1, padding: '6px 0', borderRadius: 7, cursor: 'pointer',
+                             fontSize: 12, fontWeight: 600,
+                             border: traveller === t ? '2px solid ' + colors.on : '2px solid transparent',
+                             background: traveller === t ? colors.bg : '#1e2a3a',
+                             color: traveller === t ? colors.on : '#6b7fa8' }}>
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Stars */}
+        <div className="form-group">
+          <label className="form-label">Priority <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[1,2,3,4,5].map(function(n) {
+              return (
+                <button key={n} type="button"
+                  onClick={function() { setStars(stars === n ? 0 : n); }}
+                  style={{ fontSize: 22, background: 'none', border: 'none', cursor: 'pointer',
+                           color: n <= stars ? '#f0b429' : '#2a3a50', padding: '2px 3px' }}>
+                  ★
+                </button>
+              );
+            })}
+            {stars > 0 && (
+              <button type="button" onClick={function() { setStars(0); }}
+                style={{ fontSize: 11, color: '#5f6368', background: 'none', border: 'none',
+                         cursor: 'pointer', marginLeft: 4, alignSelf: 'center' }}>
+                clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Dream Trip */}
+        <div className="form-group">
+          <label className="form-label">Dream Trip <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional — groups multi-country trips)</span></label>
+          <input className="form-input" list="bl-trip-ac" value={dreamTrip}
+            onChange={function(e) { setDreamTrip(e.target.value); }}
+            placeholder="e.g. Riviera Trip, Scandinavian Adventure…" />
+          <datalist id="bl-trip-ac">
+            {knownDreamTrips.map(function(t) { return React.createElement('option', { key: t, value: t }); })}
+          </datalist>
+        </div>
+
+        {/* Notes */}
+        <div className="form-group">
+          <label className="form-label">Notes <span style={{ color: '#5f6368', fontWeight: 400 }}>(optional)</span></label>
+          <input className="form-input" value={notes}
+            onChange={function(e) { setNotes(e.target.value); }}
+            placeholder="Why do you want to visit? Any specific plans…" />
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid #2a3a50',
+                     background: 'transparent', color: '#8ab4f8', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={busy || !country.trim()}
+            style={{ padding: '8px 18px', borderRadius: 7, border: 'none',
+                     background: !country.trim() ? '#1e2a3a' : '#8ab4f8',
+                     color: !country.trim() ? '#4a5a70' : '#0d1117',
+                     fontWeight: 600, cursor: !country.trim() ? 'default' : 'pointer' }}>
+            Add to List
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete }) {
+  var [filterWho,      setFilterWho]      = React.useState('all');
+  var [filterMinStars, setFilterMinStars] = React.useState(0);
+  var [showVisited,    setShowVisited]    = React.useState(false);
+  var [expanded,       setExpanded]       = React.useState(new Set());
+  var [expandedTrips,  setExpandedTrips]  = React.useState(new Set());
+  var [showModal,      setShowModal]      = React.useState(false);
+
+  // Load on first mount
+  React.useEffect(function() {
+    if (entries === null && onLoad) onLoad();
+  }, []);
+
+  function toggleExpand(key, isTripSet) {
+    var setter = isTripSet ? setExpandedTrips : setExpanded;
+    setter(function(prev) {
+      var next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  if (entries === null || entries === 'loading') {
+    return <div className="empty-state" style={{ color: '#5f6368' }}>Loading…</div>;
+  }
+
+  var wishlist   = entries.filter(function(e) { return e.Visited !== 'yes'; });
+  var visitedArr = entries.filter(function(e) { return e.Visited === 'yes'; });
+
+  var filtered = wishlist
+    .filter(function(e) { return filterWho === 'all' || e.Traveller === filterWho; })
+    .filter(function(e) { return !filterMinStars || Number(e.Stars) >= filterMinStars; });
+
+  // Group by country A-Z
+  var byCountry = {};
+  filtered.forEach(function(e) {
+    if (!byCountry[e.Country]) byCountry[e.Country] = [];
+    byCountry[e.Country].push(e);
+  });
+  var countryNames = Object.keys(byCountry).sort();
+
+  // Group by Dream Trip
+  var byDreamTrip = {};
+  filtered.filter(function(e) { return e['Dream Trip']; }).forEach(function(e) {
+    var k = e['Dream Trip'];
+    if (!byDreamTrip[k]) byDreamTrip[k] = [];
+    byDreamTrip[k].push(e);
+  });
+  var dreamTripNames = Object.keys(byDreamTrip).sort();
+
+  function StarDisplay({ n, size }) {
+    n = Number(n) || 0;
+    return (
+      <span style={{ fontSize: size || 12, lineHeight: 1 }}>
+        {[1,2,3,4,5].map(function(i) {
+          return <span key={i} style={{ color: i <= n ? '#f0b429' : '#2a3a50' }}>★</span>;
+        })}
+      </span>
+    );
+  }
+
+  function EntryRow({ e, showVisitedBtn }) {
+    var ts = e.Traveller === 'Ahmed'    ? { color: '#5c9eff', bg: '#0d2040' }
+           : e.Traveller === 'Victoria' ? { color: '#b87cff', bg: '#1a0d30' }
+           :                             { color: '#4a9060', bg: '#0d1a10' };
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', borderBottom: '1px solid #0d1520',
+                    opacity: e.Visited === 'yes' ? 0.45 : 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 13, color: '#dde1f0', fontWeight: 500 }}>
+            {e.City || <span style={{ color: '#5f6368', fontStyle: 'italic' }}>Country-level</span>}
+          </span>
+          {e['Dream Trip'] && (
+            <span style={{ marginLeft: 8, fontSize: 10, color: '#5c9eff', background: '#0d2040',
+                           borderRadius: 10, padding: '1px 7px' }}>
+              {e['Dream Trip']}
+            </span>
+          )}
+        </div>
+        {e['Target Year'] ? (
+          <span style={{ fontSize: 11, color: '#5c9eff', background: '#0d2040',
+                         borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+            {e['Target Year']}
+          </span>
+        ) : null}
+        {Number(e.Stars) > 0 && <StarDisplay n={e.Stars} />}
+        <span style={{ fontSize: 11, fontWeight: 600, color: ts.color, background: ts.bg,
+                       borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+          {e.Traveller || 'Both'}
+        </span>
+        {showVisitedBtn && e.Visited !== 'yes' && (
+          <button onClick={function() { onMarkVisited(e.ID); }} disabled={busy}
+            style={{ fontSize: 11, color: '#4a9060', background: 'transparent',
+                     border: '1px solid #2a4a30', borderRadius: 6,
+                     padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            ✓ Visited
+          </button>
+        )}
+        <button onClick={function() { if (window.confirm('Remove "' + (e.City || e.Country) + '" from bucket list?')) onDelete(e.ID); }}
+          disabled={busy}
+          style={{ fontSize: 13, color: '#4a5a70', background: 'none', border: 'none',
+                   cursor: 'pointer', padding: '2px 4px' }}>
+          🗑
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#dde1f0' }}>
+            🪣 {filtered.length} destination{filtered.length !== 1 ? 's' : ''}
+          </span>
+          <span style={{ fontSize: 11, color: '#5f6368' }}>·</span>
+          <span style={{ fontSize: 11, color: '#6b7fa8' }}>{countryNames.length} countries</span>
+        </div>
+
+        {/* Who filter */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {['all','Ahmed','Victoria','Both'].map(function(w) {
+            var label = w === 'all' ? 'All' : w;
+            var active = filterWho === w;
+            var c = w === 'Ahmed' ? '#5c9eff' : w === 'Victoria' ? '#b87cff' : w === 'Both' ? '#4a9060' : '#6b7fa8';
+            return (
+              <button key={w} onClick={function() { setFilterWho(w); }}
+                style={{ padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
+                         fontSize: 11, fontWeight: 600, border: 'none',
+                         background: active ? c + '22' : '#1e2a3a',
+                         color: active ? c : '#5f6368',
+                         outline: active ? '1px solid ' + c + '55' : 'none' }}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Stars filter */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[[0,'Any ★'],[3,'3★+'],[4,'4★+'],[5,'5★']].map(function(pair) {
+            var val = pair[0], lbl = pair[1];
+            var active = filterMinStars === val;
+            return (
+              <button key={val} onClick={function() { setFilterMinStars(val); }}
+                style={{ padding: '3px 10px', borderRadius: 20, cursor: 'pointer',
+                         fontSize: 11, fontWeight: 600, border: 'none',
+                         background: active ? '#f0b42922' : '#1e2a3a',
+                         color: active ? '#f0b429' : '#5f6368',
+                         outline: active ? '1px solid #f0b42955' : 'none' }}>
+                {lbl}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {visitedArr.length > 0 && (
+            <button onClick={function() { setShowVisited(function(v) { return !v; }); }}
+              style={{ fontSize: 11, color: showVisited ? '#4a9060' : '#5f6368', background: 'none',
+                       border: '1px solid ' + (showVisited ? '#2a4a30' : '#2a3a50'),
+                       borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+              {showVisited ? '✓ Visited shown' : '☐ Show visited'}
+            </button>
+          )}
+          <button onClick={function() { setShowModal(true); }} disabled={busy}
+            style={{ padding: '6px 14px', borderRadius: 7, border: 'none',
+                     background: '#8ab4f8', color: '#0d1117', fontWeight: 700,
+                     fontSize: 12, cursor: 'pointer' }}>
+            + Add
+          </button>
+        </div>
+      </div>
+
+      {filtered.length === 0 && wishlist.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🌍</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>No destinations yet</div>
+          <div style={{ fontSize: 12, color: '#4d6080' }}>Add countries or cities you dream of visiting.</div>
+        </div>
+      )}
+
+      {/* By Country accordion */}
+      {countryNames.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#5f6368', letterSpacing: 1,
+                        textTransform: 'uppercase', marginBottom: 8 }}>
+            By Country
+          </div>
+          {countryNames.map(function(cName) {
+            var cEntries = byCountry[cName];
+            var isOpen   = expanded.has(cName);
+            var maxStars = Math.max.apply(null, cEntries.map(function(e) { return Number(e.Stars) || 0; }));
+            var travTypes = Array.from(new Set(cEntries.map(function(e) { return e.Traveller; }))).sort();
+            return (
+              <div key={cName} style={{ background: '#0a1220', border: '1px solid #2a3a50',
+                                        borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+                <div onClick={function() { toggleExpand(cName, false); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px',
+                           cursor: 'pointer', borderBottom: isOpen ? '1px solid #2a3a50' : 'none' }}>
+                  <span style={{ flexShrink: 0, lineHeight: 0 }}><CountryFlag name={cName} size={26} /></span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#e8eaed', flex: 1 }}>{cName}</span>
+                  <span style={{ fontSize: 11, color: '#5f6368', marginRight: 4 }}>
+                    ×{cEntries.length} {cEntries.length === 1 ? 'destination' : 'destinations'}
+                  </span>
+                  {maxStars > 0 && (
+                    <span style={{ fontSize: 11, marginRight: 4 }}>
+                      {[1,2,3,4,5].map(function(i) {
+                        return <span key={i} style={{ color: i <= maxStars ? '#f0b429' : '#2a3a50' }}>★</span>;
+                      })}
+                    </span>
+                  )}
+                  <div style={{ display: 'flex', gap: 3, marginRight: 4 }}>
+                    {travTypes.map(function(t) {
+                      var c = t === 'Ahmed' ? '#5c9eff' : t === 'Victoria' ? '#b87cff' : '#4a9060';
+                      var bg = t === 'Ahmed' ? '#0d2040' : t === 'Victoria' ? '#1a0d30' : '#0d1a10';
+                      return (
+                        <span key={t} style={{ fontSize: 10, fontWeight: 600, color: c, background: bg,
+                                               borderRadius: 10, padding: '1px 7px' }}>
+                          {t}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <span style={{ color: '#4a5a70', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+                {isOpen && (
+                  <div style={{ background: '#0d1520' }}>
+                    {cEntries.map(function(e) { return <EntryRow key={e.ID} e={e} showVisitedBtn={true} />; })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Dream Trips section */}
+      {dreamTripNames.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#5f6368', letterSpacing: 1,
+                        textTransform: 'uppercase', marginBottom: 8 }}>
+            Dream Trips
+          </div>
+          {dreamTripNames.map(function(tripName) {
+            var tEntries = byDreamTrip[tripName];
+            var isOpen   = expandedTrips.has(tripName);
+            var countries = Array.from(new Set(tEntries.map(function(e) { return e.Country; })));
+            return (
+              <div key={tripName} style={{ background: '#0a1220', border: '1px solid #1e3a5a',
+                                           borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+                <div onClick={function() { toggleExpand(tripName, true); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px',
+                           cursor: 'pointer', borderBottom: isOpen ? '1px solid #1e3a5a' : 'none' }}>
+                  <span style={{ fontSize: 18 }}>🌍</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#8ab4f8', flex: 1 }}>{tripName}</span>
+                  <span style={{ fontSize: 11, color: '#5f6368', marginRight: 4 }}>
+                    {tEntries.length} destination{tEntries.length !== 1 ? 's' : ''}
+                    {countries.length > 1 ? ' · ' + countries.length + ' countries' : ''}
+                  </span>
+                  <span style={{ color: '#4a5a70', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+                {isOpen && (
+                  <div style={{ background: '#0d1520', padding: '8px 16px' }}>
+                    {tEntries.map(function(e) {
+                      return (
+                        <div key={e.ID} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                                  padding: '5px 0', borderBottom: '1px solid #0d1520' }}>
+                          <span style={{ lineHeight: 0 }}><CountryFlag name={e.Country} size={18} /></span>
+                          <span style={{ fontSize: 13, color: '#dde1f0', flex: 1 }}>
+                            {e.Country}{e.City ? ' → ' + e.City : ''}
+                          </span>
+                          {e['Target Year'] ? (
+                            <span style={{ fontSize: 11, color: '#5c9eff', background: '#0d2040',
+                                           borderRadius: 10, padding: '1px 7px' }}>
+                              {e['Target Year']}
+                            </span>
+                          ) : null}
+                          {Number(e.Stars) > 0 && (
+                            <span style={{ fontSize: 11 }}>
+                              {[1,2,3,4,5].map(function(i) {
+                                return <span key={i} style={{ color: i <= Number(e.Stars) ? '#f0b429' : '#2a3a50' }}>★</span>;
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Visited section */}
+      {showVisited && visitedArr.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#4a9060', letterSpacing: 1,
+                        textTransform: 'uppercase', marginBottom: 8 }}>
+            Visited ✓
+          </div>
+          {Object.entries(
+            visitedArr.reduce(function(acc, e) {
+              if (!acc[e.Country]) acc[e.Country] = [];
+              acc[e.Country].push(e);
+              return acc;
+            }, {})
+          ).sort(function(a, b) { return a[0] < b[0] ? -1 : 1; }).map(function(pair) {
+            var cName = pair[0], cEntries = pair[1];
+            var isOpen = expanded.has('v_' + cName);
+            return (
+              <div key={cName} style={{ background: '#0a1220', border: '1px solid #1e2a30',
+                                        borderRadius: 10, marginBottom: 8, overflow: 'hidden', opacity: 0.55 }}>
+                <div onClick={function() { toggleExpand('v_' + cName, false); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+                           cursor: 'pointer', borderBottom: isOpen ? '1px solid #1e2a30' : 'none' }}>
+                  <span style={{ flexShrink: 0, lineHeight: 0 }}><CountryFlag name={cName} size={22} /></span>
+                  <span style={{ fontWeight: 600, fontSize: 13, color: '#8a9abf', flex: 1 }}>{cName}</span>
+                  <span style={{ fontSize: 11, color: '#4a5a70', marginRight: 4 }}>
+                    ×{cEntries.length} · visited
+                  </span>
+                  <span style={{ color: '#3a4a60', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+                </div>
+                {isOpen && (
+                  <div style={{ background: '#0d1520' }}>
+                    {cEntries.map(function(e) { return <EntryRow key={e.ID} e={e} showVisitedBtn={false} />; })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add modal */}
+      {showModal && (
+        <AddBucketItemModal
+          entries={entries}
+          busy={busy}
+          onSave={function(fields) { onAdd(fields); setShowModal(false); }}
+          onClose={function() { setShowModal(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Travel Tab -------------------------------------------------------------
 
 function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, busy,
@@ -3758,6 +4261,7 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      onTogglePackingItem, onAddPackingItem, onDeletePackingItem,
                      onGoToPacking,
                      onLoadCountries, onAddCountry, onDeleteCountry,
+                     bucketList, onLoadBucketList, onAddBucketItem, onMarkBucketVisited, onDeleteBucketItem,
                      apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
@@ -3941,15 +4445,24 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
         />
       )}
 
-      {/* Placeholder sub-tabs (Budget, Bucket List) */}
-      {sub !== 'trips' && sub !== 'itinerary' && sub !== 'packing' && sub !== 'countries' && (
+      {/* Bucket List */}
+      {sub === 'bucketlist' && (
+        <BucketListPanel
+          entries={bucketList}
+          trips={upcomingTravel}
+          busy={busy}
+          onLoad={onLoadBucketList}
+          onAdd={onAddBucketItem}
+          onMarkVisited={onMarkBucketVisited}
+          onDelete={onDeleteBucketItem}
+        />
+      )}
+
+      {/* Budget placeholder */}
+      {sub === 'budget' && (
         <div className="empty-state">
-          <div style={{ fontSize: 36, marginBottom: 12 }}>
-            {sub === 'budget' ? '💰' : '🪣'}
-          </div>
-          <div style={{ color: '#dde1f0', marginBottom: 6 }}>
-            {sub === 'budget' ? 'Trip Budget' : 'Bucket List'}
-          </div>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>Trip Budget</div>
           <div style={{ fontSize: 12, color: '#4d6080' }}>Coming soon</div>
         </div>
       )}
@@ -5851,6 +6364,7 @@ function App() {
   const [packingFocusTripKey, setPackingFocusTripKey] = useState(null);
   const [countries,        setCountries]        = useState([]);   // country visit entries (Issue #74)
   const [countriesLoaded,  setCountriesLoaded]  = useState(false);
+  const [bucketList,       setBucketList]       = useState(null); // null = not loaded yet
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -6063,6 +6577,70 @@ function App() {
     } catch (err) {
       setError('Could not delete country: ' + err.message);
       loadCountries();
+    }
+    setBusy(false);
+  }
+
+  async function loadBucketList() {
+    if (!apiUrl || !apiToken || bucketList !== null) return;
+    setBucketList('loading');
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'get_bucket_list' });
+      setBucketList(data.entries || []);
+    } catch (err) {
+      setError('Could not load bucket list: ' + err.message);
+      setBucketList([]);
+    }
+  }
+
+  async function handleAddBucketItem(fields) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, {
+        action:     'add_bucket_item',
+        country:    fields.country,
+        city:       fields.city       || '',
+        targetYear: fields.targetYear ? String(fields.targetYear) : '',
+        traveller:  fields.traveller  || 'Both',
+        stars:      fields.stars      ? String(fields.stars) : '',
+        dreamTrip:  fields.dreamTrip  || '',
+        notes:      fields.notes      || '',
+      });
+      if (data.ok) setBucketList(prev => Array.isArray(prev) ? [...prev, data.entry] : [data.entry]);
+      else setError(data.error || 'Could not add bucket list item.');
+    } catch (err) {
+      setError('Could not add bucket list item: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleMarkBucketVisited(id) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    setBucketList(prev => Array.isArray(prev)
+      ? prev.map(function(e) { return e.ID === id ? Object.assign({}, e, { Visited: 'yes' }) : e; })
+      : prev);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'update_bucket_item', id, visited: 'yes' });
+      if (!data.ok) { setError(data.error || 'Could not mark as visited.'); loadBucketList(); }
+    } catch (err) {
+      setError('Could not mark as visited: ' + err.message);
+      setBucketList(null); loadBucketList();
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteBucketItem(id) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    setBucketList(prev => Array.isArray(prev) ? prev.filter(function(e) { return e.ID !== id; }) : prev);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'delete_bucket_item', id });
+      if (!data.ok) { setError(data.error || 'Could not delete item.'); setBucketList(null); loadBucketList(); }
+    } catch (err) {
+      setError('Could not delete bucket list item: ' + err.message);
+      setBucketList(null); loadBucketList();
     }
     setBusy(false);
   }
@@ -6940,6 +7518,11 @@ function App() {
                     onLoadCountries={loadCountries}
                     onAddCountry={handleAddCountry}
                     onDeleteCountry={handleDeleteCountry}
+                    bucketList={bucketList}
+                    onLoadBucketList={loadBucketList}
+                    onAddBucketItem={handleAddBucketItem}
+                    onMarkBucketVisited={handleMarkBucketVisited}
+                    onDeleteBucketItem={handleDeleteBucketItem}
                     apiUrl={apiUrl}
                     apiToken={apiToken}
                   />
