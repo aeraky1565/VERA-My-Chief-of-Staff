@@ -583,6 +583,11 @@
       from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+    @keyframes vera-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+    .vera-inair { animation: vera-pulse 1.5s ease-in-out infinite; }
 
     /* ---- Date input dark theme ---- */
     input[type="date"].form-input {
@@ -5890,9 +5895,189 @@ function SpendingChart({ summaries, budget }) {
   );
 }
 
+// ---- Active Travel Card (shown on Home tab when a trip is in progress) ------
+
+function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary }) {
+  var tripKey = trip.startDate + '|' + trip.label;
+  var today   = new Date().toISOString().slice(0, 10);
+
+  const [items,          setItems]          = React.useState(null);
+  const [flightStatuses, setFlightStatuses] = React.useState({});
+  const [loadingItems,   setLoadingItems]   = React.useState(true);
+
+  // Load itinerary on mount
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    setLoadingItems(true);
+    apiGet(apiUrl, apiToken, { action: 'itinerary', tripKey: tripKey, startDate: trip.startDate, endDate: trip.endDate })
+      .then(function(r) { if (r.ok && r.items) setItems(r.items); })
+      .catch(function() {})
+      .finally(function() { setLoadingItems(false); });
+  }, [tripKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load flight statuses + auto-refresh every 2 min
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    function fetchStatuses() {
+      apiGet(apiUrl, apiToken, { action: 'flight_statuses', tripKey: tripKey })
+        .then(function(r) { if (r.ok) setFlightStatuses(r.statuses || {}); })
+        .catch(function() {});
+    }
+    fetchStatuses();
+    var timer = setInterval(fetchStatuses, 120000);
+    return function() { clearInterval(timer); };
+  }, [tripKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Derived data ─────────────────────────────────────────────────────────
+  var dayNum    = Math.floor((new Date(today) - new Date(trip.startDate)) / 86400000) + 1;
+  var totalDays = Math.floor((new Date(trip.endDate) - new Date(trip.startDate)) / 86400000) + 1;
+
+  var todayFlights = (items || [])
+    .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date === today; })
+    .sort(function(a, b) { return (a.startTime || '').localeCompare(b.startTime || ''); });
+
+  var tonightHotel = (items || []).find(function(i) {
+    if ((i.type !== 'hotel' && i.type !== 'cruise') || i._synthetic) return false;
+    var m = {}; try { m = JSON.parse(i.metadata || '{}'); } catch(e) {}
+    var checkout = m.checkoutDate || '';
+    return i.date <= today && (!checkout || checkout > today);
+  });
+
+  var isDepartureDay = today === trip.startDate;
+  var isReturnDay    = today === trip.endDate;
+  var TRANSIT_MIN    = 120;
+  var CUSTOMS_MIN    = 60;
+
+  function addMinutes(timeStr, delta) {
+    if (!timeStr) return null;
+    var parts = timeStr.split(':');
+    var total = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10) + delta;
+    total = ((total % 1440) + 1440) % 1440;
+    return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+  }
+
+  var doorOutTime = (isDepartureDay && todayFlights.length > 0)
+    ? addMinutes(todayFlights[0].startTime, -TRANSIT_MIN) : null;
+  var doorInTime = (isReturnDay && todayFlights.length > 0)
+    ? addMinutes(todayFlights[todayFlights.length - 1].endTime, CUSTOMS_MIN) : null;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  var cardStyle = {
+    gridColumn: '1 / -1',
+    background: '#181200',
+    border: '1px solid #3a2e00',
+    borderLeft: '4px solid #e8b44a',
+    borderRadius: 12,
+    padding: '16px 20px',
+    marginBottom: 0,
+  };
+
+  return (
+    <div style={cardStyle}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: '#e8b44a' }}>
+          ✈️ Active Travel — {trip.label}
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#e8b44a', background: '#2a1e00',
+                       borderRadius: 20, padding: '2px 10px', border: '1px solid #4a3800' }}>
+          Day {dayNum} of {totalDays}
+        </span>
+      </div>
+
+      {loadingItems ? (
+        <div style={{ fontSize: 12, color: '#6b7fa8', fontStyle: 'italic' }}>Loading travel status…</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Door-Out (departure day only) */}
+          {doorOutTime && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                          background: '#1a1000', borderRadius: 8, padding: '8px 12px',
+                          border: '1px solid #4a3000' }}>
+              <span style={{ fontSize: 18 }}>🚪</span>
+              <div>
+                <div style={{ fontSize: 11, color: '#8ab4f8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Leave by</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#ffaa44' }}>{doorOutTime}</div>
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7fa8', marginLeft: 4 }}>to make your flight on time</div>
+            </div>
+          )}
+
+          {/* Today's flights */}
+          {todayFlights.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {todayFlights.map(function(fl) {
+                var fs = flightStatuses[fl.id];
+                var isInAir = fs && fs.status === 'active';
+                return (
+                  <div key={fl.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                                            background: '#0d1a2a', borderRadius: 8, padding: '8px 12px' }}>
+                    <span className={isInAir ? 'vera-inair' : ''} style={{ fontSize: 16 }}>✈️</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0',
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {fl.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#6b7fa8' }}>
+                        {fl.startTime}{fl.endTime ? ' – ' + fl.endTime : ''}
+                        {fl.location ? ' · ' + fl.location : ''}
+                      </div>
+                    </div>
+                    {fs && <FlightStatusBadge status={fs} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Tonight's hotel */}
+          {tonightHotel && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+                          background: '#0d1a2a', borderRadius: 8, padding: '8px 12px' }}>
+              <span style={{ fontSize: 16 }}>🏨</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#8ab4f8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Staying at</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0' }}>{tonightHotel.title}</div>
+              </div>
+            </div>
+          )}
+
+          {/* No items fallback */}
+          {todayFlights.length === 0 && !tonightHotel && !doorOutTime && !doorInTime && (
+            <div style={{ fontSize: 12, color: '#6b7fa8', fontStyle: 'italic' }}>No itinerary items for today.</div>
+          )}
+
+          {/* Door-In (return day only) */}
+          {doorInTime && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+                          background: '#0a1a10', borderRadius: 8, padding: '8px 12px',
+                          border: '1px solid #1a4028' }}>
+              <span style={{ fontSize: 18 }}>🏠</span>
+              <div>
+                <div style={{ fontSize: 11, color: '#4ac89a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Est. home by</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#4ac89a' }}>{doorInTime}</div>
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7fa8', marginLeft: 4 }}>after customs &amp; transit</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={function() { if (onViewItinerary) onViewItinerary(trip); }}
+          style={{ background: 'none', border: 'none', color: '#8ab4f8', fontSize: 12,
+                   fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+          View Full Itinerary →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Home tab ---------------------------------------------------------------
 
-function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, onNavigate }) {
+function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, onNavigate, apiUrl, apiToken }) {
   const activeFlags    = flags.filter(f => !f.resolved && !f.acknowledged);
   const highFlags      = activeFlags.filter(f => f.urgency === 'High');
   const topFlag        = highFlags[0] || activeFlags[0];
@@ -5903,6 +6088,12 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   const vacRemaining   = pto?.remaining?.vacationDays;
   const persRemaining  = pto?.remaining?.personalHours;
   const nextPTO        = pto?.nextPTO;
+
+  // Detect active trip (currently in progress)
+  var todayStr    = new Date().toISOString().slice(0, 10);
+  var activeTrip  = (pto?.upcomingTravel || []).find(function(t) {
+    return todayStr >= t.startDate && todayStr <= t.endDate;
+  });
 
   return (
     <div className="bento-grid">
@@ -6043,6 +6234,16 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           </>
         )}
       </div>
+
+      {/* Active Travel Card — visible only when a trip is currently in progress */}
+      {activeTrip && (
+        <ActiveTravelCard
+          trip={activeTrip}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
+          onViewItinerary={function() { onNavigate('pto'); }}
+        />
+      )}
 
       {/* Spending Chart */}
       <SpendingChart summaries={summaries} />
@@ -7360,6 +7561,8 @@ function App() {
                 milestones={milestones}
                 summaries={summaries}
                 status={status}
+                apiUrl={apiUrl}
+                apiToken={apiToken}
                 onNavigate={tab => {
                   setActiveTab(tab);
                   if (tab === 'projects')  loadProjects(apiUrl, apiToken);
