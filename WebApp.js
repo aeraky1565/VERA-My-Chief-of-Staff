@@ -1103,46 +1103,31 @@ function webGetItinerary_(e) {
       const endDt     = new Date(end   + 'T23:59:59');
       const tripLabel = tripKey.split('|')[1] || ''; // e.g. "Alaska Trip" from "2026-05-10|Alaska Trip"
 
-      // Batch-fetch per-event timezone from Calendar REST API.
-      // CalendarApp doesn't expose per-event timezone, so we need the REST API.
-      // A flight from NYC departs in ET and arrives in CET — each end has its own TZ.
-      // Pattern reused from Calendar.js phase 2.
-      var eventTzMap = {};  // eventId → { startTz, endTz }
-      try {
-        var tzToken    = ScriptApp.getOAuthToken();
-        var allCals    = CalendarApp.getAllCalendars();
-        var tzRequests = allCals.map(function(cal) {
-          return {
-            url: 'https://www.googleapis.com/calendar/v3/calendars/'
-              + encodeURIComponent(cal.getId())
-              + '/events?singleEvents=true&maxResults=500'
-              + '&timeMin=' + encodeURIComponent(startDt.toISOString())
-              + '&timeMax=' + encodeURIComponent(endDt.toISOString())
-              + '&fields=' + encodeURIComponent('items(id,iCalUID,start/timeZone,end/timeZone)'),
-            headers: { 'Authorization': 'Bearer ' + tzToken },
-            muteHttpExceptions: true,
-          };
-        });
-        UrlFetchApp.fetchAll(tzRequests).forEach(function(resp) {
-          if (!resp || resp.getResponseCode() !== 200) return;
-          try {
-            var parsed = JSON.parse(resp.getContentText());
-            (parsed.items || []).forEach(function(item) {
-              var tzEntry = {
-                startTz: (item.start && item.start.timeZone) || null,
-                endTz:   (item.end   && item.end.timeZone)   || null,
-              };
-              // Key by both resource id and iCalUID — ev.getId() returns iCalUID,
-              // but REST API item.id is the resource ID; cover both to avoid mismatch.
-              if (item.id)      eventTzMap[item.id]      = tzEntry;
-              if (item.iCalUID) eventTzMap[item.iCalUID] = tzEntry;
-            });
-          } catch (e) { /* skip parse errors */ }
-        });
-      } catch (tzErr) {
-        Logger.log('Itinerary: per-event TZ fetch failed — ' + tzErr.message + ' (times will use script TZ)');
-      }
-      Logger.log('Itinerary: eventTzMap has ' + Object.keys(eventTzMap).length + ' entries. Sample keys: ' + Object.keys(eventTzMap).slice(0,3).join(', '));
+      // Fetch per-event timezone via Calendar Advanced Service.
+      // CalendarApp doesn't expose per-event timezone; Calendar.Events.list() does.
+      // Keys stored as both resource id and iCalUID since ev.getId() returns iCalUID.
+      var eventTzMap = {};  // eventId/iCalUID → { startTz, endTz }
+      CalendarApp.getAllCalendars().forEach(function(cal) {
+        try {
+          var result = Calendar.Events.list(cal.getId(), {
+            singleEvents: true,
+            maxResults:   500,
+            timeMin:      startDt.toISOString(),
+            timeMax:      endDt.toISOString(),
+            fields:       'items(id,iCalUID,start/timeZone,end/timeZone)',
+          });
+          (result.items || []).forEach(function(item) {
+            var entry = {
+              startTz: (item.start && item.start.timeZone) || null,
+              endTz:   (item.end   && item.end.timeZone)   || null,
+            };
+            if (item.id)      eventTzMap[item.id]      = entry;
+            if (item.iCalUID) eventTzMap[item.iCalUID] = entry;
+          });
+        } catch (tzErr) {
+          Logger.log('Itinerary: TZ fetch failed for ' + cal.getId() + ' — ' + tzErr.message);
+        }
+      });
 
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
@@ -1158,7 +1143,6 @@ function webGetItinerary_(e) {
             // Use per-event timezones: departure city TZ for start, arrival city TZ for end.
             // Falls back to script TZ if the event has no explicit timezone.
             var evTzInfo  = eventTzMap[ev.getId()] || {};
-            Logger.log('Itinerary TZ debug: "' + evTitle + '" ev.getId()=' + ev.getId() + ' → startTz=' + evTzInfo.startTz + ' endTz=' + evTzInfo.endTz);
             var evStartTz = evTzInfo.startTz || tz;
             var evEndTz   = evTzInfo.endTz   || tz;
             const evDate  = Utilities.formatDate(evStart, evStartTz, 'yyyy-MM-dd');

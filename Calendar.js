@@ -93,53 +93,33 @@ function getUpcomingEvents(daysAheadOverride) {
       activeCalendars.push({ calendar: calendar, calNameRaw: calNameRaw, calLabel: calLabel });
     });
 
-    // ---- Phase 2: Batch-fetch per-event timezone info via Calendar REST API --
+    // ---- Phase 2: Fetch per-event timezone info via Calendar Advanced Service --
     // Each event may have its own timezone (e.g. a flight arriving in PST).
-    // CalendarApp doesn't expose per-event timezone, so we call the REST API.
-    // UrlFetchApp.fetchAll() fires all requests in parallel — one per calendar.
-    var calTzMaps = {};   // calendarId → { eventId: { startTz, endTz } }
-    try {
-      const token = ScriptApp.getOAuthToken();
-      const tzRequests = activeCalendars.map(function(c) {
-        return {
-          url: 'https://www.googleapis.com/calendar/v3/calendars/'
-            + encodeURIComponent(c.calendar.getId())
-            + '/events?singleEvents=true&maxResults=500'
-            + '&timeMin=' + encodeURIComponent(now.toISOString())
-            + '&timeMax=' + encodeURIComponent(endDate.toISOString())
-            + '&fields=' + encodeURIComponent('items(id,start/timeZone,end/timeZone)'),
-          headers:             { 'Authorization': 'Bearer ' + token },
-          muteHttpExceptions:  true,
-        };
-      });
-
-      const tzResponses = UrlFetchApp.fetchAll(tzRequests);
-
-      activeCalendars.forEach(function(c, idx) {
-        const map  = {};
-        const resp = tzResponses[idx];
-        if (resp && resp.getResponseCode() === 200) {
-          try {
-            const items = JSON.parse(resp.getContentText()).items || [];
-            items.forEach(function(item) {
-              if (item.id) {
-                map[item.id] = {
-                  startTz: (item.start && item.start.timeZone) || null,
-                  endTz:   (item.end   && item.end.timeZone)   || null,
-                };
-              }
-            });
-          } catch (parseErr) {
-            Logger.log('Calendar: timezone parse error for "' + c.calNameRaw + '" — ' + parseErr.message);
-          }
-        } else if (resp) {
-          Logger.log('Calendar: timezone fetch HTTP ' + resp.getResponseCode() + ' for "' + c.calNameRaw + '"');
-        }
-        calTzMaps[c.calendar.getId()] = map;
-      });
-    } catch (tzErr) {
-      Logger.log('Calendar: batch timezone fetch failed — ' + tzErr.message + ' — times shown in script TZ.');
-    }
+    // CalendarApp doesn't expose per-event timezone; Calendar.Events.list() does.
+    var calTzMaps = {};   // calendarId → { eventId/iCalUID: { startTz, endTz } }
+    activeCalendars.forEach(function(c) {
+      const map = {};
+      try {
+        const result = Calendar.Events.list(c.calendar.getId(), {
+          singleEvents: true,
+          maxResults:   500,
+          timeMin:      now.toISOString(),
+          timeMax:      endDate.toISOString(),
+          fields:       'items(id,iCalUID,start/timeZone,end/timeZone)',
+        });
+        (result.items || []).forEach(function(item) {
+          const entry = {
+            startTz: (item.start && item.start.timeZone) || null,
+            endTz:   (item.end   && item.end.timeZone)   || null,
+          };
+          if (item.id)      map[item.id]      = entry;
+          if (item.iCalUID) map[item.iCalUID] = entry;
+        });
+      } catch (tzErr) {
+        Logger.log('Calendar: timezone fetch failed for "' + c.calNameRaw + '" — ' + tzErr.message);
+      }
+      calTzMaps[c.calendar.getId()] = map;
+    });
 
     // ---- Phase 3: Fetch events and format with per-event timezone -----------
     const events = [];
