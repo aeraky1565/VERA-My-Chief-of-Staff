@@ -5897,7 +5897,7 @@ function SpendingChart({ summaries, budget }) {
 
 // ---- Active Travel Card (shown on Home tab when a trip is in progress) ------
 
-function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, transitBuffer, customsBuffer }) {
+function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfig }) {
   var tripKey = trip.startDate + '|' + trip.label;
   var today   = new Date().toISOString().slice(0, 10);
 
@@ -5945,8 +5945,26 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, transitBuff
 
   var isDepartureDay = today === trip.startDate;
   var isReturnDay    = today === trip.endDate;
-  var TRANSIT_MIN    = transitBuffer || 120;
-  var CUSTOMS_MIN    = customsBuffer || 60;
+  var cfg            = travelConfig || {};
+
+  // Extract first IATA code (3 uppercase letters) from a location string
+  // e.g. "IAD → ANC" → ['IAD','ANC']
+  function extractIata(location) {
+    var matches = (location || '').match(/\b([A-Z]{3})\b/g) || [];
+    return matches;
+  }
+
+  // Buffer lookup: per-airport → general → hardcoded default
+  function transitMin(airportCode) {
+    if (airportCode && cfg['transit_buffer_' + airportCode] != null)
+      return cfg['transit_buffer_' + airportCode];
+    return cfg['transit_buffer'] != null ? cfg['transit_buffer'] : 120;
+  }
+  function customsMin(airportCode) {
+    if (airportCode && cfg['customs_buffer_' + airportCode] != null)
+      return cfg['customs_buffer_' + airportCode];
+    return cfg['customs_buffer'] != null ? cfg['customs_buffer'] : 60;
+  }
 
   function addMinutes(timeStr, delta) {
     if (!timeStr) return null;
@@ -5956,10 +5974,18 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, transitBuff
     return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
   }
 
+  // Door-Out: departure airport = first IATA code in first flight's location
+  var depCodes    = todayFlights.length > 0 ? extractIata(todayFlights[0].location) : [];
+  var depAirport  = depCodes[0] || null;
   var doorOutTime = (isDepartureDay && todayFlights.length > 0)
-    ? addMinutes(todayFlights[0].startTime, -TRANSIT_MIN) : null;
-  var doorInTime = (isReturnDay && todayFlights.length > 0)
-    ? addMinutes(todayFlights[todayFlights.length - 1].endTime, CUSTOMS_MIN) : null;
+    ? addMinutes(todayFlights[0].startTime, -transitMin(depAirport)) : null;
+
+  // Door-In: arrival airport = last IATA code in last flight's location
+  var lastFl      = todayFlights.length > 0 ? todayFlights[todayFlights.length - 1] : null;
+  var arrCodes    = lastFl ? extractIata(lastFl.location) : [];
+  var arrAirport  = arrCodes[arrCodes.length - 1] || null;
+  var doorInTime  = (isReturnDay && lastFl)
+    ? addMinutes(lastFl.endTime, customsMin(arrAirport)) : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
   var cardStyle = {
@@ -5996,7 +6022,9 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, transitBuff
                           border: '1px solid #4a3000' }}>
               <span style={{ fontSize: 18 }}>🚪</span>
               <div>
-                <div style={{ fontSize: 11, color: '#8ab4f8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Leave by</div>
+                <div style={{ fontSize: 11, color: '#8ab4f8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Leave by{depAirport ? ' (' + transitMin(depAirport) + ' min to ' + depAirport + ')' : ''}
+              </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#ffaa44' }}>{doorOutTime}</div>
               </div>
               <div style={{ fontSize: 11, color: '#6b7fa8', marginLeft: 4 }}>to make your flight on time</div>
@@ -6054,7 +6082,9 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, transitBuff
                           border: '1px solid #1a4028' }}>
               <span style={{ fontSize: 18 }}>🏠</span>
               <div>
-                <div style={{ fontSize: 11, color: '#4ac89a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>Est. home by</div>
+                <div style={{ fontSize: 11, color: '#4ac89a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Est. home by{arrAirport ? ' (+' + customsMin(arrAirport) + ' min from ' + arrAirport + ')' : ''}
+                </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#4ac89a' }}>{doorInTime}</div>
               </div>
               <div style={{ fontSize: 11, color: '#6b7fa8', marginLeft: 4 }}>after customs &amp; transit</div>
@@ -6241,8 +6271,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           trip={activeTrip}
           apiUrl={apiUrl}
           apiToken={apiToken}
-          transitBuffer={status && status.transitBuffer}
-          customsBuffer={status && status.customsBuffer}
+          travelConfig={status && status.travelConfig}
           onViewItinerary={function() { onNavigate('pto'); }}
         />
       )}
