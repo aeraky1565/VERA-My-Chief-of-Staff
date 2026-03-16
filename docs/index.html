@@ -7688,10 +7688,12 @@ function App() {
     setBusy(true);
     try {
       await apiGet(apiUrl, apiToken, { action: 'bills_toggle', row: row });
-      await loadBills(apiUrl, apiToken); // server truth overwrites optimistic state
+      await loadBills(apiUrl, apiToken);           // server truth overwrites optimistic state
+      await loadCalendarBills(apiUrl, apiToken);   // keep calBills paid in sync
     } catch (err) {
       setError('Could not update bill: ' + err.message);
-      await loadBills(apiUrl, apiToken); // revert optimistic state on error
+      await loadBills(apiUrl, apiToken);           // revert optimistic state on error
+      await loadCalendarBills(apiUrl, apiToken);   // revert calBills too
     }
     setBusy(false);
   }

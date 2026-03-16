@@ -822,6 +822,11 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
       var amtMatch = amtPct <= 0.20;
       if (!nameMatch && !amtMatch) return;
 
+      // Hard reject: if bill has a known amount and the transaction is >5× off,
+      // don't show it at all (prevents e.g. "Verizon Internet Bill" $49.99 matching
+      // a $3,775 transaction just because "bill" is a word in both)
+      if (billAmt != null && billAmt > 0 && txAbsAmt > billAmt * 5 && !amtMatch) return;
+
       var exactAmt = billAmt != null && amtDiff <= 1;
       var score    = nameMatch ? (exactAmt ? 3 : amtMatch ? 2 : 1) : 0;
       pairs.push({ bIdx: bIdx, tIdx: tIdx, score: score, amtDiff: amtDiff });
@@ -1481,11 +1486,10 @@ function webGetCalendarBills_() {
     }
   } catch(e) {}
 
-  // Date window: 5 days back → 40 days ahead
-  var start = new Date();
-  start.setDate(start.getDate() - 5);
-  var end = new Date();
-  end.setDate(end.getDate() + 40);
+  // Date window: beginning of current month → end of current month
+  var now   = new Date();
+  var start = new Date(now.getFullYear(), now.getMonth(), 1);        // first day of month
+  var end   = new Date(now.getFullYear(), now.getMonth() + 1, 0);    // last day of month (day 0 of next month)
 
   // Cross-reference Bills sheet for paid status
   var paidMap = {};
