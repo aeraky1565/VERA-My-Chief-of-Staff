@@ -339,3 +339,99 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   Logger.log('FlightStatus: done. checked=' + checked + ' skipped=' + skipped + ' errors=' + errors);
   return { polled: checked, skipped: skipped, errors: errors };
 }
+
+// ---- Standalone debug function (run manually from Apps Script editor) -------
+
+/**
+ * Diagnostic tool — run this from the Apps Script editor (select function name,
+ * click Run, then read the Execution Log at the bottom of the screen).
+ *
+ * Reports:
+ *   1. Whether AVIATIONSTACK_KEY is set
+ *   2. Current contents of FLIGHT_STATUS_CACHE
+ *   3. Every calendar event in a 72-hour window with classification + flight-number parse
+ *   4. Every flight row in the Itinerary sheet
+ */
+function debugFlightStatusScan() {
+  var tz  = Session.getScriptTimeZone();
+  var now = Date.now();
+
+  Logger.log('=== VERA Flight Status Debug ===');
+  Logger.log('Time: ' + Utilities.formatDate(new Date(now), tz, 'yyyy-MM-dd HH:mm:ss z'));
+
+  // 1. AviationStack key
+  var key = getAviationStackKey_();
+  Logger.log('');
+  Logger.log('--- AviationStack Key ---');
+  Logger.log(key ? 'SET: ' + key.substring(0, 4) + '...' : 'MISSING — add AVIATIONSTACK_KEY to Script Properties');
+
+  // 2. FLIGHT_STATUS_CACHE
+  var cache     = getCalFlightStatusCache_();
+  var cacheKeys = Object.keys(cache);
+  Logger.log('');
+  Logger.log('--- FLIGHT_STATUS_CACHE (' + cacheKeys.length + ' entries) ---');
+  if (cacheKeys.length === 0) {
+    Logger.log('(empty — force-refresh from dashboard will populate this)');
+  } else {
+    for (var k = 0; k < cacheKeys.length; k++) {
+      var ck = cacheKeys[k];
+      var ce = cache[ck] || {};
+      Logger.log(ck + ' → tripKey="' + ce.tripKey + '" flight=' + ce.flightNum
+        + ' status=' + (ce.status && ce.status.status || 'n/a'));
+    }
+  }
+
+  // 3. Calendar scan — 24h back to 48h ahead (same as force-refresh window)
+  var scanStart = new Date(now - 24 * 60 * 60000);
+  var scanEnd   = new Date(now + 48 * 60 * 60000);
+  Logger.log('');
+  Logger.log('--- Calendar Scan ---');
+  Logger.log('Window: ' + Utilities.formatDate(scanStart, tz, 'MM/dd HH:mm')
+    + ' → ' + Utilities.formatDate(scanEnd, tz, 'MM/dd HH:mm'));
+
+  var allCals = CalendarApp.getAllCalendars();
+  Logger.log('Calendars: ' + allCals.length);
+
+  for (var ci = 0; ci < allCals.length; ci++) {
+    var cal = allCals[ci];
+    var evs = cal.getEvents(scanStart, scanEnd);
+    Logger.log('  [' + cal.getName() + '] ' + evs.length + ' event(s)');
+    for (var ei = 0; ei < evs.length; ei++) {
+      var ev      = evs[ei];
+      var title   = (ev.getTitle()    || '').trim();
+      var loc     = (ev.getLocation() || '').trim();
+      var startFmt = Utilities.formatDate(ev.getStartTime(), tz, 'MM/dd HH:mm');
+      var relevance = isItineraryCalendarRelevant_(title, loc, '');
+      var fm        = title.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
+      var flightNum = fm ? fm[1] + fm[2] : '(none)';
+      Logger.log('    ' + startFmt + ' | "' + title + '"'
+        + ' | flight=' + (relevance.include && relevance.type === 'flight')
+        + ' | iata=' + flightNum
+        + (loc ? ' | loc="' + loc + '"' : ''));
+    }
+  }
+
+  // 4. Itinerary sheet flight rows
+  Logger.log('');
+  Logger.log('--- Itinerary Sheet Flight Rows ---');
+  try {
+    var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (!sheet) {
+      Logger.log('Sheet not found');
+    } else {
+      var rows    = sheet.getDataRange().getValues();
+      var found   = 0;
+      for (var ri = 1; ri < rows.length; ri++) {
+        if (String(rows[ri][2] || '').trim() !== 'flight') continue;
+        Logger.log('  id=' + rows[ri][0] + ' trip="' + rows[ri][1] + '" date=' + rows[ri][4] + ' title="' + rows[ri][3] + '"');
+        found++;
+      }
+      if (found === 0) Logger.log('  (none — flights are calendar-only for this trip)');
+    }
+  } catch(sheetErr) {
+    Logger.log('Sheet error: ' + sheetErr.message);
+  }
+
+  Logger.log('');
+  Logger.log('=== END DEBUG ===');
+}
