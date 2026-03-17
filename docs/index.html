@@ -6964,6 +6964,8 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
               {todayFlights.map(function(fl) {
                 var fs = flightStatuses[fl.id];
                 var isInAir = fs && fs.status === 'active';
+                var depTime = fs && (fs.dep_estimated || fs.dep_scheduled);
+                var showUpdatedTime = depTime && fs.dep_estimated && fs.dep_estimated !== fl.startTime;
                 return (
                   <div key={fl.id} style={{ display: 'flex', alignItems: 'center', gap: 10,
                                             background: '#0d1a2a', borderRadius: 8, padding: '8px 12px' }}>
@@ -6974,8 +6976,19 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
                         {fl.title}
                       </div>
                       <div style={{ fontSize: 11, color: '#6b7fa8' }}>
-                        {fl.startTime}{fl.endTime ? ' – ' + fl.endTime : ''}
+                        {/* Times — show updated dep time in amber if changed */}
+                        {showUpdatedTime
+                          ? <span><span style={{ textDecoration: 'line-through' }}>{fl.startTime}</span>
+                              <span style={{ color: '#e8b44a', marginLeft: 4 }}>{fs.dep_estimated}</span>
+                              {fl.endTime ? ' – ' + fl.endTime : ''}
+                            </span>
+                          : <span>{fl.startTime}{fl.endTime ? ' – ' + fl.endTime : ''}</span>
+                        }
                         {fl.location ? ' · ' + fl.location : ''}
+                        {/* Gate */}
+                        {fs && fs.gate     && <span> · <span style={{ color: '#8ab4f8', fontWeight: 600 }}>Gate {fs.gate}</span></span>}
+                        {/* Terminal */}
+                        {fs && fs.terminal && <span> · <span style={{ color: '#8ab4f8' }}>Terminal {fs.terminal}</span></span>}
                       </div>
                     </div>
                     {fs && <FlightStatusBadge status={fs} />}
