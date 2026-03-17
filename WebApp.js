@@ -1102,8 +1102,31 @@ function webGetTxList_() {
  * Returns { description, amount } or null.
  */
 /**
+ * Resolves a 3-letter IATA airport code to a city name using the free
+ * AirportGap API (no key required).  Returns the city string, or null
+ * if the code is unknown or the request fails.
+ * e.g. "TPA" → "Tampa", "ANC" → "Anchorage"
+ */
+function resolveIataToCity_(iata) {
+  var url = 'https://airportgap.com/api/airports/' + encodeURIComponent(iata);
+  try {
+    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) return null;
+    var data = JSON.parse(response.getContentText());
+    if (data && data.data && data.data.attributes && data.data.attributes.city) {
+      return data.data.attributes.city;
+    }
+  } catch (e) {
+    Logger.log('resolveIataToCity_ error for "' + iata + '": ' + e.message);
+  }
+  return null;
+}
+
+/**
  * Returns weather at the given destination for a specific local hour.
- * location = IATA airport code (e.g. "ANC") or city name — geocoded via OWM.
+ * location = IATA airport code (e.g. "TPA") or city name.
+ *   IATA codes are resolved to city names via AirportGap before geocoding,
+ *   so OWM always receives a real city name (not a 3-letter code).
  * hour     = local arrival hour 0–23; -1 or omitted → current script hour.
  * Requires WEATHER_API_KEY Script Property.
  */
@@ -1116,7 +1139,15 @@ function webGetDestWeather_(e) {
   var apiKey = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
   if (!apiKey) return { ok: false, reason: 'not_configured' };
 
-  var forecast = fetchWeatherForecast_(location, apiKey);
+  // If it looks like an IATA code (3 uppercase letters), resolve to city first
+  var locationQuery = location;
+  if (/^[A-Z]{3}$/.test(location)) {
+    var city = resolveIataToCity_(location);
+    if (city) locationQuery = city;
+    Logger.log('webGetDestWeather_: IATA "' + location + '" → "' + (city || 'unresolved, using raw') + '"');
+  }
+
+  var forecast = fetchWeatherForecast_(locationQuery, apiKey);
   if (!forecast || !forecast.list || !forecast.list.length)
     return { ok: false, reason: 'forecast_unavailable' };
 
