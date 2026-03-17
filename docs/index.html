@@ -4320,8 +4320,8 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
     { id: 'trips',      label: '✈️ My Trips' },
     { id: 'itinerary',  label: '🗺️ My Itinerary' },
     { id: 'packing',    label: '🎒 Packing' },
-    { id: 'countries',  label: '🌍 Countries' },
     { id: 'budget',     label: '💰 Budget' },
+    { id: 'countries',  label: '🌍 Countries' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
   ];
 
@@ -4814,7 +4814,7 @@ function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDelete
   if (!projects.length) {
     return (
       <div className="empty-state">
-        <div style={{ fontSize: 32, marginBottom: 12 }}>📂</div>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🏗️</div>
         <div>No projects yet — ask VERA in the Chat tab to create one.</div>
         <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
           Try: "Create a project for planning our Europe trip"
@@ -6989,7 +6989,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
       {/* Projects */}
       <div className="bento-card" onClick={() => onNavigate('projects')}>
-        <div className="bento-card-title">📂 Projects</div>
+        <div className="bento-card-title">🏗️ Projects</div>
         {projects.length === 0 ? (
           <div style={{ fontSize: 13, color: '#4d6080' }}>No projects yet</div>
         ) : (
@@ -8462,7 +8462,7 @@ function App() {
                 {tab === 'chat'       ? `💬 Chat` : ''}
                 {tab === 'flags'      ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
                 {tab === 'tasks'      ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
-                {tab === 'projects'   ? `📂 Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'projects'   ? `🏗️ Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
                 {tab === 'goals'      ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
                 {tab === 'interests'  ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
                 {tab === 'ideas'      ? `💡 Ideas${ideas.length ? ` (${ideas.length})` : ''}` : ''}
