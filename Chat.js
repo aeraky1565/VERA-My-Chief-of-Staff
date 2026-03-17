@@ -419,6 +419,39 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
+    // ---- COUNTRIES VISITED ---------------------------------------------------
+    (function() {
+      if (!context.countries || !context.countries.length) return '';
+      var lines = 'COUNTRIES VISITED (' + context.countries.length + ' total):\n';
+      context.countries.forEach(function(c) {
+        var line = '  \u2022 [' + c['ID'] + '] ' + c['Country'];
+        if (c['City'])       line += ', ' + c['City'];
+        if (c['Year'])       line += ' (' + c['Year'] + ')';
+        if (c['Traveller'] && c['Traveller'] !== 'Both') line += ' [' + c['Traveller'] + ']';
+        if (c['Notes'])      line += ' \u2014 ' + c['Notes'];
+        lines += line + '\n';
+      });
+      return lines + '\n';
+    })() +
+
+    // ---- TRAVEL BUCKET LIST --------------------------------------------------
+    (function() {
+      if (!context.bucketList || !context.bucketList.length) return '';
+      var lines = 'TRAVEL BUCKET LIST (' + context.bucketList.length + ' destinations):\n';
+      context.bucketList.forEach(function(b) {
+        var stars = b['Stars'] ? '\u2605'.repeat(Math.min(5, Number(b['Stars']))) : '';
+        var line  = '  \u2022 [' + b['ID'] + '] ' + b['Country'];
+        if (b['City'])        line += ', ' + b['City'];
+        if (stars)            line += ' [' + stars + ']';
+        if (b['Target Year']) line += ' \u2014 target ' + b['Target Year'];
+        if (b['Dream Trip'])  line += ' \uD83C\uDF1F';
+        if (b['Notes'])       line += ' \u2014 ' + b['Notes'];
+        if (b['Visited'])     line += ' \u2705 visited';
+        lines += line + '\n';
+      });
+      return lines + '\n';
+    })() +
+
     // ---- VERA NOTICES — proactive time-sensitive insights (Issue #24) --------
     (function() {
       try {
@@ -478,6 +511,20 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_home_item|{row_number}\n' +
     'ACTION:update_idea|{ideaId}|{field}|{value}  \u2014 fields: idea, category, tags, notes\n' +
     'ACTION:toggle_shopping_item|{store_name}|{item_text}  \u2014 mark a shopping item as purchased/unpurchased\n' +
+    // Interests
+    'ACTION:add_interest|{person}|{interest}|{category}|{notes}\n' +
+    '  \u2014 person = Ahmed or Victoria; category = Food/Travel/Fitness/Culture/Hobbies/Learning/Other\n' +
+    // Bills
+    'ACTION:delete_bill|{row_number}  \u2014 row from BILLS context above (e.g. "3" for [row:3]). Always confirm the bill name first.\n' +
+    // Countries
+    'ACTION:add_country|{country}|{city}|{year}|{traveller}|{notes}\n' +
+    '  \u2014 traveller = Ahmed / Victoria / Both. year = YYYY or blank.\n' +
+    'ACTION:delete_country|{id}  \u2014 id from COUNTRIES VISITED context above. Always confirm first.\n' +
+    // Bucket List
+    'ACTION:add_bucket_item|{country}|{city}|{targetYear}|{traveller}|{stars}|{dreamTrip}|{notes}\n' +
+    '  \u2014 stars = 1-5 priority rating; dreamTrip = yes or short description. Use blank for unknown fields.\n' +
+    'ACTION:update_bucket_item|{id}|{field}|{value}  \u2014 field = visited (value = date or "yes") | stars (value = 1-5)\n' +
+    'ACTION:delete_bucket_item|{id}  \u2014 id from TRAVEL BUCKET LIST context above. Always confirm first.\n' +
     '\n' +
 
     'RULES:\n' +
@@ -514,6 +561,16 @@ function buildChatSystemPrompt_(context) {
     '- For recipe_to_shopping: use the row number from RECIPES above (e.g., "2" for [row:2]). This adds all ingredients to the Recipe shopping tab.\n' +
     '- For delete_home_item: use the row number from HOME ITEMS above. Always confirm the item with Ahmed before deleting.\n' +
     '- For toggle_shopping_item: store_name must partially match one of the SHOPPING STORES above. item_text must partially match the item. This toggles purchased/unpurchased.\n' +
+    '- For add_interest: use this (not log_interest) when Ahmed explicitly asks to "add" or "save" an interest. log_interest is for auto-capturing mentions mid-conversation.\n' +
+    '- For delete_bill: pass the row number from BILLS above (e.g., "3" for [row:3]). Always confirm the bill name with Ahmed before deleting.\n' +
+    '- For add_country: log a country Ahmed or Victoria has visited. year is optional. traveller = Ahmed/Victoria/Both.\n' +
+    '- For delete_country: use the ID from COUNTRIES VISITED above. Always confirm the country with Ahmed before deleting.\n' +
+    '- For add_bucket_item: stars is 1–5 (5 = dream destination). dreamTrip = "yes" or a short description like "Cherry blossom season". Use blank for unknown fields.\n' +
+    '- For update_bucket_item: use the ID from TRAVEL BUCKET LIST. field = "visited" (mark as visited with date/yes) or "stars" (update priority).\n' +
+    '- For delete_bucket_item: use the ID from TRAVEL BUCKET LIST above. Always confirm the destination with Ahmed before deleting.\n' +
+    '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
+    'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
+    'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
     '- WEB SEARCH: When you call web_search, briefly tell Ahmed you\'re looking it up. ' +
     'Synthesize results naturally — do not dump raw snippets. If results are empty ' +
     'or unhelpful, say so. Only search when context data is insufficient.\n' +
@@ -744,6 +801,20 @@ function buildChatContext_() {
 
   var travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
 
+  // Countries visited — reuse webGetCountries_() (header-based dynamic reads)
+  var countries = [];
+  try {
+    var cRes = webGetCountries_();
+    countries = (cRes && cRes.entries) || [];
+  } catch(e) { Logger.log('Chat context: countries — ' + e.message); }
+
+  // Travel bucket list — reuse webGetBucketList_()
+  var bucketList = [];
+  try {
+    var bRes = webGetBucketList_();
+    bucketList = (bRes && bRes.entries) || [];
+  } catch(e) { Logger.log('Chat context: bucketList — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -760,6 +831,8 @@ function buildChatContext_() {
     shoppingStores:  shoppingStores,
     ideas:           ideas,
     travel:          travel,
+    countries:       countries,
+    bucketList:      bucketList,
   };
 }
 
@@ -1324,6 +1397,80 @@ function executeActions_(rawText) {
         if (!tgtItem) throw new Error('Shopping item not found: ' + args[1] + ' in ' + args[0]);
         webToggleShoppingItem_(makeFakeEvent_({ tabId: tgtStore.tabId, index: tgtItem.index }));
         executed.push('toggle_shopping_item (' + args[1] + ' in ' + args[0] + ')');
+      }
+
+      // ---- Interests (add — log_interest already handles auto-capture) --------
+      else if (type === 'add_interest') {
+        var aiPerson   = (args[0] || 'Ahmed').trim();
+        var aiInterest = (args[1] || '').trim();
+        var aiCategory = (args[2] || 'Other').trim();
+        var aiNotes2   = (args[3] || '').trim();
+        if (!aiInterest) throw new Error('Interest text required');
+        createInterest_(aiPerson, aiInterest, aiCategory, 'Chat', aiNotes2);
+        executed.push(type + ' (' + aiPerson + ': ' + aiInterest + ')');
+      }
+
+      // ---- Bills (delete) -----------------------------------------------------
+      else if (type === 'delete_bill') {
+        var dbRow = parseInt(args[0], 10);
+        if (isNaN(dbRow) || dbRow < 2) throw new Error('Invalid bill row: ' + args[0]);
+        var dbSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+        if (!dbSheet) throw new Error('Bills tab not found');
+        if (dbRow > dbSheet.getLastRow()) throw new Error('Row ' + dbRow + ' out of range');
+        dbSheet.deleteRow(dbRow);
+        executed.push(type + ' (row ' + dbRow + ')');
+      }
+
+      // ---- Countries ----------------------------------------------------------
+      else if (type === 'add_country') {
+        if (!args[0]) throw new Error('Country name required');
+        webAddCountry_(makeFakeEvent_({
+          country:   args[0] || '',
+          city:      args[1] || '',
+          year:      args[2] || '',
+          traveller: args[3] || 'Both',
+          notes:     args[4] || '',
+        }));
+        executed.push(type + ' (' + args[0] + ')');
+      }
+      else if (type === 'delete_country') {
+        var dcId = (args[0] || '').trim();
+        if (!dcId) throw new Error('Country ID required');
+        webDeleteCountry_(makeFakeEvent_({ id: dcId }));
+        executed.push(type + ' (' + dcId + ')');
+      }
+
+      // ---- Bucket List --------------------------------------------------------
+      else if (type === 'add_bucket_item') {
+        if (!args[0]) throw new Error('Country name required');
+        webAddBucketItem_(makeFakeEvent_({
+          country:    args[0] || '',
+          city:       args[1] || '',
+          targetYear: args[2] || '',
+          traveller:  args[3] || 'Both',
+          stars:      args[4] || '',
+          dreamTrip:  args[5] || '',
+          notes:      args[6] || '',
+        }));
+        executed.push(type + ' (' + args[0] + (args[1] ? ', ' + args[1] : '') + ')');
+      }
+      else if (type === 'update_bucket_item') {
+        var ubId    = (args[0] || '').trim();
+        var ubField = (args[1] || '').trim().toLowerCase();
+        var ubVal   = (args[2] || '').trim();
+        if (!ubId) throw new Error('Bucket item ID required');
+        var ubParams = { id: ubId };
+        if (ubField === 'visited') ubParams.visited = ubVal;
+        else if (ubField === 'stars') ubParams.stars = ubVal;
+        else throw new Error('Unknown field: ' + ubField + '. Valid: visited, stars');
+        webUpdateBucketItem_(makeFakeEvent_(ubParams));
+        executed.push(type + ' (' + ubId + ' ' + ubField + '=' + ubVal + ')');
+      }
+      else if (type === 'delete_bucket_item') {
+        var dbiId = (args[0] || '').trim();
+        if (!dbiId) throw new Error('Bucket item ID required');
+        webDeleteBucketItem_(makeFakeEvent_({ id: dbiId }));
+        executed.push(type + ' (' + dbiId + ')');
       }
 
     } catch (e) {

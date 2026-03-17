@@ -112,6 +112,7 @@ function doGet(e) {
       case 'promote_idea':          return jsonOut_(webPromoteIdea_(e));
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
+      case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
       case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
       case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
@@ -1013,6 +1014,16 @@ function webAddBill_(e) {
     (p.type      || 'Expense').trim(),  // 'Expense' | 'Income'
   ]]);
   return { ok: true, bill: billName, action: 'created' };
+}
+
+function webDeleteBill_(e) {
+  var row = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  if (!row) return { ok: false, error: 'Missing row' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+  if (!sheet) return { ok: false, error: 'Bills tab not found' };
+  if (row < 2 || row > sheet.getLastRow()) return { ok: false, error: 'Row out of range' };
+  sheet.deleteRow(row);
+  return { ok: true, deleted: row };
 }
 
 // ---- Transaction Matching Helpers ------------------------------------------

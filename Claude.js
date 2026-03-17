@@ -317,6 +317,46 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     tripsSectionStr = '(unavailable)';
   }
 
+  // ---- Format: Countries Visited + Bucket List ----------------------------
+  var countriesSectionStr = '';
+  try {
+    var cRes = webGetCountries_();
+    var cEntries = (cRes && cRes.entries) || [];
+    countriesSectionStr = cEntries.length === 0
+      ? 'No countries logged yet.'
+      : '(' + cEntries.length + ' total)\n' + cEntries.map(function(c) {
+          var s = '- ' + c['Country'];
+          if (c['City'])       s += ', ' + c['City'];
+          if (c['Year'])       s += ' (' + c['Year'] + ')';
+          if (c['Traveller'] && c['Traveller'] !== 'Both') s += ' [' + c['Traveller'] + ']';
+          if (c['Notes'])      s += ' \u2014 ' + c['Notes'];
+          return s;
+        }).join('\n');
+  } catch (cErr) {
+    countriesSectionStr = '(unavailable)';
+  }
+
+  var bucketListSectionStr = '';
+  try {
+    var bRes = webGetBucketList_();
+    var bEntries = (bRes && bRes.entries) || [];
+    var bUnvisited = bEntries.filter(function(b) { return !b['Visited']; });
+    bucketListSectionStr = bUnvisited.length === 0
+      ? 'No unvisited bucket list destinations.'
+      : '(' + bUnvisited.length + ' unvisited)\n' + bUnvisited.map(function(b) {
+          var stars = b['Stars'] ? '\u2605'.repeat(Math.min(5, Number(b['Stars']))) : '';
+          var s = '- ' + b['Country'];
+          if (b['City'])        s += ', ' + b['City'];
+          if (stars)            s += ' [' + stars + ']';
+          if (b['Target Year']) s += ' \u2014 target ' + b['Target Year'];
+          if (b['Dream Trip'])  s += ' \uD83C\uDF1F';
+          if (b['Notes'])       s += ' \u2014 ' + b['Notes'];
+          return s;
+        }).join('\n');
+  } catch (bErr) {
+    bucketListSectionStr = '(unavailable)';
+  }
+
   // ---- Format: Idea Braindump (Issue #18) ---------------------------------
   let ideasSection;
   try {
@@ -479,6 +519,12 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '=== UPCOMING TRIPS ===\n' +
     tripsSectionStr + '\n\n' +
 
+    '=== COUNTRIES VISITED ===\n' +
+    countriesSectionStr + '\n\n' +
+
+    '=== TRAVEL BUCKET LIST ===\n' +
+    bucketListSectionStr + '\n\n' +
+
     'CROSS-DOMAIN SYNTHESIS:\n' +
     'Before finalizing your flags, spend one reasoning pass looking for connections between domains:\n' +
     '- Calendar event + Task alignment: Is there an important meeting approaching with no prep task?\n' +
@@ -486,6 +532,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Bill + Finance: Is there a bill due AND any indication of tight finances in Summaries?\n' +
     '- Goal + Calendar: Is there a clear free window this week that aligns with an active goal?\n' +
     '- Interest Ledger + Calendar: Has Ahmed/Victoria expressed interest in something with a nearby opportunity?\n' +
+    '- Countries Visited + Upcoming Trips: Is the upcoming destination a country Ahmed has never visited? That\'s a milestone worth flagging.\n' +
+    '- Bucket List + Upcoming Trips: Is there a bucket list destination near a planned trip? Could they add a stopover or side trip?\n' +
+    '- Bucket List + PTO/Calendar: Is there a clear PTO window that aligns with a dream-trip destination?\n' +
     'Generate up to 2 cross-domain flags from this synthesis — these are often the most valuable insights.\n\n' +
 
     'Based on this data, generate up to ' + CONFIG.MAX_FLAGS + ' intelligent, actionable flags for Ahmed. ' +
