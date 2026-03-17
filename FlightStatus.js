@@ -66,10 +66,11 @@ function fetchFlightStatus_(flightIata, flightDate) {
     return null;
   }
 
+  // Note: flight_date is a paid-tier parameter on AviationStack — free tier returns
+  // current/upcoming flight data for the IATA code; we filter by date client-side.
   var url = 'http://api.aviationstack.com/v1/flights'
     + '?access_key=' + encodeURIComponent(key)
-    + '&flight_iata=' + encodeURIComponent(flightIata.toUpperCase())
-    + '&flight_date=' + encodeURIComponent(flightDate);
+    + '&flight_iata=' + encodeURIComponent(flightIata.toUpperCase());
 
   try {
     var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
@@ -80,11 +81,18 @@ function fetchFlightStatus_(flightIata, flightDate) {
     }
     var json = JSON.parse(resp.getContentText());
     if (!json.data || json.data.length === 0) {
-      Logger.log('FlightStatus: No data returned for ' + flightIata + ' on ' + flightDate);
+      Logger.log('FlightStatus: No data returned for ' + flightIata);
       return null;
     }
-    // Use first matching result (most relevant)
+    // Pick the result whose scheduled departure date matches flightDate (YYYY-MM-DD).
+    // If none match exactly (e.g. cross-midnight flight), fall back to the first result.
     var d = json.data[0];
+    if (flightDate) {
+      for (var di = 0; di < json.data.length; di++) {
+        var depDateStr = ((json.data[di].departure || {}).scheduled || '').substring(0, 10);
+        if (depDateStr === flightDate) { d = json.data[di]; break; }
+      }
+    }
     var dep = d.departure || {};
     var arr = d.arrival   || {};
 
@@ -461,8 +469,7 @@ function debugFlightStatusScan() {
         var rawKey = getAviationStackKey_();
         var rawUrl = 'http://api.aviationstack.com/v1/flights'
           + '?access_key=' + encodeURIComponent(rawKey)
-          + '&flight_iata=' + encodeURIComponent(testFlight)
-          + '&flight_date=' + encodeURIComponent(testDate);
+          + '&flight_iata=' + encodeURIComponent(testFlight);
         Logger.log('fetchFlightStatus_ returned null. Fetching raw response...');
         try {
           var rawResp = UrlFetchApp.fetch(rawUrl, { muteHttpExceptions: true });
