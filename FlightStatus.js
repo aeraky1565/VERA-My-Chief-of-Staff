@@ -256,14 +256,19 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   }
 
   // Scan all calendars for flight events in the polling window.
-  // forceRefresh extends the window to 48h so same-day + next-day flights are covered.
-  var scanStart = new Date(now - 60 * 60000);                             // 1h ago
-  var scanEnd   = new Date(now + (forceRefresh ? 48 : 24) * 60 * 60000); // 24 or 48h ahead
+  // For force refresh: look back 24h (covers flights that already departed today).
+  // For normal trigger: look back 1h and ahead 24h.
+  var scanStart = new Date(now - (forceRefresh ? 24 : 1) * 60 * 60000);  // 24h or 1h ago
+  var scanEnd   = new Date(now + (forceRefresh ? 48 : 24) * 60 * 60000); // 48h or 24h ahead
   var allCals   = CalendarApp.getAllCalendars();
+  Logger.log('FlightStatus Phase2: scanning ' + allCals.length + ' calendar(s) from '
+    + Utilities.formatDate(scanStart, tz, 'yyyy-MM-dd HH:mm') + ' to '
+    + Utilities.formatDate(scanEnd,   tz, 'yyyy-MM-dd HH:mm'));
 
   for (var ci = 0; ci < allCals.length; ci++) {
     try {
       var calEvents = allCals[ci].getEvents(scanStart, scanEnd);
+      Logger.log('FlightStatus Phase2: cal "' + allCals[ci].getName() + '" → ' + calEvents.length + ' event(s) in window');
       for (var ei = 0; ei < calEvents.length; ei++) {
         var ev      = calEvents[ei];
         var evTitle = (ev.getTitle()    || '').trim();
@@ -272,11 +277,17 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
         // Use the same classification function as webGetItinerary_() for consistency —
         // if that function classifies an event as 'flight', we should poll it here too.
         var relevance = isItineraryCalendarRelevant_(evTitle, evLoc, '');
-        if (!relevance.include || relevance.type !== 'flight') continue;
+        if (!relevance.include || relevance.type !== 'flight') {
+          Logger.log('FlightStatus Phase2: skip "' + evTitle + '" → not classified as flight (type=' + relevance.type + ', include=' + relevance.include + ')');
+          continue;
+        }
 
         // Extract flight number (general regex covers airlines beyond the IATA short-list)
         var fm2 = evTitle.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
-        if (!fm2) continue;
+        if (!fm2) {
+          Logger.log('FlightStatus Phase2: skip "' + evTitle + '" → classified as flight but no IATA code+number found in title');
+          continue;
+        }
         var calFlightNum = fm2[1] + fm2[2];
 
         // Compute CAL-xxx ID using the IDENTICAL formula used in webGetItinerary_()
