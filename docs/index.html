@@ -6944,6 +6944,17 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
   return (
     <div className="bento-grid">
+      {/* Active Travel Card — pinned to top when a trip is in progress */}
+      {activeTrip && (
+        <ActiveTravelCard
+          trip={activeTrip}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
+          travelConfig={status && status.travelConfig}
+          onViewItinerary={function() { onNavigate('pto'); }}
+        />
+      )}
+
       {/* Flags */}
       <div className="bento-card" onClick={() => onNavigate('flags')}>
         <div className="bento-card-title">🚩 Active Flags</div>
@@ -7081,17 +7092,6 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           </>
         )}
       </div>
-
-      {/* Active Travel Card — visible only when a trip is currently in progress */}
-      {activeTrip && (
-        <ActiveTravelCard
-          trip={activeTrip}
-          apiUrl={apiUrl}
-          apiToken={apiToken}
-          travelConfig={status && status.travelConfig}
-          onViewItinerary={function() { onNavigate('pto'); }}
-        />
-      )}
 
       {/* Spending Chart */}
       <SpendingChart summaries={summaries} />
