@@ -6721,6 +6721,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
   const [items,          setItems]          = React.useState(null);
   const [flightStatuses, setFlightStatuses] = React.useState({});
   const [loadingItems,   setLoadingItems]   = React.useState(true);
+  const [destWeather,    setDestWeather]    = React.useState(null);
 
   // Load itinerary on mount
   React.useEffect(function() {
@@ -6744,6 +6745,46 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
     var timer = setInterval(fetchStatuses, 120000);
     return function() { clearInterval(timer); };
   }, [tripKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch destination weather once items are loaded
+  React.useEffect(function() {
+    if (!items || !apiUrl || !apiToken) return;
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    var todayFlts = items
+      .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date === todayStr; })
+      .sort(function(a, b) { return (a.startTime || '').localeCompare(b.startTime || ''); });
+
+    var destAirport = null;
+    var destHour    = -1; // -1 means current hour
+
+    if (todayFlts.length > 0) {
+      // Flights today → weather at arrival airport at arrival time
+      var last = todayFlts[todayFlts.length - 1];
+      var codes = (last.location || '').match(/\b([A-Z]{3})\b/g) || [];
+      destAirport = codes[codes.length - 1] || null;
+      if (last.endTime) destHour = parseInt(last.endTime.split(':')[0], 10);
+    } else {
+      // No flights today — find last flight that landed before today
+      var pastFlights = items
+        .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date < todayStr; })
+        .sort(function(a, b) {
+          return (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || ''));
+        });
+      if (pastFlights.length > 0) {
+        var pf   = pastFlights[pastFlights.length - 1];
+        var pc   = (pf.location || '').match(/\b([A-Z]{3})\b/g) || [];
+        destAirport = pc[pc.length - 1] || null;
+        // destHour stays -1 → shows current weather at destination
+      }
+    }
+
+    if (!destAirport) return;
+    setDestWeather(null); // clear stale data while fetching
+    apiGet(apiUrl, apiToken, { action: 'dest_weather', location: destAirport, hour: String(destHour) })
+      .then(function(r) { if (r && r.ok) setDestWeather(r); })
+      .catch(function() {});
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived data ─────────────────────────────────────────────────────────
   var dayNum    = Math.floor((new Date(today) - new Date(trip.startDate)) / 86400000) + 1;
@@ -6822,10 +6863,28 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
         <div style={{ fontWeight: 700, fontSize: 15, color: '#e8b44a' }}>
           ✈️ Active Travel — {trip.label}
         </div>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#e8b44a', background: '#2a1e00',
-                       borderRadius: 20, padding: '2px 10px', border: '1px solid #4a3800' }}>
-          Day {dayNum} of {totalDays}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Destination weather chip */}
+          {destWeather && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12,
+                          color: '#e8b44a', background: '#2a1e00', borderRadius: 12,
+                          padding: '2px 10px', border: '1px solid #4a3800' }}>
+              <span>{destWeather.emoji}</span>
+              <span style={{ fontWeight: 700 }}>{destWeather.temp}°F</span>
+              <span style={{ color: '#a08040', fontWeight: 400 }}>
+                {destWeather.city}
+                {destWeather.targetHour >= 0
+                  ? ' ~' + (destWeather.targetHour % 12 || 12) + (destWeather.targetHour < 12 ? 'am' : 'pm')
+                  : ''}
+              </span>
+            </div>
+          )}
+          {/* Day counter badge */}
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#e8b44a', background: '#2a1e00',
+                         borderRadius: 20, padding: '2px 10px', border: '1px solid #4a3800' }}>
+            Day {dayNum} of {totalDays}
+          </span>
+        </div>
       </div>
 
       {loadingItems ? (

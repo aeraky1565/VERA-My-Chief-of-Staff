@@ -97,6 +97,7 @@ function doGet(e) {
       case 'bills_toggle_cal':        return jsonOut_(webToggleCalBill_(e));
       case 'bills_sync_transactions': return jsonOut_(webSyncBillsFromTransactions_());
       case 'tx_list':                 return jsonOut_(webGetTxList_());
+      case 'dest_weather':            return jsonOut_(webGetDestWeather_(e));
       case 'cashflow':                return jsonOut_(webGetCashflow_(e));
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
@@ -1100,6 +1101,45 @@ function webGetTxList_() {
  *   3. Any word in the bill name that is >3 chars appears in the transaction description
  * Returns { description, amount } or null.
  */
+/**
+ * Returns weather at the given destination for a specific local hour.
+ * location = IATA airport code (e.g. "ANC") or city name — geocoded via OWM.
+ * hour     = local arrival hour 0–23; -1 or omitted → current script hour.
+ * Requires WEATHER_API_KEY Script Property.
+ */
+function webGetDestWeather_(e) {
+  var p        = e.parameter;
+  var location = (p.location || '').trim();
+  var hour     = parseInt(p.hour || '-1', 10);
+  if (!location) return { ok: false, reason: 'no_location' };
+
+  var apiKey = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
+  if (!apiKey) return { ok: false, reason: 'not_configured' };
+
+  var forecast = fetchWeatherForecast_(location, apiKey);
+  if (!forecast || !forecast.list || !forecast.list.length)
+    return { ok: false, reason: 'forecast_unavailable' };
+
+  var tzOffset  = forecast.city.timezone;  // seconds from UTC
+  var tz        = Session.getScriptTimeZone();
+  var nowHour   = parseInt(Utilities.formatDate(new Date(), tz, 'H'), 10);
+  var targetHour = (hour >= 0 && hour <= 23) ? hour : nowHour;
+
+  var slot = findForecastSlot_(forecast.list, targetHour, tzOffset);
+  if (!slot) return { ok: false, reason: 'no_slot' };
+
+  return {
+    ok:          true,
+    temp:        Math.round(slot.main.temp),
+    feelsLike:   Math.round(slot.main.feels_like),
+    condition:   slot.weather[0].main,
+    description: slot.weather[0].description,
+    emoji:       weatherEmoji_(slot.weather[0].main),
+    city:        forecast.city.name,
+    targetHour:  targetHour,
+  };
+}
+
 /**
  * Reads all Config rows with key `tx_alias:KEYWORD` and returns a map:
  * { lowercasedKeyword: 'Bill Name', ... }
