@@ -137,6 +137,10 @@ function doGet(e) {
       case 'delete_bucket_item':    return jsonOut_(webDeleteBucketItem_(e));
       case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
       case 'force_flight_statuses': return jsonOut_(webForceFlightStatuses_(e));
+      case 'recommendations':          return jsonOut_(webGetRecommendations_(e));
+      case 'generate_recommendations': return jsonOut_(webGenerateRecommendations_(e));
+      case 'update_recommendation':    return jsonOut_(webUpdateRecommendation_(e));
+      case 'accept_recommendation':    return jsonOut_(webAcceptRecommendation_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -2752,6 +2756,411 @@ function webGeneratePacking_(e) {
 
   // Return all items for this trip
   return webGetPacking_(e);
+}
+
+// ---- Trip Recommendations (Issue #73) --------------------------------------
+
+/**
+ * GET recommendations — params: tripKey
+ * Returns all recommendation rows for the given trip.
+ */
+function webGetRecommendations_(e) {
+  const p       = (e && e.parameter) ? e.parameter : {};
+  const tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+  const ss = getSpreadsheet();
+  ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS, TRIP_RECS_HEADERS);
+  const sheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  if (sheet.getLastRow() < 2) return { ok: true, recs: [] };
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
+  const recs = [];
+  data.forEach(function(row) {
+    if (String(row[1]).trim() !== tripKey) return;
+    recs.push({
+      id:          String(row[0]).trim(),
+      tripKey:     String(row[1]).trim(),
+      date:        String(row[2]).trim(),
+      type:        String(row[3]).trim(),
+      title:       String(row[4]).trim(),
+      description: String(row[5]).trim(),
+      rationale:   String(row[6]).trim(),
+      priceRange:  String(row[7]).trim(),
+      link:        String(row[8]).trim(),
+      status:      String(row[9]).trim() || 'pending',
+      source:      String(row[10]).trim(),
+      generatedAt: String(row[11]).trim(),
+    });
+  });
+  return { ok: true, recs: recs };
+}
+
+/**
+ * GET update_recommendation — params: id, status ('added'|'dismissed'|'pending')
+ * Updates the status of a recommendation row.
+ */
+function webUpdateRecommendation_(e) {
+  const p      = (e && e.parameter) ? e.parameter : {};
+  const id     = (p.id     || '').trim();
+  const status = (p.status || '').trim();
+  if (!id || !status) throw new Error('id and status are required');
+  const ss    = getSpreadsheet();
+  const sheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Recommendation not found: ' + id);
+  const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) {
+      sheet.getRange(i + 2, 10).setValue(status); // col 10 = Status (1-based)
+      return { ok: true, id: id, status: status };
+    }
+  }
+  throw new Error('Recommendation not found: ' + id);
+}
+
+/**
+ * GET accept_recommendation — params: recId, tripKey
+ * Converts a recommendation into a real Itinerary row and marks it as 'added'.
+ */
+function webAcceptRecommendation_(e) {
+  const p       = (e && e.parameter) ? e.parameter : {};
+  const recId   = (p.recId   || '').trim();
+  const tripKey = (p.tripKey || '').trim();
+  if (!recId || !tripKey) throw new Error('recId and tripKey are required');
+
+  const ss       = getSpreadsheet();
+  const recSheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  if (!recSheet || recSheet.getLastRow() < 2) throw new Error('Rec not found: ' + recId);
+
+  const recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
+  let rec = null;
+  let recRowNum = -1;
+  for (let i = 0; i < recData.length; i++) {
+    if (String(recData[i][0]).trim() === recId) {
+      rec = {
+        date:        String(recData[i][2]).trim(),
+        type:        String(recData[i][3]).trim() || 'manual',
+        title:       String(recData[i][4]).trim(),
+        description: String(recData[i][5]).trim(),
+        link:        String(recData[i][8]).trim(),
+      };
+      recRowNum = i + 2;
+      break;
+    }
+  }
+  if (!rec) throw new Error('Rec not found: ' + recId);
+
+  // Add to Itinerary sheet
+  const itinSheet = ss.getSheetByName(TABS.ITINERARY);
+  if (!itinSheet) throw new Error('Itinerary sheet not found');
+  const tz      = Session.getScriptTimeZone();
+  const dateKey = Utilities.formatDate(new Date(), tz, 'yyyyMMddHHmmss');
+  const newId   = 'ITIN-REC-' + dateKey;
+  const metadata = rec.link ? JSON.stringify({ link: rec.link }) : '{}';
+  const newRow  = itinSheet.getLastRow() + 1;
+  itinSheet.getRange(newRow, 1, 1, ITINERARY_HEADERS.length).setValues([[
+    newId, tripKey, rec.type, rec.title, rec.date, '', '', '', rec.description, metadata,
+  ]]);
+
+  // Mark rec as 'added'
+  recSheet.getRange(recRowNum, 10).setValue('added');
+
+  // Return updated recs for this trip
+  return webGetRecommendations_({ parameter: { tripKey: tripKey } });
+}
+
+/**
+ * Builds the Claude system prompt for trip recommendations.
+ */
+function buildRecsSystemPrompt_() {
+  return (
+    'You are VERA, an intelligent travel advisor for Ahmed and Victoria, a couple based near Washington DC (IAD). ' +
+    'Your job is to analyze a trip itinerary and suggest specific, high-quality activities, restaurants, and experiences ' +
+    'that fill experiential gaps. You have access to a web_search tool — use it 1-2 times to find real, ' +
+    'current venues at the destination before writing your final recommendations. ' +
+    'Be specific: real venue names, real addresses, real details from your searches.'
+  );
+}
+
+/**
+ * Builds the user message for trip recommendations.
+ */
+function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary) {
+  return (
+    'Trip: ' + tripLabel + '\n' +
+    'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
+    'Context: ' + (context || 'General travel') + '\n' +
+    'Destination: ' + (destination || tripLabel) + '\n\n' +
+    '=== PLANNED ITINERARY ===\n' + (itinerarySummary || '(No items planned yet)') + '\n\n' +
+    '=== DAY-BY-DAY GAP ANALYSIS ===\n' + gapSummary + '\n\n' +
+    'Search the web for top attractions and dining in ' + (destination || tripLabel) + ' matching the trip context, ' +
+    'then provide 8-15 targeted recommendations that fill the gaps above.\n\n' +
+    'RULES:\n' +
+    '- Prioritize days marked "NO DINING" with a dining rec, and days marked "NO ACTIVITIES" with an activity rec.\n' +
+    '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Work Trip → quick sights near hotel, good coffee; Family → family-friendly attractions.\n' +
+    '- For layovers ≥ 6 hours, recommend things to do near the layover airport.\n' +
+    '- Include a mix of: dining, activities, coffee/morning spots, and hidden gems.\n' +
+    '- Use real venue names and real details from your web search.\n\n' +
+    'CRITICAL — RESPONSE FORMAT:\n' +
+    'Return ONLY a raw JSON array. No markdown. No code fences. No explanation. Start with [ and end with ].\n' +
+    '[{"date":"YYYY-MM-DD","type":"dining","title":"Venue Name","description":"1-2 sentence description.","rationale":"Why this fills a gap.","priceRange":"$$","link":"https://..."},' +
+    '{"date":"YYYY-MM-DD","type":"museum","title":"Attraction Name","description":"Description.","rationale":"Rationale.","priceRange":"$","link":""}]\n\n' +
+    'Valid types: flight, train, hotel, reservation, dining, coffee, nightlife, winery, city_tour, museum, beach, mountain, camera, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n\n' +
+    'Generate the recommendations now:'
+  );
+}
+
+/**
+ * Parses Claude's JSON array response for recommendations.
+ * Returns an array of rec objects, or [] on failure.
+ */
+function parseRecsResponse_(rawContent) {
+  try {
+    var cleaned = (rawContent || '').trim()
+      .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    var start = cleaned.indexOf('[');
+    var end   = cleaned.lastIndexOf(']');
+    if (start === -1 || end === -1) throw new Error('No JSON array found');
+    var parsed = JSON.parse(cleaned.substring(start, end + 1));
+    if (!Array.isArray(parsed)) throw new Error('Expected array');
+    return parsed.filter(function(r) { return r && r.title; });
+  } catch(err) {
+    Logger.log('parseRecsResponse_ failed: ' + err.message + ' | raw: ' + (rawContent || '').substring(0, 200));
+    return [];
+  }
+}
+
+/**
+ * Builds a day-by-day gap analysis string for the Claude prompt.
+ * Tells Claude which days have no dining / no activities planned.
+ */
+function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
+  var TRANSPORT = { flight: 1, train: 1, bus: 1, car: 1, ferry: 1, cruise: 1, walking: 1, bicycle: 1 };
+  var DINING    = { dining: 1, reservation: 1, coffee: 1, nightlife: 1, winery: 1 };
+  var ACTIVITY  = { city_tour: 1, museum: 1, beach: 1, mountain: 1, camera: 1, show: 1,
+                    spa: 1, skiing: 1, snorkeling: 1, theme_park: 1, shopping: 1, market: 1 };
+
+  // Build per-date coverage map
+  var dateMap = {};
+  itinData.forEach(function(row) {
+    if (String(row[1]).trim() !== tripKey) return;
+    var date = String(row[4]).trim();
+    var type = String(row[2]).trim();
+    if (!date) return;
+    if (!dateMap[date]) dateMap[date] = { transport: false, hotel: false, dining: false, activity: false };
+    if (TRANSPORT[type]) dateMap[date].transport = true;
+    if (type === 'hotel' || type === 'cruise') dateMap[date].hotel = true;
+    if (DINING[type])    dateMap[date].dining   = true;
+    if (ACTIVITY[type])  dateMap[date].activity = true;
+  });
+
+  var tz    = Session.getScriptTimeZone();
+  var lines = [];
+  var d     = new Date(startDate + 'T12:00:00'); // noon to avoid DST edge cases
+  var end   = new Date(endDate   + 'T12:00:00');
+  while (d <= end) {
+    var ds      = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+    var dayName = Utilities.formatDate(d, tz, 'EEE MMM d');
+    var info    = dateMap[ds] || {};
+    var notes   = [];
+    if (info.transport) notes.push('transport ✓');
+    if (info.hotel)     notes.push('accommodation ✓');
+    if (info.dining)    notes.push('dining ✓');
+    else                notes.push('NO DINING');
+    if (info.activity)  notes.push('activity ✓');
+    else                notes.push('NO ACTIVITIES');
+    lines.push(dayName + ': ' + notes.join(', '));
+    d = new Date(d.getTime() + 86400000);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * GET generate_recommendations — params: tripKey, startDate, endDate
+ * Runs Claude (with optional web search) to generate trip recommendations,
+ * saves them to the TripRecommendations sheet, and returns all recs.
+ */
+function webGenerateRecommendations_(e) {
+  const p         = (e && e.parameter) ? e.parameter : {};
+  const tripKey   = (p.tripKey   || '').trim();
+  const startDate = (p.startDate || '').trim();
+  const endDate   = (p.endDate   || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  // Trip label
+  const pipeIdx  = tripKey.indexOf('|');
+  const tripLabel = pipeIdx >= 0 ? tripKey.substring(pipeIdx + 1) : tripKey;
+
+  // Duration
+  let durationNights = '?';
+  if (startDate && endDate) {
+    try {
+      const diff = (new Date(endDate + 'T00:00:00') - new Date(startDate + 'T00:00:00')) / 86400000;
+      durationNights = Math.max(0, Math.round(diff)).toString();
+    } catch(err) { /* ignore */ }
+  }
+
+  // Load itinerary items
+  const ss        = getSpreadsheet();
+  const itinSheet = ss.getSheetByName(TABS.ITINERARY);
+  let itinData = [];
+  let itinerarySummary = '';
+  if (itinSheet && itinSheet.getLastRow() >= 2) {
+    itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    const lines = [];
+    itinData.forEach(function(row) {
+      if (String(row[1]).trim() !== tripKey) return;
+      const date  = String(row[4]).trim();
+      const type  = String(row[2]).trim();
+      const title = String(row[3]).trim();
+      const loc   = String(row[7]).trim();
+      let line = '• [' + type + '] ' + title;
+      if (date) line = date + ' ' + line;
+      if (loc)  line += ' @ ' + loc;
+      lines.push(line);
+    });
+    itinerarySummary = lines.join('\n');
+  }
+
+  // Gap analysis string
+  const gapSummary = buildRecsGapSummary_(tripKey, startDate, endDate, itinData);
+
+  // Trip context
+  let context = '';
+  try { context = (webGetTripMeta_(e) || {}).context || ''; } catch(err) { /* graceful */ }
+
+  // Infer destination (same logic as packing)
+  let destination = '';
+  for (let i = 0; i < itinData.length && !destination; i++) {
+    const row = itinData[i];
+    if (String(row[1]).trim() !== tripKey) continue;
+    if (String(row[2]).trim() === 'flight' && row[9]) {
+      try {
+        const meta = JSON.parse(String(row[9]));
+        if (meta.dest) { destination = meta.dest; break; }
+      } catch(err) { /* skip */ }
+    }
+  }
+  for (let i = 0; i < itinData.length && !destination; i++) {
+    const row = itinData[i];
+    if (String(row[1]).trim() !== tripKey) continue;
+    if (String(row[2]).trim() === 'hotel' && String(row[7]).trim()) {
+      destination = String(row[7]).trim();
+    }
+  }
+  if (!destination) {
+    destination = tripLabel
+      .replace(/\b(trip|adventure|vacation|holiday|weekend|getaway|tour|visit)\b/gi, '')
+      .trim();
+  }
+
+  // Build prompts
+  const sysPrompt  = buildRecsSystemPrompt_();
+  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary);
+  const apiKey     = getApiKey();
+  const tools      = getSearchTools_(); // from Chat.js — empty if no VERA_SEARCH_API_KEY
+
+  // Claude call with optional tool-use loop (mirrors callClaudeChat_ pattern)
+  let messages = [{ role: 'user', content: userMsg }];
+  let rawText  = '';
+  for (let iter = 0; iter < 4; iter++) {
+    const requestBody = {
+      model:      CLAUDE_MODEL,
+      max_tokens: 4096,
+      system:     sysPrompt,
+      messages:   messages,
+    };
+    if (tools.length) requestBody.tools = tools;
+
+    const response     = UrlFetchApp.fetch(CLAUDE_API_URL, {
+      method:  'post',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      payload:            JSON.stringify(requestBody),
+      muteHttpExceptions: true,
+    });
+    const json = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200) {
+      throw new Error('Claude API error ' + response.getResponseCode() + ': ' + response.getContentText().substring(0, 200));
+    }
+
+    if (json.stop_reason === 'tool_use') {
+      // Execute any web_search tool calls
+      const assistantMsg  = { role: 'assistant', content: json.content };
+      const toolResults   = [];
+      (json.content || []).forEach(function(block) {
+        if (block.type !== 'tool_use') return;
+        const results = doWebSearch_((block.input || {}).query || '');
+        const text    = results.map(function(r) { return r.title + ': ' + r.snippet; }).join('\n\n') || 'No results found.';
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: text });
+      });
+      messages = messages.concat([assistantMsg, { role: 'user', content: toolResults }]);
+      continue; // next iteration
+    }
+
+    // end_turn — extract text
+    rawText = (json.content || [])
+      .filter(function(b) { return b.type === 'text'; })
+      .map(function(b) { return b.text; })
+      .join('');
+    break;
+  }
+
+  // Parse JSON array from response
+  const recsData = parseRecsResponse_(rawText);
+
+  // Clear existing AI recs for this trip
+  ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS, TRIP_RECS_HEADERS);
+  const recSheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  if (recSheet.getLastRow() >= 2) {
+    const allRows = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
+    const toDelete = [];
+    for (let i = 0; i < allRows.length; i++) {
+      if (String(allRows[i][1]).trim() === tripKey && String(allRows[i][10]).trim() === 'ai') {
+        toDelete.push(i + 2);
+      }
+    }
+    toDelete.sort(function(a, b) { return b - a; });
+    toDelete.forEach(function(rowNum) { recSheet.deleteRow(rowNum); });
+  }
+
+  // Write new recs
+  const tz          = Session.getScriptTimeZone();
+  const dateKey     = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+  const generatedAt = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  let seq = 1;
+  if (recSheet.getLastRow() >= 2) {
+    recSheet.getRange(2, 1, recSheet.getLastRow() - 1, 1).getValues().forEach(function(r) {
+      if (String(r[0]).indexOf('REC-' + dateKey) === 0) seq++;
+    });
+  }
+
+  const newRows = [];
+  recsData.forEach(function(rec) {
+    if (!rec.title) return;
+    newRows.push([
+      'REC-' + dateKey + '-' + String(seq++).padStart(3, '0'),
+      tripKey,
+      rec.date        || '',
+      rec.type        || 'manual',
+      rec.title       || '',
+      rec.description || '',
+      rec.rationale   || '',
+      rec.priceRange  || '',
+      rec.link        || '',
+      'pending',
+      'ai',
+      generatedAt,
+    ]);
+  });
+
+  if (newRows.length > 0) {
+    const startRow = recSheet.getLastRow() + 1;
+    recSheet.getRange(startRow, 1, newRows.length, TRIP_RECS_HEADERS.length).setValues(newRows);
+  }
+
+  return webGetRecommendations_({ parameter: { tripKey: tripKey } });
 }
 
 // ---- Ideas / Braindump (Issue #18) -----------------------------------------

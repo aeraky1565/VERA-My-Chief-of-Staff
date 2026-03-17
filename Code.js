@@ -42,6 +42,7 @@ const TABS = {
   PACKING_ITEMS:    'PackingItems',     // Per-trip packing list items (Issue #64)
   COUNTRIES:        'Countries',        // Countries visited tracker (Issue #74)
   BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
+  TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -65,6 +66,7 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
+const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -134,9 +136,10 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.ITINERARY,        ITINERARY_HEADERS);
   ensureSheet(ss, TABS.TRIP_META,        TRIP_META_HEADERS);
   ensureSheet(ss, TABS.PACKING_ITEMS,    PACKING_ITEM_HEADERS);
-  ensureSheet(ss, TABS.COUNTRIES,        COUNTRIES_HEADERS);
-  ensureSheet(ss, TABS.BUCKET_LIST,      BUCKET_LIST_HEADERS);
-  ensureSheet(ss, TABS.CONFIG,           CONFIG_HEADERS, configDefaults);
+  ensureSheet(ss, TABS.COUNTRIES,             COUNTRIES_HEADERS);
+  ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
+  ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
+  ensureSheet(ss, TABS.CONFIG,                CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
 }

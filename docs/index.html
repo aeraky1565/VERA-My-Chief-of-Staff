@@ -3392,6 +3392,216 @@ function PackingPanel({
   );
 }
 
+// ---- Recommendations Panel (Issue #73) ---------------------------------------
+
+function RecommendationsPanel({ trips, recommendations, busy, onLoadRecs, onGenerateRecs, onAcceptRec, onDismissRec, onGoToItinerary }) {
+  const [expanded,      setExpanded]      = React.useState({});
+  const [showDismissed, setShowDismissed] = React.useState({});
+  const [filter,        setFilter]        = React.useState({}); // { [tripKey]: 'all'|'dining'|'activities'|'added' }
+
+  const DINING_TYPES    = { dining: 1, reservation: 1, coffee: 1, nightlife: 1, winery: 1 };
+  const ACTIVITY_TYPES  = { city_tour: 1, museum: 1, beach: 1, mountain: 1, camera: 1, show: 1,
+                             spa: 1, skiing: 1, snorkeling: 1, theme_park: 1, shopping: 1, market: 1 };
+
+  function getFilter(tripKey)     { return filter[tripKey] || 'all'; }
+  function setTripFilter(tk, val) { setFilter(function(p) { return Object.assign({}, p, { [tk]: val }); }); }
+
+  return (
+    <div>
+      {trips.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 36, marginBottom: 12 }}>✨</div>
+          <div>No upcoming trips found.</div>
+        </div>
+      )}
+      {trips.map(function(t) {
+        const tripKey  = t.startDate + '|' + t.label;
+        const recData  = recommendations[tripKey];
+        const isLoading = recData === 'loading';
+        const recs      = (recData && recData !== 'loading') ? recData : [];
+        const isOpen    = !!expanded[tripKey];
+        const hasAiRecs = recs.some(function(r) { return r.source === 'ai'; });
+
+        // Filter recs for display
+        const curFilter  = getFilter(tripKey);
+        const visibleRecs = recs.filter(function(r) {
+          if (r.status === 'dismissed' && !showDismissed[tripKey]) return false;
+          if (curFilter === 'dining')     return !!DINING_TYPES[r.type];
+          if (curFilter === 'activities') return !!ACTIVITY_TYPES[r.type];
+          if (curFilter === 'added')      return r.status === 'added';
+          return true; // 'all'
+        });
+        const pendingCount   = recs.filter(function(r) { return r.status === 'pending'; }).length;
+        const dismissedCount = recs.filter(function(r) { return r.status === 'dismissed'; }).length;
+
+        return (
+          <div key={tripKey} style={{ marginBottom: 12, background: '#0e1e35', border: '1px solid #1e3a5f', borderRadius: 10 }}>
+            {/* Accordion header */}
+            <div
+              style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+              onClick={function() {
+                setExpanded(function(p) { return Object.assign({}, p, { [tripKey]: !p[tripKey] }); });
+                if (!recData && !isLoading) onLoadRecs(tripKey);
+              }}
+            >
+              <span style={{ fontSize: 18 }}>✨</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: '#dde1f0', fontSize: 15 }}>{t.label}</div>
+                <div style={{ fontSize: 12, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</div>
+              </div>
+              {pendingCount > 0 && (
+                <span style={{ background: '#1a3a6e', color: '#8ab4f8', fontSize: 11, fontWeight: 700,
+                               padding: '2px 8px', borderRadius: 10 }}>
+                  {pendingCount} pick{pendingCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              <span style={{ color: '#4d6080', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+            </div>
+
+            {/* Accordion body */}
+            {isOpen && (
+              <div style={{ padding: '0 16px 16px' }}>
+                {/* Generate button */}
+                <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    disabled={busy || isLoading}
+                    onClick={function() { onGenerateRecs(tripKey, t.startDate, t.endDate); }}
+                    style={{ background: '#1a3a6e', color: '#8ab4f8', border: '1px solid #2a4a7e',
+                             borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    {isLoading ? '⏳ Generating…' : (hasAiRecs ? '✨ Regenerate' : '✨ Get VERA\'s Picks')}
+                  </button>
+                  {recs.length > 0 && (
+                    <span style={{ fontSize: 12, color: '#6b7fa8' }}>
+                      {recs.filter(function(r) { return r.status === 'added'; }).length} added ·{' '}
+                      {recs.filter(function(r) { return r.status === 'pending'; }).length} pending
+                    </span>
+                  )}
+                </div>
+
+                {/* Filter pills */}
+                {recs.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                    {['all', 'dining', 'activities', 'added'].map(function(f) {
+                      return (
+                        <button key={f} onClick={function() { setTripFilter(tripKey, f); }}
+                          style={{ background: curFilter === f ? '#1a3a6e' : 'transparent',
+                                   color: curFilter === f ? '#8ab4f8' : '#4d6080',
+                                   border: '1px solid ' + (curFilter === f ? '#2a4a7e' : '#1e3a5f'),
+                                   borderRadius: 20, padding: '3px 10px', fontSize: 11,
+                                   cursor: 'pointer', textTransform: 'capitalize' }}>
+                          {f === 'all' ? 'All' : f === 'dining' ? '🍽 Dining' : f === 'activities' ? '🏛 Activities' : '✅ Added'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Rec cards */}
+                {isLoading && <div style={{ color: '#4d6080', fontSize: 13, padding: '8px 0' }}>Searching for the best picks…</div>}
+
+                {!isLoading && recs.length === 0 && (
+                  <div style={{ color: '#4d6080', fontSize: 13, padding: '8px 0' }}>
+                    Click "Get VERA's Picks" to generate personalized recommendations for this trip.
+                  </div>
+                )}
+
+                {!isLoading && visibleRecs.map(function(rec) {
+                  const isDismissed = rec.status === 'dismissed';
+                  const isAdded     = rec.status === 'added';
+                  return (
+                    <div key={rec.id} style={{
+                      background: isDismissed ? '#080f1a' : isAdded ? '#0a1a14' : '#0a1a2e',
+                      border: '1px solid ' + (isDismissed ? '#111a2a' : isAdded ? '#1a4a2e' : '#1e3a5f'),
+                      borderRadius: 8, padding: '11px 14px', marginBottom: 10,
+                      opacity: isDismissed ? 0.5 : 1,
+                    }}>
+                      {/* Card header: icon + date + type + price + actions */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 16, flexShrink: 0 }}>{ITIN_TYPE_ICON[rec.type] || '📝'}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, color: isDismissed ? '#4d6080' : isAdded ? '#4caf50' : '#dde1f0',
+                                        fontSize: 14, lineHeight: '1.2' }}>
+                            {isAdded && '✅ '}{rec.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#4d6080', marginTop: 2 }}>
+                            {rec.date && formatAgendaDate && formatAgendaDate(rec.date) + ' · '}
+                            {rec.type && rec.type.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); })}
+                            {rec.priceRange && ' · ' + rec.priceRange}
+                          </div>
+                        </div>
+                        {/* Action buttons */}
+                        {!isAdded && !isDismissed && (
+                          <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                            <button
+                              disabled={busy}
+                              onClick={function() { onAcceptRec(rec.id, tripKey); }}
+                              title="Add to Itinerary"
+                              style={{ background: '#0a3a1a', color: '#4caf50', border: '1px solid #1a5a2e',
+                                       borderRadius: 6, padding: '4px 9px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                            >+ Add</button>
+                            <button
+                              disabled={busy}
+                              onClick={function() { onDismissRec(rec.id); }}
+                              title="Dismiss"
+                              style={{ background: 'transparent', color: '#4d6080', border: '1px solid #1e3a5f',
+                                       borderRadius: 6, padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}
+                            >✕</button>
+                          </div>
+                        )}
+                        {isAdded && (
+                          <button
+                            onClick={function() { onGoToItinerary(tripKey); }}
+                            style={{ background: 'transparent', color: '#4caf50', border: '1px solid #1a5a2e',
+                                     borderRadius: 6, padding: '4px 9px', fontSize: 11, cursor: 'pointer' }}
+                          >View →</button>
+                        )}
+                      </div>
+
+                      {/* Description */}
+                      {rec.description && (
+                        <div style={{ fontSize: 13, color: '#9ab4d8', marginBottom: 5, lineHeight: '1.4' }}>
+                          {rec.description}
+                        </div>
+                      )}
+
+                      {/* Rationale */}
+                      {rec.rationale && (
+                        <div style={{ fontSize: 11, color: '#5c7a9a', fontStyle: 'italic', marginBottom: 5 }}>
+                          💡 {rec.rationale}
+                        </div>
+                      )}
+
+                      {/* Link */}
+                      {rec.link && !isDismissed && (
+                        <a href={rec.link} target="_blank" rel="noopener noreferrer"
+                           style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }}>
+                          🔗 {rec.link.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Show dismissed toggle */}
+                {!isLoading && dismissedCount > 0 && (
+                  <button
+                    onClick={function() { setShowDismissed(function(p) { return Object.assign({}, p, { [tripKey]: !p[tripKey] }); }); }}
+                    style={{ background: 'transparent', color: '#4d6080', border: 'none', fontSize: 11,
+                             cursor: 'pointer', padding: '4px 0' }}
+                  >
+                    {showDismissed[tripKey] ? '▲ Hide dismissed' : '▼ Show ' + dismissedCount + ' dismissed'}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---- Countries Visited (Issue #74) ------------------------------------------
 
 function AddCountryModal({ upcomingTravel, existingCountries, onSave, onClose, busy }) {
@@ -4287,6 +4497,7 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      onGoToPacking,
                      onLoadCountries, onAddCountry, onDeleteCountry,
                      bucketList, onLoadBucketList, onAddBucketItem, onMarkBucketVisited, onDeleteBucketItem,
+                     recommendations, onLoadRecs, onGenerateRecs, onAcceptRec, onDismissRec,
                      apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
@@ -4332,6 +4543,7 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
     { id: 'trips',      label: '✈️ My Trips' },
     { id: 'itinerary',  label: '🗺️ My Itinerary' },
     { id: 'packing',    label: '🎒 Packing' },
+    { id: 'discover',   label: '✨ Discover' },
     { id: 'budget',     label: '💰 Budget' },
     { id: 'countries',  label: '🌍 Countries' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
@@ -4419,22 +4631,47 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
 
       {/* My Itinerary — accordion across all trips */}
       {sub === 'itinerary' && (
-        <TravelItineraryPanel
-          trips={upcomingTravel}
-          itineraries={itineraries}
-          tripMeta={tripMeta}
-          busy={busy}
-          autoExpandKey={autoExpandKey}
-          onExpandTrip={onExpandTrip}
-          onAddItinItem={onAddItinItem}
-          onEditItinItem={onEditItinItem}
-          onDeleteItinItem={onDeleteItinItem}
-          onSetTripMeta={onSetTripMeta}
-          onLoadTripMeta={onLoadTripMeta}
-          onGoToPacking={onGoToPacking}
-          apiUrl={apiUrl}
-          apiToken={apiToken}
-        />
+        <div>
+          {/* Discover badge — show when any loaded trip has pending recs */}
+          {(function() {
+            var totalPending = 0;
+            upcomingTravel.forEach(function(t) {
+              var recs = recommendations && recommendations[t.startDate + '|' + t.label];
+              if (Array.isArray(recs)) totalPending += recs.filter(function(r) { return r.status === 'pending'; }).length;
+            });
+            if (!totalPending) return null;
+            return (
+              <div
+                style={{ background: '#0d2040', border: '1px solid #1a3a6e', borderRadius: 8,
+                          padding: '8px 14px', marginBottom: 12, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 8 }}
+                onClick={function() { setSub('discover'); }}
+              >
+                <span style={{ fontSize: 15 }}>✨</span>
+                <span style={{ fontSize: 13, color: '#8ab4f8', fontWeight: 600 }}>
+                  {totalPending} VERA pick{totalPending !== 1 ? 's' : ''} available →
+                </span>
+                <span style={{ fontSize: 11, color: '#4d6080' }}>See Discover tab</span>
+              </div>
+            );
+          })()}
+          <TravelItineraryPanel
+            trips={upcomingTravel}
+            itineraries={itineraries}
+            tripMeta={tripMeta}
+            busy={busy}
+            autoExpandKey={autoExpandKey}
+            onExpandTrip={onExpandTrip}
+            onAddItinItem={onAddItinItem}
+            onEditItinItem={onEditItinItem}
+            onDeleteItinItem={onDeleteItinItem}
+            onSetTripMeta={onSetTripMeta}
+            onLoadTripMeta={onLoadTripMeta}
+            onGoToPacking={onGoToPacking}
+            apiUrl={apiUrl}
+            apiToken={apiToken}
+          />
+        </div>
       )}
 
       {/* Packing sub-tab */}
@@ -4451,6 +4688,29 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
           onToggleItem={onTogglePackingItem}
           onAddItem={onAddPackingItem}
           onDeleteItem={onDeletePackingItem}
+        />
+      )}
+
+      {/* Discover sub-tab — AI trip recommendations */}
+      {sub === 'discover' && (
+        <RecommendationsPanel
+          trips={upcomingTravel}
+          recommendations={recommendations || {}}
+          busy={busy}
+          onLoadRecs={onLoadRecs}
+          onGenerateRecs={onGenerateRecs}
+          onAcceptRec={onAcceptRec}
+          onDismissRec={onDismissRec}
+          onGoToItinerary={function(tripKey) {
+            var trip = upcomingTravel.find(function(tt) {
+              return (tt.startDate + '|' + tt.label) === tripKey;
+            });
+            if (trip) {
+              onSelectTrip(Object.assign({}, trip, { tripKey: tripKey }));
+              setAutoExpandKey(tripKey);
+            }
+            setSub('itinerary');
+          }}
         />
       )}
 
@@ -7613,6 +7873,7 @@ function App() {
   const [countries,        setCountries]        = useState([]);   // country visit entries (Issue #74)
   const [countriesLoaded,  setCountriesLoaded]  = useState(false);
   const [bucketList,       setBucketList]       = useState(null); // null = not loaded yet
+  const [recommendations,  setRecommendations]  = useState({}); // { [tripKey]: 'loading' | [...recs] }
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
   const [addItemModal, setAddItemModal] = useState(false);
@@ -8521,7 +8782,70 @@ function App() {
     setTimeout(function() { setPackingFocusTripKey(tripKey); }, 0);
   }
 
-  // ---- End packing handlers ---------------------------------------------------
+  // ---- Recommendations handlers (Issue #73) -----------------------------------
+
+  async function loadRecs(tripKey) {
+    if (!tripKey || !apiUrl || !apiToken) return;
+    setRecommendations(function(prev) { return Object.assign({}, prev, { [tripKey]: 'loading' }); });
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'recommendations', tripKey });
+      setRecommendations(function(prev) { return Object.assign({}, prev, { [tripKey]: data.recs || [] }); });
+    } catch(err) {
+      setRecommendations(function(prev) { const n = Object.assign({}, prev); delete n[tripKey]; return n; });
+    }
+  }
+
+  async function handleGenerateRecs(tripKey, startDate, endDate) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    setRecommendations(function(prev) { return Object.assign({}, prev, { [tripKey]: 'loading' }); });
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'generate_recommendations', tripKey, startDate, endDate });
+      setRecommendations(function(prev) { return Object.assign({}, prev, { [tripKey]: data.recs || [] }); });
+      showToast('✨ Recommendations generated by VERA');
+    } catch(err) {
+      setRecommendations(function(prev) { const n = Object.assign({}, prev); delete n[tripKey]; return n; });
+      setError('Generate failed: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleAcceptRec(recId, tripKey) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'accept_recommendation', recId, tripKey });
+      setRecommendations(function(prev) { return Object.assign({}, prev, { [tripKey]: data.recs || [] }); });
+      // Reload itinerary so the new item appears
+      const trip = (pto && pto.upcomingTravel || []).find(function(t) {
+        return (t.startDate + '|' + t.label) === tripKey;
+      });
+      if (trip) loadItinerary(tripKey, trip.startDate, trip.endDate);
+      showToast('✅ Added to your itinerary');
+    } catch(err) { setError('Could not add recommendation: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDismissRec(recId) {
+    if (!apiUrl || !apiToken) return;
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_recommendation', id: recId, status: 'dismissed' });
+      // Optimistic update — mark dismissed in local state
+      setRecommendations(function(prev) {
+        const updated = {};
+        Object.keys(prev).forEach(function(tk) {
+          const recs = prev[tk];
+          if (!Array.isArray(recs)) { updated[tk] = recs; return; }
+          updated[tk] = recs.map(function(r) {
+            return r.id === recId ? Object.assign({}, r, { status: 'dismissed' }) : r;
+          });
+        });
+        return updated;
+      });
+    } catch(err) { setError('Could not dismiss recommendation'); }
+  }
+
+  // ---- End recommendations handlers -------------------------------------------
 
   function handleConnect(url, token) {
     setApiUrl(url);
@@ -8929,6 +9253,11 @@ function App() {
                     onAddBucketItem={handleAddBucketItem}
                     onMarkBucketVisited={handleMarkBucketVisited}
                     onDeleteBucketItem={handleDeleteBucketItem}
+                    recommendations={recommendations}
+                    onLoadRecs={loadRecs}
+                    onGenerateRecs={handleGenerateRecs}
+                    onAcceptRec={handleAcceptRec}
+                    onDismissRec={handleDismissRec}
                     apiUrl={apiUrl}
                     apiToken={apiToken}
                   />
