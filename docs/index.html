@@ -5640,91 +5640,83 @@ function BillTrackerView({ bills, calBills, billsLoading, txList, onToggle, onCa
                           {b.isRecurring ? '↻' : '1×'} Cal
                         </span>
                       )}
-                      {/* Transaction chip — two modes based on whether amount is known */}
-                      {b.amount !== null
-                        /* ── Fixed-amount bill: manual "Link tx" button or linked chip ── */
-                        ? (function() {
-                            var manualTx = txManualMap[rowKey];
-                            if (manualTx) {
-                              var amt = Math.abs(manualTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-                              return (
-                                <span
-                                  title={manualTx.description + ' · click to change'}
-                                  onClick={function(e) { e.stopPropagation(); setTxPickerTarget({ rowKey: rowKey, billName: b.bill, billAmount: b.amount }); }}
-                                  style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
-                                           border: '1px solid rgba(92,158,255,0.4)', color: '#5c9eff',
-                                           background: 'rgba(92,158,255,0.08)', whiteSpace: 'nowrap',
-                                           flexShrink: 0, cursor: 'pointer' }}>
-                                  🔗 ${amt}
-                                </span>
-                              );
-                            }
-                            if (!txList || txList.length === 0) return null;
-                            return (
-                              <span
-                                title="Click to link a transaction to this bill"
-                                onClick={function(e) { e.stopPropagation(); setTxPickerTarget({ rowKey: rowKey, billName: b.bill, billAmount: b.amount }); }}
-                                style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
-                                         border: '1px solid rgba(107,127,168,0.3)', color: '#6b7fa8',
-                                         background: 'transparent', whiteSpace: 'nowrap',
-                                         flexShrink: 0, cursor: 'pointer' }}>
-                                🔗 Link tx
-                              </span>
-                            );
-                          })()
-                        /* ── Variable-amount bill: auto-match cycling chip ── */
-                        : (function() {
-                            var candidates  = b.txCandidates || [];
-                            var overrideIdx = txOverrides[rowKey];
-                            // Determine effective transaction (none slot = overrideIdx >= candidates.length)
-                            var effectiveTx;
-                            if (overrideIdx === undefined) {
-                              effectiveTx = b.txMatch || null;
-                            } else if (overrideIdx >= candidates.length) {
-                              effectiveTx = null; // "none" slot
-                            } else {
-                              effectiveTx = candidates[overrideIdx] || null;
-                            }
-                            var canCycle = candidates.length > 0; // always cycle if candidates exist
-                            // "none" slot: show faint cleared chip so user can restore
-                            if (!effectiveTx && overrideIdx !== undefined) {
-                              return (
-                                <span
-                                  title="No transaction linked · click to restore auto-match"
-                                  onClick={function(e) { handleChipClick(candidates, rowKey, e); }}
-                                  style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
-                                           border: '1px solid rgba(107,127,168,0.25)', color: '#4d6080',
-                                           background: 'transparent', whiteSpace: 'nowrap',
-                                           flexShrink: 0, cursor: 'pointer' }}>
-                                  💳 ∅
-                                </span>
-                              );
-                            }
-                            if (!effectiveTx) return null;
-                            var isOverridden = overrideIdx !== undefined && overrideIdx < candidates.length && (
-                              !b.txMatch ||
-                              effectiveTx.description !== b.txMatch.description ||
-                              effectiveTx.amount      !== b.txMatch.amount
-                            );
-                            var color  = isOverridden ? '#f5a623'                : '#66bb6a';
-                            var border = isOverridden ? 'rgba(245,166,35,0.4)'  : 'rgba(102,187,106,0.4)';
-                            var bg     = isOverridden ? 'rgba(245,166,35,0.08)' : 'rgba(102,187,106,0.08)';
-                            var label  = (isOverridden ? '↺ 💳 $' : '💳 $') +
-                                         Math.abs(effectiveTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-                            var tip    = (effectiveTx.description || '') + (canCycle ? ' · click to try next / clear' : '');
-                            return (
-                              <span
-                                title={tip}
-                                onClick={canCycle ? function(e) { handleChipClick(candidates, rowKey, e); } : undefined}
-                                style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
-                                         border: '1px solid ' + border, color: color, background: bg,
-                                         whiteSpace: 'nowrap', flexShrink: 0,
-                                         cursor: canCycle ? 'pointer' : 'default' }}>
-                                {label}
-                              </span>
-                            );
-                          })()
-                      }
+                      {/* ── Manual link chip / button — shown for ALL bills ── */}
+                      {(function() {
+                        var manualTx = txManualMap[rowKey];
+                        if (manualTx) {
+                          var amt = Math.abs(manualTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                          return (
+                            <span
+                              title={manualTx.description + ' · click to change'}
+                              onClick={function(e) { e.stopPropagation(); setTxPickerTarget({ rowKey: rowKey, billName: b.bill, billAmount: b.amount }); }}
+                              style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                       border: '1px solid rgba(92,158,255,0.4)', color: '#5c9eff',
+                                       background: 'rgba(92,158,255,0.08)', whiteSpace: 'nowrap',
+                                       flexShrink: 0, cursor: 'pointer' }}>
+                              🔗 ${amt}
+                            </span>
+                          );
+                        }
+                        if (!txList || txList.length === 0) return null;
+                        return (
+                          <span
+                            title="Click to link a transaction to this bill"
+                            onClick={function(e) { e.stopPropagation(); setTxPickerTarget({ rowKey: rowKey, billName: b.bill, billAmount: b.amount }); }}
+                            style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                     border: '1px solid rgba(107,127,168,0.3)', color: '#6b7fa8',
+                                     background: 'transparent', whiteSpace: 'nowrap',
+                                     flexShrink: 0, cursor: 'pointer' }}>
+                            🔗 Link tx
+                          </span>
+                        );
+                      })()}
+                      {/* ── Auto-match cycling chip — variable bills only, hidden when manually linked ── */}
+                      {b.amount === null && !txManualMap[rowKey] && (function() {
+                        var candidates  = b.txCandidates || [];
+                        var overrideIdx = txOverrides[rowKey];
+                        var effectiveTx;
+                        if (overrideIdx === undefined) {
+                          effectiveTx = b.txMatch || null;
+                        } else if (overrideIdx >= candidates.length) {
+                          effectiveTx = null; // "none" slot
+                        } else {
+                          effectiveTx = candidates[overrideIdx] || null;
+                        }
+                        var canCycle = candidates.length > 0;
+                        if (!effectiveTx && overrideIdx !== undefined) {
+                          return (
+                            <span
+                              title="No transaction linked · click to restore auto-match"
+                              onClick={function(e) { handleChipClick(candidates, rowKey, e); }}
+                              style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                       border: '1px solid rgba(107,127,168,0.25)', color: '#4d6080',
+                                       background: 'transparent', whiteSpace: 'nowrap',
+                                       flexShrink: 0, cursor: 'pointer' }}>
+                              💳 ∅
+                            </span>
+                          );
+                        }
+                        if (!effectiveTx) return null;
+                        var isOverridden = overrideIdx !== undefined && overrideIdx < candidates.length && (
+                          !b.txMatch || effectiveTx.description !== b.txMatch.description || effectiveTx.amount !== b.txMatch.amount
+                        );
+                        var color  = isOverridden ? '#f5a623'                : '#66bb6a';
+                        var border = isOverridden ? 'rgba(245,166,35,0.4)'  : 'rgba(102,187,106,0.4)';
+                        var bg     = isOverridden ? 'rgba(245,166,35,0.08)' : 'rgba(102,187,106,0.08)';
+                        var label  = (isOverridden ? '↺ 💳 $' : '💳 $') +
+                                     Math.abs(effectiveTx.amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+                        return (
+                          <span
+                            title={(effectiveTx.description || '') + (canCycle ? ' · click to try next / clear' : '')}
+                            onClick={canCycle ? function(e) { handleChipClick(candidates, rowKey, e); } : undefined}
+                            style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                     border: '1px solid ' + border, color: color, background: bg,
+                                     whiteSpace: 'nowrap', flexShrink: 0,
+                                     cursor: canCycle ? 'pointer' : 'default' }}>
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </div>
                     {b.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.notes}</div>}
                   </div>
