@@ -136,6 +136,18 @@ function checkFlightStatuses_() {
     try { meta = JSON.parse(String(row[9] || '{}') || '{}'); } catch(e) { meta = {}; }
 
     var flightNum = (meta.flightNum || '').trim();
+
+    // Fallback: extract flight number from the item title for calendar-imported flights
+    // that have no flightNum in metadata (e.g. "Flight to Tampa (UA 1140)" → "UA1140")
+    if (!flightNum) {
+      var title = String(row[3] || '');
+      var fm = title.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
+      if (fm) {
+        flightNum = fm[1] + fm[2];
+        Logger.log('FlightStatus: extracted flight number "' + flightNum + '" from title "' + title + '"');
+      }
+    }
+
     if (!flightNum || !date) {
       skipped++;
       continue;
