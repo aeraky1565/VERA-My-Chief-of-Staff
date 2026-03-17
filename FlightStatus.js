@@ -109,8 +109,11 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
  * Scans the Itinerary sheet for flight items with a flightNum,
  * applies rate-limited polling, and updates status in metadata.
  * Safe to call manually for testing.
+ *
+ * @param {boolean} [forceRefresh]   Skip rate-limiting and window guards (for on-demand refresh)
+ * @param {string}  [targetTripKey]  If set, only process flights for this trip
  */
-function checkFlightStatuses_() {
+function checkFlightStatuses_(forceRefresh, targetTripKey) {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.ITINERARY);
   if (!sheet) {
@@ -127,9 +130,25 @@ function checkFlightStatuses_() {
     var type = String(row[2] || '').trim();      // col C
     if (type !== 'flight') continue;
 
+    // When called for a specific trip (force refresh from dashboard), skip other trips
+    if (targetTripKey && String(row[1] || '').trim() !== targetTripKey) continue;
+
     var id       = String(row[0] || '');         // col A
-    var date     = String(row[4] || '');         // col E  (YYYY-MM-DD)
-    var startTime = String(row[5] || '');        // col F  (HH:MM)
+
+    // Google Sheets auto-converts date/time strings to Date objects.
+    // String(dateObj) gives a locale string that new Date() can't re-parse,
+    // causing isNaN(depMs) → flight silently skipped → AviationStack never called.
+    // Use Utilities.formatDate() to get the canonical string form.
+    var tz        = Session.getScriptTimeZone();
+    var dateRaw   = row[4];
+    var date      = (dateRaw instanceof Date)
+      ? Utilities.formatDate(dateRaw, tz, 'yyyy-MM-dd')
+      : String(dateRaw || '').trim();            // col E  (YYYY-MM-DD)
+
+    var timeRaw   = row[5];
+    var startTime = (timeRaw instanceof Date)
+      ? Utilities.formatDate(timeRaw, tz, 'HH:mm')
+      : String(timeRaw || '').trim();            // col F  (HH:MM)
 
     // Parse metadata
     var meta = {};
@@ -161,11 +180,11 @@ function checkFlightStatuses_() {
     var minutesUntilDep = (depMs - now) / 60000;
 
     // Skip flights not yet in polling window (>24h out)
-    if (minutesUntilDep > 1440) { skipped++; continue; }
+    if (!forceRefresh && minutesUntilDep > 1440) { skipped++; continue; }
 
     // Skip flights that have long since landed (>60 min past departure)
     var existingStatus = (meta.flight_status || {}).status;
-    if (minutesUntilDep < -60 && existingStatus === 'landed') { skipped++; continue; }
+    if (!forceRefresh && minutesUntilDep < -60 && existingStatus === 'landed') { skipped++; continue; }
 
     // Determine required poll interval (minutes)
     var intervalMin;
@@ -175,7 +194,7 @@ function checkFlightStatuses_() {
 
     // Rate-limit check
     var lastChecked = (meta.flight_status || {}).lastChecked || 0;
-    if ((now - lastChecked) < intervalMin * 60000) { skipped++; continue; }
+    if (!forceRefresh && (now - lastChecked) < intervalMin * 60000) { skipped++; continue; }
 
     // Poll AviationStack
     Logger.log('FlightStatus: checking ' + flightNum + ' on ' + date + ' (row ' + (i+1) + ')');
@@ -196,4 +215,5 @@ function checkFlightStatuses_() {
   }
 
   Logger.log('FlightStatus: done. checked=' + checked + ' skipped=' + skipped + ' errors=' + errors);
+  return { polled: checked, skipped: skipped, errors: errors };
 }

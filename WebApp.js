@@ -136,6 +136,7 @@ function doGet(e) {
       case 'update_bucket_item':    return jsonOut_(webUpdateBucketItem_(e));
       case 'delete_bucket_item':    return jsonOut_(webDeleteBucketItem_(e));
       case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
+      case 'force_flight_statuses': return jsonOut_(webForceFlightStatuses_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
@@ -3112,6 +3113,24 @@ function webGetFlightStatuses_(e) {
     if (meta.flight_status) statuses[id] = meta.flight_status;
   }
   return { ok: true, statuses: statuses };
+}
+
+/**
+ * Force-polls AviationStack for all flights in the given trip, bypassing
+ * rate limiting and window guards. Writes fresh status to the sheet, then
+ * returns the updated statuses immediately.
+ * GET ?action=force_flight_statuses&tripKey=ENCODED_TRIP_KEY
+ */
+function webForceFlightStatuses_(e) {
+  var tripKey = (e.parameter && e.parameter.tripKey) || '';
+  if (!tripKey) return { ok: false, error: 'Missing tripKey' };
+  try {
+    checkFlightStatuses_(true, tripKey);
+    var result = webGetFlightStatuses_(e);
+    return result;
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 // ---- Shared Interest Ledger (Issue #28) ------------------------------------

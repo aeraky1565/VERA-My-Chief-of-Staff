@@ -6718,10 +6718,11 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
   var tripKey = trip.startDate + '|' + trip.label;
   var today   = new Date().toISOString().slice(0, 10);
 
-  const [items,          setItems]          = React.useState(null);
-  const [flightStatuses, setFlightStatuses] = React.useState({});
-  const [loadingItems,   setLoadingItems]   = React.useState(true);
-  const [destWeather,    setDestWeather]    = React.useState(null);
+  const [items,            setItems]            = React.useState(null);
+  const [flightStatuses,   setFlightStatuses]   = React.useState({});
+  const [loadingItems,     setLoadingItems]     = React.useState(true);
+  const [destWeather,      setDestWeather]      = React.useState(null);
+  const [refreshingStatus, setRefreshingStatus] = React.useState(false);
 
   // Load itinerary on mount
   React.useEffect(function() {
@@ -6745,6 +6746,16 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
     var timer = setInterval(fetchStatuses, 120000);
     return function() { clearInterval(timer); };
   }, [tripKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // On-demand force-refresh: bypasses rate limiting, polls AviationStack immediately
+  function forceRefreshStatuses() {
+    if (refreshingStatus || !apiUrl || !apiToken) return;
+    setRefreshingStatus(true);
+    apiGet(apiUrl, apiToken, { action: 'force_flight_statuses', tripKey: tripKey })
+      .then(function(r) { if (r.ok) setFlightStatuses(r.statuses || {}); })
+      .catch(function() {})
+      .finally(function() { setRefreshingStatus(false); });
+  }
 
   // Fetch destination weather once items are loaded.
   // Logic: show the city the user is currently in or heading to.
@@ -6961,6 +6972,16 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
           {/* Today's flights */}
           {todayFlights.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#4a5f80', letterSpacing: 1, textTransform: 'uppercase' }}>Today's Flights</span>
+                <button onClick={forceRefreshStatuses} disabled={refreshingStatus}
+                  style={{ background: 'none', border: 'none', cursor: refreshingStatus ? 'default' : 'pointer',
+                           color: '#6b7fa8', fontSize: 14, padding: '0 2px', lineHeight: 1,
+                           opacity: refreshingStatus ? 0.4 : 0.8 }}
+                  title="Refresh live flight status from AviationStack">
+                  {refreshingStatus ? '⏳' : '↺'}
+                </button>
+              </div>
               {todayFlights.map(function(fl) {
                 var fs = flightStatuses[fl.id];
                 var isInAir = fs && fs.status === 'active';
@@ -6989,6 +7010,8 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
                         {fs && fs.gate     && <span> · <span style={{ color: '#8ab4f8', fontWeight: 600 }}>Gate {fs.gate}</span></span>}
                         {/* Terminal */}
                         {fs && fs.terminal && <span> · <span style={{ color: '#8ab4f8' }}>Terminal {fs.terminal}</span></span>}
+                        {/* No status yet */}
+                        {!fs && <span style={{ color: '#2e3d55', fontSize: 10 }}> · tap ↺ to load status</span>}
                       </div>
                     </div>
                     {fs && <FlightStatusBadge status={fs} />}
