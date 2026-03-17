@@ -7105,7 +7105,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
 
 // ---- Home tab ---------------------------------------------------------------
 
-function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, onNavigate, apiUrl, apiToken }) {
+function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, onNavigate, onViewItinerary, apiUrl, apiToken }) {
   const activeFlags    = flags.filter(f => !f.resolved && !f.acknowledged);
   const highFlags      = activeFlags.filter(f => f.urgency === 'High');
   const topFlag        = highFlags[0] || activeFlags[0];
@@ -7132,10 +7132,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           apiUrl={apiUrl}
           apiToken={apiToken}
           travelConfig={status && status.travelConfig}
-          onViewItinerary={function(trip) {
-            if (trip) setTravelFocusTripKey(trip.startDate + '|' + trip.label);
-            onNavigate('travel');
-          }}
+          onViewItinerary={onViewItinerary}
         />
       )}
 
@@ -8753,6 +8750,11 @@ function App() {
                   if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
                   if (tab === 'pto')       loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')    loadPTO(apiUrl, apiToken);
+                }}
+                onViewItinerary={function(trip) {
+                  if (trip) setTravelFocusTripKey(trip.startDate + '|' + trip.label);
+                  setActiveTab('travel');
+                  loadPTO(apiUrl, apiToken);
                 }}
               />
             )}
