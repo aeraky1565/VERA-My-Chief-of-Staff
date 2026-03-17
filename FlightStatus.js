@@ -432,6 +432,50 @@ function debugFlightStatusScan() {
     Logger.log('Sheet error: ' + sheetErr.message);
   }
 
+  // 5. Live AviationStack test — call the API for any found flight events
+  Logger.log('');
+  Logger.log('--- AviationStack Live Test ---');
+  var tested = 0;
+  for (var ci2 = 0; ci2 < allCals.length; ci2++) {
+    var evs2 = allCals[ci2].getEvents(scanStart, scanEnd);
+    for (var ei2 = 0; ei2 < evs2.length; ei2++) {
+      var ev2    = evs2[ei2];
+      var title2 = (ev2.getTitle() || '').trim();
+      var loc2   = (ev2.getLocation() || '').trim();
+      var rel2   = isItineraryCalendarRelevant_(title2, loc2, '');
+      if (!rel2.include || rel2.type !== 'flight') continue;
+      var fm3 = title2.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
+      if (!fm3) continue;
+      var testFlight = fm3[1] + fm3[2];
+      var testDate   = Utilities.formatDate(ev2.getStartTime(), tz, 'yyyy-MM-dd');
+      Logger.log('Calling AviationStack for ' + testFlight + ' on ' + testDate + '...');
+      var apiResult = fetchFlightStatus_(testFlight, testDate);
+      if (apiResult) {
+        Logger.log('SUCCESS: status=' + apiResult.status
+          + ' dep_sched=' + apiResult.dep_scheduled
+          + ' gate=' + apiResult.gate
+          + ' terminal=' + apiResult.terminal
+          + ' delay=' + apiResult.delay_min + 'min');
+      } else {
+        // Also fetch raw response to see the error
+        var rawKey = getAviationStackKey_();
+        var rawUrl = 'http://api.aviationstack.com/v1/flights'
+          + '?access_key=' + encodeURIComponent(rawKey)
+          + '&flight_iata=' + encodeURIComponent(testFlight)
+          + '&flight_date=' + encodeURIComponent(testDate);
+        Logger.log('fetchFlightStatus_ returned null. Fetching raw response...');
+        try {
+          var rawResp = UrlFetchApp.fetch(rawUrl, { muteHttpExceptions: true });
+          Logger.log('HTTP ' + rawResp.getResponseCode() + ': ' + rawResp.getContentText().substring(0, 500));
+        } catch(rawErr) {
+          Logger.log('Raw fetch error: ' + rawErr.message);
+        }
+      }
+      tested++;
+    }
+  }
+  if (tested === 0) Logger.log('No flight events found to test');
+
   Logger.log('');
   Logger.log('=== END DEBUG ===');
 }
