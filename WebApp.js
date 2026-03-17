@@ -1151,13 +1151,17 @@ function webGetDestWeather_(e) {
   if (!forecast || !forecast.list || !forecast.list.length)
     return { ok: false, reason: 'forecast_unavailable' };
 
-  var tzOffset  = forecast.city.timezone;  // seconds from UTC
-  var tz        = Session.getScriptTimeZone();
-  var nowHour   = parseInt(Utilities.formatDate(new Date(), tz, 'H'), 10);
-  var targetHour = (hour >= 0 && hour <= 23) ? hour : nowHour;
-
-  var slot = findForecastSlot_(forecast.list, targetHour, tzOffset);
-  if (!slot) return { ok: false, reason: 'no_slot' };
+  var tzOffset = forecast.city.timezone;  // seconds from UTC
+  var slot;
+  if (hour >= 0 && hour <= 23) {
+    // Specific arrival hour — find the forecast slot closest to that local hour
+    slot = findForecastSlot_(forecast.list, hour, tzOffset);
+    if (!slot) return { ok: false, reason: 'no_slot' };
+  } else {
+    // Current conditions — use the nearest forecast slot (list[0])
+    // Avoids timezone mismatch from using script server hour vs destination local time
+    slot = forecast.list[0];
+  }
 
   return {
     ok:          true,
@@ -1167,7 +1171,7 @@ function webGetDestWeather_(e) {
     description: slot.weather[0].description,
     emoji:       weatherEmoji_(slot.weather[0].main),
     city:        forecast.city.name,
-    targetHour:  targetHour,
+    targetHour:  (hour >= 0 && hour <= 23) ? hour : -1,
   };
 }
 

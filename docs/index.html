@@ -6746,41 +6746,76 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
     return function() { clearInterval(timer); };
   }, [tripKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch destination weather once items are loaded
+  // Fetch destination weather once items are loaded.
+  // Logic: show the city the user is currently in or heading to.
+  //   - within24h of next flight → that flight's arrival city (at landing time)
+  //   - otherwise, mid-trip     → last departed flight's arrival city (current weather)
+  //   - before any flight       → first flight's arrival city (at landing time)
   React.useEffect(function() {
     if (!items || !apiUrl || !apiToken) return;
-    var todayStr = new Date().toISOString().slice(0, 10);
 
-    var todayFlts = items
-      .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date === todayStr; })
-      .sort(function(a, b) { return (a.startTime || '').localeCompare(b.startTime || ''); });
+    var todayStr    = new Date().toISOString().slice(0, 10);
+    var nowHour     = new Date().getHours();
+    var tomorrowStr = new Date(new Date(todayStr).getTime() + 86400000).toISOString().slice(0, 10);
 
-    var destAirport = null;
-    var destHour    = -1; // -1 means current hour
+    // All trip flights sorted chronologically
+    var allFlights = items
+      .filter(function(i) { return i.type === 'flight' && !i._synthetic; })
+      .sort(function(a, b) {
+        return (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || ''));
+      });
+    if (!allFlights.length) return;
 
-    if (todayFlts.length > 0) {
-      // Flights today → weather at arrival airport at arrival time
-      var last = todayFlts[todayFlts.length - 1];
-      var codes = (last.location || '').match(/\b([A-Z]{3})\b/g) || [];
-      destAirport = codes[codes.length - 1] || null;
-      if (last.endTime) destHour = parseInt(last.endTime.split(':')[0], 10);
-    } else {
-      // No flights today — find last flight that landed before today
-      var pastFlights = items
-        .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date < todayStr; })
-        .sort(function(a, b) {
-          return (a.date + (a.startTime || '')).localeCompare(b.date + (b.startTime || ''));
-        });
-      if (pastFlights.length > 0) {
-        var pf   = pastFlights[pastFlights.length - 1];
-        var pc   = (pf.location || '').match(/\b([A-Z]{3})\b/g) || [];
-        destAirport = pc[pc.length - 1] || null;
-        // destHour stays -1 → shows current weather at destination
+    function lastIata(loc) {
+      var codes = (loc || '').match(/\b([A-Z]{3})\b/g) || [];
+      return codes[codes.length - 1] || null;
+    }
+    function endHour(fl) {
+      return fl.endTime ? parseInt(fl.endTime.split(':')[0], 10) : -1;
+    }
+
+    // Next upcoming flight (not yet departed)
+    var nextFlight = null;
+    for (var i = 0; i < allFlights.length; i++) {
+      var fl = allFlights[i];
+      if (fl.date > todayStr) { nextFlight = fl; break; }
+      if (fl.date === todayStr) {
+        var flHour = fl.startTime ? parseInt(fl.startTime.split(':')[0], 10) : 0;
+        if (flHour > nowHour) { nextFlight = fl; break; }
       }
     }
 
+    // Last already-departed flight
+    var lastDeparted = null;
+    for (var j = allFlights.length - 1; j >= 0; j--) {
+      var fl2 = allFlights[j];
+      if (fl2.date < todayStr) { lastDeparted = fl2; break; }
+      if (fl2.date === todayStr) {
+        var flHour2 = fl2.startTime ? parseInt(fl2.startTime.split(':')[0], 10) : 0;
+        if (flHour2 <= nowHour) { lastDeparted = fl2; break; }
+      }
+    }
+
+    var destAirport = null;
+    var destHour    = -1;
+    var within24h   = nextFlight && (nextFlight.date === todayStr || nextFlight.date === tomorrowStr);
+
+    if (within24h) {
+      // Heading somewhere within 24h — show arrival city at landing time
+      destAirport = lastIata(nextFlight.location);
+      destHour    = endHour(nextFlight);
+    } else if (lastDeparted) {
+      // Currently at the arrival city of the last flight — show current weather
+      destAirport = lastIata(lastDeparted.location);
+      destHour    = -1;
+    } else {
+      // No flights departed yet — show first destination at arrival time
+      destAirport = lastIata(allFlights[0].location);
+      destHour    = endHour(allFlights[0]);
+    }
+
     if (!destAirport) return;
-    setDestWeather(null); // clear stale data while fetching
+    setDestWeather(null);
     apiGet(apiUrl, apiToken, { action: 'dest_weather', location: destAirport, hour: String(destHour) })
       .then(function(r) { if (r && r.ok) setDestWeather(r); })
       .catch(function() {});
