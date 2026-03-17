@@ -4277,7 +4277,7 @@ function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete
 
 // ---- Travel Tab -------------------------------------------------------------
 
-function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, busy,
+function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, itineraryFocusTripKey, busy,
                      countries, countriesLoaded,
                      onSelectTrip, onExpandTrip,
                      onAddItinItem, onEditItinItem, onDeleteItinItem,
@@ -4308,6 +4308,18 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
     setSub('packing');
     setAutoExpandKey(packingFocusTripKey);
   }, [packingFocusTripKey]);
+
+  // Auto-switch to itinerary sub-tab and expand the correct trip when
+  // "View Full Itinerary" is clicked from the Active Travel Card on the Home tab.
+  React.useEffect(function() {
+    if (!itineraryFocusTripKey || !upcomingTravel.length) return;
+    setSub('itinerary');
+    setAutoExpandKey(itineraryFocusTripKey);
+    var t = upcomingTravel.find(function(t) {
+      return (t.startDate + '|' + t.label) === itineraryFocusTripKey;
+    });
+    if (t) onSelectTrip({ ...t, tripKey: itineraryFocusTripKey });
+  }, [itineraryFocusTripKey, upcomingTravel.length]); // eslint-disable-line
 
   function handleTripClick(t) {
     const tripKey = `${t.startDate}|${t.label}`;
@@ -6900,6 +6912,13 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
       return cfg['customs_buffer_' + airportCode];
     return cfg['customs_buffer'] != null ? cfg['customs_buffer'] : 60;
   }
+  // Time to navigate from airport entrance to gate (TSA, long terminals, etc.)
+  // Config keys: travel_terminal_buffer, travel_terminal_buffer_IAD, etc.  Default: 0
+  function terminalMin(airportCode) {
+    if (airportCode && cfg['terminal_buffer_' + airportCode] != null)
+      return cfg['terminal_buffer_' + airportCode];
+    return cfg['terminal_buffer'] != null ? cfg['terminal_buffer'] : 0;
+  }
 
   function addMinutes(timeStr, delta) {
     if (!timeStr) return null;
@@ -6912,8 +6931,9 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
   // Door-Out: departure airport = first IATA code in first flight's location
   var depCodes    = todayFlights.length > 0 ? extractIata(todayFlights[0].location) : [];
   var depAirport  = depCodes[0] || null;
+  var totalDepartBuffer = transitMin(depAirport) + customsMin(depAirport) + terminalMin(depAirport);
   var doorOutTime = (isDepartureDay && todayFlights.length > 0)
-    ? addMinutes(todayFlights[0].startTime, -transitMin(depAirport)) : null;
+    ? addMinutes(todayFlights[0].startTime, -totalDepartBuffer) : null;
 
   // Door-In: arrival airport = last IATA code in last flight's location
   var lastFl      = todayFlights.length > 0 ? todayFlights[todayFlights.length - 1] : null;
@@ -6976,7 +6996,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
               <span style={{ fontSize: 18 }}>🚪</span>
               <div>
                 <div style={{ fontSize: 11, color: '#8ab4f8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Leave by{depAirport ? ' (' + transitMin(depAirport) + ' min to ' + depAirport + ')' : ''}
+                Leave by{depAirport ? ' (' + totalDepartBuffer + ' min to ' + depAirport + ')' : ''}
               </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#ffaa44' }}>{doorOutTime}</div>
               </div>
@@ -7112,7 +7132,10 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           apiUrl={apiUrl}
           apiToken={apiToken}
           travelConfig={status && status.travelConfig}
-          onViewItinerary={function() { onNavigate('pto'); }}
+          onViewItinerary={function(trip) {
+            if (trip) setTravelFocusTripKey(trip.startDate + '|' + trip.label);
+            onNavigate('travel');
+          }}
         />
       )}
 
@@ -7588,7 +7611,8 @@ function App() {
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
   const [tripMeta,         setTripMeta]         = useState({}); // { [tripKey]: { context, notes } | 'loading' }
-  const [packingFocusTripKey, setPackingFocusTripKey] = useState(null);
+  const [packingFocusTripKey,   setPackingFocusTripKey]   = useState(null);
+  const [travelFocusTripKey,    setTravelFocusTripKey]    = useState(null); // for "View Full Itinerary" → auto-expand in Travel tab
   const [countries,        setCountries]        = useState([]);   // country visit entries (Issue #74)
   const [countriesLoaded,  setCountriesLoaded]  = useState(false);
   const [bucketList,       setBucketList]       = useState(null); // null = not loaded yet
@@ -8728,6 +8752,7 @@ function App() {
                   if (tab === 'projects')  loadProjects(apiUrl, apiToken);
                   if (tab === 'shopping')  loadShopping(apiUrl, apiToken);
                   if (tab === 'pto')       loadPTO(apiUrl, apiToken);
+                  if (tab === 'travel')    loadPTO(apiUrl, apiToken);
                 }}
               />
             )}
@@ -8867,6 +8892,7 @@ function App() {
                     packingItems={packingItems}
                     tripMeta={tripMeta}
                     packingFocusTripKey={packingFocusTripKey}
+                    itineraryFocusTripKey={travelFocusTripKey}
                     countries={countries}
                     countriesLoaded={countriesLoaded}
                     busy={busy}
