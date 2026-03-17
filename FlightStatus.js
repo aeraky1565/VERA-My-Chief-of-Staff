@@ -5,10 +5,13 @@
 //
 // HOW IT WORKS:
 //   1. A 15-minute Apps Script trigger calls checkFlightStatuses_()
-//   2. It scans the Itinerary sheet for flight items with a flightNum
-//   3. For flights within 24h of departure, it polls AviationStack API
-//   4. Status is stored back into the item's metadata JSON (flight_status key)
-//   5. The dashboard reads status via ?action=flight_statuses&tripKey=...
+//   2. Phase 1: scans Itinerary sheet for flight rows with a flightNum
+//   3. Phase 2: scans Google Calendar for flight events (airline code + number in title)
+//   4. For flights within 24h of departure, each phase polls AviationStack API
+//   5. Sheet flights: status stored in col J metadata JSON (flight_status key)
+//      Calendar flights: status stored in Script Properties (FLIGHT_STATUS_CACHE)
+//   6. The dashboard reads status via ?action=flight_statuses&tripKey=...
+//      Both sheet and calendar statuses are merged and returned together.
 //
 // SETUP:
 //   Add Script Property: AVIATIONSTACK_KEY → your AviationStack access key
@@ -26,6 +29,26 @@
 
 function getAviationStackKey_() {
   return PropertiesService.getScriptProperties().getProperty('AVIATIONSTACK_KEY') || '';
+}
+
+// ---- Calendar flight status cache (Script Properties) ----------------------
+
+/**
+ * Reads the Script Properties cache for calendar-sourced flight statuses.
+ * Returns a plain object keyed by CAL-xxx IDs.
+ */
+function getCalFlightStatusCache_() {
+  var raw = PropertiesService.getScriptProperties().getProperty('FLIGHT_STATUS_CACHE') || '{}';
+  try { return JSON.parse(raw); } catch(e) { return {}; }
+}
+
+/**
+ * Writes the updated calendar flight status cache back to Script Properties.
+ * @param {Object} cache  Plain object keyed by CAL-xxx IDs
+ */
+function setCalFlightStatusCache_(cache) {
+  PropertiesService.getScriptProperties()
+    .setProperty('FLIGHT_STATUS_CACHE', JSON.stringify(cache));
 }
 
 // ---- AviationStack API wrapper ----------------------------------------------
@@ -122,6 +145,7 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   }
 
   var now  = Date.now();
+  var tz   = Session.getScriptTimeZone();        // hoisted — also used in Phase 2
   var rows = sheet.getDataRange().getValues();
   var checked = 0, skipped = 0, errors = 0;
 
@@ -139,7 +163,6 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     // String(dateObj) gives a locale string that new Date() can't re-parse,
     // causing isNaN(depMs) → flight silently skipped → AviationStack never called.
     // Use Utilities.formatDate() to get the canonical string form.
-    var tz        = Session.getScriptTimeZone();
     var dateRaw   = row[4];
     var date      = (dateRaw instanceof Date)
       ? Utilities.formatDate(dateRaw, tz, 'yyyy-MM-dd')
@@ -213,6 +236,94 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
       errors++;
     }
   }
+
+  // ---- Phase 2: Calendar-sourced flight events --------------------------------
+  // Calendar flights have no Itinerary sheet row, so we scan Google Calendar events
+  // and store statuses in Script Properties (FLIGHT_STATUS_CACHE), keyed by CAL-xxx ID
+  // (the same ID format assigned by webGetItinerary_() for calendar-derived items).
+
+  var calCache = getCalFlightStatusCache_();
+
+  // Build a date→tripKey map from the sheet rows already read,
+  // so we can infer which trip a calendar event belongs to when no targetTripKey is given.
+  var dateToTripKey = {};
+  for (var r = 1; r < rows.length; r++) {
+    var rDate    = (rows[r][4] instanceof Date)
+      ? Utilities.formatDate(rows[r][4], tz, 'yyyy-MM-dd')
+      : String(rows[r][4] || '').trim();
+    var rTripKey = String(rows[r][1] || '').trim();
+    if (rDate && rTripKey && !dateToTripKey[rDate]) dateToTripKey[rDate] = rTripKey;
+  }
+
+  // Scan all calendars for flight events in the polling window.
+  // forceRefresh extends the window to 48h so same-day + next-day flights are covered.
+  var scanStart = new Date(now - 60 * 60000);                             // 1h ago
+  var scanEnd   = new Date(now + (forceRefresh ? 48 : 24) * 60 * 60000); // 24 or 48h ahead
+  var allCals   = CalendarApp.getAllCalendars();
+
+  for (var ci = 0; ci < allCals.length; ci++) {
+    try {
+      var calEvents = allCals[ci].getEvents(scanStart, scanEnd);
+      for (var ei = 0; ei < calEvents.length; ei++) {
+        var ev      = calEvents[ei];
+        var evTitle = (ev.getTitle()    || '').trim();
+        var evLoc   = (ev.getLocation() || '').trim();
+
+        // Use the same classification function as webGetItinerary_() for consistency —
+        // if that function classifies an event as 'flight', we should poll it here too.
+        var relevance = isItineraryCalendarRelevant_(evTitle, evLoc, '');
+        if (!relevance.include || relevance.type !== 'flight') continue;
+
+        // Extract flight number (general regex covers airlines beyond the IATA short-list)
+        var fm2 = evTitle.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
+        if (!fm2) continue;
+        var calFlightNum = fm2[1] + fm2[2];
+
+        // Compute CAL-xxx ID using the IDENTICAL formula used in webGetItinerary_()
+        var calId  = 'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16);
+        var evDate = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd');
+        var evTime = ev.isAllDayEvent() ? '00:00'
+                   : Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
+
+        // Determine tripKey: explicit param > existing cache entry > date lookup from sheet
+        var evTripKey = targetTripKey
+          || (calCache[calId] && calCache[calId].tripKey)
+          || dateToTripKey[evDate]
+          || '';
+
+        // When targeting a specific trip, skip events from other trips
+        if (targetTripKey && evTripKey !== targetTripKey) continue;
+
+        // Rate-limiting (mirrors Phase 1 sheet-based logic)
+        var evDepMs     = new Date(evDate + 'T' + evTime + ':00').getTime();
+        var minsUntilEv = (evDepMs - now) / 60000;
+
+        if (!forceRefresh && minsUntilEv > 1440) { skipped++; continue; }
+
+        var cachedEntry  = calCache[calId] || {};
+        var cachedStatus = cachedEntry.status || {};
+        if (!forceRefresh && minsUntilEv < -60 && cachedStatus.status === 'landed') { skipped++; continue; }
+
+        var calInterval = minsUntilEv > 360 ? 180 : minsUntilEv > 60 ? 60 : 15;
+        if (!forceRefresh && (now - (cachedStatus.lastChecked || 0)) < calInterval * 60000) { skipped++; continue; }
+
+        // Poll AviationStack
+        Logger.log('FlightStatus: checking calendar flight ' + calFlightNum + ' on ' + evDate + ' (' + calId + ')');
+        var calStatusObj = fetchFlightStatus_(calFlightNum, evDate);
+        if (!calStatusObj) { errors++; continue; }
+
+        calCache[calId] = { tripKey: evTripKey, flightNum: calFlightNum, status: calStatusObj };
+        checked++;
+        Logger.log('FlightStatus: updated calendar ' + calFlightNum + ' → ' + calStatusObj.status
+          + (calStatusObj.delay_min ? ' (' + calStatusObj.delay_min + 'min delay)' : ''));
+      }
+    } catch (calScanErr) {
+      Logger.log('FlightStatus: calendar scan error — ' + calScanErr.message);
+    }
+  }
+
+  setCalFlightStatusCache_(calCache);
+  // ---- end Phase 2 -----------------------------------------------------------
 
   Logger.log('FlightStatus: done. checked=' + checked + ' skipped=' + skipped + ' errors=' + errors);
   return { polled: checked, skipped: skipped, errors: errors };

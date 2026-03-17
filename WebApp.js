@@ -3100,18 +3100,33 @@ function webDeleteBucketItem_(e) {
 function webGetFlightStatuses_(e) {
   var tripKey = (e.parameter && e.parameter.tripKey) || '';
   if (!tripKey) return { ok: false, error: 'Missing tripKey' };
-  var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
-  if (!sheet) return { ok: true, statuses: {} };
-  var rows = sheet.getDataRange().getValues();
+  var sheet    = getSpreadsheet().getSheetByName(TABS.ITINERARY);
   var statuses = {};
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][1] || '') !== tripKey) continue;   // col B = Trip Key
-    if (String(rows[i][2] || '') !== 'flight') continue;  // col C = Type
-    var id   = String(rows[i][0] || '');                  // col A = ID
-    var meta = {};
-    try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch(e_) {}
-    if (meta.flight_status) statuses[id] = meta.flight_status;
+
+  // Phase 1: Itinerary sheet rows (manually added or CSV-imported flights)
+  if (sheet) {
+    var rows = sheet.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][1] || '').trim() !== tripKey) continue;   // col B = Trip Key
+      if (String(rows[i][2] || '').trim() !== 'flight') continue;  // col C = Type
+      var id   = String(rows[i][0] || '');                         // col A = ID
+      var meta = {};
+      try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch(e_) {}
+      if (meta.flight_status) statuses[id] = meta.flight_status;
+    }
   }
+
+  // Phase 2: Calendar-sourced flight statuses stored in Script Properties cache.
+  // These are flights that came from Google Calendar (not the Itinerary sheet),
+  // keyed by the same CAL-xxx IDs assigned in webGetItinerary_().
+  var calCache = getCalFlightStatusCache_();
+  for (var calId in calCache) {
+    var entry = calCache[calId];
+    if (entry && entry.tripKey === tripKey && entry.status) {
+      statuses[calId] = entry.status;
+    }
+  }
+
   return { ok: true, statuses: statuses };
 }
 
