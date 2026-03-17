@@ -6766,9 +6766,25 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
       });
     if (!allFlights.length) return;
 
-    function lastIata(loc) {
-      var codes = (loc || '').match(/\b([A-Z]{3})\b/g) || [];
-      return codes[codes.length - 1] || null;
+    // Extracts the ARRIVAL city/airport for a flight.
+    // The location field sometimes only has the origin (e.g. "Washington IAD"),
+    // so we also check the title for "to CITY" patterns.
+    // Priority:
+    //   1. location with 2+ IATA codes (e.g. "IAD → TPA") → last code
+    //   2. title "to CITY" or "→ CITY" pattern            → city name string
+    //   3. 3-letter code(s) in title                      → last code
+    //   4. single code in location (origin, last resort)  → that code
+    function getFlightDest(fl) {
+      var loc  = fl.location || '';
+      var ttl  = fl.title    || '';
+      var locCodes = loc.match(/\b([A-Z]{3})\b/g) || [];
+      if (locCodes.length >= 2) return locCodes[locCodes.length - 1]; // "IAD → TPA" → TPA
+      var m = ttl.match(/(?:\bto\b\s*|→\s*)([A-Za-z][^(,\n]*?)(?:\s*\(|\s*$)/i);
+      if (m) return m[1].trim();                                       // "Flight to Tampa" → Tampa
+      var titleCodes = ttl.match(/\b([A-Z]{3})\b/g) || [];
+      if (titleCodes.length > 0) return titleCodes[titleCodes.length - 1];
+      if (locCodes.length > 0) return locCodes[locCodes.length - 1];   // fallback: origin code
+      return null;
     }
     function endHour(fl) {
       return fl.endTime ? parseInt(fl.endTime.split(':')[0], 10) : -1;
@@ -6802,15 +6818,15 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
 
     if (within24h) {
       // Heading somewhere within 24h — show arrival city at landing time
-      destAirport = lastIata(nextFlight.location);
+      destAirport = getFlightDest(nextFlight);
       destHour    = endHour(nextFlight);
     } else if (lastDeparted) {
       // Currently at the arrival city of the last flight — show current weather
-      destAirport = lastIata(lastDeparted.location);
+      destAirport = getFlightDest(lastDeparted);
       destHour    = -1;
     } else {
       // No flights departed yet — show first destination at arrival time
-      destAirport = lastIata(allFlights[0].location);
+      destAirport = getFlightDest(allFlights[0]);
       destHour    = endHour(allFlights[0]);
     }
 
