@@ -6734,12 +6734,27 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
       .finally(function() { setLoadingItems(false); });
   }, [tripKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load flight statuses + auto-refresh every 2 min
+  // Load flight statuses + auto-refresh every 2 min.
+  // On the first poll: if the cache is empty, automatically trigger a force-refresh
+  // so the user sees status on page load without needing to click ↺.
   React.useEffect(function() {
     if (!apiUrl || !apiToken) return;
+    var autoRefreshed = false; // seed the cache at most once per mount
     function fetchStatuses() {
       apiGet(apiUrl, apiToken, { action: 'flight_statuses', tripKey: tripKey })
-        .then(function(r) { if (r.ok) setFlightStatuses(r.statuses || {}); })
+        .then(function(r) {
+          if (!r.ok) return;
+          setFlightStatuses(r.statuses || {});
+          // If the cache came back empty on the first poll, auto-seed it
+          if (!autoRefreshed && Object.keys(r.statuses || {}).length === 0) {
+            autoRefreshed = true;
+            setRefreshingStatus(true);
+            apiGet(apiUrl, apiToken, { action: 'force_flight_statuses', tripKey: tripKey })
+              .then(function(fr) { if (fr.ok) setFlightStatuses(fr.statuses || {}); })
+              .catch(function() {})
+              .finally(function() { setRefreshingStatus(false); });
+          }
+        })
         .catch(function() {});
     }
     fetchStatuses();
