@@ -6615,8 +6615,10 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
 
   const subTabs = [
     { id: 'overview',  label: '💸 Overview' },
+    { id: 'budget',    label: '📊 Budget' },
     { id: 'bills',     label: '🧾 Bills' },
     { id: 'cashflow',  label: '💰 Cashflow' },
+    { id: 'summaries', label: '📋 Summaries' },
   ];
 
   return (
@@ -6629,8 +6631,17 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
         ))}
       </div>
 
-      {/* ── Overview: Spending Chart + Monthly Budget ─────── */}
+      {/* ── Overview: Bento Dashboard (Coming Soon) ─────── */}
       {sub === 'overview' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>The Finance Overview dashboard is on its way.</div>
+        </div>
+      )}
+
+      {/* ── Budget: Spending Chart + Monthly Budget ─────── */}
+      {sub === 'budget' && (
         <div>
           {hasTxData
             ? <SpendingChart summaries={summaries} budget={budget} />
@@ -6757,6 +6768,39 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
       {/* ── Cashflow ─────────────────────────────────────── */}
       {sub === 'cashflow' && (
         <CashflowView apiUrl={apiUrl} apiToken={apiToken} bills={bills} />
+      )}
+
+      {/* ── Summaries ─────────────────────────────────── */}
+      {sub === 'summaries' && (
+        summaries.length === 0
+          ? <div className="empty-state">No summaries in the Summaries tab yet.</div>
+          : <SummariesTab summaries={summaries} />
+      )}
+    </div>
+  );
+}
+
+// ---- Health tab --------------------------------------------------------------
+
+function HealthTab() {
+  const [sub, setSub] = React.useState('fitness');
+  const subTabs = [
+    { id: 'fitness', label: '💪 Fitness' },
+  ];
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}>{s.label}</button>
+        ))}
+      </div>
+      {sub === 'fitness' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Fitness tracking is on its way.</div>
+        </div>
       )}
     </div>
   );
@@ -8947,7 +8991,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'milestones', 'goals', 'interests', 'ideas', 'summaries'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'health', 'milestones', 'goals', 'interests', 'ideas'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -8977,8 +9021,8 @@ function App() {
                 {tab === 'pto'        ? `🌴 PTO Planner` : ''}
                 {tab === 'travel'     ? `✈️ Travel` : ''}
                 {tab === 'finances'   ? `💰 Finances` : ''}
+                {tab === 'health'     ? `🏥 Health` : ''}
                 {tab === 'milestones' ? `🎯 Milestones${milestones.length ? ` (${milestones.length})` : ''}` : ''}
-                {tab === 'summaries'  ? `📊 Summaries` : ''}
               </button>
             ))}
           </div>
@@ -9046,13 +9090,6 @@ function App() {
                       ))
                 }
               </>
-            )}
-
-            {/* Summaries tab */}
-            {activeTab === 'summaries' && (
-              loading && summaries.length === 0
-                ? <div className="loading-text">Loading summaries…</div>
-                : <SummariesTab summaries={summaries} />
             )}
 
             {/* Home tab */}
@@ -9282,6 +9319,9 @@ function App() {
                 busy={busy}
               />
             )}
+
+            {/* Health tab */}
+            {activeTab === 'health' && <HealthTab />}
 
             {/* Milestones tab */}
             {activeTab === 'milestones' && (
