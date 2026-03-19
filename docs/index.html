@@ -1439,6 +1439,25 @@ function TaskCard({ task, onComplete, onEdit, completing }) {
   );
 }
 
+// ---- DaysAway helper — renders countdown or green "Active" pill for negative values ----
+
+function DaysAway({ n, format }) {
+  if (n < 0) return (
+    <span style={{ background: '#0d2a1a', color: '#4ade80', border: '1px solid #2d6a4f',
+                   borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 700,
+                   whiteSpace: 'nowrap' }}>
+      ● Active
+    </span>
+  );
+  if (n === 0) return format === 'in' ? 'Today' : 'Today!';
+  if (n === 1) return 'Tomorrow';
+  if (format === 'compact')      return `${n}d`;
+  if (format === 'compact-away') return `${n}d away`;
+  if (format === 'in')           return `in ${n} days`;
+  if (format === 'plain')        return `${n} days`;
+  return `${n} days away`;
+}
+
 // ---- Summaries table --------------------------------------------------------
 
 function SummariesTab({ summaries }) {
@@ -3005,7 +3024,7 @@ function TravelItineraryPanel({
               </div>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#5c9eff', background: '#0d2040',
                             borderRadius: 12, padding: '3px 10px', whiteSpace: 'nowrap' }}>
-                {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days`}
+                <DaysAway n={t.daysAway} format="plain" />
               </div>
               <div style={{ fontSize: 16, color: '#8ab4f8',
                             transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -4617,7 +4636,7 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div style={{ fontSize: 13, color: '#5c9eff', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          {t.daysAway === 0 ? 'Today!' : t.daysAway === 1 ? 'Tomorrow' : `${t.daysAway} days away`}
+                          <DaysAway n={t.daysAway} />
                         </div>
                         <div style={{ fontSize: 12, color: '#8ab4f8' }}>View Itinerary →</div>
                       </div>
@@ -5391,7 +5410,7 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
         {nextPTO && (
           <div style={{ marginTop: 14, fontSize: 12, color: '#6b7fa8' }}>
             Next PTO: <span style={{ color: '#c9a84c', fontWeight: 600 }}>{nextPTO.label}</span>
-            {' · '}{nextPTO.startDate}{' · '}{nextPTO.daysUntil} days away
+            {' · '}{nextPTO.startDate}{' · '}<DaysAway n={nextPTO.daysUntil} />
           </div>
         )}
       </div>
@@ -5507,7 +5526,7 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
             <div key={i} className="pto-row">
               <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{t.label}</span>
               <span style={{ fontSize: 11, color: '#6b7fa8' }}>{t.startDate} – {t.endDate}</span>
-              <span style={{ fontSize: 12, color: '#5c9eff' }}>{t.daysAway} days away</span>
+              <span style={{ fontSize: 12, color: '#5c9eff' }}><DaysAway n={t.daysAway} /></span>
             </div>
           ))}
         </div>
@@ -5521,7 +5540,7 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
             <div key={i} className="pto-row">
               <span style={{ flex: 1, fontWeight: 600, color: '#dde1f0', fontSize: 13 }}>{m.label}</span>
               <span style={{ fontSize: 11, color: '#6b7fa8' }}>{m.calendarName}</span>
-              <span style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700 }}>{m.daysUntil} days</span>
+              <span style={{ fontSize: 13, color: '#c9a84c', fontWeight: 700 }}><DaysAway n={m.daysUntil} format="plain" /></span>
             </div>
           ))}
         </div>
@@ -6841,9 +6860,7 @@ function MilestonesTab({ milestones, flags, tasks, onAction, busy }) {
             <div className="milestone-header">
               <span className="milestone-name">{m.label}</span>
               <span className={`milestone-countdown${isSoon ? ' soon' : ''}`}>
-                {m.daysUntil === 0 ? 'Today'
-                  : m.daysUntil === 1 ? 'Tomorrow'
-                  : `in ${m.daysUntil} days`}
+                <DaysAway n={m.daysUntil} format="in" />
               </span>
             </div>
 
@@ -7535,7 +7552,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
             )}
             {nextPTO && (
               <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>
-                Next: {nextPTO.label} · {nextPTO.daysUntil}d away
+                Next: {nextPTO.label} · <DaysAway n={nextPTO.daysUntil} format="compact-away" />
               </div>
             )}
           </>
@@ -7564,7 +7581,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
                 return (
                   <div key={i} className="bento-item">
                     {m.label}
-                    <span style={{ color: '#c9a84c', marginLeft: 6 }}>{m.daysUntil}d</span>
+                    <span style={{ color: '#c9a84c', marginLeft: 6 }}><DaysAway n={m.daysUntil} format="compact" /></span>
                     {relCount > 0 && (
                       <span style={{ color: '#6b7fa8', marginLeft: 6 }}>
                         · {relCount} item{relCount !== 1 ? 's' : ''}
