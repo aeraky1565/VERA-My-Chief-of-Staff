@@ -31,6 +31,39 @@ function getAviationStackKey_() {
   return PropertiesService.getScriptProperties().getProperty('AVIATIONSTACK_KEY') || '';
 }
 
+// ---- AviationStack 429 backoff (Script Properties) -------------------------
+// When the API returns 429, we store a "back off until" timestamp so every
+// subsequent trigger run skips all API calls until the window expires.
+
+var AS_BACKOFF_KEY_ = 'AVIATIONSTACK_BACKOFF_UNTIL';
+
+/** Returns true if we are currently inside a rate-limit backoff window. */
+function isAviationStackRateLimited_() {
+  var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
+  return Date.now() < until;
+}
+
+/**
+ * Sets a backoff window after receiving a 429.
+ * If the response body indicates a monthly quota error, backs off 30 days;
+ * otherwise backs off 2 hours to handle per-minute/per-hour limits.
+ * @param {string} responseBody  Raw response text from AviationStack
+ */
+function setAviationStackBackoff_(responseBody) {
+  var isQuota = responseBody && (responseBody.indexOf('usage_limit') !== -1 ||
+                                  responseBody.indexOf('monthly')     !== -1 ||
+                                  responseBody.indexOf('exceeded')    !== -1);
+  var backoffMs = isQuota ? 30 * 24 * 60 * 60 * 1000   // 30 days — monthly quota
+                          :  2 *       60 * 60 * 1000;  //  2 hours — per-rate limit
+  var until = Date.now() + backoffMs;
+  PropertiesService.getScriptProperties().setProperty(AS_BACKOFF_KEY_, String(until));
+  Logger.log('FlightStatus: 429 received — ' +
+             (isQuota ? 'monthly quota exhausted, backing off 30 days'
+                      : 'rate limited, backing off 2 hours') +
+             ' (until ' + new Date(until).toISOString() + ')');
+  Logger.log('FlightStatus: 429 body: ' + (responseBody || '').substring(0, 300));
+}
+
 // ---- Calendar flight status cache (Script Properties) ----------------------
 
 /**
@@ -75,6 +108,10 @@ function fetchFlightStatus_(flightIata, flightDate) {
   try {
     var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     var code = resp.getResponseCode();
+    if (code === 429) {
+      setAviationStackBackoff_(resp.getContentText());
+      return null;
+    }
     if (code !== 200) {
       Logger.log('FlightStatus: AviationStack HTTP ' + code + ' for ' + flightIata);
       return null;
@@ -145,6 +182,13 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
  * @param {string}  [targetTripKey]  If set, only process flights for this trip
  */
 function checkFlightStatuses_(forceRefresh, targetTripKey) {
+  // Short-circuit if we received a 429 recently — don't waste requests
+  if (!forceRefresh && isAviationStackRateLimited_()) {
+    var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
+    Logger.log('FlightStatus: skipping — rate-limit backoff active until ' + new Date(until).toISOString());
+    return { polled: 0, skipped: 0, errors: 0 };
+  }
+
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.ITINERARY);
   if (!sheet) {
