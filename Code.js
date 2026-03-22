@@ -20,6 +20,11 @@ const CONFIG = {
   NIGHTLY_RUN_HOUR: 23,
 };
 
+// Module-level cache for getConfigValues() — reset automatically per execution.
+// Prevents the Config tab from being re-read on every sub-function call within
+// a single nightly run (typically called 4–6 times per execution).
+var _configCache_ = null;
+
 // ---- Tab Names -------------------------------------------------------------
 const TABS = {
   FLAGS:        'Flags',
@@ -230,6 +235,8 @@ function setupTriggers() {
     .create();
 
   // Email inbox scanner — parses travel confirmation emails every 30 min (Issue #98)
+  // ⚠ WARNING: email_parser_enabled=true can generate up to 144 Claude API calls/day.
+  // Only enable in Config when actively processing a travel email backlog. Disable when done.
   ScriptApp.newTrigger('runEmailScan_')
     .timeBased()
     .everyMinutes(30)
@@ -318,6 +325,15 @@ function nightlyRun() {
 
     // Step 1b: Suggest due dates for undated tasks (writes back to sheet)
     suggestDueDates(tasks);
+
+    // Step 2: Skip Claude if there is no meaningful data to reason about.
+    // Only bypasses when ALL THREE are simultaneously empty (rare: quiet weekends,
+    // cleared task list during travel, etc.). Any one non-empty source proceeds normally.
+    if (events.length === 0 && tasks.length === 0 && summaries.length === 0) {
+      Logger.log('nightlyRun: no events, tasks, or summaries tonight — skipping Claude call.');
+      Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
+      return;
+    }
 
     // Step 2 & 3: Package + Reason (Claude) — pass suppressed patterns for noise filtering
     const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns);
@@ -720,6 +736,7 @@ function escalateAgedFlags_() {
  * @returns {Object} Key-value map of all Config settings
  */
 function getConfigValues() {
+  if (_configCache_) return _configCache_;
   try {
     const ss    = getSpreadsheet();
     const sheet = ss.getSheetByName(TABS.CONFIG);
@@ -735,6 +752,7 @@ function getConfigValues() {
       if (key !== '') config[key] = value;
     });
 
+    _configCache_ = config;
     return config;
   } catch (e) {
     Logger.log('getConfigValues error: ' + e.message);

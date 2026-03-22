@@ -1566,8 +1566,9 @@ function stripActions_(text) {
 function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   sessionId = sessionId || 'dashboard';
 
-  // Allow image-only messages (no text required when an image is attached)
-  if (!userMessage && !imageBase64) {
+  // Guard: allow image-only messages, but reject empty/whitespace-only text with no image.
+  var trimmedMsg = (userMessage || '').trim();
+  if (!trimmedMsg && !imageBase64) {
     return { ok: true, reply: 'What can I help you with?' };
   }
 
@@ -1575,7 +1576,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   var context   = buildChatContext_();
   var sysPrompt = buildChatSystemPrompt_(context);
   var callResult = callClaudeChat_(
-    (userMessage || '').trim(), history, sysPrompt,
+    trimmedMsg, history, sysPrompt,
     imageBase64   || null,
     imageMimeType || null
   );
@@ -1596,7 +1597,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
 
   // Persist this exchange — store [Image attached] placeholder, NEVER raw base64
   // (Script Properties have a 9 KB-per-property limit; base64 images are 100 KB+)
-  var historyText = (userMessage || '').trim();
+  var historyText = trimmedMsg;
   if (imageBase64) historyText = (historyText ? historyText + ' ' : '') + '[Image attached]';
   saveChatHistory_(sessionId, historyText, cleanReply);
 

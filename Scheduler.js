@@ -276,6 +276,24 @@ function processSchedulerPhoto_(msg, chatId, hasPhoto) {
     ? msg.photo[msg.photo.length - 1].file_id
     : msg.document.file_id;
 
+  // Dedup: Telegram's file_unique_id is stable per unique photo across all bots.
+  // If the same photo was submitted within the last 24 hours, skip processing to
+  // prevent duplicate Claude vision calls and duplicate sheet row writes.
+  var fileUniqueId = hasPhoto
+    ? (msg.photo[msg.photo.length - 1].file_unique_id || '')
+    : (msg.document ? (msg.document.file_unique_id || '') : '');
+  if (fileUniqueId) {
+    var dedupKey  = 'SCHED_PHOTO_' + fileUniqueId;
+    var props     = PropertiesService.getScriptProperties();
+    var lastSeen  = parseInt(props.getProperty(dedupKey) || '0', 10);
+    if (Date.now() - lastSeen < 86400000) {  // 24-hour dedup window
+      Logger.log('Scheduler: photo ' + fileUniqueId + ' already processed within 24h — skipping duplicate.');
+      sendTelegramMessage_(chatId, '📷 This image was already processed recently. If you need to re-process it, wait 24 hours or send a new screenshot.');
+      return;
+    }
+    props.setProperty(dedupKey, String(Date.now()));
+  }
+
   var thinkingId = sendTelegramMessage_(chatId, '📷 Analyzing image...');
 
   try {

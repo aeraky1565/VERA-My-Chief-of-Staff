@@ -2438,6 +2438,14 @@ function webDeletePackingItem_(e) {
  */
 function geocodePackingDestination_(destination) {
   if (!destination) return null;
+  // Cache geocoding results for 6 hours — coordinates don't change
+  var cacheKey = 'geocode_' + destination.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+  try {
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) {
+      try { return JSON.parse(cached); } catch(e_) {}
+    }
+  } catch(e_) {}
   try {
     const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
                 encodeURIComponent(destination) + '&count=1&language=en&format=json';
@@ -2445,7 +2453,9 @@ function geocodePackingDestination_(destination) {
     const data = JSON.parse(resp.getContentText());
     if (!data.results || data.results.length === 0) return null;
     const r = data.results[0];
-    return { lat: r.latitude, lon: r.longitude, name: r.name };
+    var result = { lat: r.latitude, lon: r.longitude, name: r.name };
+    try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 21600); } catch(e_) {}
+    return result;
   } catch(err) {
     Logger.log('Packing geocode error: ' + err.message);
     return null;
@@ -2458,6 +2468,15 @@ function geocodePackingDestination_(destination) {
  */
 function getPackingWeather_(destination, startDate, endDate) {
   if (!destination) return '';
+  // Cache weather results for 6 hours (CacheService maximum TTL).
+  // Prevents redundant fetches when nightlyRun and the dashboard request
+  // weather for the same trip within the same timeframe.
+  var wCacheKey = 'weather_' + (destination + '_' + startDate + '_' + endDate)
+    .toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+  try {
+    var wCached = CacheService.getScriptCache().get(wCacheKey);
+    if (wCached) return wCached;
+  } catch(e_) {}
   try {
     const geo = geocodePackingDestination_(destination);
     if (!geo) return '';
@@ -2520,6 +2539,7 @@ function getPackingWeather_(destination, startDate, endDate) {
     let summary = (isArchive ? '(Seasonal average) ' : '') +
                   'Expected: ' + minTemp + '\u2013' + maxTemp + '\u00b0F, ' + rainDesc + '. ' + tempNote;
     Logger.log('Packing weather for ' + destination + ': ' + summary);
+    try { CacheService.getScriptCache().put(wCacheKey, summary, 21600); } catch(e_) {}
     return summary;
   } catch(err) {
     Logger.log('getPackingWeather_ error: ' + err.message);
