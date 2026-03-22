@@ -537,6 +537,7 @@ function buildChatSystemPrompt_(context) {
     '  \u2014 stars = 1-5 priority rating; dreamTrip = yes or short description. Use blank for unknown fields.\n' +
     'ACTION:update_bucket_item|{id}|{field}|{value}  \u2014 field = visited (value = date or "yes") | stars (value = 1-5)\n' +
     'ACTION:delete_bucket_item|{id}  \u2014 id from TRAVEL BUCKET LIST context above. Always confirm first.\n' +
+    'ACTION:add_gym_sessions|{YYYY-MM-DD}|{Trip Label}  \u2014 schedules morning gym sessions on all interior days of a trip (skips arrival + departure day)\n' +
     '\n' +
 
     'RULES:\n' +
@@ -580,6 +581,9 @@ function buildChatSystemPrompt_(context) {
     '- For add_bucket_item: stars is 1–5 (5 = dream destination). dreamTrip = "yes" or a short description like "Cherry blossom season". Use blank for unknown fields.\n' +
     '- For update_bucket_item: use the ID from TRAVEL BUCKET LIST. field = "visited" (mark as visited with date/yes) or "stars" (update priority).\n' +
     '- For delete_bucket_item: use the ID from TRAVEL BUCKET LIST above. Always confirm the destination with Ahmed before deleting.\n' +
+    '- For add_gym_sessions: use when Ahmed says "add gym sessions to the [trip] itinerary" or asks to schedule workouts during travel. ' +
+    'Emit ACTION:add_gym_sessions|{departureDate}|{tripLabel} using the TripKey parts (e.g. TripKey "2026-06-19|Alaska Cruise" \u2192 ' +
+    '"ACTION:add_gym_sessions|2026-06-19|Alaska Cruise"). Confirm how many blocks were added after execution.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -1038,6 +1042,14 @@ function findProjectTaskRow_(projectName, taskText) {
     }
   }
   return null;
+}
+
+/** Adds `minutes` to a "HH:MM" time string. Returns new "HH:MM". Wraps at 24h. */
+function incrementTime_(timeStr, minutes) {
+  var parts = (timeStr || '00:00').split(':');
+  var total = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0) + minutes;
+  var h = Math.floor(total / 60) % 24, m = total % 60;
+  return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
 }
 
 // ============================================================
@@ -1534,6 +1546,46 @@ function executeActions_(rawText) {
         if (!dbiId) throw new Error('Bucket item ID required');
         webDeleteBucketItem_(makeFakeEvent_({ id: dbiId }));
         executed.push(type + ' (' + dbiId + ')');
+      }
+      else if (type === 'add_gym_sessions') {
+        var agsTK   = tripKeyArgs_();
+        var tripKey = agsTK.tripKey;
+        if (!tripKey) throw new Error('Trip key required');
+
+        // Find all dates in this trip's itinerary
+        var itinSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+        if (!itinSheet || itinSheet.getLastRow() < 2) throw new Error('Itinerary tab is empty');
+        var tripRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+        var tripDates = [];
+        tripRows.forEach(function(row) {
+          if (String(row[1] || '').trim() !== tripKey) return;
+          var ds = String(row[4] || '').trim(); // col 4 = Date
+          if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) tripDates.push(ds);
+        });
+        if (!tripDates.length) throw new Error('No itinerary items found for trip: ' + tripKey);
+        tripDates.sort();
+        var minDate = tripDates[0], maxDate = tripDates[tripDates.length - 1];
+        if (minDate === maxDate) throw new Error('Trip only spans one day — no interior days for gym sessions');
+
+        var cfg2      = getConfigValues();
+        var blockTime = (cfg2['fitness_travel_block_time']     || '07:00').trim();
+        var blockDur  = parseInt(cfg2['fitness_travel_block_duration'] || '60', 10) || 60;
+        var endTime   = incrementTime_(blockTime, blockDur);
+        var tz2       = Session.getScriptTimeZone();
+        var cursor    = new Date(minDate + 'T00:00:00');
+        var endDate   = new Date(maxDate + 'T00:00:00');
+        cursor.setDate(cursor.getDate() + 1); // skip arrival day
+        var added = 0;
+        while (cursor < endDate) { // < = skip departure day
+          webAddItineraryItem_(makeFakeEvent_({
+            tripKey: tripKey, type: 'activity', title: 'Morning gym session',
+            date:    Utilities.formatDate(cursor, tz2, 'yyyy-MM-dd'),
+            startTime: blockTime, endTime: endTime, location: 'Hotel fitness center', notes: '',
+          }));
+          cursor.setDate(cursor.getDate() + 1);
+          added++;
+        }
+        executed.push('add_gym_sessions (' + added + ' block(s) \u2192 ' + tripKey + ')');
       }
 
     } catch (e) {

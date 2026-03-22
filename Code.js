@@ -136,6 +136,11 @@ function createSheetTabs(ss) {
     ['posttrip_capture_delay_days','1'],     // days after trip end to fire the capture flag (Issue #87)
     ['gym_tracker_enabled',       'true'],  // set to 'false' to disable gym session tracking (Issue #97)
     ['gym_tracker_lookback_hours','24'],    // hours to look back for ended EXERCISE events (Issue #97)
+    ['fitness_enabled',              'false'], // set to 'true' to enable weekly consistency checks (Issue #84)
+    ['fitness_weekly_target',        '4'],     // target gym sessions per week
+    ['fitness_low_flag_day',         '4'],     // day to fire Low flag if behind: 1=Sun … 7=Sat (4=Wed)
+    ['fitness_travel_block_time',    '07:00'], // start time for auto-created trip gym sessions
+    ['fitness_travel_block_duration','60'],    // duration in minutes for auto-created trip gym sessions
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -344,6 +349,10 @@ function nightlyRun() {
     } catch (gymErr) {
       Logger.log('checkGymSessions_ error (non-fatal): ' + gymErr.message);
     }
+
+    // Step 0j: Fitness consistency + travel gap checks (Issue #84)
+    try { checkFitnessConsistency_(); } catch (fcErr) { Logger.log('checkFitnessConsistency_ error (non-fatal): ' + fcErr.message); }
+    try { checkFitnessTravelGap_();   } catch (ftErr) { Logger.log('checkFitnessTravelGap_ error (non-fatal): '   + ftErr.message); }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();
