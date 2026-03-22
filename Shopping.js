@@ -136,15 +136,18 @@ function deleteShoppingItem_(tabId, itemIndex) {
     throw new Error('List item not found at index ' + idx + ' in tab ' + tabId);
   }
 
-  // Google Docs requires at least one paragraph-type element per section.
-  // Try to remove; if Docs refuses (e.g. last paragraph in section), clear the
-  // text instead — getShoppingList_() skips empty-text items so it disappears.
+  // Google Docs requires at least one paragraph-type element per section and
+  // also rejects setText('') on list items.  Workaround: append a plain
+  // paragraph first so the list item is no longer the sole element, then
+  // remove it normally.  getShoppingList_() only reads LIST_ITEM elements so
+  // the placeholder paragraph is invisible to the dashboard.
   try {
     child.removeFromParent();
     Logger.log('deleteShoppingItem_: removed. tab=' + tabId + ' idx=' + idx);
   } catch (removeErr) {
-    child.asListItem().setText('');
-    Logger.log('deleteShoppingItem_: cleared text (remove blocked). tab=' + tabId + ' idx=' + idx);
+    body.appendParagraph(' ');
+    child.removeFromParent();
+    Logger.log('deleteShoppingItem_: removed via placeholder. tab=' + tabId + ' idx=' + idx);
   }
   return { ok: true, tabId: tabId, index: idx };
 }
