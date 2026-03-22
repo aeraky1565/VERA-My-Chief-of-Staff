@@ -76,6 +76,8 @@ function doGet(e) {
       case 'shopping':        return jsonOut_(webGetShopping_());
       case 'shopping_toggle': return jsonOut_(webToggleShoppingItem_(e));
       case 'shopping_add':    return jsonOut_(webAddShoppingItem_(e));
+      case 'shopping_delete': return jsonOut_(webDeleteShoppingItem_(e));
+      case 'shopping_update': return jsonOut_(webUpdateShoppingItem_(e));
       case 'projects':              return jsonOut_(webGetProjects_());
       case 'complete_project_task': return jsonOut_(webCompleteProjectTask_(e.parameter.row));
       case 'add_project_task':      return jsonOut_(webAddProjectTask_(e));
@@ -609,6 +611,20 @@ function webAddShoppingItem_(e) {
   const text  = ((e.parameter && e.parameter.text)  || '').trim();
   if (!tabId || !text) throw new Error('tabId and text are required.');
   return addShoppingItem_(tabId, text);
+}
+
+function webDeleteShoppingItem_(e) {
+  const tabId = (e.parameter && e.parameter.tabId) || '';
+  const index = (e.parameter && e.parameter.index) || 0;
+  return deleteShoppingItem_(tabId, index);
+}
+
+function webUpdateShoppingItem_(e) {
+  const tabId = (e.parameter && e.parameter.tabId) || '';
+  const index = (e.parameter && e.parameter.index) || 0;
+  const text  = ((e.parameter && e.parameter.text) || '').trim();
+  if (!text) throw new Error('text is required');
+  return updateShoppingItem_(tabId, index, text);
 }
 
 // ---- Projects --------------------------------------------------------------

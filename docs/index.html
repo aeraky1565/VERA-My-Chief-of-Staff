@@ -4783,8 +4783,10 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
 
 // ---- Shopping tab -----------------------------------------------------------
 
-function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
-  const [activeStore, setActiveStore] = React.useState(null);
+function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
+  const [activeStore,   setActiveStore]   = React.useState(null);
+  const [editingIndex,  setEditingIndex]  = React.useState(null); // { tabId, index } | null
+  const [editText,      setEditText]      = React.useState('');
 
   React.useEffect(() => {
     if (stores.length > 0) {
@@ -4849,7 +4851,7 @@ function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
           className="btn btn-primary"
           style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
           disabled={busy}
-          onClick={() => onAddItem && onAddItem()}
+          onClick={() => onAddItem && onAddItem(activeStore)}
         >
           + Add Item
         </button>
@@ -4860,34 +4862,70 @@ function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
         current.items.length === 0
           ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {current.items.map((item, i) => (
-                <div
-                  key={i}
-                  onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}
-                  style={{
+              {current.items.map((item, i) => {
+                const isEditing = editingIndex !== null &&
+                                  editingIndex.tabId === current.tabId &&
+                                  editingIndex.index === item.index;
+                return (
+                  <div key={i} style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '11px 16px', borderRadius: 8,
                     background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
                     border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
-                    cursor: busy ? 'wait' : 'pointer',
                     transition: 'background 0.15s',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    readOnly
-                    style={{ accentColor: '#43a047', width: 16, height: 16, pointerEvents: 'none', flexShrink: 0 }}
-                  />
-                  <span style={{
-                    flex: 1, fontSize: 14,
-                    color: item.done ? '#4a5a7a' : '#dde1f0',
-                    textDecoration: item.done ? 'line-through' : 'none',
                   }}>
-                    {item.text}
-                  </span>
-                </div>
-              ))}
+                    {/* Checkbox — disabled while editing */}
+                    <input type="checkbox" checked={item.done} readOnly
+                      onClick={e => { e.stopPropagation(); if (!busy && !isEditing) onToggle(current.tabId, item.index, item.done); }}
+                      style={{ accentColor: '#43a047', width: 16, height: 16, flexShrink: 0, cursor: isEditing ? 'default' : 'pointer' }} />
+
+                    {/* Inline edit mode */}
+                    {isEditing ? (
+                      <React.Fragment>
+                        <input
+                          autoFocus
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); if (editText.trim()) { onEdit(current.tabId, item.index, editText); setEditingIndex(null); } }
+                            if (e.key === 'Escape') setEditingIndex(null);
+                          }}
+                          style={{ flex: 1, background: '#13244d', border: '1px solid #c9a84c', borderRadius: 4,
+                                   color: '#e8eaed', padding: '4px 8px', fontSize: 14 }}
+                        />
+                        <button onClick={() => { if (editText.trim()) { onEdit(current.tabId, item.index, editText); setEditingIndex(null); } }}
+                          disabled={!editText.trim()}
+                          style={{ background: '#c9a84c', border: 'none', borderRadius: 4, color: '#0d1b3e',
+                                   fontWeight: 700, fontSize: 12, padding: '4px 10px', cursor: editText.trim() ? 'pointer' : 'default' }}>
+                          Save
+                        </button>
+                        <button onClick={() => setEditingIndex(null)}
+                          style={{ background: 'none', border: '1px solid #2a3a60', borderRadius: 4,
+                                   color: '#8a9abf', fontSize: 12, padding: '4px 10px', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </React.Fragment>
+                    ) : (
+                      <React.Fragment>
+                        <span style={{ flex: 1, fontSize: 14, color: item.done ? '#4a5a7a' : '#dde1f0',
+                                       textDecoration: item.done ? 'line-through' : 'none',
+                                       cursor: busy ? 'wait' : 'pointer' }}
+                              onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}>
+                          {item.text}
+                        </span>
+                        {/* Edit button */}
+                        <button title="Edit" onClick={e => { e.stopPropagation(); setEditingIndex({ tabId: current.tabId, index: item.index }); setEditText(item.text); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6a8a',
+                                   fontSize: 13, padding: '0 4px', flexShrink: 0 }}>✎</button>
+                        {/* Delete button */}
+                        <button title="Delete" onClick={e => { e.stopPropagation(); onDelete && onDelete(current.tabId, item.index); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6a8a',
+                                   fontSize: 13, padding: '0 4px', flexShrink: 0 }}>✕</button>
+                      </React.Fragment>
+                    )}
+                  </div>
+                );
+              })}
             </div>
       )}
     </div>
@@ -4896,8 +4934,8 @@ function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
 
 // ---- Add shopping item modal ------------------------------------------------
 
-function AddItemModal({ stores, onSave, onClose, busy }) {
-  const [selectedStore, setSelectedStore] = React.useState(stores[0]?.tabId || '');
+function AddItemModal({ stores, onSave, onClose, busy, initialStore }) {
+  const [selectedStore, setSelectedStore] = React.useState(initialStore || stores[0]?.tabId || '');
   const [text, setText] = React.useState('');
 
   function handleKey(e) {
@@ -8248,7 +8286,8 @@ function App() {
   const [recommendations,  setRecommendations]  = useState({}); // { [tripKey]: 'loading' | [...recs] }
   const [chatMessages, setChatMessages] = useState([{ role: 'vera', text: VERA_CHAT_WELCOME }]);
   const [chatInput,    setChatInput]    = useState('');
-  const [addItemModal, setAddItemModal] = useState(false);
+  const [addItemModal,         setAddItemModal]         = useState(false);
+  const [addItemInitialStore,  setAddItemInitialStore]  = useState('');
   const [toast,         setToast]         = useState(null);
   const [completingIds, setCompletingIds] = useState({});
   const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
@@ -8836,6 +8875,40 @@ function App() {
     setBusy(false);
   }
 
+  async function handleDeleteShoppingItem(tabId, itemIndex) {
+    // Optimistic removal
+    setShopping(prev => prev.map(store =>
+      store.tabId !== tabId ? store : {
+        ...store,
+        items: store.items.filter(item => item.index !== itemIndex),
+      }
+    ));
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_delete', { tabId, index: itemIndex });
+    } catch (err) {
+      setError('Could not delete item: ' + err.message);
+      await loadShopping(apiUrl, apiToken); // revert
+    }
+  }
+
+  async function handleUpdateShoppingItem(tabId, itemIndex, newText) {
+    // Optimistic update
+    setShopping(prev => prev.map(store =>
+      store.tabId !== tabId ? store : {
+        ...store,
+        items: store.items.map(item =>
+          item.index !== itemIndex ? item : { ...item, text: newText }
+        ),
+      }
+    ));
+    try {
+      await apiAction(apiUrl, apiToken, 'shopping_update', { tabId, index: itemIndex, text: newText });
+    } catch (err) {
+      setError('Could not update item: ' + err.message);
+      await loadShopping(apiUrl, apiToken); // revert
+    }
+  }
+
   async function handleSaveTask({ id, task, dueDate, notes, recurring }) {
     setBusy(true);
     try {
@@ -9290,6 +9363,7 @@ function App() {
           onSave={handleAddShoppingItem}
           onClose={() => setAddItemModal(false)}
           busy={busy}
+          initialStore={addItemInitialStore}
         />
       )}
 
@@ -9494,7 +9568,9 @@ function App() {
                 : <ShoppingTab
                     stores={shopping}
                     onToggle={handleToggleShopping}
-                    onAddItem={() => setAddItemModal(true)}
+                    onAddItem={(storeId) => { setAddItemInitialStore(storeId || ''); setAddItemModal(true); }}
+                    onDelete={handleDeleteShoppingItem}
+                    onEdit={handleUpdateShoppingItem}
                     busy={busy}
                   />
             )}

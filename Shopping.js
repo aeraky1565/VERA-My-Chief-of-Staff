@@ -106,6 +106,85 @@ function toggleShoppingItem_(tabId, itemIndex) {
   return { ok: true, tabId: tabId, index: idx, done: !currentlyDone };
 }
 
+// ---- Delete item -----------------------------------------------------------
+
+/**
+ * Removes a shopping list item from the Google Doc.
+ *
+ * @param {string} tabId      - The tab ID returned by getShoppingList_()
+ * @param {number} itemIndex  - The child index within the tab's body
+ * @returns {{ ok: boolean, tabId: string, index: number }}
+ */
+function deleteShoppingItem_(tabId, itemIndex) {
+  var docId = getShoppingDocId_();
+  if (!docId) throw new Error('SHOPPING_LIST_DOC_ID not configured in Script Properties.');
+
+  var doc  = DocumentApp.openById(docId);
+  var tabs = doc.getTabs();
+
+  var found = null;
+  for (var t = 0; t < tabs.length; t++) {
+    if (tabs[t].getId() === tabId) { found = tabs[t]; break; }
+  }
+  if (!found) throw new Error('Shopping tab not found: ' + tabId);
+
+  var body  = found.asDocumentTab().getBody();
+  var idx   = parseInt(itemIndex, 10);
+  var child = body.getChild(idx);
+
+  if (!child || child.getType() !== DocumentApp.ElementType.LIST_ITEM) {
+    throw new Error('List item not found at index ' + idx + ' in tab ' + tabId);
+  }
+
+  body.removeChild(child);
+  Logger.log('deleteShoppingItem_: tab=' + tabId + ' idx=' + idx);
+  return { ok: true, tabId: tabId, index: idx };
+}
+
+// ---- Update item -----------------------------------------------------------
+
+/**
+ * Updates the text of an existing shopping list item, preserving its done state.
+ *
+ * @param {string} tabId      - The tab ID returned by getShoppingList_()
+ * @param {number} itemIndex  - The child index within the tab's body
+ * @param {string} newText    - Replacement text
+ * @returns {{ ok: boolean, tabId: string, index: number, text: string }}
+ */
+function updateShoppingItem_(tabId, itemIndex, newText) {
+  var docId = getShoppingDocId_();
+  if (!docId) throw new Error('SHOPPING_LIST_DOC_ID not configured in Script Properties.');
+
+  var doc  = DocumentApp.openById(docId);
+  var tabs = doc.getTabs();
+
+  var found = null;
+  for (var t = 0; t < tabs.length; t++) {
+    if (tabs[t].getId() === tabId) { found = tabs[t]; break; }
+  }
+  if (!found) throw new Error('Shopping tab not found: ' + tabId);
+
+  var body     = found.asDocumentTab().getBody();
+  var idx      = parseInt(itemIndex, 10);
+  var child    = body.getChild(idx);
+
+  if (!child || child.getType() !== DocumentApp.ElementType.LIST_ITEM) {
+    throw new Error('List item not found at index ' + idx + ' in tab ' + tabId);
+  }
+
+  var listItem = child.asListItem();
+  var wasDone  = listItem.editAsText().isStrikethrough(0) === true;
+  var cleaned  = newText.trim();
+
+  listItem.setText(cleaned);
+  if (wasDone && cleaned.length > 0) {
+    listItem.editAsText().setStrikethrough(0, cleaned.length - 1, true);
+  }
+
+  Logger.log('updateShoppingItem_: tab=' + tabId + ' idx=' + idx + ' text=' + cleaned);
+  return { ok: true, tabId: tabId, index: idx, text: cleaned };
+}
+
 // ---- Add item --------------------------------------------------------------
 
 /**
