@@ -141,8 +141,9 @@ function doGet(e) {
       case 'generate_recommendations': return jsonOut_(webGenerateRecommendations_(e));
       case 'update_recommendation':    return jsonOut_(webUpdateRecommendation_(e));
       case 'accept_recommendation':    return jsonOut_(webAcceptRecommendation_(e));
-      case 'chat':                  return jsonOut_(webProcessChat_(e));
-      case 'confirm_enrich':        return jsonOut_(webConfirmEnrich_(e));
+      case 'chat':                     return jsonOut_(webProcessChat_(e));
+      case 'confirm_enrich':           return jsonOut_(webConfirmEnrich_(e));
+      case 'generate_morning_routine': return jsonOut_(webGenerateMorningRoutine_());
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -3602,4 +3603,27 @@ function webConfirmEnrich_(e) {
   var messageId = (e.parameter && e.parameter.messageId) || '';
   if (!messageId) return { ok: false, error: 'messageId required' };
   return confirmPendingEnrichment_(messageId);
+}
+
+// ---- Morning Routine AI Generation (Issue #101) ----------------------------
+
+/**
+ * Calls Claude to generate a personalized morning routine checklist.
+ * GET ?action=generate_morning_routine&token=<VERA_WEB_TOKEN>
+ * Returns: { ok: true, items: ["item1", "item2", ...] }
+ */
+function webGenerateMorningRoutine_() {
+  var prompt =
+    'You are VERA, a personal chief of staff AI. Generate a personalized morning routine checklist.\n' +
+    'Follow these frameworks:\n' +
+    '1. The 10-10-10 Framework: Three 10-min blocks — Input (read a book or saved article, no news/social media), ' +
+    'Movement (10-min walk outside for morning sunlight), Stillness (5-10 min breath meditation).\n' +
+    '2. Administrative Sweep: Check VERA FLAGS for high-priority alerts; scan today\'s calendar for surprises.\n' +
+    '3. Physical anchors: hydrate (full glass of water), light/air exposure.\n\n' +
+    'Return a JSON array of 7-10 concise checklist item strings (under 60 chars each, no markdown, no numbers).\n' +
+    'Example: ["Drink a full glass of water", "Step outside for 10 minutes", "Read for 10 minutes"]\n' +
+    'Return ONLY the JSON array, nothing else.';
+  var items = callClaudeJson_(prompt, []);
+  if (!Array.isArray(items)) items = [];
+  return { ok: true, items: items };
 }

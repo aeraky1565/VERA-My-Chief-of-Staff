@@ -6799,12 +6799,165 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
   );
 }
 
+// ---- Morning Routine checklist (Issue #101) ---------------------------------
+
+function MorningRoutineTab({ apiUrl, apiToken }) {
+  const TODAY = new Date().toISOString().slice(0, 10);
+
+  const [items, setItems] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('vera_morning_routine') || '[]'); } catch { return []; }
+  });
+  const [checks, setChecks] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('vera_morning_checks_' + TODAY) || '[]'); } catch { return []; }
+  });
+  const [newItem,    setNewItem]    = React.useState('');
+  const [generating, setGenerating] = React.useState(false);
+  const [genError,   setGenError]   = React.useState('');
+
+  function saveItems(updated) {
+    setItems(updated);
+    localStorage.setItem('vera_morning_routine', JSON.stringify(updated));
+  }
+
+  function toggleCheck(id) {
+    const updated = checks.includes(id) ? checks.filter(c => c !== id) : [...checks, id];
+    setChecks(updated);
+    localStorage.setItem('vera_morning_checks_' + TODAY, JSON.stringify(updated));
+  }
+
+  function addItem(e) {
+    e.preventDefault();
+    if (!newItem.trim()) return;
+    saveItems([...items, { id: Date.now().toString(), text: newItem.trim(), source: 'manual' }]);
+    setNewItem('');
+  }
+
+  function deleteItem(id) { saveItems(items.filter(i => i.id !== id)); }
+
+  function moveItem(index, dir) {
+    const updated = [...items];
+    const swap = index + dir;
+    if (swap < 0 || swap >= updated.length) return;
+    [updated[index], updated[swap]] = [updated[swap], updated[index]];
+    saveItems(updated);
+  }
+
+  async function generateRoutine() {
+    setGenerating(true);
+    setGenError('');
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'generate_morning_routine' });
+      if (data.ok && Array.isArray(data.items) && data.items.length > 0) {
+        const manual   = items.filter(i => i.source === 'manual');
+        const veraItems = data.items.map((text, idx) => ({
+          id: 'vera_' + Date.now() + '_' + idx, text, source: 'vera',
+        }));
+        saveItems([...veraItems, ...manual]);
+      }
+    } catch (err) { setGenError('Could not generate routine: ' + err.message); }
+    setGenerating(false);
+  }
+
+  const doneCount = items.filter(i => checks.includes(i.id)).length;
+  const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <span style={{ fontWeight: 700, color: '#e8eaed', fontSize: 14 }}>{doneCount}/{items.length} completed today</span>
+          {items.length > 0 && (
+            <div style={{ width: 180, height: 5, background: '#1e2a3a', borderRadius: 3, marginTop: 6 }}>
+              <div style={{ width: pct + '%', height: '100%', background: '#4ade80', borderRadius: 3, transition: 'width 0.3s' }} />
+            </div>
+          )}
+        </div>
+        <button disabled={generating} onClick={generateRoutine}
+          style={{ padding: '7px 16px', borderRadius: 6, border: 'none',
+                   cursor: generating ? 'not-allowed' : 'pointer',
+                   background: generating ? '#1e2a3a' : '#8ab4f8',
+                   color: generating ? '#5f6368' : '#0d1117',
+                   fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
+          {generating ? '⏳ Generating…' : '✨ Generate with VERA'}
+        </button>
+      </div>
+
+      {genError && <div style={{ color: '#e57373', fontSize: 12, marginBottom: 10 }}>{genError}</div>}
+
+      {/* Checklist */}
+      {items.length === 0 ? (
+        <div className="empty-state" style={{ paddingTop: 32 }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>☀️</div>
+          <div style={{ color: '#a0b0c8', fontSize: 14, marginBottom: 6 }}>No routine items yet</div>
+          <div style={{ color: '#4d6080', fontSize: 12 }}>Add items below or click "Generate with VERA" to build your morning routine.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
+          {items.map((item, idx) => {
+            const checked = checks.includes(item.id);
+            return (
+              <div key={item.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                background: checked ? '#0f1f12' : '#1e2a3a',
+                borderRadius: 8, padding: '10px 12px',
+                border: '1px solid ' + (checked ? '#2d6a4f' : '#2a3a50'),
+                transition: 'all 0.15s',
+              }}>
+                <input type="checkbox" checked={checked} onChange={() => toggleCheck(item.id)}
+                  style={{ width: 16, height: 16, accentColor: '#4ade80', flexShrink: 0, cursor: 'pointer' }} />
+                <span style={{ flex: 1, fontSize: 14, color: checked ? '#5a7a60' : '#e8eaed',
+                               textDecoration: checked ? 'line-through' : 'none', transition: 'all 0.15s' }}>
+                  {item.text}
+                </span>
+                {item.source === 'vera' && (
+                  <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+                                 background: '#1a3050', color: '#8ab4f8', flexShrink: 0 }}>VERA</span>
+                )}
+                <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                  <button onClick={() => moveItem(idx, -1)} disabled={idx === 0} title="Move up"
+                    style={{ background: 'none', border: 'none', padding: '0 3px', fontSize: 13,
+                             cursor: idx === 0 ? 'default' : 'pointer',
+                             color: idx === 0 ? '#2a3a50' : '#5f6368' }}>↑</button>
+                  <button onClick={() => moveItem(idx, 1)} disabled={idx === items.length - 1} title="Move down"
+                    style={{ background: 'none', border: 'none', padding: '0 3px', fontSize: 13,
+                             cursor: idx === items.length - 1 ? 'default' : 'pointer',
+                             color: idx === items.length - 1 ? '#2a3a50' : '#5f6368' }}>↓</button>
+                  <button onClick={() => deleteItem(item.id)} title="Remove"
+                    style={{ background: 'none', border: 'none', padding: '0 3px', fontSize: 13,
+                             cursor: 'pointer', color: '#5f6368' }}>✕</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add item form */}
+      <form onSubmit={addItem} style={{ display: 'flex', gap: 8 }}>
+        <input value={newItem} onChange={e => setNewItem(e.target.value)}
+          placeholder="Add a routine item…"
+          style={{ flex: 1, background: '#0d1117', border: '1px solid #2a3a50', borderRadius: 6,
+                   color: '#e8eaed', padding: '8px 10px', fontSize: 13 }} />
+        <button type="submit" disabled={!newItem.trim()}
+          style={{ padding: '8px 16px', borderRadius: 6, border: 'none', fontWeight: 600, fontSize: 13,
+                   background: newItem.trim() ? '#8ab4f8' : '#1e2a3a',
+                   color: newItem.trim() ? '#0d1117' : '#5f6368',
+                   cursor: newItem.trim() ? 'pointer' : 'default' }}>
+          + Add
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ---- Health tab --------------------------------------------------------------
 
-function HealthTab() {
+function HealthTab({ apiUrl, apiToken }) {
   const [sub, setSub] = React.useState('fitness');
   const subTabs = [
-    { id: 'fitness', label: '💪 Fitness' },
+    { id: 'fitness',         label: '💪 Fitness' },
+    { id: 'morning_routine', label: '☀️ Morning Routine' },
   ];
   return (
     <div>
@@ -6820,6 +6973,9 @@ function HealthTab() {
           <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
           <div style={{ fontSize: 13, color: '#4d6080' }}>Fitness tracking is on its way.</div>
         </div>
+      )}
+      {sub === 'morning_routine' && (
+        <MorningRoutineTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
     </div>
   );
@@ -6887,6 +7043,64 @@ function MilestonesTab({ milestones, flags, tasks, onAction, busy }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ---- Growth tab (Issue #101) ------------------------------------------------
+
+function GrowthTab({ milestones, flags, tasks, onAction,
+                     goals, goalsLoading, dragGoalId, dragOverCol,
+                     onDragStart, onDragOver, onDrop, onAddGoal, onEditGoal, onDeleteGoal,
+                     busy }) {
+  const [sub, setSub] = React.useState('milestones');
+  const subTabs = [
+    { id: 'milestones',           label: '🎯 Milestones' },
+    { id: 'goals',                label: '🏆 Yearly Goals' },
+    { id: 'personal_development', label: '📖 Personal Development' },
+    { id: 'skill_building',       label: '🔧 Skill Building' },
+  ];
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}>{s.label}</button>
+        ))}
+      </div>
+      {sub === 'milestones' && (
+        <MilestonesTab milestones={milestones} flags={flags} tasks={tasks} onAction={onAction} busy={busy} />
+      )}
+      {sub === 'goals' && (
+        goalsLoading
+          ? <div className="loading-text">Loading goals…</div>
+          : <GoalsTab
+              goals={goals}
+              dragGoalId={dragGoalId}
+              dragOverCol={dragOverCol}
+              onDragStart={onDragStart}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              onAddGoal={onAddGoal}
+              onEditGoal={onEditGoal}
+              onDeleteGoal={onDeleteGoal}
+              busy={busy}
+            />
+      )}
+      {sub === 'personal_development' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Personal Development tracking is on its way.</div>
+        </div>
+      )}
+      {sub === 'skill_building' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Skill Building tracking is on its way.</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -7830,6 +8044,73 @@ function SharedInterestTab({ interests, onDelete, onAdd, busy }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Explore tab (Issue #101) -----------------------------------------------
+
+function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddInterest,
+                      ideas, ideasLoading, onAddIdea, onPromoteIdea, onArchiveIdea,
+                      busy }) {
+  const [sub, setSub] = React.useState('interests');
+  const subTabs = [
+    { id: 'interests',   label: '💛 Interests' },
+    { id: 'ideas',       label: '💡 Ideas' },
+    { id: 'resources',   label: '📚 Resources' },
+    { id: 'experiments', label: '🧪 Experiments' },
+    { id: 'wish_list',   label: '🛍 Wish List' },
+  ];
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}>{s.label}</button>
+        ))}
+      </div>
+      {sub === 'interests' && (
+        interestsLoading
+          ? <div className="loading-text">Loading interests…</div>
+          : <SharedInterestTab
+              interests={interests}
+              onDelete={onDeleteInterest}
+              onAdd={onAddInterest}
+              busy={busy}
+            />
+      )}
+      {sub === 'ideas' && (
+        ideasLoading
+          ? <div className="loading-text">Loading ideas…</div>
+          : <IdeasTab
+              ideas={ideas}
+              onAdd={onAddIdea}
+              onPromote={onPromoteIdea}
+              onArchive={onArchiveIdea}
+              busy={busy}
+            />
+      )}
+      {sub === 'resources' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>A read-it-later reference library for books, articles and videos.</div>
+        </div>
+      )}
+      {sub === 'experiments' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Track small, low-stakes experiments you're trying out.</div>
+        </div>
+      )}
+      {sub === 'wish_list' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Your "someday" wish list — distinct from your shopping list.</div>
         </div>
       )}
     </div>
@@ -9008,16 +9289,15 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'health', 'milestones', 'goals', 'interests', 'ideas'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'explore', 'health', 'growth'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
-                  if (tab === 'goals')      loadGoals(apiUrl, apiToken);
-                  if (tab === 'interests')  loadInterests(apiUrl, apiToken);
-                  if (tab === 'ideas')      loadIdeas(apiUrl, apiToken);
+                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); }
+                  if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
@@ -9030,16 +9310,14 @@ function App() {
                 {tab === 'flags'      ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
                 {tab === 'tasks'      ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
                 {tab === 'projects'   ? `🏗️ Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
-                {tab === 'goals'      ? `🎯 Yearly Goals${goals.length ? ` (${goals.length})` : ''}` : ''}
-                {tab === 'interests'  ? `💛 Interests${interests.length ? ` (${interests.length})` : ''}` : ''}
-                {tab === 'ideas'      ? `💡 Ideas${ideas.length ? ` (${ideas.length})` : ''}` : ''}
                 {tab === 'shopping'   ? `🛒 Shopping` : ''}
                 {tab === 'home_front' ? `🏡 Home Front` : ''}
                 {tab === 'pto'        ? `🌴 PTO Planner` : ''}
                 {tab === 'travel'     ? `✈️ Travel` : ''}
                 {tab === 'finances'   ? `💰 Finances` : ''}
+                {tab === 'explore'    ? `🔭 Explore` : ''}
                 {tab === 'health'     ? `🏥 Health` : ''}
-                {tab === 'milestones' ? `🎯 Milestones${milestones.length ? ` (${milestones.length})` : ''}` : ''}
+                {tab === 'growth'     ? `🌱 Growth` : ''}
               </button>
             ))}
           </div>
@@ -9163,69 +9441,20 @@ function App() {
                   />
             )}
 
-            {/* Yearly Goals tab */}
-            {activeTab === 'goals' && (
-              tabLoading.goals
-                ? <div className="loading-text">Loading goals…</div>
-                : <GoalsTab
-                    goals={goals}
-                    dragGoalId={dragGoalId}
-                    dragOverCol={dragOverCol}
-                    onDragStart={id => setDragGoalId(id)}
-                    onDragOver={col => setDragOverCol(col)}
-                    onDrop={async (newStatus) => {
-                      if (!dragGoalId || !newStatus) { setDragGoalId(null); setDragOverCol(null); return; }
-                      const id = dragGoalId;
-                      setDragGoalId(null);
-                      setDragOverCol(null);
-                      // Optimistic update
-                      setGoals(prev => prev.map(g => g.id === id ? { ...g, status: newStatus } : g));
-                      try {
-                        await apiGet(apiUrl, apiToken, { action: 'update_goal', id, status: newStatus });
-                      } catch (err) {
-                        setError('Failed to move goal: ' + err.message);
-                        loadGoals(apiUrl, apiToken);
-                      }
-                    }}
-                    onAddGoal={status => setGoalModal({ mode: 'add', status: status || 'To Do' })}
-                    onEditGoal={g => setGoalModal({ mode: 'edit', goal: g })}
-                    onDeleteGoal={async (id) => {
-                      if (!window.confirm('Delete this goal?')) return;
-                      setGoals(prev => prev.filter(g => g.id !== id));
-                      try {
-                        await apiGet(apiUrl, apiToken, { action: 'delete_goal', id });
-                      } catch (err) {
-                        setError('Failed to delete goal: ' + err.message);
-                        loadGoals(apiUrl, apiToken);
-                      }
-                    }}
-                    busy={busy}
-                  />
-            )}
-
-            {/* Shared Interests tab */}
-            {activeTab === 'interests' && (
-              tabLoading.interests
-                ? <div className="loading-text">Loading interests…</div>
-                : <SharedInterestTab
-                    interests={interests}
-                    onDelete={handleDeleteInterest}
-                    onAdd={() => setInterestModal(true)}
-                    busy={busy}
-                  />
-            )}
-
-            {/* Ideas tab */}
-            {activeTab === 'ideas' && (
-              tabLoading.ideas
-                ? <div className="loading-text">Loading ideas…</div>
-                : <IdeasTab
-                    ideas={ideas}
-                    onAdd={handleAddIdea}
-                    onPromote={handlePromoteIdea}
-                    onArchive={handleArchiveIdea}
-                    busy={busy}
-                  />
+            {/* Explore tab — Interests, Ideas + coming-soon sub-tabs (Issue #101) */}
+            {activeTab === 'explore' && (
+              <ExploreTab
+                interests={interests}
+                interestsLoading={!!tabLoading.interests}
+                onDeleteInterest={handleDeleteInterest}
+                onAddInterest={() => setInterestModal(true)}
+                ideas={ideas}
+                ideasLoading={!!tabLoading.ideas}
+                onAddIdea={handleAddIdea}
+                onPromoteIdea={handlePromoteIdea}
+                onArchiveIdea={handleArchiveIdea}
+                busy={busy}
+              />
             )}
 
             {/* Shopping tab */}
@@ -9338,15 +9567,46 @@ function App() {
             )}
 
             {/* Health tab */}
-            {activeTab === 'health' && <HealthTab />}
+            {activeTab === 'health' && <HealthTab apiUrl={apiUrl} apiToken={apiToken} />}
 
-            {/* Milestones tab */}
-            {activeTab === 'milestones' && (
-              <MilestonesTab
+            {/* Growth tab — Milestones, Goals + coming-soon sub-tabs (Issue #101) */}
+            {activeTab === 'growth' && (
+              <GrowthTab
                 milestones={milestones}
                 flags={flags}
                 tasks={tasks}
                 onAction={handleAction}
+                goals={goals}
+                goalsLoading={!!tabLoading.goals}
+                dragGoalId={dragGoalId}
+                dragOverCol={dragOverCol}
+                onDragStart={id => setDragGoalId(id)}
+                onDragOver={col => setDragOverCol(col)}
+                onDrop={async (newStatus) => {
+                  if (!dragGoalId || !newStatus) { setDragGoalId(null); setDragOverCol(null); return; }
+                  const id = dragGoalId;
+                  setDragGoalId(null);
+                  setDragOverCol(null);
+                  setGoals(prev => prev.map(g => g.id === id ? { ...g, status: newStatus } : g));
+                  try {
+                    await apiGet(apiUrl, apiToken, { action: 'update_goal', id, status: newStatus });
+                  } catch (err) {
+                    setError('Failed to move goal: ' + err.message);
+                    loadGoals(apiUrl, apiToken);
+                  }
+                }}
+                onAddGoal={status => setGoalModal({ mode: 'add', status: status || 'To Do' })}
+                onEditGoal={g => setGoalModal({ mode: 'edit', goal: g })}
+                onDeleteGoal={async (id) => {
+                  if (!window.confirm('Delete this goal?')) return;
+                  setGoals(prev => prev.filter(g => g.id !== id));
+                  try {
+                    await apiGet(apiUrl, apiToken, { action: 'delete_goal', id });
+                  } catch (err) {
+                    setError('Failed to delete goal: ' + err.message);
+                    loadGoals(apiUrl, apiToken);
+                  }
+                }}
                 busy={busy}
               />
             )}
