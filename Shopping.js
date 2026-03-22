@@ -136,8 +136,16 @@ function deleteShoppingItem_(tabId, itemIndex) {
     throw new Error('List item not found at index ' + idx + ' in tab ' + tabId);
   }
 
-  child.removeFromParent();
-  Logger.log('deleteShoppingItem_: tab=' + tabId + ' idx=' + idx);
+  // Google Docs requires at least one element per section — can't remove the last one.
+  // If this is the last child, clear its text instead; getShoppingList_() already
+  // skips empty-text items so it won't show up in the dashboard.
+  if (body.getNumChildren() <= 1) {
+    child.asListItem().setText('');
+    Logger.log('deleteShoppingItem_: last element — cleared text. tab=' + tabId + ' idx=' + idx);
+  } else {
+    child.removeFromParent();
+    Logger.log('deleteShoppingItem_: removed. tab=' + tabId + ' idx=' + idx);
+  }
   return { ok: true, tabId: tabId, index: idx };
 }
 
