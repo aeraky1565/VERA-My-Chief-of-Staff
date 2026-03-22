@@ -1010,6 +1010,16 @@ function executeActions_(rawText) {
     var type = m[1];
     var args = m[2].split('|');
 
+    // TripKey helper — TripKey format is "YYYY-MM-DD|TripName", which contains
+    // an internal pipe that confuses the generic split above (Issue #104).
+    // If args[0] looks like a date, re-join args[0]+'|'+args[1] as the TripKey.
+    function tripKeyArgs_() {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(args[0] || '') && args.length > 1) {
+        return { tripKey: args[0] + '|' + args[1], rest: args.slice(2) };
+      }
+      return { tripKey: args[0] || '', rest: args.slice(1) };
+    }
+
     try {
       if      (type === 'complete_task') {
         var ctRes = webCompleteTask_(args[0]);
@@ -1277,17 +1287,18 @@ function executeActions_(rawText) {
 
       // ---- Itinerary --------------------------------------------------------
       else if (type === 'add_itinerary_item') {
+        var aiTK = tripKeyArgs_();
         webAddItineraryItem_(makeFakeEvent_({
-          tripKey:   args[0] || '',
-          type:      args[1] || 'manual',
-          title:     args[2] || '',
-          date:      args[3] || '',
-          startTime: args[4] || '',
-          endTime:   args[5] || '',
-          location:  args[6] || '',
-          notes:     args[7] || '',
+          tripKey:   aiTK.tripKey,
+          type:      aiTK.rest[0] || 'manual',
+          title:     aiTK.rest[1] || '',
+          date:      aiTK.rest[2] || '',
+          startTime: aiTK.rest[3] || '',
+          endTime:   aiTK.rest[4] || '',
+          location:  aiTK.rest[5] || '',
+          notes:     aiTK.rest[6] || '',
         }));
-        executed.push('add_itinerary_item (' + (args[2] || '') + ' on ' + (args[3] || '') + ')');
+        executed.push('add_itinerary_item (' + (aiTK.rest[1] || '') + ' on ' + (aiTK.rest[2] || '') + ')');
       }
       else if (type === 'update_itinerary_item') {
         var uitParams = { id: args[0] || '' };
@@ -1300,19 +1311,21 @@ function executeActions_(rawText) {
         executed.push('delete_itinerary_item (' + args[0] + ')');
       }
       else if (type === 'set_trip_context') {
-        webSetTripMeta_(makeFakeEvent_({ tripKey: args[0] || '', context: args[1] || '', notes: '' }));
-        executed.push('set_trip_context (' + args[0] + ' \u2192 ' + args[1] + ')');
+        var stcTK = tripKeyArgs_();
+        webSetTripMeta_(makeFakeEvent_({ tripKey: stcTK.tripKey, context: stcTK.rest[0] || '', notes: '' }));
+        executed.push('set_trip_context (' + stcTK.tripKey + ' \u2192 ' + (stcTK.rest[0] || '') + ')');
       }
 
       // ---- Packing ----------------------------------------------------------
       else if (type === 'add_packing_item') {
+        var apiTK = tripKeyArgs_();
         webAddPackingItem_(makeFakeEvent_({
-          tripKey:  args[0] || '',
-          person:   args[1] || 'shared',
-          category: args[2] || 'General',
-          item:     args[3] || '',
+          tripKey:  apiTK.tripKey,
+          person:   apiTK.rest[0] || 'shared',
+          category: apiTK.rest[1] || 'General',
+          item:     apiTK.rest[2] || '',
         }));
-        executed.push('add_packing_item (' + (args[3] || '') + ' for ' + (args[1] || 'shared') + ')');
+        executed.push('add_packing_item (' + (apiTK.rest[2] || '') + ' for ' + (apiTK.rest[0] || 'shared') + ')');
       }
       else if (type === 'check_packing_item') {
         webUpdatePackingItem_(makeFakeEvent_({ id: args[0] || '', checked: args[1] || 'true' }));
@@ -1323,8 +1336,9 @@ function executeActions_(rawText) {
         executed.push('delete_packing_item (' + args[0] + ')');
       }
       else if (type === 'generate_packing_list') {
-        webGeneratePacking_(makeFakeEvent_({ tripKey: args[0] || '', startDate: args[1] || '', endDate: args[2] || '' }));
-        executed.push('generate_packing_list (' + args[0] + ')');
+        var gplTK = tripKeyArgs_();
+        webGeneratePacking_(makeFakeEvent_({ tripKey: gplTK.tripKey, startDate: gplTK.rest[0] || '', endDate: gplTK.rest[1] || '' }));
+        executed.push('generate_packing_list (' + gplTK.tripKey + ')');
       }
 
       // ---- Project tasks ----------------------------------------------------
