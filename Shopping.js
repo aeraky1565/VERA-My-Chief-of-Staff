@@ -136,7 +136,7 @@ function deleteShoppingItem_(tabId, itemIndex) {
     throw new Error('List item not found at index ' + idx + ' in tab ' + tabId);
   }
 
-  body.removeChild(child);
+  child.removeFromParent();
   Logger.log('deleteShoppingItem_: tab=' + tabId + ' idx=' + idx);
   return { ok: true, tabId: tabId, index: idx };
 }
