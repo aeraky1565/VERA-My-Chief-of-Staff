@@ -119,7 +119,9 @@ function createSheetTabs(ss) {
     ['pto_personal_hours',     '48'],  // annual personal time (hours)
     ['pto_buffer_days',        '3'],   // reserve days held back from planning
     ['weather_location',       ''],    // city name for weather ticker, e.g. "Austin, TX"
-    ['email_parser_enabled',   'false'], // set to 'true' to enable 30-min inbox scan (Issue #98)
+    ['email_parser_enabled',       'false'], // set to 'true' to enable 30-min inbox scan (Issue #98)
+    ['pretrip_briefing_enabled',   'true'],  // set to 'false' to disable pre-trip briefing flags (Issue #81)
+    ['pretrip_briefing_hours',     '48'],    // hours before departure to generate briefing (Issue #81)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -288,6 +290,13 @@ function nightlyRun() {
       recordExpiredFlags_();
     } catch (expFlagErr) {
       Logger.log('recordExpiredFlags_ error (non-fatal): ' + expFlagErr.message);
+    }
+
+    // Step 0f: Pre-trip briefings (48-hour auto-summary) (Issue #81)
+    try {
+      checkPreTripBriefings_();
+    } catch (ptbErr) {
+      Logger.log('checkPreTripBriefings_ error (non-fatal): ' + ptbErr.message);
     }
 
     // Step 1: Collect
