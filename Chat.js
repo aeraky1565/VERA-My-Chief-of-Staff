@@ -419,6 +419,18 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
+    // ---- RECENTLY COMPLETED TRIPS --------------------------------------------
+    (function() {
+      if (!context.recentTrips || !context.recentTrips.length) return '';
+      var lines = 'RECENTLY COMPLETED TRIPS:\n';
+      context.recentTrips.forEach(function(t) {
+        lines += '  \u2022 ' + t.tripLabel +
+                 ' (ended ' + Math.round(t.daysAgo) + ' day(s) ago)' +
+                 ' | TripKey: ' + t.tripKey + '\n';
+      });
+      return lines + '\n';
+    })() +
+
     // ---- COUNTRIES VISITED ---------------------------------------------------
     (function() {
       if (!context.countries || !context.countries.length) return '';
@@ -568,6 +580,16 @@ function buildChatSystemPrompt_(context) {
     '- For add_bucket_item: stars is 1–5 (5 = dream destination). dreamTrip = "yes" or a short description like "Cherry blossom season". Use blank for unknown fields.\n' +
     '- For update_bucket_item: use the ID from TRAVEL BUCKET LIST. field = "visited" (mark as visited with date/yes) or "stars" (update priority).\n' +
     '- For delete_bucket_item: use the ID from TRAVEL BUCKET LIST above. Always confirm the destination with Ahmed before deleting.\n' +
+    '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
+    'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
+    'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
+    '  1. Any restaurants, bars, or cafes worth going back to? (\u2192 ACTION:log_interest|Both|{name}, {city}|Food)\n' +
+    '  2. Best experience or highlight of the trip? (\u2192 ACTION:log_interest|Both|{experience}|Travel)\n' +
+    '  3. Anything you\'d skip or do differently next time? (\u2192 ACTION:log_interest|Ahmed|skip: {thing}, {city}|Travel)\n' +
+    '  4. Anything Victoria specifically loved? (\u2192 ACTION:log_interest|Victoria|{thing}|{best category})\n' +
+    '  5. Would you go back? (\u2192 ACTION:add_bucket_item or ACTION:update_bucket_item if destination already in bucket list)\n' +
+    'After the questions, emit ACTION:add_country if the destination isn\'t already in COUNTRIES VISITED, ' +
+    'using the trip notes as the Notes field. Confirm each item logged. End with a brief summary of what was captured.\n' +
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
@@ -801,6 +823,32 @@ function buildChatContext_() {
 
   var travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
 
+  // Recently-completed trips (ended 0.5–5 days ago) — for post-trip debrief context (Issue #87)
+  var recentTrips = [];
+  try {
+    var now2 = new Date();
+    Object.keys(itinByTrip).forEach(function(tk) {
+      var datePart = tk.split('|')[0];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
+
+      // Find end date = max event date across all rows for this trip
+      var maxDate = new Date(datePart + 'T00:00:00');
+      itinByTrip[tk].forEach(function(item) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
+          var d = new Date(item.date + 'T00:00:00');
+          if (d > maxDate) maxDate = d;
+        }
+      });
+
+      var daysAgo = (now2.getTime() - maxDate.getTime()) / 86400000;
+      if (daysAgo >= 0.5 && daysAgo <= 5) {
+        var tkParts = tk.split('|');
+        var label   = tkParts.length > 1 ? tkParts.slice(1).join('|') : tk;
+        recentTrips.push({ tripKey: tk, tripLabel: label, endDate: maxDate, daysAgo: daysAgo });
+      }
+    });
+  } catch(e) { Logger.log('Chat context: recentTrips — ' + e.message); }
+
   // Countries visited — reuse webGetCountries_() (header-based dynamic reads)
   var countries = [];
   try {
@@ -831,6 +879,7 @@ function buildChatContext_() {
     shoppingStores:  shoppingStores,
     ideas:           ideas,
     travel:          travel,
+    recentTrips:     recentTrips,
     countries:       countries,
     bucketList:      bucketList,
   };

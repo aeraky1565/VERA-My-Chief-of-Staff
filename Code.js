@@ -122,6 +122,8 @@ function createSheetTabs(ss) {
     ['email_parser_enabled',       'false'], // set to 'true' to enable 30-min inbox scan (Issue #98)
     ['pretrip_briefing_enabled',   'true'],  // set to 'false' to disable pre-trip briefing flags (Issue #81)
     ['pretrip_briefing_hours',     '48'],    // hours before departure to generate briefing (Issue #81)
+    ['posttrip_capture_enabled',   'true'],  // set to 'false' to disable post-trip debrief prompts (Issue #87)
+    ['posttrip_capture_delay_days','1'],     // days after trip end to fire the capture flag (Issue #87)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -297,6 +299,13 @@ function nightlyRun() {
       checkPreTripBriefings_();
     } catch (ptbErr) {
       Logger.log('checkPreTripBriefings_ error (non-fatal): ' + ptbErr.message);
+    }
+
+    // Step 0g: Post-trip capture prompts (Issue #87)
+    try {
+      checkPostTripCapture_();
+    } catch (ptcErr) {
+      Logger.log('checkPostTripCapture_ error (non-fatal): ' + ptcErr.message);
     }
 
     // Step 1: Collect
