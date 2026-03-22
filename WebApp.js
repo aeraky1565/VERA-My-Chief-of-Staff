@@ -151,6 +151,9 @@ function doGet(e) {
       case 'morning_routine_add':      return jsonOut_(webAddMorningRoutineItem_(e));
       case 'morning_routine_delete':   return jsonOut_(webDeleteMorningRoutineItem_(e));
       case 'morning_routine_move':     return jsonOut_(webMoveMorningRoutineItem_(e));
+      case 'gym_log':                  return jsonOut_(webGetGymLog_());
+      case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
+      case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -3924,4 +3927,16 @@ function findMorningRoutineRow_(id) {
     if (String(ids[i][0]).trim() === String(id).trim()) return { sheet: sheet, rowNum: i + 2 };
   }
   throw new Error('Routine item not found: ' + id);
+}
+
+// ---- Gym Log (Issue #97) ---------------------------------------------------
+
+function webGetGymLog_() {
+  return { ok: true, sessions: getGymLog_() };
+}
+
+function webLogGymAttend_(e, attended) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('id is required');
+  return logGymAttendance_(id, attended);
 }

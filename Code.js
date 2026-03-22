@@ -50,6 +50,7 @@ const TABS = {
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
+  GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -76,6 +77,7 @@ const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Trav
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
+const GYM_LOG_HEADERS          = ['ID', 'Event Title', 'Event Date', 'Attended', 'Logged At'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -132,6 +134,8 @@ function createSheetTabs(ss) {
     ['pretrip_briefing_hours',     '48'],    // hours before departure to generate briefing (Issue #81)
     ['posttrip_capture_enabled',   'true'],  // set to 'false' to disable post-trip debrief prompts (Issue #87)
     ['posttrip_capture_delay_days','1'],     // days after trip end to fire the capture flag (Issue #87)
+    ['gym_tracker_enabled',       'true'],  // set to 'false' to disable gym session tracking (Issue #97)
+    ['gym_tracker_lookback_hours','24'],    // hours to look back for ended EXERCISE events (Issue #97)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -156,6 +160,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
+  ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
   ensureSheet(ss, TABS.CONFIG,                CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -331,6 +336,13 @@ function nightlyRun() {
       }
     } catch (mrErr) {
       Logger.log('Morning routine reset error (non-fatal): ' + mrErr.message);
+    }
+
+    // Step 0i: Gym session check-in prompts (Issue #97)
+    try {
+      checkGymSessions_();
+    } catch (gymErr) {
+      Logger.log('checkGymSessions_ error (non-fatal): ' + gymErr.message);
     }
 
     // Step 1: Collect
