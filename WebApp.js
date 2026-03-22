@@ -144,6 +144,11 @@ function doGet(e) {
       case 'chat':                     return jsonOut_(webProcessChat_(e));
       case 'confirm_enrich':           return jsonOut_(webConfirmEnrich_(e));
       case 'generate_morning_routine': return jsonOut_(webGenerateMorningRoutine_());
+      case 'morning_routine':          return jsonOut_(webGetMorningRoutine_());
+      case 'morning_routine_toggle':   return jsonOut_(webToggleMorningRoutineItem_(e));
+      case 'morning_routine_add':      return jsonOut_(webAddMorningRoutineItem_(e));
+      case 'morning_routine_delete':   return jsonOut_(webDeleteMorningRoutineItem_(e));
+      case 'morning_routine_move':     return jsonOut_(webMoveMorningRoutineItem_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -3721,8 +3726,10 @@ function webConfirmEnrich_(e) {
 
 /**
  * Calls Claude to generate a personalized morning routine checklist.
+ * Writes VERA-sourced items to the Morning Routine sheet tab (replacing
+ * any previous VERA items), preserving manually-added items.
  * GET ?action=generate_morning_routine&token=<VERA_WEB_TOKEN>
- * Returns: { ok: true, items: ["item1", "item2", ...] }
+ * Returns: { ok: true, items: [...] } — full updated list from sheet
  */
 function webGenerateMorningRoutine_() {
   var prompt =
@@ -3735,7 +3742,170 @@ function webGenerateMorningRoutine_() {
     'Return a JSON array of 7-10 concise checklist item strings (under 60 chars each, no markdown, no numbers).\n' +
     'Example: ["Drink a full glass of water", "Step outside for 10 minutes", "Read for 10 minutes"]\n' +
     'Return ONLY the JSON array, nothing else.';
-  var items = callClaudeJson_(prompt, []);
-  if (!Array.isArray(items)) items = [];
+  var generatedTexts = callClaudeJson_(prompt, []);
+  if (!Array.isArray(generatedTexts)) generatedTexts = [];
+  if (generatedTexts.length === 0) return { ok: false, error: 'Claude returned no items' };
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
+  if (!sheet) throw new Error('Morning Routine tab not found — run createSheetTabs() first');
+
+  // Delete all existing vera-sourced rows (bottom-to-top to keep row indices valid)
+  if (sheet.getLastRow() > 1) {
+    var allRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    for (var i = allRows.length - 1; i >= 0; i--) {
+      if (String(allRows[i][2] || '') === 'vera') sheet.deleteRow(i + 2);
+    }
+  }
+
+  // Shift sort orders of remaining manual items to make room at top for vera items
+  var veraCount = generatedTexts.length;
+  if (sheet.getLastRow() > 1) {
+    var manualCount = sheet.getLastRow() - 1;
+    var sorts = sheet.getRange(2, 4, manualCount, 1).getValues();
+    for (var j = 0; j < sorts.length; j++) {
+      sheet.getRange(j + 2, 4).setValue((parseInt(sorts[j][0], 10) || 0) + veraCount);
+    }
+  }
+
+  // Append new vera items with sort orders 1..veraCount (displayed before manual items)
+  var tz        = Session.getScriptTimeZone();
+  var dateStr   = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+  var addedDate = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  generatedTexts.forEach(function(text, idx) {
+    var itemId = 'ROUTINE-' + dateStr + 'V-' + String(idx).padStart(2, '0');
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, MORNING_ROUTINE_HEADERS.length)
+         .setValues([[itemId, text, 'vera', idx + 1, false, '', addedDate]]);
+  });
+
+  return webGetMorningRoutine_(); // Return full updated list sorted by Sort
+}
+
+// ============================================================
+// MORNING ROUTINE — Sheet-backed checklist (cross-device)
+// ============================================================
+
+/**
+ * Returns all morning routine items sorted by Sort order.
+ * GET ?action=morning_routine
+ */
+function webGetMorningRoutine_() {
+  var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, MORNING_ROUTINE_HEADERS.length).getValues();
+  var items = rows
+    .filter(function(r) { return String(r[0] || '').trim() !== ''; })
+    .map(function(r) {
+      return {
+        id:        String(r[0]),
+        text:      String(r[1]),
+        source:    String(r[2] || 'manual'),
+        sort:      parseInt(r[3], 10) || 0,
+        checked:   r[4] === true || String(r[4]).toLowerCase() === 'true',
+        checkedAt: String(r[5] || ''),
+        addedDate: String(r[6] || ''),
+      };
+    })
+    .sort(function(a, b) { return a.sort - b.sort; });
   return { ok: true, items: items };
+}
+
+/**
+ * Toggles the checked state of a single morning routine item.
+ * GET ?action=morning_routine_toggle&id=ROUTINE-...
+ */
+function webToggleMorningRoutineItem_(e) {
+  var id    = (e.parameter && e.parameter.id) || '';
+  var found = findMorningRoutineRow_(id);
+  var curr  = found.sheet.getRange(found.rowNum, 5).getValue();
+  var nowOn = !(curr === true || String(curr).toLowerCase() === 'true');
+  var ts    = nowOn
+    ? Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss")
+    : '';
+  found.sheet.getRange(found.rowNum, 5).setValue(nowOn);
+  found.sheet.getRange(found.rowNum, 6).setValue(ts);
+  return { ok: true, id: id, checked: nowOn };
+}
+
+/**
+ * Adds a new manual item to the morning routine.
+ * GET ?action=morning_routine_add&text=...&source=manual
+ */
+function webAddMorningRoutineItem_(e) {
+  var text   = ((e.parameter && e.parameter.text)   || '').trim();
+  var source =  (e.parameter && e.parameter.source) || 'manual';
+  if (!text) throw new Error('Item text is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
+  if (!sheet) throw new Error('Morning Routine tab not found');
+  var tz      = Session.getScriptTimeZone();
+  var dateStr = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
+  // Generate unique ID
+  var seq = 0;
+  if (sheet.getLastRow() > 1) {
+    var existingIds = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    existingIds.forEach(function(r) { if (String(r[0]).indexOf('ROUTINE-' + dateStr) === 0) seq++; });
+  }
+  var itemId = 'ROUTINE-' + dateStr + '-' + String(seq).padStart(2, '0');
+  // Sort order: append at end (higher number = shown later)
+  var maxSort = 0;
+  if (sheet.getLastRow() > 1) {
+    var sorts = sheet.getRange(2, 4, sheet.getLastRow() - 1, 1).getValues();
+    sorts.forEach(function(r) { var n = parseInt(r[0], 10) || 0; if (n > maxSort) maxSort = n; });
+  }
+  var addedDate = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, MORNING_ROUTINE_HEADERS.length)
+       .setValues([[itemId, text, source, maxSort + 1, false, '', addedDate]]);
+  return { ok: true, id: itemId, action: 'added' };
+}
+
+/**
+ * Deletes a morning routine item by ID.
+ * GET ?action=morning_routine_delete&id=ROUTINE-...
+ */
+function webDeleteMorningRoutineItem_(e) {
+  var found = findMorningRoutineRow_((e.parameter && e.parameter.id) || '');
+  found.sheet.deleteRow(found.rowNum);
+  return { ok: true, action: 'deleted' };
+}
+
+/**
+ * Moves a morning routine item up (dir=-1) or down (dir=1) by swapping Sort values.
+ * GET ?action=morning_routine_move&id=ROUTINE-...&dir=-1
+ */
+function webMoveMorningRoutineItem_(e) {
+  var id  = (e.parameter && e.parameter.id)  || '';
+  var dir = parseInt((e.parameter && e.parameter.dir) || '0', 10);
+  if (!id || dir === 0) throw new Error('Missing id or dir');
+  var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, action: 'no_change' };
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, 4).getValues(); // [ID, Item, Source, Sort]
+  data.sort(function(a, b) { return (parseInt(a[3], 10) || 0) - (parseInt(b[3], 10) || 0); });
+  var idx = -1;
+  for (var i = 0; i < data.length; i++) { if (String(data[i][0]) === id) { idx = i; break; } }
+  if (idx === -1) throw new Error('Item not found: ' + id);
+  var swapIdx = idx + dir;
+  if (swapIdx < 0 || swapIdx >= data.length) return { ok: true, action: 'no_change' };
+  // Swap Sort values between the two items
+  var thisFound = findMorningRoutineRow_(String(data[idx][0]));
+  var swapFound = findMorningRoutineRow_(String(data[swapIdx][0]));
+  var thisSort  = parseInt(data[idx][3],    10) || 0;
+  var swapSort  = parseInt(data[swapIdx][3],10) || 0;
+  thisFound.sheet.getRange(thisFound.rowNum, 4).setValue(swapSort);
+  swapFound.sheet.getRange(swapFound.rowNum, 4).setValue(thisSort);
+  return { ok: true, action: 'moved' };
+}
+
+/**
+ * Finds the sheet row number for a morning routine item by ID.
+ * @returns {{ sheet: Sheet, rowNum: number }}
+ */
+function findMorningRoutineRow_(id) {
+  if (!id) throw new Error('Missing routine item ID');
+  var sheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Morning Routine tab is empty');
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) return { sheet: sheet, rowNum: i + 2 };
+  }
+  throw new Error('Routine item not found: ' + id);
 }

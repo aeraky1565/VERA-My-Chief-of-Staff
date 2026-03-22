@@ -6802,64 +6802,87 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
 // ---- Morning Routine checklist (Issue #101) ---------------------------------
 
 function MorningRoutineTab({ apiUrl, apiToken }) {
-  const TODAY = new Date().toISOString().slice(0, 10);
-
-  const [items, setItems] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('vera_morning_routine') || '[]'); } catch { return []; }
-  });
-  const [checks, setChecks] = React.useState(() => {
-    try { return JSON.parse(localStorage.getItem('vera_morning_checks_' + TODAY) || '[]'); } catch { return []; }
-  });
-  const [newItem,    setNewItem]    = React.useState('');
+  // All state is server-backed (Google Sheet) — no localStorage.
+  // Checked state is per-item from the sheet, reset nightly by nightlyRun().
+  const [items,     setItems]     = React.useState([]);
+  const [loading,   setLoading]   = React.useState(true);
+  const [apiError,  setApiError]  = React.useState('');
+  const [newItem,   setNewItem]   = React.useState('');
   const [generating, setGenerating] = React.useState(false);
-  const [genError,   setGenError]   = React.useState('');
+  const [genError,  setGenError]  = React.useState('');
 
-  function saveItems(updated) {
-    setItems(updated);
-    localStorage.setItem('vera_morning_routine', JSON.stringify(updated));
+  React.useEffect(() => { loadItems(); }, []);
+
+  async function loadItems() {
+    setLoading(true);
+    setApiError('');
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'morning_routine' });
+      setItems(data.items || []);
+    } catch (err) {
+      setApiError('Could not load routine: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function toggleCheck(id) {
-    const updated = checks.includes(id) ? checks.filter(c => c !== id) : [...checks, id];
-    setChecks(updated);
-    localStorage.setItem('vera_morning_checks_' + TODAY, JSON.stringify(updated));
+  async function toggleCheck(id) {
+    // Optimistic update: flip locally immediately, sync to server in background
+    setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'morning_routine_toggle', id });
+    } catch (err) {
+      // Revert on failure
+      setItems(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+      setApiError('Toggle failed: ' + err.message);
+    }
   }
 
-  function addItem(e) {
+  async function addItem(e) {
     e.preventDefault();
     if (!newItem.trim()) return;
-    saveItems([...items, { id: Date.now().toString(), text: newItem.trim(), source: 'manual' }]);
-    setNewItem('');
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'morning_routine_add', text: newItem.trim(), source: 'manual' });
+      setNewItem('');
+      await loadItems();
+    } catch (err) { setApiError('Add failed: ' + err.message); }
   }
 
-  function deleteItem(id) { saveItems(items.filter(i => i.id !== id)); }
+  async function deleteItem(id) {
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'morning_routine_delete', id });
+      await loadItems();
+    } catch (err) { setApiError('Delete failed: ' + err.message); }
+  }
 
-  function moveItem(index, dir) {
-    const updated = [...items];
-    const swap = index + dir;
-    if (swap < 0 || swap >= updated.length) return;
-    [updated[index], updated[swap]] = [updated[swap], updated[index]];
-    saveItems(updated);
+  async function moveItem(index, dir) {
+    const id = items[index] && items[index].id;
+    if (!id) return;
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'morning_routine_move', id, dir });
+      await loadItems();
+    } catch (err) { setApiError('Move failed: ' + err.message); }
   }
 
   async function generateRoutine() {
     setGenerating(true);
     setGenError('');
     try {
+      // Server now writes to sheet and returns full updated item list
       const data = await apiGet(apiUrl, apiToken, { action: 'generate_morning_routine' });
-      if (data.ok && Array.isArray(data.items) && data.items.length > 0) {
-        const manual   = items.filter(i => i.source === 'manual');
-        const veraItems = data.items.map((text, idx) => ({
-          id: 'vera_' + Date.now() + '_' + idx, text, source: 'vera',
-        }));
-        saveItems([...veraItems, ...manual]);
-      }
+      if (data.ok && Array.isArray(data.items)) setItems(data.items);
     } catch (err) { setGenError('Could not generate routine: ' + err.message); }
     setGenerating(false);
   }
 
-  const doneCount = items.filter(i => checks.includes(i.id)).length;
+  const doneCount = items.filter(i => i.checked).length;
   const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
+
+  if (loading) return (
+    <div style={{ color: '#a0b0c8', fontSize: 14, paddingTop: 32, textAlign: 'center' }}>
+      ⏳ Loading morning routine…
+    </div>
+  );
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -6884,6 +6907,13 @@ function MorningRoutineTab({ apiUrl, apiToken }) {
       </div>
 
       {genError && <div style={{ color: '#e57373', fontSize: 12, marginBottom: 10 }}>{genError}</div>}
+      {apiError && (
+        <div style={{ color: '#e57373', fontSize: 12, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {apiError}
+          <button onClick={loadItems} style={{ background: 'none', border: '1px solid #e57373', borderRadius: 4,
+            color: '#e57373', fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}>Retry</button>
+        </div>
+      )}
 
       {/* Checklist */}
       {items.length === 0 ? (
@@ -6895,7 +6925,7 @@ function MorningRoutineTab({ apiUrl, apiToken }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
           {items.map((item, idx) => {
-            const checked = checks.includes(item.id);
+            const checked = item.checked;
             return (
               <div key={item.id} style={{
                 display: 'flex', alignItems: 'center', gap: 10,

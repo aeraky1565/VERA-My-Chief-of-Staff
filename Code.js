@@ -49,6 +49,7 @@ const TABS = {
   BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
+  MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -74,6 +75,7 @@ const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller',
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
+const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -152,6 +154,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
+  ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
   ensureSheet(ss, TABS.CONFIG,                CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -313,6 +316,20 @@ function nightlyRun() {
       checkPostTripCapture_();
     } catch (ptcErr) {
       Logger.log('checkPostTripCapture_ error (non-fatal): ' + ptcErr.message);
+    }
+
+    // Step 0h: Reset morning routine checkboxes for the new day
+    try {
+      var mrSheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
+      if (mrSheet && mrSheet.getLastRow() > 1) {
+        var mrRows = mrSheet.getLastRow() - 1;
+        var resetVals = [];
+        for (var mri = 0; mri < mrRows; mri++) resetVals.push([false, '']);
+        mrSheet.getRange(2, 5, mrRows, 2).setValues(resetVals); // cols 5–6: Checked, Checked At
+        Logger.log('Morning routine: reset ' + mrRows + ' item(s) to unchecked.');
+      }
+    } catch (mrErr) {
+      Logger.log('Morning routine reset error (non-fatal): ' + mrErr.message);
     }
 
     // Step 1: Collect
