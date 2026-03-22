@@ -107,6 +107,7 @@ function getSpreadsheet() {
 }
 
 function createSheetTabs(ss) {
+  ss = ss || getSpreadsheet(); // allow calling standalone from the Apps Script editor
   // Default Config rows
   const configDefaults = [
     ['calendar_days_ahead',    '7'],
