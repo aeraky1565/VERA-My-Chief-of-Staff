@@ -136,15 +136,15 @@ function deleteShoppingItem_(tabId, itemIndex) {
     throw new Error('List item not found at index ' + idx + ' in tab ' + tabId);
   }
 
-  // Google Docs requires at least one element per section — can't remove the last one.
-  // If this is the last child, clear its text instead; getShoppingList_() already
-  // skips empty-text items so it won't show up in the dashboard.
-  if (body.getNumChildren() <= 1) {
-    child.asListItem().setText('');
-    Logger.log('deleteShoppingItem_: last element — cleared text. tab=' + tabId + ' idx=' + idx);
-  } else {
+  // Google Docs requires at least one paragraph-type element per section.
+  // Try to remove; if Docs refuses (e.g. last paragraph in section), clear the
+  // text instead — getShoppingList_() skips empty-text items so it disappears.
+  try {
     child.removeFromParent();
     Logger.log('deleteShoppingItem_: removed. tab=' + tabId + ' idx=' + idx);
+  } catch (removeErr) {
+    child.asListItem().setText('');
+    Logger.log('deleteShoppingItem_: cleared text (remove blocked). tab=' + tabId + ' idx=' + idx);
   }
   return { ok: true, tabId: tabId, index: idx };
 }
