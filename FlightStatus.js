@@ -213,9 +213,11 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     // Skip flights not yet in polling window (>24h out)
     if (!forceRefresh && minutesUntilDep > 1440) { skipped++; continue; }
 
-    // Skip flights that have long since landed (>60 min past departure)
+    // Stop polling once the flight has landed or been cancelled — no time condition needed
     var existingStatus = (meta.flight_status || {}).status;
-    if (!forceRefresh && minutesUntilDep < -60 && existingStatus === 'landed') { skipped++; continue; }
+    if (!forceRefresh && (existingStatus === 'landed' || existingStatus === 'cancelled')) { skipped++; continue; }
+    // Safeguard: stop polling anything more than 12 hours past departure even if no terminal status arrived
+    if (!forceRefresh && minutesUntilDep < -720) { skipped++; continue; }
 
     // Determine required poll interval (minutes)
     var intervalMin;
@@ -321,7 +323,10 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
 
         var cachedEntry  = calCache[calId] || {};
         var cachedStatus = cachedEntry.status || {};
-        if (!forceRefresh && minsUntilEv < -60 && cachedStatus.status === 'landed') { skipped++; continue; }
+        // Stop polling once landed or cancelled — no time condition needed
+        if (!forceRefresh && (cachedStatus.status === 'landed' || cachedStatus.status === 'cancelled')) { skipped++; continue; }
+        // Safeguard: stop polling anything more than 12 hours past departure even if no terminal status arrived
+        if (!forceRefresh && minsUntilEv < -720) { skipped++; continue; }
 
         var calInterval = minsUntilEv > 360 ? 180 : minsUntilEv > 60 ? 60 : 15;
         if (!forceRefresh && (now - (cachedStatus.lastChecked || 0)) < calInterval * 60000) { skipped++; continue; }
