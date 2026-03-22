@@ -2530,16 +2530,63 @@ function getPackingWeather_(destination, startDate, endDate) {
 /**
  * Build the Claude prompt for packing list generation.
  */
-function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights, context, itinerarySummary, weatherSummary) {
-  const contextLine = context ? 'Trip Context: ' + context : 'Trip Context: General travel';
-  const weatherLine = weatherSummary
+function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
+                              context, traveler, destination, season,
+                              itinerarySummary, weatherSummary,
+                              activityTypes, dressCodes, freeDays) {
+  var travelersLine = traveler
+    ? 'Travelers: ' + traveler
+    : 'Travelers: Ahmed and Victoria';
+  var contextLine = 'Trip Context: ' + (context || 'General travel');
+  var weatherLine = weatherSummary
     ? 'Weather: ' + weatherSummary
     : 'Weather: Unknown \u2014 pack for general conditions';
+  var destLine  = destination
+    ? 'Destination: ' + destination + (season ? ' (' + season + ')' : '')
+    : '';
+  var datesLine = 'Dates: ' + startDate + ' to ' + endDate +
+                  ' (' + durationNights + ' nights' + (season ? ', ' + season : '') + ')';
+
+  // Activity-specific hints — only emit lines relevant to this trip
+  var hints = [];
+  if (activityTypes.beach || activityTypes.snorkeling || activityTypes.diving || activityTypes.swimming) {
+    hints.push('- Beach/water activities: include swimwear, water shoes, dry bag, reef-safe sunscreen.');
+  }
+  if (activityTypes.hiking || activityTypes.trekking || activityTypes.outdoor) {
+    hints.push('- Hiking/outdoor: include trail shoes, daypack, moisture-wicking layers.');
+  }
+  if (activityTypes.skiing || activityTypes.snowboard) {
+    hints.push('- Winter sports: include thermals, ski socks, goggles, gloves, neck gaiter.');
+  }
+  if (activityTypes.spa) {
+    hints.push('- Spa day: comfortable loose clothes and flip flops.');
+  }
+  if (activityTypes.show || activityTypes.museum || activityTypes.theater) {
+    hints.push('- Cultural/show event: ensure at least one smart-casual or formal outfit.');
+  }
+  if (activityTypes.theme_park) {
+    hints.push('- Theme park: comfortable walking shoes, layers.');
+  }
+  if (activityTypes.cruise || activityTypes.ferry) {
+    hints.push('- Cruise/boat: sea-sickness meds, wind layers, formal night outfit.');
+  }
+  if (activityTypes.dining) {
+    hints.push('- Fine dining: check dress code and pack accordingly.');
+  }
+  if (freeDays > 0) {
+    hints.push('- ' + freeDays + ' free/unscheduled day(s): versatile casual wear for exploration.');
+  }
+  if (dressCodes && dressCodes.length > 0) {
+    var uniqueDressCodes = dressCodes.filter(function(v, i, a) { return a.indexOf(v) === i; });
+    hints.push('- Reservation dress codes noted: ' + uniqueDressCodes.join(', ') + '. Pack to match the strictest.');
+  }
 
   return (
     'You are VERA, a smart packing assistant for Ahmed and Victoria, a US-based couple.\n\n' +
     'Trip: ' + tripLabel + '\n' +
-    'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
+    (destLine ? destLine + '\n' : '') +
+    datesLine + '\n' +
+    travelersLine + '\n' +
     contextLine + '\n' +
     weatherLine + '\n\n' +
     (itinerarySummary ? '=== ITINERARY ===\n' + itinerarySummary + '\n\n' : '') +
@@ -2552,8 +2599,9 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights, cont
     '  Work Trip \u2192 laptop, charger, business clothes; Family \u2192 shared snacks/kids items if relevant.\n' +
     '- Match weather: rain \u2192 rain jacket; hot \u2192 sunscreen + light clothes; cold \u2192 layers + coat.\n' +
     '- 30\u201360 total items max. Keep item names concise (e.g. "3 T-shirts", not "t-shirt 1, t-shirt 2").\n' +
-    '- Do NOT include basic everyday items unless travel-specific (e.g. include "travel toothbrush" not just "toothbrush").\n\n' +
-    'CRITICAL \u2014 RESPONSE FORMAT:\n' +
+    '- Do NOT include basic everyday items unless travel-specific (e.g. include "travel toothbrush" not just "toothbrush").\n' +
+    (hints.length ? '\nACTIVITY-SPECIFIC RULES:\n' + hints.join('\n') + '\n' : '') +
+    '\nCRITICAL \u2014 RESPONSE FORMAT:\n' +
     'Return ONLY a raw JSON object. No markdown. No code fences. No explanation.\n' +
     'Start with { and end with }.\n\n' +
     '{"ahmed":[{"category":"Documents","item":"Passport"},{"category":"Clothing","item":"3 T-shirts"}],' +
@@ -2614,28 +2662,57 @@ function webGeneratePacking_(e) {
   const ss       = getSpreadsheet();
   const itinSheet = ss.getSheetByName(TABS.ITINERARY);
   let itinerarySummary = '';
+  var activityTypes = {};  // e.g. { beach: true, dining: true, flight: true }
+  var dressCodes    = [];  // dress codes collected from email-enriched metadata
   if (itinSheet && itinSheet.getLastRow() >= 2) {
     const itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
     const lines = [];
     itinData.forEach(function(row) {
       if (String(row[1]).trim() !== tripKey) return;
       const date  = String(row[4]).trim();
-      const type  = String(row[2]).trim();
+      const itype = String(row[2]).trim().toLowerCase();
       const title = String(row[3]).trim();
       const loc   = String(row[7]).trim();
-      let line = '\u2022 [' + type + '] ' + title;
-      if (date) line = date + ' ' + line;
-      if (loc)  line += ' @ ' + loc;
+      if (itype) activityTypes[itype] = true;
+
+      var dresscode     = '';
+      var importantNote = '';
+      if (row[9]) {
+        try {
+          var meta = JSON.parse(String(row[9]));
+          if (meta.dresscode)      { dresscode = meta.dresscode; dressCodes.push(meta.dresscode); }
+          if (meta.importantNotes) importantNote = meta.importantNotes;
+        } catch(e_) { /* skip unparseable metadata */ }
+      }
+
+      let line = '\u2022 [' + itype + '] ' + title;
+      if (date)          line = date + ' ' + line;
+      if (loc)           line += ' @ ' + loc;
+      if (dresscode)     line += ' (dresscode: ' + dresscode + ')';
+      if (importantNote) line += ' \u2014 ' + importantNote;
       lines.push(line);
     });
     itinerarySummary = lines.join('\n');
+
+    // Step 2b — Count free/unscheduled days
+    var scheduledDates = {};
+    lines.forEach(function(l) {
+      var m = l.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (m) scheduledDates[m[1]] = true;
+    });
+    var freeDays = Math.max(0, parseInt(durationNights, 10) - Object.keys(scheduledDates).length);
+    if (isNaN(freeDays)) freeDays = 0;
+  } else {
+    var freeDays = 0;
   }
 
-  // Step 3 — Load trip context
-  let context = '';
+  // Step 3 — Load trip context and traveler
+  let context  = '';
+  var traveler = '';
   try {
     const metaResult = webGetTripMeta_(e);
-    context = metaResult.context || '';
+    context  = metaResult.context  || '';
+    traveler = metaResult.traveler || '';
   } catch(err) { /* graceful */ }
 
   // Step 4 — Infer destination for weather
@@ -2671,11 +2748,26 @@ function webGeneratePacking_(e) {
       .trim();
   }
 
+  // Step 4b — Derive season from startDate month
+  var season = '';
+  if (startDate) {
+    var mo = parseInt(startDate.substring(5, 7), 10);
+    season = (mo <= 2 || mo === 12) ? 'Winter'
+           : mo <= 5  ? 'Spring'
+           : mo <= 8  ? 'Summer'
+           : 'Fall';
+  }
+
   // Step 5 — Weather
   const weatherSummary = getPackingWeather_(destination, startDate || '', endDate || '');
 
-  // Step 6 — Build prompt
-  const prompt = buildPackingPrompt_(tripLabel, startDate, endDate, durationNights, context, itinerarySummary, weatherSummary);
+  // Step 6 — Build prompt with full enriched context
+  const prompt = buildPackingPrompt_(
+    tripLabel, startDate, endDate, durationNights,
+    context, traveler, destination, season,
+    itinerarySummary, weatherSummary,
+    activityTypes, dressCodes, freeDays
+  );
 
   // Step 7 — Call Claude
   const apiKey = getApiKey();
