@@ -142,6 +142,7 @@ function doGet(e) {
       case 'update_recommendation':    return jsonOut_(webUpdateRecommendation_(e));
       case 'accept_recommendation':    return jsonOut_(webAcceptRecommendation_(e));
       case 'chat':                  return jsonOut_(webProcessChat_(e));
+      case 'confirm_enrich':        return jsonOut_(webConfirmEnrich_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -3588,4 +3589,17 @@ function formatDateVal_(val) {
     return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return String(val);
+}
+
+// ---- Email Parser — Confirm Pending Enrichment (Issue #98) ------------------
+
+/**
+ * Confirms a held email enrichment match and writes it to the Itinerary row.
+ * GET ?action=confirm_enrich&messageId=<gmail_message_id>&token=<VERA_WEB_TOKEN>
+ * Called from the dashboard when the user approves a "confirm match" flag.
+ */
+function webConfirmEnrich_(e) {
+  var messageId = (e.parameter && e.parameter.messageId) || '';
+  if (!messageId) return { ok: false, error: 'messageId required' };
+  return confirmPendingEnrichment_(messageId);
 }

@@ -43,6 +43,7 @@ const TABS = {
   COUNTRIES:        'Countries',        // Countries visited tracker (Issue #74)
   BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
+  PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -67,6 +68,7 @@ const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
+const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -117,6 +119,7 @@ function createSheetTabs(ss) {
     ['pto_personal_hours',     '48'],  // annual personal time (hours)
     ['pto_buffer_days',        '3'],   // reserve days held back from planning
     ['weather_location',       ''],    // city name for weather ticker, e.g. "Austin, TX"
+    ['email_parser_enabled',   'false'], // set to 'true' to enable 30-min inbox scan (Issue #98)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -139,6 +142,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.COUNTRIES,             COUNTRIES_HEADERS);
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
+  ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.CONFIG,                CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -187,7 +191,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -221,7 +225,13 @@ function setupTriggers() {
     .everyMinutes(15)
     .create();
 
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min.');
+  // Email inbox scanner — parses travel confirmation emails every 30 min (Issue #98)
+  ScriptApp.newTrigger('runEmailScan_')
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min.');
 }
 
 // ============================================================
