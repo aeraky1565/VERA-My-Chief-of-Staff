@@ -348,6 +348,28 @@ function buildChatSystemPrompt_(context) {
     ? '(none configured)'
     : context.shoppingStores.join(', ');
 
+  var takeoutLines = (!context.takeouts || context.takeouts.length === 0)
+    ? '  (none saved yet)'
+    : context.takeouts.map(function(r) {
+        var stars  = r.rating ? ' ' + '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating) : '';
+        var items  = r.items.length > 0
+          ? r.items.map(function(it) {
+              var iStars = it.rating ? ' ' + '★'.repeat(it.rating) + '☆'.repeat(5 - it.rating) : '';
+              return '    • ' + it.item + iStars + (it.description ? ' — ' + it.description : '');
+            }).join('\n')
+          : '    (no items yet)';
+        return '  ' + r.name + stars + (r.cuisine ? ' [' + r.cuisine + ']' : '') + '\n' + items;
+      }).join('\n');
+
+  var pantryLines = (!context.pantryDue || context.pantryDue.length === 0)
+    ? '  (pantry tracking not yet active, or no purchases logged)'
+    : context.pantryDue.map(function(p) {
+        return '  ' + p.normalized +
+               (p.daysUntil <= 0 ? ' — likely OUT' : ' — est. out in ~' + p.daysUntil + 'd') +
+               (p.store ? ' (usually: ' + p.store + ')' : '') +
+               ' [' + p.confidence + ']';
+      }).join('\n');
+
   var ideaLines = (!context.ideas || context.ideas.length === 0)
     ? '  (none parked)'
     : context.ideas.map(function(i) {
@@ -380,6 +402,8 @@ function buildChatSystemPrompt_(context) {
     'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' +
     'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' +
     'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
+    'FAVORITE TAKEOUTS (' + (context.takeouts ? context.takeouts.length : 0) + '):\n' + takeoutLines + '\n\n' +
+    'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
     (function() {
@@ -539,6 +563,13 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_bucket_item|{id}  \u2014 id from TRAVEL BUCKET LIST context above. Always confirm first.\n' +
     'ACTION:add_gym_sessions|{YYYY-MM-DD}|{Trip Label}  \u2014 schedules morning gym sessions on all interior days of a trip (skips arrival + departure day)\n' +
     'ACTION:log_receipt_items|{item}|{category}|{qty}|{unit}|{store}|{price}  \u2014 one line per item from a receipt or grocery image; qty/price blank if unclear\n' +
+    // Takeouts (Issue #112)
+    'ACTION:add_takeout_restaurant|{name}|{cuisine}|{phone}|{website}|{rating 1-5 or blank}|{notes}\n' +
+    'ACTION:add_takeout_item|{restaurant_name}|{item}|{description}|{rating 1-5 or blank}|{notes}\n' +
+    'ACTION:delete_takeout_restaurant|{restaurant_name}\n' +
+    'ACTION:delete_takeout_item|{restaurant_name}|{item_name}\n' +
+    // Pantry (Issue #111)
+    'ACTION:add_purchase|{item}|{category}|{qty}|{unit}|{store}|{price}  \u2014 manually log a grocery/household purchase; qty/unit/store/price blank if unknown\n' +
     '\n' +
 
     'RULES:\n' +
@@ -589,6 +620,11 @@ function buildChatSystemPrompt_(context) {
     'extract all visible items and emit one log_receipt_items ACTION per item. Use canonical lowercase names ' +
     '(e.g. "milk" not "Kirkland 2% Reduced Fat Milk 2L"). category from: Dairy/Produce/Pantry/Meat/Household/Personal Care/Other. ' +
     'Leave qty/price blank if not clearly visible. Confirm total item count in your reply.\n' +
+    '- For add_takeout_restaurant: cuisine, phone, website, notes are all optional (use blank). rating is 1–5 or blank.\n' +
+    '- For add_takeout_item: restaurant_name must match a restaurant listed in FAVORITE TAKEOUTS above. description, rating, notes are optional (use blank). rating is 1–5 or blank.\n' +
+    '- For delete_takeout_restaurant: always confirm with Ahmed before deleting — this also removes ALL items under that restaurant.\n' +
+    '- For delete_takeout_item: pass the restaurant name and item name exactly as listed in FAVORITE TAKEOUTS. Always confirm the item with Ahmed before deleting.\n' +
+    '- For add_purchase: use when Ahmed says "I just bought X", "log that I picked up X from Y", or "I got X at Z". Category from: Dairy/Produce/Pantry/Meat/Household/Personal Care/Other. Leave qty/unit/store/price blank if not mentioned. Confirm the item name and store.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -872,6 +908,19 @@ function buildChatContext_() {
     bucketList = (bRes && bRes.entries) || [];
   } catch(e) { Logger.log('Chat context: bucketList — ' + e.message); }
 
+  // Favorite Takeouts (Issue #112)
+  var takeouts = [];
+  try {
+    var tRes = webGetTakeouts_();
+    takeouts = (tRes && tRes.restaurants) || [];
+  } catch(e) { Logger.log('Chat context: takeouts — ' + e.message); }
+
+  // Pantry — items predicted to run out soon (Issue #111)
+  var pantryDue = [];
+  try {
+    pantryDue = getItemsDue_(14); // look ahead 14 days
+  } catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -891,6 +940,8 @@ function buildChatContext_() {
     recentTrips:     recentTrips,
     countries:       countries,
     bucketList:      bucketList,
+    takeouts:        takeouts,
+    pantryDue:       pantryDue,
   };
 }
 
@@ -1606,6 +1657,76 @@ function executeActions_(rawText) {
           qty: riQty, unit: riUnit, store: riStore, price: riPrice,
         }], 'receipt');
         executed.push('log_receipt_items (' + riItem + ')');
+      }
+
+      // ---- Takeouts (Issue #112) -----------------------------------------
+      else if (type === 'add_takeout_restaurant') {
+        var atrName = (args[0] || '').trim();
+        if (!atrName) throw new Error('restaurant name required');
+        webAddTakeoutRestaurant_({
+          name:    atrName,
+          cuisine: (args[1] || '').trim(),
+          phone:   (args[2] || '').trim(),
+          website: (args[3] || '').trim(),
+          rating:  args[4] && args[4].trim() ? Number(args[4]) : '',
+          notes:   (args[5] || '').trim(),
+        });
+        executed.push('add_takeout_restaurant (' + atrName + ')');
+      }
+      else if (type === 'add_takeout_item') {
+        var atiRest = (args[0] || '').trim();
+        var atiItem = (args[1] || '').trim();
+        if (!atiRest || !atiItem) throw new Error('restaurant and item name required');
+        webAddTakeoutItem_({
+          restaurant:  atiRest,
+          item:        atiItem,
+          description: (args[2] || '').trim(),
+          rating:      args[3] && args[3].trim() ? Number(args[3]) : '',
+          notes:       (args[4] || '').trim(),
+        });
+        executed.push('add_takeout_item (' + atiItem + ' @ ' + atiRest + ')');
+      }
+      else if (type === 'delete_takeout_restaurant') {
+        var dtrName = (args[0] || '').trim();
+        if (!dtrName) throw new Error('restaurant name required');
+        webDeleteTakeoutRestaurant_({ name: dtrName });
+        executed.push('delete_takeout_restaurant (' + dtrName + ')');
+      }
+      else if (type === 'delete_takeout_item') {
+        var dtiRest = (args[0] || '').trim();
+        var dtiItem = (args[1] || '').trim();
+        if (!dtiRest || !dtiItem) throw new Error('restaurant name and item name required');
+        // Look up row by restaurant + item name (case-insensitive)
+        var dtiSheet = getSpreadsheet().getSheetByName(TABS.TAKEOUT_ITEMS);
+        if (!dtiSheet || dtiSheet.getLastRow() < 2) throw new Error('No takeout items found');
+        var dtiData = dtiSheet.getRange(2, 1, dtiSheet.getLastRow() - 1, 2).getValues();
+        var dtiRow  = -1;
+        for (var di = 0; di < dtiData.length; di++) {
+          if (String(dtiData[di][0]).trim().toLowerCase() === dtiRest.toLowerCase() &&
+              String(dtiData[di][1]).trim().toLowerCase() === dtiItem.toLowerCase()) {
+            dtiRow = di + 2; break;
+          }
+        }
+        if (dtiRow < 2) throw new Error('Item "' + dtiItem + '" not found at "' + dtiRest + '"');
+        webDeleteTakeoutItem_({ row: dtiRow });
+        executed.push('delete_takeout_item (' + dtiItem + ' @ ' + dtiRest + ')');
+      }
+
+      // ---- Pantry / Purchase History (Issue #111) --------------------------
+      else if (type === 'add_purchase') {
+        var apItem  = (args[0] || '').trim();
+        if (!apItem) throw new Error('item name required');
+        var apNorm  = normalizeItemName_(apItem);
+        var apCat   = (args[1] || 'Other').trim();
+        var apQty   = args[2] && args[2].trim() ? parseFloat(args[2]) : null;
+        var apUnit  = (args[3] || '').trim();
+        var apStore = (args[4] || '').trim();
+        var apPrice = args[5] && args[5].trim() ? parseFloat(args[5]) : null;
+        logPurchaseItems_([{
+          item: apItem, normalized: apNorm, category: apCat,
+          qty: apQty, unit: apUnit, store: apStore, price: apPrice,
+        }], 'manual');
+        executed.push('add_purchase (' + apItem + ')');
       }
 
     } catch (e) {
