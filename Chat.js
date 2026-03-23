@@ -370,6 +370,34 @@ function buildChatSystemPrompt_(context) {
                ' [' + p.confidence + ']';
       }).join('\n');
 
+  var careerLines = (function() {
+    var c = context.career;
+    if (!c) return '  (not yet configured)';
+    var lines = '';
+    if (c.position && c.position.title) {
+      lines += '  Position: ' + c.position.title +
+               (c.position.company ? ' at ' + c.position.company : '') +
+               (c.position.startDate ? ' (since ' + c.position.startDate + ')' : '') + '\n';
+      if (c.position.workStyle) lines += '  Work style: ' + c.position.workStyle + '\n';
+      if (c.position.focusAreas) lines += '  Focus areas: ' + c.position.focusAreas + '\n';
+    }
+    if (c.goals && c.goals.length > 0) {
+      lines += '  Goals (' + c.goals.length + '):\n';
+      c.goals.filter(function(g) { return g.status !== 'Achieved' && g.status !== 'Paused'; })
+        .forEach(function(g) {
+          lines += '    [' + g.id + '] ' + g.title + ' [' + g.horizon + '] — ' + g.status + '\n';
+        });
+    }
+    if (c.wins && c.wins.length > 0) {
+      var recentWins = c.wins.slice(0, 5);
+      lines += '  Recent wins:\n';
+      recentWins.forEach(function(w) {
+        lines += '    [' + (w.date || '') + '] ' + w.win + (w.impact ? ' — ' + w.impact : '') + '\n';
+      });
+    }
+    return lines.trim() || '  (profile empty — set your position in the Career tab)';
+  })();
+
   var ideaLines = (!context.ideas || context.ideas.length === 0)
     ? '  (none parked)'
     : context.ideas.map(function(i) {
@@ -404,6 +432,7 @@ function buildChatSystemPrompt_(context) {
     'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
     'FAVORITE TAKEOUTS (' + (context.takeouts ? context.takeouts.length : 0) + '):\n' + takeoutLines + '\n\n' +
     'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
+    'CAREER PROFILE:\n' + careerLines + '\n\n' +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
     (function() {
@@ -570,6 +599,10 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_takeout_item|{restaurant_name}|{item_name}\n' +
     // Pantry (Issue #111)
     'ACTION:add_purchase|{item}|{category}|{qty}|{unit}|{store}|{price}  \u2014 manually log a grocery/household purchase; qty/unit/store/price blank if unknown\n' +
+    // Career
+    'ACTION:add_career_win|{win}|{impact}|{category}|{date YYYY-MM-DD or blank}  \u2014 log a professional achievement\n' +
+    'ACTION:add_career_goal|{title}|{horizon 1yr/3yr/5yr/10yr}|{category}|{notes}  \u2014 record a career goal\n' +
+    'ACTION:update_career_position|{field}|{value}  \u2014 update position; field = title/company/department/workStyle/focusAreas/notes\n' +
     '\n' +
 
     'RULES:\n' +
@@ -625,6 +658,9 @@ function buildChatSystemPrompt_(context) {
     '- For delete_takeout_restaurant: always confirm with Ahmed before deleting — this also removes ALL items under that restaurant.\n' +
     '- For delete_takeout_item: pass the restaurant name and item name exactly as listed in FAVORITE TAKEOUTS. Always confirm the item with Ahmed before deleting.\n' +
     '- For add_purchase: use when Ahmed says "I just bought X", "log that I picked up X from Y", or "I got X at Z". Category from: Dairy/Produce/Pantry/Meat/Household/Personal Care/Other. Leave qty/unit/store/price blank if not mentioned. Confirm the item name and store.\n' +
+    '- For add_career_win: capture automatically when Ahmed mentions an achievement, positive outcome, launch, promotion, or recognition (e.g., "we launched X", "I got recognized for Y", "my team won Z"). Category from: Promotion/Recognition/Launch/Leadership/Project/Other. Impact is a concise business outcome. Date defaults to today if not specified.\n' +
+    '- For add_career_goal: use when Ahmed says "my career goal is X", "I want to become Y", or "in N years I want to Z". Map horizon naturally: <18 months → 1yr, ~3 years → 3yr, ~5 years → 5yr, 10+ years → 10yr. Category is optional — infer from context (e.g., Leadership, Technical, Visibility).\n' +
+    '- For update_career_position: use when Ahmed mentions a new role, promotion, company change, or updates his focus areas. Confirm the change before emitting the ACTION. Do not use this for temporary assignments or speculation.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -921,6 +957,13 @@ function buildChatContext_() {
     pantryDue = getItemsDue_(14); // look ahead 14 days
   } catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); }
 
+  // Career profile (Position, Goals, Wins)
+  var career = null;
+  try {
+    var carRes = webGetCareer_();
+    if (carRes && carRes.ok) career = carRes;
+  } catch(e) { Logger.log('Chat context: career — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -942,6 +985,7 @@ function buildChatContext_() {
     bucketList:      bucketList,
     takeouts:        takeouts,
     pantryDue:       pantryDue,
+    career:          career,
   };
 }
 
@@ -1727,6 +1771,42 @@ function executeActions_(rawText) {
           qty: apQty, unit: apUnit, store: apStore, price: apPrice,
         }], 'manual');
         executed.push('add_purchase (' + apItem + ')');
+      }
+
+      // Career
+      else if (type === 'add_career_win') {
+        var cwWin    = (args[0] || '').trim();
+        var cwImpact = (args[1] || '').trim();
+        var cwCat    = (args[2] || 'Project').trim();
+        var cwDate   = (args[3] || '').trim() || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        if (cwWin) {
+          webAddCareerWin_({ parameter: { win: cwWin, impact: cwImpact, category: cwCat, date: cwDate } });
+          executed.push('add_career_win (' + cwWin.slice(0, 40) + ')');
+        }
+      }
+
+      else if (type === 'add_career_goal') {
+        var cgTitle   = (args[0] || '').trim();
+        var cgHorizon = (args[1] || '1yr').trim();
+        var cgCat     = (args[2] || '').trim();
+        var cgNotes   = (args[3] || '').trim();
+        if (cgTitle) {
+          webAddCareerGoal_({ parameter: { title: cgTitle, horizon: cgHorizon, category: cgCat, notes: cgNotes, status: 'Active' } });
+          executed.push('add_career_goal (' + cgTitle + ')');
+        }
+      }
+
+      else if (type === 'update_career_position') {
+        // Field-by-field update: read current position, patch the field, then overwrite
+        var cpField = (args[0] || '').trim();
+        var cpValue = (args[1] || '').trim();
+        if (cpField && cpValue) {
+          var cpCur = webGetCareer_();
+          var cpPos = (cpCur && cpCur.position) ? cpCur.position : {};
+          cpPos[cpField] = cpValue;
+          webUpdateCareerPosition_({ parameter: cpPos });
+          executed.push('update_career_position (' + cpField + '=' + cpValue + ')');
+        }
       }
 
     } catch (e) {

@@ -6701,6 +6701,733 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
   );
 }
 
+// ---- Career tab -------------------------------------------------------------
+
+function CareerPositionModal({ form, setForm, busy, onSave, onClose }) {
+  function inp(key, label, ph, req) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+          {label}{req ? ' *' : ''}
+        </label>
+        <input value={form[key] || ''} placeholder={ph || ''}
+          onChange={function(e) { var v = e.target.value; setForm(function(p) { var n = Object.assign({}, p); n[key] = v; return n; }); }}
+          style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e',
+                   border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+      </div>
+    );
+  }
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 480 }} onClick={function(e) { e.stopPropagation(); }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Edit Position</div>
+        {inp('title', 'Title', 'e.g. Senior Product Manager', true)}
+        {inp('company', 'Company', 'Company name')}
+        {inp('department', 'Department', 'e.g. Product')}
+        {inp('startDate', 'Start Date', 'e.g. Jan 2023')}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Work Style</label>
+          <select value={form.workStyle || ''}
+            onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { workStyle: v }); }); }}
+            style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e',
+                     border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+            <option value="">—</option>
+            <option>Remote</option><option>Hybrid</option><option>On-site</option>
+          </select>
+        </div>
+        {inp('focusAreas', 'Focus Areas', 'Semicolon-separated, e.g. Growth;Strategy')}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+          <textarea value={form.notes || ''}
+            onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+            rows={3} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e',
+                              border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+          <button type="button" disabled={busy || !form.title} onClick={onSave}
+            style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                     color: '#fff', cursor: (busy || !form.title) ? 'not-allowed' : 'pointer',
+                     fontSize: 13, fontWeight: 600, opacity: (busy || !form.title) ? 0.5 : 1 }}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CareerPositionView({ position, busy, onUpdatePosition }) {
+  var [editing, setEditing] = React.useState(false);
+  var [form, setForm]       = React.useState({});
+  function openEdit() { setForm(position || {}); setEditing(true); }
+  function handleSave() { onUpdatePosition(form); setEditing(false); }
+  var noPos = !position || !position.title;
+  return (
+    <div>
+      {noPos ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📌</div>
+          <div style={{ marginBottom: 16 }}>No position set yet</div>
+          <button className="btn btn-primary" onClick={openEdit}>Set Position</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={openEdit}>✏️ Edit</button>
+          </div>
+          <div className="card" style={{ padding: 20, maxWidth: 580 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#dde1f0', marginBottom: 4 }}>{position.title}</div>
+            <div style={{ fontSize: 14, color: '#8a9abf', marginBottom: 14 }}>
+              {position.company}{position.department ? ' · ' + position.department : ''}
+              {position.startDate ? ' · since ' + position.startDate : ''}
+            </div>
+            {position.workStyle && (
+              <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: '#1a2a4a',
+                             color: '#8a9abf', display: 'inline-block', marginBottom: 12 }}>
+                {position.workStyle}
+              </span>
+            )}
+            {position.focusAreas && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#5c6a8a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Focus Areas</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {position.focusAreas.split(';').map(function(f, i) {
+                    return f.trim() ? (
+                      <span key={i} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10,
+                                             background: '#162040', color: '#c9a84c', border: '1px solid #2a3060' }}>
+                        {f.trim()}
+                      </span>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+            )}
+            {position.notes && (
+              <div style={{ fontSize: 13, color: '#6b7fa8', borderTop: '1px solid #1e3060', paddingTop: 12 }}>
+                {position.notes}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {editing && (
+        <CareerPositionModal form={form} setForm={setForm} busy={busy}
+          onSave={handleSave} onClose={function() { setEditing(false); }} />
+      )}
+    </div>
+  );
+}
+
+function CareerGoalsView({ goals, busy, onAddGoal, onUpdateGoal, onDeleteGoal }) {
+  var [showAdd, setShowAdd] = React.useState(false);
+  var [form, setForm]       = React.useState({ horizon: '1yr', status: 'Active' });
+  var HORIZON_COLORS = { '1yr': '#5c9eff', '3yr': '#c9a84c', '5yr': '#a06cd5', '10yr': '#3cb371' };
+  var STATUS_COLORS  = { Active: '#3cb371', Achieved: '#c9a84c', Paused: '#5c6a8a' };
+  var STATUS_CYCLE   = { Active: 'Achieved', Achieved: 'Paused', Paused: 'Active' };
+
+  function handleAdd() {
+    if (!form.title) return;
+    onAddGoal(form);
+    setForm({ horizon: '1yr', status: 'Active' });
+    setShowAdd(false);
+  }
+
+  return (
+    <div>
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { setShowAdd(true); }}>＋ Add Goal</button>
+        <span className="count-badge">{goals.length} goals</span>
+      </div>
+      {goals.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🎯</div>
+          <div>No career goals yet</div>
+        </div>
+      )}
+      {goals.map(function(g) {
+        var hColor = HORIZON_COLORS[g.horizon] || '#5c9eff';
+        var sColor = STATUS_COLORS[g.status]   || '#5c6a8a';
+        return (
+          <div key={g.id} className="card" style={{ padding: 16, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#dde1f0' }}>{g.title}</span>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: hColor + '22', color: hColor, border: '1px solid ' + hColor + '55' }}>{g.horizon}</span>
+                {g.category && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#1a2a4a', color: '#8a9abf' }}>{g.category}</span>}
+              </div>
+              {g.targetDate && <div style={{ fontSize: 12, color: '#5c6a8a', marginBottom: 4 }}>Target: {g.targetDate}</div>}
+              {g.notes && <div style={{ fontSize: 12, color: '#6b7fa8' }}>{g.notes}</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 12, flexShrink: 0 }}>
+              <button onClick={function() { onUpdateGoal(g.id, 'status', STATUS_CYCLE[g.status] || 'Active'); }}
+                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 10, background: sColor + '22',
+                         color: sColor, border: '1px solid ' + sColor + '55', cursor: 'pointer' }}>
+                {g.status}
+              </button>
+              <button onClick={function() { if (window.confirm('Delete goal "' + g.title + '"?')) onDeleteGoal(g.id); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+            </div>
+          </div>
+        );
+      })}
+      {showAdd && (
+        <div className="modal-overlay" onClick={function() { setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth: 420 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Add Career Goal</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Title *</label>
+              <input value={form.title || ''} placeholder="e.g. Become a Director of Product"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { title: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Horizon</label>
+                <select value={form.horizon || '1yr'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { horizon: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>1yr</option><option>3yr</option><option>5yr</option><option>10yr</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Status</label>
+                <select value={form.status || 'Active'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { status: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Active</option><option>Achieved</option><option>Paused</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Category</label>
+              <input value={form.category || ''} placeholder="e.g. Leadership, Technical, Visibility"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { category: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Target Date</label>
+              <input value={form.targetDate || ''} placeholder="e.g. Q4 2026"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { targetDate: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={form.notes || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setShowAdd(false); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !form.title} onClick={handleAdd}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !form.title) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !form.title) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Add Goal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CareerProgressionView({ progression, busy, onAddProgression, onDeleteProgression }) {
+  var [showAdd, setShowAdd] = React.useState(false);
+  var [form, setForm]       = React.useState({ type: 'New Role' });
+  var TYPE_COLORS = { 'New Role': '#5c9eff', Promotion: '#3cb371', Lateral: '#c9a84c', Freelance: '#a06cd5', Sabbatical: '#e07b54' };
+
+  function handleAdd() {
+    if (!form.title || !form.company || !form.startYear) return;
+    onAddProgression(form);
+    setForm({ type: 'New Role' });
+    setShowAdd(false);
+  }
+
+  return (
+    <div>
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { setShowAdd(true); }}>＋ Add Role</button>
+        <span className="count-badge">{progression.length} entries</span>
+      </div>
+      {progression.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📈</div>
+          <div>No career history yet</div>
+        </div>
+      )}
+      {progression.map(function(p) {
+        var tColor = TYPE_COLORS[p.type] || '#5c9eff';
+        var yearRange = p.startYear + ' \u2013 ' + (p.endYear || 'Present');
+        return (
+          <div key={p.id} className="card" style={{ padding: 16, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#dde1f0' }}>{p.title}</span>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: tColor + '22', color: tColor, border: '1px solid ' + tColor + '55' }}>{p.type}</span>
+              </div>
+              <div style={{ fontSize: 13, color: '#8a9abf', marginBottom: p.highlights ? 8 : 0 }}>
+                {p.company} · {yearRange}
+              </div>
+              {p.highlights && (
+                <div style={{ fontSize: 12, color: '#6b7fa8', borderTop: '1px solid #1e3060', paddingTop: 8 }}>
+                  {p.highlights}
+                </div>
+              )}
+            </div>
+            <button onClick={function() { if (window.confirm('Delete "' + p.title + '"?')) onDeleteProgression(p.id); }}
+              style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px', marginLeft: 12, flexShrink: 0 }}>×</button>
+          </div>
+        );
+      })}
+      {showAdd && (
+        <div className="modal-overlay" onClick={function() { setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth: 440 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Add Role</div>
+            {['title', 'company'].map(function(key) {
+              var labels = { title: 'Title *', company: 'Company *' };
+              var phs    = { title: 'e.g. Product Manager', company: 'e.g. Acme Corp' };
+              return (
+                <div key={key} style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{labels[key]}</label>
+                  <input value={form[key] || ''} placeholder={phs[key]}
+                    onChange={function(e) { var v = e.target.value; setForm(function(prev) { var n = Object.assign({}, prev); n[key] = v; return n; }); }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Start Year *</label>
+                <input value={form.startYear || ''} placeholder="e.g. 2021"
+                  onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { startYear: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>End Year</label>
+                <input value={form.endYear || ''} placeholder="blank = Present"
+                  onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { endYear: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Type</label>
+              <select value={form.type || 'New Role'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { type: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                <option>New Role</option><option>Promotion</option><option>Lateral</option><option>Freelance</option><option>Sabbatical</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Highlights</label>
+              <textarea value={form.highlights || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { highlights: v }); }); }}
+                rows={2} placeholder="Key achievements or responsibilities"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={form.notes || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setShowAdd(false); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !form.title || !form.company || !form.startYear} onClick={handleAdd}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !form.title || !form.company || !form.startYear) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !form.title || !form.company || !form.startYear) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Add Role'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CareerDevelopmentView({ development, busy, onAddDevelopment, onUpdateDevelopment, onDeleteDevelopment }) {
+  var [showAdd, setShowAdd] = React.useState(false);
+  var [form, setForm]       = React.useState({ type: 'Skill', status: 'Planned' });
+  var TYPE_COLORS   = { Skill: '#5c9eff', Course: '#c9a84c', Certification: '#3cb371', 'Focus Area': '#a06cd5' };
+  var STATUS_COLORS = { Planned: '#5c6a8a', 'In Progress': '#5c9eff', Completed: '#3cb371' };
+  var STATUS_CYCLE  = { Planned: 'In Progress', 'In Progress': 'Completed', Completed: 'Planned' };
+  var STATUS_ORDER  = { 'In Progress': 0, Planned: 1, Completed: 2 };
+  var sorted = development.slice().sort(function(a, b) { return (STATUS_ORDER[a.status] != null ? STATUS_ORDER[a.status] : 3) - (STATUS_ORDER[b.status] != null ? STATUS_ORDER[b.status] : 3); });
+
+  function handleAdd() {
+    if (!form.item) return;
+    onAddDevelopment(form);
+    setForm({ type: 'Skill', status: 'Planned' });
+    setShowAdd(false);
+  }
+
+  return (
+    <div>
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { setShowAdd(true); }}>＋ Add Item</button>
+        <span className="count-badge">{development.length} items</span>
+      </div>
+      {sorted.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🧠</div>
+          <div>No development items yet</div>
+        </div>
+      )}
+      {sorted.map(function(d) {
+        var tColor = TYPE_COLORS[d.type]     || '#5c9eff';
+        var sColor = STATUS_COLORS[d.status] || '#5c6a8a';
+        return (
+          <div key={d.id} className="card" style={{ padding: 14, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0' }}>{d.item}</span>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: tColor + '22', color: tColor, border: '1px solid ' + tColor + '55' }}>{d.type}</span>
+              </div>
+              {d.targetDate && <div style={{ fontSize: 12, color: '#5c6a8a' }}>Target: {d.targetDate}</div>}
+              {d.notes && <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 4 }}>{d.notes}</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 12, flexShrink: 0 }}>
+              <button onClick={function() { onUpdateDevelopment(d.id, 'status', STATUS_CYCLE[d.status] || 'Planned'); }}
+                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 10, background: sColor + '22',
+                         color: sColor, border: '1px solid ' + sColor + '55', cursor: 'pointer' }}>
+                {d.status}
+              </button>
+              <button onClick={function() { onDeleteDevelopment(d.id); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+            </div>
+          </div>
+        );
+      })}
+      {showAdd && (
+        <div className="modal-overlay" onClick={function() { setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth: 400 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Add Development Item</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Item *</label>
+              <input value={form.item || ''} placeholder="e.g. SQL Advanced, AWS Cert"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { item: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Type</label>
+                <select value={form.type || 'Skill'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { type: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Skill</option><option>Course</option><option>Certification</option><option>Focus Area</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Status</label>
+                <select value={form.status || 'Planned'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { status: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Planned</option><option>In Progress</option><option>Completed</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Target Date</label>
+              <input value={form.targetDate || ''} placeholder="e.g. Q2 2026"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { targetDate: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={form.notes || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setShowAdd(false); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !form.item} onClick={handleAdd}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !form.item) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !form.item) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Add Item'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CareerWinsView({ wins, busy, onAddWin, onDeleteWin }) {
+  var today = new Date().toISOString().slice(0, 10);
+  var [showAdd, setShowAdd] = React.useState(false);
+  var [form, setForm]       = React.useState({ date: today, category: 'Project' });
+  var CAT_COLORS = { Promotion: '#3cb371', Recognition: '#c9a84c', Launch: '#5c9eff', Leadership: '#a06cd5', Project: '#4a9abf', Other: '#5c6a8a' };
+
+  function handleAdd() {
+    if (!form.win) return;
+    onAddWin(form);
+    setForm({ date: today, category: 'Project' });
+    setShowAdd(false);
+  }
+
+  return (
+    <div>
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { setShowAdd(true); }}>＋ Add Win</button>
+        <span className="count-badge">{wins.length} wins</span>
+      </div>
+      {wins.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🏆</div>
+          <div>No wins logged yet — go win something!</div>
+        </div>
+      )}
+      {wins.map(function(w) {
+        var cColor = CAT_COLORS[w.category] || '#5c6a8a';
+        return (
+          <div key={w.id} className="card" style={{ padding: 16, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: '#5c6a8a' }}>{w.date}</span>
+                {w.category && (
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: cColor + '22', color: cColor, border: '1px solid ' + cColor + '55' }}>{w.category}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0', marginBottom: w.impact ? 4 : 0 }}>{w.win}</div>
+              {w.impact && <div style={{ fontSize: 13, color: '#8a9abf' }}>{w.impact}</div>}
+              {w.notes && <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 4 }}>{w.notes}</div>}
+            </div>
+            <button onClick={function() { if (window.confirm('Delete this win?')) onDeleteWin(w.id); }}
+              style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px', marginLeft: 12, flexShrink: 0 }}>×</button>
+          </div>
+        );
+      })}
+      {showAdd && (
+        <div className="modal-overlay" onClick={function() { setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth: 420 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Log a Win</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Win *</label>
+              <textarea value={form.win || ''} placeholder="What did you achieve?"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { win: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Impact</label>
+              <input value={form.impact || ''} placeholder="e.g. Grew revenue by 20%, saved 5 hrs/week"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { impact: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Category</label>
+                <select value={form.category || 'Project'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { category: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Promotion</option><option>Recognition</option><option>Launch</option>
+                  <option>Leadership</option><option>Project</option><option>Other</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Date</label>
+                <input type="date" value={form.date || today}
+                  onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { date: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={form.notes || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setShowAdd(false); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !form.win} onClick={handleAdd}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !form.win) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !form.win) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Log Win'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CareerNetworkView({ network, busy, onAddNetwork, onUpdateNetwork, onDeleteNetwork }) {
+  var [showAdd, setShowAdd] = React.useState(false);
+  var [form, setForm]       = React.useState({ relationship: 'Peer' });
+  var REL_COLORS = { Mentor: '#c9a84c', Sponsor: '#3cb371', Peer: '#5c9eff', Coach: '#a06cd5', Colleague: '#5c6a8a' };
+
+  function handleAdd() {
+    if (!form.name) return;
+    onAddNetwork(form);
+    setForm({ relationship: 'Peer' });
+    setShowAdd(false);
+  }
+
+  return (
+    <div>
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { setShowAdd(true); }}>＋ Add Contact</button>
+        <span className="count-badge">{network.length} contacts</span>
+      </div>
+      {network.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🤝</div>
+          <div>No network contacts yet</div>
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+        {network.map(function(c) {
+          var rColor = REL_COLORS[c.relationship] || '#5c6a8a';
+          return (
+            <div key={c.id} className="card" style={{ padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#dde1f0' }}>{c.name}</div>
+                  {(c.role || c.company) && (
+                    <div style={{ fontSize: 12, color: '#8a9abf' }}>
+                      {c.role}{c.role && c.company ? ' @ ' : ''}{c.company}
+                    </div>
+                  )}
+                </div>
+                <button onClick={function() { if (window.confirm('Remove ' + c.name + '?')) onDeleteNetwork(c.id); }}
+                  style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: rColor + '22', color: rColor, border: '1px solid ' + rColor + '55' }}>{c.relationship}</span>
+                {c.lastContact && <span style={{ fontSize: 11, color: '#5c6a8a' }}>Last: {c.lastContact}</span>}
+              </div>
+              {c.notes && <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 8, borderTop: '1px solid #1e3060', paddingTop: 8 }}>{c.notes}</div>}
+              <button onClick={function() { onUpdateNetwork(c.id, 'lastContact', new Date().toISOString().slice(0, 10)); }}
+                style={{ width: '100%', marginTop: 10, padding: '6px 0', borderRadius: 8, background: '#1a2a4a', border: '1px solid #2a3a5a',
+                         color: '#8a9abf', cursor: 'pointer', fontSize: 12 }}>
+                📞 Reached out
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {showAdd && (
+        <div className="modal-overlay" onClick={function() { setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth: 400 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Add Contact</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Name *</label>
+              <input value={form.name || ''} placeholder="Full name"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { name: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            {['role', 'company'].map(function(key) {
+              var labels = { role: 'Role', company: 'Company' };
+              var phs    = { role: 'e.g. VP of Engineering', company: 'e.g. Acme Corp' };
+              return (
+                <div key={key} style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{labels[key]}</label>
+                  <input value={form[key] || ''} placeholder={phs[key]}
+                    onChange={function(e) { var v = e.target.value; setForm(function(prev) { var n = Object.assign({}, prev); n[key] = v; return n; }); }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Relationship</label>
+                <select value={form.relationship || 'Peer'} onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { relationship: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Mentor</option><option>Sponsor</option><option>Peer</option><option>Coach</option><option>Colleague</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Last Contact</label>
+                <input type="date" value={form.lastContact || ''}
+                  onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { lastContact: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={form.notes || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setShowAdd(false); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !form.name} onClick={handleAdd}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !form.name) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !form.name) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Add Contact'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CareerTab({ career, loading, busy,
+                     onUpdatePosition,
+                     onAddGoal, onUpdateGoal, onDeleteGoal,
+                     onAddProgression, onDeleteProgression,
+                     onAddDevelopment, onUpdateDevelopment, onDeleteDevelopment,
+                     onAddWin, onDeleteWin,
+                     onAddNetwork, onUpdateNetwork, onDeleteNetwork }) {
+  var [sub, setSub] = React.useState('position');
+  var subTabs = [
+    { id: 'position',    label: '📌 Position'   },
+    { id: 'goals',       label: '🎯 Goals'       },
+    { id: 'progression', label: '📈 Progression' },
+    { id: 'development', label: '🧠 Development' },
+    { id: 'wins',        label: '🏆 Wins'        },
+    { id: 'network',     label: '🤝 Network'     },
+  ];
+  var data = career || {};
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(function(s) {
+          return (
+            <button key={s.id} className={'subtab-btn' + (sub === s.id ? ' active' : '')}
+              onClick={function() { setSub(s.id); }}>{s.label}</button>
+          );
+        })}
+      </div>
+      {loading && <div className="loading-text">Loading career data…</div>}
+      {!loading && sub === 'position' && (
+        <CareerPositionView position={data.position} busy={busy} onUpdatePosition={onUpdatePosition} />
+      )}
+      {!loading && sub === 'goals' && (
+        <CareerGoalsView goals={data.goals || []} busy={busy}
+          onAddGoal={onAddGoal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} />
+      )}
+      {!loading && sub === 'progression' && (
+        <CareerProgressionView progression={data.progression || []} busy={busy}
+          onAddProgression={onAddProgression} onDeleteProgression={onDeleteProgression} />
+      )}
+      {!loading && sub === 'development' && (
+        <CareerDevelopmentView development={data.development || []} busy={busy}
+          onAddDevelopment={onAddDevelopment} onUpdateDevelopment={onUpdateDevelopment}
+          onDeleteDevelopment={onDeleteDevelopment} />
+      )}
+      {!loading && sub === 'wins' && (
+        <CareerWinsView wins={data.wins || []} busy={busy}
+          onAddWin={onAddWin} onDeleteWin={onDeleteWin} />
+      )}
+      {!loading && sub === 'network' && (
+        <CareerNetworkView network={data.network || []} busy={busy}
+          onAddNetwork={onAddNetwork} onUpdateNetwork={onUpdateNetwork}
+          onDeleteNetwork={onDeleteNetwork} />
+      )}
+    </div>
+  );
+}
+
 // ---- Finances tab -----------------------------------------------------------
 
 // ---- TxAliasPicker modal ---------------------------------------------------
@@ -8813,6 +9540,7 @@ function App() {
   const [interests,  setInterests]  = useState([]);
   const [shopping,        setShopping]        = useState([]);
   const [purchaseHistory, setPurchaseHistory] = useState([]);
+  const [career,     setCareer]     = useState(null);  // { position, goals, progression, development, wins, network }
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
@@ -9336,6 +10064,18 @@ function App() {
     setTabLoading(prev => ({ ...prev, home_front: false }));
   }
 
+  async function loadCareer(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, career: true }));
+    try {
+      const res = await apiGet(url, token, { action: 'career' });
+      setCareer(res);
+    } catch (err) {
+      setError('Career load failed: ' + err.message);
+    }
+    setTabLoading(prev => ({ ...prev, career: false }));
+  }
+
   async function handleBillToggle(row) {
     // Optimistic update: flip paid immediately so the badge switches to ✅ Paid
     setBills(prev => {
@@ -9449,6 +10189,143 @@ function App() {
     } catch (err) {
       setError('Could not delete item: ' + err.message);
     }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerPosition(data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_position', ...data });
+      showToast('📌 Position updated');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update position: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleAddCareerGoal(data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_career_goal', ...data });
+      showToast('🎯 Goal added');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not add goal: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerGoal(id, field, value) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_goal', id, field, value });
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update goal: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCareerGoal(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_career_goal', id });
+      showToast('🗑 Goal deleted');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not delete goal: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleAddCareerProgression(data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_career_progression', ...data });
+      showToast('📈 Role added');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not add role: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCareerProgression(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_career_progression', id });
+      showToast('🗑 Role deleted');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not delete role: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleAddCareerDevelopment(data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_career_development', ...data });
+      showToast('🧠 Item added');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not add development item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerDevelopment(id, field, value) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_development', id, field, value });
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update development item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCareerDevelopment(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_career_development', id });
+      showToast('🗑 Item deleted');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not delete development item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleAddCareerWin(data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_career_win', ...data });
+      showToast('🏆 Win logged!');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not log win: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCareerWin(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_career_win', id });
+      showToast('🗑 Win deleted');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not delete win: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleAddCareerNetwork(data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_career_network', ...data });
+      showToast('🤝 Contact added');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not add contact: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerNetwork(id, field, value) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_network', id, field, value });
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update contact: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCareerNetwork(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_career_network', id });
+      showToast('🗑 Contact deleted');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not delete contact: ' + err.message); }
     setBusy(false);
   }
 
@@ -10015,7 +10892,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'explore', 'health', 'growth'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'explore', 'health', 'growth', 'career'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -10026,6 +10903,7 @@ function App() {
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); }
+                  if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); }
@@ -10044,6 +10922,7 @@ function App() {
                 {tab === 'explore'    ? `🔭 Explore` : ''}
                 {tab === 'health'     ? `🏥 Health` : ''}
                 {tab === 'growth'     ? `🌱 Growth` : ''}
+                {tab === 'career'     ? `💼 Career` : ''}
               </button>
             ))}
           </div>
@@ -10342,6 +11221,29 @@ function App() {
                   }
                 }}
                 busy={busy}
+              />
+            )}
+
+            {/* Career tab */}
+            {activeTab === 'career' && (
+              <CareerTab
+                career={career}
+                loading={!!tabLoading.career}
+                busy={busy}
+                onUpdatePosition={handleUpdateCareerPosition}
+                onAddGoal={handleAddCareerGoal}
+                onUpdateGoal={handleUpdateCareerGoal}
+                onDeleteGoal={handleDeleteCareerGoal}
+                onAddProgression={handleAddCareerProgression}
+                onDeleteProgression={handleDeleteCareerProgression}
+                onAddDevelopment={handleAddCareerDevelopment}
+                onUpdateDevelopment={handleUpdateCareerDevelopment}
+                onDeleteDevelopment={handleDeleteCareerDevelopment}
+                onAddWin={handleAddCareerWin}
+                onDeleteWin={handleDeleteCareerWin}
+                onAddNetwork={handleAddCareerNetwork}
+                onUpdateNetwork={handleUpdateCareerNetwork}
+                onDeleteNetwork={handleDeleteCareerNetwork}
               />
             )}
           </div>

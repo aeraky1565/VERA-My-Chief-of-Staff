@@ -54,6 +54,12 @@ const TABS = {
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
   GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
   PURCHASE_HISTORY:    'Purchase History',     // Purchase history + consumption intelligence (Issue #111)
+  CAREER_POSITION:    'Career Position',      // Current role snapshot (Career tab)
+  CAREER_GOALS:       'Career Goals',         // Long-horizon career targets (Career tab)
+  CAREER_PROGRESSION: 'Career Progression',   // Career timeline / roles held (Career tab)
+  CAREER_DEVELOPMENT: 'Career Development',   // Skills, courses, focus areas (Career tab)
+  CAREER_WINS:        'Career Wins',          // Achievement log (Career tab)
+  CAREER_NETWORK:     'Career Network',       // Professional relationships (Career tab)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -83,7 +89,13 @@ const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', '
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const GYM_LOG_HEADERS          = ['ID', 'Event Title', 'Event Date', 'Attended', 'Logged At'];
-const PURCHASE_HISTORY_HEADERS = ['ID', 'Item', 'Normalized', 'Category', 'Date', 'Quantity', 'Unit', 'Store', 'Price', 'Source', 'Notes'];
+const PURCHASE_HISTORY_HEADERS   = ['ID', 'Item', 'Normalized', 'Category', 'Date', 'Quantity', 'Unit', 'Store', 'Price', 'Source', 'Notes'];
+const CAREER_POSITION_HEADERS    = ['Title', 'Company', 'Department', 'Start Date', 'Work Style', 'Focus Areas', 'Notes'];
+const CAREER_GOAL_HEADERS        = ['ID', 'Title', 'Horizon', 'Category', 'Status', 'Target Date', 'Notes'];
+const CAREER_PROGRESSION_HEADERS = ['ID', 'Title', 'Company', 'Start Year', 'End Year', 'Type', 'Highlights', 'Notes'];
+const CAREER_DEVELOPMENT_HEADERS = ['ID', 'Item', 'Type', 'Status', 'Target Date', 'Notes'];
+const CAREER_WIN_HEADERS         = ['ID', 'Date', 'Win', 'Impact', 'Category', 'Notes'];
+const CAREER_NETWORK_HEADERS     = ['ID', 'Name', 'Role', 'Company', 'Relationship', 'Last Contact', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -178,7 +190,13 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
   ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
   ensureSheet(ss, TABS.PURCHASE_HISTORY,     PURCHASE_HISTORY_HEADERS);
-  ensureSheet(ss, TABS.CONFIG,                CONFIG_HEADERS, configDefaults);
+  ensureSheet(ss, TABS.CAREER_POSITION,      CAREER_POSITION_HEADERS);
+  ensureSheet(ss, TABS.CAREER_GOALS,         CAREER_GOAL_HEADERS);
+  ensureSheet(ss, TABS.CAREER_PROGRESSION,   CAREER_PROGRESSION_HEADERS);
+  ensureSheet(ss, TABS.CAREER_DEVELOPMENT,   CAREER_DEVELOPMENT_HEADERS);
+  ensureSheet(ss, TABS.CAREER_WINS,          CAREER_WIN_HEADERS);
+  ensureSheet(ss, TABS.CAREER_NETWORK,       CAREER_NETWORK_HEADERS);
+  ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
 }
