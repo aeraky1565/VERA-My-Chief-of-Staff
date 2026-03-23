@@ -51,6 +51,7 @@ const TABS = {
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
   GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
+  PURCHASE_HISTORY:    'Purchase History',     // Purchase history + consumption intelligence (Issue #111)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -78,6 +79,7 @@ const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', '
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const GYM_LOG_HEADERS          = ['ID', 'Event Title', 'Event Date', 'Attended', 'Logged At'];
+const PURCHASE_HISTORY_HEADERS = ['ID', 'Item', 'Normalized', 'Category', 'Date', 'Quantity', 'Unit', 'Store', 'Price', 'Source', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -141,6 +143,9 @@ function createSheetTabs(ss) {
     ['fitness_low_flag_day',         '4'],     // day to fire Low flag if behind: 1=Sun … 7=Sat (4=Wed)
     ['fitness_travel_block_time',    '07:00'], // start time for auto-created trip gym sessions
     ['fitness_travel_block_duration','60'],    // duration in minutes for auto-created trip gym sessions
+    ['pantry_enabled',              'false'], // set 'true' to enable purchase history + auto-restock (Issue #111)
+    ['pantry_restock_days_ahead',   '7'],     // days ahead to predict and auto-add items to shopping list
+    ['pantry_ema_alpha',            '0.3'],   // EMA learning rate: higher = adapts faster to recent habits
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -166,6 +171,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
   ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
+  ensureSheet(ss, TABS.PURCHASE_HISTORY,     PURCHASE_HISTORY_HEADERS);
   ensureSheet(ss, TABS.CONFIG,                CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -353,6 +359,10 @@ function nightlyRun() {
     // Step 0j: Fitness consistency + travel gap checks (Issue #84)
     try { checkFitnessConsistency_(); } catch (fcErr) { Logger.log('checkFitnessConsistency_ error (non-fatal): ' + fcErr.message); }
     try { checkFitnessTravelGap_();   } catch (ftErr) { Logger.log('checkFitnessTravelGap_ error (non-fatal): '   + ftErr.message); }
+
+    // Step 0k: Purchase history auto-restock + pantry trip-overlap flags (Issue #111)
+    try { autoRestockItems_();    } catch (arErr) { Logger.log('autoRestockItems_ error (non-fatal): '    + arErr.message); }
+    try { generatePantryFlags_(); } catch (pfErr) { Logger.log('generatePantryFlags_ error (non-fatal): ' + pfErr.message); }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();

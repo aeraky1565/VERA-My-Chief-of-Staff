@@ -154,6 +154,9 @@ function doGet(e) {
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
+      case 'purchase_history':         return jsonOut_(webGetPurchaseHistory_());
+      case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
+      case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -3939,4 +3942,25 @@ function webLogGymAttend_(e, attended) {
   var id = ((e.parameter && e.parameter.id) || '').trim();
   if (!id) throw new Error('id is required');
   return logGymAttendance_(id, attended);
+}
+
+// ── Purchase History (Issue #111) ─────────────────────────────
+
+function webGetPurchaseHistory_() {
+  return { ok: true, items: getPurchaseStats_() };
+}
+
+function webLogPurchaseRun_(e) {
+  var storeId   = ((e.parameter && e.parameter.storeId) || '').trim();
+  var rawItems  = ((e.parameter && e.parameter.items)   || '[]').trim();
+  if (!storeId) throw new Error('storeId is required');
+  var itemTexts = JSON.parse(rawItems);
+  if (!Array.isArray(itemTexts) || !itemTexts.length) throw new Error('items must be a non-empty JSON array');
+  return logPurchaseRun_(storeId, itemTexts);
+}
+
+function webGetPurchaseSuggestions_() {
+  var cfg  = getConfigValues();
+  var days = parseInt(cfg['pantry_restock_days_ahead'] || '7', 10) || 7;
+  return { ok: true, suggestions: getItemsDue_(days) };
 }

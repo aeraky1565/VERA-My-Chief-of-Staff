@@ -538,6 +538,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_bucket_item|{id}|{field}|{value}  \u2014 field = visited (value = date or "yes") | stars (value = 1-5)\n' +
     'ACTION:delete_bucket_item|{id}  \u2014 id from TRAVEL BUCKET LIST context above. Always confirm first.\n' +
     'ACTION:add_gym_sessions|{YYYY-MM-DD}|{Trip Label}  \u2014 schedules morning gym sessions on all interior days of a trip (skips arrival + departure day)\n' +
+    'ACTION:log_receipt_items|{item}|{category}|{qty}|{unit}|{store}|{price}  \u2014 one line per item from a receipt or grocery image; qty/price blank if unclear\n' +
     '\n' +
 
     'RULES:\n' +
@@ -584,6 +585,10 @@ function buildChatSystemPrompt_(context) {
     '- For add_gym_sessions: use when Ahmed says "add gym sessions to the [trip] itinerary" or asks to schedule workouts during travel. ' +
     'Emit ACTION:add_gym_sessions|{departureDate}|{tripLabel} using the TripKey parts (e.g. TripKey "2026-06-19|Alaska Cruise" \u2192 ' +
     '"ACTION:add_gym_sessions|2026-06-19|Alaska Cruise"). Confirm how many blocks were added after execution.\n' +
+    '- For log_receipt_items: when Ahmed uploads an image of a receipt, grocery haul, or fridge contents, ' +
+    'extract all visible items and emit one log_receipt_items ACTION per item. Use canonical lowercase names ' +
+    '(e.g. "milk" not "Kirkland 2% Reduced Fat Milk 2L"). category from: Dairy/Produce/Pantry/Meat/Household/Personal Care/Other. ' +
+    'Leave qty/price blank if not clearly visible. Confirm total item count in your reply.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -1586,6 +1591,21 @@ function executeActions_(rawText) {
           added++;
         }
         executed.push('add_gym_sessions (' + added + ' block(s) \u2192 ' + tripKey + ')');
+      }
+      else if (type === 'log_receipt_items') {
+        var riItem  = (args[0] || '').trim();
+        if (!riItem) throw new Error('item name required');
+        var riNorm  = normalizeItemName_(riItem);
+        var riCat   = (args[1] || 'Other').trim();
+        var riQty   = args[2] !== undefined && args[2] !== '' ? parseFloat(args[2]) : null;
+        var riUnit  = (args[3] || '').trim();
+        var riStore = (args[4] || '').trim();
+        var riPrice = args[5] !== undefined && args[5] !== '' ? parseFloat(args[5]) : null;
+        logPurchaseItems_([{
+          item: riItem, normalized: riNorm, category: riCat,
+          qty: riQty, unit: riUnit, store: riStore, price: riPrice,
+        }], 'receipt');
+        executed.push('log_receipt_items (' + riItem + ')');
       }
 
     } catch (e) {

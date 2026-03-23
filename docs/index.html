@@ -4781,12 +4781,130 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
   );
 }
 
+// ---- Log Run Modal (Issue #111) ---------------------------------------------
+
+function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+    }} onClick={onClose}>
+      <div style={{
+        background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12,
+        padding: '28px 32px', minWidth: 320, maxWidth: 440, width: '90%',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a84c', marginBottom: 6 }}>
+          📦 Log Shopping Run — {store}
+        </div>
+        <div style={{ fontSize: 13, color: '#8a9abf', marginBottom: 16 }}>
+          {checkedItems.length} item{checkedItems.length !== 1 ? 's' : ''} will be added to Purchase History:
+        </div>
+        <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 20 }}>
+          {checkedItems.map((text, i) => (
+            <div key={i} style={{
+              fontSize: 13, color: '#dde1f0', padding: '4px 0',
+              borderBottom: i < checkedItems.length - 1 ? '1px solid #1a2a50' : 'none',
+            }}>
+              • {text.replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim()}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ background: 'none', border: '1px solid #2a3a60', borderRadius: 6,
+                     color: '#8a9abf', padding: '7px 18px', fontSize: 13, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={busy}
+            style={{ background: '#c9a84c', border: 'none', borderRadius: 6,
+                     color: '#0d1b3e', fontWeight: 700, padding: '7px 18px', fontSize: 13,
+                     cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Logging…' : '✓ Log Run'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Purchase History Tab (Issue #111) --------------------------------------
+
+function PurchaseHistoryTab({ items }) {
+  const [filter, setFilter] = React.useState('');
+  const filtered = (items || []).filter(item =>
+    !filter || item.normalized.toLowerCase().includes(filter.toLowerCase())
+  );
+  const confColor = { default: '#5f6a8a', learning: '#c9a84c', building: '#e8a020', calibrated: '#43a047' };
+
+  function relDate(ds) {
+    if (!ds) return '—';
+    const diff = Math.round((new Date() - new Date(ds + 'T00:00:00')) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    if (diff < 30) return diff + 'd ago';
+    if (diff < 365) return Math.round(diff / 30) + 'mo ago';
+    return Math.round(diff / 365) + 'yr ago';
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <div className="empty-state" style={{ padding: 40 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+        <div>No purchase history yet.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Log a shopping run or scan a receipt in Chat to get started.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input
+        placeholder="Search items…"
+        value={filter} onChange={e => setFilter(e.target.value)}
+        style={{
+          width: '100%', boxSizing: 'border-box', background: '#0d1b3e',
+          border: '1px solid #1e3060', borderRadius: 6, color: '#dde1f0',
+          padding: '8px 12px', fontSize: 13, marginBottom: 16,
+        }}
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+        {filtered.map((item, i) => (
+          <div key={i} style={{
+            background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 8, padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0', marginBottom: 6, textTransform: 'capitalize' }}>
+              {item.normalized}
+            </div>
+            <div style={{ fontSize: 12, color: '#8a9abf', lineHeight: 1.6 }}>
+              <div>Last: {relDate(item.lastDate)}{item.lastStore ? ' (' + item.lastStore + ')' : ''}</div>
+              <div>Every ~{item.avgDays}d</div>
+              {item.estimatedNext && <div style={{ color: '#c9a84c' }}>Next: {item.estimatedNext}</div>}
+            </div>
+            <div style={{
+              marginTop: 8, display: 'inline-block', fontSize: 10, fontWeight: 700,
+              color: confColor[item.confidence] || '#5f6a8a',
+              background: (confColor[item.confidence] || '#5f6a8a') + '22',
+              borderRadius: 20, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.5px',
+            }}>
+              {item.confidence}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---- Shopping tab -----------------------------------------------------------
 
-function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
+function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, purchaseHistory, onLogRun }) {
   const [activeStore,   setActiveStore]   = React.useState(null);
   const [editingIndex,  setEditingIndex]  = React.useState(null); // { tabId, index } | null
   const [editText,      setEditText]      = React.useState('');
+  const [showHistory,   setShowHistory]   = React.useState(false);
+  const [logRunModal,   setLogRunModal]   = React.useState(false);
 
   React.useEffect(() => {
     if (stores.length > 0) {
@@ -4810,22 +4928,23 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
     );
   }
 
-  const current = stores.find(s => s.tabId === activeStore);
+  const current      = stores.find(s => s.tabId === activeStore);
+  const checkedItems = current ? current.items.filter(i => i.done).map(i => i.text) : [];
 
   return (
     <div>
-      {/* Store sub-tabs */}
+      {/* Store sub-tabs + History tab */}
       <div style={{
         display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
         borderBottom: '1px solid #1e3060', marginBottom: 20,
       }}>
         {stores.map(s => {
           const pending  = s.items.filter(i => !i.done).length;
-          const isActive = s.tabId === activeStore;
+          const isActive = !showHistory && s.tabId === activeStore;
           return (
             <button
               key={s.tabId}
-              onClick={() => setActiveStore(s.tabId)}
+              onClick={() => { setShowHistory(false); setActiveStore(s.tabId); }}
               style={{
                 background: isActive ? '#0d1b3e' : 'none',
                 border: 'none', cursor: 'pointer',
@@ -4847,31 +4966,67 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
             </button>
           );
         })}
+        {/* History tab */}
         <button
-          className="btn btn-primary"
-          style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
-          disabled={busy}
-          onClick={() => onAddItem && onAddItem(activeStore)}
-        >
-          + Add Item
-        </button>
+          onClick={() => setShowHistory(true)}
+          style={{
+            background: showHistory ? '#0d1b3e' : 'none',
+            border: 'none', cursor: 'pointer',
+            padding: '9px 16px', fontSize: 13, fontWeight: 600,
+            color: showHistory ? '#c9a84c' : '#8a9abf',
+            borderBottom: showHistory ? '2px solid #c9a84c' : '2px solid transparent',
+            marginBottom: -1, borderRadius: '4px 4px 0 0',
+          }}
+        >📊 History</button>
+        {/* Action buttons (hidden in History view) */}
+        {!showHistory && (
+          <React.Fragment>
+            {checkedItems.length > 0 && (
+              <button
+                style={{
+                  background: 'none', border: '1px solid #c9a84c', borderRadius: 6,
+                  color: '#c9a84c', fontSize: 12, fontWeight: 600,
+                  padding: '5px 12px', cursor: busy ? 'wait' : 'pointer',
+                  marginLeft: 4, marginBottom: 4, flexShrink: 0,
+                }}
+                disabled={busy}
+                onClick={() => setLogRunModal(true)}
+              >
+                📦 Log Run ({checkedItems.length})
+              </button>
+            )}
+            <button
+              className="btn btn-primary"
+              style={{ fontSize: 12, marginLeft: checkedItems.length > 0 ? 4 : 'auto', marginBottom: 4, flexShrink: 0 }}
+              disabled={busy}
+              onClick={() => onAddItem && onAddItem(activeStore)}
+            >
+              + Add Item
+            </button>
+          </React.Fragment>
+        )}
       </div>
 
+      {/* History view */}
+      {showHistory && <PurchaseHistoryTab items={purchaseHistory} />}
+
       {/* Item list */}
-      {current && (
+      {!showHistory && current && (
         current.items.length === 0
           ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {current.items.map((item, i) => {
-                const isEditing = editingIndex !== null &&
-                                  editingIndex.tabId === current.tabId &&
-                                  editingIndex.index === item.index;
+                const isEditing  = editingIndex !== null &&
+                                   editingIndex.tabId === current.tabId &&
+                                   editingIndex.index === item.index;
+                const isVERA     = item.text.startsWith('🤖');
                 return (
                   <div key={i} style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '11px 16px', borderRadius: 8,
                     background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
                     border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
+                    opacity: isVERA && !item.done ? 0.82 : 1,
                     transition: 'background 0.15s',
                   }}>
                     {/* Checkbox — disabled while editing */}
@@ -4913,6 +5068,14 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
                               onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}>
                           {item.text}
                         </span>
+                        {/* VERA suggestion chip */}
+                        {isVERA && !item.done && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, color: '#c9a84c',
+                            background: 'rgba(201,168,76,0.12)', border: '1px solid rgba(201,168,76,0.3)',
+                            borderRadius: 20, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.5px',
+                          }}>VERA</span>
+                        )}
                         {/* Edit button */}
                         <button title="Edit" onClick={e => { e.stopPropagation(); setEditingIndex({ tabId: current.tabId, index: item.index }); setEditText(item.text); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6a8a',
@@ -4927,6 +5090,20 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
                 );
               })}
             </div>
+      )}
+
+      {/* Log Run confirmation modal */}
+      {logRunModal && current && (
+        <LogRunModal
+          store={current.storeName}
+          checkedItems={checkedItems}
+          busy={busy}
+          onClose={() => setLogRunModal(false)}
+          onConfirm={() => {
+            setLogRunModal(false);
+            onLogRun && onLogRun(current.tabId, checkedItems);
+          }}
+        />
       )}
     </div>
   );
@@ -8377,7 +8554,8 @@ function App() {
   const [projects,   setProjects]   = useState([]);
   const [goals,      setGoals]      = useState([]);
   const [interests,  setInterests]  = useState([]);
-  const [shopping,   setShopping]   = useState([]);
+  const [shopping,        setShopping]        = useState([]);
+  const [purchaseHistory, setPurchaseHistory] = useState([]);
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
@@ -8709,6 +8887,32 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, shopping: false }));
+  }
+
+  async function loadPurchaseHistory(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'purchase_history' });
+      setPurchaseHistory(data.items || []);
+    } catch (err) {
+      console.warn('loadPurchaseHistory error:', err.message);
+    }
+  }
+
+  async function handleLogRun(storeTabId, itemTexts) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, {
+        action: 'log_purchase_run',
+        storeId: storeTabId,
+        items: JSON.stringify(itemTexts),
+      });
+      showToast('✓ Logged ' + itemTexts.length + ' item(s) to Purchase History');
+      await loadPurchaseHistory(apiUrl, apiToken);
+    } catch (err) {
+      showToast('⚠️ Log Run failed: ' + err.message);
+    }
+    setBusy(false);
   }
 
   async function loadPTO(url, token) {
@@ -9513,7 +9717,7 @@ function App() {
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
-                  if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
+                  if (tab === 'shopping')   { loadShopping(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); }
                   if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
@@ -9683,6 +9887,8 @@ function App() {
                     onDelete={handleDeleteShoppingItem}
                     onEdit={handleUpdateShoppingItem}
                     busy={busy}
+                    purchaseHistory={purchaseHistory}
+                    onLogRun={handleLogRun}
                   />
             )}
 
