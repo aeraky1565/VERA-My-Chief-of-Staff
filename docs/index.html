@@ -4899,11 +4899,10 @@ function PurchaseHistoryTab({ items }) {
 
 // ---- Shopping tab -----------------------------------------------------------
 
-function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, purchaseHistory, onLogRun }) {
+function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLogRun }) {
   const [activeStore,   setActiveStore]   = React.useState(null);
   const [editingIndex,  setEditingIndex]  = React.useState(null); // { tabId, index } | null
   const [editText,      setEditText]      = React.useState('');
-  const [showHistory,   setShowHistory]   = React.useState(false);
   const [logRunModal,   setLogRunModal]   = React.useState(false);
 
   React.useEffect(() => {
@@ -4933,18 +4932,18 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, purc
 
   return (
     <div>
-      {/* Store sub-tabs + History tab */}
+      {/* Store sub-tabs */}
       <div style={{
         display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
         borderBottom: '1px solid #1e3060', marginBottom: 20,
       }}>
         {stores.map(s => {
           const pending  = s.items.filter(i => !i.done).length;
-          const isActive = !showHistory && s.tabId === activeStore;
+          const isActive = s.tabId === activeStore;
           return (
             <button
               key={s.tabId}
-              onClick={() => { setShowHistory(false); setActiveStore(s.tabId); }}
+              onClick={() => setActiveStore(s.tabId)}
               style={{
                 background: isActive ? '#0d1b3e' : 'none',
                 border: 'none', cursor: 'pointer',
@@ -4966,52 +4965,35 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, purc
             </button>
           );
         })}
-        {/* History tab */}
-        <button
-          onClick={() => setShowHistory(true)}
-          style={{
-            background: showHistory ? '#0d1b3e' : 'none',
-            border: 'none', cursor: 'pointer',
-            padding: '9px 16px', fontSize: 13, fontWeight: 600,
-            color: showHistory ? '#c9a84c' : '#8a9abf',
-            borderBottom: showHistory ? '2px solid #c9a84c' : '2px solid transparent',
-            marginBottom: -1, borderRadius: '4px 4px 0 0',
-          }}
-        >📊 History</button>
-        {/* Action buttons (hidden in History view) */}
-        {!showHistory && (
-          <React.Fragment>
-            {checkedItems.length > 0 && (
-              <button
-                style={{
-                  background: 'none', border: '1px solid #c9a84c', borderRadius: 6,
-                  color: '#c9a84c', fontSize: 12, fontWeight: 600,
-                  padding: '5px 12px', cursor: busy ? 'wait' : 'pointer',
-                  marginLeft: 4, marginBottom: 4, flexShrink: 0,
-                }}
-                disabled={busy}
-                onClick={() => setLogRunModal(true)}
-              >
-                📦 Log Run ({checkedItems.length})
-              </button>
-            )}
+        {/* Action buttons */}
+        <React.Fragment>
+          {checkedItems.length > 0 && (
             <button
-              className="btn btn-primary"
-              style={{ fontSize: 12, marginLeft: checkedItems.length > 0 ? 4 : 'auto', marginBottom: 4, flexShrink: 0 }}
+              style={{
+                background: 'none', border: '1px solid #c9a84c', borderRadius: 6,
+                color: '#c9a84c', fontSize: 12, fontWeight: 600,
+                padding: '5px 12px', cursor: busy ? 'wait' : 'pointer',
+                marginLeft: 4, marginBottom: 4, flexShrink: 0,
+              }}
               disabled={busy}
-              onClick={() => onAddItem && onAddItem(activeStore)}
+              onClick={() => setLogRunModal(true)}
             >
-              + Add Item
+              📦 Log Run ({checkedItems.length})
             </button>
-          </React.Fragment>
-        )}
+          )}
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: 12, marginLeft: checkedItems.length > 0 ? 4 : 'auto', marginBottom: 4, flexShrink: 0 }}
+            disabled={busy}
+            onClick={() => onAddItem && onAddItem(activeStore)}
+          >
+            + Add Item
+          </button>
+        </React.Fragment>
       </div>
 
-      {/* History view */}
-      {showHistory && <PurchaseHistoryTab items={purchaseHistory} />}
-
       {/* Item list */}
-      {!showHistory && current && (
+      {current && (
         current.items.length === 0
           ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -6410,11 +6392,12 @@ function RecipeView({ recipes, loading, busy, onAddToShopping }) {
   );
 }
 
-function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping }) {
+function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory }) {
   const [sub, setSub] = React.useState('steward');
   const subTabs = [
     { id: 'steward', label: '🏠 Steward' },
     { id: 'recipes', label: '🍽️ Recipes' },
+    { id: 'pantry',  label: '📦 Pantry'  },
   ];
   return (
     <div>
@@ -6439,6 +6422,9 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           busy={busy}
           onAddToShopping={onRecipeToShopping}
         />
+      )}
+      {sub === 'pantry' && (
+        <PurchaseHistoryTab items={purchaseHistory} />
       )}
     </div>
   );
@@ -9717,8 +9703,8 @@ function App() {
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
-                  if (tab === 'shopping')   { loadShopping(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); }
-                  if (tab === 'home_front') loadHomeFront(apiUrl, apiToken);
+                  if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
+                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); }
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); }
@@ -9887,7 +9873,6 @@ function App() {
                     onDelete={handleDeleteShoppingItem}
                     onEdit={handleUpdateShoppingItem}
                     busy={busy}
-                    purchaseHistory={purchaseHistory}
                     onLogRun={handleLogRun}
                   />
             )}
@@ -9900,6 +9885,7 @@ function App() {
                 busy={busy}
                 onRecordService={handleRecordService}
                 onRecipeToShopping={handleRecipeToShopping}
+                purchaseHistory={purchaseHistory}
               />
             )}
 
