@@ -7809,6 +7809,713 @@ function CashflowView({ apiUrl, apiToken, bills }) {
   );
 }
 
+// ---- Credit Card Hub (Issues #115 + #117) ------------------------------------
+
+// Helper: stable color chip per card name (hashes name to a hue)
+function cardChipColor(name) {
+  var h = 0;
+  for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  return 'hsl(' + (h % 360) + ',55%,40%)';
+}
+
+// Helper: days since a date string
+function daysSince(dateStr) {
+  if (!dateStr) return null;
+  var d = new Date(dateStr); d.setHours(0,0,0,0);
+  var today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((today - d) / 86400000);
+}
+
+// Helper: format number with commas
+function fmtPts(n) {
+  if (n == null || n === '') return '0';
+  return Number(n).toLocaleString();
+}
+
+const CARD_CATEGORY_ICONS = {
+  'Groceries': '🛒', 'Dining': '🍽️', 'Gas': '⛽', 'Travel': '✈️',
+  'Online Shopping': '🛍️', 'Streaming': '📺',
+  'General Spend': '💳', 'Everything Else': '💳',
+};
+
+// ---- CardModal (add/edit card) ----
+function CardModal({ mode, card, onSave, onClose, busy }) {
+  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', dueDay:'', lastUsed:'', owner:'Ahmed', active:'Yes', statementCredit:'', notes:'' };
+  const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, card) : blank);
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
+  const inp = (k, label, type) => (
+    <div>
+      <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>{label}</label>
+      <input type={type || 'text'} value={form[k] != null ? form[k] : ''} onChange={e => set(k, e.target.value)}
+        style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box' }} />
+    </div>
+  );
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#1e2235', border:'1px solid #2a2f45', borderRadius:14, padding:24, width:'100%', maxWidth:520, maxHeight:'90vh', overflowY:'auto' }}>
+        <h3 style={{ margin:'0 0 18px', color:'#dde1f0' }}>{mode === 'edit' ? '✏️ Edit Card' : '💳 Add Card'}</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 16px' }}>
+          {inp('cardName', 'Card Name *')}
+          {inp('issuer', 'Issuer')}
+          {inp('last4', 'Last 4 Digits')}
+          {inp('annualFee', 'Annual Fee ($)')}
+          {inp('dueDay', 'Due Day (1–31)')}
+          <div>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Owner</label>
+            <select value={form.owner} onChange={e => set('owner', e.target.value)}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
+              <option>Ahmed</option><option>Victoria</option><option>Both</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Active</label>
+            <select value={form.active} onChange={e => set('active', e.target.value)}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
+              <option>Yes</option><option>No</option>
+            </select>
+          </div>
+          {inp('lastUsed', 'Last Used', 'date')}
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Statement Credit (e.g. $300 Travel, $10 Dining/m)</label>
+            <input type="text" value={form.statementCredit || ''} onChange={e => set('statementCredit', e.target.value)}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box' }} />
+          </div>
+          <div style={{ gridColumn:'1 / -1' }}>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Notes</label>
+            <textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box', resize:'vertical' }} />
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:18 }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ background:'#2a2f45', color:'#a0a8c0', border:'none', borderRadius:8, padding:'8px 18px', cursor:'pointer' }}>Cancel</button>
+          <button onClick={() => onSave(form)} disabled={busy || !form.cardName.trim()}
+            style={{ background:'#4f6ef7', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', cursor:'pointer' }}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- CardDetailModal (rewards + perks) ----
+function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onDeletePerk, onTogglePerk, busy }) {
+  const cardRewards = rewards.filter(function(r) { return r.cardName === card.cardName; });
+  const cardPerks   = perks.filter(function(p) { return p.cardName === card.cardName; });
+  const [newReward, setNewReward] = React.useState({ category:'', rate:'', rateType:'x points', conditions:'' });
+  const [newPerk,   setNewPerk]   = React.useState({ perk:'', amount:'', frequency:'Monthly', category:'' });
+  const setRw = (k, v) => setNewReward(prev => Object.assign({}, prev, { [k]: v }));
+  const setPk = (k, v) => setNewPerk(prev => Object.assign({}, prev, { [k]: v }));
+
+  // Compute current period for perk used status
+  const now = new Date();
+  const curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  const curYear  = String(now.getFullYear());
+
+  function isPerkUsed(perk) {
+    if (!perk.lastUsed) return false;
+    return perk.frequency === 'Annual' ? perk.lastUsed === curYear : perk.lastUsed === curMonth;
+  }
+
+  // Group perks by frequency
+  const perkGroups = ['Monthly', 'Quarterly', 'Annual'];
+
+  const panelStyle = { background:'#161926', border:'1px solid #2a2f45', borderRadius:10, padding:16, marginBottom:16 };
+  const inputStyle = { background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'5px 8px', fontSize:12 };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#1e2235', border:'1px solid #2a2f45', borderRadius:14, padding:24, width:'100%', maxWidth:600, maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+          <h3 style={{ margin:0, color:'#dde1f0' }}>{card.cardName}</h3>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#a0a8c0', fontSize:20, cursor:'pointer' }}>×</button>
+        </div>
+
+        {/* Rewards */}
+        <div style={panelStyle}>
+          <div style={{ fontWeight:700, fontSize:13, color:'#dde1f0', marginBottom:10 }}>💰 Reward Categories</div>
+          {cardRewards.length === 0
+            ? <div style={{ fontSize:12, color:'#6b7280', marginBottom:10 }}>No reward categories yet.</div>
+            : <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse', marginBottom:10 }}>
+                <thead>
+                  <tr>{['Category','Rate','Type','Conditions',''].map(h => (
+                    <th key={h} style={{ textAlign:'left', color:'#6b7280', padding:'4px 8px 4px 0', borderBottom:'1px solid #2a2f45' }}>{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {cardRewards.map(r => (
+                    <tr key={r.id}>
+                      <td style={{ padding:'4px 8px 4px 0', color:'#dde1f0' }}>{r.category}</td>
+                      <td style={{ padding:'4px 8px 4px 0', color:'#4f6ef7', fontWeight:600 }}>{r.rate}</td>
+                      <td style={{ padding:'4px 8px 4px 0', color:'#a0a8c0' }}>{r.rateType}</td>
+                      <td style={{ padding:'4px 8px 4px 0', color:'#6b7280', fontSize:11 }}>{r.conditions}</td>
+                      <td><button onClick={() => onDeleteReward(r.id)} disabled={busy}
+                        style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:14 }}>×</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+          }
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+            <input placeholder="Category" value={newReward.category} onChange={e => setRw('category', e.target.value)}
+              style={Object.assign({}, inputStyle, { width:110 })} />
+            <input placeholder="Rate" value={newReward.rate} onChange={e => setRw('rate', e.target.value)}
+              style={Object.assign({}, inputStyle, { width:55 })} />
+            <select value={newReward.rateType} onChange={e => setRw('rateType', e.target.value)} style={inputStyle}>
+              <option>x points</option><option>% cashback</option><option>x miles</option>
+            </select>
+            <input placeholder="Conditions (optional)" value={newReward.conditions} onChange={e => setRw('conditions', e.target.value)}
+              style={Object.assign({}, inputStyle, { flex:1, minWidth:100 })} />
+            <button onClick={() => { onAddReward(card.cardName, newReward); setNewReward({ category:'', rate:'', rateType:'x points', conditions:'' }); }}
+              disabled={busy || !newReward.category || !newReward.rate}
+              style={{ background:'#4f6ef7', color:'#fff', border:'none', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontSize:12 }}>＋ Add</button>
+          </div>
+        </div>
+
+        {/* Perks */}
+        <div style={panelStyle}>
+          <div style={{ fontWeight:700, fontSize:13, color:'#dde1f0', marginBottom:10 }}>🎁 Perks</div>
+          {perkGroups.map(function(freq) {
+            var grp = cardPerks.filter(function(p) { return p.frequency === freq; });
+            if (!grp.length) return null;
+            return (
+              <div key={freq} style={{ marginBottom:10 }}>
+                <div style={{ fontSize:11, color:'#6b7280', marginBottom:4 }}>{freq}</div>
+                {grp.map(function(pk) {
+                  var used = isPerkUsed(pk);
+                  return (
+                    <div key={pk.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                      <button onClick={() => onTogglePerk(pk.id)} disabled={busy}
+                        style={{ width:18, height:18, borderRadius:4, border:'2px solid ' + (used ? '#22c55e' : '#374151'),
+                          background: used ? '#166534' : 'transparent', cursor:'pointer', flexShrink:0 }}>
+                        {used ? <span style={{ color:'#86efac', fontSize:11, lineHeight:'14px' }}>✓</span> : null}
+                      </button>
+                      <span style={{ fontSize:13, color: used ? '#86efac' : '#dde1f0' }}>{pk.perk}</span>
+                      {pk.amount && <span style={{ fontSize:11, color:'#a0a8c0' }}>${pk.amount}</span>}
+                      <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
+                        {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : 'this month'}
+                      </span>
+                      <button onClick={() => onDeletePerk(pk.id)} disabled={busy}
+                        style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:14, marginLeft:'auto' }}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {cardPerks.length === 0 && <div style={{ fontSize:12, color:'#6b7280', marginBottom:10 }}>No perks tracked yet.</div>}
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginTop:8 }}>
+            <input placeholder="Perk name" value={newPerk.perk} onChange={e => setPk('perk', e.target.value)}
+              style={Object.assign({}, inputStyle, { flex:1, minWidth:120 })} />
+            <input placeholder="$amt" value={newPerk.amount} onChange={e => setPk('amount', e.target.value)}
+              style={Object.assign({}, inputStyle, { width:55 })} />
+            <select value={newPerk.frequency} onChange={e => setPk('frequency', e.target.value)} style={inputStyle}>
+              <option>Monthly</option><option>Quarterly</option><option>Annual</option>
+            </select>
+            <button onClick={() => { onAddPerk(card.cardName, newPerk); setNewPerk({ perk:'', amount:'', frequency:'Monthly', category:'' }); }}
+              disabled={busy || !newPerk.perk}
+              style={{ background:'#4f6ef7', color:'#fff', border:'none', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontSize:12 }}>＋ Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- LoyaltyModal ----
+function LoyaltyModal({ mode, program, onSave, onClose, busy }) {
+  const blank = { program:'', linkedCard:'', totalPoints:'', centsPerPoint:'1.0', bestUse:'', expiry:'', notes:'' };
+  const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, program) : blank);
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#1e2235', border:'1px solid #2a2f45', borderRadius:14, padding:24, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto' }}>
+        <h3 style={{ margin:'0 0 18px', color:'#dde1f0' }}>{mode === 'edit' ? '✏️ Edit Program' : '🎯 Add Loyalty Program'}</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 16px' }}>
+          {[
+            { k:'program',       l:'Program Name *',      full:false },
+            { k:'linkedCard',    l:'Linked Card',         full:false },
+            { k:'totalPoints',   l:'Total Points *',      full:false },
+            { k:'centsPerPoint', l:'Cents Per Point',     full:false },
+            { k:'bestUse',       l:'Best Use',            full:true  },
+            { k:'expiry',        l:'Expiry Date',         full:false, type:'date' },
+            { k:'notes',         l:'Notes',               full:false },
+          ].map(function(f) {
+            return (
+              <div key={f.k} style={f.full ? { gridColumn:'1 / -1' } : {}}>
+                <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>{f.l}</label>
+                <input type={f.type || 'text'} value={form[f.k] || ''} onChange={e => set(f.k, e.target.value)}
+                  style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box' }} />
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:18 }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ background:'#2a2f45', color:'#a0a8c0', border:'none', borderRadius:8, padding:'8px 18px', cursor:'pointer' }}>Cancel</button>
+          <button onClick={() => onSave(form)} disabled={busy || !form.program.trim() || !form.totalPoints.toString().trim()}
+            style={{ background:'#f59e0b', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', cursor:'pointer' }}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- GoalModal ----
+function GoalModal({ mode, goal, programs, onSave, onClose, busy }) {
+  const blank = { goal:'', targetProgram: programs.length > 0 ? programs[0].program : '', targetPoints:'', currentPoints:'', notes:'' };
+  const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, goal) : blank);
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#1e2235', border:'1px solid #2a2f45', borderRadius:14, padding:24, width:'100%', maxWidth:440, maxHeight:'90vh', overflowY:'auto' }}>
+        <h3 style={{ margin:'0 0 18px', color:'#dde1f0' }}>{mode === 'edit' ? '✏️ Edit Goal' : '🏆 Add Rewards Goal'}</h3>
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {[
+            { k:'goal',          l:'Goal Name *'      },
+            { k:'targetPoints',  l:'Target Points *'  },
+            { k:'currentPoints', l:'Current Points'   },
+          ].map(function(f) {
+            return (
+              <div key={f.k}>
+                <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>{f.l}</label>
+                <input type="text" value={form[f.k] || ''} onChange={e => set(f.k, e.target.value)}
+                  style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box' }} />
+              </div>
+            );
+          })}
+          <div>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Target Program *</label>
+            {programs.length > 0
+              ? <select value={form.targetProgram} onChange={e => set('targetProgram', e.target.value)}
+                  style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
+                  {programs.map(function(p) { return <option key={p.id} value={p.program}>{p.program}</option>; })}
+                </select>
+              : <input type="text" value={form.targetProgram || ''} onChange={e => set('targetProgram', e.target.value)}
+                  style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box' }} />
+            }
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Notes</label>
+            <textarea value={form.notes || ''} onChange={e => set('notes', e.target.value)} rows={2}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13, boxSizing:'border-box', resize:'vertical' }} />
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:18 }}>
+          <button onClick={onClose} disabled={busy}
+            style={{ background:'#2a2f45', color:'#a0a8c0', border:'none', borderRadius:8, padding:'8px 18px', cursor:'pointer' }}>Cancel</button>
+          <button onClick={() => onSave(form)} disabled={busy || !form.goal.trim() || !form.targetPoints.toString().trim()}
+            style={{ background:'#f59e0b', color:'#fff', border:'none', borderRadius:8, padding:'8px 18px', cursor:'pointer' }}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- CardsTab (main self-contained component) ----
+function CardsTab({ apiUrl, apiToken }) {
+  const [cards,     setCards]     = React.useState([]);
+  const [rewards,   setRewards]   = React.useState([]);
+  const [perks,     setPerks]     = React.useState([]);
+  const [programs,  setPrograms]  = React.useState([]);
+  const [goals,     setGoals]     = React.useState([]);
+  const [loading,   setLoading]   = React.useState(true);
+  const [busy,      setBusy]      = React.useState(false);
+  const [error,     setError]     = React.useState('');
+  const [ownerFilter, setOwnerFilter] = React.useState('all');
+  const [modal,     setModal]     = React.useState(null); // { type, data }
+
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      const res = await apiGet(apiUrl, apiToken, { action: 'cards' });
+      setCards(res.cards || []);
+      setRewards(res.rewards || []);
+      setPerks(res.perks || []);
+      setPrograms(res.programs || []);
+      setGoals(res.goals || []);
+    } catch (err) { setError('Could not load cards: ' + err.message); }
+    setLoading(false);
+  }
+
+  React.useEffect(() => { load(); }, []);
+
+  // Filtered cards by owner
+  const visibleCards = React.useMemo(() => {
+    if (ownerFilter === 'all') return cards;
+    return cards.filter(function(c) {
+      return c.owner === ownerFilter || c.owner === 'Both';
+    });
+  }, [cards, ownerFilter]);
+
+  // Cheat sheet: top 2 cards per category, filtered by visible cards
+  const cheatSheet = React.useMemo(() => {
+    var visibleNames = new Set(visibleCards.filter(function(c) { return c.active === 'Yes'; }).map(function(c) { return c.cardName; }));
+    var byCat = {};
+    rewards.forEach(function(r) {
+      if (!visibleNames.has(r.cardName)) return;
+      if (!byCat[r.category]) byCat[r.category] = [];
+      byCat[r.category].push(r);
+    });
+    var result = [];
+    Object.keys(byCat).sort().forEach(function(cat) {
+      var sorted = byCat[cat].slice().sort(function(a, b) { return parseFloat(b.rate) - parseFloat(a.rate); });
+      result.push({ category: cat, top: sorted.slice(0, 2) });
+    });
+    return result;
+  }, [rewards, visibleCards]);
+
+  function copyCheatSheet() {
+    var now = new Date();
+    var monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
+    var lines = ['💳 Ahmed & Victoria\'s Card Cheat Sheet – ' + monthName];
+    cheatSheet.forEach(function(row) {
+      var cardStrs = row.top.map(function(r) {
+        var s = r.cardName + ' (' + r.rate + ' ' + r.rateType + ')';
+        if (r.conditions) s += ' | ' + r.conditions;
+        return s;
+      }).join(' / ');
+      lines.push(row.category.padEnd(18) + '→ ' + cardStrs);
+    });
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(lines.join('\n'));
+    }
+  }
+
+  // --- CARD CRUD ---
+  async function handleSaveCard(form) {
+    setBusy(true);
+    try {
+      var params = Object.assign({ action: modal.data ? 'update_card' : 'add_card' }, form);
+      if (modal.data) params.id = modal.data.id;
+      await apiGet(apiUrl, apiToken, params);
+      setModal(null);
+      await load();
+    } catch (err) { setError('Save failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCard(id) {
+    if (!confirm('Delete this card and all its rewards/perks?')) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_card', id });
+      await load();
+    } catch (err) { setError('Delete failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  // --- REWARD CRUD ---
+  async function handleAddReward(cardName, r) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_card_reward', cardName, category: r.category, rate: r.rate, rateType: r.rateType, conditions: r.conditions || '' });
+      await load();
+    } catch (err) { setError('Add reward failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteReward(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_card_reward', id });
+      await load();
+    } catch (err) { setError('Delete reward failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  // --- PERK CRUD + TOGGLE ---
+  async function handleAddPerk(cardName, pk) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_card_perk', cardName, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '' });
+      await load();
+    } catch (err) { setError('Add perk failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeletePerk(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_card_perk', id });
+      await load();
+    } catch (err) { setError('Delete perk failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleTogglePerk(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'toggle_card_perk', id });
+      await load();
+    } catch (err) { setError('Toggle perk failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  // --- LOYALTY + GOALS CRUD ---
+  async function handleSaveProgram(form) {
+    setBusy(true);
+    try {
+      var params = Object.assign({ action: modal.data ? 'update_loyalty_program' : 'add_loyalty_program' }, form);
+      if (modal.data) params.id = modal.data.id;
+      await apiGet(apiUrl, apiToken, params);
+      setModal(null);
+      await load();
+    } catch (err) { setError('Save failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteProgram(id) {
+    if (!confirm('Delete this loyalty program?')) return;
+    setBusy(true);
+    try { await apiGet(apiUrl, apiToken, { action: 'delete_loyalty_program', id }); await load(); }
+    catch (err) { setError('Delete failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleSaveGoal(form) {
+    setBusy(true);
+    try {
+      var params = Object.assign({ action: modal.data ? 'update_rewards_goal' : 'add_rewards_goal' }, form);
+      if (modal.data) params.id = modal.data.id;
+      await apiGet(apiUrl, apiToken, params);
+      setModal(null);
+      await load();
+    } catch (err) { setError('Save failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteGoal(id) {
+    if (!confirm('Delete this goal?')) return;
+    setBusy(true);
+    try { await apiGet(apiUrl, apiToken, { action: 'delete_rewards_goal', id }); await load(); }
+    catch (err) { setError('Delete failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  if (loading) return <div style={{ color:'#a0a8c0', padding:24, textAlign:'center' }}>Loading Credit Card Hub…</div>;
+
+  const panelHead = (title, actions) => (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+      <span style={{ fontWeight:700, fontSize:14, color:'#dde1f0' }}>{title}</span>
+      <div style={{ display:'flex', gap:6 }}>{actions}</div>
+    </div>
+  );
+
+  const pillBtn = (label, onClick, color) => (
+    <button onClick={onClick} disabled={busy}
+      style={{ background: color || '#2a2f45', color:'#dde1f0', border:'none', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontSize:12 }}>
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{ padding:'4px 0' }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14, flexWrap:'wrap', gap:8 }}>
+        <div>
+          <div style={{ fontWeight:700, fontSize:17, color:'#dde1f0' }}>💳 Ahmed &amp; Victoria's Credit Card Hub</div>
+          <div style={{ fontSize:12, color:'#6b7280' }}>Updated: {new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })}</div>
+        </div>
+        {/* Owner filter */}
+        <div style={{ display:'flex', gap:4 }}>
+          {['all','Ahmed','Victoria'].map(function(o) {
+            return (
+              <button key={o} onClick={() => setOwnerFilter(o)}
+                style={{ background: ownerFilter === o ? '#4f6ef7' : '#2a2f45', color: ownerFilter === o ? '#fff' : '#a0a8c0', border:'none', borderRadius:20, padding:'4px 12px', cursor:'pointer', fontSize:12 }}>
+                {o === 'all' ? 'All Owners' : o}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {error && <div style={{ color:'#ef4444', marginBottom:12, fontSize:13 }}>{error}</div>}
+
+      {/* 2-column grid: left = cheat sheet, right = card tracker + rewards hub */}
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 3fr', gap:16, alignItems:'start' }}>
+
+        {/* ── LEFT: Quick-Reference Cheat Sheet ─────────────── */}
+        <div style={{ background:'#1a2744', border:'1px solid #2a3f6f', borderRadius:12, padding:16 }}>
+          {panelHead('💳 Quick-Reference Cheat Sheet',
+            [<span key="sub" style={{ fontSize:11, color:'#6b7280', marginRight:6 }}>(Where to Use Which Card)</span>,
+             pillBtn('📋 Copy', copyCheatSheet)]
+          )}
+          {cheatSheet.length === 0
+            ? <div style={{ color:'#6b7280', fontSize:13, textAlign:'center', padding:'20px 0' }}>Add reward categories to your cards to generate the cheat sheet.</div>
+            : cheatSheet.map(function(row) {
+                var icon = CARD_CATEGORY_ICONS[row.category] || '💰';
+                return (
+                  <div key={row.category} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 0', borderBottom:'1px solid #2a3f6f' }}>
+                    <div style={{ fontSize:22, lineHeight:1, marginTop:2, minWidth:28 }}>{icon}</div>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:13, color:'#dde1f0', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{row.category}</div>
+                      {row.top.map(function(r, idx) {
+                        var label = r.cardName + ' (' + r.rate + ' ' + r.rateType + ')';
+                        if (r.conditions) label += ' | ' + r.conditions;
+                        return <div key={idx} style={{ fontSize:12, color:'#a0a8c0' }}>{label}</div>;
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+          }
+        </div>
+
+        {/* ── RIGHT: stacked panels ─────────────────────────── */}
+        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+
+          {/* Card Tracker */}
+          <div style={{ background:'#183028', border:'1px solid #1f4033', borderRadius:12, padding:16 }}>
+            {panelHead('📋 Your Card Tracker', [pillBtn('＋ Add Card', () => setModal({ type:'card', data:null }), '#22c55e')])}
+            {visibleCards.length === 0
+              ? <div style={{ color:'#6b7280', fontSize:13, textAlign:'center', padding:'12px 0' }}>No cards yet. Click ＋ Add Card to get started.</div>
+              : <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr>{['Card','Owner','Annual Fee','Due','Statement Credit','Status'].map(h => (
+                      <th key={h} style={{ textAlign:'left', color:'#6b7280', padding:'4px 8px 8px 0', borderBottom:'1px solid #1f4033', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {visibleCards.map(function(c) {
+                      var ds = daysSince(c.lastUsed);
+                      var inactiveWarn = ds != null && ds > 60;
+                      return (
+                        <tr key={c.id} style={{ cursor:'pointer' }}
+                          onClick={() => setModal({ type:'detail', data:c })}>
+                          <td style={{ padding:'6px 8px 6px 0', color:'#dde1f0' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:cardChipColor(c.cardName), flexShrink:0 }}></span>
+                              <span style={{ fontWeight:600 }}>{c.cardName}</span>
+                              {inactiveWarn && <span style={{ color:'#ef4444', fontSize:11 }} title={'Last used ' + ds + ' days ago — inactivity risk!'}>⚠</span>}
+                            </div>
+                          </td>
+                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.owner}</td>
+                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.annualFee != null && c.annualFee !== '' ? '$' + c.annualFee : '—'}</td>
+                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.dueDay ? c.dueDay + 'th' : '—'}</td>
+                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0', fontSize:11 }}>{c.statementCredit || '—'}</td>
+                          <td style={{ padding:'6px 8px 6px 0' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                              <span style={{ background: c.active === 'Yes' ? '#166534' : '#374151', color: c.active === 'Yes' ? '#86efac' : '#9ca3af',
+                                fontSize:10, fontWeight:700, borderRadius:4, padding:'2px 6px' }}>
+                                {c.active === 'Yes' ? 'ACTIVE' : 'INACTIVE'}
+                              </span>
+                              <button onClick={e => { e.stopPropagation(); setModal({ type:'card', data:c }); }} disabled={busy}
+                                style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
+                              <button onClick={e => { e.stopPropagation(); handleDeleteCard(c.id); }} disabled={busy}
+                                style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:13 }}>×</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+            }
+          </div>
+
+          {/* Rewards & Redemption Hub */}
+          <div style={{ background:'#2a1a0a', border:'1px solid #4a3010', borderRadius:12, padding:16 }}>
+            {panelHead('🎁 Rewards & Redemption Hub', [
+              pillBtn('＋ Program', () => setModal({ type:'program', data:null }), '#f59e0b'),
+              pillBtn('＋ Goal', () => setModal({ type:'goal', data:null }), '#f59e0b'),
+            ])}
+            {/* Programs table */}
+            {programs.length === 0
+              ? <div style={{ color:'#6b7280', fontSize:13, marginBottom:12 }}>No loyalty programs added yet.</div>
+              : <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse', marginBottom:16 }}>
+                  <thead>
+                    <tr>{['Program','Total Points','Est. Value','Best Use',''].map(h => (
+                      <th key={h} style={{ textAlign:'left', color:'#a07030', padding:'4px 8px 8px 0', borderBottom:'1px solid #4a3010' }}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {programs.map(function(pg) {
+                      var estVal = Math.round(pg.totalPoints * (pg.centsPerPoint || 1) / 100);
+                      var ds90  = pg.expiry && pg.expiry !== 'Never' && pg.expiry
+                        ? Math.round((new Date(pg.expiry) - new Date()) / 86400000) : null;
+                      return (
+                        <tr key={pg.id}>
+                          <td style={{ padding:'5px 8px 5px 0', color:'#f0c060', fontWeight:600 }}>
+                            {pg.program}
+                            {ds90 != null && ds90 <= 90 && <span style={{ color:'#f59e0b', fontSize:11, marginLeft:4 }}>⚠ expires {pg.expiry}</span>}
+                          </td>
+                          <td style={{ padding:'5px 8px 5px 0', color:'#dde1f0' }}>{fmtPts(pg.totalPoints)}</td>
+                          <td style={{ padding:'5px 8px 5px 0', color:'#22c55e' }}>${estVal.toLocaleString()}</td>
+                          <td style={{ padding:'5px 8px 5px 0', color:'#a0a8c0' }}>{pg.bestUse}</td>
+                          <td style={{ whiteSpace:'nowrap' }}>
+                            <button onClick={() => setModal({ type:'program', data:pg })} disabled={busy}
+                              style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
+                            <button onClick={() => handleDeleteProgram(pg.id)} disabled={busy}
+                              style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:13 }}>×</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+            }
+            {/* Goals */}
+            {goals.length > 0 && (
+              <div>
+                <div style={{ fontWeight:700, fontSize:12, color:'#f0c060', marginBottom:10 }}>Goals</div>
+                {goals.map(function(g) {
+                  var pct     = g.targetPoints > 0 ? Math.min(100, Math.round(g.currentPoints / g.targetPoints * 100)) : 0;
+                  var needed  = Math.max(0, g.targetPoints - g.currentPoints);
+                  return (
+                    <div key={g.id} style={{ background:'#3a2510', borderRadius:8, padding:'10px 12px', marginBottom:8 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:6, flexWrap:'wrap', gap:4 }}>
+                        <span style={{ fontWeight:700, color:'#f0c060', fontSize:13 }}>{g.goal}</span>
+                        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                          <span style={{ background:'#22c55e', color:'#fff', fontSize:10, fontWeight:700, borderRadius:10, padding:'2px 8px' }}>{pct}% Achieved</span>
+                          <span style={{ fontSize:11, color:'#a0a8c0' }}>Need {fmtPts(needed)} more</span>
+                          <span style={{ fontSize:11, color:'#f59e0b' }}>Target: {g.targetProgram}</span>
+                          <button onClick={() => setModal({ type:'goal', data:g })} disabled={busy}
+                            style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
+                          <button onClick={() => handleDeleteGoal(g.id)} disabled={busy}
+                            style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:13 }}>×</button>
+                        </div>
+                      </div>
+                      <div style={{ background:'#4a3010', borderRadius:4, height:8, overflow:'hidden' }}>
+                        <div style={{ background:'#22c55e', height:'100%', width: pct + '%', borderRadius:4, transition:'width 0.3s' }}></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Modals */}
+      {modal && modal.type === 'card' && (
+        <CardModal mode={modal.data ? 'edit' : 'add'} card={modal.data} busy={busy}
+          onSave={handleSaveCard} onClose={() => setModal(null)} />
+      )}
+      {modal && modal.type === 'detail' && (
+        <CardDetailModal card={modal.data} rewards={rewards} perks={perks} busy={busy}
+          onClose={() => setModal(null)}
+          onAddReward={handleAddReward} onDeleteReward={handleDeleteReward}
+          onAddPerk={handleAddPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} />
+      )}
+      {modal && modal.type === 'program' && (
+        <LoyaltyModal mode={modal.data ? 'edit' : 'add'} program={modal.data} busy={busy}
+          onSave={handleSaveProgram} onClose={() => setModal(null)} />
+      )}
+      {modal && modal.type === 'goal' && (
+        <GoalModal mode={modal.data ? 'edit' : 'add'} goal={modal.data} programs={programs} busy={busy}
+          onSave={handleSaveGoal} onClose={() => setModal(null)} />
+      )}
+    </div>
+  );
+}
+
 // ---- Finances Tab -----------------------------------------------------------
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
@@ -7836,6 +8543,7 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
     { id: 'budget',    label: '📊 Budget' },
     { id: 'bills',     label: '🧾 Bills' },
     { id: 'cashflow',  label: '💰 Cashflow' },
+    { id: 'cards',     label: '💳 Cards' },
     { id: 'summaries', label: '📋 Summaries' },
   ];
 
@@ -7986,6 +8694,11 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
       {/* ── Cashflow ─────────────────────────────────────── */}
       {sub === 'cashflow' && (
         <CashflowView apiUrl={apiUrl} apiToken={apiToken} bills={bills} />
+      )}
+
+      {/* ── Cards: Credit Card Hub ───────────────────────── */}
+      {sub === 'cards' && (
+        <CardsTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
 
       {/* ── Summaries ─────────────────────────────────── */}

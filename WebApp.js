@@ -179,6 +179,23 @@ function doGet(e) {
       case 'add_prescription':           return jsonOut_(webAddPrescription_(e));
       case 'update_prescription':        return jsonOut_(webUpdatePrescription_(e));
       case 'delete_prescription':        return jsonOut_(webDeletePrescription_(e));
+      // Credit Card Hub (Issues #115 + #117)
+      case 'cards':                      return jsonOut_(webGetCards_());
+      case 'add_card':                   return jsonOut_(webAddCard_(e));
+      case 'update_card':                return jsonOut_(webUpdateCard_(e));
+      case 'delete_card':                return jsonOut_(webDeleteCard_(e));
+      case 'add_card_reward':            return jsonOut_(webAddCardReward_(e));
+      case 'update_card_reward':         return jsonOut_(webUpdateCardReward_(e));
+      case 'delete_card_reward':         return jsonOut_(webDeleteCardReward_(e));
+      case 'add_card_perk':              return jsonOut_(webAddCardPerk_(e));
+      case 'delete_card_perk':           return jsonOut_(webDeleteCardPerk_(e));
+      case 'toggle_card_perk':           return jsonOut_(webToggleCardPerk_(e));
+      case 'add_loyalty_program':        return jsonOut_(webAddLoyaltyProgram_(e));
+      case 'update_loyalty_program':     return jsonOut_(webUpdateLoyaltyProgram_(e));
+      case 'delete_loyalty_program':     return jsonOut_(webDeleteLoyaltyProgram_(e));
+      case 'add_rewards_goal':           return jsonOut_(webAddRewardsGoal_(e));
+      case 'update_rewards_goal':        return jsonOut_(webUpdateRewardsGoal_(e));
+      case 'delete_rewards_goal':        return jsonOut_(webDeleteRewardsGoal_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -4529,4 +4546,382 @@ function webDeletePrescription_(e) {
     }
   }
   throw new Error('Prescription not found: ' + id);
+}
+
+// ============================================================
+// CREDIT CARD HUB (Issues #115 + #117)
+// ============================================================
+
+function webGetCards_() {
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+
+  function readSheet(tabKey) {
+    var s = ss.getSheetByName(TABS[tabKey]);
+    if (!s || s.getLastRow() < 2) return [];
+    return s.getRange(2, 1, s.getLastRow() - 1, s.getLastColumn()).getValues();
+  }
+
+  // --- Credit Cards ---
+  var cardRows = readSheet('CREDIT_CARDS');
+  var cards = cardRows.filter(function(r) { return r[0]; }).map(function(r) {
+    return {
+      id:              String(r[0]  || ''),
+      cardName:        String(r[1]  || ''),
+      issuer:          String(r[2]  || ''),
+      last4:           String(r[3]  || ''),
+      annualFee:       r[4]  !== '' ? Number(r[4])  : null,
+      dueDay:          r[5]  !== '' ? Number(r[5])  : null,
+      lastUsed:        String(r[6]  || ''),
+      owner:           String(r[7]  || 'Ahmed'),
+      active:          String(r[8]  || 'Yes'),
+      statementCredit: String(r[9]  || ''),
+      notes:           String(r[10] || ''),
+    };
+  });
+  // Sort: active first → owner order → name alpha
+  var ownerOrder = { 'Ahmed': 0, 'Victoria': 1, 'Both': 2 };
+  cards.sort(function(a, b) {
+    var aA = a.active === 'Yes' ? 0 : 1, bA = b.active === 'Yes' ? 0 : 1;
+    if (aA !== bA) return aA - bA;
+    var ao = ownerOrder[a.owner] != null ? ownerOrder[a.owner] : 3;
+    var bo = ownerOrder[b.owner] != null ? ownerOrder[b.owner] : 3;
+    if (ao !== bo) return ao - bo;
+    return a.cardName.localeCompare(b.cardName);
+  });
+
+  // --- Card Rewards ---
+  var rewardRows = readSheet('CARD_REWARDS');
+  var rewards = rewardRows.filter(function(r) { return r[0]; }).map(function(r) {
+    return {
+      id:         String(r[0] || ''),
+      cardName:   String(r[1] || ''),
+      category:   String(r[2] || ''),
+      rate:       String(r[3] || ''),
+      rateType:   String(r[4] || ''),
+      conditions: String(r[5] || ''),
+    };
+  });
+
+  // --- Card Perks ---
+  var perkRows = readSheet('CARD_PERKS');
+  var perks = perkRows.filter(function(r) { return r[0]; }).map(function(r) {
+    return {
+      id:        String(r[0] || ''),
+      cardName:  String(r[1] || ''),
+      perk:      String(r[2] || ''),
+      amount:    r[3] !== '' ? Number(r[3]) : null,
+      frequency: String(r[4] || 'Monthly'),
+      category:  String(r[5] || ''),
+      lastUsed:  String(r[6] || ''),
+    };
+  });
+
+  // --- Loyalty Programs ---
+  var progRows = readSheet('LOYALTY_PROGRAMS');
+  var programs = progRows.filter(function(r) { return r[0]; }).map(function(r) {
+    return {
+      id:            String(r[0] || ''),
+      program:       String(r[1] || ''),
+      linkedCard:    String(r[2] || ''),
+      totalPoints:   r[3] !== '' ? Number(r[3]) : 0,
+      centsPerPoint: r[4] !== '' ? Number(r[4]) : 1.0,
+      bestUse:       String(r[5] || ''),
+      expiry:        String(r[6] || ''),
+      notes:         String(r[7] || ''),
+    };
+  });
+
+  // --- Rewards Goals ---
+  var goalRows = readSheet('REWARDS_GOALS');
+  var goals = goalRows.filter(function(r) { return r[0]; }).map(function(r) {
+    return {
+      id:            String(r[0] || ''),
+      goal:          String(r[1] || ''),
+      targetProgram: String(r[2] || ''),
+      targetPoints:  r[3] !== '' ? Number(r[3]) : 0,
+      currentPoints: r[4] !== '' ? Number(r[4]) : 0,
+      notes:         String(r[5] || ''),
+    };
+  });
+
+  return { ok: true, cards: cards, rewards: rewards, perks: perks, programs: programs, goals: goals };
+}
+
+// ---- Credit Card CRUD ----
+
+function webAddCard_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var cardName = (p.cardName || p.card_name || '').trim();
+  if (!cardName) throw new Error('cardName is required');
+  var id = 'CC-' + Date.now();
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  sheet.appendRow([
+    id,
+    cardName,
+    (p.issuer          || '').trim(),
+    (p.last4           || '').trim(),
+    (p.annualFee       || '').toString().trim(),
+    (p.dueDay          || '').toString().trim(),
+    (p.lastUsed        || '').trim(),
+    (p.owner           || 'Ahmed').trim(),
+    (p.active          || 'Yes').trim(),
+    (p.statementCredit || '').trim(),
+    (p.notes           || '').trim(),
+  ]);
+  return { ok: true, id: id };
+}
+
+function webUpdateCard_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var rows  = sheet.getDataRange().getValues();
+  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, active:9, statementCredit:10, notes:11 };
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      for (var key in colMap) {
+        if (p[key] != null) sheet.getRange(i + 1, colMap[key]).setValue(p[key].toString().trim());
+      }
+      return { ok: true };
+    }
+  }
+  throw new Error('Card not found: ' + id);
+}
+
+function webDeleteCard_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+
+  // Find card name first (for cascade delete)
+  var cardSheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var cardRows  = cardSheet.getDataRange().getValues();
+  var cardName  = null;
+  for (var i = 1; i < cardRows.length; i++) {
+    if (cardRows[i][0] === id) { cardName = String(cardRows[i][1]); cardSheet.deleteRow(i + 1); break; }
+  }
+  if (!cardName) throw new Error('Card not found: ' + id);
+
+  // Cascade: delete matching rows in Card Rewards + Card Perks (iterate in reverse to avoid row shift)
+  function cascadeDelete(tabName) {
+    var s = ss.getSheetByName(tabName);
+    if (!s || s.getLastRow() < 2) return;
+    var r = s.getDataRange().getValues();
+    for (var j = r.length - 1; j >= 1; j--) {
+      if (String(r[j][1]) === cardName) s.deleteRow(j + 1);
+    }
+  }
+  cascadeDelete(TABS.CARD_REWARDS);
+  cascadeDelete(TABS.CARD_PERKS);
+
+  return { ok: true, action: 'deleted' };
+}
+
+// ---- Card Rewards CRUD ----
+
+function webAddCardReward_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var cardName = (p.cardName || '').trim();
+  var category = (p.category || '').trim();
+  var rate     = (p.rate     || '').toString().trim();
+  var rateType = (p.rateType || '').trim();
+  if (!cardName || !category || !rate || !rateType) throw new Error('cardName, category, rate, rateType are required');
+  var id    = 'CR-' + Date.now();
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_REWARDS);
+  sheet.appendRow([id, cardName, category, rate, rateType, (p.conditions || '').trim()]);
+  return { ok: true, id: id };
+}
+
+function webUpdateCardReward_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_REWARDS);
+  var rows  = sheet.getDataRange().getValues();
+  var colMap = { cardName:2, category:3, rate:4, rateType:5, conditions:6 };
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      for (var key in colMap) {
+        if (p[key] != null) sheet.getRange(i + 1, colMap[key]).setValue(p[key].toString().trim());
+      }
+      return { ok: true };
+    }
+  }
+  throw new Error('Card reward not found: ' + id);
+}
+
+function webDeleteCardReward_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_REWARDS);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) { sheet.deleteRow(i + 1); return { ok: true, action: 'deleted' }; }
+  }
+  throw new Error('Card reward not found: ' + id);
+}
+
+// ---- Card Perks CRUD + toggle ----
+
+function webAddCardPerk_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var cardName  = (p.cardName  || '').trim();
+  var perk      = (p.perk      || '').trim();
+  var frequency = (p.frequency || 'Monthly').trim();
+  if (!cardName || !perk) throw new Error('cardName and perk are required');
+  var id    = 'CP-' + Date.now();
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  sheet.appendRow([id, cardName, perk, (p.amount || '').toString().trim(), frequency, (p.category || '').trim(), '']);
+  return { ok: true, id: id };
+}
+
+function webDeleteCardPerk_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) { sheet.deleteRow(i + 1); return { ok: true, action: 'deleted' }; }
+  }
+  throw new Error('Card perk not found: ' + id);
+}
+
+function webToggleCardPerk_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  var rows  = sheet.getDataRange().getValues();
+  var tz    = Session.getScriptTimeZone();
+  var now   = new Date();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      var freq       = String(rows[i][4] || 'Monthly');
+      var currentPeriod = freq === 'Annual'
+        ? Utilities.formatDate(now, tz, 'yyyy')
+        : Utilities.formatDate(now, tz, 'yyyy-MM');
+      var lastUsed   = String(rows[i][6] || '').trim();
+      var newUsed    = (lastUsed === currentPeriod) ? '' : currentPeriod;
+      sheet.getRange(i + 1, 7).setValue(newUsed);
+      return { ok: true, used: newUsed !== '', period: currentPeriod };
+    }
+  }
+  throw new Error('Card perk not found: ' + id);
+}
+
+// ---- Loyalty Programs CRUD ----
+
+function webAddLoyaltyProgram_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var program     = (p.program     || '').trim();
+  var totalPoints = (p.totalPoints || '0').toString().trim();
+  if (!program) throw new Error('program is required');
+  var id    = 'LP-' + Date.now();
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.LOYALTY_PROGRAMS);
+  sheet.appendRow([
+    id, program,
+    (p.linkedCard    || '').trim(),
+    totalPoints,
+    (p.centsPerPoint || '1.0').toString().trim(),
+    (p.bestUse       || '').trim(),
+    (p.expiry        || '').trim(),
+    (p.notes         || '').trim(),
+  ]);
+  return { ok: true, id: id };
+}
+
+function webUpdateLoyaltyProgram_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.LOYALTY_PROGRAMS);
+  var rows  = sheet.getDataRange().getValues();
+  var colMap = { program:2, linkedCard:3, totalPoints:4, centsPerPoint:5, bestUse:6, expiry:7, notes:8 };
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      for (var key in colMap) {
+        if (p[key] != null) sheet.getRange(i + 1, colMap[key]).setValue(p[key].toString().trim());
+      }
+      return { ok: true };
+    }
+  }
+  throw new Error('Loyalty program not found: ' + id);
+}
+
+function webDeleteLoyaltyProgram_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.LOYALTY_PROGRAMS);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) { sheet.deleteRow(i + 1); return { ok: true, action: 'deleted' }; }
+  }
+  throw new Error('Loyalty program not found: ' + id);
+}
+
+// ---- Rewards Goals CRUD ----
+
+function webAddRewardsGoal_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var goal         = (p.goal         || '').trim();
+  var targetProgram = (p.targetProgram || '').trim();
+  var targetPoints  = (p.targetPoints  || '0').toString().trim();
+  if (!goal || !targetProgram) throw new Error('goal and targetProgram are required');
+  var id    = 'RG-' + Date.now();
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.REWARDS_GOALS);
+  sheet.appendRow([
+    id, goal, targetProgram, targetPoints,
+    (p.currentPoints || '0').toString().trim(),
+    (p.notes         || '').trim(),
+  ]);
+  return { ok: true, id: id };
+}
+
+function webUpdateRewardsGoal_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.REWARDS_GOALS);
+  var rows  = sheet.getDataRange().getValues();
+  var colMap = { goal:2, targetProgram:3, targetPoints:4, currentPoints:5, notes:6 };
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      for (var key in colMap) {
+        if (p[key] != null) sheet.getRange(i + 1, colMap[key]).setValue(p[key].toString().trim());
+      }
+      return { ok: true };
+    }
+  }
+  throw new Error('Rewards goal not found: ' + id);
+}
+
+function webDeleteRewardsGoal_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.REWARDS_GOALS);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) { sheet.deleteRow(i + 1); return { ok: true, action: 'deleted' }; }
+  }
+  throw new Error('Rewards goal not found: ' + id);
 }

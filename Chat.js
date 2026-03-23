@@ -454,6 +454,71 @@ function buildChatSystemPrompt_(context) {
       });
       return lines + '\n';
     })() +
+    (function() {
+      var cd = context.cardsData;
+      if (!cd || !cd.cards || !cd.cards.length) return 'CREDIT CARDS: (none on file)\n\n';
+      var now = new Date(); now.setHours(0,0,0,0);
+      var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+      var curYear  = String(now.getFullYear());
+      var activeCards = cd.cards.filter(function(c) { return c.active === 'Yes'; });
+      // Group by owner
+      var byOwner = {};
+      activeCards.forEach(function(c) {
+        var o = c.owner || 'Ahmed';
+        if (!byOwner[o]) byOwner[o] = [];
+        byOwner[o].push(c);
+      });
+      var lines = 'CREDIT CARDS (active only):\n';
+      var inactiveWarn = [];
+      Object.keys(byOwner).forEach(function(owner) {
+        lines += '  ' + owner + ':\n';
+        byOwner[owner].forEach(function(c) {
+          // Reward summary
+          var cardRw = (cd.rewards || []).filter(function(r) { return r.cardName === c.cardName; });
+          var rwStr  = cardRw.map(function(r) { return r.category + ' ' + r.rate + ' ' + r.rateType + (r.conditions ? ' (' + r.conditions + ')' : ''); }).join(', ');
+          // Inactivity check
+          var lastUsed = c.lastUsed ? c.lastUsed : null;
+          var daysAgo  = lastUsed ? Math.round((now - new Date(lastUsed)) / 86400000) : null;
+          if (daysAgo == null || daysAgo > 60) inactiveWarn.push(c.cardName + ' (' + owner + ')');
+          // Unused perks this month
+          var cardPerks = (cd.perks || []).filter(function(p) { return p.cardName === c.cardName; });
+          var unusedPerks = cardPerks.filter(function(p) {
+            var period = p.frequency === 'Annual' ? curYear : curMonth;
+            return p.lastUsed !== period;
+          });
+          lines += '    ' + c.cardName + ': ' + (rwStr || '(no rewards defined)') + '\n';
+          if (c.statementCredit) lines += '      Statement credit: ' + c.statementCredit + '\n';
+          if (lastUsed) lines += '      Last used: ' + lastUsed + (daysAgo != null ? ' (' + daysAgo + ' days ago)' : '') + '\n';
+          if (unusedPerks.length) lines += '      Unused perks this month: ' + unusedPerks.map(function(p) { return p.perk; }).join(', ') + '\n';
+        });
+      });
+      if (inactiveWarn.length) lines += '  ⚠ Inactivity risk (>60 days unused): ' + inactiveWarn.join(', ') + '\n';
+      return lines + '\n';
+    })() +
+    (function() {
+      var cd = context.cardsData;
+      if (!cd || (!cd.programs || !cd.programs.length) && (!cd.goals || !cd.goals.length)) return '';
+      var now = new Date(); now.setHours(0,0,0,0);
+      var lines = 'LOYALTY PROGRAMS:\n';
+      (cd.programs || []).forEach(function(pg) {
+        var estVal = Math.round(pg.totalPoints * (pg.centsPerPoint || 1) / 100);
+        var ds90   = pg.expiry && pg.expiry !== 'Never' ? Math.round((new Date(pg.expiry) - now) / 86400000) : null;
+        lines += '  ' + pg.program + ': ' + Number(pg.totalPoints).toLocaleString() + ' pts ($' + estVal.toLocaleString() + ' est.)';
+        if (pg.bestUse) lines += ' — best for ' + pg.bestUse;
+        if (ds90 != null && ds90 <= 90) lines += ' ⚠ EXPIRING in ' + ds90 + ' days (' + pg.expiry + ')';
+        lines += '\n';
+      });
+      if (cd.goals && cd.goals.length) {
+        lines += 'REWARDS GOALS:\n';
+        cd.goals.forEach(function(g) {
+          var pct    = g.targetPoints > 0 ? Math.round(g.currentPoints / g.targetPoints * 100) : 0;
+          var needed = Math.max(0, g.targetPoints - g.currentPoints);
+          lines += '  ' + g.goal + ': ' + Number(g.currentPoints).toLocaleString() + '/' + Number(g.targetPoints).toLocaleString() + ' ' + g.targetProgram;
+          lines += ' (' + pct + '%) — need ' + Number(needed).toLocaleString() + ' more\n';
+        });
+      }
+      return lines + '\n';
+    })() +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
     (function() {
@@ -627,6 +692,9 @@ function buildChatSystemPrompt_(context) {
     // Prescriptions (Issue #116)
     'ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes}  \u2014 add a prescription for Ahmed or Victoria\n' +
     'ACTION:mark_prescription_refilled|{person}|{medication}|{newRefillDate YYYY-MM-DD}  \u2014 update lastFilled=today and refillDate for a prescription\n' +
+    // Credit Card Hub (Issues #115 + #117)
+    'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
+    'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
     '\n' +
 
     'RULES:\n' +
@@ -687,6 +755,10 @@ function buildChatSystemPrompt_(context) {
     '- For update_career_position: use when Ahmed mentions a new role, promotion, company change, or updates his focus areas. Confirm the change before emitting the ACTION. Do not use this for temporary assignments or speculation.\n' +
     '- For add_prescription: use when Ahmed says "add X mg of Y for {person}", "log that {person} takes X", or "{person} was prescribed X". person = Ahmed or Victoria. dosage/frequency/refillDate are optional — leave blank if not mentioned.\n' +
     '- For mark_prescription_refilled: use when Ahmed says "{person} just refilled X", "picked up {person}\'s X prescription", or "got the X refill". Sets last filled to today. Ask for new refill date if not provided; do not guess it.\n' +
+    '- For log_card_used: use when Ahmed says "I used my X card", "paid with my X", or "charged it to X". Confirm the card was logged. Card name can be partial (e.g. "Amex" matches "Amex Gold").\n' +
+    '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
+    '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
+    '- VERA can answer "which card should I use for X?" directly from CREDIT CARDS context — no ACTION needed; just explain the best option and why.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -997,6 +1069,13 @@ function buildChatContext_() {
     prescriptions = (pRes && pRes.prescriptions) || [];
   } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); }
 
+  // Credit Card Hub (Issues #115 + #117)
+  var cardsData = null;
+  try {
+    var cardRes = webGetCards_();
+    if (cardRes && cardRes.ok) cardsData = cardRes;
+  } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1020,6 +1099,7 @@ function buildChatContext_() {
     pantryDue:       pantryDue,
     career:          career,
     prescriptions:   prescriptions,
+    cardsData:       cardsData,
   };
 }
 
@@ -1875,6 +1955,41 @@ function executeActions_(rawText) {
             executed.push('mark_prescription_refilled (' + mrPerson + ': ' + matched[0].medication + ')');
           } else {
             errors.push('mark_prescription_refilled: no prescription found for ' + mrPerson + '/' + mrMed);
+          }
+        }
+      }
+
+      // Credit Card Hub (Issues #115 + #117)
+      else if (type === 'log_card_used') {
+        var lcCard   = (args[0] || '').trim();
+        var lcToday  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        if (lcCard) {
+          var lcAll    = webGetCards_();
+          var lcMatch  = (lcAll.cards || []).filter(function(c) {
+            return c.cardName.toLowerCase().indexOf(lcCard.toLowerCase()) >= 0;
+          });
+          if (lcMatch.length > 0) {
+            webUpdateCard_({ parameter: { id: lcMatch[0].id, lastUsed: lcToday } });
+            executed.push('log_card_used (' + lcMatch[0].cardName + ')');
+          } else {
+            errors.push('log_card_used: no card found matching "' + lcCard + '"');
+          }
+        }
+      }
+
+      else if (type === 'update_loyalty_points') {
+        var ulProg  = (args[0] || '').trim();
+        var ulPts   = (args[1] || '').trim();
+        if (ulProg && ulPts) {
+          var ulAll   = webGetCards_();
+          var ulMatch = (ulAll.programs || []).filter(function(p) {
+            return p.program.toLowerCase().indexOf(ulProg.toLowerCase()) >= 0;
+          });
+          if (ulMatch.length > 0) {
+            webUpdateLoyaltyProgram_({ parameter: { id: ulMatch[0].id, totalPoints: ulPts } });
+            executed.push('update_loyalty_points (' + ulMatch[0].program + ' \u2192 ' + ulPts + ')');
+          } else {
+            errors.push('update_loyalty_points: no program found matching "' + ulProg + '"');
           }
         }
       }

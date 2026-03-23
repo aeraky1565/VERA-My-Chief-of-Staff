@@ -61,6 +61,11 @@ const TABS = {
   CAREER_WINS:        'Career Wins',          // Achievement log (Career tab)
   CAREER_NETWORK:     'Career Network',       // Professional relationships (Career tab)
   PRESCRIPTIONS:      'Prescriptions',        // Medication tracker for Ahmed + Victoria (Issue #116)
+  CREDIT_CARDS:       'Credit Cards',         // Card metadata + ownership (Issues #115/#117)
+  CARD_REWARDS:       'Card Rewards',         // Per-card category reward rates
+  CARD_PERKS:         'Card Perks',           // Monthly/annual perk tracker
+  LOYALTY_PROGRAMS:   'Loyalty Programs',     // Points/miles balances (Issue #117)
+  REWARDS_GOALS:      'Rewards Goals',        // Redemption goal tracking
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -98,6 +103,11 @@ const CAREER_DEVELOPMENT_HEADERS = ['ID', 'Item', 'Type', 'Status', 'Target Date
 const CAREER_WIN_HEADERS         = ['ID', 'Date', 'Win', 'Impact', 'Category', 'Notes'];
 const CAREER_NETWORK_HEADERS     = ['ID', 'Name', 'Role', 'Company', 'Relationship', 'Last Contact', 'Notes'];
 const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Frequency', 'Doctor', 'Pharmacy', 'Rx Number', 'Last Filled', 'Refill Date', 'Days Supply', 'Active', 'Notes'];
+const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Active', 'Statement Credit', 'Notes'];
+const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
+const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used'];
+const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
+const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -199,6 +209,11 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.CAREER_WINS,          CAREER_WIN_HEADERS);
   ensureSheet(ss, TABS.CAREER_NETWORK,       CAREER_NETWORK_HEADERS);
   ensureSheet(ss, TABS.PRESCRIPTIONS,        PRESCRIPTION_HEADERS);
+  ensureSheet(ss, TABS.CREDIT_CARDS,         CREDIT_CARD_HEADERS);
+  ensureSheet(ss, TABS.CARD_REWARDS,         CARD_REWARD_HEADERS);
+  ensureSheet(ss, TABS.CARD_PERKS,           CARD_PERK_HEADERS);
+  ensureSheet(ss, TABS.LOYALTY_PROGRAMS,     LOYALTY_PROGRAM_HEADERS);
+  ensureSheet(ss, TABS.REWARDS_GOALS,        REWARDS_GOAL_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
