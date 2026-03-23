@@ -60,6 +60,7 @@ const TABS = {
   CAREER_DEVELOPMENT: 'Career Development',   // Skills, courses, focus areas (Career tab)
   CAREER_WINS:        'Career Wins',          // Achievement log (Career tab)
   CAREER_NETWORK:     'Career Network',       // Professional relationships (Career tab)
+  PRESCRIPTIONS:      'Prescriptions',        // Medication tracker for Ahmed + Victoria (Issue #116)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -96,6 +97,7 @@ const CAREER_PROGRESSION_HEADERS = ['ID', 'Title', 'Company', 'Start Year', 'End
 const CAREER_DEVELOPMENT_HEADERS = ['ID', 'Item', 'Type', 'Status', 'Target Date', 'Notes'];
 const CAREER_WIN_HEADERS         = ['ID', 'Date', 'Win', 'Impact', 'Category', 'Notes'];
 const CAREER_NETWORK_HEADERS     = ['ID', 'Name', 'Role', 'Company', 'Relationship', 'Last Contact', 'Notes'];
+const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Frequency', 'Doctor', 'Pharmacy', 'Rx Number', 'Last Filled', 'Refill Date', 'Days Supply', 'Active', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -196,6 +198,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.CAREER_DEVELOPMENT,   CAREER_DEVELOPMENT_HEADERS);
   ensureSheet(ss, TABS.CAREER_WINS,          CAREER_WIN_HEADERS);
   ensureSheet(ss, TABS.CAREER_NETWORK,       CAREER_NETWORK_HEADERS);
+  ensureSheet(ss, TABS.PRESCRIPTIONS,        PRESCRIPTION_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');

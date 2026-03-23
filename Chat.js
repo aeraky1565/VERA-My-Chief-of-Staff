@@ -433,6 +433,27 @@ function buildChatSystemPrompt_(context) {
     'FAVORITE TAKEOUTS (' + (context.takeouts ? context.takeouts.length : 0) + '):\n' + takeoutLines + '\n\n' +
     'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
     'CAREER PROFILE:\n' + careerLines + '\n\n' +
+    (function() {
+      var rxList = context.prescriptions || [];
+      var active = rxList.filter(function(r) { return r.active === 'Yes'; });
+      if (!active.length) return 'PRESCRIPTIONS: (none on file)\n\n';
+      var byPerson = {};
+      active.forEach(function(r) {
+        if (!byPerson[r.person]) byPerson[r.person] = [];
+        byPerson[r.person].push(r);
+      });
+      var lines = 'PRESCRIPTIONS:\n';
+      Object.keys(byPerson).forEach(function(person) {
+        lines += '  ' + person + ':\n';
+        byPerson[person].forEach(function(r) {
+          lines += '    ' + r.medication +
+            (r.dosage ? ' ' + r.dosage : '') +
+            (r.frequency ? ' — ' + r.frequency : '') +
+            (r.refillDate ? ' — refill ' + r.refillDate : ' — no refill date') + '\n';
+        });
+      });
+      return lines + '\n';
+    })() +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
     (function() {
@@ -603,6 +624,9 @@ function buildChatSystemPrompt_(context) {
     'ACTION:add_career_win|{win}|{impact}|{category}|{date YYYY-MM-DD or blank}  \u2014 log a professional achievement\n' +
     'ACTION:add_career_goal|{title}|{horizon 1yr/3yr/5yr/10yr}|{category}|{notes}  \u2014 record a career goal\n' +
     'ACTION:update_career_position|{field}|{value}  \u2014 update position; field = title/company/department/workStyle/focusAreas/notes\n' +
+    // Prescriptions (Issue #116)
+    'ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes}  \u2014 add a prescription for Ahmed or Victoria\n' +
+    'ACTION:mark_prescription_refilled|{person}|{medication}|{newRefillDate YYYY-MM-DD}  \u2014 update lastFilled=today and refillDate for a prescription\n' +
     '\n' +
 
     'RULES:\n' +
@@ -661,6 +685,8 @@ function buildChatSystemPrompt_(context) {
     '- For add_career_win: capture automatically when Ahmed mentions an achievement, positive outcome, launch, promotion, or recognition (e.g., "we launched X", "I got recognized for Y", "my team won Z"). Category from: Promotion/Recognition/Launch/Leadership/Project/Other. Impact is a concise business outcome. Date defaults to today if not specified.\n' +
     '- For add_career_goal: use when Ahmed says "my career goal is X", "I want to become Y", or "in N years I want to Z". Map horizon naturally: <18 months → 1yr, ~3 years → 3yr, ~5 years → 5yr, 10+ years → 10yr. Category is optional — infer from context (e.g., Leadership, Technical, Visibility).\n' +
     '- For update_career_position: use when Ahmed mentions a new role, promotion, company change, or updates his focus areas. Confirm the change before emitting the ACTION. Do not use this for temporary assignments or speculation.\n' +
+    '- For add_prescription: use when Ahmed says "add X mg of Y for {person}", "log that {person} takes X", or "{person} was prescribed X". person = Ahmed or Victoria. dosage/frequency/refillDate are optional — leave blank if not mentioned.\n' +
+    '- For mark_prescription_refilled: use when Ahmed says "{person} just refilled X", "picked up {person}\'s X prescription", or "got the X refill". Sets last filled to today. Ask for new refill date if not provided; do not guess it.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -964,6 +990,13 @@ function buildChatContext_() {
     if (carRes && carRes.ok) career = carRes;
   } catch(e) { Logger.log('Chat context: career — ' + e.message); }
 
+  // Prescriptions (Issue #116)
+  var prescriptions = [];
+  try {
+    var pRes = webGetPrescriptions_();
+    prescriptions = (pRes && pRes.prescriptions) || [];
+  } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -986,6 +1019,7 @@ function buildChatContext_() {
     takeouts:        takeouts,
     pantryDue:       pantryDue,
     career:          career,
+    prescriptions:   prescriptions,
   };
 }
 
@@ -1806,6 +1840,42 @@ function executeActions_(rawText) {
           cpPos[cpField] = cpValue;
           webUpdateCareerPosition_({ parameter: cpPos });
           executed.push('update_career_position (' + cpField + '=' + cpValue + ')');
+        }
+      }
+
+      // Prescriptions (Issue #116)
+      else if (type === 'add_prescription') {
+        var rxPerson = (args[0] || 'Ahmed').trim();
+        var rxMed    = (args[1] || '').trim();
+        var rxDose   = (args[2] || '').trim();
+        var rxFreq   = (args[3] || '').trim();
+        var rxRefill = (args[4] || '').trim();
+        var rxNotes  = (args[5] || '').trim();
+        if (rxMed) {
+          webAddPrescription_({ parameter: { person: rxPerson, medication: rxMed, dosage: rxDose, frequency: rxFreq, refillDate: rxRefill, notes: rxNotes, active: 'Yes' } });
+          executed.push('add_prescription (' + rxPerson + ': ' + rxMed + ')');
+        }
+      }
+
+      else if (type === 'mark_prescription_refilled') {
+        var mrPerson = (args[0] || '').trim();
+        var mrMed    = (args[1] || '').trim();
+        var mrDate   = (args[2] || '').trim();
+        if (mrPerson && mrMed && mrDate) {
+          // Find the prescription by person + medication name match
+          var allRx = webGetPrescriptions_();
+          var rxRows = (allRx && allRx.prescriptions) || [];
+          var today  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+          var matched = rxRows.filter(function(r) {
+            return r.person.toLowerCase() === mrPerson.toLowerCase() &&
+                   r.medication.toLowerCase().indexOf(mrMed.toLowerCase()) >= 0;
+          });
+          if (matched.length > 0) {
+            webUpdatePrescription_({ parameter: { id: matched[0].id, lastFilled: today, refillDate: mrDate } });
+            executed.push('mark_prescription_refilled (' + mrPerson + ': ' + matched[0].medication + ')');
+          } else {
+            errors.push('mark_prescription_refilled: no prescription found for ' + mrPerson + '/' + mrMed);
+          }
         }
       }
 

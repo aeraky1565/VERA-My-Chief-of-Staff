@@ -174,6 +174,11 @@ function doGet(e) {
       case 'add_career_network':         return jsonOut_(webAddCareerNetwork_(e));
       case 'update_career_network':      return jsonOut_(webUpdateCareerNetwork_(e));
       case 'delete_career_network':      return jsonOut_(webDeleteCareerNetwork_(e));
+      // Prescriptions tab (Issue #116)
+      case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
+      case 'add_prescription':           return jsonOut_(webAddPrescription_(e));
+      case 'update_prescription':        return jsonOut_(webUpdatePrescription_(e));
+      case 'delete_prescription':        return jsonOut_(webDeletePrescription_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -4393,4 +4398,135 @@ function webGetPurchaseSuggestions_() {
   var cfg  = getConfigValues();
   var days = parseInt(cfg['pantry_restock_days_ahead'] || '7', 10) || 7;
   return { ok: true, suggestions: getItemsDue_(days) };
+}
+
+// ============================================================
+// PRESCRIPTIONS (Issue #116)
+// ============================================================
+
+function webGetPrescriptions_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.PRESCRIPTIONS);
+  if (!sheet) return { ok: true, prescriptions: [] };
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return { ok: true, prescriptions: [] };
+
+  var prescriptions = [];
+  for (var i = 1; i < rows.length; i++) {
+    var r = rows[i];
+    if (!r[0]) continue; // skip empty rows
+    prescriptions.push({
+      row:        i + 1,
+      id:         r[0]  || '',
+      person:     r[1]  || '',
+      medication: r[2]  || '',
+      dosage:     r[3]  || '',
+      frequency:  r[4]  || '',
+      doctor:     r[5]  || '',
+      pharmacy:   r[6]  || '',
+      rxNumber:   r[7]  || '',
+      lastFilled: r[8]  || '',
+      refillDate: r[9]  || '',
+      daysSupply: r[10] || '',
+      active:     r[11] || 'Yes',
+      notes:      r[12] || '',
+    });
+  }
+
+  // Sort: active first, then by refill date ascending (no refill date last)
+  prescriptions.sort(function(a, b) {
+    var aActive = (a.active === 'Yes') ? 0 : 1;
+    var bActive = (b.active === 'Yes') ? 0 : 1;
+    if (aActive !== bActive) return aActive - bActive;
+    if (!a.refillDate && !b.refillDate) return 0;
+    if (!a.refillDate) return 1;
+    if (!b.refillDate) return -1;
+    return new Date(a.refillDate) - new Date(b.refillDate);
+  });
+
+  return { ok: true, prescriptions: prescriptions };
+}
+
+function webAddPrescription_(e) {
+  var p          = (e && e.parameter) ? e.parameter : {};
+  var medication = (p.medication || '').trim();
+  if (!medication) throw new Error('medication is required');
+
+  var id = 'RX-' + Date.now();
+  var row = [
+    id,
+    (p.person     || 'Ahmed').trim(),
+    medication,
+    (p.dosage     || '').trim(),
+    (p.frequency  || '').trim(),
+    (p.doctor     || '').trim(),
+    (p.pharmacy   || '').trim(),
+    (p.rxNumber   || '').trim(),
+    (p.lastFilled || '').trim(),
+    (p.refillDate || '').trim(),
+    (p.daysSupply || '').trim(),
+    (p.active     || 'Yes').trim(),
+    (p.notes      || '').trim(),
+  ];
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.PRESCRIPTIONS);
+  sheet.appendRow(row);
+  return { ok: true, id: id };
+}
+
+function webUpdatePrescription_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.PRESCRIPTIONS);
+  var rows  = sheet.getDataRange().getValues();
+
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      var rowNum = i + 1;
+      // Only overwrite columns that were explicitly provided
+      var fieldMap = {
+        person:     2,  // col B → index 1 → column 2
+        medication: 3,
+        dosage:     4,
+        frequency:  5,
+        doctor:     6,
+        pharmacy:   7,
+        rxNumber:   8,
+        lastFilled: 9,
+        refillDate: 10,
+        daysSupply: 11,
+        active:     12,
+        notes:      13,
+      };
+      for (var key in fieldMap) {
+        if (p[key] != null) {
+          sheet.getRange(rowNum, fieldMap[key]).setValue(p[key].toString().trim());
+        }
+      }
+      return { ok: true };
+    }
+  }
+  throw new Error('Prescription not found: ' + id);
+}
+
+function webDeletePrescription_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.PRESCRIPTIONS);
+  var rows  = sheet.getDataRange().getValues();
+
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, action: 'deleted' };
+    }
+  }
+  throw new Error('Prescription not found: ' + id);
 }
