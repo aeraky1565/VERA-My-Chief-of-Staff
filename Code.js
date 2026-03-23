@@ -220,6 +220,139 @@ function createSheetTabs(ss) {
 }
 
 /**
+ * ONE-TIME SEEDER — Run once from the Apps Script editor to pre-populate the
+ * Credit Card Hub (Issues #115 + #117) with Ahmed & Victoria's 9 cards,
+ * their reward categories, and tracked perks.
+ *
+ * Guard: aborts if Credit Cards sheet already has data rows (safe to re-run).
+ * Data sourced from official card pages / NerdWallet / TPG (2025–2026).
+ */
+function populateCreditCardHub_() {
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+
+  // ── Guard: prevent duplicate seeding ──────────────────────────
+  var ccSheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  if (ccSheet && ccSheet.getLastRow() > 1) {
+    Logger.log('populateCreditCardHub_: Credit Cards sheet already has data — aborting. ' +
+               'Clear Credit Cards, Card Rewards and Card Perks sheets first if you want to re-seed.');
+    return;
+  }
+
+  // ── CREDIT CARDS ──────────────────────────────────────────────
+  // Columns: ID | Card Name | Issuer | Last 4 | Annual Fee | Due Day | Last Used | Owner | Active | Statement Credit | Notes
+  var cardRows = [
+    ['CC-1', 'AMEX Gold',              'American Express', '', 325, '', '', 'Both',   'Yes', '$10 Dining/m \u00b7 $10 Uber Cash/m \u00b7 $7 Dunkin/m \u00b7 $100 Resy/yr',                                             ''],
+    ['CC-2', 'AMEX Platinum',          'American Express', '', 895, '', '', 'Ahmed',  'Yes', '$15 Uber/m \u00b7 $25 Streaming/m \u00b7 $600 Hotel/yr \u00b7 $400 Resy/yr \u00b7 $300 Equinox/yr \u00b7 $300 lululemon/yr', ''],
+    ['CC-3', 'BILT Worldwide',         'BILT',             '',   0, '', '', 'Ahmed',  'Yes', 'No annual fee \u00b7 2x on Rent Day (1st of month)',                                                                   ''],
+    ['CC-4', 'BMW Card',               'BMW / U.S. Bank',  '',  99, '', '', 'Ahmed',  'Yes', '$99/yr fee',                                                                                                             ''],
+    ['CC-5', 'Capital One Venture',    'Capital One',      '',  95, '', '', 'Ahmed',  'Yes', 'Global Entry/TSA reimbursement \u00b7 $50 hotel experience credit',                                                     ''],
+    ['CC-6', 'AMEX Blue Cash Everyday','American Express', '',   0, '', '', 'Ahmed',  'Yes', '$7 Disney Bundle/m',                                                                                                     ''],
+    ['CC-7', 'Costco Anywhere Visa',   'Citi',             '',   0, '', '', 'Both',   'Yes', 'No annual fee (Costco membership required)',                                                                             ''],
+    ['CC-8', 'Amazon Prime Visa',      'Chase',            '',   0, '', '', 'Both',   'Yes', 'No annual fee (Prime membership required)',                                                                              ''],
+    ['CC-9', 'IHG One Rewards Premier','Chase',            '',  99, '', '', 'Ahmed',  'Yes', 'Free Night/yr \u00b7 IHG Platinum Elite status',                                                                        ''],
+  ];
+
+  var rwSheet   = ss.getSheetByName(TABS.CARD_REWARDS);
+  var perkSheet = ss.getSheetByName(TABS.CARD_PERKS);
+
+  // Bulk-write cards
+  ccSheet.getRange(2, 1, cardRows.length, cardRows[0].length).setValues(cardRows);
+
+  // ── CARD REWARDS ──────────────────────────────────────────────
+  // Columns: ID | Card Name | Category | Rate | Rate Type | Conditions
+  var rewardRows = [
+    // AMEX Gold
+    ['CR-1',  'AMEX Gold',              'Dining',             '4',   'x points',   'Worldwide, up to $50k/yr then 1x'],
+    ['CR-2',  'AMEX Gold',              'Groceries',          '4',   'x points',   'US supermarkets, up to $25k/yr then 1x'],
+    ['CR-3',  'AMEX Gold',              'Travel',             '3',   'x points',   'Flights booked direct or via Amex Travel'],
+    ['CR-4',  'AMEX Gold',              'Hotels',             '2',   'x points',   'Prepaid hotels via Amex Travel'],
+    ['CR-5',  'AMEX Gold',              'General Spend',      '1',   'x points',   ''],
+    // AMEX Platinum
+    ['CR-6',  'AMEX Platinum',          'Travel',             '5',   'x points',   'Flights booked direct or via Amex Travel, up to $500k/yr'],
+    ['CR-7',  'AMEX Platinum',          'Hotels',             '5',   'x points',   'Prepaid hotels via Amex Travel'],
+    ['CR-8',  'AMEX Platinum',          'General Spend',      '1',   'x points',   ''],
+    // BILT Worldwide
+    ['CR-9',  'BILT Worldwide',         'Rent',               '1',   'x points',   'No transaction fee on rent/mortgage payments'],
+    ['CR-10', 'BILT Worldwide',         'Dining',             '3',   'x points',   ''],
+    ['CR-11', 'BILT Worldwide',         'Travel',             '2',   'x points',   ''],
+    ['CR-12', 'BILT Worldwide',         'General Spend',      '1',   'x points',   'Double points on Rent Day (1st of month)'],
+    // BMW Card
+    ['CR-13', 'BMW Card',               'BMW Services',       '5',   'x points',   'At BMW merchants'],
+    ['CR-14', 'BMW Card',               'Gas',                '3',   'x points',   'Gas stations and EV charging'],
+    ['CR-15', 'BMW Card',               'Dining',             '2',   'x points',   ''],
+    ['CR-16', 'BMW Card',               'General Spend',      '1.5', 'x points',   ''],
+    // Capital One Venture
+    ['CR-17', 'Capital One Venture',    'Travel',             '5',   'x miles',    'Hotels, rentals, activities via Capital One Travel'],
+    ['CR-18', 'Capital One Venture',    'General Spend',      '2',   'x miles',    'All other purchases'],
+    // AMEX Blue Cash Everyday
+    ['CR-19', 'AMEX Blue Cash Everyday','Groceries',          '3',   '% cashback', 'US supermarkets, up to $6k/yr then 1%'],
+    ['CR-20', 'AMEX Blue Cash Everyday','Gas',                '3',   '% cashback', 'US gas stations, up to $6k/yr then 1%'],
+    ['CR-21', 'AMEX Blue Cash Everyday','Online Shopping',    '3',   '% cashback', 'US online retail, up to $6k/yr then 1%'],
+    ['CR-22', 'AMEX Blue Cash Everyday','General Spend',      '1',   '% cashback', ''],
+    // Costco Anywhere Visa
+    ['CR-23', 'Costco Anywhere Visa',   'Gas',                '4',   '% cashback', 'Eligible gas + EV stations up to $7k/yr then 1% (5% at Costco warehouses)'],
+    ['CR-24', 'Costco Anywhere Visa',   'Dining',             '3',   '% cashback', 'Restaurants, cafes, fast food'],
+    ['CR-25', 'Costco Anywhere Visa',   'Travel',             '3',   '% cashback', 'Airfare, hotels, car rentals, cruises'],
+    ['CR-26', 'Costco Anywhere Visa',   'Costco',             '2',   '% cashback', 'Costco and Costco.com'],
+    ['CR-27', 'Costco Anywhere Visa',   'General Spend',      '1',   '% cashback', ''],
+    // Amazon Prime Visa
+    ['CR-28', 'Amazon Prime Visa',      'Amazon & Whole Foods','5',  '% cashback', 'Amazon.com, Amazon Fresh, Whole Foods, Chase Travel'],
+    ['CR-29', 'Amazon Prime Visa',      'Gas',                '2',   '% cashback', ''],
+    ['CR-30', 'Amazon Prime Visa',      'Dining',             '2',   '% cashback', ''],
+    ['CR-31', 'Amazon Prime Visa',      'Transit',            '2',   '% cashback', 'Local transit and rideshare'],
+    ['CR-32', 'Amazon Prime Visa',      'General Spend',      '1',   '% cashback', ''],
+    // IHG One Rewards Premier
+    ['CR-33', 'IHG One Rewards Premier','IHG Hotels',         '10',  'x points',   'Card multiplier on top of IHG base rate'],
+    ['CR-34', 'IHG One Rewards Premier','Travel',             '5',   'x points',   'Non-IHG travel'],
+    ['CR-35', 'IHG One Rewards Premier','Dining',             '5',   'x points',   ''],
+    ['CR-36', 'IHG One Rewards Premier','Gas',                '5',   'x points',   ''],
+    ['CR-37', 'IHG One Rewards Premier','General Spend',      '3',   'x points',   ''],
+  ];
+
+  rwSheet.getRange(2, 1, rewardRows.length, rewardRows[0].length).setValues(rewardRows);
+
+  // ── CARD PERKS ────────────────────────────────────────────────
+  // Columns: ID | Card Name | Perk | Amount | Frequency | Category | Last Used
+  var perkRows = [
+    // AMEX Gold
+    ['CP-1',  'AMEX Gold',              'Dining Credit (Grubhub, Cheesecake Factory, etc.)', 10,  'Monthly',  'Dining',    ''],
+    ['CP-2',  'AMEX Gold',              'Uber Cash',                                          10,  'Monthly',  'Travel',    ''],
+    ['CP-3',  'AMEX Gold',              "Dunkin' Credit",                                     7,   'Monthly',  'Dining',    ''],
+    ['CP-4',  'AMEX Gold',              'Resy Dining Credit',                                 100, 'Annual',   'Dining',    ''],
+    ['CP-5',  'AMEX Gold',              'Hotel Collection Credit (4-5 star, 2+ nights)',      100, 'Annual',   'Travel',    ''],
+    // AMEX Platinum
+    ['CP-6',  'AMEX Platinum',          'Uber Cash',                                          15,  'Monthly',  'Travel',    ''],
+    ['CP-7',  'AMEX Platinum',          'Streaming Credit (Disney+, Hulu, Peacock, etc.)',    25,  'Monthly',  'Streaming', ''],
+    ['CP-8',  'AMEX Platinum',          'Walmart+ Credit',                                    13,  'Monthly',  'Other',     ''],
+    ['CP-9',  'AMEX Platinum',          'Fine Hotels + Resorts Credit',                       600, 'Annual',   'Travel',    ''],
+    ['CP-10', 'AMEX Platinum',          'Resy Dining Credit',                                 400, 'Annual',   'Dining',    ''],
+    ['CP-11', 'AMEX Platinum',          'Equinox Credit',                                     300, 'Annual',   'Other',     ''],
+    ['CP-12', 'AMEX Platinum',          'lululemon Credit',                                   300, 'Annual',   'Other',     ''],
+    ['CP-13', 'AMEX Platinum',          'Airline Fee Credit',                                 200, 'Annual',   'Travel',    ''],
+    ['CP-14', 'AMEX Platinum',          'Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
+    ['CP-15', 'AMEX Platinum',          'Priority Pass (airport lounge access)',               0,   'Annual',   'Travel',    ''],
+    // BILT Worldwide
+    ['CP-16', 'BILT Worldwide',         'Rent Day Double Points (1st of month)',               0,   'Monthly',  'Other',     ''],
+    // Capital One Venture
+    ['CP-17', 'Capital One Venture',    'Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
+    ['CP-18', 'Capital One Venture',    'Lifestyle Collection Hotel Credit',                   50,  'Annual',   'Travel',    ''],
+    // AMEX Blue Cash Everyday
+    ['CP-19', 'AMEX Blue Cash Everyday','Disney Bundle Credit',                                7,   'Monthly',  'Streaming', ''],
+    // IHG One Rewards Premier
+    ['CP-20', 'IHG One Rewards Premier','Anniversary Free Night Certificate',                  0,   'Annual',   'Travel',    ''],
+    ['CP-21', 'IHG One Rewards Premier','IHG Platinum Elite Status',                           0,   'Annual',   'Travel',    ''],
+    ['CP-22', 'IHG One Rewards Premier','United TravelBank Cash',                              50,  'Annual',   'Travel',    ''],
+    ['CP-23', 'IHG One Rewards Premier','Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
+    ['CP-24', 'IHG One Rewards Premier','DashPass Membership',                                 0,   'Annual',   'Dining',    ''],
+  ];
+
+  perkSheet.getRange(2, 1, perkRows.length, perkRows[0].length).setValues(perkRows);
+
+  Logger.log('populateCreditCardHub_: \u2705 Done! ' +
+             cardRows.length + ' cards, ' + rewardRows.length + ' reward rows, ' + perkRows.length + ' perk rows written.');
+}
+
+/**
  * Creates a sheet tab if it doesn't exist, writes headers, and optionally
  * seeds default rows. Skips header/data writing if content already exists.
  */
