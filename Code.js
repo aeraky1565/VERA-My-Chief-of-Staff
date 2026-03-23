@@ -227,6 +227,9 @@ function createSheetTabs(ss) {
  * Guard: aborts if Credit Cards sheet already has data rows (safe to re-run).
  * Data sourced from official card pages / NerdWallet / TPG (2025–2026).
  */
+/** Public wrapper so this appears in the Apps Script function dropdown. Run once. */
+function populateCreditCardHub() { populateCreditCardHub_(); }
+
 function populateCreditCardHub_() {
   var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
 
