@@ -4819,7 +4819,7 @@ function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
             style={{ background: '#c9a84c', border: 'none', borderRadius: 6,
                      color: '#0d1b3e', fontWeight: 700, padding: '7px 18px', fontSize: 13,
                      cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1 }}>
-            {busy ? 'Logging…' : '✓ Log Run'}
+            {busy ? 'Logging…' : '✓ Log Shopping Run'}
           </button>
         </div>
       </div>
@@ -4978,7 +4978,7 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
               disabled={busy}
               onClick={() => setLogRunModal(true)}
             >
-              📦 Log Run ({checkedItems.length})
+              📦 Log Shopping Run ({checkedItems.length})
             </button>
           )}
           <button
