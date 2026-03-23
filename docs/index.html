@@ -6348,6 +6348,264 @@ function HomestewardView({ items, loading, busy, onRecordService }) {
   );
 }
 
+// ---- Favorite Takeouts (Issue #112) ----------------------------------------
+
+function StarRating({ value, onChange, size }) {
+  const sz = size || 16;
+  return (
+    <span style={{ display: 'inline-flex', gap: 2 }}>
+      {[1,2,3,4,5].map(n => (
+        <span
+          key={n}
+          onClick={onChange ? () => onChange(n) : undefined}
+          style={{
+            fontSize: sz, lineHeight: 1,
+            color: n <= (value || 0) ? '#c9a84c' : '#2a4070',
+            cursor: onChange ? 'pointer' : 'default',
+            userSelect: 'none',
+          }}
+        >★</span>
+      ))}
+    </span>
+  );
+}
+
+function TakeoutsView({ takeouts, loading, busy, onAddRestaurant, onDeleteRestaurant, onAddItem, onDeleteItem }) {
+  const [expanded,    setExpanded]    = React.useState({});
+  const [addRestModal, setAddRestModal] = React.useState(false);
+  const [addItemFor,   setAddItemFor]   = React.useState(null); // restaurant name
+
+  // Add Restaurant form state
+  const [restForm, setRestForm] = React.useState({ name: '', cuisine: '', phone: '', website: '', rating: 0, notes: '' });
+  // Add Item form state
+  const [itemForm, setItemForm] = React.useState({ item: '', description: '', rating: 0, notes: '' });
+
+  function toggleExpand(name) {
+    setExpanded(prev => ({ ...prev, [name]: !prev[name] }));
+  }
+
+  function openAddItem(restName) {
+    setItemForm({ item: '', description: '', rating: 0, notes: '' });
+    setAddItemFor(restName);
+  }
+
+  function openAddRest() {
+    setRestForm({ name: '', cuisine: '', phone: '', website: '', rating: 0, notes: '' });
+    setAddRestModal(true);
+  }
+
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading takeouts…</div>;
+
+  const inputStyle = {
+    width: '100%', padding: '7px 10px', borderRadius: 6,
+    background: '#0a1628', border: '1px solid #1e3060',
+    color: '#dde1f0', fontSize: 13, boxSizing: 'border-box',
+  };
+  const labelStyle = { fontSize: 11, color: '#6b7fa8', marginBottom: 4, display: 'block' };
+
+  return (
+    <div>
+      {/* Add Restaurant button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={busy} onClick={openAddRest}>
+          ＋ Add Restaurant
+        </button>
+      </div>
+
+      {/* Empty state */}
+      {!takeouts.length && (
+        <div className="empty-state" style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🥡</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>No favorite takeouts yet</div>
+          <div style={{ fontSize: 12, color: '#4d6080' }}>Click "＋ Add Restaurant" to get started.</div>
+        </div>
+      )}
+
+      {/* Restaurant list */}
+      {takeouts.map((r, i) => (
+        <div key={i} style={{
+          marginBottom: 10, borderRadius: 10,
+          background: '#0d1b3e', border: '1px solid #1e3060', overflow: 'hidden',
+        }}>
+          {/* Restaurant header row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', flexWrap: 'wrap' }}>
+            {/* Expand toggle */}
+            <button
+              onClick={() => toggleExpand(r.name)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a9abf', fontSize: 14, padding: 0, flexShrink: 0 }}
+            >{expanded[r.name] ? '▾' : '▸'}</button>
+
+            {/* Name */}
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#dde1f0', flex: 1, minWidth: 100 }}>{r.name}</span>
+
+            {/* Cuisine badge */}
+            {r.cuisine && (
+              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: '1px solid #2a4070', color: '#8899cc' }}>{r.cuisine}</span>
+            )}
+
+            {/* Star rating */}
+            <StarRating value={r.rating} size={14} />
+
+            {/* Item count */}
+            <span style={{ fontSize: 11, color: '#6b7fa8' }}>
+              {r.items.length} item{r.items.length !== 1 ? 's' : ''}
+            </span>
+
+            {/* Phone */}
+            {r.phone && (
+              <a href={'tel:' + r.phone} style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }} title={r.phone}>📞</a>
+            )}
+
+            {/* Website */}
+            {r.website && (
+              <a href={r.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }}>🔗</a>
+            )}
+
+            {/* Delete restaurant */}
+            <button
+              onClick={() => onDeleteRestaurant(r.name)}
+              disabled={busy}
+              style={{ background: 'none', border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#5f3a3a', fontSize: 13, padding: '0 2px', flexShrink: 0 }}
+              title="Delete restaurant and all its items"
+            >🗑</button>
+          </div>
+
+          {/* Expanded items */}
+          {expanded[r.name] && (
+            <div style={{ borderTop: '1px solid #1a2d5a', padding: '8px 16px 12px' }}>
+              {r.notes && (
+                <div style={{ fontSize: 11, color: '#4d6080', marginBottom: 8, fontStyle: 'italic' }}>{r.notes}</div>
+              )}
+
+              {r.items.length === 0 && (
+                <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 8 }}>No items yet — add your favorites below.</div>
+              )}
+
+              {r.items.map((it, j) => (
+                <div key={j} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '8px 0', borderBottom: j < r.items.length - 1 ? '1px solid #131f3a' : 'none',
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0' }}>{it.item}</span>
+                      <StarRating value={it.rating} size={12} />
+                    </div>
+                    {it.description && (
+                      <div style={{ fontSize: 11, color: '#6b7fa8', marginTop: 2 }}>{it.description}</div>
+                    )}
+                    {it.notes && (
+                      <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1, fontStyle: 'italic' }}>{it.notes}</div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onDeleteItem(it.row)}
+                    disabled={busy}
+                    style={{ background: 'none', border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#5f3a3a', fontSize: 12, padding: 0, flexShrink: 0 }}
+                    title="Remove item"
+                  >✕</button>
+                </div>
+              ))}
+
+              <button
+                onClick={() => openAddItem(r.name)}
+                disabled={busy}
+                style={{
+                  marginTop: 10, background: 'none', border: '1px dashed #2a4070',
+                  borderRadius: 6, color: '#8a9abf', fontSize: 12,
+                  padding: '5px 14px', cursor: busy ? 'wait' : 'pointer', width: '100%',
+                }}
+              >＋ Add Item</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Add Restaurant Modal */}
+      {addRestModal && (
+        <div className="modal-overlay" onClick={() => setAddRestModal(false)}>
+          <div className="modal-box" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 14 }}>🥡 Add Restaurant</div>
+
+            <label style={labelStyle}>Restaurant Name *</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="e.g. Tony's Pizza"
+              value={restForm.name} onChange={e => setRestForm(f => ({ ...f, name: e.target.value }))} />
+
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Cuisine</label>
+                <input style={inputStyle} placeholder="e.g. Italian"
+                  value={restForm.cuisine} onChange={e => setRestForm(f => ({ ...f, cuisine: e.target.value }))} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Phone</label>
+                <input style={inputStyle} placeholder="Optional"
+                  value={restForm.phone} onChange={e => setRestForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+            </div>
+
+            <label style={labelStyle}>Website</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="https://..."
+              value={restForm.website} onChange={e => setRestForm(f => ({ ...f, website: e.target.value }))} />
+
+            <label style={labelStyle}>Rating</label>
+            <div style={{ marginBottom: 10 }}>
+              <StarRating value={restForm.rating} size={22} onChange={n => setRestForm(f => ({ ...f, rating: n }))} />
+            </div>
+
+            <label style={labelStyle}>Notes</label>
+            <input style={{ ...inputStyle, marginBottom: 16 }} placeholder="Optional"
+              value={restForm.notes} onChange={e => setRestForm(f => ({ ...f, notes: e.target.value }))} />
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn" style={{ fontSize: 13 }} onClick={() => setAddRestModal(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={busy || !restForm.name.trim()}
+                onClick={() => { onAddRestaurant(restForm); setAddRestModal(false); }}>
+                Save Restaurant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Item Modal */}
+      {addItemFor && (
+        <div className="modal-overlay" onClick={() => setAddItemFor(null)}>
+          <div className="modal-box" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>＋ Add Item</div>
+            <div style={{ fontSize: 12, color: '#6b7fa8', marginBottom: 14 }}>for <strong style={{ color: '#c9a84c' }}>{addItemFor}</strong></div>
+
+            <label style={labelStyle}>Item Name *</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="e.g. Pepperoni Pizza"
+              value={itemForm.item} onChange={e => setItemForm(f => ({ ...f, item: e.target.value }))} />
+
+            <label style={labelStyle}>Description</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="Optional"
+              value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} />
+
+            <label style={labelStyle}>Rating</label>
+            <div style={{ marginBottom: 10 }}>
+              <StarRating value={itemForm.rating} size={22} onChange={n => setItemForm(f => ({ ...f, rating: n }))} />
+            </div>
+
+            <label style={labelStyle}>Notes</label>
+            <input style={{ ...inputStyle, marginBottom: 16 }} placeholder="Optional"
+              value={itemForm.notes} onChange={e => setItemForm(f => ({ ...f, notes: e.target.value }))} />
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn" style={{ fontSize: 13 }} onClick={() => setAddItemFor(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={busy || !itemForm.item.trim()}
+                onClick={() => { onAddItem(addItemFor, itemForm); setAddItemFor(null); }}>
+                Save Item
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RecipeView({ recipes, loading, busy, onAddToShopping }) {
   if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading recipes…</div>;
   if (!recipes.length) return (
@@ -6392,12 +6650,14 @@ function RecipeView({ recipes, loading, busy, onAddToShopping }) {
   );
 }
 
-function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory }) {
+function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
+                        onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem }) {
   const [sub, setSub] = React.useState('steward');
   const subTabs = [
-    { id: 'steward', label: '🏠 Steward' },
-    { id: 'recipes', label: '🍽️ Recipes' },
-    { id: 'pantry',  label: '📦 Pantry'  },
+    { id: 'steward',  label: '🏠 Steward'  },
+    { id: 'recipes',  label: '🍽️ Recipes'  },
+    { id: 'takeouts', label: '🥡 Takeouts'  },
+    { id: 'pantry',   label: '📦 Pantry'   },
   ];
   return (
     <div>
@@ -6421,6 +6681,17 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           loading={loading}
           busy={busy}
           onAddToShopping={onRecipeToShopping}
+        />
+      )}
+      {sub === 'takeouts' && (
+        <TakeoutsView
+          takeouts={(homeFront && homeFront.takeouts) || []}
+          loading={loading}
+          busy={busy}
+          onAddRestaurant={onAddTakeoutRestaurant}
+          onDeleteRestaurant={onDeleteTakeoutRestaurant}
+          onAddItem={onAddTakeoutItem}
+          onDeleteItem={onDeleteTakeoutItem}
         />
       )}
       {sub === 'pantry' && (
@@ -9053,11 +9324,12 @@ function App() {
     if (!url || !token) return;
     setTabLoading(prev => ({ ...prev, home_front: true }));
     try {
-      const [rData, hData] = await Promise.all([
+      const [rData, hData, tData] = await Promise.all([
         apiGet(url, token, { action: 'recipes' }),
         apiGet(url, token, { action: 'homesteward' }),
+        apiGet(url, token, { action: 'takeouts' }),
       ]);
-      setHomeFront({ recipes: rData.recipes || [], items: hData.items || [] });
+      setHomeFront({ recipes: rData.recipes || [], items: hData.items || [], takeouts: tData.restaurants || [] });
     } catch (err) {
       setError('Home Front load failed: ' + err.message);
     }
@@ -9127,6 +9399,55 @@ function App() {
       else setError(res.error || 'Could not add to shopping list');
     } catch (err) {
       setError('Shopping list update failed: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleAddTakeoutRestaurant(data) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'add_takeout_restaurant', ...data });
+      showToast('🥡 Restaurant added');
+      await loadHomeFront(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add restaurant: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteTakeoutRestaurant(name) {
+    if (!window.confirm(`Delete "${name}" and all its items?`)) return;
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'delete_takeout_restaurant', name });
+      showToast('🗑 Restaurant deleted');
+      await loadHomeFront(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not delete restaurant: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleAddTakeoutItem(restaurant, data) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'add_takeout_item', restaurant, ...data });
+      showToast('✓ Item added');
+      await loadHomeFront(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add item: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteTakeoutItem(row) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'delete_takeout_item', row });
+      showToast('✓ Item removed');
+      await loadHomeFront(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not delete item: ' + err.message);
     }
     setBusy(false);
   }
@@ -9886,6 +10207,10 @@ function App() {
                 onRecordService={handleRecordService}
                 onRecipeToShopping={handleRecipeToShopping}
                 purchaseHistory={purchaseHistory}
+                onAddTakeoutRestaurant={handleAddTakeoutRestaurant}
+                onDeleteTakeoutRestaurant={handleDeleteTakeoutRestaurant}
+                onAddTakeoutItem={handleAddTakeoutItem}
+                onDeleteTakeoutItem={handleDeleteTakeoutItem}
               />
             )}
 

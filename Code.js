@@ -40,6 +40,8 @@ const TABS = {
   INTEREST_LEDGER:  'Shared Interests', // Shared Interest Ledger (Issue #28)
   BILLS:            'Bills',            // Recurring bill tracker (Issue #57)
   RECIPES:          'Recipes',          // Recipe list (Issue #46)
+  TAKEOUT_RESTAURANTS: 'Takeout Restaurants', // Favorite takeouts (Issue #112)
+  TAKEOUT_ITEMS:       'Takeout Items',        // Takeout menu items (Issue #112)
   HOME_ITEMS:       'Home Items',       // Warranties + service log (Issue #21)
   IDEAS:            'Ideas',            // Braindump repo (Issue #18)
   ITINERARY:        'Itinerary',        // Trip itinerary items (Issue #63)
@@ -68,6 +70,8 @@ const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Eve
 const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
 const RECIPE_HEADERS            = ['Name', 'Cuisine', 'Servings', 'Prep Time', 'Link', 'Ingredients', 'Tags', 'Notes'];
+const TAKEOUT_RESTAURANT_HEADERS = ['Name', 'Cuisine', 'Phone', 'Website', 'Rating', 'Notes'];
+const TAKEOUT_ITEM_HEADERS       = ['Restaurant', 'Item', 'Description', 'Rating', 'Notes'];
 const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 const IDEA_HEADERS              = ['ID', 'Date Added', 'Idea', 'Category', 'Tags', 'Notes', 'Status'];
 const ITINERARY_HEADERS         = ['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start Time', 'End Time', 'Location', 'Notes', 'Metadata'];
@@ -159,7 +163,9 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.REMINDERS_MEMORY, REMINDERS_MEMORY_HEADERS);
   ensureSheet(ss, TABS.INTEREST_LEDGER,  INTEREST_LEDGER_HEADERS);
   ensureSheet(ss, TABS.BILLS,            BILL_HEADERS);
-  ensureSheet(ss, TABS.RECIPES,          RECIPE_HEADERS);
+  ensureSheet(ss, TABS.RECIPES,             RECIPE_HEADERS);
+  ensureSheet(ss, TABS.TAKEOUT_RESTAURANTS, TAKEOUT_RESTAURANT_HEADERS);
+  ensureSheet(ss, TABS.TAKEOUT_ITEMS,       TAKEOUT_ITEM_HEADERS);
   ensureSheet(ss, TABS.HOME_ITEMS,       HOME_ITEM_HEADERS);
   ensureSheet(ss, TABS.IDEAS,            IDEA_HEADERS);
   ensureSheet(ss, TABS.ITINERARY,        ITINERARY_HEADERS);

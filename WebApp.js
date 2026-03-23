@@ -105,6 +105,7 @@ function doGet(e) {
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
       case 'recipes':               return jsonOut_(webGetRecipes_());
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
+      case 'takeouts':              return jsonOut_(webGetTakeouts_());
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
       case 'ideas':                 return jsonOut_(webGetIdeas_());
@@ -115,8 +116,12 @@ function doGet(e) {
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
       case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
-      case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
-      case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
+      case 'add_recipe':                 return jsonOut_(webAddRecipe_(e));
+      case 'delete_recipe':              return jsonOut_(webDeleteRecipe_(e));
+      case 'add_takeout_restaurant':     return jsonOut_(webAddTakeoutRestaurant_(body));
+      case 'delete_takeout_restaurant':  return jsonOut_(webDeleteTakeoutRestaurant_(body));
+      case 'add_takeout_item':           return jsonOut_(webAddTakeoutItem_(body));
+      case 'delete_takeout_item':        return jsonOut_(webDeleteTakeoutItem_(body));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
       case 'delete_home_item':      return jsonOut_(webDeleteHomeItem_(e));
       case 'itinerary':             return jsonOut_(webGetItinerary_(e));
@@ -1850,6 +1855,113 @@ function webDeleteRecipe_(e) {
   if (!sheet) throw new Error('Recipes tab not found');
   sheet.deleteRow(rowNum);
   return { ok: true, row: rowNum, action: 'deleted' };
+}
+
+// ---- Favorite Takeouts (Issue #112) ----------------------------------------
+
+function webGetTakeouts_() {
+  var ss      = getSpreadsheet();
+  var rSheet  = ss.getSheetByName(TABS.TAKEOUT_RESTAURANTS);
+  var iSheet  = ss.getSheetByName(TABS.TAKEOUT_ITEMS);
+  var restaurants = [];
+  if (rSheet && rSheet.getLastRow() >= 2) {
+    var rData = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, TAKEOUT_RESTAURANT_HEADERS.length).getValues();
+    rData.forEach(function(row, idx) {
+      var name = String(row[0] || '').trim();
+      if (!name) return;
+      restaurants.push({
+        row:     idx + 2,
+        name:    name,
+        cuisine: String(row[1] || '').trim(),
+        phone:   String(row[2] || '').trim(),
+        website: String(row[3] || '').trim(),
+        rating:  row[4] !== '' ? Number(row[4]) : null,
+        notes:   String(row[5] || '').trim(),
+        items:   [],
+      });
+    });
+  }
+  if (iSheet && iSheet.getLastRow() >= 2) {
+    var iData = iSheet.getRange(2, 1, iSheet.getLastRow() - 1, TAKEOUT_ITEM_HEADERS.length).getValues();
+    iData.forEach(function(row, idx) {
+      var restName = String(row[0] || '').trim();
+      var itemName = String(row[1] || '').trim();
+      if (!restName || !itemName) return;
+      var rest = restaurants.find(function(r) { return r.name === restName; });
+      if (rest) {
+        rest.items.push({
+          row:         idx + 2,
+          item:        itemName,
+          description: String(row[2] || '').trim(),
+          rating:      row[3] !== '' ? Number(row[3]) : null,
+          notes:       String(row[4] || '').trim(),
+        });
+      }
+    });
+  }
+  return { ok: true, restaurants: restaurants };
+}
+
+function webAddTakeoutRestaurant_(body) {
+  var name = ((body && body.name) || '').trim();
+  if (!name) throw new Error('Restaurant name is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.TAKEOUT_RESTAURANTS);
+  if (!sheet) throw new Error('Takeout Restaurants tab not found');
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, TAKEOUT_RESTAURANT_HEADERS.length).setValues([[
+    name,
+    ((body.cuisine || '')).trim(),
+    ((body.phone   || '')).trim(),
+    ((body.website || '')).trim(),
+    body.rating ? Number(body.rating) : '',
+    ((body.notes   || '')).trim(),
+  ]]);
+  return { ok: true, action: 'created', name: name };
+}
+
+function webDeleteTakeoutRestaurant_(body) {
+  var name = ((body && body.name) || '').trim();
+  if (!name) throw new Error('name is required');
+  var ss     = getSpreadsheet();
+  var rSheet = ss.getSheetByName(TABS.TAKEOUT_RESTAURANTS);
+  if (rSheet && rSheet.getLastRow() >= 2) {
+    var rData = rSheet.getRange(2, 1, rSheet.getLastRow() - 1, 1).getValues();
+    for (var i = rData.length - 1; i >= 0; i--) {
+      if (String(rData[i][0]).trim() === name) rSheet.deleteRow(i + 2);
+    }
+  }
+  var iSheet = ss.getSheetByName(TABS.TAKEOUT_ITEMS);
+  if (iSheet && iSheet.getLastRow() >= 2) {
+    var iData = iSheet.getRange(2, 1, iSheet.getLastRow() - 1, 1).getValues();
+    for (var j = iData.length - 1; j >= 0; j--) {
+      if (String(iData[j][0]).trim() === name) iSheet.deleteRow(j + 2);
+    }
+  }
+  return { ok: true, action: 'deleted', name: name };
+}
+
+function webAddTakeoutItem_(body) {
+  var restaurant = ((body && body.restaurant) || '').trim();
+  var item       = ((body && body.item)       || '').trim();
+  if (!restaurant || !item) throw new Error('restaurant and item are required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.TAKEOUT_ITEMS);
+  if (!sheet) throw new Error('Takeout Items tab not found');
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, TAKEOUT_ITEM_HEADERS.length).setValues([[
+    restaurant,
+    item,
+    ((body.description || '')).trim(),
+    body.rating ? Number(body.rating) : '',
+    ((body.notes       || '')).trim(),
+  ]]);
+  return { ok: true, action: 'created', item: item };
+}
+
+function webDeleteTakeoutItem_(body) {
+  var rowNum = parseInt((body && body.row) || '0', 10);
+  if (!rowNum || rowNum < 2) throw new Error('Invalid row: ' + rowNum);
+  var sheet = getSpreadsheet().getSheetByName(TABS.TAKEOUT_ITEMS);
+  if (!sheet) throw new Error('Takeout Items tab not found');
+  sheet.deleteRow(rowNum);
+  return { ok: true, action: 'deleted', row: rowNum };
 }
 
 // ---- Home Steward (Issue #21) ----------------------------------------------
