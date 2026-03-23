@@ -1,5 +1,5 @@
 # ============================================================
-# VERA — push.ps1
+# VERA - push.ps1
 # Pushes code to Google Apps Script AND GitHub in one step
 # Run from: C:\Users\Ahmed\Documents\GitHub\VERA-My-Chief-of-Staff
 # ============================================================
@@ -7,73 +7,73 @@
 # Always run from the repo root, regardless of where the script is called from
 Set-Location $PSScriptRoot
 
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  VERA Push" -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Host ''
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host '  VERA Push' -ForegroundColor Cyan
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host ''
 
 # ---- Step 1: Push to Google Apps Script via clasp --------------------------
-Write-Host "[1/2] Pushing to Google Apps Script..." -ForegroundColor Yellow
+Write-Host '[1/2] Pushing to Google Apps Script...' -ForegroundColor Yellow
 
-clasp push
+npx clasp push
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "ERROR: clasp push failed (exit code $LASTEXITCODE)." -ForegroundColor Red
-    Write-Host "Common causes:" -ForegroundColor Red
-    Write-Host "  - Not logged in: run 'clasp login' first" -ForegroundColor Red
-    Write-Host "  - clasp not installed: run 'npm install -g @google/clasp' first" -ForegroundColor Red
-    Write-Host ""
-    Read-Host "Press Enter to exit"
+    Write-Host ''
+    Write-Host 'ERROR: clasp push failed (exit code ' + $LASTEXITCODE + ').' -ForegroundColor Red
+    Write-Host 'Common causes:' -ForegroundColor Red
+    Write-Host '  - Not logged in: run clasp login first' -ForegroundColor Red
+    Write-Host '  - clasp not installed: run npm install -g @google/clasp first' -ForegroundColor Red
+    Write-Host ''
+    Read-Host 'Press Enter to exit'
     exit 1
 }
 
-Write-Host "Apps Script: done." -ForegroundColor Green
-Write-Host ""
+Write-Host 'Apps Script: done.' -ForegroundColor Green
+Write-Host ''
 
 # ---- Step 2: Push to GitHub ------------------------------------------------
-Write-Host "[2/2] Pushing to GitHub..." -ForegroundColor Yellow
+Write-Host '[2/2] Pushing to GitHub...' -ForegroundColor Yellow
 
 # Check if there are any changes to commit
 $gitStatus = git status --porcelain
 if ($gitStatus) {
-    Write-Host ""
-    Write-Host "Changed files:" -ForegroundColor Gray
+    Write-Host ''
+    Write-Host 'Changed files:' -ForegroundColor Gray
     git status --short
-    Write-Host ""
+    Write-Host ''
 
-    $commitMsg = Read-Host "Commit message (press Enter to use 'update')"
-    if ($commitMsg -eq "") {
-        $commitMsg = "update"
+    $commitMsg = Read-Host 'Commit message (press Enter to use "update")'
+    if ($commitMsg -eq '') {
+        $commitMsg = 'update'
     }
 
     git add -A
     git commit -m $commitMsg
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: git commit failed." -ForegroundColor Red
-        Read-Host "Press Enter to exit"
+        Write-Host 'ERROR: git commit failed.' -ForegroundColor Red
+        Read-Host 'Press Enter to exit'
         exit 1
     }
 } else {
-    Write-Host "No local changes to commit — pushing existing commits." -ForegroundColor Gray
+    Write-Host 'No local changes to commit - pushing existing commits.' -ForegroundColor Gray
 }
 
 git push
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host ""
-    Write-Host "ERROR: git push failed." -ForegroundColor Red
-    Write-Host "Try running 'git push --set-upstream origin main' if this is your first push." -ForegroundColor Red
-    Write-Host ""
-    Read-Host "Press Enter to exit"
+    Write-Host ''
+    Write-Host 'ERROR: git push failed.' -ForegroundColor Red
+    Write-Host 'Try running: git push --set-upstream origin main' -ForegroundColor Red
+    Write-Host ''
+    Read-Host 'Press Enter to exit'
     exit 1
 }
 
-Write-Host "GitHub: done." -ForegroundColor Green
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  All done! Code is live." -ForegroundColor Cyan
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Host 'GitHub: done.' -ForegroundColor Green
+Write-Host ''
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host '  All done! Code is live.' -ForegroundColor Cyan
+Write-Host '========================================' -ForegroundColor Cyan
+Write-Host ''
