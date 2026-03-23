@@ -116,12 +116,8 @@ function doGet(e) {
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
       case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
-      case 'add_recipe':                 return jsonOut_(webAddRecipe_(e));
-      case 'delete_recipe':              return jsonOut_(webDeleteRecipe_(e));
-      case 'add_takeout_restaurant':     return jsonOut_(webAddTakeoutRestaurant_(body));
-      case 'delete_takeout_restaurant':  return jsonOut_(webDeleteTakeoutRestaurant_(body));
-      case 'add_takeout_item':           return jsonOut_(webAddTakeoutItem_(body));
-      case 'delete_takeout_item':        return jsonOut_(webDeleteTakeoutItem_(body));
+      case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
+      case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
       case 'delete_home_item':      return jsonOut_(webDeleteHomeItem_(e));
       case 'itinerary':             return jsonOut_(webGetItinerary_(e));
@@ -215,11 +211,18 @@ function doPost(e) {
 
   try {
     switch (action) {
-      case 'chat':        return jsonOut_(webProcessChat_(body));
-      case 'acknowledge': return jsonOut_(webAcknowledge_(body.id));
-      case 'snooze':      return jsonOut_(webSnooze_(body.id, body.days));
-      case 'resolve':     return jsonOut_(webResolve_(body.id));
-      default:            return errOut_('Unknown action: ' + action);
+      case 'chat':                       return jsonOut_(webProcessChat_(body));
+      case 'acknowledge':                return jsonOut_(webAcknowledge_(body.id));
+      case 'snooze':                     return jsonOut_(webSnooze_(body.id, body.days));
+      case 'resolve':                    return jsonOut_(webResolve_(body.id));
+      // Takeouts (Issue #112)
+      case 'add_takeout_restaurant':     return jsonOut_(webAddTakeoutRestaurant_(body));
+      case 'delete_takeout_restaurant':  return jsonOut_(webDeleteTakeoutRestaurant_(body));
+      case 'add_takeout_item':           return jsonOut_(webAddTakeoutItem_(body));
+      case 'delete_takeout_item':        return jsonOut_(webDeleteTakeoutItem_(body));
+      // Purchase History (Issue #111)
+      case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
+      default:                           return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
     Logger.log('doPost error: ' + err.message + '\n' + err.stack);
