@@ -8065,7 +8065,7 @@ function LoyaltyModal({ mode, program, onSave, onClose, busy }) {
 }
 
 // ---- GoalModal ----
-function GoalModal({ mode, goal, programs, onSave, onClose, busy }) {
+function RewardsGoalModal({ mode, goal, programs, onSave, onClose, busy }) {
   const blank = { goal:'', targetProgram: programs.length > 0 ? programs[0].program : '', targetPoints:'', currentPoints:'', notes:'' };
   const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, goal) : blank);
   const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
@@ -8509,7 +8509,7 @@ function CardsTab({ apiUrl, apiToken }) {
           onSave={handleSaveProgram} onClose={() => setModal(null)} />
       )}
       {modal && modal.type === 'goal' && (
-        <GoalModal mode={modal.data ? 'edit' : 'add'} goal={modal.data} programs={programs} busy={busy}
+        <RewardsGoalModal mode={modal.data ? 'edit' : 'add'} goal={modal.data} programs={programs} busy={busy}
           onSave={handleSaveGoal} onClose={() => setModal(null)} />
       )}
     </div>
