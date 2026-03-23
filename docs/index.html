@@ -7840,7 +7840,7 @@ const CARD_CATEGORY_ICONS = {
 
 // ---- CardModal (add/edit card) ----
 function CardModal({ mode, card, onSave, onClose, busy }) {
-  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', dueDay:'', lastUsed:'', owner:'Ahmed', active:'Yes', statementCredit:'', notes:'' };
+  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', dueDay:'', lastUsed:'', owner:'Ahmed', authUser:'', active:'Yes', statementCredit:'', notes:'' };
   const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, card) : blank);
   const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
   const inp = (k, label, type) => (
@@ -7861,10 +7861,17 @@ function CardModal({ mode, card, onSave, onClose, busy }) {
           {inp('annualFee', 'Annual Fee ($)')}
           {inp('dueDay', 'Due Day (1–31)')}
           <div>
-            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Owner</label>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Primary Owner</label>
             <select value={form.owner} onChange={e => set('owner', e.target.value)}
               style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
-              <option>Ahmed</option><option>Victoria</option><option>Both</option>
+              <option>Ahmed</option><option>Victoria</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Authorized User</label>
+            <select value={form.authUser || ''} onChange={e => set('authUser', e.target.value)}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
+              <option value="">None</option><option>Ahmed</option><option>Victoria</option>
             </select>
           </div>
           <div>
@@ -7927,9 +7934,24 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
       <div style={{ background:'#1e2235', border:'1px solid #2a2f45', borderRadius:14, padding:24, width:'100%', maxWidth:600, maxHeight:'90vh', overflowY:'auto' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
           <h3 style={{ margin:0, color:'#dde1f0' }}>{card.cardName}</h3>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#a0a8c0', fontSize:20, cursor:'pointer' }}>×</button>
+        </div>
+        <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+          <span style={{ fontSize:12, color:'#a0a8c0' }}>
+            <span style={{ color:'#6b7280' }}>Primary: </span>{card.owner}
+          </span>
+          {card.authUser && (
+            <span style={{ fontSize:12, color:'#a0a8c0' }}>
+              <span style={{ color:'#6b7280' }}>Auth User: </span>{card.authUser}
+            </span>
+          )}
+          {card.annualFee != null && (
+            <span style={{ fontSize:12, color:'#a0a8c0' }}>
+              <span style={{ color:'#6b7280' }}>Annual Fee: </span>{card.annualFee === 0 ? 'None' : '$' + card.annualFee}
+            </span>
+          )}
         </div>
 
         {/* Rewards */}
@@ -8145,11 +8167,11 @@ function CardsTab({ apiUrl, apiToken }) {
 
   React.useEffect(() => { load(); }, []);
 
-  // Filtered cards by owner
+  // Filtered cards by owner — matches primary owner OR authorized user
   const visibleCards = React.useMemo(() => {
     if (ownerFilter === 'all') return cards;
     return cards.filter(function(c) {
-      return c.owner === ownerFilter || c.owner === 'Both';
+      return c.owner === ownerFilter || c.authUser === ownerFilter;
     });
   }, [cards, ownerFilter]);
 
@@ -8395,7 +8417,12 @@ function CardsTab({ apiUrl, apiToken }) {
                               {inactiveWarn && <span style={{ color:'#ef4444', fontSize:11 }} title={'Last used ' + ds + ' days ago — inactivity risk!'}>⚠</span>}
                             </div>
                           </td>
-                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.owner}</td>
+                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>
+                            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                              <span>{c.owner}</span>
+                              {c.authUser && <span style={{ fontSize:10, color:'#6b7280' }}>+{c.authUser} (auth)</span>}
+                            </div>
+                          </td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.annualFee != null && c.annualFee !== '' ? '$' + c.annualFee : '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.dueDay ? c.dueDay + 'th' : '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0', fontSize:11 }}>{c.statementCredit || '—'}</td>

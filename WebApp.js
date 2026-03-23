@@ -4573,13 +4573,14 @@ function webGetCards_() {
       dueDay:          r[5]  !== '' ? Number(r[5])  : null,
       lastUsed:        String(r[6]  || ''),
       owner:           String(r[7]  || 'Ahmed'),
-      active:          String(r[8]  || 'Yes'),
-      statementCredit: String(r[9]  || ''),
-      notes:           String(r[10] || ''),
+      authUser:        String(r[8]  || ''),
+      active:          String(r[9]  || 'Yes'),
+      statementCredit: String(r[10] || ''),
+      notes:           String(r[11] || ''),
     };
   });
   // Sort: active first → owner order → name alpha
-  var ownerOrder = { 'Ahmed': 0, 'Victoria': 1, 'Both': 2 };
+  var ownerOrder = { 'Ahmed': 0, 'Victoria': 1 };
   cards.sort(function(a, b) {
     var aA = a.active === 'Yes' ? 0 : 1, bA = b.active === 'Yes' ? 0 : 1;
     if (aA !== bA) return aA - bA;
@@ -4665,6 +4666,7 @@ function webAddCard_(e) {
     (p.dueDay          || '').toString().trim(),
     (p.lastUsed        || '').trim(),
     (p.owner           || 'Ahmed').trim(),
+    (p.authUser        || '').trim(),
     (p.active          || 'Yes').trim(),
     (p.statementCredit || '').trim(),
     (p.notes           || '').trim(),
@@ -4679,7 +4681,7 @@ function webUpdateCard_(e) {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CREDIT_CARDS);
   var rows  = sheet.getDataRange().getValues();
-  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, active:9, statementCredit:10, notes:11 };
+  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12 };
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       for (var key in colMap) {

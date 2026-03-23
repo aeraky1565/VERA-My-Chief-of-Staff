@@ -103,7 +103,7 @@ const CAREER_DEVELOPMENT_HEADERS = ['ID', 'Item', 'Type', 'Status', 'Target Date
 const CAREER_WIN_HEADERS         = ['ID', 'Date', 'Win', 'Impact', 'Category', 'Notes'];
 const CAREER_NETWORK_HEADERS     = ['ID', 'Name', 'Role', 'Company', 'Relationship', 'Last Contact', 'Notes'];
 const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Frequency', 'Doctor', 'Pharmacy', 'Rx Number', 'Last Filled', 'Refill Date', 'Days Supply', 'Active', 'Notes'];
-const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Active', 'Statement Credit', 'Notes'];
+const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
 const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used'];
 const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
@@ -242,17 +242,18 @@ function populateCreditCardHub_() {
   }
 
   // ── CREDIT CARDS ──────────────────────────────────────────────
-  // Columns: ID | Card Name | Issuer | Last 4 | Annual Fee | Due Day | Last Used | Owner | Active | Statement Credit | Notes
+  // Columns: ID | Card Name | Issuer | Last 4 | Annual Fee | Due Day | Last Used | Owner | Auth User | Active | Statement Credit | Notes
   var cardRows = [
-    ['CC-1', 'AMEX Gold',              'American Express', '', 325, '', '', 'Both',   'Yes', '$10 Dining/m \u00b7 $10 Uber Cash/m \u00b7 $7 Dunkin/m \u00b7 $100 Resy/yr',                                             ''],
-    ['CC-2', 'AMEX Platinum',          'American Express', '', 895, '', '', 'Ahmed',  'Yes', '$15 Uber/m \u00b7 $25 Streaming/m \u00b7 $600 Hotel/yr \u00b7 $400 Resy/yr \u00b7 $300 Equinox/yr \u00b7 $300 lululemon/yr', ''],
-    ['CC-3', 'BILT Worldwide',         'BILT',             '',   0, '', '', 'Ahmed',  'Yes', 'No annual fee \u00b7 2x on Rent Day (1st of month)',                                                                   ''],
-    ['CC-4', 'BMW Card',               'BMW / U.S. Bank',  '',  99, '', '', 'Ahmed',  'Yes', '$99/yr fee',                                                                                                             ''],
-    ['CC-5', 'Capital One Venture',    'Capital One',      '',  95, '', '', 'Ahmed',  'Yes', 'Global Entry/TSA reimbursement \u00b7 $50 hotel experience credit',                                                     ''],
-    ['CC-6', 'AMEX Blue Cash Everyday','American Express', '',   0, '', '', 'Ahmed',  'Yes', '$7 Disney Bundle/m',                                                                                                     ''],
-    ['CC-7', 'Costco Anywhere Visa',   'Citi',             '',   0, '', '', 'Both',   'Yes', 'No annual fee (Costco membership required)',                                                                             ''],
-    ['CC-8', 'Amazon Prime Visa',      'Chase',            '',   0, '', '', 'Both',   'Yes', 'No annual fee (Prime membership required)',                                                                              ''],
-    ['CC-9', 'IHG One Rewards Premier','Chase',            '',  99, '', '', 'Ahmed',  'Yes', 'Free Night/yr \u00b7 IHG Platinum Elite status',                                                                        ''],
+    //         ID      Card Name                Issuer               Last4  Fee  Due  LastUsed  Owner       AuthUser    Active  Statement Credit                                                                                          Notes
+    ['CC-1', 'AMEX Gold',              'American Express', '', 325, '', '', 'Ahmed',    'Victoria', 'Yes', '$10 Dining/m \u00b7 $10 Uber Cash/m \u00b7 $7 Dunkin/m \u00b7 $100 Resy/yr',                                             ''],
+    ['CC-2', 'AMEX Platinum',          'American Express', '', 895, '', '', 'Ahmed',    '',         'Yes', '$15 Uber/m \u00b7 $25 Streaming/m \u00b7 $600 Hotel/yr \u00b7 $400 Resy/yr \u00b7 $300 Equinox/yr \u00b7 $300 lululemon/yr', ''],
+    ['CC-3', 'BILT Worldwide',         'BILT',             '',   0, '', '', 'Ahmed',    '',         'Yes', 'No annual fee \u00b7 2x on Rent Day (1st of month)',                                                                   ''],
+    ['CC-4', 'BMW Card',               'BMW / U.S. Bank',  '',  99, '', '', 'Ahmed',    '',         'Yes', '$99/yr fee',                                                                                                             ''],
+    ['CC-5', 'Capital One Venture',    'Capital One',      '',  95, '', '', 'Ahmed',    '',         'Yes', 'Global Entry/TSA reimbursement \u00b7 $50 hotel experience credit',                                                     ''],
+    ['CC-6', 'AMEX Blue Cash Everyday','American Express', '',   0, '', '', 'Ahmed',    '',         'Yes', '$7 Disney Bundle/m',                                                                                                     ''],
+    ['CC-7', 'Costco Anywhere Visa',   'Citi',             '',   0, '', '', 'Victoria', 'Ahmed',    'Yes', 'No annual fee (Costco membership required)',                                                                             ''],
+    ['CC-8', 'Amazon Prime Visa',      'Chase',            '',   0, '', '', 'Ahmed',    'Victoria', 'Yes', 'No annual fee (Prime membership required)',                                                                              ''],
+    ['CC-9', 'IHG One Rewards Premier','Chase',            '',  99, '', '', 'Ahmed',    '',         'Yes', 'Free Night/yr \u00b7 IHG Platinum Elite status',                                                                        ''],
   ];
 
   var rwSheet   = ss.getSheetByName(TABS.CARD_REWARDS);

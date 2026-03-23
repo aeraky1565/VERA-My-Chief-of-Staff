@@ -486,7 +486,8 @@ function buildChatSystemPrompt_(context) {
             var period = p.frequency === 'Annual' ? curYear : curMonth;
             return p.lastUsed !== period;
           });
-          lines += '    ' + c.cardName + ': ' + (rwStr || '(no rewards defined)') + '\n';
+          var authLabel = c.authUser ? ' [+' + c.authUser + ' auth user]' : '';
+          lines += '    ' + c.cardName + authLabel + ': ' + (rwStr || '(no rewards defined)') + '\n';
           if (c.statementCredit) lines += '      Statement credit: ' + c.statementCredit + '\n';
           if (lastUsed) lines += '      Last used: ' + lastUsed + (daysAgo != null ? ' (' + daysAgo + ' days ago)' : '') + '\n';
           if (unusedPerks.length) lines += '      Unused perks this month: ' + unusedPerks.map(function(p) { return p.perk; }).join(', ') + '\n';
