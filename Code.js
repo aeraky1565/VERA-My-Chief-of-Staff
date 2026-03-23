@@ -253,7 +253,9 @@ function populateCreditCardHub_() {
     ['CC-6', 'AMEX Blue Cash Everyday','American Express', '',   0, '', '', 'Ahmed',    '',         'Yes', '$7 Disney Bundle/m',                                                                                                     ''],
     ['CC-7', 'Costco Anywhere Visa',   'Citi',             '',   0, '', '', 'Victoria', 'Ahmed',    'Yes', 'No annual fee (Costco membership required)',                                                                             ''],
     ['CC-8', 'Amazon Prime Visa',      'Chase',            '',   0, '', '', 'Ahmed',    'Victoria', 'Yes', 'No annual fee (Prime membership required)',                                                                              ''],
-    ['CC-9', 'IHG One Rewards Premier','Chase',            '',  99, '', '', 'Ahmed',    '',         'Yes', 'Free Night/yr \u00b7 IHG Platinum Elite status',                                                                        ''],
+    ['CC-9', 'IHG One Rewards Premier',             'Chase', '',  99, '', '', 'Ahmed',   '',  'Yes', 'Free Night/yr \u00b7 IHG Platinum Elite status',   ''],
+    ['CC-10','Chase Sapphire Preferred (Ahmed)',    'Chase', '',  95, '', '', 'Ahmed',   '',  'Yes', '$50 hotel credit/yr \u00b7 DashPass',                ''],
+    ['CC-11','Chase Sapphire Preferred (Victoria)', 'Chase', '',  95, '', '', 'Victoria','',  'Yes', '$50 hotel credit/yr \u00b7 DashPass',                ''],
   ];
 
   var rwSheet   = ss.getSheetByName(TABS.CARD_REWARDS);
@@ -310,7 +312,21 @@ function populateCreditCardHub_() {
     ['CR-34', 'IHG One Rewards Premier','Travel',             '5',   'x points',   'Non-IHG travel'],
     ['CR-35', 'IHG One Rewards Premier','Dining',             '5',   'x points',   ''],
     ['CR-36', 'IHG One Rewards Premier','Gas',                '5',   'x points',   ''],
-    ['CR-37', 'IHG One Rewards Premier','General Spend',      '3',   'x points',   ''],
+    ['CR-37', 'IHG One Rewards Premier',             'General Spend',      '3', 'x points',   ''],
+    // Chase Sapphire Preferred (Ahmed)
+    ['CR-38', 'Chase Sapphire Preferred (Ahmed)',   'Chase Travel Portal','5', 'x points',   'Via Chase Travel\u2120'],
+    ['CR-39', 'Chase Sapphire Preferred (Ahmed)',   'Dining',             '3', 'x points',   ''],
+    ['CR-40', 'Chase Sapphire Preferred (Ahmed)',   'Streaming',          '3', 'x points',   'Select streaming services'],
+    ['CR-41', 'Chase Sapphire Preferred (Ahmed)',   'Online Groceries',   '3', 'x points',   'Excl. Walmart, Target, wholesale clubs'],
+    ['CR-42', 'Chase Sapphire Preferred (Ahmed)',   'Travel',             '2', 'x points',   'All other travel'],
+    ['CR-43', 'Chase Sapphire Preferred (Ahmed)',   'General Spend',      '1', 'x points',   ''],
+    // Chase Sapphire Preferred (Victoria)
+    ['CR-44', 'Chase Sapphire Preferred (Victoria)','Chase Travel Portal','5', 'x points',   'Via Chase Travel\u2120'],
+    ['CR-45', 'Chase Sapphire Preferred (Victoria)','Dining',             '3', 'x points',   ''],
+    ['CR-46', 'Chase Sapphire Preferred (Victoria)','Streaming',          '3', 'x points',   'Select streaming services'],
+    ['CR-47', 'Chase Sapphire Preferred (Victoria)','Online Groceries',   '3', 'x points',   'Excl. Walmart, Target, wholesale clubs'],
+    ['CR-48', 'Chase Sapphire Preferred (Victoria)','Travel',             '2', 'x points',   'All other travel'],
+    ['CR-49', 'Chase Sapphire Preferred (Victoria)','General Spend',      '1', 'x points',   ''],
   ];
 
   rwSheet.getRange(2, 1, rewardRows.length, rewardRows[0].length).setValues(rewardRows);
@@ -347,7 +363,15 @@ function populateCreditCardHub_() {
     ['CP-21', 'IHG One Rewards Premier','IHG Platinum Elite Status',                           0,   'Annual',   'Travel',    ''],
     ['CP-22', 'IHG One Rewards Premier','United TravelBank Cash',                              50,  'Annual',   'Travel',    ''],
     ['CP-23', 'IHG One Rewards Premier','Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
-    ['CP-24', 'IHG One Rewards Premier','DashPass Membership',                                 0,   'Annual',   'Dining',    ''],
+    ['CP-24', 'IHG One Rewards Premier',             'DashPass Membership',               0,   'Annual',   'Dining',  ''],
+    // Chase Sapphire Preferred (Ahmed)
+    ['CP-25', 'Chase Sapphire Preferred (Ahmed)',   'Annual Hotel Credit (Chase Travel)', 50,  'Annual',   'Travel',  ''],
+    ['CP-26', 'Chase Sapphire Preferred (Ahmed)',   'DashPass Membership',                0,   'Annual',   'Dining',  ''],
+    ['CP-27', 'Chase Sapphire Preferred (Ahmed)',   '10% Anniversary Points Bonus',       0,   'Annual',   'Other',   ''],
+    // Chase Sapphire Preferred (Victoria)
+    ['CP-28', 'Chase Sapphire Preferred (Victoria)','Annual Hotel Credit (Chase Travel)', 50,  'Annual',   'Travel',  ''],
+    ['CP-29', 'Chase Sapphire Preferred (Victoria)','DashPass Membership',                0,   'Annual',   'Dining',  ''],
+    ['CP-30', 'Chase Sapphire Preferred (Victoria)','10% Anniversary Points Bonus',       0,   'Annual',   'Other',   ''],
   ];
 
   perkSheet.getRange(2, 1, perkRows.length, perkRows[0].length).setValues(perkRows);
