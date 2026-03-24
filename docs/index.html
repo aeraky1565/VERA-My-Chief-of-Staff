@@ -8947,6 +8947,8 @@ function MorningRoutineTab({ apiUrl, apiToken }) {
 function GymLogTab({ apiUrl, apiToken }) {
   const [sessions, setSessions] = React.useState(null); // null = loading
   const [busy,     setBusy]     = React.useState(false);
+  const [scanning, setScanning] = React.useState(false);
+  const [scanMsg,  setScanMsg]  = React.useState('');
 
   React.useEffect(() => { load(); }, []);
 
@@ -8967,6 +8969,16 @@ function GymLogTab({ apiUrl, apiToken }) {
     setBusy(false);
   }
 
+  async function scanPast() {
+    setScanning(true); setScanMsg('');
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'gym_backfill', days: 30 });
+      setScanMsg('✓ ' + data.added + ' new session(s) found, ' + data.skipped + ' already existed.');
+      if (data.added > 0) await load();
+    } catch (e) { setScanMsg('⚠ Scan failed: ' + e.message); }
+    setScanning(false);
+  }
+
   if (sessions === null) return <div className="loading-text">Loading gym log…</div>;
 
   const pending = sessions.filter(s => !s.attended);
@@ -8974,6 +8986,25 @@ function GymLogTab({ apiUrl, apiToken }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+
+      {/* Scan past sessions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          disabled={scanning || busy}
+          onClick={scanPast}
+          style={{
+            background: 'rgba(92,158,255,0.1)', border: '1px solid rgba(92,158,255,0.3)',
+            color: '#5c9eff', borderRadius: 8, padding: '7px 16px',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}>
+          {scanning ? '⏳ Scanning…' : '🔍 Scan Past 30 Days'}
+        </button>
+        {scanMsg && (
+          <span style={{ fontSize: 12, color: scanMsg.startsWith('✓') ? '#43a047' : '#e57373' }}>
+            {scanMsg}
+          </span>
+        )}
+      </div>
 
       {/* Pending check-ins */}
       {pending.length > 0 && (

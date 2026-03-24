@@ -155,6 +155,7 @@ function doGet(e) {
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
+      case 'gym_backfill':             return jsonOut_(webGymBackfill_(e));
       case 'purchase_history':         return jsonOut_(webGetPurchaseHistory_());
       case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
       case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
@@ -4394,6 +4395,11 @@ function webLogGymAttend_(e, attended) {
   var id = ((e.parameter && e.parameter.id) || '').trim();
   if (!id) throw new Error('id is required');
   return logGymAttendance_(id, attended);
+}
+
+function webGymBackfill_(e) {
+  var days = parseInt((e.parameter && e.parameter.days) || '30', 10) || 30;
+  return backfillGymSessions_(days);
 }
 
 // ── Purchase History (Issue #111) ─────────────────────────────

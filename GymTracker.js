@@ -19,7 +19,7 @@ function checkGymSessions_() {
 
   var tz          = Session.getScriptTimeZone();
   var now         = new Date();
-  var lookbackHrs = parseInt(cfg['gym_tracker_lookback_hours'] || '24', 10) || 24;
+  var lookbackHrs = parseInt(cfg['gym_tracker_lookback_hours'] || '48', 10) || 48;
   var windowStart = new Date(now.getTime() - lookbackHrs * 60 * 60 * 1000);
 
   // ---- Scan all calendars for EXERCISE events that have already ended -------
@@ -193,4 +193,69 @@ function testCheckGymSessions() {
   Logger.log('=== testCheckGymSessions ===');
   checkGymSessions_();
   Logger.log('=== done — check Gym Log sheet and Flags tab ===');
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Scans the past `lookbackDays` days for missed gym sessions.
+ * Same logic as checkGymSessions_() but with a wider window.
+ * Safe to call multiple times — deduplicates against existing Gym Log rows.
+ * @param {number} lookbackDays  How many days back to scan (default 30, max 90)
+ * @returns {{ added: number, skipped: number }}
+ */
+function backfillGymSessions_(lookbackDays) {
+  lookbackDays = Math.min(Math.max(parseInt(lookbackDays) || 30, 1), 90);
+
+  var cfg   = getConfigValues();
+  var tz    = Session.getScriptTimeZone();
+  var now   = new Date();
+  var start = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+
+  var skipCals  = (cfg['skip_calendars'] || '').split(',').map(function(s) { return s.trim().toLowerCase(); });
+  var calendars = CalendarApp.getAllCalendars();
+  var candidates = [];
+
+  for (var ci = 0; ci < calendars.length; ci++) {
+    var cal = calendars[ci];
+    if (skipCals.indexOf(cal.getName().toLowerCase()) !== -1) continue;
+    var events = cal.getEvents(start, now);
+    for (var ei = 0; ei < events.length; ei++) {
+      var ev   = events[ei];
+      var desc = (ev.getDescription() || '').toUpperCase();
+      if (desc.indexOf('EXERCISE') === -1) continue;
+      if (ev.getEndTime() > now) continue;
+      var dateStr   = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd');
+      var safeTitle = ev.getTitle().replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20).toLowerCase();
+      candidates.push({ id: 'GYM-' + dateStr + '-' + safeTitle, title: ev.getTitle().trim(), date: dateStr });
+    }
+  }
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.GYM_LOG);
+  if (!sheet) throw new Error('Gym Log sheet not found.');
+
+  var existingIds = {};
+  if (sheet.getLastRow() >= 2) {
+    var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var ri = 0; ri < ids.length; ri++) {
+      if (ids[ri][0]) existingIds[String(ids[ri][0])] = true;
+    }
+  }
+
+  var added = 0, skipped = 0;
+  for (var i = 0; i < candidates.length; i++) {
+    var s = candidates[i];
+    if (existingIds[s.id]) { skipped++; continue; }
+    existingIds[s.id] = true;
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, GYM_LOG_HEADERS.length)
+      .setValues([[s.id, s.title, s.date, '', '']]);
+    added++;
+  }
+
+  Logger.log('GymBackfill: ' + added + ' added, ' + skipped + ' already existed.');
+  return { added: added, skipped: skipped };
+}
+
+function testBackfillGymSessions() {
+  Logger.log(JSON.stringify(backfillGymSessions_(30)));
 }
