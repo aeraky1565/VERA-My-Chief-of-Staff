@@ -174,6 +174,8 @@ function createSheetTabs(ss) {
     ['pantry_enabled',              'false'], // set 'true' to enable purchase history + auto-restock (Issue #111)
     ['pantry_restock_days_ahead',   '7'],     // days ahead to predict and auto-add items to shopping list
     ['pantry_ema_alpha',            '0.3'],   // EMA learning rate: higher = adapts faster to recent habits
+    ['travel_day_briefing_enabled', 'true'],  // set to 'false' to disable travel day briefing emails (Issue #108b)
+    ['travel_companions',           ''],      // comma-separated emails to CC on travel day briefings (Issue #108b)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -1439,6 +1441,13 @@ function morningNudge() {
       intelligenceSection = buildMorningIntelligence_();
     } catch (intErr) {
       Logger.log('morningNudge: buildMorningIntelligence_ error (non-fatal) — ' + intErr.message);
+    }
+
+    // ---- Travel Day Briefing (Issue #108b) ----------------------------------
+    // Sends a separate clean email to Ahmed + companions when today is a travel day.
+    // Fully non-fatal — never aborts the morning nudge.
+    try { checkAndSendTravelDayBriefings_(); } catch (tdbErr) {
+      Logger.log('morningNudge: TravelDayBriefing error (non-fatal) — ' + tdbErr.message);
     }
 
     // ---- HTML body ------------------------------------------------------

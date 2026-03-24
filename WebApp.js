@@ -197,6 +197,7 @@ function doGet(e) {
       case 'add_rewards_goal':           return jsonOut_(webAddRewardsGoal_(e));
       case 'update_rewards_goal':        return jsonOut_(webUpdateRewardsGoal_(e));
       case 'delete_rewards_goal':        return jsonOut_(webDeleteRewardsGoal_(e));
+      case 'send_travel_briefing':       return jsonOut_(webSendTravelBriefing_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
