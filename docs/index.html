@@ -4306,11 +4306,17 @@ function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete
             {e.Traveller || 'Both'}
           </span>
           {showVisitedBtn && e.Visited !== 'yes' && (
-            <button onClick={function() { onMarkVisited(e.ID); }} disabled={busy}
+            <button
+              onClick={function() {
+                if (window.confirm('Mark "' + (e.City || e.Country) + '" as visited? It will move to the Visited section.')) {
+                  onMarkVisited(e.ID);
+                }
+              }}
+              disabled={busy}
               style={{ fontSize: 11, color: '#4a9060', background: 'transparent',
                        border: '1px solid #2a4a30', borderRadius: 6,
                        padding: '3px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              ✓ Visited
+              Mark Visited
             </button>
           )}
           {/* Expand/collapse activities */}
@@ -6754,6 +6760,65 @@ function RecipeView({ recipes, loading, busy, onAddToShopping }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function PeopleTab() {
+  const [sub, setSub] = React.useState('dates');
+  const subTabs = [
+    { id: 'dates',     label: '📅 Important Dates' },
+    { id: 'gifts',     label: '🎁 Gift Ideas'       },
+    { id: 'wishlists', label: '🎄 Wish Lists'        },
+    { id: 'people',    label: '👤 People'            },
+  ];
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id}
+            className={`subtab-btn${sub === s.id ? ' active' : ''}`}
+            onClick={() => setSub(s.id)}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {sub === 'dates' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Important Dates</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Birthdays, anniversaries, and meaningful dates — with VERA-flagged countdowns and gift suggestions.</div>
+          <div style={{ fontSize: 12, color: '#3a4d66', marginTop: 8 }}>Coming soon</div>
+        </div>
+      )}
+
+      {sub === 'gifts' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🎁</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Gift Ideas</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Birthday gift wishlists for Ahmed and Victoria. Add ideas anytime — VERA surfaces them when a date is approaching.</div>
+          <div style={{ fontSize: 12, color: '#3a4d66', marginTop: 8 }}>Coming soon</div>
+        </div>
+      )}
+
+      {sub === 'wishlists' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🎄</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Wish Lists</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Holiday and seasonal wish lists — linked from the family Google Docs, one per person.</div>
+          <div style={{ fontSize: 12, color: '#3a4d66', marginTop: 8 }}>Coming soon</div>
+        </div>
+      )}
+
+      {sub === 'people' && (
+        <div className="empty-state" style={{ paddingTop: 48 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>People</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Key people in your life — family, friends, colleagues. Notes, birthdays, and relationship context all in one place.</div>
+          <div style={{ fontSize: 12, color: '#3a4d66', marginTop: 8 }}>Coming soon</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -12047,7 +12112,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -12071,6 +12136,7 @@ function App() {
                 {tab === 'projects'   ? `🏗️ Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
                 {tab === 'shopping'   ? `🛒 Shopping` : ''}
                 {tab === 'home_front' ? `🏡 Home Front` : ''}
+                {tab === 'people'     ? `👥 People`      : ''}
                 {tab === 'pto'        ? `🌴 PTO Planner` : ''}
                 {tab === 'travel'     ? `✈️ Travel` : ''}
                 {tab === 'finances'   ? `💰 Finances` : ''}
@@ -12247,6 +12313,9 @@ function App() {
                 onDeleteTakeoutItem={handleDeleteTakeoutItem}
               />
             )}
+
+            {/* People tab */}
+            {activeTab === 'people' && <PeopleTab />}
 
             {/* PTO tab */}
             {activeTab === 'pto' && (
