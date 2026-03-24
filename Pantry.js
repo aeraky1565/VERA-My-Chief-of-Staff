@@ -81,7 +81,9 @@ function getPurchaseRows_(normalizedName) {
       item:     String(row[1]  || ''),
       normalized: String(row[2] || ''),
       category: String(row[3]  || ''),
-      date:     String(row[4]  || ''),
+      date:     (row[4] instanceof Date && !isNaN(row[4].getTime()))
+                  ? Utilities.formatDate(row[4], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+                  : String(row[4] || '').trim(),
       qty:      row[5]  !== '' ? parseFloat(row[5])  : null,
       unit:     String(row[6]  || ''),
       store:    String(row[7]  || ''),
