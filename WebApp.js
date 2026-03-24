@@ -4403,8 +4403,8 @@ function webGetPurchaseHistory_() {
 }
 
 function webLogPurchaseRun_(e) {
-  var storeId   = ((e.parameter && e.parameter.storeId) || '').trim();
-  var rawItems  = ((e.parameter && e.parameter.items)   || '[]').trim();
+  var storeId  = (e.storeId  || (e.parameter && e.parameter.storeId)  || '').toString().trim();
+  var rawItems = (e.items     || (e.parameter && e.parameter.items)    || '[]').toString().trim();
   if (!storeId) throw new Error('storeId is required');
   var itemTexts = JSON.parse(rawItems);
   if (!Array.isArray(itemTexts) || !itemTexts.length) throw new Error('items must be a non-empty JSON array');
