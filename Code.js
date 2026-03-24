@@ -1077,9 +1077,10 @@ function buildMorningIntelligence_() {
   var today    = new Date(); today.setHours(0, 0, 0, 0);
   var dayOfMon = today.getDate();
 
-  var focusRows = [];
-  var maintRows = [];
-  var travelRows = [];
+  var focusRows     = [];
+  var maintRows     = [];
+  var travelRows    = [];
+  var todayItinRows = [];
 
   // ---- Today's Focus: Overdue tasks by name --------------------------------
   try {
@@ -1173,8 +1174,89 @@ function buildMorningIntelligence_() {
     });
   } catch (e) { Logger.log('buildMorningIntelligence_: travel — ' + e.message); }
 
+  // ---- Today's Itinerary: items from ITINERARY sheet matching today ---------
+  try {
+    var itinSheet2 = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (itinSheet2 && itinSheet2.getLastRow() >= 2) {
+      var todayStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+      var itinData = itinSheet2.getRange(2, 1, itinSheet2.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+
+      var todayItems = itinData.filter(function(row) {
+        var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
+          ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
+          : String(row[4] || '').trim();
+        return rowDate === todayStr;
+      }).sort(function(a, b) {
+        var at = String(a[5] || '');
+        var bt = String(b[5] || '');
+        return at < bt ? -1 : at > bt ? 1 : 0;
+      });
+
+      todayItems.forEach(function(row) {
+        var type      = String(row[2] || '').trim().toLowerCase();
+        var title     = String(row[3] || '').trim();
+        var startTime = String(row[5] || '').trim();
+        var endTime   = String(row[6] || '').trim();
+        var location  = String(row[7] || '').trim();
+        var meta      = {};
+        try { if (row[9]) meta = JSON.parse(String(row[9])); } catch(e_) {}
+
+        var icon = '📍';
+        var line = '';
+
+        if (type === 'flight') {
+          icon = '✈️';
+          var flightNum = meta.flightNum || title;
+          var airline   = meta.airline   || '';
+          var depTime   = meta.dep_scheduled || startTime;
+          var arrTime   = meta.arr_scheduled || endTime;
+          var depTerm   = meta.dep_terminal ? ' T' + meta.dep_terminal : '';
+          var arrTerm   = meta.arr_terminal ? ' T' + meta.arr_terminal : '';
+          var timing    = (depTime ? depTime + depTerm : '') + (arrTime ? ' → ' + arrTime + arrTerm : '');
+          line = '<strong>' + escapeHtml_(flightNum) + '</strong>';
+          if (airline)  line += ' · ' + escapeHtml_(airline);
+          if (timing)   line += ' <span style="color:#555555;font-size:13px;">(' + escapeHtml_(timing) + ')</span>';
+          if (location) line += ' <span style="color:#777777;font-size:12px;"> — ' + escapeHtml_(location) + '</span>';
+        } else if (type === 'hotel') {
+          icon = '🏨';
+          var titleLow = title.toLowerCase();
+          var notesLow = String(row[8] || '').trim().toLowerCase();
+          var checkStr = (notesLow.indexOf('check-out') !== -1 || notesLow.indexOf('checkout') !== -1 ||
+                          titleLow.indexOf('check-out') !== -1 || titleLow.indexOf('checkout') !== -1) ? 'Check-out'
+                       : (notesLow.indexOf('check-in')  !== -1 || notesLow.indexOf('checkin')  !== -1 ||
+                          titleLow.indexOf('check-in')  !== -1 || titleLow.indexOf('checkin')  !== -1) ? 'Check-in'
+                       : '';
+          line = '<strong>' + escapeHtml_(title) + '</strong>';
+          if (checkStr)  line += ' <span style="color:#555555;font-size:13px;">(' + checkStr + ')</span>';
+          if (startTime) line += ' <span style="color:#555555;font-size:13px;"> — ' + escapeHtml_(startTime) + '</span>';
+          if (location)  line += ' <span style="color:#777777;font-size:12px;"> · ' + escapeHtml_(location) + '</span>';
+        } else if (type === 'leave_by' || type === 'buffer' || type === 'transport') {
+          icon = '🚗';
+          line = '<strong>' + escapeHtml_(title) + '</strong>';
+          if (startTime) line += ' <span style="color:#e65100;font-size:13px;"> — by ' + escapeHtml_(startTime) + '</span>';
+        } else if (type === 'dining') {
+          icon = '🍽️';
+          line = '<strong>' + escapeHtml_(title) + '</strong>';
+          if (startTime) line += ' <span style="color:#555555;font-size:13px;"> — ' + escapeHtml_(startTime) + '</span>';
+          if (location)  line += ' <span style="color:#777777;font-size:12px;"> · ' + escapeHtml_(location) + '</span>';
+        } else {
+          icon = (type === 'activity') ? '🎯' : '📍';
+          line = '<strong>' + escapeHtml_(title) + '</strong>';
+          if (startTime) {
+            line += ' <span style="color:#555555;font-size:13px;"> — ' + escapeHtml_(startTime);
+            if (endTime && endTime !== startTime) line += ' → ' + escapeHtml_(endTime);
+            line += '</span>';
+          }
+          if (location) line += ' <span style="color:#777777;font-size:12px;"> · ' + escapeHtml_(location) + '</span>';
+        }
+
+        todayItinRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">' + icon + ' ' + line + '</p>');
+      });
+    }
+  } catch (e) { Logger.log('buildMorningIntelligence_: today itinerary — ' + e.message); }
+
   // ---- Assemble HTML -------------------------------------------------------
-  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0) return '';
+  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0 && todayItinRows.length === 0) return '';
 
   html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">';
 
@@ -1193,6 +1275,12 @@ function buildMorningIntelligence_() {
     if (focusRows.length > 0 || maintRows.length > 0) html += '<div style="margin-top:12px;"></div>';
     html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">🧳 Travel</p>';
     html += travelRows.join('');
+  }
+
+  if (todayItinRows.length > 0) {
+    if (focusRows.length > 0 || maintRows.length > 0 || travelRows.length > 0) html += '<div style="margin-top:12px;"></div>';
+    html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">✈️ Today\'s Itinerary</p>';
+    html += todayItinRows.join('');
   }
 
   html += '</div>';
