@@ -8593,7 +8593,6 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
     { id: 'bills',     label: '🧾 Bills' },
     { id: 'cashflow',  label: '💰 Cashflow' },
     { id: 'cards',     label: '💳 Cards' },
-    { id: 'summaries', label: '📋 Summaries' },
   ];
 
   return (
@@ -8750,12 +8749,6 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
         <CardsTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
 
-      {/* ── Summaries ─────────────────────────────────── */}
-      {sub === 'summaries' && (
-        summaries.length === 0
-          ? <div className="empty-state">No summaries in the Summaries tab yet.</div>
-          : <SummariesTab summaries={summaries} />
-      )}
     </div>
   );
 }
