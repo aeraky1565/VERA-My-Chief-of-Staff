@@ -201,6 +201,12 @@ function doGet(e) {
       case 'update_rewards_goal':        return jsonOut_(webUpdateRewardsGoal_(e));
       case 'delete_rewards_goal':        return jsonOut_(webDeleteRewardsGoal_(e));
       case 'send_travel_briefing':       return jsonOut_(webSendTravelBriefing_(e));
+      // Gift Ideas — People tab (Issue #105)
+      case 'get_gift_data':      return jsonOut_(webGetGiftData_());
+      case 'add_gift_person':    return jsonOut_(webAddGiftPerson_(e));
+      case 'delete_gift_person': return jsonOut_(webDeleteGiftPerson_(e));
+      case 'add_gift_idea':      return jsonOut_(webAddGiftIdea_(e));
+      case 'delete_gift_idea':   return jsonOut_(webDeleteGiftIdea_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -5019,4 +5025,87 @@ function webDeleteRewardsGoal_(e) {
     if (rows[i][0] === id) { sheet.deleteRow(i + 1); return { ok: true, action: 'deleted' }; }
   }
   throw new Error('Rewards goal not found: ' + id);
+}
+
+// ============================================================
+// Gift Ideas — People tab (Issue #105)
+// ============================================================
+
+function webGetGiftData_() {
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var people = [];
+  var pSheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
+  if (pSheet && pSheet.getLastRow() >= 2) {
+    people = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues()
+               .map(function(r) { return String(r[0]).trim(); })
+               .filter(function(n) { return n; });
+  }
+  var ideas = [];
+  var iSheet = ss.getSheetByName(TABS.GIFT_IDEAS);
+  if (iSheet && iSheet.getLastRow() >= 2) {
+    var rows = iSheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      ideas.push(obj);
+    });
+  }
+  return { ok: true, people: people, ideas: ideas };
+}
+
+function webAddGiftPerson_(e) {
+  var name = ((e.parameter && e.parameter.name) || '').trim();
+  if (!name) return { ok: false, error: 'name required' };
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
+  sheet.appendRow([name]);
+  return { ok: true, name: name };
+}
+
+function webDeleteGiftPerson_(e) {
+  var name = ((e.parameter && e.parameter.name) || '').trim();
+  if (!name) return { ok: false, error: 'name required' };
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  // Remove from Gift People
+  var pSheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
+  if (pSheet && pSheet.getLastRow() >= 2) {
+    var pRows = pSheet.getDataRange().getValues();
+    for (var i = pRows.length - 1; i >= 1; i--) {
+      if (String(pRows[i][0]).trim() === name) { pSheet.deleteRow(i + 1); break; }
+    }
+  }
+  // Remove all their ideas
+  var iSheet = ss.getSheetByName(TABS.GIFT_IDEAS);
+  if (iSheet && iSheet.getLastRow() >= 2) {
+    var iRows = iSheet.getDataRange().getValues();
+    for (var j = iRows.length - 1; j >= 1; j--) {
+      if (String(iRows[j][1]).trim() === name) iSheet.deleteRow(j + 1);
+    }
+  }
+  return { ok: true, name: name };
+}
+
+function webAddGiftIdea_(e) {
+  var person = ((e.parameter && e.parameter.person) || '').trim();
+  var idea   = ((e.parameter && e.parameter.idea)   || '').trim();
+  if (!person || !idea) return { ok: false, error: 'person and idea required' };
+  var id = 'gi_' + Date.now();
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  ss.getSheetByName(TABS.GIFT_IDEAS).appendRow([id, person, idea, new Date()]);
+  return { ok: true, idea: { ID: id, Person: person, Idea: idea } };
+}
+
+function webDeleteGiftIdea_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.GIFT_IDEAS);
+  if (!sheet) return { ok: false, error: 'Gift Ideas sheet not found' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
 }
