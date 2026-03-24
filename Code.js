@@ -48,7 +48,8 @@ const TABS = {
   TRIP_META:        'TripMeta',         // Trip context / sentiment notes (Issue #64)
   PACKING_ITEMS:    'PackingItems',     // Per-trip packing list items (Issue #64)
   COUNTRIES:        'Countries',        // Countries visited tracker (Issue #74)
-  BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
+  BUCKET_LIST:       'Bucket List',       // Travel bucket list (wishlist of destinations)
+  BUCKET_ACTIVITIES: 'BucketActivities', // Per-destination activity list (Issue #113)
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
@@ -91,6 +92,7 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
+const BUCKET_ACTIVITIES_HEADERS = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
@@ -199,6 +201,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PACKING_ITEMS,    PACKING_ITEM_HEADERS);
   ensureSheet(ss, TABS.COUNTRIES,             COUNTRIES_HEADERS);
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
+  ensureSheet(ss, TABS.BUCKET_ACTIVITIES,     BUCKET_ACTIVITIES_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);

@@ -134,10 +134,13 @@ function doGet(e) {
       case 'countries':             return jsonOut_(webGetCountries_());
       case 'add_country':           return jsonOut_(webAddCountry_(e));
       case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
-      case 'get_bucket_list':       return jsonOut_(webGetBucketList_());
-      case 'add_bucket_item':       return jsonOut_(webAddBucketItem_(e));
-      case 'update_bucket_item':    return jsonOut_(webUpdateBucketItem_(e));
-      case 'delete_bucket_item':    return jsonOut_(webDeleteBucketItem_(e));
+      case 'get_bucket_list':         return jsonOut_(webGetBucketList_());
+      case 'add_bucket_item':         return jsonOut_(webAddBucketItem_(e));
+      case 'update_bucket_item':      return jsonOut_(webUpdateBucketItem_(e));
+      case 'delete_bucket_item':      return jsonOut_(webDeleteBucketItem_(e));
+      case 'add_bucket_activity':     return jsonOut_(webAddBucketActivity_(e));
+      case 'toggle_bucket_activity':  return jsonOut_(webToggleBucketActivity_(e));
+      case 'delete_bucket_activity':  return jsonOut_(webDeleteBucketActivity_(e));
       case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
       case 'force_flight_statuses': return jsonOut_(webForceFlightStatuses_(e));
       case 'recommendations':          return jsonOut_(webGetRecommendations_(e));
@@ -4020,6 +4023,7 @@ function webGetBucketList_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, entries: [] };
+
   var rows    = sheet.getDataRange().getValues();
   var headers = rows[0];
   var entries = rows.slice(1)
@@ -4027,8 +4031,26 @@ function webGetBucketList_() {
     .map(function(r) {
       var obj = {};
       headers.forEach(function(h, i) { obj[h] = r[i]; });
+      obj.activities = []; // will be populated below
       return obj;
     });
+
+  // Join BucketActivities — embed each activity into its parent entry
+  var actSheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (actSheet && actSheet.getLastRow() >= 2) {
+    var actRows    = actSheet.getDataRange().getValues();
+    var actHeaders = actRows[0];
+    var entryMap   = {};
+    entries.forEach(function(e) { entryMap[String(e.ID)] = e; });
+    actRows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var act = {};
+      actHeaders.forEach(function(h, i) { act[h] = r[i]; });
+      var bid = String(act['Bucket ID'] || '').trim();
+      if (entryMap[bid]) entryMap[bid].activities.push(act);
+    });
+  }
+
   return { ok: true, entries: entries };
 }
 
@@ -4092,6 +4114,69 @@ function webDeleteBucketItem_(e) {
     }
   }
   return { ok: false, error: 'Entry not found: ' + id };
+}
+
+// ---- Bucket Activities (Issue #113) ----------------------------------------
+
+/**
+ * Adds an activity to a Bucket List entry.
+ * GET ?action=add_bucket_activity&bucketId=b_xxx&activity=text
+ */
+function webAddBucketActivity_(e) {
+  var p        = e.parameter || {};
+  var bucketId = (p.bucketId || '').trim();
+  var activity = (p.activity || '').trim();
+  if (!bucketId) throw new Error('bucketId is required.');
+  if (!activity) throw new Error('activity is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (!sheet) throw new Error('BucketActivities tab not found. Run setupVERA() first.');
+  var id = 'ba_' + Date.now();
+  var dt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  sheet.appendRow([id, bucketId, activity, '', dt]);
+  return { ok: true, activity: { ID: id, 'Bucket ID': bucketId, Activity: activity, Done: '', 'Added Date': dt } };
+}
+
+/**
+ * Toggles the Done field of a Bucket Activity.
+ * GET ?action=toggle_bucket_activity&id=ba_xxx&done=yes  (or done='' to uncheck)
+ */
+function webToggleBucketActivity_(e) {
+  var p    = e.parameter || {};
+  var id   = (p.id   || '').trim();
+  var done = (p.done || '');
+  if (!id) throw new Error('id is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Activity not found.' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.getRange(i + 1, 4).setValue(done); // col D: Done
+      return { ok: true, id: id, done: done };
+    }
+  }
+  return { ok: false, error: 'Activity not found: ' + id };
+}
+
+/**
+ * Deletes a Bucket Activity row.
+ * GET ?action=delete_bucket_activity&id=ba_xxx
+ */
+function webDeleteBucketActivity_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('id is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Activity not found.' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'Activity not found: ' + id };
 }
 
 // ---- Flight Status (Issue #66) ---------------------------------------------
