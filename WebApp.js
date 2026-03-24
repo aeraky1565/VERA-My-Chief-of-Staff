@@ -4398,8 +4398,9 @@ function webLogGymAttend_(e, attended) {
 }
 
 function webGymBackfill_(e) {
-  var days = parseInt((e.parameter && e.parameter.days) || '30', 10) || 30;
-  return backfillGymSessions_(days);
+  var days   = parseInt((e.parameter && e.parameter.days) || '30', 10) || 30;
+  var result = backfillGymSessions_(days);
+  return { ok: true, added: result.added, skipped: result.skipped };
 }
 
 // ── Purchase History (Issue #111) ─────────────────────────────
