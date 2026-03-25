@@ -5120,11 +5120,12 @@ function webPreviewCalendarBirthdays_() {
   var found   = [];
   var now     = new Date();
   var lookAhead = new Date(now.getFullYear() + 1, 11, 31); // through end of next year
+  // Scan ALL calendars — filter by event title containing "birthday",
+  // so Joint Chaos shared calendar all-day birthday events are included.
   CalendarApp.getAllCalendars().forEach(function(cal) {
-    var name = cal.getName().toLowerCase();
-    if (name.indexOf('birthday') === -1 && name.indexOf('contact') === -1) return;
     cal.getEvents(now, lookAhead).forEach(function(ev) {
-      var title  = ev.getTitle();
+      var title = ev.getTitle();
+      if (title.toLowerCase().indexOf('birthday') === -1) return;
       var start  = ev.getStartTime();
       var mm     = String(start.getMonth() + 1).padStart(2, '0');
       var dd     = String(start.getDate()).padStart(2, '0');
