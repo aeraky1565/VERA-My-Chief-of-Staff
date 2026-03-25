@@ -5134,25 +5134,29 @@ function webPreviewCalendarBirthdays_() {
       var title = ev.getTitle() || '';
       var titleLow = title.toLowerCase();
 
-      // Skip events that don't have "birthday" in the title unless it's a birthday/contact calendar
-      if (!isBirthdayCal && titleLow.indexOf('birthday') === -1) return;
+      // Skip events that don't have "birthday" in the title
+      if (titleLow.indexOf('birthday') === -1) return;
+      // Skip VERA-generated flag events (contain a colon followed by digits, e.g. ": 78 days")
+      if (/:\s*\d+\s*days?/i.test(title)) return;
 
       // Get date — use getAllDayStartDate() for all-day events to avoid timezone offset issues
       var dateObj = ev.isAllDayEvent() ? ev.getAllDayStartDate() : ev.getStartTime();
       var mm = String(dateObj.getMonth() + 1).padStart(2, '0');
       var dd = String(dateObj.getDate()).padStart(2, '0');
 
-      // Extract person name: strip "birthday" and surrounding noise from title
-      // Handles: "Victoria's Birthday", "Ahmed Birthday", "🎂 Mum's birthday", "Birthday - Dad"
+      // Extract person name — handle all observed formats:
+      // "Victoria's Birthday", "Caiden Birthday", "Birthday - Dad",
+      // "Kelly E's Birthday", "Austin's Birthday!", "JC & Omar Birthday"
       var person = title
-        .replace(/^[\s\S]{0,3}birthday\s*[-–:]\s*/i, '') // "Birthday - Name" or "🎂 Birthday: Name"
-        .replace(/[-–:]\s*birthday\s*$/i, '')             // "Name - Birthday" format
-        .replace(/'?s?\s*birthday\s*$/i, '')              // "Name's Birthday" format
-        .replace(/\s*birthday\s*/ig, '')                  // fallback: remove any remaining "birthday"
-        .replace(/^[\W_]+|[\W_]+$/g, '')                  // strip leading/trailing non-word chars
+        .replace(/birthday\s*[-–:]\s*/ig, '')  // "Birthday - Name" / "Birthday: Name"
+        .replace(/[-–:]\s*birthday\b.*/ig, '') // "Name - Birthday..." strip from dash onward
+        .replace(/[''`]s?\s*birthday\b.*/ig, '') // "Name's Birthday..." strip from 's onward
+        .replace(/\s*birthday\b.*/ig, '')       // "Name Birthday..." strip from birthday onward
+        .replace(/[!?.,;]+$/, '')              // strip trailing punctuation
         .trim();
 
       if (!person) return;
+      // Deduplicate by person name (case-insensitive) — same person may appear in multiple calendars
       if (!found.find(function(f) { return f.person.toLowerCase() === person.toLowerCase(); })) {
         found.push({ person: person, date: mm + '-' + dd, label: person + "'s Birthday" });
       }
