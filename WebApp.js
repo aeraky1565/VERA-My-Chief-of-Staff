@@ -5122,7 +5122,17 @@ function webPreviewCalendarBirthdays_() {
   // Scan 13 months ahead to catch all annual birthdays at least once
   var lookAhead = new Date(now.getFullYear(), now.getMonth() + 13, now.getDate());
 
-  CalendarApp.getAllCalendars().forEach(function(cal) {
+  // Build calendar list: getAllCalendars() + explicit lookup for the Google Contacts
+  // "Birthdays" system calendar, which often doesn't appear in getAllCalendars().
+  var cals = CalendarApp.getAllCalendars();
+  var calIds = {};
+  cals.forEach(function(c) { calIds[c.getId()] = true; });
+  ['Birthdays', 'contacts@group.v.calendar.google.com'].forEach(function(nameOrId) {
+    var extra = CalendarApp.getCalendarsByName(nameOrId);
+    extra.forEach(function(c) { if (!calIds[c.getId()]) { cals.push(c); calIds[c.getId()] = true; } });
+  });
+
+  cals.forEach(function(cal) {
     var calName = cal.getName().toLowerCase();
     var isBirthdayCal = calName.indexOf('birthday') !== -1 || calName.indexOf('contact') !== -1;
     var isJointChaos  = calName.indexOf('joint chaos') !== -1;

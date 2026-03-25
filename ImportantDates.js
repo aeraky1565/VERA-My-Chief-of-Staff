@@ -101,6 +101,11 @@ function debugBirthdayCalendars() {
   var now       = new Date();
   var lookAhead = new Date(now.getFullYear(), now.getMonth() + 13, now.getDate());
   var cals      = CalendarApp.getAllCalendars();
+  var calIds    = {};
+  cals.forEach(function(c) { calIds[c.getId()] = true; });
+  CalendarApp.getCalendarsByName('Birthdays').forEach(function(c) {
+    if (!calIds[c.getId()]) { cals.push(c); calIds[c.getId()] = true; }
+  });
   Logger.log('=== Calendar scan — ' + cals.length + ' calendars found ===');
   cals.forEach(function(cal) {
     Logger.log('Calendar: "' + cal.getName() + '"');
