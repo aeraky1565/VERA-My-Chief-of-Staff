@@ -70,6 +70,7 @@ const TABS = {
   GIFT_PEOPLE:        'Gift People',          // Per-person gift idea list: who (Issue #105)
   GIFT_IDEAS:         'Gift Ideas',           // Per-person gift idea list: ideas (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
+  CHORES:             'Chores',               // Household chore checklist by cadence (Issue #124)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -116,6 +117,7 @@ const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Poin
 const GIFT_PEOPLE_HEADERS        = ['Name']; // Issue #105
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date']; // Issue #105
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year']; // Issue #80
+const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date']; // Issue #124
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -228,6 +230,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.GIFT_PEOPLE,          GIFT_PEOPLE_HEADERS, [['Ahmed'], ['Victoria']]); // Issue #105
   ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS); // Issue #105
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS); // Issue #80
+  ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);           // Issue #124
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -555,6 +558,10 @@ function nightlyRun() {
     } catch (ptcErr) {
       Logger.log('checkPostTripCapture_ error (non-fatal): ' + ptcErr.message);
     }
+
+    // Step 0g-ii: Reset household chores by cadence (Issue #124)
+    try { resetChoresByCadence_(); }
+    catch (chErr) { Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message); }
 
     // Step 0h: Reset morning routine checkboxes for the new day
     try {
@@ -1867,6 +1874,61 @@ function addBillTypeColumn() {
 // ============================================================
 // MANUAL TEST — Call this to do a full dry run before going live
 // ============================================================
+
+/**
+ * Resets household chores based on their cadence. Called from nightlyRun().
+ * - Daily:    reset every night
+ * - Weekly:   reset on Friday nights
+ * - Biweekly: reset on alternating Friday nights (even ISO week number)
+ * - Monthly:  reset on the last day of the month
+ * - Seasonal: never auto-reset
+ */
+function resetChoresByCadence_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var now  = new Date();
+  var dow  = now.getDay(); // 0=Sun … 5=Fri … 6=Sat
+  var dom  = now.getDate();
+  var lastDom = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+  // ISO week number (1-based)
+  var d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  var weekNum   = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+
+  var isFriday         = (dow === 5);
+  var isBiweeklyFriday = isFriday && (weekNum % 2 === 0);
+  var isLastDayOfMonth = (dom === lastDom);
+
+  var toReset = ['Daily'];
+  if (isFriday)         toReset.push('Weekly');
+  if (isBiweeklyFriday) toReset.push('Biweekly');
+  if (isLastDayOfMonth) toReset.push('Monthly');
+
+  var rows    = sheet.getDataRange().getValues();
+  var hdrs    = rows[0];
+  var cadIdx  = hdrs.indexOf('Cadence');
+  var chkIdx  = hdrs.indexOf('Checked');
+  var chkAtIdx = hdrs.indexOf('Checked At');
+  var count   = 0;
+
+  // Batch: collect row indices, then write in one setValues call per column
+  var resetRows = [];
+  for (var i = 1; i < rows.length; i++) {
+    if (toReset.indexOf(String(rows[i][cadIdx])) !== -1) resetRows.push(i + 1);
+  }
+  resetRows.forEach(function(r) {
+    sheet.getRange(r, chkIdx + 1).setValue(false);
+    sheet.getRange(r, chkAtIdx + 1).setValue('');
+    count++;
+  });
+
+  Logger.log('Chores: reset ' + count + ' chore(s) for: ' + toReset.join(', ') +
+             ' (week ' + weekNum + ', day ' + dow + ', dom ' + dom + '/' + lastDom + ')');
+}
 
 /**
  * Run this from the Apps Script editor to test the full pipeline manually.

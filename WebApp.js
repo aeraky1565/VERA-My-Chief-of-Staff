@@ -201,6 +201,12 @@ function doGet(e) {
       case 'update_rewards_goal':        return jsonOut_(webUpdateRewardsGoal_(e));
       case 'delete_rewards_goal':        return jsonOut_(webDeleteRewardsGoal_(e));
       case 'send_travel_briefing':       return jsonOut_(webSendTravelBriefing_(e));
+      // Chores — Home Front tab (Issue #124)
+      case 'get_chores':    return jsonOut_(webGetChores_());
+      case 'add_chore':     return jsonOut_(webAddChore_(e));
+      case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
+      case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
+      case 'update_chore':  return jsonOut_(webUpdateChore_(e));
       // Important Dates — People tab (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
@@ -5273,6 +5279,95 @@ function webDeleteGiftIdea_(e) {
   var rows = sheet.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// ============================================================
+// Chores — Household chore checklist (Issue #124)
+// ============================================================
+
+function webGetChores_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  var chores = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; }); chores.push(obj);
+    });
+  }
+  return { ok: true, chores: chores };
+}
+
+function webAddChore_(e) {
+  var p       = e.parameter || {};
+  var chore   = (p.chore   || '').trim();
+  var cadence = (p.cadence || 'Daily').trim();
+  if (!chore) return { ok: false, error: 'chore text required' };
+  var validCadences = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Seasonal'];
+  if (validCadences.indexOf(cadence) === -1) cadence = 'Daily';
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  var id    = 'ch_' + Date.now();
+  var sort  = sheet.getLastRow();
+  var date  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  sheet.appendRow([id, chore, cadence, sort, false, '', date]);
+  return { ok: true, chore: { ID: id, Chore: chore, Cadence: cadence, Sort: sort,
+                               Checked: false, 'Checked At': '', 'Added Date': date } };
+}
+
+function webDeleteChore_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  if (!sheet) return { ok: false, error: 'Chores sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webToggleChore_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  if (!sheet) return { ok: false, error: 'Chores sheet not found' };
+  var rows     = sheet.getDataRange().getValues();
+  var hdrs     = rows[0];
+  var chkIdx   = hdrs.indexOf('Checked');
+  var chkAtIdx = hdrs.indexOf('Checked At');
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    var newChecked = !rows[i][chkIdx];
+    var ts = newChecked ? Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : '';
+    sheet.getRange(i + 1, chkIdx + 1).setValue(newChecked);
+    sheet.getRange(i + 1, chkAtIdx + 1).setValue(ts);
+    return { ok: true, id: id, checked: newChecked, checkedAt: ts };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webUpdateChore_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  if (!sheet) return { ok: false, error: 'Chores sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    if (p.cadence !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Cadence') + 1).setValue(p.cadence);
+    if (p.chore   !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Chore')   + 1).setValue(p.chore);
+    if (p.sort    !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Sort')    + 1).setValue(parseInt(p.sort, 10));
+    return { ok: true, id: id };
   }
   return { ok: false, error: 'not found' };
 }

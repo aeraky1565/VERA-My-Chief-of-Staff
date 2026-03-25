@@ -7393,11 +7393,169 @@ function PeopleTab({ giftData, giftLoading, busy,
   );
 }
 
+// ---- ChoresView --------------------------------------------------------------
+
+const CADENCES = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Seasonal'];
+
+const CADENCE_META = {
+  Daily:    { label: '☀️ Daily',    reset: 'Resets nightly'              },
+  Weekly:   { label: '📅 Weekly',   reset: 'Resets every Friday'         },
+  Biweekly: { label: '🗓️ Biweekly', reset: 'Resets every other Friday'   },
+  Monthly:  { label: '📆 Monthly',  reset: 'Resets last day of month'    },
+  Seasonal: { label: '🌿 Seasonal', reset: 'No auto-reset'               },
+};
+
+function ChoresView({ chores, loading, busy, onToggle, onAdd, onDelete, onUpdateCadence }) {
+  const [expanded,    setExpanded]    = React.useState({ Daily: true, Weekly: true, Biweekly: true, Monthly: true, Seasonal: true });
+  const [addCadence,  setAddCadence]  = React.useState(null); // which section's add input is open
+  const [addText,     setAddText]     = React.useState('');
+  const [dragId,      setDragId]      = React.useState(null);
+  const [dragOverCad, setDragOverCad] = React.useState(null);
+
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading chores…</div>;
+
+  const byCategory = {};
+  CADENCES.forEach(function(c) { byCategory[c] = []; });
+  (chores || []).forEach(function(ch) {
+    var cat = ch.Cadence || 'Daily';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(ch);
+  });
+
+  const total   = (chores || []).length;
+  const done    = (chores || []).filter(function(c) { return c.Checked === true || c.Checked === 'TRUE'; }).length;
+  const pct     = total ? Math.round((done / total) * 100) : 0;
+
+  function handleDrop(cadence) {
+    if (dragId && dragId !== cadence && cadence !== dragOverCad) {
+      // dragId is the chore ID, dragOverCad is the target cadence
+    }
+    if (dragId) {
+      onUpdateCadence(dragId, cadence);
+    }
+    setDragId(null);
+    setDragOverCad(null);
+  }
+
+  async function submitAdd(cadence) {
+    const text = addText.trim();
+    if (!text) return;
+    setAddText('');
+    setAddCadence(null);
+    await onAdd(text, cadence);
+  }
+
+  const inputStyle = {
+    flex: 1, padding: '5px 9px', borderRadius: 6, background: '#0a1628',
+    border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13,
+  };
+
+  return (
+    <div>
+      {/* Overall progress */}
+      {total > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7fa8', marginBottom: 4 }}>
+            <span>{done}/{total} chores done today</span>
+            <span>{pct}%</span>
+          </div>
+          <div style={{ height: 6, background: '#0e1e3a', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: pct + '%', height: '100%', background: pct === 100 ? '#2ecc71' : '#3a7bd5', borderRadius: 3, transition: 'width 0.3s' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Cadence sections */}
+      {CADENCES.map(function(cadence) {
+        const items   = byCategory[cadence] || [];
+        const isOpen  = !!expanded[cadence];
+        const isOver  = dragOverCad === cadence;
+        const cadDone = items.filter(function(c) { return c.Checked === true || c.Checked === 'TRUE'; }).length;
+        const meta    = CADENCE_META[cadence];
+
+        return (
+          <div key={cadence}
+            style={{ marginBottom: 10, border: isOver ? '1px dashed #3a7bd5' : '1px solid #1e3060',
+                     borderRadius: 8, background: '#0e1e3a', transition: 'border 0.15s' }}
+            onDragOver={function(e) { e.preventDefault(); setDragOverCad(cadence); }}
+            onDragLeave={function() { if (dragOverCad === cadence) setDragOverCad(null); }}
+            onDrop={function(e) { e.preventDefault(); handleDrop(cadence); }}
+          >
+            {/* Section header */}
+            <div style={{ display: 'flex', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
+              onClick={function() { setExpanded(function(prev) { return Object.assign({}, prev, { [cadence]: !prev[cadence] }); }); }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0', flex: 1 }}>
+                {isOpen ? '▾' : '▸'} {meta.label}
+                <span style={{ fontSize: 11, color: '#4d6080', fontWeight: 400, marginLeft: 8 }}>
+                  {cadDone}/{items.length} · {meta.reset}
+                </span>
+              </span>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px' }}
+                disabled={busy}
+                onClick={function(e) { e.stopPropagation(); setAddText(''); setAddCadence(cadence); }}>
+                ＋ Add
+              </button>
+            </div>
+
+            {isOpen && (
+              <div style={{ padding: '0 14px 10px' }}>
+                {items.length === 0 && addCadence !== cadence && (
+                  <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 4 }}>No chores yet. Click ＋ Add to get started.</div>
+                )}
+                {items.map(function(ch) {
+                  const checked = ch.Checked === true || ch.Checked === 'TRUE';
+                  return (
+                    <div key={ch.ID}
+                      draggable
+                      onDragStart={function() { setDragId(ch.ID); }}
+                      onDragEnd={function() { setDragId(null); setDragOverCad(null); }}
+                      style={{ display: 'flex', alignItems: 'center', padding: '5px 0',
+                               borderBottom: '1px solid #0a1628', opacity: checked ? 0.55 : 1,
+                               cursor: 'grab' }}>
+                      <span style={{ marginRight: 8, cursor: 'default', color: '#4d6080', fontSize: 12 }}>⠿</span>
+                      <input type="checkbox" checked={checked} style={{ marginRight: 10, cursor: 'pointer' }}
+                        onChange={function() { onToggle(ch.ID, checked); }} />
+                      <span style={{ flex: 1, fontSize: 13, color: checked ? '#4d6080' : '#dde1f0',
+                                     textDecoration: checked ? 'line-through' : 'none' }}>
+                        {ch.Chore}
+                      </span>
+                      <button className="btn btn-ghost" style={{ fontSize: 11, color: '#c0392b', padding: '1px 6px', marginLeft: 6 }}
+                        disabled={busy} onClick={function() { onDelete(ch.ID); }}>✕</button>
+                    </div>
+                  );
+                })}
+
+                {/* Inline add input */}
+                {addCadence === cadence && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <input style={inputStyle} autoFocus placeholder={'Add ' + cadence.toLowerCase() + ' chore…'}
+                      value={addText}
+                      onChange={function(e) { setAddText(e.target.value); }}
+                      onKeyDown={function(e) { if (e.key === 'Enter') submitAdd(cadence); if (e.key === 'Escape') setAddCadence(null); }} />
+                    <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}
+                      disabled={busy || !addText.trim()} onClick={function() { submitAdd(cadence); }}>＋</button>
+                    <button className="btn btn-ghost" style={{ fontSize: 12 }}
+                      onClick={function() { setAddCadence(null); setAddText(''); }}>✕</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- HomeFrontTab ------------------------------------------------------------
+
 function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
-                        onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem }) {
+                        onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem,
+                        chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence }) {
   const [sub, setSub] = React.useState('steward');
   const subTabs = [
     { id: 'steward',  label: '🏠 Steward'  },
+    { id: 'chores',   label: '🧹 Chores'   },
     { id: 'recipes',  label: '🍽️ Recipes'  },
     { id: 'takeouts', label: '🥡 Takeouts'  },
     { id: 'pantry',   label: '📦 Pantry'   },
@@ -11287,6 +11445,8 @@ function App() {
   const [datesLoading,      setDatesLoading]       = useState(false);
   const [calPreviews,       setCalPreviews]        = useState(null);  // birthday preview list from calendar
   const [calPreviewLoading, setCalPreviewLoading]  = useState(false);
+  const [chores,            setChores]             = useState([]);
+  const [choresLoading,     setChoresLoading]      = useState(false);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
@@ -12131,6 +12291,61 @@ function App() {
     setBusy(false);
   }
 
+  // ---- Chores handlers (Issue #124) -------------------------------------------
+
+  async function loadChores(url, token) {
+    if (!url || !token) return;
+    setChoresLoading(true);
+    try {
+      const data = await apiGet(url, token, { action: 'get_chores' });
+      setChores(data.chores || []);
+    } catch (err) {
+      setError('Chores load failed: ' + err.message);
+    }
+    setChoresLoading(false);
+  }
+
+  async function handleToggleChore(id, checked) {
+    setChores(prev => prev.map(c => c.ID === id ? { ...c, Checked: checked } : c));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'toggle_chore', id, checked: String(checked) });
+    } catch (err) {
+      setError('Could not toggle chore: ' + err.message);
+      await loadChores(apiUrl, apiToken);
+    }
+  }
+
+  async function handleAddChore(chore, cadence) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'add_chore', chore, cadence });
+      setChores(prev => [...prev, data.chore]);
+    } catch (err) {
+      setError('Could not add chore: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteChore(id) {
+    setChores(prev => prev.filter(c => c.ID !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_chore', id });
+    } catch (err) {
+      setError('Could not delete chore: ' + err.message);
+      await loadChores(apiUrl, apiToken);
+    }
+  }
+
+  async function handleUpdateChoreCadence(id, cadence) {
+    setChores(prev => prev.map(c => c.ID === id ? { ...c, Cadence: cadence } : c));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_chore', id, cadence });
+    } catch (err) {
+      setError('Could not update chore: ' + err.message);
+      await loadChores(apiUrl, apiToken);
+    }
+  }
+
   async function handleUpdateCareerPosition(data) {
     setBusy(true);
     try {
@@ -12841,7 +13056,7 @@ function App() {
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
-                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); }
+                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); }
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
@@ -13031,6 +13246,12 @@ function App() {
                 onDeleteTakeoutRestaurant={handleDeleteTakeoutRestaurant}
                 onAddTakeoutItem={handleAddTakeoutItem}
                 onDeleteTakeoutItem={handleDeleteTakeoutItem}
+                chores={chores}
+                choresLoading={choresLoading}
+                onToggleChore={handleToggleChore}
+                onAddChore={handleAddChore}
+                onDeleteChore={handleDeleteChore}
+                onUpdateChoreCadence={handleUpdateChoreCadence}
               />
             )}
 
