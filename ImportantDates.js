@@ -91,3 +91,31 @@ function syncCalendarBirthdaysToImportantDates_() {
 
   Logger.log('ImportantDates: sync complete — ' + added + ' entry/entries added.');
 }
+
+/**
+ * DEBUG — Run this directly from the Apps Script editor to see exactly
+ * which calendars VERA can see and which birthday events it finds.
+ * Results appear in View → Logs (or Executions).
+ */
+function debugBirthdayCalendars() {
+  var now       = new Date();
+  var lookAhead = new Date(now.getFullYear(), now.getMonth() + 13, now.getDate());
+  var cals      = CalendarApp.getAllCalendars();
+  Logger.log('=== Calendar scan — ' + cals.length + ' calendars found ===');
+  cals.forEach(function(cal) {
+    Logger.log('Calendar: "' + cal.getName() + '"');
+    var events = cal.getEvents(now, lookAhead);
+    var birthdayEvents = events.filter(function(ev) {
+      return ev.getTitle().toLowerCase().indexOf('birthday') !== -1;
+    });
+    if (birthdayEvents.length) {
+      birthdayEvents.forEach(function(ev) {
+        var d = ev.isAllDayEvent() ? ev.getAllDayStartDate() : ev.getStartTime();
+        Logger.log('  → "' + ev.getTitle() + '" on ' + d);
+      });
+    } else {
+      Logger.log('  (no birthday events in range)');
+    }
+  });
+  Logger.log('=== End calendar scan ===');
+}

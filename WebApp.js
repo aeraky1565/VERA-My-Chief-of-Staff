@@ -5145,11 +5145,11 @@ function webPreviewCalendarBirthdays_() {
       // Extract person name: strip "birthday" and surrounding noise from title
       // Handles: "Victoria's Birthday", "Ahmed Birthday", "🎂 Mum's birthday", "Birthday - Dad"
       var person = title
-        .replace(/^\s*[\u{1F300}-\u{1FAFF}]\s*/u, '')   // strip leading emoji
-        .replace(/birthday\s*[-–:]\s*/i, '')             // "Birthday - Name" format
-        .replace(/[-–:]\s*birthday\s*$/i, '')            // "Name - Birthday" format
-        .replace(/'?s?\s*birthday\s*$/i, '')             // "Name's Birthday" format
-        .replace(/\s*birthday\s*$/i, '')                 // "Name Birthday" format
+        .replace(/^[\s\S]{0,3}birthday\s*[-–:]\s*/i, '') // "Birthday - Name" or "🎂 Birthday: Name"
+        .replace(/[-–:]\s*birthday\s*$/i, '')             // "Name - Birthday" format
+        .replace(/'?s?\s*birthday\s*$/i, '')              // "Name's Birthday" format
+        .replace(/\s*birthday\s*/ig, '')                  // fallback: remove any remaining "birthday"
+        .replace(/^[\W_]+|[\W_]+$/g, '')                  // strip leading/trailing non-word chars
         .trim();
 
       if (!person) return;
