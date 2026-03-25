@@ -69,6 +69,7 @@ const TABS = {
   REWARDS_GOALS:      'Rewards Goals',        // Redemption goal tracking
   GIFT_PEOPLE:        'Gift People',          // Per-person gift idea list: who (Issue #105)
   GIFT_IDEAS:         'Gift Ideas',           // Per-person gift idea list: ideas (Issue #105)
+  IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -114,6 +115,7 @@ const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Point
 const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
 const GIFT_PEOPLE_HEADERS        = ['Name']; // Issue #105
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date']; // Issue #105
+const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year']; // Issue #80
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -225,6 +227,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.REWARDS_GOALS,        REWARDS_GOAL_HEADERS);
   ensureSheet(ss, TABS.GIFT_PEOPLE,          GIFT_PEOPLE_HEADERS, [['Ahmed'], ['Victoria']]); // Issue #105
   ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS); // Issue #105
+  ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS); // Issue #80
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -500,6 +503,10 @@ function nightlyRun() {
 
     // Step 0: Auto-populate Summaries tab from live data (Phase 5)
     writeSummarySnapshot();
+
+    // Step 0a-ii: Sync birthdays from Joint Chaos calendar → Important Dates (Issue #80)
+    try { syncCalendarBirthdaysToImportantDates_(); }
+    catch (idErr) { Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message); }
 
     // Step 0b: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;

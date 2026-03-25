@@ -201,6 +201,13 @@ function doGet(e) {
       case 'update_rewards_goal':        return jsonOut_(webUpdateRewardsGoal_(e));
       case 'delete_rewards_goal':        return jsonOut_(webDeleteRewardsGoal_(e));
       case 'send_travel_briefing':       return jsonOut_(webSendTravelBriefing_(e));
+      // Important Dates — People tab (Issue #80)
+      case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
+      case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
+      case 'update_important_date':      return jsonOut_(webUpdateImportantDate_(e));
+      case 'delete_important_date':      return jsonOut_(webDeleteImportantDate_(e));
+      case 'preview_calendar_birthdays': return jsonOut_(webPreviewCalendarBirthdays_());
+      case 'import_calendar_birthdays':  return jsonOut_(webImportCalendarBirthdays_(e));
       // Gift Ideas — People tab (Issue #105)
       case 'get_gift_data':      return jsonOut_(webGetGiftData_());
       case 'add_gift_person':    return jsonOut_(webAddGiftPerson_(e));
@@ -5025,6 +5032,126 @@ function webDeleteRewardsGoal_(e) {
     if (rows[i][0] === id) { sheet.deleteRow(i + 1); return { ok: true, action: 'deleted' }; }
   }
   throw new Error('Rewards goal not found: ' + id);
+}
+
+// ============================================================
+// Important Dates — People tab (Issue #80)
+// ============================================================
+
+function webGetImportantDates_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  var dates = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      dates.push(obj);
+    });
+  }
+  return { ok: true, dates: dates };
+}
+
+function webAddImportantDate_(e) {
+  var p         = e.parameter || {};
+  var label     = (p.label     || '').trim();
+  var date      = (p.date      || '').trim();
+  var person    = (p.person    || '').trim();
+  var recurring = (p.recurring || 'Yes').trim();
+  var leadTime  = parseInt(p.leadTime || '30', 10);
+  var notes     = (p.notes     || '').trim();
+  if (!label || !date) return { ok: false, error: 'label and date required' };
+  var id = 'id_' + Date.now();
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  ss.getSheetByName(TABS.IMPORTANT_DATES)
+    .appendRow([id, date, label, person, recurring, leadTime, notes, '']);
+  return { ok: true, entry: { ID: id, Date: date, Label: label, Person: person,
+                               Recurring: recurring, 'Lead Time Days': leadTime, Notes: notes,
+                               'Last Actioned Year': '' } };
+}
+
+function webUpdateImportantDate_(e) {
+  var p        = e.parameter || {};
+  var id       = (p.id       || '').trim();
+  var label    = (p.label    || '').trim();
+  var date     = (p.date     || '').trim();
+  var person   = (p.person   || '').trim();
+  var recurring= (p.recurring|| '').trim();
+  var leadTime = p.leadTime ? parseInt(p.leadTime, 10) : null;
+  var notes    = (p.notes    || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  var colMap = {};
+  hdrs.forEach(function(h, i) { colMap[h] = i + 1; });
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      if (date)      sheet.getRange(i+1, colMap['Date']).setValue(date);
+      if (label)     sheet.getRange(i+1, colMap['Label']).setValue(label);
+      if (person)    sheet.getRange(i+1, colMap['Person']).setValue(person);
+      if (recurring) sheet.getRange(i+1, colMap['Recurring']).setValue(recurring);
+      if (leadTime)  sheet.getRange(i+1, colMap['Lead Time Days']).setValue(leadTime);
+      if (notes !== undefined) sheet.getRange(i+1, colMap['Notes']).setValue(notes);
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webDeleteImportantDate_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  if (!sheet) return { ok: false, error: 'Important Dates sheet not found' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webPreviewCalendarBirthdays_() {
+  var found   = [];
+  var now     = new Date();
+  var lookAhead = new Date(now.getFullYear() + 1, 11, 31); // through end of next year
+  CalendarApp.getAllCalendars().forEach(function(cal) {
+    var name = cal.getName().toLowerCase();
+    if (name.indexOf('birthday') === -1 && name.indexOf('contact') === -1) return;
+    cal.getEvents(now, lookAhead).forEach(function(ev) {
+      var title  = ev.getTitle();
+      var start  = ev.getStartTime();
+      var mm     = String(start.getMonth() + 1).padStart(2, '0');
+      var dd     = String(start.getDate()).padStart(2, '0');
+      var person = title.replace(/'?s?\s*birthday\s*$/i, '').trim();
+      if (!person) return;
+      if (!found.find(function(f) { return f.person === person; })) {
+        found.push({ person: person, date: mm + '-' + dd, label: person + "'s Birthday" });
+      }
+    });
+  });
+  found.sort(function(a, b) { return a.person.localeCompare(b.person); });
+  return { ok: true, previews: found };
+}
+
+function webImportCalendarBirthdays_(e) {
+  var entries = [];
+  try { entries = JSON.parse((e.parameter && e.parameter.entries) || '[]'); } catch(_) {}
+  if (!entries.length) return { ok: false, error: 'no entries provided' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  if (!sheet) return { ok: false, error: 'Important Dates sheet not found' };
+  entries.forEach(function(en) {
+    var id = 'id_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    sheet.appendRow([id, en.date, en.label, en.person, 'Yes', 30, '', '']);
+    Utilities.sleep(60); // avoid ID collision on rapid appends
+  });
+  return { ok: true, count: entries.length };
 }
 
 // ============================================================

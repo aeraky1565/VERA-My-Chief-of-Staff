@@ -956,6 +956,29 @@ function urgencyClass(u) {
   return (u || '').toLowerCase();
 }
 
+// Compute days until a date string. MM-DD = annual (rolls to next year if passed).
+// YYYY-MM-DD = one-time. Returns negative if date has passed.
+function daysUntil(dateStr) {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var target;
+  if (/^\d{2}-\d{2}$/.test(String(dateStr))) {
+    var p = String(dateStr).split('-');
+    target = new Date(today.getFullYear(), parseInt(p[0],10)-1, parseInt(p[1],10));
+    if (target < today) target.setFullYear(today.getFullYear() + 1);
+  } else {
+    target = new Date(dateStr);
+  }
+  return Math.round((target - today) / 86400000);
+}
+
+function urgencyDot(days) {
+  if (days < 0)  return null;
+  if (days <= 7)  return { dot: '🔴', color: '#c0392b' };
+  if (days <= 30) return { dot: '🟡', color: '#d4a017' };
+  if (days <= 90) return { dot: '🟢', color: '#2ecc71' };
+  return null;
+}
+
 function makeUrl(base, token, params = {}) {
   const url = new URL(base);
   url.searchParams.set('token', token);
@@ -6764,6 +6787,389 @@ function RecipeView({ recipes, loading, busy, onAddToShopping }) {
   );
 }
 
+// ── Important Dates ──────────────────────────────────────────────────────────
+
+function ImportantDatesView({ dates, loading, busy, onAdd, onDelete, onUpdate,
+                              onPreviewCalendar, onImportCalendar,
+                              calPreviews, calPreviewLoading }) {
+  var [expanded,        setExpanded]        = React.useState({});
+  var [showAddModal,    setShowAddModal]    = React.useState(false);
+  var [editEntry,       setEditEntry]       = React.useState(null);   // entry being edited
+  var [prefillPerson,   setPrefillPerson]   = React.useState('');
+  var [addingPerson,    setAddingPerson]    = React.useState(false);
+  var [newPersonName,   setNewPersonName]   = React.useState('');
+  var [showImportModal, setShowImportModal] = React.useState(false);
+  var [selectedImport,  setSelectedImport]  = React.useState({});     // { person: true/false }
+  // Add/edit form state
+  var [form, setForm] = React.useState({ label:'', person:'', date:'', recurring:'Yes', leadTime:'30', notes:'' });
+  var [dateMode, setDateMode] = React.useState('annual'); // 'annual' | 'onetime'
+
+  if (loading) return <div className="loading-text">Loading important dates…</div>;
+
+  // Enrich each date with computed daysUntil
+  var enriched = dates.map(function(d) {
+    return Object.assign({}, d, { _days: daysUntil(String(d.Date || '')) });
+  }).sort(function(a,b) { return a._days - b._days; });
+
+  // Coming Up: ≤90 days and not passed
+  var comingUp = enriched.filter(function(d) { return d._days >= 0 && d._days <= 90; });
+
+  // Group by Person
+  var byPerson = {};
+  enriched.forEach(function(d) {
+    var p = String(d.Person || 'Unknown');
+    if (!byPerson[p]) byPerson[p] = [];
+    byPerson[p].push(d);
+  });
+  // Unique sorted people list
+  var people = Object.keys(byPerson).sort();
+
+  function togglePerson(name) {
+    setExpanded(function(prev) { var n = Object.assign({}, prev); n[name] = !n[name]; return n; });
+  }
+
+  function openAddFor(person) {
+    setPrefillPerson(person || '');
+    setForm({ label: '', person: person || '', date: '', recurring: 'Yes', leadTime: '30', notes: '' });
+    setDateMode('annual');
+    setEditEntry(null);
+    setShowAddModal(true);
+  }
+
+  function openEdit(entry) {
+    var isAnnual = /^\d{2}-\d{2}$/.test(String(entry.Date || ''));
+    setForm({
+      label:     String(entry.Label     || ''),
+      person:    String(entry.Person    || ''),
+      date:      String(entry.Date      || ''),
+      recurring: String(entry.Recurring || 'Yes'),
+      leadTime:  String(entry['Lead Time Days'] || '30'),
+      notes:     String(entry.Notes     || ''),
+    });
+    setDateMode(isAnnual ? 'annual' : 'onetime');
+    setEditEntry(entry);
+    setShowAddModal(true);
+  }
+
+  function submitForm() {
+    if (!form.label.trim() || !form.date.trim()) return;
+    var fields = Object.assign({}, form, { leadTime: form.leadTime || '30' });
+    if (editEntry) {
+      onUpdate(editEntry.ID, fields);
+    } else {
+      onAdd(fields);
+    }
+    setShowAddModal(false);
+    setEditEntry(null);
+  }
+
+  function submitNewPerson() {
+    var name = newPersonName.trim();
+    if (!name) return;
+    // Adding a standalone person (no dates yet) is a UI-only concept;
+    // the person section will appear when their first date is added.
+    // For now, auto-open "Add date" for them.
+    setNewPersonName('');
+    setAddingPerson(false);
+    openAddFor(name);
+  }
+
+  function startImport() {
+    onPreviewCalendar();
+    setShowImportModal(true);
+  }
+
+  function confirmImport() {
+    var entries = (calPreviews || []).filter(function(p) { return selectedImport[p.person] !== false; });
+    if (entries.length) onImportCalendar(entries);
+    setShowImportModal(false);
+    setSelectedImport({});
+  }
+
+  var dotStyle = function(u) {
+    if (!u) return {};
+    return { fontSize: 11, marginRight: 6 };
+  };
+
+  var formatDate = function(dateStr, recurring) {
+    var s = String(dateStr || '');
+    if (/^\d{2}-\d{2}$/.test(s)) {
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var p = s.split('-');
+      return months[parseInt(p[0],10)-1] + ' ' + parseInt(p[1],10);
+    }
+    return s;
+  };
+
+  return (
+    <div style={{ maxWidth: 600 }}>
+      {/* Header actions */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button onClick={() => openAddFor('')}
+          style={{ fontSize: 12, background: '#1a3a6e', color: '#a0c0ff', border: 'none',
+                   borderRadius: 6, padding: '6px 14px', cursor: 'pointer' }}>
+          ＋ Add Date
+        </button>
+        <button onClick={startImport} disabled={calPreviewLoading}
+          style={{ fontSize: 12, background: 'transparent', color: '#6b9adb',
+                   border: '1px solid #2a3a5e', borderRadius: 6, padding: '6px 14px', cursor: 'pointer' }}>
+          {calPreviewLoading ? 'Loading…' : '📅 Import from Calendar'}
+        </button>
+      </div>
+
+      {/* Coming Up section */}
+      {comingUp.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#4d6080', letterSpacing: 1,
+                        textTransform: 'uppercase', marginBottom: 8 }}>Coming Up</div>
+          {comingUp.map(function(d) {
+            var u = urgencyDot(d._days);
+            return (
+              <div key={d.ID} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                       padding: '7px 0', borderBottom: '1px solid #0a1628' }}>
+                <span style={{ fontSize: 13, minWidth: 18 }}>{u ? u.dot : ''}</span>
+                <span style={{ fontSize: 12, color: '#6b7fa8', minWidth: 60 }}>
+                  {d._days === 0 ? 'Today' : d._days + ' day' + (d._days !== 1 ? 's' : '')}
+                </span>
+                <span style={{ flex: 1, fontSize: 13, color: '#dde1f0' }}>{d.Label}</span>
+                <span style={{ fontSize: 11, color: '#4d6080' }}>
+                  {formatDate(d.Date)} {String(d.Recurring||'').toLowerCase() === 'yes' ? '· Annual' : ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* By Person section */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#4d6080', letterSpacing: 1,
+                      textTransform: 'uppercase', marginBottom: 8 }}>By Person</div>
+        {people.map(function(person) {
+          var personDates = byPerson[person] || [];
+          var isOpen = !!expanded[person];
+          var upcoming = personDates.filter(function(d){ return d._days >= 0 && d._days <= 90; }).length;
+          return (
+            <div key={person} style={{ marginBottom: 6, background: '#0d1b3e', borderRadius: 8,
+                                       border: '1px solid #1e3a6e', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', padding: '9px 14px',
+                            cursor: 'pointer', justifyContent: 'space-between' }}
+                   onClick={() => togglePerson(person)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, color: '#8899bb' }}>{isOpen ? '▾' : '▸'}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0' }}>{person}</span>
+                  {upcoming > 0 && (
+                    <span style={{ fontSize: 10, background: '#1a3a6e', color: '#a0c0ff',
+                                   borderRadius: 10, padding: '1px 7px' }}>
+                      {upcoming} upcoming
+                    </span>
+                  )}
+                </div>
+                <button onClick={function(ev){ ev.stopPropagation(); openAddFor(person); }}
+                  style={{ fontSize: 11, color: '#6b9adb', background: 'transparent',
+                           border: '1px solid #2a3a5e', borderRadius: 5, padding: '2px 8px', cursor: 'pointer' }}
+                  disabled={busy}>＋</button>
+              </div>
+              {isOpen && (
+                <div style={{ borderTop: '1px solid #152040', padding: '8px 14px' }}>
+                  {personDates.length === 0 && (
+                    <div style={{ fontSize: 12, color: '#3a4d66', marginBottom: 4 }}>No dates yet.</div>
+                  )}
+                  {personDates.map(function(d) {
+                    var u = urgencyDot(d._days);
+                    return (
+                      <div key={d.ID} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                               padding: '5px 0', borderBottom: '1px solid #0a1628' }}>
+                        {u && <span style={{ fontSize: 11 }}>{u.dot}</span>}
+                        <span style={{ flex: 1, fontSize: 13, color: '#c8d0e8' }}>{d.Label}</span>
+                        <span style={{ fontSize: 11, color: '#4d6080' }}>
+                          {formatDate(d.Date)}{String(d.Recurring||'').toLowerCase()==='yes' ? ' · Annual' : ''}
+                        </span>
+                        <button onClick={function(){ openEdit(d); }}
+                          style={{ fontSize: 11, color: '#6b9adb', background: 'transparent',
+                                   border: 'none', cursor: 'pointer', padding: '2px 4px' }}
+                          disabled={busy}>✎</button>
+                        <button onClick={function(){ if(window.confirm('Delete "'+d.Label+'"?')) onDelete(d.ID); }}
+                          style={{ fontSize: 10, color: '#6b3a3a', background: 'transparent',
+                                   border: 'none', cursor: 'pointer', padding: '2px 4px', opacity: 0.6 }}
+                          disabled={busy}>✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Add Person shortcut */}
+        <div style={{ marginTop: 10 }}>
+          {addingPerson ? (
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="text" placeholder="Person's name…"
+                value={newPersonName} onChange={function(ev){ setNewPersonName(ev.target.value); }}
+                onKeyDown={function(ev){ if(ev.key==='Enter') submitNewPerson(); if(ev.key==='Escape'){ setAddingPerson(false); setNewPersonName(''); } }}
+                autoFocus
+                style={{ flex:1, fontSize:12, background:'#060e24', border:'1px solid #1e3a6e',
+                         borderRadius:6, padding:'5px 10px', color:'#dde1f0' }}/>
+              <button onClick={submitNewPerson}
+                style={{ fontSize:12, background:'#1a3a6e', color:'#a0c0ff', border:'none',
+                         borderRadius:6, padding:'5px 12px', cursor:'pointer' }}
+                disabled={!newPersonName.trim()}>Add</button>
+              <button onClick={()=>{ setAddingPerson(false); setNewPersonName(''); }}
+                style={{ fontSize:12, background:'transparent', color:'#6b7fa8',
+                         border:'1px solid #2a3a5e', borderRadius:6, padding:'5px 10px', cursor:'pointer' }}>
+                Cancel</button>
+            </div>
+          ) : (
+            <button onClick={()=>setAddingPerson(true)}
+              style={{ fontSize:12, color:'#6b9adb', background:'transparent',
+                       border:'1px dashed #2a3a5e', borderRadius:6, padding:'6px 14px', cursor:'pointer' }}>
+              ＋ Add Person
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Empty state */}
+      {dates.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '32px 0', color: '#3a4d66', fontSize: 13 }}>
+          No important dates yet. Add one above or import from your calendar.
+        </div>
+      )}
+
+      {/* Add / Edit Date modal */}
+      {showAddModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:999,
+                      display:'flex', alignItems:'center', justifyContent:'center' }}
+             onClick={()=>{ setShowAddModal(false); setEditEntry(null); }}>
+          <div style={{ background:'#0d1b3e', border:'1px solid #1e3a6e', borderRadius:10,
+                        padding:24, width:340, maxWidth:'90vw' }}
+               onClick={function(ev){ ev.stopPropagation(); }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:16 }}>
+              {editEntry ? 'Edit Date' : 'Add Important Date'}
+            </div>
+            {[
+              { label:'Occasion', key:'label', placeholder:'e.g. Victoria\'s Birthday' },
+              { label:'Person',   key:'person', placeholder:'e.g. Victoria' },
+            ].map(function(f) {
+              return (
+                <div key={f.key} style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:4 }}>{f.label}</div>
+                  <input type="text" placeholder={f.placeholder}
+                    value={form[f.key]} onChange={function(ev){ var v=ev.target.value; setForm(function(p){ return Object.assign({},p,{[f.key]:v}); }); }}
+                    style={{ width:'100%', boxSizing:'border-box', fontSize:13, background:'#060e24',
+                             border:'1px solid #1e3a6e', borderRadius:6, padding:'6px 10px', color:'#dde1f0' }}/>
+                </div>
+              );
+            })}
+            {/* Date type toggle */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:6 }}>Date Type</div>
+              <div style={{ display:'flex', gap:6, marginBottom:8 }}>
+                {['annual','onetime'].map(function(m) {
+                  return (
+                    <button key={m} onClick={()=>{ setDateMode(m); setForm(function(p){ return Object.assign({},p,{date:''}); }); }}
+                      style={{ fontSize:11, padding:'4px 10px', borderRadius:5, cursor:'pointer',
+                               background: dateMode===m ? '#1a3a6e' : 'transparent',
+                               color: dateMode===m ? '#a0c0ff' : '#6b7fa8',
+                               border: '1px solid ' + (dateMode===m ? '#1a3a6e' : '#2a3a5e') }}>
+                      {m==='annual' ? 'Annual (MM-DD)' : 'One-time (YYYY-MM-DD)'}
+                    </button>
+                  );
+                })}
+              </div>
+              <input type="text"
+                placeholder={dateMode==='annual' ? 'MM-DD (e.g. 04-14)' : 'YYYY-MM-DD (e.g. 2019-06-08)'}
+                value={form.date} onChange={function(ev){ var v=ev.target.value; setForm(function(p){ return Object.assign({},p,{date:v}); }); }}
+                style={{ width:'100%', boxSizing:'border-box', fontSize:13, background:'#060e24',
+                         border:'1px solid #1e3a6e', borderRadius:6, padding:'6px 10px', color:'#dde1f0' }}/>
+            </div>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:4 }}>Lead time (days before VERA flags)</div>
+              <input type="number" value={form.leadTime}
+                onChange={function(ev){ var v=ev.target.value; setForm(function(p){ return Object.assign({},p,{leadTime:v}); }); }}
+                style={{ width:80, fontSize:13, background:'#060e24', border:'1px solid #1e3a6e',
+                         borderRadius:6, padding:'6px 10px', color:'#dde1f0' }}/>
+            </div>
+            <div style={{ marginBottom:18 }}>
+              <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:4 }}>Notes (optional)</div>
+              <input type="text" placeholder="Gift preferences, ideas…"
+                value={form.notes} onChange={function(ev){ var v=ev.target.value; setForm(function(p){ return Object.assign({},p,{notes:v}); }); }}
+                style={{ width:'100%', boxSizing:'border-box', fontSize:13, background:'#060e24',
+                         border:'1px solid #1e3a6e', borderRadius:6, padding:'6px 10px', color:'#dde1f0' }}/>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={submitForm} disabled={!form.label.trim()||!form.date.trim()||busy}
+                style={{ flex:1, fontSize:13, background:'#1a3a6e', color:'#a0c0ff', border:'none',
+                         borderRadius:6, padding:'8px', cursor:'pointer' }}>
+                {editEntry ? 'Save' : 'Add'}
+              </button>
+              <button onClick={()=>{ setShowAddModal(false); setEditEntry(null); }}
+                style={{ fontSize:13, background:'transparent', color:'#6b7fa8',
+                         border:'1px solid #2a3a5e', borderRadius:6, padding:'8px 16px', cursor:'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import from Calendar modal */}
+      {showImportModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:999,
+                      display:'flex', alignItems:'center', justifyContent:'center' }}
+             onClick={()=>setShowImportModal(false)}>
+          <div style={{ background:'#0d1b3e', border:'1px solid #1e3a6e', borderRadius:10,
+                        padding:24, width:380, maxWidth:'90vw', maxHeight:'80vh', overflowY:'auto' }}
+               onClick={function(ev){ ev.stopPropagation(); }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:4 }}>
+              Import from Calendar
+            </div>
+            <div style={{ fontSize:12, color:'#6b7fa8', marginBottom:16 }}>
+              Select birthdays to import from your Birthdays/Contacts calendar.
+            </div>
+            {calPreviewLoading && <div className="loading-text">Scanning calendars…</div>}
+            {!calPreviewLoading && (calPreviews || []).length === 0 && (
+              <div style={{ fontSize:13, color:'#4d6080', marginBottom:16 }}>
+                No birthdays found in your calendar. Check that a "Birthdays" or "Contacts" calendar is enabled.
+              </div>
+            )}
+            {(calPreviews || []).map(function(p) {
+              var checked = selectedImport[p.person] !== false;
+              return (
+                <div key={p.person} style={{ display:'flex', alignItems:'center', gap:10,
+                                             padding:'6px 0', borderBottom:'1px solid #0a1628',
+                                             cursor:'pointer' }}
+                     onClick={function(){ setSelectedImport(function(prev){ var n=Object.assign({},prev); n[p.person]=!checked; return n; }); }}>
+                  <span style={{ fontSize:16 }}>{checked ? '☑' : '☐'}</span>
+                  <span style={{ flex:1, fontSize:13, color:'#dde1f0' }}>{p.person}</span>
+                  <span style={{ fontSize:12, color:'#6b7fa8' }}>{p.date.replace(/^(\d{2})-(\d{2})$/, function(_,m,d){ var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return months[parseInt(m,10)-1]+' '+parseInt(d,10); })}</span>
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:8, marginTop:16 }}>
+              <button onClick={confirmImport}
+                disabled={!(calPreviews||[]).some(function(p){ return selectedImport[p.person]!==false; })||busy}
+                style={{ flex:1, fontSize:13, background:'#1a3a6e', color:'#a0c0ff', border:'none',
+                         borderRadius:6, padding:'8px', cursor:'pointer' }}>
+                Import {(calPreviews||[]).filter(function(p){ return selectedImport[p.person]!==false; }).length} dates
+              </button>
+              <button onClick={()=>setShowImportModal(false)}
+                style={{ fontSize:13, background:'transparent', color:'#6b7fa8',
+                         border:'1px solid #2a3a5e', borderRadius:6, padding:'8px 16px', cursor:'pointer' }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── End Important Dates ──────────────────────────────────────────────────────
+
 function GiftIdeasView({ people, ideas, loading, busy,
                          onAddPerson, onDeletePerson, onAddIdea, onDeleteIdea }) {
   var [expanded,     setExpanded]     = React.useState({ Ahmed: true, Victoria: true });
@@ -6914,7 +7320,11 @@ function GiftIdeasView({ people, ideas, loading, busy,
 
 function PeopleTab({ giftData, giftLoading, busy,
                      onAddGiftPerson, onDeleteGiftPerson,
-                     onAddGiftIdea, onDeleteGiftIdea }) {
+                     onAddGiftIdea, onDeleteGiftIdea,
+                     datesData, datesLoading,
+                     onAddImportantDate, onUpdateImportantDate, onDeleteImportantDate,
+                     onPreviewCalendarBirthdays, onImportCalendarBirthdays,
+                     calPreviews, calPreviewLoading }) {
   const [sub, setSub] = React.useState('dates');
   const subTabs = [
     { id: 'dates',     label: '📅 Important Dates' },
@@ -6935,12 +7345,18 @@ function PeopleTab({ giftData, giftLoading, busy,
       </div>
 
       {sub === 'dates' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Important Dates</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>Birthdays, anniversaries, and meaningful dates — with VERA-flagged countdowns and gift suggestions.</div>
-          <div style={{ fontSize: 12, color: '#3a4d66', marginTop: 8 }}>Coming soon</div>
-        </div>
+        <ImportantDatesView
+          dates={(datesData && datesData.dates) || []}
+          loading={!!datesLoading}
+          busy={busy}
+          onAdd={onAddImportantDate}
+          onUpdate={onUpdateImportantDate}
+          onDelete={onDeleteImportantDate}
+          onPreviewCalendar={onPreviewCalendarBirthdays}
+          onImportCalendar={onImportCalendarBirthdays}
+          calPreviews={calPreviews}
+          calPreviewLoading={calPreviewLoading}
+        />
       )}
 
       {sub === 'gifts' && (
@@ -10865,8 +11281,12 @@ function App() {
   const [calBills,   setCalBills]   = useState(null); // calendar-sourced bills | null = not loaded
   const [txList,     setTxList]     = useState([]);   // current-month transactions for manual linking
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
-  const [giftData,   setGiftData]   = useState(null); // { people, ideas } | null — Issue #105
-  const [giftLoading,setGiftLoading]= useState(false);
+  const [giftData,          setGiftData]          = useState(null);  // { people, ideas } | null — Issue #105
+  const [giftLoading,       setGiftLoading]        = useState(false);
+  const [datesData,         setDatesData]          = useState(null);  // { dates } | null — Issue #80
+  const [datesLoading,      setDatesLoading]       = useState(false);
+  const [calPreviews,       setCalPreviews]        = useState(null);  // birthday preview list from calendar
+  const [calPreviewLoading, setCalPreviewLoading]  = useState(false);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
@@ -11506,6 +11926,82 @@ function App() {
     } catch (err) { setError('Could not delete gift idea: ' + err.message); loadGiftData(apiUrl, apiToken); }
   }
   // ---- End Gift Ideas ---------------------------------------------------------
+
+  // ---- Important Dates (Issue #80) -------------------------------------------
+  async function loadDatesData(url, token) {
+    if (!url || !token) return;
+    setDatesLoading(true);
+    try {
+      const d = await apiGet(url, token, { action: 'get_important_dates' });
+      if (d.ok) setDatesData(d);
+    } catch (err) { setError('Important Dates load failed: ' + err.message); }
+    setDatesLoading(false);
+  }
+
+  async function handleAddImportantDate(fields) {
+    if (!apiUrl || !apiToken) return;
+    try {
+      const data = await apiGet(apiUrl, apiToken, Object.assign({ action: 'add_important_date' }, fields));
+      if (data.ok) setDatesData(function(prev) {
+        return Object.assign({}, prev, { dates: [...((prev && prev.dates) || []), data.entry] });
+      });
+    } catch (err) { setError('Could not add date: ' + err.message); }
+  }
+
+  async function handleUpdateImportantDate(id, fields) {
+    if (!apiUrl || !apiToken) return;
+    // Optimistic update
+    setDatesData(function(prev) {
+      return Object.assign({}, prev, {
+        dates: (prev.dates || []).map(function(d) {
+          return d.ID === id ? Object.assign({}, d, {
+            Label: fields.label || d.Label,
+            Date: fields.date || d.Date,
+            Person: fields.person || d.Person,
+            Recurring: fields.recurring || d.Recurring,
+            'Lead Time Days': fields.leadTime || d['Lead Time Days'],
+            Notes: fields.notes !== undefined ? fields.notes : d.Notes,
+          }) : d;
+        })
+      });
+    });
+    try {
+      await apiGet(apiUrl, apiToken, Object.assign({ action: 'update_important_date', id }, fields));
+    } catch (err) { setError('Could not update date: ' + err.message); loadDatesData(apiUrl, apiToken); }
+  }
+
+  async function handleDeleteImportantDate(id) {
+    if (!apiUrl || !apiToken) return;
+    setDatesData(function(prev) {
+      return Object.assign({}, prev, { dates: (prev.dates || []).filter(function(d) { return d.ID !== id; }) });
+    });
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_important_date', id });
+    } catch (err) { setError('Could not delete date: ' + err.message); loadDatesData(apiUrl, apiToken); }
+  }
+
+  async function handlePreviewCalendarBirthdays() {
+    if (!apiUrl || !apiToken) return;
+    setCalPreviewLoading(true);
+    setCalPreviews(null);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'preview_calendar_birthdays' });
+      if (data.ok) {
+        setCalPreviews(data.previews || []);
+      }
+    } catch (err) { setError('Calendar preview failed: ' + err.message); }
+    setCalPreviewLoading(false);
+  }
+
+  async function handleImportCalendarBirthdays(entries) {
+    if (!apiUrl || !apiToken || !entries.length) return;
+    try {
+      const params = { action: 'import_calendar_birthdays', entries: JSON.stringify(entries) };
+      await apiGet(apiUrl, apiToken, params);
+      await loadDatesData(apiUrl, apiToken);
+    } catch (err) { setError('Calendar import failed: ' + err.message); }
+  }
+  // ---- End Important Dates ----------------------------------------------------
 
   async function loadCareer(url, token) {
     if (!url || !token) return;
@@ -12346,7 +12842,7 @@ function App() {
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); }
-                  if (tab === 'people')     loadGiftData(apiUrl, apiToken);
+                  if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
