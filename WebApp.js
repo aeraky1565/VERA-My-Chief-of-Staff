@@ -5117,26 +5117,51 @@ function webDeleteImportantDate_(e) {
 }
 
 function webPreviewCalendarBirthdays_() {
-  var found   = [];
-  var now     = new Date();
-  var lookAhead = new Date(now.getFullYear() + 1, 11, 31); // through end of next year
-  // Scan ALL calendars — filter by event title containing "birthday",
-  // so Joint Chaos shared calendar all-day birthday events are included.
+  var found = [];
+  var now   = new Date();
+  // Scan 13 months ahead to catch all annual birthdays at least once
+  var lookAhead = new Date(now.getFullYear(), now.getMonth() + 13, now.getDate());
+
   CalendarApp.getAllCalendars().forEach(function(cal) {
-    cal.getEvents(now, lookAhead).forEach(function(ev) {
-      var title = ev.getTitle();
-      if (title.toLowerCase().indexOf('birthday') === -1) return;
-      var start  = ev.getStartTime();
-      var mm     = String(start.getMonth() + 1).padStart(2, '0');
-      var dd     = String(start.getDate()).padStart(2, '0');
-      var person = title.replace(/'?s?\s*birthday\s*$/i, '').trim();
+    var calName = cal.getName().toLowerCase();
+    var isBirthdayCal = calName.indexOf('birthday') !== -1 || calName.indexOf('contact') !== -1;
+    var isJointChaos  = calName.indexOf('joint chaos') !== -1;
+
+    // For dedicated birthday/contact calendars: scan all events (they're all birthdays)
+    // For Joint Chaos + any other calendar: only scan if event title contains "birthday"
+    var events = cal.getEvents(now, lookAhead);
+    events.forEach(function(ev) {
+      var title = ev.getTitle() || '';
+      var titleLow = title.toLowerCase();
+
+      // Skip events that don't have "birthday" in the title unless it's a birthday/contact calendar
+      if (!isBirthdayCal && titleLow.indexOf('birthday') === -1) return;
+
+      // Get date — use getAllDayStartDate() for all-day events to avoid timezone offset issues
+      var dateObj = ev.isAllDayEvent() ? ev.getAllDayStartDate() : ev.getStartTime();
+      var mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      var dd = String(dateObj.getDate()).padStart(2, '0');
+
+      // Extract person name: strip "birthday" and surrounding noise from title
+      // Handles: "Victoria's Birthday", "Ahmed Birthday", "🎂 Mum's birthday", "Birthday - Dad"
+      var person = title
+        .replace(/^\s*[\u{1F300}-\u{1FAFF}]\s*/u, '')   // strip leading emoji
+        .replace(/birthday\s*[-–:]\s*/i, '')             // "Birthday - Name" format
+        .replace(/[-–:]\s*birthday\s*$/i, '')            // "Name - Birthday" format
+        .replace(/'?s?\s*birthday\s*$/i, '')             // "Name's Birthday" format
+        .replace(/\s*birthday\s*$/i, '')                 // "Name Birthday" format
+        .trim();
+
       if (!person) return;
-      if (!found.find(function(f) { return f.person === person; })) {
+      if (!found.find(function(f) { return f.person.toLowerCase() === person.toLowerCase(); })) {
         found.push({ person: person, date: mm + '-' + dd, label: person + "'s Birthday" });
       }
     });
   });
+
   found.sort(function(a, b) { return a.person.localeCompare(b.person); });
+  Logger.log('webPreviewCalendarBirthdays_: found ' + found.length + ' birthday(s): ' +
+             found.map(function(f){ return f.person + ' (' + f.date + ')'; }).join(', '));
   return { ok: true, previews: found };
 }
 
