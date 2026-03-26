@@ -7547,14 +7547,256 @@ function ChoresView({ chores, loading, busy, onToggle, onAdd, onDelete, onUpdate
   );
 }
 
+// ---- VehiclesView ------------------------------------------------------------
+
+function vehicleStatusDot(days, yellowDays, redDays) {
+  if (days === null || days === undefined) return null;
+  if (days < 0)          return <span style={{color:'#f87171',fontWeight:700}}>🔴</span>;
+  if (days <= yellowDays) return <span style={{color:'#fbbf24',fontWeight:700}}>🟡</span>;
+  return <span style={{color:'#4ade80'}}>🟢</span>;
+}
+
+function oilStatusDot(mi) {
+  if (mi === null || mi === undefined) return null;
+  if (mi < 0)    return <span style={{color:'#f87171',fontWeight:700}}>🔴</span>;
+  if (mi <= 500) return <span style={{color:'#fbbf24',fontWeight:700}}>🟡</span>;
+  return <span style={{color:'#4ade80'}}>🟢</span>;
+}
+
+function fmtDate(val) {
+  if (!val) return '—';
+  const d = new Date(val);
+  if (isNaN(d)) return String(val);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMileage, onAdd, onDelete }) {
+  const [oilModal,     setOilModal]     = React.useState(null); // vehicle obj
+  const [mileModal,    setMileModal]    = React.useState(null);
+  const [addModal,     setAddModal]     = React.useState(false);
+  const [confirmDel,   setConfirmDel]   = React.useState(null);
+  const [oilMi,        setOilMi]        = React.useState('');
+  const [newMi,        setNewMi]        = React.useState('');
+  const [addForm,      setAddForm]      = React.useState({});
+
+  const FIELDS = [
+    'Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
+    'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
+    'Registration Expiry','Insurance Provider','Insurance Policy #','Insurance Expiry',
+    'Warranty Expiry (B2B)','Warranty Expiry (Powertrain)',
+    'Last Service','Next Service','Service Interval (mo)','Tire Size','Notes'
+  ];
+
+  // Alert banner items
+  const alerts = [];
+  (vehicles || []).forEach(function(v) {
+    const name = v['Nickname'] || (v['Year'] + ' ' + v['Make'] + ' ' + v['Model']);
+    const items = [];
+    if (v.milesUntilOilChange !== undefined && v.milesUntilOilChange <= 500) items.push('Oil change ' + (v.milesUntilOilChange < 0 ? 'overdue' : 'due in ' + Math.round(v.milesUntilOilChange) + ' mi'));
+    if (v.registrationDays !== null && v.registrationDays <= 30) items.push('Registration ' + (v.registrationDays < 0 ? 'expired' : 'expires in ' + v.registrationDays + 'd'));
+    if (v.insuranceDays !== null && v.insuranceDays <= 30) items.push('Insurance ' + (v.insuranceDays < 0 ? 'expired' : 'expires in ' + v.insuranceDays + 'd'));
+    if (v.warrantyB2bDays !== null && v.warrantyB2bDays <= 30) items.push('B2B Warranty ' + (v.warrantyB2bDays < 0 ? 'expired' : 'in ' + v.warrantyB2bDays + 'd'));
+    if (v.warrantyPowertrainDays !== null && v.warrantyPowertrainDays <= 90) items.push('Powertrain Warranty ' + (v.warrantyPowertrainDays < 0 ? 'expired' : 'in ' + v.warrantyPowertrainDays + 'd'));
+    if (v.serviceDays !== null && v.serviceDays <= 14) items.push('Service ' + (v.serviceDays < 0 ? 'overdue' : 'in ' + v.serviceDays + 'd'));
+    if (items.length) alerts.push('⚠️ ' + name + ': ' + items.join(' · '));
+  });
+
+  const cardStyle = { background:'#1e293b', borderRadius:10, padding:16, marginBottom:16, border:'1px solid #334155' };
+  const rowStyle  = { display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:14 };
+  const labelStyle = { color:'#94a3b8', minWidth:160 };
+  const valStyle  = { color:'#e2e8f0', fontWeight:500 };
+  const btnStyle  = { background:'#334155', border:'none', borderRadius:6, color:'#e2e8f0', cursor:'pointer', padding:'6px 12px', margin:'0 4px 0 0', fontSize:12 };
+  const plateBadge = { display:'inline-block', border:'2px solid #f59e0b', borderRadius:5, padding:'1px 8px', fontFamily:'monospace', fontWeight:700, color:'#f59e0b', letterSpacing:2, fontSize:12, marginLeft:8 };
+
+  return (
+    <div>
+      {alerts.length > 0 && (
+        <div style={{ background:'#431407', border:'1px solid #f97316', borderRadius:8, padding:12, marginBottom:16, fontSize:13, lineHeight:1.8 }}>
+          {alerts.map((a,i) => <div key={i}>{a}</div>)}
+        </div>
+      )}
+
+      {loading && <div style={{color:'#94a3b8', padding:16}}>Loading vehicles…</div>}
+      {!loading && (!vehicles || vehicles.length === 0) && (
+        <div style={{color:'#94a3b8', padding:16}}>No vehicles yet. Add your first car!</div>
+      )}
+
+      {(vehicles || []).map(function(v) {
+        const name    = v['Nickname'] || (v['Year'] + ' ' + v['Make']);
+        const fullName = [v['Year'], v['Make'], v['Model']].filter(Boolean).join(' ');
+        return (
+          <div key={v['ID']} style={cardStyle}>
+            {/* Header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <div>
+                <span style={{fontSize:17, fontWeight:700, color:'#e2e8f0'}}>🚗 {fullName}</span>
+                {v['Nickname'] && <span style={{color:'#94a3b8', marginLeft:8, fontSize:13}}>[{v['Nickname']}]</span>}
+                {v['Driver'] && <span style={{color:'#94a3b8', marginLeft:8, fontSize:12}}>Driver: {v['Driver']}</span>}
+              </div>
+              <button onClick={() => setConfirmDel(v)} style={{...btnStyle, color:'#f87171', background:'transparent', border:'1px solid #f87171'}}>✕</button>
+            </div>
+            <div style={{marginBottom:8}}>
+              {v['State'] && <span style={{color:'#94a3b8', fontSize:12}}>{v['State']}</span>}
+              {v['License Plate'] && <span style={plateBadge}>{v['License Plate']}</span>}
+              {v['Color'] && <span style={{color:'#94a3b8', marginLeft:12, fontSize:12}}>{v['Color']}</span>}
+            </div>
+
+            {/* Grid */}
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 24px', marginBottom:12}}>
+              <div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>🔧 Oil Change</span>
+                  <span style={valStyle}>
+                    {oilStatusDot(v.milesUntilOilChange)}{' '}
+                    {v.milesUntilOilChange !== undefined
+                      ? (v.milesUntilOilChange < 0 ? 'Overdue by ' + Math.abs(Math.round(v.milesUntilOilChange)) + ' mi' : Math.round(v.milesUntilOilChange) + ' mi left')
+                      : '—'}
+                  </span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Next at</span>
+                  <span style={valStyle}>{v.nextOilChangeMileage ? Math.round(v.nextOilChangeMileage).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Last</span>
+                  <span style={valStyle}>{fmtDate(v['Last Oil Change Date'])}</span>
+                </div>
+              </div>
+              <div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>📍 Current Mileage</span>
+                  <span style={valStyle}>{v['Current Mileage'] ? Number(v['Current Mileage']).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Oil Interval</span>
+                  <span style={valStyle}>{v['Oil Interval (mi)'] ? Number(v['Oil Interval (mi)']).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{borderTop:'1px solid #334155', paddingTop:10, marginBottom:10}}>
+              {[
+                { label:'📋 Registration', days: v.registrationDays, val: fmtDate(v['Registration Expiry']), y:30, r:0 },
+                { label:'🛡️ Insurance',    days: v.insuranceDays,     val: fmtDate(v['Insurance Expiry']),    y:30, r:0 },
+                { label:'🛡️ Warranty B2B', days: v.warrantyB2bDays,  val: fmtDate(v['Warranty Expiry (B2B)']), y:30, r:0 },
+                { label:'🛡️ Warranty PT',  days: v.warrantyPowertrainDays, val: fmtDate(v['Warranty Expiry (Powertrain)']), y:90, r:0 },
+                { label:'🔧 Next Service', days: v.serviceDays,       val: fmtDate(v['Next Service']),        y:14, r:0 },
+              ].map(function(item) {
+                return (
+                  <div key={item.label} style={rowStyle}>
+                    <span style={labelStyle}>{item.label}</span>
+                    <span style={valStyle}>
+                      {vehicleStatusDot(item.days, item.y, item.r)}{' '}
+                      {item.val}{item.days !== null && item.days !== undefined ? ' (' + (item.days < 0 ? 'expired' : item.days + 'd') + ')' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* VIN + Tires */}
+            <div style={{fontSize:11, color:'#64748b', marginBottom:10}}>
+              {v['VIN'] && <span>VIN: {v['VIN']}</span>}
+              {v['Tire Size'] && <span style={{marginLeft:16}}>Tires: {v['Tire Size']}</span>}
+            </div>
+
+            {/* Action Buttons */}
+            <div>
+              <button style={btnStyle} disabled={busy} onClick={() => { setOilMi(v['Current Mileage'] || ''); setOilModal(v); }}>🔧 Log Oil Change</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { onService(v['ID']); }}>📋 Record Service</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { setNewMi(v['Current Mileage'] || ''); setMileModal(v); }}>📍 Update Mileage</button>
+            </div>
+          </div>
+        );
+      })}
+
+      <button onClick={() => { setAddForm({}); setAddModal(true); }} style={{...btnStyle, padding:'8px 16px', fontSize:13}}>＋ Add Vehicle</button>
+
+      {/* Oil Change Modal */}
+      {oilModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:320,border:'1px solid #334155'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>🔧 Log Oil Change — {oilModal['Nickname'] || oilModal['Make']}</h3>
+            <label style={{color:'#94a3b8',fontSize:13}}>Current Odometer (mi)</label>
+            <input type="number" value={oilMi} onChange={e=>setOilMi(e.target.value)}
+              style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onOilChange(oilModal['ID'], oilMi); setOilModal(null); }}>Save</button>
+              <button style={btnStyle} onClick={() => setOilModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Update Mileage Modal */}
+      {mileModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:320,border:'1px solid #334155'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>📍 Update Mileage — {mileModal['Nickname'] || mileModal['Make']}</h3>
+            <label style={{color:'#94a3b8',fontSize:13}}>Current Odometer (mi)</label>
+            <input type="number" value={newMi} onChange={e=>setNewMi(e.target.value)}
+              style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onMileage(mileModal['ID'], newMi); setMileModal(null); }}>Save</button>
+              <button style={btnStyle} onClick={() => setMileModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Vehicle Modal */}
+      {addModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',overflowY:'auto'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,width:'90%',maxWidth:520,border:'1px solid #334155',maxHeight:'90vh',overflowY:'auto'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>🚗 Add Vehicle</h3>
+            {FIELDS.map(function(f) {
+              return (
+                <div key={f} style={{marginBottom:10}}>
+                  <label style={{color:'#94a3b8',fontSize:12,display:'block'}}>{f}</label>
+                  <input value={addForm[f]||''} onChange={e=>setAddForm(prev=>({...prev,[f]:e.target.value}))}
+                    style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:13,boxSizing:'border-box'}} />
+                </div>
+              );
+            })}
+            <div style={{display:'flex',gap:8,marginTop:8}}>
+              <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onAdd(addForm); setAddModal(false); }}>Add</button>
+              <button style={btnStyle} onClick={() => setAddModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete */}
+      {confirmDel && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:300,border:'1px solid #334155'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>Remove vehicle?</h3>
+            <p style={{color:'#94a3b8'}}>{confirmDel['Year']} {confirmDel['Make']} {confirmDel['Model']} ({confirmDel['Nickname']})</p>
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...btnStyle,background:'#dc2626',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onDelete(confirmDel['ID']); setConfirmDel(null); }}>Remove</button>
+              <button style={btnStyle} onClick={() => setConfirmDel(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- HomeFrontTab ------------------------------------------------------------
 
 function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
                         onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem,
-                        chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence }) {
+                        chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence,
+                        vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle }) {
   const [sub, setSub] = React.useState('steward');
   const subTabs = [
     { id: 'steward',  label: '🏠 Steward'  },
+    { id: 'vehicles', label: '🚗 Vehicles'  },
     { id: 'chores',   label: '🧹 Chores'   },
     { id: 'recipes',  label: '🍽️ Recipes'  },
     { id: 'takeouts', label: '🥡 Takeouts'  },
@@ -7574,6 +7816,18 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           loading={loading}
           busy={busy}
           onRecordService={onRecordService}
+        />
+      )}
+      {sub === 'vehicles' && (
+        <VehiclesView
+          vehicles={vehicles}
+          loading={vehiclesLoading}
+          busy={busy}
+          onOilChange={onVehicleOilChange}
+          onService={onVehicleService}
+          onMileage={onVehicleMileage}
+          onAdd={onAddVehicle}
+          onDelete={onDeleteVehicle}
         />
       )}
       {sub === 'chores' && (
@@ -11458,6 +11712,8 @@ function App() {
   const [calPreviewLoading, setCalPreviewLoading]  = useState(false);
   const [chores,            setChores]             = useState([]);
   const [choresLoading,     setChoresLoading]      = useState(false);
+  const [vehicles,          setVehicles]           = useState([]);
+  const [vehiclesLoading,   setVehiclesLoading]    = useState(false);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
@@ -12357,6 +12613,79 @@ function App() {
     }
   }
 
+  // ---- Vehicles handlers (Issue #125) -----------------------------------------
+
+  async function loadVehicles(url, token) {
+    if (!url || !token) return;
+    setVehiclesLoading(true);
+    try {
+      const data = await apiGet(url, token, { action: 'get_vehicles' });
+      setVehicles(data.vehicles || []);
+    } catch (err) {
+      setError('Vehicles load failed: ' + err.message);
+    }
+    setVehiclesLoading(false);
+  }
+
+  async function handleVehicleOilChange(id, currentMileage) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'vehicle_oil_change', id, currentMileage });
+      setVehicles(prev => prev.map(v => v['ID'] === id ? data.vehicle : v));
+      showToast('✓ Oil change logged');
+    } catch (err) {
+      setError('Could not log oil change: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleVehicleService(id) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'vehicle_service', id });
+      setVehicles(prev => prev.map(v => v['ID'] === id ? data.vehicle : v));
+      showToast('✓ Service recorded');
+    } catch (err) {
+      setError('Could not record service: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleVehicleMileage(id, mileage) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'vehicle_mileage', id, mileage });
+      setVehicles(prev => prev.map(v => v['ID'] === id ? data.vehicle : v));
+      showToast('✓ Mileage updated');
+    } catch (err) {
+      setError('Could not update mileage: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleAddVehicle(form) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'add_vehicle', ...form });
+      setVehicles(prev => [...prev, data.vehicle]);
+      showToast('✓ Vehicle added');
+    } catch (err) {
+      setError('Could not add vehicle: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteVehicle(id) {
+    setVehicles(prev => prev.filter(v => v['ID'] !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_vehicle', id });
+      showToast('✓ Vehicle removed');
+    } catch (err) {
+      setError('Could not delete vehicle: ' + err.message);
+      await loadVehicles(apiUrl, apiToken);
+    }
+  }
+
   async function handleUpdateCareerPosition(data) {
     setBusy(true);
     try {
@@ -13067,7 +13396,7 @@ function App() {
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
-                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); }
+                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
@@ -13263,6 +13592,13 @@ function App() {
                 onAddChore={handleAddChore}
                 onDeleteChore={handleDeleteChore}
                 onUpdateChoreCadence={handleUpdateChoreCadence}
+                vehicles={vehicles}
+                vehiclesLoading={vehiclesLoading}
+                onVehicleOilChange={handleVehicleOilChange}
+                onVehicleService={handleVehicleService}
+                onVehicleMileage={handleVehicleMileage}
+                onAddVehicle={handleAddVehicle}
+                onDeleteVehicle={handleDeleteVehicle}
               />
             )}
 

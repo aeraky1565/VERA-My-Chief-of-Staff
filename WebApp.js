@@ -207,6 +207,13 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Vehicles — Home Front tab (Issue #125)
+      case 'get_vehicles':          return jsonOut_(webGetVehicles_());
+      case 'add_vehicle':           return jsonOut_(webAddVehicle_(e));
+      case 'delete_vehicle':        return jsonOut_(webDeleteVehicle_(e));
+      case 'vehicle_oil_change':    return jsonOut_(webRecordVehicleOilChange_(e));
+      case 'vehicle_service':       return jsonOut_(webRecordVehicleService_(e));
+      case 'vehicle_mileage':       return jsonOut_(webUpdateVehicleMileage_(e));
       // Important Dates — People tab (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
@@ -5368,6 +5375,155 @@ function webUpdateChore_(e) {
     if (p.chore   !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Chore')   + 1).setValue(p.chore);
     if (p.sort    !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Sort')    + 1).setValue(parseInt(p.sort, 10));
     return { ok: true, id: id };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// ============================================================
+// Vehicles — Issue #125
+// ============================================================
+
+function vehicleRowToObj_(hdrs, row) {
+  var obj = {};
+  hdrs.forEach(function(h, i) { obj[h] = row[i]; });
+  var today = new Date();
+  today.setHours(0,0,0,0);
+  function daysDiff(val) {
+    if (!val) return null;
+    var d = new Date(val); d.setHours(0,0,0,0);
+    return Math.round((d - today) / 86400000);
+  }
+  obj.nextOilChangeMileage = (parseFloat(obj['Last Oil Change Mileage']) || 0) + (parseFloat(obj['Oil Interval (mi)']) || 0);
+  obj.milesUntilOilChange  = obj.nextOilChangeMileage - (parseFloat(obj['Current Mileage']) || 0);
+  obj.registrationDays     = daysDiff(obj['Registration Expiry']);
+  obj.insuranceDays        = daysDiff(obj['Insurance Expiry']);
+  obj.warrantyB2bDays      = daysDiff(obj['Warranty Expiry (B2B)']);
+  obj.warrantyPowertrainDays = daysDiff(obj['Warranty Expiry (Powertrain)']);
+  obj.serviceDays          = daysDiff(obj['Next Service']);
+  return obj;
+}
+
+function webGetVehicles_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: true, vehicles: [] };
+  var rows  = sheet.getDataRange().getValues();
+  if (rows.length < 2) return { ok: true, vehicles: [] };
+  var hdrs  = rows[0];
+  var vehicles = [];
+  for (var i = 1; i < rows.length; i++) {
+    if (!rows[i][0]) continue;
+    vehicles.push(vehicleRowToObj_(hdrs, rows[i]));
+  }
+  return { ok: true, vehicles: vehicles };
+}
+
+function webAddVehicle_(e) {
+  var p  = e.parameter || {};
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  var maxId = 0;
+  for (var i = 1; i < rows.length; i++) {
+    var n = parseInt(rows[i][0], 10);
+    if (!isNaN(n) && n > maxId) maxId = n;
+  }
+  var newId = String(maxId + 1);
+  var row = hdrs.map(function(h) {
+    if (h === 'ID') return newId;
+    return p[h] !== undefined ? p[h] : '';
+  });
+  sheet.appendRow(row);
+  var allRows = sheet.getDataRange().getValues();
+  return { ok: true, vehicle: vehicleRowToObj_(hdrs, allRows[allRows.length - 1]) };
+}
+
+function webDeleteVehicle_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    sheet.deleteRow(i + 1);
+    return { ok: true };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webRecordVehicleOilChange_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  var currentMileage = parseFloat(p.currentMileage || 0);
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    var today = new Date();
+    var interval = parseFloat(rows[i][hdrs.indexOf('Oil Interval (mi)')]) || 5000;
+    sheet.getRange(i + 1, hdrs.indexOf('Last Oil Change Date')    + 1).setValue(Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+    sheet.getRange(i + 1, hdrs.indexOf('Last Oil Change Mileage') + 1).setValue(currentMileage);
+    sheet.getRange(i + 1, hdrs.indexOf('Current Mileage')         + 1).setValue(currentMileage);
+    var nextMi = currentMileage + interval;
+    // Create a calendar reminder
+    try {
+      var cal = CalendarApp.getDefaultCalendar();
+      var nickname = rows[i][hdrs.indexOf('Nickname')] || 'Vehicle';
+      var reminderDate = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000); // ~90 days
+      cal.createAllDayEvent(nickname + ' Oil Change Due (~' + Math.round(nextMi) + ' mi)', reminderDate);
+    } catch(calErr) { /* non-fatal */ }
+    var updatedRows = sheet.getDataRange().getValues();
+    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webRecordVehicleService_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    var today = new Date();
+    var intervalMo = parseFloat(rows[i][hdrs.indexOf('Service Interval (mo)')]) || 6;
+    var nextService = new Date(today.getFullYear(), today.getMonth() + intervalMo, today.getDate());
+    sheet.getRange(i + 1, hdrs.indexOf('Last Service') + 1).setValue(Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+    sheet.getRange(i + 1, hdrs.indexOf('Next Service') + 1).setValue(Utilities.formatDate(nextService, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+    var updatedRows = sheet.getDataRange().getValues();
+    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webUpdateVehicleMileage_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  var mileage = parseFloat(p.mileage || 0);
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    sheet.getRange(i + 1, hdrs.indexOf('Current Mileage') + 1).setValue(mileage);
+    var updatedRows = sheet.getDataRange().getValues();
+    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
   }
   return { ok: false, error: 'not found' };
 }
