@@ -7576,6 +7576,17 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           onRecordService={onRecordService}
         />
       )}
+      {sub === 'chores' && (
+        <ChoresView
+          chores={chores}
+          loading={choresLoading}
+          busy={busy}
+          onToggle={onToggleChore}
+          onAdd={onAddChore}
+          onDelete={onDeleteChore}
+          onUpdateCadence={onUpdateChoreCadence}
+        />
+      )}
       {sub === 'recipes' && (
         <RecipeView
           recipes={(homeFront && homeFront.recipes) || []}
