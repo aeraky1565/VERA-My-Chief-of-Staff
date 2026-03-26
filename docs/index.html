@@ -7563,7 +7563,7 @@ function oilStatusDot(mi) {
   return <span style={{color:'#4ade80'}}>🟢</span>;
 }
 
-function fmtDate(val) {
+function fmtVehicleDate(val) {
   if (!val) return '—';
   const d = new Date(val);
   if (isNaN(d)) return String(val);
@@ -7659,7 +7659,7 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
                 </div>
                 <div style={rowStyle}>
                   <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Last</span>
-                  <span style={valStyle}>{fmtDate(v['Last Oil Change Date'])}</span>
+                  <span style={valStyle}>{fmtVehicleDate(v['Last Oil Change Date'])}</span>
                 </div>
               </div>
               <div>
@@ -7676,11 +7676,11 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
 
             <div style={{borderTop:'1px solid #334155', paddingTop:10, marginBottom:10}}>
               {[
-                { label:'📋 Registration', days: v.registrationDays, val: fmtDate(v['Registration Expiry']), y:30, r:0 },
-                { label:'🛡️ Insurance',    days: v.insuranceDays,     val: fmtDate(v['Insurance Expiry']),    y:30, r:0 },
-                { label:'🛡️ Warranty B2B', days: v.warrantyB2bDays,  val: fmtDate(v['Warranty Expiry (B2B)']), y:30, r:0 },
-                { label:'🛡️ Warranty PT',  days: v.warrantyPowertrainDays, val: fmtDate(v['Warranty Expiry (Powertrain)']), y:90, r:0 },
-                { label:'🔧 Next Service', days: v.serviceDays,       val: fmtDate(v['Next Service']),        y:14, r:0 },
+                { label:'📋 Registration', days: v.registrationDays, val: fmtVehicleDate(v['Registration Expiry']), y:30, r:0 },
+                { label:'🛡️ Insurance',    days: v.insuranceDays,     val: fmtVehicleDate(v['Insurance Expiry']),    y:30, r:0 },
+                { label:'🛡️ Warranty B2B', days: v.warrantyB2bDays,  val: fmtVehicleDate(v['Warranty Expiry (B2B)']), y:30, r:0 },
+                { label:'🛡️ Warranty PT',  days: v.warrantyPowertrainDays, val: fmtVehicleDate(v['Warranty Expiry (Powertrain)']), y:90, r:0 },
+                { label:'🔧 Next Service', days: v.serviceDays,       val: fmtVehicleDate(v['Next Service']),        y:14, r:0 },
               ].map(function(item) {
                 return (
                   <div key={item.label} style={rowStyle}>
