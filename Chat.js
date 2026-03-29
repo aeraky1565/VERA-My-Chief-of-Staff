@@ -421,19 +421,20 @@ function buildChatSystemPrompt_(context) {
     'ACTIVE FLAGS (' + context.flags.length + '):\n' + flagLines + '\n\n' +
     'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + '\n\n' +
     'SUMMARIES:\n' + summaryLines + '\n\n' +
-    'PROJECTS:\n' + projectsLine + '\n\n' +
+    (context.projects !== null ? 'PROJECTS:\n' + projectsLine + '\n\n' : '') +
     'UPCOMING CALENDAR EVENTS:\n' + calLines + '\n\n' +
-    'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' +
-    'YEARLY GOALS (active):\n' + goalLines + '\n\n' +
+    (context.interests !== null ? 'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' : '') +
+    (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
-    'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' +
-    'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' +
-    'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' +
-    'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
-    'FAVORITE TAKEOUTS (' + (context.takeouts ? context.takeouts.length : 0) + '):\n' + takeoutLines + '\n\n' +
-    'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
-    'CAREER PROFILE:\n' + careerLines + '\n\n' +
+    (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
+    (context.recipes !== null ? 'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' : '') +
+    (context.homeItems !== null ? 'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' : '') +
+    (context.shoppingStores !== null ? 'SHOPPING STORES: ' + shoppingStoresList + '\n\n' : '') +
+    (context.takeouts !== null ? 'FAVORITE TAKEOUTS (' + context.takeouts.length + '):\n' + takeoutLines + '\n\n' : '') +
+    (context.pantryDue !== null ? 'PANTRY \u2014 ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' : '') +
+    (context.career !== null ? 'CAREER PROFILE:\n' + careerLines + '\n\n' : '') +
     (function() {
+      if (context.prescriptions === null) return '';
       var rxList = context.prescriptions || [];
       var active = rxList.filter(function(r) { return r.active === 'Yes'; });
       if (!active.length) return 'PRESCRIPTIONS: (none on file)\n\n';
@@ -455,6 +456,7 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
     (function() {
+      if (context.cardsData === null) return '';
       var cd = context.cardsData;
       if (!cd || !cd.cards || !cd.cards.length) return 'CREDIT CARDS: (none on file)\n\n';
       var now = new Date(); now.setHours(0,0,0,0);
@@ -520,7 +522,7 @@ function buildChatSystemPrompt_(context) {
       }
       return lines + '\n';
     })() +
-    'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
+    (context.ideas !== null ? 'IDEA BRAINDUMP (' + context.ideas.length + '):\n' + ideaLines + '\n\n' : '') +
 
     (function() {
       var travel = context.travel;
@@ -820,11 +822,31 @@ function buildChatSystemPrompt_(context) {
 }
 
 // ============================================================
+// INTENT DETECTOR  (Issue #128 — loads only relevant data modules)
+// ============================================================
+
+function detectChatIntent_(msg) {
+  if (!msg) return {};
+  var m = msg.toLowerCase();
+  return {
+    finance:  /\b(bill|bills|spend|budget|credit card|cashback|loyalty program|payment|subscription|afford|expense|financial goal|invest|saving)\b/.test(m) || /what.?if|reward point|money/.test(m),
+    travel:   /\b(trip|travel|vacation|flight|hotel|cruise|packing|itinerary|passport|visa|airport|airline|abroad|destination)\b/.test(m) || /bucket list/.test(m),
+    home:     /\b(recipe|cook|takeout|grocery|pantry|dinner|lunch|kitchen|maintenance|appliance|household)\b/.test(m) || /home item|shopping list|eating out|what.*eat|food/.test(m),
+    career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
+    health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose)\b/.test(m) || /\brx\b/.test(m),
+    people:   /\b(gift|birthday|anniversary|victoria|family|friend|present)\b/.test(m),
+    projects: /\b(project|milestone|deliverable)\b/.test(m),
+    goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
+  };
+}
+
+// ============================================================
 // CONTEXT BUILDER
 // ============================================================
 
-function buildChatContext_() {
-  var ss = getSpreadsheet();
+function buildChatContext_(userMessage) {
+  var ss     = getSpreadsheet();
+  var intent = detectChatIntent_(userMessage || '');
 
   // Active flags — read sheet directly
   var activeFlags = [];
@@ -858,10 +880,12 @@ function buildChatContext_() {
   try { calendarEvents = getUpcomingEvents(); }
   catch (e) { Logger.log('Chat context: calendar — ' + e.message); }
 
-  // Shared Interest Ledger (top 20 active entries)
-  var interests = [];
-  try { interests = getSharedInterestLedger_().slice(0, 20); }
-  catch (e) { Logger.log('Chat context: interests — ' + e.message); }
+  // Shared Interest Ledger (top 20 active entries) — people intent
+  var interests = null;
+  if (intent.people) {
+    try { interests = getSharedInterestLedger_().slice(0, 20); }
+    catch (e) { Logger.log('Chat context: interests — ' + e.message); interests = []; }
+  }
 
   // PTO stats (live compute — same pattern as webGetPTO_ in WebApp.js)
   var ptoStats = null;
@@ -871,238 +895,273 @@ function buildChatContext_() {
     ptoStats = computePTOStats_(ptoResult, ptoCfg, new Date());
   } catch (e) { Logger.log('Chat context: PTO — ' + e.message); }
 
-  // Yearly goals (active only, top 8 — same filter as WeekendPlanner.js)
-  var goals = [];
-  try {
-    goals = getGoals_().filter(function(g) {
-      var s = String(g.status || '').toLowerCase();
-      return s !== 'done' && s !== 'archived' && s !== 'complete';
-    }).slice(0, 8);
-  } catch (e) { Logger.log('Chat context: goals — ' + e.message); }
+  // Yearly goals (active only, top 8) — goals intent
+  var goals = null;
+  if (intent.goals || intent.finance) {
+    try {
+      goals = getGoals_().filter(function(g) {
+        var s = String(g.status || '').toLowerCase();
+        return s !== 'done' && s !== 'archived' && s !== 'complete';
+      }).slice(0, 8);
+    } catch (e) { Logger.log('Chat context: goals — ' + e.message); goals = []; }
+  }
 
-  // Bills (for chat context)
-  var bills = [];
-  try {
-    var billSheet = ss.getSheetByName(TABS.BILLS);
-    if (billSheet && billSheet.getLastRow() >= 2) {
-      var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
-      var tzB       = Session.getScriptTimeZone();
-      var currMonth = Utilities.formatDate(new Date(), tzB, 'yyyy-MM');
-      bills = billData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-        return {
-          row:       idx + 2,
-          bill:      String(r[0] || '').trim(),
-          amount:    r[1] !== '' ? Number(r[1]) : null,
-          dueDay:    r[2] !== '' ? Number(r[2]) : null,
-          frequency: String(r[3] || 'Monthly').trim(),
-          paid:      String(r[6] || '').trim() === currMonth,
-        };
-      });
-    }
-  } catch (e) { Logger.log('Chat context: bills — ' + e.message); }
-
-  // Recipes
-  var recipes = [];
-  try {
-    var recSheet = ss.getSheetByName(TABS.RECIPES);
-    if (recSheet && recSheet.getLastRow() >= 2) {
-      var recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
-      recipes = recData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-        return {
-          row:         idx + 2,
-          name:        String(r[0] || '').trim(),
-          cuisine:     String(r[1] || '').trim(),
-          ingredients: String(r[5] || '').trim(),
-          tags:        String(r[6] || '').trim(),
-        };
-      });
-    }
-  } catch (e) { Logger.log('Chat context: recipes — ' + e.message); }
-
-  // Home Items
-  var homeItems = [];
-  try {
-    var hiSheet = ss.getSheetByName(TABS.HOME_ITEMS);
-    if (hiSheet && hiSheet.getLastRow() >= 2) {
-      var hiData   = hiSheet.getRange(2, 1, hiSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
-      var todayHI  = new Date(); todayHI.setHours(0, 0, 0, 0);
-      homeItems = hiData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-        var svcDays = null;
-        if (r[5]) {
-          try { svcDays = Math.round((new Date(r[5]) - todayHI) / 86400000); } catch (ex) {}
-        }
-        return {
-          row:            idx + 2,
-          item:           String(r[0] || '').trim(),
-          category:       String(r[1] || '').trim(),
-          nextService:    r[5] ? String(r[5]).substring(0, 10) : '',
-          intervalMonths: r[6] !== '' ? Number(r[6]) : null,
-          serviceDays:    svcDays,
-        };
-      });
-    }
-  } catch (e) { Logger.log('Chat context: homeItems — ' + e.message); }
-
-  // Shopping store names (so Claude knows which stores to add items to)
-  var shoppingStores = [];
-  try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
-  catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); }
-
-  // Ideas braindump — all non-archived ideas (Issue #18)
-  var ideas = [];
-  try {
-    var ideaSheet = ss.getSheetByName(TABS.IDEAS);
-    if (ideaSheet && ideaSheet.getLastRow() >= 2) {
-      var ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
-      ideas = ideaData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-        return { row: idx + 2,
-                 id:        String(r[0]||'').trim(),
-                 dateAdded: String(r[1]||'').trim(),
-                 idea:      String(r[2]||'').trim(),
-                 category:  String(r[3]||'').trim(),
-                 tags:      String(r[4]||'').trim(),
-                 notes:     String(r[5]||'').trim(),
-                 status:    String(r[6]||'New').trim() };
-      }).filter(function(i) { return i.status !== 'Archived'; });
-    }
-  } catch (e) { Logger.log('Chat context: ideas — ' + e.message); }
-
-  // Full projects array (for detailed task display + action lookups)
-  var projects = [];
-  try { projects = getProjects_(); }
-  catch (e) { Logger.log('Chat context: projects full — ' + e.message); }
-
-  // ---- Travel (itinerary + packing + trip context) -------------------------
-  var travelTrips = [];
-  try {
-    var travelCfg = readPTOConfig_();
-    travelTrips = getUpcomingTravel_(travelCfg);
-  } catch(e) { Logger.log('Chat context: travel trips — ' + e.message); }
-
-  var itinByTrip = {};
-  try {
-    var itinSheet = ss.getSheetByName(TABS.ITINERARY);
-    if (itinSheet && itinSheet.getLastRow() >= 2) {
-      var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-      itinRows.forEach(function(r) {
-        var tk = String(r[1]).trim();
-        if (!itinByTrip[tk]) itinByTrip[tk] = [];
-        itinByTrip[tk].push({
-          id: String(r[0]).trim(), type: String(r[2]).trim(),
-          title: String(r[3]).trim(), date: String(r[4]).trim(),
-          startTime: String(r[5]).trim(), location: String(r[7]).trim(),
+  // Bills — finance intent
+  var bills = null;
+  if (intent.finance) {
+    try {
+      var billSheet = ss.getSheetByName(TABS.BILLS);
+      if (billSheet && billSheet.getLastRow() >= 2) {
+        var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+        var tzB       = Session.getScriptTimeZone();
+        var currMonth = Utilities.formatDate(new Date(), tzB, 'yyyy-MM');
+        bills = billData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+          return {
+            row:       idx + 2,
+            bill:      String(r[0] || '').trim(),
+            amount:    r[1] !== '' ? Number(r[1]) : null,
+            dueDay:    r[2] !== '' ? Number(r[2]) : null,
+            frequency: String(r[3] || 'Monthly').trim(),
+            paid:      String(r[6] || '').trim() === currMonth,
+          };
         });
-      });
-    }
-  } catch(e) { Logger.log('Chat context: itinerary — ' + e.message); }
-
-  var packByTrip = {};
-  try {
-    var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
-    if (packSheet && packSheet.getLastRow() >= 2) {
-      var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-      packRows.forEach(function(r) {
-        var tk = String(r[1]).trim();
-        if (!packByTrip[tk]) packByTrip[tk] = [];
-        packByTrip[tk].push({
-          id: String(r[0]).trim(), person: String(r[2]).trim(),
-          category: String(r[3]).trim(), item: String(r[4]).trim(),
-          checked: String(r[5]).toUpperCase() === 'TRUE',
-        });
-      });
-    }
-  } catch(e) { Logger.log('Chat context: packing — ' + e.message); }
-
-  var tripContextMap = {};
-  try {
-    var metaSheet = ss.getSheetByName(TABS.TRIP_META);
-    if (metaSheet && metaSheet.getLastRow() >= 2) {
-      var metaRows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
-      metaRows.forEach(function(r) {
-        tripContextMap[String(r[0]).trim()] = String(r[1]).trim();
-      });
-    }
-  } catch(e) { Logger.log('Chat context: trip meta — ' + e.message); }
-
-  var travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
-
-  // Recently-completed trips (ended 0.5–5 days ago) — for post-trip debrief context (Issue #87)
-  var recentTrips = [];
-  try {
-    var now2 = new Date();
-    Object.keys(itinByTrip).forEach(function(tk) {
-      var datePart = tk.split('|')[0];
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
-
-      // Find end date = max event date across all rows for this trip
-      var maxDate = new Date(datePart + 'T00:00:00');
-      itinByTrip[tk].forEach(function(item) {
-        if (/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
-          var d = new Date(item.date + 'T00:00:00');
-          if (d > maxDate) maxDate = d;
-        }
-      });
-
-      var daysAgo = (now2.getTime() - maxDate.getTime()) / 86400000;
-      if (daysAgo >= 0.5 && daysAgo <= 5) {
-        var tkParts = tk.split('|');
-        var label   = tkParts.length > 1 ? tkParts.slice(1).join('|') : tk;
-        recentTrips.push({ tripKey: tk, tripLabel: label, endDate: maxDate, daysAgo: daysAgo });
+      } else {
+        bills = [];
       }
-    });
-  } catch(e) { Logger.log('Chat context: recentTrips — ' + e.message); }
+    } catch (e) { Logger.log('Chat context: bills — ' + e.message); bills = []; }
+  }
 
-  // Countries visited — reuse webGetCountries_() (header-based dynamic reads)
-  var countries = [];
-  try {
-    var cRes = webGetCountries_();
-    countries = (cRes && cRes.entries) || [];
-  } catch(e) { Logger.log('Chat context: countries — ' + e.message); }
+  // Recipes — home intent
+  var recipes = null;
+  if (intent.home) {
+    try {
+      var recSheet = ss.getSheetByName(TABS.RECIPES);
+      if (recSheet && recSheet.getLastRow() >= 2) {
+        var recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
+        recipes = recData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+          return {
+            row:         idx + 2,
+            name:        String(r[0] || '').trim(),
+            cuisine:     String(r[1] || '').trim(),
+            ingredients: String(r[5] || '').trim(),
+            tags:        String(r[6] || '').trim(),
+          };
+        });
+      } else {
+        recipes = [];
+      }
+    } catch (e) { Logger.log('Chat context: recipes — ' + e.message); recipes = []; }
+  }
 
-  // Travel bucket list — reuse webGetBucketList_()
-  var bucketList = [];
-  try {
-    var bRes = webGetBucketList_();
-    bucketList = (bRes && bRes.entries) || [];
-  } catch(e) { Logger.log('Chat context: bucketList — ' + e.message); }
+  // Home Items — home intent
+  var homeItems = null;
+  if (intent.home) {
+    try {
+      var hiSheet = ss.getSheetByName(TABS.HOME_ITEMS);
+      if (hiSheet && hiSheet.getLastRow() >= 2) {
+        var hiData   = hiSheet.getRange(2, 1, hiSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+        var todayHI  = new Date(); todayHI.setHours(0, 0, 0, 0);
+        homeItems = hiData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+          var svcDays = null;
+          if (r[5]) {
+            try { svcDays = Math.round((new Date(r[5]) - todayHI) / 86400000); } catch (ex) {}
+          }
+          return {
+            row:            idx + 2,
+            item:           String(r[0] || '').trim(),
+            category:       String(r[1] || '').trim(),
+            nextService:    r[5] ? String(r[5]).substring(0, 10) : '',
+            intervalMonths: r[6] !== '' ? Number(r[6]) : null,
+            serviceDays:    svcDays,
+          };
+        });
+      } else {
+        homeItems = [];
+      }
+    } catch (e) { Logger.log('Chat context: homeItems — ' + e.message); homeItems = []; }
+  }
 
-  // Favorite Takeouts (Issue #112)
-  var takeouts = [];
-  try {
-    var tRes = webGetTakeouts_();
-    takeouts = (tRes && tRes.restaurants) || [];
-  } catch(e) { Logger.log('Chat context: takeouts — ' + e.message); }
+  // Shopping store names — home intent
+  var shoppingStores = null;
+  if (intent.home) {
+    try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
+    catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); shoppingStores = []; }
+  }
 
-  // Pantry — items predicted to run out soon (Issue #111)
-  var pantryDue = [];
-  try {
-    pantryDue = getItemsDue_(14); // look ahead 14 days
-  } catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); }
+  // Ideas braindump — people intent
+  var ideas = null;
+  if (intent.people) {
+    try {
+      var ideaSheet = ss.getSheetByName(TABS.IDEAS);
+      if (ideaSheet && ideaSheet.getLastRow() >= 2) {
+        var ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
+        ideas = ideaData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+          return { row: idx + 2,
+                   id:        String(r[0]||'').trim(),
+                   dateAdded: String(r[1]||'').trim(),
+                   idea:      String(r[2]||'').trim(),
+                   category:  String(r[3]||'').trim(),
+                   tags:      String(r[4]||'').trim(),
+                   notes:     String(r[5]||'').trim(),
+                   status:    String(r[6]||'New').trim() };
+        }).filter(function(i) { return i.status !== 'Archived'; });
+      } else {
+        ideas = [];
+      }
+    } catch (e) { Logger.log('Chat context: ideas — ' + e.message); ideas = []; }
+  }
 
-  // Career profile (Position, Goals, Wins)
+  // Full projects array — projects/goals intent
+  var projects = null;
+  if (intent.projects || intent.goals) {
+    try { projects = getProjects_(); }
+    catch (e) { Logger.log('Chat context: projects full — ' + e.message); projects = []; }
+  }
+
+  // ---- Travel (itinerary + packing + trip context) — travel intent ----------
+  var travel     = null;
+  var recentTrips = null;
+  var countries   = null;
+  var bucketList  = null;
+
+  if (intent.travel) {
+    var travelTrips    = [];
+    var itinByTrip     = {};
+    var packByTrip     = {};
+    var tripContextMap = {};
+
+    try {
+      var travelCfg = readPTOConfig_();
+      travelTrips = getUpcomingTravel_(travelCfg);
+    } catch(e) { Logger.log('Chat context: travel trips — ' + e.message); }
+
+    try {
+      var itinSheet = ss.getSheetByName(TABS.ITINERARY);
+      if (itinSheet && itinSheet.getLastRow() >= 2) {
+        var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+        itinRows.forEach(function(r) {
+          var tk = String(r[1]).trim();
+          if (!itinByTrip[tk]) itinByTrip[tk] = [];
+          itinByTrip[tk].push({
+            id: String(r[0]).trim(), type: String(r[2]).trim(),
+            title: String(r[3]).trim(), date: String(r[4]).trim(),
+            startTime: String(r[5]).trim(), location: String(r[7]).trim(),
+          });
+        });
+      }
+    } catch(e) { Logger.log('Chat context: itinerary — ' + e.message); }
+
+    try {
+      var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+      if (packSheet && packSheet.getLastRow() >= 2) {
+        var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+        packRows.forEach(function(r) {
+          var tk = String(r[1]).trim();
+          if (!packByTrip[tk]) packByTrip[tk] = [];
+          packByTrip[tk].push({
+            id: String(r[0]).trim(), person: String(r[2]).trim(),
+            category: String(r[3]).trim(), item: String(r[4]).trim(),
+            checked: String(r[5]).toUpperCase() === 'TRUE',
+          });
+        });
+      }
+    } catch(e) { Logger.log('Chat context: packing — ' + e.message); }
+
+    try {
+      var metaSheet = ss.getSheetByName(TABS.TRIP_META);
+      if (metaSheet && metaSheet.getLastRow() >= 2) {
+        var metaRows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+        metaRows.forEach(function(r) {
+          tripContextMap[String(r[0]).trim()] = String(r[1]).trim();
+        });
+      }
+    } catch(e) { Logger.log('Chat context: trip meta — ' + e.message); }
+
+    travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
+
+    // Recently-completed trips (ended 0.5–5 days ago)
+    recentTrips = [];
+    try {
+      var now2 = new Date();
+      Object.keys(itinByTrip).forEach(function(tk) {
+        var datePart = tk.split('|')[0];
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
+        var maxDate = new Date(datePart + 'T00:00:00');
+        itinByTrip[tk].forEach(function(item) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
+            var d = new Date(item.date + 'T00:00:00');
+            if (d > maxDate) maxDate = d;
+          }
+        });
+        var daysAgo = (now2.getTime() - maxDate.getTime()) / 86400000;
+        if (daysAgo >= 0.5 && daysAgo <= 5) {
+          var tkParts = tk.split('|');
+          var label   = tkParts.length > 1 ? tkParts.slice(1).join('|') : tk;
+          recentTrips.push({ tripKey: tk, tripLabel: label, endDate: maxDate, daysAgo: daysAgo });
+        }
+      });
+    } catch(e) { Logger.log('Chat context: recentTrips — ' + e.message); }
+
+    try {
+      var cRes = webGetCountries_();
+      countries = (cRes && cRes.entries) || [];
+    } catch(e) { Logger.log('Chat context: countries — ' + e.message); countries = []; }
+
+    try {
+      var bRes = webGetBucketList_();
+      bucketList = (bRes && bRes.entries) || [];
+    } catch(e) { Logger.log('Chat context: bucketList — ' + e.message); bucketList = []; }
+  }
+
+  // Favorite Takeouts — home intent
+  var takeouts = null;
+  if (intent.home) {
+    try {
+      var tRes = webGetTakeouts_();
+      takeouts = (tRes && tRes.restaurants) || [];
+    } catch(e) { Logger.log('Chat context: takeouts — ' + e.message); takeouts = []; }
+  }
+
+  // Pantry — home intent
+  var pantryDue = null;
+  if (intent.home) {
+    try { pantryDue = getItemsDue_(14); }
+    catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); pantryDue = []; }
+  }
+
+  // Career profile — career intent
   var career = null;
-  try {
-    var carRes = webGetCareer_();
-    if (carRes && carRes.ok) career = carRes;
-  } catch(e) { Logger.log('Chat context: career — ' + e.message); }
+  if (intent.career) {
+    try {
+      var carRes = webGetCareer_();
+      if (carRes && carRes.ok) career = carRes;
+    } catch(e) { Logger.log('Chat context: career — ' + e.message); }
+  }
 
-  // Prescriptions (Issue #116)
-  var prescriptions = [];
-  try {
-    var pRes = webGetPrescriptions_();
-    prescriptions = (pRes && pRes.prescriptions) || [];
-  } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); }
+  // Prescriptions — health intent
+  var prescriptions = null;
+  if (intent.health) {
+    try {
+      var pRes = webGetPrescriptions_();
+      prescriptions = (pRes && pRes.prescriptions) || [];
+    } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); prescriptions = []; }
+  }
 
-  // Credit Card Hub (Issues #115 + #117)
+  // Credit Card Hub — finance intent
   var cardsData = null;
-  try {
-    var cardRes = webGetCards_();
-    if (cardRes && cardRes.ok) cardsData = cardRes;
-  } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
+  if (intent.finance) {
+    try {
+      var cardRes = webGetCards_();
+      if (cardRes && cardRes.ok) cardsData = cardRes;
+    } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
+  }
 
-  // Financial Goals (Issue #127)
-  var financialGoals = [];
-  try { financialGoals = getFinancialGoals_(); } catch(e) { Logger.log('Chat context: financialGoals — ' + e.message); }
+  // Financial Goals — finance or goals intent
+  var financialGoals = null;
+  if (intent.finance || intent.goals) {
+    try { financialGoals = getFinancialGoals_(); }
+    catch(e) { Logger.log('Chat context: financialGoals — ' + e.message); financialGoals = []; }
+  }
 
   return {
     flags:           activeFlags,
@@ -2093,7 +2152,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   }
 
   var history   = loadChatHistory_(sessionId);
-  var context   = buildChatContext_();
+  var context   = buildChatContext_(trimmedMsg);
   var sysPrompt = buildChatSystemPrompt_(context);
   var callResult = callClaudeChat_(
     trimmedMsg, history, sysPrompt,
