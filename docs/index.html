@@ -10927,6 +10927,41 @@ function GymLogTab({ apiUrl, apiToken }) {
   const pending = sessions.filter(s => !s.attended);
   const history = sessions.filter(s =>  s.attended);
 
+  // Group history sessions into labelled buckets
+  function getGroupLabel(dateStr) {
+    const now   = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const d     = new Date(dateStr + 'T12:00:00'); // noon to avoid DST edge
+    const diffDays = Math.floor((today - d) / 86400000);
+    // ISO week helper
+    function isoWeek(dt) {
+      const tmp = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+      tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+      const y = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+      return Math.ceil(((tmp - y) / 86400000 + 1) / 7);
+    }
+    const thisWeek = isoWeek(today);
+    const sessWeek = isoWeek(d);
+    const weekDiff = thisWeek - sessWeek + (d.getFullYear() < today.getFullYear() ? 52 : 0);
+    if (weekDiff === 0) return 'This Week';
+    if (weekDiff === 1) return 'Last Week';
+    if (weekDiff === 2) return '2 Weeks Ago';
+    if (weekDiff === 3) return '3 Weeks Ago';
+    // Fall back to month name
+    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const label = months[d.getMonth()];
+    return d.getFullYear() === today.getFullYear() ? label : label + ' ' + d.getFullYear();
+  }
+
+  const groupMap = {};
+  const groupOrder = [];
+  history.forEach(function(s) {
+    const label = getGroupLabel(s.date);
+    if (!groupMap[label]) { groupMap[label] = []; groupOrder.push(label); }
+    groupMap[label].push(s);
+  });
+  const historyGroups = groupOrder.map(label => ({ label, sessions: groupMap[label] }));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
@@ -11003,24 +11038,37 @@ function GymLogTab({ apiUrl, apiToken }) {
         ) : history.length === 0 ? (
           <div style={{ fontSize: 13, color: '#4d6080', padding: '12px 0' }}>No answered sessions yet.</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {history.map(s => (
-              <div key={s.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '10px 16px', borderRadius: 8,
-                background: s.attended === 'Yes' ? 'rgba(67,160,71,0.07)' : 'rgba(229,57,53,0.07)',
-                border: '1px solid ' + (s.attended === 'Yes' ? 'rgba(67,160,71,0.2)' : 'rgba(229,57,53,0.2)'),
-              }}>
-                <span style={{ fontSize: 16 }}>{s.attended === 'Yes' ? '✅' : '❌'}</span>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 14, color: '#dde1f0' }}>{s.title}</span>
-                  <span style={{ fontSize: 12, color: '#6b7fa8', marginLeft: 8 }}>{s.date}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {historyGroups.map(group => (
+              <div key={group.label}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#4d6080', textTransform: 'uppercase',
+                              letterSpacing: '0.08em', marginBottom: 8 }}>
+                  {group.label}
+                  <span style={{ fontWeight: 400, marginLeft: 6, color: '#3a4860' }}>
+                    ({group.sessions.filter(s => s.attended === 'Yes').length}/{group.sessions.length})
+                  </span>
                 </div>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                  background: s.attended === 'Yes' ? 'rgba(67,160,71,0.2)' : 'rgba(229,57,53,0.15)',
-                  color: s.attended === 'Yes' ? '#43a047' : '#e57373',
-                }}>{s.attended}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {group.sessions.map(s => (
+                    <div key={s.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 16px', borderRadius: 8,
+                      background: s.attended === 'Yes' ? 'rgba(67,160,71,0.07)' : 'rgba(229,57,53,0.07)',
+                      border: '1px solid ' + (s.attended === 'Yes' ? 'rgba(67,160,71,0.2)' : 'rgba(229,57,53,0.2)'),
+                    }}>
+                      <span style={{ fontSize: 16 }}>{s.attended === 'Yes' ? '✅' : '❌'}</span>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 14, color: '#dde1f0' }}>{s.title}</span>
+                        <span style={{ fontSize: 12, color: '#6b7fa8', marginLeft: 8 }}>{s.date}</span>
+                      </div>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
+                        background: s.attended === 'Yes' ? 'rgba(67,160,71,0.2)' : 'rgba(229,57,53,0.15)',
+                        color: s.attended === 'Yes' ? '#43a047' : '#e57373',
+                      }}>{s.attended}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
