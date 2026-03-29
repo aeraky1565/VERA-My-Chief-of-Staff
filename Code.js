@@ -201,6 +201,7 @@ function createSheetTabs(ss) {
     ['pantry_ema_alpha',            '0.3'],   // EMA learning rate: higher = adapts faster to recent habits
     ['travel_day_briefing_enabled', 'true'],  // set to 'false' to disable travel day briefing emails (Issue #108b)
     ['travel_companions',           ''],      // comma-separated emails to CC on travel day briefings (Issue #108b)
+    ['monthly_disposable_income',   '5000'],  // combined monthly discretionary income used for goal contribution squeeze check (Issue #127)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -587,6 +588,13 @@ function nightlyRun() {
     // Step 0g-ii: Reset household chores by cadence (Issue #124)
     try { resetChoresByCadence_(); }
     catch (chErr) { Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message); }
+
+    // Step 0g-iii: Financial goal health check — generate at-risk flags (Issue #127)
+    try {
+      var goalFlags = checkGoalHealth_();
+      goalFlags.forEach(function(f) { addFlag_(f.source, f.flag, f.urgency, f.key); });
+    }
+    catch (gErr) { Logger.log('checkGoalHealth_ error (non-fatal): ' + gErr.message); }
 
     // Step 0h: Reset morning routine checkboxes for the new day
     try {

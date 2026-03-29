@@ -375,8 +375,8 @@ function checkGoalHealth_() {
   // Contribution squeeze check
   var activeGoals  = goals.filter(function(g) { return g.status === 'Active'; });
   var totalNeeded  = activeGoals.reduce(function(s, g) { return s + g.monthlyContribution; }, 0);
-  // Rough monthly disposable (hardcoded from plan doc — can be updated)
-  var monthlyDisposable = 5000;
+  var cfg = getConfigValues();
+  var monthlyDisposable = Number(cfg['monthly_disposable_income']) || 5000;
   if (totalNeeded > 0 && monthlyDisposable < totalNeeded * 0.8) {
     flags.push({
       source:  'Finance',
