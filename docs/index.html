@@ -10898,7 +10898,7 @@ function GymLogTab({ apiUrl, apiToken }) {
   async function load() {
     setSessions(null);
     try {
-      const data = await apiGet(apiUrl, apiToken, 'gym_log');
+      const data = await apiGet(apiUrl, apiToken, { action: 'gym_log' });
       setSessions((data.sessions || []).slice().reverse()); // newest first
     } catch (e) { setSessions([]); }
   }
