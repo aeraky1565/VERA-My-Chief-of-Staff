@@ -631,8 +631,10 @@ function buildChatSystemPrompt_(context) {
       lines += 'If a question relates to one of these, say so and offer to read it. ';
       lines += 'Use fetch_resource_content action to retrieve the actual text.\n';
       resList.forEach(function(r) {
-        var canRead = String(r['Drive File ID'] || '').trim() ? ' [readable]' : ' [link-only]';
-        lines += '  \u2022 [' + r['ID'] + '] ' + r['Name'] + ' [' + r['Category'] + ']' + canRead + '\n';
+        var canRead   = String(r['Drive File ID'] || '').trim() ? ' [readable]' : ' [link-only]';
+        var appliesTo = String(r['Applies To'] || 'Both').trim();
+        var whoTag    = appliesTo !== 'Both' ? ' [' + appliesTo + ' only]' : '';
+        lines += '  \u2022 [' + r['ID'] + '] ' + r['Name'] + ' [' + r['Category'] + ']' + whoTag + canRead + '\n';
         if (r['Description']) lines += '    ' + r['Description'] + '\n';
         if (r['Tags']) lines += '    Tags: ' + r['Tags'] + '\n';
       });

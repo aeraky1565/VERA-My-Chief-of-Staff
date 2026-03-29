@@ -5844,6 +5844,7 @@ function webAddResource_(e) {
   var p           = e.parameter || {};
   var name        = (p.name        || '').trim();
   var category    = (p.category    || 'Other').trim();
+  var appliesTo   = (p.appliesTo   || 'Both').trim();
   var description = (p.description || '').trim();
   var url         = (p.url         || '').trim();
   var tags        = (p.tags        || '').trim();
@@ -5866,10 +5867,11 @@ function webAddResource_(e) {
   var dateAdded = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var ss        = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   ss.getSheetByName(TABS.RESOURCES)
-    .appendRow([id, name, category, description, driveFileId, url, tags, dateAdded]);
+    .appendRow([id, name, category, appliesTo, description, driveFileId, url, tags, dateAdded]);
   return { ok: true, pdfConverted: pdfConverted,
-           resource: { ID: id, Name: name, Category: category, Description: description,
-                       'Drive File ID': driveFileId, URL: url, Tags: tags, 'Date Added': dateAdded } };
+           resource: { ID: id, Name: name, Category: category, 'Applies To': appliesTo,
+                       Description: description, 'Drive File ID': driveFileId,
+                       URL: url, Tags: tags, 'Date Added': dateAdded } };
 }
 
 function webUpdateResource_(e) {
@@ -5877,6 +5879,7 @@ function webUpdateResource_(e) {
   var id          = (p.id          || '').trim();
   var name        = (p.name        || '').trim();
   var category    = (p.category    || '').trim();
+  var appliesTo   = (p.appliesTo   || '').trim();
   var description = (p.description || '').trim();
   var url         = (p.url         || '').trim();
   var tags        = (p.tags        || '').trim();
@@ -5893,6 +5896,7 @@ function webUpdateResource_(e) {
     if (String(rows[i][0]).trim() === id) {
       if (name)        sheet.getRange(i+1, colMap['Name']).setValue(name);
       if (category)    sheet.getRange(i+1, colMap['Category']).setValue(category);
+      if (appliesTo)   sheet.getRange(i+1, colMap['Applies To']).setValue(appliesTo);
       if (description !== undefined) sheet.getRange(i+1, colMap['Description']).setValue(description);
       if (url) {
         var driveFileId = '';
