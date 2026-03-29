@@ -5538,7 +5538,7 @@ function webUpdateVehicleMileage_(e) {
 // ============================================================
 
 function webGetProfiles_() {
-  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PROFILES);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, profiles: [] };
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILES_HEADERS.length).getValues();
@@ -5558,7 +5558,7 @@ function webGetProfiles_() {
 }
 
 function webSaveProfile_(params) {
-  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PROFILES);
   var id    = (params.id || '').trim();
   var row   = [
@@ -5586,7 +5586,7 @@ function webSaveProfile_(params) {
 }
 
 function webDeleteProfile_(params) {
-  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PROFILES);
   var id    = (params.id || '').trim();
   if (!id) return { ok: false, error: 'No id' };
