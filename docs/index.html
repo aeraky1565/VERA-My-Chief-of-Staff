@@ -2347,10 +2347,39 @@ function ItineraryView({ trip, itinerary, loading, busy,
 
   const items   = (itinerary && itinerary.items) || [];
   const notices = computeItineraryNotices(items);
-  const [viewMode,       setViewMode]       = React.useState('agenda'); // 'agenda' | 'summary'
+  const [viewMode,       setViewMode]       = React.useState('agenda'); // 'agenda' | 'summary' | 'visa'
   const [travelerFilter, setTravelerFilter] = React.useState(
     (tripContext && tripContext !== 'loading' && tripContext.traveler) || 'Both'
   ); // 'Ahmed' | 'Victoria' | 'Both'
+
+  // ── Visa check state ────────────────────────────────────────────────────────
+  function guessDestination(label) {
+    if (!label) return '';
+    // Strip common prefixes: "Vacation: X", "Trip to X", "Trip: X"
+    var s = label.replace(/^(vacation|trip|travel|holiday|visit)\s*:?\s*(to\s+)?/i, '').trim();
+    // Strip trailing suffixes like "Cruise", "Tour", "2026"
+    s = s.replace(/\s+(cruise|tour|road\s*trip|\d{4})$/i, '').trim();
+    return s;
+  }
+  const [visaCountry,  setVisaCountry]  = React.useState(function() { return guessDestination(trip && trip.label); });
+  const [visaResults,  setVisaResults]  = React.useState(null);
+  const [visaLoading,  setVisaLoading]  = React.useState(false);
+  const [visaNote,     setVisaNote]     = React.useState('');
+
+  function handleVisaCheck() {
+    if (!visaCountry.trim() || !apiUrl || !apiToken) return;
+    setVisaLoading(true);
+    setVisaResults(null);
+    setVisaNote('');
+    apiGet(apiUrl, apiToken, { action: 'get_visa_requirements', destination: visaCountry.trim() })
+      .then(function(r) {
+        setVisaResults(r.results || []);
+        setVisaNote(r.note || '');
+      })
+      .catch(function(err) { setVisaNote('Error: ' + err.message); })
+      .finally(function() { setVisaLoading(false); });
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   // ── Flight status state ────────────────────────────────────────────────────
   const [flightStatuses, setFlightStatuses] = React.useState({});
@@ -2529,12 +2558,20 @@ function ItineraryView({ trip, itinerary, loading, busy,
                 🧳 Packing
               </button>
             )}
-            <button onClick={function() { setViewMode(viewMode === 'agenda' ? 'summary' : 'agenda'); }}
-              style={{ padding: '5px 11px', borderRadius: 6, border: '1px solid #2a3a50',
-                       background: 'transparent', color: '#8ab4f8', fontWeight: 600,
-                       cursor: 'pointer', fontSize: 13 }}>
-              {viewMode === 'agenda' ? '📋 Summary' : '🗒 Agenda'}
-            </button>
+            {['agenda','summary','visa'].map(function(mode) {
+              var labels = { agenda: '🗒 Agenda', summary: '📋 Summary', visa: '🛂 Visa' };
+              var active = viewMode === mode;
+              return (
+                <button key={mode} onClick={function() { setViewMode(mode); }}
+                  style={{ padding: '5px 11px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                           cursor: 'pointer',
+                           border: active ? '1px solid #5c9eff' : '1px solid #2a3a50',
+                           background: active ? '#0d2040' : 'transparent',
+                           color: active ? '#5c9eff' : '#8ab4f8' }}>
+                  {labels[mode]}
+                </button>
+              );
+            })}
             <button onClick={onAdd} disabled={busy}
               style={{ padding: '5px 14px', borderRadius: 6, border: 'none',
                        background: '#8ab4f8', color: '#0d1117', fontWeight: 600,
@@ -2663,6 +2700,76 @@ function ItineraryView({ trip, itinerary, loading, busy,
           </div>
         );
       })()}
+
+      {/* ── Visa mode ───────────────────────────────────────────────────── */}
+      {viewMode === 'visa' && (
+        <div style={{ padding: '16px 0' }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 12, color: '#8ab4f8', marginBottom: 6 }}>Destination Country</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                style={{ flex: 1, background: '#0d1520', border: '1px solid #2a3a50', borderRadius: 6,
+                         padding: '7px 12px', color: '#dde1f0', fontSize: 13, outline: 'none' }}
+                placeholder="e.g. Japan, United States, France…"
+                value={visaCountry}
+                onChange={function(e) { setVisaCountry(e.target.value); setVisaResults(null); }}
+                onKeyDown={function(e) { if (e.key === 'Enter') handleVisaCheck(); }}
+              />
+              <button
+                onClick={handleVisaCheck}
+                disabled={visaLoading || !visaCountry.trim()}
+                style={{ padding: '7px 16px', borderRadius: 6, border: 'none', fontWeight: 600,
+                         fontSize: 13, cursor: 'pointer',
+                         background: visaLoading ? '#2a3a50' : '#5c9eff', color: '#0d1117' }}>
+                {visaLoading ? 'Checking…' : 'Check'}
+              </button>
+            </div>
+          </div>
+
+          {visaNote && (
+            <div style={{ background: '#1a1e2e', border: '1px solid #3a4060', borderRadius: 8,
+                          padding: '10px 14px', fontSize: 13, color: '#8ab4f8', marginBottom: 12 }}>
+              ℹ️ {visaNote}
+            </div>
+          )}
+
+          {visaResults && visaResults.length === 0 && !visaNote && (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#5c7080', fontSize: 13 }}>
+              No results found. Try the full English country name.
+            </div>
+          )}
+
+          {(visaResults || []).map(function(person, pi) {
+            var vc = VISA_COLOR;
+            return (
+              <div key={pi} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: '#5c7080', fontWeight: 600, marginBottom: 6,
+                              textTransform: 'uppercase', letterSpacing: '0.05em' }}>{person.name}</div>
+                {(person.passports || []).map(function(p, i) {
+                  var c = (vc && vc[p.color]) || { bg:'#1a1e2e', border:'#3a4060', text:'#8ab4f8' };
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                          background: c.bg, border: '1px solid ' + c.border, borderRadius: 8,
+                                          padding: '10px 14px', marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, color: '#dde1f0' }}>🌍 {p.passportCountry}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: c.text }}>{p.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {!visaResults && !visaLoading && (
+            <div style={{ textAlign: 'center', color: '#3a4060', fontSize: 12, marginTop: 8 }}>
+              Enter a destination and press Check
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: '#3a4060', marginTop: 16 }}>
+            Data: Passport Index dataset · Always verify with official embassy sources before travel.
+          </div>
+        </div>
+      )}
 
       {/* ── Summary mode ────────────────────────────────────────────────── */}
       {viewMode === 'summary' && orderedDays
@@ -4229,8 +4336,38 @@ function ActivityList({ bucketId, activities, busy, onAdd, onToggle, onDelete })
   );
 }
 
+function BucketVisaStrip({ country, apiUrl, apiToken }) {
+  const [results, setResults] = React.useState(null);
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken || !country) return;
+    apiGet(apiUrl, apiToken, { action: 'get_visa_requirements', destination: country })
+      .then(function(r) { setResults(r.results || []); })
+      .catch(function() { setResults([]); });
+  }, [country]);
+  if (!results || results.length === 0) return null;
+  var vc = VISA_COLOR;
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 4 }} onClick={function(e) { e.stopPropagation(); }}>
+      {results.map(function(person) {
+        var best = (person.passports || [])[0];
+        if (!best) return null;
+        var c = (vc && vc[best.color]) || { text: '#8ab4f8', bg: '#1a1e2e', border: '#3a4060' };
+        return (
+          <span key={person.name}
+            title={person.passports.map(function(p) { return p.passportCountry + ': ' + p.label; }).join(' | ')}
+            style={{ fontSize: 10, fontWeight: 700, color: c.text, background: c.bg,
+                     border: '1px solid ' + c.border, borderRadius: 8, padding: '1px 7px',
+                     cursor: 'default' }}>
+            🛂 {person.name} · {best.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete,
-                           onAddActivity, onToggleActivity, onDeleteActivity }) {
+                           onAddActivity, onToggleActivity, onDeleteActivity, apiUrl, apiToken }) {
   var [filterWho,      setFilterWho]      = React.useState('all');
   var [filterMinStars, setFilterMinStars] = React.useState(0);
   var [showVisited,    setShowVisited]    = React.useState(false);
@@ -4467,8 +4604,11 @@ function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px',
                            cursor: 'pointer', borderBottom: isOpen ? '1px solid #2a3a50' : 'none' }}>
                   <span style={{ flexShrink: 0, lineHeight: 0 }}><CountryFlag name={cName} size={26} /></span>
-                  <span style={{ fontWeight: 700, fontSize: 14, color: '#e8eaed', flex: 1 }}>{cName}</span>
-                  <span style={{ fontSize: 11, color: '#5f6368', marginRight: 4 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#e8eaed' }}>{cName}</div>
+                    {apiUrl && apiToken && <BucketVisaStrip country={cName} apiUrl={apiUrl} apiToken={apiToken} />}
+                  </div>
+                  <span style={{ fontSize: 11, color: '#5f6368', marginRight: 4, flexShrink: 0 }}>
                     ×{cEntries.length} {cEntries.length === 1 ? 'destination' : 'destinations'}
                   </span>
                   {maxStars > 0 && (
@@ -4847,7 +4987,6 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      onAddBucketActivity, onToggleBucketActivity, onDeleteBucketActivity,
                      recommendations, onLoadRecs, onGenerateRecs, onAcceptRec, onDismissRec,
                      profiles, profilesLoading, onSaveProfile, onDeleteProfile,
-                     visaResults, visaLoading, visaNote, onCheckVisa,
                      apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
@@ -4898,7 +5037,6 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
     { id: 'countries',  label: '🌍 Countries' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
     { id: 'profiles',   label: '👤 Profiles' },
-    { id: 'visa',       label: '🛂 Visa Check' },
   ];
 
   return (
@@ -5102,6 +5240,8 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
           onAddActivity={onAddBucketActivity}
           onToggleActivity={onToggleBucketActivity}
           onDeleteActivity={onDeleteBucketActivity}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
         />
       )}
 
@@ -5126,17 +5266,6 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
       )}
 
       {/* Visa Check (Issue #123) */}
-      {sub === 'visa' && (
-        <VisaCheckView
-          profiles={profiles || []}
-          upcomingTrips={upcomingTravel}
-          busy={busy}
-          onCheck={onCheckVisa}
-          visaResults={visaResults}
-          visaLoading={visaLoading}
-          visaNote={visaNote}
-        />
-      )}
     </div>
   );
 }
@@ -11961,9 +12090,6 @@ function App() {
   const [vehiclesLoading,   setVehiclesLoading]    = useState(false);
   const [profiles,          setProfiles]           = useState([]);
   const [profilesLoading,   setProfilesLoading]    = useState(false);
-  const [visaResults,       setVisaResults]        = useState(null);
-  const [visaLoading,       setVisaLoading]        = useState(false);
-  const [visaNote,          setVisaNote]           = useState(null);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
@@ -12967,18 +13093,6 @@ function App() {
       setError('Could not delete profile: ' + err.message);
       await loadProfiles(apiUrl, apiToken);
     }
-  }
-
-  async function handleCheckVisa(destination) {
-    setVisaLoading(true);
-    setVisaResults(null);
-    setVisaNote(null);
-    try {
-      const data = await apiGet(apiUrl, apiToken, { action: 'get_visa_requirements', destination });
-      setVisaResults(data.results || []);
-      setVisaNote(data.note || null);
-    } catch (err) { setError('Visa check failed: ' + err.message); }
-    setVisaLoading(false);
   }
 
   async function handleUpdateCareerPosition(data) {
@@ -13987,10 +14101,6 @@ function App() {
                     profilesLoading={profilesLoading}
                     onSaveProfile={handleSaveProfile}
                     onDeleteProfile={handleDeleteProfile}
-                    visaResults={visaResults}
-                    visaLoading={visaLoading}
-                    visaNote={visaNote}
-                    onCheckVisa={handleCheckVisa}
                     apiUrl={apiUrl}
                     apiToken={apiToken}
                   />
