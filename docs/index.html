@@ -4672,7 +4672,16 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
               </div>
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 24px' }}>
-              <div><div style={labelStyle}>Passport Country</div><div style={valStyle}>🌍 {p.passportCountry || '—'}</div></div>
+              <div>
+                <div style={labelStyle}>Passport{p.passportCountry && p.passportCountry.includes(',') ? 's' : ''}</div>
+                <div style={valStyle}>
+                  {p.passportCountry
+                    ? p.passportCountry.split(',').map(function(c, ci) {
+                        return <span key={ci} style={{ display:'inline-block', background:'#1a2a3a', border:'1px solid #2a4060', borderRadius:4, padding:'1px 7px', marginRight:4, fontSize:13 }}>🌍 {c.trim()}</span>;
+                      })
+                    : '—'}
+                </div>
+              </div>
               <div>
                 <div style={labelStyle}>Passport Expiry</div>
                 <div style={{ ...valStyle, color: expiryColor }}>
@@ -4693,7 +4702,7 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
             <div className="modal-title">{modal === 'new' ? 'Add Profile' : 'Edit Profile'}</div>
             {[
               { key:'name',           label:'Name',             placeholder:'e.g. Ahmed' },
-              { key:'passportCountry',label:'Passport Country', placeholder:'e.g. Egypt' },
+              { key:'passportCountry',label:'Passport Countries (comma-separated)', placeholder:'e.g. Egypt, Canada' },
               { key:'passportExpiry', label:'Passport Expiry',  type:'date' },
               { key:'specialDocs',    label:'Special Docs',     placeholder:'e.g. US Green Card, UK Visa' },
               { key:'notes',          label:'Notes',            placeholder:'Optional' },
@@ -4771,19 +4780,36 @@ function VisaCheckView({ profiles, upcomingTrips, busy, onCheck, visaResults, vi
       {visaResults && visaResults.length > 0 && (
         <div>
           <div style={{ fontSize:13, color:'#5c7080', marginBottom:10 }}>
-            Results for <strong style={{ color:'#dde1f0' }}>{visaResults[0] && destination}</strong>
+            Results for <strong style={{ color:'#dde1f0' }}>{destination}</strong>
           </div>
           {visaResults.map(function(r, i) {
-            var c = vc[r.color] || vc.grey;
+            // Best passport = first (sorted green→red in backend)
+            var best = (r.passports && r.passports[0]) || {};
+            var bc   = vc[best.color] || vc.grey;
             return (
-              <div key={i} style={{ background: c.bg, border:'1px solid ' + c.border, borderRadius:10, padding:'14px 18px', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <div>
+              <div key={i} style={{ background:'#141826', border:'1px solid #2a3050', borderRadius:10, marginBottom:12, overflow:'hidden' }}>
+                {/* Person header */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 18px', borderBottom: r.passports && r.passports.length > 1 ? '1px solid #2a3050' : 'none' }}>
                   <div style={{ fontWeight:700, color:'#dde1f0', fontSize:15 }}>{r.name}</div>
-                  <div style={{ fontSize:12, color:'#8ab4f8', marginTop:2 }}>🌍 {r.passportCountry} passport</div>
+                  {/* Best option badge */}
+                  <div style={{ background: bc.bg, border:'1px solid ' + bc.border, borderRadius:6, padding:'3px 10px', fontSize:13, fontWeight:600, color: bc.text }}>
+                    {best.label}
+                  </div>
                 </div>
-                <div style={{ textAlign:'right' }}>
-                  <div style={{ fontWeight:700, color: c.text, fontSize:14 }}>{r.label}</div>
-                </div>
+                {/* Per-passport rows (only shown if >1 passport) */}
+                {r.passports && r.passports.length > 1 && r.passports.map(function(pp, pi) {
+                  var c = vc[pp.color] || vc.grey;
+                  return (
+                    <div key={pi} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'9px 18px', background:'#0e1220', borderTop: pi > 0 ? '1px solid #1a2040' : 'none' }}>
+                      <div style={{ fontSize:13, color:'#8ab4f8' }}>🌍 {pp.passportCountry}</div>
+                      <div style={{ fontSize:13, fontWeight:600, color: c.text }}>{pp.label}</div>
+                    </div>
+                  );
+                })}
+                {/* Single passport — show country under header */}
+                {r.passports && r.passports.length === 1 && (
+                  <div style={{ padding:'0 18px 10px', fontSize:12, color:'#5c7080' }}>🌍 {r.passports[0].passportCountry}</div>
+                )}
               </div>
             );
           })}
