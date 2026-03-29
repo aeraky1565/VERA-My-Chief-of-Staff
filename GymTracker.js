@@ -114,7 +114,9 @@ function getGymLog_() {
       return {
         id:       String(row[0] || '').trim(),
         title:    String(row[1] || '').trim(),
-        date:     String(row[2] || '').trim(),
+        date:     row[2] instanceof Date
+                    ? Utilities.formatDate(row[2], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+                    : String(row[2] || '').trim().substring(0, 10),
         attended: String(row[3] || '').trim(),
         loggedAt: String(row[4] || '').trim(),
         rowNum:   i + 2,

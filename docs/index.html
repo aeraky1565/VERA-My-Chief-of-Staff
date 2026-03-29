@@ -10927,6 +10927,13 @@ function GymLogTab({ apiUrl, apiToken }) {
   const pending = sessions.filter(s => !s.attended);
   const history = sessions.filter(s =>  s.attended);
 
+  function fmtSessionDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T12:00:00');
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
   // Group history sessions into labelled buckets
   function getGroupLabel(dateStr) {
     const now   = new Date();
@@ -11010,7 +11017,7 @@ function GymLogTab({ apiUrl, apiToken }) {
                     }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 14, color: '#e8eaed' }}>{s.title}</div>
-                        <div style={{ fontSize: 12, color: '#8a9abf', marginTop: 2 }}>{s.date}</div>
+                        <div style={{ fontSize: 12, color: '#8a9abf', marginTop: 2 }}>{fmtSessionDate(s.date)}</div>
                       </div>
                       <button disabled={busy} onClick={() => respond(s.id, 'gym_attend')}
                         style={{ background: 'rgba(67,160,71,0.15)', border: '1px solid #43a047',
@@ -11072,7 +11079,7 @@ function GymLogTab({ apiUrl, apiToken }) {
                       <span style={{ fontSize: 16 }}>{s.attended === 'Yes' ? '✅' : '❌'}</span>
                       <div style={{ flex: 1 }}>
                         <span style={{ fontSize: 14, color: '#dde1f0' }}>{s.title}</span>
-                        <span style={{ fontSize: 12, color: '#6b7fa8', marginLeft: 8 }}>{s.date}</span>
+                        <span style={{ fontSize: 12, color: '#6b7fa8', marginLeft: 8 }}>{fmtSessionDate(s.date)}</span>
                       </div>
                       <span style={{
                         fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
