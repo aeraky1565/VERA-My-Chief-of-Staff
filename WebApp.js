@@ -214,6 +214,11 @@ function doGet(e) {
       case 'vehicle_oil_change':    return jsonOut_(webRecordVehicleOilChange_(e));
       case 'vehicle_service':       return jsonOut_(webRecordVehicleService_(e));
       case 'vehicle_mileage':       return jsonOut_(webUpdateVehicleMileage_(e));
+      // Traveler Profiles + Visa Check — Travel tab (Issue #123)
+      case 'get_profiles':          return jsonOut_(webGetProfiles_());
+      case 'save_profile':          return jsonOut_(webSaveProfile_(e.parameter));
+      case 'delete_profile':        return jsonOut_(webDeleteProfile_(e.parameter));
+      case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
       // Important Dates — People tab (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
@@ -5526,4 +5531,178 @@ function webUpdateVehicleMileage_(e) {
     return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
   }
   return { ok: false, error: 'not found' };
+}
+
+// ============================================================
+// Traveler Profiles + Visa Requirements (Issue #123)
+// ============================================================
+
+function webGetProfiles_() {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.PROFILES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, profiles: [] };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILES_HEADERS.length).getValues();
+  var profiles = rows
+    .filter(function(r) { return r[0]; })
+    .map(function(r) {
+      return {
+        id:             r[0],
+        name:           r[1],
+        passportCountry: r[2],
+        passportExpiry: r[3] ? Utilities.formatDate(new Date(r[3]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+        specialDocs:    r[4],
+        notes:          r[5]
+      };
+    });
+  return { ok: true, profiles: profiles };
+}
+
+function webSaveProfile_(params) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.PROFILES);
+  var id    = (params.id || '').trim();
+  var row   = [
+    id || ('PROF-' + Date.now()),
+    params.name           || '',
+    params.passportCountry || '',
+    params.passportExpiry  || '',
+    params.specialDocs     || '',
+    params.notes           || ''
+  ];
+  if (!id) {
+    sheet.appendRow(row);
+    return { ok: true, id: row[0] };
+  }
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === id) {
+      sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
+      return { ok: true, id: id };
+    }
+  }
+  // Not found — insert as new
+  sheet.appendRow(row);
+  return { ok: true, id: row[0] };
+}
+
+function webDeleteProfile_(params) {
+  var ss    = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.PROFILES);
+  var id    = (params.id || '').trim();
+  if (!id) return { ok: false, error: 'No id' };
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webGetVisaRequirements_(params) {
+  var destination = (params.destination || '').trim();
+  if (!destination) return { ok: false, error: 'destination required' };
+
+  // Load traveler profiles
+  var profilesResult = webGetProfiles_();
+  var profiles = profilesResult.profiles.filter(function(p) { return p.passportCountry; });
+  if (profiles.length === 0) return { ok: true, results: [], note: 'No passport countries set in profiles.' };
+
+  // Fetch or use cached passport-index CSV
+  var cacheKey = 'passport_index_csv';
+  var cache    = CacheService.getScriptCache();
+  var csv      = cache.get(cacheKey);
+  if (!csv) {
+    try {
+      var resp = UrlFetchApp.fetch(
+        'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
+        { muteHttpExceptions: true }
+      );
+      csv = resp.getContentText();
+      cache.put(cacheKey, csv, 21600); // 6 hours
+    } catch (err) {
+      return { ok: false, error: 'Could not fetch visa data: ' + err.message };
+    }
+  }
+
+  var lines   = csv.split('\n');
+  var headers = lines[0].split(',');
+
+  // Normalize function for country name matching
+  function norm(s) { return String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+  // Common aliases
+  var aliases = {
+    'usa': 'united states', 'us': 'united states', 'unitedstatesofamerica': 'united states',
+    'uk': 'united kingdom', 'gb': 'united kingdom', 'greatbritain': 'united kingdom',
+    'uae': 'united arab emirates',
+    'drc': 'democratic republic of the congo',
+    'southkorea': 'korea, south',
+    'northkorea': 'korea, north',
+    'taiwan': 'taiwan',
+    'russia': 'russia',
+    'czechia': 'czech republic',
+    'türkiye': 'turkey', 'turkiye': 'turkey',
+    'egypt': 'egypt',
+    'canada': 'canada',
+    'jordan': 'jordan',
+    'france': 'france', 'japan': 'japan', 'germany': 'germany'
+  };
+
+  var destNorm = norm(destination);
+  var destLookup = aliases[destNorm] ? norm(aliases[destNorm]) : destNorm;
+
+  // Find destination column index
+  var destIdx = -1;
+  for (var i = 1; i < headers.length; i++) {
+    if (norm(headers[i]) === destLookup) { destIdx = i; break; }
+  }
+  if (destIdx === -1) {
+    return { ok: true, results: [], note: 'Destination "' + destination + '" not found. Try the full English country name.' };
+  }
+  var destName = headers[destIdx].trim();
+
+  // Build results per traveler
+  var results = [];
+  profiles.forEach(function(prof) {
+    var passNorm  = norm(prof.passportCountry);
+    var passLookup = aliases[passNorm] ? norm(aliases[passNorm]) : passNorm;
+    var status = null;
+    for (var j = 1; j < lines.length; j++) {
+      var cols = lines[j].split(',');
+      if (cols[0] && norm(cols[0]) === passLookup) {
+        status = (cols[destIdx] || '').trim();
+        break;
+      }
+    }
+    results.push({
+      name:            prof.name,
+      passportCountry: prof.passportCountry,
+      status:          status,
+      label:           visaStatusLabel_(status),
+      color:           visaStatusColor_(status)
+    });
+  });
+
+  return { ok: true, results: results, destination: destName };
+}
+
+function visaStatusLabel_(status) {
+  if (!status || status === '' || status === '-1') return 'No Data';
+  if (status === 'VR') return 'Visa Required';
+  if (status === 'VOA') return 'Visa on Arrival';
+  if (status === 'ETA') return 'eTA / e-Visa';
+  if (status === 'CB') return 'No Passport Control';
+  if (status === 'VF') return 'Visa Free';
+  if (/^\d+$/.test(status)) return 'Visa Free (' + status + ' days)';
+  return status;
+}
+
+function visaStatusColor_(status) {
+  if (!status || status === '' || status === '-1') return 'grey';
+  if (status === 'VR') return 'red';
+  if (status === 'VOA' || status === 'ETA') return 'yellow';
+  if (status === 'VF' || /^\d+$/.test(status) || status === 'CB') return 'green';
+  return 'grey';
 }

@@ -4615,6 +4615,187 @@ function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete
   );
 }
 
+// ---- Traveler Profiles + Visa Check (Issue #123) ----------------------------
+
+const VISA_COLOR = {
+  green:  { bg: '#0a2a1a', border: '#1a7a3a', text: '#4ade80' },
+  yellow: { bg: '#2a2200', border: '#7a6500', text: '#fbbf24' },
+  red:    { bg: '#2a0a0a', border: '#7a1a1a', text: '#f87171' },
+  grey:   { bg: '#1a1e2e', border: '#3a4060', text: '#8ab4f8' },
+};
+
+function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
+  const [modal, setModal] = React.useState(null); // null | 'new' | profile-obj
+  const [form, setForm]   = React.useState({});
+
+  function openNew() { setForm({ name:'', passportCountry:'', passportExpiry:'', specialDocs:'', notes:'' }); setModal('new'); }
+  function openEdit(p) { setForm({ ...p }); setModal(p); }
+  function closeModal() { setModal(null); setForm({}); }
+
+  async function handleSave() {
+    if (!form.name || !form.passportCountry) return;
+    await onSave({ ...form, id: modal === 'new' ? '' : modal.id });
+    closeModal();
+  }
+
+  const cardStyle = { background:'#141826', border:'1px solid #2a3050', borderRadius:10, padding:'16px 20px', marginBottom:12 };
+  const labelStyle = { fontSize:11, color:'#5c7080', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 };
+  const valStyle   = { fontSize:14, color:'#dde1f0', fontWeight:500 };
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0' }}>👤 Traveler Profiles</div>
+        <button className="btn-primary" onClick={openNew} disabled={busy}>+ Add Profile</button>
+      </div>
+
+      {loading && <div className="loading-text">Loading profiles…</div>}
+      {!loading && profiles.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize:32, marginBottom:10 }}>🛂</div>
+          <div>No traveler profiles yet.</div>
+          <div style={{ fontSize:12, color:'#4d6080', marginTop:6 }}>Add a profile with passport details to enable visa checking.</div>
+        </div>
+      )}
+
+      {profiles.map(function(p) {
+        var expiry = p.passportExpiry ? new Date(p.passportExpiry) : null;
+        var daysLeft = expiry ? Math.ceil((expiry - new Date()) / 86400000) : null;
+        var expiryColor = daysLeft === null ? '#8ab4f8' : daysLeft < 180 ? '#f87171' : daysLeft < 365 ? '#fbbf24' : '#4ade80';
+        return (
+          <div key={p.id} style={cardStyle}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+              <div style={{ fontSize:17, fontWeight:700, color:'#dde1f0', marginBottom:10 }}>{p.name}</div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button className="btn-sm" onClick={() => openEdit(p)}>✏️</button>
+                <button className="btn-sm btn-danger" onClick={() => onDelete(p.id)} disabled={busy}>✕</button>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 24px' }}>
+              <div><div style={labelStyle}>Passport Country</div><div style={valStyle}>🌍 {p.passportCountry || '—'}</div></div>
+              <div>
+                <div style={labelStyle}>Passport Expiry</div>
+                <div style={{ ...valStyle, color: expiryColor }}>
+                  {p.passportExpiry || '—'}
+                  {daysLeft !== null && <span style={{ fontSize:11, marginLeft:6 }}>({daysLeft > 0 ? daysLeft + 'd left' : 'EXPIRED'})</span>}
+                </div>
+              </div>
+              {p.specialDocs && <div style={{ gridColumn:'1/-1' }}><div style={labelStyle}>Special Docs</div><div style={valStyle}>📋 {p.specialDocs}</div></div>}
+              {p.notes && <div style={{ gridColumn:'1/-1' }}><div style={labelStyle}>Notes</div><div style={{ fontSize:13, color:'#8ab4f8' }}>{p.notes}</div></div>}
+            </div>
+          </div>
+        );
+      })}
+
+      {modal && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-title">{modal === 'new' ? 'Add Profile' : 'Edit Profile'}</div>
+            {[
+              { key:'name',           label:'Name',             placeholder:'e.g. Ahmed' },
+              { key:'passportCountry',label:'Passport Country', placeholder:'e.g. Egypt' },
+              { key:'passportExpiry', label:'Passport Expiry',  type:'date' },
+              { key:'specialDocs',    label:'Special Docs',     placeholder:'e.g. US Green Card, UK Visa' },
+              { key:'notes',          label:'Notes',            placeholder:'Optional' },
+            ].map(function(f) {
+              return (
+                <div key={f.key} style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:4 }}>{f.label}</div>
+                  <input
+                    className="modal-input"
+                    type={f.type || 'text'}
+                    placeholder={f.placeholder || ''}
+                    value={form[f.key] || ''}
+                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  />
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:10, marginTop:16 }}>
+              <button className="btn-primary" onClick={handleSave} disabled={busy || !form.name || !form.passportCountry}>Save</button>
+              <button className="btn-secondary" onClick={closeModal}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisaCheckView({ profiles, upcomingTrips, busy, onCheck, visaResults, visaLoading, visaNote }) {
+  const [destination, setDestination] = React.useState('');
+
+  function handleCheck() { if (destination.trim()) onCheck(destination.trim()); }
+
+  const trips = (upcomingTrips || []).map(function(t) { return t.label; });
+
+  const vc = VISA_COLOR;
+
+  return (
+    <div>
+      <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0', marginBottom:16 }}>🛂 Visa Requirements</div>
+
+      {profiles.length === 0 && (
+        <div style={{ background:'#1a1e2e', border:'1px solid #3a4060', borderRadius:8, padding:'12px 16px', marginBottom:16, fontSize:13, color:'#8ab4f8' }}>
+          ⚠️ Add traveler profiles (with passport countries) in the Profiles tab first.
+        </div>
+      )}
+
+      <div style={{ display:'flex', gap:10, marginBottom:20, alignItems:'flex-end' }}>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:6 }}>Destination Country</div>
+          <input
+            className="modal-input"
+            style={{ margin:0 }}
+            placeholder="e.g. France, Japan, United States…"
+            value={destination}
+            onChange={e => setDestination(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCheck()}
+            list="trip-destinations"
+          />
+          <datalist id="trip-destinations">
+            {trips.map(function(t, i) { return <option key={i} value={t} />; })}
+          </datalist>
+        </div>
+        <button className="btn-primary" onClick={handleCheck} disabled={busy || visaLoading || !destination.trim() || profiles.length === 0}>
+          {visaLoading ? 'Checking…' : 'Check Visa'}
+        </button>
+      </div>
+
+      {visaNote && (
+        <div style={{ background:'#1a1e2e', border:'1px solid #3a4060', borderRadius:8, padding:'12px 16px', marginBottom:16, fontSize:13, color:'#8ab4f8' }}>
+          ℹ️ {visaNote}
+        </div>
+      )}
+
+      {visaResults && visaResults.length > 0 && (
+        <div>
+          <div style={{ fontSize:13, color:'#5c7080', marginBottom:10 }}>
+            Results for <strong style={{ color:'#dde1f0' }}>{visaResults[0] && destination}</strong>
+          </div>
+          {visaResults.map(function(r, i) {
+            var c = vc[r.color] || vc.grey;
+            return (
+              <div key={i} style={{ background: c.bg, border:'1px solid ' + c.border, borderRadius:10, padding:'14px 18px', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <div style={{ fontWeight:700, color:'#dde1f0', fontSize:15 }}>{r.name}</div>
+                  <div style={{ fontSize:12, color:'#8ab4f8', marginTop:2 }}>🌍 {r.passportCountry} passport</div>
+                </div>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontWeight:700, color: c.text, fontSize:14 }}>{r.label}</div>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize:11, color:'#3a4060', marginTop:12 }}>
+            Data source: Passport Index (ilyankou/passport-index-dataset). Check official embassy sources before travel.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Travel Tab -------------------------------------------------------------
 
 function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, itineraryFocusTripKey, busy,
@@ -4629,6 +4810,8 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      bucketList, onLoadBucketList, onAddBucketItem, onMarkBucketVisited, onDeleteBucketItem,
                      onAddBucketActivity, onToggleBucketActivity, onDeleteBucketActivity,
                      recommendations, onLoadRecs, onGenerateRecs, onAcceptRec, onDismissRec,
+                     profiles, profilesLoading, onSaveProfile, onDeleteProfile,
+                     visaResults, visaLoading, visaNote, onCheckVisa,
                      apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
@@ -4678,6 +4861,8 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
     { id: 'budget',     label: '💰 Budget' },
     { id: 'countries',  label: '🌍 Countries' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
+    { id: 'profiles',   label: '👤 Profiles' },
+    { id: 'visa',       label: '🛂 Visa Check' },
   ];
 
   return (
@@ -4891,6 +5076,30 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
           <div style={{ color: '#dde1f0', marginBottom: 6 }}>Trip Budget</div>
           <div style={{ fontSize: 12, color: '#4d6080' }}>Coming soon</div>
         </div>
+      )}
+
+      {/* Traveler Profiles (Issue #123) */}
+      {sub === 'profiles' && (
+        <ProfilesView
+          profiles={profiles || []}
+          loading={profilesLoading}
+          busy={busy}
+          onSave={onSaveProfile}
+          onDelete={onDeleteProfile}
+        />
+      )}
+
+      {/* Visa Check (Issue #123) */}
+      {sub === 'visa' && (
+        <VisaCheckView
+          profiles={profiles || []}
+          upcomingTrips={upcomingTravel}
+          busy={busy}
+          onCheck={onCheckVisa}
+          visaResults={visaResults}
+          visaLoading={visaLoading}
+          visaNote={visaNote}
+        />
       )}
     </div>
   );
@@ -11714,6 +11923,11 @@ function App() {
   const [choresLoading,     setChoresLoading]      = useState(false);
   const [vehicles,          setVehicles]           = useState([]);
   const [vehiclesLoading,   setVehiclesLoading]    = useState(false);
+  const [profiles,          setProfiles]           = useState([]);
+  const [profilesLoading,   setProfilesLoading]    = useState(false);
+  const [visaResults,       setVisaResults]        = useState(null);
+  const [visaLoading,       setVisaLoading]        = useState(false);
+  const [visaNote,          setVisaNote]           = useState(null);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
@@ -12686,6 +12900,51 @@ function App() {
     }
   }
 
+  // ---- Traveler Profiles + Visa Check handlers (Issue #123) ------------------
+
+  async function loadProfiles(url, token) {
+    if (!url || !token) return;
+    setProfilesLoading(true);
+    try {
+      const data = await apiGet(url, token, { action: 'get_profiles' });
+      setProfiles(data.profiles || []);
+    } catch (err) { setError('Profiles load failed: ' + err.message); }
+    setProfilesLoading(false);
+  }
+
+  async function handleSaveProfile(profileData) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'save_profile', ...profileData });
+      await loadProfiles(apiUrl, apiToken);
+      showToast('✓ Profile saved');
+    } catch (err) { setError('Could not save profile: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteProfile(id) {
+    setProfiles(prev => prev.filter(p => p.id !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_profile', id });
+      showToast('✓ Profile removed');
+    } catch (err) {
+      setError('Could not delete profile: ' + err.message);
+      await loadProfiles(apiUrl, apiToken);
+    }
+  }
+
+  async function handleCheckVisa(destination) {
+    setVisaLoading(true);
+    setVisaResults(null);
+    setVisaNote(null);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'get_visa_requirements', destination });
+      setVisaResults(data.results || []);
+      setVisaNote(data.note || null);
+    } catch (err) { setError('Visa check failed: ' + err.message); }
+    setVisaLoading(false);
+  }
+
   async function handleUpdateCareerPosition(data) {
     setBusy(true);
     try {
@@ -13400,7 +13659,7 @@ function App() {
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
-                  if (tab === 'travel')     loadPTO(apiUrl, apiToken); // upcomingTravel lives in PTO stats
+                  if (tab === 'travel')     { loadPTO(apiUrl, apiToken); loadProfiles(apiUrl, apiToken); } // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); }
                 }}
               >
@@ -13688,6 +13947,14 @@ function App() {
                     onGenerateRecs={handleGenerateRecs}
                     onAcceptRec={handleAcceptRec}
                     onDismissRec={handleDismissRec}
+                    profiles={profiles}
+                    profilesLoading={profilesLoading}
+                    onSaveProfile={handleSaveProfile}
+                    onDeleteProfile={handleDeleteProfile}
+                    visaResults={visaResults}
+                    visaLoading={visaLoading}
+                    visaNote={visaNote}
+                    onCheckVisa={handleCheckVisa}
                     apiUrl={apiUrl}
                     apiToken={apiToken}
                   />

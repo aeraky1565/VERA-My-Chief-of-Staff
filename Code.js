@@ -72,6 +72,7 @@ const TABS = {
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
   CHORES:             'Chores',               // Household chore checklist by cadence (Issue #124)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, registration, insurance (Issue #125)
+  PROFILES:           'Traveler Profiles',    // Passport & travel document profiles per person (Issue #123)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -119,6 +120,7 @@ const GIFT_PEOPLE_HEADERS        = ['Name']; // Issue #105
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date']; // Issue #105
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year']; // Issue #80
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date']; // Issue #124
+const PROFILES_HEADERS           = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes']; // Issue #123
 const VEHICLE_HEADERS            = [
   'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
   'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
@@ -241,6 +243,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS); // Issue #80
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);           // Issue #124
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);          // Issue #125
+  ensureSheet(ss, TABS.PROFILES,             PROFILES_HEADERS);         // Issue #123
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
