@@ -5800,6 +5800,29 @@ function webSyncLifePlanDoc_() {
 // RESOURCES — Issue #129
 // ============================================================
 
+/**
+ * If the Drive file is a PDF, copies it as a Google Doc (with OCR) so VERA
+ * can read its text via DocumentApp. Requires Drive Advanced Service enabled
+ * in Apps Script (Services → Drive API).
+ * Returns { converted: bool, docId: string, error?: string }
+ */
+function convertPdfToGoogleDoc_(driveFileId) {
+  try {
+    var file     = DriveApp.getFileById(driveFileId);
+    var mimeType = file.getMimeType();
+    if (mimeType !== 'application/pdf') return { converted: false, docId: driveFileId };
+    var copy = Drive.Files.copy(
+      { title: file.getName() + ' (VERA)', mimeType: 'application/vnd.google-apps.document' },
+      driveFileId,
+      { ocr: true }
+    );
+    return { converted: true, docId: copy.id };
+  } catch (err) {
+    Logger.log('convertPdfToGoogleDoc_ failed for ' + driveFileId + ': ' + err.message);
+    return { converted: false, docId: driveFileId, error: err.message };
+  }
+}
+
 function webGetResources_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.RESOURCES);
@@ -5826,19 +5849,27 @@ function webAddResource_(e) {
   var tags        = (p.tags        || '').trim();
   if (!name || !url) return { ok: false, error: 'name and url required' };
 
-  // Extract Drive File ID from URL if it is a Google Drive/Docs/Sheets link
+  // Extract Drive File ID from URL
   var driveFileId = '';
   var m = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
   if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
   if (m) driveFileId = m[1];
+
+  // Auto-convert PDF → Google Doc so VERA can read the text
+  var pdfConverted = false;
+  if (driveFileId) {
+    var conv = convertPdfToGoogleDoc_(driveFileId);
+    if (conv.converted) { driveFileId = conv.docId; pdfConverted = true; }
+  }
 
   var id        = 'res_' + Date.now();
   var dateAdded = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var ss        = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   ss.getSheetByName(TABS.RESOURCES)
     .appendRow([id, name, category, description, driveFileId, url, tags, dateAdded]);
-  return { ok: true, resource: { ID: id, Name: name, Category: category, Description: description,
-                                  'Drive File ID': driveFileId, URL: url, Tags: tags, 'Date Added': dateAdded } };
+  return { ok: true, pdfConverted: pdfConverted,
+           resource: { ID: id, Name: name, Category: category, Description: description,
+                       'Drive File ID': driveFileId, URL: url, Tags: tags, 'Date Added': dateAdded } };
 }
 
 function webUpdateResource_(e) {
@@ -5868,6 +5899,11 @@ function webUpdateResource_(e) {
         var m = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
         if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
         if (m) driveFileId = m[1];
+        // Auto-convert PDF → Google Doc so VERA can read the text
+        if (driveFileId) {
+          var conv2 = convertPdfToGoogleDoc_(driveFileId);
+          if (conv2.converted) driveFileId = conv2.docId;
+        }
         sheet.getRange(i+1, colMap['URL']).setValue(url);
         sheet.getRange(i+1, colMap['Drive File ID']).setValue(driveFileId);
       }

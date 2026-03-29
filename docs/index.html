@@ -12568,7 +12568,7 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
             )}
             {form.url && /docs\.google\.com|drive\.google\.com/.test(form.url) && (
               <div style={{ fontSize: 11, color: '#3a7a50', marginTop: -8, marginBottom: 8 }}>
-                ✓ Google Drive link detected — VERA can read this document's content.
+                ✓ Google Drive link detected — VERA can read this document's content. PDFs are auto-converted to Google Docs.
               </div>
             )}
 
@@ -12989,8 +12989,12 @@ function App() {
         action: 'add_resource', name: fields.name, category: fields.category,
         description: fields.description || '', url: fields.url, tags: fields.tags || '',
       });
-      if (data.ok) setResources(prev => [...prev, data.resource]);
-      else setError(data.error || 'Failed to add resource');
+      if (data.ok) {
+        setResources(prev => [...prev, data.resource]);
+        if (data.pdfConverted) setError('✅ PDF converted to Google Doc — VERA can now read it.');
+      } else {
+        setError(data.error || 'Failed to add resource');
+      }
     } catch (err) { setError(err.message); }
     setBusy(false);
   }
