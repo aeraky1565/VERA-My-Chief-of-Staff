@@ -4628,7 +4628,19 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
   const [modal, setModal] = React.useState(null); // null | 'new' | profile-obj
   const [form, setForm]   = React.useState({});
 
-  function openNew() { setForm({ name:'', passportCountry:'', passportExpiry:'', specialDocs:'', notes:'' }); setModal('new'); }
+  // Group by name (name is the combining key)
+  const groups = {};
+  (profiles || []).forEach(function(p) {
+    const n = p.name || 'Unknown';
+    if (!groups[n]) groups[n] = [];
+    groups[n].push(p);
+  });
+  const names = Object.keys(groups).sort();
+
+  function openNew(defaultName) {
+    setForm({ name: defaultName || '', passportCountry:'', passportExpiry:'', specialDocs:'', notes:'' });
+    setModal('new');
+  }
   function openEdit(p) { setForm({ ...p }); setModal(p); }
   function closeModal() { setModal(null); setForm({}); }
 
@@ -4638,60 +4650,58 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
     closeModal();
   }
 
-  const cardStyle = { background:'#141826', border:'1px solid #2a3050', borderRadius:10, padding:'16px 20px', marginBottom:12 };
-  const labelStyle = { fontSize:11, color:'#5c7080', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:2 };
-  const valStyle   = { fontSize:14, color:'#dde1f0', fontWeight:500 };
-
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
         <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0' }}>👤 Traveler Profiles</div>
-        <button className="btn-primary" onClick={openNew} disabled={busy}>+ Add Profile</button>
+        <button className="btn-primary" onClick={() => openNew()} disabled={busy}>+ Add Person</button>
       </div>
 
       {loading && <div className="loading-text">Loading profiles…</div>}
-      {!loading && profiles.length === 0 && (
+      {!loading && names.length === 0 && (
         <div className="empty-state">
           <div style={{ fontSize:32, marginBottom:10 }}>🛂</div>
           <div>No traveler profiles yet.</div>
-          <div style={{ fontSize:12, color:'#4d6080', marginTop:6 }}>Add a profile with passport details to enable visa checking.</div>
+          <div style={{ fontSize:12, color:'#4d6080', marginTop:6 }}>Add a person and their passport(s) to enable visa checking.</div>
         </div>
       )}
 
-      {profiles.map(function(p) {
-        var expiry = p.passportExpiry ? new Date(p.passportExpiry) : null;
-        var daysLeft = expiry ? Math.ceil((expiry - new Date()) / 86400000) : null;
-        var expiryColor = daysLeft === null ? '#8ab4f8' : daysLeft < 180 ? '#f87171' : daysLeft < 365 ? '#fbbf24' : '#4ade80';
+      {names.map(function(name) {
+        const passports = groups[name];
         return (
-          <div key={p.id} style={cardStyle}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-              <div style={{ fontSize:17, fontWeight:700, color:'#dde1f0', marginBottom:10 }}>{p.name}</div>
-              <div style={{ display:'flex', gap:8 }}>
-                <button className="btn-sm" onClick={() => openEdit(p)}>✏️</button>
-                <button className="btn-sm btn-danger" onClick={() => onDelete(p.id)} disabled={busy}>✕</button>
-              </div>
+          <div key={name} style={{ background:'#141826', border:'1px solid #2a3050', borderRadius:10, marginBottom:14, overflow:'hidden' }}>
+            {/* Person header */}
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 18px', background:'#0e1220' }}>
+              <div style={{ fontWeight:700, color:'#dde1f0', fontSize:16 }}>{name}</div>
+              <button className="btn-sm" onClick={() => openNew(name)} disabled={busy}>+ Passport</button>
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px 24px' }}>
-              <div>
-                <div style={labelStyle}>Passport{p.passportCountry && p.passportCountry.includes(',') ? 's' : ''}</div>
-                <div style={valStyle}>
-                  {p.passportCountry
-                    ? p.passportCountry.split(',').map(function(c, ci) {
-                        return <span key={ci} style={{ display:'inline-block', background:'#1a2a3a', border:'1px solid #2a4060', borderRadius:4, padding:'1px 7px', marginRight:4, fontSize:13 }}>🌍 {c.trim()}</span>;
-                      })
-                    : '—'}
+            {/* One row per passport */}
+            {passports.map(function(p, pi) {
+              var expiry   = p.passportExpiry ? new Date(p.passportExpiry) : null;
+              var daysLeft = expiry ? Math.ceil((expiry - new Date()) / 86400000) : null;
+              var expiryColor = daysLeft === null ? '#5c7080' : daysLeft < 0 ? '#f87171' : daysLeft < 180 ? '#f87171' : daysLeft < 365 ? '#fbbf24' : '#4ade80';
+              return (
+                <div key={p.id} style={{ padding:'12px 18px', borderTop:'1px solid #1a2040', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:14, fontWeight:600, color:'#dde1f0', marginBottom:3 }}>🌍 {p.passportCountry}</div>
+                    {p.passportExpiry && (
+                      <div style={{ fontSize:12, color: expiryColor, marginBottom: p.specialDocs || p.notes ? 3 : 0 }}>
+                        Expires {p.passportExpiry}
+                        <span style={{ marginLeft:6 }}>
+                          {daysLeft === null ? '' : daysLeft < 0 ? '⚠️ EXPIRED' : '(' + daysLeft + 'd left)'}
+                        </span>
+                      </div>
+                    )}
+                    {p.specialDocs && <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:2 }}>📋 {p.specialDocs}</div>}
+                    {p.notes      && <div style={{ fontSize:12, color:'#5c7080' }}>{p.notes}</div>}
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                    <button className="btn-sm" onClick={() => openEdit(p)}>✏️</button>
+                    <button className="btn-sm btn-danger" onClick={() => onDelete(p.id)} disabled={busy}>✕</button>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div style={labelStyle}>Passport Expiry</div>
-                <div style={{ ...valStyle, color: expiryColor }}>
-                  {p.passportExpiry || '—'}
-                  {daysLeft !== null && <span style={{ fontSize:11, marginLeft:6 }}>({daysLeft > 0 ? daysLeft + 'd left' : 'EXPIRED'})</span>}
-                </div>
-              </div>
-              {p.specialDocs && <div style={{ gridColumn:'1/-1' }}><div style={labelStyle}>Special Docs</div><div style={valStyle}>📋 {p.specialDocs}</div></div>}
-              {p.notes && <div style={{ gridColumn:'1/-1' }}><div style={labelStyle}>Notes</div><div style={{ fontSize:13, color:'#8ab4f8' }}>{p.notes}</div></div>}
-            </div>
+              );
+            })}
           </div>
         );
       })}
@@ -4699,13 +4709,13 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
       {modal && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">{modal === 'new' ? 'Add Profile' : 'Edit Profile'}</div>
+            <div className="modal-title">{modal === 'new' ? 'Add Passport' : 'Edit Passport'}</div>
             {[
-              { key:'name',           label:'Name',             placeholder:'e.g. Ahmed' },
-              { key:'passportCountry',label:'Passport Countries (comma-separated)', placeholder:'e.g. Egypt, Canada' },
-              { key:'passportExpiry', label:'Passport Expiry',  type:'date' },
-              { key:'specialDocs',    label:'Special Docs',     placeholder:'e.g. US Green Card, UK Visa' },
-              { key:'notes',          label:'Notes',            placeholder:'Optional' },
+              { key:'name',            label:'Person Name',      placeholder:'e.g. Ahmed' },
+              { key:'passportCountry', label:'Passport Country', placeholder:'e.g. Egypt' },
+              { key:'passportExpiry',  label:'Expiry Date',      type:'date' },
+              { key:'specialDocs',     label:'Special Docs',     placeholder:'e.g. US Green Card, UK Ancestry Visa' },
+              { key:'notes',           label:'Notes',            placeholder:'e.g. Renewed 2024' },
             ].map(function(f) {
               return (
                 <div key={f.key} style={{ marginBottom:12 }}>

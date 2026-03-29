@@ -5663,13 +5663,19 @@ function webGetVisaRequirements_(params) {
   }
   var destName = headers[destIdx].trim();
 
-  // Build results per traveler — support comma-separated passport countries
-  var results = [];
+  // Group profiles by name (each row = one passport, name is the combining key)
+  var byName = {};
+  var nameOrder = [];
   profiles.forEach(function(prof) {
-    var passports = prof.passportCountry.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
-    var passportResults = [];
-    passports.forEach(function(passport) {
-      var passNorm   = norm(passport);
+    if (!byName[prof.name]) { byName[prof.name] = []; nameOrder.push(prof.name); }
+    byName[prof.name].push(prof);
+  });
+
+  var order = { green: 0, yellow: 1, red: 2, grey: 3 };
+  var results = [];
+  nameOrder.forEach(function(name) {
+    var passportResults = byName[name].map(function(prof) {
+      var passNorm   = norm(prof.passportCountry);
       var passLookup = aliases[passNorm] ? norm(aliases[passNorm]) : passNorm;
       var status = null;
       for (var j = 1; j < lines.length; j++) {
@@ -5679,20 +5685,16 @@ function webGetVisaRequirements_(params) {
           break;
         }
       }
-      passportResults.push({
-        passportCountry: passport,
+      return {
+        passportCountry: prof.passportCountry,
         status:          status,
         label:           visaStatusLabel_(status),
         color:           visaStatusColor_(status)
-      });
+      };
     });
-    // Sort: best status first (green > yellow > red > grey)
-    var order = { green: 0, yellow: 1, red: 2, grey: 3 };
+    // Sort best first
     passportResults.sort(function(a, b) { return (order[a.color] || 3) - (order[b.color] || 3); });
-    results.push({
-      name:      prof.name,
-      passports: passportResults
-    });
+    results.push({ name: name, passports: passportResults });
   });
 
   return { ok: true, results: results, destination: destName };
