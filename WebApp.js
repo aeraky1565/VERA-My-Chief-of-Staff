@@ -229,6 +229,12 @@ function doGet(e) {
       case 'save_scenario':          return jsonOut_(webSaveScenario_(e.parameter));
       case 'seed_financial_goals':   return jsonOut_(seedFinancialGoalsFromDoc_());
       case 'sync_life_plan_doc':     return jsonOut_(webSyncLifePlanDoc_());
+      // Resources — Explore tab (Issue #129)
+      case 'get_resources':          return jsonOut_(webGetResources_());
+      case 'add_resource':           return jsonOut_(webAddResource_(e));
+      case 'update_resource':        return jsonOut_(webUpdateResource_(e));
+      case 'delete_resource':        return jsonOut_(webDeleteResource_(e));
+      case 'fetch_resource_content': return jsonOut_(webFetchResourceContent_(e));
       // Important Dates — People tab (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
@@ -5787,5 +5793,135 @@ function webSyncLifePlanDoc_() {
     return { ok: true, parsed: data };
   } catch (err) {
     return { ok: false, error: err.message };
+  }
+}
+
+// ============================================================
+// RESOURCES — Issue #129
+// ============================================================
+
+function webGetResources_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESOURCES);
+  var resources = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      resources.push(obj);
+    });
+  }
+  return { ok: true, resources: resources };
+}
+
+function webAddResource_(e) {
+  var p           = e.parameter || {};
+  var name        = (p.name        || '').trim();
+  var category    = (p.category    || 'Other').trim();
+  var description = (p.description || '').trim();
+  var url         = (p.url         || '').trim();
+  var tags        = (p.tags        || '').trim();
+  if (!name || !url) return { ok: false, error: 'name and url required' };
+
+  // Extract Drive File ID from URL if it is a Google Drive/Docs/Sheets link
+  var driveFileId = '';
+  var m = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+  if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+  if (m) driveFileId = m[1];
+
+  var id        = 'res_' + Date.now();
+  var dateAdded = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var ss        = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  ss.getSheetByName(TABS.RESOURCES)
+    .appendRow([id, name, category, description, driveFileId, url, tags, dateAdded]);
+  return { ok: true, resource: { ID: id, Name: name, Category: category, Description: description,
+                                  'Drive File ID': driveFileId, URL: url, Tags: tags, 'Date Added': dateAdded } };
+}
+
+function webUpdateResource_(e) {
+  var p           = e.parameter || {};
+  var id          = (p.id          || '').trim();
+  var name        = (p.name        || '').trim();
+  var category    = (p.category    || '').trim();
+  var description = (p.description || '').trim();
+  var url         = (p.url         || '').trim();
+  var tags        = (p.tags        || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESOURCES);
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  var colMap = {};
+  hdrs.forEach(function(h, i) { colMap[h] = i + 1; });
+
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      if (name)        sheet.getRange(i+1, colMap['Name']).setValue(name);
+      if (category)    sheet.getRange(i+1, colMap['Category']).setValue(category);
+      if (description !== undefined) sheet.getRange(i+1, colMap['Description']).setValue(description);
+      if (url) {
+        var driveFileId = '';
+        var m = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+        if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+        if (m) driveFileId = m[1];
+        sheet.getRange(i+1, colMap['URL']).setValue(url);
+        sheet.getRange(i+1, colMap['Drive File ID']).setValue(driveFileId);
+      }
+      if (tags !== undefined) sheet.getRange(i+1, colMap['Tags']).setValue(tags);
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webDeleteResource_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESOURCES);
+  if (!sheet) return { ok: false, error: 'Resources sheet not found' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webFetchResourceContent_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESOURCES);
+  if (!sheet) return { ok: false, error: 'Resources sheet not found' };
+
+  var rows = sheet.getDataRange().getValues();
+  var hdrs = rows[0];
+  var resource = null;
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      resource = {};
+      hdrs.forEach(function(h, j) { resource[h] = rows[i][j]; });
+      break;
+    }
+  }
+  if (!resource) return { ok: false, error: 'not found' };
+
+  var driveFileId = String(resource['Drive File ID'] || '').trim();
+  if (!driveFileId) return { ok: false, error: 'no_drive_file', name: resource['Name'], url: resource['URL'] };
+
+  try {
+    var doc  = DocumentApp.openById(driveFileId);
+    var text = doc.getBody().getText();
+    // Truncate to ~12,000 chars (~3,000 tokens) to stay within context limits
+    if (text.length > 12000) text = text.substring(0, 12000) + '\n[...content truncated...]';
+    return { ok: true, id: id, name: resource['Name'], content: text };
+  } catch (err) {
+    return { ok: false, error: 'cannot_read_file', name: resource['Name'], url: resource['URL'],
+             detail: err.message };
   }
 }

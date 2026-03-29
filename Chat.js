@@ -622,6 +622,23 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
+    // ---- REFERENCE RESOURCES (Issue #129) ------------------------------------
+    (function() {
+      var resList = context.resources;
+      if (!resList || !resList.length) return '';
+      var lines = 'REFERENCE RESOURCES (' + resList.length + ' document' + (resList.length === 1 ? '' : 's') + '):\n';
+      lines += 'These are documents the user has uploaded for VERA to consult. ';
+      lines += 'If a question relates to one of these, say so and offer to read it. ';
+      lines += 'Use fetch_resource_content action to retrieve the actual text.\n';
+      resList.forEach(function(r) {
+        var canRead = String(r['Drive File ID'] || '').trim() ? ' [readable]' : ' [link-only]';
+        lines += '  \u2022 [' + r['ID'] + '] ' + r['Name'] + ' [' + r['Category'] + ']' + canRead + '\n';
+        if (r['Description']) lines += '    ' + r['Description'] + '\n';
+        if (r['Tags']) lines += '    Tags: ' + r['Tags'] + '\n';
+      });
+      return lines + '\n';
+    })() +
+
     // ---- VERA NOTICES — proactive time-sensitive insights (Issue #24) --------
     (function() {
       try {
@@ -714,6 +731,8 @@ function buildChatSystemPrompt_(context) {
     // Credit Card Hub (Issues #115 + #117)
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
+    // Resources (Issue #129)
+    'ACTION:fetch_resource_content|{resourceId}  \u2014 read a reference document\'s text (Google Docs only); resourceId from REFERENCE RESOURCES above\n' +
     '\n' +
 
     'RULES:\n' +
@@ -798,6 +817,10 @@ function buildChatSystemPrompt_(context) {
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
+    '- REFERENCE RESOURCES: When REFERENCE RESOURCES are listed above and a user question relates to one, ' +
+    'proactively say "I have a document on this — let me check it." Then emit ACTION:fetch_resource_content|{resourceId}. ' +
+    'The backend will inject the document text into the next turn so you can answer specifically. ' +
+    'For [link-only] resources (no Drive File ID), provide the URL and explain you cannot read it directly.\n' +
     '- WEB SEARCH: When you call web_search, briefly tell Ahmed you\'re looking it up. ' +
     'Synthesize results naturally — do not dump raw snippets. If results are empty ' +
     'or unhelpful, say so. Only search when context data is insufficient.\n' +
@@ -830,6 +853,7 @@ function detectChatIntent_(msg) {
   var m = msg.toLowerCase();
   return {
     finance:  /\b(bill|bills|spend|budget|credit card|cashback|loyalty program|payment|subscription|afford|expense|financial goal|invest|saving)\b/.test(m) || /what.?if|reward point|money/.test(m),
+    resources: /\b(policy|policies|coverage|allowed|eligible|benefit|benefits|insurance|leave|pto|parental|bereavement|remote work|work from|abroad|verizon|hr|handbook|guideline|regulation|rule|entitle|document|procedure)\b/.test(m),
     travel:   /\b(trip|travel|vacation|flight|hotel|cruise|packing|itinerary|passport|visa|airport|airline|abroad|destination)\b/.test(m) || /bucket list/.test(m),
     home:     /\b(recipe|cook|takeout|grocery|pantry|dinner|lunch|kitchen|maintenance|appliance|household)\b/.test(m) || /home item|shopping list|eating out|what.*eat|food/.test(m),
     career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
@@ -1163,6 +1187,27 @@ function buildChatContext_(userMessage) {
     catch(e) { Logger.log('Chat context: financialGoals — ' + e.message); financialGoals = []; }
   }
 
+  // Resources registry — resources intent (registry only, no content; content fetched on-demand)
+  var resources = null;
+  if (intent.resources) {
+    try {
+      var resSheet = ss.getSheetByName(TABS.RESOURCES);
+      if (resSheet && resSheet.getLastRow() >= 2) {
+        var resRows = resSheet.getDataRange().getValues();
+        var resHdrs = resRows[0];
+        resources = [];
+        resRows.slice(1).forEach(function(r) {
+          if (!r[0]) return;
+          var obj = {};
+          resHdrs.forEach(function(h, i) { obj[h] = r[i]; });
+          resources.push(obj);
+        });
+      } else {
+        resources = [];
+      }
+    } catch(e) { Logger.log('Chat context: resources — ' + e.message); resources = []; }
+  }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1188,6 +1233,7 @@ function buildChatContext_(userMessage) {
     prescriptions:   prescriptions,
     cardsData:       cardsData,
     financialGoals:  financialGoals,
+    resources:       resources,
   };
 }
 
@@ -2112,6 +2158,22 @@ function executeActions_(rawText) {
           executed.push('save_scenario (' + ssLabel + ', id=' + ssId + ')');
         } else {
           errors.push('save_scenario: goal ' + ssGoalId + ' not found or amount invalid');
+        }
+      }
+      // Resources — fetch Google Doc content (Issue #129)
+      else if (type === 'fetch_resource_content') {
+        var frId = (args[0] || '').trim();
+        if (frId) {
+          var frResult = webFetchResourceContent_({ parameter: { id: frId } });
+          if (frResult.ok) {
+            executed.push('fetch_resource_content:' + JSON.stringify({ id: frId, name: frResult.name, content: frResult.content }));
+          } else if (frResult.error === 'no_drive_file' || frResult.error === 'cannot_read_file') {
+            executed.push('fetch_resource_content:link_only:' + frResult.name + ':' + (frResult.url || ''));
+          } else {
+            errors.push('fetch_resource_content: ' + (frResult.error || 'unknown error'));
+          }
+        } else {
+          errors.push('fetch_resource_content: resource id required');
         }
       }
 

@@ -70,6 +70,7 @@ const TABS = {
   GIFT_PEOPLE:        'Gift People',          // Per-person gift idea list: who (Issue #105)
   GIFT_IDEAS:         'Gift Ideas',           // Per-person gift idea list: ideas (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
+  RESOURCES:          'Resources',            // Reference documents & policy links (Issue #129)
   CHORES:             'Chores',               // Household chore checklist by cadence (Issue #124)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, registration, insurance (Issue #125)
   PROFILES:           'Traveler Profiles',    // Passport & travel document profiles per person (Issue #123)
@@ -121,6 +122,7 @@ const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Poin
 const GIFT_PEOPLE_HEADERS        = ['Name']; // Issue #105
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date']; // Issue #105
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year']; // Issue #80
+const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Description', 'Drive File ID', 'URL', 'Tags', 'Date Added']; // Issue #129
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date']; // Issue #124
 const PROFILES_HEADERS           = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes']; // Issue #123
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Goal Name', 'Target Amount', 'Current Amount', 'Target Date', 'Monthly Contribution', 'APY', 'Owner', 'Account', 'Status', 'Notes']; // Issue #127
@@ -246,6 +248,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.GIFT_PEOPLE,          GIFT_PEOPLE_HEADERS, [['Ahmed'], ['Victoria']]); // Issue #105
   ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS); // Issue #105
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS); // Issue #80
+  ensureSheet(ss, TABS.RESOURCES,            RESOURCE_HEADERS);         // Issue #129
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);           // Issue #124
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);          // Issue #125
   ensureSheet(ss, TABS.PROFILES,             PROFILES_HEADERS);         // Issue #123

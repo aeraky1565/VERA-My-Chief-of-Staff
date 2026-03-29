@@ -12421,10 +12421,188 @@ function SharedInterestTab({ interests, onDelete, onAdd, busy }) {
   );
 }
 
+// ---- ResourcesView (Issue #129) ---------------------------------------------
+
+const RESOURCE_CATEGORIES = ['HR & Benefits', 'Work Policy', 'Finance', 'Travel', 'Personal', 'Legal', 'Other'];
+
+function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) {
+  const [showModal, setShowModal] = React.useState(false);
+  const [editing,   setEditing]   = React.useState(null); // resource obj or null
+  const [form, setForm] = React.useState({ name: '', category: 'Work Policy', description: '', url: '', tags: '' });
+  const [confirmId, setConfirmId] = React.useState(null);
+
+  function openAdd() {
+    setEditing(null);
+    setForm({ name: '', category: 'Work Policy', description: '', url: '', tags: '' });
+    setShowModal(true);
+  }
+
+  function openEdit(r) {
+    setEditing(r);
+    setForm({ name: r.Name, category: r.Category, description: r.Description, url: r.URL, tags: r.Tags });
+    setShowModal(true);
+  }
+
+  async function handleSubmit() {
+    if (!form.name.trim() || !form.url.trim()) return;
+    if (editing) {
+      await onUpdate(editing.ID, form);
+    } else {
+      await onAdd(form);
+    }
+    setShowModal(false);
+  }
+
+  // Group by category
+  const grouped = {};
+  const order   = [];
+  (resources || []).forEach(function(r) {
+    const cat = r.Category || 'Other';
+    if (!grouped[cat]) { grouped[cat] = []; order.push(cat); }
+    grouped[cat].push(r);
+  });
+
+  if (loading) return <div className="loading-text">Loading resources…</div>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: '#4d6080' }}>
+          Reference documents and policies VERA can consult when answering your questions.
+        </div>
+        <button className="btn-primary" onClick={openAdd} disabled={busy}>+ Add Resource</button>
+      </div>
+
+      {(!resources || resources.length === 0) ? (
+        <div className="empty-state" style={{ paddingTop: 40 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>📎</div>
+          <div style={{ fontWeight: 600, color: '#a0b0c8', marginBottom: 6 }}>No resources yet</div>
+          <div style={{ fontSize: 13, color: '#4d6080', marginBottom: 16 }}>
+            Add links to Google Docs, PDFs, or policy pages.<br/>
+            VERA will reference them when answering relevant questions.
+          </div>
+          <button className="btn-primary" onClick={openAdd} disabled={busy}>+ Add First Resource</button>
+        </div>
+      ) : (
+        <div>
+          {order.map(cat => (
+            <div key={cat} style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#5a7ba0',
+                            textTransform: 'uppercase', marginBottom: 8, paddingBottom: 4,
+                            borderBottom: '1px solid #1e2d40' }}>
+                {cat}
+              </div>
+              {grouped[cat].map(r => (
+                <div key={r.ID} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
+                                         padding: '10px 12px', borderRadius: 8, marginBottom: 6,
+                                         background: '#0d1b2a', border: '1px solid #1e2d40' }}>
+                  <div style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}>
+                    {r['Drive File ID'] ? '📄' : '🔗'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#c8d8ea', marginBottom: 2 }}>
+                      {r.Name}
+                    </div>
+                    {r.Description && (
+                      <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 4 }}>{r.Description}</div>
+                    )}
+                    {r.Tags && (
+                      <div style={{ fontSize: 11, color: '#3a5070' }}>{r.Tags.split(',').map(t => t.trim()).filter(Boolean).map(t => (
+                        <span key={t} style={{ background: '#1a2d42', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>{t}</span>
+                      ))}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <a href={r.URL} target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: 12, color: '#4a9eff', textDecoration: 'none',
+                                padding: '4px 8px', border: '1px solid #1e3a5a', borderRadius: 5 }}>
+                      ↗ Open
+                    </a>
+                    <button style={{ fontSize: 12, padding: '4px 8px', background: 'transparent',
+                                     border: '1px solid #1e2d40', borderRadius: 5, color: '#7a99bb', cursor: 'pointer' }}
+                            onClick={() => openEdit(r)} disabled={busy}>✏</button>
+                    {confirmId === r.ID ? (
+                      <span style={{ display: 'flex', gap: 4 }}>
+                        <button style={{ fontSize: 11, padding: '4px 7px', background: '#5a1a1a',
+                                         border: '1px solid #8a2a2a', borderRadius: 5, color: '#ff7070', cursor: 'pointer' }}
+                                onClick={() => { onDelete(r.ID); setConfirmId(null); }} disabled={busy}>Confirm</button>
+                        <button style={{ fontSize: 11, padding: '4px 7px', background: 'transparent',
+                                         border: '1px solid #1e2d40', borderRadius: 5, color: '#4d6080', cursor: 'pointer' }}
+                                onClick={() => setConfirmId(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <button style={{ fontSize: 12, padding: '4px 8px', background: 'transparent',
+                                       border: '1px solid #1e2d40', borderRadius: 5, color: '#7a4040', cursor: 'pointer' }}
+                              onClick={() => setConfirmId(r.ID)} disabled={busy}>🗑</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-title">{editing ? 'Edit Resource' : 'Add Resource'}</div>
+
+            <label className="modal-label">Name *</label>
+            <input className="modal-input" placeholder="e.g. Verizon Medical Insurance Coverage"
+                   value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+
+            <label className="modal-label">Category</label>
+            <select className="modal-input" value={form.category}
+                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+              {RESOURCE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <label className="modal-label">URL * (Google Drive link or any web URL)</label>
+            <input className="modal-input" placeholder="https://docs.google.com/..."
+                   value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
+            {form.url && !/docs\.google\.com|drive\.google\.com/.test(form.url) && (
+              <div style={{ fontSize: 11, color: '#7a6a30', marginTop: -8, marginBottom: 8 }}>
+                ⚠ Non-Google Drive links are reference-only — VERA can't read their content.
+              </div>
+            )}
+            {form.url && /docs\.google\.com|drive\.google\.com/.test(form.url) && (
+              <div style={{ fontSize: 11, color: '#3a7a50', marginTop: -8, marginBottom: 8 }}>
+                ✓ Google Drive link detected — VERA can read this document's content.
+              </div>
+            )}
+
+            <label className="modal-label">Description</label>
+            <textarea className="modal-input" rows={2}
+                      placeholder="What is this document about? (helps VERA know when to use it)"
+                      value={form.description}
+                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                      style={{ resize: 'vertical' }} />
+
+            <label className="modal-label">Tags (comma-separated)</label>
+            <input className="modal-input" placeholder="e.g. health, insurance, massage, dental"
+                   value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
+
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn-primary"
+                      onClick={handleSubmit}
+                      disabled={busy || !form.name.trim() || !form.url.trim()}>
+                {editing ? 'Save Changes' : 'Add Resource'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Explore tab (Issue #101) -----------------------------------------------
 
 function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddInterest,
                       ideas, ideasLoading, onAddIdea, onPromoteIdea, onArchiveIdea,
+                      resources, resourcesLoading, onAddResource, onUpdateResource, onDeleteResource,
                       busy }) {
   const [sub, setSub] = React.useState('interests');
   const subTabs = [
@@ -12464,11 +12642,14 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
             />
       )}
       {sub === 'resources' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>A read-it-later reference library for books, articles and videos.</div>
-        </div>
+        <ResourcesView
+          resources={resources}
+          loading={!!resourcesLoading}
+          busy={busy}
+          onAdd={onAddResource}
+          onUpdate={onUpdateResource}
+          onDelete={onDeleteResource}
+        />
       )}
       {sub === 'experiments' && (
         <div className="empty-state" style={{ paddingTop: 48 }}>
@@ -12569,6 +12750,7 @@ function App() {
   const [projects,   setProjects]   = useState([]);
   const [goals,      setGoals]      = useState([]);
   const [interests,  setInterests]  = useState([]);
+  const [resources,  setResources]  = useState([]);   // reference documents (Issue #129)
   const [shopping,        setShopping]        = useState([]);
   const [purchaseHistory, setPurchaseHistory] = useState([]);
   const [career,     setCareer]     = useState(null);  // { position, goals, progression, development, wins, network }
@@ -12785,6 +12967,57 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, ideas: false }));
+  }
+
+  async function loadResources(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, resources: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'get_resources' });
+      setResources(data.resources || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, resources: false }));
+  }
+
+  async function handleAddResource(fields) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, {
+        action: 'add_resource', name: fields.name, category: fields.category,
+        description: fields.description || '', url: fields.url, tags: fields.tags || '',
+      });
+      if (data.ok) setResources(prev => [...prev, data.resource]);
+      else setError(data.error || 'Failed to add resource');
+    } catch (err) { setError(err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateResource(id, fields) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, {
+        action: 'update_resource', id, name: fields.name, category: fields.category,
+        description: fields.description || '', url: fields.url, tags: fields.tags || '',
+      });
+      if (data.ok) await loadResources(apiUrl, apiToken);
+      else setError(data.error || 'Failed to update resource');
+    } catch (err) { setError(err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteResource(id) {
+    if (!apiUrl || !apiToken) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'delete_resource', id });
+      if (data.ok) setResources(prev => prev.filter(r => r.ID !== id));
+      else setError(data.error || 'Failed to delete resource');
+    } catch (err) { setError(err.message); }
+    setBusy(false);
   }
 
   async function loadCountries() {
@@ -14343,7 +14576,7 @@ function App() {
                 onClick={() => {
                   setActiveTab(tab);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
-                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); }
+                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
@@ -14504,6 +14737,11 @@ function App() {
                 onAddIdea={handleAddIdea}
                 onPromoteIdea={handlePromoteIdea}
                 onArchiveIdea={handleArchiveIdea}
+                resources={resources}
+                resourcesLoading={!!tabLoading.resources}
+                onAddResource={handleAddResource}
+                onUpdateResource={handleUpdateResource}
+                onDeleteResource={handleDeleteResource}
                 busy={busy}
               />
             )}
