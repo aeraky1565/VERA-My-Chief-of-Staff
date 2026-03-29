@@ -745,9 +745,26 @@ function writeFlags(flags) {
   // Build fingerprint set of ALL flags ever written (open, ack, snoozed, resolved)
   const existing = getExistingFlagFingerprints_(sheet);
 
+  // Build set of ALL existing IDs (column A) to prevent duplicate IDs across runs
+  const existingIds = new Set();
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (r[0]) existingIds.add(String(r[0]).trim()); });
+  }
+
+  // Start seqNum after the highest sequence already used for today's timestamp
+  let seqNum = 1;
+  existingIds.forEach(function(id) {
+    // ID format: FLAG-YYYYMMDD-NN
+    var m = id.match(/^FLAG-(\d{8})-(\d+)$/);
+    if (m && m[1] === timestamp) {
+      var n = parseInt(m[2], 10);
+      if (n >= seqNum) seqNum = n + 1;
+    }
+  });
+
   let written = 0;
   let skipped = 0;
-  let seqNum  = 1;
 
   flags.forEach(function(flag) {
     const fp = makeFlagFingerprint_(flag.source, flag.flag, flag.key);
@@ -766,8 +783,13 @@ function writeFlags(flags) {
       return;
     }
 
-    const id = 'FLAG-' + timestamp + '-' + String(seqNum).padStart(2, '0');
-    seqNum++;
+    // Guarantee unique ID — skip any sequence number already taken
+    let id;
+    do {
+      id = 'FLAG-' + timestamp + '-' + String(seqNum).padStart(2, '0');
+      seqNum++;
+    } while (existingIds.has(id));
+    existingIds.add(id); // Reserve within this batch
 
     const row = [
       id,                     // A: ID
