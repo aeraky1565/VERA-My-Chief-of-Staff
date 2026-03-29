@@ -219,6 +219,16 @@ function doGet(e) {
       case 'save_profile':          return jsonOut_(webSaveProfile_(e.parameter));
       case 'delete_profile':        return jsonOut_(webDeleteProfile_(e.parameter));
       case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
+      // Financial Goals + Scenarios — Finances tab (Issue #127)
+      case 'financial_goals':        return jsonOut_(webGetFinancialGoals_());
+      case 'add_financial_goal':     return jsonOut_(webAddFinancialGoal_(e.parameter));
+      case 'update_financial_goal':  return jsonOut_(webUpdateFinancialGoal_(e.parameter));
+      case 'delete_financial_goal':  return jsonOut_(webDeleteFinancialGoal_(e.parameter));
+      case 'simulate_scenario':      return jsonOut_(webSimulateScenario_(e.parameter));
+      case 'saved_scenarios':        return jsonOut_(webGetSavedScenarios_(e.parameter));
+      case 'save_scenario':          return jsonOut_(webSaveScenario_(e.parameter));
+      case 'seed_financial_goals':   return jsonOut_(seedFinancialGoalsFromDoc_());
+      case 'sync_life_plan_doc':     return jsonOut_(webSyncLifePlanDoc_());
       // Important Dates — People tab (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
@@ -5717,4 +5727,65 @@ function visaStatusColor_(status) {
   if (status === 'VOA' || status === 'ETA') return 'yellow';
   if (status === 'VF' || /^\d+$/.test(status) || status === 'CB') return 'green';
   return 'grey';
+}
+
+// ============================================================
+// Financial Goals + Scenarios (Issue #127)
+// ============================================================
+
+function webGetFinancialGoals_() {
+  var goals = getFinancialGoals_();
+  return { ok: true, goals: goals };
+}
+
+function webAddFinancialGoal_(params) {
+  var id = createFinancialGoal_(params);
+  return { ok: true, id: id };
+}
+
+function webUpdateFinancialGoal_(params) {
+  var ok = updateFinancialGoal_(params.id, params);
+  return { ok: ok };
+}
+
+function webDeleteFinancialGoal_(params) {
+  var ok = deleteFinancialGoal_(params.id);
+  return { ok: ok };
+}
+
+function webSimulateScenario_(params) {
+  var goalId     = params.goalId;
+  var changeType = params.changeType;  // 'one-time' | 'recurring'
+  var amount     = Number(params.amount) || 0;
+
+  var goals = getFinancialGoals_();
+  var goal  = goals.filter(function(g) { return g.id === goalId; })[0];
+  if (!goal) return { ok: false, error: 'Goal not found' };
+
+  var result = simulateScenario_(goal, changeType, amount);
+  return { ok: true, result: result };
+}
+
+function webGetSavedScenarios_(params) {
+  var scenarios = getFinancialScenarios_(params.goalId || null);
+  return { ok: true, scenarios: scenarios };
+}
+
+function webSaveScenario_(params) {
+  var goals  = getFinancialGoals_();
+  var goal   = goals.filter(function(g) { return g.id === params.goalId; })[0];
+  if (!goal) return { ok: false, error: 'Goal not found' };
+
+  var simResult = simulateScenario_(goal, params.changeType, Number(params.amount));
+  var id = saveScenario_(params.goalId, params.label || '', params.changeType, Number(params.amount), params.notes || '', simResult);
+  return { ok: true, id: id, result: simResult };
+}
+
+function webSyncLifePlanDoc_() {
+  try {
+    var data = readLifePlanDoc_();
+    return { ok: true, parsed: data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }

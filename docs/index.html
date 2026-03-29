@@ -5270,6 +5270,421 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
   );
 }
 
+// ---- Financial Goals Tab (Issue #127) ----------------------------------------
+
+function fmtMoney(n) {
+  if (n == null || n === '') return '—';
+  return '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function fmtGoalDate(d) {
+  if (!d) return '—';
+  var dt = new Date(d + 'T12:00:00');
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function projectionChip(proj, targetDate) {
+  if (!proj) return null;
+  if (proj.achieved) return <span style={{ fontSize:11, fontWeight:700, color:'#4ade80', background:'#0a2a1a', border:'1px solid #1a7a3a', borderRadius:8, padding:'2px 8px' }}>✓ Achieved</span>;
+  if (proj.noContribution) return <span style={{ fontSize:11, fontWeight:700, color:'#fbbf24', background:'#2a2200', border:'1px solid #7a6500', borderRadius:8, padding:'2px 8px' }}>⚠ No contribution set</span>;
+  if (!proj.projectedDate) return null;
+  var onTrack = proj.onTrack !== false;
+  var dEl     = proj.daysEarlyOrLate;
+  var label   = onTrack
+    ? (dEl !== null ? (dEl === 0 ? 'On target' : dEl + 'd early') : 'On track')
+    : (dEl !== null ? Math.abs(dEl) + 'd late' : 'Off track');
+  return (
+    <span style={{ fontSize:11, fontWeight:700,
+                   color: onTrack ? '#4ade80' : '#f87171',
+                   background: onTrack ? '#0a2a1a' : '#2a0a0a',
+                   border: '1px solid ' + (onTrack ? '#1a7a3a' : '#7a1a1a'),
+                   borderRadius:8, padding:'2px 8px' }}>
+      {onTrack ? '✓' : '⚠'} {label}
+    </span>
+  );
+}
+
+function GoalCard({ goal, projection, onEdit, onDelete, onSimulate, busy }) {
+  const pct = goal.targetAmount > 0 ? Math.min(100, Math.round(goal.currentAmount / goal.targetAmount * 100)) : 0;
+  const ownerColor = goal.owner === 'Ahmed' ? '#5c9eff' : goal.owner === 'Victoria' ? '#b87cff' : '#4ade80';
+  const ownerBg    = goal.owner === 'Ahmed' ? '#0d2040' : goal.owner === 'Victoria' ? '#1a0d30' : '#0a2a1a';
+  const statusColor = goal.status === 'Achieved' ? '#4ade80' : goal.status === 'Active' ? '#8ab4f8' : '#fbbf24';
+
+  return (
+    <div style={{ background:'#141826', border:'1px solid #2a3050', borderRadius:12, padding:'18px 20px', marginBottom:14 }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0', marginBottom:4 }}>{goal.name}</div>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center' }}>
+            <span style={{ fontSize:10, fontWeight:700, color:ownerColor, background:ownerBg, borderRadius:8, padding:'1px 8px' }}>{goal.owner}</span>
+            <span style={{ fontSize:10, color:statusColor }}>{goal.status}</span>
+            {projection && projectionChip(projection, goal.targetDate)}
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:6 }}>
+          <button className="btn-sm" onClick={() => onSimulate(goal)} title="What-If Simulator">🔮</button>
+          <button className="btn-sm" onClick={() => onEdit(goal)}>✏️</button>
+          <button className="btn-sm btn-danger" onClick={() => onDelete(goal.id)} disabled={busy}>✕</button>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ marginBottom:10 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#8ab4f8', marginBottom:4 }}>
+          <span>{fmtMoney(goal.currentAmount)} saved</span>
+          <span>{pct}% of {fmtMoney(goal.targetAmount)}</span>
+        </div>
+        <div style={{ height:8, background:'#1a2040', borderRadius:4, overflow:'hidden' }}>
+          <div style={{ height:'100%', width: pct + '%', background: pct >= 100 ? '#4ade80' : pct >= 60 ? '#5c9eff' : '#fbbf24', borderRadius:4, transition:'width .4s' }} />
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+        {[
+          { label:'Monthly', value: goal.monthlyContribution ? fmtMoney(goal.monthlyContribution) + '/mo' : '—' },
+          { label:'Target Date', value: fmtGoalDate(goal.targetDate) },
+          { label:'Projected', value: projection && !projection.noContribution && !projection.achieved && projection.projectedDate ? fmtGoalDate(projection.projectedDate) : (projection && projection.achieved ? 'Done ✓' : '—') },
+        ].map(function(s) {
+          return (
+            <div key={s.label} style={{ background:'#0d1520', borderRadius:8, padding:'8px 10px' }}>
+              <div style={{ fontSize:10, color:'#5c7080', marginBottom:2, textTransform:'uppercase', letterSpacing:'0.05em' }}>{s.label}</div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#dde1f0' }}>{s.value}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {goal.notes && <div style={{ fontSize:12, color:'#5c7080', marginTop:8 }}>{goal.notes}</div>}
+    </div>
+  );
+}
+
+function ScenarioSimulatorModal({ goal, apiUrl, apiToken, busy, onClose }) {
+  const [changeType,    setChangeType]    = React.useState('one-time');
+  const [amount,        setAmount]        = React.useState('');
+  const [description,   setDescription]  = React.useState('');
+  const [result,        setResult]        = React.useState(null);
+  const [loading,       setLoading]       = React.useState(false);
+  const [saving,        setSaving]        = React.useState(false);
+  const [saved,         setSaved]         = React.useState(false);
+
+  async function runSim() {
+    if (!amount) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action:'simulate_scenario', goalId:goal.id, changeType, amount });
+      if (data.ok) setResult(data.result);
+    } catch(e) {}
+    setLoading(false);
+  }
+
+  async function saveScenario() {
+    if (!result) return;
+    setSaving(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action:'save_scenario', goalId:goal.id, label:description||changeType+' $'+amount, changeType, amount, notes:description });
+      setSaved(true);
+    } catch(e) {}
+    setSaving(false);
+  }
+
+  const VC = VISA_COLOR; // reuse color map: green/yellow/red/grey
+  const baseColor = result ? (result.baseline.onTrack ? VC.green : VC.red) : VC.grey;
+  const scenColor = result ? (result.atRisk ? VC.red : result.scenario.noContribution ? VC.red : VC.green) : VC.grey;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth:480 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">🔮 What-If Simulator</div>
+        <div style={{ fontSize:13, color:'#8ab4f8', marginBottom:16 }}>
+          {goal.name} — {fmtMoney(goal.targetAmount)}{goal.targetDate ? ' by ' + fmtGoalDate(goal.targetDate) : ''}
+        </div>
+
+        {/* Change type toggle */}
+        <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+          {[['one-time','💳 One-time purchase'],['recurring','🔄 Recurring expense']].map(function([v,l]) {
+            var active = changeType === v;
+            return (
+              <button key={v} onClick={() => { setChangeType(v); setResult(null); }}
+                style={{ flex:1, padding:'8px', borderRadius:8, cursor:'pointer', fontWeight:600, fontSize:12,
+                         border: active ? '1.5px solid #5c9eff' : '1.5px solid #2a3a50',
+                         background: active ? '#0d2040' : '#0d1520', color: active ? '#5c9eff' : '#8ab4f8' }}>
+                {l}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:4 }}>Amount ($)</div>
+          <input className="modal-input" type="number" min="0" placeholder="e.g. 30000"
+            value={amount} onChange={e => { setAmount(e.target.value); setResult(null); }} />
+        </div>
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:4 }}>Description (optional)</div>
+          <input className="modal-input" placeholder="e.g. New car purchase"
+            value={description} onChange={e => setDescription(e.target.value)} />
+        </div>
+
+        <button className="btn-primary" style={{ width:'100%', marginBottom:16 }}
+          onClick={runSim} disabled={loading || !amount}>
+          {loading ? 'Calculating…' : 'Run Simulation'}
+        </button>
+
+        {result && (
+          <div style={{ marginBottom:16 }}>
+            {/* Baseline */}
+            <div style={{ background:baseColor.bg, border:'1px solid '+baseColor.border, borderRadius:8, padding:'12px 14px', marginBottom:8 }}>
+              <div style={{ fontSize:11, color:'#5c7080', marginBottom:4, textTransform:'uppercase' }}>Without this change</div>
+              <div style={{ fontSize:14, fontWeight:700, color:baseColor.text }}>
+                {result.baseline.achieved ? '✓ Already achieved' :
+                 result.baseline.noContribution ? 'No contribution set' :
+                 result.baseline.projectedDate ? fmtGoalDate(result.baseline.projectedDate) : '—'}
+              </div>
+              {result.baseline.daysEarlyOrLate !== null && !result.baseline.achieved && (
+                <div style={{ fontSize:12, color:'#8ab4f8', marginTop:2 }}>
+                  {result.baseline.onTrack ? result.baseline.daysEarlyOrLate + ' days early' : Math.abs(result.baseline.daysEarlyOrLate) + ' days late'}
+                </div>
+              )}
+            </div>
+            {/* Scenario */}
+            <div style={{ background:scenColor.bg, border:'1px solid '+scenColor.border, borderRadius:8, padding:'12px 14px', marginBottom:10 }}>
+              <div style={{ fontSize:11, color:'#5c7080', marginBottom:4, textTransform:'uppercase' }}>
+                With {changeType === 'one-time' ? '$'+Number(amount).toLocaleString()+' purchase' : '$'+Number(amount).toLocaleString()+'/mo increase'}
+              </div>
+              <div style={{ fontSize:14, fontWeight:700, color:scenColor.text }}>
+                {result.scenario.noContribution ? 'Goal becomes unreachable' :
+                 result.scenario.projectedDate ? fmtGoalDate(result.scenario.projectedDate) : '—'}
+              </div>
+              {result.delayDays > 0 && (
+                <div style={{ fontSize:12, color:'#fbbf24', marginTop:2 }}>Delay: {result.delayLabel}</div>
+              )}
+            </div>
+            {/* Verdict */}
+            <div style={{ fontSize:13, color:'#dde1f0', background:'#0d1520', borderRadius:8, padding:'10px 12px', lineHeight:1.5 }}>
+              {result.verdict}
+            </div>
+
+            {!saved ? (
+              <button className="btn-secondary" style={{ marginTop:10, width:'100%' }}
+                onClick={saveScenario} disabled={saving}>
+                {saving ? 'Saving…' : '💾 Save Scenario'}
+              </button>
+            ) : (
+              <div style={{ marginTop:10, textAlign:'center', fontSize:13, color:'#4ade80' }}>✓ Scenario saved</div>
+            )}
+          </div>
+        )}
+
+        <button className="btn-secondary" style={{ width:'100%' }} onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function GoalFormModal({ goal, onSave, onClose, busy }) {
+  const [form, setForm] = React.useState(goal ? {
+    name: goal.name, targetAmount: goal.targetAmount, currentAmount: goal.currentAmount,
+    targetDate: goal.targetDate, monthlyContribution: goal.monthlyContribution,
+    apy: goal.apy, owner: goal.owner || 'Joint', account: goal.account,
+    status: goal.status || 'Active', notes: goal.notes
+  } : { name:'', targetAmount:'', currentAmount:'0', targetDate:'', monthlyContribution:'', apy:'0', owner:'Joint', account:'', status:'Active', notes:'' });
+
+  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-title">{goal ? 'Edit Goal' : 'Add Financial Goal'}</div>
+
+        {[
+          { key:'name',                label:'Goal Name',            placeholder:'e.g. House Down Payment' },
+          { key:'targetAmount',        label:'Target Amount ($)',     placeholder:'e.g. 150000', type:'number' },
+          { key:'currentAmount',       label:'Current Amount ($)',    placeholder:'e.g. 12000',  type:'number' },
+          { key:'monthlyContribution', label:'Monthly Contribution ($)', placeholder:'e.g. 2000', type:'number' },
+          { key:'targetDate',          label:'Target Date',          type:'date' },
+          { key:'apy',                 label:'APY % (optional)',     placeholder:'e.g. 4.5',    type:'number' },
+          { key:'account',             label:'Account',              placeholder:'e.g. Joint Savings' },
+          { key:'notes',               label:'Notes',                placeholder:'Optional' },
+        ].map(function(f) {
+          return (
+            <div key={f.key} style={{ marginBottom:10 }}>
+              <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:3 }}>{f.label}</div>
+              <input className="modal-input" type={f.type||'text'} placeholder={f.placeholder||''}
+                value={form[f.key]||''} onChange={e => set(f.key, e.target.value)} />
+            </div>
+          );
+        })}
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:3 }}>Owner</div>
+            <select className="modal-input" value={form.owner||'Joint'} onChange={e => set('owner', e.target.value)}>
+              {['Joint','Ahmed','Victoria'].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:3 }}>Status</div>
+            <select className="modal-input" value={form.status||'Active'} onChange={e => set('status', e.target.value)}>
+              {['Active','Achieved','Paused','Cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display:'flex', gap:10 }}>
+          <button className="btn-primary" onClick={() => onSave(form)} disabled={busy || !form.name || !form.targetAmount}>
+            {goal ? 'Save Changes' : 'Add Goal'}
+          </button>
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinancialGoalsTab({ goals, goalsLoading, busy, onLoad, onAdd, onUpdate, onDelete, apiUrl, apiToken }) {
+  const [modal,      setModal]      = React.useState(null); // null | 'add' | goal-obj
+  const [simGoal,    setSimGoal]    = React.useState(null); // goal being simulated
+  const [projections,setProjections]= React.useState({});
+
+  // Compute projections client-side for display
+  React.useEffect(function() {
+    if (!goals || goals.length === 0) return;
+    var now = new Date();
+    var projs = {};
+    goals.forEach(function(g) {
+      var remaining = g.targetAmount - g.currentAmount;
+      if (remaining <= 0) { projs[g.id] = { achieved: true }; return; }
+      if (!g.monthlyContribution) { projs[g.id] = { noContribution: true }; return; }
+      var r = (g.apy || 0) / 100 / 12;
+      var months;
+      if (r > 0) {
+        var lo = 0, hi = 1200, mid = 0;
+        for (var iter = 0; iter < 80; iter++) {
+          mid = (lo + hi) / 2;
+          var fv = g.currentAmount * Math.pow(1+r,mid) + g.monthlyContribution*(Math.pow(1+r,mid)-1)/r;
+          if (fv < g.targetAmount) lo = mid; else hi = mid;
+        }
+        months = mid;
+      } else {
+        months = remaining / g.monthlyContribution;
+      }
+      var projDate = new Date(now.getTime() + months * 30.4375 * 86400000);
+      var targetDate = g.targetDate ? new Date(g.targetDate + 'T12:00:00') : null;
+      var daysEarlyOrLate = targetDate ? Math.ceil((targetDate - projDate) / 86400000) : null;
+      projs[g.id] = {
+        projectedDate:   projDate.toISOString().slice(0,10),
+        monthsRemaining: Math.round(months * 10) / 10,
+        onTrack:         targetDate ? projDate <= targetDate : true,
+        daysEarlyOrLate: daysEarlyOrLate
+      };
+    });
+    setProjections(projs);
+  }, [goals]);
+
+  React.useEffect(function() { if (goals === null && onLoad) onLoad(); }, []);
+
+  if (goalsLoading || goals === null) return <div className="loading-text">Loading financial goals…</div>;
+
+  var active    = (goals||[]).filter(function(g) { return g.status === 'Active'; });
+  var achieved  = (goals||[]).filter(function(g) { return g.status === 'Achieved'; });
+  var other     = (goals||[]).filter(function(g) { return g.status !== 'Active' && g.status !== 'Achieved'; });
+
+  var totalTarget  = active.reduce(function(s,g) { return s + g.targetAmount; }, 0);
+  var totalCurrent = active.reduce(function(s,g) { return s + g.currentAmount; }, 0);
+  var totalMonthly = active.reduce(function(s,g) { return s + (g.monthlyContribution||0); }, 0);
+
+  return (
+    <div>
+      {/* Summary row */}
+      {active.length > 0 && (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:20 }}>
+          {[
+            { label:'Active Goals', value: active.length },
+            { label:'Total Saved', value: fmtMoney(totalCurrent) + ' / ' + fmtMoney(totalTarget) },
+            { label:'Monthly Committed', value: fmtMoney(totalMonthly) + '/mo' },
+          ].map(function(s) {
+            return (
+              <div key={s.label} style={{ background:'#141826', border:'1px solid #2a3050', borderRadius:10, padding:'12px 16px' }}>
+                <div style={{ fontSize:10, color:'#5c7080', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:4 }}>{s.label}</div>
+                <div style={{ fontSize:15, fontWeight:700, color:'#dde1f0' }}>{s.value}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add button */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+        <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0' }}>🎯 Financial Goals</div>
+        <button className="btn-primary" onClick={() => setModal('add')}>+ Add Goal</button>
+      </div>
+
+      {goals.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize:36, marginBottom:10 }}>🎯</div>
+          <div>No financial goals yet.</div>
+          <div style={{ fontSize:12, color:'#4d6080', marginTop:6 }}>
+            Add goals like House Down Payment or Travel Fund, then simulate what-if scenarios.
+          </div>
+          <button className="btn-primary" style={{ marginTop:14 }}
+            onClick={() => apiGet(apiUrl, apiToken, { action:'seed_financial_goals' }).then(onLoad)}>
+            Seed from Life Plan Doc
+          </button>
+        </div>
+      )}
+
+      {active.map(function(g) {
+        return <GoalCard key={g.id} goal={g} projection={projections[g.id]}
+          onEdit={setModal} onDelete={onDelete} onSimulate={setSimGoal} busy={busy} />;
+      })}
+
+      {achieved.length > 0 && (
+        <div style={{ marginTop:8 }}>
+          <div style={{ fontSize:12, color:'#4ade80', fontWeight:700, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>✓ Achieved</div>
+          {achieved.map(function(g) {
+            return <GoalCard key={g.id} goal={g} projection={projections[g.id]}
+              onEdit={setModal} onDelete={onDelete} onSimulate={setSimGoal} busy={busy} />;
+          })}
+        </div>
+      )}
+
+      {other.map(function(g) {
+        return <GoalCard key={g.id} goal={g} projection={projections[g.id]}
+          onEdit={setModal} onDelete={onDelete} onSimulate={setSimGoal} busy={busy} />;
+      })}
+
+      {/* Goal form modal */}
+      {modal && (
+        <GoalFormModal
+          goal={modal === 'add' ? null : modal}
+          busy={busy}
+          onClose={() => setModal(null)}
+          onSave={async function(form) {
+            if (modal === 'add') await onAdd(form);
+            else await onUpdate(modal.id, form);
+            setModal(null);
+          }}
+        />
+      )}
+
+      {/* Simulator modal */}
+      {simGoal && (
+        <ScenarioSimulatorModal
+          goal={simGoal}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
+          busy={busy}
+          onClose={() => setSimGoal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Log Run Modal (Issue #111) ---------------------------------------------
 
 function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
@@ -10087,7 +10502,8 @@ function CardsTab({ apiUrl, apiToken }) {
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
                        calBills, onCalBillToggle, onAddBill, onSyncTransactions, txList,
-                       busy, apiUrl, apiToken }) {
+                       busy, apiUrl, apiToken,
+                       financialGoals, goalsLoading, onLoadGoals, onAddGoal, onUpdateGoal, onDeleteGoal }) {
   const [sub, setSub]           = React.useState('overview');
   const [showAddBill, setShowAddBill] = React.useState(false);
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
@@ -10111,6 +10527,7 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
     { id: 'bills',     label: '🧾 Bills' },
     { id: 'cashflow',  label: '💰 Cashflow' },
     { id: 'cards',     label: '💳 Cards' },
+    { id: 'goals',     label: '🎯 Goals' },
   ];
 
   return (
@@ -10265,6 +10682,21 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
       {/* ── Cards: Credit Card Hub ───────────────────────── */}
       {sub === 'cards' && (
         <CardsTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {/* ── Goals: Financial Goals + What-If Planner ─────── */}
+      {sub === 'goals' && (
+        <FinancialGoalsTab
+          goals={financialGoals}
+          goalsLoading={goalsLoading}
+          busy={busy}
+          onLoad={onLoadGoals}
+          onAdd={onAddGoal}
+          onUpdate={onUpdateGoal}
+          onDelete={onDeleteGoal}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
+        />
       )}
 
     </div>
@@ -12090,6 +12522,8 @@ function App() {
   const [vehiclesLoading,   setVehiclesLoading]    = useState(false);
   const [profiles,          setProfiles]           = useState([]);
   const [profilesLoading,   setProfilesLoading]    = useState(false);
+  const [financialGoals,    setFinancialGoals]    = useState(null);
+  const [goalsLoading,      setGoalsLoading]       = useState(false);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
@@ -13095,6 +13529,45 @@ function App() {
     }
   }
 
+  // ---- Financial Goals handlers (Issue #127) -----------------------------------
+
+  async function loadFinancialGoals() {
+    if (!apiUrl || !apiToken) return;
+    setGoalsLoading(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'financial_goals' });
+      setFinancialGoals(data.goals || []);
+    } catch (err) { setError('Goals load failed: ' + err.message); }
+    setGoalsLoading(false);
+  }
+
+  async function handleAddGoal(form) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_financial_goal', ...form });
+      await loadFinancialGoals();
+    } catch (err) { setError('Could not add goal: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateGoal(id, form) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_financial_goal', id, ...form });
+      await loadFinancialGoals();
+    } catch (err) { setError('Could not update goal: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteGoal(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_financial_goal', id });
+      setFinancialGoals(prev => (prev || []).filter(g => g.id !== id));
+    } catch (err) { setError('Could not delete goal: ' + err.message); }
+    setBusy(false);
+  }
+
   async function handleUpdateCareerPosition(data) {
     setBusy(true);
     try {
@@ -13810,7 +14283,7 @@ function App() {
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     { loadPTO(apiUrl, apiToken); loadProfiles(apiUrl, apiToken); } // upcomingTravel lives in PTO stats
-                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); }
+                  if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); loadFinancialGoals(); }
                 }}
               >
                 {tab === 'home'       ? `🏠 Home` : ''}
@@ -14123,6 +14596,12 @@ function App() {
                 apiUrl={apiUrl}
                 apiToken={apiToken}
                 busy={busy}
+                financialGoals={financialGoals}
+                goalsLoading={goalsLoading}
+                onLoadGoals={loadFinancialGoals}
+                onAddGoal={handleAddGoal}
+                onUpdateGoal={handleUpdateGoal}
+                onDeleteGoal={handleDeleteGoal}
               />
             )}
 

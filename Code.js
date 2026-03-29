@@ -73,6 +73,8 @@ const TABS = {
   CHORES:             'Chores',               // Household chore checklist by cadence (Issue #124)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, registration, insurance (Issue #125)
   PROFILES:           'Traveler Profiles',    // Passport & travel document profiles per person (Issue #123)
+  FINANCIAL_GOALS:     'Financial Goals',      // Issue #127
+  FINANCIAL_SCENARIOS: 'Financial Scenarios',  // Issue #127
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -121,6 +123,8 @@ const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date']; // Is
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year']; // Issue #80
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date']; // Issue #124
 const PROFILES_HEADERS           = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes']; // Issue #123
+const FINANCIAL_GOAL_HEADERS     = ['ID', 'Goal Name', 'Target Amount', 'Current Amount', 'Target Date', 'Monthly Contribution', 'APY', 'Owner', 'Account', 'Status', 'Notes']; // Issue #127
+const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Change Amount', 'Notes', 'Projected Date (Baseline)', 'Projected Date (Scenario)', 'Delay Days', 'Created At']; // Issue #127
 const VEHICLE_HEADERS            = [
   'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
   'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
@@ -244,7 +248,15 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);           // Issue #124
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);          // Issue #125
   ensureSheet(ss, TABS.PROFILES,             PROFILES_HEADERS);         // Issue #123
+  ensureSheet(ss, TABS.FINANCIAL_GOALS,     FINANCIAL_GOAL_HEADERS);    // Issue #127
+  ensureSheet(ss, TABS.FINANCIAL_SCENARIOS, FINANCIAL_SCENARIO_HEADERS); // Issue #127
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
+
+  // Set Life Plan Doc ID if not already set
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('LIFE_PLAN_DOC_ID')) {
+    props.setProperty('LIFE_PLAN_DOC_ID', '1rtFqqjbix9sDAMt2-7j1QLwW7WcqSQLYCuNDaWf9dvU');
+  }
 
   Logger.log('All VERA tabs verified/created.');
 }
