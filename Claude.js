@@ -41,7 +41,7 @@ function getApiKey() {
  * @param {Array} summaries - From getSummaries()
  * @returns {string} The full prompt string
  */
-function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatterns) {
+function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatterns, financialGoals) {
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
 
@@ -242,6 +242,43 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
           }).join('\n') || 'No current-year goals.';
   } catch (goalErr) {
     goalsSectionStr = '(unavailable)';
+  }
+
+  // ---- Format: Financial Goals (Issue #127) ----------------------------------
+  var financialGoalsSectionStr = '';
+  try {
+    var fgoals = (financialGoals || []).filter(function(g) { return g.status === 'Active'; });
+    if (fgoals.length === 0) {
+      financialGoalsSectionStr = 'No active financial goals.';
+    } else {
+      var tz_fg = Session.getScriptTimeZone();
+      financialGoalsSectionStr = fgoals.map(function(g) {
+        var proj = calculateProjection_(g);
+        var pct  = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+        var line = '- ' + g.name + ' | Target: $' + g.targetAmount.toLocaleString();
+        if (g.targetDate) line += ' by ' + g.targetDate;
+        line += ' | Current: $' + g.currentAmount.toLocaleString() + ' (' + pct + '%)';
+        if (g.monthlyContribution > 0) line += ' | $' + g.monthlyContribution.toLocaleString() + '/mo';
+        if (proj.achieved) {
+          line += ' ✅ ACHIEVED';
+        } else if (proj.noContribution) {
+          line += ' ⚠ NO CONTRIBUTION SET';
+        } else if (proj.projectedDate) {
+          var projDateStr = Utilities.formatDate(proj.projectedDate, tz_fg, 'yyyy-MM-dd');
+          line += ' | Projected: ' + projDateStr;
+          if (g.targetDate) {
+            line += proj.onTrack
+              ? ' ✓ (' + Math.abs(proj.daysEarlyOrLate) + 'd early)'
+              : ' ⚠ (' + Math.abs(proj.daysEarlyOrLate) + 'd LATE)';
+          }
+        }
+        if (g.owner && g.owner !== 'Joint') line += ' [' + g.owner + ']';
+        return line;
+      }).join('\n');
+    }
+  } catch (fgErr) {
+    financialGoalsSectionStr = '(unavailable)';
+    Logger.log('buildPrompt: financial goals section error — ' + fgErr.message);
   }
 
   // ---- Format: Projects (Issue #24 intelligence) ----------------------------
@@ -513,6 +550,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '=== YEARLY GOALS ===\n' +
     goalsSectionStr + '\n\n' +
 
+    '=== FINANCIAL GOALS ===\n' +
+    financialGoalsSectionStr + '\n\n' +
+
     '=== PROJECTS ===\n' +
     projectsSectionStr + '\n\n' +
 
@@ -535,7 +575,15 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Countries Visited + Upcoming Trips: Is the upcoming destination a country Ahmed has never visited? That\'s a milestone worth flagging.\n' +
     '- Bucket List + Upcoming Trips: Is there a bucket list destination near a planned trip? Could they add a stopover or side trip?\n' +
     '- Bucket List + PTO/Calendar: Is there a clear PTO window that aligns with a dream-trip destination?\n' +
+    '- Financial Goal + Calendar/Tasks: Is there an upcoming large expense (trip, event) that could push a goal off-track?\n' +
+    '- Financial Goal + Bills: Is the monthly bill load crowding out goal contributions?\n' +
     'Generate up to 2 cross-domain flags from this synthesis — these are often the most valuable insights.\n\n' +
+
+    'FINANCIAL GOALS FLAG RULES:\n' +
+    '- Flag any Active goal where projected completion > target date. Use key: fgoal_[snake_name]_at_risk\n' +
+    '  Urgency: High if >60 days late, Medium if 15-60 days, Low if <15 days.\n' +
+    '- Flag any Active goal with $0 monthly contribution and no target date. Use key: fgoal_[snake_name]_needs_plan\n' +
+    '- Do NOT re-flag goals already marked Achieved.\n\n' +
 
     'Based on this data, generate up to ' + CONFIG.MAX_FLAGS + ' intelligent, actionable flags for Ahmed. ' +
     'Prioritize items that are time-sensitive, high-stakes, have dependencies, or have been neglected.\n\n' +
@@ -579,9 +627,9 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
  * @param {Array}  ledger    - From getSharedInterestLedger_() (optional)
  * @returns {Array} Parsed and validated array of flag objects
  */
-function generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns) {
+function generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns, financialGoals) {
   const apiKey = getApiKey();
-  const prompt = buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatterns || []);
+  const prompt = buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatterns || [], financialGoals || []);
 
   const requestBody = {
     model:      CLAUDE_MODEL,

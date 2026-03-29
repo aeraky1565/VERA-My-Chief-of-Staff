@@ -604,6 +604,22 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
+    // ---- Financial Goals (Issue #127) ----------------------------------------
+    (function() {
+      var fgoals = (context.financialGoals || []).filter(function(g) { return g.status === 'Active'; });
+      if (!fgoals.length) return '';
+      var lines = 'FINANCIAL GOALS (' + fgoals.length + ' active):\n';
+      fgoals.forEach(function(g) {
+        var pct  = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
+        var line = '  • [' + g.id + '] ' + g.name + ' — $' + g.currentAmount.toLocaleString() + ' / $' + g.targetAmount.toLocaleString() + ' (' + pct + '%)';
+        if (g.monthlyContribution > 0) line += ' | $' + g.monthlyContribution.toLocaleString() + '/mo';
+        if (g.targetDate)              line += ' | target: ' + g.targetDate;
+        if (g.owner && g.owner !== 'Joint') line += ' [' + g.owner + ']';
+        lines += line + '\n';
+      });
+      return lines + '\n';
+    })() +
+
     // ---- VERA NOTICES — proactive time-sensitive insights (Issue #24) --------
     (function() {
       try {
@@ -760,6 +776,13 @@ function buildChatSystemPrompt_(context) {
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
     '- VERA can answer "which card should I use for X?" directly from CREDIT CARDS context — no ACTION needed; just explain the best option and why.\n' +
+    '- FINANCIAL WHAT-IF: When Ahmed asks "what if I buy/spend X", "what if rent goes up X", "how does X affect my goal", ' +
+    'identify the most relevant Active goal (prefer one with a target date), determine changeType (one-time vs recurring), ' +
+    'parse the dollar amount, then emit: ACTION:simulate_scenario|{goalId}|{one-time|recurring}|{amount}|{label}\n' +
+    '  Example: "What if I spend $30K on a car?" → ACTION:simulate_scenario|FGOAL-...|one-time|30000|car purchase\n' +
+    '  Example: "What if rent goes up $400/month?" → ACTION:simulate_scenario|FGOAL-...|recurring|400|rent increase\n' +
+    '  After simulation runs, show the verdict. Ask if Ahmed wants to save the scenario.\n' +
+    '  If multiple goals exist and none is obvious, ask which goal to run the simulation against.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -1077,6 +1100,10 @@ function buildChatContext_() {
     if (cardRes && cardRes.ok) cardsData = cardRes;
   } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
 
+  // Financial Goals (Issue #127)
+  var financialGoals = [];
+  try { financialGoals = getFinancialGoals_(); } catch(e) { Logger.log('Chat context: financialGoals — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1101,6 +1128,7 @@ function buildChatContext_() {
     career:          career,
     prescriptions:   prescriptions,
     cardsData:       cardsData,
+    financialGoals:  financialGoals,
   };
 }
 
@@ -1992,6 +2020,39 @@ function executeActions_(rawText) {
           } else {
             errors.push('update_loyalty_points: no program found matching "' + ulProg + '"');
           }
+        }
+      }
+
+      // ---- Financial Scenario Simulation (Issue #127) -------------------------
+      else if (type === 'simulate_scenario') {
+        var simGoalId    = (args[0] || '').trim();
+        var simType      = (args[1] || 'one-time').trim();
+        var simAmount    = parseFloat(args[2]) || 0;
+        var simLabel     = (args[3] || 'scenario').trim();
+        var simGoals     = getFinancialGoals_();
+        var simGoal      = simGoals.filter(function(g) { return g.id === simGoalId; })[0];
+        if (simGoal && simAmount > 0) {
+          var simResult = simulateScenario_(simGoal, simType, simAmount);
+          // Attach result to executed for the reply builder to surface
+          executed.push('simulate_scenario:' + JSON.stringify(simResult));
+        } else {
+          errors.push('simulate_scenario: goal ' + simGoalId + ' not found or amount invalid');
+        }
+      }
+      else if (type === 'save_scenario') {
+        var ssGoalId   = (args[0] || '').trim();
+        var ssType     = (args[1] || 'one-time').trim();
+        var ssAmount   = parseFloat(args[2]) || 0;
+        var ssLabel    = (args[3] || '').trim();
+        var ssNotes    = (args[4] || '').trim();
+        var ssGoals2   = getFinancialGoals_();
+        var ssGoal2    = ssGoals2.filter(function(g) { return g.id === ssGoalId; })[0];
+        if (ssGoal2 && ssAmount > 0) {
+          var ssResult = simulateScenario_(ssGoal2, ssType, ssAmount);
+          var ssId     = saveScenario_(ssGoalId, ssLabel, ssType, ssAmount, ssNotes, ssResult);
+          executed.push('save_scenario (' + ssLabel + ', id=' + ssId + ')');
+        } else {
+          errors.push('save_scenario: goal ' + ssGoalId + ' not found or amount invalid');
         }
       }
 
