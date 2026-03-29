@@ -1699,6 +1699,43 @@ function addPTOConfig() {
 }
 
 /**
+ * Issue #130: Seeds victoria_pto_* config rows for Victoria's PTO subtab.
+ * Safe to re-run — skips rows that already exist.
+ * Gap calendars, milestone keywords, and travel settings are intentionally
+ * shared with Ahmed's pto_* config (not duplicated here).
+ */
+function addVictoriaPTOConfig() {
+  var ss  = getSpreadsheet();
+  var sh  = ss.getSheetByName(TABS.CONFIG);
+  if (!sh) { Logger.log('Config tab not found.'); return; }
+
+  var rows = [
+    ['victoria_pto_calendar_name',   'Westat Calendar'],  // Victoria's work calendar name
+    ['victoria_pto_vera_calendar',   'Vera'],
+    ['victoria_pto_vacation_days',   '15'],                // annual vacation allocation (days)
+    ['victoria_pto_personal_hours',  '0'],                 // annual personal time (hours; 0 if not applicable)
+    ['victoria_pto_rollover_days',   '0'],                 // days carried over from prior year
+    ['victoria_pto_buffer_days',     '3'],                 // reserve days held back from planning
+    ['victoria_pto_year',            String(new Date().getFullYear())],
+    ['victoria_pto_holiday_keywords','Day,Holiday,Floating,Closure'],
+    ['victoria_pto_ignore_keywords', 'Pay Day'],
+    ['victoria_pto_buffer_remaining','3'],                 // decremented when buffer day is triggered
+  ];
+
+  var existing = sh.getDataRange().getValues()
+    .map(function(r) { return String(r[0]).trim(); });
+
+  var added = 0;
+  rows.forEach(function(row) {
+    if (existing.indexOf(row[0]) === -1) {
+      sh.appendRow(row);
+      added++;
+    }
+  });
+  Logger.log('✅ addVictoriaPTOConfig: added ' + added + ' row(s) (skipped ' + (rows.length - added) + ' already present).');
+}
+
+/**
  * Creates the Reminders Memory tab for users who ran setupVERA() before Issue #26.
  * Safe to re-run — ensureSheet() is idempotent.
  */

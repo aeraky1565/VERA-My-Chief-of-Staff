@@ -90,8 +90,9 @@ function doGet(e) {
       case 'interests':        return jsonOut_(webGetInterests_());
       case 'interests_add':    return jsonOut_(webAddInterest_(e));
       case 'interests_delete': return jsonOut_(webDeleteInterest_(e));
-      case 'pto':                   return jsonOut_(webGetPTO_());
-      case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
+      case 'pto':                            return jsonOut_(webGetPTO_());
+      case 'pto_trigger_buffer':             return jsonOut_(webTriggerBuffer_(e));
+      case 'victoria_pto_trigger_buffer':    return jsonOut_(webTriggerVictoriaBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -804,19 +805,34 @@ function webDeleteProjectTask_(e) {
  * Called by the 🌴 PTO tab on dashboard open.
  */
 function webGetPTO_() {
-  var cfg      = readPTOConfig_();
-  var ptoResult = getPTOEvents_(cfg);
-  var travel   = getUpcomingTravel_(cfg);
-  var gapCals  = getGapCalendars_(cfg);
-  var today    = new Date();
-  var stats    = computePTOStats_(ptoResult, cfg, today);
+  var today = new Date();
 
-  // Attach live clear windows + milestones (may have changed since last nightly run)
-  stats.clearWindows  = findClearWindows_(gapCals, today, 90, 3);
-  stats.milestones    = getMilestones_(gapCals, cfg, today);
-  stats.upcomingTravel = travel;
+  // ---- Ahmed -----------------------------------------------------------------
+  var ahmedCfg     = readPTOConfig_();
+  var ahmedResult  = getPTOEvents_(ahmedCfg);
+  var ahmedStats   = computePTOStats_(ahmedResult, ahmedCfg, today);
 
-  return { ok: true, stats: stats };
+  // Shared gap calendars (travel + milestones are shared between Ahmed and Victoria)
+  var gapCals      = getGapCalendars_(ahmedCfg);
+  var sharedTravel = getUpcomingTravel_(ahmedCfg);
+  var sharedWindows    = findClearWindows_(gapCals, today, 90, 3);
+  var sharedMilestones = getMilestones_(gapCals, ahmedCfg, today);
+
+  ahmedStats.clearWindows   = sharedWindows;
+  ahmedStats.milestones     = sharedMilestones;
+  ahmedStats.upcomingTravel = sharedTravel;
+
+  // ---- Victoria --------------------------------------------------------------
+  var victoriaCfg    = readVictoriaPTOConfig_();
+  var victoriaResult = getPTOEvents_(victoriaCfg);
+  var victoriaStats  = computePTOStats_(victoriaResult, victoriaCfg, today);
+
+  // Shared sections — identical for both subtabs
+  victoriaStats.clearWindows   = sharedWindows;
+  victoriaStats.milestones     = sharedMilestones;
+  victoriaStats.upcomingTravel = sharedTravel;
+
+  return { ok: true, ahmedStats: ahmedStats, victoriaStats: victoriaStats };
 }
 
 /**
@@ -837,6 +853,26 @@ function webTriggerBuffer_(e) {
 
   var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   Logger.log('PTO Buffer Day triggered. Remaining: ' + newVal + '. Date: ' + today);
+
+  return { ok: true, remaining: newVal, triggeredOn: today };
+}
+
+/**
+ * Decrements victoria_pto_buffer_remaining by 1.
+ */
+function webTriggerVictoriaBuffer_(e) {
+  var cfg     = readVictoriaPTOConfig_();
+  var current = readVictoriaPTOBufferRemaining_(cfg);
+
+  if (current <= 0) {
+    return { ok: false, error: 'No buffer days remaining.', remaining: 0 };
+  }
+
+  var newVal = current - 1;
+  setVictoriaPTOBufferRemaining_(newVal);
+
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  Logger.log('Victoria PTO Buffer Day triggered. Remaining: ' + newVal + '. Date: ' + today);
 
   return { ok: true, remaining: newVal, triggeredOn: today };
 }

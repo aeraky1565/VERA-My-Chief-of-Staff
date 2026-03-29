@@ -4991,7 +4991,7 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
 
-  const upcomingTravel = (pto && pto.upcomingTravel) || [];
+  const upcomingTravel = (pto && pto.ahmedStats && pto.ahmedStats.upcomingTravel) || [];
 
   // Load tripMeta for all trips when the My Trips tab is active
   React.useEffect(function() {
@@ -6381,14 +6381,16 @@ function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDelete
 
 // ---- PTO tab ----------------------------------------------------------------
 
-function PTOTab({ stats, onTriggerBuffer, busy }) {
+// ---- PTOPersonView (single person's PTO content) ----------------------------
+
+function PTOPersonView({ stats, onTriggerBuffer, busy }) {
   if (!stats) {
     return (
       <div className="empty-state">
         <div style={{ fontSize: 36, marginBottom: 12 }}>🌴</div>
         <div>No PTO data loaded yet.</div>
         <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
-          Make sure <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>pto_*</code> rows are seeded in the Config tab, then refresh.
+          Make sure the PTO config rows are seeded in the Config tab, then refresh.
         </div>
       </div>
     );
@@ -6682,6 +6684,49 @@ function PTOTab({ stats, onTriggerBuffer, busy }) {
             ))}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ---- PTOTab (Ahmed / Victoria subtabs) --------------------------------------
+
+function PTOTab({ ahmedStats, victoriaStats, onTriggerBuffer, onTriggerVictoriaBuffer, busy }) {
+  const [ptoSub, setPtoSub] = React.useState('ahmed');
+
+  if (!ahmedStats && !victoriaStats) {
+    return (
+      <div className="empty-state">
+        <div style={{ fontSize: 36, marginBottom: 12 }}>🌴</div>
+        <div>No PTO data loaded yet.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Make sure <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>pto_*</code> rows are seeded in the Config tab, then refresh.
+        </div>
+      </div>
+    );
+  }
+
+  const subTabs = [
+    { id: 'ahmed',    label: 'Ahmed' },
+    { id: 'victoria', label: 'Victoria' },
+  ];
+
+  return (
+    <div>
+      <div className="subtab-row">
+        {subTabs.map(s => (
+          <button key={s.id}
+            className={`subtab-btn${ptoSub === s.id ? ' active' : ''}`}
+            onClick={() => setPtoSub(s.id)}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+      {ptoSub === 'ahmed' && (
+        <PTOPersonView stats={ahmedStats} onTriggerBuffer={onTriggerBuffer} busy={busy} />
+      )}
+      {ptoSub === 'victoria' && (
+        <PTOPersonView stats={victoriaStats} onTriggerBuffer={onTriggerVictoriaBuffer} busy={busy} />
       )}
     </div>
   );
@@ -13267,7 +13312,8 @@ function App() {
     setTabLoading(prev => ({ ...prev, pto: true }));
     try {
       const data = await apiGet(url, token, { action: 'pto' });
-      setPTO(data.stats || null);
+      // data contains { ahmedStats, victoriaStats }
+      setPTO(data.ahmedStats || data.stats ? data : null);
     } catch (err) {
       setError('PTO load failed: ' + err.message);
     }
@@ -14035,7 +14081,7 @@ function App() {
   }
 
   async function handleTriggerBuffer() {
-    if (!window.confirm('Use one buffer day? This will decrement your buffer count.')) return;
+    if (!window.confirm('Use one of Ahmed\'s buffer days? This will decrement the buffer count.')) return;
     setBusy(true);
     try {
       const data = await apiGet(apiUrl, apiToken, { action: 'pto_trigger_buffer' });
@@ -14044,6 +14090,19 @@ function App() {
       await loadPTO(apiUrl, apiToken);
     } catch (err) {
       setError('Could not trigger buffer day: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleTriggerVictoriaBuffer() {
+    if (!window.confirm('Use one of Victoria\'s buffer days? This will decrement her buffer count.')) return;
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'victoria_pto_trigger_buffer' });
+      showToast('🛡️ Victoria buffer day triggered — ' + data.remaining + ' remaining');
+      await loadPTO(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not trigger Victoria buffer day: ' + err.message);
     }
     setBusy(false);
   }
@@ -14466,7 +14525,7 @@ function App() {
       const data = await apiGet(apiUrl, apiToken, { action: 'accept_recommendation', recId, tripKey });
       setRecommendations(function(prev) { return Object.assign({}, prev, { [tripKey]: data.recs || [] }); });
       // Reload itinerary so the new item appears
-      const trip = (pto && pto.upcomingTravel || []).find(function(t) {
+      const trip = (pto && pto.ahmedStats && pto.ahmedStats.upcomingTravel || []).find(function(t) {
         return (t.startDate + '|' + t.label) === tripKey;
       });
       if (trip) loadItinerary(tripKey, trip.startDate, trip.endDate);
@@ -14845,8 +14904,10 @@ function App() {
               tabLoading.pto
                 ? <div className="loading-text">Loading PTO data…</div>
                 : <PTOTab
-                    stats={pto}
+                    ahmedStats={pto && pto.ahmedStats}
+                    victoriaStats={pto && pto.victoriaStats}
                     onTriggerBuffer={handleTriggerBuffer}
+                    onTriggerVictoriaBuffer={handleTriggerVictoriaBuffer}
                     busy={busy}
                   />
             )}

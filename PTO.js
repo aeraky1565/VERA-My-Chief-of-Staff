@@ -65,6 +65,55 @@ function readPTOConfig_() {
   };
 }
 
+// ---- Victoria PTO Config ----------------------------------------------------
+
+/**
+ * Reads all victoria_pto_* keys from the Config tab for Victoria's PTO.
+ * Falls back to shared gap/milestone/travel settings from Ahmed's config.
+ * @returns {Object} structured config (same shape as readPTOConfig_())
+ */
+function readVictoriaPTOConfig_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) throw new Error('Config tab not found');
+
+  var data    = sheet.getDataRange().getValues();
+  var raw     = {};
+  var shared  = {};
+  for (var i = 0; i < data.length; i++) {
+    var key = String(data[i][0]).trim();
+    var val = String(data[i][1]).trim();
+    if (key.indexOf('victoria_pto_') === 0) {
+      raw[key.substring(13)] = val; // strip 'victoria_pto_' prefix
+    }
+    // Also read shared pto_ keys as fallbacks
+    if (key.indexOf('pto_') === 0) {
+      shared[key.substring(4)] = val;
+    }
+  }
+
+  // Fall back to Ahmed's gap calendars, milestone keywords, etc. for shared sections
+  return {
+    calendarName:      raw['calendar_name']      || 'Westat Calendar',
+    veraCalendarName:  raw['vera_calendar']       || shared['vera_calendar'] || 'Vera',
+    vacationDays:      parseInt(raw['vacation_days']  || '15', 10),
+    personalHours:     parseInt(raw['personal_hours'] || '0',  10),
+    year:              parseInt(raw['year'] || shared['year'] || String(new Date().getFullYear()), 10),
+    rolloverDays:      parseInt(raw['rollover_days']  || '0',  10),
+    bufferDays:        parseInt(raw['buffer_days']    || '3',  10),
+    // Shared settings — fall back to Ahmed's gap calendar config
+    gapCalendarsRaw:   shared['gap_calendars'] || 'AE&VV - Our Joint Chaos',
+    milestoneKeywords: (shared['milestone_keywords'] || 'Wedding,Graduation,Trip,Travel,Concert,Birthday')
+                       .split(',').map(function(k) { return k.trim().toLowerCase(); }),
+    holidayKeywords:   (raw['holiday_keywords'] || shared['holiday_keywords'] || 'Day,Holiday,Floating,Closure')
+                       .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    ignoreKeywords:    (raw['ignore_keywords'] || shared['ignore_keywords'] || 'Pay Day')
+                       .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    travelIgnoreKeywords: (shared['travel_ignore_keywords'] || 'Ramadan,Eid,Lent,Holiday,Observance,Fast,Christmas,Hanukkah,Diwali,Passover')
+                          .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+  };
+}
+
 // ---- Buffer remaining -------------------------------------------------------
 
 /**
@@ -101,6 +150,41 @@ function setPTOBufferRemaining_(newVal) {
   }
   // Not found — append
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['pto_buffer_remaining', Math.max(0, newVal)]]);
+}
+
+/**
+ * Reads victoria_pto_buffer_remaining from Config tab.
+ */
+function readVictoriaPTOBufferRemaining_(cfg) {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) return cfg.bufferDays;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === 'victoria_pto_buffer_remaining') {
+      var v = parseInt(String(data[i][1]).trim(), 10);
+      return isNaN(v) ? cfg.bufferDays : v;
+    }
+  }
+  return cfg.bufferDays;
+}
+
+/**
+ * Writes victoria_pto_buffer_remaining to Config tab (creates row if missing).
+ */
+function setVictoriaPTOBufferRemaining_(newVal) {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) return;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === 'victoria_pto_buffer_remaining') {
+      sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));
+      return;
+    }
+  }
+  // Not found — append
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['victoria_pto_buffer_remaining', Math.max(0, newVal)]]);
 }
 
 // ---- Calendar helpers -------------------------------------------------------
