@@ -1904,15 +1904,44 @@ function executeActions_(rawText) {
 
         // Find all dates in this trip's itinerary
         var itinSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
-        if (!itinSheet || itinSheet.getLastRow() < 2) throw new Error('Itinerary tab is empty');
-        var tripRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
         var tripDates = [];
-        tripRows.forEach(function(row) {
-          if (String(row[1] || '').trim() !== tripKey) return;
-          var ds = String(row[4] || '').trim(); // col 4 = Date
-          if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) tripDates.push(ds);
-        });
-        if (!tripDates.length) throw new Error('No itinerary items found for trip: ' + tripKey);
+        if (itinSheet && itinSheet.getLastRow() >= 2) {
+          itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues()
+            .forEach(function(row) {
+              if (String(row[1] || '').trim() !== tripKey) return;
+              var ds = String(row[4] || '').trim(); // col 4 = Date
+              if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) tripDates.push(ds);
+            });
+        }
+
+        // Fallback: trip exists on gap calendar but has no itinerary items yet
+        if (!tripDates.length) {
+          try {
+            var ptoCfgFb  = readPTOConfig_();
+            var calTripsFb = getUpcomingTravel_(ptoCfgFb);
+            var depPartFb  = tripKey.split('|')[0];
+            var lblPartFb  = tripKey.split('|').slice(1).join('|').toLowerCase();
+            var matchedFb  = null;
+            for (var fi = 0; fi < calTripsFb.length; fi++) {
+              var ct = calTripsFb[fi];
+              if (ct.startDate === depPartFb || ct.label.toLowerCase() === lblPartFb) {
+                matchedFb = ct; break;
+              }
+            }
+            if (!matchedFb) throw new Error('No itinerary items and no matching calendar trip for: ' + tripKey);
+            var fcFb = new Date(matchedFb.startDate + 'T00:00:00');
+            var feFb = new Date(matchedFb.endDate   + 'T00:00:00');
+            var tzFb = Session.getScriptTimeZone();
+            while (fcFb <= feFb) {
+              tripDates.push(Utilities.formatDate(fcFb, tzFb, 'yyyy-MM-dd'));
+              fcFb.setDate(fcFb.getDate() + 1);
+            }
+          } catch (fbErr) {
+            throw new Error(fbErr.message);
+          }
+        }
+
+        if (!tripDates.length) throw new Error('No dates found for trip: ' + tripKey);
         tripDates.sort();
         var minDate = tripDates[0], maxDate = tripDates[tripDates.length - 1];
         if (minDate === maxDate) throw new Error('Trip only spans one day — no interior days for gym sessions');

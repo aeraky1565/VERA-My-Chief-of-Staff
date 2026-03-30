@@ -78,12 +78,66 @@ function checkFitnessConsistency_() {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns upcoming trips from both the Itinerary tab AND the shared gap
+ * calendars (same source as PTO upcomingTravel). Itinerary-backed trips
+ * take precedence when the same tripKey exists in both sources.
+ *
+ * @param {number} hoursWindow  Hours ahead to look (e.g. 120 = 5 days)
+ * @returns {Array}
+ */
+function getUpcomingTripsForFitness_(hoursWindow) {
+  var tz     = Session.getScriptTimeZone();
+  var result = {};
+
+  // Source 1: Itinerary tab (has row data for gym-item check)
+  var itinTrips = getUpcomingTripsForBriefing_(hoursWindow);
+  itinTrips.forEach(function(t) {
+    result[t.tripKey] = {
+      tripKey:       t.tripKey,
+      tripLabel:     t.tripLabel,
+      departureDate: t.departureDate,
+      endDate:       t.endDate,
+      endDateStr:    Utilities.formatDate(t.endDate, tz, 'yyyy-MM-dd'),
+      rows:          t.rows,
+      hoursUntil:    t.hoursUntil,
+      calendarOnly:  false,
+    };
+  });
+
+  // Source 2: Calendar-based travel from shared gap calendars
+  try {
+    var ptoCfg   = readPTOConfig_();
+    var calTrips = getUpcomingTravel_(ptoCfg);
+    var maxDays  = Math.ceil(hoursWindow / 24);
+    calTrips.forEach(function(t) {
+      if (t.daysAway > maxDays) return; // too far out
+      var key = t.startDate + '|' + t.label;
+      if (result[key]) return;          // itinerary version already present
+      result[key] = {
+        tripKey:       key,
+        tripLabel:     t.label,
+        departureDate: new Date(t.startDate + 'T00:00:00'),
+        endDate:       new Date(t.endDate   + 'T00:00:00'),
+        endDateStr:    t.endDate,
+        rows:          [],
+        hoursUntil:    t.daysAway * 24,
+        calendarOnly:  true,
+      };
+    });
+  } catch (calErr) {
+    Logger.log('getUpcomingTripsForFitness_: calendar source error: ' + calErr.message);
+  }
+
+  return Object.keys(result).map(function(k) { return result[k]; });
+}
+
 function checkFitnessTravelGap_() {
   try {
     var cfg = getConfigValues();
     if ((cfg['fitness_enabled'] || 'false') !== 'true') return;
 
-    var trips = getUpcomingTripsForBriefing_(120); // 5 days = 120 hours
+    var trips = getUpcomingTripsForFitness_(120); // 5 days = 120 hours
     if (!trips.length) { Logger.log('FitnessTravelGap: no trips in window'); return; }
 
     var GYM_KW = ['gym', 'fitness center', 'workout', 'wellness', 'pool'];
