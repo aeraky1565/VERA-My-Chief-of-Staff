@@ -6691,7 +6691,7 @@ function PTOPersonView({ stats, onTriggerBuffer, busy }) {
 
 // ---- PTOTab (Ahmed / Victoria subtabs) --------------------------------------
 
-function PTOTab({ ahmedStats, victoriaStats, onTriggerBuffer, onTriggerVictoriaBuffer, busy }) {
+function PTOTab({ ahmedStats, victoriaStats, onTriggerBuffer, onTriggerVictoriaBuffer, busy, loadError, onReload }) {
   const [ptoSub, setPtoSub] = React.useState('ahmed');
 
   if (!ahmedStats && !victoriaStats) {
@@ -6699,9 +6699,15 @@ function PTOTab({ ahmedStats, victoriaStats, onTriggerBuffer, onTriggerVictoriaB
       <div className="empty-state">
         <div style={{ fontSize: 36, marginBottom: 12 }}>🌴</div>
         <div>No PTO data loaded yet.</div>
-        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
-          Make sure <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>pto_*</code> rows are seeded in the Config tab, then refresh.
-        </div>
+        {loadError
+          ? <div style={{ fontSize: 12, color: '#e57373', marginTop: 8, fontFamily: 'monospace', background: '#1a0000', padding: '8px 12px', borderRadius: 6, maxWidth: 480, wordBreak: 'break-word' }}>
+              Error: {loadError}
+            </div>
+          : <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+              Make sure <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>pto_*</code> rows are seeded in the Config tab, then refresh.
+            </div>
+        }
+        {onReload && <button className="btn btn-ghost" style={{ marginTop: 12, fontSize: 12 }} onClick={onReload}>↺ Retry</button>}
       </div>
     );
   }
@@ -12809,6 +12815,7 @@ function App() {
   const [tabLoading, setTabLoading] = useState({});
   const [busy,     setBusy]     = useState(false);
   const [error,    setError]    = useState(null);
+  const [ptoError, setPtoError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [status,     setStatus]     = useState(null);
   const [flags,      setFlags]      = useState([]);
@@ -13310,6 +13317,7 @@ function App() {
   async function loadPTO(url, token) {
     if (!url || !token) return;
     setTabLoading(prev => ({ ...prev, pto: true }));
+    setPtoError(null);
     try {
       const data = await apiGet(url, token, { action: 'pto' });
       if (data.ahmedStats) {
@@ -13319,10 +13327,11 @@ function App() {
         // Old API (backend not yet redeployed): wrap as ahmedStats
         setPTO({ ahmedStats: data.stats, victoriaStats: null });
       } else {
+        setPtoError('API returned ok:true but no stats data. Keys: ' + Object.keys(data).join(', '));
         setPTO(null);
       }
     } catch (err) {
-      setError('PTO load failed: ' + err.message);
+      setPtoError(err.message);
     }
     setTabLoading(prev => ({ ...prev, pto: false }));
   }
@@ -14916,6 +14925,8 @@ function App() {
                     onTriggerBuffer={handleTriggerBuffer}
                     onTriggerVictoriaBuffer={handleTriggerVictoriaBuffer}
                     busy={busy}
+                    loadError={ptoError}
+                    onReload={() => loadPTO(apiUrl, apiToken)}
                   />
             )}
 
