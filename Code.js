@@ -219,6 +219,19 @@ function createSheetTabs(ss) {
     ['pacing_enabled',              'true'],  // set to 'false' to disable vacation mode + miss-rate pacing entirely (Issue #139)
     ['pacing_flag_threshold',       '3'],     // unacknowledged Medium/High flags needed to count as a domain miss (Issue #139)
     ['pacing_mode_days',            '7'],     // how many days Easy Mode stays active after auto-activation (Issue #139)
+    // Important Dates timing
+    ['dates_default_lead_time',     '30'],    // days before an important date to fire the initial Low flag (Issue #80)
+    ['dates_medium_urgency_days',   '7'],     // days before to upgrade to Medium flag + generate gift suggestions (Issue #80)
+    ['dates_high_urgency_days',     '1'],     // days before to fire the final High flag (Issue #80)
+    // Reminders / Anticipator / Explorer
+    ['reminders_enabled',           'true'],  // set to 'false' to disable the hourly Anticipator engine (Reminders.js)
+    ['explorer_enabled',            'true'],  // set to 'false' to disable the nightly Explorer discovery bulletin (Reminders.js)
+    ['explorer_interests',          ''],      // comma-separated interest overrides for Explorer prompt (blank = use default)
+    ['mobility_reminder_hour',      '20'],    // 24h hour for evening mobility/stretching nudge (Reminders.js)
+    // Weekend Planner
+    ['weekend_planner_enabled',     'true'],  // set to 'false' to disable Monday morning weekend planning nudge (WeekendPlanner.js)
+    ['weekend_planner_hour',        '8'],     // 24h hour on Monday to fire weekend planner (WeekendPlanner.js)
+    ['weekend_planner_lookahead_days', '21'], // days ahead to scan for clear windows (WeekendPlanner.js)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
