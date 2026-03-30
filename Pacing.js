@@ -14,8 +14,12 @@
 // ============================================================
 
 function checkPacing_() {
+  var cfg = getConfigValues();
+  if ((cfg['pacing_enabled'] || 'true') !== 'true') {
+    Logger.log('checkPacing_: disabled'); return;
+  }
   checkVacationMode_();
-  // Miss rate is run at end of nightlyRun — see Step 0h-pacing in Code.js
+  // Miss rate is run at end of nightlyRun — see Step Final in Code.js
 }
 
 // ── Vacation Mode ─────────────────────────────────────────────────────────────
@@ -128,14 +132,21 @@ function isInVacationMode_() {
  * Skipped entirely while vacation mode is active.
  */
 function checkMissRate_() {
+  var cfg = getConfigValues();
+  if ((cfg['pacing_enabled'] || 'true') !== 'true') {
+    Logger.log('checkMissRate_: disabled');
+    return;
+  }
   if (isInVacationMode_()) {
     Logger.log('checkMissRate_: skipped (vacation mode active)');
     return;
   }
 
-  var ss    = getSpreadsheet();
-  var props = PropertiesService.getScriptProperties();
-  var tz    = Session.getScriptTimeZone();
+  var ss             = getSpreadsheet();
+  var props          = PropertiesService.getScriptProperties();
+  var tz             = Session.getScriptTimeZone();
+  var flagThreshold  = parseInt(cfg['pacing_flag_threshold'] || '3', 10) || 3;
+  var pacingDays     = parseInt(cfg['pacing_mode_days']      || '7', 10) || 7;
   var today = new Date();
   today.setHours(0, 0, 0, 0);
   var yesterday  = new Date(today.getTime() - 86400000);
@@ -185,7 +196,7 @@ function checkMissRate_() {
         var res = String(r[8] || '').trim(); // index 8 = Resolved
         return (urg === 'High' || urg === 'Medium') && !ack && !res;
       }).length;
-      if (urgentUnack >= 3) domainHits.push(urgentUnack + ' unacknowledged flags');
+      if (urgentUnack >= flagThreshold) domainHits.push(urgentUnack + ' unacknowledged flags');
     }
   } catch (e) { Logger.log('checkMissRate_ flags: ' + e.message); }
 
@@ -306,8 +317,8 @@ function checkMissRate_() {
     }
   } catch (e) { Logger.log('checkMissRate_ defer: ' + e.message); }
 
-  // Activate pacing mode for 7 days
-  var pacingEnds    = new Date(today.getTime() + 7 * 86400000);
+  // Activate pacing mode for configured number of days
+  var pacingEnds    = new Date(today.getTime() + pacingDays * 86400000);
   var pacingEndsStr = Utilities.formatDate(pacingEnds, tz, 'yyyy-MM-dd');
 
   props.setProperties({

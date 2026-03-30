@@ -216,6 +216,9 @@ function createSheetTabs(ss) {
     ['travel_day_briefing_enabled', 'true'],  // set to 'false' to disable travel day briefing emails (Issue #108b)
     ['travel_companions',           ''],      // comma-separated emails to CC on travel day briefings (Issue #108b)
     ['monthly_disposable_income',   '5000'],  // combined monthly discretionary income used for goal contribution squeeze check (Issue #127)
+    ['pacing_enabled',              'true'],  // set to 'false' to disable vacation mode + miss-rate pacing entirely (Issue #139)
+    ['pacing_flag_threshold',       '3'],     // unacknowledged Medium/High flags needed to count as a domain miss (Issue #139)
+    ['pacing_mode_days',            '7'],     // how many days Easy Mode stays active after auto-activation (Issue #139)
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
