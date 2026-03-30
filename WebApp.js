@@ -138,6 +138,8 @@ function doGet(e) {
       case 'update_wish_item':      return jsonOut_(webUpdateWishItem_(e));
       case 'mark_wish_purchased':   return jsonOut_(webMarkWishPurchased_(e));
       case 'delete_wish_item':      return jsonOut_(webDeleteWishItem_(e));
+      // Pacing — Vacation Mode + Miss Rate status (Issue #139)
+      case 'get_pacing_status':     return jsonOut_(webGetPacingStatus_());
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
       case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
@@ -4659,6 +4661,15 @@ function webDeleteWishItem_(e) {
   found.sheet.deleteRow(found.rowNum);
   Logger.log('webDeleteWishItem_: ' + id);
   return { ok: true, id: id, action: 'deleted' };
+}
+
+// ---- Pacing Status (Issue #139) --------------------------------------------
+
+/**
+ * Returns current vacation mode and pacing mode status for the Home tab indicator.
+ */
+function webGetPacingStatus_() {
+  return getPacingStatus_();
 }
 
 // ---- Chat ------------------------------------------------------------------

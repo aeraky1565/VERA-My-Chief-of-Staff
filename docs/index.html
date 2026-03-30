@@ -12097,7 +12097,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
 
 // ---- Home tab ---------------------------------------------------------------
 
-function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, onNavigate, onViewItinerary, apiUrl, apiToken }) {
+function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, pacingStatus, onNavigate, onViewItinerary, apiUrl, apiToken }) {
   const activeFlags    = flags.filter(f => !f.resolved && !f.acknowledged);
   const highFlags      = activeFlags.filter(f => f.urgency === 'High');
   const topFlag        = highFlags[0] || activeFlags[0];
@@ -12115,7 +12115,38 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
     return todayStr >= t.startDate && todayStr <= t.endDate;
   });
 
+  // Pacing banner — shown when vacation mode or pacing mode is active (Issue #139)
+  const showVacation = pacingStatus?.vacationMode;
+  const showPacing   = !showVacation && pacingStatus?.pacingMode;
+  const vacTrip      = pacingStatus?.vacationTripName || 'your trip';
+  const vacEnds      = pacingStatus?.vacationModeEnds || '';
+  const pacingEnds   = pacingStatus?.pacingModeEnds || '';
+
   return (
+    <div>
+      {(showVacation || showPacing) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          background: showVacation ? 'linear-gradient(90deg, #1a3a5c 0%, #1e4976 100%)' : 'linear-gradient(90deg, #2a2a1c 0%, #3a3010 100%)',
+          border: showVacation ? '1px solid #3d6fa0' : '1px solid #6b5a10',
+          borderRadius: 10, padding: '10px 16px', marginBottom: 14, fontSize: 13,
+        }}>
+          <span style={{ fontSize: 18 }}>{showVacation ? '✈️' : '🧘'}</span>
+          <div style={{ flex: 1 }}>
+            <span style={{ fontWeight: 700, color: showVacation ? '#7eb8f7' : '#f0c040' }}>
+              {showVacation ? 'Vacation Mode' : 'Easy Mode'}
+            </span>
+            <span style={{ color: '#aab5d0', marginLeft: 8 }}>
+              {showVacation
+                ? `Active — ${vacTrip}${vacEnds ? ' · returns ' + vacEnds : ''}`
+                : `Active — non-critical flags deferred${pacingEnds ? ' until ' + pacingEnds : ''}`}
+            </span>
+          </div>
+          <span style={{ fontSize: 11, color: '#6b7fa8' }}>
+            {showVacation ? 'Nags paused 🤙' : 'Catching up 🌱'}
+          </span>
+        </div>
+      )}
     <div className="bento-grid">
       {/* Active Travel Card — pinned to top when a trip is in progress */}
       {activeTrip && (
@@ -12268,6 +12299,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
       {/* Spending Chart */}
       <SpendingChart summaries={summaries} />
+    </div>
     </div>
   );
 }
@@ -13980,6 +14012,7 @@ function App() {
   const [wishList,   setWishList]   = useState([]);   // aspirational purchases (Issue #131)
   const [experiments, setExperiments] = useState([]);  // personal experiments (Issue #130)
   const [growthData,  setGrowthData]  = useState(null); // books + courses + skills (Issue #88)
+  const [pacingStatus, setPacingStatus] = useState(null); // vacation/pacing mode indicator (Issue #139)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
@@ -14063,6 +14096,7 @@ function App() {
       loadGoals(apiUrl, apiToken);
       loadShopping(apiUrl, apiToken);
       loadPTO(apiUrl, apiToken);
+      loadPacingStatus(apiUrl, apiToken);
     }
   }, [apiUrl, apiToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -14208,6 +14242,16 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, growth: false }));
+  }
+
+  async function loadPacingStatus(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'get_pacing_status' });
+      setPacingStatus(data);
+    } catch (err) {
+      // Non-critical — Home tab renders fine without it
+    }
   }
 
   async function loadResources(url, token) {
@@ -16144,6 +16188,7 @@ function App() {
                 milestones={milestones}
                 summaries={summaries}
                 status={status}
+                pacingStatus={pacingStatus}
                 apiUrl={apiUrl}
                 apiToken={apiToken}
                 onNavigate={tab => {

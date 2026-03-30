@@ -13,9 +13,13 @@
  * Called from nightlyRun() — wrapped in try/catch there.
  */
 function checkGrowth_() {
-  checkStaleReading_();
+  // Stale-reading and skill-atrophy nags are suppressed during active trips (Issue #139)
+  if (!isInVacationMode_()) {
+    checkStaleReading_();
+    checkSkillAtrophy_();
+  }
+  // Learning gap still runs — missing 90 days in a row is worth flagging even after a trip
   checkLearningGap_();
-  checkSkillAtrophy_();
 }
 
 // ---- Stale reading check ---------------------------------------------------

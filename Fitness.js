@@ -29,35 +29,38 @@ function checkFitnessConsistency_() {
 
     var flags = [];
 
-    // Rule 1: below target on configured low-flag day (default: Wednesday)
-    if (todayDow === (lowFlagDay - 1) && currentCount < target) {
-      flags.push({
-        source: 'Fitness Tracker', urgency: 'Low',
-        flag:   'Gym consistency: ' + currentCount + '/' + target + ' sessions this week',
-        reason: 'Today is ' + getDowLabel_(todayDow) + ' and you\'ve completed ' + currentCount +
-                ' of your ' + target + ' target sessions. Still time to get a session in before the week ends.',
-        key:    'fitness_weekly_low_' + weekKey,
-      });
-    }
+    // Rules 1–3 are suppressed during active trips — vacation mode handles its own pacing (Issue #139)
+    if (!isInVacationMode_()) {
+      // Rule 1: below target on configured low-flag day (default: Wednesday)
+      if (todayDow === (lowFlagDay - 1) && currentCount < target) {
+        flags.push({
+          source: 'Fitness Tracker', urgency: 'Low',
+          flag:   'Gym consistency: ' + currentCount + '/' + target + ' sessions this week',
+          reason: 'Today is ' + getDowLabel_(todayDow) + ' and you\'ve completed ' + currentCount +
+                  ' of your ' + target + ' target sessions. Still time to get a session in before the week ends.',
+          key:    'fitness_weekly_low_' + weekKey,
+        });
+      }
 
-    // Rule 2: zero sessions by Thursday
-    if (todayDow === 4 && currentCount === 0) {
-      flags.push({
-        source: 'Fitness Tracker', urgency: 'Medium',
-        flag:   'Gym consistency: zero sessions this week — it\'s Thursday',
-        reason: 'No confirmed gym sessions yet this week. Getting at least one in before the weekend will keep your streak alive.',
-        key:    'fitness_weekly_zero_thu_' + weekKey,
-      });
-    }
+      // Rule 2: zero sessions by Thursday
+      if (todayDow === 4 && currentCount === 0) {
+        flags.push({
+          source: 'Fitness Tracker', urgency: 'Medium',
+          flag:   'Gym consistency: zero sessions this week — it\'s Thursday',
+          reason: 'No confirmed gym sessions yet this week. Getting at least one in before the weekend will keep your streak alive.',
+          key:    'fitness_weekly_zero_thu_' + weekKey,
+        });
+      }
 
-    // Rule 3: zero sessions by Saturday
-    if (todayDow === 6 && currentCount === 0) {
-      flags.push({
-        source: 'Fitness Tracker', urgency: 'High',
-        flag:   'Gym consistency: zero sessions this week — it\'s Saturday',
-        reason: 'Zero confirmed gym sessions all week and it\'s Saturday. There\'s still time for one session today.',
-        key:    'fitness_weekly_zero_sat_' + weekKey,
-      });
+      // Rule 3: zero sessions by Saturday
+      if (todayDow === 6 && currentCount === 0) {
+        flags.push({
+          source: 'Fitness Tracker', urgency: 'High',
+          flag:   'Gym consistency: zero sessions this week — it\'s Saturday',
+          reason: 'Zero confirmed gym sessions all week and it\'s Saturday. There\'s still time for one session today.',
+          key:    'fitness_weekly_zero_sat_' + weekKey,
+        });
+      }
     }
 
     // Rule 4: 3+ consecutive complete weeks below target

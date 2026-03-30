@@ -544,6 +544,9 @@ function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
 
+    // Step -2: Pacing — detect vacation mode (must run FIRST so all jobs below can read it)
+    try { checkPacing_(); } catch (pacErr) { Logger.log('checkPacing_ error (non-fatal): ' + pacErr.message); }
+
     // Step -1: Escalate aged unacknowledged flags (Issue #5)
     try {
       escalateAgedFlags_();
@@ -698,6 +701,9 @@ function nightlyRun() {
     } else {
       Logger.log('No flags generated tonight — nothing to write.');
     }
+
+    // Step Final: Miss Rate check — runs LAST so all flag counts are current (Issue #139)
+    try { checkMissRate_(); } catch (mrErr) { Logger.log('checkMissRate_ error (non-fatal): ' + mrErr.message); }
 
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
 
@@ -1054,6 +1060,8 @@ function escalateAgedFlags_() {
 
     if (ageDays >= 7 && currentEscalated !== '7d') {
       // Mark 7-day stale: force urgency to High + append stale note
+      // Skip stale labelling while in Vacation Mode — flags age gracefully during trips (Issue #139)
+      if (isInVacationMode_()) return;
       sheet.getRange(rowNum, COL_ESCALATED + 1).setValue('7d');
       sheet.getRange(rowNum, COL_URGENCY   + 1).setValue('High'); // force High — no more Medium after 7d
       const reason = String(row[COL_REASON] || '');
