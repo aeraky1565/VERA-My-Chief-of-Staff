@@ -11474,14 +11474,22 @@ function MilestonesTab({ milestones, flags, tasks, onAction, busy }) {
 function GrowthTab({ milestones, flags, tasks, onAction,
                      goals, goalsLoading, dragGoalId, dragOverCol,
                      onDragStart, onDragOver, onDrop, onAddGoal, onEditGoal, onDeleteGoal,
+                     growthData, growthLoading,
+                     onAddBook, onUpdateBook, onDeleteBook,
+                     onAddCourse, onUpdateCourse, onDeleteCourse,
+                     onAddSkill, onUpdateSkill, onRecordSkillPractice, onDeleteSkill,
                      busy }) {
   const [sub, setSub] = React.useState('milestones');
+  const [filterPerson, setFilterPerson] = React.useState('Ahmed');
   const subTabs = [
     { id: 'milestones',           label: '🎯 Milestones' },
     { id: 'goals',                label: '🏆 Yearly Goals' },
     { id: 'personal_development', label: '📖 Personal Development' },
     { id: 'skill_building',       label: '🔧 Skill Building' },
   ];
+  const books   = (growthData && growthData.books)   || [];
+  const courses = (growthData && growthData.courses) || [];
+  const skills  = (growthData && growthData.skills)  || [];
   return (
     <div>
       <div className="subtab-row">
@@ -11509,19 +11517,46 @@ function GrowthTab({ milestones, flags, tasks, onAction,
               busy={busy}
             />
       )}
-      {sub === 'personal_development' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>Personal Development tracking is on its way.</div>
+      {(sub === 'personal_development' || sub === 'skill_building') && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, marginTop: 4 }}>
+          {['Ahmed', 'Victoria'].map(p => (
+            <button key={p} onClick={() => setFilterPerson(p)}
+              style={{ padding: '5px 16px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13,
+                       background: filterPerson === p ? '#8ab4f8' : '#1e2a3a',
+                       color: filterPerson === p ? '#0d1117' : '#8ab4f8', fontWeight: filterPerson === p ? 600 : 400 }}>
+              {p}
+            </button>
+          ))}
         </div>
       )}
+      {sub === 'personal_development' && (
+        growthLoading
+          ? <div className="loading-text">Loading…</div>
+          : <PersonalDevTab
+              books={books}
+              courses={courses}
+              filterPerson={filterPerson}
+              onAddBook={onAddBook}
+              onUpdateBook={onUpdateBook}
+              onDeleteBook={onDeleteBook}
+              onAddCourse={onAddCourse}
+              onUpdateCourse={onUpdateCourse}
+              onDeleteCourse={onDeleteCourse}
+              busy={busy}
+            />
+      )}
       {sub === 'skill_building' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>Skill Building tracking is on its way.</div>
-        </div>
+        growthLoading
+          ? <div className="loading-text">Loading…</div>
+          : <SkillsTab
+              skills={skills}
+              filterPerson={filterPerson}
+              onAdd={onAddSkill}
+              onUpdate={onUpdateSkill}
+              onRecordPractice={onRecordSkillPractice}
+              onDelete={onDeleteSkill}
+              busy={busy}
+            />
       )}
     </div>
   );
@@ -12695,6 +12730,482 @@ const WISH_STATUS_ORDER = ['Ready to Buy', 'Saving', 'Dreaming'];
 const EXP_CATEGORIES = ['Health', 'Fitness', 'Diet', 'Sleep', 'Productivity', 'Learning', 'Mental', 'Finance', 'Other'];
 const EXP_STATUSES   = ['Active', 'Ongoing', 'Paused', 'Stopped', 'Completed'];
 
+const BOOK_STATUSES   = ['Want to Read', 'Reading', 'Read'];
+const COURSE_STATUSES = ['Want to Do', 'In Progress', 'Done'];
+const SKILL_LEVELS    = ['Beginner', 'Intermediate', 'Advanced', 'Expert'];
+const GROWTH_CATEGORIES = ['Productivity', 'Technology', 'Finance', 'Health', 'Leadership', 'Communication', 'Creative', 'Language', 'Other'];
+
+// ── Growth — Personal Development & Skill Building (Issue #88) ───────────
+
+function BookCourseCard({ item, type, onUpdate, onDelete, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const [editing, setEditing] = React.useState(false);
+  const isBook = type === 'book';
+  const statuses = isBook ? BOOK_STATUSES : COURSE_STATUSES;
+  const [editForm, setEditForm] = React.useState({
+    title:        item.title || '',
+    author:       item.author || '',
+    source:       item.source || '',
+    category:     item.category || '',
+    status:       item.status || statuses[0],
+    rating:       item.rating != null ? String(item.rating) : '',
+    notes:        item.notes || '',
+    dateStarted:  item.dateStarted || '',
+    dateFinished: item.dateFinished || '',
+  });
+
+  const statusColor = {
+    'Want to Read': '#4d6080', 'Reading': '#8ab4f8', 'Read': '#81c995',
+    'Want to Do':   '#4d6080', 'In Progress': '#f9ab00', 'Done': '#81c995',
+  };
+  const sc = statusColor[item.status] || '#6b7c99';
+
+  function handleSave() {
+    const orig = { title: item.title, author: item.author, source: item.source,
+                   category: item.category, status: item.status,
+                   rating: item.rating != null ? String(item.rating) : '',
+                   notes: item.notes, dateStarted: item.dateStarted, dateFinished: item.dateFinished };
+    Object.entries(editForm).forEach(([f, v]) => {
+      const origVal = orig[f] != null ? String(orig[f]) : '';
+      if ((v || '') !== origVal) onUpdate(item.id, f.toLowerCase(), v);
+    });
+    setEditing(false);
+  }
+
+  const stars = item.rating ? '★'.repeat(Math.round(item.rating)) + '☆'.repeat(5 - Math.round(item.rating)) : null;
+
+  return (
+    <div style={{ background: '#131e2d', border: '1px solid #2a3a50', borderRadius: 10,
+                  padding: '12px 14px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+          <span style={{ fontWeight: 600, color: '#e8eaed', fontSize: 14 }}>{item.title}</span>
+          {isBook && item.author && <span style={{ color: '#6b7c99', fontSize: 12 }}>by {item.author}</span>}
+          {!isBook && item.source && <span style={{ background: '#1e2a3a', color: '#8ab4f8', borderRadius: 4, fontSize: 11, padding: '2px 7px' }}>{item.source}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: sc, fontSize: 12, fontWeight: 600 }}>{item.status}</span>
+          {item.category && <span style={{ color: '#4d6080', fontSize: 11 }}>{item.category}</span>}
+          {stars && <span style={{ color: '#f9ab00', fontSize: 12, letterSpacing: 1 }}>{stars}</span>}
+          {item.dateFinished && <span style={{ color: '#4d6080', fontSize: 11 }}>Finished {item.dateFinished}</span>}
+        </div>
+        {item.notes && !editing && <div style={{ color: '#6b7c99', fontSize: 12, marginTop: 4 }}>{item.notes}</div>}
+
+        {editing && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
+              placeholder="Title" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+            {isBook && (
+              <input value={editForm.author} onChange={e => setEditForm(p => ({ ...p, author: e.target.value }))}
+                placeholder="Author" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+            )}
+            {!isBook && (
+              <input value={editForm.source} onChange={e => setEditForm(p => ({ ...p, source: e.target.value }))}
+                placeholder="Platform / Source" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <select value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
+                {statuses.map(s => <option key={s}>{s}</option>)}
+              </select>
+              <select value={editForm.category} onChange={e => setEditForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+                <option value="">No category</option>
+                {GROWTH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+              </select>
+              <select value={editForm.rating} onChange={e => setEditForm(p => ({ ...p, rating: e.target.value }))} style={inputStyle}>
+                <option value="">No rating</option>
+                {[1,2,3,4,5].map(n => <option key={n} value={String(n)}>{n} ★</option>)}
+              </select>
+            </div>
+            <input value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
+              placeholder="Notes" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setEditing(false)}
+                style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 12 }}>
+                Cancel
+              </button>
+              <button type="button" onClick={handleSave} disabled={busy}
+                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {!editing && (
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button onClick={() => setEditing(true)} disabled={busy}
+            style={{ background: 'none', border: '1px solid #2a3a50', borderRadius: 5, color: '#8ab4f8', cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+            Edit
+          </button>
+          <button onClick={() => { if (window.confirm('Delete "' + item.title + '"?')) onDelete(item.id); }} disabled={busy}
+            style={{ background: 'none', border: '1px solid #3a2020', borderRadius: 5, color: '#f28b82', cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+            Del
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PersonalDevTab({ books, courses, filterPerson, onAddBook, onUpdateBook, onDeleteBook, onAddCourse, onUpdateCourse, onDeleteCourse, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const [activeSection, setActiveSection] = React.useState('books');
+  const [showForm, setShowForm] = React.useState(false);
+  const [bookForm, setBookForm] = React.useState({ title: '', author: '', category: '', status: 'Want to Read', rating: '', notes: '' });
+  const [courseForm, setCourseForm] = React.useState({ title: '', source: '', category: '', status: 'Want to Do', rating: '', notes: '' });
+
+  const filteredBooks   = books.filter(b => b.person === filterPerson);
+  const filteredCourses = courses.filter(c => c.person === filterPerson);
+
+  const booksByStatus   = BOOK_STATUSES.slice().reverse().reduce((acc, s) => {
+    acc[s] = filteredBooks.filter(b => b.status === s); return acc;
+  }, {});
+  const coursesByStatus = COURSE_STATUSES.slice().reverse().reduce((acc, s) => {
+    acc[s] = filteredCourses.filter(c => c.status === s); return acc;
+  }, {});
+
+  function handleBookSubmit(e) {
+    e.preventDefault();
+    if (!bookForm.title.trim()) return;
+    onAddBook({ ...bookForm, person: filterPerson });
+    setBookForm({ title: '', author: '', category: '', status: 'Want to Read', rating: '', notes: '' });
+    setShowForm(false);
+  }
+  function handleCourseSubmit(e) {
+    e.preventDefault();
+    if (!courseForm.title.trim()) return;
+    onAddCourse({ ...courseForm, person: filterPerson });
+    setCourseForm({ title: '', source: '', category: '', status: 'Want to Do', rating: '', notes: '' });
+    setShowForm(false);
+  }
+
+  const bookStatusColor  = { 'Read': '#81c995', 'Reading': '#8ab4f8', 'Want to Read': '#4d6080' };
+  const crsStatusColor   = { 'Done': '#81c995', 'In Progress': '#f9ab00', 'Want to Do': '#4d6080' };
+
+  return (
+    <div>
+      {/* Stats bar */}
+      {(filteredBooks.length > 0 || filteredCourses.length > 0) && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          {[
+            filteredBooks.filter(b => b.status === 'Reading').length > 0 && { label: 'Reading', value: filteredBooks.filter(b => b.status === 'Reading').length },
+            filteredBooks.filter(b => b.status === 'Read').length > 0 && { label: 'Books Read', value: filteredBooks.filter(b => b.status === 'Read').length },
+            filteredBooks.filter(b => b.status === 'Want to Read').length > 0 && { label: 'Want to Read', value: filteredBooks.filter(b => b.status === 'Want to Read').length },
+            filteredCourses.filter(c => c.status === 'In Progress').length > 0 && { label: 'In Progress', value: filteredCourses.filter(c => c.status === 'In Progress').length },
+            filteredCourses.filter(c => c.status === 'Done').length > 0 && { label: 'Courses Done', value: filteredCourses.filter(c => c.status === 'Done').length },
+          ].filter(Boolean).map(s => (
+            <div key={s.label} style={{ background: '#1e2a3a', border: '1px solid #2a3a50', borderRadius: 8, padding: '8px 14px', fontSize: 13, color: '#e8eaed' }}>
+              <span style={{ fontWeight: 700 }}>{s.value}</span>
+              <span style={{ color: '#6b7c99', marginLeft: 6 }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Section toggle + Add button */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        {[{ id: 'books', label: '📖 Books' }, { id: 'courses', label: '🎓 Courses & Content' }].map(s => (
+          <button key={s.id} onClick={() => { setActiveSection(s.id); setShowForm(false); }}
+            style={{ padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13,
+                     background: activeSection === s.id ? '#8ab4f8' : '#1e2a3a',
+                     color: activeSection === s.id ? '#0d1117' : '#8ab4f8', fontWeight: activeSection === s.id ? 600 : 400 }}>
+            {s.label}
+          </button>
+        ))}
+        <button onClick={() => setShowForm(v => !v)} disabled={busy}
+          style={{ marginLeft: 'auto', padding: '6px 16px', borderRadius: 6, border: 'none',
+                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+          {showForm ? '✕ Cancel' : (activeSection === 'books' ? '+ Add Book' : '+ Add Course')}
+        </button>
+      </div>
+
+      {/* Add book form */}
+      {showForm && activeSection === 'books' && (
+        <form onSubmit={handleBookSubmit} style={{ background: '#1e2a3a', borderRadius: 8, padding: '14px 16px',
+               marginBottom: 16, border: '1px solid #2a3a50', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input required value={bookForm.title} onChange={e => setBookForm(p => ({ ...p, title: e.target.value }))}
+            placeholder="Title *" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <input value={bookForm.author} onChange={e => setBookForm(p => ({ ...p, author: e.target.value }))}
+            placeholder="Author (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <select value={bookForm.status} onChange={e => setBookForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
+              {BOOK_STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+            <select value={bookForm.category} onChange={e => setBookForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+              <option value="">No category</option>
+              {GROWTH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <select value={bookForm.rating} onChange={e => setBookForm(p => ({ ...p, rating: e.target.value }))} style={inputStyle}>
+              <option value="">No rating</option>
+              {[1,2,3,4,5].map(n => <option key={n} value={String(n)}>{n} ★</option>)}
+            </select>
+          </div>
+          <input value={bookForm.notes} onChange={e => setBookForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Notes (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button type="submit" disabled={busy || !bookForm.title.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>📖 Add</button>
+          </div>
+        </form>
+      )}
+
+      {/* Add course form */}
+      {showForm && activeSection === 'courses' && (
+        <form onSubmit={handleCourseSubmit} style={{ background: '#1e2a3a', borderRadius: 8, padding: '14px 16px',
+               marginBottom: 16, border: '1px solid #2a3a50', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input required value={courseForm.title} onChange={e => setCourseForm(p => ({ ...p, title: e.target.value }))}
+            placeholder="Title *" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <input value={courseForm.source} onChange={e => setCourseForm(p => ({ ...p, source: e.target.value }))}
+            placeholder="Platform / Source (e.g. Coursera, YouTube, Podcast)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <select value={courseForm.status} onChange={e => setCourseForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
+              {COURSE_STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+            <select value={courseForm.category} onChange={e => setCourseForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+              <option value="">No category</option>
+              {GROWTH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <select value={courseForm.rating} onChange={e => setCourseForm(p => ({ ...p, rating: e.target.value }))} style={inputStyle}>
+              <option value="">No rating</option>
+              {[1,2,3,4,5].map(n => <option key={n} value={String(n)}>{n} ★</option>)}
+            </select>
+          </div>
+          <input value={courseForm.notes} onChange={e => setCourseForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Notes (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button type="submit" disabled={busy || !courseForm.title.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>🎓 Add</button>
+          </div>
+        </form>
+      )}
+
+      {/* Books list */}
+      {activeSection === 'books' && (
+        filteredBooks.length === 0 && !showForm
+          ? <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>No books logged yet. Add one above or tell VERA in chat.</div>
+          : ['Reading', 'Want to Read', 'Read'].map(status => {
+              const items = booksByStatus[status] || [];
+              if (items.length === 0) return null;
+              return (
+                <div key={status} style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: bookStatusColor[status] || '#6b7c99',
+                                textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                    {status} <span style={{ fontWeight: 400, color: '#4d6080' }}>({items.length})</span>
+                  </div>
+                  {items.map(b => (
+                    <BookCourseCard key={b.id} item={b} type="book" onUpdate={onUpdateBook} onDelete={onDeleteBook} busy={busy} />
+                  ))}
+                </div>
+              );
+            })
+      )}
+
+      {/* Courses list */}
+      {activeSection === 'courses' && (
+        filteredCourses.length === 0 && !showForm
+          ? <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>No courses logged yet. Add one above or tell VERA in chat.</div>
+          : ['In Progress', 'Want to Do', 'Done'].map(status => {
+              const items = coursesByStatus[status] || [];
+              if (items.length === 0) return null;
+              return (
+                <div key={status} style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: crsStatusColor[status] || '#6b7c99',
+                                textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                    {status} <span style={{ fontWeight: 400, color: '#4d6080' }}>({items.length})</span>
+                  </div>
+                  {items.map(c => (
+                    <BookCourseCard key={c.id} item={c} type="course" onUpdate={onUpdateCourse} onDelete={onDeleteCourse} busy={busy} />
+                  ))}
+                </div>
+              );
+            })
+      )}
+    </div>
+  );
+}
+
+function SkillCard({ skill, onUpdate, onRecordPractice, onDelete, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const [editing, setEditing] = React.useState(false);
+  const [editForm, setEditForm] = React.useState({
+    skill: skill.skill || '', category: skill.category || '', level: skill.level || 'Beginner',
+    goalLink: skill.goalLink || '', notes: skill.notes || '',
+  });
+
+  const levelColors = { Beginner: '#6b7c99', Intermediate: '#8ab4f8', Advanced: '#f9ab00', Expert: '#81c995' };
+  const lc = levelColors[skill.level] || '#6b7c99';
+
+  const today = new Date().toISOString().slice(0, 10);
+  const daysSince = skill.lastPracticed
+    ? Math.round((new Date(today) - new Date(skill.lastPracticed)) / 86400000)
+    : null;
+  const atrophy = daysSince !== null && daysSince > 30;
+
+  function handleSave() {
+    const orig = { skill: skill.skill, category: skill.category, level: skill.level, goalLink: skill.goalLink, notes: skill.notes };
+    Object.entries(editForm).forEach(([f, v]) => {
+      if ((v || '') !== (orig[f] || '')) onUpdate(skill.id, f.toLowerCase(), v);
+    });
+    setEditing(false);
+  }
+
+  return (
+    <div style={{ background: '#131e2d', border: '1px solid ' + (atrophy ? '#3a2a10' : '#2a3a50'),
+                  borderRadius: 10, padding: '12px 14px', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <span style={{ fontWeight: 600, color: '#e8eaed', fontSize: 14 }}>{skill.skill}</span>
+            <span style={{ background: '#1e2a3a', color: lc, border: '1px solid ' + lc,
+                           borderRadius: 4, fontSize: 11, padding: '2px 7px', fontWeight: 600 }}>{skill.level}</span>
+            {skill.category && <span style={{ color: '#4d6080', fontSize: 11 }}>{skill.category}</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            {skill.lastPracticed
+              ? <span style={{ fontSize: 12, color: atrophy ? '#f9ab00' : '#6b7c99' }}>
+                  Last practiced: {skill.lastPracticed} {atrophy ? '⚠ ' + daysSince + 'd ago' : '(' + daysSince + 'd ago)'}
+                </span>
+              : <span style={{ fontSize: 12, color: '#4d6080' }}>Not yet practiced</span>}
+            {skill.goalLink && <span style={{ fontSize: 11, color: '#5f8ab8' }}>🎯 {skill.goalLink}</span>}
+          </div>
+          {skill.notes && !editing && <div style={{ color: '#6b7c99', fontSize: 12, marginTop: 4 }}>{skill.notes}</div>}
+
+          {editing && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input value={editForm.skill} onChange={e => setEditForm(p => ({ ...p, skill: e.target.value }))}
+                placeholder="Skill name" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <select value={editForm.level} onChange={e => setEditForm(p => ({ ...p, level: e.target.value }))} style={inputStyle}>
+                  {SKILL_LEVELS.map(l => <option key={l}>{l}</option>)}
+                </select>
+                <select value={editForm.category} onChange={e => setEditForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+                  <option value="">No category</option>
+                  {GROWTH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <input value={editForm.goalLink} onChange={e => setEditForm(p => ({ ...p, goalLink: e.target.value }))}
+                placeholder="Linked goal (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+              <input value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
+                placeholder="Notes (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setEditing(false)}
+                  style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+                <button type="button" onClick={handleSave} disabled={busy}
+                  style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>Save</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!editing && (
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button onClick={() => { onRecordPractice(skill.id); }} disabled={busy}
+              title="Log practice session today"
+              style={{ background: 'none', border: '1px solid #1a4a2e', borderRadius: 5, color: '#81c995',
+                       cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+              ✓ Practiced
+            </button>
+            <button onClick={() => setEditing(true)} disabled={busy}
+              style={{ background: 'none', border: '1px solid #2a3a50', borderRadius: 5, color: '#8ab4f8',
+                       cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+              Edit
+            </button>
+            <button onClick={() => { if (window.confirm('Delete "' + skill.skill + '"?')) onDelete(skill.id); }} disabled={busy}
+              style={{ background: 'none', border: '1px solid #3a2020', borderRadius: 5, color: '#f28b82',
+                       cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+              Del
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SkillsTab({ skills, filterPerson, onAdd, onUpdate, onRecordPractice, onDelete, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const [showForm, setShowForm] = React.useState(false);
+  const [form, setForm] = React.useState({ skill: '', category: '', level: 'Beginner', goalLink: '', notes: '' });
+
+  const filtered = skills.filter(s => s.person === filterPerson);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.skill.trim()) return;
+    onAdd({ ...form, person: filterPerson });
+    setForm({ skill: '', category: '', level: 'Beginner', goalLink: '', notes: '' });
+    setShowForm(false);
+  }
+
+  return (
+    <div>
+      {/* Stats */}
+      {filtered.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          {SKILL_LEVELS.map(l => {
+            const count = filtered.filter(s => s.level === l).length;
+            if (!count) return null;
+            return (
+              <div key={l} style={{ background: '#1e2a3a', border: '1px solid #2a3a50', borderRadius: 8, padding: '8px 14px', fontSize: 13, color: '#e8eaed' }}>
+                <span style={{ fontWeight: 700 }}>{count}</span>
+                <span style={{ color: '#6b7c99', marginLeft: 6 }}>{l}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+        <button onClick={() => setShowForm(v => !v)} disabled={busy}
+          style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#8ab4f8',
+                   color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+          {showForm ? '✕ Cancel' : '+ Add Skill'}
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showForm && (
+        <form onSubmit={handleSubmit} style={{ background: '#1e2a3a', borderRadius: 8, padding: '14px 16px',
+               marginBottom: 16, border: '1px solid #2a3a50', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input required value={form.skill} onChange={e => setForm(p => ({ ...p, skill: e.target.value }))}
+            placeholder="Skill name *" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <select value={form.level} onChange={e => setForm(p => ({ ...p, level: e.target.value }))} style={inputStyle}>
+              {SKILL_LEVELS.map(l => <option key={l}>{l}</option>)}
+            </select>
+            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+              <option value="">No category</option>
+              {GROWTH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <input value={form.goalLink} onChange={e => setForm(p => ({ ...p, goalLink: e.target.value }))}
+            placeholder="Linked goal (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Notes (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button type="submit" disabled={busy || !form.skill.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>🔧 Add</button>
+          </div>
+        </form>
+      )}
+
+      {filtered.length === 0 && !showForm
+        ? <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>No skills tracked yet. Add one above or tell VERA in chat.</div>
+        : filtered.map(s => (
+            <SkillCard key={s.id} skill={s} onUpdate={onUpdate} onRecordPractice={onRecordPractice} onDelete={onDelete} busy={busy} />
+          ))
+      }
+    </div>
+  );
+}
+
 // ── Experiments (Issue #130) ──────────────────────────────────────────────
 
 function ExperimentCard({ experiment: ex, onUpdate, onDelete, onAddCheckin, busy }) {
@@ -13468,6 +13979,7 @@ function App() {
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [wishList,   setWishList]   = useState([]);   // aspirational purchases (Issue #131)
   const [experiments, setExperiments] = useState([]);  // personal experiments (Issue #130)
+  const [growthData,  setGrowthData]  = useState(null); // books + courses + skills (Issue #88)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
@@ -13684,6 +14196,18 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, experiments: false }));
+  }
+
+  async function loadGrowth(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, growth: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'get_growth' });
+      setGrowthData({ books: data.books || [], courses: data.courses || [], skills: data.skills || [] });
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, growth: false }));
   }
 
   async function loadResources(url, token) {
@@ -15101,6 +15625,94 @@ function App() {
     setBusy(false);
   }
 
+  // Growth handlers (Issue #88)
+  async function handleAddBook(form) {
+    if (!form.title.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_book', ...form });
+      showToast('📖 Book added');
+      loadGrowth(apiUrl, apiToken);
+    } catch (err) { setError('Could not add book: ' + err.message); }
+    setBusy(false);
+  }
+  async function handleUpdateBook(id, field, value) {
+    setBusy(true);
+    setGrowthData(prev => prev ? { ...prev, books: prev.books.map(b => b.id === id ? { ...b, [field]: value } : b) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_book', id, field, value });
+      showToast('✓ Updated');
+    } catch (err) { setError('Could not update: ' + err.message); loadGrowth(apiUrl, apiToken); }
+    setBusy(false);
+  }
+  async function handleDeleteBook(id) {
+    setGrowthData(prev => prev ? { ...prev, books: prev.books.filter(b => b.id !== id) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_book', id });
+      showToast('✓ Deleted');
+    } catch (err) { setError('Could not delete: ' + err.message); loadGrowth(apiUrl, apiToken); }
+  }
+  async function handleAddCourse(form) {
+    if (!form.title.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_course', ...form });
+      showToast('🎓 Course added');
+      loadGrowth(apiUrl, apiToken);
+    } catch (err) { setError('Could not add course: ' + err.message); }
+    setBusy(false);
+  }
+  async function handleUpdateCourse(id, field, value) {
+    setBusy(true);
+    setGrowthData(prev => prev ? { ...prev, courses: prev.courses.map(c => c.id === id ? { ...c, [field]: value } : c) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_course', id, field, value });
+      showToast('✓ Updated');
+    } catch (err) { setError('Could not update: ' + err.message); loadGrowth(apiUrl, apiToken); }
+    setBusy(false);
+  }
+  async function handleDeleteCourse(id) {
+    setGrowthData(prev => prev ? { ...prev, courses: prev.courses.filter(c => c.id !== id) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_course', id });
+      showToast('✓ Deleted');
+    } catch (err) { setError('Could not delete: ' + err.message); loadGrowth(apiUrl, apiToken); }
+  }
+  async function handleAddSkill(form) {
+    if (!form.skill.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_skill', ...form });
+      showToast('🔧 Skill added');
+      loadGrowth(apiUrl, apiToken);
+    } catch (err) { setError('Could not add skill: ' + err.message); }
+    setBusy(false);
+  }
+  async function handleUpdateSkill(id, field, value) {
+    setBusy(true);
+    setGrowthData(prev => prev ? { ...prev, skills: prev.skills.map(s => s.id === id ? { ...s, [field]: value } : s) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_skill', id, field, value });
+      showToast('✓ Updated');
+    } catch (err) { setError('Could not update: ' + err.message); loadGrowth(apiUrl, apiToken); }
+    setBusy(false);
+  }
+  async function handleRecordSkillPractice(id) {
+    const today = new Date().toISOString().slice(0, 10);
+    setGrowthData(prev => prev ? { ...prev, skills: prev.skills.map(s => s.id === id ? { ...s, lastPracticed: today } : s) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'record_skill_practice', id });
+      showToast('✓ Practice logged');
+    } catch (err) { setError('Could not log practice: ' + err.message); loadGrowth(apiUrl, apiToken); }
+  }
+  async function handleDeleteSkill(id) {
+    setGrowthData(prev => prev ? { ...prev, skills: prev.skills.filter(s => s.id !== id) } : prev);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_skill', id });
+      showToast('✓ Deleted');
+    } catch (err) { setError('Could not delete: ' + err.message); loadGrowth(apiUrl, apiToken); }
+  }
+
   async function handleAddItineraryItem(params) {
     setBusy(true);
     try {
@@ -15427,7 +16039,7 @@ function App() {
                   setActiveTab(tab);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); loadExperiments(apiUrl, apiToken); }
-                  if (tab === 'growth')     loadGoals(apiUrl, apiToken);
+                  if (tab === 'growth')   { loadGoals(apiUrl, apiToken); loadGrowth(apiUrl, apiToken); }
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); }
@@ -15818,6 +16430,18 @@ function App() {
                     loadGoals(apiUrl, apiToken);
                   }
                 }}
+                growthData={growthData}
+                growthLoading={!!tabLoading.growth}
+                onAddBook={handleAddBook}
+                onUpdateBook={handleUpdateBook}
+                onDeleteBook={handleDeleteBook}
+                onAddCourse={handleAddCourse}
+                onUpdateCourse={handleUpdateCourse}
+                onDeleteCourse={handleDeleteCourse}
+                onAddSkill={handleAddSkill}
+                onUpdateSkill={handleUpdateSkill}
+                onRecordSkillPractice={handleRecordSkillPractice}
+                onDeleteSkill={handleDeleteSkill}
                 busy={busy}
               />
             )}

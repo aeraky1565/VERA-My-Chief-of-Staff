@@ -359,6 +359,54 @@ function buildChatSystemPrompt_(context) {
         return line;
       }).join('\n');
 
+  var growthLines = (function() {
+    if (!context.growthData) return '';
+    var gd = context.growthData;
+    var lines = '';
+    // Books
+    var reading  = (gd.books || []).filter(function(b) { return b.status === 'Reading'; });
+    var wantBook = (gd.books || []).filter(function(b) { return b.status === 'Want to Read'; });
+    var readDone = (gd.books || []).filter(function(b) { return b.status === 'Read'; }).slice(-5);
+    if (reading.length) {
+      lines += '  Currently reading:\n';
+      reading.forEach(function(b) {
+        lines += '    [' + b.id + '] "' + b.title + '"' + (b.author ? ' by ' + b.author : '') +
+                 (b.person ? ' (' + b.person + ')' : '') + '\n';
+      });
+    }
+    if (wantBook.length) {
+      lines += '  Want to read (' + wantBook.length + ' books on backlog)\n';
+    }
+    if (readDone.length) {
+      lines += '  Recently finished: ' + readDone.map(function(b) { return '"' + b.title + '"' + (b.rating ? ' ' + b.rating + '/5' : ''); }).join(', ') + '\n';
+    }
+    // Courses
+    var inProg   = (gd.courses || []).filter(function(c) { return c.status === 'In Progress'; });
+    var wantCrs  = (gd.courses || []).filter(function(c) { return c.status === 'Want to Do'; });
+    var doneCrs  = (gd.courses || []).filter(function(c) { return c.status === 'Done'; }).slice(-3);
+    if (inProg.length) {
+      lines += '  In progress courses:\n';
+      inProg.forEach(function(c) {
+        lines += '    [' + c.id + '] "' + c.title + '"' + (c.source ? ' (' + c.source + ')' : '') +
+                 (c.person ? ' — ' + c.person : '') + '\n';
+      });
+    }
+    if (wantCrs.length) lines += '  Want to do (' + wantCrs.length + ' courses queued)\n';
+    if (doneCrs.length) {
+      lines += '  Recently completed courses: ' + doneCrs.map(function(c) { return '"' + c.title + '"'; }).join(', ') + '\n';
+    }
+    // Skills
+    if ((gd.skills || []).length) {
+      lines += '  Skills being built:\n';
+      gd.skills.forEach(function(s) {
+        lines += '    [' + s.id + '] ' + s.skill + ' — ' + s.level +
+                 (s.person ? ' (' + s.person + ')' : '') +
+                 (s.lastPracticed ? ' | last practiced: ' + s.lastPracticed : '') + '\n';
+      });
+    }
+    return lines.trim() || '  (nothing logged yet)';
+  })();
+
   // PTO — delegate to existing ptoSummaryForClaude_() (PTO.js)
   var ptoSection = context.ptoStats
     ? ptoSummaryForClaude_(context.ptoStats)
@@ -485,6 +533,7 @@ function buildChatSystemPrompt_(context) {
     (context.giftIdeas !== null ? 'GIFT IDEAS:\n' + giftIdeasLines + '\n\n' : '') +
     (context.wishList !== null ? 'WISH LIST (active items):\n' + wishListLines + '\n\n' : '') +
     (context.experiments !== null ? 'EXPERIMENTS (active/ongoing/paused):\n' + experimentLines + '\n\n' : '') +
+    (context.growthData !== null ? 'GROWTH \u2014 BOOKS, COURSES & SKILLS:\n' + growthLines + '\n\n' : '') +
     (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
     (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
@@ -830,6 +879,17 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_experiment|{id}|{field}|{value}  \u2014 update experiment field; field=person/title/category/hypothesis/startdate/enddate/status/outcome/rating/notes\n' +
     'ACTION:log_experiment_checkin|{id}|{note}  \u2014 add a check-in note to an experiment\n' +
     'ACTION:delete_experiment|{id}  \u2014 remove an experiment\n' +
+    // Growth — Books, Courses, Skills (Issue #88)
+    'ACTION:add_book|{person}|{title}|{author or blank}|{category or blank}|{status}|{rating 1-5 or blank}|{notes or blank}  \u2014 add a book; person=Ahmed/Victoria; status=Want to Read/Reading/Read\n' +
+    'ACTION:update_book|{id}|{field}|{value}  \u2014 update book field; field=person/title/author/category/status/rating/datestarted/datefinished/notes\n' +
+    'ACTION:delete_book|{id}  \u2014 remove a book\n' +
+    'ACTION:add_course|{person}|{title}|{source or blank}|{category or blank}|{status}|{rating 1-5 or blank}|{notes or blank}  \u2014 add a course/content; person=Ahmed/Victoria; status=Want to Do/In Progress/Done; source=platform e.g. Coursera/YouTube/Podcast\n' +
+    'ACTION:update_course|{id}|{field}|{value}  \u2014 update course field; field=person/title/source/category/status/rating/datestarted/datefinished/notes\n' +
+    'ACTION:delete_course|{id}  \u2014 remove a course\n' +
+    'ACTION:add_skill|{person}|{skill}|{category or blank}|{level}|{goalLink or blank}|{notes or blank}  \u2014 add a skill; person=Ahmed/Victoria; level=Beginner/Intermediate/Advanced/Expert\n' +
+    'ACTION:update_skill|{id}|{field}|{value}  \u2014 update skill field; field=person/skill/category/level/goallink/notes\n' +
+    'ACTION:record_skill_practice|{id}  \u2014 mark a skill as practiced today\n' +
+    'ACTION:delete_skill|{id}  \u2014 remove a skill\n' +
     '\n' +
 
     'RULES:\n' +
@@ -934,6 +994,14 @@ function buildChatSystemPrompt_(context) {
     'Use update_experiment with field=status to update state: Active / Ongoing / Paused / Stopped / Completed. ' +
     'Use update_experiment with field=outcome to record the final result. ' +
     'When Ahmed mentions his current experiments in conversation, reference their check-in history to give context-aware responses.\n' +
+    '- GROWTH (Books, Courses, Skills): Use add_book when Ahmed mentions reading or wanting to read a book. ' +
+    'Use update_book with field=status to move a book from "Reading" to "Read" when he finishes it — this auto-fills dateFinished. ' +
+    'Use add_course for online courses, podcasts, YouTube series, or any structured learning content. ' +
+    'Use add_skill when Ahmed mentions building or practicing a skill. ' +
+    'Use record_skill_practice when he says he practiced or worked on a skill today — it stamps today\'s date automatically. ' +
+    'Person defaults to Ahmed unless Victoria is explicitly mentioned. ' +
+    'When Ahmed asks what he\'s currently reading or learning, summarise from GROWTH context above. ' +
+    'Connect books/courses to active goals or interests when the link is obvious (e.g. a productivity book linked to a career goal).\n' +
     '- REFERENCE RESOURCES: Only use fetch_resource_content if a resource with a matching [ID] appears in the ' +
     'REFERENCE RESOURCES section above. Never invent or guess an ID. ' +
     'When a match exists, say "I have a document on this — let me check it." and emit ACTION:fetch_resource_content|{resourceId} using the exact ID shown. ' +
@@ -980,6 +1048,7 @@ function detectChatIntent_(msg) {
     people:   /\b(gift|birthday|anniversary|victoria|family|friend|present|important date|upcoming date|date coming)\b/.test(m),
     wishlist:    /\b(wish list|wishlist|want to buy|someday buy|aspiring|have my eye|dream purchase|been wanting|on my list|coveting)\b/.test(m),
     experiments: /\b(experiment|experiments|experimenting|hypothesis|trying out|testing out|tracking|track my|check[ -]?in|my experiment|personal test|run an experiment)\b/.test(m),
+    growth:      /\b(book|books|reading|read|course|courses|skill|skills|learning|practice|practicing|level up|studying|study|podcast|finished reading|started reading|currently reading)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
   };
@@ -1223,6 +1292,61 @@ function buildChatContext_(userMessage) {
     } catch (expErr) { Logger.log('Chat context: experiments — ' + expErr.message); experiments = []; }
   }
 
+  // Growth — Books, Courses, Skills (Issue #88)
+  var growthData = null;
+  if (intent.growth) {
+    try {
+      var bSheet = ss.getSheetByName(TABS.BOOKS);
+      var cSheet = ss.getSheetByName(TABS.COURSES);
+      var sSheet = ss.getSheetByName(TABS.SKILLS);
+
+      var books = [];
+      if (bSheet && bSheet.getLastRow() >= 2) {
+        bSheet.getRange(2, 1, bSheet.getLastRow() - 1, BOOK_HEADERS.length).getValues()
+          .forEach(function(r) {
+            var id = String(r[0] || '').trim();
+            if (!id) return;
+            books.push({
+              id: id, person: String(r[1]||'').trim(), title: String(r[2]||'').trim(),
+              author: String(r[3]||'').trim(), status: String(r[5]||'').trim(),
+              rating: r[6] || null, dateStarted: String(r[7]||'').trim(),
+              dateFinished: String(r[8]||'').trim(),
+            });
+          });
+      }
+
+      var courses = [];
+      if (cSheet && cSheet.getLastRow() >= 2) {
+        cSheet.getRange(2, 1, cSheet.getLastRow() - 1, COURSE_HEADERS.length).getValues()
+          .forEach(function(r) {
+            var id = String(r[0] || '').trim();
+            if (!id) return;
+            courses.push({
+              id: id, person: String(r[1]||'').trim(), title: String(r[2]||'').trim(),
+              source: String(r[3]||'').trim(), status: String(r[5]||'').trim(),
+              rating: r[6] || null, dateFinished: String(r[8]||'').trim(),
+            });
+          });
+      }
+
+      var skillItems = [];
+      if (sSheet && sSheet.getLastRow() >= 2) {
+        sSheet.getRange(2, 1, sSheet.getLastRow() - 1, SKILL_HEADERS.length).getValues()
+          .forEach(function(r) {
+            var id = String(r[0] || '').trim();
+            if (!id) return;
+            skillItems.push({
+              id: id, person: String(r[1]||'').trim(), skill: String(r[2]||'').trim(),
+              category: String(r[3]||'').trim(), level: String(r[4]||'').trim(),
+              lastPracticed: String(r[6]||'').trim(),
+            });
+          });
+      }
+
+      growthData = { books: books, courses: courses, skills: skillItems };
+    } catch (grErr) { Logger.log('Chat context: growth — ' + grErr.message); growthData = { books: [], courses: [], skills: [] }; }
+  }
+
   // Ideas braindump — people intent
   var ideas = null;
   if (intent.people) {
@@ -1458,6 +1582,7 @@ function buildChatContext_(userMessage) {
     giftIdeas:       giftIdeas,
     wishList:        wishList,
     experiments:     experiments,
+    growthData:      growthData,
   };
 }
 
@@ -2536,6 +2661,95 @@ function executeActions_(rawText) {
         if (!deId) throw new Error('id required for delete_experiment');
         webDeleteExperiment_({ parameter: { id: deId } });
         executed.push('delete_experiment (' + deId + ')');
+      }
+      // Growth — Books (Issue #88)
+      else if (type === 'add_book') {
+        var abPerson   = (args[0] || 'Ahmed').trim();
+        var abTitle    = (args[1] || '').trim();
+        var abAuthor   = (args[2] || '').trim();
+        var abCategory = (args[3] || '').trim();
+        var abStatus   = (args[4] || 'Want to Read').trim();
+        var abRating   = (args[5] || '').trim();
+        var abNotes    = (args[6] || '').trim();
+        if (!abTitle) throw new Error('title is required for add_book');
+        webAddBook_({ parameter: { person: abPerson, title: abTitle, author: abAuthor,
+                                   category: abCategory, status: abStatus, rating: abRating, notes: abNotes } });
+        executed.push('add_book (' + abPerson + ': "' + abTitle + '" — ' + abStatus + ')');
+      }
+      else if (type === 'update_book') {
+        var ubId    = (args[0] || '').trim();
+        var ubField = (args[1] || '').trim();
+        var ubValue = (args[2] || '').trim();
+        if (!ubId || !ubField) throw new Error('id and field required for update_book');
+        webUpdateBook_({ parameter: { id: ubId, field: ubField, value: ubValue } });
+        executed.push('update_book (' + ubId + ' ' + ubField + '=' + ubValue + ')');
+      }
+      else if (type === 'delete_book') {
+        var dbId = (args[0] || '').trim();
+        if (!dbId) throw new Error('id required for delete_book');
+        webDeleteBook_({ parameter: { id: dbId } });
+        executed.push('delete_book (' + dbId + ')');
+      }
+      // Growth — Courses (Issue #88)
+      else if (type === 'add_course') {
+        var acPerson   = (args[0] || 'Ahmed').trim();
+        var acTitle    = (args[1] || '').trim();
+        var acSource   = (args[2] || '').trim();
+        var acCategory = (args[3] || '').trim();
+        var acStatus   = (args[4] || 'Want to Do').trim();
+        var acRating   = (args[5] || '').trim();
+        var acNotes    = (args[6] || '').trim();
+        if (!acTitle) throw new Error('title is required for add_course');
+        webAddCourse_({ parameter: { person: acPerson, title: acTitle, source: acSource,
+                                     category: acCategory, status: acStatus, rating: acRating, notes: acNotes } });
+        executed.push('add_course (' + acPerson + ': "' + acTitle + '" — ' + acStatus + ')');
+      }
+      else if (type === 'update_course') {
+        var ucId    = (args[0] || '').trim();
+        var ucField = (args[1] || '').trim();
+        var ucValue = (args[2] || '').trim();
+        if (!ucId || !ucField) throw new Error('id and field required for update_course');
+        webUpdateCourse_({ parameter: { id: ucId, field: ucField, value: ucValue } });
+        executed.push('update_course (' + ucId + ' ' + ucField + '=' + ucValue + ')');
+      }
+      else if (type === 'delete_course') {
+        var dcId = (args[0] || '').trim();
+        if (!dcId) throw new Error('id required for delete_course');
+        webDeleteCourse_({ parameter: { id: dcId } });
+        executed.push('delete_course (' + dcId + ')');
+      }
+      // Growth — Skills (Issue #88)
+      else if (type === 'add_skill') {
+        var asPerson   = (args[0] || 'Ahmed').trim();
+        var asSkill    = (args[1] || '').trim();
+        var asCategory = (args[2] || '').trim();
+        var asLevel    = (args[3] || 'Beginner').trim();
+        var asGoalLink = (args[4] || '').trim();
+        var asNotes    = (args[5] || '').trim();
+        if (!asSkill) throw new Error('skill is required for add_skill');
+        webAddSkill_({ parameter: { person: asPerson, skill: asSkill, category: asCategory,
+                                    level: asLevel, goalLink: asGoalLink, notes: asNotes } });
+        executed.push('add_skill (' + asPerson + ': ' + asSkill + ' [' + asLevel + '])');
+      }
+      else if (type === 'update_skill') {
+        var usId    = (args[0] || '').trim();
+        var usField = (args[1] || '').trim();
+        var usValue = (args[2] || '').trim();
+        if (!usId || !usField) throw new Error('id and field required for update_skill');
+        webUpdateSkill_({ parameter: { id: usId, field: usField, value: usValue } });
+        executed.push('update_skill (' + usId + ' ' + usField + '=' + usValue + ')');
+      }
+      else if (type === 'record_skill_practice') {
+        var rspId = (args[0] || '').trim();
+        if (!rspId) throw new Error('id required for record_skill_practice');
+        webRecordSkillPractice_({ parameter: { id: rspId } });
+        executed.push('record_skill_practice (' + rspId + ')');
+      }
+      else if (type === 'delete_skill') {
+        var dsId = (args[0] || '').trim();
+        if (!dsId) throw new Error('id required for delete_skill');
+        webDeleteSkill_({ parameter: { id: dsId } });
+        executed.push('delete_skill (' + dsId + ')');
       }
 
     } catch (e) {

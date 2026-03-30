@@ -120,6 +120,18 @@ function doGet(e) {
       case 'update_experiment':         return jsonOut_(webUpdateExperiment_(e));
       case 'delete_experiment':         return jsonOut_(webDeleteExperiment_(e));
       case 'add_experiment_checkin':    return jsonOut_(webAddExperimentCheckin_(e));
+      // Growth — Books, Courses, Skills (Issue #88)
+      case 'get_growth':                return jsonOut_(webGetGrowth_());
+      case 'add_book':                  return jsonOut_(webAddBook_(e));
+      case 'update_book':               return jsonOut_(webUpdateBook_(e));
+      case 'delete_book':               return jsonOut_(webDeleteBook_(e));
+      case 'add_course':                return jsonOut_(webAddCourse_(e));
+      case 'update_course':             return jsonOut_(webUpdateCourse_(e));
+      case 'delete_course':             return jsonOut_(webDeleteCourse_(e));
+      case 'add_skill':                 return jsonOut_(webAddSkill_(e));
+      case 'update_skill':              return jsonOut_(webUpdateSkill_(e));
+      case 'record_skill_practice':     return jsonOut_(webRecordSkillPractice_(e));
+      case 'delete_skill':              return jsonOut_(webDeleteSkill_(e));
       // Wish List (Issue #131)
       case 'get_wish_list':         return jsonOut_(webGetWishList_());
       case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));
@@ -4167,6 +4179,345 @@ function webAddExperimentCheckin_(e) {
 
   Logger.log('webAddExperimentCheckin_: ' + id + ' for ' + eid);
   return { ok: true, id: id, experimentId: eid, action: 'checkin_added' };
+}
+
+// ---- Growth — Books, Courses, Skills (Issue #88) ---------------------------
+
+/**
+ * Returns all books, courses, and skills in a single payload.
+ * { books: [...], courses: [...], skills: [...] }
+ */
+function webGetGrowth_() {
+  var ss = getSpreadsheet();
+
+  // Books
+  var books = [];
+  var bSheet = ss.getSheetByName(TABS.BOOKS);
+  if (bSheet && bSheet.getLastRow() >= 2) {
+    bSheet.getRange(2, 1, bSheet.getLastRow() - 1, BOOK_HEADERS.length).getValues()
+      .forEach(function(r) {
+        var id = String(r[0] || '').trim();
+        if (!id) return;
+        books.push({
+          id:           id,
+          person:       String(r[1] || '').trim(),
+          title:        String(r[2] || '').trim(),
+          author:       String(r[3] || '').trim(),
+          category:     String(r[4] || '').trim(),
+          status:       String(r[5] || 'Want to Read').trim(),
+          rating:       r[6] !== '' && r[6] !== null ? Number(r[6]) : null,
+          dateStarted:  formatDateVal_(r[7]),
+          dateFinished: formatDateVal_(r[8]),
+          notes:        String(r[9] || '').trim(),
+        });
+      });
+  }
+
+  // Courses
+  var courses = [];
+  var cSheet = ss.getSheetByName(TABS.COURSES);
+  if (cSheet && cSheet.getLastRow() >= 2) {
+    cSheet.getRange(2, 1, cSheet.getLastRow() - 1, COURSE_HEADERS.length).getValues()
+      .forEach(function(r) {
+        var id = String(r[0] || '').trim();
+        if (!id) return;
+        courses.push({
+          id:           id,
+          person:       String(r[1] || '').trim(),
+          title:        String(r[2] || '').trim(),
+          source:       String(r[3] || '').trim(),
+          category:     String(r[4] || '').trim(),
+          status:       String(r[5] || 'Want to Do').trim(),
+          rating:       r[6] !== '' && r[6] !== null ? Number(r[6]) : null,
+          dateStarted:  formatDateVal_(r[7]),
+          dateFinished: formatDateVal_(r[8]),
+          notes:        String(r[9] || '').trim(),
+        });
+      });
+  }
+
+  // Skills
+  var skills = [];
+  var sSheet = ss.getSheetByName(TABS.SKILLS);
+  if (sSheet && sSheet.getLastRow() >= 2) {
+    sSheet.getRange(2, 1, sSheet.getLastRow() - 1, SKILL_HEADERS.length).getValues()
+      .forEach(function(r) {
+        var id = String(r[0] || '').trim();
+        if (!id) return;
+        skills.push({
+          id:            id,
+          person:        String(r[1] || '').trim(),
+          skill:         String(r[2] || '').trim(),
+          category:      String(r[3] || '').trim(),
+          level:         String(r[4] || 'Beginner').trim(),
+          goalLink:      String(r[5] || '').trim(),
+          lastPracticed: formatDateVal_(r[6]),
+          notes:         String(r[7] || '').trim(),
+        });
+      });
+  }
+
+  return { ok: true, books: books, courses: courses, skills: skills };
+}
+
+// ---- Books ------------------------------------------------------------------
+
+function webAddBook_(e) {
+  var p     = e.parameter;
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BOOKS);
+
+  var today   = new Date();
+  var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
+  var numRows = sheet.getLastRow();
+  var seq     = 1;
+  if (numRows >= 2) {
+    var existing = sheet.getRange(2, 1, numRows - 1, 1).getValues()
+      .filter(function(r) { return String(r[0]).indexOf('BOOK-' + dateStr) === 0; });
+    seq = existing.length + 1;
+  }
+  var id = 'BOOK-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  var status = String(p.status || 'Want to Read').trim();
+  var dateStarted  = (status === 'Reading' || status === 'Read') && p.dateStarted
+    ? p.dateStarted : (status === 'Reading' ? Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '');
+  var dateFinished = (status === 'Read') && p.dateFinished ? p.dateFinished : '';
+  var rating = (p.rating && !isNaN(Number(p.rating))) ? Number(p.rating) : '';
+
+  // BOOK_HEADERS: ID | Person | Title | Author | Category | Status | Rating | Date Started | Date Finished | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, BOOK_HEADERS.length)
+    .setValues([[id, p.person || 'Ahmed', p.title || '', p.author || '', p.category || '',
+                 status, rating, dateStarted, dateFinished, p.notes || '']]);
+
+  Logger.log('webAddBook_: ' + id);
+  return { ok: true, id: id, action: 'book_added' };
+}
+
+function findBookRow_(id) {
+  var sheet = getSpreadsheet().getSheetByName(TABS.BOOKS);
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return i + 2;
+  }
+  return -1;
+}
+
+function webUpdateBook_(e) {
+  var p     = e.parameter;
+  var id    = String(p.id || '').trim();
+  var field = String(p.field || '').toLowerCase().trim();
+  var value = String(p.value !== undefined ? p.value : '').trim();
+  if (!id || !field) return { ok: false, error: 'id and field required' };
+
+  var row = findBookRow_(id);
+  if (row < 0) return { ok: false, error: 'book not found: ' + id };
+
+  var colMap = { person:1, title:2, author:3, category:4, status:5, rating:6,
+                 datestarted:7, datefinished:8, notes:9 };
+  // datestarted / datefinished aliases
+  colMap['date started']  = 7;
+  colMap['date finished'] = 8;
+
+  var col = colMap[field];
+  if (!col) return { ok: false, error: 'unknown field: ' + field };
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.BOOKS);
+  var writeVal = (field === 'rating') ? (value !== '' ? Number(value) : '') : value;
+  sheet.getRange(row, col + 1).setValue(writeVal); // +1 because col is 0-indexed
+
+  // If marking as Read and no dateFinished set yet, auto-fill today
+  if (field === 'status' && value === 'Read') {
+    var existing = sheet.getRange(row, 9).getValue();
+    if (!existing) {
+      sheet.getRange(row, 9).setValue(
+        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      );
+    }
+  }
+
+  Logger.log('webUpdateBook_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, field: field, action: 'book_updated' };
+}
+
+function webDeleteBook_(e) {
+  var id  = String((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var row = findBookRow_(id);
+  if (row < 0) return { ok: false, error: 'book not found: ' + id };
+  getSpreadsheet().getSheetByName(TABS.BOOKS).deleteRow(row);
+  Logger.log('webDeleteBook_: ' + id);
+  return { ok: true, id: id, action: 'book_deleted' };
+}
+
+// ---- Courses ----------------------------------------------------------------
+
+function webAddCourse_(e) {
+  var p     = e.parameter;
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.COURSES);
+
+  var today   = new Date();
+  var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
+  var numRows = sheet.getLastRow();
+  var seq     = 1;
+  if (numRows >= 2) {
+    var existing = sheet.getRange(2, 1, numRows - 1, 1).getValues()
+      .filter(function(r) { return String(r[0]).indexOf('CRS-' + dateStr) === 0; });
+    seq = existing.length + 1;
+  }
+  var id = 'CRS-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  var status = String(p.status || 'Want to Do').trim();
+  var dateStarted  = (status === 'In Progress' || status === 'Done') && p.dateStarted
+    ? p.dateStarted : (status === 'In Progress' ? Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '');
+  var dateFinished = (status === 'Done') && p.dateFinished ? p.dateFinished : '';
+  var rating = (p.rating && !isNaN(Number(p.rating))) ? Number(p.rating) : '';
+
+  // COURSE_HEADERS: ID | Person | Title | Source | Category | Status | Rating | Date Started | Date Finished | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, COURSE_HEADERS.length)
+    .setValues([[id, p.person || 'Ahmed', p.title || '', p.source || '', p.category || '',
+                 status, rating, dateStarted, dateFinished, p.notes || '']]);
+
+  Logger.log('webAddCourse_: ' + id);
+  return { ok: true, id: id, action: 'course_added' };
+}
+
+function findCourseRow_(id) {
+  var sheet = getSpreadsheet().getSheetByName(TABS.COURSES);
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return i + 2;
+  }
+  return -1;
+}
+
+function webUpdateCourse_(e) {
+  var p     = e.parameter;
+  var id    = String(p.id || '').trim();
+  var field = String(p.field || '').toLowerCase().trim();
+  var value = String(p.value !== undefined ? p.value : '').trim();
+  if (!id || !field) return { ok: false, error: 'id and field required' };
+
+  var row = findCourseRow_(id);
+  if (row < 0) return { ok: false, error: 'course not found: ' + id };
+
+  var colMap = { person:1, title:2, source:3, category:4, status:5, rating:6,
+                 datestarted:7, datefinished:8, notes:9 };
+  colMap['date started']  = 7;
+  colMap['date finished'] = 8;
+
+  var col = colMap[field];
+  if (!col) return { ok: false, error: 'unknown field: ' + field };
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.COURSES);
+  var writeVal = (field === 'rating') ? (value !== '' ? Number(value) : '') : value;
+  sheet.getRange(row, col + 1).setValue(writeVal);
+
+  if (field === 'status' && value === 'Done') {
+    var existing = sheet.getRange(row, 9).getValue();
+    if (!existing) {
+      sheet.getRange(row, 9).setValue(
+        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      );
+    }
+  }
+
+  Logger.log('webUpdateCourse_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, field: field, action: 'course_updated' };
+}
+
+function webDeleteCourse_(e) {
+  var id  = String((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var row = findCourseRow_(id);
+  if (row < 0) return { ok: false, error: 'course not found: ' + id };
+  getSpreadsheet().getSheetByName(TABS.COURSES).deleteRow(row);
+  Logger.log('webDeleteCourse_: ' + id);
+  return { ok: true, id: id, action: 'course_deleted' };
+}
+
+// ---- Skills -----------------------------------------------------------------
+
+function webAddSkill_(e) {
+  var p     = e.parameter;
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.SKILLS);
+
+  var today   = new Date();
+  var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
+  var numRows = sheet.getLastRow();
+  var seq     = 1;
+  if (numRows >= 2) {
+    var existing = sheet.getRange(2, 1, numRows - 1, 1).getValues()
+      .filter(function(r) { return String(r[0]).indexOf('SKILL-' + dateStr) === 0; });
+    seq = existing.length + 1;
+  }
+  var id = 'SKILL-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  // SKILL_HEADERS: ID | Person | Skill | Category | Level | Goal Link | Last Practiced | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, SKILL_HEADERS.length)
+    .setValues([[id, p.person || 'Ahmed', p.skill || '', p.category || '',
+                 p.level || 'Beginner', p.goalLink || '', p.lastPracticed || '', p.notes || '']]);
+
+  Logger.log('webAddSkill_: ' + id);
+  return { ok: true, id: id, action: 'skill_added' };
+}
+
+function findSkillRow_(id) {
+  var sheet = getSpreadsheet().getSheetByName(TABS.SKILLS);
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return i + 2;
+  }
+  return -1;
+}
+
+function webUpdateSkill_(e) {
+  var p     = e.parameter;
+  var id    = String(p.id || '').trim();
+  var field = String(p.field || '').toLowerCase().trim();
+  var value = String(p.value !== undefined ? p.value : '').trim();
+  if (!id || !field) return { ok: false, error: 'id and field required' };
+
+  var row = findSkillRow_(id);
+  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
+
+  var colMap = { person:1, skill:2, category:3, level:4, goallink:5, lastpracticed:6, notes:7 };
+  colMap['goal link']     = 5;
+  colMap['last practiced'] = 6;
+
+  var col = colMap[field];
+  if (col === undefined) return { ok: false, error: 'unknown field: ' + field };
+
+  getSpreadsheet().getSheetByName(TABS.SKILLS).getRange(row, col + 1).setValue(value);
+  Logger.log('webUpdateSkill_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, field: field, action: 'skill_updated' };
+}
+
+function webRecordSkillPractice_(e) {
+  var id = String((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var row = findSkillRow_(id);
+  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
+
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  getSpreadsheet().getSheetByName(TABS.SKILLS).getRange(row, 7).setValue(today); // col 7 = Last Practiced
+
+  Logger.log('webRecordSkillPractice_: ' + id + ' on ' + today);
+  return { ok: true, id: id, lastPracticed: today, action: 'practice_recorded' };
+}
+
+function webDeleteSkill_(e) {
+  var id  = String((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var row = findSkillRow_(id);
+  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
+  getSpreadsheet().getSheetByName(TABS.SKILLS).deleteRow(row);
+  Logger.log('webDeleteSkill_: ' + id);
+  return { ok: true, id: id, action: 'skill_deleted' };
 }
 
 // ---- Wish List (Issue #131) ------------------------------------------------

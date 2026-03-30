@@ -79,6 +79,9 @@ const TABS = {
   WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
   EXPERIMENTS:         'Experiments',          // Personal experiment tracker (Issue #130)
   EXPERIMENT_CHECKINS: 'Experiment Check-ins', // Per-experiment check-in log (Issue #130)
+  BOOKS:               'Books',                // Reading log (Issue #88)
+  COURSES:             'Courses',              // Courses & content log (Issue #88)
+  SKILLS:              'Skills',               // Skill building tracker (Issue #88)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -133,6 +136,9 @@ const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Ch
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Rating', 'Notes']; // Issue #130
 const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Experiment Title', 'Date', 'Note']; // Issue #130
+const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
+const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
+const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes']; // Issue #88
 const VEHICLE_HEADERS            = [
   'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
   'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
@@ -263,6 +269,9 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.WISH_LIST,           WISH_LIST_HEADERS);          // Issue #131
   ensureSheet(ss, TABS.EXPERIMENTS,         EXPERIMENT_HEADERS);         // Issue #130
   ensureSheet(ss, TABS.EXPERIMENT_CHECKINS, EXPERIMENT_CHECKIN_HEADERS); // Issue #130
+  ensureSheet(ss, TABS.BOOKS,               BOOK_HEADERS);               // Issue #88
+  ensureSheet(ss, TABS.COURSES,             COURSE_HEADERS);             // Issue #88
+  ensureSheet(ss, TABS.SKILLS,              SKILL_HEADERS);              // Issue #88
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   // Set Life Plan Doc ID if not already set
@@ -615,6 +624,10 @@ function nightlyRun() {
     // Step 0g-iv: Experiments — end-date flags + suggestion engine (Issue #130)
     try { checkExperiments_(); }
     catch (exErr) { Logger.log('checkExperiments_ error (non-fatal): ' + exErr.message); }
+
+    // Step 0g-v: Growth — stale reading, learning gap, skill atrophy flags (Issue #88)
+    try { checkGrowth_(); }
+    catch (grErr) { Logger.log('checkGrowth_ error (non-fatal): ' + grErr.message); }
 
     // Step 0h: Reset morning routine checkboxes for the new day
     try {
