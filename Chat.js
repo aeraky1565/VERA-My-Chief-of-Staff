@@ -2294,8 +2294,14 @@ function executeActions_(rawText) {
           var frResult = webFetchResourceContent_({ parameter: { id: frId } });
           if (frResult.ok) {
             executed.push('fetch_resource_content:' + JSON.stringify({ id: frId, name: frResult.name, content: frResult.content }));
-          } else if (frResult.error === 'no_drive_file' || frResult.error === 'cannot_read_file') {
+          } else if (frResult.error === 'no_drive_file') {
+            // No Drive File ID — URL-only resource, VERA should direct user to the link
             executed.push('fetch_resource_content:link_only:' + frResult.name + ':' + (frResult.url || ''));
+          } else if (frResult.error === 'cannot_read_file') {
+            // Drive File ID exists but DocumentApp.openById() failed (permissions / wrong file type)
+            errors.push('fetch_resource_content: could not read "' + frResult.name + '" — ' +
+              (frResult.detail || 'access denied') +
+              '. Make sure the Google Doc is shared with the VERA service account (the same Google account running this script), and that it is a Google Docs file (not Sheets or PDF).');
           } else if (frResult.error === 'not found') {
             errors.push('fetch_resource_content: resource "' + frId + '" not found in knowledge base — it may not have been added yet via Explore → Resources');
           } else {
@@ -2380,6 +2386,35 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
 
   // Execute any actions Claude embedded
   var actionResult = executeActions_(rawReply);
+
+  // If any Google Doc was fetched successfully, make a second Claude call with the content
+  // so VERA can actually read the document and answer — not just say "let me fetch it"
+  var fetchedDocs = actionResult.executed
+    .filter(function(r) { return r.indexOf('fetch_resource_content:{') === 0; })
+    .map(function(r) {
+      try { return JSON.parse(r.substring('fetch_resource_content:'.length)); } catch (fe) { return null; }
+    })
+    .filter(Boolean);
+
+  if (fetchedDocs.length > 0) {
+    var docBlocks = fetchedDocs.map(function(d) {
+      return '=== DOCUMENT: ' + d.name + ' ===\n' + (d.content || '(empty)') + '\n=== END ===';
+    }).join('\n\n');
+
+    // Build conversation history including the "let me fetch" exchange
+    var followUpHistory = history.concat([
+      { role: 'user',      content: trimmedMsg || '[Image attached]' },
+      { role: 'assistant', content: stripActions_(rawReply) },
+    ]);
+    var followUpMsg = '[Document content retrieved]\n\n' + docBlocks +
+      '\n\nUsing the document above, answer Ahmed\'s original question directly. ' +
+      'Do not say you are fetching or retrieving — you have the content now. ' +
+      'Be specific and cite the document where relevant.';
+    var followUpResult = callClaudeChat_(followUpMsg, followUpHistory, sysPrompt, null, null);
+    rawReply = followUpResult.text;
+    sources  = (followUpResult.sources || []).concat(sources);
+    Logger.log('VERA fetch follow-up reply:\n' + rawReply);
+  }
 
   // Strip ACTION lines before returning to user
   var cleanReply = stripActions_(rawReply);
