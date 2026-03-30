@@ -5889,6 +5889,22 @@ function webGetResources_() {
       if (!r[0]) return;
       var obj = {};
       hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+
+      // Compute a stable open URL from the Drive File ID so the "Open" button
+      // works even if the original sharing URL has changed or a PDF was converted.
+      var fid = String(obj['Drive File ID'] || '').trim();
+      if (fid) {
+        // If it's already a full URL (stored from older schema), use it
+        if (fid.indexOf('://') !== -1) {
+          obj['_openUrl'] = fid;
+        } else {
+          // Raw file ID — construct a universal Drive open link
+          obj['_openUrl'] = 'https://drive.google.com/open?id=' + fid;
+        }
+      } else {
+        obj['_openUrl'] = String(obj['URL'] || '').trim();
+      }
+
       resources.push(obj);
     });
   }

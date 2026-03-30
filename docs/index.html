@@ -12484,14 +12484,14 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
 
   function openAdd() {
     setEditing(null);
-    setForm({ name: '', category: 'Work Policy', appliesTo: 'Both', description: '', url: '', tags: '' });
+    setForm({ name: '', category: 'Work Policy', appliesTo: 'Both', description: '', url: '', driveFileId: '', tags: '' });
     setShowModal(true);
   }
 
   function openEdit(r) {
     setEditing(r);
     setForm({ name: r.Name, category: r.Category, appliesTo: r['Applies To'] || 'Both',
-              description: r.Description, url: r.URL, tags: r.Tags });
+              description: r.Description, url: r.URL, driveFileId: r['Drive File ID'] || '', tags: r.Tags });
     setShowModal(true);
   }
 
@@ -12548,7 +12548,8 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                 <div key={r.ID} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
                                          padding: '10px 12px', borderRadius: 8, marginBottom: 6,
                                          background: '#0d1b2a', border: '1px solid #1e2d40' }}>
-                  <div style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}>
+                  <div style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}
+                       title={r['Drive File ID'] ? 'VERA can read this document' : 'Link only — VERA cannot read content'}>
                     {r['Drive File ID'] ? '📄' : '🔗'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -12572,7 +12573,7 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <a href={r.URL} target="_blank" rel="noopener noreferrer"
+                    <a href={r._openUrl || r.URL} target="_blank" rel="noopener noreferrer"
                        style={{ fontSize: 12, color: '#4a9eff', textDecoration: 'none',
                                 padding: '4px 8px', border: '1px solid #1e3a5a', borderRadius: 5 }}>
                       ↗ Open
@@ -12641,8 +12642,21 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
             )}
             {form.url && /docs\.google\.com|drive\.google\.com/.test(form.url) && (
               <div style={{ fontSize: 11, color: '#3a7a50', marginTop: -8, marginBottom: 8 }}>
-                ✓ Google Drive link detected — VERA can read this document's content. PDFs are auto-converted to Google Docs.
+                ✓ Google Drive link detected — VERA will extract the file ID and read this document's content.
               </div>
+            )}
+
+            {editing && (
+              <>
+                <label className="modal-label">Drive File ID (auto-extracted — read only)</label>
+                <div style={{ fontFamily: 'monospace', fontSize: 11, padding: '6px 10px', background: '#070f18',
+                              border: '1px solid #1e2d40', borderRadius: 6, color: '#4d6080', marginBottom: 14,
+                              wordBreak: 'break-all', minHeight: 28 }}>
+                  {editing['Drive File ID']
+                    ? <span style={{ color: '#3a9a60' }}>✓ {editing['Drive File ID']}</span>
+                    : <span style={{ color: '#8a5a30' }}>✗ Not extracted — VERA cannot read this document. Re-add with the correct Google Drive URL.</span>}
+                </div>
+              </>
             )}
 
             <label className="modal-label">Description</label>
