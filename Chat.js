@@ -302,6 +302,36 @@ function buildChatSystemPrompt_(context) {
                ' [' + i.category + ', logged ' + i.date + ']';
       }).join('\n');
 
+  var importantDatesLines = (function() {
+    var dates = context.importantDates;
+    if (!dates || dates.length === 0) return '  (none in next 90 days)';
+    return dates.map(function(d) {
+      var days = d['daysUntil'];
+      var when = days === 0 ? 'TODAY' : days === 1 ? 'tomorrow' : 'in ' + days + ' days';
+      return '  [' + String(d['ID'] || '') + '] ' + String(d['Label'] || '') +
+             ' — ' + String(d['Date'] || '') +
+             ' (' + when + ')' +
+             (d['Person'] ? ' [' + d['Person'] + ']' : '') +
+             (d['Notes']  ? ' — ' + String(d['Notes']).substring(0, 60) : '');
+    }).join('\n');
+  })();
+
+  var giftIdeasLines = (function() {
+    var ideas = context.giftIdeas;
+    if (!ideas || ideas.length === 0) return '  (none saved)';
+    var byPerson = {};
+    ideas.forEach(function(i) {
+      var p = String(i['Person'] || 'Unknown');
+      if (!byPerson[p]) byPerson[p] = [];
+      byPerson[p].push(String(i['Idea'] || ''));
+    });
+    var lines = '';
+    Object.keys(byPerson).forEach(function(p) {
+      lines += '  ' + p + ': ' + byPerson[p].join('; ') + '\n';
+    });
+    return lines.trim();
+  })();
+
   // PTO — delegate to existing ptoSummaryForClaude_() (PTO.js)
   var ptoSection = context.ptoStats
     ? ptoSummaryForClaude_(context.ptoStats)
@@ -424,6 +454,8 @@ function buildChatSystemPrompt_(context) {
     (context.projects !== null ? 'PROJECTS:\n' + projectsLine + '\n\n' : '') +
     'UPCOMING CALENDAR EVENTS:\n' + calLines + '\n\n' +
     (context.interests !== null ? 'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' : '') +
+    (context.importantDates !== null ? 'IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' : '') +
+    (context.giftIdeas !== null ? 'GIFT IDEAS:\n' + giftIdeasLines + '\n\n' : '') +
     (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
     (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
@@ -756,6 +788,9 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
     // Resources (Issue #129)
     'ACTION:fetch_resource_content|{resourceId}  \u2014 read a reference document\'s text (Google Docs only); resourceId from REFERENCE RESOURCES above\n' +
+    // Important Dates (Issue #80)
+    'ACTION:add_important_date|{person}|{date}|{label}|{recurring: Yes or No}|{leadTimeDays: number}  \u2014 add a date to the Important Dates tracker; date = MM-DD or YYYY-MM-DD; person = Ahmed / Victoria / Both / Family\n' +
+    'ACTION:log_gift_idea|{person}|{idea}  \u2014 save a gift idea for a person to the Gift Ideas ledger\n' +
     '\n' +
 
     'RULES:\n' +
@@ -843,6 +878,12 @@ function buildChatSystemPrompt_(context) {
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
+    '- IMPORTANT DATES: Use add_important_date when Ahmed mentions a birthday, anniversary, or meaningful date he wants tracked. ' +
+    'For the date: use MM-DD if it recurs every year (e.g. birthdays, anniversaries), or YYYY-MM-DD for one-time events. ' +
+    'Default leadTimeDays to 30. Confirm what was saved including when the next flag will fire.\n' +
+    '- GIFT IDEAS: Use log_gift_idea when Ahmed mentions a gift idea for someone ("get Victoria a pottery class", "gift idea for mum: cookbook"). ' +
+    'Use "What important dates are coming up?" or "any upcoming dates?" to list from IMPORTANT DATES context. ' +
+    'When a date is within 7 days, proactively remind Ahmed and offer to log a gift idea.\n' +
     '- REFERENCE RESOURCES: Only use fetch_resource_content if a resource with a matching [ID] appears in the ' +
     'REFERENCE RESOURCES section above. Never invent or guess an ID. ' +
     'When a match exists, say "I have a document on this — let me check it." and emit ACTION:fetch_resource_content|{resourceId} using the exact ID shown. ' +
@@ -886,7 +927,7 @@ function detectChatIntent_(msg) {
     home:     /\b(recipe|cook|takeout|grocery|pantry|dinner|lunch|kitchen|maintenance|appliance|household)\b/.test(m) || /home item|shopping list|eating out|what.*eat|food/.test(m),
     career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
     health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose|gym|workout|exercise|fitness|session|went to the gym|hit the gym|skipped|missed)\b/.test(m) || /\brx\b/.test(m),
-    people:   /\b(gift|birthday|anniversary|victoria|family|friend|present)\b/.test(m),
+    people:   /\b(gift|birthday|anniversary|victoria|family|friend|present|important date|upcoming date|date coming)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
   };
@@ -937,6 +978,18 @@ function buildChatContext_(userMessage) {
   if (intent.people) {
     try { interests = getSharedInterestLedger_().slice(0, 20); }
     catch (e) { Logger.log('Chat context: interests — ' + e.message); interests = []; }
+  }
+
+  // Important Dates (next 90 days) + Gift Ideas — people intent
+  var importantDates = null;
+  var giftIdeas = null;
+  if (intent.people) {
+    try { importantDates = getUpcomingImportantDates_(90); }
+    catch (e) { Logger.log('Chat context: importantDates — ' + e.message); importantDates = []; }
+    try {
+      var giRes = webGetGiftData_();
+      giftIdeas = (giRes && giRes.ideas) || [];
+    } catch (e) { Logger.log('Chat context: giftIdeas — ' + e.message); giftIdeas = []; }
   }
 
   // PTO stats (live compute — same pattern as webGetPTO_ in WebApp.js)
@@ -1271,6 +1324,8 @@ function buildChatContext_(userMessage) {
     cardsData:       cardsData,
     financialGoals:  financialGoals,
     resources:       resources,
+    importantDates:  importantDates,
+    giftIdeas:       giftIdeas,
   };
 }
 
@@ -2249,6 +2304,30 @@ function executeActions_(rawText) {
         } else {
           errors.push('fetch_resource_content: resource id required');
         }
+      }
+
+      // ---- Important Dates (Issue #80) ------------------------------------
+      else if (type === 'add_important_date') {
+        var aidPerson    = (args[0] || 'Both').trim();
+        var aidDate      = (args[1] || '').trim();
+        var aidLabel     = (args[2] || '').trim();
+        var aidRecurring = (args[3] || 'Yes').trim();
+        var aidLead      = parseInt(args[4], 10) || 30;
+        if (!aidDate || !aidLabel) throw new Error('date and label required for add_important_date');
+        var aidResult = webAddImportantDate_({
+          parameter: { label: aidLabel, date: aidDate, person: aidPerson,
+                       recurring: aidRecurring, leadTime: String(aidLead), notes: '' }
+        });
+        if (!aidResult.ok) throw new Error(aidResult.error || 'failed to add date');
+        executed.push('add_important_date (' + aidLabel + ' — ' + aidDate + ')');
+      }
+      else if (type === 'log_gift_idea') {
+        var lgiPerson = (args[0] || '').trim();
+        var lgiIdea   = args.slice(1).join('|').trim(); // idea may contain pipes
+        if (!lgiPerson || !lgiIdea) throw new Error('person and idea required for log_gift_idea');
+        var lgiResult = webAddGiftIdea_({ parameter: { person: lgiPerson, idea: lgiIdea } });
+        if (!lgiResult.ok) throw new Error(lgiResult.error || 'failed to log gift idea');
+        executed.push('log_gift_idea (' + lgiPerson + ': ' + lgiIdea + ')');
       }
 
     } catch (e) {

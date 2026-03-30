@@ -540,6 +540,10 @@ function nightlyRun() {
     try { syncCalendarBirthdaysToImportantDates_(); }
     catch (idErr) { Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message); }
 
+    // Step 0a-iii: Fire 30/7/1-day lead-time flags for Important Dates (Issue #80)
+    try { checkImportantDates_(); }
+    catch (idcErr) { Logger.log('checkImportantDates_ error (non-fatal): ' + idcErr.message); }
+
     // Step 0b: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;
     try {
