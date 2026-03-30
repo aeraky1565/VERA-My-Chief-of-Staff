@@ -12692,6 +12692,327 @@ const WISH_PRIORITIES = ['High', 'Medium', 'Low'];
 const WISH_STATUSES   = ['Dreaming', 'Saving', 'Ready to Buy'];
 const WISH_STATUS_ORDER = ['Ready to Buy', 'Saving', 'Dreaming'];
 
+const EXP_CATEGORIES = ['Health', 'Fitness', 'Diet', 'Sleep', 'Productivity', 'Learning', 'Mental', 'Finance', 'Other'];
+const EXP_STATUSES   = ['Active', 'Ongoing', 'Paused', 'Stopped', 'Completed'];
+
+// ── Experiments (Issue #130) ──────────────────────────────────────────────
+
+function ExperimentCard({ experiment: ex, onUpdate, onDelete, onAddCheckin, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const [editing, setEditing] = React.useState(false);
+  const [checkinNote, setCheckinNote] = React.useState('');
+  const [editForm, setEditForm] = React.useState({
+    title: ex.title || '', category: ex.category || 'Other', hypothesis: ex.hypothesis || '',
+    startDate: ex.startDate || '', endDate: ex.endDate || '', notes: ex.notes || '',
+    person: ex.person || 'Ahmed', status: ex.status || 'Active',
+  });
+
+  const statusColors = {
+    Active:    { bg: '#0d2f1f', color: '#34a853', border: '#1a4a2e' },
+    Ongoing:   { bg: '#0d1f35', color: '#8ab4f8', border: '#1a3a5e' },
+    Paused:    { bg: '#2d2200', color: '#f9ab00', border: '#4d3a00' },
+    Stopped:   { bg: '#2d1010', color: '#f28b82', border: '#4d2020' },
+    Completed: { bg: '#0d2820', color: '#81c995', border: '#1a4a34' },
+  };
+  const sc = statusColors[ex.status] || statusColors.Active;
+
+  function handleCheckinSubmit(e) {
+    e.preventDefault();
+    if (!checkinNote.trim()) return;
+    onAddCheckin(ex.id, checkinNote.trim());
+    setCheckinNote('');
+  }
+
+  function handleEditSave() {
+    const original = { title: ex.title, category: ex.category, hypothesis: ex.hypothesis,
+                       startDate: ex.startDate, endDate: ex.endDate, notes: ex.notes,
+                       person: ex.person, status: ex.status };
+    Object.entries(editForm).forEach(([f, v]) => {
+      if ((v || '') !== (original[f] || '')) onUpdate(ex.id, f.toLowerCase(), v);
+    });
+    setEditing(false);
+  }
+
+  return (
+    <div style={{ background: '#131e2d', border: '1px solid #2a3a50', borderRadius: 10, padding: '14px 16px', marginBottom: 10 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, color: '#e8eaed', fontSize: 14 }}>{ex.title}</span>
+            {ex.category && (
+              <span style={{ background: '#1e2a3a', color: '#8ab4f8', borderRadius: 4, fontSize: 11, padding: '2px 7px' }}>{ex.category}</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ background: sc.bg, color: sc.color, border: '1px solid ' + sc.border,
+                           borderRadius: 4, fontSize: 11, padding: '2px 7px', fontWeight: 600 }}>{ex.status}</span>
+            {ex.person && <span style={{ color: '#6b7c99', fontSize: 12 }}>{ex.person}</span>}
+            {(ex.startDate || ex.endDate) && (
+              <span style={{ color: '#4d6080', fontSize: 11 }}>
+                {ex.startDate || '…'} → {ex.endDate || 'ongoing'}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button onClick={() => setEditing(v => !v)} disabled={busy}
+            style={{ background: 'none', border: '1px solid #2a3a50', borderRadius: 5, color: '#8ab4f8',
+                     cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+            {editing ? 'Cancel' : 'Edit'}
+          </button>
+          <button onClick={() => { if (window.confirm('Delete "' + ex.title + '"?')) onDelete(ex.id); }} disabled={busy}
+            style={{ background: 'none', border: '1px solid #3a2020', borderRadius: 5, color: '#f28b82',
+                     cursor: 'pointer', fontSize: 11, padding: '3px 10px' }}>
+            Del
+          </button>
+        </div>
+      </div>
+
+      {/* Hypothesis */}
+      {ex.hypothesis && !editing && (
+        <div style={{ color: '#9aa5b8', fontSize: 12, fontStyle: 'italic', marginBottom: 8 }}>"{ex.hypothesis}"</div>
+      )}
+
+      {/* Recent check-ins */}
+      {!editing && ex.checkins && ex.checkins.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {ex.checkins.map((c, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, marginBottom: 3 }}>
+              <span style={{ color: '#4d6080', flexShrink: 0 }}>{c.date}</span>
+              <span style={{ color: '#8a9bb0' }}>{c.note || '(check-in)'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Outcome */}
+      {ex.outcome && !editing && (
+        <div style={{ background: '#0d2820', border: '1px solid #1a4a34', borderRadius: 6,
+                      padding: '6px 10px', marginBottom: 8, fontSize: 12, color: '#81c995' }}>
+          Outcome: {ex.outcome}
+        </div>
+      )}
+
+      {/* Edit form */}
+      {editing && (
+        <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
+            placeholder="Title" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            <select value={editForm.person} onChange={e => setEditForm(p => ({ ...p, person: e.target.value }))} style={inputStyle}>
+              {['Ahmed', 'Victoria', 'Both'].map(p => <option key={p}>{p}</option>)}
+            </select>
+            <select value={editForm.category} onChange={e => setEditForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+              {EXP_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <select value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
+              {EXP_STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <input value={editForm.hypothesis} onChange={e => setEditForm(p => ({ ...p, hypothesis: e.target.value }))}
+            placeholder="Hypothesis" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <input type="date" value={editForm.startDate} onChange={e => setEditForm(p => ({ ...p, startDate: e.target.value }))} style={inputStyle} />
+            <input type="date" value={editForm.endDate} onChange={e => setEditForm(p => ({ ...p, endDate: e.target.value }))} style={inputStyle} />
+          </div>
+          <input value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Notes" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setEditing(false)}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #2a3a50',
+                       background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 12 }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleEditSave} disabled={busy}
+              style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: '#8ab4f8',
+                       color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Inline check-in input */}
+      {!editing && (
+        <form onSubmit={handleCheckinSubmit} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <input value={checkinNote} onChange={e => setCheckinNote(e.target.value)}
+            placeholder="Quick check-in note…"
+            style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
+          <button type="submit" disabled={busy || !checkinNote.trim()}
+            style={{ padding: '5px 12px', borderRadius: 6, border: 'none',
+                     background: checkinNote.trim() ? '#8ab4f8' : '#1e2a3a',
+                     color: checkinNote.trim() ? '#0d1117' : '#4d6080',
+                     cursor: checkinNote.trim() ? 'pointer' : 'default', fontSize: 12, fontWeight: 600 }}>
+            Log
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function ExperimentsTab({ experiments, onAdd, onUpdate, onDelete, onAddCheckin, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const today = new Date().toISOString().slice(0, 10);
+  const [showForm, setShowForm] = React.useState(false);
+  const [filterStatus, setFilterStatus] = React.useState('Active');
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [form, setForm] = React.useState({
+    person: 'Ahmed', title: '', category: 'Other', hypothesis: '',
+    startDate: today, endDate: '', notes: '',
+  });
+
+  const statusCounts = EXP_STATUSES.reduce((acc, s) => {
+    acc[s] = experiments.filter(e => e.status === s).length;
+    return acc;
+  }, {});
+  const runningCount = (statusCounts.Active || 0) + (statusCounts.Ongoing || 0) + (statusCounts.Paused || 0);
+  const archivedExps = experiments.filter(e => e.status === 'Stopped' || e.status === 'Completed');
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.title.trim()) return;
+    onAdd(form);
+    setForm({ person: 'Ahmed', title: '', category: 'Other', hypothesis: '', startDate: today, endDate: '', notes: '' });
+    setShowForm(false);
+  }
+
+  const visibleStatuses = filterStatus === 'All'
+    ? ['Active', 'Ongoing', 'Paused']
+    : [filterStatus].filter(s => !['Stopped', 'Completed'].includes(s));
+
+  const displayedExps = experiments.filter(e => visibleStatuses.includes(e.status));
+
+  return (
+    <div>
+      {/* Stats bar */}
+      {experiments.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          {[
+            runningCount > 0 && { label: 'Running', value: runningCount },
+            statusCounts.Active    > 0 && { label: 'Active',    value: statusCounts.Active },
+            statusCounts.Ongoing   > 0 && { label: 'Ongoing',   value: statusCounts.Ongoing },
+            statusCounts.Paused    > 0 && { label: 'Paused',    value: statusCounts.Paused },
+            statusCounts.Completed > 0 && { label: 'Completed', value: statusCounts.Completed },
+          ].filter(Boolean).map(s => (
+            <div key={s.label} style={{ background: '#1e2a3a', border: '1px solid #2a3a50', borderRadius: 8,
+                                        padding: '8px 14px', fontSize: 13, color: '#e8eaed' }}>
+              <span style={{ fontWeight: 700 }}>{s.value}</span>
+              <span style={{ color: '#6b7c99', marginLeft: 6 }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filter bar + Add button */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        {['Active', 'Ongoing', 'Paused', 'All'].map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
+                     background: filterStatus === s ? '#8ab4f8' : '#1e2a3a',
+                     color: filterStatus === s ? '#0d1117' : '#8ab4f8' }}>
+            {s}
+          </button>
+        ))}
+        <button onClick={() => setShowForm(v => !v)} disabled={busy}
+          style={{ marginLeft: 'auto', padding: '6px 16px', borderRadius: 6, border: 'none',
+                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+          {showForm ? '✕ Cancel' : '+ New Experiment'}
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showForm && (
+        <form onSubmit={handleSubmit}
+          style={{ background: '#1e2a3a', borderRadius: 8, padding: '14px 16px', marginBottom: 16,
+                   border: '1px solid #2a3a50', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input required value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+            placeholder="Experiment title *" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <select value={form.person} onChange={e => setForm(p => ({ ...p, person: e.target.value }))} style={inputStyle}>
+              {['Ahmed', 'Victoria', 'Both'].map(p => <option key={p}>{p}</option>)}
+            </select>
+            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+              {EXP_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <input value={form.hypothesis} onChange={e => setForm(p => ({ ...p, hypothesis: e.target.value }))}
+            placeholder="Hypothesis (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: '#6b7c99', marginBottom: 3 }}>Start Date</label>
+              <input type="date" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))}
+                style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: '#6b7c99', marginBottom: 3 }}>End Date (optional)</label>
+              <input type="date" value={form.endDate} onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))}
+                style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Notes (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2a3a50',
+                       background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 13 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={busy || !form.title.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#8ab4f8',
+                       color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              🧪 Start
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Experiment cards */}
+      {displayedExps.length === 0 && !showForm ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>
+          No experiments here. Start one above or tell VERA in chat.
+        </div>
+      ) : (
+        filterStatus === 'All'
+          ? visibleStatuses.map(status => {
+              const items = experiments.filter(e => e.status === status);
+              if (items.length === 0) return null;
+              return (
+                <div key={status} style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7c99', textTransform: 'uppercase',
+                                letterSpacing: '0.08em', marginBottom: 8 }}>
+                    {status} <span style={{ fontWeight: 400, color: '#4d6080' }}>({items.length})</span>
+                  </div>
+                  {items.map(ex => (
+                    <ExperimentCard key={ex.id} experiment={ex} onUpdate={onUpdate} onDelete={onDelete} onAddCheckin={onAddCheckin} busy={busy} />
+                  ))}
+                </div>
+              );
+            })
+          : displayedExps.map(ex => (
+              <ExperimentCard key={ex.id} experiment={ex} onUpdate={onUpdate} onDelete={onDelete} onAddCheckin={onAddCheckin} busy={busy} />
+            ))
+      )}
+
+      {/* Stopped / Completed collapsed section */}
+      {archivedExps.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <button onClick={() => setShowArchived(v => !v)}
+            style={{ background: 'none', border: 'none', color: '#6b7c99', cursor: 'pointer', fontSize: 12, padding: '4px 0', marginBottom: 8 }}>
+            {showArchived ? '▾' : '▸'} Stopped / Completed ({archivedExps.length})
+          </button>
+          {showArchived && archivedExps.map(ex => (
+            <ExperimentCard key={ex.id} experiment={ex} onUpdate={onUpdate} onDelete={onDelete} onAddCheckin={onAddCheckin} busy={busy} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Wish List (Issue #131) ────────────────────────────────────────────────
+
 function WishItemCard({ item, onUpdate, onMarkPurchased, onDelete, busy }) {
   const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' };
   const [editing, setEditing] = React.useState(false);
@@ -12960,6 +13281,7 @@ function WishListTab({ wishList, onAdd, onUpdate, onMarkPurchased, onDelete, bus
 function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddInterest,
                       ideas, ideasLoading, onAddIdea, onPromoteIdea, onArchiveIdea,
                       resources, resourcesLoading, onAddResource, onUpdateResource, onDeleteResource,
+                      experiments, experimentsLoading, onAddExperiment, onUpdateExperiment, onDeleteExperiment, onAddExperimentCheckin,
                       wishList, wishListLoading, onAddWishItem, onUpdateWishItem, onMarkWishPurchased, onDeleteWishItem,
                       busy }) {
   const [sub, setSub] = React.useState('interests');
@@ -13010,11 +13332,16 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
         />
       )}
       {sub === 'experiments' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>Track small, low-stakes experiments you're trying out.</div>
-        </div>
+        experimentsLoading
+          ? <div className="loading-text">Loading experiments…</div>
+          : <ExperimentsTab
+              experiments={experiments}
+              onAdd={onAddExperiment}
+              onUpdate={onUpdateExperiment}
+              onDelete={onDeleteExperiment}
+              onAddCheckin={onAddExperimentCheckin}
+              busy={busy}
+            />
       )}
       {sub === 'wish_list' && (
         wishListLoading
@@ -13140,6 +13467,7 @@ function App() {
   const [goalsLoading,      setGoalsLoading]       = useState(false);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
   const [wishList,   setWishList]   = useState([]);   // aspirational purchases (Issue #131)
+  const [experiments, setExperiments] = useState([]);  // personal experiments (Issue #130)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
@@ -13344,6 +13672,18 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, wishList: false }));
+  }
+
+  async function loadExperiments(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, experiments: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'get_experiments' });
+      setExperiments(data.experiments || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, experiments: false }));
   }
 
   async function loadResources(url, token) {
@@ -14711,6 +15051,56 @@ function App() {
     }
   }
 
+  // Experiments handlers (Issue #130)
+  async function handleAddExperiment(form) {
+    if (!form.title.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_experiment', ...form });
+      showToast('🧪 Experiment started');
+      loadExperiments(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add experiment: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleUpdateExperiment(id, field, value) {
+    setBusy(true);
+    setExperiments(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_experiment', id, field, value });
+      showToast('✓ Updated');
+    } catch (err) {
+      setError('Could not update: ' + err.message);
+      loadExperiments(apiUrl, apiToken);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteExperiment(id) {
+    setExperiments(prev => prev.filter(e => e.id !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_experiment', id });
+      showToast('✓ Deleted');
+    } catch (err) {
+      setError('Could not delete: ' + err.message);
+      loadExperiments(apiUrl, apiToken);
+    }
+  }
+
+  async function handleAddExperimentCheckin(id, note) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_experiment_checkin', experimentId: id, note });
+      showToast('✓ Check-in logged');
+      loadExperiments(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not log check-in: ' + err.message);
+    }
+    setBusy(false);
+  }
+
   async function handleAddItineraryItem(params) {
     setBusy(true);
     try {
@@ -15036,7 +15426,7 @@ function App() {
                 onClick={() => {
                   setActiveTab(tab);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
-                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); }
+                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); loadExperiments(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
@@ -15202,6 +15592,12 @@ function App() {
                 onAddResource={handleAddResource}
                 onUpdateResource={handleUpdateResource}
                 onDeleteResource={handleDeleteResource}
+                experiments={experiments}
+                experimentsLoading={!!tabLoading.experiments}
+                onAddExperiment={handleAddExperiment}
+                onUpdateExperiment={handleUpdateExperiment}
+                onDeleteExperiment={handleDeleteExperiment}
+                onAddExperimentCheckin={handleAddExperimentCheckin}
                 wishList={wishList}
                 wishListLoading={!!tabLoading.wishList}
                 onAddWishItem={handleAddWishItem}

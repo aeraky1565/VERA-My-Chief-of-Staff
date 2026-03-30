@@ -342,6 +342,23 @@ function buildChatSystemPrompt_(context) {
                (w.category ? ' [' + w.category + ']' : '');
       }).join('\n');
 
+  var experimentLines = (!context.experiments || context.experiments.length === 0)
+    ? '  (none active)'
+    : context.experiments.map(function(ex) {
+        var line = '  [' + ex.id + '] ' + ex.title +
+                   ' (' + ex.person + ') — ' + ex.status +
+                   (ex.category ? ' [' + ex.category + ']' : '') +
+                   (ex.startDate ? ' | started: ' + ex.startDate : '') +
+                   (ex.endDate ? ' | ends: ' + ex.endDate : '');
+        if (ex.hypothesis) line += '\n    Hypothesis: ' + ex.hypothesis;
+        if (ex.checkins && ex.checkins.length) {
+          line += '\n    Recent check-ins: ' + ex.checkins.map(function(c) {
+            return c.date + (c.note ? ' — ' + c.note : '');
+          }).join(' | ');
+        }
+        return line;
+      }).join('\n');
+
   // PTO — delegate to existing ptoSummaryForClaude_() (PTO.js)
   var ptoSection = context.ptoStats
     ? ptoSummaryForClaude_(context.ptoStats)
@@ -467,6 +484,7 @@ function buildChatSystemPrompt_(context) {
     (context.importantDates !== null ? 'IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' : '') +
     (context.giftIdeas !== null ? 'GIFT IDEAS:\n' + giftIdeasLines + '\n\n' : '') +
     (context.wishList !== null ? 'WISH LIST (active items):\n' + wishListLines + '\n\n' : '') +
+    (context.experiments !== null ? 'EXPERIMENTS (active/ongoing/paused):\n' + experimentLines + '\n\n' : '') +
     (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
     (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
@@ -807,6 +825,11 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_wish_item|{id}|{field}|{value}  \u2014 update wish list item field; field=person/category/item/description/urls/price/priority/status/notes\n' +
     'ACTION:mark_wish_purchased|{id}  \u2014 mark wish list item as purchased\n' +
     'ACTION:delete_wish_item|{id}  \u2014 remove wish list item\n' +
+    // Experiments (Issue #130)
+    'ACTION:add_experiment|{person}|{title}|{category}|{hypothesis}|{startDate: YYYY-MM-DD or blank}|{endDate: YYYY-MM-DD or blank}|{notes or blank}  \u2014 add a new experiment; person=Ahmed/Victoria/Both; category=Health/Fitness/Diet/Sleep/Productivity/Learning/Mental/Finance/Other\n' +
+    'ACTION:update_experiment|{id}|{field}|{value}  \u2014 update experiment field; field=person/title/category/hypothesis/startdate/enddate/status/outcome/rating/notes\n' +
+    'ACTION:log_experiment_checkin|{id}|{note}  \u2014 add a check-in note to an experiment\n' +
+    'ACTION:delete_experiment|{id}  \u2014 remove an experiment\n' +
     '\n' +
 
     'RULES:\n' +
@@ -905,6 +928,12 @@ function buildChatSystemPrompt_(context) {
     'Person defaults to Ahmed unless Victoria is mentioned. Price is optional. ' +
     'Use mark_wish_purchased when Ahmed says he bought or received an item. ' +
     'When helping with gift ideas for Ahmed or Victoria, cross-reference WISH LIST (active items) above before suggesting — wish list items make ideal gift ideas.\n' +
+    '- EXPERIMENTS: Use add_experiment when Ahmed wants to start tracking a personal experiment (e.g. "no sugar for 2 weeks", "meditate every morning", "try cold showers"). ' +
+    'Person defaults to Ahmed unless stated otherwise. startDate defaults to today (YYYY-MM-DD). endDate is optional. ' +
+    'Use log_experiment_checkin when Ahmed gives an update on how an experiment is going — any note, observation, or progress update counts as a check-in. ' +
+    'Use update_experiment with field=status to update state: Active / Ongoing / Paused / Stopped / Completed. ' +
+    'Use update_experiment with field=outcome to record the final result. ' +
+    'When Ahmed mentions his current experiments in conversation, reference their check-in history to give context-aware responses.\n' +
     '- REFERENCE RESOURCES: Only use fetch_resource_content if a resource with a matching [ID] appears in the ' +
     'REFERENCE RESOURCES section above. Never invent or guess an ID. ' +
     'When a match exists, say "I have a document on this — let me check it." and emit ACTION:fetch_resource_content|{resourceId} using the exact ID shown. ' +
@@ -949,7 +978,8 @@ function detectChatIntent_(msg) {
     career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
     health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose|gym|workout|exercise|fitness|session|went to the gym|hit the gym|skipped|missed)\b/.test(m) || /\brx\b/.test(m),
     people:   /\b(gift|birthday|anniversary|victoria|family|friend|present|important date|upcoming date|date coming)\b/.test(m),
-    wishlist: /\b(wish list|wishlist|want to buy|someday buy|aspiring|have my eye|dream purchase|been wanting|on my list|coveting)\b/.test(m),
+    wishlist:    /\b(wish list|wishlist|want to buy|someday buy|aspiring|have my eye|dream purchase|been wanting|on my list|coveting)\b/.test(m),
+    experiments: /\b(experiment|experiments|experimenting|hypothesis|trying out|testing out|tracking|track my|check[ -]?in|my experiment|personal test|run an experiment)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
   };
@@ -1140,6 +1170,57 @@ function buildChatContext_(userMessage) {
         wishList = [];
       }
     } catch (wlErr) { Logger.log('Chat context: wishList — ' + wlErr.message); wishList = []; }
+  }
+
+  // Experiments — experiments intent (Issue #130)
+  var experiments = null;
+  if (intent.experiments) {
+    try {
+      var expSheet = ss.getSheetByName(TABS.EXPERIMENTS);
+      var expChkSheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
+      // Build check-ins map: experimentId -> last 3 check-ins
+      var checkinsMap = {};
+      if (expChkSheet && expChkSheet.getLastRow() >= 2) {
+        var chkData = expChkSheet.getRange(2, 1, expChkSheet.getLastRow() - 1, EXPERIMENT_CHECKIN_HEADERS.length).getValues();
+        chkData.forEach(function(r) {
+          var eid = String(r[1] || '').trim();
+          if (!eid) return;
+          if (!checkinsMap[eid]) checkinsMap[eid] = [];
+          checkinsMap[eid].push({ id: String(r[0]||'').trim(), date: String(r[3]||'').trim(), note: String(r[4]||'').trim() });
+        });
+        // Sort each list newest-first and keep last 3
+        Object.keys(checkinsMap).forEach(function(k) {
+          checkinsMap[k].sort(function(a, b) { return b.date.localeCompare(a.date); });
+          checkinsMap[k] = checkinsMap[k].slice(0, 3);
+        });
+      }
+      if (expSheet && expSheet.getLastRow() >= 2) {
+        var expData = expSheet.getRange(2, 1, expSheet.getLastRow() - 1, EXPERIMENT_HEADERS.length).getValues();
+        experiments = expData
+          .filter(function(r) { return String(r[0]).trim(); })
+          .map(function(r) {
+            var eid = String(r[0] || '').trim();
+            var status = String(r[7] || 'Active').trim();
+            return {
+              id:         eid,
+              person:     String(r[1] || '').trim(),
+              title:      String(r[2] || '').trim(),
+              category:   String(r[3] || '').trim(),
+              hypothesis: String(r[4] || '').trim(),
+              startDate:  String(r[5] || '').trim(),
+              endDate:    String(r[6] || '').trim(),
+              status:     status,
+              outcome:    String(r[8] || '').trim(),
+              rating:     String(r[9] || '').trim(),
+              notes:      String(r[10] || '').trim(),
+              checkins:   checkinsMap[eid] || [],
+            };
+          })
+          .filter(function(ex) { return ex.status !== 'Completed' && ex.status !== 'Stopped'; });
+      } else {
+        experiments = [];
+      }
+    } catch (expErr) { Logger.log('Chat context: experiments — ' + expErr.message); experiments = []; }
   }
 
   // Ideas braindump — people intent
@@ -1376,6 +1457,7 @@ function buildChatContext_(userMessage) {
     importantDates:  importantDates,
     giftIdeas:       giftIdeas,
     wishList:        wishList,
+    experiments:     experiments,
   };
 }
 
@@ -2419,6 +2501,41 @@ function executeActions_(rawText) {
         if (!dwId) throw new Error('id required for delete_wish_item');
         webDeleteWishItem_({ parameter: { id: dwId } });
         executed.push('delete_wish_item (' + dwId + ')');
+      }
+      // Experiments (Issue #130)
+      else if (type === 'add_experiment') {
+        var aePerson     = (args[0] || 'Ahmed').trim();
+        var aeTitle      = (args[1] || '').trim();
+        var aeCategory   = (args[2] || 'Other').trim();
+        var aeHypothesis = (args[3] || '').trim();
+        var aeStart      = (args[4] || '').trim();
+        var aeEnd        = (args[5] || '').trim();
+        var aeNotes      = (args[6] || '').trim();
+        if (!aeTitle) throw new Error('title is required for add_experiment');
+        webAddExperiment_({ parameter: { person: aePerson, title: aeTitle, category: aeCategory,
+                                         hypothesis: aeHypothesis, startDate: aeStart, endDate: aeEnd, notes: aeNotes } });
+        executed.push('add_experiment (' + aePerson + ': ' + aeTitle + ')');
+      }
+      else if (type === 'update_experiment') {
+        var ueId    = (args[0] || '').trim();
+        var ueField = (args[1] || '').trim();
+        var ueValue = (args[2] || '').trim();
+        if (!ueId || !ueField) throw new Error('id and field required for update_experiment');
+        webUpdateExperiment_({ parameter: { id: ueId, field: ueField, value: ueValue } });
+        executed.push('update_experiment (' + ueId + ' ' + ueField + '=' + ueValue + ')');
+      }
+      else if (type === 'log_experiment_checkin') {
+        var lecId   = (args[0] || '').trim();
+        var lecNote = (args[1] || '').trim();
+        if (!lecId) throw new Error('id required for log_experiment_checkin');
+        webAddExperimentCheckin_({ parameter: { experimentId: lecId, note: lecNote } });
+        executed.push('log_experiment_checkin (' + lecId + ')');
+      }
+      else if (type === 'delete_experiment') {
+        var deId = (args[0] || '').trim();
+        if (!deId) throw new Error('id required for delete_experiment');
+        webDeleteExperiment_({ parameter: { id: deId } });
+        executed.push('delete_experiment (' + deId + ')');
       }
 
     } catch (e) {

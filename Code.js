@@ -77,6 +77,8 @@ const TABS = {
   FINANCIAL_GOALS:     'Financial Goals',      // Issue #127
   FINANCIAL_SCENARIOS: 'Financial Scenarios',  // Issue #127
   WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
+  EXPERIMENTS:         'Experiments',          // Personal experiment tracker (Issue #130)
+  EXPERIMENT_CHECKINS: 'Experiment Check-ins', // Per-experiment check-in log (Issue #130)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -129,6 +131,8 @@ const PROFILES_HEADERS           = ['ID', 'Name', 'Passport Country', 'Passport 
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Goal Name', 'Target Amount', 'Current Amount', 'Target Date', 'Monthly Contribution', 'APY', 'Owner', 'Account', 'Status', 'Notes']; // Issue #127
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Change Amount', 'Notes', 'Projected Date (Baseline)', 'Projected Date (Scenario)', 'Delay Days', 'Created At']; // Issue #127
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
+const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Rating', 'Notes']; // Issue #130
+const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Experiment Title', 'Date', 'Note']; // Issue #130
 const VEHICLE_HEADERS            = [
   'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
   'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
@@ -257,6 +261,8 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.FINANCIAL_GOALS,     FINANCIAL_GOAL_HEADERS);    // Issue #127
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS, FINANCIAL_SCENARIO_HEADERS); // Issue #127
   ensureSheet(ss, TABS.WISH_LIST,           WISH_LIST_HEADERS);          // Issue #131
+  ensureSheet(ss, TABS.EXPERIMENTS,         EXPERIMENT_HEADERS);         // Issue #130
+  ensureSheet(ss, TABS.EXPERIMENT_CHECKINS, EXPERIMENT_CHECKIN_HEADERS); // Issue #130
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   // Set Life Plan Doc ID if not already set
@@ -605,6 +611,10 @@ function nightlyRun() {
       goalFlags.forEach(function(f) { addFlag_(f.source, f.flag, f.urgency, f.key); });
     }
     catch (gErr) { Logger.log('checkGoalHealth_ error (non-fatal): ' + gErr.message); }
+
+    // Step 0g-iv: Experiments — end-date flags + suggestion engine (Issue #130)
+    try { checkExperiments_(); }
+    catch (exErr) { Logger.log('checkExperiments_ error (non-fatal): ' + exErr.message); }
 
     // Step 0h: Reset morning routine checkboxes for the new day
     try {

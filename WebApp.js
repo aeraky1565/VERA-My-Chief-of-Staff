@@ -114,6 +114,12 @@ function doGet(e) {
       case 'update_idea':           return jsonOut_(webUpdateIdea_(e));
       case 'delete_idea':           return jsonOut_(webDeleteIdea_(e));
       case 'promote_idea':          return jsonOut_(webPromoteIdea_(e));
+      // Experiments (Issue #130)
+      case 'get_experiments':           return jsonOut_(webGetExperiments_());
+      case 'add_experiment':            return jsonOut_(webAddExperiment_(e));
+      case 'update_experiment':         return jsonOut_(webUpdateExperiment_(e));
+      case 'delete_experiment':         return jsonOut_(webDeleteExperiment_(e));
+      case 'add_experiment_checkin':    return jsonOut_(webAddExperimentCheckin_(e));
       // Wish List (Issue #131)
       case 'get_wish_list':         return jsonOut_(webGetWishList_());
       case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));
@@ -3992,6 +3998,175 @@ function webPromoteIdea_(e) {
   found.sheet.getRange(found.rowNum, 7).setValue('Promoted'); // Col G = Status
 
   return { ok: true, ideaId: id, taskId: taskId, action: 'promoted' };
+}
+
+// ---- Experiments (Issue #130) ----------------------------------------------
+
+function webGetExperiments_() {
+  var ss     = getSpreadsheet();
+  var sheet  = ss.getSheetByName(TABS.EXPERIMENTS);
+  var ciSheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, experiments: [] };
+
+  // Build check-in map: experimentId → [checkin, ...]  sorted newest first
+  var checkinMap = {};
+  if (ciSheet && ciSheet.getLastRow() >= 2) {
+    var ciData = ciSheet.getRange(2, 1, ciSheet.getLastRow() - 1, EXPERIMENT_CHECKIN_HEADERS.length).getValues();
+    ciData.forEach(function(r) {
+      var eid = String(r[1] || '').trim();
+      if (!eid) return;
+      if (!checkinMap[eid]) checkinMap[eid] = [];
+      checkinMap[eid].push({ id: String(r[0]||'').trim(), date: formatDateVal_(r[3]), note: String(r[4]||'').trim() });
+    });
+    // Sort each experiment's check-ins newest-first
+    Object.keys(checkinMap).forEach(function(k) {
+      checkinMap[k].sort(function(a, b) { return b.date > a.date ? 1 : -1; });
+    });
+  }
+
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, EXPERIMENT_HEADERS.length).getValues();
+  var experiments = [];
+
+  data.forEach(function(row, idx) {
+    var id = String(row[0] || '').trim();
+    if (!id) return;
+    experiments.push({
+      row:        idx + 2,
+      id:         id,
+      person:     String(row[1] || '').trim(),
+      title:      String(row[2] || '').trim(),
+      category:   String(row[3] || '').trim(),
+      hypothesis: String(row[4] || '').trim(),
+      startDate:  formatDateVal_(row[5]),
+      endDate:    formatDateVal_(row[6]),
+      status:     String(row[7] || 'Active').trim(),
+      outcome:    String(row[8] || '').trim(),
+      rating:     row[9] !== '' && row[9] !== null ? Number(row[9]) : null,
+      notes:      String(row[10] || '').trim(),
+      checkins:   (checkinMap[id] || []).slice(0, 3), // last 3 check-ins
+    });
+  });
+
+  return { ok: true, experiments: experiments };
+}
+
+function webAddExperiment_(e) {
+  var p = e.parameter || {};
+  var title = (p.title || '').trim();
+  if (!title) throw new Error('title is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.EXPERIMENTS);
+  if (!sheet) throw new Error('Experiments tab not found');
+
+  var tz       = Session.getScriptTimeZone();
+  var today    = new Date();
+  var dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  var addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  var seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0]||'').indexOf('EXP-' + dateStr) === 0) seq++; });
+  }
+  var id = 'EXP-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  // EXPERIMENT_HEADERS: ID | Person | Title | Category | Hypothesis | Start Date | End Date | Status | Outcome | Rating | Notes
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, EXPERIMENT_HEADERS.length).setValues([[
+    id,
+    (p.person     || 'Ahmed').trim(),
+    title,
+    (p.category   || 'Other').trim(),
+    (p.hypothesis || '').trim(),
+    (p.startDate  || addedStr).trim(),
+    (p.endDate    || '').trim(),
+    (p.status     || 'Active').trim(),
+    '',
+    '',
+    (p.notes      || '').trim(),
+  ]]);
+
+  Logger.log('webAddExperiment_: ' + id + ' — ' + title);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function findExperimentRow_(id) {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.EXPERIMENTS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Experiments sheet is empty');
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) return { sheet: sheet, rowNum: i + 2 };
+  }
+  throw new Error('Experiment not found: ' + id);
+}
+
+function webUpdateExperiment_(e) {
+  var p     = e.parameter || {};
+  var id    = (p.id    || '').trim();
+  var field = (p.field || '').trim().toLowerCase();
+  var value = (p.value != null ? String(p.value) : '').trim();
+  if (!id || !field) throw new Error('id and field are required');
+
+  var found = findExperimentRow_(id);
+  // EXPERIMENT_HEADERS col map (1-based): ID=1 Person=2 Title=3 Category=4 Hypothesis=5 StartDate=6 EndDate=7 Status=8 Outcome=9 Rating=10 Notes=11
+  var colMap = { person:2, title:3, category:4, hypothesis:5, startdate:6, enddate:7, status:8, outcome:9, rating:10, notes:11 };
+  var col = colMap[field.replace(/\s+/g, '')];
+  if (!col) throw new Error('Unknown field: ' + field);
+
+  var writeVal = field === 'rating' ? (value !== '' ? Number(value) : '') : value;
+  found.sheet.getRange(found.rowNum, col).setValue(writeVal);
+
+  Logger.log('webUpdateExperiment_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, action: 'updated' };
+}
+
+function webDeleteExperiment_(e) {
+  var id    = ((e.parameter && e.parameter.id) || '').trim();
+  var found = findExperimentRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  Logger.log('webDeleteExperiment_: ' + id);
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+function webAddExperimentCheckin_(e) {
+  var p   = e.parameter || {};
+  var eid = (p.experimentId || p.id || '').trim();
+  var note = (p.note || '').trim();
+  if (!eid || !note) throw new Error('experimentId and note are required');
+
+  // Resolve experiment title for the log
+  var title = (p.title || '').trim();
+  if (!title) {
+    try {
+      var found = findExperimentRow_(eid);
+      title = String(found.sheet.getRange(found.rowNum, 3).getValue()).trim();
+    } catch(ex) { title = eid; }
+  }
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
+  if (!sheet) throw new Error('Experiment Check-ins tab not found');
+
+  var tz      = Session.getScriptTimeZone();
+  var today   = new Date();
+  var dateStr = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  var dateVal = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  var seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0]||'').indexOf('CHKIN-' + dateStr) === 0) seq++; });
+  }
+  var id = 'CHKIN-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  // EXPERIMENT_CHECKIN_HEADERS: ID | Experiment ID | Experiment Title | Date | Note
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, EXPERIMENT_CHECKIN_HEADERS.length)
+    .setValues([[id, eid, title, dateVal, note]]);
+
+  Logger.log('webAddExperimentCheckin_: ' + id + ' for ' + eid);
+  return { ok: true, id: id, experimentId: eid, action: 'checkin_added' };
 }
 
 // ---- Wish List (Issue #131) ------------------------------------------------
