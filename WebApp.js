@@ -114,6 +114,12 @@ function doGet(e) {
       case 'update_idea':           return jsonOut_(webUpdateIdea_(e));
       case 'delete_idea':           return jsonOut_(webDeleteIdea_(e));
       case 'promote_idea':          return jsonOut_(webPromoteIdea_(e));
+      // Wish List (Issue #131)
+      case 'get_wish_list':         return jsonOut_(webGetWishList_());
+      case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));
+      case 'update_wish_item':      return jsonOut_(webUpdateWishItem_(e));
+      case 'mark_wish_purchased':   return jsonOut_(webMarkWishPurchased_(e));
+      case 'delete_wish_item':      return jsonOut_(webDeleteWishItem_(e));
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
       case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
@@ -3986,6 +3992,147 @@ function webPromoteIdea_(e) {
   found.sheet.getRange(found.rowNum, 7).setValue('Promoted'); // Col G = Status
 
   return { ok: true, ideaId: id, taskId: taskId, action: 'promoted' };
+}
+
+// ---- Wish List (Issue #131) ------------------------------------------------
+
+function webGetWishList_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.WISH_LIST);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
+
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, WISH_LIST_HEADERS.length).getValues();
+  var items   = [];
+
+  data.forEach(function(row, idx) {
+    var id = String(row[0] || '').trim();
+    if (!id) return;
+    items.push({
+      row:           idx + 2,
+      id:            id,
+      person:        String(row[1] || '').trim(),
+      category:      String(row[2] || '').trim(),
+      item:          String(row[3] || '').trim(),
+      description:   String(row[4] || '').trim(),
+      urls:          String(row[5] || '').trim(),
+      price:         row[6] !== '' && row[6] !== null ? Number(row[6]) : null,
+      priority:      String(row[7] || 'Medium').trim(),
+      status:        String(row[8] || 'Dreaming').trim(),
+      dateAdded:     formatDateVal_(row[9]),
+      notes:         String(row[10] || '').trim(),
+      datePurchased: formatDateVal_(row[11]),
+    });
+  });
+
+  // Active items first, purchased last
+  items.sort(function(a, b) {
+    var aP = a.status === 'Purchased' ? 1 : 0;
+    var bP = b.status === 'Purchased' ? 1 : 0;
+    return aP - bP;
+  });
+
+  return { ok: true, items: items };
+}
+
+function webAddWishItem_(e) {
+  var p    = e.parameter || {};
+  var item = (p.item || '').trim();
+  if (!item) throw new Error('item is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.WISH_LIST);
+  if (!sheet) throw new Error('Wish List tab not found');
+
+  var tz       = Session.getScriptTimeZone();
+  var today    = new Date();
+  var dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  var addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  var seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0] || '').indexOf('WISH-' + dateStr) === 0) seq++; });
+  }
+  var id = 'WISH-' + dateStr + '-' + String(seq).padStart(2, '0');
+
+  var price = p.price !== '' && p.price != null ? Number(p.price) : '';
+  if (isNaN(price)) price = '';
+
+  // WISH_LIST_HEADERS: ID | Person | Category | Item | Description | URLs | Price | Priority | Status | Date Added | Notes | Date Purchased
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, WISH_LIST_HEADERS.length).setValues([[
+    id,
+    (p.person   || 'Ahmed').trim(),
+    (p.category || 'Other').trim(),
+    item,
+    (p.description || '').trim(),
+    (p.urls  || p.url || '').trim(),
+    price,
+    (p.priority || 'Medium').trim(),
+    (p.status   || 'Dreaming').trim(),
+    addedStr,
+    (p.notes || '').trim(),
+    '',
+  ]]);
+
+  Logger.log('webAddWishItem_: ' + id + ' — ' + item);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function findWishRow_(id) {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.WISH_LIST);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Wish List is empty');
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) {
+      return { sheet: sheet, rowNum: i + 2 };
+    }
+  }
+  throw new Error('Wish list item not found: ' + id);
+}
+
+function webUpdateWishItem_(e) {
+  var p     = e.parameter || {};
+  var id    = (p.id || '').trim();
+  var field = (p.field || '').trim();
+  var value = (p.value != null ? String(p.value) : '').trim();
+  if (!id || !field) throw new Error('id and field are required');
+
+  var found = findWishRow_(id);
+  // WISH_LIST_HEADERS col map (1-based): ID=1 Person=2 Category=3 Item=4 Description=5 URLs=6 Price=7 Priority=8 Status=9 Date Added=10 Notes=11 Date Purchased=12
+  var colMap = { person:2, category:3, item:4, description:5, urls:6, price:7, priority:8, status:9, notes:11 };
+  var col = colMap[field.toLowerCase()];
+  if (!col) throw new Error('Unknown field: ' + field);
+
+  var writeVal = field.toLowerCase() === 'price' ? (value !== '' ? Number(value) : '') : value;
+  found.sheet.getRange(found.rowNum, col).setValue(writeVal);
+
+  Logger.log('webUpdateWishItem_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, action: 'updated' };
+}
+
+function webMarkWishPurchased_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var found = findWishRow_(id);
+  var tz    = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  found.sheet.getRange(found.rowNum, 9).setValue('Purchased');   // Status
+  found.sheet.getRange(found.rowNum, 12).setValue(today);        // Date Purchased
+
+  Logger.log('webMarkWishPurchased_: ' + id);
+  return { ok: true, id: id, action: 'purchased' };
+}
+
+function webDeleteWishItem_(e) {
+  var id    = ((e.parameter && e.parameter.id) || '').trim();
+  var found = findWishRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  Logger.log('webDeleteWishItem_: ' + id);
+  return { ok: true, id: id, action: 'deleted' };
 }
 
 // ---- Chat ------------------------------------------------------------------

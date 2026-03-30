@@ -332,6 +332,16 @@ function buildChatSystemPrompt_(context) {
     return lines.trim();
   })();
 
+  var wishListLines = (!context.wishList || context.wishList.length === 0)
+    ? '  (empty)'
+    : context.wishList.map(function(w) {
+        return '  [' + w.id + '] ' + w.item +
+               ' (' + w.person + ')' +
+               (w.price ? ' — $' + w.price : '') +
+               ' [' + w.priority + ' priority, ' + w.status + ']' +
+               (w.category ? ' [' + w.category + ']' : '');
+      }).join('\n');
+
   // PTO — delegate to existing ptoSummaryForClaude_() (PTO.js)
   var ptoSection = context.ptoStats
     ? ptoSummaryForClaude_(context.ptoStats)
@@ -456,6 +466,7 @@ function buildChatSystemPrompt_(context) {
     (context.interests !== null ? 'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' : '') +
     (context.importantDates !== null ? 'IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' : '') +
     (context.giftIdeas !== null ? 'GIFT IDEAS:\n' + giftIdeasLines + '\n\n' : '') +
+    (context.wishList !== null ? 'WISH LIST (active items):\n' + wishListLines + '\n\n' : '') +
     (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
     (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
@@ -791,6 +802,11 @@ function buildChatSystemPrompt_(context) {
     // Important Dates (Issue #80)
     'ACTION:add_important_date|{person}|{date}|{label}|{recurring: Yes or No}|{leadTimeDays: number}  \u2014 add a date to the Important Dates tracker; date = MM-DD or YYYY-MM-DD; person = Ahmed / Victoria / Both / Family\n' +
     'ACTION:log_gift_idea|{person}|{idea}  \u2014 save a gift idea for a person to the Gift Ideas ledger\n' +
+    // Wish List (Issue #131)
+    'ACTION:add_wish_item|{person}|{item}|{category}|{price or blank}|{priority}|{urls or blank}|{notes or blank}  \u2014 add to wish list; person=Ahmed/Victoria/Both; category=Tech/Home & Furniture/Experiences/Fashion/Fitness/Books & Media/Other; priority=High/Medium/Low\n' +
+    'ACTION:update_wish_item|{id}|{field}|{value}  \u2014 update wish list item field; field=person/category/item/description/urls/price/priority/status/notes\n' +
+    'ACTION:mark_wish_purchased|{id}  \u2014 mark wish list item as purchased\n' +
+    'ACTION:delete_wish_item|{id}  \u2014 remove wish list item\n' +
     '\n' +
 
     'RULES:\n' +
@@ -884,6 +900,11 @@ function buildChatSystemPrompt_(context) {
     '- GIFT IDEAS: Use log_gift_idea when Ahmed mentions a gift idea for someone ("get Victoria a pottery class", "gift idea for mum: cookbook"). ' +
     'Use "What important dates are coming up?" or "any upcoming dates?" to list from IMPORTANT DATES context. ' +
     'When a date is within 7 days, proactively remind Ahmed and offer to log a gift idea.\n' +
+    '- WISH LIST: Use add_wish_item when Ahmed says he wants something, has his eye on something, or wants to track an aspirational purchase. ' +
+    'This is distinct from the shopping list (groceries/household) — wish list is for considered, non-routine purchases (tech, furniture, experiences, etc.). ' +
+    'Person defaults to Ahmed unless Victoria is mentioned. Price is optional. ' +
+    'Use mark_wish_purchased when Ahmed says he bought or received an item. ' +
+    'When helping with gift ideas for Ahmed or Victoria, cross-reference WISH LIST (active items) above before suggesting — wish list items make ideal gift ideas.\n' +
     '- REFERENCE RESOURCES: Only use fetch_resource_content if a resource with a matching [ID] appears in the ' +
     'REFERENCE RESOURCES section above. Never invent or guess an ID. ' +
     'When a match exists, say "I have a document on this — let me check it." and emit ACTION:fetch_resource_content|{resourceId} using the exact ID shown. ' +
@@ -928,6 +949,7 @@ function detectChatIntent_(msg) {
     career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
     health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose|gym|workout|exercise|fitness|session|went to the gym|hit the gym|skipped|missed)\b/.test(m) || /\brx\b/.test(m),
     people:   /\b(gift|birthday|anniversary|victoria|family|friend|present|important date|upcoming date|date coming)\b/.test(m),
+    wishlist: /\b(wish list|wishlist|want to buy|someday buy|aspiring|have my eye|dream purchase|been wanting|on my list|coveting)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
   };
@@ -1091,6 +1113,33 @@ function buildChatContext_(userMessage) {
   if (intent.home) {
     try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
     catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); shoppingStores = []; }
+  }
+
+  // Wish List (active items only) — wishlist intent (Issue #131)
+  var wishList = null;
+  if (intent.wishlist) {
+    try {
+      var wlSheet = ss.getSheetByName(TABS.WISH_LIST);
+      if (wlSheet && wlSheet.getLastRow() >= 2) {
+        var wlData = wlSheet.getRange(2, 1, wlSheet.getLastRow() - 1, WISH_LIST_HEADERS.length).getValues();
+        wishList = wlData
+          .filter(function(r) { return String(r[0]).trim() && String(r[8]).trim() !== 'Purchased'; })
+          .map(function(r, idx) {
+            return {
+              row:      idx + 2,
+              id:       String(r[0] || '').trim(),
+              person:   String(r[1] || '').trim(),
+              category: String(r[2] || '').trim(),
+              item:     String(r[3] || '').trim(),
+              price:    r[6] !== '' && r[6] !== null ? Number(r[6]) : null,
+              priority: String(r[7] || 'Medium').trim(),
+              status:   String(r[8] || 'Dreaming').trim(),
+            };
+          });
+      } else {
+        wishList = [];
+      }
+    } catch (wlErr) { Logger.log('Chat context: wishList — ' + wlErr.message); wishList = []; }
   }
 
   // Ideas braindump — people intent
@@ -1326,6 +1375,7 @@ function buildChatContext_(userMessage) {
     resources:       resources,
     importantDates:  importantDates,
     giftIdeas:       giftIdeas,
+    wishList:        wishList,
   };
 }
 
@@ -2334,6 +2384,41 @@ function executeActions_(rawText) {
         var lgiResult = webAddGiftIdea_({ parameter: { person: lgiPerson, idea: lgiIdea } });
         if (!lgiResult.ok) throw new Error(lgiResult.error || 'failed to log gift idea');
         executed.push('log_gift_idea (' + lgiPerson + ': ' + lgiIdea + ')');
+      }
+
+      // Wish List (Issue #131)
+      else if (type === 'add_wish_item') {
+        var awPerson   = (args[0] || 'Ahmed').trim();
+        var awItem     = (args[1] || '').trim();
+        var awCategory = (args[2] || 'Other').trim();
+        var awPrice    = (args[3] || '').trim();
+        var awPriority = (args[4] || 'Medium').trim();
+        var awUrls     = (args[5] || '').trim();
+        var awNotes    = (args[6] || '').trim();
+        if (!awItem) throw new Error('item is required for add_wish_item');
+        webAddWishItem_({ parameter: { person: awPerson, item: awItem, category: awCategory,
+                                       price: awPrice, priority: awPriority, urls: awUrls, notes: awNotes } });
+        executed.push('add_wish_item (' + awPerson + ': ' + awItem + ')');
+      }
+      else if (type === 'update_wish_item') {
+        var uwId    = (args[0] || '').trim();
+        var uwField = (args[1] || '').trim();
+        var uwValue = (args[2] || '').trim();
+        if (!uwId || !uwField) throw new Error('id and field required for update_wish_item');
+        webUpdateWishItem_({ parameter: { id: uwId, field: uwField, value: uwValue } });
+        executed.push('update_wish_item (' + uwId + ' ' + uwField + '=' + uwValue + ')');
+      }
+      else if (type === 'mark_wish_purchased') {
+        var mwpId = (args[0] || '').trim();
+        if (!mwpId) throw new Error('id required for mark_wish_purchased');
+        webMarkWishPurchased_({ parameter: { id: mwpId } });
+        executed.push('mark_wish_purchased (' + mwpId + ')');
+      }
+      else if (type === 'delete_wish_item') {
+        var dwId = (args[0] || '').trim();
+        if (!dwId) throw new Error('id required for delete_wish_item');
+        webDeleteWishItem_({ parameter: { id: dwId } });
+        executed.push('delete_wish_item (' + dwId + ')');
       }
 
     } catch (e) {

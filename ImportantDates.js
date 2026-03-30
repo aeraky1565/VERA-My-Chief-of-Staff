@@ -193,7 +193,32 @@ function checkImportantDates_() {
             })
             .slice(0, 15);
 
-          if (interests.length) {
+          // Also pull wish list items for this person (Issue #131)
+          var wishListContext = '';
+          try {
+            var wlSheet = getSpreadsheet().getSheetByName(TABS.WISH_LIST);
+            if (wlSheet && wlSheet.getLastRow() >= 2) {
+              var wlRows = wlSheet.getRange(2, 1, wlSheet.getLastRow() - 1, WISH_LIST_HEADERS.length).getValues();
+              var wlItems = wlRows.filter(function(r) {
+                var rPerson = String(r[1] || '').toLowerCase();
+                var rStatus = String(r[8] || '').trim();
+                return String(r[0]).trim() &&
+                       rStatus !== 'Purchased' &&
+                       (rPerson === personLower || rPerson === 'both');
+              }).map(function(r) {
+                return '- ' + String(r[3] || '').trim() +
+                       (r[6] ? ' (~$' + r[6] + ')' : '') +
+                       ' [' + String(r[7] || 'Medium') + ' priority, ' + String(r[8] || 'Dreaming') + ']';
+              });
+              if (wlItems.length) {
+                wishListContext = '\nTheir wish list items:\n' + wlItems.join('\n');
+              }
+            }
+          } catch (wlErr) {
+            Logger.log('ImportantDates: wish list lookup error: ' + wlErr.message);
+          }
+
+          if (interests.length || wishListContext) {
             var interestText = interests.map(function(i) {
               return '- ' + i.interest +
                      (i.category ? ' [' + i.category + ']' : '') +
@@ -202,9 +227,11 @@ function checkImportantDates_() {
 
             var claudePrompt =
               'Occasion: ' + label + ' for ' + person + ' (' + daysUntil + ' days away).\n' +
-              'Their logged interests:\n' + interestText + '\n\n' +
+              (interestText ? 'Their logged interests:\n' + interestText + '\n' : '') +
+              wishListContext + '\n\n' +
               'Suggest 3 specific, personalised gift or activity ideas. Be concrete — not ' +
-              'categories, but actual suggestions. Return a JSON array of objects: ' +
+              'categories, but actual suggestions. If any wish list items are listed above, ' +
+              'prioritise them as gift ideas. Return a JSON array of objects: ' +
               '[{"idea":"...","reason":"...","estimated_cost":"..."}]';
 
             var suggestions = callClaudeJson_(claudePrompt, []);

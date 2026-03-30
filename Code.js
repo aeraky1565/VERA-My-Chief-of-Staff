@@ -76,6 +76,7 @@ const TABS = {
   PROFILES:           'Traveler Profiles',    // Passport & travel document profiles per person (Issue #123)
   FINANCIAL_GOALS:     'Financial Goals',      // Issue #127
   FINANCIAL_SCENARIOS: 'Financial Scenarios',  // Issue #127
+  WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -127,6 +128,7 @@ const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked',
 const PROFILES_HEADERS           = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes']; // Issue #123
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Goal Name', 'Target Amount', 'Current Amount', 'Target Date', 'Monthly Contribution', 'APY', 'Owner', 'Account', 'Status', 'Notes']; // Issue #127
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Change Amount', 'Notes', 'Projected Date (Baseline)', 'Projected Date (Scenario)', 'Delay Days', 'Created At']; // Issue #127
+const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
 const VEHICLE_HEADERS            = [
   'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
   'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
@@ -254,6 +256,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PROFILES,             PROFILES_HEADERS);         // Issue #123
   ensureSheet(ss, TABS.FINANCIAL_GOALS,     FINANCIAL_GOAL_HEADERS);    // Issue #127
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS, FINANCIAL_SCENARIO_HEADERS); // Issue #127
+  ensureSheet(ss, TABS.WISH_LIST,           WISH_LIST_HEADERS);          // Issue #131
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   // Set Life Plan Doc ID if not already set

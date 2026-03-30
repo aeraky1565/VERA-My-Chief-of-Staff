@@ -12685,11 +12685,282 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
   );
 }
 
+// ---- Wish List tab (Issue #131) ---------------------------------------------
+
+const WISH_CATEGORIES = ['Tech', 'Home & Furniture', 'Experiences', 'Fashion', 'Fitness', 'Books & Media', 'Other'];
+const WISH_PRIORITIES = ['High', 'Medium', 'Low'];
+const WISH_STATUSES   = ['Dreaming', 'Saving', 'Ready to Buy'];
+const WISH_STATUS_ORDER = ['Ready to Buy', 'Saving', 'Dreaming'];
+
+function WishItemCard({ item, onUpdate, onMarkPurchased, onDelete, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' };
+  const [editing, setEditing] = React.useState(false);
+  const [form, setForm] = React.useState({
+    item: item.item, category: item.category, description: item.description || '',
+    urls: item.urls || '', price: item.price != null ? String(item.price) : '',
+    priority: item.priority, status: item.status, notes: item.notes || '',
+  });
+
+  const priorityColor = { High: '#f28b82', Medium: '#fdd663', Low: '#81c995' }[item.priority] || '#8ab4f8';
+  const statusColor   = { 'Ready to Buy': '#81c995', 'Saving': '#fdd663', 'Dreaming': '#8ab4f8' }[item.status] || '#8ab4f8';
+
+  function handleSave() {
+    Object.keys(form).forEach(field => {
+      const cur = item[field] != null ? String(item[field]) : '';
+      if (form[field] !== cur) onUpdate(item.id, field, form[field]);
+    });
+    setEditing(false);
+  }
+
+  const urlList = (item.urls || '').split(/[\s,]+/).filter(Boolean);
+
+  if (editing) {
+    return (
+      <div style={{ background: '#1e2a3a', border: '1px solid #2a3a50', borderRadius: 8, padding: '14px 16px', marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+          <input value={form.item} onChange={e => setForm(p => ({ ...p, item: e.target.value }))}
+            placeholder="Item name" style={inputStyle} />
+          <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+            {WISH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+          <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))} style={inputStyle}>
+            {WISH_PRIORITIES.map(p => <option key={p}>{p}</option>)}
+          </select>
+          <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
+            {WISH_STATUSES.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <input value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))}
+            placeholder="Price (optional)" type="number" min="0" style={inputStyle} />
+          <input value={form.urls} onChange={e => setForm(p => ({ ...p, urls: e.target.value }))}
+            placeholder="URLs (space or comma separated)" style={inputStyle} />
+        </div>
+        <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+          placeholder="Description (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', marginBottom: 8 }} />
+        <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+          placeholder="Notes (optional)" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', marginBottom: 10 }} />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={() => setEditing(false)}
+            style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 12 }}>
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={busy}
+            style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 12 }}>
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: '#1e2a3a', border: '1px solid #2a3a50', borderRadius: 8, padding: '12px 14px', marginBottom: 8,
+                  display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      {/* Priority dot */}
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: priorityColor, marginTop: 5, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: '#e8eaed' }}>{item.item}</span>
+          {item.price != null && (
+            <span style={{ fontSize: 13, color: '#81c995', fontWeight: 600 }}>${Number(item.price).toLocaleString()}</span>
+          )}
+          <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 10, background: statusColor + '22', color: statusColor, border: '1px solid ' + statusColor + '44' }}>
+            {item.status}
+          </span>
+          <span style={{ fontSize: 11, color: '#6b7c99' }}>{item.category}</span>
+          {item.person && item.person !== 'Ahmed' && (
+            <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 8, background: '#2a3a50', color: '#a0b0c8' }}>{item.person}</span>
+          )}
+        </div>
+        {item.description && (
+          <div style={{ fontSize: 12, color: '#8a9bb0', marginBottom: 4 }}>{item.description}</div>
+        )}
+        {urlList.length > 0 && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {urlList.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize: 11, color: '#8ab4f8', textDecoration: 'none' }}>
+                🔗 Link {urlList.length > 1 ? i + 1 : ''}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        {item.status !== 'Purchased' && (
+          <button onClick={() => onMarkPurchased(item.id, item.item)} disabled={busy}
+            title="Mark as purchased"
+            style={{ padding: '4px 8px', borderRadius: 5, border: 'none', background: '#1a3a2a', color: '#81c995', cursor: 'pointer', fontSize: 12 }}>
+            ✓ Got it
+          </button>
+        )}
+        <button onClick={() => setEditing(true)} disabled={busy}
+          style={{ padding: '4px 8px', borderRadius: 5, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 12 }}>
+          Edit
+        </button>
+        <button onClick={() => onDelete(item.id, item.item)} disabled={busy}
+          style={{ padding: '4px 8px', borderRadius: 5, border: 'none', background: 'transparent', color: '#6b7c99', cursor: 'pointer', fontSize: 12 }}>
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function WishListTab({ wishList, onAdd, onUpdate, onMarkPurchased, onDelete, busy }) {
+  const inputStyle = { background: '#0d1117', color: '#e8eaed', border: '1px solid #2a3a50', borderRadius: 6, padding: '6px 8px', fontSize: 13 };
+  const [filterPerson, setFilterPerson] = React.useState('All');
+  const [showPurchased, setShowPurchased] = React.useState(false);
+  const [showForm, setShowForm] = React.useState(false);
+  const [form, setForm] = React.useState({
+    person: 'Ahmed', item: '', category: 'Tech', description: '',
+    urls: '', price: '', priority: 'Medium', notes: '',
+  });
+
+  const active    = wishList.filter(w => w.status !== 'Purchased');
+  const purchased = wishList.filter(w => w.status === 'Purchased');
+  const totalValue = active.reduce((s, w) => s + (w.price || 0), 0);
+  const readyCount = active.filter(w => w.status === 'Ready to Buy').length;
+
+  function applyPersonFilter(items) {
+    if (filterPerson === 'All') return items;
+    return items.filter(w => w.person === filterPerson || w.person === 'Both');
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.item.trim()) return;
+    onAdd(form);
+    setForm({ person: 'Ahmed', item: '', category: 'Tech', description: '', urls: '', price: '', priority: 'Medium', notes: '' });
+    setShowForm(false);
+  }
+
+  return (
+    <div>
+      {/* Stats bar */}
+      {active.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Active Items', value: active.length },
+            totalValue > 0 && { label: 'Total Value', value: '$' + totalValue.toLocaleString() },
+            readyCount > 0 && { label: 'Ready to Buy', value: readyCount },
+            purchased.length > 0 && { label: 'Purchased', value: purchased.length },
+          ].filter(Boolean).map(s => (
+            <div key={s.label} style={{ background: '#1e2a3a', border: '1px solid #2a3a50', borderRadius: 8,
+                                        padding: '8px 14px', fontSize: 13, color: '#e8eaed' }}>
+              <span style={{ fontWeight: 700 }}>{s.value}</span>
+              <span style={{ color: '#6b7c99', marginLeft: 6 }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filter + Add button */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        {['All', 'Ahmed', 'Victoria', 'Both'].map(p => (
+          <button key={p} onClick={() => setFilterPerson(p)}
+            style={{ padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12,
+                     background: filterPerson === p ? '#8ab4f8' : '#1e2a3a',
+                     color: filterPerson === p ? '#0d1117' : '#8ab4f8' }}>
+            {p}
+          </button>
+        ))}
+        <button onClick={() => setShowForm(v => !v)} disabled={busy}
+          style={{ marginLeft: 'auto', padding: '6px 16px', borderRadius: 6, border: 'none',
+                   background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+          {showForm ? '✕ Cancel' : '+ Add Item'}
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showForm && (
+        <form onSubmit={handleSubmit}
+          style={{ background: '#1e2a3a', borderRadius: 8, padding: '14px 16px', marginBottom: 16,
+                   border: '1px solid #2a3a50', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <input required value={form.item} onChange={e => setForm(p => ({ ...p, item: e.target.value }))}
+              placeholder="Item name *" style={inputStyle} />
+            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={inputStyle}>
+              {WISH_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <select value={form.person} onChange={e => setForm(p => ({ ...p, person: e.target.value }))} style={inputStyle}>
+              {['Ahmed', 'Victoria', 'Both'].map(p => <option key={p}>{p}</option>)}
+            </select>
+            <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))} style={inputStyle}>
+              {WISH_PRIORITIES.map(p => <option key={p}>{p}</option>)}
+            </select>
+            <input value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))}
+              placeholder="Price (optional)" type="number" min="0" style={inputStyle} />
+            <input value={form.urls} onChange={e => setForm(p => ({ ...p, urls: e.target.value }))}
+              placeholder="URLs (optional, space/comma separated)" style={inputStyle} />
+          </div>
+          <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+            placeholder="Description (optional)"
+            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+            placeholder="Notes (optional)"
+            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setShowForm(false)}
+              style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #2a3a50', background: 'transparent', color: '#8ab4f8', cursor: 'pointer', fontSize: 13 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={busy || !form.item.trim()}
+              style={{ padding: '6px 16px', borderRadius: 6, border: 'none', background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
+              🛍 Add
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Grouped active items */}
+      {active.length === 0 && !showForm ? (
+        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#5f6368', fontSize: 14 }}>
+          Nothing on your wish list yet. Add one above or tell VERA in chat.
+        </div>
+      ) : (
+        WISH_STATUS_ORDER.map(status => {
+          const items = applyPersonFilter(active.filter(w => w.status === status));
+          if (items.length === 0) return null;
+          const sorted = [...items].sort((a, b) => {
+            const order = { High: 0, Medium: 1, Low: 2 };
+            return (order[a.priority] || 1) - (order[b.priority] || 1);
+          });
+          return (
+            <div key={status} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7c99', textTransform: 'uppercase',
+                            letterSpacing: '0.08em', marginBottom: 8 }}>
+                {status} <span style={{ fontWeight: 400, color: '#4d6080' }}>({items.length})</span>
+              </div>
+              {sorted.map(w => (
+                <WishItemCard key={w.id} item={w} onUpdate={onUpdate} onMarkPurchased={onMarkPurchased} onDelete={onDelete} busy={busy} />
+              ))}
+            </div>
+          );
+        })
+      )}
+
+      {/* Purchased section (collapsed by default) */}
+      {purchased.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <button onClick={() => setShowPurchased(v => !v)}
+            style={{ background: 'none', border: 'none', color: '#6b7c99', cursor: 'pointer', fontSize: 12, padding: '4px 0', marginBottom: 8 }}>
+            {showPurchased ? '▾' : '▸'} Purchased ({purchased.length})
+          </button>
+          {showPurchased && applyPersonFilter(purchased).map(w => (
+            <WishItemCard key={w.id} item={w} onUpdate={onUpdate} onMarkPurchased={onMarkPurchased} onDelete={onDelete} busy={busy} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Explore tab (Issue #101) -----------------------------------------------
 
 function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddInterest,
                       ideas, ideasLoading, onAddIdea, onPromoteIdea, onArchiveIdea,
                       resources, resourcesLoading, onAddResource, onUpdateResource, onDeleteResource,
+                      wishList, wishListLoading, onAddWishItem, onUpdateWishItem, onMarkWishPurchased, onDeleteWishItem,
                       busy }) {
   const [sub, setSub] = React.useState('interests');
   const subTabs = [
@@ -12746,11 +13017,16 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
         </div>
       )}
       {sub === 'wish_list' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>Your "someday" wish list — distinct from your shopping list.</div>
-        </div>
+        wishListLoading
+          ? <div className="loading-text">Loading wish list…</div>
+          : <WishListTab
+              wishList={wishList}
+              onAdd={onAddWishItem}
+              onUpdate={onUpdateWishItem}
+              onMarkPurchased={onMarkWishPurchased}
+              onDelete={onDeleteWishItem}
+              busy={busy}
+            />
       )}
     </div>
   );
@@ -12863,6 +13139,7 @@ function App() {
   const [financialGoals,    setFinancialGoals]    = useState(null);
   const [goalsLoading,      setGoalsLoading]       = useState(false);
   const [ideas,      setIdeas]      = useState([]);   // idea cards (Issue #18)
+  const [wishList,   setWishList]   = useState([]);   // aspirational purchases (Issue #131)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
@@ -13055,6 +13332,18 @@ function App() {
       setError(err.message);
     }
     setTabLoading(prev => ({ ...prev, ideas: false }));
+  }
+
+  async function loadWishList(url, token) {
+    if (!url || !token) return;
+    setTabLoading(prev => ({ ...prev, wishList: true }));
+    try {
+      const data = await apiGet(url, token, { action: 'get_wish_list' });
+      setWishList(data.items || []);
+    } catch (err) {
+      setError(err.message);
+    }
+    setTabLoading(prev => ({ ...prev, wishList: false }));
   }
 
   async function loadResources(url, token) {
@@ -14368,6 +14657,60 @@ function App() {
     }
   }
 
+  // ── Wish List handlers (Issue #131) ────────────────────────────────────────
+  async function handleAddWishItem(form) {
+    if (!form.item.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_wish_item', ...form });
+      showToast('🛍 Added to wish list');
+      loadWishList(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not add wish item: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleUpdateWishItem(id, field, value) {
+    setBusy(true);
+    setWishList(prev => prev.map(w => w.id === id ? { ...w, [field]: value } : w));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_wish_item', id, field, value });
+      showToast('✓ Updated');
+    } catch (err) {
+      setError('Could not update: ' + err.message);
+      loadWishList(apiUrl, apiToken);
+    }
+    setBusy(false);
+  }
+
+  async function handleMarkWishPurchased(id, itemName) {
+    if (!window.confirm(`Mark "${itemName}" as purchased?`)) return;
+    setBusy(true);
+    setWishList(prev => prev.map(w => w.id === id ? { ...w, status: 'Purchased' } : w));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'mark_wish_purchased', id });
+      showToast('✅ Marked as purchased');
+      loadWishList(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not update: ' + err.message);
+      loadWishList(apiUrl, apiToken);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteWishItem(id, itemName) {
+    if (!window.confirm(`Delete "${itemName}" from your wish list?`)) return;
+    setWishList(prev => prev.filter(w => w.id !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_wish_item', id });
+      showToast('✓ Deleted');
+    } catch (err) {
+      setError('Could not delete: ' + err.message);
+      loadWishList(apiUrl, apiToken);
+    }
+  }
+
   async function handleAddItineraryItem(params) {
     setBusy(true);
     try {
@@ -14693,7 +15036,7 @@ function App() {
                 onClick={() => {
                   setActiveTab(tab);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
-                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); }
+                  if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); }
                   if (tab === 'growth')     loadGoals(apiUrl, apiToken);
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
@@ -14859,6 +15202,12 @@ function App() {
                 onAddResource={handleAddResource}
                 onUpdateResource={handleUpdateResource}
                 onDeleteResource={handleDeleteResource}
+                wishList={wishList}
+                wishListLoading={!!tabLoading.wishList}
+                onAddWishItem={handleAddWishItem}
+                onUpdateWishItem={handleUpdateWishItem}
+                onMarkWishPurchased={handleMarkWishPurchased}
+                onDeleteWishItem={handleDeleteWishItem}
                 busy={busy}
               />
             )}
