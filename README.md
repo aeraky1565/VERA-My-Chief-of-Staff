@@ -2,1035 +2,644 @@
 
 > Your personal chief of staff, built on Google Apps Script + Claude AI.
 
-VERA runs silently in the background of your life. Every night it reads your calendar, tasks, finances, PTO, travel plans, interests, and shared life goals, then calls Claude AI to generate a prioritised list of flags. At 7 AM it delivers those flags to your inbox. A React dashboard and a full conversational chat interface let you view, manage, and act on every domain of your life — from adding a recipe to booking a packing list — in plain English.
+VERA runs silently in the background of your life. Every night it reads your calendar, tasks, finances, PTO, travel plans, interests, health, career, and shared life goals — then calls Claude AI to generate a prioritised list of flags. At 7 AM it delivers a summary to your inbox. A React dashboard and a full conversational chat interface let you view, manage, and act on every domain of your life in plain English.
 
 ---
 
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Design Layers](#design-layers)
-3. [Intelligence Engines](#intelligence-engines)
-4. [Interfaces](#interfaces)
-5. [Chat — Conversational Interface](#chat--conversational-interface)
-6. [Travel Module](#travel-module)
-7. [Life OS Data Domains](#life-os-data-domains)
-8. [System Timing & Automation](#system-timing--automation)
-9. [Data Model — Sheet Tabs](#data-model--sheet-tabs)
-10. [Config Tab Reference](#config-tab-reference)
-11. [Script Properties Reference](#script-properties-reference)
-12. [User Workflows](#user-workflows)
-13. [How VERA Communicates & Intervenes](#how-vera-communicates--intervenes)
-14. [Dashboard API Reference](#dashboard-api-reference)
-15. [File Structure](#file-structure)
-16. [Setup & Deployment](#setup--deployment)
+2. [Dashboard Tabs](#dashboard-tabs)
+3. [Chat — Conversational Interface](#chat--conversational-interface)
+4. [Chat Actions (40+)](#chat-actions)
+5. [Intelligence & Proactive Features](#intelligence--proactive-features)
+6. [Nightly Jobs](#nightly-jobs)
+7. [Scheduled Automations](#scheduled-automations)
+8. [Flag System](#flag-system)
+9. [Travel Module](#travel-module)
+10. [Finance Module](#finance-module)
+11. [Health & Wellness Module](#health--wellness-module)
+12. [People & Relationships Module](#people--relationships-module)
+13. [Career Module](#career-module)
+14. [Home Front Module](#home-front-module)
+15. [Data Model — Sheet Tabs](#data-model--sheet-tabs)
+16. [Config Tab Reference](#config-tab-reference)
+17. [Script Properties Reference](#script-properties-reference)
+18. [Integrations & External APIs](#integrations--external-apis)
+19. [Dashboard API Reference](#dashboard-api-reference)
+20. [File Structure](#file-structure)
+21. [Setup & Deployment](#setup--deployment)
 
 ---
 
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              DATA SOURCES                                    │
-│  Google Calendar · Tasks · Transactions Sheet · Simple Ass Tracker           │
-│  External Sheets · Shared Interests · AviationStack · OpenWeatherMap         │
-└──────────────────────────────┬───────────────────────────────────────────────┘
-                               │  nightly read
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                      INTELLIGENCE ENGINES (Apps Script)                      │
-│  Calendar · Tasks · Finance · PTO · Summaries · Reminders · WeekendPlanner   │
-│  FlightStatus · Weather · Interests · Goals · Projects · SignalLearning      │
-└──────────────────────────────┬───────────────────────────────────────────────┘
-                               │  structured context
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                       CLAUDE AI  (claude-sonnet-4-6)                         │
-│  Nightly: buildPrompt() → generateFlags() → parseFlags()                     │
-│  Chat:    buildChatSystemPrompt_() → callClaudeChat_() → executeActions_()   │
-│  Max 8 flags/night · stable dedup keys · urgency tiers · 40+ chat actions    │
-└──────────────────────────────┬───────────────────────────────────────────────┘
-                               │  FLAG / ACTION rows
-                               ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                        LIFE OS GOOGLE SHEET (21 tabs)                        │
-│  Flags · Tasks · Projects · Goals · PTO · Summaries · Metrics · Interests    │
-│  Ideas · Shopping · Recipes · Home Items · Itinerary · Packing Items         │
-│  Countries · Bucket List · Transactions · Config · Milestones                │
-└────────┬───────────────────────────┬─────────────────────────────────────────┘
-         │ 7 AM email                │ REST API (VERA_WEB_TOKEN)
-         ▼                           ▼
-┌──────────────┐       ┌──────────────────────────────────────────────────────┐
-│  Gmail       │       │  React Dashboard (docs/index.html)                   │
-│  Morning     │       │  Home · Flags · Tasks · Projects · Goals · Shopping  │
-│  Nudge       │       │  PTO · Milestones · Interests · Ideas · Travel       │
-│              │       │  Home Items · Recipes · Countries · Bucket List      │
-└──────────────┘       │  + Chat panel (conversational VERA)                  │
-                       └──────────────────────────────────────────────────────┘
-         │                           │
-         ▼                           ▼
-┌──────────────┐       ┌──────────────────────────────────────────────────────┐
-│  Telegram    │       │  Vera Google Calendar                                │
-│  Bot         │       │  PTO suggestions · Buffer alerts · Milestones        │
-└──────────────┘       └──────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  React SPA (docs/index.html — GitHub Pages, no build step)      │
+│  Home · Chat · Flags · Tasks · Projects · Goals · Shopping      │
+│  PTO · Travel · People · Home Front · Health · Career           │
+│  Finance · Resources · + more                                    │
+└────────────────────┬────────────────────────────────────────────┘
+                     │  HTTPS (token-authenticated)
+┌────────────────────▼────────────────────────────────────────────┐
+│  Google Apps Script — doGet() / doPost() Web App                │
+│  100+ REST endpoints · Trigger-based automation                  │
+└──────┬──────────────┬───────────────┬───────────────────────────┘
+       │              │               │
+  Google Sheets   Claude API     External APIs
+  (50+ tabs)    (Anthropic)   Calendar · Drive · Gmail
+  Life OS data   Flags · Chat  AviationStack · OpenWeatherMap
+                 Actions       Serper/Tavily · Telegram
 ```
 
----
-
-## Design Layers
-
-VERA is organised into four distinct layers:
-
-### Layer 1 — Data Collection
-Raw intelligence gathered from connected sources each night:
-- **Google Calendar events** — all calendars for the next 7 days, with RSVP status and event colour
-- **Open tasks** — from the Tasks sheet, sorted by urgency (overdue → neglected → pending)
-- **Financial metrics** — transaction pivot by category (2-month comparison) + SAT budget sheet
-- **PTO & leave** — vacation days remaining, burn-down pace, upcoming travel, clear windows
-- **Shared interests** — an interest ledger for Ahmed & Victoria, cross-referenced against events
-- **Travel** — upcoming trips, itinerary items, packing status, live flight status
-- **Countries + Bucket List** — travel history and wishlist, cross-referenced against upcoming trips
-- **External sheet metrics** — any Google Sheet cell wired up via `summary_sheet:*` config rows
-
-### Layer 2 — Intelligence Processing
-Each engine transforms raw data into structured facts for Claude:
-- Calendars are labelled (`personal`, `shared`, or a custom label from Config)
-- Tasks are aged, scored as overdue or neglected, and optionally given AI-suggested due dates
-- Transactions are pivoted by category, skip-list filtered, and formatted as `$X vs $Y in Mon (+Z%)`
-- PTO is classified into a 3-2-1 framework (long weekends · mid-size weeks · big pivot trips)
-- Travel is tracked trip-by-trip: itinerary items, packing progress, live AviationStack flight status
-- Summaries are auto-written to the Metrics and Summaries tabs before Claude is called
-
-### Layer 3 — AI Reasoning (Claude)
-A structured prompt packages all of Layer 2's output with explicit reasoning rules:
-- When to flag a calendar event (e.g., unresponded RSVP, colour-tagged event)
-- When to flag a spending category (>20% AND >$30 over prior month)
-- When to flag PTO pace (behind on burn-down, buffer days idle)
-- When to cross-reference the interest ledger against upcoming events
-- When a bucket list destination is near a planned trip
-- When an upcoming trip is a first-time country for Ahmed or Victoria
-- Output: a JSON array of up to 8 flags, each with `source · flag · reason · urgency · key`
-
-### Layer 4 — Delivery & Actioning
-Flags are written to the sheet and surfaced through multiple channels:
-- **Email** — morning nudge at 7 AM, grouped by urgency, with a dashboard link
-- **Dashboard** — live React UI with full read/write access to all 21 data domains
-- **Chat** — conversational natural-language interface with 40+ executable actions
-- **Telegram** — bot integration for on-the-go access
+**Key design decisions:**
+- **No build pipeline** — React runs via Babel standalone in a single HTML file; deployable to GitHub Pages by push
+- **Google Sheets as database** — every data domain is a named tab; no external DB required
+- **Claude for intelligence** — flags, suggestions, packing lists, gift ideas, and natural-language actions all route through Claude
+- **Token-authenticated API** — single `VERA_WEB_TOKEN` in Script Properties; all dashboard calls include it
 
 ---
 
-## Intelligence Engines
+## Dashboard Tabs
 
-### `Calendar.js` — Calendar Intelligence
-Reads all Google Calendars via `CalendarApp.getAllCalendars()`.
-
-| Feature | Detail |
-|---------|--------|
-| Look-ahead window | `calendar_days_ahead` (default 7) |
-| RSVP status | `organizer · accepted · declined · tentative · invited (no response)` |
-| Event colour capture | Lavender, Sage, Grape, Flamingo, Banana, Tangerine, Peacock, Graphite, Blueberry, Basil, Tomato |
-| Calendar labelling | Custom via `calendar_label:CalName` · owned = `personal (CalName)` · unowned = `shared: CalName` |
-| Skip list | Calendars named in `skip_calendars` are silently ignored |
-
----
-
-### `Tasks.js` — Task Intelligence
-Reads the Tasks sheet and surfaces overdue and neglected work.
-
-| Feature | Detail |
-|---------|--------|
-| Overdue detection | `daysUntilDue < 0` |
-| Neglected detection | Age ≥ `task_age_threshold_days` (default 7) |
-| Recurring tasks | Automatically creates the next occurrence when a recurring task is completed |
-| AI due-date suggestion | `suggestDueDates()` — Claude proposes dates for undated tasks, written with `[VERA: reason]` in Notes |
-| Sort order | Overdue first → then oldest neglected → then pending |
-
----
-
-### `Finance.js` — Finance Intelligence
-Two sub-engines: Simple Ass Tracker (SAT) and Transactions.
-
-**Transaction Engine:**
-- Reads Empower-format CSV from a separate Transactions Sheet (`TRANSACTIONS_SHEET_ID`)
-- Auto-detects 2 most recent complete months (current month always excluded)
-- Groups spending by category, skip-list filtered
-- Outputs: Total Spending + top 10 categories + "Other N" bucket
-- Sign convention: negative = expense, positive = income/credit (income rows skipped)
-
-**SAT Engine:**
-- Reads the budget tracker (Ahmed + Victoria + Shared columns)
-- Auto-detects horizontal or vertical layout
-- Extracts: Net Expenses, Disposable Income per person, plus Shared totals
-- Parses both `$1,234` and `(500)` negative notation
-
----
-
-### `PTO.js` — PTO / Leave Intelligence
-The most sophisticated engine. Tracks your full vacation year.
-
-**PTO Classification:**
-| Pattern | Classification |
-|---------|----------------|
-| All-day event titled "Vacation" | Vacation block (workday-counted) |
-| All-day event titled "PTO" | Personal time (8 hrs/day) |
-| Timed event titled "PTO" | Personal time (exact duration) |
-| Matches `holiday_keywords`, all-day | Company holiday (excluded from PTO count) |
-| Matches `ignore_keywords` | Skipped entirely (e.g., "Pay Day") |
-
-**3-2-1 Framework:**
-
-| Tier | Target | Definition |
-|------|--------|-----------|
-| Long Weekends | 3/year | ≤ 3 workdays, ≤ 5 calendar days |
-| Mid-Size Weeks | 2/year | 4–7 workdays |
-| Big Pivot | 1/year | > 7 workdays |
-
-**Clear Window Finder:** Scans gap calendars for runs of 3+ consecutive clear workdays over the next 90 days. Suggestions are written as all-day events to your Vera calendar (Sage colour). If you delete a suggestion, VERA marks it as declined and never re-suggests that window.
-
-**Milestone Detection:** Scans gap calendars for all-day events whose titles match `milestone_keywords`. Each milestone is surfaced in the PTO tab and the Milestones dashboard tab with a live countdown.
-
----
-
-### `Summaries.js` — Metrics Auto-Population
-Runs at the very start of `nightlyRun()` before Claude is called.
-
-**Metrics tab** (VERA's self-monitoring — fully automatic):
-| Metric | Description |
-|--------|-------------|
-| `open_count` | Total non-completed tasks |
-| `overdue_count` | Tasks past their due date |
-| `due_within_7_days` | Tasks due soon but not yet overdue |
-| `neglected_count` | Tasks older than `task_age_threshold_days` |
-| `events_next_7_days` | Upcoming calendar events |
-| `events_today` | Events happening today |
-| `active_count` | Flags that are unacknowledged and unresolved |
-| `high_count` | High-urgency active flags |
-| `medium_count` | Medium-urgency active flags |
-
-**Summaries tab** (external data — Config-driven):
-- Any `summary_sheet:SourceName` row in Config wires a Google Sheet cell to the Summaries tab
-- Finance rows (`[AUTO] Transactions`, `[AUTO] Simple Ass Tracker`) are written here automatically
-- Manual rows in the Summaries tab are never touched (only `[AUTO]`-tagged rows are overwritten)
-
----
-
-### `Reminders.js` — Anticipator & Explorer
-Two proactive intelligence patterns:
-
-**Anticipator** (runs hourly): Scans upcoming calendar events for items that require pre-event preparation reminders. Creates reminder events in the Vera calendar if a cooldown window hasn't passed.
-
-**Explorer** (runs nightly): Produces a bulletin of interesting things to explore or act on, based on interests, upcoming events, and open tasks.
-
----
-
-### `WeekendPlanner.js` — Weekend Planning Engine
-Activated by `weekend_planner_enabled` in Config. Analyses the upcoming weekend and suggests activities based on interests, open tasks, and calendar gaps. Writes a Weekend Memo as a calendar event to the Vera calendar.
-
----
-
-### `FlightStatus.js` — Live Flight Status Monitor
-Polls AviationStack API for real-time flight status on a rate-limited schedule.
-
-| Window | Poll Interval |
-|--------|--------------|
-| Departure 6–24 hours away | Every 3 hours |
-| Departure 1–6 hours away | Every 60 minutes |
-| Departure < 1 hour away | Every 15 minutes |
-| > 24 hours out or landed 60+ min ago | Skipped |
-
-- Scans the Itinerary sheet for all rows of type `flight`
-- Reads flight number from metadata `flightNum` field; falls back to extracting it from event title (e.g., "Flight to Tampa (UA 1140)" → `UA1140`)
-- Stores fetched status (status, departure/arrival times, delay, gate, terminal) back into the row's metadata JSON
-- Status is exposed via the `?action=flight_statuses` API endpoint
-- **Required Script Property:** `AVIATIONSTACK_KEY`
-
----
-
-### `Weather.js` — Destination Weather
-Fetches current and forecast weather for any city using OpenWeatherMap.
-
-- Resolves IATA airport codes to city names via the free AirportGap API (`airportgap.com`)
-- Used by the dashboard Active Travel Card to show weather at your current trip destination
-- Trip-position algorithm: shows the arrival city weather before departure, switches to next destination 24 h before each flight
-- **Required Script Property:** `OPENWEATHERMAP_KEY`
-
----
-
-### `SignalLearning.js` — Flag Suppression System
-Prevents alert fatigue by learning which patterns are low-signal for this household.
-
-- VERA tracks every flag key that gets acknowledged quickly (good signal) vs. ignored/resolved immediately (low signal)
-- Patterns can be suppressed manually via the dashboard's Signal Learning tab
-- Suppressed patterns are passed to `buildPrompt()` and excluded from Claude's output
-- Expired flags (resolved without acknowledgement) are recorded as noise candidates
-
----
-
-### `Telegram.js` — Telegram Bot Integration
-Receives inbound messages via webhook (`doPost`). Messages are queued in `CacheService` and processed asynchronously via a one-shot trigger to avoid Apps Script timeout limits. Responses are delivered back through the Telegram Bot API.
-
----
-
-## Interfaces
-
-### Interface 1 — Morning Email (7 AM)
-
-VERA sends a styled HTML email every morning *only if there are active flags*.
-
-| Element | Detail |
-|---------|--------|
-| Sender | "VERA" (from `MORNING_NUDGE_EMAIL` Script Property) |
-| Logo | Loaded from Google Drive (`VERA_LOGO_FILE_ID`); falls back to dark text banner |
-| Content | Urgency breakdown (High · Medium · Low dots), total active count |
-| Links | "Open VERA Dashboard →" (if `VERA_DASHBOARD_URL` is set) + Life OS sheet link |
-| Skip logic | No email sent if zero active flags — no noise on quiet nights |
-
----
-
-### Interface 2 — React Dashboard
-
-A self-contained single-page app (`docs/index.html`) — no build step, no server required.
-
-**Setup:** Enter your Web App URL and `VERA_WEB_TOKEN` in the Settings modal (⚙). Credentials persist in `localStorage`.
-
-**Home Tab bento cards:**
-
-| Card | Shows |
-|------|-------|
-| Active Flags | Count + High/Med/Low breakdown + top flag |
-| Tasks | Open count · overdue count · next task |
-| Projects | Project count + pending task counts |
-| Shopping | Total pending items · per-store breakdown |
-| PTO | Vacation days remaining · personal hours · next PTO countdown |
-| Milestones | Upcoming events · days until · linked item count |
-| Spending Chart | Category bar chart: current vs prior month |
-| Active Travel Card | Current trip day / total days · destination weather · itinerary for today · flight status with gate/terminal/delay |
-
-**Dashboard tabs:**
-
-| Tab | Capabilities |
+| Tab | What it does |
 |-----|-------------|
-| **Home** | Overview bento cards; Active Travel Card when a trip is in progress |
-| **Flags** | View · acknowledge · snooze · resolve each flag |
-| **Tasks** | View · complete · add · edit · delete tasks; overdue/neglected indicators |
-| **Projects** | View all projects; add/complete/edit/delete project tasks |
-| **Goals** | Kanban-style goal tracking; add/edit/update status/delete |
-| **Shopping** | Multi-store lists; add items; toggle purchased |
-| **PTO** | Burn-down stats · clear windows · 3-2-1 framework status |
-| **Milestones** | Countdown cards; linked flags/tasks |
-| **Interests** | Ahmed & Victoria shared interest ledger; add/delete |
-| **Ideas** | Braindump capture; promote to task; archive |
-| **Travel** | Upcoming trips; itinerary editor; packing list with progress; flight status |
+| **Home** | Bento overview: active flags, tasks, projects, spending chart, PTO status, shopping, milestones, active travel card (trip-position aware weather + flight status) |
+| **Chat** | Full conversational interface with 40+ executable actions |
+| **Flags** | All intelligence alerts — view, acknowledge, snooze, resolve; filter by urgency; escalation tracking |
+| **Tasks** | Tasks with overdue/neglected indicators; add/complete/edit/delete; recurring tasks |
+| **Projects** | Project tracker with sub-tasks, priorities, progress; add/complete/delete tasks |
+| **Goals** | Kanban-style yearly goal tracking; progress percentages; status management |
+| **Shopping** | Multi-store lists; toggle purchased; recipe-to-shopping integration |
+| **PTO Planner** | Ahmed + Victoria subtabs; burn-down stats; 3-2-1 framework; clear windows; milestones; buffer management |
+| **Travel** | Upcoming trips; full itinerary editor (10+ item types); packing list with progress; flight status; trip context; recommendations |
+| **People** | Important Dates (birthdays, anniversaries, meaningful dates); Gift Ideas per person |
+| **Home Front** | Household chore checklist by cadence; Vehicle tracker (oil, registration, insurance, mileage) |
+| **Health & Wellness** | Prescriptions for Ahmed & Victoria; Gym log with attendance tracking; Morning routine checklist |
 | **Home Items** | Appliance/warranty tracker; record service; maintenance countdowns |
+| **Interests** | Ahmed & Victoria shared interest ledger; category tracking |
+| **Ideas** | Braindump; promote to task; archive; category & tag organisation |
+| **Finance** | Bills, credit cards, loyalty programs, financial goals, what-if scenarios, transaction history |
+| **Career** | Current role; career goals (1yr/3yr/5yr/10yr); progression timeline; skills; wins; network |
 | **Recipes** | Recipe book; view ingredients; add to shopping list |
-| **Countries** | Travel history map; add/delete visited countries |
-| **Bucket List** | Dream destinations; star rating; mark visited |
-| **Chat** | Conversational VERA interface (see below) |
-
-**Flag actions:**
-| Action | Effect |
-|--------|--------|
-| ✓ Acknowledge | Marks flag as seen; removes from active view |
-| 💤 Snooze 2d | Hides flag for 2 days; returns automatically |
-| ✅ Resolve | Closes flag permanently |
-
-**Urgency escalation (automatic):**
-- At 3 days unacknowledged: urgency bumped one tier (Low → Medium → High)
-- At 7 days unacknowledged: `"[Stale: open for 7+ days]"` appended to Reason
-
----
-
-### Interface 3 — Vera Calendar
-
-VERA writes three types of events to your dedicated Vera Google calendar:
-
-| Event Type | Colour | Trigger |
-|-----------|--------|---------|
-| PTO Window Suggestion | Sage (green) | Clear 3+ workday window found |
-| Buffer Day Alert | Banana (yellow) | Buffer days idle + no PTO soon |
-| Milestone Countdown | Grape (purple) | Upcoming milestone detected |
-
-Deleting a PTO suggestion event tells VERA not to suggest that window again.
-
----
-
-### Interface 4 — Telegram Bot *(optional)*
-
-Connect a Telegram bot to receive flag summaries and send commands. Configure via `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Script Properties. Messages are processed asynchronously to respect Apps Script timeout limits.
+| **Countries** | Visited countries map; traveller tracking (Ahmed/Victoria/Both) |
+| **Bucket List** | Dream destinations; star rating; mark visited; dream trip flagging |
+| **Resources** | Reference documents VERA can read during chat (Google Docs + PDF auto-conversion) |
 
 ---
 
 ## Chat — Conversational Interface
 
-VERA includes a full conversational interface powered by Claude. It maintains session history, reads the full context of your Life OS (all 21 data domains), and can take action across every domain in plain English.
+VERA's chat is a full conversational AI backed by Claude. It loads live context from every relevant data domain before generating a response, so it always knows your current state.
 
-### How it works
-1. User sends a message via the dashboard Chat tab (or Telegram)
-2. `buildChatContext_()` assembles a live snapshot of all data domains
-3. `buildChatSystemPrompt_()` formats that snapshot into a structured system prompt
-4. Claude responds conversationally and optionally emits `ACTION:` lines
-5. `executeActions_()` parses and executes each action against the Google Sheet
-6. Session history persists in the Chat History sheet (keyed by `session_id`)
+**Intent-based context loading** — the system automatically detects what the message is about and loads only the relevant data:
 
-### Context VERA sees in every chat message
-Every message includes a live read of:
-- Active flags (unresolved + unacknowledged)
-- Open tasks (with IDs, due dates, recurring status)
-- Bills (with row numbers, amounts, due dates, paid status)
-- Projects + their open tasks
-- Yearly goals (with IDs, status, progress)
-- Shared interests (with IDs, person, category)
-- Ideas braindump (with IDs, status)
-- Shopping lists (per store)
-- Recipes (with row numbers, ingredients)
-- Home items (with row numbers, last service, next service)
-- Upcoming trips (full itinerary + packing per trip)
-- Countries visited (with IDs)
-- Travel bucket list (with IDs, stars, dream trip flag)
-- Summaries / finance metrics
-- PTO stats
-- Today's calendar events
-- VERA proactive notices (time-sensitive items)
+| Intent | Data loaded |
+|--------|------------|
+| `finance` | Bills, credit cards, loyalty programs, financial goals |
+| `travel` | Upcoming trips, itinerary, packing, bucket list, countries |
+| `health` | Prescriptions, gym log (last 28 days) |
+| `people` | Interests, important dates (next 90 days), gift ideas |
+| `home` | Recipes, home items, shopping stores, takeouts, pantry |
+| `career` | Career position, goals, wins |
+| `goals` | Yearly goals, financial goals |
+| `resources` | Reference documents registry |
+| `projects` | All projects with tasks |
+| Always | Active flags, open tasks, summaries/metrics, PTO status, calendar events |
 
-### Available Chat Actions (40+)
+**VERA Notices** — time-sensitive alerts are injected into every chat response regardless of topic.
 
-**Tasks**
+---
+
+## Chat Actions
+
+VERA can execute 40+ real actions by embedding `ACTION:type|args` lines in its replies. Every action is executed immediately by the backend — no manual steps required.
+
+### Tasks
+| What you say | Action |
+|---|---|
+| "Add a task to call the dentist by Friday" | `create_task\|text\|dueDate\|recurring` |
+| "Mark the dentist task done" | `complete_task\|id` |
+| "Delete that task" | `delete_task\|id` |
+| "Update the task due date to next Monday" | `update_task\|id\|field\|value` |
+
+### Flags
 | Action | Effect |
-|--------|--------|
-| `complete_task\|{id}` | Mark task done; auto-creates next recurrence if recurring |
-| `delete_task\|{id}` | Remove task row |
-| `update_task\|{id}\|{field}\|{value}` | Update task, dueDate, status, recurring, or notes |
-| `create_task\|{text}\|{dueDate}\|{recurring}` | Add new task; supports recurring intervals |
+|---|---|
+| `acknowledge_flag\|id` | Marks flag acknowledged |
+| `snooze_flag\|id\|days` | Snoozes for N days |
+| `resolve_flag\|id` | Marks resolved |
 
-**Flags**
-| Action | Effect |
-|--------|--------|
-| `acknowledge_flag\|{id}` | Mark acknowledged |
-| `snooze_flag\|{id}\|{days}` | Snooze for N days |
-| `resolve_flag\|{id}` | Mark resolved |
+### Goals & Projects
+```
+create_project|Name|task1~task2~task3|High
+add_goal|Title|Category|Description
+update_goal|id|status|In Progress
+```
 
-**Bills**
-| Action | Effect |
-|--------|--------|
-| `add_bill\|{name}\|{amount}\|{dueDay}\|{frequency}\|{category}\|{account}` | Add new bill |
-| `mark_bill_paid\|{row}` | Toggle paid/unpaid for current month |
-| `delete_bill\|{row}` | Remove bill row |
+### Calendar
+```
+create_calendar_event|Title|2026-04-20|14:00|60
+```
 
-**Goals**
-| Action | Effect |
-|--------|--------|
-| `add_goal\|{title}\|{category}\|{description}` | Create goal |
-| `update_goal\|{id}\|{field}\|{value}` | Update status, progress, title, notes |
-| `delete_goal\|{id}` | Remove goal |
+### Travel
+```
+add_itinerary_item|2026-06-19|Alaska Cruise|hotel|Marriott|2026-06-19|15:00|16:00|Seattle|notes
+add_packing_item|2026-06-19|Alaska Cruise|ahmed|Clothing|Rain jacket
+generate_packing_list|2026-06-19|Alaska Cruise|2026-06-19|2026-06-26
+add_gym_sessions|2026-06-19|Alaska Cruise
+set_trip_context|2026-06-19|Alaska Cruise|Anniversary Trip
+add_country|Japan|Tokyo|2024|Both|Amazing food scene
+add_bucket_item|New Zealand|Queenstown|2027|Both|5|yes|Bungee + hiking
+```
 
-**Interests**
-| Action | Effect |
-|--------|--------|
-| `log_interest\|{person}\|{interest}\|{category}` | Auto-log mid-conversation mention |
-| `add_interest\|{person}\|{interest}\|{category}\|{notes}` | Explicitly add interest |
-| `delete_interest\|{id}` | Remove interest |
+### Finance
+```
+add_bill|Netflix|15.99|1|Monthly|Entertainment|Chase Sapphire
+mark_bill_paid|Netflix
+simulate_scenario|Buy a car|one-time|35000
+```
 
-**Ideas**
-| Action | Effect |
-|--------|--------|
-| `add_idea\|{text}\|{category}\|{tags}` | Capture idea/thought |
-| `update_idea\|{id}\|{field}\|{value}` | Edit idea text, category, tags, notes |
-| `promote_idea\|{id}` | Convert idea to open task |
-| `archive_idea\|{id}` | Mark archived |
+### Health & Wellness
+```
+add_prescription|Victoria|Vitamin D|1000 IU|Daily|2026-06-01
+mark_prescription_refilled|Ahmed|Metformin|2026-07-01
+log_gym_attend_latest|yes   ← "I went to the gym"
+log_gym_attend_latest|no    ← "I skipped today"
+```
 
-**Projects**
-| Action | Effect |
-|--------|--------|
-| `create_project\|{name}\|{task1}~{task2}~{task3}` | Create project with task list |
-| `add_project_task\|{project}\|{task}\|{priority}\|{dueDate}` | Add task to project |
-| `complete_project_task\|{project}\|{task}` | Mark project task done |
-| `delete_project_task\|{project}\|{task}` | Remove project task |
+### People & Relationships
+```
+add_important_date|Victoria|04-14|Victoria's Birthday|Yes|30
+add_important_date|Both|2019-06-08|First Date Anniversary|Yes|30
+log_gift_idea|Victoria|Pottery class at the local studio
+log_interest|Victoria|Ceramics and pottery|Hobbies
+```
 
-**Shopping**
-| Action | Effect |
-|--------|--------|
-| `add_shopping_item\|{store}\|{item}` | Add item to store list |
-| `toggle_shopping_item\|{store}\|{item}` | Toggle purchased/unpurchased |
+### Career
+```
+add_career_win|Led product launch|3x revenue increase|Product|2026-03-15
+add_career_goal|VP of Product|3yr|Leadership|Target by 2029
+update_career_position|title|Senior Product Manager
+```
 
-**Recipes**
-| Action | Effect |
-|--------|--------|
-| `add_recipe\|{name}\|{cuisine}\|{servings}\|{prepTime}\|{ingredients}\|{tags}` | Add recipe |
-| `delete_recipe\|{row}` | Remove recipe |
-| `recipe_to_shopping\|{row}` | Add all recipe ingredients to shopping |
+### Home
+```
+add_home_item|Bosch Dishwasher|Appliance|2024-01-15|2027-01-15|6|notes
+record_home_service|row_number
+add_recipe|Chicken Tikka Masala|Indian|4|45 min|chicken;yogurt;spices|dinner
+recipe_to_shopping|row_number
+```
 
-**Home Items**
-| Action | Effect |
-|--------|--------|
-| `add_home_item\|{name}\|{category}\|{warrantyExpiry}\|{intervalMonths}\|{notes}` | Add appliance/item |
-| `record_home_service\|{row}` | Record service: sets Last Service=today, computes Next Service, creates GCal reminder |
-| `delete_home_item\|{row}` | Remove home item |
+### Interests & Ideas
+```
+log_interest|Ahmed|Jazz piano|Music
+add_idea|Build a home library wall|Home|renovation,books
+promote_idea|idea_id
+```
 
-**Travel — Itinerary**
-| Action | Effect |
-|--------|--------|
-| `add_itinerary_item\|{tripKey}\|{type}\|{title}\|{date}\|{startTime}\|{endTime}\|{location}\|{notes}` | Add flight, hotel, dining, activity, etc. |
-| `update_itinerary_item\|{id}\|{field}\|{value}` | Edit title, date, time, location, notes |
-| `delete_itinerary_item\|{id}` | Remove itinerary item |
-| `set_trip_context\|{tripKey}\|{context}` | Set trip sentiment (Anniversary Trip, Family Trip, etc.) |
+### Resources
+```
+fetch_resource_content|res_1234   ← reads Google Doc, answers from it
+```
 
-**Travel — Packing**
-| Action | Effect |
-|--------|--------|
-| `add_packing_item\|{tripKey}\|{person}\|{category}\|{item}` | Add packing item (ahmed/victoria/shared) |
-| `check_packing_item\|{id}\|{true/false}` | Mark packed/unpacked |
-| `delete_packing_item\|{id}` | Remove packing item |
-| `generate_packing_list\|{tripKey}\|{startDate}\|{endDate}` | AI-generates full packing list from itinerary + weather + context |
+### Credit Cards & Loyalty
+```
+log_card_used|Chase Sapphire Preferred
+update_loyalty_points|United MileagePlus|45000
+```
 
-**Countries & Bucket List**
-| Action | Effect |
-|--------|--------|
-| `add_country\|{country}\|{city}\|{year}\|{traveller}\|{notes}` | Log a visited country |
-| `delete_country\|{id}` | Remove country entry |
-| `add_bucket_item\|{country}\|{city}\|{targetYear}\|{traveller}\|{stars}\|{dreamTrip}\|{notes}` | Add destination to bucket list |
-| `update_bucket_item\|{id}\|{field}\|{value}` | Update visited date or stars rating |
-| `delete_bucket_item\|{id}` | Remove bucket list item |
+---
 
-**Calendar**
-| Action | Effect |
-|--------|--------|
-| `create_calendar_event\|{title}\|{date}\|{time}\|{durationMin}` | Create Google Calendar event directly |
+## Intelligence & Proactive Features
 
-### Proactive chat behaviours
-- **VERA Notices:** VERA scans its time-sensitive notice engine before every response and will volunteer urgent items even when not asked directly
-- **Closing the loop:** When Ahmed mentions something in passing, VERA offers to log it (e.g., "Victoria mentioned she likes pottery" → offers `add_interest`)
-- **Connect the dots:** When asked about one domain, VERA checks related domains (e.g., weekend plans → checks interests + goals + clear calendar windows)
-- **Next steps:** After completing an action, VERA suggests the logical next action
-- **Web search:** VERA can perform web searches for current information (e.g., flight prices, restaurant hours) while keeping all personal data out of search queries
+### Nightly Flag Generation
+Every night, Claude reads your full life context and generates prioritised flags. Flags are colour-coded by urgency and escalate automatically if ignored.
+
+### Interest Cross-Reference
+When you log an interest ("Victoria loves pottery"), VERA cross-references it against:
+- Upcoming calendar events (jazz festival + Ahmed likes jazz → flag)
+- Trip destinations (pottery scene in destination → mention in briefing)
+- Gift ideas at 7-day mark (Claude generates 3 personalised suggestions based on logged interests)
+
+### First-Time Country Detection
+When a trip to a new country appears, VERA flags it as a milestone and suggests bucket list activities nearby.
+
+### Important Dates Engine
+Three-tier notification system for every birthday, anniversary, or meaningful date:
+- **30 days before** → Low flag: reminder with notes
+- **7 days before** → Medium flag: Claude generates 3 personalised gift/activity ideas based on logged interests
+- **1 day before** → High flag: final confirmation prompt
+
+### Financial Goal Health Checks
+Nightly scan of all active financial goals. Flags goals at risk based on current progress vs. target. Supports what-if scenarios ("what if I buy a car for $35k?").
+
+### Fitness Consistency Tracker
+- Flags when weekly gym session count is below target on configured check-day
+- Flags zero sessions by Thursday (Medium) and Saturday (High)
+- Flags 3+ consecutive weeks below target
+- Detects upcoming trips with no gym plan in the itinerary
+
+### Pre/Post-Trip Intelligence
+- **48 hours before departure**: pre-trip briefing flag with packing status, itinerary overview
+- **Morning of travel**: clean, shareable travel day briefing email (not VERA-branded)
+- **1 day after return**: post-trip capture prompt asking about restaurants, highlights, learnings, bucket list additions
+
+### PTO Optimisation (3-2-1 Framework)
+- Tracks vacation pool, personal hours, buffer days for Ahmed and Victoria separately
+- Finds clear windows (3+ consecutive clear workdays) in next 90 days
+- Suggests Vera Calendar events for clear windows; tracks declined suggestions
+- Flags when buffer days sit idle 21+ days
+- Tracks milestones (trips, weddings, graduations) from calendar keywords
+
+### Signal Learning
+VERA tracks which types of flags get actioned quickly (good signal) vs. which sit unacknowledged for weeks (noise). Over time, suppressed patterns are excluded from Claude's output.
+
+### Web Search
+VERA can search the web for current information (flight prices, restaurant reviews, local events, news) while automatically stripping PII from search queries.
+
+### Resource Document Intelligence
+Add Google Docs (HR policies, benefit guides, contracts) to the Resources tab. VERA reads them during chat to answer specific questions — e.g., "How many weeks of parental leave do I get?" PDFs are auto-converted to Google Docs for reading.
+
+---
+
+## Nightly Jobs
+
+Run at 11 PM via Apps Script time trigger (`nightlyRun()`):
+
+1. Write Summaries + Metrics snapshot
+2. Sync birthdays from "Joint Chaos" calendar → Important Dates tab
+3. Fire 30/7/1-day Important Date flags (with Claude gift suggestions at 7 days)
+4. Write PTO snapshot + suggest Vera Calendar events for clear windows
+5. Run Explorer engine (daily AI discovery bulletin)
+6. Suggest due dates for undated tasks (Claude)
+7. Check financial goal health + write at-risk flags
+8. Check fitness consistency (weekly target, streak below target)
+9. Check fitness travel gap (trips with no gym plan)
+10. Check pre-trip briefings (48h before departure)
+11. Check post-trip capture (1 day after return)
+12. Auto-restock flagging from purchase history
+13. Reset morning routine checklist
+14. Generate nightly flags via Claude (calendar, tasks, finance, PTO, travel, interests)
+15. Escalate aged flags (Day 3: bump urgency; Day 7: append stale marker)
+16. Signal learning — record expired/unactioned flags
+
+---
+
+## Scheduled Automations
+
+| Schedule | Job |
+|---|---|
+| **Nightly 11 PM** | Full intelligence run (16+ jobs) |
+| **Daily 7 AM** | Morning nudge email (flag summary by urgency) |
+| **Hourly** | Anticipator engine — pre-event prep reminders; Vera Calendar memos |
+| **Every 15 min** | Flight status polling (rate-limited by proximity to departure) |
+| **Every 30 min** | Email parser scan |
+
+**Flight Status Rate Limits:**
+- 6–24h before departure → poll every 3 hours
+- 1–6h before departure → poll every 60 minutes
+- < 1h before departure → poll every 15 minutes
+
+---
+
+## Flag System
+
+### Urgency Levels
+- 🔴 **High** — needs attention today
+- 🟡 **Medium** — should act this week
+- 🟢 **Low** — informational, no immediate action needed
+
+### Flag Sources
+| Source | Examples |
+|---|---|
+| Calendar | RSVP pending, event colour significance, unusual gaps, conflicts |
+| Tasks | Overdue, neglected 7+ days, recurring transitions |
+| Finance | Spending >20% AND >$30 over prior month, goal at risk |
+| PTO | Burn-down behind pace, clear window found, buffer idle 21+ days |
+| Travel | Incomplete packing, new country trip, fitness travel gap |
+| Home | Appliances past service date, warranty expiry approaching |
+| Important Dates | 30/7/1-day lead times for birthdays, anniversaries, meaningful dates |
+| Fitness | Weekly target missed, zero sessions by Thu/Sat, 3+ weeks below target |
+| Financial Goals | Goal at risk given current pace and monthly contribution |
+| Interests | Upcoming calendar event matching a logged interest |
+
+### Escalation Rules
+- **Day 3 unacknowledged** → urgency bumped one tier (Low → Medium → High)
+- **Day 7 unacknowledged** → reason appended with `[Stale: open for 7+ days]`
+- **Dedup** — each flag has a unique key; same flag never fires twice in the same window
 
 ---
 
 ## Travel Module
 
-The Travel module gives VERA full visibility into every trip — from itinerary planning through live flight status at the gate.
-
-### Trip Structure
-Each trip is identified by a **TripKey** (`YYYY-MM-DD|Trip Label`, e.g. `2026-03-19|Tampa Trip`). All itinerary items and packing items are linked to this key.
+VERA has a full itinerary management system covering the entire trip lifecycle.
 
 ### Itinerary Item Types
-`flight · train · cruise · ferry · hotel · dining · museum · beach · show · spa · skiing · snorkeling · theme_park · shopping · market · manual`
+`flight` · `train` · `cruise` · `ferry` · `hotel` · `dining` · `museum` · `beach` · `show` · `spa` · `skiing` · `snorkeling` · `theme_park` · `shopping` · `market` · `manual`
 
-### Active Travel Card (Home Dashboard)
-When a trip is in progress, the Home tab shows a dedicated Active Travel Card:
+### Active Travel Card
+When a trip is active, the Home tab shows a live card with:
+- **Weather** — trip-position-aware algorithm:
+  - 24h before next flight: shows arrival city weather
+  - Mid-trip: shows current destination weather
+  - 24h before return flight: shows home weather
+- **Flight status** — live gate, terminal, delay, status from AviationStack
+- **Today's itinerary** — day's items with times and locations
 
-| Element | Detail |
-|---------|--------|
-| Day counter | "Day 2 of 5" with trip name |
-| Destination weather | Real-time weather chip (temperature + emoji + city name) with trip-position awareness |
-| Today's itinerary | All items for today, with times, locations, types |
-| Flight rows | Departure/arrival times · location · status badge · gate · terminal · delay highlighting |
+### Pre-Trip Intelligence
+- Packing list AI generation (Claude reads itinerary + weather + trip context)
+- Packing progress tracking with completion percentage
+- Pre-trip briefing flag 48 hours before departure
+- Gym session scheduling for all interior trip days (skips arrival/departure)
+- TripMeta context (Anniversary Trip, Family Trip, Work Trip, Honeymoon, etc.)
 
-**Trip-position weather algorithm:**
-- If within 24 h of next flight: shows weather at the arrival city at landing time
-- If already past departure of last flight: shows current weather at current destination
-- 24 h before return flight: switches back to home city weather
+### Post-Trip Intelligence
+- Capture prompt 1 day after return (restaurants visited, highlights, things to do differently, bucket list additions)
+- Countries visited auto-update
+- Travel history maintained per person (Ahmed/Victoria/Both)
 
-### Live Flight Status
-Each flight row in the Active Travel Card shows a real-time status badge:
-- `scheduled · active · landed · cancelled · diverted · incident`
-- Departure time shown with strikethrough + amber updated time if delayed
-- Gate and terminal displayed in blue when available
-- Status refreshes on the 15-min trigger (see polling intervals above)
-
-### Packing List Generation
-Ask VERA in chat: *"Generate a packing list for the Tampa trip"* and VERA will:
-1. Read the full itinerary (activities, weather, trip duration, context)
-2. Call Claude to produce a comprehensive, categorised packing list
-3. Write every item to the Packing Items sheet, attributed to ahmed/victoria/shared
-4. Display the list immediately in the Travel tab
+### AI Trip Recommendations
+Generate personalised activity, dining, and experience recommendations for any destination using Claude.
 
 ---
 
-## Life OS Data Domains
+## Finance Module
 
-VERA manages 21 data domains, all backed by tabs in a single Google Sheet:
-
-| Domain | What it tracks | Chat CRUD |
-|--------|---------------|-----------|
-| **Flags** | AI-generated intelligence alerts | Acknowledge / snooze / resolve |
-| **Tasks** | Open task backlog with recurring support | Full CRUD |
-| **Projects** | Multi-task projects with priorities | Full CRUD |
-| **Goals** | Yearly goals with status + progress | Full CRUD |
-| **Interests** | Ahmed & Victoria shared interest ledger | Add / delete |
-| **Ideas** | Braindump capture, promote to task | Full CRUD |
-| **Bills** | Monthly bills with paid tracking | Add / mark paid / delete |
-| **Shopping** | Multi-store shopping lists | Add / toggle |
-| **Recipes** | Recipe book with ingredients | Add / delete / → shopping |
-| **Home Items** | Appliances, warranties, maintenance schedule | Add / service / delete |
-| **Itinerary** | Trip-by-trip event schedule | Full CRUD |
-| **Packing Items** | Per-trip packing lists with packed status | Full CRUD + AI generate |
-| **Countries** | Travel history (visited countries + cities) | Add / delete |
-| **Bucket List** | Dream destinations with star rating | Full CRUD |
-| **PTO** | Vacation burn-down, clear windows, milestones | Read (auto-populated) |
-| **Summaries** | External life metrics (finance, fitness, etc.) | Read (Config-driven) |
-| **Metrics** | VERA self-monitoring health stats | Read (auto-populated nightly) |
-| **Transactions** | Empower-format spending history | Read (separate sheet) |
-| **Config** | All system behaviour settings | — |
-| **Chat History** | Conversational session memory | Read (auto-managed) |
-| **Milestones** | Detected milestone events with countdowns | Read (auto-populated) |
+- **Bills** — track monthly/annual bills with due dates, amounts, paid status (auto-resets monthly)
+- **Credit Card Hub** — active cards per person (Ahmed/Victoria/Joint); reward rates by category; monthly/annual perks; last-used tracking; inactivity alerts
+- **Loyalty Programs** — points balances, tiers, redemption goals; alert when points go stale
+- **Financial Goals** — track savings goals with target amount, current amount, monthly contributions, APY, target date; nightly health-check flags when goals are at risk
+- **What-If Scenarios** — simulate one-time purchases (car, holiday) or recurring changes (rent increase, new subscription) and see projected impact on all goals
+- **Transaction History** — integrates with Empower CSV export and Simple Ass Tracker budget sheet; auto-detects 2 most recent complete months; pivots by category; flags spending overages
+- **Cashflow Analysis** — monthly income vs. expense tracking
 
 ---
 
-## System Timing & Automation
+## Health & Wellness Module
 
-VERA installs four time-based triggers via `setupTriggers()`:
+- **Prescriptions** — medication tracker for Ahmed and Victoria: name, dosage, frequency, refill dates; refill-due flags
+- **Gym Log** — session history (date, type, duration, attended/skipped); attendance via natural language ("I went to the gym", "skipped today")
+- **Fitness Consistency** — weekly target tracking; nightly flags for low count, zero sessions by Thursday/Saturday, consecutive weeks below target; travel gap detection
+- **Morning Routine** — daily habit checklist; auto-resets every night
 
-| Trigger | Time | Function | Purpose |
-|---------|------|----------|---------|
-| `nightlyRun` | 11 PM daily | `nightlyRun()` | Full intelligence pipeline |
-| `morningNudge` | 7 AM daily | `morningNudge()` | Send flag summary email |
-| `hourlyCheck` | Every hour | `hourlyCheck()` | Anticipator reminders |
-| `flightCheck` | Every 15 min | `checkFlightStatuses_()` | Live flight status polling |
+---
 
-### Nightly Pipeline Sequence (`nightlyRun`, 11 PM)
+## People & Relationships Module
 
-```
- 1. escalateAgedFlags_()        ← bump urgency on stale unacknowledged flags
- 2. writeSummarySnapshot()      ← refresh Metrics + Summaries tabs
- 3. writePTOSnapshot_()         ← compute PTO stats, update Vera calendar
- 4. runExplorer_()              ← generate Explorer bulletin
- 5. getUpcomingEvents()         ← read all calendars (7 days)
- 6. getOpenTasks()              ← read Tasks sheet
- 7. getSummaries()              ← merge Metrics + Summaries for Claude
- 8. getSharedInterestLedger_()  ← read Ahmed & Victoria interests
- 9. webGetCountries_()          ← read travel history
-10. webGetBucketList_()         ← read bucket list
-11. suggestDueDates(tasks)      ← AI due-date suggestions for undated tasks
-12. generateFlags(...)          ← call Claude API, parse JSON response
-13. writeFlags(flags)           ← deduplicate + write + colour-code to Flags tab
-```
+- **Important Dates** — birthdays, anniversaries, meaningful shared events with configurable lead times
+  - Auto-imports birthdays from "Joint Chaos" Google Calendar
+  - 30-day Low / 7-day Medium / 1-day High flag tiers
+  - 7-day flag includes Claude-generated personalised gift/activity suggestions based on logged interests
+  - Recurring (MM-DD, year-agnostic) and one-time (YYYY-MM-DD) date formats
+  - `Last Actioned Year` dedup prevents re-flagging within the same calendar year
+- **Gift Ideas** — braindump of gift ideas per person; log via chat ("gift idea for Victoria: pottery class")
+- **Shared Interest Ledger** — what Ahmed and Victoria each enjoy; cross-referenced against travel, calendar events, and gift suggestions
+- **In Chat** — "What important dates are coming up?" returns next 90 days sorted by proximity; VERA proactively reminds when a date is within 7 days
 
-### Flag Deduplication
-VERA uses a stable "key" system to prevent re-flagging the same issue every night:
-- Claude generates a snake_case key per flag (e.g., `verizon_payment_due`)
-- Before writing, `getExistingFlagFingerprints_()` checks all unresolved flags
-- A flag is skipped if its key already exists in the sheet
-- Resolved flags can be re-flagged if the issue genuinely recurs
+---
+
+## Career Module
+
+- **Current Role** — title, company, department, work style, focus areas
+- **Career Goals** — tiered by horizon: 1yr / 3yr / 5yr / 10yr; category and status tracking
+- **Progression Timeline** — all roles held with company, duration, and highlights
+- **Development** — skills and courses with completion status
+- **Wins** — logged professional achievements with impact and category
+- **Network** — professional contacts with last-contact tracking and relationship type
+- **In Chat** — log wins, update position, add goals conversationally
+
+---
+
+## Home Front Module
+
+- **Chore Checklist** — household chores by cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly/As-needed); auto-reset; checked-at timestamps
+- **Vehicle Tracker** — oil change intervals, registration expiry, insurance expiry, mileage; service history
+- **Home Items** — appliances and warranties with purchase date, warranty expiry, last service, next service date; configurable service interval; auto-creates Google Calendar reminders when service is recorded
+- **Recipes** — recipe book with ingredients, cuisine, servings, prep time; one-tap add-to-shopping-list
+- **Takeout Restaurants** — favourite restaurants with cuisine, contact, rating; per-restaurant menu item ratings
+- **Shopping** — multi-store grocery/household lists; toggle purchased; recipe integration
+- **Pantry & Purchase History** — track what you buy; consumption tracking; auto-flag replenishment candidates
 
 ---
 
 ## Data Model — Sheet Tabs
 
-All data lives in a single Google Sheet ("Life OS").
+VERA uses 50+ named tabs in a single Google Sheet:
 
-### Flags
-| Column | Field | Notes |
-|--------|-------|-------|
-| A | ID | `FLAG-YYYYMMDD-NN` |
-| B | Date | ISO date |
-| C | Source | `Calendar · Tasks · Finance · Summaries · General` |
-| D | Flag | One-line alert text |
-| E | Reason | Detailed explanation |
-| F | Urgency | `High · Medium · Low` |
-| G | Acknowledged | `Yes / No` |
-| H | Snoozed Until | ISO date (blank if not snoozed) |
-| I | Resolved | `Yes / No` |
-| J | Key | Stable snake_case dedup key |
-| K | Escalated | `3d · 7d` (set by escalation engine) |
+**Core:**
+`Flags` · `Tasks` · `Projects` · `Goals` · `Config` · `Metrics` · `Summaries`
 
-### Tasks
-`ID · Task · Added Date · Due Date · Status · Recurring · Notes · Flagged`
+**Finance:**
+`Bills` · `Credit Cards` · `Card Rewards` · `Card Perks` · `Loyalty Programs` · `Rewards Goals` · `Financial Goals` · `Financial Scenarios` · `Purchase History`
 
-IDs: `TASK-YYYYMMDD-NN`
+**Travel:**
+`Itinerary` · `Packing Items` · `Trip Meta` · `Trip Recommendations` · `Countries` · `Bucket List` · `Bucket Activities` · `Traveler Profiles` · `Processed Emails`
 
-### Projects
-`Project ID · Project Name · Task · Status · Priority · Due Date · Notes`
+**People & Relationships:**
+`Shared Interests` · `Important Dates` · `Gift People` · `Gift Ideas` · `Ideas`
 
-### Goals
-`ID · Title · Description · Status · Category · Year · Progress % · Notes`
+**Health:**
+`Prescriptions` · `Gym Log` · `Morning Routine`
 
-Status values: `Resolutions · To Do · In Progress · Parked · Done`
+**Home:**
+`Shopping` · `Recipes` · `Takeout Restaurants` · `Takeout Items` · `Home Items` · `Chores` · `Vehicles`
 
-### Bills
-`Bill · Amount · Due Day · Frequency · Category · Account · Paid · Notes`
+**Career:**
+`Career Position` · `Career Goals` · `Career Progression` · `Career Development` · `Career Wins` · `Career Network`
 
-Paid column stores `YYYY-MM` of last payment month; blank = unpaid.
+**PTO:**
+`PTO` · `PTO Memory` · `Reminders Memory`
 
-### Interests
-`ID · Person · Interest · Category · Source · Notes · Date Added`
-
-IDs: `INT-YYYYMMDD-NN`; Category: `Food · Travel · Fitness · Culture · Hobbies · Learning · Other`
-
-### Ideas
-`ID · Date · Idea · Category · Tags · Notes · Status`
-
-IDs: `IDEA-YYYYMMDD-NN`; Status: `New · Promoted · Archived`
-
-### Recipes
-`Name · Cuisine · Servings · Prep Time · Link · Ingredients · Tags · Notes`
-
-Ingredients are semicolon-separated for the recipe-to-shopping action.
-
-### Home Items
-`Item · Category · Purchase Date · Warranty Expiry · Last Service · Next Service · Interval (mo) · Notes`
-
-### Itinerary
-`ID · Trip Key · Type · Title · Date · Start Time · End Time · Location · Notes · Metadata JSON`
-
-IDs: `ITIN-YYYYMMDD-NN`; Metadata JSON stores `flightNum`, `flight_status` (from AviationStack), and other per-type fields.
-
-### Packing Items
-`ID · Trip Key · Person · Category · Item · Checked`
-
-IDs: `PACK-YYYYMMDD-NN`; Person: `ahmed · victoria · shared`
-
-### Countries
-`ID · Country · City · Year · Traveller · Trip Key · Notes`
-
-IDs: `c_` + timestamp; Traveller: `Ahmed · Victoria · Both`
-
-### Bucket List
-`ID · Country · City · Target Year · Traveller · Stars · Dream Trip · Notes · Visited`
-
-IDs: `b_` + timestamp; Stars: 1–5 priority rating; Dream Trip: `yes` or description; Visited: date or blank
-
-### PTO
-Auto-populated nightly by `writePTOSnapshot_()`. Stores vacation balance, burn-down stats, clear windows, and milestones.
-
-### Metrics (auto)
-Written by `writeMetrics_()` each night. All rows tagged `[AUTO]` — wiped and rewritten on every run.
-
-### Summaries (auto + manual)
-- `[AUTO]` rows: Finance, external sheet metrics — wiped and rewritten nightly
-- Manual rows: Your own notes — never touched by VERA
-
-### Transactions
-Separate Google Sheet (Empower CSV format): `Date · Account · Description · Category · Tags · Amount`
-
-### Config
-Key-value settings that drive all engine behaviour. See [Config Tab Reference](#config-tab-reference).
+**Intelligence:**
+`Resources` · `Signal Learning`
 
 ---
 
 ## Config Tab Reference
 
-The Config tab is a two-column sheet (`Setting | Value`). All behaviour is controlled here — no code changes needed.
+The `Config` tab (columns: Setting | Value) controls all system behaviour without touching code.
 
-### Core Settings
-
+### Core
 | Key | Default | Description |
-|-----|---------|-------------|
-| `calendar_days_ahead` | `7` | How many days ahead to scan calendars |
-| `task_age_threshold_days` | `7` | Days before a task is considered "neglected" |
-| `skip_calendars` | *(blank)* | Comma-separated calendar names to ignore entirely |
-| `calendar_label:CalName` | *(varies)* | Custom label for a specific calendar. Add one row per calendar |
+|---|---|---|
+| `calendar_days_ahead` | `7` | Days ahead to scan Google Calendars |
+| `task_age_threshold_days` | `7` | Days before a task is flagged as neglected |
+| `skip_calendars` | — | Comma-separated calendar names to ignore |
+| `calendar_label:CalName` | — | Custom label for a specific calendar |
 
-### Finance Settings
-
+### PTO (Ahmed)
 | Key | Default | Description |
-|-----|---------|-------------|
-| `finance_skip_categories` | See below | Comma-separated transaction categories to exclude from the spending chart |
-
-Default skip list: `Income, Paycheck, Salary, Direct Deposit, Transfer, Transfers, Credit Card Payment, Credit Card Payments, Payment, Investments, Investment Income, Savings, Refund, Securities Trades`
-
-### PTO Settings
-
-All PTO keys use the `pto_` prefix.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `pto_calendar_name` | `Verizon Calendar` | Work calendar where PTO blocks appear |
-| `pto_vera_calendar` | `Vera` | Calendar where VERA writes recommendations |
+|---|---|---|
+| `pto_calendar_name` | `Verizon Calendar` | Work calendar name |
+| `pto_vera_calendar` | `Vera` | VERA calendar name for suggestions |
 | `pto_vacation_days` | `20` | Annual vacation pool |
 | `pto_personal_hours` | `48` | Annual personal time hours |
-| `pto_year` | current year | Year to analyse |
-| `pto_rollover_days` | `0` | Vacation days carried over from prior year |
-| `pto_buffer_days` | `3` | Days held in reserve (subtracted from "available") |
-| `gap_calendars` | *(your calendars)* | Comma-separated calendars scanned for travel, clear windows, and milestones |
-| `milestone_keywords` | `Wedding,Graduation,Trip,Travel,Concert,Birthday` | Keywords that flag an event as a milestone |
-| `holiday_keywords` | `Day,Holiday,Floating,Closure` | Keywords that identify company holidays |
-| `ignore_keywords` | `Pay Day` | Keywords to skip entirely |
-| `travel_ignore_keywords` | `Ramadan,Eid,Lent,Holiday,...` | Keywords to exclude from "Upcoming Travel" detection |
+| `pto_buffer_days` | `3` | Days held in reserve |
+| `pto_rollover_days` | `0` | Vacation carried over from prior year |
+| `gap_calendars` | — | Calendars for travel / milestones / clear windows |
+| `milestone_keywords` | `Wedding,Graduation,Trip,Travel,Concert,Birthday` | Calendar event keywords treated as milestones |
+| `travel_ignore_keywords` | `Ramadan,Eid,Lent,Holiday` | Calendar events to skip for travel detection |
 
-### Weekend Planner Settings
+### PTO (Victoria)
+| Key | Description |
+|---|---|
+| `victoria_pto_calendar_name` | Victoria's work calendar name |
+| `victoria_pto_vacation_days` | Victoria's annual vacation pool |
+| `victoria_pto_personal_hours` | Victoria's annual personal time hours |
+| `victoria_pto_buffer_days` | Victoria's buffer days |
 
+### Travel & Trips
 | Key | Default | Description |
-|-----|---------|-------------|
-| `weekend_planner_enabled` | `false` | Set to `true` to activate weekend planning |
-| `lookahead_days` | `7` | How many days ahead to plan |
-| `home_city` | *(blank)* | Your home city (used for local suggestions) |
+|---|---|---|
+| `pretrip_briefing_enabled` | `true` | Enable pre-trip briefing flags |
+| `pretrip_briefing_hours` | `48` | Hours before departure to fire briefing |
+| `posttrip_capture_delay_days` | `1` | Days after trip end to fire capture prompt |
+| `travel_day_briefing_enabled` | `true` | Morning-of-travel email |
+
+### Fitness
+| Key | Default | Description |
+|---|---|---|
+| `fitness_enabled` | `false` | Enable weekly gym consistency checks |
+| `fitness_weekly_target` | `4` | Target gym sessions per week |
+| `fitness_low_flag_day` | `4` (Wed) | Day of week to fire Low flag if behind target |
+
+### Finance
+| Key | Default | Description |
+|---|---|---|
+| `monthly_disposable_income` | `5000` | Monthly discretionary income for goal health checks |
+| `finance_skip_categories` | `Income,Paycheck,...` | Transaction categories to exclude from analysis |
+
+### Important Dates
+| Key | Default | Description |
+|---|---|---|
+| `dates_default_lead_time` | `30` | Default days before to start flagging |
+| `dates_high_urgency_days` | `1` | Days before for High flag |
+| `dates_medium_urgency_days` | `7` | Days before for Medium flag (includes Claude gift suggestions) |
 
 ### External Sheet Hooks
-
-Wire any Google Sheet cell into the Summaries tab:
-
 ```
-Key:   summary_sheet:SourceName
-Value: SheetID|TabName|CellRef|metric_name
+summary_sheet:SourceName → SheetID|TabName|CellRef|metric_name
 ```
-
-Example rows:
-```
-summary_sheet:SimpleAssTracker  →  1aBcXyZ|Budget|B2|checking_balance
-summary_sheet:Fitness           →  1xYzAbC|Log|D4|gym_sessions_this_week
-```
-
-VERA reads these cells nightly and writes them as `[AUTO]` rows in the Summaries tab. Claude sees them as context.
+Wire external metrics (e.g., your own budget sheet) into the VERA Summaries tab.
 
 ---
 
 ## Script Properties Reference
 
-Set these in Apps Script → Project Settings → Script Properties:
+Set in **Apps Script → Project Settings → Script Properties**.
 
-| Property | Required | Description |
-|----------|----------|-------------|
-| `VERA_SHEET_ID` | ✅ | Google Sheet ID of your Life OS sheet |
-| `MORNING_NUDGE_EMAIL` | ✅ | Email address to receive the morning nudge |
-| `CLAUDE_API_KEY` | ✅ | Anthropic API key |
-| `VERA_WEB_TOKEN` | ✅ | Any random string — used to authenticate dashboard API calls |
-| `VERA_LOGO_FILE_ID` | ☆ | Google Drive file ID for the VERA logo used in emails |
-| `VERA_DASHBOARD_URL` | ☆ | URL of your hosted dashboard; adds an "Open Dashboard" button to emails |
-| `SAT_SHEET_ID` | ☆ | Sheet ID for Simple Ass Tracker budget spreadsheet |
-| `TRANSACTIONS_SHEET_ID` | ☆ | Sheet ID for Empower-format Transactions spreadsheet |
-| `OPENWEATHERMAP_KEY` | ☆ | OpenWeatherMap API key (for destination weather in Travel card) |
-| `AVIATIONSTACK_KEY` | ☆ | AviationStack API key (for live flight status) |
-| `TELEGRAM_BOT_TOKEN` | ☆ | Telegram bot token (optional Telegram integration) |
-| `TELEGRAM_CHAT_ID` | ☆ | Your Telegram chat ID (optional Telegram integration) |
+### Required
+| Property | Description |
+|---|---|
+| `VERA_SHEET_ID` | Google Sheet ID of your Life OS sheet |
+| `MORNING_NUDGE_EMAIL` | Email address for the 7 AM morning nudge |
+| `CLAUDE_API_KEY` | Anthropic API key (`sk-ant-...`) |
+| `VERA_WEB_TOKEN` | Authentication token for dashboard API calls |
 
-✅ = required for core functionality  ☆ = optional feature unlock
-
----
-
-## User Workflows
-
-### Workflow 1 — Daily Review (2 min)
-1. Open the 7 AM email from VERA
-2. Scan the flag list by urgency
-3. Click "Open VERA Dashboard →" for any flags you want to action
-4. Acknowledge flags you've seen, snooze ones to revisit, resolve ones that are done
-
-### Workflow 2 — Conversational Life Management
-1. Open the **Chat** tab in the dashboard
-2. Ask VERA anything in plain English:
-   - *"What's on my plate this week?"*
-   - *"Add a task to call the dentist by Friday"*
-   - *"Note that Victoria wants to visit Portugal"*
-   - *"Log that we visited Tokyo in 2025"*
-   - *"Generate a packing list for the Alaska cruise"*
-3. VERA responds conversationally and takes the requested action immediately
-
-### Workflow 3 — Trip Planning
-1. Ask VERA in chat: *"Create itinerary for our Alaska cruise June 19–28"*
-2. Add flights, hotels, dining, activities via chat or the Travel tab
-3. VERA generates a packing list when asked, tailored to your itinerary and weather
-4. During the trip, the Home Active Travel Card shows today's schedule + live flight status
-
-### Workflow 4 — Task Management
-1. Open the **Tasks** tab in the dashboard
-2. Overdue tasks surface in red at the top; neglected tasks (7+ days old) in amber
-3. Complete tasks directly, or ask VERA in chat
-4. VERA will automatically create the next occurrence for recurring tasks
-
-### Workflow 5 — Project Tracking
-1. In chat: *"Create a project for the kitchen renovation"* — VERA asks clarifying questions then generates a 20–30 task checklist
-2. Track progress in the **Projects** tab
-3. VERA flags projects with stale tasks in its nightly run
-
-### Workflow 6 — PTO Planning
-1. Open the **PTO** tab to see your burn-down pace
-2. VERA surfaces "clear windows" in your Vera Google Calendar (Sage events)
-3. Accept a suggestion by leaving it alone; decline by deleting the calendar event
-4. If VERA detects unused buffer days sitting idle, it places a yellow alert on the following Friday
-
-### Workflow 7 — Milestone Awareness
-1. Add an all-day event to any calendar in `gap_calendars` with a title matching `milestone_keywords`
-2. VERA detects it overnight and shows a countdown card in the **Milestones** tab
-3. The Home tab bento card shows the next 3 milestones with item counts
-
-### Workflow 8 — Finance Monitoring
-1. Export transactions from Empower and paste into your Transactions sheet
-2. Run `testRun()` to refresh Finance summaries
-3. The **Summaries** tab and Home **Spending Chart** show current-vs-prior-month breakdown
-4. VERA flags any category that's >20% AND >$30 over the prior month
-
-### Workflow 9 — Interest & Bucket List Logging
-1. Mention something to VERA in chat: *"Victoria mentioned she loves hiking"* → VERA auto-logs it
-2. *"Add Patagonia to our bucket list, 5 stars, dream trip"* → VERA adds it
-3. When planning a trip, VERA proactively cross-references: *"Buenos Aires is near your Patagonia bucket list item — want to combine them?"*
-
-### Workflow 10 — Home Maintenance
-1. Open the **Home Items** tab or ask VERA to add an appliance
-2. Set a service interval (e.g., HVAC every 12 months)
-3. When you service the item: *"Log that I serviced the HVAC"* → VERA sets Last Service=today, computes Next Service, creates a GCal reminder
-4. VERA flags items approaching their service date in the nightly run
-
-### Workflow 11 — Recipe & Shopping
-1. Add recipes via the **Recipes** tab or chat: *"Add a recipe for pasta carbonara"*
-2. When cooking: *"Add the carbonara ingredients to shopping"* → all ingredients appear on the Recipe store list
-3. Check items off in the **Shopping** tab as you shop
-
-### Workflow 12 — Adding External Metrics
-1. Find the Sheet ID and cell reference of the metric you want to track
-2. Add a row to Config: key = `summary_sheet:SourceName`, value = `SheetID|TabName|CellRef|metric_name`
-3. Next nightly run: VERA reads the cell and surfaces it in Summaries and to Claude
+### Optional (Feature Unlocks)
+| Property | Description |
+|---|---|
+| `VERA_LOGO_FILE_ID` | Google Drive file ID for VERA logo in emails |
+| `VERA_DASHBOARD_URL` | Dashboard URL for email button links |
+| `SAT_SHEET_ID` | Simple Ass Tracker budget sheet ID (finance integration) |
+| `TRANSACTIONS_SHEET_ID` | Empower-format transactions sheet ID |
+| `OPENWEATHERMAP_KEY` | OpenWeatherMap API key (destination weather) |
+| `AVIATIONSTACK_KEY` | AviationStack API key (live flight status) |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token for mobile access |
+| `TELEGRAM_CHAT_ID` | Telegram chat ID for bot |
+| `VERA_SEARCH_API_KEY` | Web search API key (Serper.dev or Tavily) |
+| `VERA_SEARCH_ENGINE` | `serper` (default) or `tavily` |
+| `LIFE_PLAN_DOC_ID` | Google Doc ID for financial goals seeding |
 
 ---
 
-## How VERA Communicates & Intervenes
+## Integrations & External APIs
 
-### Proactive Flags
-VERA never waits to be asked. Each night it analyses all connected data sources and generates actionable alerts:
-
-| Source | Example flag |
-|--------|-------------|
-| **Calendar** | "You have a tentative RSVP for a meeting in 2 days — no response yet" |
-| **Calendar** | "No events at all next week — unusual gap in your schedule" |
-| **Tasks** | "Task 'Submit Q1 Report' is 9 days old with no due date and no progress" |
-| **Finance** | "Dining out is $480 in Feb vs $290 in Jan (+66%) — check if one-off or trend" |
-| **PTO** | "You've used only 3 of 20 vacation days and are 4 days behind the ideal pace" |
-| **Interests** | "You logged interest in jazz concerts — there's a jazz festival in 5 days" |
-| **Travel** | "Tampa trip in 3 days — packing list is only 40% complete" |
-| **Travel** | "Heading to Japan — this will be your first time visiting. Any bucket list items there?" |
-| **Bucket List** | "Buenos Aires trip next month — Patagonia is on your bucket list and is a 1.5h flight away" |
-| **Home** | "HVAC is 14 months past its last service (interval: 12 months)" |
-
-### Urgency Tiers
-| Tier | Colour | Meaning |
-|------|--------|---------|
-| High | 🔴 Red | Requires attention soon; will escalate further if ignored |
-| Medium | 🟡 Yellow | Worth addressing this week |
-| Low | 🟢 Green | Informational; address when convenient |
-
-### Escalation
-VERA monitors how long flags go unacknowledged:
-- **Day 3:** Urgency bumped one tier (Low → Medium, Medium → High)
-- **Day 7:** Reason field updated with `[Stale: open for 7+ days — needs attention]`
-
-### Snooze Logic
-Snoozing a flag sets a "Snoozed Until" date. The flag is hidden from the active view and email during the snooze window. It reappears automatically once the snooze expires — it is not deleted.
-
-### Calendar Interventions
-VERA writes directly to your **Vera** calendar:
-- **PTO suggestions** (Sage): "Clear window: Mon Jul 7 – Wed Jul 9 (3 workdays, Long Weekend opportunity)"
-- **Buffer day alerts** (Banana): Placed on the next Friday when buffer days sit unused for 21+ days
-- **Milestone countdowns** (Grape): "📍 Cancun Vacation: 47 days" placed on the Monday of the milestone week
-
-### Email Delivery Rules
-- Email is sent **only if** there are active (unacknowledged + unresolved) flags
-- Content is pre-sorted High → Medium → Low
-- Quiet nights (all flags resolved or snoozed) produce no email — no spam
+| Integration | What it does |
+|---|---|
+| **Google Calendar** | Read all calendars; create Vera calendar events (PTO suggestions, maintenance reminders) |
+| **Google Sheets** | All data storage; Config system; 50+ tabs |
+| **Google Drive** | Read resource documents; PDF-to-Google-Doc conversion; logo images |
+| **Google Gmail** | Morning nudge email; travel day briefing email |
+| **Anthropic Claude** | Flag generation; chat responses; action execution; packing lists; gift suggestions; task due date AI |
+| **AviationStack** | Real-time flight status (gate, terminal, delay, status) |
+| **OpenWeatherMap** | Destination and home city weather |
+| **AirportGap** | IATA airport code → city resolution for weather |
+| **Serper.dev** | Web search for current information (default) |
+| **Tavily** | Alternative web search provider |
+| **Telegram** | Bot webhook for on-the-go mobile access |
+| **Empower** | CSV transaction import for spending analysis |
+| **Simple Ass Tracker** | Budget sheet integration for disposable income tracking |
 
 ---
 
 ## Dashboard API Reference
 
-All requests authenticated via `?token=VERA_WEB_TOKEN`.
+All endpoints: `GET https://script.google.com/...exec?token=TOKEN&action=ACTION`
 
-### Read Actions (GET)
+### Read Endpoints
+`status` · `flags` · `tasks` · `summaries` · `projects` · `goals` · `shopping` · `pto` · `interests` · `ideas` · `bills` · `recipes` · `home_items` · `travel` · `flight_statuses` · `dest_weather` · `countries` · `bucket_list` · `career` · `prescriptions` · `cards` · `morning_routine` · `gym_log` · `purchase_history` · `recommendations` · `chores` · `vehicles` · `profiles` · `financial_goals` · `resources` · `important_dates` · `gift_data` · `takeouts`
 
-| Action | Parameters | Response |
-|--------|-----------|---------|
-| `status` | — | `{activeFlags, high, medium, low, totalFlags, lastRun}` |
-| `flags` | — | All flags |
-| `flags` | `filter=active` | Unacknowledged + unresolved only |
-| `tasks` | — | Open tasks |
-| `summaries` | — | Summaries tab rows |
-| `projects` | — | All projects + tasks |
-| `goals` | — | All goals |
-| `shopping` | — | Stores with item lists |
-| `pto` | — | PTO stats + milestones + clear windows |
-| `interests` | — | Shared interest ledger |
-| `ideas` | — | Idea braindump |
-| `bills` | — | Bills with paid status |
-| `recipes` | — | Recipe list |
-| `home_items` | — | Appliance/maintenance list |
-| `travel` | `tripKey=...` | Trips + itinerary + packing per trip |
-| `flight_statuses` | `tripKey=...` | Live flight status objects for a trip |
-| `dest_weather` | `tripKey=..., hour=N` | Destination weather for active trip |
-| `countries` | — | Visited countries list |
-| `bucket_list` | — | Bucket list destinations |
-| `chat` | `message=TEXT, session=ID` | Claude conversational reply + action execution |
+### Chat
+`chat` — params: `message`, `session` (optional, defaults to `dashboard`)
 
-### Write Actions (GET with side-effects)
+### Write Endpoints (selection)
+| Action | Params |
+|---|---|
+| `add_task` | `task`, `dueDate`, `recurring` |
+| `complete_task` | `id` |
+| `acknowledge` | `id` |
+| `snooze` | `id`, `days` |
+| `add_bill` | `bill`, `amount`, `dueDay`, `frequency`, `category`, `account` |
+| `add_important_date` | `label`, `date`, `person`, `recurring`, `leadTime` |
+| `add_gift_idea` | `person`, `idea` |
+| `add_resource` | `name`, `url`, `category`, `appliesTo`, `description`, `tags` |
+| `fetch_resource_content` | `id` |
+| `gym_attend` | `id`, `attended` |
+| `simulate_scenario` | `goalId`, `label`, `type`, `amount`, `frequency` |
 
-| Action | Parameters | Effect |
-|--------|-----------|--------|
-| `acknowledge` | `id=FLAG-xxx` | Marks acknowledged |
-| `snooze` | `id=FLAG-xxx, days=N` | Snoozes for N days (default 2) |
-| `resolve` | `id=FLAG-xxx` | Marks resolved |
-| `complete_task` | `id=TASK-xxx` | Marks task done |
-| `add_task` | `task, dueDate, notes` | Appends new task row |
-| `update_task` | `id, task, dueDate, notes` | Updates task in place |
-| `delete_task` | `id` | Removes task row |
-| `add_bill` | `name, amount, dueDay, frequency, category, account` | Adds bill |
-| `delete_bill` | `row` | Removes bill row |
-| `shopping_toggle` | `tabId, index` | Toggles item checked state |
-| `shopping_add` | `tabId, text` | Adds item to store |
-| `complete_project_task` | `row` | Marks project task done |
-| `add_project_task` | `projectId, task, priority, dueDate, notes` | Adds project task |
-| `update_project_task` | `row, task, priority, dueDate, notes` | Updates project task |
-| `delete_project_task` | `row` | Removes project task row |
-| `add_goal` | `title, description, status, category, year, notes` | Creates goal |
-| `update_goal` | `id, [fields...]` | Partial-updates goal |
-| `delete_goal` | `id` | Removes goal |
-| `interests_add` | `person, interest, category, notes` | Logs new interest |
-| `interests_delete` | `id` | Archives interest |
-| `add_idea` | `idea, category, tags` | Adds idea |
-| `promote_idea` | `id` | Converts idea to open task |
-| `add_recipe` | `name, cuisine, servings, prepTime, ingredients, tags` | Adds recipe |
-| `delete_recipe` | `row` | Removes recipe |
-| `recipe_to_shopping` | `row` | Adds recipe ingredients to shopping list |
-| `add_home_item` | `item, category, warrantyExpiry, intervalMonths, notes` | Adds home item |
-| `record_service` | `row` | Records service date + computes next |
-| `delete_home_item` | `row` | Removes home item |
-| `add_itinerary_item` | `tripKey, type, title, date, startTime, endTime, location, notes` | Adds itinerary item |
-| `update_itinerary_item` | `id, [fields...]` | Updates itinerary item |
-| `delete_itinerary_item` | `id` | Removes itinerary item |
-| `add_packing_item` | `tripKey, person, category, item` | Adds packing item |
-| `update_packing_item` | `id, checked` | Marks packed/unpacked |
-| `delete_packing_item` | `id` | Removes packing item |
-| `generate_packing` | `tripKey, startDate, endDate` | AI-generates full packing list |
-| `add_country` | `country, city, year, traveller, notes` | Logs visited country |
-| `delete_country` | `id` | Removes country entry |
-| `add_bucket_item` | `country, city, targetYear, traveller, stars, dreamTrip, notes` | Adds bucket list item |
-| `update_bucket_item` | `id, visited, stars` | Updates visited or stars |
-| `delete_bucket_item` | `id` | Removes bucket list item |
+Full endpoint list: see `WebApp.js` switch statement (100+ cases).
 
 ---
 
 ## File Structure
 
 ```
-VERA-My-Chief-of-Staff/
-│
-├── Code.js              Core — nightlyRun(), morningNudge(), setupVERA(), CONFIG, TABS
-├── WebApp.js            REST API — doGet(), doPost(), all 40+ route handlers
-├── Claude.js            AI — buildPrompt(), generateFlags(), parseFlags()
-├── Chat.js              Conversational — session-aware Claude chat, buildChatContext_(),
-│                          buildChatSystemPrompt_(), executeActions_() (40+ actions)
-├── Calendar.js          Intelligence — getUpcomingEvents()
-├── Tasks.js             Intelligence — getOpenTasks(), suggestDueDates()
-├── Finance.js           Intelligence — transaction pivot, SAT budget reader
-├── Summaries.js         Auto-populate — writeSummarySnapshot(), writeMetrics_()
-├── PTO.js               Intelligence — PTO burn-down, milestones, clear windows
-├── Reminders.js         Intelligence — Anticipator (hourly) + Explorer (nightly)
-├── WeekendPlanner.js    Intelligence — weekend planning, Vera calendar events
-├── FlightStatus.js      Integration — AviationStack polling, rate-limited by window
-├── Weather.js           Integration — OpenWeatherMap + AirportGap IATA resolution
-├── Interests.js         CRUD — Shared Interest Ledger
-├── Goals.js             CRUD — Yearly goals
-├── Projects.js          CRUD — Project + task tracking
-├── Shopping.js          CRUD — Multi-store shopping lists
-├── SignalLearning.js    Intelligence — flag suppression pattern learning
-├── Scheduler.js         Utilities — trigger management helpers
-├── Telegram.js          Integration — Telegram bot webhook + async queue
-│
-├── appsscript.json      OAuth scopes + V8 runtime config
-├── .clasp.json          clasp scriptId + rootDir
-├── push.ps1             Deploy script (clasp push + git push simultaneously)
-│
+/
+├── Code.js                  # Main entry: CONFIG, TABS, setupVERA(), nightlyRun(), morningNudge()
+├── WebApp.js                # REST API: 100+ endpoint handlers, doGet(), doPost()
+├── Chat.js                  # Conversational AI: context builder, system prompt, 40+ action handlers
+├── Claude.js                # Flag generation: buildPrompt(), generateFlags(), parseFlags()
+├── Calendar.js              # Google Calendar reading, event colour/RSVP tracking
+├── Tasks.js                 # Task aging, overdue/neglected detection, due date suggestions
+├── Finance.js               # Transaction pivoting, SAT budget reader, spending analysis
+├── PTO.js                   # Vacation burn-down, 3-2-1 framework, clear windows, milestones
+├── Summaries.js             # Auto-population of Metrics & Summaries tabs
+├── Reminders.js             # Anticipator (hourly) + Explorer (nightly) engines
+├── WeekendPlanner.js        # Weekend planning & Vera calendar memos
+├── FlightStatus.js          # AviationStack polling, rate-limited by flight window
+├── Weather.js               # OpenWeatherMap + AirportGap integration
+├── SignalLearning.js        # Flag suppression pattern learning
+├── ImportantDates.js        # Birthday sync, 30/7/1-day flag engine, interest-based gift suggestions
+├── FinancialGoals.js        # What-if scenario planning, Life Plan doc seeding
+├── PreTripBriefing.js       # 48h pre-departure briefing flags
+├── PostTripCapture.js       # Post-trip reflection prompts
+├── TravelDayBriefing.js     # Morning-of-travel email
+├── Fitness.js               # Weekly consistency checks, travel gap detection
+├── Pantry.js                # Purchase history, auto-restock flagging
+├── GymTracker.js            # Gym attendance logging
+├── EmailParser.js           # Email-based structured data extraction
+├── Interests.js             # Shared interest ledger CRUD
+├── Goals.js                 # Yearly goals CRUD
+├── Projects.js              # Projects + project tasks CRUD
+├── Shopping.js              # Shopping list CRUD
+├── Scheduler.js             # Trigger management helpers
+├── Telegram.js              # Bot webhook + async queue
+├── appsscript.json          # Apps Script manifest (scopes, timezone, runtime)
 └── docs/
-    └── index.html       React SPA dashboard (self-contained, no build step)
-                           Home · Flags · Tasks · Projects · Goals · Shopping
-                           PTO · Milestones · Interests · Ideas · Travel
-                           Home Items · Recipes · Countries · Bucket List · Chat
+    └── index.html           # React SPA — full dashboard (no build step required)
 ```
 
 ---
@@ -1038,73 +647,60 @@ VERA-My-Chief-of-Staff/
 ## Setup & Deployment
 
 ### Prerequisites
-- Google account with Apps Script enabled
-- [clasp](https://github.com/google/clasp) installed (`npm install -g @google/clasp`)
+- Google account with Apps Script access
 - Anthropic API key
+- (Optional) AviationStack, OpenWeatherMap, Serper.dev API keys
 
-### Step 1 — Clone & Push
-```bash
-git clone https://github.com/aaeleraky/VERA-My-Chief-of-Staff
-cd VERA-My-Chief-of-Staff
-clasp login
-clasp push
-```
+### Steps
 
-### Step 2 — Set Script Properties
-In the Apps Script editor: **Project Settings → Script Properties**, add:
-```
-VERA_SHEET_ID         = (your Life OS Sheet ID)
-MORNING_NUDGE_EMAIL   = (your email)
-CLAUDE_API_KEY        = (sk-ant-...)
-VERA_WEB_TOKEN        = (any random string, e.g. "mySecretToken123")
-```
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/aeraky1565/VERA-My-Chief-of-Staff.git
+   cd VERA-My-Chief-of-Staff
+   ```
 
-### Step 3 — Run Setup
-In the Apps Script editor, run `setupVERA()` once. This:
-- Creates all 21 sheet tabs with headers and formatting
-- Seeds the Config tab with default values
-- Installs all time-based triggers (11 PM · 7 AM · hourly · 15 min)
+2. **Install clasp**
+   ```bash
+   npm install -g @google/clasp
+   clasp login
+   ```
 
-### Step 4 — Deploy the Web App
-- Apps Script editor → **Deploy → New deployment**
-- Type: **Web App**
-- Execute as: **Me**
-- Who has access: **Anyone**
-- Copy the Web App URL
+3. **Create Apps Script project**
+   ```bash
+   clasp create --title "VERA" --type api
+   clasp push
+   ```
 
-### Step 5 — Configure the Dashboard
-- Open `docs/index.html` in a browser (or deploy to Netlify/GitHub Pages)
-- Click ⚙ Settings
-- Paste the Web App URL and your `VERA_WEB_TOKEN`
-- Click Save → the dashboard loads immediately
+4. **Set Script Properties**
+   In Apps Script → Project Settings → Script Properties, add all required properties (see [Script Properties Reference](#script-properties-reference)).
 
-### Step 6 — Optional Enhancements
+5. **Run initial setup**
+   In the Apps Script editor, run `setupVERA()` once. This creates all 50+ sheet tabs with correct headers.
 
-| Optional step | What it unlocks |
-|---------------|----------------|
-| Set `VERA_LOGO_FILE_ID` | VERA logo in morning email |
-| Set `VERA_DASHBOARD_URL` | "Open Dashboard" button in morning email |
-| Set `SAT_SHEET_ID` | Budget tracking from Simple Ass Tracker |
-| Set `TRANSACTIONS_SHEET_ID` | Spending category charts |
-| Set `OPENWEATHERMAP_KEY` | Destination weather in Active Travel Card |
-| Set `AVIATIONSTACK_KEY` | Live flight status (gate, terminal, delays) |
-| Add `calendar_label:*` rows to Config | Clean calendar labels in flags and emails |
-| Add `summary_sheet:*` rows to Config | External metric hooks (fitness, finance, etc.) |
-| Enable `weekend_planner_enabled=true` | Weekend planning engine |
-| Configure Telegram properties | Telegram bot integration |
+6. **Deploy as Web App**
+   In Apps Script → Deploy → New Deployment → Web App. Set:
+   - Execute as: **Me**
+   - Who has access: **Anyone** (the token provides security)
 
-### Pushing Updates
-```powershell
-.\push.ps1
-```
-After pushing, create a **new Web App deployment version** in Apps Script for code changes to take effect.
+   Copy the deployment URL.
 
-### Running Tests
-In the Apps Script editor, run `testRun()` to immediately execute the full nightly pipeline. Useful for:
-- Verifying Finance and PTO configs are correct
-- Refreshing the Summaries tab after adding external sheet hooks
-- Testing a new Config setting without waiting for 11 PM
+7. **Configure the dashboard**
+   Open `docs/index.html` via GitHub Pages, open the Settings modal (⚙ icon), and enter your deployment URL and token.
+
+8. **Enable GitHub Pages**
+   In your GitHub repo → Settings → Pages → Source: `main` branch, `/docs` folder.
+
+9. **Set up triggers**
+   Run `setupTriggers()` from the Apps Script editor. This creates:
+   - Nightly run at 11 PM
+   - Morning nudge at 7 AM
+   - Hourly anticipator check
+   - Flight status check every 15 minutes
+   - Email scan every 30 minutes
+
+10. **Seed initial data**
+    Run `addDefaultConfigValues()` to populate the Config tab with defaults, then update values for your calendars, PTO pool, etc.
 
 ---
 
-*Built with Google Apps Script · Claude AI · React · ☕*
+*VERA is a personal project by Ahmed — built to be the chief of staff he never had.*
