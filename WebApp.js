@@ -159,6 +159,7 @@ function doGet(e) {
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
+      case 'gym_attend_latest':        return jsonOut_(webGymAttendLatest_((e.parameter && e.parameter.attended) || 'Yes'));
       case 'gym_backfill':             return jsonOut_(webGymBackfill_(e));
       case 'purchase_history':         return jsonOut_(webGetPurchaseHistory_());
       case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
@@ -4564,6 +4565,24 @@ function webLogGymAttend_(e, attended) {
   var id = ((e.parameter && e.parameter.id) || '').trim();
   if (!id) throw new Error('id is required');
   return logGymAttendance_(id, attended);
+}
+
+/**
+ * Finds the most recent pending (Attended = '') gym session and marks it
+ * Yes or No. Called from Chat.js ACTION:log_gym_attend_latest.
+ */
+function webGymAttendLatest_(attended) {
+  attended = (attended || 'Yes');
+  if (attended !== 'Yes' && attended !== 'No') attended = 'Yes';
+  var sessions = getGymLog_();
+  // Find most recent session with no attendance logged yet
+  var pending = sessions.filter(function(s) { return !s.attended; });
+  if (!pending.length) return { ok: false, error: 'No pending gym sessions to log. All recent sessions are already checked in.' };
+  // Sessions are sorted by date ascending; take the last pending one
+  pending.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+  var target = pending[pending.length - 1];
+  var result = logGymAttendance_(target.id, attended);
+  return { ok: true, id: target.id, date: target.date, title: target.title, attended: attended };
 }
 
 function webGymBackfill_(e) {

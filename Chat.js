@@ -434,6 +434,25 @@ function buildChatSystemPrompt_(context) {
     (context.pantryDue !== null ? 'PANTRY \u2014 ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' : '') +
     (context.career !== null ? 'CAREER PROFILE:\n' + careerLines + '\n\n' : '') +
     (function() {
+      if (context.gymLog === null) return '';
+      var gl = context.gymLog || [];
+      var pending = gl.filter(function(s) { return !s.attended; });
+      var recent  = gl.filter(function(s) { return  s.attended; }).slice(-10);
+      var lines = 'GYM LOG (last 28 days):\n';
+      if (pending.length) {
+        lines += '  Awaiting check-in:\n';
+        pending.forEach(function(s) { lines += '    [' + s.id + '] ' + s.title + ' — ' + s.date + '\n'; });
+      }
+      if (recent.length) {
+        lines += '  Recent history:\n';
+        recent.forEach(function(s) {
+          lines += '    ' + s.date + ' — ' + (s.attended === 'Yes' ? '✓ Attended' : '✗ Skipped') + ' (' + s.title + ')\n';
+        });
+      }
+      if (!pending.length && !recent.length) lines += '  (no sessions logged)\n';
+      return lines + '\n';
+    })() +
+    (function() {
       if (context.prescriptions === null) return '';
       var rxList = context.prescriptions || [];
       var active = rxList.filter(function(r) { return r.active === 'Yes'; });
@@ -715,6 +734,8 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_bucket_item|{id}|{field}|{value}  \u2014 field = visited (value = date or "yes") | stars (value = 1-5)\n' +
     'ACTION:delete_bucket_item|{id}  \u2014 id from TRAVEL BUCKET LIST context above. Always confirm first.\n' +
     'ACTION:add_gym_sessions|{YYYY-MM-DD}|{Trip Label}  \u2014 schedules morning gym sessions on all interior days of a trip (skips arrival + departure day)\n' +
+    'ACTION:log_gym_attend_latest|yes  \u2014 marks the most recent pending gym session as attended\n' +
+    'ACTION:log_gym_attend_latest|no   \u2014 marks the most recent pending gym session as skipped\n' +
     'ACTION:log_receipt_items|{item}|{category}|{qty}|{unit}|{store}|{price}  \u2014 one line per item from a receipt or grocery image; qty/price blank if unclear\n' +
     // Takeouts (Issue #112)
     'ACTION:add_takeout_restaurant|{name}|{cuisine}|{phone}|{website}|{rating 1-5 or blank}|{notes}\n' +
@@ -781,6 +802,9 @@ function buildChatSystemPrompt_(context) {
     '- For add_gym_sessions: use when Ahmed says "add gym sessions to the [trip] itinerary" or asks to schedule workouts during travel. ' +
     'Emit ACTION:add_gym_sessions|{departureDate}|{tripLabel} using the TripKey parts (e.g. TripKey "2026-06-19|Alaska Cruise" \u2192 ' +
     '"ACTION:add_gym_sessions|2026-06-19|Alaska Cruise"). Confirm how many blocks were added after execution.\n' +
+    '- For log_gym_attend_latest: use when Ahmed says he went to the gym, finished a workout, hit the gym, did his session, or conversely that he skipped/missed/did not go. ' +
+    'Emit ACTION:log_gym_attend_latest|yes for attended, ACTION:log_gym_attend_latest|no for skipped. ' +
+    'After logging, confirm the session date and include the weekly attended count (count "Yes" entries from GYM LOG above for the current week).\n' +
     '- For log_receipt_items: when Ahmed uploads an image of a receipt, grocery haul, or fridge contents, ' +
     'extract all visible items and emit one log_receipt_items ACTION per item. Use canonical lowercase names ' +
     '(e.g. "milk" not "Kirkland 2% Reduced Fat Milk 2L"). category from: Dairy/Produce/Pantry/Meat/Household/Personal Care/Other. ' +
@@ -859,7 +883,7 @@ function detectChatIntent_(msg) {
     travel:   /\b(trip|travel|vacation|flight|hotel|cruise|packing|itinerary|passport|visa|airport|airline|abroad|destination)\b/.test(m) || /bucket list/.test(m),
     home:     /\b(recipe|cook|takeout|grocery|pantry|dinner|lunch|kitchen|maintenance|appliance|household)\b/.test(m) || /home item|shopping list|eating out|what.*eat|food/.test(m),
     career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
-    health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose)\b/.test(m) || /\brx\b/.test(m),
+    health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose|gym|workout|exercise|fitness|session|went to the gym|hit the gym|skipped|missed)\b/.test(m) || /\brx\b/.test(m),
     people:   /\b(gift|birthday|anniversary|victoria|family|friend|present)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
@@ -1164,13 +1188,21 @@ function buildChatContext_(userMessage) {
     } catch(e) { Logger.log('Chat context: career — ' + e.message); }
   }
 
-  // Prescriptions — health intent
+  // Prescriptions + Gym Log — health intent
   var prescriptions = null;
+  var gymLog = null;
   if (intent.health) {
     try {
       var pRes = webGetPrescriptions_();
       prescriptions = (pRes && pRes.prescriptions) || [];
     } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); prescriptions = []; }
+    try {
+      var glRes = getGymLog_();
+      // Only pass recent sessions (last 28 days) to keep context lean
+      var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 28);
+      var cutoffStr = Utilities.formatDate(cutoff, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      gymLog = glRes.filter(function(s) { return s.date >= cutoffStr; });
+    } catch(e) { Logger.log('Chat context: gymLog — ' + e.message); gymLog = []; }
   }
 
   // Credit Card Hub — finance intent
@@ -1233,6 +1265,7 @@ function buildChatContext_(userMessage) {
     pantryDue:       pantryDue,
     career:          career,
     prescriptions:   prescriptions,
+    gymLog:          gymLog,
     cardsData:       cardsData,
     financialGoals:  financialGoals,
     resources:       resources,
@@ -1896,6 +1929,12 @@ function executeActions_(rawText) {
         if (!dbiId) throw new Error('Bucket item ID required');
         webDeleteBucketItem_(makeFakeEvent_({ id: dbiId }));
         executed.push(type + ' (' + dbiId + ')');
+      }
+      else if (type === 'log_gym_attend_latest') {
+        var attended = (args[0] || 'yes').toLowerCase() === 'no' ? 'No' : 'Yes';
+        var latestResult = webGymAttendLatest_(attended);
+        if (!latestResult.ok) throw new Error(latestResult.error || 'No pending gym session found');
+        executed.push('log_gym_attend_latest (' + latestResult.id + ' \u2192 ' + attended + ')');
       }
       else if (type === 'add_gym_sessions') {
         var agsTK   = tripKeyArgs_();
