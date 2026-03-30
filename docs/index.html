@@ -13312,8 +13312,15 @@ function App() {
     setTabLoading(prev => ({ ...prev, pto: true }));
     try {
       const data = await apiGet(url, token, { action: 'pto' });
-      // data contains { ahmedStats, victoriaStats }
-      setPTO(data.ahmedStats || data.stats ? data : null);
+      if (data.ahmedStats) {
+        // New API: { ahmedStats, victoriaStats }
+        setPTO(data);
+      } else if (data.stats) {
+        // Old API (backend not yet redeployed): wrap as ahmedStats
+        setPTO({ ahmedStats: data.stats, victoriaStats: null });
+      } else {
+        setPTO(null);
+      }
     } catch (err) {
       setError('PTO load failed: ' + err.message);
     }
