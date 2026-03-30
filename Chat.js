@@ -843,10 +843,12 @@ function buildChatSystemPrompt_(context) {
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
-    '- REFERENCE RESOURCES: When REFERENCE RESOURCES are listed above and a user question relates to one, ' +
-    'proactively say "I have a document on this — let me check it." Then emit ACTION:fetch_resource_content|{resourceId}. ' +
-    'The backend will inject the document text into the next turn so you can answer specifically. ' +
-    'For [link-only] resources (no Drive File ID), provide the URL and explain you cannot read it directly.\n' +
+    '- REFERENCE RESOURCES: Only use fetch_resource_content if a resource with a matching [ID] appears in the ' +
+    'REFERENCE RESOURCES section above. Never invent or guess an ID. ' +
+    'When a match exists, say "I have a document on this — let me check it." and emit ACTION:fetch_resource_content|{resourceId} using the exact ID shown. ' +
+    'The backend will inject the document text so you can answer specifically. ' +
+    'For [link-only] resources, provide the URL and explain you cannot read it directly. ' +
+    'If no matching resource is listed, answer from general knowledge and suggest Ahmed add the document via Explore → Resources.\n' +
     '- WEB SEARCH: When you call web_search, briefly tell Ahmed you\'re looking it up. ' +
     'Synthesize results naturally — do not dump raw snippets. If results are empty ' +
     'or unhelpful, say so. Only search when context data is insufficient.\n' +
@@ -2239,6 +2241,8 @@ function executeActions_(rawText) {
             executed.push('fetch_resource_content:' + JSON.stringify({ id: frId, name: frResult.name, content: frResult.content }));
           } else if (frResult.error === 'no_drive_file' || frResult.error === 'cannot_read_file') {
             executed.push('fetch_resource_content:link_only:' + frResult.name + ':' + (frResult.url || ''));
+          } else if (frResult.error === 'not found') {
+            errors.push('fetch_resource_content: resource "' + frId + '" not found in knowledge base — it may not have been added yet via Explore → Resources');
           } else {
             errors.push('fetch_resource_content: ' + (frResult.error || 'unknown error'));
           }
