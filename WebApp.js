@@ -6007,6 +6007,12 @@ function webFetchResourceContent_(e) {
   if (!resource) return { ok: false, error: 'not found' };
 
   var driveFileId = String(resource['Drive File ID'] || '').trim();
+  // If the stored value looks like a full URL, extract the file ID from it
+  if (driveFileId && driveFileId.indexOf('://') !== -1) {
+    var dm = driveFileId.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+    if (!dm) dm = driveFileId.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+    driveFileId = dm ? dm[1] : '';
+  }
   if (!driveFileId) return { ok: false, error: 'no_drive_file', name: resource['Name'], url: resource['URL'] };
 
   try {
