@@ -82,6 +82,8 @@ const TABS = {
   BOOKS:               'Books',                // Reading log (Issue #88)
   COURSES:             'Courses',              // Courses & content log (Issue #88)
   SKILLS:              'Skills',               // Skill building tracker (Issue #88)
+  MEMORY_LOG:          'Memory Log',           // Append-only event stream (Issue #9)
+  MEMORY_SNAPSHOT:     'Memory Snapshot',      // Weekly metric time series (Issue #9)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -136,6 +138,8 @@ const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Ch
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Rating', 'Notes']; // Issue #130
 const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Experiment Title', 'Date', 'Note']; // Issue #130
+const MEMORY_LOG_HEADERS         = ['ID', 'Timestamp', 'Type', 'Who', 'Title', 'Detail', 'Context']; // Issue #9
+const MEMORY_SNAPSHOT_HEADERS    = ['Week', 'Metric', 'Who', 'Value', 'As Of']; // Issue #9
 const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
 const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
 const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes']; // Issue #88
@@ -216,6 +220,10 @@ function createSheetTabs(ss) {
     ['travel_day_briefing_enabled', 'true'],  // set to 'false' to disable travel day briefing emails (Issue #108b)
     ['travel_companions',           ''],      // comma-separated emails to CC on travel day briefings (Issue #108b)
     ['monthly_disposable_income',   '5000'],  // combined monthly discretionary income used for goal contribution squeeze check (Issue #127)
+    // Memory Log (Issue #9)
+    ['memory_log_enabled',          'true'],  // set to 'false' to disable all memory logging
+    ['memory_log_retention_months', '12'],    // months of history to retain before pruning
+    ['memory_snapshot_day',         '0'],     // day of week to write weekly snapshot: 0=Sun … 6=Sat
     ['pacing_enabled',              'true'],  // set to 'false' to disable vacation mode + miss-rate pacing entirely (Issue #139)
     ['pacing_flag_threshold',       '3'],     // unacknowledged Medium/High flags needed to count as a domain miss (Issue #139)
     ['pacing_mode_days',            '7'],     // how many days Easy Mode stays active after auto-activation (Issue #139)
@@ -288,6 +296,8 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.BOOKS,               BOOK_HEADERS);               // Issue #88
   ensureSheet(ss, TABS.COURSES,             COURSE_HEADERS);             // Issue #88
   ensureSheet(ss, TABS.SKILLS,              SKILL_HEADERS);              // Issue #88
+  ensureSheet(ss, TABS.MEMORY_LOG,          MEMORY_LOG_HEADERS);         // Issue #9 — hidden by Memory.js on first append
+  ensureSheet(ss, TABS.MEMORY_SNAPSHOT,     MEMORY_SNAPSHOT_HEADERS);   // Issue #9 — hidden by Memory.js on first write
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   // Set Life Plan Doc ID if not already set
@@ -559,6 +569,10 @@ function setupTriggers() {
 function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
+
+    // Step -3: Memory — weekly snapshot + prune (Issue #9)
+    try { writeWeeklySnapshot_(); } catch (wsErr) { Logger.log('writeWeeklySnapshot_ error (non-fatal): ' + wsErr.message); }
+    try { pruneMemoryLog_();      } catch (plErr) { Logger.log('pruneMemoryLog_ error (non-fatal): '      + plErr.message); }
 
     // Step -2: Pacing — detect vacation mode (must run FIRST so all jobs below can read it)
     try { checkPacing_(); } catch (pacErr) { Logger.log('checkPacing_ error (non-fatal): ' + pacErr.message); }

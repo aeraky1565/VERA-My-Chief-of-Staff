@@ -534,6 +534,7 @@ function buildChatSystemPrompt_(context) {
     (context.wishList !== null ? 'WISH LIST (active items):\n' + wishListLines + '\n\n' : '') +
     (context.experiments !== null ? 'EXPERIMENTS (active/ongoing/paused):\n' + experimentLines + '\n\n' : '') +
     (context.growthData !== null ? 'GROWTH \u2014 BOOKS, COURSES & SKILLS:\n' + growthLines + '\n\n' : '') +
+    (context.memoryContext ? 'MEMORY LOG (recent events + weekly snapshots):\n' + context.memoryContext + '\n\n' : '') +
     (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
     (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
@@ -1049,6 +1050,7 @@ function detectChatIntent_(msg) {
     wishlist:    /\b(wish list|wishlist|want to buy|someday buy|aspiring|have my eye|dream purchase|been wanting|on my list|coveting)\b/.test(m),
     experiments: /\b(experiment|experiments|experimenting|hypothesis|trying out|testing out|tracking|track my|check[ -]?in|my experiment|personal test|run an experiment)\b/.test(m),
     growth:      /\b(book|books|reading|read|course|courses|skill|skills|learning|practice|practicing|level up|studying|study|podcast|finished reading|started reading|currently reading)\b/.test(m),
+    memory:      /\b(remember|memory|log|history|last (week|month|year|quarter)|what have i|what did i|accomplished|completed (recently|this|last)|pattern|trend|retrospective|review|looking back|reflect)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
   };
@@ -1551,6 +1553,13 @@ function buildChatContext_(userMessage) {
     } catch(e) { Logger.log('Chat context: resources — ' + e.message); resources = []; }
   }
 
+  // Memory Log — retrospective queries (Issue #9)
+  var memoryContext = null;
+  if (intent.memory) {
+    try { memoryContext = getMemoryContext_(90); }
+    catch (e) { Logger.log('Chat context: memory — ' + e.message); memoryContext = null; }
+  }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1583,6 +1592,7 @@ function buildChatContext_(userMessage) {
     wishList:        wishList,
     experiments:     experiments,
     growthData:      growthData,
+    memoryContext:   memoryContext,
   };
 }
 
@@ -1782,6 +1792,7 @@ function executeActions_(rawText) {
       if      (type === 'complete_task') {
         var ctRes = webCompleteTask_(args[0]);
         executed.push(type + ' (' + args[0] + ')' + (ctRes.recurring ? ' → 🔁 next due ' + ctRes.nextDueDate : ''));
+        // Memory already logged inside webCompleteTask_
       }
       else if (type === 'acknowledge_flag') { webAcknowledge_(args[0]);                        executed.push(type); }
       else if (type === 'snooze_flag')     { webSnooze_(args[0], parseInt(args[1], 10) || 2); executed.push(type); }
@@ -1989,6 +2000,16 @@ function executeActions_(rawText) {
         ugFields[ugField] = ugVal;
         updateGoal_(ugId, ugFields);
         executed.push(type + ' (' + ugId + ')');
+        // Memory log — only status and progress changes are worth recording
+        if (ugField === 'status' || ugField === 'progress') {
+          try {
+            var allGoals = getGoals_();
+            var ugGoal   = allGoals.find(function(g) { return g.id === ugId; });
+            var ugTitle  = ugGoal ? ugGoal.title : ugId;
+            appendMemoryEvent_(MEMORY_TYPE.GOAL_UPDATED, 'Ahmed', ugTitle,
+              ugField + ' → ' + ugVal, ugId);
+          } catch (mErr) { Logger.log('Memory: update_goal hook (non-fatal) — ' + mErr.message); }
+        }
       }
       else if (type === 'delete_goal') {
         var dgId = (args[0] || '').trim();
@@ -2414,6 +2435,10 @@ function executeActions_(rawText) {
         if (cwWin) {
           webAddCareerWin_({ parameter: { win: cwWin, impact: cwImpact, category: cwCat, date: cwDate } });
           executed.push('add_career_win (' + cwWin.slice(0, 40) + ')');
+          try {
+            appendMemoryEvent_(MEMORY_TYPE.CAREER_WIN, 'Ahmed', cwWin,
+              (cwImpact ? 'Impact: ' + cwImpact : '') + (cwCat ? ' · Category: ' + cwCat : ''), cwDate);
+          } catch (mErr) { Logger.log('Memory: add_career_win hook (non-fatal) — ' + mErr.message); }
         }
       }
 

@@ -44,6 +44,21 @@ function checkPostTripCapture_() {
   if (flags.length) {
     writeFlags(flags);
     Logger.log('PostTripCapture: wrote ' + flags.length + ' capture prompt flag(s)');
+
+    // Memory Log — record each completed trip
+    trips.forEach(function(trip) {
+      try {
+        var durationMs     = trip.endDate.getTime() - trip.departureDate.getTime();
+        var durationNights = Math.max(1, Math.round(durationMs / 86400000));
+        appendMemoryEvent_(
+          MEMORY_TYPE.TRIP_COMPLETED,
+          'Ahmed',
+          'Trip completed: ' + trip.tripLabel,
+          durationNights + ' night(s) · ended ' + Utilities.formatDate(trip.endDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+          trip.tripKey
+        );
+      } catch (mErr) { Logger.log('Memory: trip completed hook (non-fatal) — ' + mErr.message); }
+    });
   }
 }
 

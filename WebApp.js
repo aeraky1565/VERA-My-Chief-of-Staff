@@ -488,16 +488,30 @@ function findFlagRow_(id) {
 // ---- Acknowledge -----------------------------------------------------------
 
 function webAcknowledge_(id) {
-  const found = findFlagRow_(id);
+  const found    = findFlagRow_(id);
+  const flagRow  = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
   found.sheet.getRange(found.rowNum, 7).setValue('Yes'); // Column G
 
-  // Signal Learning: record outcome so VERA can learn from user engagement
+  // Signal Learning
   try {
-    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
-    if (flagKey) recordFlagOutcome_(String(flagKey), 'acknowledged');
+    const flagKey = String(flagRow[9] || ''); // col J: Key
+    if (flagKey) recordFlagOutcome_(flagKey, 'acknowledged');
   } catch (slErr) {
     Logger.log('SignalLearning: ack hook error (non-fatal) — ' + slErr.message);
   }
+
+  // Memory Log
+  try {
+    var flagDate  = new Date(flagRow[1]);
+    var ageStr    = isNaN(flagDate.getTime()) ? '' : Math.round((Date.now() - flagDate.getTime()) / 86400000) + 'd old';
+    appendMemoryEvent_(
+      MEMORY_TYPE.FLAG_ACKNOWLEDGED,
+      'System',
+      String(flagRow[3] || ''), // Flag text
+      'Source: ' + String(flagRow[2] || '') + ' · Urgency: ' + String(flagRow[5] || '') + (ageStr ? ' · ' + ageStr : ''),
+      String(flagRow[9] || '') // Key
+    );
+  } catch (mErr) { Logger.log('Memory: ack hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'acknowledged' };
 }
@@ -506,6 +520,7 @@ function webAcknowledge_(id) {
 
 function webSnooze_(id, days) {
   const found     = findFlagRow_(id);
+  const flagRow   = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
   const snoozeFor = Math.max(1, parseInt(days, 10) || 2);
   const until     = new Date();
   until.setDate(until.getDate() + snoozeFor);
@@ -513,13 +528,24 @@ function webSnooze_(id, days) {
 
   found.sheet.getRange(found.rowNum, 8).setValue(untilStr); // Column H
 
-  // Signal Learning: record outcome
+  // Signal Learning
   try {
-    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
-    if (flagKey) recordFlagOutcome_(String(flagKey), 'snoozed');
+    const flagKey = String(flagRow[9] || '');
+    if (flagKey) recordFlagOutcome_(flagKey, 'snoozed');
   } catch (slErr) {
     Logger.log('SignalLearning: snooze hook error (non-fatal) — ' + slErr.message);
   }
+
+  // Memory Log
+  try {
+    appendMemoryEvent_(
+      MEMORY_TYPE.FLAG_SNOOZED,
+      'System',
+      String(flagRow[3] || ''),
+      'Source: ' + String(flagRow[2] || '') + ' · Snoozed ' + snoozeFor + 'd until ' + untilStr,
+      String(flagRow[9] || '')
+    );
+  } catch (mErr) { Logger.log('Memory: snooze hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'snoozed', snoozedUntil: untilStr };
 }
@@ -527,16 +553,30 @@ function webSnooze_(id, days) {
 // ---- Resolve ---------------------------------------------------------------
 
 function webResolve_(id) {
-  const found = findFlagRow_(id);
+  const found   = findFlagRow_(id);
+  const flagRow = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
   found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I
 
-  // Signal Learning: record outcome
+  // Signal Learning
   try {
-    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
-    if (flagKey) recordFlagOutcome_(String(flagKey), 'resolved');
+    const flagKey = String(flagRow[9] || '');
+    if (flagKey) recordFlagOutcome_(flagKey, 'resolved');
   } catch (slErr) {
     Logger.log('SignalLearning: resolve hook error (non-fatal) — ' + slErr.message);
   }
+
+  // Memory Log
+  try {
+    var flagDate = new Date(flagRow[1]);
+    var ageStr   = isNaN(flagDate.getTime()) ? '' : Math.round((Date.now() - flagDate.getTime()) / 86400000) + 'd old';
+    appendMemoryEvent_(
+      MEMORY_TYPE.FLAG_RESOLVED,
+      'System',
+      String(flagRow[3] || ''),
+      'Source: ' + String(flagRow[2] || '') + ' · Urgency: ' + String(flagRow[5] || '') + (ageStr ? ' · ' + ageStr : ''),
+      String(flagRow[9] || '')
+    );
+  } catch (mErr) { Logger.log('Memory: resolve hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'resolved' };
 }
@@ -633,6 +673,14 @@ function webCompleteTask_(id) {
     recurringVal !== '0';
 
   if (!isRecurring || !taskText) {
+    try {
+      var addedDate  = rowData[2] ? new Date(rowData[2]) : null;
+      var ageStr     = addedDate && !isNaN(addedDate.getTime())
+        ? Math.round((Date.now() - addedDate.getTime()) / 86400000) + 'd old'
+        : '';
+      appendMemoryEvent_(MEMORY_TYPE.TASK_COMPLETED, 'Ahmed', taskText,
+        ageStr ? 'Age: ' + ageStr : '', '');
+    } catch (mErr) { Logger.log('Memory: task complete hook error (non-fatal) — ' + mErr.message); }
     return { ok: true, id: id, action: 'completed' };
   }
 
@@ -666,6 +714,11 @@ function webCompleteTask_(id) {
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[
     newId, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, ''
   ]]);
+
+  try {
+    appendMemoryEvent_(MEMORY_TYPE.TASK_COMPLETED, 'Ahmed', taskText,
+      'Recurring: ' + recurringVal + ' · next due ' + nextDateStr, '');
+  } catch (mErr) { Logger.log('Memory: recurring task complete hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'completed', recurring: true, nextTaskId: newId, nextDueDate: nextDateStr };
 }

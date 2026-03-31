@@ -153,6 +153,19 @@ function logGymAttendance_(id, attended) {
       // Auto-resolve the matching flag (key = id) if it exists
       try { autoResolveFlagByKey_(id); } catch (e_) {}
 
+      // Memory Log
+      try {
+        var sessionTitle = String(ids[ri][0] || id); // use event title if available
+        var sessionDate  = sheet.getRange(ri + 2, 3).getValue(); // col C: Event Date
+        appendMemoryEvent_(
+          'gym_session',
+          'Ahmed',
+          attended === 'Yes' ? '✓ Gym attended' : '✗ Gym skipped',
+          sessionDate ? String(sessionDate).slice(0, 10) : '',
+          id
+        );
+      } catch (mErr) { Logger.log('Memory: gym session hook (non-fatal) — ' + mErr.message); }
+
       return { ok: true, id: id, attended: attended };
     }
   }

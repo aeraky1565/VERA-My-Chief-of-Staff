@@ -95,17 +95,35 @@ function checkVacationMode_() {
   }
 
   if (activeTrip) {
+    var wasActive = props.getProperty('VACATION_MODE_ACTIVE') === 'true';
     props.setProperties({
       VACATION_MODE_ACTIVE: 'true',
       VACATION_MODE_ENDS:   activeTrip.endStr,
       VACATION_TRIP_NAME:   activeTrip.key,
     });
     Logger.log('checkVacationMode_: ACTIVE — trip "' + activeTrip.key + '" ends ' + activeTrip.endStr);
+    // Memory Log: record vacation start (only on first detection, not every nightly run)
+    if (!wasActive) {
+      try {
+        appendMemoryEvent_(MEMORY_TYPE.VACATION_STARTED, 'Ahmed',
+          'Vacation started: ' + activeTrip.key,
+          'Returns: ' + activeTrip.endStr, activeTrip.key);
+      } catch (mErr) { Logger.log('Memory: vacation start hook (non-fatal) — ' + mErr.message); }
+    }
   } else {
+    var wasActiveEnd = props.getProperty('VACATION_MODE_ACTIVE') === 'true';
+    var endedTrip    = props.getProperty('VACATION_TRIP_NAME') || '';
     props.setProperties({ VACATION_MODE_ACTIVE: 'false' });
     props.deleteProperty('VACATION_MODE_ENDS');
     props.deleteProperty('VACATION_TRIP_NAME');
     Logger.log('checkVacationMode_: inactive');
+    // Memory Log: record vacation end (only on transition from active → inactive)
+    if (wasActiveEnd && endedTrip) {
+      try {
+        appendMemoryEvent_(MEMORY_TYPE.VACATION_ENDED, 'Ahmed',
+          'Vacation ended: ' + endedTrip, '', endedTrip);
+      } catch (mErr) { Logger.log('Memory: vacation end hook (non-fatal) — ' + mErr.message); }
+    }
   }
 }
 
@@ -340,6 +358,13 @@ function checkMissRate_() {
 
   Logger.log('checkMissRate_: pacing mode ACTIVATED. Deferred ' + deferCount +
              ' task(s). Ends ' + pacingEndsStr);
+
+  // Memory Log
+  try {
+    appendMemoryEvent_(MEMORY_TYPE.PACING_ACTIVATED, 'System',
+      'Easy Mode activated — ' + deferCount + ' task(s) deferred to ' + nextMonStr,
+      'Triggered by: ' + domainHits.join(', ') + ' · Active until ' + pacingEndsStr, '');
+  } catch (mErr) { Logger.log('Memory: pacing activation hook (non-fatal) — ' + mErr.message); }
 }
 
 /**
