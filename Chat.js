@@ -812,7 +812,8 @@ function buildChatSystemPrompt_(context) {
     'ACTION:archive_idea|{ideaId}\n' +
     // Travel — Itinerary
     'ACTION:add_itinerary_item|{tripKey}|{type}|{title}|{date YYYY-MM-DD}|{startTime HH:MM or blank}|{endTime HH:MM or blank}|{location or blank}|{notes or blank}\n' +
-    '  \u2014 type options: flight, train, cruise, ferry, hotel, dining, museum, beach, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n' +
+    '  \u2014 type options: flight, train, cruise, ferry, hotel, arranged_stay, dining, museum, beach, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n' +
+    '  \u2014 use arranged_stay (not hotel) when staying informally with friends/family or at a private/rental accommodation with no formal hotel reservation\n' +
     'ACTION:update_itinerary_item|{id}|{field}|{value}  \u2014 fields: title, date, startTime, endTime, location, notes\n' +
     'ACTION:delete_itinerary_item|{id}\n' +
     'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +

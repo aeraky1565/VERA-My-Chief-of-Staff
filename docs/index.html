@@ -1718,7 +1718,8 @@ const ITIN_TYPE_ICON = {
   walking:     '🚶',
   bicycle:     '🚲',
   // Accommodation
-  hotel:       '🏨',
+  hotel:          '🏨',
+  arranged_stay:  '🏠',
   // Food & Drink
   reservation: '🍽',
   dining:      '🍴',
@@ -1747,7 +1748,7 @@ const ITIN_TYPE_ICON = {
 
 const ITIN_TYPES = [
   'flight', 'train', 'cruise', 'ferry', 'car', 'bus', 'walking', 'bicycle',
-  'hotel',
+  'hotel', 'arranged_stay',
   'reservation', 'dining', 'coffee', 'nightlife', 'winery',
   'city_tour', 'museum', 'beach', 'mountain', 'camera', 'show', 'spa', 'skiing', 'snorkeling', 'theme_park',
   'shopping', 'market',
@@ -1885,7 +1886,7 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
   var disembarkDate = null;   // latest item whose title contains "disembark"
   items.forEach(function(item) {
     if (item._synthetic || !item.date) return;
-    if (item.type === 'hotel') {
+    if (item.type === 'hotel' || item.type === 'arranged_stay') {
       var checkIn  = item.date;
       var checkOut = hotelCheckoutDates[item.id] || item.date;
       var d   = new Date(checkIn  + 'T00:00:00');
@@ -2152,7 +2153,7 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
       if (dest)      m.dest         = dest.trim();
       if (confirm)   m.confirmation = confirm.trim();
     }
-    if (type === 'hotel' || type === 'cruise') {
+    if (type === 'hotel' || type === 'cruise' || type === 'arranged_stay') {
       if (checkoutDate) m.checkoutDate = checkoutDate;
     }
     if (traveler && traveler !== 'Both') m.traveler = traveler;
@@ -2206,16 +2207,17 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
           <input className="form-input" value={title} autoFocus
             onChange={e => setTitle(e.target.value)} onKeyDown={handleKey}
             placeholder={
-              type === 'flight'     ? 'e.g. AA102 – JFK → CDG'            :
-              type === 'train'      ? 'e.g. Eurostar – London → Paris'     :
-              type === 'cruise'     ? 'e.g. Caribbean Cruise – Day 1'      :
-              type === 'hotel'      ? 'e.g. Hotel Check-In – Le Meurice'   :
-              type === 'dining'     ? 'e.g. Dinner – Le Jules Verne'       :
-              type === 'museum'     ? 'e.g. Louvre Museum'                 :
-              type === 'beach'      ? 'e.g. Playa del Carmen'              :
-              type === 'show'       ? 'e.g. Hamilton at the Lyceum'        :
-              type === 'skiing'     ? 'e.g. Morning Ski Run – Val Thorens' :
-              type === 'snorkeling' ? 'e.g. Snorkeling – Great Barrier Reef':
+              type === 'flight'        ? 'e.g. AA102 – JFK → CDG'               :
+              type === 'train'         ? 'e.g. Eurostar – London → Paris'        :
+              type === 'cruise'        ? 'e.g. Caribbean Cruise – Day 1'         :
+              type === 'hotel'         ? 'e.g. Hotel Check-In – Le Meurice'      :
+              type === 'arranged_stay' ? "e.g. Staying at John & Sarah's"        :
+              type === 'dining'        ? 'e.g. Dinner – Le Jules Verne'          :
+              type === 'museum'        ? 'e.g. Louvre Museum'                    :
+              type === 'beach'         ? 'e.g. Playa del Carmen'                 :
+              type === 'show'          ? 'e.g. Hamilton at the Lyceum'           :
+              type === 'skiing'        ? 'e.g. Morning Ski Run – Val Thorens'    :
+              type === 'snorkeling'    ? 'e.g. Snorkeling – Great Barrier Reef'  :
               'Title'
             } />
         </div>
@@ -2244,15 +2246,15 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
           </div>
         )}
 
-        {/* Hotel/Cruise-specific fields */}
-        {(type === 'hotel' || type === 'cruise') && (
+        {/* Hotel/Cruise/Arranged Stay-specific fields */}
+        {(type === 'hotel' || type === 'cruise' || type === 'arranged_stay') && (
           <div style={{ background: '#131e2e', borderRadius: 8, padding: '10px 12px',
                         marginBottom: 12, border: '1px solid #1e2a3a' }}>
             <div style={{ color: '#8ab4f8', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-              {type === 'cruise' ? '🚢 Cruise Stay' : '🏨 Hotel Stay'}
+              {type === 'cruise' ? '🚢 Cruise Stay' : type === 'arranged_stay' ? '🏠 Informal Stay' : '🏨 Hotel Stay'}
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">{type === 'cruise' ? 'Disembarkation Date' : 'Check-out Date'}</label>
+              <label className="form-label">{type === 'cruise' ? 'Disembarkation Date' : 'Departure Date'}</label>
               <input className="form-input" type="date" value={checkoutDate}
                 onChange={e => setCheckoutDate(e.target.value)} />
             </div>
@@ -2262,7 +2264,7 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
         {/* Date + Times */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
           <div className="form-group" style={{ flex: 2, marginBottom: 0 }}>
-            <label className="form-label">{type === 'hotel' ? 'Check-in Date' : type === 'cruise' ? 'Embarkation Date' : 'Date'}</label>
+            <label className="form-label">{type === 'hotel' ? 'Check-in Date' : type === 'cruise' ? 'Embarkation Date' : type === 'arranged_stay' ? 'Arrival Date' : 'Date'}</label>
             <input className="form-input" type="date" value={date}
               onChange={e => setDate(e.target.value)} />
           </div>
@@ -2826,8 +2828,12 @@ function ItineraryView({ trip, itinerary, loading, busy,
                     {dayItems.length} event{dayItems.length !== 1 ? 's' : ''} scheduled
                   </div>
                   {timedItems.concat(dayItems.filter(function(i) { return !i.startTime; })).map(function(item) {
-                    var hotelLabel = item.type === 'hotel'
-                      ? (item._synthetic ? 'Check out — ' : hotelCheckoutDates[item.id] ? 'Check in — ' : null)
+                    var hotelLabel = (item.type === 'hotel' || item.type === 'arranged_stay')
+                      ? (item._synthetic
+                          ? (item.type === 'arranged_stay' ? 'Leaving — ' : 'Check out — ')
+                          : hotelCheckoutDates[item.id]
+                            ? (item.type === 'arranged_stay' ? 'Arriving — ' : 'Check in — ')
+                            : null)
                       : null;
                     return (
                       <div key={item.id} style={{ fontSize: 13, color: '#dde1f0', marginBottom: 5,
@@ -2972,11 +2978,14 @@ function ItineraryView({ trip, itinerary, loading, busy,
                          onClick={item.type === 'flight' && flightStatuses[item.id]
                            ? function() { setExpandedFlight(expandedFlight === item.id ? null : item.id); }
                            : undefined}>
-                      {item.type === 'hotel' && (item._synthetic || hotelCheckoutDates[item.id]) && (
-                        <span style={{ color: '#8ab4f8', fontSize: 10, fontWeight: 600,
+                      {(item.type === 'hotel' || item.type === 'arranged_stay') && (item._synthetic || hotelCheckoutDates[item.id]) && (
+                        <span style={{ color: item.type === 'arranged_stay' ? '#a89060' : '#8ab4f8',
+                                       fontSize: 10, fontWeight: 600,
                                        display: 'block', textTransform: 'uppercase', letterSpacing: 0.5,
                                        marginBottom: 1, overflow: 'visible', whiteSpace: 'nowrap' }}>
-                          {item._synthetic ? '← Check out' : 'Check in →'}
+                          {item._synthetic
+                            ? (item.type === 'arranged_stay' ? '← Leaving' : '← Check out')
+                            : (item.type === 'arranged_stay' ? 'Arriving →' : 'Check in →')}
                         </span>
                       )}
                       {item.title}
