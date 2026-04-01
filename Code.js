@@ -196,6 +196,7 @@ function createSheetTabs(ss) {
     ['finance_review_day',     '1'],
     ['active_sources',         'Calendar,Tasks,Summaries'],
     ['skip_calendars',         'Holidays in United States'],
+    ['victoria_calendars',     'Victoria'],  // comma-separated — calendars belonging to Victoria; everything else defaults to Ahmed
     // Add rows like: calendar_label:Eraky Family | family (shared, not Ahmed's direct obligations)
     // Add rows like: calendar_label:Ahmed         | personal
     // Add rows like: calendar_label:Victoria       | household partner

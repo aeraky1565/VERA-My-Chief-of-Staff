@@ -63,11 +63,12 @@ function getUpcomingEvents(daysAheadOverride) {
       }
     });
 
-    // Owned calendar IDs for fallback detection (only used when no label defined)
-    const ownedIds = {};
-    CalendarApp.getAllOwnedCalendars().forEach(function(c) {
-      ownedIds[c.getId()] = true;
-    });
+    // Victoria's calendars — anything in this list is labelled "shared"
+    // Everything else (including third-party subscriptions) defaults to Ahmed's personal
+    const victoriaCalendars = (cfg['victoria_calendars'] || '')
+      .split(',')
+      .map(function(s) { return s.trim().toLowerCase(); })
+      .filter(function(s) { return s !== ''; });
 
     // ---- Phase 1: Filter calendars -----------------------------------------
     // Separate the filtering pass so we can batch-fetch timezone info in parallel.
@@ -83,11 +84,14 @@ function getUpcomingEvents(daysAheadOverride) {
 
       let calLabel;
       if (calendarLabels[calNameLower]) {
+        // Explicit label from Config tab takes priority
         calLabel = calendarLabels[calNameLower];
-      } else if (ownedIds[calendar.getId()]) {
-        calLabel = 'personal (' + calNameRaw + ')';
-      } else {
+      } else if (victoriaCalendars.indexOf(calNameLower) !== -1) {
+        // Victoria's calendar — shared between Ahmed and Victoria
         calLabel = 'shared: ' + calNameRaw;
+      } else {
+        // Everything else (owned, subscribed, imported) defaults to Ahmed's personal
+        calLabel = 'personal (' + calNameRaw + ')';
       }
 
       activeCalendars.push({ calendar: calendar, calNameRaw: calNameRaw, calLabel: calLabel });
