@@ -12195,9 +12195,11 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   const overdueTasks   = tasks.filter(t => t.isOverdue);
   const nextTask       = pendingTasks.find(t => t.dueDate) || pendingTasks[0];
   const pendingShopping = shopping.reduce((sum, s) => sum + s.items.filter(i => !i.done).length, 0);
-  const vacRemaining   = pto?.remaining?.vacationDays;
-  const persRemaining  = pto?.remaining?.personalHours;
-  const nextPTO        = pto?.nextPTO;
+  const ahmedVacRemaining     = pto?.ahmedStats?.remaining?.vacationDays;
+  const ahmedPersRemaining    = pto?.ahmedStats?.remaining?.personalHours;
+  const victoriaVacRemaining  = pto?.victoriaStats?.remaining?.vacationDays;
+  const victoriaPersRemaining = pto?.victoriaStats?.remaining?.personalHours;
+  const nextPTO               = pto?.ahmedStats?.nextPTO;
 
   // Detect active trip (currently in progress)
   var todayStr    = new Date().toISOString().slice(0, 10);
@@ -12336,12 +12338,26 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           <div style={{ fontSize: 13, color: '#4d6080' }}>Click to load PTO data</div>
         ) : (
           <>
-            <div className="bento-card-main" style={{ fontSize: 24 }}>
-              {vacRemaining} <span style={{ fontSize: 14, fontWeight: 400, color: '#6b7fa8' }}>vacation days</span>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#6b7fa8', marginBottom: 2 }}>Ahmed</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#e8eaed' }}>
+                  {ahmedVacRemaining ?? '—'} <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7fa8' }}>days</span>
+                </div>
+                {ahmedPersRemaining != null && (
+                  <div style={{ fontSize: 11, color: '#6b7fa8' }}>{ahmedPersRemaining} personal hrs</div>
+                )}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: '#6b7fa8', marginBottom: 2 }}>Victoria</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#e8eaed' }}>
+                  {victoriaVacRemaining ?? '—'} <span style={{ fontSize: 12, fontWeight: 400, color: '#6b7fa8' }}>days</span>
+                </div>
+                {victoriaPersRemaining != null && (
+                  <div style={{ fontSize: 11, color: '#6b7fa8' }}>{victoriaPersRemaining} personal hrs</div>
+                )}
+              </div>
             </div>
-            {persRemaining != null && (
-              <div className="bento-card-sub">{persRemaining} personal hrs remaining</div>
-            )}
             {nextPTO && (
               <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>
                 Next: {nextPTO.label} · <DaysAway n={nextPTO.daysUntil} format="compact-away" />
