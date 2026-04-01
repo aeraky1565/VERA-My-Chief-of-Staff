@@ -114,6 +114,7 @@ function doGet(e) {
       case 'update_idea':           return jsonOut_(webUpdateIdea_(e));
       case 'delete_idea':           return jsonOut_(webDeleteIdea_(e));
       case 'promote_idea':          return jsonOut_(webPromoteIdea_(e));
+      case 'shelve_thought':        return jsonOut_(webShelveThought_(e));
       // Experiments (Issue #130)
       case 'get_experiments':           return jsonOut_(webGetExperiments_());
       case 'add_experiment':            return jsonOut_(webAddExperiment_(e));
@@ -4065,6 +4066,22 @@ function webPromoteIdea_(e) {
   found.sheet.getRange(found.rowNum, 7).setValue('Promoted'); // Col G = Status
 
   return { ok: true, ideaId: id, taskId: taskId, action: 'promoted' };
+}
+
+/**
+ * Graduates a Thought-status idea into a proper Idea by setting its
+ * status to 'New' and assigning a category. Used during chat triage.
+ */
+function webShelveThought_(e) {
+  const p        = e.parameter || {};
+  const id       = (p.id || p.ideaId || '').trim();
+  const category = (p.category || 'General').trim();
+  if (!id) throw new Error('Idea ID is required');
+
+  const found = findIdeaRow_(id);
+  found.sheet.getRange(found.rowNum, 4).setValue(category); // Col D = Category
+  found.sheet.getRange(found.rowNum, 7).setValue('New');    // Col G = Status
+  return { ok: true, id: id, category: category, action: 'shelved' };
 }
 
 // ---- Experiments (Issue #130) ----------------------------------------------

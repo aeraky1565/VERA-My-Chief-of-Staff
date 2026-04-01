@@ -652,6 +652,16 @@ function buildChatSystemPrompt_(context) {
       }
       return lines + '\n';
     })() +
+    // ---- THOUGHT INBOX -------------------------------------------------------
+    (function() {
+      var thoughts = (context.ideas || []).filter(function(i) { return i.status === 'Thought'; });
+      if (!thoughts.length) return '';
+      var lines = 'THOUGHT INBOX (' + thoughts.length + ' unreviewed thought(s) from chat):\n';
+      thoughts.forEach(function(t) {
+        lines += '  \u2022 [' + t.id + '] ' + t.idea + ' (captured ' + t.dateAdded + ')\n';
+      });
+      return lines + '\n';
+    })() +
     (context.ideas !== null ? 'IDEA BRAINDUMP (' + context.ideas.length + '):\n' + ideaLines + '\n\n' : '') +
 
     (function() {
@@ -808,6 +818,8 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_goal|{goalId}\n' +
     'ACTION:delete_interest|{interestId}\n' +
     'ACTION:add_idea|{idea text}|{category}|{tags}\n' +
+    'ACTION:add_thought|{raw thought text}  \u2014 capture an unfiltered thought from chat; no category or tags needed\n' +
+    'ACTION:shelve_thought|{ideaId}|{category}  \u2014 graduate a parked thought into a proper idea; category from General/Home/Finance/Health/Career/Personal/Travel/Other\n' +
     'ACTION:promote_idea|{ideaId}\n' +
     'ACTION:archive_idea|{ideaId}\n' +
     // Travel — Itinerary
@@ -913,7 +925,9 @@ function buildChatSystemPrompt_(context) {
     '- For add_shopping_item: store_name must partially match one of the SHOPPING STORES listed above.\n' +
     '- For update_goal: valid fields are "status" (To Do/In Progress/Done/Paused), "title", "category", "progress", "notes". Use goal ID from YEARLY GOALS above.\n' +
     '- For delete_goal / delete_interest: always confirm the item name with Ahmed before deleting.\n' +
-    '- For add_idea: capture any unstructured thought, half-formed plan, or "park this for later" request. Category options: General/Home/Finance/Health/Career/Personal/Travel/Other. Tags are optional, comma-separated. Use when Ahmed says "note this", "park this idea", "I want to eventually...", etc.\n' +
+    '- For add_thought: use PROACTIVELY \u2014 when Ahmed mentions something capturable mid-conversation (a half-formed plan, "I\'ve been thinking about X", "random thought", "some day I want to", "what if we tried", "I should look into", "maybe we should", "I wonder if"), silently capture it with add_thought and mention "I\'ve parked that as a thought for later." Do NOT require Ahmed to explicitly ask. Use add_idea for intentional, structured braindump entries with a clear category. Use add_thought for anything raw, unfiltered, or passing.\n' +
+    '- For shelve_thought: use during triage when Ahmed wants to properly categorize a thought. Use the thought ID from THOUGHT INBOX above. Category must be one of: General/Home/Finance/Health/Career/Personal/Travel/Other. After shelving, confirm what category it was assigned.\n' +
+    '- For add_idea: capture intentional, structured braindump entries. Category options: General/Home/Finance/Health/Career/Personal/Travel/Other. Tags are optional, comma-separated. Use when Ahmed says "add this as an idea", "note this idea", or provides explicit category context.\n' +
     '- For promote_idea: converts the idea to a real open task. Use the idea ID from IDEA BRAINDUMP above. Confirm with Ahmed which idea to promote if it is ambiguous.\n' +
     '- For archive_idea: marks the idea as Archived (no longer shown). Always confirm the idea with Ahmed before archiving.\n' +
     '- For update_idea: valid fields are "idea" (text), "category", "tags", "notes". Use the idea ID from IDEA BRAINDUMP above.\n' +
@@ -1029,7 +1043,8 @@ function buildChatSystemPrompt_(context) {
     'Example: after completing a task → "You have 2 other tasks due this week — want to review them?"\n' +
     '- CLOSING THE LOOP: When Ahmed mentions something in conversation, offer to record it in the ' +
     'relevant system. Example: "Victoria mentioned she wants to try Thai food" → ACTION:log_interest. ' +
-    'Example: "I need to call the doctor" → offer ACTION:create_task. Do this naturally, not intrusively.\n'
+    'Example: "I need to call the doctor" → offer ACTION:create_task. Do this naturally, not intrusively.\n' +
+    '- THOUGHT TRIAGE: When Ahmed says "what thoughts have I parked", "let\'s triage my thoughts", "what\'s in my thought inbox", or similar, load THOUGHT INBOX from context and walk through each item. For each thought, ask Ahmed what to do: (a) Shelve as idea \u2192 ACTION:shelve_thought|{id}|{category}, (b) Make it a task \u2192 ACTION:promote_idea|{id}, (c) Dismiss \u2192 ACTION:archive_idea|{id}. Be conversational \u2014 present 2\u20133 thoughts at a time, not all at once. Confirm each action.\n'
   );
 }
 
@@ -1053,6 +1068,7 @@ function detectChatIntent_(msg) {
     growth:      /\b(book|books|reading|read|course|courses|skill|skills|learning|practice|practicing|level up|studying|study|podcast|finished reading|started reading|currently reading)\b/.test(m),
     memory:      /\b(remember|memory|log|history|last (week|month|year|quarter)|what have i|what did i|accomplished|completed (recently|this|last)|pattern|trend|retrospective|review|looking back|reflect)\b/.test(m),
     projects: /\b(project|milestone|deliverable)\b/.test(m),
+    thoughts: /\b(thought|thoughts|parked|park(ed)?\s+(this|that|it)|random thought|triage|what.*thought|review.*thought|thought inbox|what.*(have i|did i) park|shelve|unshelved)\b/.test(m),
     goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
   };
 }
@@ -1350,9 +1366,9 @@ function buildChatContext_(userMessage) {
     } catch (grErr) { Logger.log('Chat context: growth — ' + grErr.message); growthData = { books: [], courses: [], skills: [] }; }
   }
 
-  // Ideas braindump — people intent
+  // Ideas braindump — people intent or thoughts triage
   var ideas = null;
-  if (intent.people) {
+  if (intent.people || intent.thoughts) {
     try {
       var ideaSheet = ss.getSheetByName(TABS.IDEAS);
       if (ideaSheet && ideaSheet.getLastRow() >= 2) {
@@ -2050,6 +2066,36 @@ function executeActions_(rawText) {
           aiId, aiDateStr, aiText, (args[1] || '').trim(), (args[2] || '').trim(), '', 'New'
         ]]);
         executed.push(type + ' (' + aiId + ')');
+      }
+      else if (type === 'add_thought') {
+        var atText = (args[0] || '').trim();
+        if (!atText) throw new Error('Thought text required');
+        var atSheet = getSpreadsheet().getSheetByName(TABS.IDEAS);
+        if (!atSheet) throw new Error('Ideas tab not found');
+        var atTz      = Session.getScriptTimeZone();
+        var atNow     = new Date();
+        var atDateStr = Utilities.formatDate(atNow, atTz, 'yyyy-MM-dd');
+        var atDateKey = Utilities.formatDate(atNow, atTz, 'yyyyMMdd');
+        var atLastRow = atSheet.getLastRow();
+        var atCount   = 1;
+        if (atLastRow >= 2) {
+          var atIds = atSheet.getRange(2, 1, atLastRow - 1, 1).getValues();
+          atIds.forEach(function(r) {
+            if (String(r[0]).indexOf('IDEA-' + atDateKey) === 0) atCount++;
+          });
+        }
+        var atId = 'IDEA-' + atDateKey + '-' + (atCount < 10 ? '0' + atCount : String(atCount));
+        atSheet.getRange(atLastRow + 1, 1, 1, IDEA_HEADERS.length).setValues([[
+          atId, atDateStr, atText, '', '', '', 'Thought'
+        ]]);
+        executed.push('add_thought (' + atId + ')');
+      }
+      else if (type === 'shelve_thought') {
+        var stId       = (args[0] || '').trim();
+        var stCategory = (args[1] || 'General').trim();
+        if (!stId) throw new Error('Thought ID required');
+        webShelveThought_(makeFakeEvent_({ id: stId, category: stCategory }));
+        executed.push('shelve_thought (' + stId + ' \u2192 ' + stCategory + ')');
       }
       else if (type === 'promote_idea') {
         var piId = (args[0] || '').trim();
