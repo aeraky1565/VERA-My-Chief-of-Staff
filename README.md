@@ -2,7 +2,7 @@
 
 > Your personal chief of staff, built on Google Apps Script + Claude AI.
 
-VERA runs silently in the background of your life. Every night it reads your calendar, tasks, finances, PTO, travel plans, interests, health, career, and shared life goals — then calls Claude AI to generate a prioritised list of flags. At 7 AM it delivers a summary to your inbox. A React dashboard and a full conversational chat interface let you view, manage, and act on every domain of your life in plain English.
+VERA runs silently in the background of your life. Every night it reads your calendar, tasks, finances, PTO, travel plans, interests, health, career, and shared life goals — then calls Claude AI to generate a prioritised list of flags. At 7 AM it delivers a summary to your inbox. A React dashboard and a full conversational chat interface let you view, manage, and act on every domain of your life in plain English. Slack integration brings real-time bidirectional chat and rich notifications to your phone.
 
 ---
 
@@ -22,13 +22,14 @@ VERA runs silently in the background of your life. Every night it reads your cal
 12. [People & Relationships Module](#people--relationships-module)
 13. [Career Module](#career-module)
 14. [Home Front Module](#home-front-module)
-15. [Data Model — Sheet Tabs](#data-model--sheet-tabs)
-16. [Config Tab Reference](#config-tab-reference)
-17. [Script Properties Reference](#script-properties-reference)
-18. [Integrations & External APIs](#integrations--external-apis)
-19. [Dashboard API Reference](#dashboard-api-reference)
-20. [File Structure](#file-structure)
-21. [Setup & Deployment](#setup--deployment)
+15. [Slack Integration](#slack-integration)
+16. [Data Model — Sheet Tabs](#data-model--sheet-tabs)
+17. [Config Tab Reference](#config-tab-reference)
+18. [Script Properties Reference](#script-properties-reference)
+19. [Integrations & External APIs](#integrations--external-apis)
+20. [Dashboard API Reference](#dashboard-api-reference)
+21. [File Structure](#file-structure)
+22. [Setup & Deployment](#setup--deployment)
 
 ---
 
@@ -50,7 +51,7 @@ VERA runs silently in the background of your life. Every night it reads your cal
   Google Sheets   Claude API     External APIs
   (50+ tabs)    (Anthropic)   Calendar · Drive · Gmail
   Life OS data   Flags · Chat  AviationStack · OpenWeatherMap
-                 Actions       Serper/Tavily · Telegram
+                 Actions       Serper/Tavily · Slack
 ```
 
 **Key design decisions:**
@@ -73,13 +74,13 @@ VERA runs silently in the background of your life. Every night it reads your cal
 | **Goals** | Kanban-style yearly goal tracking; progress percentages; status management |
 | **Shopping** | Multi-store lists; toggle purchased; recipe-to-shopping integration |
 | **PTO Planner** | Ahmed + Victoria subtabs; burn-down stats; 3-2-1 framework; clear windows; milestones; buffer management |
-| **Travel** | Upcoming trips; full itinerary editor (10+ item types); packing list with progress; flight status; trip context; recommendations |
+| **Travel** | Upcoming trips; full itinerary editor (11+ item types incl. arranged_stay); packing list with progress; flight status; trip context; recommendations |
 | **People** | Important Dates (birthdays, anniversaries, meaningful dates); Gift Ideas per person |
-| **Home Front** | Household chore checklist by cadence; Vehicle tracker (oil, registration, insurance, mileage) |
+| **Home Front** | Household chore checklist by cadence; Vehicle tracker (oil, emission/safety inspections, tires, registration, insurance, mileage) |
 | **Health & Wellness** | Prescriptions for Ahmed & Victoria; Gym log with attendance tracking; Morning routine checklist |
 | **Home Items** | Appliance/warranty tracker; record service; maintenance countdowns |
 | **Interests** | Ahmed & Victoria shared interest ledger; category tracking |
-| **Ideas** | Braindump; promote to task; archive; category & tag organisation |
+| **Ideas** | Braindump incl. Thoughts (raw captures from chat); promote to task; shelve thought to idea; archive; category & tag organisation |
 | **Finance** | Bills, credit cards, loyalty programs, financial goals, what-if scenarios, transaction history |
 | **Career** | Current role; career goals (1yr/3yr/5yr/10yr); progression timeline; skills; wins; network |
 | **Recipes** | Recipe book; view ingredients; add to shopping list |
@@ -106,9 +107,12 @@ VERA's chat is a full conversational AI backed by Claude. It loads live context 
 | `goals` | Yearly goals, financial goals |
 | `resources` | Reference documents registry |
 | `projects` | All projects with tasks |
+| `thoughts` | Unshelved thought captures from chat |
 | Always | Active flags, open tasks, summaries/metrics, PTO status, calendar events |
 
 **VERA Notices** — time-sensitive alerts are injected into every chat response regardless of topic.
+
+**Thought Capture** — VERA proactively detects random thoughts mid-conversation and offers to park them. Parked thoughts appear in the Ideas tab (Thoughts filter) for later triage. Say "what thoughts have I parked?" to review and shelve them as proper ideas.
 
 ---
 
@@ -146,6 +150,7 @@ create_calendar_event|Title|2026-04-20|14:00|60
 ### Travel
 ```
 add_itinerary_item|2026-06-19|Alaska Cruise|hotel|Marriott|2026-06-19|15:00|16:00|Seattle|notes
+add_itinerary_item|2026-07-04|Summer Trip|arranged_stay||2026-07-04|||John & Sarah's place|notes
 add_packing_item|2026-06-19|Alaska Cruise|ahmed|Clothing|Rain jacket
 generate_packing_list|2026-06-19|Alaska Cruise|2026-06-19|2026-06-26
 add_gym_sessions|2026-06-19|Alaska Cruise
@@ -192,15 +197,17 @@ add_recipe|Chicken Tikka Masala|Indian|4|45 min|chicken;yogurt;spices|dinner
 recipe_to_shopping|row_number
 ```
 
-### Interests & Ideas
+### Thoughts & Ideas
 ```
-log_interest|Ahmed|Jazz piano|Music
+add_thought|raw thought text           ← parks a raw thought, no category
+shelve_thought|id|category             ← graduates a thought to a proper idea
 add_idea|Build a home library wall|Home|renovation,books
 promote_idea|idea_id
 ```
 
-### Resources
+### Interests & Resources
 ```
+log_interest|Ahmed|Jazz piano|Music
 fetch_resource_content|res_1234   ← reads Google Doc, answers from it
 ```
 
@@ -216,6 +223,9 @@ update_loyalty_points|United MileagePlus|45000
 
 ### Nightly Flag Generation
 Every night, Claude reads your full life context and generates prioritised flags. Flags are colour-coded by urgency and escalate automatically if ignored.
+
+### Thought Capture
+VERA detects random thoughts mid-conversation and offers to park them without interrupting flow. Parked thoughts sit in the Ideas tab (Thoughts filter, amber) with Shelve / Task / Dismiss actions. "What thoughts have I parked?" triggers a triage conversation in chat.
 
 ### Interest Cross-Reference
 When you log an interest ("Victoria loves pottery"), VERA cross-references it against:
@@ -262,6 +272,9 @@ VERA can search the web for current information (flight prices, restaurant revie
 ### Resource Document Intelligence
 Add Google Docs (HR policies, benefit guides, contracts) to the Resources tab. VERA reads them during chat to answer specific questions — e.g., "How many weeks of parental leave do I get?" PDFs are auto-converted to Google Docs for reading.
 
+### Smart Scheduler (Image → Calendar)
+Upload a photo or screenshot to #vera-chat in Slack. VERA downloads the image, sends it to Claude's vision API to extract dates and events, then prompts you to choose a calendar. Events are created automatically — no manual entry.
+
 ---
 
 ## Nightly Jobs
@@ -292,8 +305,8 @@ Run at 11 PM via Apps Script time trigger (`nightlyRun()`):
 | Schedule | Job |
 |---|---|
 | **Nightly 11 PM** | Full intelligence run (16+ jobs) |
-| **Daily 7 AM** | Morning nudge email (flag summary by urgency) |
-| **Hourly** | Anticipator engine — pre-event prep reminders; Vera Calendar memos |
+| **Daily 7 AM** | Morning nudge — Block Kit summary to #vera-notifications (Slack) or email fallback |
+| **Hourly** | Anticipator engine — hydration, desk breaks, bill reminders, evening check-in, pre-event reminders |
 | **Every 15 min** | Flight status polling (rate-limited by proximity to departure) |
 | **Every 30 min** | Email parser scan |
 
@@ -320,6 +333,7 @@ Run at 11 PM via Apps Script time trigger (`nightlyRun()`):
 | PTO | Burn-down behind pace, clear window found, buffer idle 21+ days |
 | Travel | Incomplete packing, new country trip, fitness travel gap |
 | Home | Appliances past service date, warranty expiry approaching |
+| Vehicles | Oil change due, registration/insurance/emission/safety inspection expiring, tires due |
 | Important Dates | 30/7/1-day lead times for birthdays, anniversaries, meaningful dates |
 | Fitness | Weekly target missed, zero sessions by Thu/Sat, 3+ weeks below target |
 | Financial Goals | Goal at risk given current pace and monthly contribution |
@@ -337,7 +351,9 @@ Run at 11 PM via Apps Script time trigger (`nightlyRun()`):
 VERA has a full itinerary management system covering the entire trip lifecycle.
 
 ### Itinerary Item Types
-`flight` · `train` · `cruise` · `ferry` · `hotel` · `dining` · `museum` · `beach` · `show` · `spa` · `skiing` · `snorkeling` · `theme_park` · `shopping` · `market` · `manual`
+`flight` · `train` · `cruise` · `ferry` · `hotel` · `arranged_stay` · `dining` · `museum` · `beach` · `show` · `spa` · `skiing` · `snorkeling` · `theme_park` · `shopping` · `market` · `manual`
+
+**arranged_stay** — informal stays with friends or family. Suppresses "No accommodation planned" warnings; shown in calendar view with amber colour and Arriving/Leaving labels.
 
 ### Active Travel Card
 When a trip is active, the Home tab shows a live card with:
@@ -415,12 +431,70 @@ Generate personalised activity, dining, and experience recommendations for any d
 ## Home Front Module
 
 - **Chore Checklist** — household chores by cadence (Daily/Weekly/Bi-weekly/Monthly/Quarterly/As-needed); auto-reset; checked-at timestamps
-- **Vehicle Tracker** — oil change intervals, registration expiry, insurance expiry, mileage; service history
+- **Vehicle Tracker** — oil change intervals and mileage, emission inspection expiry, safety inspection expiry, tire life (mileage-based), registration expiry, insurance expiry; service history; alerts for all expiring items
 - **Home Items** — appliances and warranties with purchase date, warranty expiry, last service, next service date; configurable service interval; auto-creates Google Calendar reminders when service is recorded
 - **Recipes** — recipe book with ingredients, cuisine, servings, prep time; one-tap add-to-shopping-list
 - **Takeout Restaurants** — favourite restaurants with cuisine, contact, rating; per-restaurant menu item ratings
 - **Shopping** — multi-store grocery/household lists; toggle purchased; recipe integration
 - **Pantry & Purchase History** — track what you buy; consumption tracking; auto-flag replenishment candidates
+
+---
+
+## Slack Integration
+
+VERA uses Slack as its real-time mobile channel, replacing Telegram. Three dedicated channels provide full two-way communication and rich notifications.
+
+### Channels
+
+| Channel | Direction | Purpose |
+|---|---|---|
+| `#vera-chat` | Bidirectional | Full chat interface — Claude-powered, executes all actions. Both Ahmed and Victoria supported via allowlist |
+| `#vera-notifications` | VERA → User | Morning briefing, hydration/break reminders, bill alerts, flag notifications |
+| `#vera-logs` | VERA → User | Nightly run summaries, errors, system status |
+
+### Features
+- **Real-time** — Slack Events API pushes messages instantly to Apps Script `doPost()`; no polling lag
+- **Block Kit formatting** — morning briefing uses rich embeds with urgency-coloured flags, Acknowledge/Snooze buttons
+- **Evening check-in** — Yes/No button prompt in #vera-chat; "Yes" prompts for activity details; "No" auto-logs skipped
+- **@mention for High urgency** — VERA @mentions Ahmed for High urgency notifications
+- **Pinned morning briefing** — each day's briefing is pinned in #vera-notifications; previous day's pin removed automatically
+- **Reaction-based actions** — ✅ acknowledge · 💤 snooze · 🔕 resolve flags directly from #vera-notifications
+- **Smart Scheduler** — upload a screenshot to #vera-chat → VERA extracts events via Claude vision → prompts for calendar choice → creates events
+- **App Home tab** — live VERA summary (flags, tasks, PTO) visible in the Slack app sidebar
+
+### Slash Commands
+| Command | Effect |
+|---|---|
+| `/flags` | Quick flag count by urgency + top flag |
+| `/tasks` | Open task count + overdue count |
+| `/pto` | Remaining PTO for Ahmed and Victoria |
+| `/status` | Last nightly run time + active flag count |
+| `/busy` | Sets busy-day mode — High + time-sensitive only for today |
+| `/light` | Sets light-day mode — all flags surfaced |
+
+### Nudges via Slack
+All hourly Anticipator nudges route to `#vera-notifications`:
+- 💧 Hydration check every ~2 hours (weekdays 8am–6pm)
+- ⏰ Desk break every ~1 hour (weekdays 9am–6pm)
+- 💰 Bill reminders (day-of and approaching due dates)
+- 🌍 Daily discovery bulletin
+- 🧘 Evening mobility check-in (interactive, in #vera-chat)
+- 📅 Weekend planner memo (Monday mornings)
+
+### Script Properties Required
+| Property | Description |
+|---|---|
+| `SLACK_BOT_TOKEN` | Bot User OAuth Token (`xoxb-...`) |
+| `SLACK_SIGNING_SECRET` | App signing secret |
+| `SLACK_CHAT_CHANNEL_ID` | #vera-chat channel ID |
+| `SLACK_NOTIFICATIONS_CHANNEL_ID` | #vera-notifications channel ID |
+| `SLACK_LOGS_CHANNEL_ID` | #vera-logs channel ID |
+| `SLACK_AHMED_USER_ID` | Ahmed's Slack user ID |
+| `SLACK_VICTORIA_USER_ID` | Victoria's Slack user ID |
+| `SLACK_ALLOWED_USER_IDS` | Comma-separated allowlist of user IDs |
+
+### Required Bot Scopes
+`chat:write` · `chat:write.public` · `channels:history` · `channels:read` · `files:read` · `reactions:read` · `commands`
 
 ---
 
@@ -466,8 +540,9 @@ The `Config` tab (columns: Setting | Value) controls all system behaviour withou
 |---|---|---|
 | `calendar_days_ahead` | `7` | Days ahead to scan Google Calendars |
 | `task_age_threshold_days` | `7` | Days before a task is flagged as neglected |
-| `skip_calendars` | — | Comma-separated calendar names to ignore |
-| `calendar_label:CalName` | — | Custom label for a specific calendar |
+| `skip_calendars` | — | Comma-separated calendar names to ignore entirely |
+| `victoria_calendars` | `Victoria` | Comma-separated calendar names belonging to Victoria; everything else defaults to Ahmed |
+| `calendar_label:CalName` | — | Custom label for a specific calendar (takes priority over victoria_calendars) |
 
 ### PTO (Ahmed)
 | Key | Default | Description |
@@ -534,9 +609,21 @@ Set in **Apps Script → Project Settings → Script Properties**.
 | Property | Description |
 |---|---|
 | `VERA_SHEET_ID` | Google Sheet ID of your Life OS sheet |
-| `MORNING_NUDGE_EMAIL` | Email address for the 7 AM morning nudge |
+| `MORNING_NUDGE_EMAIL` | Email address for the 7 AM morning nudge (fallback when Slack not configured) |
 | `CLAUDE_API_KEY` | Anthropic API key (`sk-ant-...`) |
 | `VERA_WEB_TOKEN` | Authentication token for dashboard API calls |
+
+### Slack (recommended)
+| Property | Description |
+|---|---|
+| `SLACK_BOT_TOKEN` | Bot User OAuth Token (`xoxb-...`) |
+| `SLACK_SIGNING_SECRET` | App signing secret from Basic Information |
+| `SLACK_CHAT_CHANNEL_ID` | #vera-chat channel ID (`C...`) |
+| `SLACK_NOTIFICATIONS_CHANNEL_ID` | #vera-notifications channel ID |
+| `SLACK_LOGS_CHANNEL_ID` | #vera-logs channel ID |
+| `SLACK_AHMED_USER_ID` | Ahmed's Slack member ID (`U...`) |
+| `SLACK_VICTORIA_USER_ID` | Victoria's Slack member ID |
+| `SLACK_ALLOWED_USER_IDS` | Comma-separated allowlist (`U...,U...`) |
 
 ### Optional (Feature Unlocks)
 | Property | Description |
@@ -547,8 +634,6 @@ Set in **Apps Script → Project Settings → Script Properties**.
 | `TRANSACTIONS_SHEET_ID` | Empower-format transactions sheet ID |
 | `OPENWEATHERMAP_KEY` | OpenWeatherMap API key (destination weather) |
 | `AVIATIONSTACK_KEY` | AviationStack API key (live flight status) |
-| `TELEGRAM_BOT_TOKEN` | Telegram bot token for mobile access |
-| `TELEGRAM_CHAT_ID` | Telegram chat ID for bot |
 | `VERA_SEARCH_API_KEY` | Web search API key (Serper.dev or Tavily) |
 | `VERA_SEARCH_ENGINE` | `serper` (default) or `tavily` |
 | `LIFE_PLAN_DOC_ID` | Google Doc ID for financial goals seeding |
@@ -562,14 +647,14 @@ Set in **Apps Script → Project Settings → Script Properties**.
 | **Google Calendar** | Read all calendars; create Vera calendar events (PTO suggestions, maintenance reminders) |
 | **Google Sheets** | All data storage; Config system; 50+ tabs |
 | **Google Drive** | Read resource documents; PDF-to-Google-Doc conversion; logo images |
-| **Google Gmail** | Morning nudge email; travel day briefing email |
-| **Anthropic Claude** | Flag generation; chat responses; action execution; packing lists; gift suggestions; task due date AI |
+| **Google Gmail** | Morning nudge email (fallback); travel day briefing email |
+| **Anthropic Claude** | Flag generation; chat responses; action execution; packing lists; gift suggestions; task due date AI; image vision (Smart Scheduler) |
+| **Slack** | Real-time bidirectional chat; Block Kit notifications; slash commands; Smart Scheduler image intake |
 | **AviationStack** | Real-time flight status (gate, terminal, delay, status) |
 | **OpenWeatherMap** | Destination and home city weather |
 | **AirportGap** | IATA airport code → city resolution for weather |
 | **Serper.dev** | Web search for current information (default) |
 | **Tavily** | Alternative web search provider |
-| **Telegram** | Bot webhook for on-the-go mobile access |
 | **Empower** | CSV transaction import for spending analysis |
 | **Simple Ass Tracker** | Budget sheet integration for disposable income tracking |
 
@@ -599,6 +684,11 @@ All endpoints: `GET https://script.google.com/...exec?token=TOKEN&action=ACTION`
 | `fetch_resource_content` | `id` |
 | `gym_attend` | `id`, `attended` |
 | `simulate_scenario` | `goalId`, `label`, `type`, `amount`, `frequency` |
+| `add_thought` | `text` |
+| `shelve_thought` | `id`, `category` |
+| `vehicle_tire_change` | `id`, `odometer` |
+| `vehicle_emission_inspect` | `id`, `expiry` |
+| `vehicle_safety_inspect` | `id`, `expiry` |
 
 Full endpoint list: see `WebApp.js` switch statement (100+ cases).
 
@@ -612,12 +702,13 @@ Full endpoint list: see `WebApp.js` switch statement (100+ cases).
 ├── WebApp.js                # REST API: 100+ endpoint handlers, doGet(), doPost()
 ├── Chat.js                  # Conversational AI: context builder, system prompt, 40+ action handlers
 ├── Claude.js                # Flag generation: buildPrompt(), generateFlags(), parseFlags()
-├── Calendar.js              # Google Calendar reading, event colour/RSVP tracking
+├── Calendar.js              # Google Calendar reading, event colour/RSVP tracking, calendar classification
 ├── Tasks.js                 # Task aging, overdue/neglected detection, due date suggestions
 ├── Finance.js               # Transaction pivoting, SAT budget reader, spending analysis
 ├── PTO.js                   # Vacation burn-down, 3-2-1 framework, clear windows, milestones
 ├── Summaries.js             # Auto-population of Metrics & Summaries tabs
 ├── Reminders.js             # Anticipator (hourly) + Explorer (nightly) engines
+├── Slack.js                 # Slack Events API, Block Kit notifications, slash commands, Smart Scheduler
 ├── WeekendPlanner.js        # Weekend planning & Vera calendar memos
 ├── FlightStatus.js          # AviationStack polling, rate-limited by flight window
 ├── Weather.js               # OpenWeatherMap + AirportGap integration
@@ -635,8 +726,7 @@ Full endpoint list: see `WebApp.js` switch statement (100+ cases).
 ├── Goals.js                 # Yearly goals CRUD
 ├── Projects.js              # Projects + project tasks CRUD
 ├── Shopping.js              # Shopping list CRUD
-├── Scheduler.js             # Trigger management helpers
-├── Telegram.js              # Bot webhook + async queue
+├── Scheduler.js             # Smart Scheduler: Claude vision → calendar event creation
 ├── appsscript.json          # Apps Script manifest (scopes, timezone, runtime)
 └── docs/
     └── index.html           # React SPA — full dashboard (no build step required)
@@ -649,6 +739,7 @@ Full endpoint list: see `WebApp.js` switch statement (100+ cases).
 ### Prerequisites
 - Google account with Apps Script access
 - Anthropic API key
+- Slack workspace (recommended) — or email-only fallback
 - (Optional) AviationStack, OpenWeatherMap, Serper.dev API keys
 
 ### Steps
@@ -700,6 +791,13 @@ Full endpoint list: see `WebApp.js` switch statement (100+ cases).
 
 10. **Seed initial data**
     Run `addDefaultConfigValues()` to populate the Config tab with defaults, then update values for your calendars, PTO pool, etc.
+
+11. **Set up Slack** (recommended)
+    - Create a Slack app at api.slack.com/apps → add bot scopes → install to workspace
+    - Enable Events API → set Request URL to your Apps Script deployment URL
+    - Add slash commands pointing to the same URL
+    - Run `setupSlackProperties()` in Apps Script editor to seed the Slack Script Properties
+    - Invite the VERA bot to all three channels with `/invite @VERA`
 
 ---
 
