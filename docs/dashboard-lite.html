@@ -371,7 +371,7 @@ function ShoppingTab({ stores, onToggle, onAddItem, busy }) {
         current.items.length === 0
           ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
           : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {current.items.map((item, i) => (
+              {[...current.items].sort((a, b) => a.done - b.done).map((item, i) => (
                 <div
                   key={i}
                   onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}
