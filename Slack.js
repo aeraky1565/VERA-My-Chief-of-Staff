@@ -482,7 +482,7 @@ function processSlackMessage_(event) {
   try {
     // Reuse VERA chat pipeline with Slack session key
     var sessionKey = 'slack_' + userId;
-    var result     = processChat_({ message: text, sessionId: sessionKey, senderName: userName });
+    var result     = processChat_(text, sessionKey);
     var reply      = (result && result.reply) ? result.reply : 'Sorry, something went wrong.';
 
     // Delete thinking message and post real reply
