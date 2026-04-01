@@ -111,7 +111,7 @@ function checkErgonomicBreak_(hour, isWeekday, cfg) {
   if (hour < 9 || hour >= 18) return; // Weekday 9am–6pm only
 
   // Slack/Telegram: every ~1h; Email: 3 per day max (~every 3h)
-  var cooldown = isTelegramConfigured_() ? 55 : 180;
+  var cooldown = (isSlackConfigured_() || isTelegramConfigured_()) ? 55 : 180;
   if (wasRecentlySent_('ergonomic', cooldown)) return;
 
   sendNudge_(
@@ -133,7 +133,7 @@ function checkHydration_(hour, isWeekday, cfg) {
   if (hour < 8 || hour >= 18) return; // Weekday 8am–6pm only
 
   // Slack/Telegram: every ~2h; Email: 3 per day max
-  var cooldown = isTelegramConfigured_() ? 110 : 180;
+  var cooldown = (isSlackConfigured_() || isTelegramConfigured_()) ? 110 : 180;
   if (wasRecentlySent_('hydration', cooldown)) return;
 
   sendNudge_(
