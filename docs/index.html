@@ -12352,7 +12352,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
                 color: filterStatus === s ? (s === 'Thoughts' ? '#f0a040' : '#0d1117') : (s === 'Thoughts' ? '#f0a040' : '#8ab4f8'),
                 fontWeight: filterStatus === s ? 700 : 400,
               }}>
-              {s === 'Thoughts' ? `\u{1F4AC} Thoughts${thoughts.length ? ' (' + thoughts.length + ')' : ''}` : s}
+              {s === 'Thoughts' ? '💬 Thoughts' + (thoughts.length ? ' (' + thoughts.length + ')' : '') : s}
             </button>
           ))}
         </div>
@@ -12408,7 +12408,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
             <button type="submit" disabled={busy || !form.idea.trim()}
               style={{ padding: '6px 16px', borderRadius: 6, border: 'none',
                        background: '#8ab4f8', color: '#0d1117', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>
-              \u{1F4A1} Park It
+              💡 Park It
             </button>
           </div>
         </form>
@@ -12437,7 +12437,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
                   {isThought && (
-                    <span style={{ fontSize: 12 }}>\u{1F4AC}</span>
+                    <span style={{ fontSize: 12 }}>💬</span>
                   )}
                   <span style={{ fontWeight: 600, color: '#e8eaed', fontSize: 14 }}>{idea.idea}</span>
                   {isThought ? (
@@ -12463,7 +12463,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
                   )}
                 </div>
                 {idea.tags && (
-                  <div style={{ color: '#5f6368', fontSize: 12, marginBottom: 2 }}>\u{1F3F7} {idea.tags}</div>
+                  <div style={{ color: '#5f6368', fontSize: 12, marginBottom: 2 }}>🏷 {idea.tags}</div>
                 )}
                 {idea.notes && (
                   <div style={{ color: '#9aa0a6', fontSize: 12, fontStyle: 'italic' }}>{idea.notes}</div>
@@ -12480,7 +12480,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
                     style={{ padding: '5px 12px', borderRadius: 6, border: 'none',
                              background: '#2a1a00', color: '#f0a040', cursor: 'pointer', fontSize: 12,
                              fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    \u{1F4A1} Shelve
+                    💡 Shelve
                   </button>
                   <button
                     disabled={busy}
@@ -13924,7 +13924,7 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
               onAdd={onAddIdea}
               onPromote={onPromoteIdea}
               onArchive={onArchiveIdea}
-              onShelve={handleShelveThought}
+              onShelve={onShelveIdea}
               busy={busy}
             />
       )}
@@ -15640,7 +15640,7 @@ function App() {
     setIdeas(prev => prev.map(i => i.id === id ? { ...i, status: 'New', category } : i));
     try {
       await apiGet(apiUrl, apiToken, { action: 'shelve_thought', id, category });
-      showToast('\u{1F4A1} Thought shelved as idea \u2014 ' + category);
+      showToast('💡 Thought shelved as idea — ' + category);
       loadIdeas(apiUrl, apiToken);
     } catch (err) {
       setError('Could not shelve thought: ' + err.message);
@@ -16327,6 +16327,7 @@ function App() {
                 onAddIdea={handleAddIdea}
                 onPromoteIdea={handlePromoteIdea}
                 onArchiveIdea={handleArchiveIdea}
+                onShelveIdea={handleShelveThought}
                 resources={resources}
                 resourcesLoading={!!tabLoading.resources}
                 onAddResource={handleAddResource}
