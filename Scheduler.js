@@ -160,15 +160,14 @@ function createScheduledEvents_(events, calendarName) {
 // ---- Confirmation reply handler ---------------------------------------------
 
 /**
- * Called when the user sends a text message while a pending scheduling
- * confirmation is stored in CacheService.
+ * Called when the user sends a text reply to a pending scheduling confirmation.
  * @param  {string} text    The user's reply (e.g. "1", "2", "skip")
- * @param  {string} chatId  Telegram chat ID
+ * @param  {string} userId  Slack user ID (used as the cache key)
  * @returns {string} Reply message to send back
  */
-function handleSchedulerReply_(text, chatId) {
+function handleSchedulerReply_(text, userId) {
   var cache      = CacheService.getScriptCache();
-  var pendingKey = SCHEDULER_PENDING_KEY_PREFIX + chatId;
+  var pendingKey = SCHEDULER_PENDING_KEY_PREFIX + userId;
   var pendingRaw = cache.get(pendingKey);
 
   if (!pendingRaw) {

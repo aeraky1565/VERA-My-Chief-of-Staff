@@ -360,7 +360,7 @@ function handleSlackEvent_(body) {
   }
 
   if (event.type === 'message' && event.channel === getSlackChannelId_('chat')) {
-    // Queue for async processing — Claude call can take 10–20s
+    // File upload (image for Smart Scheduler) or regular chat — both queued async
     queueSlackMessage_(event);
   }
 
@@ -464,8 +464,6 @@ function processSlackMessage_(event) {
   var text    = (event.text || '').trim();
   var channel = event.channel;
 
-  if (!text) return;
-
   // Check allowlist
   var allowed = getSlackAllowedUserIds_();
   if (allowed.length && allowed.indexOf(userId) === -1) {
@@ -473,19 +471,34 @@ function processSlackMessage_(event) {
     return;
   }
 
+  // ── Image upload → Smart Scheduler ──────────────────────────────────────
+  if (event.files && event.files.length > 0) {
+    processSlackSchedulerPhoto_(event);
+    return;
+  }
+
+  if (!text) return;
+
+  // ── Pending scheduler confirmation (user replied "1", "2", "skip") ──────
+  var cache      = CacheService.getScriptCache();
+  var pendingKey = SCHEDULER_PENDING_KEY_PREFIX + userId;
+  if (cache.get(pendingKey)) {
+    var schedulerReply = handleSchedulerReply_(text, userId);
+    sendSlackMessage_(channel, schedulerReply);
+    return;
+  }
+
   var userName = getSlackUserName_(userId) || 'Ahmed';
 
-  // Show thinking indicator
+  // ── Regular chat → Claude ────────────────────────────────────────────────
   var thinkingResult = sendSlackMessage_(channel, 'Thinking\u2026');
   var thinkingTs     = thinkingResult && thinkingResult.ts;
 
   try {
-    // Reuse VERA chat pipeline with Slack session key
     var sessionKey = 'slack_' + userId;
     var result     = processChat_(text, sessionKey);
     var reply      = (result && result.reply) ? result.reply : 'Sorry, something went wrong.';
 
-    // Delete thinking message and post real reply
     if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
     sendSlackMessage_(channel, reply);
   } catch (err) {
@@ -776,6 +789,110 @@ function sendEveningCheckinSlack_() {
   if (!channelId) return;
   var blocks = buildEveningCheckinBlocks_();
   sendSlackMessage_(channelId, 'Evening check-in', blocks);
+}
+
+// ─── SMART SCHEDULER — Slack image intake ────────────────────────────────────
+
+/**
+ * Downloads a Slack private file URL using the bot token.
+ * Requires files:read scope.
+ * @param  {string} url  url_private_download from the Slack files object
+ * @returns {Byte[]|null}
+ */
+function downloadSlackFile_(url) {
+  var token = getSlackToken_();
+  try {
+    var resp = UrlFetchApp.fetch(url, {
+      headers:            { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true,
+    });
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('downloadSlackFile_: failed (' + resp.getResponseCode() + ')');
+      return null;
+    }
+    return resp.getContent();
+  } catch (err) {
+    Logger.log('downloadSlackFile_ exception: ' + err.message);
+    return null;
+  }
+}
+
+/**
+ * Handles an image uploaded to #vera-chat.
+ * Downloads → Claude vision → prompts user for calendar choice.
+ * @param {Object} event  Slack message event with event.files array
+ */
+function processSlackSchedulerPhoto_(event) {
+  var channel = event.channel;
+  var userId  = event.user;
+  var file    = event.files[0];
+
+  // Only process images
+  var mimeType = file.mimetype || 'image/jpeg';
+  if (mimeType.indexOf('image/') !== 0) {
+    sendSlackMessage_(channel, 'I can only process images for scheduling. Please send a photo or screenshot with dates.');
+    return;
+  }
+
+  // Dedup — same file ID within 24h skipped
+  if (file.id) {
+    var props    = PropertiesService.getScriptProperties();
+    var dedupKey = 'SCHED_SLACK_' + file.id;
+    var lastSeen = parseInt(props.getProperty(dedupKey) || '0', 10);
+    if (Date.now() - lastSeen < 86400000) {
+      sendSlackMessage_(channel, '📷 This image was already processed recently. Send a new screenshot to process it again.');
+      return;
+    }
+    props.setProperty(dedupKey, String(Date.now()));
+  }
+
+  var thinkingResult = sendSlackMessage_(channel, '📷 Analyzing image\u2026');
+  var thinkingTs     = thinkingResult && thinkingResult.ts;
+
+  try {
+    var downloadUrl = file.url_private_download || file.url_private;
+    var bytes       = downloadSlackFile_(downloadUrl);
+    if (!bytes) {
+      if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+      sendSlackMessage_(channel, 'Sorry, I couldn\'t download that image. Please try again.');
+      return;
+    }
+
+    var base64 = Utilities.base64Encode(bytes);
+    var events = extractEventsFromImage_(base64, mimeType);
+
+    if (!events || events.length === 0) {
+      if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+      sendSlackMessage_(channel, '🔍 I couldn\'t find any dates or events in that image. Try sending a clearer screenshot with visible dates.');
+      return;
+    }
+
+    // Store pending state keyed by userId so the next reply is routed correctly
+    var cache      = CacheService.getScriptCache();
+    var pendingKey = SCHEDULER_PENDING_KEY_PREFIX + userId;
+    cache.put(pendingKey, JSON.stringify({ events: events }), SCHEDULER_PENDING_TTL);
+
+    var cfg  = readSchedulerConfig_();
+    var cals = cfg.schedulerCalendars;
+
+    var lines = ['📅 Found ' + events.length + ' event' + (events.length > 1 ? 's' : '') + ':\n'];
+    events.forEach(function(ev, idx) {
+      lines.push((idx + 1) + '. ' + ev.title + ' — ' + ev.date + (ev.allDay === false ? '' : ' (all day)'));
+    });
+    lines.push('\nWhich calendar?');
+    cals.forEach(function(name, idx) {
+      lines.push((idx + 1) + '. ' + name);
+    });
+    lines.push('\nReply with the number, or "skip" to cancel.');
+
+    if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+    sendSlackMessage_(channel, lines.join('\n'));
+
+  } catch (err) {
+    Logger.log('processSlackSchedulerPhoto_ error: ' + err.message);
+    if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+    sendSlackMessage_(channel, 'Sorry, something went wrong processing your image: ' + err.message);
+  }
 }
 
 // ─── SETUP HELPER ────────────────────────────────────────────────────────────
