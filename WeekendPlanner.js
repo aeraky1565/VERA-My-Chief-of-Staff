@@ -8,8 +8,8 @@
 //   THE CONTRAST   — rest/recharge (weighted if high intensity)
 //   THE PROTOTYPE  — new experience not in Interest Ledger
 //
-// DELIVERY (dual channel):
-//   1. Telegram push (if configured) or email — Monday morning
+// DELIVERY:
+//   1. Slack (#vera-notifications) or email — Monday morning
 //   2. All-day Google Calendar event on the upcoming Saturday
 //
 // SETUP:
@@ -54,9 +54,8 @@ function runWeekendPlanner_() {
 
   var today          = new Date();
   var lookAheadDays  = parseInt(cfg['weekend_planner_lookahead_days'] || '21', 10);
-  var isTelegram     = isTelegramConfigured_();
 
-  Logger.log('runWeekendPlanner_: lookAheadDays=' + lookAheadDays + ', isTelegram=' + isTelegram);
+  Logger.log('runWeekendPlanner_: lookAheadDays=' + lookAheadDays);
 
   // ---- Gather data -----------------------------------------------------------
   var ptoCfg    = readPTOConfig_();
@@ -88,21 +87,19 @@ function runWeekendPlanner_() {
     goals:     goals,
     ledger:    ledger,
     ptoStats:  ptoStats,
-    isTelegram: isTelegram,
     today:     today,
   });
 
-  var memo = callClaudeWeekendPlanner_(prompt, isTelegram);
+  var memo = callClaudeWeekendPlanner_(prompt);
   if (!memo) {
     Logger.log('runWeekendPlanner_: no memo returned from Claude, aborting');
     return;
   }
 
   // ---- Deliver ---------------------------------------------------------------
-  // 1. Telegram/email push
-  var message = isTelegram ? formatWeekendMemoForTelegram_(memo) : memo;
-  sendNudge_('weekend_planner', 'VERA Weekend Memo', message);
-  Logger.log('runWeekendPlanner_: nudge sent (' + message.length + ' chars)');
+  // 1. Slack / email push
+  sendNudge_('weekend_planner', 'VERA Weekend Memo', memo);
+  Logger.log('runWeekendPlanner_: nudge sent (' + memo.length + ' chars)');
 
   // 2. Calendar event on upcoming Saturday (full memo in description)
   var saturday = (windows.length > 0 && windows[0].weekendStart)
@@ -372,34 +369,25 @@ function buildWeekendPlannerPrompt_(ctx) {
   var sat = computeNextSaturday_(ctx.today);
   var satStr = Utilities.formatDate(sat, tz, 'MMM d');
 
-  var outputInstructions;
-  if (ctx.isTelegram) {
-    outputInstructions =
-      'Generate a SHORT Weekend Memo (max 180 words, plain text, no headers, no markdown).\n' +
-      'Lead with VERA RECOMMENDS. One sentence each for Extension, Contrast, Prototype.\n' +
-      'Start with: "Weekend — ' + satStr + ':"\n' +
-      'Be specific — name real goals, real interests, real dates.';
-  } else {
-    outputInstructions =
-      'Generate a "Weekend Decision Memo" with exactly this structure:\n\n' +
-      'Weekend Memo — ' + satStr + '\n\n' +
-      'THE EXTENSION\n' +
-      'One specific weekend idea anchored to an active goal or in-progress task.\n' +
-      'Name the goal. Name the activity. Say why this specific weekend.\n\n' +
-      'THE CONTRAST\n' +
-      (ctx.intensity.level === 'high'
-        ? 'Suggest Zero-Input (nature, quiet, no agenda). Ahmed needs to recharge.\n'
-        : 'Social but low-effort option. ') +
-      'Be direct: "You need [X] because [Y]."\n\n' +
-      'THE PROTOTYPE\n' +
-      'One new city, neighbourhood, or experience NOT already in the Interest Ledger.\n' +
-      'Brief and evocative. Why this place? Why now?\n\n' +
-      'VERA RECOMMENDS\n' +
-      'One sentence — which of the three, and why, for this specific week.\n\n' +
-      'Rules: no bullets, no markdown headers, no code fences.\n' +
-      '2-4 sentences per section. Total: 250-350 words.\n' +
-      'Specific — name real goals, real interests, real dates.';
-  }
+  var outputInstructions =
+    'Generate a "Weekend Decision Memo" with exactly this structure:\n\n' +
+    'Weekend Memo — ' + satStr + '\n\n' +
+    'THE EXTENSION\n' +
+    'One specific weekend idea anchored to an active goal or in-progress task.\n' +
+    'Name the goal. Name the activity. Say why this specific weekend.\n\n' +
+    'THE CONTRAST\n' +
+    (ctx.intensity.level === 'high'
+      ? 'Suggest Zero-Input (nature, quiet, no agenda). Ahmed needs to recharge.\n'
+      : 'Social but low-effort option. ') +
+    'Be direct: "You need [X] because [Y]."\n\n' +
+    'THE PROTOTYPE\n' +
+    'One new city, neighbourhood, or experience NOT already in the Interest Ledger.\n' +
+    'Brief and evocative. Why this place? Why now?\n\n' +
+    'VERA RECOMMENDS\n' +
+    'One sentence — which of the three, and why, for this specific week.\n\n' +
+    'Rules: no bullets, no markdown headers, no code fences.\n' +
+    '2-4 sentences per section. Total: 250-350 words.\n' +
+    'Specific — name real goals, real interests, real dates.';
 
   // ---- Assemble --------------------------------------------------------------
   return [
@@ -439,15 +427,14 @@ function buildWeekendPlannerPrompt_(ctx) {
 /**
  * Calls Claude to generate the Weekend Decision Memo.
  *
- * @param {string}  prompt
- * @param {boolean} isTelegram - true → 600 max_tokens (short), false → 1200 (full memo)
+ * @param {string} prompt
  * @returns {string|null}
  */
-function callClaudeWeekendPlanner_(prompt, isTelegram) {
+function callClaudeWeekendPlanner_(prompt) {
   var apiKey = getApiKey();
   var requestBody = {
     model:      CLAUDE_MODEL,
-    max_tokens: isTelegram ? 600 : 1200,
+    max_tokens: 1200,
     messages:   [{ role: 'user', content: prompt }],
   };
 
@@ -479,18 +466,6 @@ function callClaudeWeekendPlanner_(prompt, isTelegram) {
 // DELIVERY — Format + Calendar
 // ============================================================
 
-/**
- * Trims a full memo to ≤480 chars for Telegram. Safety net —
- * Claude is already instructed to write short for Telegram.
- *
- * @param {string} fullMemo
- * @returns {string}
- */
-function formatWeekendMemoForTelegram_(fullMemo) {
-  if (!fullMemo) return '';
-  if (fullMemo.length <= 480) return fullMemo;
-  return fullMemo.substring(0, 477) + '…';
-}
 
 /**
  * Creates an all-day Google Calendar event on saturdayDate
@@ -691,7 +666,7 @@ function testWeekendPlannerPrompt() {
   var prompt = buildWeekendPlannerPrompt_({
     windows: windows, events: events, tasks: tasks,
     intensity: intensity, goals: goals, ledger: ledger,
-    ptoStats: ptoStats, isTelegram: false, today: today,
+    ptoStats: ptoStats, today: today,
   });
   Logger.log('PROMPT (' + prompt.length + ' chars):\n' + prompt);
   Logger.log('=== testWeekendPlannerPrompt: END ===');

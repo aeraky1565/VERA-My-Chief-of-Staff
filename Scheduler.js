@@ -4,11 +4,10 @@
 // ============================================================
 //
 // HOW IT WORKS:
-//   1. User sends a photo/screenshot to the VERA Telegram bot
-//   2. VERA downloads the image from Telegram's CDN
-//   3. Sends it to Claude's vision API to extract dates + events
-//   4. Shows extracted events and asks which calendar to use
-//   5. User replies 1 or 2 → VERA creates the all-day events
+//   1. User sends a photo/screenshot (future: via Slack file upload)
+//   2. VERA sends the image to Claude's vision API to extract dates + events
+//   3. Shows extracted events and asks which calendar to use
+//   4. User replies 1 or 2 → VERA creates the all-day events
 //
 // NO NEW SCRIPT PROPERTIES needed.
 // Optional Config tab row: scheduler_calendars | Vera,AE&VV - Our Joint Chaos
@@ -53,49 +52,6 @@ function readSchedulerConfig_() {
     Logger.log('Scheduler: could not read config: ' + e.message);
   }
   return { schedulerCalendars: ['Vera', 'AE&VV - Our Joint Chaos'] };
-}
-
-// ---- Photo download ---------------------------------------------------------
-
-/**
- * Downloads a Telegram photo by file_id and returns it as base64.
- * Uses two Telegram API calls: getFile (get path) → download (get bytes).
- * @param  {string} fileId  The Telegram file_id from the photo array
- * @returns {{base64: string, mimeType: string}|null}
- */
-function downloadTelegramPhoto_(fileId) {
-  var token = getTelegramToken_();
-
-  // Step 1: resolve file_id → file_path on Telegram's CDN
-  var getFileUrl = TELEGRAM_API_BASE + token + '/getFile?file_id=' + encodeURIComponent(fileId);
-  var fileResp   = UrlFetchApp.fetch(getFileUrl, { muteHttpExceptions: true });
-  if (fileResp.getResponseCode() !== 200) {
-    Logger.log('Scheduler: getFile failed (' + fileResp.getResponseCode() + ')');
-    return null;
-  }
-  var fileJson = JSON.parse(fileResp.getContentText());
-  if (!fileJson.ok || !fileJson.result || !fileJson.result.file_path) {
-    Logger.log('Scheduler: getFile returned no file_path');
-    return null;
-  }
-  var filePath = fileJson.result.file_path;
-
-  // Step 2: download the actual bytes
-  var dlUrl  = 'https://api.telegram.org/file/bot' + token + '/' + filePath;
-  var dlResp = UrlFetchApp.fetch(dlUrl, { muteHttpExceptions: true });
-  if (dlResp.getResponseCode() !== 200) {
-    Logger.log('Scheduler: photo download failed (' + dlResp.getResponseCode() + ')');
-    return null;
-  }
-
-  // Infer MIME type from the file extension
-  var ext      = filePath.split('.').pop().toLowerCase();
-  var mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-
-  return {
-    base64:   Utilities.base64Encode(dlResp.getContent()),
-    mimeType: mimeType,
-  };
 }
 
 // ---- Claude vision extraction -----------------------------------------------
@@ -261,96 +217,6 @@ function handleSchedulerReply_(text, chatId) {
   return lines.join('\n').trim() || 'Done.';
 }
 
-// ---- Main photo entry point -------------------------------------------------
-
-/**
- * Entry point called from processTelegramUpdate_() when a photo message arrives.
- * Downloads → extracts → stores pending state → prompts for calendar choice.
- * @param {Object} msg    Telegram message object (with .photo array)
- * @param {string} chatId Telegram chat ID
- */
-function processSchedulerPhoto_(msg, chatId, hasPhoto) {
-  // Use the highest-resolution photo when sent as a photo; fall back to document for
-  // images shared as files (e.g. iPhone screenshots sent via "File" in Telegram).
-  var fileId = hasPhoto
-    ? msg.photo[msg.photo.length - 1].file_id
-    : msg.document.file_id;
-
-  // Dedup: Telegram's file_unique_id is stable per unique photo across all bots.
-  // If the same photo was submitted within the last 24 hours, skip processing to
-  // prevent duplicate Claude vision calls and duplicate sheet row writes.
-  var fileUniqueId = hasPhoto
-    ? (msg.photo[msg.photo.length - 1].file_unique_id || '')
-    : (msg.document ? (msg.document.file_unique_id || '') : '');
-  if (fileUniqueId) {
-    var dedupKey  = 'SCHED_PHOTO_' + fileUniqueId;
-    var props     = PropertiesService.getScriptProperties();
-    var lastSeen  = parseInt(props.getProperty(dedupKey) || '0', 10);
-    if (Date.now() - lastSeen < 86400000) {  // 24-hour dedup window
-      Logger.log('Scheduler: photo ' + fileUniqueId + ' already processed within 24h — skipping duplicate.');
-      sendTelegramMessage_(chatId, '📷 This image was already processed recently. If you need to re-process it, wait 24 hours or send a new screenshot.');
-      return;
-    }
-    props.setProperty(dedupKey, String(Date.now()));
-  }
-
-  var thinkingId = sendTelegramMessage_(chatId, '📷 Analyzing image...');
-
-  try {
-    // Download from Telegram CDN
-    var photoData = downloadTelegramPhoto_(fileId);
-    if (!photoData) {
-      var dlErr = 'Sorry, I couldn\'t download that image. Please try again.';
-      if (thinkingId) editTelegramMessage_(chatId, thinkingId, dlErr);
-      else sendTelegramMessage_(chatId, dlErr);
-      return;
-    }
-
-    // Extract events via Claude vision
-    var events = extractEventsFromImage_(photoData.base64, photoData.mimeType);
-
-    if (!events || events.length === 0) {
-      var noEvMsg = '🔍 I couldn\'t find any dates or events in that image.\n' +
-                    'Try sending a clearer photo or screenshot with visible dates.';
-      if (thinkingId) editTelegramMessage_(chatId, thinkingId, noEvMsg);
-      else sendTelegramMessage_(chatId, noEvMsg);
-      return;
-    }
-
-    // Store events in cache, waiting for user's calendar choice
-    var cache      = CacheService.getScriptCache();
-    var pendingKey = SCHEDULER_PENDING_KEY_PREFIX + chatId;
-    cache.put(pendingKey, JSON.stringify({ events: events }), SCHEDULER_PENDING_TTL);
-
-    // Build the confirmation prompt
-    var cfg  = readSchedulerConfig_();
-    var cals = cfg.schedulerCalendars;
-
-    var lines = [
-      '📅 Found ' + events.length + ' event' + (events.length > 1 ? 's' : '') + ' in your image:\n',
-    ];
-    events.forEach(function(ev, idx) {
-      lines.push((idx + 1) + '. ' + ev.title + ' — ' + ev.date +
-                 (ev.allDay === false ? '' : ' (all day)'));
-    });
-    lines.push('\nWhich calendar?');
-    cals.forEach(function(name, idx) {
-      lines.push((idx + 1) + '\ufe0f\u20e3  ' + name);
-    });
-    lines.push('\nReply with the number, or "skip" to cancel.');
-
-    var confirmMsg = lines.join('\n');
-    if (thinkingId) editTelegramMessage_(chatId, thinkingId, confirmMsg);
-    else sendTelegramMessage_(chatId, confirmMsg);
-
-  } catch (e) {
-    Logger.log('Scheduler: processSchedulerPhoto_ error: ' + e.message + '\n' + e.stack);
-    var catchMsg = 'Sorry, something went wrong processing your image: ' + e.message;
-    if (thinkingId) editTelegramMessage_(chatId, thinkingId, catchMsg);
-    else sendTelegramMessage_(chatId, catchMsg);
-  }
-}
-
 // ---- Test -------------------------------------------------------------------
 
 /**
@@ -360,5 +226,5 @@ function processSchedulerPhoto_(msg, chatId, hasPhoto) {
 function testScheduler() {
   var cfg = readSchedulerConfig_();
   Logger.log('Scheduler calendars: ' + cfg.schedulerCalendars.join(', '));
-  Logger.log('testScheduler OK — send a photo to your Telegram bot to test the full flow.');
+  Logger.log('testScheduler OK — calendar list loaded successfully.');
 }

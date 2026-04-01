@@ -4,9 +4,8 @@
 // ============================================================
 //
 // DELIVERY:
-//   sendNudge_() tries Telegram first (if TELEGRAM_ALLOWED_CHAT_ID is set),
+//   sendNudge_() routes to Slack (#vera-notifications) if SLACK_BOT_TOKEN is set,
 //   falls back to email (CONFIG.MORNING_NUDGE_EMAIL) if not.
-//   Switch channels by setting TELEGRAM_ALLOWED_CHAT_ID in Script Properties.
 //
 // STATE:
 //   Every sent reminder is logged to the 'Reminders Memory' sheet tab.
@@ -110,8 +109,8 @@ function checkErgonomicBreak_(hour, isWeekday, cfg) {
   if (!isWeekday) return;
   if (hour < 9 || hour >= 18) return; // Weekday 9am–6pm only
 
-  // Slack/Telegram: every ~1h; Email: 3 per day max (~every 3h)
-  var cooldown = (isSlackConfigured_() || isTelegramConfigured_()) ? 55 : 180;
+  // Slack: every ~1h; Email: 3 per day max (~every 3h)
+  var cooldown = isSlackConfigured_() ? 55 : 180;
   if (wasRecentlySent_('ergonomic', cooldown)) return;
 
   sendNudge_(
@@ -132,8 +131,8 @@ function checkHydration_(hour, isWeekday, cfg) {
   if (!isWeekday) return;
   if (hour < 8 || hour >= 18) return; // Weekday 8am–6pm only
 
-  // Slack/Telegram: every ~2h; Email: 3 per day max
-  var cooldown = (isSlackConfigured_() || isTelegramConfigured_()) ? 110 : 180;
+  // Slack: every ~2h; Email: 3 per day max
+  var cooldown = isSlackConfigured_() ? 110 : 180;
   if (wasRecentlySent_('hydration', cooldown)) return;
 
   sendNudge_(
@@ -160,8 +159,8 @@ function checkCalendarOpportunity_(now, hour, isWeekday, cfg) {
   var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
   var ruleKey = 'cal_opp_' + dateStr + '_' + hour;
 
-  // Email mode: max once per 3h slot; Telegram: once per 90min
-  var cooldown = isTelegramConfigured_() ? 90 : 180;
+  // Slack: once per 90min; Email: max once per 3h slot
+  var cooldown = isSlackConfigured_() ? 90 : 180;
   if (wasRecentlySent_(ruleKey, cooldown)) return;
 
   // Find a ≥90-minute free window starting from now
@@ -654,16 +653,13 @@ function callClaudeExplorer_(prompt) {
 }
 
 // ============================================================
-// DELIVERY — dual channel (Telegram now, email fallback)
+// DELIVERY — Slack (#vera-notifications) or email fallback
 // ============================================================
 
 /**
- * Sends a nudge message via Telegram (if TELEGRAM_ALLOWED_CHAT_ID is set)
- * or plain-text email (fallback when Telegram isn't configured).
+ * Sends a nudge message via Slack (#vera-notifications) if configured,
+ * or plain-text email fallback (CONFIG.MORNING_NUDGE_EMAIL).
  * Always records the send to the Reminders Memory tab via markSent_().
- *
- * To switch from email to Telegram: set TELEGRAM_ALLOWED_CHAT_ID in
- * Script Properties — no code change or redeploy needed.
  *
  * @param {string} ruleKey - Unique key for this reminder (used for dedup)
  * @param {string} subject - Email subject line (also used as log label)
@@ -673,9 +669,6 @@ function sendNudge_(ruleKey, subject, message) {
   if (isSlackConfigured_()) {
     sendSlackNotification_(message);
     Logger.log('sendNudge_ [Slack]: ' + ruleKey);
-  } else if (getTelegramAllowedChatId_()) {
-    sendTelegramMessage_(getTelegramAllowedChatId_(), message);
-    Logger.log('sendNudge_ [Telegram]: ' + ruleKey);
   } else {
     MailApp.sendEmail(
       CONFIG.MORNING_NUDGE_EMAIL,
@@ -686,14 +679,6 @@ function sendNudge_(ruleKey, subject, message) {
     Logger.log('sendNudge_ [Email]: ' + ruleKey);
   }
   markSent_(ruleKey, message);
-}
-
-/**
- * Returns true if Slack is configured (preferred channel).
- * Falls back to Telegram check for backward compatibility.
- */
-function isTelegramConfigured_() {
-  return isSlackConfigured_() || !!(getTelegramAllowedChatId_());
 }
 
 // ============================================================

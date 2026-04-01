@@ -288,7 +288,7 @@ function doGet(e) {
   }
 }
 
-// ---- doPost — Telegram webhook + write operations --------------------------
+// ---- doPost — Slack webhook + write operations -----------------------------
 
 function doPost(e) {
   // ── Slack form-encoded payloads (interactive components + slash commands) ──
@@ -313,25 +313,6 @@ function doPost(e) {
   // Return 200 immediately; chat messages are queued async via processSlackQueue_.
   if (body && body.type === 'event_callback') {
     return handleSlackEvent_(body);
-  }
-
-  // ── Telegram (kept until Phase 2 removal) ────────────────────────────────
-  if (body && body.update_id !== undefined) {
-    try {
-      var sc  = CacheService.getScriptCache();
-      var qId = String(body.update_id);
-      sc.put('TG_Q_' + qId, JSON.stringify(body), 120);
-      var existing = sc.get('TG_Q_IDS') || '';
-      sc.put('TG_Q_IDS', existing ? existing + ',' + qId : qId, 120);
-      ScriptApp.getProjectTriggers().forEach(function(t) {
-        if (t.getHandlerFunction() === 'processTelegramQueue_') ScriptApp.deleteTrigger(t);
-      });
-      ScriptApp.newTrigger('processTelegramQueue_').timeBased().after(100).create();
-    } catch (qErr) {
-      Logger.log('Queue fallback (sync): ' + qErr.message);
-      try { processTelegramUpdate_(body); } catch (e) { Logger.log('Sync error: ' + e.message); }
-    }
-    return jsonOut_({ ok: true });
   }
 
   // VERA dashboard actions require auth
