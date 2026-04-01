@@ -110,7 +110,7 @@ function checkErgonomicBreak_(hour, isWeekday, cfg) {
   if (!isWeekday) return;
   if (hour < 9 || hour >= 18) return; // Weekday 9am–6pm only
 
-  // Email mode: 3 per day max (~every 3h); Telegram: every ~1h
+  // Slack/Telegram: every ~1h; Email: 3 per day max (~every 3h)
   var cooldown = isTelegramConfigured_() ? 55 : 180;
   if (wasRecentlySent_('ergonomic', cooldown)) return;
 
@@ -132,7 +132,7 @@ function checkHydration_(hour, isWeekday, cfg) {
   if (!isWeekday) return;
   if (hour < 8 || hour >= 18) return; // Weekday 8am–6pm only
 
-  // Email mode: 3 per day max; Telegram: every ~2h
+  // Slack/Telegram: every ~2h; Email: 3 per day max
   var cooldown = isTelegramConfigured_() ? 110 : 180;
   if (wasRecentlySent_('hydration', cooldown)) return;
 
@@ -246,12 +246,19 @@ function checkEveningMobility_(now, hour, cfg) {
 
   if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
 
-  sendNudge_(
-    ruleKey,
-    'Evening mobility check',
-    '🧘 Evening check-in: did you get your mobility or movement session in today?\n\n' +
-    'Even 10 minutes of stretching counts. Make it happen before the night winds down!'
-  );
+  // Evening check-in goes to #vera-chat (bidirectional) with Yes/No buttons when Slack is configured
+  if (isSlackConfigured_()) {
+    sendEveningCheckinSlack_();
+    markSent_(ruleKey, 'evening_checkin');
+    Logger.log('sendNudge_ [Slack chat]: ' + ruleKey);
+  } else {
+    sendNudge_(
+      ruleKey,
+      'Evening mobility check',
+      '🧘 Evening check-in: did you get your mobility or movement session in today?\n\n' +
+      'Even 10 minutes of stretching counts. Make it happen before the night winds down!'
+    );
+  }
 }
 
 // ---- Rule: Bills due soon (Issue #24) -------------------------------------
@@ -663,13 +670,13 @@ function callClaudeExplorer_(prompt) {
  * @param {string} message - Message body
  */
 function sendNudge_(ruleKey, subject, message) {
-  var chatId = getTelegramAllowedChatId_();
-  if (chatId) {
-    // Telegram is configured — preferred channel
-    sendTelegramMessage_(chatId, message);
+  if (isSlackConfigured_()) {
+    sendSlackNotification_(message);
+    Logger.log('sendNudge_ [Slack]: ' + ruleKey);
+  } else if (getTelegramAllowedChatId_()) {
+    sendTelegramMessage_(getTelegramAllowedChatId_(), message);
     Logger.log('sendNudge_ [Telegram]: ' + ruleKey);
   } else {
-    // Fallback: plain-text email (no HTML, no logo — just a quick nudge)
     MailApp.sendEmail(
       CONFIG.MORNING_NUDGE_EMAIL,
       'VERA: ' + subject,
@@ -682,11 +689,11 @@ function sendNudge_(ruleKey, subject, message) {
 }
 
 /**
- * Returns true if TELEGRAM_ALLOWED_CHAT_ID is set in Script Properties.
- * Used by rules to choose the appropriate cooldown interval.
+ * Returns true if Slack is configured (preferred channel).
+ * Falls back to Telegram check for backward compatibility.
  */
 function isTelegramConfigured_() {
-  return !!(getTelegramAllowedChatId_());
+  return isSlackConfigured_() || !!(getTelegramAllowedChatId_());
 }
 
 // ============================================================

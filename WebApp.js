@@ -291,6 +291,12 @@ function doGet(e) {
 // ---- doPost — Telegram webhook + write operations --------------------------
 
 function doPost(e) {
+  // ── Slack form-encoded payloads (interactive components + slash commands) ──
+  // These arrive as application/x-www-form-urlencoded, not JSON.
+  if (e.parameter && (e.parameter.payload || e.parameter.command)) {
+    return handleSlackFormPost_(e);
+  }
+
   let body;
   try {
     body = JSON.parse(e.postData.contents);
@@ -298,28 +304,30 @@ function doPost(e) {
     return errOut_('Invalid JSON body: ' + parseErr.message);
   }
 
-  // Telegram sends webhook POSTs without a token — detect by update_id field.
-  // processTelegramUpdate_ sends "⏳ Thinking..." immediately via UrlFetchApp so
-  // the user sees instant feedback, then edits the message with Claude's real answer.
-  // Deduplication (CacheService) inside processTelegramUpdate_ prevents retry loops.
+  // ── Slack URL verification challenge (one-time, when Events API URL is saved) ──
+  if (body && body.type === 'url_verification') {
+    return ContentService.createTextOutput(body.challenge);
+  }
+
+  // ── Slack Events API (message, reaction_added, app_home_opened) ──
+  // Return 200 immediately; chat messages are queued async via processSlackQueue_.
+  if (body && body.type === 'event_callback') {
+    return handleSlackEvent_(body);
+  }
+
+  // ── Telegram (kept until Phase 2 removal) ────────────────────────────────
   if (body && body.update_id !== undefined) {
-    // Return 200 OK immediately so Telegram never times out waiting for Claude.
-    // Queue the update in ScriptCache and fire a one-shot trigger to process it.
-    // Without this, the 10-20s Claude call causes Telegram to retry the delivery,
-    // creating concurrent executions that result in a 302 on the next message.
     try {
       var sc  = CacheService.getScriptCache();
       var qId = String(body.update_id);
       sc.put('TG_Q_' + qId, JSON.stringify(body), 120);
       var existing = sc.get('TG_Q_IDS') || '';
       sc.put('TG_Q_IDS', existing ? existing + ',' + qId : qId, 120);
-      // One trigger at a time — delete any existing queue trigger first
       ScriptApp.getProjectTriggers().forEach(function(t) {
         if (t.getHandlerFunction() === 'processTelegramQueue_') ScriptApp.deleteTrigger(t);
       });
       ScriptApp.newTrigger('processTelegramQueue_').timeBased().after(100).create();
     } catch (qErr) {
-      // Fallback: process synchronously if queuing/trigger creation fails
       Logger.log('Queue fallback (sync): ' + qErr.message);
       try { processTelegramUpdate_(body); } catch (e) { Logger.log('Sync error: ' + e.message); }
     }
