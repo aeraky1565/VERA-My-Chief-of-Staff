@@ -240,9 +240,12 @@ function doGet(e) {
       case 'get_vehicles':          return jsonOut_(webGetVehicles_());
       case 'add_vehicle':           return jsonOut_(webAddVehicle_(e));
       case 'delete_vehicle':        return jsonOut_(webDeleteVehicle_(e));
-      case 'vehicle_oil_change':    return jsonOut_(webRecordVehicleOilChange_(e));
-      case 'vehicle_service':       return jsonOut_(webRecordVehicleService_(e));
-      case 'vehicle_mileage':       return jsonOut_(webUpdateVehicleMileage_(e));
+      case 'vehicle_oil_change':        return jsonOut_(webRecordVehicleOilChange_(e));
+      case 'vehicle_service':           return jsonOut_(webRecordVehicleService_(e));
+      case 'vehicle_mileage':           return jsonOut_(webUpdateVehicleMileage_(e));
+      case 'vehicle_tire_change':       return jsonOut_(webRecordVehicleTireChange_(e));
+      case 'vehicle_emission_inspect':  return jsonOut_(webRecordVehicleInspection_(e, 'Emission Inspection Expiry'));
+      case 'vehicle_safety_inspect':    return jsonOut_(webRecordVehicleInspection_(e, 'Safety Inspection Expiry'));
       // Traveler Profiles + Visa Check — Travel tab (Issue #123)
       case 'get_profiles':          return jsonOut_(webGetProfiles_());
       case 'save_profile':          return jsonOut_(webSaveProfile_(e.parameter));
@@ -6224,12 +6227,18 @@ function vehicleRowToObj_(hdrs, row) {
     return Math.round((d - today) / 86400000);
   }
   obj.nextOilChangeMileage = (parseFloat(obj['Last Oil Change Mileage']) || 0) + (parseFloat(obj['Oil Interval (mi)']) || 0);
-  obj.milesUntilOilChange  = obj.nextOilChangeMileage - (parseFloat(obj['Current Mileage']) || 0);
-  obj.registrationDays     = daysDiff(obj['Registration Expiry']);
-  obj.insuranceDays        = daysDiff(obj['Insurance Expiry']);
-  obj.warrantyB2bDays      = daysDiff(obj['Warranty Expiry (B2B)']);
+  obj.milesUntilOilChange    = obj.nextOilChangeMileage - (parseFloat(obj['Current Mileage']) || 0);
+  obj.registrationDays       = daysDiff(obj['Registration Expiry']);
+  obj.insuranceDays          = daysDiff(obj['Insurance Expiry']);
+  obj.warrantyB2bDays        = daysDiff(obj['Warranty Expiry (B2B)']);
   obj.warrantyPowertrainDays = daysDiff(obj['Warranty Expiry (Powertrain)']);
-  obj.serviceDays          = daysDiff(obj['Next Service']);
+  obj.serviceDays            = daysDiff(obj['Next Service']);
+  obj.emissionDays           = daysDiff(obj['Emission Inspection Expiry']);
+  obj.safetyDays             = daysDiff(obj['Safety Inspection Expiry']);
+  obj.nextTireChangeMileage  = (parseFloat(obj['Tires Last Replaced Mileage']) || 0) + (parseFloat(obj['Tire Interval (mi)']) || 0);
+  obj.milesUntilTireChange   = obj['Tires Last Replaced Mileage']
+    ? obj.nextTireChangeMileage - (parseFloat(obj['Current Mileage']) || 0)
+    : null;
   return obj;
 }
 
@@ -6352,6 +6361,69 @@ function webUpdateVehicleMileage_(e) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() !== id) continue;
     sheet.getRange(i + 1, hdrs.indexOf('Current Mileage') + 1).setValue(mileage);
+    var updatedRows = sheet.getDataRange().getValues();
+    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// ---- Vehicle Enrichment — Issue #140 ----------------------------------------
+
+function webRecordVehicleTireChange_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  var currentMileage = parseFloat(p.currentMileage || 0);
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    var today   = new Date();
+    var tz      = Session.getScriptTimeZone();
+    var todayFmt = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+    sheet.getRange(i + 1, hdrs.indexOf('Tires Last Replaced Date')    + 1).setValue(todayFmt);
+    sheet.getRange(i + 1, hdrs.indexOf('Tires Last Replaced Mileage') + 1).setValue(currentMileage);
+    sheet.getRange(i + 1, hdrs.indexOf('Current Mileage')             + 1).setValue(currentMileage);
+    // Calendar reminder at ~75% of tire interval
+    try {
+      var interval   = parseFloat(rows[i][hdrs.indexOf('Tire Interval (mi)')]) || 50000;
+      var nickname   = rows[i][hdrs.indexOf('Nickname')] || 'Vehicle';
+      var reminderMs = today.getTime() + Math.round(interval * 0.75 / 15000) * 30 * 24 * 60 * 60 * 1000;
+      CalendarApp.getDefaultCalendar().createAllDayEvent(
+        nickname + ' Tires Check (~' + Math.round(currentMileage + interval) + ' mi)',
+        new Date(reminderMs)
+      );
+    } catch(calErr) { /* non-fatal */ }
+    var updatedRows = sheet.getDataRange().getValues();
+    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+/**
+ * Records an emission or safety inspection pass, setting the expiry date.
+ * @param {Object} e         - Request event
+ * @param {string} expiryCol - Header column name to update
+ */
+function webRecordVehicleInspection_(e, expiryCol) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  var expiryDate = (p.expiryDate || '').trim();
+  if (!id)         return { ok: false, error: 'id required' };
+  if (!expiryDate) return { ok: false, error: 'expiryDate required (YYYY-MM-DD)' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    var colIdx = hdrs.indexOf(expiryCol);
+    if (colIdx === -1) return { ok: false, error: 'Column not found: ' + expiryCol };
+    sheet.getRange(i + 1, colIdx + 1).setValue(expiryDate);
     var updatedRows = sheet.getDataRange().getValues();
     return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
   }

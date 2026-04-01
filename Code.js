@@ -149,8 +149,11 @@ const VEHICLE_HEADERS            = [
   'Registration Expiry','Insurance Provider','Insurance Policy #','Insurance Expiry',
   'Warranty Expiry (B2B)','Warranty Expiry (Powertrain)',
   'Last Service','Next Service','Service Interval (mo)',
-  'Tire Size','Notes'
-]; // Issue #125
+  'Tire Size',
+  'Emission Inspection Expiry','Safety Inspection Expiry',
+  'Tires Last Replaced Date','Tires Last Replaced Mileage','Tire Interval (mi)',
+  'Tread Notes','Notes'
+]; // Issue #125, #140
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs

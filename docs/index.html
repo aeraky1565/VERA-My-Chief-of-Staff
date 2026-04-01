@@ -8412,6 +8412,13 @@ function oilStatusDot(mi) {
   return <span style={{color:'#4ade80'}}>🟢</span>;
 }
 
+function tireStatusDot(mi) {
+  if (mi === null || mi === undefined) return null;
+  if (mi < 0)     return <span style={{color:'#f87171',fontWeight:700}}>🔴</span>;
+  if (mi <= 3000) return <span style={{color:'#fbbf24',fontWeight:700}}>🟡</span>;
+  return <span style={{color:'#4ade80'}}>🟢</span>;
+}
+
 function fmtVehicleDate(val) {
   if (!val) return '—';
   const d = new Date(val);
@@ -8419,13 +8426,16 @@ function fmtVehicleDate(val) {
   return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
 
-function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMileage, onAdd, onDelete }) {
+function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMileage, onAdd, onDelete, onTireChange, onEmissionInspect, onSafetyInspect }) {
   const [oilModal,     setOilModal]     = React.useState(null); // vehicle obj
   const [mileModal,    setMileModal]    = React.useState(null);
   const [addModal,     setAddModal]     = React.useState(false);
   const [confirmDel,   setConfirmDel]   = React.useState(null);
+  const [inspectModal, setInspectModal] = React.useState(null); // {vehicle, type:'tire'|'emission'|'safety'}
   const [oilMi,        setOilMi]        = React.useState('');
   const [newMi,        setNewMi]        = React.useState('');
+  const [tireMi,       setTireMi]       = React.useState('');
+  const [inspectDate,  setInspectDate]  = React.useState('');
   const [addForm,      setAddForm]      = React.useState({});
 
   const FIELDS = [
@@ -8433,7 +8443,10 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
     'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
     'Registration Expiry','Insurance Provider','Insurance Policy #','Insurance Expiry',
     'Warranty Expiry (B2B)','Warranty Expiry (Powertrain)',
-    'Last Service','Next Service','Service Interval (mo)','Tire Size','Notes'
+    'Last Service','Next Service','Service Interval (mo)',
+    'Tire Size','Emission Inspection Expiry','Safety Inspection Expiry',
+    'Tires Last Replaced Date','Tires Last Replaced Mileage','Tire Interval (mi)',
+    'Tread Notes','Notes'
   ];
 
   // Alert banner items
@@ -8447,6 +8460,9 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
     if (v.warrantyB2bDays !== null && v.warrantyB2bDays <= 30) items.push('B2B Warranty ' + (v.warrantyB2bDays < 0 ? 'expired' : 'in ' + v.warrantyB2bDays + 'd'));
     if (v.warrantyPowertrainDays !== null && v.warrantyPowertrainDays <= 90) items.push('Powertrain Warranty ' + (v.warrantyPowertrainDays < 0 ? 'expired' : 'in ' + v.warrantyPowertrainDays + 'd'));
     if (v.serviceDays !== null && v.serviceDays <= 14) items.push('Service ' + (v.serviceDays < 0 ? 'overdue' : 'in ' + v.serviceDays + 'd'));
+    if (v.emissionDays !== null && v.emissionDays <= 30) items.push('Emission inspection ' + (v.emissionDays < 0 ? 'expired' : 'in ' + v.emissionDays + 'd'));
+    if (v.safetyDays !== null && v.safetyDays <= 30) items.push('Safety inspection ' + (v.safetyDays < 0 ? 'expired' : 'in ' + v.safetyDays + 'd'));
+    if (v.milesUntilTireChange !== null && v.milesUntilTireChange !== undefined && v.milesUntilTireChange <= 3000) items.push('Tires ' + (v.milesUntilTireChange < 0 ? 'overdue by ' + Math.abs(Math.round(v.milesUntilTireChange)) + ' mi' : 'due in ' + Math.round(v.milesUntilTireChange) + ' mi'));
     if (items.length) alerts.push('⚠️ ' + name + ': ' + items.join(' · '));
   });
 
@@ -8510,6 +8526,23 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
                   <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Last</span>
                   <span style={valStyle}>{fmtVehicleDate(v['Last Oil Change Date'])}</span>
                 </div>
+                <div style={{...rowStyle, marginTop:8}}>
+                  <span style={labelStyle}>🛞 Tires</span>
+                  <span style={valStyle}>
+                    {tireStatusDot(v.milesUntilTireChange)}{' '}
+                    {v.milesUntilTireChange !== null && v.milesUntilTireChange !== undefined
+                      ? (v.milesUntilTireChange < 0 ? 'Overdue by ' + Math.abs(Math.round(v.milesUntilTireChange)) + ' mi' : Math.round(v.milesUntilTireChange) + ' mi left')
+                      : '—'}
+                  </span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Next at</span>
+                  <span style={valStyle}>{v.nextTireChangeMileage ? Math.round(v.nextTireChangeMileage).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Last</span>
+                  <span style={valStyle}>{fmtVehicleDate(v['Tires Last Replaced Date'])}</span>
+                </div>
               </div>
               <div>
                 <div style={rowStyle}>
@@ -8529,7 +8562,9 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
                 { label:'🛡️ Insurance',    days: v.insuranceDays,     val: fmtVehicleDate(v['Insurance Expiry']),    y:30, r:0 },
                 { label:'🛡️ Warranty B2B', days: v.warrantyB2bDays,  val: fmtVehicleDate(v['Warranty Expiry (B2B)']), y:30, r:0 },
                 { label:'🛡️ Warranty PT',  days: v.warrantyPowertrainDays, val: fmtVehicleDate(v['Warranty Expiry (Powertrain)']), y:90, r:0 },
-                { label:'🔧 Next Service', days: v.serviceDays,       val: fmtVehicleDate(v['Next Service']),        y:14, r:0 },
+                { label:'🔧 Next Service',     days: v.serviceDays,    val: fmtVehicleDate(v['Next Service']),                      y:14, r:0 },
+                { label:'🔬 Emission Inspect', days: v.emissionDays,  val: fmtVehicleDate(v['Emission Inspection Expiry']),        y:30, r:0 },
+                { label:'🔒 Safety Inspect',   days: v.safetyDays,    val: fmtVehicleDate(v['Safety Inspection Expiry']),          y:30, r:0 },
               ].map(function(item) {
                 return (
                   <div key={item.label} style={rowStyle}>
@@ -8550,8 +8585,11 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
             </div>
 
             {/* Action Buttons */}
-            <div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
               <button style={btnStyle} disabled={busy} onClick={() => { setOilMi(v['Current Mileage'] || ''); setOilModal(v); }}>🔧 Log Oil Change</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { setTireMi(v['Current Mileage'] || ''); setInspectModal({vehicle:v,type:'tire'}); }}>🛞 Log Tire Change</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { const d=new Date(); d.setFullYear(d.getFullYear()+1); setInspectDate(d.toISOString().slice(0,10)); setInspectModal({vehicle:v,type:'emission'}); }}>🔬 Log Emission</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { const d=new Date(); d.setFullYear(d.getFullYear()+1); setInspectDate(d.toISOString().slice(0,10)); setInspectModal({vehicle:v,type:'safety'}); }}>🔒 Log Safety</button>
               <button style={btnStyle} disabled={busy} onClick={() => { onService(v['ID']); }}>📋 Record Service</button>
               <button style={btnStyle} disabled={busy} onClick={() => { setNewMi(v['Current Mileage'] || ''); setMileModal(v); }}>📍 Update Mileage</button>
             </div>
@@ -8591,6 +8629,45 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
                 onClick={() => { onMileage(mileModal['ID'], newMi); setMileModal(null); }}>Save</button>
               <button style={btnStyle} onClick={() => setMileModal(null)}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tire Change / Inspection Modal */}
+      {inspectModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:320,border:'1px solid #334155'}}>
+            {inspectModal.type === 'tire' ? (
+              <div>
+                <h3 style={{marginTop:0,color:'#e2e8f0'}}>🛞 Log Tire Change — {inspectModal.vehicle['Nickname'] || inspectModal.vehicle['Make']}</h3>
+                <label style={{color:'#94a3b8',fontSize:13}}>Current Odometer (mi)</label>
+                <input type="number" value={tireMi} onChange={e=>setTireMi(e.target.value)}
+                  style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+                <div style={{display:'flex',gap:8}}>
+                  <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                    onClick={() => { onTireChange(inspectModal.vehicle['ID'], tireMi); setInspectModal(null); }}>Save</button>
+                  <button style={btnStyle} onClick={() => setInspectModal(null)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h3 style={{marginTop:0,color:'#e2e8f0'}}>
+                  {inspectModal.type === 'emission' ? '🔬 Log Emission Inspection' : '🔒 Log Safety Inspection'} — {inspectModal.vehicle['Nickname'] || inspectModal.vehicle['Make']}
+                </h3>
+                <label style={{color:'#94a3b8',fontSize:13}}>New Expiry Date</label>
+                <input type="date" value={inspectDate} onChange={e=>setInspectDate(e.target.value)}
+                  style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+                <div style={{display:'flex',gap:8}}>
+                  <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                    onClick={() => {
+                      if (inspectModal.type === 'emission') onEmissionInspect(inspectModal.vehicle['ID'], inspectDate);
+                      else onSafetyInspect(inspectModal.vehicle['ID'], inspectDate);
+                      setInspectModal(null);
+                    }}>Save</button>
+                  <button style={btnStyle} onClick={() => setInspectModal(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -8641,7 +8718,8 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
 function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
                         onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem,
                         chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence,
-                        vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle }) {
+                        vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle,
+                        onVehicleTireChange, onVehicleEmissionInspect, onVehicleSafetyInspect }) {
   const [sub, setSub] = React.useState('steward');
   const subTabs = [
     { id: 'steward',  label: '🏠 Steward'  },
@@ -8677,6 +8755,9 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           onMileage={onVehicleMileage}
           onAdd={onAddVehicle}
           onDelete={onDeleteVehicle}
+          onTireChange={onVehicleTireChange}
+          onEmissionInspect={onVehicleEmissionInspect}
+          onSafetyInspect={onVehicleSafetyInspect}
         />
       )}
       {sub === 'chores' && (
@@ -15162,6 +15243,42 @@ function App() {
     }
   }
 
+  async function handleVehicleTireChange(id, currentMileage) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'vehicle_tire_change', id, currentMileage });
+      setVehicles(prev => prev.map(v => v['ID'] === id ? data.vehicle : v));
+      showToast('✓ Tire change logged');
+    } catch (err) {
+      setError('Could not log tire change: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleVehicleEmissionInspect(id, expiryDate) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'vehicle_emission_inspect', id, expiryDate });
+      setVehicles(prev => prev.map(v => v['ID'] === id ? data.vehicle : v));
+      showToast('✓ Emission inspection logged');
+    } catch (err) {
+      setError('Could not log emission inspection: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleVehicleSafetyInspect(id, expiryDate) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'vehicle_safety_inspect', id, expiryDate });
+      setVehicles(prev => prev.map(v => v['ID'] === id ? data.vehicle : v));
+      showToast('✓ Safety inspection logged');
+    } catch (err) {
+      setError('Could not log safety inspection: ' + err.message);
+    }
+    setBusy(false);
+  }
+
   // ---- Traveler Profiles + Visa Check handlers (Issue #123) ------------------
 
   async function loadProfiles(url, token) {
@@ -16390,6 +16507,9 @@ function App() {
                 onVehicleMileage={handleVehicleMileage}
                 onAddVehicle={handleAddVehicle}
                 onDeleteVehicle={handleDeleteVehicle}
+                onVehicleTireChange={handleVehicleTireChange}
+                onVehicleEmissionInspect={handleVehicleEmissionInspect}
+                onVehicleSafetyInspect={handleVehicleSafetyInspect}
               />
             )}
 
