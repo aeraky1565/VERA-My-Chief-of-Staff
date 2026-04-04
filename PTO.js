@@ -62,6 +62,10 @@ function readPTOConfig_() {
     // are excluded from the "Upcoming Travel" section (religious observances, etc.)
     travelIgnoreKeywords:  (raw['travel_ignore_keywords'] || 'Ramadan,Eid,Lent,Holiday,Observance,Fast,Christmas,Hanukkah,Diwali,Passover')
                            .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    // When set, only multi-day events whose titles contain at least one of these
+    // keywords are included as trips. Empty = include all multi-day events (old behaviour).
+    travelRequireKeywords: (raw['travel_require_keywords'] || '')
+                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
   };
 }
 
@@ -111,6 +115,8 @@ function readVictoriaPTOConfig_() {
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     travelIgnoreKeywords: (shared['travel_ignore_keywords'] || 'Ramadan,Eid,Lent,Holiday,Observance,Fast,Christmas,Hanukkah,Diwali,Passover')
                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    travelRequireKeywords: (shared['travel_require_keywords'] || '')
+                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
   };
 }
 
@@ -652,7 +658,8 @@ function getUpcomingTravel_(cfg) {
     .map(function(n) { return n.trim(); })
     .filter(function(n) { return n && n !== cfg.calendarName; });
 
-  var travelIgnore = cfg.travelIgnoreKeywords || [];
+  var travelIgnore  = cfg.travelIgnoreKeywords  || [];
+  var travelRequire = cfg.travelRequireKeywords || []; // empty = no restriction
 
   // ---- Phase 1: Collect ALL events from all gap calendars (including single-day)
   // We need single-day events too so cruise Board/Disembark days can be detected.
@@ -696,6 +703,21 @@ function getUpcomingTravel_(cfg) {
       }
     }
     if (ignored) continue;
+
+    // If travel_require_keywords is set, skip events that don't match any keyword
+    if (travelRequire.length > 0) {
+      var matched = false;
+      for (var ri = 0; ri < travelRequire.length; ri++) {
+        if (travelRequire[ri] && labelLow.indexOf(travelRequire[ri]) !== -1) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        Logger.log('getUpcomingTravel_: skipped "' + label + '" — no travel keyword match');
+        continue;
+      }
+    }
 
     var evStart      = ev.getAllDayStartDate();
     var evEndExcl    = ev.getAllDayEndDate();
