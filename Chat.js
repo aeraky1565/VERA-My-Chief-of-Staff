@@ -3325,9 +3325,17 @@ function buildVictoriaChatSystemPrompt_(context) {
         return '  \u2022 [' + (ev.date || '') + '] ' + (ev.summary || ev.event || '');
       }).join('\n') + '\n\n';
 
+  // Read tone from Config — allows adjustment without code changes (Issue #133 Phase 2)
+  var victoriaTone = 'warm, practical, and concise';
+  try {
+    var toneCfg = getConfigValues();
+    if (toneCfg['victoria_vera_tone']) victoriaTone = toneCfg['victoria_vera_tone'];
+  } catch(toneErr) {}
+
   return (
     'You are VERA \u2014 Virtual Executive & Reminder Assistant.\n' +
-    'You are the household and travel assistant for Victoria (and her partner Ahmed).\n\n' +
+    'You are the household and travel assistant for Victoria (and her partner Ahmed).\n' +
+    'Your tone is ' + victoriaTone + '.\n\n' +
     'Today is ' + today + '.\n\n' +
 
     'OPEN TASKS:\n' + taskLines + '\n\n' +

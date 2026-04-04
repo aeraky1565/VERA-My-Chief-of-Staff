@@ -253,6 +253,8 @@ function createSheetTabs(ss) {
     ['email_admin_frequency',  'weekly'],  // 'weekly' (Sunday only) or '3days'
     ['email_skip_senders',     ''],        // comma-separated sender patterns to skip entirely
     ['email_tone',             'professional but warm and concise'], // tone for Claude-drafted replies
+    // Victoria Chat tone (Issue #133 Phase 2)
+    ['victoria_vera_tone',     'warm, practical, and concise'],  // tone VERA uses when speaking to Victoria — adjust without code changes
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
