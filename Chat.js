@@ -527,7 +527,7 @@ function buildChatSystemPrompt_(context) {
     'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + '\n\n' +
     'SUMMARIES:\n' + summaryLines + '\n\n' +
     (context.projects !== null ? 'PROJECTS:\n' + projectsLine + '\n\n' : '') +
-    'UPCOMING CALENDAR EVENTS:\n' + calLines + '\n\n' +
+    'UPCOMING CALENDAR EVENTS (raw schedule data — do NOT infer travel from multi-day events here; use UPCOMING TRIPS for travel context):\n' + calLines + '\n\n' +
     (context.interests !== null ? 'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' : '') +
     (context.importantDates !== null ? 'IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' : '') +
     (context.giftIdeas !== null ? 'GIFT IDEAS:\n' + giftIdeasLines + '\n\n' : '') +
@@ -671,10 +671,11 @@ function buildChatSystemPrompt_(context) {
       }
       var lines = 'UPCOMING TRIPS:\n';
       travel.trips.forEach(function(t) {
-        var tk  = t.startDate + '|' + t.label;
-        var ctx = (travel.tripContextMap && travel.tripContextMap[tk]) || '';
+        var tk      = t.startDate + '|' + t.label;
+        var ctx     = (travel.tripContextMap && travel.tripContextMap[tk]) || '';
+        var famNote = t.isExtendedFamily ? ' [extended family — not Ahmed\'s trip]' : '';
         lines += 'Trip: ' + t.label + ' (' + t.startDate + ' \u2013 ' + t.endDate + ')' +
-                 (ctx ? ' | Context: ' + ctx : '') + ' | TripKey: ' + tk + '\n';
+                 (ctx ? ' | Context: ' + ctx : '') + famNote + ' | TripKey: ' + tk + '\n';
         var items = (travel.itinByTrip && travel.itinByTrip[tk]) || [];
         if (items.length > 0) {
           lines += '  Itinerary (' + items.length + ' item' + (items.length === 1 ? '' : 's') + '):\n';
@@ -709,6 +710,19 @@ function buildChatSystemPrompt_(context) {
         lines += '  \u2022 ' + t.tripLabel +
                  ' (ended ' + Math.round(t.daysAgo) + ' day(s) ago)' +
                  ' | TripKey: ' + t.tripKey + '\n';
+      });
+      return lines + '\n';
+    })() +
+
+    // ---- UPCOMING HOUSE GUESTS (Issue #150) ---------------------------------
+    (function() {
+      if (!context.upcomingGuests || !context.upcomingGuests.length) return '';
+      var lines = 'UPCOMING HOUSE GUESTS (' + context.upcomingGuests.length + '):\n';
+      context.upcomingGuests.forEach(function(g) {
+        var when = g.daysAway === 0 ? 'today' : (g.daysAway === 1 ? 'tomorrow' : 'in ' + g.daysAway + ' days');
+        lines += '  \u2022 ' + g.label + ' \u2014 arriving ' + g.arrivalDate +
+                 ', departing ' + g.departureDate +
+                 ' (' + g.durationDays + ' night' + (g.durationDays === 1 ? '' : 's') + ', ' + when + ')\n';
       });
       return lines + '\n';
     })() +
@@ -1507,6 +1521,15 @@ function buildChatContext_(userMessage) {
     catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); pantryDue = []; }
   }
 
+  // Upcoming house guests — home intent (Issue #150)
+  var upcomingGuests = null;
+  if (intent.home) {
+    try {
+      var guestCfg2 = readPTOConfig_();
+      upcomingGuests = getUpcomingGuests_(guestCfg2);
+    } catch(e) { Logger.log('Chat context: upcomingGuests — ' + e.message); upcomingGuests = []; }
+  }
+
   // Career profile — career intent
   var career = null;
   if (intent.career) {
@@ -1598,6 +1621,7 @@ function buildChatContext_(userMessage) {
     bucketList:      bucketList,
     takeouts:        takeouts,
     pantryDue:       pantryDue,
+    upcomingGuests:  upcomingGuests,
     career:          career,
     prescriptions:   prescriptions,
     gymLog:          gymLog,
@@ -2860,9 +2884,12 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
     return { ok: true, reply: 'What can I help you with?' };
   }
 
+  // Victoria-aware: Dashboard Lite uses session 'victoria_dashboard'
+  var isVictoria = (sessionId === 'victoria_dashboard');
+
   var history   = loadChatHistory_(sessionId);
-  var context   = buildChatContext_(trimmedMsg);
-  var sysPrompt = buildChatSystemPrompt_(context);
+  var context   = isVictoria ? buildVictoriaChatContext_(trimmedMsg) : buildChatContext_(trimmedMsg);
+  var sysPrompt = isVictoria ? buildVictoriaChatSystemPrompt_(context) : buildChatSystemPrompt_(context);
   var callResult = callClaudeChat_(
     trimmedMsg, history, sysPrompt,
     imageBase64   || null,
@@ -2895,7 +2922,7 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
       { role: 'assistant', content: stripActions_(rawReply) },
     ]);
     var followUpMsg = '[Document content retrieved]\n\n' + docBlocks +
-      '\n\nUsing the document above, answer Ahmed\'s original question directly. ' +
+      '\n\nUsing the document above, answer ' + (isVictoria ? 'Victoria\'s' : 'Ahmed\'s') + ' original question directly. ' +
       'Do not say you are fetching or retrieving — you have the content now. ' +
       'Be specific and cite the document where relevant.';
     var followUpResult = callClaudeChat_(followUpMsg, followUpHistory, sysPrompt, null, null);
@@ -2919,6 +2946,456 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   saveChatHistory_(sessionId, historyText, cleanReply);
 
   return { ok: true, reply: cleanReply, sources: sources };
+}
+
+// ============================================================
+// VICTORIA — Context + System Prompt (Issue #133)
+// ============================================================
+
+/**
+ * Builds a reduced chat context for Victoria (Dashboard Lite / Slack as Victoria).
+ * Loads only shared/household domains — no flags, career, goals, growth, experiments.
+ * @param  {string} userMessage  Raw message for intent detection (same as buildChatContext_)
+ * @returns {Object}  Context object shaped like buildChatContext_() output but with null for excluded domains
+ */
+function buildVictoriaChatContext_(userMessage) {
+  var ss  = getSpreadsheet();
+  var msg = (userMessage || '').toLowerCase();
+
+  // Simple intent detection — same keywords as the main function
+  var intent = {
+    home:     /recipe|cook|dish|dinner|ingredient|grocery|shopping|store|buy|pantry|chore|clean|vacuum|takeout|food|meal|home|house|item|appliance|maintenance|vehicle|car|truck|oil change|tire/i.test(msg),
+    finance:  /bill|payment|due|budget|spend|expense|card|credit|reward|points|loyalty/i.test(msg),
+    travel:   /trip|travel|flight|hotel|itinerary|pack|passport|visa|destination|vacation|bucket|country|countries/i.test(msg),
+    health:   /prescription|medication|refill|pill|dose|gym|workout|exercise|fitness/i.test(msg),
+    people:   /birthday|anniversary|gift|important date|date|celebrate/i.test(msg),
+    pto:      /pto|vacation|leave|day off|time off|victoria/i.test(msg),
+    memory:   /remember|recall|when did|last time|history|used to|ago|previous/i.test(msg),
+  };
+
+  // Always load these for Victoria
+  var tasks = [];
+  try {
+    var openTasks = getOpenTasks();
+    // Filter to household-relevant tasks — exclude career/flags/personal tasks
+    tasks = openTasks.filter(function(t) {
+      var low = (t.task || '').toLowerCase();
+      return !/career|work|job|promotion|interview|linkedin|performance review/i.test(low);
+    }).slice(0, 20);
+  } catch(e) { Logger.log('VictoriaContext: tasks — ' + e.message); }
+
+  // Calendar events (shared view)
+  var calendarEvents = [];
+  try { calendarEvents = getUpcomingEvents(); }
+  catch(e) { Logger.log('VictoriaContext: calendar — ' + e.message); }
+
+  // Shopping
+  var shoppingStores = [];
+  try {
+    var shRes = webGetShopping_();
+    shoppingStores = (shRes && shRes.stores) ? shRes.stores.map(function(s) { return s.store; }) : [];
+  } catch(e) { Logger.log('VictoriaContext: shopping — ' + e.message); }
+
+  // Interests
+  var interests = [];
+  try {
+    var intRes = webGetInterests_();
+    interests = (intRes && intRes.interests) || [];
+  } catch(e) { Logger.log('VictoriaContext: interests — ' + e.message); }
+
+  // Important dates
+  var importantDates = [];
+  try { importantDates = getUpcomingImportantDates_(90); }
+  catch(e) { Logger.log('VictoriaContext: importantDates — ' + e.message); }
+
+  // Gift ideas
+  var giftIdeas = null;
+  if (intent.people) {
+    try {
+      var gRes = webGetGiftData_();
+      if (gRes && gRes.ok) giftIdeas = gRes;
+    } catch(e) { Logger.log('VictoriaContext: giftIdeas — ' + e.message); }
+  }
+
+  // PTO — both Ahmed's and Victoria's
+  var ptoStats = null;
+  try {
+    var ptoRes = webGetPTO_();
+    if (ptoRes && ptoRes.ok) ptoStats = ptoRes;
+  } catch(e) { Logger.log('VictoriaContext: ptoStats — ' + e.message); }
+
+  // Home data
+  var recipes   = null;
+  var homeItems = null;
+  var takeouts  = null;
+  var pantryDue = null;
+  if (intent.home) {
+    try {
+      var hmRes = webGetRecipes_();
+      recipes = (hmRes && hmRes.recipes) || [];
+    } catch(e) { Logger.log('VictoriaContext: recipes — ' + e.message); }
+    try {
+      var hiRes = webGetHomesteward_();
+      homeItems = (hiRes && hiRes.items) || [];
+    } catch(e) { Logger.log('VictoriaContext: homeItems — ' + e.message); }
+    try {
+      var taRes = webGetTakeouts_();
+      takeouts = (taRes && taRes.restaurants) || [];
+    } catch(e) { Logger.log('VictoriaContext: takeouts — ' + e.message); }
+    try { pantryDue = getItemsDue_(14); }
+    catch(e) { Logger.log('VictoriaContext: pantryDue — ' + e.message); pantryDue = []; }
+  }
+
+  // Bills (shared)
+  var bills = null;
+  if (intent.finance) {
+    try {
+      var bRes = webGetBills_();
+      bills = (bRes && bRes.bills) || [];
+    } catch(e) { Logger.log('VictoriaContext: bills — ' + e.message); }
+  }
+
+  // Credit cards
+  var cardsData = null;
+  if (intent.finance) {
+    try {
+      var cardRes = webGetCards_();
+      if (cardRes && cardRes.ok) cardsData = cardRes;
+    } catch(e) { Logger.log('VictoriaContext: cards — ' + e.message); }
+  }
+
+  // Travel
+  var travel      = null;
+  var recentTrips = [];
+  var countries   = [];
+  var bucketList  = [];
+  if (intent.travel) {
+    try {
+      var travelCfg = readPTOConfig_();
+      var travelTrips = getUpcomingTravel_(travelCfg);
+      var itinByTrip = {}, packByTrip = {}, tripContextMap = {};
+      try {
+        var itinSheet = ss.getSheetByName(TABS.ITINERARY);
+        if (itinSheet && itinSheet.getLastRow() >= 2) {
+          var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+          itinRows.forEach(function(r) {
+            var tk = String(r[1]).trim();
+            if (!itinByTrip[tk]) itinByTrip[tk] = [];
+            itinByTrip[tk].push({ id: String(r[0]).trim(), type: String(r[2]).trim(), title: String(r[3]).trim(), date: String(r[4]).trim(), startTime: String(r[5]).trim(), location: String(r[7]).trim() });
+          });
+        }
+      } catch(e2) {}
+      try {
+        var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+        if (packSheet && packSheet.getLastRow() >= 2) {
+          var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+          packRows.forEach(function(r) {
+            var tk = String(r[1]).trim();
+            if (!packByTrip[tk]) packByTrip[tk] = [];
+            packByTrip[tk].push({ id: String(r[0]).trim(), person: String(r[2]).trim(), category: String(r[3]).trim(), item: String(r[4]).trim(), checked: String(r[5]).toUpperCase() === 'TRUE' });
+          });
+        }
+      } catch(e3) {}
+      travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
+    } catch(e) { Logger.log('VictoriaContext: travel — ' + e.message); }
+    try {
+      var cRes = webGetCountries_();
+      countries = (cRes && cRes.entries) || [];
+    } catch(e) { Logger.log('VictoriaContext: countries — ' + e.message); }
+    try {
+      var bListRes = webGetBucketList_();
+      bucketList = (bListRes && bListRes.entries) || [];
+    } catch(e) { Logger.log('VictoriaContext: bucketList — ' + e.message); }
+  }
+
+  // Prescriptions (her own)
+  var prescriptions = null;
+  if (intent.health) {
+    try {
+      var pRes = webGetPrescriptions_();
+      var allRx = (pRes && pRes.prescriptions) || [];
+      // Victoria can see all prescriptions (shared household knowledge)
+      prescriptions = allRx;
+    } catch(e) { Logger.log('VictoriaContext: prescriptions — ' + e.message); }
+  }
+
+  // Memory
+  var memoryContext = null;
+  if (intent.memory) {
+    try { memoryContext = getMemoryContext_(90); }
+    catch(e) { Logger.log('VictoriaContext: memory — ' + e.message); }
+  }
+
+  // Upcoming guests (Issue #150)
+  var upcomingGuests = null;
+  if (intent.home) {
+    try {
+      var guestCfg = readPTOConfig_();
+      upcomingGuests = getUpcomingGuests_(guestCfg);
+    } catch(e) { Logger.log('VictoriaContext: upcomingGuests — ' + e.message); upcomingGuests = []; }
+  }
+
+  return {
+    flags:          [],          // Victoria does not see Ahmed's flags
+    tasks:          tasks,
+    summaries:      [],
+    calendarEvents: calendarEvents,
+    interests:      interests,
+    ptoStats:       ptoStats,
+    goals:          null,        // Ahmed-specific
+    bills:          bills,
+    recipes:        recipes,
+    homeItems:      homeItems,
+    shoppingStores: shoppingStores,
+    ideas:          null,        // Ahmed-specific
+    travel:         travel,
+    recentTrips:    recentTrips,
+    countries:      countries,
+    bucketList:     bucketList,
+    takeouts:       takeouts,
+    pantryDue:      pantryDue,
+    upcomingGuests: upcomingGuests,
+    career:         null,        // Ahmed-specific
+    prescriptions:  prescriptions,
+    gymLog:         null,        // Ahmed-specific
+    cardsData:      cardsData,
+    financialGoals: null,        // Ahmed-specific
+    importantDates: importantDates,
+    giftIdeas:      giftIdeas,
+    wishList:       null,
+    experiments:    null,        // Ahmed-specific
+    growthData:     null,        // Ahmed-specific
+    memoryContext:  memoryContext,
+    // Victoria-specific projects/projectsSummary not needed
+    projects:       null,
+    projectsSummary: '',
+  };
+}
+
+/**
+ * Builds the system prompt for Victoria's chat session.
+ * Addresses her by name, scoped to household / travel / shared domains.
+ * @param  {Object} context  From buildVictoriaChatContext_()
+ * @returns {string}
+ */
+function buildVictoriaChatSystemPrompt_(context) {
+  var tz    = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
+
+  var taskLines = (!context.tasks || context.tasks.length === 0)
+    ? '  (none open)'
+    : context.tasks.map(function(t) {
+        var line = '  - ' + t.task + ' (ID: ' + t.id + ')';
+        if (t.dueDate)   line += ' | due: ' + t.dueDate;
+        if (t.isOverdue) line += ' \u26a0 OVERDUE';
+        if (t.recurring) line += ' \ud83d\udd01 ' + t.recurring;
+        return line;
+      }).join('\n');
+
+  var calLines;
+  if (!context.calendarEvents || context.calendarEvents.length === 0) {
+    calLines = '  (none in the next ' + CONFIG.CALENDAR_DAYS_AHEAD + ' days)';
+  } else {
+    calLines = context.calendarEvents.map(function(e) {
+      var dl = e.daysUntil === 0 ? 'TODAY' : e.daysUntil === 1 ? 'TOMORROW' : 'in ' + e.daysUntil + ' days';
+      var ts = e.isAllDay ? 'all day' : e.start.split(' ')[1];
+      var ds = e.start.split(' ')[0];
+      var ln = '  - ' + e.title + ' | ' + ds + ' ' + ts + ' [' + dl + ']';
+      if (e.location) ln += ' @ ' + e.location;
+      ln += ' (' + (e.calLabel || e.calendarName) + ')';
+      return ln;
+    }).join('\n');
+  }
+
+  var billLines = (!context.bills || context.bills.length === 0)
+    ? '  (none)'
+    : context.bills.map(function(b) {
+        return '  [row:' + b.row + '] ' + b.bill +
+               (b.amount ? ' $' + b.amount : '') +
+               ' (' + b.frequency + ')' +
+               (b.dueDay ? ' due day ' + b.dueDay : '') +
+               (b.paid ? ' \u2713 PAID this month' : ' \u2014 UNPAID');
+      }).join('\n');
+
+  var recipeLines = (!context.recipes || context.recipes.length === 0)
+    ? '  (none)'
+    : context.recipes.map(function(r) {
+        return '  [row:' + r.row + '] ' + r.name + (r.cuisine ? ' (' + r.cuisine + ')' : '');
+      }).join('\n');
+
+  var homeItemLines = (!context.homeItems || context.homeItems.length === 0)
+    ? '  (none)'
+    : context.homeItems.map(function(h) {
+        var svc = h.nextService ? ' next service: ' + h.nextService : '';
+        if (h.serviceDays !== null && h.serviceDays < 0) svc += ' \u26a0 OVERDUE';
+        else if (h.serviceDays !== null && h.serviceDays <= 14) svc += ' (due soon)';
+        return '  [row:' + h.row + '] ' + h.item + (h.category ? ' [' + h.category + ']' : '') + svc;
+      }).join('\n');
+
+  var shoppingStoresList = (!context.shoppingStores || context.shoppingStores.length === 0)
+    ? '(none configured)'
+    : context.shoppingStores.join(', ');
+
+  var takeoutLines = (!context.takeouts || context.takeouts.length === 0)
+    ? '  (none saved yet)'
+    : context.takeouts.map(function(r) {
+        var items = r.items.length > 0
+          ? r.items.map(function(it) { return '    \u2022 ' + it.item + (it.description ? ' \u2014 ' + it.description : ''); }).join('\n')
+          : '    (no items yet)';
+        return '  ' + r.name + (r.cuisine ? ' [' + r.cuisine + ']' : '') + '\n' + items;
+      }).join('\n');
+
+  var pantryLines = (!context.pantryDue || context.pantryDue.length === 0)
+    ? '  (pantry tracking not active or no purchases logged)'
+    : context.pantryDue.map(function(p) {
+        return '  ' + p.normalized + (p.daysUntil <= 0 ? ' \u2014 likely OUT' : ' \u2014 est. out in ~' + p.daysUntil + 'd') + (p.store ? ' (usually: ' + p.store + ')' : '');
+      }).join('\n');
+
+  var interestLines = (!context.interests || context.interests.length === 0)
+    ? '  (none logged yet)'
+    : context.interests.map(function(i) {
+        return '  - [ID:' + i.id + '] ' + i.person + ': ' + i.interest + ' [' + i.category + ', logged ' + i.date + ']';
+      }).join('\n');
+
+  var importantDatesLines = (function() {
+    var dates = context.importantDates;
+    if (!dates || dates.length === 0) return '  (none in next 90 days)';
+    return dates.map(function(d) {
+      var days = d['daysUntil'];
+      var when = days === 0 ? 'TODAY' : days === 1 ? 'tomorrow' : 'in ' + days + ' days';
+      var line = '  \u2022 ' + d['Name'] + ' \u2014 ' + d['Event'] + ' [' + when + ']';
+      if (d['Gift Ideas']) line += ' | gift ideas: ' + d['Gift Ideas'];
+      return line;
+    }).join('\n');
+  })();
+
+  var ptoSection = context.ptoStats
+    ? ptoSummaryForClaude_(context.ptoStats)
+    : '  (unavailable)';
+
+  // Travel sections (reuse the same pattern as buildChatSystemPrompt_)
+  var travelSection = (function() {
+    var travel = context.travel;
+    if (!travel || !travel.trips || travel.trips.length === 0) return 'UPCOMING TRIPS:\n  (No upcoming trips found)\n\n';
+    var lines = 'UPCOMING TRIPS:\n';
+    travel.trips.forEach(function(t) {
+      var tk  = t.startDate + '|' + t.label;
+      var famNote = t.isExtendedFamily ? ' [extended family]' : '';
+      lines += 'Trip: ' + t.label + ' (' + t.startDate + ' \u2013 ' + t.endDate + ')' + famNote + ' | TripKey: ' + tk + '\n';
+      var items = (travel.itinByTrip && travel.itinByTrip[tk]) || [];
+      if (items.length > 0) {
+        lines += '  Itinerary (' + items.length + ' item' + (items.length === 1 ? '' : 's') + '):\n';
+        items.forEach(function(it) {
+          lines += '    [' + it.id + '] ' + it.date + ' [' + it.type + '] ' + it.title + (it.location ? ' @ ' + it.location : '') + '\n';
+        });
+      }
+      var pItems = (travel.packByTrip && travel.packByTrip[tk]) || [];
+      if (pItems.length > 0) {
+        var packed = pItems.filter(function(p) { return p.checked; }).length;
+        lines += '  Packing (' + pItems.length + ' items, ' + packed + ' packed):\n';
+        pItems.forEach(function(p) {
+          lines += '    [' + p.id + '] ' + p.person + ' / ' + p.category + ' \u2014 ' + p.item + (p.checked ? ' [packed]' : ' [unpacked]') + '\n';
+        });
+      }
+    });
+    return lines + '\n';
+  })();
+
+  var guestSection = (function() {
+    if (!context.upcomingGuests || !context.upcomingGuests.length) return '';
+    var lines = 'UPCOMING HOUSE GUESTS (' + context.upcomingGuests.length + '):\n';
+    context.upcomingGuests.forEach(function(g) {
+      var when = g.daysAway === 0 ? 'today' : (g.daysAway === 1 ? 'tomorrow' : 'in ' + g.daysAway + ' days');
+      lines += '  \u2022 ' + g.label + ' \u2014 arriving ' + g.arrivalDate + ', departing ' + g.departureDate + ' (' + g.durationDays + ' night' + (g.durationDays === 1 ? '' : 's') + ', ' + when + ')\n';
+    });
+    return lines + '\n';
+  })();
+
+  var rxLines = (!context.prescriptions || context.prescriptions.length === 0)
+    ? '  (none logged)'
+    : context.prescriptions.map(function(p) {
+        return '  [' + p.person + '] ' + p.medication + ' ' + p.dosage + ' ' + p.frequency +
+               (p.refillDate ? ' | refill: ' + p.refillDate : '');
+      }).join('\n');
+
+  var memorySect = (!context.memoryContext || !context.memoryContext.events || !context.memoryContext.events.length)
+    ? ''
+    : 'MEMORY LOG (recent events):\n' +
+      context.memoryContext.events.slice(0, 20).map(function(ev) {
+        return '  \u2022 [' + (ev.date || '') + '] ' + (ev.summary || ev.event || '');
+      }).join('\n') + '\n\n';
+
+  return (
+    'You are VERA \u2014 Virtual Executive & Reminder Assistant.\n' +
+    'You are the household and travel assistant for Victoria (and her partner Ahmed).\n\n' +
+    'Today is ' + today + '.\n\n' +
+
+    'OPEN TASKS:\n' + taskLines + '\n\n' +
+
+    'UPCOMING CALENDAR EVENTS (raw schedule data):\n' + calLines + '\n\n' +
+
+    travelSection +
+    guestSection +
+
+    'BILLS:\n' + billLines + '\n\n' +
+
+    'RECIPES:\n' + recipeLines + '\n\n' +
+
+    'HOME ITEMS (appliances & maintenance):\n' + homeItemLines + '\n\n' +
+
+    'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
+
+    'FAVOURITE TAKEOUTS:\n' + takeoutLines + '\n\n' +
+
+    'PANTRY STATUS (items running low):\n' + pantryLines + '\n\n' +
+
+    'UPCOMING IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' +
+
+    'SHARED INTERESTS:\n' + interestLines + '\n\n' +
+
+    'PRESCRIPTIONS:\n' + rxLines + '\n\n' +
+
+    (context.ptoStats ? 'PTO STATUS:\n' + ptoSection + '\n\n' : '') +
+
+    memorySect +
+
+    '== CAPABILITIES ==\n' +
+    'You can take actions by embedding ACTION lines at the end of your reply. Each action is on its own line:\n' +
+    '  ACTION:type|arg1|arg2|...\n\n' +
+    'Available actions:\n' +
+    '- For add_task: ACTION:add_task|{task description}|{due date YYYY-MM-DD or blank}|{recurring: daily/weekly/monthly or blank}\n' +
+    '- For complete_task: ACTION:complete_task|{task ID}\n' +
+    '- For add_shopping_item: ACTION:add_shopping_item|{store}|{item}|{qty or blank}\n' +
+    '- For toggle_shopping_item: ACTION:toggle_shopping_item|{store}|{item}\n' +
+    '- For add_itinerary_item: use the TripKey exactly as shown in UPCOMING TRIPS (e.g., "2026-06-19|Alaska Cruise"). Date must be YYYY-MM-DD.\n' +
+    '  ACTION:add_itinerary_item|{tripKey}|{type: flight/hotel/activity/restaurant/other}|{title}|{date YYYY-MM-DD}|{startTime HH:MM or blank}|{endTime or blank}|{location or blank}|{notes or blank}\n' +
+    '- For update_itinerary_item: ACTION:update_itinerary_item|{item ID}|{field}|{new value}\n' +
+    '- For delete_itinerary_item: ACTION:delete_itinerary_item|{item ID}\n' +
+    '- For check_packing_item: ACTION:check_packing_item|{item ID}|{true or false}\n' +
+    '- For add_packing_item: ACTION:add_packing_item|{tripKey}|{person: ahmed/victoria/shared}|{category}|{item}\n' +
+    '- For delete_packing_item: ACTION:delete_packing_item|{item ID}\n' +
+    '- For generate_packing_list: ACTION:generate_packing_list|{tripKey}|{startDate YYYY-MM-DD}|{endDate YYYY-MM-DD}\n' +
+    '- For add_country: ACTION:add_country|{country}|{city or blank}|{year or blank}|{traveller: Ahmed/Victoria/Both}|{notes or blank}\n' +
+    '- For add_bucket_item: ACTION:add_bucket_item|{country}|{city or blank}|{notes or blank}|{targetYear or blank}|{stars 1-5 or blank}\n' +
+    '- For add_interest: ACTION:add_interest|{person: Ahmed/Victoria/Both}|{interest}|{category}|{date YYYY-MM-DD or blank}\n' +
+    '- For delete_interest: ACTION:delete_interest|{ID}\n' +
+    '- For add_important_date: ACTION:add_important_date|{name}|{event type}|{date MM-DD}|{notes or blank}\n' +
+    '- For update_important_date: ACTION:update_important_date|{ID}|{field}|{value}\n' +
+    '- For delete_important_date: ACTION:delete_important_date|{ID}\n' +
+    '- For add_gift_idea: ACTION:add_gift_idea|{person name}|{idea}\n' +
+    '- For delete_gift_idea: ACTION:delete_gift_idea|{idea ID}\n' +
+    '- For add_prescription: ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes or blank}\n' +
+    '- For add_home_item: ACTION:add_home_item|{item}|{category}|{serviceIntervalDays or blank}|{notes or blank}\n' +
+    '- For delete_home_item: ACTION:delete_home_item|{row}\n' +
+    '- For add_recipe: ACTION:add_recipe|{name}|{cuisine or blank}|{ingredients semicolon-separated or blank}\n' +
+    '- For delete_recipe: ACTION:delete_recipe|{row}\n' +
+    '- For web_search: ACTION:web_search|{query}\n\n' +
+    'IMPORTANT RULES:\n' +
+    '- Never include ACTION lines in your visible reply \u2014 strip them out before responding.\n' +
+    '- Use IDs from context (task ID, itinerary ID, packing item ID) exactly as shown.\n' +
+    '- If asked about Ahmed\'s flags, career goals, personal finances, growth tracking, or experiments, let Victoria know those live in Ahmed\'s private dashboard.\n' +
+    '- Be warm, helpful, and concise. Address Victoria by name when appropriate.\n'
+  );
 }
 
 // ============================================================

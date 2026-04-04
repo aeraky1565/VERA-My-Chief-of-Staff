@@ -8396,6 +8396,85 @@ function ChoresView({ chores, loading, busy, onToggle, onAdd, onDelete, onUpdate
   );
 }
 
+// ---- GuestsView (Issue #150) -------------------------------------------------
+
+function GuestsView({ apiUrl, apiToken }) {
+  const [guests,  setGuests]  = React.useState(null);  // null = loading
+  const [error,   setError]   = React.useState(null);
+
+  React.useEffect(() => {
+    if (!apiUrl || !apiToken) return;
+    apiGet(apiUrl, apiToken, { action: 'get_guests' })
+      .then(data => setGuests(data.guests || []))
+      .catch(err => { setError(err.message); setGuests([]); });
+  }, [apiUrl, apiToken]);
+
+  if (guests === null) {
+    return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading guests…</div>;
+  }
+
+  if (error) {
+    return <div style={{ fontSize: 13, color: '#f87171', padding: 16 }}>Error: {error}</div>;
+  }
+
+  if (!guests.length) {
+    return (
+      <div className="empty-state" style={{ padding: 40 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
+        <div>No upcoming guest windows found.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Add multi-day events to AE&amp;VV - Our Joint Chaos calendar with keywords like Visit, Staying, or Guests.
+        </div>
+      </div>
+    );
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {guests.map((g, i) => {
+        const isStaying  = g.daysAway < 0;
+        const isToday    = g.daysAway === 0;
+        const isSoon     = g.daysAway >= 0 && g.daysAway <= 7;
+
+        let badgeColor = '#2a3a5e';
+        let badgeText  = 'In ' + g.daysAway + ' days';
+        if (isStaying || isToday) {
+          badgeColor = '#1a4a2e';
+          badgeText  = isToday ? '🟢 Arriving today' : '🟢 Currently staying';
+        } else if (isSoon) {
+          badgeColor = '#3a3010';
+          badgeText  = g.daysAway === 1 ? '🟡 Arriving tomorrow' : '🟡 Arriving in ' + g.daysAway + ' days';
+        }
+
+        return (
+          <div key={i} style={{
+            background: '#13244d', border: '1px solid #1e3060',
+            borderRadius: 10, padding: '16px 20px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0' }}>{g.label}</div>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 10px',
+                borderRadius: 20, background: badgeColor, color: '#dde1f0',
+                whiteSpace: 'nowrap',
+              }}>{badgeText}</span>
+            </div>
+            <div style={{ fontSize: 13, color: '#8a9abf', marginTop: 8 }}>
+              <span>{g.arrivalDate} – {g.departureDate}</span>
+              <span style={{ margin: '0 8px', color: '#2a3a5e' }}>·</span>
+              <span>{g.durationDays} day{g.durationDays === 1 ? '' : 's'}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#4d6080', marginTop: 4 }}>{g.calendarName}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---- VehiclesView ------------------------------------------------------------
 
 function vehicleStatusDot(days, yellowDays, redDays) {
@@ -8719,7 +8798,8 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
                         onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem,
                         chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence,
                         vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle,
-                        onVehicleTireChange, onVehicleEmissionInspect, onVehicleSafetyInspect }) {
+                        onVehicleTireChange, onVehicleEmissionInspect, onVehicleSafetyInspect,
+                        apiUrl, apiToken }) {
   const [sub, setSub] = React.useState('steward');
   const subTabs = [
     { id: 'steward',  label: '🏠 Steward'  },
@@ -8728,6 +8808,7 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
     { id: 'recipes',  label: '🍽️ Recipes'  },
     { id: 'takeouts', label: '🥡 Takeouts'  },
     { id: 'pantry',   label: '📦 Pantry'   },
+    { id: 'guests',   label: '👥 Guests'   },
   ];
   return (
     <div>
@@ -8792,6 +8873,9 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
       )}
       {sub === 'pantry' && (
         <PurchaseHistoryTab items={purchaseHistory} />
+      )}
+      {sub === 'guests' && (
+        <GuestsView apiUrl={apiUrl} apiToken={apiToken} />
       )}
     </div>
   );
@@ -16526,6 +16610,8 @@ function App() {
                 onVehicleTireChange={handleVehicleTireChange}
                 onVehicleEmissionInspect={handleVehicleEmissionInspect}
                 onVehicleSafetyInspect={handleVehicleSafetyInspect}
+                apiUrl={apiUrl}
+                apiToken={apiToken}
               />
             )}
 

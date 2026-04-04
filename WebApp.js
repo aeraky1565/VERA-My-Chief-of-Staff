@@ -93,6 +93,7 @@ function doGet(e) {
       case 'pto':                            return jsonOut_(webGetPTO_());
       case 'pto_trigger_buffer':             return jsonOut_(webTriggerBuffer_(e));
       case 'victoria_pto_trigger_buffer':    return jsonOut_(webTriggerVictoriaBuffer_(e));
+      case 'get_guests':                     return jsonOut_(webGetGuests_());
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -906,6 +907,22 @@ function webGetPTO_() {
   victoriaStats.upcomingTravel = sharedTravel;
 
   return { ok: true, ahmedStats: ahmedStats, victoriaStats: victoriaStats };
+}
+
+/**
+ * Returns upcoming house guests parsed from the shared chaos calendar.
+ * Reads the house_guest_keywords config to identify guest events.
+ * Called by the 👥 Guests subtab in the Home Front section.
+ */
+function webGetGuests_() {
+  try {
+    var cfg    = readPTOConfig_();
+    var guests = getUpcomingGuests_(cfg);
+    return { ok: true, guests: guests };
+  } catch (e) {
+    Logger.log('webGetGuests_ error: ' + e.message);
+    return { ok: false, guests: [], error: e.message };
+  }
 }
 
 /**

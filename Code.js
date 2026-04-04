@@ -84,6 +84,7 @@ const TABS = {
   SKILLS:              'Skills',               // Skill building tracker (Issue #88)
   MEMORY_LOG:          'Memory Log',           // Append-only event stream (Issue #9)
   MEMORY_SNAPSHOT:     'Memory Snapshot',      // Weekly metric time series (Issue #9)
+  EMAIL_FOLLOW_UPS:    'Email Follow-ups',  // Email Admin follow-up tracker (Issue #144)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -143,6 +144,7 @@ const MEMORY_SNAPSHOT_HEADERS    = ['Week', 'Metric', 'Who', 'Value', 'As Of']; 
 const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
 const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
 const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes']; // Issue #88
+const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status']; // Issue #144
 const VEHICLE_HEADERS            = [
   'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
   'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
@@ -244,6 +246,13 @@ function createSheetTabs(ss) {
     ['weekend_planner_enabled',     'true'],  // set to 'false' to disable Monday morning weekend planning nudge (WeekendPlanner.js)
     ['weekend_planner_hour',        '8'],     // 24h hour on Monday to fire weekend planner (WeekendPlanner.js)
     ['weekend_planner_lookahead_days', '21'], // days ahead to scan for clear windows (WeekendPlanner.js)
+    // House Guests Tracker (Issue #150)
+    ['house_guest_keywords',   'Visit,Staying,Guests,Guest,Hosting,Sleepover'],  // comma-separated keywords in event title/description to identify guest visits (Issue #150)
+    // Email Admin (Issue #144)
+    ['email_admin_enabled',    'false'],   // set 'true' to enable Sunday inbox triage (Issue #144)
+    ['email_admin_frequency',  'weekly'],  // 'weekly' (Sunday only) or '3days'
+    ['email_skip_senders',     ''],        // comma-separated sender patterns to skip entirely
+    ['email_tone',             'professional but warm and concise'], // tone for Claude-drafted replies
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -302,6 +311,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.SKILLS,              SKILL_HEADERS);              // Issue #88
   ensureSheet(ss, TABS.MEMORY_LOG,          MEMORY_LOG_HEADERS);         // Issue #9 — hidden by Memory.js on first append
   ensureSheet(ss, TABS.MEMORY_SNAPSHOT,     MEMORY_SNAPSHOT_HEADERS);   // Issue #9 — hidden by Memory.js on first write
+  ensureSheet(ss, TABS.EMAIL_FOLLOW_UPS,    EMAIL_FOLLOW_UP_HEADERS);   // Issue #144 — Email Admin follow-up tracker
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   // Set Life Plan Doc ID if not already set
@@ -517,7 +527,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_' || handlerName === 'runEmailAdmin_') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -559,7 +569,16 @@ function setupTriggers() {
     .everyMinutes(30)
     .create();
 
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min.');
+  // Email Admin — Sunday inbox triage at 6:30am (Issue #144)
+  // Runs daily but internally gates on frequency (weekly=Sunday only, 3days=last scan check).
+  ScriptApp.newTrigger('runEmailAdmin_')
+    .timeBased()
+    .atHour(6)
+    .everyDays(1)
+    .inTimezone(Session.getScriptTimeZone())
+    .create();
+
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min, runEmailAdmin_ daily at 6am.');
 }
 
 // ============================================================
@@ -573,6 +592,7 @@ function setupTriggers() {
 function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
+    try { sendSlackLog_(':night_with_stars: Nightly run started'); } catch(slErr) {}
 
     // Step -3: Memory — weekly snapshot + prune (Issue #9)
     try { writeWeeklySnapshot_(); } catch (wsErr) { Logger.log('writeWeeklySnapshot_ error (non-fatal): ' + wsErr.message); }
@@ -666,6 +686,10 @@ function nightlyRun() {
     try { checkGrowth_(); }
     catch (grErr) { Logger.log('checkGrowth_ error (non-fatal): ' + grErr.message); }
 
+    // Step 0g-vi: Email Admin — check for stale follow-ups (Issue #144)
+    try { checkEmailFollowUps_(); }
+    catch (eaErr) { Logger.log('checkEmailFollowUps_ error (non-fatal): ' + eaErr.message); }
+
     // Step 0h: Reset morning routine checkboxes for the new day
     try {
       var mrSheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
@@ -714,6 +738,7 @@ function nightlyRun() {
     if (events.length === 0 && tasks.length === 0 && summaries.length === 0) {
       Logger.log('nightlyRun: no events, tasks, or summaries tonight — skipping Claude call.');
       Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
+      try { sendSlackLog_(':night_with_stars: Nightly run complete — nothing to analyse tonight, Claude skipped'); } catch(slErr) {}
       return;
     }
 
@@ -740,9 +765,18 @@ function nightlyRun() {
     try { checkMissRate_(); } catch (mrErr) { Logger.log('checkMissRate_ error (non-fatal): ' + mrErr.message); }
 
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
+    try {
+      var nightlyFlagCount = (flags && flags.length) ? flags.length : 0;
+      sendSlackLog_(
+        ':white_check_mark: Nightly run complete — ' +
+        nightlyFlagCount + ' flag' + (nightlyFlagCount === 1 ? '' : 's') + ' written' +
+        ' | Events: ' + events.length + ', Tasks: ' + tasks.length
+      );
+    } catch(slErr) {}
 
   } catch (e) {
     Logger.log('VERA nightly run ERROR: ' + e.message + '\n' + e.stack);
+    try { sendSlackLog_(':rotating_light: *Nightly run ERROR* — ' + e.message); } catch(slErr) {}
     try {
       MailApp.sendEmail(
         CONFIG.MORNING_NUDGE_EMAIL,
@@ -1492,6 +1526,7 @@ function morningNudge() {
 
     if (total === 0) {
       Logger.log('Morning nudge: no active flags, skipping email.');
+      try { sendSlackLog_(':sunny: Morning nudge: no active flags — email skipped'); } catch(slErr) {}
       return;
     }
 
@@ -1538,6 +1573,26 @@ function morningNudge() {
 
     // ---- Weather ticker (graceful — empty string if not configured) -----
     const weatherTicker = getWeatherTicker_();
+
+    // ---- Guest ticker (Issue #150 — upcoming house guests) --------------
+    let guestTicker = '';
+    try {
+      var guestCfg     = readPTOConfig_();
+      var upcomingGuests = getUpcomingGuests_(guestCfg);
+      if (upcomingGuests && upcomingGuests.length > 0) {
+        var guestItems = upcomingGuests.slice(0, 3).map(function(g) {
+          var daysLabel = g.daysAway === 0 ? 'Today' : (g.daysAway === 1 ? 'Tomorrow' : 'In ' + g.daysAway + ' days');
+          return '<span style="margin-right:16px;">👥 <strong>' + g.label + '</strong> · ' + daysLabel + ' (' + g.durationDays + 'd)</span>';
+        }).join('');
+        guestTicker =
+          '<tr><td style="padding:8px 40px;background:#f5f0e8;border-bottom:1px solid #e8e0d0;">' +
+          '<p style="margin:0;font-size:13px;color:#6b5a3e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+          guestItems + '</p>' +
+          '</td></tr>';
+      }
+    } catch (guestErr) {
+      Logger.log('morningNudge: guest ticker error (non-fatal) — ' + guestErr.message);
+    }
 
     // ---- Today's calendar events ----------------------------------------
     let todayEvents = [];
@@ -1620,6 +1675,9 @@ function morningNudge() {
       // Weather ticker (empty string → nothing rendered)
       weatherTicker +
 
+      // Guest ticker (Issue #150 — empty string → nothing rendered)
+      guestTicker +
+
       // Body
       '<tr><td style="padding:36px 40px;">' +
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
@@ -1678,9 +1736,18 @@ function morningNudge() {
 
     MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions);
     Logger.log('Morning nudge sent (HTML): ' + total + ' active flags.');
+    try {
+      sendSlackLog_(
+        ':sunny: Morning nudge sent — ' + total + ' flag' + (total === 1 ? '' : 's') +
+        (highCount > 0 ? ' | :red_circle: ' + highCount + ' high' : '') +
+        (medCount  > 0 ? ' | :large_yellow_circle: ' + medCount  + ' medium' : '') +
+        (lowCount  > 0 ? ' | :large_green_circle: '  + lowCount  + ' low' : '')
+      );
+    } catch(slErr) {}
 
   } catch (e) {
     Logger.log('morningNudge ERROR: ' + e.message);
+    try { sendSlackLog_(':rotating_light: *Morning nudge ERROR* — ' + e.message); } catch(slErr) {}
   }
 }
 

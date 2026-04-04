@@ -96,6 +96,12 @@ function checkGymSessions_() {
 
   if (flags.length) writeFlags(flags);
   Logger.log('GymTracker: done — ' + added + ' new session(s) logged.');
+  if (added > 0) {
+    try {
+      var sessionNames = flags.map(function(f) { return f.flag.replace('Gym check-in: ', ''); }).join(', ');
+      sendSlackLog_(':weight_lifter: Gym check-in prompt sent — ' + sessionNames);
+    } catch(slErr) {}
+  }
 }
 
 // ---------------------------------------------------------------------------

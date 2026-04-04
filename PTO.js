@@ -26,11 +26,13 @@ function readPTOConfig_() {
   var sheet = ss.getSheetByName(TABS.CONFIG);
   if (!sheet) throw new Error('Config tab not found');
 
-  var data = sheet.getDataRange().getValues();
-  var raw  = {};
+  var data    = sheet.getDataRange().getValues();
+  var raw     = {};
+  var allKeys = {};
   for (var i = 0; i < data.length; i++) {
     var key = String(data[i][0]).trim();
     var val = String(data[i][1]).trim();
+    allKeys[key] = val; // keep full key for non-pto_ settings
     if (key.indexOf('pto_') === 0) {
       raw[key.substring(4)] = val; // strip 'pto_' prefix
     }
@@ -66,6 +68,14 @@ function readPTOConfig_() {
     // keywords are included as trips. Empty = include all multi-day events (old behaviour).
     travelRequireKeywords: (raw['travel_require_keywords'] || '')
                            .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    // Extra calendars scanned ONLY for trip detection (not for clear-window blocking or milestones).
+    // Use for extended family / shared calendars whose events shouldn't block Ahmed's scheduling windows.
+    travelExtraCalendars: (raw['travel_extra_calendars'] || '')
+                          .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    // Keywords in event title OR description that identify inbound guest visits on gap calendars.
+    // Uses the top-level 'house_guest_keywords' Config key (not pto_* prefixed).
+    guestKeywords: (allKeys['house_guest_keywords'] || 'Visit,Staying,Guests')
+                   .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
   };
 }
 
@@ -84,9 +94,11 @@ function readVictoriaPTOConfig_() {
   var data    = sheet.getDataRange().getValues();
   var raw     = {};
   var shared  = {};
+  var allKeys2 = {};
   for (var i = 0; i < data.length; i++) {
     var key = String(data[i][0]).trim();
     var val = String(data[i][1]).trim();
+    allKeys2[key] = val; // keep full key for non-pto_ settings
     if (key.indexOf('victoria_pto_') === 0) {
       raw[key.substring(13)] = val; // strip 'victoria_pto_' prefix
     }
@@ -117,6 +129,12 @@ function readVictoriaPTOConfig_() {
                           .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     travelRequireKeywords: (shared['travel_require_keywords'] || '')
                            .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
+    travelExtraCalendars: (shared['travel_extra_calendars'] || '')
+                          .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    // Keywords in event title OR description that identify inbound guest visits on gap calendars.
+    // Uses the top-level 'house_guest_keywords' Config key (not pto_* prefixed).
+    guestKeywords: (allKeys2['house_guest_keywords'] || 'Visit,Staying,Guests')
+                   .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
   };
 }
 
@@ -658,21 +676,35 @@ function getUpcomingTravel_(cfg) {
     .map(function(n) { return n.trim(); })
     .filter(function(n) { return n && n !== cfg.calendarName; });
 
+  // Extra calendars scanned for trips only (not for clear-window blocking).
+  // Typically extended family calendars that are shared with Ahmed.
+  var extraCalNames = cfg.travelExtraCalendars || [];
+  var extraCalSet   = {};
+  extraCalNames.forEach(function(n) { extraCalSet[n] = true; });
+
+  // Merged list: gap calendars + extra-only travel calendars (deduplicated)
+  var travelCalNames = gapCalNames.slice();
+  extraCalNames.forEach(function(n) {
+    if (travelCalNames.indexOf(n) === -1) travelCalNames.push(n);
+  });
+
   var travelIgnore  = cfg.travelIgnoreKeywords  || [];
   var travelRequire = cfg.travelRequireKeywords || []; // empty = no restriction
 
-  // ---- Phase 1: Collect ALL events from all gap calendars (including single-day)
+  // ---- Phase 1: Collect ALL events from all travel calendars (including single-day)
   // We need single-day events too so cruise Board/Disembark days can be detected.
-  var allCalEvents = [];   // [{ ev, calName }]
-  for (var c = 0; c < gapCalNames.length; c++) {
-    var cal = getCalendarByName_(gapCalNames[c]);
+  var allCalEvents = [];   // [{ ev, calName, isExtendedFamily }]
+  for (var c = 0; c < travelCalNames.length; c++) {
+    var calN = travelCalNames[c];
+    var cal  = getCalendarByName_(calN);
     if (!cal) {
-      Logger.log('getUpcomingTravel_: calendar not found — "' + gapCalNames[c] + '"');
+      Logger.log('getUpcomingTravel_: calendar not found — "' + calN + '"');
       continue;
     }
-    var rawEvs = cal.getEvents(today, end);
+    var rawEvs          = cal.getEvents(today, end);
+    var isExtendedFam   = !!extraCalSet[calN];
     for (var i = 0; i < rawEvs.length; i++) {
-      allCalEvents.push({ ev: rawEvs[i], calName: gapCalNames[c] });
+      allCalEvents.push({ ev: rawEvs[i], calName: calN, isExtendedFamily: isExtendedFam });
     }
   }
 
@@ -686,8 +718,9 @@ function getUpcomingTravel_(cfg) {
 
   // ---- Phase 3: Collect regular multi-day non-cruise events
   for (var ei = 0; ei < allCalEvents.length; ei++) {
-    var ev      = allCalEvents[ei].ev;
-    var calName = allCalEvents[ei].calName;
+    var ev               = allCalEvents[ei].ev;
+    var calName          = allCalEvents[ei].calName;
+    var isExtFam         = allCalEvents[ei].isExtendedFamily || false;
 
     if (!ev.isAllDayEvent()) continue;
 
@@ -745,13 +778,15 @@ function getUpcomingTravel_(cfg) {
 
     if (!seen[key]) {
       seen[key] = true;
-      travel.push({
+      var tripEntry = {
         label:        label,
         startDate:    startStr,
         endDate:      endStr,
         daysAway:     daysAway,
         calendarName: calName,
-      });
+      };
+      if (isExtFam) tripEntry.isExtendedFamily = true;
+      travel.push(tripEntry);
     }
   }
 
@@ -858,6 +893,87 @@ function classifyPTOBlock_(weekdays, startDate, endDate) {
   if (weekdays <= 3 && calDays <= 5) return 'longWeekend';
   if (weekdays <= 7)                 return 'midSizeWeek';
   return 'bigPivot';
+}
+
+// ---- House Guests -----------------------------------------------------------
+
+/**
+ * Reads multi-day all-day events from gap calendars (shared chaos) whose
+ * title OR description contains at least one guest keyword.
+ * Used for the Guests subtab and morning email ticker (Issue #150).
+ *
+ * @param  {Object} cfg  From readPTOConfig_()
+ * @returns {Array} [{ label, arrivalDate, departureDate, durationDays, daysAway, calendarName }]
+ */
+function getUpcomingGuests_(cfg) {
+  var guestKeywords = cfg.guestKeywords || [];
+  if (guestKeywords.length === 0) return []; // safety: never return everything without a keyword filter
+
+  var tz    = Session.getScriptTimeZone();
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var end = new Date(today.getTime() + 180 * 24 * 60 * 60 * 1000);
+
+  // Scan gap calendars only (excludes work/PTO calendar)
+  var gapCalNames = (cfg.gapCalendarsRaw || '').split(',')
+    .map(function(n) { return n.trim(); })
+    .filter(function(n) { return n && n !== cfg.calendarName; });
+
+  var results = [];
+  var seen    = {};
+
+  for (var c = 0; c < gapCalNames.length; c++) {
+    var cal = getCalendarByName_(gapCalNames[c]);
+    if (!cal) continue;
+
+    var events = cal.getEvents(today, end);
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (!ev.isAllDayEvent()) continue;
+
+      var evStart      = ev.getAllDayStartDate();
+      var evEndExcl    = ev.getAllDayEndDate();
+      var durationDays = Math.round((evEndExcl.getTime() - evStart.getTime()) / (24 * 60 * 60 * 1000));
+      if (durationDays < 2) continue; // single-day events are not guest stays
+
+      var title    = ev.getTitle().trim();
+      var descRaw  = '';
+      try { descRaw = ev.getDescription() || ''; } catch (de) {}
+      var titleLow = title.toLowerCase();
+      var descLow  = descRaw.toLowerCase();
+
+      // Must match at least one guest keyword in title OR description
+      var matched = false;
+      for (var ki = 0; ki < guestKeywords.length; ki++) {
+        if (guestKeywords[ki] && (titleLow.indexOf(guestKeywords[ki]) !== -1 || descLow.indexOf(guestKeywords[ki]) !== -1)) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) continue;
+
+      var evEndIncl = new Date(evEndExcl.getTime() - 24 * 60 * 60 * 1000);
+      var startStr  = Utilities.formatDate(evStart,   tz, 'yyyy-MM-dd');
+      var endStr    = Utilities.formatDate(evEndIncl, tz, 'yyyy-MM-dd');
+      var key       = title + '|' + startStr;
+      if (seen[key]) continue;
+      seen[key] = true;
+
+      var daysAway = Math.round((evStart.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+
+      results.push({
+        label:        title,
+        arrivalDate:  startStr,
+        departureDate: endStr,
+        durationDays: durationDays,
+        daysAway:     daysAway,
+        calendarName: gapCalNames[c],
+      });
+    }
+  }
+
+  results.sort(function(a, b) { return a.arrivalDate < b.arrivalDate ? -1 : 1; });
+  return results;
 }
 
 // ---- Clear window finder ----------------------------------------------------

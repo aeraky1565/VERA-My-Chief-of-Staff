@@ -43,6 +43,10 @@ function checkPreTripBriefings_() {
   if (flags.length) {
     writeFlags(flags);
     Logger.log('PreTripBriefing: wrote ' + flags.length + ' briefing flag(s)');
+    try {
+      var tripNames = trips.slice(0, flags.length).map(function(t) { return t.tripLabel || t.tripKey; }).join(', ');
+      sendSlackLog_(':airplane: Pre-trip briefing written — ' + tripNames);
+    } catch(slErr) {}
   }
 }
 

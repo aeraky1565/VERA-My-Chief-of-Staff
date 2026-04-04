@@ -94,11 +94,19 @@ function sendSlackMessage_(channelId, text, blocks, threadTs) {
  * @param {Array}  [blocks]
  * @param {boolean} [ephemeral] true = only visible to the user
  */
-function sendSlackResponse_(responseUrl, text, blocks, ephemeral) {
+/**
+ * Responds to a Block Kit button interaction via response_url.
+ * Uses replace_original:true so the action buttons are replaced with the
+ * confirmation text (the correct pattern for interactive components).
+ * Note: response_type:'ephemeral' is only valid for slash commands, NOT
+ * for button interaction callbacks — using it here causes Slack to ignore
+ * the response entirely, which is why button feedback was missing.
+ */
+function sendSlackResponse_(responseUrl, text, blocks, replaceOriginal) {
   if (!responseUrl) return;
   var payload = {
-    response_type: ephemeral ? 'ephemeral' : 'in_channel',
-    text:   String(text || ''),
+    replace_original: replaceOriginal !== false, // default true
+    text:             String(text || ''),
   };
   if (blocks) payload.blocks = blocks;
   try {
@@ -268,14 +276,20 @@ function buildEveningCheckinBlocks_() {
       elements: [
         {
           type:      'button',
-          text:      { type: 'plain_text', text: 'Yes' },
+          text:      { type: 'plain_text', text: '✅ Yes' },
           style:     'primary',
           action_id: 'evening_checkin_yes',
           value:     'yes',
         },
         {
           type:      'button',
-          text:      { type: 'plain_text', text: 'No — skipped' },
+          text:      { type: 'plain_text', text: '🚶 I walked instead' },
+          action_id: 'evening_checkin_walk',
+          value:     'walk',
+        },
+        {
+          type:      'button',
+          text:      { type: 'plain_text', text: '❌ No — skipped' },
           style:     'danger',
           action_id: 'evening_checkin_no',
           value:     'no',
@@ -579,19 +593,32 @@ function handleSlackInteraction_(payload) {
       sendSlackResponse_(responseUrl, ':zzz: Flag snoozed for 3 days.', null, true);
 
     } else if (actionId === 'evening_checkin_yes') {
-      // Log gym attended — prompt for details via chat
+      // Replace original message with confirmation, then prompt for details
+      sendSlackResponse_(responseUrl, ':white_check_mark: Great — what did you do? _(Reply in #vera-chat with details, e.g. 30 min run, yoga, weights)_', null, true);
       var chatChannel = getSlackChannelId_('chat');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       sendSlackMessage_(chatChannel, ':muscle: Nice work, ' + userName + '! What did you do? _(e.g. 30 min run, yoga, weights)_');
-      sendSlackResponse_(responseUrl, ':white_check_mark: Logged! Tell me what you did in *#vera-chat*.', null, true);
+      // Log to vera-logs
+      var logsChannel = getSlackChannelId_('logs');
+      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + (userName) + ' *logged movement* (details pending)');
+
+    } else if (actionId === 'evening_checkin_walk') {
+      // Walking counts — log as attended
+      try { webGymAttendLatest_('Yes'); } catch (e) { Logger.log('evening_checkin_walk log error: ' + e.message); }
+      sendSlackResponse_(responseUrl, ':walking: Walking counts! Logged as movement for today.', null, true);
+      // Log to vera-logs
+      var logsChannel = getSlackChannelId_('logs');
+      var userName    = getSlackUserName_(userId) || 'Ahmed';
+      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *walked* (logged as attended)');
 
     } else if (actionId === 'evening_checkin_no') {
-      // Log gym skipped
-      try {
-        var fakeEvent = makeFakeEvent_({ action: 'log_gym_attend_latest', attended: 'no' });
-        webLogGymAttendLatest_(fakeEvent);
-      } catch (e) { /* non-fatal */ }
+      // Log gym skipped — fixed: call webGymAttendLatest_ directly (not the non-existent webLogGymAttendLatest_)
+      try { webGymAttendLatest_('No'); } catch (e) { Logger.log('evening_checkin_no log error: ' + e.message); }
       sendSlackResponse_(responseUrl, ':ok_hand: No worries — logged as skipped.', null, true);
+      // Log to vera-logs
+      var logsChannel = getSlackChannelId_('logs');
+      var userName    = getSlackUserName_(userId) || 'Ahmed';
+      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *skipped* movement today');
 
     } else if (actionId === 'mark_bill_paid') {
       webMarkBillPaid_(value);
