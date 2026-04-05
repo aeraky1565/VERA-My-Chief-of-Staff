@@ -391,25 +391,53 @@ function handleSlackEvent_(body) {
 
 /**
  * Entry point for form-encoded Slack payloads (interactions + slash commands).
- * Called from doPost() when e.parameter.payload or e.parameter.command is present.
+ * Called from doPost() when the POST body appears to be form-encoded.
+ *
+ * GAS does NOT reliably decode form-encoded POST bodies into e.parameter —
+ * that only works for query strings. We parse e.postData.contents manually
+ * as a fallback, with e.parameter as the primary attempt.
  */
 function handleSlackFormPost_(e) {
-  // Interactive components (button clicks)
-  if (e.parameter && e.parameter.payload) {
+  // ── Resolve the payload string ────────────────────────────────────────────
+  // Try e.parameter first (works when GAS does decode the body), then fall
+  // back to manually URL-decoding the raw POST body.
+  var payloadStr  = (e.parameter && e.parameter.payload)  || '';
+  var commandStr  = (e.parameter && e.parameter.command)  || '';
+
+  if (!payloadStr && !commandStr && e.postData && e.postData.contents) {
+    // Manually parse "key=value&key2=value2" from the raw body
+    var parts = e.postData.contents.split('&');
+    for (var i = 0; i < parts.length; i++) {
+      var kv  = parts[i].split('=');
+      var key = decodeURIComponent(kv[0] || '');
+      var val = decodeURIComponent((kv.slice(1).join('=')) || '');
+      if (key === 'payload') { payloadStr = val; }
+      if (key === 'command') { commandStr = val; }
+    }
+  }
+
+  Logger.log('handleSlackFormPost_: payloadStr length=' + payloadStr.length + ' command=' + commandStr);
+
+  // ── Interactive components (button clicks) ────────────────────────────────
+  if (payloadStr) {
     try {
-      var payload = JSON.parse(e.parameter.payload);
+      var payload = JSON.parse(payloadStr);
       handleSlackInteraction_(payload);
     } catch (err) {
-      Logger.log('Slack interaction parse error: ' + err.message);
+      Logger.log('Slack interaction parse error: ' + err.message + ' | raw=' + payloadStr.substring(0, 200));
     }
     return ContentService.createTextOutput('');
   }
 
-  // Slash commands
-  if (e.parameter && e.parameter.command) {
-    return handleSlashCommand_(e.parameter);
+  // ── Slash commands ────────────────────────────────────────────────────────
+  if (commandStr) {
+    // Rebuild a parameter map from the decoded body if e.parameter is incomplete
+    var params = e.parameter || {};
+    if (!params.command) params.command = commandStr;
+    return handleSlashCommand_(params);
   }
 
+  Logger.log('handleSlackFormPost_: no payload or command found in body');
   return ContentService.createTextOutput('ok');
 }
 
@@ -583,50 +611,51 @@ function handleSlackInteraction_(payload) {
   var responseUrl = payload.response_url;
   var userId      = payload.user && payload.user.id;
 
+  // ── Send the visual response to Slack FIRST (3-second deadline) ─────────
+  // Any sheet reads/writes happen AFTER the ack so Slack never times out.
+  var ackText = '';
+  if      (actionId === 'acknowledge_flag')    ackText = ':white_check_mark: Flag acknowledged.';
+  else if (actionId === 'snooze_flag')         ackText = ':zzz: Snoozed for 3 days.';
+  else if (actionId === 'evening_checkin_yes') ackText = ':white_check_mark: Got it — logged! What did you do? _(Reply in #vera-chat)_';
+  else if (actionId === 'evening_checkin_walk')ackText = ':walking: Walking counts! Logged as movement for today.';
+  else if (actionId === 'evening_checkin_no')  ackText = ':ok_hand: No worries — logged as skipped.';
+  else if (actionId === 'mark_bill_paid')      ackText = ':white_check_mark: Bill marked as paid.';
+
+  if (ackText) sendSlackResponse_(responseUrl, ackText, null, true);
+
+  // ── Heavy work (sheet reads/writes) AFTER the ack ────────────────────────
   try {
     if (actionId === 'acknowledge_flag') {
       webAcknowledge_(value);
-      sendSlackResponse_(responseUrl, ':white_check_mark: Flag acknowledged.', null, true);
 
     } else if (actionId === 'snooze_flag') {
       webSnooze_(value, 3);
-      sendSlackResponse_(responseUrl, ':zzz: Flag snoozed for 3 days.', null, true);
 
     } else if (actionId === 'evening_checkin_yes') {
-      // Replace original message with confirmation, then prompt for details
-      sendSlackResponse_(responseUrl, ':white_check_mark: Great — what did you do? _(Reply in #vera-chat with details, e.g. 30 min run, yoga, weights)_', null, true);
       var chatChannel = getSlackChannelId_('chat');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       sendSlackMessage_(chatChannel, ':muscle: Nice work, ' + userName + '! What did you do? _(e.g. 30 min run, yoga, weights)_');
-      // Log to vera-logs
       var logsChannel = getSlackChannelId_('logs');
-      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + (userName) + ' *logged movement* (details pending)');
+      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *logged movement* (details pending)');
 
     } else if (actionId === 'evening_checkin_walk') {
-      // Walking counts — log as attended
-      try { webGymAttendLatest_('Yes'); } catch (e) { Logger.log('evening_checkin_walk log error: ' + e.message); }
-      sendSlackResponse_(responseUrl, ':walking: Walking counts! Logged as movement for today.', null, true);
-      // Log to vera-logs
+      try { webGymAttendLatest_('Yes'); } catch (gErr) { Logger.log('evening_checkin_walk gym log error: ' + gErr.message); }
       var logsChannel = getSlackChannelId_('logs');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *walked* (logged as attended)');
 
     } else if (actionId === 'evening_checkin_no') {
-      // Log gym skipped — fixed: call webGymAttendLatest_ directly (not the non-existent webLogGymAttendLatest_)
-      try { webGymAttendLatest_('No'); } catch (e) { Logger.log('evening_checkin_no log error: ' + e.message); }
-      sendSlackResponse_(responseUrl, ':ok_hand: No worries — logged as skipped.', null, true);
-      // Log to vera-logs
+      try { webGymAttendLatest_('No'); } catch (gErr) { Logger.log('evening_checkin_no gym log error: ' + gErr.message); }
       var logsChannel = getSlackChannelId_('logs');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *skipped* movement today');
 
     } else if (actionId === 'mark_bill_paid') {
       webMarkBillPaid_(value);
-      sendSlackResponse_(responseUrl, ':white_check_mark: Bill marked as paid.', null, true);
     }
   } catch (err) {
     Logger.log('handleSlackInteraction_ error: ' + err.message);
-    sendSlackResponse_(responseUrl, 'Something went wrong: ' + err.message, null, true);
+    // Response was already sent above; just log the error
   }
 }
 
