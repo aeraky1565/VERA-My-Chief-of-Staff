@@ -592,6 +592,9 @@ function nightlyRun() {
     try { autoRestockItems_();    } catch (arErr) { Logger.log('autoRestockItems_ error (non-fatal): '    + arErr.message); }
     try { generatePantryFlags_(); } catch (pfErr) { Logger.log('generatePantryFlags_ error (non-fatal): ' + pfErr.message); }
 
+    // Step 0l: Capacity mode inference — score tomorrow's calendar load (Issue #8)
+    try { inferCapacityMode_(); } catch (capErr) { Logger.log('inferCapacityMode_ error (non-fatal): ' + capErr.message); }
+
     // Step 1: Collect
     const events    = getUpcomingEvents();
     const tasks     = getOpenTasks();
@@ -1239,6 +1242,123 @@ function escapeHtml_(str) {
 // MORNING NUDGE — 7am email summary
 // ============================================================
 
+// ============================================================
+// CAPACITY MODE — Issue #8
+// ============================================================
+
+/**
+ * Infers tomorrow's capacity mode (busy / normal / light) by scoring the
+ * calendar load. Stores result in Script Properties so morningNudge() and
+ * Chat can read it. Called nightly from nightlyRun().
+ *
+ * Scoring:
+ *   busy   — >4 meetings OR >5h blocked OR majority back-to-back
+ *   light  — <2 meetings AND mostly clear  (also: active trip, Friday)
+ *   normal — everything else
+ */
+function inferCapacityMode_() {
+  var tz       = Session.getScriptTimeZone();
+  var now      = new Date();
+  var tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  var dayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
+
+  // Friday nudge toward light
+  var isFriday = (tomorrow.getDay() === 5);
+
+  // Trip active → auto-light (check PTO config)
+  var tripActive = false;
+  try {
+    var ptoCfg = readPTOConfig_();
+    var trips  = ptoCfg.vacationBlocks || [];
+    var tomorrowStr = Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd');
+    trips.forEach(function(t) {
+      if (tomorrowStr >= t.start && tomorrowStr <= t.end) tripActive = true;
+    });
+  } catch (e) { /* non-fatal */ }
+
+  if (tripActive) {
+    PropertiesService.getScriptProperties().setProperties({
+      capacity_inferred_mode: 'light',
+      capacity_inferred_date: Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd')
+    });
+    Logger.log('inferCapacityMode_: light (trip active)');
+    return;
+  }
+
+  // Count tomorrow's calendar events
+  var meetings      = 0;
+  var totalMinutes  = 0;
+  var prevEnd       = null;
+  var backToBackCnt = 0;
+  var timedEvents   = [];
+
+  try {
+    var allCals = CalendarApp.getAllCalendars();
+    allCals.forEach(function(cal) {
+      var evts = cal.getEvents(tomorrow, dayEnd);
+      evts.forEach(function(ev) {
+        if (ev.isAllDayEvent()) return;
+        meetings++;
+        var dur = (ev.getEndTime() - ev.getStartTime()) / 60000; // minutes
+        totalMinutes += dur;
+        timedEvents.push({ start: ev.getStartTime(), end: ev.getEndTime() });
+      });
+    });
+  } catch (calErr) {
+    Logger.log('inferCapacityMode_: calendar error (non-fatal) — ' + calErr.message);
+  }
+
+  // Sort timed events by start and detect back-to-back (gap < 15 min)
+  timedEvents.sort(function(a, b) { return a.start - b.start; });
+  timedEvents.forEach(function(ev) {
+    if (prevEnd !== null) {
+      var gapMin = (ev.start - prevEnd) / 60000;
+      if (gapMin < 15) backToBackCnt++;
+    }
+    prevEnd = ev.end;
+  });
+  var backToBackMajority = timedEvents.length > 1 && backToBackCnt >= Math.ceil(timedEvents.length / 2);
+
+  var totalHours = totalMinutes / 60;
+  var mode;
+  if (meetings > 4 || totalHours > 5 || backToBackMajority) {
+    mode = 'busy';
+  } else if (meetings < 2 || isFriday) {
+    mode = 'light';
+  } else {
+    mode = 'normal';
+  }
+
+  PropertiesService.getScriptProperties().setProperties({
+    capacity_inferred_mode: mode,
+    capacity_inferred_date: Utilities.formatDate(tomorrow, tz, 'yyyy-MM-dd')
+  });
+  Logger.log('inferCapacityMode_: ' + mode + ' (' + meetings + ' meetings, ' + totalHours.toFixed(1) + 'h, b2b:' + backToBackCnt + ', friday:' + isFriday + ')');
+}
+
+/**
+ * Returns today's effective capacity mode and its source.
+ * Override beats inferred if the override date equals today.
+ * Returns { mode: 'busy'|'normal'|'light', source: 'override'|'inferred'|'default' }
+ */
+function getCapacityMode_() {
+  var tz      = Session.getScriptTimeZone();
+  var today   = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var props   = PropertiesService.getScriptProperties();
+  var overrideMode = props.getProperty('capacity_override_mode') || '';
+  var overrideDate = props.getProperty('capacity_override_date') || '';
+  var inferredMode = props.getProperty('capacity_inferred_mode') || '';
+  var inferredDate = props.getProperty('capacity_inferred_date') || '';
+
+  if (overrideMode && overrideDate === today) {
+    return { mode: overrideMode, source: 'override' };
+  }
+  if (inferredMode && inferredDate === today) {
+    return { mode: inferredMode, source: 'inferred' };
+  }
+  return { mode: 'normal', source: 'default' };
+}
+
 /**
  * Sends a branded HTML morning email if there are unacknowledged flags.
  * Includes VERA logo (loaded from Drive via VERA_LOGO_FILE_ID script property),
@@ -1265,15 +1385,50 @@ function morningNudge() {
       return acknowledged !== 'yes' && resolved !== 'yes';
     });
 
-    const total     = active.length;
-    const highCount = active.filter(function(r) { return r[5] === 'High';   }).length;
-    const medCount  = active.filter(function(r) { return r[5] === 'Medium'; }).length;
-    const lowCount  = active.filter(function(r) { return r[5] === 'Low';    }).length;
-
-    if (total === 0) {
+    if (active.length === 0) {
       Logger.log('Morning nudge: no active flags, skipping email.');
       return;
     }
+
+    // ---- Capacity mode filtering (Issue #8) ---------------------------------
+    var capacityInfo = getCapacityMode_();
+    var capMode      = capacityInfo.mode;   // 'busy' | 'normal' | 'light'
+    var capSource    = capacityInfo.source; // 'override' | 'inferred' | 'default'
+
+    // Helper: is a flag time-sensitive today?
+    // Checks flag text / key for date-bound phrases so Low-urgency birthdays etc. aren't suppressed.
+    var todayStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    function isTimeSensitiveToday_(row) {
+      var text = (String(row[3]) + ' ' + String(row[4]) + ' ' + String(row[9])).toLowerCase();
+      return text.indexOf('today') !== -1 ||
+             text.indexOf('birthday') !== -1 ||
+             text.indexOf('due today') !== -1 ||
+             text.indexOf('arriving today') !== -1 ||
+             text.indexOf(todayStr) !== -1;
+    }
+
+    var surfaced;
+    var heldCount = 0;
+    if (capMode === 'busy') {
+      surfaced  = active.filter(function(r) { return r[5] === 'High' || isTimeSensitiveToday_(r); });
+      heldCount = active.length - surfaced.length;
+    } else if (capMode === 'normal') {
+      surfaced  = active.filter(function(r) { return r[5] === 'High' || r[5] === 'Medium'; });
+      heldCount = active.length - surfaced.length;
+    } else {
+      surfaced  = active;   // light: show everything
+    }
+
+    // If capacity filtering left nothing to show, fall back to showing all
+    if (surfaced.length === 0) {
+      surfaced  = active;
+      heldCount = 0;
+    }
+
+    const total     = surfaced.length;
+    const highCount = surfaced.filter(function(r) { return r[5] === 'High';   }).length;
+    const medCount  = surfaced.filter(function(r) { return r[5] === 'Medium'; }).length;
+    const lowCount  = surfaced.filter(function(r) { return r[5] === 'Low';    }).length;
 
     const subject = 'Good morning, Ahmed — VERA has ' + total + (total === 1 ? ' thing' : ' things') + ' for your attention';
 
@@ -1411,6 +1566,44 @@ function morningNudge() {
       Logger.log('morningNudge: guest ticker error (non-fatal) — ' + guestErr.message);
     }
 
+    // ---- Capacity mode ticker (Issue #8) ------------------------------------
+    var capacityTicker = (function() {
+      var dot, label, subLabel;
+      var meetCount = 0;
+      try {
+        meetCount = getUpcomingEvents().filter(function(e) {
+          return e.daysUntil === 0 && !e.isAllDay;
+        }).length;
+      } catch (e) { /* non-fatal */ }
+
+      if (capMode === 'busy') {
+        dot = '🔴';
+        label = capSource === 'override'
+          ? 'Busy day (you said so)'
+          : 'Busy day (calendar load)';
+        subLabel = meetCount + ' meeting' + (meetCount !== 1 ? 's' : '') +
+                   ' · High-priority + time-sensitive only' +
+                   (heldCount > 0 ? ' · <strong>' + heldCount + ' flag' + (heldCount !== 1 ? 's' : '') + ' held</strong>' : '');
+      } else if (capMode === 'normal') {
+        dot = '🟡';
+        label = 'Normal day';
+        subLabel = meetCount + ' meeting' + (meetCount !== 1 ? 's' : '') +
+                   ' · showing High + Medium' +
+                   (heldCount > 0 ? ' · <strong>' + heldCount + ' Low flag' + (heldCount !== 1 ? 's' : '') + ' held</strong>' : '');
+      } else {
+        dot = '🟢';
+        label = 'Light day';
+        subLabel = meetCount + ' meeting' + (meetCount !== 1 ? 's' : '') +
+                   ' · surfacing all ' + total + ' flag' + (total !== 1 ? 's' : '');
+      }
+
+      return '<div style="margin-bottom:20px;padding:10px 14px;background:#f7f7fa;border-radius:6px;border-left:4px solid ' +
+             (capMode === 'busy' ? '#e53935' : capMode === 'normal' ? '#f9a825' : '#43a047') + ';">' +
+             '<span style="font-size:14px;font-weight:600;color:#333333;">' + dot + ' ' + label + '</span>' +
+             '<span style="font-size:13px;color:#777777;margin-left:10px;">' + subLabel + '</span>' +
+             '</div>';
+    })();
+
     // ---- HTML body ------------------------------------------------------
     const htmlBody =
       '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f0f5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
@@ -1429,7 +1622,8 @@ function morningNudge() {
       // Body
       '<tr><td style="padding:36px 40px;">' +
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
-      '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
+      '<p style="margin:0 0 16px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
+      capacityTicker +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
       guestTicker +
@@ -1459,8 +1653,15 @@ function morningNudge() {
         (totalDueToday > 0 ? totalDueToday + ' due today' : '')
       : '';
 
+    var capPlainLabel = capMode === 'busy'
+      ? (capSource === 'override' ? '🔴 Busy day (you said so)' : '🔴 Busy day (calendar load)')
+      : capMode === 'normal' ? '🟡 Normal day' : '🟢 Light day';
+    var capPlainLine = capPlainLabel + (heldCount > 0 ? ' · ' + heldCount + ' flag(s) held' : '');
+
     const plainText = [
       'Good morning, Ahmed.',
+      '',
+      capPlainLine,
       '',
       'VERA flagged ' + total + (total === 1 ? ' item' : ' items') + ' overnight:',
       '',

@@ -428,6 +428,24 @@ function buildChatSystemPrompt_(context) {
     'line and it will be done. Do not hedge, disclaim, or suggest the user do it themselves.\n\n' +
     'Today is ' + today + '.\n\n' +
 
+    // ---- Capacity mode (Issue #8) ----------------------------------------
+    (function() {
+      try {
+        var capInfo = getCapacityMode_();
+        var capMode = capInfo.mode;
+        var capSrc  = capInfo.source;
+        var capLabel = capMode === 'busy'
+          ? (capSrc === 'override' ? '🔴 BUSY (you said so)' : '🔴 BUSY (inferred from calendar load)')
+          : capMode === 'light' ? '🟢 LIGHT' : '🟡 NORMAL';
+        var capNote = capMode === 'busy'
+          ? ' — Ahmed has a heavy day. Be concise. Lead with what matters most. Do NOT volunteer Low-priority items unless directly asked.'
+          : capMode === 'light'
+          ? ' — Ahmed has a light day. Surface Low-priority items and background nudges freely.'
+          : ' — Normal load. Surface High and Medium items; mention Low only if relevant.';
+        return 'CAPACITY MODE: ' + capLabel + capNote + '\n\n';
+      } catch (e) { return ''; }
+    })() +
+
     'CURRENT STATE:\n\n' +
     'ACTIVE FLAGS (' + context.flags.length + '):\n' + flagLines + '\n\n' +
     'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + googleTaskLines + '\n\n' +
@@ -2117,6 +2135,33 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   var trimmedMsg = (userMessage || '').trim();
   if (!trimmedMsg && !imageBase64) {
     return { ok: true, reply: 'What can I help you with?' };
+  }
+
+  // ---- Capacity mode override detection (Issue #8) -------------------------
+  // Detect natural-language phrases and write override to Script Properties.
+  // Only fires for Ahmed's own session (not victoria_dashboard).
+  if (sessionId !== 'victoria_dashboard') {
+    var msgLower = trimmedMsg.toLowerCase();
+    var capOverride = null;
+    if (/\b(busy|heavy|hectic|packed|crazy)\s*(day|morning|afternoon)?\b/.test(msgLower) ||
+        /\b(i('m| am) having a (busy|heavy|hectic))\b/.test(msgLower)) {
+      capOverride = 'busy';
+    } else if (/\b(light|easy|quiet|slow|chill|relaxed)\s*(day|morning|afternoon)?\b/.test(msgLower) ||
+               /\b(i('m| am) having a (light|easy|quiet|slow))\b/.test(msgLower)) {
+      capOverride = 'light';
+    } else if (/\b(normal|regular|standard)\s*day\b/.test(msgLower)) {
+      capOverride = 'normal';
+    }
+    if (capOverride) {
+      try {
+        var tz = Session.getScriptTimeZone();
+        PropertiesService.getScriptProperties().setProperties({
+          capacity_override_mode: capOverride,
+          capacity_override_date: Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')
+        });
+        Logger.log('processChat_: capacity override set to ' + capOverride);
+      } catch (capErr) { /* non-fatal */ }
+    }
   }
 
   var history   = loadChatHistory_(sessionId);
