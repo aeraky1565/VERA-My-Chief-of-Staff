@@ -218,6 +218,14 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Financial Goals (Issue #127)
+      case 'financial_goals':        return jsonOut_(webGetFinancialGoals_());
+      case 'add_financial_goal':     return jsonOut_(webAddFinancialGoal_(e));
+      case 'update_financial_goal':  return jsonOut_(webUpdateFinancialGoal_(e));
+      case 'delete_financial_goal':  return jsonOut_(webDeleteFinancialGoal_(e));
+      case 'simulate_scenario':      return jsonOut_(webSimulateScenario_(e));
+      case 'save_scenario':          return jsonOut_(webSaveScenario_(e));
+      case 'seed_financial_goals':   return jsonOut_(webSeedFinancialGoals_());
       // Vehicles (Issue #125)
       case 'get_vehicles':              return jsonOut_(webGetVehicles_());
       case 'add_vehicle':               return jsonOut_(webAddVehicle_(e));
@@ -5814,4 +5822,195 @@ function webGetVehicleById_(ss, id) {
     if (String(vehicles[i]['ID']).trim() === id) return vehicles[i];
   }
   return null;
+}
+
+// ============================================================
+// FINANCIAL GOALS (Issue #127)
+// ============================================================
+
+function webGetFinancialGoals_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.FINANCIAL_GOALS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, goals: [] };
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, FINANCIAL_GOAL_HEADERS.length).getValues();
+  var goals = rows.map(function(row) {
+    var id = String(row[0]).trim();
+    if (!id) return null;
+    return {
+      id:                  id,
+      name:                String(row[1]).trim(),
+      targetAmount:        Number(row[2]) || 0,
+      currentAmount:       Number(row[3]) || 0,
+      monthlyContribution: Number(row[4]) || 0,
+      targetDate:          row[5] ? Utilities.formatDate(new Date(row[5]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
+      apy:                 Number(row[6]) || 0,
+      owner:               String(row[7]).trim() || 'Joint',
+      account:             String(row[8]).trim(),
+      status:              String(row[9]).trim() || 'Active',
+      notes:               String(row[10]).trim(),
+      createdAt:           row[11] ? String(row[11]) : ''
+    };
+  }).filter(function(g) { return g !== null; });
+  return { ok: true, goals: goals };
+}
+
+function webAddFinancialGoal_(e) {
+  var p     = e.parameter || {};
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.FINANCIAL_GOALS);
+  var id    = 'fg_' + Date.now();
+  var tz    = Session.getScriptTimeZone();
+  sheet.appendRow([
+    id,
+    (p.name                || '').trim(),
+    Number(p.targetAmount)        || 0,
+    Number(p.currentAmount)       || 0,
+    Number(p.monthlyContribution) || 0,
+    (p.targetDate          || ''),
+    Number(p.apy)                 || 0,
+    (p.owner               || 'Joint'),
+    (p.account             || ''),
+    (p.status              || 'Active'),
+    (p.notes               || ''),
+    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')
+  ]);
+  return { ok: true, id: id };
+}
+
+function webUpdateFinancialGoal_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.FINANCIAL_GOALS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'no data' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, FINANCIAL_GOAL_HEADERS.length).getValues();
+  var fieldMap = {
+    'Name':                 p.name,
+    'Target Amount':        p.targetAmount        !== undefined ? Number(p.targetAmount)        : undefined,
+    'Current Amount':       p.currentAmount       !== undefined ? Number(p.currentAmount)       : undefined,
+    'Monthly Contribution': p.monthlyContribution !== undefined ? Number(p.monthlyContribution) : undefined,
+    'Target Date':          p.targetDate,
+    'APY':                  p.apy                 !== undefined ? Number(p.apy)                 : undefined,
+    'Owner':                p.owner,
+    'Account':              p.account,
+    'Status':               p.status,
+    'Notes':                p.notes
+  };
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var rowNum = i + 2;
+      FINANCIAL_GOAL_HEADERS.forEach(function(hdr, col) {
+        if (fieldMap[hdr] !== undefined) sheet.getRange(rowNum, col + 1).setValue(fieldMap[hdr]);
+      });
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webDeleteFinancialGoal_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.FINANCIAL_GOALS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'no data' };
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) { sheet.deleteRow(i + 2); return { ok: true }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// Simulate a what-if scenario for a goal without saving it.
+// changeType: 'one-time' | 'monthly-increase' | 'monthly-decrease'
+// Returns baseline projection and modified projection for comparison.
+function webSimulateScenario_(e) {
+  var p          = e.parameter || {};
+  var goalId     = (p.goalId || '').trim();
+  var changeType = (p.changeType || 'one-time').trim();
+  var amount     = Number(p.amount) || 0;
+
+  var goalsRes = webGetFinancialGoals_();
+  var goal = (goalsRes.goals || []).filter(function(g) { return g.id === goalId; })[0];
+  if (!goal) return { ok: false, error: 'goal not found' };
+
+  function project(currentAmount, monthlyContribution, apy, targetAmount, targetDate) {
+    var remaining = targetAmount - currentAmount;
+    if (remaining <= 0) return { achieved: true };
+    if (!monthlyContribution) return { noContribution: true };
+    var r = (apy || 0) / 100 / 12;
+    var months;
+    if (r > 0) {
+      var lo = 0, hi = 1200, mid = 0;
+      for (var iter = 0; iter < 80; iter++) {
+        mid = (lo + hi) / 2;
+        var fv = currentAmount * Math.pow(1+r, mid) + monthlyContribution * (Math.pow(1+r, mid) - 1) / r;
+        if (fv < targetAmount) lo = mid; else hi = mid;
+      }
+      months = mid;
+    } else {
+      months = remaining / monthlyContribution;
+    }
+    var projDate  = new Date(new Date().getTime() + months * 30.4375 * 86400000);
+    var targetDt  = targetDate ? new Date(targetDate + 'T12:00:00') : null;
+    var onTrack   = targetDt ? projDate <= targetDt : true;
+    var daysEarly = targetDt ? Math.ceil((targetDt - projDate) / 86400000) : null;
+    return {
+      projectedDate:   projDate.toISOString().slice(0, 10),
+      monthsRemaining: Math.round(months * 10) / 10,
+      onTrack:         onTrack,
+      daysEarlyOrLate: daysEarly
+    };
+  }
+
+  var baseline = project(goal.currentAmount, goal.monthlyContribution, goal.apy, goal.targetAmount, goal.targetDate);
+
+  var newCurrent  = goal.currentAmount;
+  var newMonthly  = goal.monthlyContribution;
+  if (changeType === 'one-time')         newCurrent += amount;
+  if (changeType === 'monthly-increase') newMonthly += amount;
+  if (changeType === 'monthly-decrease') newMonthly = Math.max(0, newMonthly - amount);
+
+  var scenario = project(newCurrent, newMonthly, goal.apy, goal.targetAmount, goal.targetDate);
+  var atRisk   = !scenario.onTrack && !!goal.targetDate;
+
+  return { ok: true, result: { baseline: baseline, scenario: scenario, atRisk: atRisk } };
+}
+
+// Save a what-if scenario for a goal.
+function webSaveScenario_(e) {
+  var p      = e.parameter || {};
+  var ss     = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet  = ss.getSheetByName(TABS.FINANCIAL_SCENARIOS);
+  var id     = 'sc_' + Date.now();
+  var tz     = Session.getScriptTimeZone();
+  sheet.appendRow([
+    id,
+    (p.goalId     || ''),
+    (p.label      || ''),
+    (p.changeType || ''),
+    Number(p.amount) || 0,
+    (p.notes      || ''),
+    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')
+  ]);
+  return { ok: true, id: id };
+}
+
+// Seed a few starter goals — useful when the sheet is empty.
+function webSeedFinancialGoals_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.FINANCIAL_GOALS);
+  var tz    = Session.getScriptTimeZone();
+  var now   = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var seeds = [
+    ['fg_seed1', 'Emergency Fund',     15000,  0, 500,  '', 4.5, 'Joint',    'HYSA',           'Active', '3-6 months expenses', now],
+    ['fg_seed2', 'House Down Payment', 80000,  0, 2000, '', 4.5, 'Joint',    'Joint Savings',   'Active', '20% down payment',    now],
+    ['fg_seed3', 'Travel Fund',         5000,  0, 300,  '', 0,   'Joint',    'Joint Checking',  'Active', 'Annual trips budget',  now],
+  ];
+  // Only seed if sheet is empty
+  if (sheet.getLastRow() > 1) return { ok: false, error: 'Goals already exist — seed skipped.' };
+  seeds.forEach(function(row) { sheet.appendRow(row); });
+  return webGetFinancialGoals_();
 }

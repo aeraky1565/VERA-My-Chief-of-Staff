@@ -73,6 +73,8 @@ const TABS = {
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)
+  FINANCIAL_GOALS:    'Financial Goals',      // Financial goals + what-if scenarios (Issue #127)
+  FINANCIAL_SCENARIOS:'Financial Scenarios',  // Saved what-if scenarios per goal (Issue #127)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -122,6 +124,8 @@ const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked',
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
 const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
+const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
+const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -237,6 +241,8 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TRAVELER_PROFILES,    TRAVELER_PROFILE_HEADERS);
   ensureSheet(ss, TABS.CONTRACTS,            CONTRACT_HEADERS);
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);
+  ensureSheet(ss, TABS.FINANCIAL_GOALS,      FINANCIAL_GOAL_HEADERS);
+  ensureSheet(ss, TABS.FINANCIAL_SCENARIOS,  FINANCIAL_SCENARIO_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
