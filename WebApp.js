@@ -220,6 +220,10 @@ function doGet(e) {
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
       // House Guests (Issue #150)
       case 'get_guests':    return jsonOut_(webGetGuests_());
+      // Traveler Profiles / Visa Checker (Issue #123)
+      case 'get_profiles':    return jsonOut_(webGetProfiles_());
+      case 'save_profile':    return jsonOut_(webSaveProfile_(e));
+      case 'delete_profile':  return jsonOut_(webDeleteProfile_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -5256,6 +5260,82 @@ function webDeleteImportantDate_(e) {
   }
   return { ok: false, error: 'not found' };
 }
+
+// ---- Traveler Profiles (Issue #123) ----------------------------------------
+
+function webGetProfiles_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.TRAVELER_PROFILES);
+  var profiles = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? Utilities.formatDate(r[i], Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(r[i] || ''); });
+      // camelCase aliases expected by the frontend
+      profiles.push({
+        id:              String(obj['ID'] || ''),
+        name:            String(obj['Name'] || ''),
+        passportCountry: String(obj['Passport Country'] || ''),
+        passportExpiry:  String(obj['Passport Expiry'] || '').substring(0, 10),
+        specialDocs:     String(obj['Special Docs'] || ''),
+        notes:           String(obj['Notes'] || ''),
+      });
+    });
+  }
+  return { ok: true, profiles: profiles };
+}
+
+function webSaveProfile_(e) {
+  var p               = e.parameter || {};
+  var id              = (p.id              || '').trim();
+  var name            = (p.name            || '').trim();
+  var passportCountry = (p.passportCountry || '').trim();
+  var passportExpiry  = (p.passportExpiry  || '').trim();
+  var specialDocs     = (p.specialDocs     || '').trim();
+  var notes           = (p.notes           || '').trim();
+  if (!name || !passportCountry) return { ok: false, error: 'name and passportCountry required' };
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.TRAVELER_PROFILES);
+
+  if (id) {
+    // Update existing row
+    var rows  = sheet.getDataRange().getValues();
+    var hdrs  = rows[0];
+    var idIdx = hdrs.indexOf('ID');
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][idIdx]).trim() !== id) continue;
+      var rowNum = i + 1;
+      var vals = [id, name, passportCountry, passportExpiry, specialDocs, notes];
+      sheet.getRange(rowNum, 1, 1, TRAVELER_PROFILE_HEADERS.length).setValues([vals]);
+      return { ok: true, id: id };
+    }
+    return { ok: false, error: 'profile not found: ' + id };
+  } else {
+    // Insert new row
+    var newId = 'prof_' + Date.now();
+    sheet.appendRow([newId, name, passportCountry, passportExpiry, specialDocs, notes]);
+    return { ok: true, id: newId };
+  }
+}
+
+function webDeleteProfile_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.TRAVELER_PROFILES);
+  if (!sheet) return { ok: false, error: 'Traveler Profiles sheet not found' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// ---------------------------------------------------------------------------
 
 function webPreviewCalendarBirthdays_() {
   var found    = [];

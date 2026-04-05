@@ -70,6 +70,7 @@ const TABS = {
   GIFT_IDEAS:         'Gift Ideas',           // Individual gift ideas linked to people (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
   CHORES:             'Chores',              // Household chore checklist by cadence (Issue #124)
+  TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -116,6 +117,7 @@ const GIFT_PEOPLE_HEADERS        = ['Name'];
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year'];
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date'];
+const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -228,6 +230,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS);
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS);
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);
+  ensureSheet(ss, TABS.TRAVELER_PROFILES,    TRAVELER_PROFILE_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
