@@ -450,29 +450,45 @@ function webGetGoogleTasks_() {
   }
 
   try {
-    var taskList  = TasksApp.getDefaultTaskList();
-    var allTasks  = taskList.getTasks();
-    var tz        = Session.getScriptTimeZone();
-    var today     = new Date(); today.setHours(0, 0, 0, 0);
+    // Use Advanced Tasks API (same service already required by webCompleteGoogleTask_).
+    // Tasks API must be enabled: Apps Script editor → + (Add a service) → Tasks API.
+    var tz    = Session.getScriptTimeZone();
+    var today = new Date(); today.setHours(0, 0, 0, 0);
 
-    // Recurring detection: title that appears 2+ times with different due dates
+    // Collect all tasks from all task lists
+    var allItems = [];
+    var listRes  = Tasks.Tasklists.list({ maxResults: 20 });
+    var lists    = (listRes && listRes.items) || [];
+    lists.forEach(function(list) {
+      try {
+        var pageToken = null;
+        do {
+          var opts = { showCompleted: false, showHidden: false, maxResults: 100 };
+          if (pageToken) opts.pageToken = pageToken;
+          var tasksRes = Tasks.Tasks.list(list.id, opts);
+          var items    = (tasksRes && tasksRes.items) || [];
+          items.forEach(function(t) { allItems.push(t); });
+          pageToken = (tasksRes && tasksRes.nextPageToken) || null;
+        } while (pageToken);
+      } catch (listErr) {
+        Logger.log('webGetGoogleTasks_: error reading list ' + list.id + ' — ' + listErr.message);
+      }
+    });
+
+    // Recurring detection: title appearing 2+ times across all lists
     var titleDates = {};
-    for (var ri = 0; ri < allTasks.length; ri++) {
-      var rt = allTasks[ri];
-      if (rt.getStatus() === 'completed') continue;
-      var rtTitle = (rt.getTitle() || '').trim();
-      var rtDue   = rt.getDue();
-      if (!titleDates[rtTitle]) titleDates[rtTitle] = [];
-      if (rtDue) titleDates[rtTitle].push(rtDue.getTime());
-    }
+    allItems.forEach(function(t) {
+      if (t.status === 'completed') return;
+      var tit = (t.title || '').trim();
+      if (!titleDates[tit]) titleDates[tit] = [];
+      if (t.due) titleDates[tit].push(t.due);
+    });
 
     var result = [];
-    for (var i = 0; i < allTasks.length; i++) {
-      var t = allTasks[i];
-      if (t.getStatus() === 'completed') continue;
+    allItems.forEach(function(t) {
+      if (t.status === 'completed') return;
 
-      var due     = t.getDue();
-      var dueDate = due ? new Date(due.getTime()) : null;
+      var dueDate = t.due ? new Date(t.due) : null;
       if (dueDate) dueDate.setHours(0, 0, 0, 0);
 
       var daysUntilDue = dueDate !== null
@@ -480,30 +496,28 @@ function webGetGoogleTasks_() {
         : null;
       var isOverdue = daysUntilDue !== null && daysUntilDue < 0;
       var dueStr    = dueDate ? Utilities.formatDate(dueDate, tz, 'yyyy-MM-dd') : '';
-      var titleStr  = (t.getTitle() || '').trim() || '(untitled)';
+      var titleStr  = (t.title || '').trim() || '(untitled)';
 
-      // Recurring: same title with 2+ distinct due dates
-      var titleDatesArr = titleDates[titleStr] || [];
-      var uniqueDates   = {};
-      titleDatesArr.forEach(function(ms) { uniqueDates[ms] = true; });
-      var isRecurring   = Object.keys(uniqueDates).length > 1;
+      var uniqueDates = {};
+      (titleDates[titleStr] || []).forEach(function(d) { uniqueDates[d] = true; });
+      var isRecurring = Object.keys(uniqueDates).length > 1;
 
       result.push({
-        id:           t.getId(),
+        id:           t.id,
         title:        titleStr,
-        task:         titleStr,        // alias so TaskCard renders correctly
+        task:         titleStr,
         due:          dueStr,
-        dueDate:      dueStr,          // alias for TaskCard
-        notes:        t.getNotes() || '',
-        status:       t.getStatus(),
+        dueDate:      dueStr,
+        notes:        t.notes || '',
+        status:       t.status,
         isOverdue:    isOverdue,
         daysUntilDue: daysUntilDue,
-        ageInDays:    0,               // not tracked for Google Tasks
+        ageInDays:    0,
         isNeglected:  false,
         recurring:    isRecurring ? 'recurring' : '',
         source:       'google',
       });
-    }
+    });
 
     // Sort: overdue first, then by due date ascending, undated last
     result.sort(function(a, b) {
