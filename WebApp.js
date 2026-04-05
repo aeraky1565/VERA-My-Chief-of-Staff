@@ -952,19 +952,36 @@ function webDeleteProjectTask_(e) {
  * Called by the 🌴 PTO tab on dashboard open.
  */
 function webGetPTO_() {
-  var cfg      = readPTOConfig_();
-  var ptoResult = getPTOEvents_(cfg);
-  var travel   = getUpcomingTravel_(cfg);
-  var gapCals  = getGapCalendars_(cfg);
-  var today    = new Date();
-  var stats    = computePTOStats_(ptoResult, cfg, today);
+  var today = new Date();
 
-  // Attach live clear windows + milestones (may have changed since last nightly run)
-  stats.clearWindows  = findClearWindows_(gapCals, today, 90, 3);
-  stats.milestones    = getMilestones_(gapCals, cfg, today);
-  stats.upcomingTravel = travel;
+  // ── Ahmed ──────────────────────────────────────────────────────────────────
+  var cfg        = readPTOConfig_();
+  var ptoResult  = getPTOEvents_(cfg);
+  var travel     = getUpcomingTravel_(cfg);
+  var gapCals    = getGapCalendars_(cfg);
+  var clearWins  = findClearWindows_(gapCals, today, 90, 3);
+  var milestones = getMilestones_(gapCals, cfg, today);
 
-  return { ok: true, stats: stats };
+  var ahmedStats = computePTOStats_(ptoResult, cfg, today);
+  ahmedStats.clearWindows   = clearWins;
+  ahmedStats.milestones     = milestones;
+  ahmedStats.upcomingTravel = travel;
+
+  // ── Victoria ───────────────────────────────────────────────────────────────
+  var victoriaStats = null;
+  try {
+    var vCfg       = readVictoriaPTOConfig_();
+    var vPtoResult = getPTOEvents_(vCfg);
+    victoriaStats  = computePTOStats_(vPtoResult, vCfg, today);
+    // Share gap-calendar data (same calendars for both)
+    victoriaStats.clearWindows   = clearWins;
+    victoriaStats.milestones     = milestones;
+    victoriaStats.upcomingTravel = travel;
+  } catch (vErr) {
+    Logger.log('webGetPTO_: Victoria PTO error (non-fatal): ' + vErr.message);
+  }
+
+  return { ok: true, ahmedStats: ahmedStats, victoriaStats: victoriaStats };
 }
 
 /**
