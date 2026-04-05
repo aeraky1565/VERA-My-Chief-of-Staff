@@ -14680,6 +14680,7 @@ function App() {
     if (!url || !token) return;
     try {
       const data = await apiGet(url, token, { action: 'get_google_tasks' });
+      if (data.error) setGoogleTasksError(data.error);
       setGoogleTasks(data.tasks || []);
     } catch (err) {
       setGoogleTasksError(err.message);

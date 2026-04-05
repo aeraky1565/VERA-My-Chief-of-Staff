@@ -454,7 +454,6 @@ function webGetGoogleTasks_() {
     var allTasks  = taskList.getTasks();
     var tz        = Session.getScriptTimeZone();
     var today     = new Date(); today.setHours(0, 0, 0, 0);
-    var cutoffMs  = today.getTime() + 14 * 24 * 60 * 60 * 1000;
 
     // Recurring detection: title that appears 2+ times with different due dates
     var titleDates = {};
@@ -475,9 +474,6 @@ function webGetGoogleTasks_() {
       var due     = t.getDue();
       var dueDate = due ? new Date(due.getTime()) : null;
       if (dueDate) dueDate.setHours(0, 0, 0, 0);
-
-      // Skip tasks due beyond the 14-day window
-      if (dueDate && dueDate.getTime() > cutoffMs) continue;
 
       var daysUntilDue = dueDate !== null
         ? Math.floor((dueDate.getTime() - today.getTime()) / 86400000)
