@@ -218,6 +218,16 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Vehicles (Issue #125)
+      case 'get_vehicles':              return jsonOut_(webGetVehicles_());
+      case 'add_vehicle':               return jsonOut_(webAddVehicle_(e));
+      case 'delete_vehicle':            return jsonOut_(webDeleteVehicle_(e));
+      case 'vehicle_oil_change':        return jsonOut_(webVehicleOilChange_(e));
+      case 'vehicle_service':           return jsonOut_(webVehicleService_(e));
+      case 'vehicle_mileage':           return jsonOut_(webVehicleMileage_(e));
+      case 'vehicle_tire_change':       return jsonOut_(webVehicleTireChange_(e));
+      case 'vehicle_emission_inspect':  return jsonOut_(webVehicleEmissionInspect_(e));
+      case 'vehicle_safety_inspect':    return jsonOut_(webVehicleSafetyInspect_(e));
       // Contracts (Issue #146)
       case 'get_contracts':       return jsonOut_(webGetContracts_());
       case 'add_contract':        return jsonOut_(webAddContract_(e));
@@ -5629,4 +5639,179 @@ function webLogContractAction_(e) {
   }
 
   return { ok: true };
+}
+
+// ============================================================
+// VEHICLES (Issue #125)
+// ============================================================
+
+function webGetVehicles_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, vehicles: [] };
+  var hdrs  = VEHICLE_HEADERS;
+  var rows  = sheet.getRange(2, 1, sheet.getLastRow() - 1, hdrs.length).getValues();
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+
+  var vehicles = rows.map(function(row) {
+    var v = {};
+    hdrs.forEach(function(h, i) { v[h] = row[i]; });
+    if (!v['ID']) return null;
+
+    function daysUntil(val) {
+      if (!val) return null;
+      var d = new Date(val); d.setHours(0, 0, 0, 0);
+      return Math.round((d - today) / 86400000);
+    }
+
+    v.registrationDays       = daysUntil(v['Registration Expiry']);
+    v.insuranceDays          = daysUntil(v['Insurance Expiry']);
+    v.warrantyB2bDays        = daysUntil(v['Warranty Expiry (B2B)']);
+    v.warrantyPowertrainDays = daysUntil(v['Warranty Expiry (Powertrain)']);
+    v.serviceDays            = daysUntil(v['Next Service']);
+    v.emissionDays           = daysUntil(v['Emission Inspection Expiry']);
+    v.safetyDays             = daysUntil(v['Safety Inspection Expiry']);
+
+    var curMi       = parseFloat(v['Current Mileage'])        || null;
+    var lastOilMi   = parseFloat(v['Last Oil Change Mileage']) || null;
+    var oilInterval = parseFloat(v['Oil Interval (mi)'])      || 5000;
+    v.milesUntilOilChange = (curMi !== null && lastOilMi !== null)
+      ? (lastOilMi + oilInterval) - curMi : null;
+
+    var tireLastMi   = parseFloat(v['Tires Last Replaced Mileage']) || null;
+    var tireInterval = parseFloat(v['Tire Interval (mi)'])          || 50000;
+    v.milesUntilTireChange = (curMi !== null && tireLastMi !== null)
+      ? (tireLastMi + tireInterval) - curMi : null;
+
+    return v;
+  }).filter(function(v) { return v !== null; });
+
+  return { ok: true, vehicles: vehicles };
+}
+
+function webAddVehicle_(e) {
+  var p     = e.parameter || {};
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  var id    = 'veh_' + Date.now();
+  var row   = VEHICLE_HEADERS.map(function(h) {
+    if (h === 'ID') return id;
+    return p[h] !== undefined ? p[h] : '';
+  });
+  sheet.appendRow(row);
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function webDeleteVehicle_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'no data' };
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) {
+      sheet.deleteRow(i + 2);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webVehicleOilChange_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var fields = { 'Last Oil Change Date': today };
+  if (p.currentMileage) {
+    fields['Last Oil Change Mileage'] = p.currentMileage;
+    fields['Current Mileage']         = p.currentMileage;
+  }
+  _vehicleSetFields_(sheet, id, fields);
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function webVehicleService_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  _vehicleSetFields_(sheet, id, { 'Last Service': today });
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function webVehicleMileage_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  _vehicleSetFields_(sheet, id, { 'Current Mileage': p.mileage || '' });
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function webVehicleTireChange_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var fields = { 'Tires Last Replaced Date': today };
+  if (p.currentMileage) {
+    fields['Tires Last Replaced Mileage'] = p.currentMileage;
+    fields['Current Mileage']             = p.currentMileage;
+  }
+  _vehicleSetFields_(sheet, id, fields);
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function webVehicleEmissionInspect_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  _vehicleSetFields_(sheet, id, { 'Emission Inspection Expiry': p.expiryDate || '' });
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function webVehicleSafetyInspect_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.VEHICLES);
+  _vehicleSetFields_(sheet, id, { 'Safety Inspection Expiry': p.expiryDate || '' });
+  return { ok: true, vehicle: webGetVehicleById_(ss, id) };
+}
+
+function _vehicleSetFields_(sheet, id, fields) {
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, VEHICLE_HEADERS.length).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var rowNum = i + 2;
+      Object.keys(fields).forEach(function(hdr) {
+        var col = VEHICLE_HEADERS.indexOf(hdr);
+        if (col !== -1) sheet.getRange(rowNum, col + 1).setValue(fields[hdr]);
+      });
+      return;
+    }
+  }
+}
+
+function webGetVehicleById_(ss, id) {
+  var result   = webGetVehicles_();
+  var vehicles = result.vehicles || [];
+  for (var i = 0; i < vehicles.length; i++) {
+    if (String(vehicles[i]['ID']).trim() === id) return vehicles[i];
+  }
+  return null;
 }

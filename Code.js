@@ -72,6 +72,7 @@ const TABS = {
   CHORES:             'Chores',              // Household chore checklist by cadence (Issue #124)
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
+  VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -120,6 +121,7 @@ const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring'
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
+const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -234,6 +236,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);
   ensureSheet(ss, TABS.TRAVELER_PROFILES,    TRAVELER_PROFILE_HEADERS);
   ensureSheet(ss, TABS.CONTRACTS,            CONTRACT_HEADERS);
+  ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
