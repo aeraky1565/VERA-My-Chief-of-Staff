@@ -66,6 +66,8 @@ function doGet(e) {
       case 'status':      return jsonOut_(webGetStatus_());
       case 'flags':       return jsonOut_(webGetFlags_(e));
       case 'tasks':       return jsonOut_(webGetTasks_());
+      case 'get_google_tasks':     return jsonOut_(webGetGoogleTasks_());
+      case 'complete_google_task': return jsonOut_(webCompleteGoogleTask_(e));
       case 'summaries':   return jsonOut_(webGetSummaries_());
       case 'acknowledge':    return jsonOut_(webAcknowledge_(id));
       case 'snooze':         return jsonOut_(webSnooze_(id, days));
@@ -90,10 +92,8 @@ function doGet(e) {
       case 'interests':        return jsonOut_(webGetInterests_());
       case 'interests_add':    return jsonOut_(webAddInterest_(e));
       case 'interests_delete': return jsonOut_(webDeleteInterest_(e));
-      case 'pto':                            return jsonOut_(webGetPTO_());
-      case 'pto_trigger_buffer':             return jsonOut_(webTriggerBuffer_(e));
-      case 'victoria_pto_trigger_buffer':    return jsonOut_(webTriggerVictoriaBuffer_(e));
-      case 'get_guests':                     return jsonOut_(webGetGuests_());
+      case 'pto':                   return jsonOut_(webGetPTO_());
+      case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -116,32 +116,6 @@ function doGet(e) {
       case 'delete_idea':           return jsonOut_(webDeleteIdea_(e));
       case 'promote_idea':          return jsonOut_(webPromoteIdea_(e));
       case 'shelve_thought':        return jsonOut_(webShelveThought_(e));
-      // Experiments (Issue #130)
-      case 'get_experiments':           return jsonOut_(webGetExperiments_());
-      case 'add_experiment':            return jsonOut_(webAddExperiment_(e));
-      case 'update_experiment':         return jsonOut_(webUpdateExperiment_(e));
-      case 'delete_experiment':         return jsonOut_(webDeleteExperiment_(e));
-      case 'add_experiment_checkin':    return jsonOut_(webAddExperimentCheckin_(e));
-      // Growth — Books, Courses, Skills (Issue #88)
-      case 'get_growth':                return jsonOut_(webGetGrowth_());
-      case 'add_book':                  return jsonOut_(webAddBook_(e));
-      case 'update_book':               return jsonOut_(webUpdateBook_(e));
-      case 'delete_book':               return jsonOut_(webDeleteBook_(e));
-      case 'add_course':                return jsonOut_(webAddCourse_(e));
-      case 'update_course':             return jsonOut_(webUpdateCourse_(e));
-      case 'delete_course':             return jsonOut_(webDeleteCourse_(e));
-      case 'add_skill':                 return jsonOut_(webAddSkill_(e));
-      case 'update_skill':              return jsonOut_(webUpdateSkill_(e));
-      case 'record_skill_practice':     return jsonOut_(webRecordSkillPractice_(e));
-      case 'delete_skill':              return jsonOut_(webDeleteSkill_(e));
-      // Wish List (Issue #131)
-      case 'get_wish_list':         return jsonOut_(webGetWishList_());
-      case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));
-      case 'update_wish_item':      return jsonOut_(webUpdateWishItem_(e));
-      case 'mark_wish_purchased':   return jsonOut_(webMarkWishPurchased_(e));
-      case 'delete_wish_item':      return jsonOut_(webDeleteWishItem_(e));
-      // Pacing — Vacation Mode + Miss Rate status (Issue #139)
-      case 'get_pacing_status':     return jsonOut_(webGetPacingStatus_());
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
       case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
@@ -163,13 +137,10 @@ function doGet(e) {
       case 'countries':             return jsonOut_(webGetCountries_());
       case 'add_country':           return jsonOut_(webAddCountry_(e));
       case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
-      case 'get_bucket_list':         return jsonOut_(webGetBucketList_());
-      case 'add_bucket_item':         return jsonOut_(webAddBucketItem_(e));
-      case 'update_bucket_item':      return jsonOut_(webUpdateBucketItem_(e));
-      case 'delete_bucket_item':      return jsonOut_(webDeleteBucketItem_(e));
-      case 'add_bucket_activity':     return jsonOut_(webAddBucketActivity_(e));
-      case 'toggle_bucket_activity':  return jsonOut_(webToggleBucketActivity_(e));
-      case 'delete_bucket_activity':  return jsonOut_(webDeleteBucketActivity_(e));
+      case 'get_bucket_list':       return jsonOut_(webGetBucketList_());
+      case 'add_bucket_item':       return jsonOut_(webAddBucketItem_(e));
+      case 'update_bucket_item':    return jsonOut_(webUpdateBucketItem_(e));
+      case 'delete_bucket_item':    return jsonOut_(webDeleteBucketItem_(e));
       case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
       case 'force_flight_statuses': return jsonOut_(webForceFlightStatuses_(e));
       case 'recommendations':          return jsonOut_(webGetRecommendations_(e));
@@ -187,8 +158,6 @@ function doGet(e) {
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
-      case 'gym_attend_latest':        return jsonOut_(webGymAttendLatest_((e.parameter && e.parameter.attended) || 'Yes'));
-      case 'gym_backfill':             return jsonOut_(webGymBackfill_(e));
       case 'purchase_history':         return jsonOut_(webGetPurchaseHistory_());
       case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
       case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
@@ -230,57 +199,27 @@ function doGet(e) {
       case 'add_rewards_goal':           return jsonOut_(webAddRewardsGoal_(e));
       case 'update_rewards_goal':        return jsonOut_(webUpdateRewardsGoal_(e));
       case 'delete_rewards_goal':        return jsonOut_(webDeleteRewardsGoal_(e));
-      case 'send_travel_briefing':       return jsonOut_(webSendTravelBriefing_(e));
-      // Chores — Home Front tab (Issue #124)
-      case 'get_chores':    return jsonOut_(webGetChores_());
-      case 'add_chore':     return jsonOut_(webAddChore_(e));
-      case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
-      case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
-      case 'update_chore':  return jsonOut_(webUpdateChore_(e));
-      // Vehicles — Home Front tab (Issue #125)
-      case 'get_vehicles':          return jsonOut_(webGetVehicles_());
-      case 'add_vehicle':           return jsonOut_(webAddVehicle_(e));
-      case 'delete_vehicle':        return jsonOut_(webDeleteVehicle_(e));
-      case 'vehicle_oil_change':        return jsonOut_(webRecordVehicleOilChange_(e));
-      case 'vehicle_service':           return jsonOut_(webRecordVehicleService_(e));
-      case 'vehicle_mileage':           return jsonOut_(webUpdateVehicleMileage_(e));
-      case 'vehicle_tire_change':       return jsonOut_(webRecordVehicleTireChange_(e));
-      case 'vehicle_emission_inspect':  return jsonOut_(webRecordVehicleInspection_(e, 'Emission Inspection Expiry'));
-      case 'vehicle_safety_inspect':    return jsonOut_(webRecordVehicleInspection_(e, 'Safety Inspection Expiry'));
-      // Traveler Profiles + Visa Check — Travel tab (Issue #123)
-      case 'get_profiles':          return jsonOut_(webGetProfiles_());
-      case 'save_profile':          return jsonOut_(webSaveProfile_(e.parameter));
-      case 'delete_profile':        return jsonOut_(webDeleteProfile_(e.parameter));
-      case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
-      // Financial Goals + Scenarios — Finances tab (Issue #127)
-      case 'financial_goals':        return jsonOut_(webGetFinancialGoals_());
-      case 'add_financial_goal':     return jsonOut_(webAddFinancialGoal_(e.parameter));
-      case 'update_financial_goal':  return jsonOut_(webUpdateFinancialGoal_(e.parameter));
-      case 'delete_financial_goal':  return jsonOut_(webDeleteFinancialGoal_(e.parameter));
-      case 'simulate_scenario':      return jsonOut_(webSimulateScenario_(e.parameter));
-      case 'saved_scenarios':        return jsonOut_(webGetSavedScenarios_(e.parameter));
-      case 'save_scenario':          return jsonOut_(webSaveScenario_(e.parameter));
-      case 'seed_financial_goals':   return jsonOut_(seedFinancialGoalsFromDoc_());
-      case 'sync_life_plan_doc':     return jsonOut_(webSyncLifePlanDoc_());
-      // Resources — Explore tab (Issue #129)
-      case 'get_resources':          return jsonOut_(webGetResources_());
-      case 'add_resource':           return jsonOut_(webAddResource_(e));
-      case 'update_resource':        return jsonOut_(webUpdateResource_(e));
-      case 'delete_resource':        return jsonOut_(webDeleteResource_(e));
-      case 'fetch_resource_content': return jsonOut_(webFetchResourceContent_(e));
-      // Important Dates — People tab (Issue #80)
+      // Gift Ideas (Issue #105)
+      case 'get_gift_data':              return jsonOut_(webGetGiftData_());
+      case 'add_gift_person':            return jsonOut_(webAddGiftPerson_(e));
+      case 'delete_gift_person':         return jsonOut_(webDeleteGiftPerson_(e));
+      case 'add_gift_idea':              return jsonOut_(webAddGiftIdea_(e));
+      case 'delete_gift_idea':           return jsonOut_(webDeleteGiftIdea_(e));
+      // Important Dates (Issue #80)
       case 'get_important_dates':        return jsonOut_(webGetImportantDates_());
       case 'add_important_date':         return jsonOut_(webAddImportantDate_(e));
       case 'update_important_date':      return jsonOut_(webUpdateImportantDate_(e));
       case 'delete_important_date':      return jsonOut_(webDeleteImportantDate_(e));
       case 'preview_calendar_birthdays': return jsonOut_(webPreviewCalendarBirthdays_());
       case 'import_calendar_birthdays':  return jsonOut_(webImportCalendarBirthdays_(e));
-      // Gift Ideas — People tab (Issue #105)
-      case 'get_gift_data':      return jsonOut_(webGetGiftData_());
-      case 'add_gift_person':    return jsonOut_(webAddGiftPerson_(e));
-      case 'delete_gift_person': return jsonOut_(webDeleteGiftPerson_(e));
-      case 'add_gift_idea':      return jsonOut_(webAddGiftIdea_(e));
-      case 'delete_gift_idea':   return jsonOut_(webDeleteGiftIdea_(e));
+      // Chores (Issue #124)
+      case 'get_chores':    return jsonOut_(webGetChores_());
+      case 'add_chore':     return jsonOut_(webAddChore_(e));
+      case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
+      case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
+      case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // House Guests (Issue #150)
+      case 'get_guests':    return jsonOut_(webGetGuests_());
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -289,15 +228,9 @@ function doGet(e) {
   }
 }
 
-// ---- doPost — Slack webhook + write operations -----------------------------
+// ---- doPost — Telegram webhook + write operations --------------------------
 
 function doPost(e) {
-  // ── Slack form-encoded payloads (interactive components + slash commands) ──
-  // These arrive as application/x-www-form-urlencoded, not JSON.
-  if (e.parameter && (e.parameter.payload || e.parameter.command)) {
-    return handleSlackFormPost_(e);
-  }
-
   let body;
   try {
     body = JSON.parse(e.postData.contents);
@@ -305,15 +238,32 @@ function doPost(e) {
     return errOut_('Invalid JSON body: ' + parseErr.message);
   }
 
-  // ── Slack URL verification challenge (one-time, when Events API URL is saved) ──
-  if (body && body.type === 'url_verification') {
-    return ContentService.createTextOutput(body.challenge);
-  }
-
-  // ── Slack Events API (message, reaction_added, app_home_opened) ──
-  // Return 200 immediately; chat messages are queued async via processSlackQueue_.
-  if (body && body.type === 'event_callback') {
-    return handleSlackEvent_(body);
+  // Telegram sends webhook POSTs without a token — detect by update_id field.
+  // processTelegramUpdate_ sends "⏳ Thinking..." immediately via UrlFetchApp so
+  // the user sees instant feedback, then edits the message with Claude's real answer.
+  // Deduplication (CacheService) inside processTelegramUpdate_ prevents retry loops.
+  if (body && body.update_id !== undefined) {
+    // Return 200 OK immediately so Telegram never times out waiting for Claude.
+    // Queue the update in ScriptCache and fire a one-shot trigger to process it.
+    // Without this, the 10-20s Claude call causes Telegram to retry the delivery,
+    // creating concurrent executions that result in a 302 on the next message.
+    try {
+      var sc  = CacheService.getScriptCache();
+      var qId = String(body.update_id);
+      sc.put('TG_Q_' + qId, JSON.stringify(body), 120);
+      var existing = sc.get('TG_Q_IDS') || '';
+      sc.put('TG_Q_IDS', existing ? existing + ',' + qId : qId, 120);
+      // One trigger at a time — delete any existing queue trigger first
+      ScriptApp.getProjectTriggers().forEach(function(t) {
+        if (t.getHandlerFunction() === 'processTelegramQueue_') ScriptApp.deleteTrigger(t);
+      });
+      ScriptApp.newTrigger('processTelegramQueue_').timeBased().after(100).create();
+    } catch (qErr) {
+      // Fallback: process synchronously if queuing/trigger creation fails
+      Logger.log('Queue fallback (sync): ' + qErr.message);
+      try { processTelegramUpdate_(body); } catch (e) { Logger.log('Sync error: ' + e.message); }
+    }
+    return jsonOut_({ ok: true });
   }
 
   // VERA dashboard actions require auth
@@ -440,6 +390,127 @@ function webGetFlags_(e) {
 
 // ---- Tasks -----------------------------------------------------------------
 
+/**
+ * Returns open tasks from the user's 'My Tasks' Google Task list.
+ * Filters to: overdue, no due date, or due within the next 14 days.
+ * Detects recurring tasks (same title appears multiple times with different due dates).
+ * Requires the Advanced Google Services "Tasks API" to be enabled for completion;
+ * reading works via basic TasksApp.
+ * @returns {{ ok: boolean, tasks: Array, disabled?: boolean }}
+ */
+function webGetGoogleTasks_() {
+  var cfg = getConfigValues();
+  if ((cfg['google_tasks_enabled'] || 'true') === 'false') {
+    return { ok: true, tasks: [], disabled: true };
+  }
+
+  try {
+    var taskList  = TasksApp.getDefaultTaskList();
+    var allTasks  = taskList.getTasks();
+    var tz        = Session.getScriptTimeZone();
+    var today     = new Date(); today.setHours(0, 0, 0, 0);
+    var cutoffMs  = today.getTime() + 14 * 24 * 60 * 60 * 1000;
+
+    // Recurring detection: title that appears 2+ times with different due dates
+    var titleDates = {};
+    for (var ri = 0; ri < allTasks.length; ri++) {
+      var rt = allTasks[ri];
+      if (rt.getStatus() === 'completed') continue;
+      var rtTitle = (rt.getTitle() || '').trim();
+      var rtDue   = rt.getDue();
+      if (!titleDates[rtTitle]) titleDates[rtTitle] = [];
+      if (rtDue) titleDates[rtTitle].push(rtDue.getTime());
+    }
+
+    var result = [];
+    for (var i = 0; i < allTasks.length; i++) {
+      var t = allTasks[i];
+      if (t.getStatus() === 'completed') continue;
+
+      var due     = t.getDue();
+      var dueDate = due ? new Date(due.getTime()) : null;
+      if (dueDate) dueDate.setHours(0, 0, 0, 0);
+
+      // Skip tasks due beyond the 14-day window
+      if (dueDate && dueDate.getTime() > cutoffMs) continue;
+
+      var daysUntilDue = dueDate !== null
+        ? Math.floor((dueDate.getTime() - today.getTime()) / 86400000)
+        : null;
+      var isOverdue = daysUntilDue !== null && daysUntilDue < 0;
+      var dueStr    = dueDate ? Utilities.formatDate(dueDate, tz, 'yyyy-MM-dd') : '';
+      var titleStr  = (t.getTitle() || '').trim() || '(untitled)';
+
+      // Recurring: same title with 2+ distinct due dates
+      var titleDatesArr = titleDates[titleStr] || [];
+      var uniqueDates   = {};
+      titleDatesArr.forEach(function(ms) { uniqueDates[ms] = true; });
+      var isRecurring   = Object.keys(uniqueDates).length > 1;
+
+      result.push({
+        id:           t.getId(),
+        title:        titleStr,
+        task:         titleStr,        // alias so TaskCard renders correctly
+        due:          dueStr,
+        dueDate:      dueStr,          // alias for TaskCard
+        notes:        t.getNotes() || '',
+        status:       t.getStatus(),
+        isOverdue:    isOverdue,
+        daysUntilDue: daysUntilDue,
+        ageInDays:    0,               // not tracked for Google Tasks
+        isNeglected:  false,
+        recurring:    isRecurring ? 'recurring' : '',
+        source:       'google',
+      });
+    }
+
+    // Sort: overdue first, then by due date ascending, undated last
+    result.sort(function(a, b) {
+      if (a.isOverdue && !b.isOverdue) return -1;
+      if (!a.isOverdue && b.isOverdue) return 1;
+      if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+      if (a.dueDate && !b.dueDate)  return -1;
+      if (!a.dueDate && b.dueDate)  return 1;
+      return 0;
+    });
+
+    Logger.log('webGetGoogleTasks_: ' + result.length + ' task(s) returned');
+    return { ok: true, tasks: result };
+  } catch (err) {
+    Logger.log('webGetGoogleTasks_ error: ' + err.message);
+    return { ok: true, tasks: [], error: err.message };
+  }
+}
+
+/**
+ * Marks a Google Task complete by ID.
+ * Requires Advanced Google Services — Tasks API to be enabled in Apps Script.
+ * NOTE: Enable via Resources → Advanced Google Services → Tasks API in the Apps Script editor.
+ * @param {Object} e  Apps Script event (GET)
+ * @returns {{ ok: boolean, id: string }}
+ */
+function webCompleteGoogleTask_(e) {
+  var id = e && e.parameter && e.parameter.id;
+  if (!id) return { ok: false, error: 'id param required' };
+
+  try {
+    // Use Advanced Tasks service (must be enabled: Resources → Advanced Google Services → Tasks API)
+    var lists     = Tasks.Tasklists.list();
+    var taskListId = null;
+    if (lists.items && lists.items.length > 0) {
+      taskListId = lists.items[0].id; // 'My Tasks' is always the first list
+    }
+    if (!taskListId) return { ok: false, error: 'Could not find My Tasks list' };
+
+    Tasks.Tasks.update({ id: id, status: 'completed' }, taskListId, id);
+    Logger.log('webCompleteGoogleTask_: completed task ' + id);
+    return { ok: true, id: id };
+  } catch (err) {
+    Logger.log('webCompleteGoogleTask_ error: ' + err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 function webGetTasks_() {
   const tasks = getOpenTasks(); // reuse Tasks.js
   return { ok: true, count: tasks.length, tasks: tasks };
@@ -482,30 +553,16 @@ function findFlagRow_(id) {
 // ---- Acknowledge -----------------------------------------------------------
 
 function webAcknowledge_(id) {
-  const found    = findFlagRow_(id);
-  const flagRow  = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
+  const found = findFlagRow_(id);
   found.sheet.getRange(found.rowNum, 7).setValue('Yes'); // Column G
 
-  // Signal Learning
+  // Signal Learning: record outcome so VERA can learn from user engagement
   try {
-    const flagKey = String(flagRow[9] || ''); // col J: Key
-    if (flagKey) recordFlagOutcome_(flagKey, 'acknowledged');
+    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
+    if (flagKey) recordFlagOutcome_(String(flagKey), 'acknowledged');
   } catch (slErr) {
     Logger.log('SignalLearning: ack hook error (non-fatal) — ' + slErr.message);
   }
-
-  // Memory Log
-  try {
-    var flagDate  = new Date(flagRow[1]);
-    var ageStr    = isNaN(flagDate.getTime()) ? '' : Math.round((Date.now() - flagDate.getTime()) / 86400000) + 'd old';
-    appendMemoryEvent_(
-      MEMORY_TYPE.FLAG_ACKNOWLEDGED,
-      'System',
-      String(flagRow[3] || ''), // Flag text
-      'Source: ' + String(flagRow[2] || '') + ' · Urgency: ' + String(flagRow[5] || '') + (ageStr ? ' · ' + ageStr : ''),
-      String(flagRow[9] || '') // Key
-    );
-  } catch (mErr) { Logger.log('Memory: ack hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'acknowledged' };
 }
@@ -514,7 +571,6 @@ function webAcknowledge_(id) {
 
 function webSnooze_(id, days) {
   const found     = findFlagRow_(id);
-  const flagRow   = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
   const snoozeFor = Math.max(1, parseInt(days, 10) || 2);
   const until     = new Date();
   until.setDate(until.getDate() + snoozeFor);
@@ -522,24 +578,13 @@ function webSnooze_(id, days) {
 
   found.sheet.getRange(found.rowNum, 8).setValue(untilStr); // Column H
 
-  // Signal Learning
+  // Signal Learning: record outcome
   try {
-    const flagKey = String(flagRow[9] || '');
-    if (flagKey) recordFlagOutcome_(flagKey, 'snoozed');
+    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
+    if (flagKey) recordFlagOutcome_(String(flagKey), 'snoozed');
   } catch (slErr) {
     Logger.log('SignalLearning: snooze hook error (non-fatal) — ' + slErr.message);
   }
-
-  // Memory Log
-  try {
-    appendMemoryEvent_(
-      MEMORY_TYPE.FLAG_SNOOZED,
-      'System',
-      String(flagRow[3] || ''),
-      'Source: ' + String(flagRow[2] || '') + ' · Snoozed ' + snoozeFor + 'd until ' + untilStr,
-      String(flagRow[9] || '')
-    );
-  } catch (mErr) { Logger.log('Memory: snooze hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'snoozed', snoozedUntil: untilStr };
 }
@@ -547,30 +592,16 @@ function webSnooze_(id, days) {
 // ---- Resolve ---------------------------------------------------------------
 
 function webResolve_(id) {
-  const found   = findFlagRow_(id);
-  const flagRow = found.sheet.getRange(found.rowNum, 1, 1, FLAG_HEADERS.length).getValues()[0];
+  const found = findFlagRow_(id);
   found.sheet.getRange(found.rowNum, 9).setValue('Yes'); // Column I
 
-  // Signal Learning
+  // Signal Learning: record outcome
   try {
-    const flagKey = String(flagRow[9] || '');
-    if (flagKey) recordFlagOutcome_(flagKey, 'resolved');
+    const flagKey = found.sheet.getRange(found.rowNum, 10).getValue(); // Column J: Key
+    if (flagKey) recordFlagOutcome_(String(flagKey), 'resolved');
   } catch (slErr) {
     Logger.log('SignalLearning: resolve hook error (non-fatal) — ' + slErr.message);
   }
-
-  // Memory Log
-  try {
-    var flagDate = new Date(flagRow[1]);
-    var ageStr   = isNaN(flagDate.getTime()) ? '' : Math.round((Date.now() - flagDate.getTime()) / 86400000) + 'd old';
-    appendMemoryEvent_(
-      MEMORY_TYPE.FLAG_RESOLVED,
-      'System',
-      String(flagRow[3] || ''),
-      'Source: ' + String(flagRow[2] || '') + ' · Urgency: ' + String(flagRow[5] || '') + (ageStr ? ' · ' + ageStr : ''),
-      String(flagRow[9] || '')
-    );
-  } catch (mErr) { Logger.log('Memory: resolve hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'resolved' };
 }
@@ -667,14 +698,6 @@ function webCompleteTask_(id) {
     recurringVal !== '0';
 
   if (!isRecurring || !taskText) {
-    try {
-      var addedDate  = rowData[2] ? new Date(rowData[2]) : null;
-      var ageStr     = addedDate && !isNaN(addedDate.getTime())
-        ? Math.round((Date.now() - addedDate.getTime()) / 86400000) + 'd old'
-        : '';
-      appendMemoryEvent_(MEMORY_TYPE.TASK_COMPLETED, 'Ahmed', taskText,
-        ageStr ? 'Age: ' + ageStr : '', '');
-    } catch (mErr) { Logger.log('Memory: task complete hook error (non-fatal) — ' + mErr.message); }
     return { ok: true, id: id, action: 'completed' };
   }
 
@@ -708,11 +731,6 @@ function webCompleteTask_(id) {
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, TASK_HEADERS.length).setValues([[
     newId, taskText, todayStr, nextDateStr, 'Open', recurringVal, notes, ''
   ]]);
-
-  try {
-    appendMemoryEvent_(MEMORY_TYPE.TASK_COMPLETED, 'Ahmed', taskText,
-      'Recurring: ' + recurringVal + ' · next due ' + nextDateStr, '');
-  } catch (mErr) { Logger.log('Memory: recurring task complete hook error (non-fatal) — ' + mErr.message); }
 
   return { ok: true, id: id, action: 'completed', recurring: true, nextTaskId: newId, nextDueDate: nextDateStr };
 }
@@ -879,50 +897,19 @@ function webDeleteProjectTask_(e) {
  * Called by the 🌴 PTO tab on dashboard open.
  */
 function webGetPTO_() {
-  var today = new Date();
+  var cfg      = readPTOConfig_();
+  var ptoResult = getPTOEvents_(cfg);
+  var travel   = getUpcomingTravel_(cfg);
+  var gapCals  = getGapCalendars_(cfg);
+  var today    = new Date();
+  var stats    = computePTOStats_(ptoResult, cfg, today);
 
-  // ---- Ahmed -----------------------------------------------------------------
-  var ahmedCfg     = readPTOConfig_();
-  var ahmedResult  = getPTOEvents_(ahmedCfg);
-  var ahmedStats   = computePTOStats_(ahmedResult, ahmedCfg, today);
+  // Attach live clear windows + milestones (may have changed since last nightly run)
+  stats.clearWindows  = findClearWindows_(gapCals, today, 90, 3);
+  stats.milestones    = getMilestones_(gapCals, cfg, today);
+  stats.upcomingTravel = travel;
 
-  // Shared gap calendars (travel + milestones are shared between Ahmed and Victoria)
-  var gapCals      = getGapCalendars_(ahmedCfg);
-  var sharedTravel = getUpcomingTravel_(ahmedCfg);
-  var sharedWindows    = findClearWindows_(gapCals, today, 90, 3);
-  var sharedMilestones = getMilestones_(gapCals, ahmedCfg, today);
-
-  ahmedStats.clearWindows   = sharedWindows;
-  ahmedStats.milestones     = sharedMilestones;
-  ahmedStats.upcomingTravel = sharedTravel;
-
-  // ---- Victoria --------------------------------------------------------------
-  var victoriaCfg    = readVictoriaPTOConfig_();
-  var victoriaResult = getPTOEvents_(victoriaCfg);
-  var victoriaStats  = computePTOStats_(victoriaResult, victoriaCfg, today);
-
-  // Shared sections — identical for both subtabs
-  victoriaStats.clearWindows   = sharedWindows;
-  victoriaStats.milestones     = sharedMilestones;
-  victoriaStats.upcomingTravel = sharedTravel;
-
-  return { ok: true, ahmedStats: ahmedStats, victoriaStats: victoriaStats };
-}
-
-/**
- * Returns upcoming house guests parsed from the shared chaos calendar.
- * Reads the house_guest_keywords config to identify guest events.
- * Called by the 👥 Guests subtab in the Home Front section.
- */
-function webGetGuests_() {
-  try {
-    var cfg    = readPTOConfig_();
-    var guests = getUpcomingGuests_(cfg);
-    return { ok: true, guests: guests };
-  } catch (e) {
-    Logger.log('webGetGuests_ error: ' + e.message);
-    return { ok: false, guests: [], error: e.message };
-  }
+  return { ok: true, stats: stats };
 }
 
 /**
@@ -948,23 +935,18 @@ function webTriggerBuffer_(e) {
 }
 
 /**
- * Decrements victoria_pto_buffer_remaining by 1.
+ * Returns upcoming guest windows from the shared chaos calendar.
+ * Reads multi-day all-day events matching pto_guest_keywords.
  */
-function webTriggerVictoriaBuffer_(e) {
-  var cfg     = readVictoriaPTOConfig_();
-  var current = readVictoriaPTOBufferRemaining_(cfg);
-
-  if (current <= 0) {
-    return { ok: false, error: 'No buffer days remaining.', remaining: 0 };
+function webGetGuests_() {
+  try {
+    var cfg    = readPTOConfig_();
+    var guests = getUpcomingGuests_(cfg);
+    return { ok: true, guests: guests };
+  } catch (e) {
+    Logger.log('webGetGuests_ error: ' + e.message);
+    return { ok: true, guests: [], error: e.message };
   }
-
-  var newVal = current - 1;
-  setVictoriaPTOBufferRemaining_(newVal);
-
-  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  Logger.log('Victoria PTO Buffer Day triggered. Remaining: ' + newVal + '. Date: ' + today);
-
-  return { ok: true, remaining: newVal, triggeredOn: today };
 }
 
 // ---- Budget (Simple Ass Tracker) -------------------------------------------
@@ -4093,664 +4075,6 @@ function webShelveThought_(e) {
   return { ok: true, id: id, category: category, action: 'shelved' };
 }
 
-// ---- Experiments (Issue #130) ----------------------------------------------
-
-function webGetExperiments_() {
-  var ss     = getSpreadsheet();
-  var sheet  = ss.getSheetByName(TABS.EXPERIMENTS);
-  var ciSheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: true, experiments: [] };
-
-  // Build check-in map: experimentId → [checkin, ...]  sorted newest first
-  var checkinMap = {};
-  if (ciSheet && ciSheet.getLastRow() >= 2) {
-    var ciData = ciSheet.getRange(2, 1, ciSheet.getLastRow() - 1, EXPERIMENT_CHECKIN_HEADERS.length).getValues();
-    ciData.forEach(function(r) {
-      var eid = String(r[1] || '').trim();
-      if (!eid) return;
-      if (!checkinMap[eid]) checkinMap[eid] = [];
-      checkinMap[eid].push({ id: String(r[0]||'').trim(), date: formatDateVal_(r[3]), note: String(r[4]||'').trim() });
-    });
-    // Sort each experiment's check-ins newest-first
-    Object.keys(checkinMap).forEach(function(k) {
-      checkinMap[k].sort(function(a, b) { return b.date > a.date ? 1 : -1; });
-    });
-  }
-
-  var numRows = sheet.getLastRow() - 1;
-  var data    = sheet.getRange(2, 1, numRows, EXPERIMENT_HEADERS.length).getValues();
-  var experiments = [];
-
-  data.forEach(function(row, idx) {
-    var id = String(row[0] || '').trim();
-    if (!id) return;
-    experiments.push({
-      row:        idx + 2,
-      id:         id,
-      person:     String(row[1] || '').trim(),
-      title:      String(row[2] || '').trim(),
-      category:   String(row[3] || '').trim(),
-      hypothesis: String(row[4] || '').trim(),
-      startDate:  formatDateVal_(row[5]),
-      endDate:    formatDateVal_(row[6]),
-      status:     String(row[7] || 'Active').trim(),
-      outcome:    String(row[8] || '').trim(),
-      rating:     row[9] !== '' && row[9] !== null ? Number(row[9]) : null,
-      notes:      String(row[10] || '').trim(),
-      checkins:   (checkinMap[id] || []).slice(0, 3), // last 3 check-ins
-    });
-  });
-
-  return { ok: true, experiments: experiments };
-}
-
-function webAddExperiment_(e) {
-  var p = e.parameter || {};
-  var title = (p.title || '').trim();
-  if (!title) throw new Error('title is required');
-
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.EXPERIMENTS);
-  if (!sheet) throw new Error('Experiments tab not found');
-
-  var tz       = Session.getScriptTimeZone();
-  var today    = new Date();
-  var dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
-  var addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
-
-  var seq = 1;
-  if (sheet.getLastRow() >= 2) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
-      .forEach(function(r) { if (String(r[0]||'').indexOf('EXP-' + dateStr) === 0) seq++; });
-  }
-  var id = 'EXP-' + dateStr + '-' + String(seq).padStart(2, '0');
-
-  // EXPERIMENT_HEADERS: ID | Person | Title | Category | Hypothesis | Start Date | End Date | Status | Outcome | Rating | Notes
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, EXPERIMENT_HEADERS.length).setValues([[
-    id,
-    (p.person     || 'Ahmed').trim(),
-    title,
-    (p.category   || 'Other').trim(),
-    (p.hypothesis || '').trim(),
-    (p.startDate  || addedStr).trim(),
-    (p.endDate    || '').trim(),
-    (p.status     || 'Active').trim(),
-    '',
-    '',
-    (p.notes      || '').trim(),
-  ]]);
-
-  Logger.log('webAddExperiment_: ' + id + ' — ' + title);
-  return { ok: true, id: id, action: 'created' };
-}
-
-function findExperimentRow_(id) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.EXPERIMENTS);
-  if (!sheet || sheet.getLastRow() < 2) throw new Error('Experiments sheet is empty');
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === String(id).trim()) return { sheet: sheet, rowNum: i + 2 };
-  }
-  throw new Error('Experiment not found: ' + id);
-}
-
-function webUpdateExperiment_(e) {
-  var p     = e.parameter || {};
-  var id    = (p.id    || '').trim();
-  var field = (p.field || '').trim().toLowerCase();
-  var value = (p.value != null ? String(p.value) : '').trim();
-  if (!id || !field) throw new Error('id and field are required');
-
-  var found = findExperimentRow_(id);
-  // EXPERIMENT_HEADERS col map (1-based): ID=1 Person=2 Title=3 Category=4 Hypothesis=5 StartDate=6 EndDate=7 Status=8 Outcome=9 Rating=10 Notes=11
-  var colMap = { person:2, title:3, category:4, hypothesis:5, startdate:6, enddate:7, status:8, outcome:9, rating:10, notes:11 };
-  var col = colMap[field.replace(/\s+/g, '')];
-  if (!col) throw new Error('Unknown field: ' + field);
-
-  var writeVal = field === 'rating' ? (value !== '' ? Number(value) : '') : value;
-  found.sheet.getRange(found.rowNum, col).setValue(writeVal);
-
-  Logger.log('webUpdateExperiment_: ' + id + ' ' + field + '=' + value);
-  return { ok: true, id: id, action: 'updated' };
-}
-
-function webDeleteExperiment_(e) {
-  var id    = ((e.parameter && e.parameter.id) || '').trim();
-  var found = findExperimentRow_(id);
-  found.sheet.deleteRow(found.rowNum);
-  Logger.log('webDeleteExperiment_: ' + id);
-  return { ok: true, id: id, action: 'deleted' };
-}
-
-function webAddExperimentCheckin_(e) {
-  var p   = e.parameter || {};
-  var eid = (p.experimentId || p.id || '').trim();
-  var note = (p.note || '').trim();
-  if (!eid || !note) throw new Error('experimentId and note are required');
-
-  // Resolve experiment title for the log
-  var title = (p.title || '').trim();
-  if (!title) {
-    try {
-      var found = findExperimentRow_(eid);
-      title = String(found.sheet.getRange(found.rowNum, 3).getValue()).trim();
-    } catch(ex) { title = eid; }
-  }
-
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
-  if (!sheet) throw new Error('Experiment Check-ins tab not found');
-
-  var tz      = Session.getScriptTimeZone();
-  var today   = new Date();
-  var dateStr = Utilities.formatDate(today, tz, 'yyyyMMdd');
-  var dateVal = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
-
-  var seq = 1;
-  if (sheet.getLastRow() >= 2) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
-      .forEach(function(r) { if (String(r[0]||'').indexOf('CHKIN-' + dateStr) === 0) seq++; });
-  }
-  var id = 'CHKIN-' + dateStr + '-' + String(seq).padStart(2, '0');
-
-  // EXPERIMENT_CHECKIN_HEADERS: ID | Experiment ID | Experiment Title | Date | Note
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, EXPERIMENT_CHECKIN_HEADERS.length)
-    .setValues([[id, eid, title, dateVal, note]]);
-
-  Logger.log('webAddExperimentCheckin_: ' + id + ' for ' + eid);
-  return { ok: true, id: id, experimentId: eid, action: 'checkin_added' };
-}
-
-// ---- Growth — Books, Courses, Skills (Issue #88) ---------------------------
-
-/**
- * Returns all books, courses, and skills in a single payload.
- * { books: [...], courses: [...], skills: [...] }
- */
-function webGetGrowth_() {
-  var ss = getSpreadsheet();
-
-  // Books
-  var books = [];
-  var bSheet = ss.getSheetByName(TABS.BOOKS);
-  if (bSheet && bSheet.getLastRow() >= 2) {
-    bSheet.getRange(2, 1, bSheet.getLastRow() - 1, BOOK_HEADERS.length).getValues()
-      .forEach(function(r) {
-        var id = String(r[0] || '').trim();
-        if (!id) return;
-        books.push({
-          id:           id,
-          person:       String(r[1] || '').trim(),
-          title:        String(r[2] || '').trim(),
-          author:       String(r[3] || '').trim(),
-          category:     String(r[4] || '').trim(),
-          status:       String(r[5] || 'Want to Read').trim(),
-          rating:       r[6] !== '' && r[6] !== null ? Number(r[6]) : null,
-          dateStarted:  formatDateVal_(r[7]),
-          dateFinished: formatDateVal_(r[8]),
-          notes:        String(r[9] || '').trim(),
-        });
-      });
-  }
-
-  // Courses
-  var courses = [];
-  var cSheet = ss.getSheetByName(TABS.COURSES);
-  if (cSheet && cSheet.getLastRow() >= 2) {
-    cSheet.getRange(2, 1, cSheet.getLastRow() - 1, COURSE_HEADERS.length).getValues()
-      .forEach(function(r) {
-        var id = String(r[0] || '').trim();
-        if (!id) return;
-        courses.push({
-          id:           id,
-          person:       String(r[1] || '').trim(),
-          title:        String(r[2] || '').trim(),
-          source:       String(r[3] || '').trim(),
-          category:     String(r[4] || '').trim(),
-          status:       String(r[5] || 'Want to Do').trim(),
-          rating:       r[6] !== '' && r[6] !== null ? Number(r[6]) : null,
-          dateStarted:  formatDateVal_(r[7]),
-          dateFinished: formatDateVal_(r[8]),
-          notes:        String(r[9] || '').trim(),
-        });
-      });
-  }
-
-  // Skills
-  var skills = [];
-  var sSheet = ss.getSheetByName(TABS.SKILLS);
-  if (sSheet && sSheet.getLastRow() >= 2) {
-    sSheet.getRange(2, 1, sSheet.getLastRow() - 1, SKILL_HEADERS.length).getValues()
-      .forEach(function(r) {
-        var id = String(r[0] || '').trim();
-        if (!id) return;
-        skills.push({
-          id:            id,
-          person:        String(r[1] || '').trim(),
-          skill:         String(r[2] || '').trim(),
-          category:      String(r[3] || '').trim(),
-          level:         String(r[4] || 'Beginner').trim(),
-          goalLink:      String(r[5] || '').trim(),
-          lastPracticed: formatDateVal_(r[6]),
-          notes:         String(r[7] || '').trim(),
-        });
-      });
-  }
-
-  return { ok: true, books: books, courses: courses, skills: skills };
-}
-
-// ---- Books ------------------------------------------------------------------
-
-function webAddBook_(e) {
-  var p     = e.parameter;
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BOOKS);
-
-  var today   = new Date();
-  var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
-  var numRows = sheet.getLastRow();
-  var seq     = 1;
-  if (numRows >= 2) {
-    var existing = sheet.getRange(2, 1, numRows - 1, 1).getValues()
-      .filter(function(r) { return String(r[0]).indexOf('BOOK-' + dateStr) === 0; });
-    seq = existing.length + 1;
-  }
-  var id = 'BOOK-' + dateStr + '-' + String(seq).padStart(2, '0');
-
-  var status = String(p.status || 'Want to Read').trim();
-  var dateStarted  = (status === 'Reading' || status === 'Read') && p.dateStarted
-    ? p.dateStarted : (status === 'Reading' ? Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '');
-  var dateFinished = (status === 'Read') && p.dateFinished ? p.dateFinished : '';
-  var rating = (p.rating && !isNaN(Number(p.rating))) ? Number(p.rating) : '';
-
-  // BOOK_HEADERS: ID | Person | Title | Author | Category | Status | Rating | Date Started | Date Finished | Notes
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, BOOK_HEADERS.length)
-    .setValues([[id, p.person || 'Ahmed', p.title || '', p.author || '', p.category || '',
-                 status, rating, dateStarted, dateFinished, p.notes || '']]);
-
-  Logger.log('webAddBook_: ' + id);
-  return { ok: true, id: id, action: 'book_added' };
-}
-
-function findBookRow_(id) {
-  var sheet = getSpreadsheet().getSheetByName(TABS.BOOKS);
-  if (!sheet || sheet.getLastRow() < 2) return -1;
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === id) return i + 2;
-  }
-  return -1;
-}
-
-function webUpdateBook_(e) {
-  var p     = e.parameter;
-  var id    = String(p.id || '').trim();
-  var field = String(p.field || '').toLowerCase().trim();
-  var value = String(p.value !== undefined ? p.value : '').trim();
-  if (!id || !field) return { ok: false, error: 'id and field required' };
-
-  var row = findBookRow_(id);
-  if (row < 0) return { ok: false, error: 'book not found: ' + id };
-
-  var colMap = { person:1, title:2, author:3, category:4, status:5, rating:6,
-                 datestarted:7, datefinished:8, notes:9 };
-  // datestarted / datefinished aliases
-  colMap['date started']  = 7;
-  colMap['date finished'] = 8;
-
-  var col = colMap[field];
-  if (!col) return { ok: false, error: 'unknown field: ' + field };
-
-  var sheet = getSpreadsheet().getSheetByName(TABS.BOOKS);
-  var writeVal = (field === 'rating') ? (value !== '' ? Number(value) : '') : value;
-  sheet.getRange(row, col + 1).setValue(writeVal); // +1 because col is 0-indexed
-
-  // If marking as Read and no dateFinished set yet, auto-fill today
-  if (field === 'status' && value === 'Read') {
-    var existing = sheet.getRange(row, 9).getValue();
-    if (!existing) {
-      sheet.getRange(row, 9).setValue(
-        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
-      );
-    }
-  }
-
-  Logger.log('webUpdateBook_: ' + id + ' ' + field + '=' + value);
-  return { ok: true, id: id, field: field, action: 'book_updated' };
-}
-
-function webDeleteBook_(e) {
-  var id  = String((e.parameter || {}).id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var row = findBookRow_(id);
-  if (row < 0) return { ok: false, error: 'book not found: ' + id };
-  getSpreadsheet().getSheetByName(TABS.BOOKS).deleteRow(row);
-  Logger.log('webDeleteBook_: ' + id);
-  return { ok: true, id: id, action: 'book_deleted' };
-}
-
-// ---- Courses ----------------------------------------------------------------
-
-function webAddCourse_(e) {
-  var p     = e.parameter;
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.COURSES);
-
-  var today   = new Date();
-  var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
-  var numRows = sheet.getLastRow();
-  var seq     = 1;
-  if (numRows >= 2) {
-    var existing = sheet.getRange(2, 1, numRows - 1, 1).getValues()
-      .filter(function(r) { return String(r[0]).indexOf('CRS-' + dateStr) === 0; });
-    seq = existing.length + 1;
-  }
-  var id = 'CRS-' + dateStr + '-' + String(seq).padStart(2, '0');
-
-  var status = String(p.status || 'Want to Do').trim();
-  var dateStarted  = (status === 'In Progress' || status === 'Done') && p.dateStarted
-    ? p.dateStarted : (status === 'In Progress' ? Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd') : '');
-  var dateFinished = (status === 'Done') && p.dateFinished ? p.dateFinished : '';
-  var rating = (p.rating && !isNaN(Number(p.rating))) ? Number(p.rating) : '';
-
-  // COURSE_HEADERS: ID | Person | Title | Source | Category | Status | Rating | Date Started | Date Finished | Notes
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, COURSE_HEADERS.length)
-    .setValues([[id, p.person || 'Ahmed', p.title || '', p.source || '', p.category || '',
-                 status, rating, dateStarted, dateFinished, p.notes || '']]);
-
-  Logger.log('webAddCourse_: ' + id);
-  return { ok: true, id: id, action: 'course_added' };
-}
-
-function findCourseRow_(id) {
-  var sheet = getSpreadsheet().getSheetByName(TABS.COURSES);
-  if (!sheet || sheet.getLastRow() < 2) return -1;
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === id) return i + 2;
-  }
-  return -1;
-}
-
-function webUpdateCourse_(e) {
-  var p     = e.parameter;
-  var id    = String(p.id || '').trim();
-  var field = String(p.field || '').toLowerCase().trim();
-  var value = String(p.value !== undefined ? p.value : '').trim();
-  if (!id || !field) return { ok: false, error: 'id and field required' };
-
-  var row = findCourseRow_(id);
-  if (row < 0) return { ok: false, error: 'course not found: ' + id };
-
-  var colMap = { person:1, title:2, source:3, category:4, status:5, rating:6,
-                 datestarted:7, datefinished:8, notes:9 };
-  colMap['date started']  = 7;
-  colMap['date finished'] = 8;
-
-  var col = colMap[field];
-  if (!col) return { ok: false, error: 'unknown field: ' + field };
-
-  var sheet = getSpreadsheet().getSheetByName(TABS.COURSES);
-  var writeVal = (field === 'rating') ? (value !== '' ? Number(value) : '') : value;
-  sheet.getRange(row, col + 1).setValue(writeVal);
-
-  if (field === 'status' && value === 'Done') {
-    var existing = sheet.getRange(row, 9).getValue();
-    if (!existing) {
-      sheet.getRange(row, 9).setValue(
-        Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
-      );
-    }
-  }
-
-  Logger.log('webUpdateCourse_: ' + id + ' ' + field + '=' + value);
-  return { ok: true, id: id, field: field, action: 'course_updated' };
-}
-
-function webDeleteCourse_(e) {
-  var id  = String((e.parameter || {}).id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var row = findCourseRow_(id);
-  if (row < 0) return { ok: false, error: 'course not found: ' + id };
-  getSpreadsheet().getSheetByName(TABS.COURSES).deleteRow(row);
-  Logger.log('webDeleteCourse_: ' + id);
-  return { ok: true, id: id, action: 'course_deleted' };
-}
-
-// ---- Skills -----------------------------------------------------------------
-
-function webAddSkill_(e) {
-  var p     = e.parameter;
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.SKILLS);
-
-  var today   = new Date();
-  var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
-  var numRows = sheet.getLastRow();
-  var seq     = 1;
-  if (numRows >= 2) {
-    var existing = sheet.getRange(2, 1, numRows - 1, 1).getValues()
-      .filter(function(r) { return String(r[0]).indexOf('SKILL-' + dateStr) === 0; });
-    seq = existing.length + 1;
-  }
-  var id = 'SKILL-' + dateStr + '-' + String(seq).padStart(2, '0');
-
-  // SKILL_HEADERS: ID | Person | Skill | Category | Level | Goal Link | Last Practiced | Notes
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, SKILL_HEADERS.length)
-    .setValues([[id, p.person || 'Ahmed', p.skill || '', p.category || '',
-                 p.level || 'Beginner', p.goalLink || '', p.lastPracticed || '', p.notes || '']]);
-
-  Logger.log('webAddSkill_: ' + id);
-  return { ok: true, id: id, action: 'skill_added' };
-}
-
-function findSkillRow_(id) {
-  var sheet = getSpreadsheet().getSheetByName(TABS.SKILLS);
-  if (!sheet || sheet.getLastRow() < 2) return -1;
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === id) return i + 2;
-  }
-  return -1;
-}
-
-function webUpdateSkill_(e) {
-  var p     = e.parameter;
-  var id    = String(p.id || '').trim();
-  var field = String(p.field || '').toLowerCase().trim();
-  var value = String(p.value !== undefined ? p.value : '').trim();
-  if (!id || !field) return { ok: false, error: 'id and field required' };
-
-  var row = findSkillRow_(id);
-  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
-
-  var colMap = { person:1, skill:2, category:3, level:4, goallink:5, lastpracticed:6, notes:7 };
-  colMap['goal link']     = 5;
-  colMap['last practiced'] = 6;
-
-  var col = colMap[field];
-  if (col === undefined) return { ok: false, error: 'unknown field: ' + field };
-
-  getSpreadsheet().getSheetByName(TABS.SKILLS).getRange(row, col + 1).setValue(value);
-  Logger.log('webUpdateSkill_: ' + id + ' ' + field + '=' + value);
-  return { ok: true, id: id, field: field, action: 'skill_updated' };
-}
-
-function webRecordSkillPractice_(e) {
-  var id = String((e.parameter || {}).id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var row = findSkillRow_(id);
-  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
-
-  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  getSpreadsheet().getSheetByName(TABS.SKILLS).getRange(row, 7).setValue(today); // col 7 = Last Practiced
-
-  Logger.log('webRecordSkillPractice_: ' + id + ' on ' + today);
-  return { ok: true, id: id, lastPracticed: today, action: 'practice_recorded' };
-}
-
-function webDeleteSkill_(e) {
-  var id  = String((e.parameter || {}).id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var row = findSkillRow_(id);
-  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
-  getSpreadsheet().getSheetByName(TABS.SKILLS).deleteRow(row);
-  Logger.log('webDeleteSkill_: ' + id);
-  return { ok: true, id: id, action: 'skill_deleted' };
-}
-
-// ---- Wish List (Issue #131) ------------------------------------------------
-
-function webGetWishList_() {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.WISH_LIST);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
-
-  var numRows = sheet.getLastRow() - 1;
-  var data    = sheet.getRange(2, 1, numRows, WISH_LIST_HEADERS.length).getValues();
-  var items   = [];
-
-  data.forEach(function(row, idx) {
-    var id = String(row[0] || '').trim();
-    if (!id) return;
-    items.push({
-      row:           idx + 2,
-      id:            id,
-      person:        String(row[1] || '').trim(),
-      category:      String(row[2] || '').trim(),
-      item:          String(row[3] || '').trim(),
-      description:   String(row[4] || '').trim(),
-      urls:          String(row[5] || '').trim(),
-      price:         row[6] !== '' && row[6] !== null ? Number(row[6]) : null,
-      priority:      String(row[7] || 'Medium').trim(),
-      status:        String(row[8] || 'Dreaming').trim(),
-      dateAdded:     formatDateVal_(row[9]),
-      notes:         String(row[10] || '').trim(),
-      datePurchased: formatDateVal_(row[11]),
-    });
-  });
-
-  // Active items first, purchased last
-  items.sort(function(a, b) {
-    var aP = a.status === 'Purchased' ? 1 : 0;
-    var bP = b.status === 'Purchased' ? 1 : 0;
-    return aP - bP;
-  });
-
-  return { ok: true, items: items };
-}
-
-function webAddWishItem_(e) {
-  var p    = e.parameter || {};
-  var item = (p.item || '').trim();
-  if (!item) throw new Error('item is required');
-
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.WISH_LIST);
-  if (!sheet) throw new Error('Wish List tab not found');
-
-  var tz       = Session.getScriptTimeZone();
-  var today    = new Date();
-  var dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
-  var addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
-
-  var seq = 1;
-  if (sheet.getLastRow() >= 2) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
-      .forEach(function(r) { if (String(r[0] || '').indexOf('WISH-' + dateStr) === 0) seq++; });
-  }
-  var id = 'WISH-' + dateStr + '-' + String(seq).padStart(2, '0');
-
-  var price = p.price !== '' && p.price != null ? Number(p.price) : '';
-  if (isNaN(price)) price = '';
-
-  // WISH_LIST_HEADERS: ID | Person | Category | Item | Description | URLs | Price | Priority | Status | Date Added | Notes | Date Purchased
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, WISH_LIST_HEADERS.length).setValues([[
-    id,
-    (p.person   || 'Ahmed').trim(),
-    (p.category || 'Other').trim(),
-    item,
-    (p.description || '').trim(),
-    (p.urls  || p.url || '').trim(),
-    price,
-    (p.priority || 'Medium').trim(),
-    (p.status   || 'Dreaming').trim(),
-    addedStr,
-    (p.notes || '').trim(),
-    '',
-  ]]);
-
-  Logger.log('webAddWishItem_: ' + id + ' — ' + item);
-  return { ok: true, id: id, action: 'created' };
-}
-
-function findWishRow_(id) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.WISH_LIST);
-  if (!sheet || sheet.getLastRow() < 2) throw new Error('Wish List is empty');
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === String(id).trim()) {
-      return { sheet: sheet, rowNum: i + 2 };
-    }
-  }
-  throw new Error('Wish list item not found: ' + id);
-}
-
-function webUpdateWishItem_(e) {
-  var p     = e.parameter || {};
-  var id    = (p.id || '').trim();
-  var field = (p.field || '').trim();
-  var value = (p.value != null ? String(p.value) : '').trim();
-  if (!id || !field) throw new Error('id and field are required');
-
-  var found = findWishRow_(id);
-  // WISH_LIST_HEADERS col map (1-based): ID=1 Person=2 Category=3 Item=4 Description=5 URLs=6 Price=7 Priority=8 Status=9 Date Added=10 Notes=11 Date Purchased=12
-  var colMap = { person:2, category:3, item:4, description:5, urls:6, price:7, priority:8, status:9, notes:11 };
-  var col = colMap[field.toLowerCase()];
-  if (!col) throw new Error('Unknown field: ' + field);
-
-  var writeVal = field.toLowerCase() === 'price' ? (value !== '' ? Number(value) : '') : value;
-  found.sheet.getRange(found.rowNum, col).setValue(writeVal);
-
-  Logger.log('webUpdateWishItem_: ' + id + ' ' + field + '=' + value);
-  return { ok: true, id: id, action: 'updated' };
-}
-
-function webMarkWishPurchased_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  if (!id) throw new Error('id is required');
-
-  var found = findWishRow_(id);
-  var tz    = Session.getScriptTimeZone();
-  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  found.sheet.getRange(found.rowNum, 9).setValue('Purchased');   // Status
-  found.sheet.getRange(found.rowNum, 12).setValue(today);        // Date Purchased
-
-  Logger.log('webMarkWishPurchased_: ' + id);
-  return { ok: true, id: id, action: 'purchased' };
-}
-
-function webDeleteWishItem_(e) {
-  var id    = ((e.parameter && e.parameter.id) || '').trim();
-  var found = findWishRow_(id);
-  found.sheet.deleteRow(found.rowNum);
-  Logger.log('webDeleteWishItem_: ' + id);
-  return { ok: true, id: id, action: 'deleted' };
-}
-
-// ---- Pacing Status (Issue #139) --------------------------------------------
-
-/**
- * Returns current vacation mode and pacing mode status for the Home tab indicator.
- */
-function webGetPacingStatus_() {
-  return getPacingStatus_();
-}
-
 // ---- Chat ------------------------------------------------------------------
 
 /**
@@ -4870,7 +4194,6 @@ function webGetBucketList_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, entries: [] };
-
   var rows    = sheet.getDataRange().getValues();
   var headers = rows[0];
   var entries = rows.slice(1)
@@ -4878,26 +4201,8 @@ function webGetBucketList_() {
     .map(function(r) {
       var obj = {};
       headers.forEach(function(h, i) { obj[h] = r[i]; });
-      obj.activities = []; // will be populated below
       return obj;
     });
-
-  // Join BucketActivities — embed each activity into its parent entry
-  var actSheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
-  if (actSheet && actSheet.getLastRow() >= 2) {
-    var actRows    = actSheet.getDataRange().getValues();
-    var actHeaders = actRows[0];
-    var entryMap   = {};
-    entries.forEach(function(e) { entryMap[String(e.ID)] = e; });
-    actRows.slice(1).forEach(function(r) {
-      if (!r[0]) return;
-      var act = {};
-      actHeaders.forEach(function(h, i) { act[h] = r[i]; });
-      var bid = String(act['Bucket ID'] || '').trim();
-      if (entryMap[bid]) entryMap[bid].activities.push(act);
-    });
-  }
-
   return { ok: true, entries: entries };
 }
 
@@ -4961,69 +4266,6 @@ function webDeleteBucketItem_(e) {
     }
   }
   return { ok: false, error: 'Entry not found: ' + id };
-}
-
-// ---- Bucket Activities (Issue #113) ----------------------------------------
-
-/**
- * Adds an activity to a Bucket List entry.
- * GET ?action=add_bucket_activity&bucketId=b_xxx&activity=text
- */
-function webAddBucketActivity_(e) {
-  var p        = e.parameter || {};
-  var bucketId = (p.bucketId || '').trim();
-  var activity = (p.activity || '').trim();
-  if (!bucketId) throw new Error('bucketId is required.');
-  if (!activity) throw new Error('activity is required.');
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
-  if (!sheet) throw new Error('BucketActivities tab not found. Run setupVERA() first.');
-  var id = 'ba_' + Date.now();
-  var dt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  sheet.appendRow([id, bucketId, activity, '', dt]);
-  return { ok: true, activity: { ID: id, 'Bucket ID': bucketId, Activity: activity, Done: '', 'Added Date': dt } };
-}
-
-/**
- * Toggles the Done field of a Bucket Activity.
- * GET ?action=toggle_bucket_activity&id=ba_xxx&done=yes  (or done='' to uncheck)
- */
-function webToggleBucketActivity_(e) {
-  var p    = e.parameter || {};
-  var id   = (p.id   || '').trim();
-  var done = (p.done || '');
-  if (!id) throw new Error('id is required.');
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Activity not found.' };
-  var rows = sheet.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === id) {
-      sheet.getRange(i + 1, 4).setValue(done); // col D: Done
-      return { ok: true, id: id, done: done };
-    }
-  }
-  return { ok: false, error: 'Activity not found: ' + id };
-}
-
-/**
- * Deletes a Bucket Activity row.
- * GET ?action=delete_bucket_activity&id=ba_xxx
- */
-function webDeleteBucketActivity_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) throw new Error('id is required.');
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Activity not found.' };
-  var rows = sheet.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === id) {
-      sheet.deleteRow(i + 1);
-      return { ok: true, id: id };
-    }
-  }
-  return { ok: false, error: 'Activity not found: ' + id };
 }
 
 // ---- Flight Status (Issue #66) ---------------------------------------------
@@ -5330,30 +4572,6 @@ function webLogGymAttend_(e, attended) {
   return logGymAttendance_(id, attended);
 }
 
-/**
- * Finds the most recent pending (Attended = '') gym session and marks it
- * Yes or No. Called from Chat.js ACTION:log_gym_attend_latest.
- */
-function webGymAttendLatest_(attended) {
-  attended = (attended || 'Yes');
-  if (attended !== 'Yes' && attended !== 'No') attended = 'Yes';
-  var sessions = getGymLog_();
-  // Find most recent session with no attendance logged yet
-  var pending = sessions.filter(function(s) { return !s.attended; });
-  if (!pending.length) return { ok: false, error: 'No pending gym sessions to log. All recent sessions are already checked in.' };
-  // Sessions are sorted by date ascending; take the last pending one
-  pending.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
-  var target = pending[pending.length - 1];
-  var result = logGymAttendance_(target.id, attended);
-  return { ok: true, id: target.id, date: target.date, title: target.title, attended: attended };
-}
-
-function webGymBackfill_(e) {
-  var days   = parseInt((e.parameter && e.parameter.days) || '30', 10) || 30;
-  var result = backfillGymSessions_(days);
-  return { ok: true, added: result.added, skipped: result.skipped };
-}
-
 // ── Purchase History (Issue #111) ─────────────────────────────
 
 function webGetPurchaseHistory_() {
@@ -5361,8 +4579,8 @@ function webGetPurchaseHistory_() {
 }
 
 function webLogPurchaseRun_(e) {
-  var storeId  = (e.storeId  || (e.parameter && e.parameter.storeId)  || '').toString().trim();
-  var rawItems = (e.items     || (e.parameter && e.parameter.items)    || '[]').toString().trim();
+  var storeId   = ((e.parameter && e.parameter.storeId) || '').trim();
+  var rawItems  = ((e.parameter && e.parameter.items)   || '[]').trim();
   if (!storeId) throw new Error('storeId is required');
   var itemTexts = JSON.parse(rawItems);
   if (!Array.isArray(itemTexts) || !itemTexts.length) throw new Error('items must be a non-empty JSON array');
@@ -5887,7 +5105,84 @@ function webDeleteRewardsGoal_(e) {
 }
 
 // ============================================================
-// Important Dates — People tab (Issue #80)
+// Gift Ideas (Issue #105)
+// ============================================================
+
+function webGetGiftData_() {
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var peopleSheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
+  var ideasSheet  = ss.getSheetByName(TABS.GIFT_IDEAS);
+  var people = [];
+  if (peopleSheet && peopleSheet.getLastRow() >= 2) {
+    var pRows = peopleSheet.getRange(2, 1, peopleSheet.getLastRow() - 1, 1).getValues();
+    pRows.forEach(function(r) { if (r[0]) people.push(String(r[0]).trim()); });
+  }
+  var ideas = [];
+  if (ideasSheet && ideasSheet.getLastRow() >= 2) {
+    var iRows = ideasSheet.getDataRange().getValues();
+    var hdrs  = iRows[0];
+    iRows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; }); ideas.push(obj);
+    });
+  }
+  return { ok: true, people: people, ideas: ideas };
+}
+
+function webAddGiftPerson_(e) {
+  var name = ((e.parameter && e.parameter.name) || '').trim();
+  if (!name) return { ok: false, error: 'name required' };
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  ss.getSheetByName(TABS.GIFT_PEOPLE).appendRow([name]);
+  return { ok: true, name: name };
+}
+
+function webDeleteGiftPerson_(e) {
+  var name = ((e.parameter && e.parameter.name) || '').trim();
+  if (!name) return { ok: false, error: 'name required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === name) { sheet.deleteRow(i + 1); break; }
+  }
+  // Also delete all ideas belonging to this person
+  var ideasSheet = ss.getSheetByName(TABS.GIFT_IDEAS);
+  if (ideasSheet && ideasSheet.getLastRow() >= 2) {
+    var iRows = ideasSheet.getDataRange().getValues();
+    for (var j = iRows.length - 1; j >= 1; j--) {
+      if (String(iRows[j][1]).trim() === name) ideasSheet.deleteRow(j + 1);
+    }
+  }
+  return { ok: true, name: name };
+}
+
+function webAddGiftIdea_(e) {
+  var p      = e.parameter || {};
+  var person = (p.person || '').trim();
+  var idea   = (p.idea   || '').trim();
+  if (!person || !idea) return { ok: false, error: 'person and idea required' };
+  var id = 'gi_' + Date.now();
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var date = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  ss.getSheetByName(TABS.GIFT_IDEAS).appendRow([id, person, idea, date]);
+  return { ok: true, entry: { ID: id, Person: person, Idea: idea, 'Added Date': date } };
+}
+
+function webDeleteGiftIdea_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.GIFT_IDEAS);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// ============================================================
+// Important Dates (Issue #80)
 // ============================================================
 
 function webGetImportantDates_() {
@@ -5899,9 +5194,7 @@ function webGetImportantDates_() {
     var hdrs = rows[0];
     rows.slice(1).forEach(function(r) {
       if (!r[0]) return;
-      var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
-      dates.push(obj);
+      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; }); dates.push(obj);
     });
   }
   return { ok: true, dates: dates };
@@ -5921,36 +5214,33 @@ function webAddImportantDate_(e) {
   ss.getSheetByName(TABS.IMPORTANT_DATES)
     .appendRow([id, date, label, person, recurring, leadTime, notes, '']);
   return { ok: true, entry: { ID: id, Date: date, Label: label, Person: person,
-                               Recurring: recurring, 'Lead Time Days': leadTime, Notes: notes,
-                               'Last Actioned Year': '' } };
+                               Recurring: recurring, 'Lead Time Days': leadTime, Notes: notes, 'Last Actioned Year': '' } };
 }
 
 function webUpdateImportantDate_(e) {
-  var p        = e.parameter || {};
-  var id       = (p.id       || '').trim();
-  var label    = (p.label    || '').trim();
-  var date     = (p.date     || '').trim();
-  var person   = (p.person   || '').trim();
-  var recurring= (p.recurring|| '').trim();
-  var leadTime = p.leadTime ? parseInt(p.leadTime, 10) : null;
-  var notes    = (p.notes    || '').trim();
+  var p     = e.parameter || {};
+  var id    = (p.id || '').trim();
   if (!id) return { ok: false, error: 'id required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
   var rows  = sheet.getDataRange().getValues();
   var hdrs  = rows[0];
-  var colMap = {};
-  hdrs.forEach(function(h, i) { colMap[h] = i + 1; });
+  var idIdx = hdrs.indexOf('ID');
   for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === id) {
-      if (date)      sheet.getRange(i+1, colMap['Date']).setValue(date);
-      if (label)     sheet.getRange(i+1, colMap['Label']).setValue(label);
-      if (person)    sheet.getRange(i+1, colMap['Person']).setValue(person);
-      if (recurring) sheet.getRange(i+1, colMap['Recurring']).setValue(recurring);
-      if (leadTime)  sheet.getRange(i+1, colMap['Lead Time Days']).setValue(leadTime);
-      if (notes !== undefined) sheet.getRange(i+1, colMap['Notes']).setValue(notes);
-      return { ok: true, id: id };
-    }
+    if (String(rows[i][idIdx]).trim() !== id) continue;
+    var rowNum = i + 1;
+    var fields = {
+      'Date':           (p.date      || String(rows[i][hdrs.indexOf('Date')])).trim(),
+      'Label':          (p.label     || String(rows[i][hdrs.indexOf('Label')])).trim(),
+      'Person':         (p.person    !== undefined ? p.person    : String(rows[i][hdrs.indexOf('Person')])).trim(),
+      'Recurring':      (p.recurring || String(rows[i][hdrs.indexOf('Recurring')])).trim(),
+      'Lead Time Days': p.leadTime !== undefined ? parseInt(p.leadTime, 10) : rows[i][hdrs.indexOf('Lead Time Days')],
+      'Notes':          (p.notes     !== undefined ? p.notes     : String(rows[i][hdrs.indexOf('Notes')])).trim(),
+    };
+    hdrs.forEach(function(h, ci) {
+      if (fields[h] !== undefined) sheet.getRange(rowNum, ci + 1).setValue(fields[h]);
+    });
+    return { ok: true, id: id };
   }
   return { ok: false, error: 'not found' };
 }
@@ -5960,8 +5250,7 @@ function webDeleteImportantDate_(e) {
   if (!id) return { ok: false, error: 'id required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
-  if (!sheet) return { ok: false, error: 'Important Dates sheet not found' };
-  var rows = sheet.getDataRange().getValues();
+  var rows  = sheet.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
   }
@@ -5969,169 +5258,40 @@ function webDeleteImportantDate_(e) {
 }
 
 function webPreviewCalendarBirthdays_() {
-  var found = [];
-  var now   = new Date();
-  // Scan 13 months ahead to catch all annual birthdays at least once
-  var lookAhead = new Date(now.getFullYear(), now.getMonth() + 13, now.getDate());
-
-  // Build calendar list: getAllCalendars() + explicit lookup for the Google Contacts
-  // "Birthdays" system calendar, which often doesn't appear in getAllCalendars().
-  var cals = CalendarApp.getAllCalendars();
-  var calIds = {};
-  cals.forEach(function(c) { calIds[c.getId()] = true; });
-  ['Birthdays', 'contacts@group.v.calendar.google.com'].forEach(function(nameOrId) {
-    var extra = CalendarApp.getCalendarsByName(nameOrId);
-    extra.forEach(function(c) { if (!calIds[c.getId()]) { cals.push(c); calIds[c.getId()] = true; } });
-  });
-
-  cals.forEach(function(cal) {
-    var calName = cal.getName().toLowerCase();
-    var isBirthdayCal = calName.indexOf('birthday') !== -1 || calName.indexOf('contact') !== -1;
-    var isJointChaos  = calName.indexOf('joint chaos') !== -1;
-
-    // For dedicated birthday/contact calendars: scan all events (they're all birthdays)
-    // For Joint Chaos + any other calendar: only scan if event title contains "birthday"
-    var events = cal.getEvents(now, lookAhead);
-    events.forEach(function(ev) {
-      var title = ev.getTitle() || '';
-      var titleLow = title.toLowerCase();
-
-      // Skip events that don't have "birthday" in the title
-      if (titleLow.indexOf('birthday') === -1) return;
-      // Skip VERA-generated flag events (contain a colon followed by digits, e.g. ": 78 days")
-      if (/:\s*\d+\s*days?/i.test(title)) return;
-
-      // Get date — use getAllDayStartDate() for all-day events to avoid timezone offset issues
-      var dateObj = ev.isAllDayEvent() ? ev.getAllDayStartDate() : ev.getStartTime();
-      var mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-      var dd = String(dateObj.getDate()).padStart(2, '0');
-
-      // Extract person name — handle all observed formats:
-      // "Victoria's Birthday", "Caiden Birthday", "Birthday - Dad",
-      // "Kelly E's Birthday", "Austin's Birthday!", "JC & Omar Birthday"
-      var person = title
-        .replace(/birthday\s*[-–:]\s*/ig, '')  // "Birthday - Name" / "Birthday: Name"
-        .replace(/[-–:]\s*birthday\b.*/ig, '') // "Name - Birthday..." strip from dash onward
-        .replace(/[''`]s?\s*birthday\b.*/ig, '') // "Name's Birthday..." strip from 's onward
-        .replace(/\s*birthday\b.*/ig, '')       // "Name Birthday..." strip from birthday onward
-        .replace(/[!?.,;]+$/, '')              // strip trailing punctuation
-        .trim();
-
-      if (!person) return;
-      // Deduplicate by person name (case-insensitive) — same person may appear in multiple calendars
-      if (!found.find(function(f) { return f.person.toLowerCase() === person.toLowerCase(); })) {
+  var found    = [];
+  var now      = new Date();
+  var lookAhead = new Date(now.getFullYear() + 1, 11, 31);
+  CalendarApp.getAllCalendars().forEach(function(cal) {
+    var name = cal.getName().toLowerCase();
+    if (name.indexOf('birthday') === -1 && name.indexOf('contact') === -1) return;
+    cal.getEvents(now, lookAhead).forEach(function(ev) {
+      var title  = ev.getTitle();
+      var start  = ev.getStartTime();
+      var mm     = String(start.getMonth() + 1).padStart(2, '0');
+      var dd     = String(start.getDate()).padStart(2, '0');
+      var person = title.replace(/'?s?\s*birthday\s*$/i, '').trim();
+      if (!found.find(function(f) { return f.person === person; })) {
         found.push({ person: person, date: mm + '-' + dd, label: person + "'s Birthday" });
       }
     });
   });
-
   found.sort(function(a, b) { return a.person.localeCompare(b.person); });
-  Logger.log('webPreviewCalendarBirthdays_: found ' + found.length + ' birthday(s): ' +
-             found.map(function(f){ return f.person + ' (' + f.date + ')'; }).join(', '));
   return { ok: true, previews: found };
 }
 
 function webImportCalendarBirthdays_(e) {
-  var entries = [];
-  try { entries = JSON.parse((e.parameter && e.parameter.entries) || '[]'); } catch(_) {}
-  if (!entries.length) return { ok: false, error: 'no entries provided' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
-  if (!sheet) return { ok: false, error: 'Important Dates sheet not found' };
+  var entries = JSON.parse((e.parameter && e.parameter.entries) || '[]');
+  var ss      = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet   = ss.getSheetByName(TABS.IMPORTANT_DATES);
   entries.forEach(function(en) {
     var id = 'id_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     sheet.appendRow([id, en.date, en.label, en.person, 'Yes', 30, '', '']);
-    Utilities.sleep(60); // avoid ID collision on rapid appends
+    Utilities.sleep(50);
   });
   return { ok: true, count: entries.length };
 }
 
-// ============================================================
-// Gift Ideas — People tab (Issue #105)
-// ============================================================
-
-function webGetGiftData_() {
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var people = [];
-  var pSheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
-  if (pSheet && pSheet.getLastRow() >= 2) {
-    people = pSheet.getRange(2, 1, pSheet.getLastRow() - 1, 1).getValues()
-               .map(function(r) { return String(r[0]).trim(); })
-               .filter(function(n) { return n; });
-  }
-  var ideas = [];
-  var iSheet = ss.getSheetByName(TABS.GIFT_IDEAS);
-  if (iSheet && iSheet.getLastRow() >= 2) {
-    var rows = iSheet.getDataRange().getValues();
-    var hdrs = rows[0];
-    rows.slice(1).forEach(function(r) {
-      if (!r[0]) return;
-      var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
-      ideas.push(obj);
-    });
-  }
-  return { ok: true, people: people, ideas: ideas };
-}
-
-function webAddGiftPerson_(e) {
-  var name = ((e.parameter && e.parameter.name) || '').trim();
-  if (!name) return { ok: false, error: 'name required' };
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
-  sheet.appendRow([name]);
-  return { ok: true, name: name };
-}
-
-function webDeleteGiftPerson_(e) {
-  var name = ((e.parameter && e.parameter.name) || '').trim();
-  if (!name) return { ok: false, error: 'name required' };
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  // Remove from Gift People
-  var pSheet = ss.getSheetByName(TABS.GIFT_PEOPLE);
-  if (pSheet && pSheet.getLastRow() >= 2) {
-    var pRows = pSheet.getDataRange().getValues();
-    for (var i = pRows.length - 1; i >= 1; i--) {
-      if (String(pRows[i][0]).trim() === name) { pSheet.deleteRow(i + 1); break; }
-    }
-  }
-  // Remove all their ideas
-  var iSheet = ss.getSheetByName(TABS.GIFT_IDEAS);
-  if (iSheet && iSheet.getLastRow() >= 2) {
-    var iRows = iSheet.getDataRange().getValues();
-    for (var j = iRows.length - 1; j >= 1; j--) {
-      if (String(iRows[j][1]).trim() === name) iSheet.deleteRow(j + 1);
-    }
-  }
-  return { ok: true, name: name };
-}
-
-function webAddGiftIdea_(e) {
-  var person = ((e.parameter && e.parameter.person) || '').trim();
-  var idea   = ((e.parameter && e.parameter.idea)   || '').trim();
-  if (!person || !idea) return { ok: false, error: 'person and idea required' };
-  var id = 'gi_' + Date.now();
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  ss.getSheetByName(TABS.GIFT_IDEAS).appendRow([id, person, idea, new Date()]);
-  return { ok: true, idea: { ID: id, Person: person, Idea: idea } };
-}
-
-function webDeleteGiftIdea_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.GIFT_IDEAS);
-  if (!sheet) return { ok: false, error: 'Gift Ideas sheet not found' };
-  var rows = sheet.getDataRange().getValues();
-  for (var i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
-  }
-  return { ok: false, error: 'not found' };
-}
-
-// ============================================================
-// Chores — Household chore checklist (Issue #124)
-// ============================================================
+// ---- Chores (Issue #124) ----------------------------------------------------
 
 function webGetChores_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
@@ -6142,7 +5302,9 @@ function webGetChores_() {
     var hdrs = rows[0];
     rows.slice(1).forEach(function(r) {
       if (!r[0]) return;
-      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; }); chores.push(obj);
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      chores.push(obj);
     });
   }
   return { ok: true, chores: chores };
@@ -6152,17 +5314,15 @@ function webAddChore_(e) {
   var p       = e.parameter || {};
   var chore   = (p.chore   || '').trim();
   var cadence = (p.cadence || 'Daily').trim();
-  if (!chore) return { ok: false, error: 'chore text required' };
-  var validCadences = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Seasonal'];
-  if (validCadences.indexOf(cadence) === -1) cadence = 'Daily';
+  if (!chore) return { ok: false, error: 'chore required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);
+  var sort  = sheet.getLastRow(); // append at end of cadence group
   var id    = 'ch_' + Date.now();
-  var sort  = sheet.getLastRow();
-  var date  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  sheet.appendRow([id, chore, cadence, sort, false, '', date]);
+  var added = new Date().toISOString().slice(0, 10);
+  sheet.appendRow([id, chore, cadence, sort, false, '', added]);
   return { ok: true, chore: { ID: id, Chore: chore, Cadence: cadence, Sort: sort,
-                               Checked: false, 'Checked At': '', 'Added Date': date } };
+                               Checked: false, 'Checked At': '', 'Added Date': added } };
 }
 
 function webDeleteChore_(e) {
@@ -6170,7 +5330,6 @@ function webDeleteChore_(e) {
   if (!id) return { ok: false, error: 'id required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);
-  if (!sheet) return { ok: false, error: 'Chores sheet not found' };
   var rows  = sheet.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
     if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
@@ -6179,698 +5338,45 @@ function webDeleteChore_(e) {
 }
 
 function webToggleChore_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
+  var id      = ((e.parameter && e.parameter.id)      || '').trim();
+  var checked = ((e.parameter && e.parameter.checked) || 'false') === 'true';
   if (!id) return { ok: false, error: 'id required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);
-  if (!sheet) return { ok: false, error: 'Chores sheet not found' };
-  var rows     = sheet.getDataRange().getValues();
-  var hdrs     = rows[0];
-  var chkIdx   = hdrs.indexOf('Checked');
-  var chkAtIdx = hdrs.indexOf('Checked At');
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  var checkedIdx   = hdrs.indexOf('Checked');
+  var checkedAtIdx = hdrs.indexOf('Checked At');
   for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    var newChecked = !rows[i][chkIdx];
-    var ts = newChecked ? Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm') : '';
-    sheet.getRange(i + 1, chkIdx + 1).setValue(newChecked);
-    sheet.getRange(i + 1, chkAtIdx + 1).setValue(ts);
-    return { ok: true, id: id, checked: newChecked, checkedAt: ts };
+    if (String(rows[i][0]).trim() === id) {
+      sheet.getRange(i + 1, checkedIdx + 1).setValue(checked);
+      if (checkedAtIdx !== -1) {
+        sheet.getRange(i + 1, checkedAtIdx + 1).setValue(checked ? new Date().toISOString() : '');
+      }
+      return { ok: true, id: id, checked: checked };
+    }
   }
   return { ok: false, error: 'not found' };
 }
 
 function webUpdateChore_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
+  var p       = e.parameter || {};
+  var id      = (p.id      || '').trim();
+  var chore   = (p.chore   || '').trim();
+  var cadence = (p.cadence || '').trim();
   if (!id) return { ok: false, error: 'id required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);
-  if (!sheet) return { ok: false, error: 'Chores sheet not found' };
   var rows  = sheet.getDataRange().getValues();
   var hdrs  = rows[0];
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    if (p.cadence !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Cadence') + 1).setValue(p.cadence);
-    if (p.chore   !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Chore')   + 1).setValue(p.chore);
-    if (p.sort    !== undefined) sheet.getRange(i + 1, hdrs.indexOf('Sort')    + 1).setValue(parseInt(p.sort, 10));
-    return { ok: true, id: id };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-// ============================================================
-// Vehicles — Issue #125
-// ============================================================
-
-function vehicleRowToObj_(hdrs, row) {
-  var obj = {};
-  hdrs.forEach(function(h, i) { obj[h] = row[i]; });
-  var today = new Date();
-  today.setHours(0,0,0,0);
-  function daysDiff(val) {
-    if (!val) return null;
-    var d = new Date(val); d.setHours(0,0,0,0);
-    return Math.round((d - today) / 86400000);
-  }
-  obj.nextOilChangeMileage = (parseFloat(obj['Last Oil Change Mileage']) || 0) + (parseFloat(obj['Oil Interval (mi)']) || 0);
-  obj.milesUntilOilChange    = obj.nextOilChangeMileage - (parseFloat(obj['Current Mileage']) || 0);
-  obj.registrationDays       = daysDiff(obj['Registration Expiry']);
-  obj.insuranceDays          = daysDiff(obj['Insurance Expiry']);
-  obj.warrantyB2bDays        = daysDiff(obj['Warranty Expiry (B2B)']);
-  obj.warrantyPowertrainDays = daysDiff(obj['Warranty Expiry (Powertrain)']);
-  obj.serviceDays            = daysDiff(obj['Next Service']);
-  obj.emissionDays           = daysDiff(obj['Emission Inspection Expiry']);
-  obj.safetyDays             = daysDiff(obj['Safety Inspection Expiry']);
-  obj.nextTireChangeMileage  = (parseFloat(obj['Tires Last Replaced Mileage']) || 0) + (parseFloat(obj['Tire Interval (mi)']) || 0);
-  obj.milesUntilTireChange   = obj['Tires Last Replaced Mileage']
-    ? obj.nextTireChangeMileage - (parseFloat(obj['Current Mileage']) || 0)
-    : null;
-  return obj;
-}
-
-function webGetVehicles_() {
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: true, vehicles: [] };
-  var rows  = sheet.getDataRange().getValues();
-  if (rows.length < 2) return { ok: true, vehicles: [] };
-  var hdrs  = rows[0];
-  var vehicles = [];
-  for (var i = 1; i < rows.length; i++) {
-    if (!rows[i][0]) continue;
-    vehicles.push(vehicleRowToObj_(hdrs, rows[i]));
-  }
-  return { ok: true, vehicles: vehicles };
-}
-
-function webAddVehicle_(e) {
-  var p  = e.parameter || {};
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  var maxId = 0;
-  for (var i = 1; i < rows.length; i++) {
-    var n = parseInt(rows[i][0], 10);
-    if (!isNaN(n) && n > maxId) maxId = n;
-  }
-  var newId = String(maxId + 1);
-  var row = hdrs.map(function(h) {
-    if (h === 'ID') return newId;
-    return p[h] !== undefined ? p[h] : '';
-  });
-  sheet.appendRow(row);
-  var allRows = sheet.getDataRange().getValues();
-  return { ok: true, vehicle: vehicleRowToObj_(hdrs, allRows[allRows.length - 1]) };
-}
-
-function webDeleteVehicle_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    sheet.deleteRow(i + 1);
-    return { ok: true };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-function webRecordVehicleOilChange_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  var currentMileage = parseFloat(p.currentMileage || 0);
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    var today = new Date();
-    var interval = parseFloat(rows[i][hdrs.indexOf('Oil Interval (mi)')]) || 5000;
-    sheet.getRange(i + 1, hdrs.indexOf('Last Oil Change Date')    + 1).setValue(Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
-    sheet.getRange(i + 1, hdrs.indexOf('Last Oil Change Mileage') + 1).setValue(currentMileage);
-    sheet.getRange(i + 1, hdrs.indexOf('Current Mileage')         + 1).setValue(currentMileage);
-    var nextMi = currentMileage + interval;
-    // Create a calendar reminder
-    try {
-      var cal = CalendarApp.getDefaultCalendar();
-      var nickname = rows[i][hdrs.indexOf('Nickname')] || 'Vehicle';
-      var reminderDate = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000); // ~90 days
-      cal.createAllDayEvent(nickname + ' Oil Change Due (~' + Math.round(nextMi) + ' mi)', reminderDate);
-    } catch(calErr) { /* non-fatal */ }
-    var updatedRows = sheet.getDataRange().getValues();
-    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-function webRecordVehicleService_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    var today = new Date();
-    var intervalMo = parseFloat(rows[i][hdrs.indexOf('Service Interval (mo)')]) || 6;
-    var nextService = new Date(today.getFullYear(), today.getMonth() + intervalMo, today.getDate());
-    sheet.getRange(i + 1, hdrs.indexOf('Last Service') + 1).setValue(Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
-    sheet.getRange(i + 1, hdrs.indexOf('Next Service') + 1).setValue(Utilities.formatDate(nextService, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
-    var updatedRows = sheet.getDataRange().getValues();
-    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-function webUpdateVehicleMileage_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  var mileage = parseFloat(p.mileage || 0);
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    sheet.getRange(i + 1, hdrs.indexOf('Current Mileage') + 1).setValue(mileage);
-    var updatedRows = sheet.getDataRange().getValues();
-    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-// ---- Vehicle Enrichment — Issue #140 ----------------------------------------
-
-function webRecordVehicleTireChange_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  var currentMileage = parseFloat(p.currentMileage || 0);
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    var today   = new Date();
-    var tz      = Session.getScriptTimeZone();
-    var todayFmt = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
-    sheet.getRange(i + 1, hdrs.indexOf('Tires Last Replaced Date')    + 1).setValue(todayFmt);
-    sheet.getRange(i + 1, hdrs.indexOf('Tires Last Replaced Mileage') + 1).setValue(currentMileage);
-    sheet.getRange(i + 1, hdrs.indexOf('Current Mileage')             + 1).setValue(currentMileage);
-    // Calendar reminder at ~75% of tire interval
-    try {
-      var interval   = parseFloat(rows[i][hdrs.indexOf('Tire Interval (mi)')]) || 50000;
-      var nickname   = rows[i][hdrs.indexOf('Nickname')] || 'Vehicle';
-      var reminderMs = today.getTime() + Math.round(interval * 0.75 / 15000) * 30 * 24 * 60 * 60 * 1000;
-      CalendarApp.getDefaultCalendar().createAllDayEvent(
-        nickname + ' Tires Check (~' + Math.round(currentMileage + interval) + ' mi)',
-        new Date(reminderMs)
-      );
-    } catch(calErr) { /* non-fatal */ }
-    var updatedRows = sheet.getDataRange().getValues();
-    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-/**
- * Records an emission or safety inspection pass, setting the expiry date.
- * @param {Object} e         - Request event
- * @param {string} expiryCol - Header column name to update
- */
-function webRecordVehicleInspection_(e, expiryCol) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  var expiryDate = (p.expiryDate || '').trim();
-  if (!id)         return { ok: false, error: 'id required' };
-  if (!expiryDate) return { ok: false, error: 'expiryDate required (YYYY-MM-DD)' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.VEHICLES);
-  if (!sheet) return { ok: false, error: 'Vehicles sheet not found' };
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== id) continue;
-    var colIdx = hdrs.indexOf(expiryCol);
-    if (colIdx === -1) return { ok: false, error: 'Column not found: ' + expiryCol };
-    sheet.getRange(i + 1, colIdx + 1).setValue(expiryDate);
-    var updatedRows = sheet.getDataRange().getValues();
-    return { ok: true, vehicle: vehicleRowToObj_(hdrs, updatedRows[i]) };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-// ============================================================
-// Traveler Profiles + Visa Requirements (Issue #123)
-// ============================================================
-
-function webGetProfiles_() {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.PROFILES);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: true, profiles: [] };
-  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROFILES_HEADERS.length).getValues();
-  var profiles = rows
-    .filter(function(r) { return r[0]; })
-    .map(function(r) {
-      return {
-        id:             r[0],
-        name:           r[1],
-        passportCountry: r[2],
-        passportExpiry: r[3] ? Utilities.formatDate(new Date(r[3]), Session.getScriptTimeZone(), 'yyyy-MM-dd') : '',
-        specialDocs:    r[4],
-        notes:          r[5]
-      };
-    });
-  return { ok: true, profiles: profiles };
-}
-
-function webSaveProfile_(params) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.PROFILES);
-  var id    = (params.id || '').trim();
-  var row   = [
-    id || ('PROF-' + Date.now()),
-    params.name           || '',
-    params.passportCountry || '',
-    params.passportExpiry  || '',
-    params.specialDocs     || '',
-    params.notes           || ''
-  ];
-  if (!id) {
-    sheet.appendRow(row);
-    return { ok: true, id: row[0] };
-  }
-  var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === id) {
-      sheet.getRange(i + 1, 1, 1, row.length).setValues([row]);
-      return { ok: true, id: id };
-    }
-  }
-  // Not found — insert as new
-  sheet.appendRow(row);
-  return { ok: true, id: row[0] };
-}
-
-function webDeleteProfile_(params) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.PROFILES);
-  var id    = (params.id || '').trim();
-  if (!id) return { ok: false, error: 'No id' };
-  var data = sheet.getDataRange().getValues();
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === id) {
-      sheet.deleteRow(i + 1);
-      return { ok: true };
-    }
-  }
-  return { ok: false, error: 'not found' };
-}
-
-function webGetVisaRequirements_(params) {
-  var destination = (params.destination || '').trim();
-  if (!destination) return { ok: false, error: 'destination required' };
-
-  // Load traveler profiles
-  var profilesResult = webGetProfiles_();
-  var profiles = profilesResult.profiles.filter(function(p) { return p.passportCountry; });
-  if (profiles.length === 0) return { ok: true, results: [], note: 'No passport countries set in profiles.' };
-
-  // Fetch or use cached passport-index CSV
-  var cacheKey = 'passport_index_csv';
-  var cache    = CacheService.getScriptCache();
-  var csv      = cache.get(cacheKey);
-  if (!csv) {
-    try {
-      var resp = UrlFetchApp.fetch(
-        'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
-        { muteHttpExceptions: true }
-      );
-      csv = resp.getContentText();
-      cache.put(cacheKey, csv, 21600); // 6 hours
-    } catch (err) {
-      return { ok: false, error: 'Could not fetch visa data: ' + err.message };
-    }
-  }
-
-  var lines   = csv.split('\n');
-  var headers = lines[0].split(',');
-
-  // Normalize function for country name matching
-  function norm(s) { return String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
-
-  // Common aliases
-  var aliases = {
-    'usa': 'united states', 'us': 'united states', 'unitedstatesofamerica': 'united states',
-    'uk': 'united kingdom', 'gb': 'united kingdom', 'greatbritain': 'united kingdom',
-    'uae': 'united arab emirates',
-    'drc': 'democratic republic of the congo',
-    'southkorea': 'korea, south',
-    'northkorea': 'korea, north',
-    'taiwan': 'taiwan',
-    'russia': 'russia',
-    'czechia': 'czech republic',
-    'türkiye': 'turkey', 'turkiye': 'turkey',
-    'egypt': 'egypt',
-    'canada': 'canada',
-    'jordan': 'jordan',
-    'france': 'france', 'japan': 'japan', 'germany': 'germany'
-  };
-
-  var destNorm = norm(destination);
-  var destLookup = aliases[destNorm] ? norm(aliases[destNorm]) : destNorm;
-
-  // Find destination column index
-  var destIdx = -1;
-  for (var i = 1; i < headers.length; i++) {
-    if (norm(headers[i]) === destLookup) { destIdx = i; break; }
-  }
-  if (destIdx === -1) {
-    return { ok: true, results: [], note: 'Destination "' + destination + '" not found. Try the full English country name.' };
-  }
-  var destName = headers[destIdx].trim();
-
-  // Group profiles by name (each row = one passport, name is the combining key)
-  var byName = {};
-  var nameOrder = [];
-  profiles.forEach(function(prof) {
-    if (!byName[prof.name]) { byName[prof.name] = []; nameOrder.push(prof.name); }
-    byName[prof.name].push(prof);
-  });
-
-  var order = { green: 0, yellow: 1, red: 2, grey: 3 };
-  var results = [];
-  nameOrder.forEach(function(name) {
-    var passportResults = byName[name].map(function(prof) {
-      var passNorm   = norm(prof.passportCountry);
-      var passLookup = aliases[passNorm] ? norm(aliases[passNorm]) : passNorm;
-      var status = null;
-      for (var j = 1; j < lines.length; j++) {
-        var cols = lines[j].split(',');
-        if (cols[0] && norm(cols[0]) === passLookup) {
-          status = (cols[destIdx] || '').trim();
-          break;
-        }
-      }
-      return {
-        passportCountry: prof.passportCountry,
-        status:          status,
-        label:           visaStatusLabel_(status),
-        color:           visaStatusColor_(status)
-      };
-    });
-    // Sort best first
-    passportResults.sort(function(a, b) { return (order[a.color] || 3) - (order[b.color] || 3); });
-    results.push({ name: name, passports: passportResults });
-  });
-
-  return { ok: true, results: results, destination: destName };
-}
-
-function visaStatusLabel_(status) {
-  if (!status || status === '' || status === '-1') return 'No Data';
-  if (status === 'VR') return 'Visa Required';
-  if (status === 'VOA') return 'Visa on Arrival';
-  if (status === 'ETA') return 'eTA / e-Visa';
-  if (status === 'CB') return 'No Passport Control';
-  if (status === 'VF') return 'Visa Free';
-  if (/^\d+$/.test(status)) return 'Visa Free (' + status + ' days)';
-  return status;
-}
-
-function visaStatusColor_(status) {
-  if (!status || status === '' || status === '-1') return 'grey';
-  if (status === 'VR') return 'red';
-  if (status === 'VOA' || status === 'ETA') return 'yellow';
-  if (status === 'VF' || /^\d+$/.test(status) || status === 'CB') return 'green';
-  return 'grey';
-}
-
-// ============================================================
-// Financial Goals + Scenarios (Issue #127)
-// ============================================================
-
-function webGetFinancialGoals_() {
-  var goals = getFinancialGoals_();
-  return { ok: true, goals: goals };
-}
-
-function webAddFinancialGoal_(params) {
-  var id = createFinancialGoal_(params);
-  return { ok: true, id: id };
-}
-
-function webUpdateFinancialGoal_(params) {
-  var ok = updateFinancialGoal_(params.id, params);
-  return { ok: ok };
-}
-
-function webDeleteFinancialGoal_(params) {
-  var ok = deleteFinancialGoal_(params.id);
-  return { ok: ok };
-}
-
-function webSimulateScenario_(params) {
-  var goalId     = params.goalId;
-  var changeType = params.changeType;  // 'one-time' | 'recurring'
-  var amount     = Number(params.amount) || 0;
-
-  var goals = getFinancialGoals_();
-  var goal  = goals.filter(function(g) { return g.id === goalId; })[0];
-  if (!goal) return { ok: false, error: 'Goal not found' };
-
-  var result = simulateScenario_(goal, changeType, amount);
-  return { ok: true, result: result };
-}
-
-function webGetSavedScenarios_(params) {
-  var scenarios = getFinancialScenarios_(params.goalId || null);
-  return { ok: true, scenarios: scenarios };
-}
-
-function webSaveScenario_(params) {
-  var goals  = getFinancialGoals_();
-  var goal   = goals.filter(function(g) { return g.id === params.goalId; })[0];
-  if (!goal) return { ok: false, error: 'Goal not found' };
-
-  var simResult = simulateScenario_(goal, params.changeType, Number(params.amount));
-  var id = saveScenario_(params.goalId, params.label || '', params.changeType, Number(params.amount), params.notes || '', simResult);
-  return { ok: true, id: id, result: simResult };
-}
-
-function webSyncLifePlanDoc_() {
-  try {
-    var data = readLifePlanDoc_();
-    return { ok: true, parsed: data };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-}
-
-// ============================================================
-// RESOURCES — Issue #129
-// ============================================================
-
-/**
- * If the Drive file is a PDF, copies it as a Google Doc (with OCR) so VERA
- * can read its text via DocumentApp. Requires Drive Advanced Service enabled
- * in Apps Script (Services → Drive API).
- * Returns { converted: bool, docId: string, error?: string }
- */
-function convertPdfToGoogleDoc_(driveFileId) {
-  try {
-    var file     = DriveApp.getFileById(driveFileId);
-    var mimeType = file.getMimeType();
-    if (mimeType !== 'application/pdf') return { converted: false, docId: driveFileId };
-    var copy = Drive.Files.copy(
-      { title: file.getName() + ' (VERA)', mimeType: 'application/vnd.google-apps.document' },
-      driveFileId,
-      { ocr: true }
-    );
-    return { converted: true, docId: copy.id };
-  } catch (err) {
-    Logger.log('convertPdfToGoogleDoc_ failed for ' + driveFileId + ': ' + err.message);
-    return { converted: false, docId: driveFileId, error: err.message };
-  }
-}
-
-function webGetResources_() {
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.RESOURCES);
-  var resources = [];
-  if (sheet && sheet.getLastRow() >= 2) {
-    var rows = sheet.getDataRange().getValues();
-    var hdrs = rows[0];
-    rows.slice(1).forEach(function(r) {
-      if (!r[0]) return;
-      var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
-
-      // Compute a stable open URL from the Drive File ID so the "Open" button
-      // works even if the original sharing URL has changed or a PDF was converted.
-      var fid = String(obj['Drive File ID'] || '').trim();
-      if (fid) {
-        // If it's already a full URL (stored from older schema), use it
-        if (fid.indexOf('://') !== -1) {
-          obj['_openUrl'] = fid;
-        } else {
-          // Raw file ID — construct a universal Drive open link
-          obj['_openUrl'] = 'https://drive.google.com/open?id=' + fid;
-        }
-      } else {
-        obj['_openUrl'] = String(obj['URL'] || '').trim();
-      }
-
-      resources.push(obj);
-    });
-  }
-  return { ok: true, resources: resources };
-}
-
-function webAddResource_(e) {
-  var p           = e.parameter || {};
-  var name        = (p.name        || '').trim();
-  var category    = (p.category    || 'Other').trim();
-  var appliesTo   = (p.appliesTo   || 'Both').trim();
-  var description = (p.description || '').trim();
-  var url         = (p.url         || '').trim();
-  var tags        = (p.tags        || '').trim();
-  if (!name || !url) return { ok: false, error: 'name and url required' };
-
-  // Extract Drive File ID from URL
-  var driveFileId = '';
-  var m = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
-  if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
-  if (m) driveFileId = m[1];
-
-  // Auto-convert PDF → Google Doc so VERA can read the text
-  var pdfConverted = false;
-  if (driveFileId) {
-    var conv = convertPdfToGoogleDoc_(driveFileId);
-    if (conv.converted) { driveFileId = conv.docId; pdfConverted = true; }
-  }
-
-  var id        = 'res_' + Date.now();
-  var dateAdded = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  var ss        = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  ss.getSheetByName(TABS.RESOURCES)
-    .appendRow([id, name, category, appliesTo, description, driveFileId, url, tags, dateAdded]);
-  return { ok: true, pdfConverted: pdfConverted,
-           resource: { ID: id, Name: name, Category: category, 'Applies To': appliesTo,
-                       Description: description, 'Drive File ID': driveFileId,
-                       URL: url, Tags: tags, 'Date Added': dateAdded } };
-}
-
-function webUpdateResource_(e) {
-  var p           = e.parameter || {};
-  var id          = (p.id          || '').trim();
-  var name        = (p.name        || '').trim();
-  var category    = (p.category    || '').trim();
-  var appliesTo   = (p.appliesTo   || '').trim();
-  var description = (p.description || '').trim();
-  var url         = (p.url         || '').trim();
-  var tags        = (p.tags        || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.RESOURCES);
-  var rows  = sheet.getDataRange().getValues();
-  var hdrs  = rows[0];
-  var colMap = {};
-  hdrs.forEach(function(h, i) { colMap[h] = i + 1; });
-
+  var choreIdx   = hdrs.indexOf('Chore');
+  var cadenceIdx = hdrs.indexOf('Cadence');
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
-      if (name)        sheet.getRange(i+1, colMap['Name']).setValue(name);
-      if (category)    sheet.getRange(i+1, colMap['Category']).setValue(category);
-      if (appliesTo)   sheet.getRange(i+1, colMap['Applies To']).setValue(appliesTo);
-      if (description !== undefined) sheet.getRange(i+1, colMap['Description']).setValue(description);
-      if (url) {
-        var driveFileId = '';
-        var m = url.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
-        if (!m) m = url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
-        if (m) driveFileId = m[1];
-        // Auto-convert PDF → Google Doc so VERA can read the text
-        if (driveFileId) {
-          var conv2 = convertPdfToGoogleDoc_(driveFileId);
-          if (conv2.converted) driveFileId = conv2.docId;
-        }
-        sheet.getRange(i+1, colMap['URL']).setValue(url);
-        sheet.getRange(i+1, colMap['Drive File ID']).setValue(driveFileId);
-      }
-      if (tags !== undefined) sheet.getRange(i+1, colMap['Tags']).setValue(tags);
+      if (chore   && choreIdx   !== -1) sheet.getRange(i + 1, choreIdx   + 1).setValue(chore);
+      if (cadence && cadenceIdx !== -1) sheet.getRange(i + 1, cadenceIdx + 1).setValue(cadence);
       return { ok: true, id: id };
     }
   }
   return { ok: false, error: 'not found' };
-}
-
-function webDeleteResource_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.RESOURCES);
-  if (!sheet) return { ok: false, error: 'Resources sheet not found' };
-  var rows = sheet.getDataRange().getValues();
-  for (var i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true, id: id }; }
-  }
-  return { ok: false, error: 'not found' };
-}
-
-function webFetchResourceContent_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.RESOURCES);
-  if (!sheet) return { ok: false, error: 'Resources sheet not found' };
-
-  var rows = sheet.getDataRange().getValues();
-  var hdrs = rows[0];
-  var resource = null;
-  for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === id) {
-      resource = {};
-      hdrs.forEach(function(h, j) { resource[h] = rows[i][j]; });
-      break;
-    }
-  }
-  if (!resource) return { ok: false, error: 'not found' };
-
-  var driveFileId = String(resource['Drive File ID'] || '').trim();
-  // If the stored value looks like a full URL, extract the file ID from it
-  if (driveFileId && driveFileId.indexOf('://') !== -1) {
-    var dm = driveFileId.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
-    if (!dm) dm = driveFileId.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
-    driveFileId = dm ? dm[1] : '';
-  }
-  if (!driveFileId) return { ok: false, error: 'no_drive_file', name: resource['Name'], url: resource['URL'] };
-
-  try {
-    var doc  = DocumentApp.openById(driveFileId);
-    var text = doc.getBody().getText();
-    // Truncate to ~12,000 chars (~3,000 tokens) to stay within context limits
-    if (text.length > 12000) text = text.substring(0, 12000) + '\n[...content truncated...]';
-    return { ok: true, id: id, name: resource['Name'], content: text };
-  } catch (err) {
-    return { ok: false, error: 'cannot_read_file', name: resource['Name'], url: resource['URL'],
-             detail: err.message };
-  }
 }

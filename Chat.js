@@ -247,6 +247,17 @@ function buildChatSystemPrompt_(context) {
         return line;
       }).join('\n');
 
+  var googleTaskLines = (!context.googleTasks || context.googleTasks.length === 0)
+    ? ''
+    : '\n\nGOOGLE TASKS:\n' +
+      context.googleTasks.map(function(t) {
+        var line = '  - [Google] ' + t.title + ' (ID: ' + t.id + ')';
+        if (t.dueDate)   line += ' | due: ' + t.dueDate;
+        if (t.isOverdue) line += ' \u26a0 OVERDUE';
+        if (t.recurring) line += ' \uD83D\uDD01 recurring';
+        return line;
+      }).join('\n');
+
   var summaryLines = context.summaries.length === 0
     ? '  (none available)'
     : context.summaries.map(function(s) {
@@ -301,111 +312,6 @@ function buildChatSystemPrompt_(context) {
         return '  - [ID:' + i.id + '] ' + i.person + ': ' + i.interest +
                ' [' + i.category + ', logged ' + i.date + ']';
       }).join('\n');
-
-  var importantDatesLines = (function() {
-    var dates = context.importantDates;
-    if (!dates || dates.length === 0) return '  (none in next 90 days)';
-    return dates.map(function(d) {
-      var days = d['daysUntil'];
-      var when = days === 0 ? 'TODAY' : days === 1 ? 'tomorrow' : 'in ' + days + ' days';
-      return '  [' + String(d['ID'] || '') + '] ' + String(d['Label'] || '') +
-             ' — ' + String(d['Date'] || '') +
-             ' (' + when + ')' +
-             (d['Person'] ? ' [' + d['Person'] + ']' : '') +
-             (d['Notes']  ? ' — ' + String(d['Notes']).substring(0, 60) : '');
-    }).join('\n');
-  })();
-
-  var giftIdeasLines = (function() {
-    var ideas = context.giftIdeas;
-    if (!ideas || ideas.length === 0) return '  (none saved)';
-    var byPerson = {};
-    ideas.forEach(function(i) {
-      var p = String(i['Person'] || 'Unknown');
-      if (!byPerson[p]) byPerson[p] = [];
-      byPerson[p].push(String(i['Idea'] || ''));
-    });
-    var lines = '';
-    Object.keys(byPerson).forEach(function(p) {
-      lines += '  ' + p + ': ' + byPerson[p].join('; ') + '\n';
-    });
-    return lines.trim();
-  })();
-
-  var wishListLines = (!context.wishList || context.wishList.length === 0)
-    ? '  (empty)'
-    : context.wishList.map(function(w) {
-        return '  [' + w.id + '] ' + w.item +
-               ' (' + w.person + ')' +
-               (w.price ? ' — $' + w.price : '') +
-               ' [' + w.priority + ' priority, ' + w.status + ']' +
-               (w.category ? ' [' + w.category + ']' : '');
-      }).join('\n');
-
-  var experimentLines = (!context.experiments || context.experiments.length === 0)
-    ? '  (none active)'
-    : context.experiments.map(function(ex) {
-        var line = '  [' + ex.id + '] ' + ex.title +
-                   ' (' + ex.person + ') — ' + ex.status +
-                   (ex.category ? ' [' + ex.category + ']' : '') +
-                   (ex.startDate ? ' | started: ' + ex.startDate : '') +
-                   (ex.endDate ? ' | ends: ' + ex.endDate : '');
-        if (ex.hypothesis) line += '\n    Hypothesis: ' + ex.hypothesis;
-        if (ex.checkins && ex.checkins.length) {
-          line += '\n    Recent check-ins: ' + ex.checkins.map(function(c) {
-            return c.date + (c.note ? ' — ' + c.note : '');
-          }).join(' | ');
-        }
-        return line;
-      }).join('\n');
-
-  var growthLines = (function() {
-    if (!context.growthData) return '';
-    var gd = context.growthData;
-    var lines = '';
-    // Books
-    var reading  = (gd.books || []).filter(function(b) { return b.status === 'Reading'; });
-    var wantBook = (gd.books || []).filter(function(b) { return b.status === 'Want to Read'; });
-    var readDone = (gd.books || []).filter(function(b) { return b.status === 'Read'; }).slice(-5);
-    if (reading.length) {
-      lines += '  Currently reading:\n';
-      reading.forEach(function(b) {
-        lines += '    [' + b.id + '] "' + b.title + '"' + (b.author ? ' by ' + b.author : '') +
-                 (b.person ? ' (' + b.person + ')' : '') + '\n';
-      });
-    }
-    if (wantBook.length) {
-      lines += '  Want to read (' + wantBook.length + ' books on backlog)\n';
-    }
-    if (readDone.length) {
-      lines += '  Recently finished: ' + readDone.map(function(b) { return '"' + b.title + '"' + (b.rating ? ' ' + b.rating + '/5' : ''); }).join(', ') + '\n';
-    }
-    // Courses
-    var inProg   = (gd.courses || []).filter(function(c) { return c.status === 'In Progress'; });
-    var wantCrs  = (gd.courses || []).filter(function(c) { return c.status === 'Want to Do'; });
-    var doneCrs  = (gd.courses || []).filter(function(c) { return c.status === 'Done'; }).slice(-3);
-    if (inProg.length) {
-      lines += '  In progress courses:\n';
-      inProg.forEach(function(c) {
-        lines += '    [' + c.id + '] "' + c.title + '"' + (c.source ? ' (' + c.source + ')' : '') +
-                 (c.person ? ' — ' + c.person : '') + '\n';
-      });
-    }
-    if (wantCrs.length) lines += '  Want to do (' + wantCrs.length + ' courses queued)\n';
-    if (doneCrs.length) {
-      lines += '  Recently completed courses: ' + doneCrs.map(function(c) { return '"' + c.title + '"'; }).join(', ') + '\n';
-    }
-    // Skills
-    if ((gd.skills || []).length) {
-      lines += '  Skills being built:\n';
-      gd.skills.forEach(function(s) {
-        lines += '    [' + s.id + '] ' + s.skill + ' — ' + s.level +
-                 (s.person ? ' (' + s.person + ')' : '') +
-                 (s.lastPracticed ? ' | last practiced: ' + s.lastPracticed : '') + '\n';
-      });
-    }
-    return lines.trim() || '  (nothing logged yet)';
-  })();
 
   // PTO — delegate to existing ptoSummaryForClaude_() (PTO.js)
   var ptoSection = context.ptoStats
@@ -524,47 +430,21 @@ function buildChatSystemPrompt_(context) {
 
     'CURRENT STATE:\n\n' +
     'ACTIVE FLAGS (' + context.flags.length + '):\n' + flagLines + '\n\n' +
-    'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + '\n\n' +
+    'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + googleTaskLines + '\n\n' +
     'SUMMARIES:\n' + summaryLines + '\n\n' +
-    (context.projects !== null ? 'PROJECTS:\n' + projectsLine + '\n\n' : '') +
-    'UPCOMING CALENDAR EVENTS (raw schedule data — do NOT infer travel from multi-day events here; use UPCOMING TRIPS for travel context):\n' + calLines + '\n\n' +
-    (context.interests !== null ? 'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' : '') +
-    (context.importantDates !== null ? 'IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' : '') +
-    (context.giftIdeas !== null ? 'GIFT IDEAS:\n' + giftIdeasLines + '\n\n' : '') +
-    (context.wishList !== null ? 'WISH LIST (active items):\n' + wishListLines + '\n\n' : '') +
-    (context.experiments !== null ? 'EXPERIMENTS (active/ongoing/paused):\n' + experimentLines + '\n\n' : '') +
-    (context.growthData !== null ? 'GROWTH \u2014 BOOKS, COURSES & SKILLS:\n' + growthLines + '\n\n' : '') +
-    (context.memoryContext ? 'MEMORY LOG (recent events + weekly snapshots):\n' + context.memoryContext + '\n\n' : '') +
-    (context.goals !== null ? 'YEARLY GOALS (active):\n' + goalLines + '\n\n' : '') +
+    'PROJECTS:\n' + projectsLine + '\n\n' +
+    'UPCOMING CALENDAR EVENTS:\n' + calLines + '\n\n' +
+    'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' +
+    'YEARLY GOALS (active):\n' + goalLines + '\n\n' +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
-    (context.bills !== null ? 'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' : '') +
-    (context.recipes !== null ? 'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' : '') +
-    (context.homeItems !== null ? 'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' : '') +
-    (context.shoppingStores !== null ? 'SHOPPING STORES: ' + shoppingStoresList + '\n\n' : '') +
-    (context.takeouts !== null ? 'FAVORITE TAKEOUTS (' + context.takeouts.length + '):\n' + takeoutLines + '\n\n' : '') +
-    (context.pantryDue !== null ? 'PANTRY \u2014 ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' : '') +
-    (context.career !== null ? 'CAREER PROFILE:\n' + careerLines + '\n\n' : '') +
+    'BILLS (' + context.bills.length + '):\n' + billLines + '\n\n' +
+    'RECIPES (' + context.recipes.length + '):\n' + recipeLines + '\n\n' +
+    'HOME ITEMS (' + context.homeItems.length + '):\n' + homeItemLines + '\n\n' +
+    'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
+    'FAVORITE TAKEOUTS (' + (context.takeouts ? context.takeouts.length : 0) + '):\n' + takeoutLines + '\n\n' +
+    'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
+    'CAREER PROFILE:\n' + careerLines + '\n\n' +
     (function() {
-      if (context.gymLog === null) return '';
-      var gl = context.gymLog || [];
-      var pending = gl.filter(function(s) { return !s.attended; });
-      var recent  = gl.filter(function(s) { return  s.attended; }).slice(-10);
-      var lines = 'GYM LOG (last 28 days):\n';
-      if (pending.length) {
-        lines += '  Awaiting check-in:\n';
-        pending.forEach(function(s) { lines += '    [' + s.id + '] ' + s.title + ' — ' + s.date + '\n'; });
-      }
-      if (recent.length) {
-        lines += '  Recent history:\n';
-        recent.forEach(function(s) {
-          lines += '    ' + s.date + ' — ' + (s.attended === 'Yes' ? '✓ Attended' : '✗ Skipped') + ' (' + s.title + ')\n';
-        });
-      }
-      if (!pending.length && !recent.length) lines += '  (no sessions logged)\n';
-      return lines + '\n';
-    })() +
-    (function() {
-      if (context.prescriptions === null) return '';
       var rxList = context.prescriptions || [];
       var active = rxList.filter(function(r) { return r.active === 'Yes'; });
       if (!active.length) return 'PRESCRIPTIONS: (none on file)\n\n';
@@ -586,7 +466,6 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
     (function() {
-      if (context.cardsData === null) return '';
       var cd = context.cardsData;
       if (!cd || !cd.cards || !cd.cards.length) return 'CREDIT CARDS: (none on file)\n\n';
       var now = new Date(); now.setHours(0,0,0,0);
@@ -658,11 +537,11 @@ function buildChatSystemPrompt_(context) {
       if (!thoughts.length) return '';
       var lines = 'THOUGHT INBOX (' + thoughts.length + ' unreviewed thought(s) from chat):\n';
       thoughts.forEach(function(t) {
-        lines += '  \u2022 [' + t.id + '] ' + t.idea + ' (captured ' + t.dateAdded + ')\n';
+        lines += '  • [' + t.id + '] ' + t.idea + ' (captured ' + t.dateAdded + ')\n';
       });
       return lines + '\n';
     })() +
-    (context.ideas !== null ? 'IDEA BRAINDUMP (' + context.ideas.length + '):\n' + ideaLines + '\n\n' : '') +
+    'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
 
     (function() {
       var travel = context.travel;
@@ -671,11 +550,10 @@ function buildChatSystemPrompt_(context) {
       }
       var lines = 'UPCOMING TRIPS:\n';
       travel.trips.forEach(function(t) {
-        var tk      = t.startDate + '|' + t.label;
-        var ctx     = (travel.tripContextMap && travel.tripContextMap[tk]) || '';
-        var famNote = t.isExtendedFamily ? ' [extended family — not Ahmed\'s trip]' : '';
+        var tk  = t.startDate + '|' + t.label;
+        var ctx = (travel.tripContextMap && travel.tripContextMap[tk]) || '';
         lines += 'Trip: ' + t.label + ' (' + t.startDate + ' \u2013 ' + t.endDate + ')' +
-                 (ctx ? ' | Context: ' + ctx : '') + famNote + ' | TripKey: ' + tk + '\n';
+                 (ctx ? ' | Context: ' + ctx : '') + ' | TripKey: ' + tk + '\n';
         var items = (travel.itinByTrip && travel.itinByTrip[tk]) || [];
         if (items.length > 0) {
           lines += '  Itinerary (' + items.length + ' item' + (items.length === 1 ? '' : 's') + '):\n';
@@ -714,15 +592,19 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
-    // ---- UPCOMING HOUSE GUESTS (Issue #150) ---------------------------------
+    // ---- UPCOMING GUESTS (Issue #150) ----------------------------------------
     (function() {
-      if (!context.upcomingGuests || !context.upcomingGuests.length) return '';
-      var lines = 'UPCOMING HOUSE GUESTS (' + context.upcomingGuests.length + '):\n';
+      if (!context.upcomingGuests || !context.upcomingGuests.length) {
+        return 'UPCOMING GUESTS:\n  (No upcoming guests)\n\n';
+      }
+      var lines = 'UPCOMING GUESTS (staying at home):\n';
       context.upcomingGuests.forEach(function(g) {
-        var when = g.daysAway === 0 ? 'today' : (g.daysAway === 1 ? 'tomorrow' : 'in ' + g.daysAway + ' days');
-        lines += '  \u2022 ' + g.label + ' \u2014 arriving ' + g.arrivalDate +
-                 ', departing ' + g.departureDate +
-                 ' (' + g.durationDays + ' night' + (g.durationDays === 1 ? '' : 's') + ', ' + when + ')\n';
+        lines += '  - ' + g.label + ' | ' + g.arrivalDate + ' \u2013 ' + g.departureDate +
+                 ' (' + g.durationDays + ' day' + (g.durationDays === 1 ? '' : 's') + ')' +
+                 (g.daysAway === 0  ? ' \u2014 arriving TODAY' :
+                  g.daysAway === 1  ? ' \u2014 arriving TOMORROW' :
+                  g.daysAway > 0    ? ' \u2014 in ' + g.daysAway + ' days' :
+                                      ' \u2014 currently staying') + '\n';
       });
       return lines + '\n';
     })() +
@@ -756,41 +638,6 @@ function buildChatSystemPrompt_(context) {
         if (b['Notes'])       line += ' \u2014 ' + b['Notes'];
         if (b['Visited'])     line += ' \u2705 visited';
         lines += line + '\n';
-      });
-      return lines + '\n';
-    })() +
-
-    // ---- Financial Goals (Issue #127) ----------------------------------------
-    (function() {
-      var fgoals = (context.financialGoals || []).filter(function(g) { return g.status === 'Active'; });
-      if (!fgoals.length) return '';
-      var lines = 'FINANCIAL GOALS (' + fgoals.length + ' active):\n';
-      fgoals.forEach(function(g) {
-        var pct  = g.targetAmount > 0 ? Math.round((g.currentAmount / g.targetAmount) * 100) : 0;
-        var line = '  • [' + g.id + '] ' + g.name + ' — $' + g.currentAmount.toLocaleString() + ' / $' + g.targetAmount.toLocaleString() + ' (' + pct + '%)';
-        if (g.monthlyContribution > 0) line += ' | $' + g.monthlyContribution.toLocaleString() + '/mo';
-        if (g.targetDate)              line += ' | target: ' + g.targetDate;
-        if (g.owner && g.owner !== 'Joint') line += ' [' + g.owner + ']';
-        lines += line + '\n';
-      });
-      return lines + '\n';
-    })() +
-
-    // ---- REFERENCE RESOURCES (Issue #129) ------------------------------------
-    (function() {
-      var resList = context.resources;
-      if (!resList || !resList.length) return '';
-      var lines = 'REFERENCE RESOURCES (' + resList.length + ' document' + (resList.length === 1 ? '' : 's') + '):\n';
-      lines += 'These are documents the user has uploaded for VERA to consult. ';
-      lines += 'If a question relates to one of these, say so and offer to read it. ';
-      lines += 'Use fetch_resource_content action to retrieve the actual text.\n';
-      resList.forEach(function(r) {
-        var canRead   = String(r['Drive File ID'] || '').trim() ? ' [readable]' : ' [link-only]';
-        var appliesTo = String(r['Applies To'] || 'Both').trim();
-        var whoTag    = appliesTo !== 'Both' ? ' [' + appliesTo + ' only]' : '';
-        lines += '  \u2022 [' + r['ID'] + '] ' + r['Name'] + ' [' + r['Category'] + ']' + whoTag + canRead + '\n';
-        if (r['Description']) lines += '    ' + r['Description'] + '\n';
-        if (r['Tags']) lines += '    Tags: ' + r['Tags'] + '\n';
       });
       return lines + '\n';
     })() +
@@ -832,14 +679,13 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_goal|{goalId}\n' +
     'ACTION:delete_interest|{interestId}\n' +
     'ACTION:add_idea|{idea text}|{category}|{tags}\n' +
-    'ACTION:add_thought|{raw thought text}  \u2014 capture an unfiltered thought from chat; no category or tags needed\n' +
-    'ACTION:shelve_thought|{ideaId}|{category}  \u2014 graduate a parked thought into a proper idea; category from General/Home/Finance/Health/Career/Personal/Travel/Other\n' +
+    'ACTION:add_thought|{raw thought text}  — capture an unfiltered thought from chat; no category or tags needed\n' +
+    'ACTION:shelve_thought|{ideaId}|{category}  — graduate a parked thought into a proper idea; category from General/Home/Finance/Health/Career/Personal/Travel/Other\n' +
     'ACTION:promote_idea|{ideaId}\n' +
     'ACTION:archive_idea|{ideaId}\n' +
     // Travel — Itinerary
     'ACTION:add_itinerary_item|{tripKey}|{type}|{title}|{date YYYY-MM-DD}|{startTime HH:MM or blank}|{endTime HH:MM or blank}|{location or blank}|{notes or blank}\n' +
-    '  \u2014 type options: flight, train, cruise, ferry, hotel, arranged_stay, dining, museum, beach, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n' +
-    '  \u2014 use arranged_stay (not hotel) when staying informally with friends/family or at a private/rental accommodation with no formal hotel reservation\n' +
+    '  \u2014 type options: flight, train, cruise, ferry, hotel, dining, museum, beach, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n' +
     'ACTION:update_itinerary_item|{id}|{field}|{value}  \u2014 fields: title, date, startTime, endTime, location, notes\n' +
     'ACTION:delete_itinerary_item|{id}\n' +
     'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +
@@ -872,8 +718,6 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_bucket_item|{id}|{field}|{value}  \u2014 field = visited (value = date or "yes") | stars (value = 1-5)\n' +
     'ACTION:delete_bucket_item|{id}  \u2014 id from TRAVEL BUCKET LIST context above. Always confirm first.\n' +
     'ACTION:add_gym_sessions|{YYYY-MM-DD}|{Trip Label}  \u2014 schedules morning gym sessions on all interior days of a trip (skips arrival + departure day)\n' +
-    'ACTION:log_gym_attend_latest|yes  \u2014 marks the most recent pending gym session as attended\n' +
-    'ACTION:log_gym_attend_latest|no   \u2014 marks the most recent pending gym session as skipped\n' +
     'ACTION:log_receipt_items|{item}|{category}|{qty}|{unit}|{store}|{price}  \u2014 one line per item from a receipt or grocery image; qty/price blank if unclear\n' +
     // Takeouts (Issue #112)
     'ACTION:add_takeout_restaurant|{name}|{cuisine}|{phone}|{website}|{rating 1-5 or blank}|{notes}\n' +
@@ -892,32 +736,6 @@ function buildChatSystemPrompt_(context) {
     // Credit Card Hub (Issues #115 + #117)
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
-    // Resources (Issue #129)
-    'ACTION:fetch_resource_content|{resourceId}  \u2014 read a reference document\'s text (Google Docs only); resourceId from REFERENCE RESOURCES above\n' +
-    // Important Dates (Issue #80)
-    'ACTION:add_important_date|{person}|{date}|{label}|{recurring: Yes or No}|{leadTimeDays: number}  \u2014 add a date to the Important Dates tracker; date = MM-DD or YYYY-MM-DD; person = Ahmed / Victoria / Both / Family\n' +
-    'ACTION:log_gift_idea|{person}|{idea}  \u2014 save a gift idea for a person to the Gift Ideas ledger\n' +
-    // Wish List (Issue #131)
-    'ACTION:add_wish_item|{person}|{item}|{category}|{price or blank}|{priority}|{urls or blank}|{notes or blank}  \u2014 add to wish list; person=Ahmed/Victoria/Both; category=Tech/Home & Furniture/Experiences/Fashion/Fitness/Books & Media/Other; priority=High/Medium/Low\n' +
-    'ACTION:update_wish_item|{id}|{field}|{value}  \u2014 update wish list item field; field=person/category/item/description/urls/price/priority/status/notes\n' +
-    'ACTION:mark_wish_purchased|{id}  \u2014 mark wish list item as purchased\n' +
-    'ACTION:delete_wish_item|{id}  \u2014 remove wish list item\n' +
-    // Experiments (Issue #130)
-    'ACTION:add_experiment|{person}|{title}|{category}|{hypothesis}|{startDate: YYYY-MM-DD or blank}|{endDate: YYYY-MM-DD or blank}|{notes or blank}  \u2014 add a new experiment; person=Ahmed/Victoria/Both; category=Health/Fitness/Diet/Sleep/Productivity/Learning/Mental/Finance/Other\n' +
-    'ACTION:update_experiment|{id}|{field}|{value}  \u2014 update experiment field; field=person/title/category/hypothesis/startdate/enddate/status/outcome/rating/notes\n' +
-    'ACTION:log_experiment_checkin|{id}|{note}  \u2014 add a check-in note to an experiment\n' +
-    'ACTION:delete_experiment|{id}  \u2014 remove an experiment\n' +
-    // Growth — Books, Courses, Skills (Issue #88)
-    'ACTION:add_book|{person}|{title}|{author or blank}|{category or blank}|{status}|{rating 1-5 or blank}|{notes or blank}  \u2014 add a book; person=Ahmed/Victoria; status=Want to Read/Reading/Read\n' +
-    'ACTION:update_book|{id}|{field}|{value}  \u2014 update book field; field=person/title/author/category/status/rating/datestarted/datefinished/notes\n' +
-    'ACTION:delete_book|{id}  \u2014 remove a book\n' +
-    'ACTION:add_course|{person}|{title}|{source or blank}|{category or blank}|{status}|{rating 1-5 or blank}|{notes or blank}  \u2014 add a course/content; person=Ahmed/Victoria; status=Want to Do/In Progress/Done; source=platform e.g. Coursera/YouTube/Podcast\n' +
-    'ACTION:update_course|{id}|{field}|{value}  \u2014 update course field; field=person/title/source/category/status/rating/datestarted/datefinished/notes\n' +
-    'ACTION:delete_course|{id}  \u2014 remove a course\n' +
-    'ACTION:add_skill|{person}|{skill}|{category or blank}|{level}|{goalLink or blank}|{notes or blank}  \u2014 add a skill; person=Ahmed/Victoria; level=Beginner/Intermediate/Advanced/Expert\n' +
-    'ACTION:update_skill|{id}|{field}|{value}  \u2014 update skill field; field=person/skill/category/level/goallink/notes\n' +
-    'ACTION:record_skill_practice|{id}  \u2014 mark a skill as practiced today\n' +
-    'ACTION:delete_skill|{id}  \u2014 remove a skill\n' +
     '\n' +
 
     'RULES:\n' +
@@ -939,7 +757,7 @@ function buildChatSystemPrompt_(context) {
     '- For add_shopping_item: store_name must partially match one of the SHOPPING STORES listed above.\n' +
     '- For update_goal: valid fields are "status" (To Do/In Progress/Done/Paused), "title", "category", "progress", "notes". Use goal ID from YEARLY GOALS above.\n' +
     '- For delete_goal / delete_interest: always confirm the item name with Ahmed before deleting.\n' +
-    '- For add_thought: use PROACTIVELY \u2014 when Ahmed mentions something capturable mid-conversation (a half-formed plan, "I\'ve been thinking about X", "random thought", "some day I want to", "what if we tried", "I should look into", "maybe we should", "I wonder if"), silently capture it with add_thought and mention "I\'ve parked that as a thought for later." Do NOT require Ahmed to explicitly ask. Use add_idea for intentional, structured braindump entries with a clear category. Use add_thought for anything raw, unfiltered, or passing.\n' +
+    '- For add_thought: use PROACTIVELY — when Ahmed mentions something capturable mid-conversation (a half-formed plan, "I\'ve been thinking about X", "random thought", "some day I want to", "what if we tried", "I should look into", "maybe we should", "I wonder if"), silently capture it with add_thought and mention "I\'ve parked that as a thought for later." Do NOT require Ahmed to explicitly ask. Use add_idea for intentional, structured braindump entries with a clear category. Use add_thought for anything raw, unfiltered, or passing.\n' +
     '- For shelve_thought: use during triage when Ahmed wants to properly categorize a thought. Use the thought ID from THOUGHT INBOX above. Category must be one of: General/Home/Finance/Health/Career/Personal/Travel/Other. After shelving, confirm what category it was assigned.\n' +
     '- For add_idea: capture intentional, structured braindump entries. Category options: General/Home/Finance/Health/Career/Personal/Travel/Other. Tags are optional, comma-separated. Use when Ahmed says "add this as an idea", "note this idea", or provides explicit category context.\n' +
     '- For promote_idea: converts the idea to a real open task. Use the idea ID from IDEA BRAINDUMP above. Confirm with Ahmed which idea to promote if it is ambiguous.\n' +
@@ -966,9 +784,6 @@ function buildChatSystemPrompt_(context) {
     '- For add_gym_sessions: use when Ahmed says "add gym sessions to the [trip] itinerary" or asks to schedule workouts during travel. ' +
     'Emit ACTION:add_gym_sessions|{departureDate}|{tripLabel} using the TripKey parts (e.g. TripKey "2026-06-19|Alaska Cruise" \u2192 ' +
     '"ACTION:add_gym_sessions|2026-06-19|Alaska Cruise"). Confirm how many blocks were added after execution.\n' +
-    '- For log_gym_attend_latest: use when Ahmed says he went to the gym, finished a workout, hit the gym, did his session, or conversely that he skipped/missed/did not go. ' +
-    'Emit ACTION:log_gym_attend_latest|yes for attended, ACTION:log_gym_attend_latest|no for skipped. ' +
-    'After logging, confirm the session date and include the weekly attended count (count "Yes" entries from GYM LOG above for the current week).\n' +
     '- For log_receipt_items: when Ahmed uploads an image of a receipt, grocery haul, or fridge contents, ' +
     'extract all visible items and emit one log_receipt_items ACTION per item. Use canonical lowercase names ' +
     '(e.g. "milk" not "Kirkland 2% Reduced Fat Milk 2L"). category from: Dairy/Produce/Pantry/Meat/Household/Personal Care/Other. ' +
@@ -987,13 +802,6 @@ function buildChatSystemPrompt_(context) {
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
     '- VERA can answer "which card should I use for X?" directly from CREDIT CARDS context — no ACTION needed; just explain the best option and why.\n' +
-    '- FINANCIAL WHAT-IF: When Ahmed asks "what if I buy/spend X", "what if rent goes up X", "how does X affect my goal", ' +
-    'identify the most relevant Active goal (prefer one with a target date), determine changeType (one-time vs recurring), ' +
-    'parse the dollar amount, then emit: ACTION:simulate_scenario|{goalId}|{one-time|recurring}|{amount}|{label}\n' +
-    '  Example: "What if I spend $30K on a car?" → ACTION:simulate_scenario|FGOAL-...|one-time|30000|car purchase\n' +
-    '  Example: "What if rent goes up $400/month?" → ACTION:simulate_scenario|FGOAL-...|recurring|400|rent increase\n' +
-    '  After simulation runs, show the verdict. Ask if Ahmed wants to save the scenario.\n' +
-    '  If multiple goals exist and none is obvious, ask which goal to run the simulation against.\n' +
     '- POST-TRIP DEBRIEF: When Ahmed says "debrief", "recap the [trip]", "capture the [trip]", or "let\'s do the [trip] debrief", ' +
     'start a structured capture conversation. Reference RECENTLY COMPLETED TRIPS above for the trip name and TripKey. ' +
     'Ask these 5 questions (you may combine them or ask in sequence based on flow):\n' +
@@ -1007,37 +815,6 @@ function buildChatSystemPrompt_(context) {
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
-    '- IMPORTANT DATES: Use add_important_date when Ahmed mentions a birthday, anniversary, or meaningful date he wants tracked. ' +
-    'For the date: use MM-DD if it recurs every year (e.g. birthdays, anniversaries), or YYYY-MM-DD for one-time events. ' +
-    'Default leadTimeDays to 30. Confirm what was saved including when the next flag will fire.\n' +
-    '- GIFT IDEAS: Use log_gift_idea when Ahmed mentions a gift idea for someone ("get Victoria a pottery class", "gift idea for mum: cookbook"). ' +
-    'Use "What important dates are coming up?" or "any upcoming dates?" to list from IMPORTANT DATES context. ' +
-    'When a date is within 7 days, proactively remind Ahmed and offer to log a gift idea.\n' +
-    '- WISH LIST: Use add_wish_item when Ahmed says he wants something, has his eye on something, or wants to track an aspirational purchase. ' +
-    'This is distinct from the shopping list (groceries/household) — wish list is for considered, non-routine purchases (tech, furniture, experiences, etc.). ' +
-    'Person defaults to Ahmed unless Victoria is mentioned. Price is optional. ' +
-    'Use mark_wish_purchased when Ahmed says he bought or received an item. ' +
-    'When helping with gift ideas for Ahmed or Victoria, cross-reference WISH LIST (active items) above before suggesting — wish list items make ideal gift ideas.\n' +
-    '- EXPERIMENTS: Use add_experiment when Ahmed wants to start tracking a personal experiment (e.g. "no sugar for 2 weeks", "meditate every morning", "try cold showers"). ' +
-    'Person defaults to Ahmed unless stated otherwise. startDate defaults to today (YYYY-MM-DD). endDate is optional. ' +
-    'Use log_experiment_checkin when Ahmed gives an update on how an experiment is going — any note, observation, or progress update counts as a check-in. ' +
-    'Use update_experiment with field=status to update state: Active / Ongoing / Paused / Stopped / Completed. ' +
-    'Use update_experiment with field=outcome to record the final result. ' +
-    'When Ahmed mentions his current experiments in conversation, reference their check-in history to give context-aware responses.\n' +
-    '- GROWTH (Books, Courses, Skills): Use add_book when Ahmed mentions reading or wanting to read a book. ' +
-    'Use update_book with field=status to move a book from "Reading" to "Read" when he finishes it — this auto-fills dateFinished. ' +
-    'Use add_course for online courses, podcasts, YouTube series, or any structured learning content. ' +
-    'Use add_skill when Ahmed mentions building or practicing a skill. ' +
-    'Use record_skill_practice when he says he practiced or worked on a skill today — it stamps today\'s date automatically. ' +
-    'Person defaults to Ahmed unless Victoria is explicitly mentioned. ' +
-    'When Ahmed asks what he\'s currently reading or learning, summarise from GROWTH context above. ' +
-    'Connect books/courses to active goals or interests when the link is obvious (e.g. a productivity book linked to a career goal).\n' +
-    '- REFERENCE RESOURCES: Only use fetch_resource_content if a resource with a matching [ID] appears in the ' +
-    'REFERENCE RESOURCES section above. Never invent or guess an ID. ' +
-    'When a match exists, say "I have a document on this — let me check it." and emit ACTION:fetch_resource_content|{resourceId} using the exact ID shown. ' +
-    'The backend will inject the document text so you can answer specifically. ' +
-    'For [link-only] resources, provide the URL and explain you cannot read it directly. ' +
-    'If no matching resource is listed, answer from general knowledge and suggest Ahmed add the document via Explore → Resources.\n' +
     '- WEB SEARCH: When you call web_search, briefly tell Ahmed you\'re looking it up. ' +
     'Synthesize results naturally — do not dump raw snippets. If results are empty ' +
     'or unhelpful, say so. Only search when context data is insufficient.\n' +
@@ -1058,42 +835,16 @@ function buildChatSystemPrompt_(context) {
     '- CLOSING THE LOOP: When Ahmed mentions something in conversation, offer to record it in the ' +
     'relevant system. Example: "Victoria mentioned she wants to try Thai food" → ACTION:log_interest. ' +
     'Example: "I need to call the doctor" → offer ACTION:create_task. Do this naturally, not intrusively.\n' +
-    '- THOUGHT TRIAGE: When Ahmed says "what thoughts have I parked", "let\'s triage my thoughts", "what\'s in my thought inbox", or similar, load THOUGHT INBOX from context and walk through each item. For each thought, ask Ahmed what to do: (a) Shelve as idea \u2192 ACTION:shelve_thought|{id}|{category}, (b) Make it a task \u2192 ACTION:promote_idea|{id}, (c) Dismiss \u2192 ACTION:archive_idea|{id}. Be conversational \u2014 present 2\u20133 thoughts at a time, not all at once. Confirm each action.\n'
+    '- THOUGHT TRIAGE: When Ahmed says "what thoughts have I parked", "let\'s triage my thoughts", "what\'s in my thought inbox", or similar, load THOUGHT INBOX from context and walk through each item. For each thought, ask Ahmed what to do: (a) Shelve as idea → ACTION:shelve_thought|{id}|{category}, (b) Make it a task → ACTION:promote_idea|{id}, (c) Dismiss → ACTION:archive_idea|{id}. Be conversational — present 2–3 thoughts at a time, not all at once. Confirm each action.\n'
   );
-}
-
-// ============================================================
-// INTENT DETECTOR  (Issue #128 — loads only relevant data modules)
-// ============================================================
-
-function detectChatIntent_(msg) {
-  if (!msg) return {};
-  var m = msg.toLowerCase();
-  return {
-    finance:  /\b(bill|bills|spend|budget|credit card|cashback|loyalty program|payment|subscription|afford|expense|financial goal|invest|saving)\b/.test(m) || /what.?if|reward point|money/.test(m),
-    resources: /\b(policy|policies|coverage|allowed|eligible|benefit|benefits|insurance|leave|pto|parental|bereavement|remote work|work from|abroad|verizon|hr|handbook|guideline|regulation|rule|entitle|document|procedure)\b/.test(m),
-    travel:   /\b(trip|travel|vacation|flight|hotel|cruise|packing|itinerary|passport|visa|airport|airline|abroad|destination)\b/.test(m) || /bucket list/.test(m),
-    home:     /\b(recipe|cook|takeout|grocery|pantry|dinner|lunch|kitchen|maintenance|appliance|household)\b/.test(m) || /home item|shopping list|eating out|what.*eat|food/.test(m),
-    career:   /\b(career|job|promotion|salary|resume|position|performance|raise)\b/.test(m),
-    health:   /\b(medication|prescription|refill|doctor|pharmacy|medicine|pill|dose|gym|workout|exercise|fitness|session|went to the gym|hit the gym|skipped|missed)\b/.test(m) || /\brx\b/.test(m),
-    people:   /\b(gift|birthday|anniversary|victoria|family|friend|present|important date|upcoming date|date coming)\b/.test(m),
-    wishlist:    /\b(wish list|wishlist|want to buy|someday buy|aspiring|have my eye|dream purchase|been wanting|on my list|coveting)\b/.test(m),
-    experiments: /\b(experiment|experiments|experimenting|hypothesis|trying out|testing out|tracking|track my|check[ -]?in|my experiment|personal test|run an experiment)\b/.test(m),
-    growth:      /\b(book|books|reading|read|course|courses|skill|skills|learning|practice|practicing|level up|studying|study|podcast|finished reading|started reading|currently reading)\b/.test(m),
-    memory:      /\b(remember|memory|log|history|last (week|month|year|quarter)|what have i|what did i|accomplished|completed (recently|this|last)|pattern|trend|retrospective|review|looking back|reflect)\b/.test(m),
-    projects: /\b(project|milestone|deliverable)\b/.test(m),
-    thoughts: /\b(thought|thoughts|parked|park(ed)?\s+(this|that|it)|random thought|triage|what.*thought|review.*thought|thought inbox|what.*(have i|did i) park|shelve|unshelved)\b/.test(m),
-    goals:    /\b(goal|goals|achieve|progress|resolution)\b/.test(m),
-  };
 }
 
 // ============================================================
 // CONTEXT BUILDER
 // ============================================================
 
-function buildChatContext_(userMessage) {
-  var ss     = getSpreadsheet();
-  var intent = detectChatIntent_(userMessage || '');
+function buildChatContext_() {
+  var ss = getSpreadsheet();
 
   // Active flags — read sheet directly
   var activeFlags = [];
@@ -1118,6 +869,12 @@ function buildChatContext_(userMessage) {
   }
 
   var tasks           = getOpenTasks();
+  // Google Tasks — fetched alongside VERA tasks for full task awareness (Issue #99)
+  var googleTasks = [];
+  try {
+    var gtRes = webGetGoogleTasks_();
+    googleTasks = (gtRes && gtRes.tasks) || [];
+  } catch(e) { Logger.log('Chat context: googleTasks — ' + e.message); }
   // Include Metrics tab (nightly auto-stats) alongside Summaries
   var summaries       = readSummaryTab_(ss, TABS.METRICS).concat(readSummaryTab_(ss, TABS.SUMMARIES));
   var projectsSummary = getProjectsSummaryForContext_();
@@ -1127,24 +884,10 @@ function buildChatContext_(userMessage) {
   try { calendarEvents = getUpcomingEvents(); }
   catch (e) { Logger.log('Chat context: calendar — ' + e.message); }
 
-  // Shared Interest Ledger (top 20 active entries) — people intent
-  var interests = null;
-  if (intent.people) {
-    try { interests = getSharedInterestLedger_().slice(0, 20); }
-    catch (e) { Logger.log('Chat context: interests — ' + e.message); interests = []; }
-  }
-
-  // Important Dates (next 90 days) + Gift Ideas — people intent
-  var importantDates = null;
-  var giftIdeas = null;
-  if (intent.people) {
-    try { importantDates = getUpcomingImportantDates_(90); }
-    catch (e) { Logger.log('Chat context: importantDates — ' + e.message); importantDates = []; }
-    try {
-      var giRes = webGetGiftData_();
-      giftIdeas = (giRes && giRes.ideas) || [];
-    } catch (e) { Logger.log('Chat context: giftIdeas — ' + e.message); giftIdeas = []; }
-  }
+  // Shared Interest Ledger (top 20 active entries)
+  var interests = [];
+  try { interests = getSharedInterestLedger_().slice(0, 20); }
+  catch (e) { Logger.log('Chat context: interests — ' + e.message); }
 
   // PTO stats (live compute — same pattern as webGetPTO_ in WebApp.js)
   var ptoStats = null;
@@ -1154,455 +897,246 @@ function buildChatContext_(userMessage) {
     ptoStats = computePTOStats_(ptoResult, ptoCfg, new Date());
   } catch (e) { Logger.log('Chat context: PTO — ' + e.message); }
 
-  // Yearly goals (active only, top 8) — goals intent
-  var goals = null;
-  if (intent.goals || intent.finance) {
-    try {
-      goals = getGoals_().filter(function(g) {
-        var s = String(g.status || '').toLowerCase();
-        return s !== 'done' && s !== 'archived' && s !== 'complete';
-      }).slice(0, 8);
-    } catch (e) { Logger.log('Chat context: goals — ' + e.message); goals = []; }
-  }
+  // Yearly goals (active only, top 8 — same filter as WeekendPlanner.js)
+  var goals = [];
+  try {
+    goals = getGoals_().filter(function(g) {
+      var s = String(g.status || '').toLowerCase();
+      return s !== 'done' && s !== 'archived' && s !== 'complete';
+    }).slice(0, 8);
+  } catch (e) { Logger.log('Chat context: goals — ' + e.message); }
 
-  // Bills — finance intent
-  var bills = null;
-  if (intent.finance) {
-    try {
-      var billSheet = ss.getSheetByName(TABS.BILLS);
-      if (billSheet && billSheet.getLastRow() >= 2) {
-        var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
-        var tzB       = Session.getScriptTimeZone();
-        var currMonth = Utilities.formatDate(new Date(), tzB, 'yyyy-MM');
-        bills = billData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-          return {
-            row:       idx + 2,
-            bill:      String(r[0] || '').trim(),
-            amount:    r[1] !== '' ? Number(r[1]) : null,
-            dueDay:    r[2] !== '' ? Number(r[2]) : null,
-            frequency: String(r[3] || 'Monthly').trim(),
-            paid:      String(r[6] || '').trim() === currMonth,
-          };
+  // Bills (for chat context)
+  var bills = [];
+  try {
+    var billSheet = ss.getSheetByName(TABS.BILLS);
+    if (billSheet && billSheet.getLastRow() >= 2) {
+      var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+      var tzB       = Session.getScriptTimeZone();
+      var currMonth = Utilities.formatDate(new Date(), tzB, 'yyyy-MM');
+      bills = billData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        return {
+          row:       idx + 2,
+          bill:      String(r[0] || '').trim(),
+          amount:    r[1] !== '' ? Number(r[1]) : null,
+          dueDay:    r[2] !== '' ? Number(r[2]) : null,
+          frequency: String(r[3] || 'Monthly').trim(),
+          paid:      String(r[6] || '').trim() === currMonth,
+        };
+      });
+    }
+  } catch (e) { Logger.log('Chat context: bills — ' + e.message); }
+
+  // Recipes
+  var recipes = [];
+  try {
+    var recSheet = ss.getSheetByName(TABS.RECIPES);
+    if (recSheet && recSheet.getLastRow() >= 2) {
+      var recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
+      recipes = recData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        return {
+          row:         idx + 2,
+          name:        String(r[0] || '').trim(),
+          cuisine:     String(r[1] || '').trim(),
+          ingredients: String(r[5] || '').trim(),
+          tags:        String(r[6] || '').trim(),
+        };
+      });
+    }
+  } catch (e) { Logger.log('Chat context: recipes — ' + e.message); }
+
+  // Home Items
+  var homeItems = [];
+  try {
+    var hiSheet = ss.getSheetByName(TABS.HOME_ITEMS);
+    if (hiSheet && hiSheet.getLastRow() >= 2) {
+      var hiData   = hiSheet.getRange(2, 1, hiSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+      var todayHI  = new Date(); todayHI.setHours(0, 0, 0, 0);
+      homeItems = hiData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        var svcDays = null;
+        if (r[5]) {
+          try { svcDays = Math.round((new Date(r[5]) - todayHI) / 86400000); } catch (ex) {}
+        }
+        return {
+          row:            idx + 2,
+          item:           String(r[0] || '').trim(),
+          category:       String(r[1] || '').trim(),
+          nextService:    r[5] ? String(r[5]).substring(0, 10) : '',
+          intervalMonths: r[6] !== '' ? Number(r[6]) : null,
+          serviceDays:    svcDays,
+        };
+      });
+    }
+  } catch (e) { Logger.log('Chat context: homeItems — ' + e.message); }
+
+  // Shopping store names (so Claude knows which stores to add items to)
+  var shoppingStores = [];
+  try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
+  catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); }
+
+  // Ideas braindump — all non-archived ideas (Issue #18)
+  var ideas = [];
+  try {
+    var ideaSheet = ss.getSheetByName(TABS.IDEAS);
+    if (ideaSheet && ideaSheet.getLastRow() >= 2) {
+      var ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
+      ideas = ideaData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+        return { row: idx + 2,
+                 id:        String(r[0]||'').trim(),
+                 dateAdded: String(r[1]||'').trim(),
+                 idea:      String(r[2]||'').trim(),
+                 category:  String(r[3]||'').trim(),
+                 tags:      String(r[4]||'').trim(),
+                 notes:     String(r[5]||'').trim(),
+                 status:    String(r[6]||'New').trim() };
+      }).filter(function(i) { return i.status !== 'Archived'; });
+    }
+  } catch (e) { Logger.log('Chat context: ideas — ' + e.message); }
+
+  // Full projects array (for detailed task display + action lookups)
+  var projects = [];
+  try { projects = getProjects_(); }
+  catch (e) { Logger.log('Chat context: projects full — ' + e.message); }
+
+  // ---- Travel (itinerary + packing + trip context) -------------------------
+  var travelTrips = [];
+  try {
+    var travelCfg = readPTOConfig_();
+    travelTrips = getUpcomingTravel_(travelCfg);
+  } catch(e) { Logger.log('Chat context: travel trips — ' + e.message); }
+
+  var itinByTrip = {};
+  try {
+    var itinSheet = ss.getSheetByName(TABS.ITINERARY);
+    if (itinSheet && itinSheet.getLastRow() >= 2) {
+      var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+      itinRows.forEach(function(r) {
+        var tk = String(r[1]).trim();
+        if (!itinByTrip[tk]) itinByTrip[tk] = [];
+        itinByTrip[tk].push({
+          id: String(r[0]).trim(), type: String(r[2]).trim(),
+          title: String(r[3]).trim(), date: String(r[4]).trim(),
+          startTime: String(r[5]).trim(), location: String(r[7]).trim(),
         });
-      } else {
-        bills = [];
-      }
-    } catch (e) { Logger.log('Chat context: bills — ' + e.message); bills = []; }
-  }
+      });
+    }
+  } catch(e) { Logger.log('Chat context: itinerary — ' + e.message); }
 
-  // Recipes — home intent
-  var recipes = null;
-  if (intent.home) {
-    try {
-      var recSheet = ss.getSheetByName(TABS.RECIPES);
-      if (recSheet && recSheet.getLastRow() >= 2) {
-        var recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
-        recipes = recData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-          return {
-            row:         idx + 2,
-            name:        String(r[0] || '').trim(),
-            cuisine:     String(r[1] || '').trim(),
-            ingredients: String(r[5] || '').trim(),
-            tags:        String(r[6] || '').trim(),
-          };
+  var packByTrip = {};
+  try {
+    var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+    if (packSheet && packSheet.getLastRow() >= 2) {
+      var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
+      packRows.forEach(function(r) {
+        var tk = String(r[1]).trim();
+        if (!packByTrip[tk]) packByTrip[tk] = [];
+        packByTrip[tk].push({
+          id: String(r[0]).trim(), person: String(r[2]).trim(),
+          category: String(r[3]).trim(), item: String(r[4]).trim(),
+          checked: String(r[5]).toUpperCase() === 'TRUE',
         });
-      } else {
-        recipes = [];
-      }
-    } catch (e) { Logger.log('Chat context: recipes — ' + e.message); recipes = []; }
-  }
+      });
+    }
+  } catch(e) { Logger.log('Chat context: packing — ' + e.message); }
 
-  // Home Items — home intent
-  var homeItems = null;
-  if (intent.home) {
-    try {
-      var hiSheet = ss.getSheetByName(TABS.HOME_ITEMS);
-      if (hiSheet && hiSheet.getLastRow() >= 2) {
-        var hiData   = hiSheet.getRange(2, 1, hiSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
-        var todayHI  = new Date(); todayHI.setHours(0, 0, 0, 0);
-        homeItems = hiData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-          var svcDays = null;
-          if (r[5]) {
-            try { svcDays = Math.round((new Date(r[5]) - todayHI) / 86400000); } catch (ex) {}
-          }
-          return {
-            row:            idx + 2,
-            item:           String(r[0] || '').trim(),
-            category:       String(r[1] || '').trim(),
-            nextService:    r[5] ? String(r[5]).substring(0, 10) : '',
-            intervalMonths: r[6] !== '' ? Number(r[6]) : null,
-            serviceDays:    svcDays,
-          };
-        });
-      } else {
-        homeItems = [];
-      }
-    } catch (e) { Logger.log('Chat context: homeItems — ' + e.message); homeItems = []; }
-  }
+  var tripContextMap = {};
+  try {
+    var metaSheet = ss.getSheetByName(TABS.TRIP_META);
+    if (metaSheet && metaSheet.getLastRow() >= 2) {
+      var metaRows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+      metaRows.forEach(function(r) {
+        tripContextMap[String(r[0]).trim()] = String(r[1]).trim();
+      });
+    }
+  } catch(e) { Logger.log('Chat context: trip meta — ' + e.message); }
 
-  // Shopping store names — home intent
-  var shoppingStores = null;
-  if (intent.home) {
-    try { shoppingStores = getShoppingList_().map(function(s) { return s.storeName; }); }
-    catch (e) { Logger.log('Chat context: shopping stores — ' + e.message); shoppingStores = []; }
-  }
+  var travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
 
-  // Wish List (active items only) — wishlist intent (Issue #131)
-  var wishList = null;
-  if (intent.wishlist) {
-    try {
-      var wlSheet = ss.getSheetByName(TABS.WISH_LIST);
-      if (wlSheet && wlSheet.getLastRow() >= 2) {
-        var wlData = wlSheet.getRange(2, 1, wlSheet.getLastRow() - 1, WISH_LIST_HEADERS.length).getValues();
-        wishList = wlData
-          .filter(function(r) { return String(r[0]).trim() && String(r[8]).trim() !== 'Purchased'; })
-          .map(function(r, idx) {
-            return {
-              row:      idx + 2,
-              id:       String(r[0] || '').trim(),
-              person:   String(r[1] || '').trim(),
-              category: String(r[2] || '').trim(),
-              item:     String(r[3] || '').trim(),
-              price:    r[6] !== '' && r[6] !== null ? Number(r[6]) : null,
-              priority: String(r[7] || 'Medium').trim(),
-              status:   String(r[8] || 'Dreaming').trim(),
-            };
-          });
-      } else {
-        wishList = [];
-      }
-    } catch (wlErr) { Logger.log('Chat context: wishList — ' + wlErr.message); wishList = []; }
-  }
+  // Upcoming guest windows — home/people context (Issue #150)
+  var upcomingGuests = [];
+  try {
+    var guestCfg = readPTOConfig_();
+    upcomingGuests = getUpcomingGuests_(guestCfg);
+  } catch (e) { Logger.log('Chat context: guests — ' + e.message); upcomingGuests = []; }
 
-  // Experiments — experiments intent (Issue #130)
-  var experiments = null;
-  if (intent.experiments) {
-    try {
-      var expSheet = ss.getSheetByName(TABS.EXPERIMENTS);
-      var expChkSheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
-      // Build check-ins map: experimentId -> last 3 check-ins
-      var checkinsMap = {};
-      if (expChkSheet && expChkSheet.getLastRow() >= 2) {
-        var chkData = expChkSheet.getRange(2, 1, expChkSheet.getLastRow() - 1, EXPERIMENT_CHECKIN_HEADERS.length).getValues();
-        chkData.forEach(function(r) {
-          var eid = String(r[1] || '').trim();
-          if (!eid) return;
-          if (!checkinsMap[eid]) checkinsMap[eid] = [];
-          checkinsMap[eid].push({ id: String(r[0]||'').trim(), date: String(r[3]||'').trim(), note: String(r[4]||'').trim() });
-        });
-        // Sort each list newest-first and keep last 3
-        Object.keys(checkinsMap).forEach(function(k) {
-          checkinsMap[k].sort(function(a, b) { return b.date.localeCompare(a.date); });
-          checkinsMap[k] = checkinsMap[k].slice(0, 3);
-        });
-      }
-      if (expSheet && expSheet.getLastRow() >= 2) {
-        var expData = expSheet.getRange(2, 1, expSheet.getLastRow() - 1, EXPERIMENT_HEADERS.length).getValues();
-        experiments = expData
-          .filter(function(r) { return String(r[0]).trim(); })
-          .map(function(r) {
-            var eid = String(r[0] || '').trim();
-            var status = String(r[7] || 'Active').trim();
-            return {
-              id:         eid,
-              person:     String(r[1] || '').trim(),
-              title:      String(r[2] || '').trim(),
-              category:   String(r[3] || '').trim(),
-              hypothesis: String(r[4] || '').trim(),
-              startDate:  String(r[5] || '').trim(),
-              endDate:    String(r[6] || '').trim(),
-              status:     status,
-              outcome:    String(r[8] || '').trim(),
-              rating:     String(r[9] || '').trim(),
-              notes:      String(r[10] || '').trim(),
-              checkins:   checkinsMap[eid] || [],
-            };
-          })
-          .filter(function(ex) { return ex.status !== 'Completed' && ex.status !== 'Stopped'; });
-      } else {
-        experiments = [];
-      }
-    } catch (expErr) { Logger.log('Chat context: experiments — ' + expErr.message); experiments = []; }
-  }
+  // Recently-completed trips (ended 0.5–5 days ago) — for post-trip debrief context (Issue #87)
+  var recentTrips = [];
+  try {
+    var now2 = new Date();
+    Object.keys(itinByTrip).forEach(function(tk) {
+      var datePart = tk.split('|')[0];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
 
-  // Growth — Books, Courses, Skills (Issue #88)
-  var growthData = null;
-  if (intent.growth) {
-    try {
-      var bSheet = ss.getSheetByName(TABS.BOOKS);
-      var cSheet = ss.getSheetByName(TABS.COURSES);
-      var sSheet = ss.getSheetByName(TABS.SKILLS);
-
-      var books = [];
-      if (bSheet && bSheet.getLastRow() >= 2) {
-        bSheet.getRange(2, 1, bSheet.getLastRow() - 1, BOOK_HEADERS.length).getValues()
-          .forEach(function(r) {
-            var id = String(r[0] || '').trim();
-            if (!id) return;
-            books.push({
-              id: id, person: String(r[1]||'').trim(), title: String(r[2]||'').trim(),
-              author: String(r[3]||'').trim(), status: String(r[5]||'').trim(),
-              rating: r[6] || null, dateStarted: String(r[7]||'').trim(),
-              dateFinished: String(r[8]||'').trim(),
-            });
-          });
-      }
-
-      var courses = [];
-      if (cSheet && cSheet.getLastRow() >= 2) {
-        cSheet.getRange(2, 1, cSheet.getLastRow() - 1, COURSE_HEADERS.length).getValues()
-          .forEach(function(r) {
-            var id = String(r[0] || '').trim();
-            if (!id) return;
-            courses.push({
-              id: id, person: String(r[1]||'').trim(), title: String(r[2]||'').trim(),
-              source: String(r[3]||'').trim(), status: String(r[5]||'').trim(),
-              rating: r[6] || null, dateFinished: String(r[8]||'').trim(),
-            });
-          });
-      }
-
-      var skillItems = [];
-      if (sSheet && sSheet.getLastRow() >= 2) {
-        sSheet.getRange(2, 1, sSheet.getLastRow() - 1, SKILL_HEADERS.length).getValues()
-          .forEach(function(r) {
-            var id = String(r[0] || '').trim();
-            if (!id) return;
-            skillItems.push({
-              id: id, person: String(r[1]||'').trim(), skill: String(r[2]||'').trim(),
-              category: String(r[3]||'').trim(), level: String(r[4]||'').trim(),
-              lastPracticed: String(r[6]||'').trim(),
-            });
-          });
-      }
-
-      growthData = { books: books, courses: courses, skills: skillItems };
-    } catch (grErr) { Logger.log('Chat context: growth — ' + grErr.message); growthData = { books: [], courses: [], skills: [] }; }
-  }
-
-  // Ideas braindump — people intent or thoughts triage
-  var ideas = null;
-  if (intent.people || intent.thoughts) {
-    try {
-      var ideaSheet = ss.getSheetByName(TABS.IDEAS);
-      if (ideaSheet && ideaSheet.getLastRow() >= 2) {
-        var ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
-        ideas = ideaData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-          return { row: idx + 2,
-                   id:        String(r[0]||'').trim(),
-                   dateAdded: String(r[1]||'').trim(),
-                   idea:      String(r[2]||'').trim(),
-                   category:  String(r[3]||'').trim(),
-                   tags:      String(r[4]||'').trim(),
-                   notes:     String(r[5]||'').trim(),
-                   status:    String(r[6]||'New').trim() };
-        }).filter(function(i) { return i.status !== 'Archived'; });
-      } else {
-        ideas = [];
-      }
-    } catch (e) { Logger.log('Chat context: ideas — ' + e.message); ideas = []; }
-  }
-
-  // Full projects array — projects/goals intent
-  var projects = null;
-  if (intent.projects || intent.goals) {
-    try { projects = getProjects_(); }
-    catch (e) { Logger.log('Chat context: projects full — ' + e.message); projects = []; }
-  }
-
-  // ---- Travel (itinerary + packing + trip context) — travel intent ----------
-  var travel     = null;
-  var recentTrips = null;
-  var countries   = null;
-  var bucketList  = null;
-
-  if (intent.travel) {
-    var travelTrips    = [];
-    var itinByTrip     = {};
-    var packByTrip     = {};
-    var tripContextMap = {};
-
-    try {
-      var travelCfg = readPTOConfig_();
-      travelTrips = getUpcomingTravel_(travelCfg);
-    } catch(e) { Logger.log('Chat context: travel trips — ' + e.message); }
-
-    try {
-      var itinSheet = ss.getSheetByName(TABS.ITINERARY);
-      if (itinSheet && itinSheet.getLastRow() >= 2) {
-        var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-        itinRows.forEach(function(r) {
-          var tk = String(r[1]).trim();
-          if (!itinByTrip[tk]) itinByTrip[tk] = [];
-          itinByTrip[tk].push({
-            id: String(r[0]).trim(), type: String(r[2]).trim(),
-            title: String(r[3]).trim(), date: String(r[4]).trim(),
-            startTime: String(r[5]).trim(), location: String(r[7]).trim(),
-          });
-        });
-      }
-    } catch(e) { Logger.log('Chat context: itinerary — ' + e.message); }
-
-    try {
-      var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
-      if (packSheet && packSheet.getLastRow() >= 2) {
-        var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-        packRows.forEach(function(r) {
-          var tk = String(r[1]).trim();
-          if (!packByTrip[tk]) packByTrip[tk] = [];
-          packByTrip[tk].push({
-            id: String(r[0]).trim(), person: String(r[2]).trim(),
-            category: String(r[3]).trim(), item: String(r[4]).trim(),
-            checked: String(r[5]).toUpperCase() === 'TRUE',
-          });
-        });
-      }
-    } catch(e) { Logger.log('Chat context: packing — ' + e.message); }
-
-    try {
-      var metaSheet = ss.getSheetByName(TABS.TRIP_META);
-      if (metaSheet && metaSheet.getLastRow() >= 2) {
-        var metaRows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
-        metaRows.forEach(function(r) {
-          tripContextMap[String(r[0]).trim()] = String(r[1]).trim();
-        });
-      }
-    } catch(e) { Logger.log('Chat context: trip meta — ' + e.message); }
-
-    travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
-
-    // Recently-completed trips (ended 0.5–5 days ago)
-    recentTrips = [];
-    try {
-      var now2 = new Date();
-      Object.keys(itinByTrip).forEach(function(tk) {
-        var datePart = tk.split('|')[0];
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
-        var maxDate = new Date(datePart + 'T00:00:00');
-        itinByTrip[tk].forEach(function(item) {
-          if (/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
-            var d = new Date(item.date + 'T00:00:00');
-            if (d > maxDate) maxDate = d;
-          }
-        });
-        var daysAgo = (now2.getTime() - maxDate.getTime()) / 86400000;
-        if (daysAgo >= 0.5 && daysAgo <= 5) {
-          var tkParts = tk.split('|');
-          var label   = tkParts.length > 1 ? tkParts.slice(1).join('|') : tk;
-          recentTrips.push({ tripKey: tk, tripLabel: label, endDate: maxDate, daysAgo: daysAgo });
+      // Find end date = max event date across all rows for this trip
+      var maxDate = new Date(datePart + 'T00:00:00');
+      itinByTrip[tk].forEach(function(item) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
+          var d = new Date(item.date + 'T00:00:00');
+          if (d > maxDate) maxDate = d;
         }
       });
-    } catch(e) { Logger.log('Chat context: recentTrips — ' + e.message); }
 
-    try {
-      var cRes = webGetCountries_();
-      countries = (cRes && cRes.entries) || [];
-    } catch(e) { Logger.log('Chat context: countries — ' + e.message); countries = []; }
-
-    try {
-      var bRes = webGetBucketList_();
-      bucketList = (bRes && bRes.entries) || [];
-    } catch(e) { Logger.log('Chat context: bucketList — ' + e.message); bucketList = []; }
-  }
-
-  // Favorite Takeouts — home intent
-  var takeouts = null;
-  if (intent.home) {
-    try {
-      var tRes = webGetTakeouts_();
-      takeouts = (tRes && tRes.restaurants) || [];
-    } catch(e) { Logger.log('Chat context: takeouts — ' + e.message); takeouts = []; }
-  }
-
-  // Pantry — home intent
-  var pantryDue = null;
-  if (intent.home) {
-    try { pantryDue = getItemsDue_(14); }
-    catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); pantryDue = []; }
-  }
-
-  // Upcoming house guests — home intent (Issue #150)
-  var upcomingGuests = null;
-  if (intent.home) {
-    try {
-      var guestCfg2 = readPTOConfig_();
-      upcomingGuests = getUpcomingGuests_(guestCfg2);
-    } catch(e) { Logger.log('Chat context: upcomingGuests — ' + e.message); upcomingGuests = []; }
-  }
-
-  // Career profile — career intent
-  var career = null;
-  if (intent.career) {
-    try {
-      var carRes = webGetCareer_();
-      if (carRes && carRes.ok) career = carRes;
-    } catch(e) { Logger.log('Chat context: career — ' + e.message); }
-  }
-
-  // Prescriptions + Gym Log — health intent
-  var prescriptions = null;
-  var gymLog = null;
-  if (intent.health) {
-    try {
-      var pRes = webGetPrescriptions_();
-      prescriptions = (pRes && pRes.prescriptions) || [];
-    } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); prescriptions = []; }
-    try {
-      var glRes = getGymLog_();
-      // Only pass recent sessions (last 28 days) to keep context lean
-      var cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 28);
-      var cutoffStr = Utilities.formatDate(cutoff, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      gymLog = glRes.filter(function(s) { return s.date >= cutoffStr; });
-    } catch(e) { Logger.log('Chat context: gymLog — ' + e.message); gymLog = []; }
-  }
-
-  // Credit Card Hub — finance intent
-  var cardsData = null;
-  if (intent.finance) {
-    try {
-      var cardRes = webGetCards_();
-      if (cardRes && cardRes.ok) cardsData = cardRes;
-    } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
-  }
-
-  // Financial Goals — finance or goals intent
-  var financialGoals = null;
-  if (intent.finance || intent.goals) {
-    try { financialGoals = getFinancialGoals_(); }
-    catch(e) { Logger.log('Chat context: financialGoals — ' + e.message); financialGoals = []; }
-  }
-
-  // Resources registry — resources intent (registry only, no content; content fetched on-demand)
-  var resources = null;
-  if (intent.resources) {
-    try {
-      var resSheet = ss.getSheetByName(TABS.RESOURCES);
-      if (resSheet && resSheet.getLastRow() >= 2) {
-        var resRows = resSheet.getDataRange().getValues();
-        var resHdrs = resRows[0];
-        resources = [];
-        resRows.slice(1).forEach(function(r) {
-          if (!r[0]) return;
-          var obj = {};
-          resHdrs.forEach(function(h, i) { obj[h] = r[i]; });
-          resources.push(obj);
-        });
-      } else {
-        resources = [];
+      var daysAgo = (now2.getTime() - maxDate.getTime()) / 86400000;
+      if (daysAgo >= 0.5 && daysAgo <= 5) {
+        var tkParts = tk.split('|');
+        var label   = tkParts.length > 1 ? tkParts.slice(1).join('|') : tk;
+        recentTrips.push({ tripKey: tk, tripLabel: label, endDate: maxDate, daysAgo: daysAgo });
       }
-    } catch(e) { Logger.log('Chat context: resources — ' + e.message); resources = []; }
-  }
+    });
+  } catch(e) { Logger.log('Chat context: recentTrips — ' + e.message); }
 
-  // Memory Log — retrospective queries (Issue #9)
-  var memoryContext = null;
-  if (intent.memory) {
-    try { memoryContext = getMemoryContext_(90); }
-    catch (e) { Logger.log('Chat context: memory — ' + e.message); memoryContext = null; }
-  }
+  // Countries visited — reuse webGetCountries_() (header-based dynamic reads)
+  var countries = [];
+  try {
+    var cRes = webGetCountries_();
+    countries = (cRes && cRes.entries) || [];
+  } catch(e) { Logger.log('Chat context: countries — ' + e.message); }
+
+  // Travel bucket list — reuse webGetBucketList_()
+  var bucketList = [];
+  try {
+    var bRes = webGetBucketList_();
+    bucketList = (bRes && bRes.entries) || [];
+  } catch(e) { Logger.log('Chat context: bucketList — ' + e.message); }
+
+  // Favorite Takeouts (Issue #112)
+  var takeouts = [];
+  try {
+    var tRes = webGetTakeouts_();
+    takeouts = (tRes && tRes.restaurants) || [];
+  } catch(e) { Logger.log('Chat context: takeouts — ' + e.message); }
+
+  // Pantry — items predicted to run out soon (Issue #111)
+  var pantryDue = [];
+  try {
+    pantryDue = getItemsDue_(14); // look ahead 14 days
+  } catch(e) { Logger.log('Chat context: pantryDue — ' + e.message); }
+
+  // Career profile (Position, Goals, Wins)
+  var career = null;
+  try {
+    var carRes = webGetCareer_();
+    if (carRes && carRes.ok) career = carRes;
+  } catch(e) { Logger.log('Chat context: career — ' + e.message); }
+
+  // Prescriptions (Issue #116)
+  var prescriptions = [];
+  try {
+    var pRes = webGetPrescriptions_();
+    prescriptions = (pRes && pRes.prescriptions) || [];
+  } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); }
+
+  // Credit Card Hub (Issues #115 + #117)
+  var cardsData = null;
+  try {
+    var cardRes = webGetCards_();
+    if (cardRes && cardRes.ok) cardsData = cardRes;
+  } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
 
   return {
     flags:           activeFlags,
     tasks:           tasks,
+    googleTasks:     googleTasks,
     summaries:       summaries,
     projectsSummary: projectsSummary,
     projects:        projects,
@@ -1621,19 +1155,10 @@ function buildChatContext_(userMessage) {
     bucketList:      bucketList,
     takeouts:        takeouts,
     pantryDue:       pantryDue,
-    upcomingGuests:  upcomingGuests,
     career:          career,
     prescriptions:   prescriptions,
-    gymLog:          gymLog,
     cardsData:       cardsData,
-    financialGoals:  financialGoals,
-    resources:       resources,
-    importantDates:  importantDates,
-    giftIdeas:       giftIdeas,
-    wishList:        wishList,
-    experiments:     experiments,
-    growthData:      growthData,
-    memoryContext:   memoryContext,
+    upcomingGuests:  upcomingGuests,
   };
 }
 
@@ -1833,7 +1358,6 @@ function executeActions_(rawText) {
       if      (type === 'complete_task') {
         var ctRes = webCompleteTask_(args[0]);
         executed.push(type + ' (' + args[0] + ')' + (ctRes.recurring ? ' → 🔁 next due ' + ctRes.nextDueDate : ''));
-        // Memory already logged inside webCompleteTask_
       }
       else if (type === 'acknowledge_flag') { webAcknowledge_(args[0]);                        executed.push(type); }
       else if (type === 'snooze_flag')     { webSnooze_(args[0], parseInt(args[1], 10) || 2); executed.push(type); }
@@ -2041,16 +1565,6 @@ function executeActions_(rawText) {
         ugFields[ugField] = ugVal;
         updateGoal_(ugId, ugFields);
         executed.push(type + ' (' + ugId + ')');
-        // Memory log — only status and progress changes are worth recording
-        if (ugField === 'status' || ugField === 'progress') {
-          try {
-            var allGoals = getGoals_();
-            var ugGoal   = allGoals.find(function(g) { return g.id === ugId; });
-            var ugTitle  = ugGoal ? ugGoal.title : ugId;
-            appendMemoryEvent_(MEMORY_TYPE.GOAL_UPDATED, 'Ahmed', ugTitle,
-              ugField + ' → ' + ugVal, ugId);
-          } catch (mErr) { Logger.log('Memory: update_goal hook (non-fatal) — ' + mErr.message); }
-        }
       }
       else if (type === 'delete_goal') {
         var dgId = (args[0] || '').trim();
@@ -2119,7 +1633,7 @@ function executeActions_(rawText) {
         var stCategory = (args[1] || 'General').trim();
         if (!stId) throw new Error('Thought ID required');
         webShelveThought_(makeFakeEvent_({ id: stId, category: stCategory }));
-        executed.push('shelve_thought (' + stId + ' \u2192 ' + stCategory + ')');
+        executed.push('shelve_thought (' + stId + ' → ' + stCategory + ')');
       }
       else if (type === 'promote_idea') {
         var piId = (args[0] || '').trim();
@@ -2336,12 +1850,6 @@ function executeActions_(rawText) {
         webDeleteBucketItem_(makeFakeEvent_({ id: dbiId }));
         executed.push(type + ' (' + dbiId + ')');
       }
-      else if (type === 'log_gym_attend_latest') {
-        var attended = (args[0] || 'yes').toLowerCase() === 'no' ? 'No' : 'Yes';
-        var latestResult = webGymAttendLatest_(attended);
-        if (!latestResult.ok) throw new Error(latestResult.error || 'No pending gym session found');
-        executed.push('log_gym_attend_latest (' + latestResult.id + ' \u2192 ' + attended + ')');
-      }
       else if (type === 'add_gym_sessions') {
         var agsTK   = tripKeyArgs_();
         var tripKey = agsTK.tripKey;
@@ -2349,44 +1857,15 @@ function executeActions_(rawText) {
 
         // Find all dates in this trip's itinerary
         var itinSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+        if (!itinSheet || itinSheet.getLastRow() < 2) throw new Error('Itinerary tab is empty');
+        var tripRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
         var tripDates = [];
-        if (itinSheet && itinSheet.getLastRow() >= 2) {
-          itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues()
-            .forEach(function(row) {
-              if (String(row[1] || '').trim() !== tripKey) return;
-              var ds = String(row[4] || '').trim(); // col 4 = Date
-              if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) tripDates.push(ds);
-            });
-        }
-
-        // Fallback: trip exists on gap calendar but has no itinerary items yet
-        if (!tripDates.length) {
-          try {
-            var ptoCfgFb  = readPTOConfig_();
-            var calTripsFb = getUpcomingTravel_(ptoCfgFb);
-            var depPartFb  = tripKey.split('|')[0];
-            var lblPartFb  = tripKey.split('|').slice(1).join('|').toLowerCase();
-            var matchedFb  = null;
-            for (var fi = 0; fi < calTripsFb.length; fi++) {
-              var ct = calTripsFb[fi];
-              if (ct.startDate === depPartFb || ct.label.toLowerCase() === lblPartFb) {
-                matchedFb = ct; break;
-              }
-            }
-            if (!matchedFb) throw new Error('No itinerary items and no matching calendar trip for: ' + tripKey);
-            var fcFb = new Date(matchedFb.startDate + 'T00:00:00');
-            var feFb = new Date(matchedFb.endDate   + 'T00:00:00');
-            var tzFb = Session.getScriptTimeZone();
-            while (fcFb <= feFb) {
-              tripDates.push(Utilities.formatDate(fcFb, tzFb, 'yyyy-MM-dd'));
-              fcFb.setDate(fcFb.getDate() + 1);
-            }
-          } catch (fbErr) {
-            throw new Error(fbErr.message);
-          }
-        }
-
-        if (!tripDates.length) throw new Error('No dates found for trip: ' + tripKey);
+        tripRows.forEach(function(row) {
+          if (String(row[1] || '').trim() !== tripKey) return;
+          var ds = String(row[4] || '').trim(); // col 4 = Date
+          if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) tripDates.push(ds);
+        });
+        if (!tripDates.length) throw new Error('No itinerary items found for trip: ' + tripKey);
         tripDates.sort();
         var minDate = tripDates[0], maxDate = tripDates[tripDates.length - 1];
         if (minDate === maxDate) throw new Error('Trip only spans one day — no interior days for gym sessions');
@@ -2506,10 +1985,6 @@ function executeActions_(rawText) {
         if (cwWin) {
           webAddCareerWin_({ parameter: { win: cwWin, impact: cwImpact, category: cwCat, date: cwDate } });
           executed.push('add_career_win (' + cwWin.slice(0, 40) + ')');
-          try {
-            appendMemoryEvent_(MEMORY_TYPE.CAREER_WIN, 'Ahmed', cwWin,
-              (cwImpact ? 'Impact: ' + cwImpact : '') + (cwCat ? ' · Category: ' + cwCat : ''), cwDate);
-          } catch (mErr) { Logger.log('Memory: add_career_win hook (non-fatal) — ' + mErr.message); }
         }
       }
 
@@ -2608,246 +2083,6 @@ function executeActions_(rawText) {
         }
       }
 
-      // ---- Financial Scenario Simulation (Issue #127) -------------------------
-      else if (type === 'simulate_scenario') {
-        var simGoalId    = (args[0] || '').trim();
-        var simType      = (args[1] || 'one-time').trim();
-        var simAmount    = parseFloat(args[2]) || 0;
-        var simLabel     = (args[3] || 'scenario').trim();
-        var simGoals     = getFinancialGoals_();
-        var simGoal      = simGoals.filter(function(g) { return g.id === simGoalId; })[0];
-        if (simGoal && simAmount > 0) {
-          var simResult = simulateScenario_(simGoal, simType, simAmount);
-          // Attach result to executed for the reply builder to surface
-          executed.push('simulate_scenario:' + JSON.stringify(simResult));
-        } else {
-          errors.push('simulate_scenario: goal ' + simGoalId + ' not found or amount invalid');
-        }
-      }
-      else if (type === 'save_scenario') {
-        var ssGoalId   = (args[0] || '').trim();
-        var ssType     = (args[1] || 'one-time').trim();
-        var ssAmount   = parseFloat(args[2]) || 0;
-        var ssLabel    = (args[3] || '').trim();
-        var ssNotes    = (args[4] || '').trim();
-        var ssGoals2   = getFinancialGoals_();
-        var ssGoal2    = ssGoals2.filter(function(g) { return g.id === ssGoalId; })[0];
-        if (ssGoal2 && ssAmount > 0) {
-          var ssResult = simulateScenario_(ssGoal2, ssType, ssAmount);
-          var ssId     = saveScenario_(ssGoalId, ssLabel, ssType, ssAmount, ssNotes, ssResult);
-          executed.push('save_scenario (' + ssLabel + ', id=' + ssId + ')');
-        } else {
-          errors.push('save_scenario: goal ' + ssGoalId + ' not found or amount invalid');
-        }
-      }
-      // Resources — fetch Google Doc content (Issue #129)
-      else if (type === 'fetch_resource_content') {
-        var frId = (args[0] || '').trim();
-        if (frId) {
-          var frResult = webFetchResourceContent_({ parameter: { id: frId } });
-          if (frResult.ok) {
-            executed.push('fetch_resource_content:' + JSON.stringify({ id: frId, name: frResult.name, content: frResult.content }));
-          } else if (frResult.error === 'no_drive_file') {
-            // No Drive File ID — URL-only resource, VERA should direct user to the link
-            executed.push('fetch_resource_content:link_only:' + frResult.name + ':' + (frResult.url || ''));
-          } else if (frResult.error === 'cannot_read_file') {
-            // Drive File ID exists but DocumentApp.openById() failed (permissions / wrong file type)
-            errors.push('fetch_resource_content: could not read "' + frResult.name + '" — ' +
-              (frResult.detail || 'access denied') +
-              '. Make sure the Google Doc is shared with the VERA service account (the same Google account running this script), and that it is a Google Docs file (not Sheets or PDF).');
-          } else if (frResult.error === 'not found') {
-            errors.push('fetch_resource_content: resource "' + frId + '" not found in knowledge base — it may not have been added yet via Explore → Resources');
-          } else {
-            errors.push('fetch_resource_content: ' + (frResult.error || 'unknown error'));
-          }
-        } else {
-          errors.push('fetch_resource_content: resource id required');
-        }
-      }
-
-      // ---- Important Dates (Issue #80) ------------------------------------
-      else if (type === 'add_important_date') {
-        var aidPerson    = (args[0] || 'Both').trim();
-        var aidDate      = (args[1] || '').trim();
-        var aidLabel     = (args[2] || '').trim();
-        var aidRecurring = (args[3] || 'Yes').trim();
-        var aidLead      = parseInt(args[4], 10) || 30;
-        if (!aidDate || !aidLabel) throw new Error('date and label required for add_important_date');
-        var aidResult = webAddImportantDate_({
-          parameter: { label: aidLabel, date: aidDate, person: aidPerson,
-                       recurring: aidRecurring, leadTime: String(aidLead), notes: '' }
-        });
-        if (!aidResult.ok) throw new Error(aidResult.error || 'failed to add date');
-        executed.push('add_important_date (' + aidLabel + ' — ' + aidDate + ')');
-      }
-      else if (type === 'log_gift_idea') {
-        var lgiPerson = (args[0] || '').trim();
-        var lgiIdea   = args.slice(1).join('|').trim(); // idea may contain pipes
-        if (!lgiPerson || !lgiIdea) throw new Error('person and idea required for log_gift_idea');
-        var lgiResult = webAddGiftIdea_({ parameter: { person: lgiPerson, idea: lgiIdea } });
-        if (!lgiResult.ok) throw new Error(lgiResult.error || 'failed to log gift idea');
-        executed.push('log_gift_idea (' + lgiPerson + ': ' + lgiIdea + ')');
-      }
-
-      // Wish List (Issue #131)
-      else if (type === 'add_wish_item') {
-        var awPerson   = (args[0] || 'Ahmed').trim();
-        var awItem     = (args[1] || '').trim();
-        var awCategory = (args[2] || 'Other').trim();
-        var awPrice    = (args[3] || '').trim();
-        var awPriority = (args[4] || 'Medium').trim();
-        var awUrls     = (args[5] || '').trim();
-        var awNotes    = (args[6] || '').trim();
-        if (!awItem) throw new Error('item is required for add_wish_item');
-        webAddWishItem_({ parameter: { person: awPerson, item: awItem, category: awCategory,
-                                       price: awPrice, priority: awPriority, urls: awUrls, notes: awNotes } });
-        executed.push('add_wish_item (' + awPerson + ': ' + awItem + ')');
-      }
-      else if (type === 'update_wish_item') {
-        var uwId    = (args[0] || '').trim();
-        var uwField = (args[1] || '').trim();
-        var uwValue = (args[2] || '').trim();
-        if (!uwId || !uwField) throw new Error('id and field required for update_wish_item');
-        webUpdateWishItem_({ parameter: { id: uwId, field: uwField, value: uwValue } });
-        executed.push('update_wish_item (' + uwId + ' ' + uwField + '=' + uwValue + ')');
-      }
-      else if (type === 'mark_wish_purchased') {
-        var mwpId = (args[0] || '').trim();
-        if (!mwpId) throw new Error('id required for mark_wish_purchased');
-        webMarkWishPurchased_({ parameter: { id: mwpId } });
-        executed.push('mark_wish_purchased (' + mwpId + ')');
-      }
-      else if (type === 'delete_wish_item') {
-        var dwId = (args[0] || '').trim();
-        if (!dwId) throw new Error('id required for delete_wish_item');
-        webDeleteWishItem_({ parameter: { id: dwId } });
-        executed.push('delete_wish_item (' + dwId + ')');
-      }
-      // Experiments (Issue #130)
-      else if (type === 'add_experiment') {
-        var aePerson     = (args[0] || 'Ahmed').trim();
-        var aeTitle      = (args[1] || '').trim();
-        var aeCategory   = (args[2] || 'Other').trim();
-        var aeHypothesis = (args[3] || '').trim();
-        var aeStart      = (args[4] || '').trim();
-        var aeEnd        = (args[5] || '').trim();
-        var aeNotes      = (args[6] || '').trim();
-        if (!aeTitle) throw new Error('title is required for add_experiment');
-        webAddExperiment_({ parameter: { person: aePerson, title: aeTitle, category: aeCategory,
-                                         hypothesis: aeHypothesis, startDate: aeStart, endDate: aeEnd, notes: aeNotes } });
-        executed.push('add_experiment (' + aePerson + ': ' + aeTitle + ')');
-      }
-      else if (type === 'update_experiment') {
-        var ueId    = (args[0] || '').trim();
-        var ueField = (args[1] || '').trim();
-        var ueValue = (args[2] || '').trim();
-        if (!ueId || !ueField) throw new Error('id and field required for update_experiment');
-        webUpdateExperiment_({ parameter: { id: ueId, field: ueField, value: ueValue } });
-        executed.push('update_experiment (' + ueId + ' ' + ueField + '=' + ueValue + ')');
-      }
-      else if (type === 'log_experiment_checkin') {
-        var lecId   = (args[0] || '').trim();
-        var lecNote = (args[1] || '').trim();
-        if (!lecId) throw new Error('id required for log_experiment_checkin');
-        webAddExperimentCheckin_({ parameter: { experimentId: lecId, note: lecNote } });
-        executed.push('log_experiment_checkin (' + lecId + ')');
-      }
-      else if (type === 'delete_experiment') {
-        var deId = (args[0] || '').trim();
-        if (!deId) throw new Error('id required for delete_experiment');
-        webDeleteExperiment_({ parameter: { id: deId } });
-        executed.push('delete_experiment (' + deId + ')');
-      }
-      // Growth — Books (Issue #88)
-      else if (type === 'add_book') {
-        var abPerson   = (args[0] || 'Ahmed').trim();
-        var abTitle    = (args[1] || '').trim();
-        var abAuthor   = (args[2] || '').trim();
-        var abCategory = (args[3] || '').trim();
-        var abStatus   = (args[4] || 'Want to Read').trim();
-        var abRating   = (args[5] || '').trim();
-        var abNotes    = (args[6] || '').trim();
-        if (!abTitle) throw new Error('title is required for add_book');
-        webAddBook_({ parameter: { person: abPerson, title: abTitle, author: abAuthor,
-                                   category: abCategory, status: abStatus, rating: abRating, notes: abNotes } });
-        executed.push('add_book (' + abPerson + ': "' + abTitle + '" — ' + abStatus + ')');
-      }
-      else if (type === 'update_book') {
-        var ubId    = (args[0] || '').trim();
-        var ubField = (args[1] || '').trim();
-        var ubValue = (args[2] || '').trim();
-        if (!ubId || !ubField) throw new Error('id and field required for update_book');
-        webUpdateBook_({ parameter: { id: ubId, field: ubField, value: ubValue } });
-        executed.push('update_book (' + ubId + ' ' + ubField + '=' + ubValue + ')');
-      }
-      else if (type === 'delete_book') {
-        var dbId = (args[0] || '').trim();
-        if (!dbId) throw new Error('id required for delete_book');
-        webDeleteBook_({ parameter: { id: dbId } });
-        executed.push('delete_book (' + dbId + ')');
-      }
-      // Growth — Courses (Issue #88)
-      else if (type === 'add_course') {
-        var acPerson   = (args[0] || 'Ahmed').trim();
-        var acTitle    = (args[1] || '').trim();
-        var acSource   = (args[2] || '').trim();
-        var acCategory = (args[3] || '').trim();
-        var acStatus   = (args[4] || 'Want to Do').trim();
-        var acRating   = (args[5] || '').trim();
-        var acNotes    = (args[6] || '').trim();
-        if (!acTitle) throw new Error('title is required for add_course');
-        webAddCourse_({ parameter: { person: acPerson, title: acTitle, source: acSource,
-                                     category: acCategory, status: acStatus, rating: acRating, notes: acNotes } });
-        executed.push('add_course (' + acPerson + ': "' + acTitle + '" — ' + acStatus + ')');
-      }
-      else if (type === 'update_course') {
-        var ucId    = (args[0] || '').trim();
-        var ucField = (args[1] || '').trim();
-        var ucValue = (args[2] || '').trim();
-        if (!ucId || !ucField) throw new Error('id and field required for update_course');
-        webUpdateCourse_({ parameter: { id: ucId, field: ucField, value: ucValue } });
-        executed.push('update_course (' + ucId + ' ' + ucField + '=' + ucValue + ')');
-      }
-      else if (type === 'delete_course') {
-        var dcId = (args[0] || '').trim();
-        if (!dcId) throw new Error('id required for delete_course');
-        webDeleteCourse_({ parameter: { id: dcId } });
-        executed.push('delete_course (' + dcId + ')');
-      }
-      // Growth — Skills (Issue #88)
-      else if (type === 'add_skill') {
-        var asPerson   = (args[0] || 'Ahmed').trim();
-        var asSkill    = (args[1] || '').trim();
-        var asCategory = (args[2] || '').trim();
-        var asLevel    = (args[3] || 'Beginner').trim();
-        var asGoalLink = (args[4] || '').trim();
-        var asNotes    = (args[5] || '').trim();
-        if (!asSkill) throw new Error('skill is required for add_skill');
-        webAddSkill_({ parameter: { person: asPerson, skill: asSkill, category: asCategory,
-                                    level: asLevel, goalLink: asGoalLink, notes: asNotes } });
-        executed.push('add_skill (' + asPerson + ': ' + asSkill + ' [' + asLevel + '])');
-      }
-      else if (type === 'update_skill') {
-        var usId    = (args[0] || '').trim();
-        var usField = (args[1] || '').trim();
-        var usValue = (args[2] || '').trim();
-        if (!usId || !usField) throw new Error('id and field required for update_skill');
-        webUpdateSkill_({ parameter: { id: usId, field: usField, value: usValue } });
-        executed.push('update_skill (' + usId + ' ' + usField + '=' + usValue + ')');
-      }
-      else if (type === 'record_skill_practice') {
-        var rspId = (args[0] || '').trim();
-        if (!rspId) throw new Error('id required for record_skill_practice');
-        webRecordSkillPractice_({ parameter: { id: rspId } });
-        executed.push('record_skill_practice (' + rspId + ')');
-      }
-      else if (type === 'delete_skill') {
-        var dsId = (args[0] || '').trim();
-        if (!dsId) throw new Error('id required for delete_skill');
-        webDeleteSkill_({ parameter: { id: dsId } });
-        executed.push('delete_skill (' + dsId + ')');
-      }
-
     } catch (e) {
       Logger.log('Action error [' + type + ']: ' + e.message);
       errors.push(type + ': ' + e.message);
@@ -2884,12 +2119,9 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
     return { ok: true, reply: 'What can I help you with?' };
   }
 
-  // Victoria-aware: Dashboard Lite uses session 'victoria_dashboard'
-  var isVictoria = (sessionId === 'victoria_dashboard');
-
   var history   = loadChatHistory_(sessionId);
-  var context   = isVictoria ? buildVictoriaChatContext_(trimmedMsg) : buildChatContext_(trimmedMsg);
-  var sysPrompt = isVictoria ? buildVictoriaChatSystemPrompt_(context) : buildChatSystemPrompt_(context);
+  var context   = buildChatContext_();
+  var sysPrompt = buildChatSystemPrompt_(context);
   var callResult = callClaudeChat_(
     trimmedMsg, history, sysPrompt,
     imageBase64   || null,
@@ -2901,35 +2133,6 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
 
   // Execute any actions Claude embedded
   var actionResult = executeActions_(rawReply);
-
-  // If any Google Doc was fetched successfully, make a second Claude call with the content
-  // so VERA can actually read the document and answer — not just say "let me fetch it"
-  var fetchedDocs = actionResult.executed
-    .filter(function(r) { return r.indexOf('fetch_resource_content:{') === 0; })
-    .map(function(r) {
-      try { return JSON.parse(r.substring('fetch_resource_content:'.length)); } catch (fe) { return null; }
-    })
-    .filter(Boolean);
-
-  if (fetchedDocs.length > 0) {
-    var docBlocks = fetchedDocs.map(function(d) {
-      return '=== DOCUMENT: ' + d.name + ' ===\n' + (d.content || '(empty)') + '\n=== END ===';
-    }).join('\n\n');
-
-    // Build conversation history including the "let me fetch" exchange
-    var followUpHistory = history.concat([
-      { role: 'user',      content: trimmedMsg || '[Image attached]' },
-      { role: 'assistant', content: stripActions_(rawReply) },
-    ]);
-    var followUpMsg = '[Document content retrieved]\n\n' + docBlocks +
-      '\n\nUsing the document above, answer ' + (isVictoria ? 'Victoria\'s' : 'Ahmed\'s') + ' original question directly. ' +
-      'Do not say you are fetching or retrieving — you have the content now. ' +
-      'Be specific and cite the document where relevant.';
-    var followUpResult = callClaudeChat_(followUpMsg, followUpHistory, sysPrompt, null, null);
-    rawReply = followUpResult.text;
-    sources  = (followUpResult.sources || []).concat(sources);
-    Logger.log('VERA fetch follow-up reply:\n' + rawReply);
-  }
 
   // Strip ACTION lines before returning to user
   var cleanReply = stripActions_(rawReply);
@@ -2946,464 +2149,6 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   saveChatHistory_(sessionId, historyText, cleanReply);
 
   return { ok: true, reply: cleanReply, sources: sources };
-}
-
-// ============================================================
-// VICTORIA — Context + System Prompt (Issue #133)
-// ============================================================
-
-/**
- * Builds a reduced chat context for Victoria (Dashboard Lite / Slack as Victoria).
- * Loads only shared/household domains — no flags, career, goals, growth, experiments.
- * @param  {string} userMessage  Raw message for intent detection (same as buildChatContext_)
- * @returns {Object}  Context object shaped like buildChatContext_() output but with null for excluded domains
- */
-function buildVictoriaChatContext_(userMessage) {
-  var ss  = getSpreadsheet();
-  var msg = (userMessage || '').toLowerCase();
-
-  // Simple intent detection — same keywords as the main function
-  var intent = {
-    home:     /recipe|cook|dish|dinner|ingredient|grocery|shopping|store|buy|pantry|chore|clean|vacuum|takeout|food|meal|home|house|item|appliance|maintenance|vehicle|car|truck|oil change|tire/i.test(msg),
-    finance:  /bill|payment|due|budget|spend|expense|card|credit|reward|points|loyalty/i.test(msg),
-    travel:   /trip|travel|flight|hotel|itinerary|pack|passport|visa|destination|vacation|bucket|country|countries/i.test(msg),
-    health:   /prescription|medication|refill|pill|dose|gym|workout|exercise|fitness/i.test(msg),
-    people:   /birthday|anniversary|gift|important date|date|celebrate/i.test(msg),
-    pto:      /pto|vacation|leave|day off|time off|victoria/i.test(msg),
-    memory:   /remember|recall|when did|last time|history|used to|ago|previous/i.test(msg),
-  };
-
-  // Always load these for Victoria
-  var tasks = [];
-  try {
-    var openTasks = getOpenTasks();
-    // Filter to household-relevant tasks — exclude career/flags/personal tasks
-    tasks = openTasks.filter(function(t) {
-      var low = (t.task || '').toLowerCase();
-      return !/career|work|job|promotion|interview|linkedin|performance review/i.test(low);
-    }).slice(0, 20);
-  } catch(e) { Logger.log('VictoriaContext: tasks — ' + e.message); }
-
-  // Calendar events (shared view)
-  var calendarEvents = [];
-  try { calendarEvents = getUpcomingEvents(); }
-  catch(e) { Logger.log('VictoriaContext: calendar — ' + e.message); }
-
-  // Shopping
-  var shoppingStores = [];
-  try {
-    var shRes = webGetShopping_();
-    shoppingStores = (shRes && shRes.stores) ? shRes.stores.map(function(s) { return s.store; }) : [];
-  } catch(e) { Logger.log('VictoriaContext: shopping — ' + e.message); }
-
-  // Interests
-  var interests = [];
-  try {
-    var intRes = webGetInterests_();
-    interests = (intRes && intRes.interests) || [];
-  } catch(e) { Logger.log('VictoriaContext: interests — ' + e.message); }
-
-  // Important dates
-  var importantDates = [];
-  try { importantDates = getUpcomingImportantDates_(90); }
-  catch(e) { Logger.log('VictoriaContext: importantDates — ' + e.message); }
-
-  // Gift ideas
-  var giftIdeas = null;
-  if (intent.people) {
-    try {
-      var gRes = webGetGiftData_();
-      if (gRes && gRes.ok) giftIdeas = gRes;
-    } catch(e) { Logger.log('VictoriaContext: giftIdeas — ' + e.message); }
-  }
-
-  // PTO — both Ahmed's and Victoria's
-  var ptoStats = null;
-  try {
-    var ptoRes = webGetPTO_();
-    if (ptoRes && ptoRes.ok) ptoStats = ptoRes;
-  } catch(e) { Logger.log('VictoriaContext: ptoStats — ' + e.message); }
-
-  // Home data
-  var recipes   = null;
-  var homeItems = null;
-  var takeouts  = null;
-  var pantryDue = null;
-  if (intent.home) {
-    try {
-      var hmRes = webGetRecipes_();
-      recipes = (hmRes && hmRes.recipes) || [];
-    } catch(e) { Logger.log('VictoriaContext: recipes — ' + e.message); }
-    try {
-      var hiRes = webGetHomesteward_();
-      homeItems = (hiRes && hiRes.items) || [];
-    } catch(e) { Logger.log('VictoriaContext: homeItems — ' + e.message); }
-    try {
-      var taRes = webGetTakeouts_();
-      takeouts = (taRes && taRes.restaurants) || [];
-    } catch(e) { Logger.log('VictoriaContext: takeouts — ' + e.message); }
-    try { pantryDue = getItemsDue_(14); }
-    catch(e) { Logger.log('VictoriaContext: pantryDue — ' + e.message); pantryDue = []; }
-  }
-
-  // Bills (shared)
-  var bills = null;
-  if (intent.finance) {
-    try {
-      var bRes = webGetBills_();
-      bills = (bRes && bRes.bills) || [];
-    } catch(e) { Logger.log('VictoriaContext: bills — ' + e.message); }
-  }
-
-  // Credit cards
-  var cardsData = null;
-  if (intent.finance) {
-    try {
-      var cardRes = webGetCards_();
-      if (cardRes && cardRes.ok) cardsData = cardRes;
-    } catch(e) { Logger.log('VictoriaContext: cards — ' + e.message); }
-  }
-
-  // Travel
-  var travel      = null;
-  var recentTrips = [];
-  var countries   = [];
-  var bucketList  = [];
-  if (intent.travel) {
-    try {
-      var travelCfg = readPTOConfig_();
-      var travelTrips = getUpcomingTravel_(travelCfg);
-      var itinByTrip = {}, packByTrip = {}, tripContextMap = {};
-      try {
-        var itinSheet = ss.getSheetByName(TABS.ITINERARY);
-        if (itinSheet && itinSheet.getLastRow() >= 2) {
-          var itinRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-          itinRows.forEach(function(r) {
-            var tk = String(r[1]).trim();
-            if (!itinByTrip[tk]) itinByTrip[tk] = [];
-            itinByTrip[tk].push({ id: String(r[0]).trim(), type: String(r[2]).trim(), title: String(r[3]).trim(), date: String(r[4]).trim(), startTime: String(r[5]).trim(), location: String(r[7]).trim() });
-          });
-        }
-      } catch(e2) {}
-      try {
-        var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
-        if (packSheet && packSheet.getLastRow() >= 2) {
-          var packRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-          packRows.forEach(function(r) {
-            var tk = String(r[1]).trim();
-            if (!packByTrip[tk]) packByTrip[tk] = [];
-            packByTrip[tk].push({ id: String(r[0]).trim(), person: String(r[2]).trim(), category: String(r[3]).trim(), item: String(r[4]).trim(), checked: String(r[5]).toUpperCase() === 'TRUE' });
-          });
-        }
-      } catch(e3) {}
-      travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
-    } catch(e) { Logger.log('VictoriaContext: travel — ' + e.message); }
-    try {
-      var cRes = webGetCountries_();
-      countries = (cRes && cRes.entries) || [];
-    } catch(e) { Logger.log('VictoriaContext: countries — ' + e.message); }
-    try {
-      var bListRes = webGetBucketList_();
-      bucketList = (bListRes && bListRes.entries) || [];
-    } catch(e) { Logger.log('VictoriaContext: bucketList — ' + e.message); }
-  }
-
-  // Prescriptions (her own)
-  var prescriptions = null;
-  if (intent.health) {
-    try {
-      var pRes = webGetPrescriptions_();
-      var allRx = (pRes && pRes.prescriptions) || [];
-      // Victoria can see all prescriptions (shared household knowledge)
-      prescriptions = allRx;
-    } catch(e) { Logger.log('VictoriaContext: prescriptions — ' + e.message); }
-  }
-
-  // Memory
-  var memoryContext = null;
-  if (intent.memory) {
-    try { memoryContext = getMemoryContext_(90); }
-    catch(e) { Logger.log('VictoriaContext: memory — ' + e.message); }
-  }
-
-  // Upcoming guests (Issue #150)
-  var upcomingGuests = null;
-  if (intent.home) {
-    try {
-      var guestCfg = readPTOConfig_();
-      upcomingGuests = getUpcomingGuests_(guestCfg);
-    } catch(e) { Logger.log('VictoriaContext: upcomingGuests — ' + e.message); upcomingGuests = []; }
-  }
-
-  return {
-    flags:          [],          // Victoria does not see Ahmed's flags
-    tasks:          tasks,
-    summaries:      [],
-    calendarEvents: calendarEvents,
-    interests:      interests,
-    ptoStats:       ptoStats,
-    goals:          null,        // Ahmed-specific
-    bills:          bills,
-    recipes:        recipes,
-    homeItems:      homeItems,
-    shoppingStores: shoppingStores,
-    ideas:          null,        // Ahmed-specific
-    travel:         travel,
-    recentTrips:    recentTrips,
-    countries:      countries,
-    bucketList:     bucketList,
-    takeouts:       takeouts,
-    pantryDue:      pantryDue,
-    upcomingGuests: upcomingGuests,
-    career:         null,        // Ahmed-specific
-    prescriptions:  prescriptions,
-    gymLog:         null,        // Ahmed-specific
-    cardsData:      cardsData,
-    financialGoals: null,        // Ahmed-specific
-    importantDates: importantDates,
-    giftIdeas:      giftIdeas,
-    wishList:       null,
-    experiments:    null,        // Ahmed-specific
-    growthData:     null,        // Ahmed-specific
-    memoryContext:  memoryContext,
-    // Victoria-specific projects/projectsSummary not needed
-    projects:       null,
-    projectsSummary: '',
-  };
-}
-
-/**
- * Builds the system prompt for Victoria's chat session.
- * Addresses her by name, scoped to household / travel / shared domains.
- * @param  {Object} context  From buildVictoriaChatContext_()
- * @returns {string}
- */
-function buildVictoriaChatSystemPrompt_(context) {
-  var tz    = Session.getScriptTimeZone();
-  var today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
-
-  var taskLines = (!context.tasks || context.tasks.length === 0)
-    ? '  (none open)'
-    : context.tasks.map(function(t) {
-        var line = '  - ' + t.task + ' (ID: ' + t.id + ')';
-        if (t.dueDate)   line += ' | due: ' + t.dueDate;
-        if (t.isOverdue) line += ' \u26a0 OVERDUE';
-        if (t.recurring) line += ' \ud83d\udd01 ' + t.recurring;
-        return line;
-      }).join('\n');
-
-  var calLines;
-  if (!context.calendarEvents || context.calendarEvents.length === 0) {
-    calLines = '  (none in the next ' + CONFIG.CALENDAR_DAYS_AHEAD + ' days)';
-  } else {
-    calLines = context.calendarEvents.map(function(e) {
-      var dl = e.daysUntil === 0 ? 'TODAY' : e.daysUntil === 1 ? 'TOMORROW' : 'in ' + e.daysUntil + ' days';
-      var ts = e.isAllDay ? 'all day' : e.start.split(' ')[1];
-      var ds = e.start.split(' ')[0];
-      var ln = '  - ' + e.title + ' | ' + ds + ' ' + ts + ' [' + dl + ']';
-      if (e.location) ln += ' @ ' + e.location;
-      ln += ' (' + (e.calLabel || e.calendarName) + ')';
-      return ln;
-    }).join('\n');
-  }
-
-  var billLines = (!context.bills || context.bills.length === 0)
-    ? '  (none)'
-    : context.bills.map(function(b) {
-        return '  [row:' + b.row + '] ' + b.bill +
-               (b.amount ? ' $' + b.amount : '') +
-               ' (' + b.frequency + ')' +
-               (b.dueDay ? ' due day ' + b.dueDay : '') +
-               (b.paid ? ' \u2713 PAID this month' : ' \u2014 UNPAID');
-      }).join('\n');
-
-  var recipeLines = (!context.recipes || context.recipes.length === 0)
-    ? '  (none)'
-    : context.recipes.map(function(r) {
-        return '  [row:' + r.row + '] ' + r.name + (r.cuisine ? ' (' + r.cuisine + ')' : '');
-      }).join('\n');
-
-  var homeItemLines = (!context.homeItems || context.homeItems.length === 0)
-    ? '  (none)'
-    : context.homeItems.map(function(h) {
-        var svc = h.nextService ? ' next service: ' + h.nextService : '';
-        if (h.serviceDays !== null && h.serviceDays < 0) svc += ' \u26a0 OVERDUE';
-        else if (h.serviceDays !== null && h.serviceDays <= 14) svc += ' (due soon)';
-        return '  [row:' + h.row + '] ' + h.item + (h.category ? ' [' + h.category + ']' : '') + svc;
-      }).join('\n');
-
-  var shoppingStoresList = (!context.shoppingStores || context.shoppingStores.length === 0)
-    ? '(none configured)'
-    : context.shoppingStores.join(', ');
-
-  var takeoutLines = (!context.takeouts || context.takeouts.length === 0)
-    ? '  (none saved yet)'
-    : context.takeouts.map(function(r) {
-        var items = r.items.length > 0
-          ? r.items.map(function(it) { return '    \u2022 ' + it.item + (it.description ? ' \u2014 ' + it.description : ''); }).join('\n')
-          : '    (no items yet)';
-        return '  ' + r.name + (r.cuisine ? ' [' + r.cuisine + ']' : '') + '\n' + items;
-      }).join('\n');
-
-  var pantryLines = (!context.pantryDue || context.pantryDue.length === 0)
-    ? '  (pantry tracking not active or no purchases logged)'
-    : context.pantryDue.map(function(p) {
-        return '  ' + p.normalized + (p.daysUntil <= 0 ? ' \u2014 likely OUT' : ' \u2014 est. out in ~' + p.daysUntil + 'd') + (p.store ? ' (usually: ' + p.store + ')' : '');
-      }).join('\n');
-
-  var interestLines = (!context.interests || context.interests.length === 0)
-    ? '  (none logged yet)'
-    : context.interests.map(function(i) {
-        return '  - [ID:' + i.id + '] ' + i.person + ': ' + i.interest + ' [' + i.category + ', logged ' + i.date + ']';
-      }).join('\n');
-
-  var importantDatesLines = (function() {
-    var dates = context.importantDates;
-    if (!dates || dates.length === 0) return '  (none in next 90 days)';
-    return dates.map(function(d) {
-      var days = d['daysUntil'];
-      var when = days === 0 ? 'TODAY' : days === 1 ? 'tomorrow' : 'in ' + days + ' days';
-      var line = '  \u2022 ' + d['Name'] + ' \u2014 ' + d['Event'] + ' [' + when + ']';
-      if (d['Gift Ideas']) line += ' | gift ideas: ' + d['Gift Ideas'];
-      return line;
-    }).join('\n');
-  })();
-
-  var ptoSection = context.ptoStats
-    ? ptoSummaryForClaude_(context.ptoStats)
-    : '  (unavailable)';
-
-  // Travel sections (reuse the same pattern as buildChatSystemPrompt_)
-  var travelSection = (function() {
-    var travel = context.travel;
-    if (!travel || !travel.trips || travel.trips.length === 0) return 'UPCOMING TRIPS:\n  (No upcoming trips found)\n\n';
-    var lines = 'UPCOMING TRIPS:\n';
-    travel.trips.forEach(function(t) {
-      var tk  = t.startDate + '|' + t.label;
-      var famNote = t.isExtendedFamily ? ' [extended family]' : '';
-      lines += 'Trip: ' + t.label + ' (' + t.startDate + ' \u2013 ' + t.endDate + ')' + famNote + ' | TripKey: ' + tk + '\n';
-      var items = (travel.itinByTrip && travel.itinByTrip[tk]) || [];
-      if (items.length > 0) {
-        lines += '  Itinerary (' + items.length + ' item' + (items.length === 1 ? '' : 's') + '):\n';
-        items.forEach(function(it) {
-          lines += '    [' + it.id + '] ' + it.date + ' [' + it.type + '] ' + it.title + (it.location ? ' @ ' + it.location : '') + '\n';
-        });
-      }
-      var pItems = (travel.packByTrip && travel.packByTrip[tk]) || [];
-      if (pItems.length > 0) {
-        var packed = pItems.filter(function(p) { return p.checked; }).length;
-        lines += '  Packing (' + pItems.length + ' items, ' + packed + ' packed):\n';
-        pItems.forEach(function(p) {
-          lines += '    [' + p.id + '] ' + p.person + ' / ' + p.category + ' \u2014 ' + p.item + (p.checked ? ' [packed]' : ' [unpacked]') + '\n';
-        });
-      }
-    });
-    return lines + '\n';
-  })();
-
-  var guestSection = (function() {
-    if (!context.upcomingGuests || !context.upcomingGuests.length) return '';
-    var lines = 'UPCOMING HOUSE GUESTS (' + context.upcomingGuests.length + '):\n';
-    context.upcomingGuests.forEach(function(g) {
-      var when = g.daysAway === 0 ? 'today' : (g.daysAway === 1 ? 'tomorrow' : 'in ' + g.daysAway + ' days');
-      lines += '  \u2022 ' + g.label + ' \u2014 arriving ' + g.arrivalDate + ', departing ' + g.departureDate + ' (' + g.durationDays + ' night' + (g.durationDays === 1 ? '' : 's') + ', ' + when + ')\n';
-    });
-    return lines + '\n';
-  })();
-
-  var rxLines = (!context.prescriptions || context.prescriptions.length === 0)
-    ? '  (none logged)'
-    : context.prescriptions.map(function(p) {
-        return '  [' + p.person + '] ' + p.medication + ' ' + p.dosage + ' ' + p.frequency +
-               (p.refillDate ? ' | refill: ' + p.refillDate : '');
-      }).join('\n');
-
-  var memorySect = (!context.memoryContext || !context.memoryContext.events || !context.memoryContext.events.length)
-    ? ''
-    : 'MEMORY LOG (recent events):\n' +
-      context.memoryContext.events.slice(0, 20).map(function(ev) {
-        return '  \u2022 [' + (ev.date || '') + '] ' + (ev.summary || ev.event || '');
-      }).join('\n') + '\n\n';
-
-  // Read tone from Config — allows adjustment without code changes (Issue #133 Phase 2)
-  var victoriaTone = 'warm, practical, and concise';
-  try {
-    var toneCfg = getConfigValues();
-    if (toneCfg['victoria_vera_tone']) victoriaTone = toneCfg['victoria_vera_tone'];
-  } catch(toneErr) {}
-
-  return (
-    'You are VERA \u2014 Virtual Executive & Reminder Assistant.\n' +
-    'You are the household and travel assistant for Victoria (and her partner Ahmed).\n' +
-    'Your tone is ' + victoriaTone + '.\n\n' +
-    'Today is ' + today + '.\n\n' +
-
-    'OPEN TASKS:\n' + taskLines + '\n\n' +
-
-    'UPCOMING CALENDAR EVENTS (raw schedule data):\n' + calLines + '\n\n' +
-
-    travelSection +
-    guestSection +
-
-    'BILLS:\n' + billLines + '\n\n' +
-
-    'RECIPES:\n' + recipeLines + '\n\n' +
-
-    'HOME ITEMS (appliances & maintenance):\n' + homeItemLines + '\n\n' +
-
-    'SHOPPING STORES: ' + shoppingStoresList + '\n\n' +
-
-    'FAVOURITE TAKEOUTS:\n' + takeoutLines + '\n\n' +
-
-    'PANTRY STATUS (items running low):\n' + pantryLines + '\n\n' +
-
-    'UPCOMING IMPORTANT DATES (next 90 days):\n' + importantDatesLines + '\n\n' +
-
-    'SHARED INTERESTS:\n' + interestLines + '\n\n' +
-
-    'PRESCRIPTIONS:\n' + rxLines + '\n\n' +
-
-    (context.ptoStats ? 'PTO STATUS:\n' + ptoSection + '\n\n' : '') +
-
-    memorySect +
-
-    '== CAPABILITIES ==\n' +
-    'You can take actions by embedding ACTION lines at the end of your reply. Each action is on its own line:\n' +
-    '  ACTION:type|arg1|arg2|...\n\n' +
-    'Available actions:\n' +
-    '- For add_task: ACTION:add_task|{task description}|{due date YYYY-MM-DD or blank}|{recurring: daily/weekly/monthly or blank}\n' +
-    '- For complete_task: ACTION:complete_task|{task ID}\n' +
-    '- For add_shopping_item: ACTION:add_shopping_item|{store}|{item}|{qty or blank}\n' +
-    '- For toggle_shopping_item: ACTION:toggle_shopping_item|{store}|{item}\n' +
-    '- For add_itinerary_item: use the TripKey exactly as shown in UPCOMING TRIPS (e.g., "2026-06-19|Alaska Cruise"). Date must be YYYY-MM-DD.\n' +
-    '  ACTION:add_itinerary_item|{tripKey}|{type: flight/hotel/activity/restaurant/other}|{title}|{date YYYY-MM-DD}|{startTime HH:MM or blank}|{endTime or blank}|{location or blank}|{notes or blank}\n' +
-    '- For update_itinerary_item: ACTION:update_itinerary_item|{item ID}|{field}|{new value}\n' +
-    '- For delete_itinerary_item: ACTION:delete_itinerary_item|{item ID}\n' +
-    '- For check_packing_item: ACTION:check_packing_item|{item ID}|{true or false}\n' +
-    '- For add_packing_item: ACTION:add_packing_item|{tripKey}|{person: ahmed/victoria/shared}|{category}|{item}\n' +
-    '- For delete_packing_item: ACTION:delete_packing_item|{item ID}\n' +
-    '- For generate_packing_list: ACTION:generate_packing_list|{tripKey}|{startDate YYYY-MM-DD}|{endDate YYYY-MM-DD}\n' +
-    '- For add_country: ACTION:add_country|{country}|{city or blank}|{year or blank}|{traveller: Ahmed/Victoria/Both}|{notes or blank}\n' +
-    '- For add_bucket_item: ACTION:add_bucket_item|{country}|{city or blank}|{notes or blank}|{targetYear or blank}|{stars 1-5 or blank}\n' +
-    '- For add_interest: ACTION:add_interest|{person: Ahmed/Victoria/Both}|{interest}|{category}|{date YYYY-MM-DD or blank}\n' +
-    '- For delete_interest: ACTION:delete_interest|{ID}\n' +
-    '- For add_important_date: ACTION:add_important_date|{name}|{event type}|{date MM-DD}|{notes or blank}\n' +
-    '- For update_important_date: ACTION:update_important_date|{ID}|{field}|{value}\n' +
-    '- For delete_important_date: ACTION:delete_important_date|{ID}\n' +
-    '- For add_gift_idea: ACTION:add_gift_idea|{person name}|{idea}\n' +
-    '- For delete_gift_idea: ACTION:delete_gift_idea|{idea ID}\n' +
-    '- For add_prescription: ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes or blank}\n' +
-    '- For add_home_item: ACTION:add_home_item|{item}|{category}|{serviceIntervalDays or blank}|{notes or blank}\n' +
-    '- For delete_home_item: ACTION:delete_home_item|{row}\n' +
-    '- For add_recipe: ACTION:add_recipe|{name}|{cuisine or blank}|{ingredients semicolon-separated or blank}\n' +
-    '- For delete_recipe: ACTION:delete_recipe|{row}\n' +
-    '- For web_search: ACTION:web_search|{query}\n\n' +
-    'IMPORTANT RULES:\n' +
-    '- Never include ACTION lines in your visible reply \u2014 strip them out before responding.\n' +
-    '- Use IDs from context (task ID, itinerary ID, packing item ID) exactly as shown.\n' +
-    '- If asked about Ahmed\'s flags, career goals, personal finances, growth tracking, or experiments, let Victoria know those live in Ahmed\'s private dashboard.\n' +
-    '- Be warm, helpful, and concise. Address Victoria by name when appropriate.\n'
-  );
 }
 
 // ============================================================

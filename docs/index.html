@@ -1428,6 +1428,13 @@ function TaskCard({ task, onComplete, onEdit, completing }) {
       <div className={`task-age ${ageClass}`}>{ageLabel}</div>
       <div className="task-info" style={completing ? { textDecoration: 'line-through', color: '#4d6080' } : {}}>
         <div className="task-title">
+          {task.source === 'google' && (
+            <span title="Google Task" style={{
+              marginRight: 7, fontSize: 10, padding: '1px 6px', borderRadius: 8,
+              background: '#1a3a2e', color: '#4ade80', border: '1px solid #4ade80',
+              fontWeight: 700, verticalAlign: 'middle', whiteSpace: 'nowrap'
+            }}>G</span>
+          )}
           {task.task}
           {task.recurring && (
             <span title={`Recurring: ${task.recurring}`} style={{
@@ -1449,7 +1456,7 @@ function TaskCard({ task, onComplete, onEdit, completing }) {
           {task.notes && <span style={{ marginLeft: 12, color: '#4d6080' }}>{task.notes}</span>}
         </div>
       </div>
-      {!completing && (
+      {!completing && task.source !== 'google' && (
         <button
           className="btn-edit"
           onClick={() => onEdit && onEdit(task)}
@@ -14288,6 +14295,8 @@ function App() {
   const [addItemInitialStore,  setAddItemInitialStore]  = useState('');
   const [toast,         setToast]         = useState(null);
   const [completingIds, setCompletingIds] = useState({});
+  const [googleTasks,      setGoogleTasks]      = useState([]);
+  const [googleTasksError, setGoogleTasksError] = useState(null);
   const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
   const [projectTaskModal, setProjectTaskModal] = useState(null); // null | { mode:'add', project } | { mode:'edit', task }
   const [goalModal,        setGoalModal]        = useState(null); // null | { mode:'add', status? } | { mode:'edit', goal }
@@ -14337,6 +14346,7 @@ function App() {
   // Pre-load lazy tab data so the Home tab has something to show
   useEffect(() => {
     if (apiUrl && apiToken) {
+      loadGoogleTasks(apiUrl, apiToken);
       loadProjects(apiUrl, apiToken);
       loadGoals(apiUrl, apiToken);
       loadShopping(apiUrl, apiToken);
@@ -14402,6 +14412,29 @@ function App() {
     } catch (err) {
       setError('Could not complete task: ' + err.message);
       setCompletingIds(prev => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  }
+
+  async function handleCompleteGoogleTask(id) {
+    if (!id) return;
+    setCompletingIds(prev => ({ ...prev, [id]: true }));
+    try {
+      await apiAction(apiUrl, apiToken, 'complete_google_task', { id });
+      showToast('✓ Google Task marked done');
+      setTimeout(() => loadGoogleTasks(apiUrl, apiToken), 1500);
+    } catch (err) {
+      setError('Could not complete Google Task: ' + err.message);
+      setCompletingIds(prev => { const n = { ...prev }; delete n[id]; return n; });
+    }
+  }
+
+  async function loadGoogleTasks(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'get_google_tasks' });
+      setGoogleTasks(data.tasks || []);
+    } catch (err) {
+      setGoogleTasksError(err.message);
     }
   }
 
@@ -16279,6 +16312,7 @@ function App() {
     setApiToken(token);
     setShowSettings(false);
     loadAll(url, token, filterActive);
+    loadGoogleTasks(url, token);
     loadProjects(url, token);
     loadGoals(url, token);
     loadInterests(url, token);
@@ -16381,6 +16415,7 @@ function App() {
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab);
+                  if (tab === 'tasks')      loadGoogleTasks(apiUrl, apiToken);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); loadExperiments(apiUrl, apiToken); }
                   if (tab === 'growth')   { loadGoals(apiUrl, apiToken); loadGrowth(apiUrl, apiToken); }
@@ -16458,22 +16493,40 @@ function App() {
                   >
                     + Add Task
                   </button>
-                  <span className="count-badge">{tasks.length} open</span>
+                  <span className="count-badge">{tasks.length + googleTasks.length} open</span>
                 </div>
                 {loading && tasks.length === 0
                   ? <div className="loading-text">Loading tasks…</div>
-                  : tasks.length === 0
-                    ? <div className="empty-state">No open tasks found in the Tasks tab.</div>
-                    : tasks.map((task, i) => (
-                        <TaskCard
-                          key={task.id || i}
-                          task={task}
-                          onComplete={handleComplete}
-                          onEdit={t => setTaskModal({ mode: 'edit', task: t })}
-                          completing={!!completingIds[task.id]}
-                        />
-                      ))
+                  : tasks.length === 0 && googleTasks.length === 0
+                    ? <div className="empty-state">No open tasks found.</div>
+                    : (() => {
+                        // Merge VERA + Google tasks, sort by due date (overdue first, undated last)
+                        const veraTasksMapped = tasks.map(t => ({ ...t, _source: 'vera' }));
+                        const gTasksMapped    = googleTasks.map(t => ({ ...t, _source: 'google' }));
+                        const merged = veraTasksMapped.concat(gTasksMapped).sort((a, b) => {
+                          if (a.isOverdue && !b.isOverdue) return -1;
+                          if (!a.isOverdue && b.isOverdue) return 1;
+                          if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+                          if (a.dueDate && !b.dueDate) return -1;
+                          if (!a.dueDate && b.dueDate) return 1;
+                          return 0;
+                        });
+                        return merged.map((task, i) => (
+                          <TaskCard
+                            key={(task._source === 'google' ? 'g-' : '') + (task.id || i)}
+                            task={task}
+                            onComplete={task._source === 'google' ? handleCompleteGoogleTask : handleComplete}
+                            onEdit={task._source === 'google' ? null : t => setTaskModal({ mode: 'edit', task: t })}
+                            completing={!!completingIds[task.id]}
+                          />
+                        ));
+                      })()
                 }
+                {googleTasksError && (
+                  <div style={{ fontSize: 12, color: '#f87171', marginTop: 8 }}>
+                    Google Tasks unavailable: {googleTasksError}
+                  </div>
+                )}
               </>
             )}
 

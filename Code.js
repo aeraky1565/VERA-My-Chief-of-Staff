@@ -48,8 +48,7 @@ const TABS = {
   TRIP_META:        'TripMeta',         // Trip context / sentiment notes (Issue #64)
   PACKING_ITEMS:    'PackingItems',     // Per-trip packing list items (Issue #64)
   COUNTRIES:        'Countries',        // Countries visited tracker (Issue #74)
-  BUCKET_LIST:       'Bucket List',       // Travel bucket list (wishlist of destinations)
-  BUCKET_ACTIVITIES: 'BucketActivities', // Per-destination activity list (Issue #113)
+  BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
@@ -67,24 +66,10 @@ const TABS = {
   CARD_PERKS:         'Card Perks',           // Monthly/annual perk tracker
   LOYALTY_PROGRAMS:   'Loyalty Programs',     // Points/miles balances (Issue #117)
   REWARDS_GOALS:      'Rewards Goals',        // Redemption goal tracking
-  GIFT_PEOPLE:        'Gift People',          // Per-person gift idea list: who (Issue #105)
-  GIFT_IDEAS:         'Gift Ideas',           // Per-person gift idea list: ideas (Issue #105)
+  GIFT_PEOPLE:        'Gift People',          // Per-person gift idea lists (Issue #105)
+  GIFT_IDEAS:         'Gift Ideas',           // Individual gift ideas linked to people (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
-  RESOURCES:          'Resources',            // Reference documents & policy links (Issue #129)
-  CHORES:             'Chores',               // Household chore checklist by cadence (Issue #124)
-  VEHICLES:           'Vehicles',             // Vehicle tracker — oil, registration, insurance (Issue #125)
-  PROFILES:           'Traveler Profiles',    // Passport & travel document profiles per person (Issue #123)
-  FINANCIAL_GOALS:     'Financial Goals',      // Issue #127
-  FINANCIAL_SCENARIOS: 'Financial Scenarios',  // Issue #127
-  WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
-  EXPERIMENTS:         'Experiments',          // Personal experiment tracker (Issue #130)
-  EXPERIMENT_CHECKINS: 'Experiment Check-ins', // Per-experiment check-in log (Issue #130)
-  BOOKS:               'Books',                // Reading log (Issue #88)
-  COURSES:             'Courses',              // Courses & content log (Issue #88)
-  SKILLS:              'Skills',               // Skill building tracker (Issue #88)
-  MEMORY_LOG:          'Memory Log',           // Append-only event stream (Issue #9)
-  MEMORY_SNAPSHOT:     'Memory Snapshot',      // Weekly metric time series (Issue #9)
-  EMAIL_FOLLOW_UPS:    'Email Follow-ups',  // Email Admin follow-up tracker (Issue #144)
+  CHORES:             'Chores',              // Household chore checklist by cadence (Issue #124)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -110,7 +95,6 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
-const BUCKET_ACTIVITIES_HEADERS = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
@@ -128,34 +112,10 @@ const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate
 const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used'];
 const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
 const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
-const GIFT_PEOPLE_HEADERS        = ['Name']; // Issue #105
-const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date']; // Issue #105
-const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year']; // Issue #80
-const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'Drive File ID', 'URL', 'Tags', 'Date Added']; // Issue #129
-const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date']; // Issue #124
-const PROFILES_HEADERS           = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes']; // Issue #123
-const FINANCIAL_GOAL_HEADERS     = ['ID', 'Goal Name', 'Target Amount', 'Current Amount', 'Target Date', 'Monthly Contribution', 'APY', 'Owner', 'Account', 'Status', 'Notes']; // Issue #127
-const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Change Amount', 'Notes', 'Projected Date (Baseline)', 'Projected Date (Scenario)', 'Delay Days', 'Created At']; // Issue #127
-const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
-const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Rating', 'Notes']; // Issue #130
-const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Experiment Title', 'Date', 'Note']; // Issue #130
-const MEMORY_LOG_HEADERS         = ['ID', 'Timestamp', 'Type', 'Who', 'Title', 'Detail', 'Context']; // Issue #9
-const MEMORY_SNAPSHOT_HEADERS    = ['Week', 'Metric', 'Who', 'Value', 'As Of']; // Issue #9
-const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
-const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes']; // Issue #88
-const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes']; // Issue #88
-const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status']; // Issue #144
-const VEHICLE_HEADERS            = [
-  'ID','Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
-  'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
-  'Registration Expiry','Insurance Provider','Insurance Policy #','Insurance Expiry',
-  'Warranty Expiry (B2B)','Warranty Expiry (Powertrain)',
-  'Last Service','Next Service','Service Interval (mo)',
-  'Tire Size',
-  'Emission Inspection Expiry','Safety Inspection Expiry',
-  'Tires Last Replaced Date','Tires Last Replaced Mileage','Tire Interval (mi)',
-  'Tread Notes','Notes'
-]; // Issue #125, #140
+const GIFT_PEOPLE_HEADERS        = ['Name'];
+const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
+const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year'];
+const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -198,7 +158,6 @@ function createSheetTabs(ss) {
     ['finance_review_day',     '1'],
     ['active_sources',         'Calendar,Tasks,Summaries'],
     ['skip_calendars',         'Holidays in United States'],
-    ['victoria_calendars',     'Victoria'],  // comma-separated — calendars belonging to Victoria; everything else defaults to Ahmed
     // Add rows like: calendar_label:Eraky Family | family (shared, not Ahmed's direct obligations)
     // Add rows like: calendar_label:Ahmed         | personal
     // Add rows like: calendar_label:Victoria       | household partner
@@ -223,38 +182,8 @@ function createSheetTabs(ss) {
     ['pantry_enabled',              'false'], // set 'true' to enable purchase history + auto-restock (Issue #111)
     ['pantry_restock_days_ahead',   '7'],     // days ahead to predict and auto-add items to shopping list
     ['pantry_ema_alpha',            '0.3'],   // EMA learning rate: higher = adapts faster to recent habits
-    ['travel_day_briefing_enabled', 'true'],  // set to 'false' to disable travel day briefing emails (Issue #108b)
-    ['travel_companions',           ''],      // comma-separated emails to CC on travel day briefings (Issue #108b)
-    ['monthly_disposable_income',   '5000'],  // combined monthly discretionary income used for goal contribution squeeze check (Issue #127)
-    // Memory Log (Issue #9)
-    ['memory_log_enabled',          'true'],  // set to 'false' to disable all memory logging
-    ['memory_log_retention_months', '12'],    // months of history to retain before pruning
-    ['memory_snapshot_day',         '0'],     // day of week to write weekly snapshot: 0=Sun … 6=Sat
-    ['pacing_enabled',              'true'],  // set to 'false' to disable vacation mode + miss-rate pacing entirely (Issue #139)
-    ['pacing_flag_threshold',       '3'],     // unacknowledged Medium/High flags needed to count as a domain miss (Issue #139)
-    ['pacing_mode_days',            '7'],     // how many days Easy Mode stays active after auto-activation (Issue #139)
-    // Important Dates timing
-    ['dates_default_lead_time',     '30'],    // days before an important date to fire the initial Low flag (Issue #80)
-    ['dates_medium_urgency_days',   '7'],     // days before to upgrade to Medium flag + generate gift suggestions (Issue #80)
-    ['dates_high_urgency_days',     '1'],     // days before to fire the final High flag (Issue #80)
-    // Reminders / Anticipator / Explorer
-    ['reminders_enabled',           'true'],  // set to 'false' to disable the hourly Anticipator engine (Reminders.js)
-    ['explorer_enabled',            'true'],  // set to 'false' to disable the nightly Explorer discovery bulletin (Reminders.js)
-    ['explorer_interests',          ''],      // comma-separated interest overrides for Explorer prompt (blank = use default)
-    ['mobility_reminder_hour',      '20'],    // 24h hour for evening mobility/stretching nudge (Reminders.js)
-    // Weekend Planner
-    ['weekend_planner_enabled',     'true'],  // set to 'false' to disable Monday morning weekend planning nudge (WeekendPlanner.js)
-    ['weekend_planner_hour',        '8'],     // 24h hour on Monday to fire weekend planner (WeekendPlanner.js)
-    ['weekend_planner_lookahead_days', '21'], // days ahead to scan for clear windows (WeekendPlanner.js)
-    // House Guests Tracker (Issue #150)
-    ['house_guest_keywords',   'Visit,Staying,Guests,Guest,Hosting,Sleepover'],  // comma-separated keywords in event title/description to identify guest visits (Issue #150)
-    // Email Admin (Issue #144)
-    ['email_admin_enabled',    'false'],   // set 'true' to enable Sunday inbox triage (Issue #144)
-    ['email_admin_frequency',  'weekly'],  // 'weekly' (Sunday only) or '3days'
-    ['email_skip_senders',     ''],        // comma-separated sender patterns to skip entirely
-    ['email_tone',             'professional but warm and concise'], // tone for Claude-drafted replies
-    // Victoria Chat tone (Issue #133 Phase 2)
-    ['victoria_vera_tone',     'warm, practical, and concise'],  // tone VERA uses when speaking to Victoria — adjust without code changes
+    // Google Tasks integration (Issue #99)
+    ['google_tasks_enabled',   'true'],   // set 'false' to disable Google Tasks fetch in dashboard and chat
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -278,7 +207,6 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PACKING_ITEMS,    PACKING_ITEM_HEADERS);
   ensureSheet(ss, TABS.COUNTRIES,             COUNTRIES_HEADERS);
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
-  ensureSheet(ss, TABS.BUCKET_ACTIVITIES,     BUCKET_ACTIVITIES_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
@@ -296,31 +224,11 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.CARD_PERKS,           CARD_PERK_HEADERS);
   ensureSheet(ss, TABS.LOYALTY_PROGRAMS,     LOYALTY_PROGRAM_HEADERS);
   ensureSheet(ss, TABS.REWARDS_GOALS,        REWARDS_GOAL_HEADERS);
-  ensureSheet(ss, TABS.GIFT_PEOPLE,          GIFT_PEOPLE_HEADERS, [['Ahmed'], ['Victoria']]); // Issue #105
-  ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS); // Issue #105
-  ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS); // Issue #80
-  ensureSheet(ss, TABS.RESOURCES,            RESOURCE_HEADERS);         // Issue #129
-  ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);           // Issue #124
-  ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);          // Issue #125
-  ensureSheet(ss, TABS.PROFILES,             PROFILES_HEADERS);         // Issue #123
-  ensureSheet(ss, TABS.FINANCIAL_GOALS,     FINANCIAL_GOAL_HEADERS);    // Issue #127
-  ensureSheet(ss, TABS.FINANCIAL_SCENARIOS, FINANCIAL_SCENARIO_HEADERS); // Issue #127
-  ensureSheet(ss, TABS.WISH_LIST,           WISH_LIST_HEADERS);          // Issue #131
-  ensureSheet(ss, TABS.EXPERIMENTS,         EXPERIMENT_HEADERS);         // Issue #130
-  ensureSheet(ss, TABS.EXPERIMENT_CHECKINS, EXPERIMENT_CHECKIN_HEADERS); // Issue #130
-  ensureSheet(ss, TABS.BOOKS,               BOOK_HEADERS);               // Issue #88
-  ensureSheet(ss, TABS.COURSES,             COURSE_HEADERS);             // Issue #88
-  ensureSheet(ss, TABS.SKILLS,              SKILL_HEADERS);              // Issue #88
-  ensureSheet(ss, TABS.MEMORY_LOG,          MEMORY_LOG_HEADERS);         // Issue #9 — hidden by Memory.js on first append
-  ensureSheet(ss, TABS.MEMORY_SNAPSHOT,     MEMORY_SNAPSHOT_HEADERS);   // Issue #9 — hidden by Memory.js on first write
-  ensureSheet(ss, TABS.EMAIL_FOLLOW_UPS,    EMAIL_FOLLOW_UP_HEADERS);   // Issue #144 — Email Admin follow-up tracker
+  ensureSheet(ss, TABS.GIFT_PEOPLE,          GIFT_PEOPLE_HEADERS, [['Ahmed'], ['Victoria']]);
+  ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS);
+  ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS);
+  ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
-
-  // Set Life Plan Doc ID if not already set
-  var props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('LIFE_PLAN_DOC_ID')) {
-    props.setProperty('LIFE_PLAN_DOC_ID', '1rtFqqjbix9sDAMt2-7j1QLwW7WcqSQLYCuNDaWf9dvU');
-  }
 
   Logger.log('All VERA tabs verified/created.');
 }
@@ -529,7 +437,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_' || handlerName === 'runEmailAdmin_') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -571,16 +479,7 @@ function setupTriggers() {
     .everyMinutes(30)
     .create();
 
-  // Email Admin — Sunday inbox triage at 6:30am (Issue #144)
-  // Runs daily but internally gates on frequency (weekly=Sunday only, 3days=last scan check).
-  ScriptApp.newTrigger('runEmailAdmin_')
-    .timeBased()
-    .atHour(6)
-    .everyDays(1)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
-
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min, runEmailAdmin_ daily at 6am.');
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min.');
 }
 
 // ============================================================
@@ -594,14 +493,6 @@ function setupTriggers() {
 function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
-    try { sendSlackLog_(':night_with_stars: Nightly run started'); } catch(slErr) {}
-
-    // Step -3: Memory — weekly snapshot + prune (Issue #9)
-    try { writeWeeklySnapshot_(); } catch (wsErr) { Logger.log('writeWeeklySnapshot_ error (non-fatal): ' + wsErr.message); }
-    try { pruneMemoryLog_();      } catch (plErr) { Logger.log('pruneMemoryLog_ error (non-fatal): '      + plErr.message); }
-
-    // Step -2: Pacing — detect vacation mode (must run FIRST so all jobs below can read it)
-    try { checkPacing_(); } catch (pacErr) { Logger.log('checkPacing_ error (non-fatal): ' + pacErr.message); }
 
     // Step -1: Escalate aged unacknowledged flags (Issue #5)
     try {
@@ -613,13 +504,13 @@ function nightlyRun() {
     // Step 0: Auto-populate Summaries tab from live data (Phase 5)
     writeSummarySnapshot();
 
-    // Step 0a-ii: Sync birthdays from Joint Chaos calendar → Important Dates (Issue #80)
+    // Step 0a: Sync upcoming birthdays from Joint Chaos calendar → Important Dates (Issue #80)
     try { syncCalendarBirthdaysToImportantDates_(); }
     catch (idErr) { Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message); }
 
-    // Step 0a-iii: Fire 30/7/1-day lead-time flags for Important Dates (Issue #80)
-    try { checkImportantDates_(); }
-    catch (idcErr) { Logger.log('checkImportantDates_ error (non-fatal): ' + idcErr.message); }
+    // Step 0a-ii: Reset household chores by cadence (Issue #124)
+    try { resetChoresByCadence_(); }
+    catch (chErr) { Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message); }
 
     // Step 0b: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;
@@ -669,29 +560,6 @@ function nightlyRun() {
       Logger.log('checkPostTripCapture_ error (non-fatal): ' + ptcErr.message);
     }
 
-    // Step 0g-ii: Reset household chores by cadence (Issue #124)
-    try { resetChoresByCadence_(); }
-    catch (chErr) { Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message); }
-
-    // Step 0g-iii: Financial goal health check — generate at-risk flags (Issue #127)
-    try {
-      var goalFlags = checkGoalHealth_();
-      goalFlags.forEach(function(f) { addFlag_(f.source, f.flag, f.urgency, f.key); });
-    }
-    catch (gErr) { Logger.log('checkGoalHealth_ error (non-fatal): ' + gErr.message); }
-
-    // Step 0g-iv: Experiments — end-date flags + suggestion engine (Issue #130)
-    try { checkExperiments_(); }
-    catch (exErr) { Logger.log('checkExperiments_ error (non-fatal): ' + exErr.message); }
-
-    // Step 0g-v: Growth — stale reading, learning gap, skill atrophy flags (Issue #88)
-    try { checkGrowth_(); }
-    catch (grErr) { Logger.log('checkGrowth_ error (non-fatal): ' + grErr.message); }
-
-    // Step 0g-vi: Email Admin — check for stale follow-ups (Issue #144)
-    try { checkEmailFollowUps_(); }
-    catch (eaErr) { Logger.log('checkEmailFollowUps_ error (non-fatal): ' + eaErr.message); }
-
     // Step 0h: Reset morning routine checkboxes for the new day
     try {
       var mrSheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
@@ -722,14 +590,12 @@ function nightlyRun() {
     try { generatePantryFlags_(); } catch (pfErr) { Logger.log('generatePantryFlags_ error (non-fatal): ' + pfErr.message); }
 
     // Step 1: Collect
-    const events         = getUpcomingEvents();
-    const tasks          = getOpenTasks();
-    const summaries      = getSummaries();
-    const ledger         = getSharedInterestLedger_();
-    var   financialGoals = [];
-    try { financialGoals = getFinancialGoals_(); } catch(fgE) { Logger.log('financial goals collect error: ' + fgE.message); }
+    const events    = getUpcomingEvents();
+    const tasks     = getOpenTasks();
+    const summaries = getSummaries();
+    const ledger    = getSharedInterestLedger_();
 
-    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length + ', FinGoals: ' + financialGoals.length);
+    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length);
 
     // Step 1b: Suggest due dates for undated tasks (writes back to sheet)
     suggestDueDates(tasks);
@@ -740,12 +606,11 @@ function nightlyRun() {
     if (events.length === 0 && tasks.length === 0 && summaries.length === 0) {
       Logger.log('nightlyRun: no events, tasks, or summaries tonight — skipping Claude call.');
       Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
-      try { sendSlackLog_(':night_with_stars: Nightly run complete — nothing to analyse tonight, Claude skipped'); } catch(slErr) {}
       return;
     }
 
     // Step 2 & 3: Package + Reason (Claude) — pass suppressed patterns for noise filtering
-    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns, financialGoals);
+    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns);
 
     // Step 4: Write
     if (flags && flags.length > 0) {
@@ -763,22 +628,10 @@ function nightlyRun() {
       Logger.log('No flags generated tonight — nothing to write.');
     }
 
-    // Step Final: Miss Rate check — runs LAST so all flag counts are current (Issue #139)
-    try { checkMissRate_(); } catch (mrErr) { Logger.log('checkMissRate_ error (non-fatal): ' + mrErr.message); }
-
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
-    try {
-      var nightlyFlagCount = (flags && flags.length) ? flags.length : 0;
-      sendSlackLog_(
-        ':white_check_mark: Nightly run complete — ' +
-        nightlyFlagCount + ' flag' + (nightlyFlagCount === 1 ? '' : 's') + ' written' +
-        ' | Events: ' + events.length + ', Tasks: ' + tasks.length
-      );
-    } catch(slErr) {}
 
   } catch (e) {
     Logger.log('VERA nightly run ERROR: ' + e.message + '\n' + e.stack);
-    try { sendSlackLog_(':rotating_light: *Nightly run ERROR* — ' + e.message); } catch(slErr) {}
     try {
       MailApp.sendEmail(
         CONFIG.MORNING_NUDGE_EMAIL,
@@ -856,26 +709,9 @@ function writeFlags(flags) {
   // Build fingerprint set of ALL flags ever written (open, ack, snoozed, resolved)
   const existing = getExistingFlagFingerprints_(sheet);
 
-  // Build set of ALL existing IDs (column A) to prevent duplicate IDs across runs
-  const existingIds = new Set();
-  if (sheet.getLastRow() > 1) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
-      .forEach(function(r) { if (r[0]) existingIds.add(String(r[0]).trim()); });
-  }
-
-  // Start seqNum after the highest sequence already used for today's timestamp
-  let seqNum = 1;
-  existingIds.forEach(function(id) {
-    // ID format: FLAG-YYYYMMDD-NN
-    var m = id.match(/^FLAG-(\d{8})-(\d+)$/);
-    if (m && m[1] === timestamp) {
-      var n = parseInt(m[2], 10);
-      if (n >= seqNum) seqNum = n + 1;
-    }
-  });
-
   let written = 0;
   let skipped = 0;
+  let seqNum  = 1;
 
   flags.forEach(function(flag) {
     const fp = makeFlagFingerprint_(flag.source, flag.flag, flag.key);
@@ -894,13 +730,8 @@ function writeFlags(flags) {
       return;
     }
 
-    // Guarantee unique ID — skip any sequence number already taken
-    let id;
-    do {
-      id = 'FLAG-' + timestamp + '-' + String(seqNum).padStart(2, '0');
-      seqNum++;
-    } while (existingIds.has(id));
-    existingIds.add(id); // Reserve within this batch
+    const id = 'FLAG-' + timestamp + '-' + String(seqNum).padStart(2, '0');
+    seqNum++;
 
     const row = [
       id,                     // A: ID
@@ -1130,8 +961,6 @@ function escalateAgedFlags_() {
 
     if (ageDays >= 7 && currentEscalated !== '7d') {
       // Mark 7-day stale: force urgency to High + append stale note
-      // Skip stale labelling while in Vacation Mode — flags age gracefully during trips (Issue #139)
-      if (isInVacationMode_()) return;
       sheet.getRange(rowNum, COL_ESCALATED + 1).setValue('7d');
       sheet.getRange(rowNum, COL_URGENCY   + 1).setValue('High'); // force High — no more Medium after 7d
       const reason = String(row[COL_REASON] || '');
@@ -1270,10 +1099,9 @@ function buildMorningIntelligence_() {
   var today    = new Date(); today.setHours(0, 0, 0, 0);
   var dayOfMon = today.getDate();
 
-  var focusRows     = [];
-  var maintRows     = [];
-  var travelRows    = [];
-  var todayItinRows = [];
+  var focusRows = [];
+  var maintRows = [];
+  var travelRows = [];
 
   // ---- Today's Focus: Overdue tasks by name --------------------------------
   try {
@@ -1367,89 +1195,8 @@ function buildMorningIntelligence_() {
     });
   } catch (e) { Logger.log('buildMorningIntelligence_: travel — ' + e.message); }
 
-  // ---- Today's Itinerary: items from ITINERARY sheet matching today ---------
-  try {
-    var itinSheet2 = getSpreadsheet().getSheetByName(TABS.ITINERARY);
-    if (itinSheet2 && itinSheet2.getLastRow() >= 2) {
-      var todayStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
-      var itinData = itinSheet2.getRange(2, 1, itinSheet2.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-
-      var todayItems = itinData.filter(function(row) {
-        var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
-          ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
-          : String(row[4] || '').trim();
-        return rowDate === todayStr;
-      }).sort(function(a, b) {
-        var at = String(a[5] || '');
-        var bt = String(b[5] || '');
-        return at < bt ? -1 : at > bt ? 1 : 0;
-      });
-
-      todayItems.forEach(function(row) {
-        var type      = String(row[2] || '').trim().toLowerCase();
-        var title     = String(row[3] || '').trim();
-        var startTime = String(row[5] || '').trim();
-        var endTime   = String(row[6] || '').trim();
-        var location  = String(row[7] || '').trim();
-        var meta      = {};
-        try { if (row[9]) meta = JSON.parse(String(row[9])); } catch(e_) {}
-
-        var icon = '📍';
-        var line = '';
-
-        if (type === 'flight') {
-          icon = '✈️';
-          var flightNum = meta.flightNum || title;
-          var airline   = meta.airline   || '';
-          var depTime   = meta.dep_scheduled || startTime;
-          var arrTime   = meta.arr_scheduled || endTime;
-          var depTerm   = meta.dep_terminal ? ' T' + meta.dep_terminal : '';
-          var arrTerm   = meta.arr_terminal ? ' T' + meta.arr_terminal : '';
-          var timing    = (depTime ? depTime + depTerm : '') + (arrTime ? ' → ' + arrTime + arrTerm : '');
-          line = '<strong>' + escapeHtml_(flightNum) + '</strong>';
-          if (airline)  line += ' · ' + escapeHtml_(airline);
-          if (timing)   line += ' <span style="color:#555555;font-size:13px;">(' + escapeHtml_(timing) + ')</span>';
-          if (location) line += ' <span style="color:#777777;font-size:12px;"> — ' + escapeHtml_(location) + '</span>';
-        } else if (type === 'hotel') {
-          icon = '🏨';
-          var titleLow = title.toLowerCase();
-          var notesLow = String(row[8] || '').trim().toLowerCase();
-          var checkStr = (notesLow.indexOf('check-out') !== -1 || notesLow.indexOf('checkout') !== -1 ||
-                          titleLow.indexOf('check-out') !== -1 || titleLow.indexOf('checkout') !== -1) ? 'Check-out'
-                       : (notesLow.indexOf('check-in')  !== -1 || notesLow.indexOf('checkin')  !== -1 ||
-                          titleLow.indexOf('check-in')  !== -1 || titleLow.indexOf('checkin')  !== -1) ? 'Check-in'
-                       : '';
-          line = '<strong>' + escapeHtml_(title) + '</strong>';
-          if (checkStr)  line += ' <span style="color:#555555;font-size:13px;">(' + checkStr + ')</span>';
-          if (startTime) line += ' <span style="color:#555555;font-size:13px;"> — ' + escapeHtml_(startTime) + '</span>';
-          if (location)  line += ' <span style="color:#777777;font-size:12px;"> · ' + escapeHtml_(location) + '</span>';
-        } else if (type === 'leave_by' || type === 'buffer' || type === 'transport') {
-          icon = '🚗';
-          line = '<strong>' + escapeHtml_(title) + '</strong>';
-          if (startTime) line += ' <span style="color:#e65100;font-size:13px;"> — by ' + escapeHtml_(startTime) + '</span>';
-        } else if (type === 'dining') {
-          icon = '🍽️';
-          line = '<strong>' + escapeHtml_(title) + '</strong>';
-          if (startTime) line += ' <span style="color:#555555;font-size:13px;"> — ' + escapeHtml_(startTime) + '</span>';
-          if (location)  line += ' <span style="color:#777777;font-size:12px;"> · ' + escapeHtml_(location) + '</span>';
-        } else {
-          icon = (type === 'activity') ? '🎯' : '📍';
-          line = '<strong>' + escapeHtml_(title) + '</strong>';
-          if (startTime) {
-            line += ' <span style="color:#555555;font-size:13px;"> — ' + escapeHtml_(startTime);
-            if (endTime && endTime !== startTime) line += ' → ' + escapeHtml_(endTime);
-            line += '</span>';
-          }
-          if (location) line += ' <span style="color:#777777;font-size:12px;"> · ' + escapeHtml_(location) + '</span>';
-        }
-
-        todayItinRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">' + icon + ' ' + line + '</p>');
-      });
-    }
-  } catch (e) { Logger.log('buildMorningIntelligence_: today itinerary — ' + e.message); }
-
   // ---- Assemble HTML -------------------------------------------------------
-  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0 && todayItinRows.length === 0) return '';
+  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0) return '';
 
   html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">';
 
@@ -1468,12 +1215,6 @@ function buildMorningIntelligence_() {
     if (focusRows.length > 0 || maintRows.length > 0) html += '<div style="margin-top:12px;"></div>';
     html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">🧳 Travel</p>';
     html += travelRows.join('');
-  }
-
-  if (todayItinRows.length > 0) {
-    if (focusRows.length > 0 || maintRows.length > 0 || travelRows.length > 0) html += '<div style="margin-top:12px;"></div>';
-    html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">✈️ Today\'s Itinerary</p>';
-    html += todayItinRows.join('');
   }
 
   html += '</div>';
@@ -1528,7 +1269,6 @@ function morningNudge() {
 
     if (total === 0) {
       Logger.log('Morning nudge: no active flags, skipping email.');
-      try { sendSlackLog_(':sunny: Morning nudge: no active flags — email skipped'); } catch(slErr) {}
       return;
     }
 
@@ -1576,26 +1316,6 @@ function morningNudge() {
     // ---- Weather ticker (graceful — empty string if not configured) -----
     const weatherTicker = getWeatherTicker_();
 
-    // ---- Guest ticker (Issue #150 — upcoming house guests) --------------
-    let guestTicker = '';
-    try {
-      var guestCfg     = readPTOConfig_();
-      var upcomingGuests = getUpcomingGuests_(guestCfg);
-      if (upcomingGuests && upcomingGuests.length > 0) {
-        var guestItems = upcomingGuests.slice(0, 3).map(function(g) {
-          var daysLabel = g.daysAway === 0 ? 'Today' : (g.daysAway === 1 ? 'Tomorrow' : 'In ' + g.daysAway + ' days');
-          return '<span style="margin-right:16px;">👥 <strong>' + g.label + '</strong> · ' + daysLabel + ' (' + g.durationDays + 'd)</span>';
-        }).join('');
-        guestTicker =
-          '<tr><td style="padding:8px 40px;background:#f5f0e8;border-bottom:1px solid #e8e0d0;">' +
-          '<p style="margin:0;font-size:13px;color:#6b5a3e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
-          guestItems + '</p>' +
-          '</td></tr>';
-      }
-    } catch (guestErr) {
-      Logger.log('morningNudge: guest ticker error (non-fatal) — ' + guestErr.message);
-    }
-
     // ---- Today's calendar events ----------------------------------------
     let todayEvents = [];
     try {
@@ -1635,14 +1355,26 @@ function morningNudge() {
       dueTodayCount = openTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
     } catch (taskErr) { Logger.log('morningNudge: task fetch error — ' + taskErr.message); }
 
+    // Google Tasks counts (Issue #99)
+    let gOverdueCount  = 0;
+    let gDueTodayCount = 0;
+    try {
+      const gRes = webGetGoogleTasks_();
+      const gTasks = (gRes && gRes.tasks) || [];
+      gOverdueCount  = gTasks.filter(function(t) { return t.isOverdue; }).length;
+      gDueTodayCount = gTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
+    } catch (gTaskErr) { Logger.log('morningNudge: Google Tasks fetch error (non-fatal) — ' + gTaskErr.message); }
+    const totalOverdue   = overdueCount  + gOverdueCount;
+    const totalDueToday  = dueTodayCount + gDueTodayCount;
+
     let taskBadges = '';
-    if (overdueCount > 0 || dueTodayCount > 0) {
+    if (totalOverdue > 0 || totalDueToday > 0) {
       taskBadges = '<div style="margin-top:14px;">';
-      if (overdueCount > 0) {
-        taskBadges += '<span style="display:inline-block;background:#fdecea;color:#c62828;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;margin-right:8px;">⚠ ' + overdueCount + ' overdue</span>';
+      if (totalOverdue > 0) {
+        taskBadges += '<span style="display:inline-block;background:#fdecea;color:#c62828;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;margin-right:8px;">⚠ ' + totalOverdue + ' overdue</span>';
       }
-      if (dueTodayCount > 0) {
-        taskBadges += '<span style="display:inline-block;background:#fff8e1;color:#e65100;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;">📋 ' + dueTodayCount + ' due today</span>';
+      if (totalDueToday > 0) {
+        taskBadges += '<span style="display:inline-block;background:#fff8e1;color:#e65100;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;">📋 ' + totalDueToday + ' due today</span>';
       }
       taskBadges += '</div>';
     }
@@ -1655,11 +1387,25 @@ function morningNudge() {
       Logger.log('morningNudge: buildMorningIntelligence_ error (non-fatal) — ' + intErr.message);
     }
 
-    // ---- Travel Day Briefing (Issue #108b) ----------------------------------
-    // Sends a separate clean email to Ahmed + companions when today is a travel day.
-    // Fully non-fatal — never aborts the morning nudge.
-    try { checkAndSendTravelDayBriefings_(); } catch (tdbErr) {
-      Logger.log('morningNudge: TravelDayBriefing error (non-fatal) — ' + tdbErr.message);
+    // ---- Guest arriving soon ticker (Issue #150) ----------------------------
+    var guestTicker = '';
+    try {
+      var guestCfg  = readPTOConfig_();
+      var guestList = getUpcomingGuests_(guestCfg);
+      var arriving  = guestList.filter(function(g) { return g.daysAway >= 0 && g.daysAway <= 7; });
+      if (arriving.length > 0) {
+        var guestItems = arriving.map(function(g) {
+          return '<tr><td style="padding:4px 0;font-size:14px;color:#333333;">' +
+                 (g.daysAway === 0 ? '🏠 <strong>Guests arriving today:</strong> ' :
+                  g.daysAway === 1 ? '🏠 <strong>Guests arriving tomorrow:</strong> ' :
+                  '🏠 <strong>Guests in ' + g.daysAway + ' days:</strong> ') +
+                 g.label + ' (' + g.arrivalDate + ' – ' + g.departureDate + ')' +
+                 '</td></tr>';
+        }).join('');
+        guestTicker = '<table cellpadding="0" cellspacing="0" style="margin-bottom:20px;border-left:3px solid #c9a84c;padding-left:12px;">' + guestItems + '</table>';
+      }
+    } catch (guestErr) {
+      Logger.log('morningNudge: guest ticker error (non-fatal) — ' + guestErr.message);
     }
 
     // ---- HTML body ------------------------------------------------------
@@ -1677,15 +1423,13 @@ function morningNudge() {
       // Weather ticker (empty string → nothing rendered)
       weatherTicker +
 
-      // Guest ticker (Issue #150 — empty string → nothing rendered)
-      guestTicker +
-
       // Body
       '<tr><td style="padding:36px 40px;">' +
       '<p style="margin:0 0 8px;font-size:17px;font-weight:600;color:#0d1b3e;">Good morning, Ahmed.</p>' +
       '<p style="margin:0 0 24px;font-size:15px;color:#555555;">VERA flagged <strong>' + total + ' item' + (total === 1 ? '' : 's') + '</strong> overnight requiring your attention.</p>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' + urgencyRows + '</table>' +
       '<table cellpadding="0" cellspacing="0" style="margin-bottom:16px;">' + dashboardBtn + '</table>' +
+      guestTicker +
       calendarSection +
       taskBadges +
       intelligenceSection +
@@ -1705,11 +1449,11 @@ function morningNudge() {
           return '  ' + e.title + (t ? ' · ' + t : '');
         }).join('\n')
       : '';
-    const taskPlainText = (overdueCount > 0 || dueTodayCount > 0)
+    const taskPlainText = (totalOverdue > 0 || totalDueToday > 0)
       ? '\nTasks: ' +
-        (overdueCount  > 0 ? overdueCount  + ' overdue'   : '') +
-        (overdueCount  > 0 && dueTodayCount > 0 ? ' · ' : '') +
-        (dueTodayCount > 0 ? dueTodayCount + ' due today' : '')
+        (totalOverdue  > 0 ? totalOverdue  + ' overdue'   : '') +
+        (totalOverdue  > 0 && totalDueToday > 0 ? ' · ' : '') +
+        (totalDueToday > 0 ? totalDueToday + ' due today' : '')
       : '';
 
     const plainText = [
@@ -1738,18 +1482,9 @@ function morningNudge() {
 
     MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions);
     Logger.log('Morning nudge sent (HTML): ' + total + ' active flags.');
-    try {
-      sendSlackLog_(
-        ':sunny: Morning nudge sent — ' + total + ' flag' + (total === 1 ? '' : 's') +
-        (highCount > 0 ? ' | :red_circle: ' + highCount + ' high' : '') +
-        (medCount  > 0 ? ' | :large_yellow_circle: ' + medCount  + ' medium' : '') +
-        (lowCount  > 0 ? ' | :large_green_circle: '  + lowCount  + ' low' : '')
-      );
-    } catch(slErr) {}
 
   } catch (e) {
     Logger.log('morningNudge ERROR: ' + e.message);
-    try { sendSlackLog_(':rotating_light: *Morning nudge ERROR* — ' + e.message); } catch(slErr) {}
   }
 }
 
@@ -1824,6 +1559,7 @@ function addPTOConfig() {
     ['milestone_keywords',         'Wedding,Graduation,Trip,Travel,Concert,Birthday'],
     ['holiday_keywords',           'Day,Holiday,Floating,Closure'],
     ['ignore_keywords',            'Pay Day'],
+    ['pto_guest_keywords',         'Visit,Staying,Guests'],  // keywords to identify guest events in gap calendars (Issue #150)
   ];
 
   var existing = sh.getDataRange().getValues()
@@ -1837,43 +1573,6 @@ function addPTOConfig() {
     }
   });
   Logger.log('✅ addPTOConfig: added ' + added + ' row(s) (skipped ' + (rows.length - added) + ' already present).');
-}
-
-/**
- * Issue #130: Seeds victoria_pto_* config rows for Victoria's PTO subtab.
- * Safe to re-run — skips rows that already exist.
- * Gap calendars, milestone keywords, and travel settings are intentionally
- * shared with Ahmed's pto_* config (not duplicated here).
- */
-function addVictoriaPTOConfig() {
-  var ss  = getSpreadsheet();
-  var sh  = ss.getSheetByName(TABS.CONFIG);
-  if (!sh) { Logger.log('Config tab not found.'); return; }
-
-  var rows = [
-    ['victoria_pto_calendar_name',   'Westat Calendar'],  // Victoria's work calendar name
-    ['victoria_pto_vera_calendar',   'Vera'],
-    ['victoria_pto_vacation_days',   '15'],                // annual vacation allocation (days)
-    ['victoria_pto_personal_hours',  '0'],                 // annual personal time (hours; 0 if not applicable)
-    ['victoria_pto_rollover_days',   '0'],                 // days carried over from prior year
-    ['victoria_pto_buffer_days',     '3'],                 // reserve days held back from planning
-    ['victoria_pto_year',            String(new Date().getFullYear())],
-    ['victoria_pto_holiday_keywords','Day,Holiday,Floating,Closure'],
-    ['victoria_pto_ignore_keywords', 'Pay Day'],
-    ['victoria_pto_buffer_remaining','3'],                 // decremented when buffer day is triggered
-  ];
-
-  var existing = sh.getDataRange().getValues()
-    .map(function(r) { return String(r[0]).trim(); });
-
-  var added = 0;
-  rows.forEach(function(row) {
-    if (existing.indexOf(row[0]) === -1) {
-      sh.appendRow(row);
-      added++;
-    }
-  });
-  Logger.log('✅ addVictoriaPTOConfig: added ' + added + ' row(s) (skipped ' + (rows.length - added) + ' already present).');
 }
 
 /**
@@ -2110,63 +1809,66 @@ function addBillTypeColumn() {
 }
 
 // ============================================================
-// MANUAL TEST — Call this to do a full dry run before going live
+// CHORES — Nightly reset by cadence (Issue #124)
 // ============================================================
 
 /**
- * Resets household chores based on their cadence. Called from nightlyRun().
- * - Daily:    reset every night
- * - Weekly:   reset on Friday nights
- * - Biweekly: reset on alternating Friday nights (even ISO week number)
- * - Monthly:  reset on the last day of the month
- * - Seasonal: never auto-reset
+ * Resets household chore checkboxes based on cadence.
+ * Called from nightlyRun().
+ *   Daily     — reset every night
+ *   Weekly    — reset on Friday nights
+ *   Biweekly  — reset on even ISO-week Friday nights
+ *   Monthly   — reset on last day of the month
+ *   Seasonal  — never auto-reset
  */
 function resetChoresByCadence_() {
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.CHORES);
-  if (!sheet || sheet.getLastRow() < 2) return;
-
-  var now  = new Date();
-  var dow  = now.getDay(); // 0=Sun … 5=Fri … 6=Sat
-  var dom  = now.getDate();
+  var now    = new Date();
+  var dow    = now.getDay();   // 0=Sun … 6=Sat
+  var dom    = now.getDate();
   var lastDom = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
-  // ISO week number (1-based)
+  // ISO week number
   var d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  var weekNum   = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  var weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
 
-  var isFriday         = (dow === 5);
-  var isBiweeklyFriday = isFriday && (weekNum % 2 === 0);
-  var isLastDayOfMonth = (dom === lastDom);
+  var isFriday          = (dow === 5);
+  var isBiweeklyFriday  = isFriday && (weekNum % 2 === 0);
+  var isLastDayOfMonth  = (dom === lastDom);
 
   var toReset = ['Daily'];
   if (isFriday)         toReset.push('Weekly');
   if (isBiweeklyFriday) toReset.push('Biweekly');
   if (isLastDayOfMonth) toReset.push('Monthly');
 
-  var rows    = sheet.getDataRange().getValues();
-  var hdrs    = rows[0];
-  var cadIdx  = hdrs.indexOf('Cadence');
-  var chkIdx  = hdrs.indexOf('Checked');
-  var chkAtIdx = hdrs.indexOf('Checked At');
-  var count   = 0;
-
-  // Batch: collect row indices, then write in one setValues call per column
-  var resetRows = [];
-  for (var i = 1; i < rows.length; i++) {
-    if (toReset.indexOf(String(rows[i][cadIdx])) !== -1) resetRows.push(i + 1);
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CHORES);
+  if (!sheet || sheet.getLastRow() < 2) {
+    Logger.log('resetChoresByCadence_: no chores found — skipping.');
+    return;
   }
-  resetRows.forEach(function(r) {
-    sheet.getRange(r, chkIdx + 1).setValue(false);
-    sheet.getRange(r, chkAtIdx + 1).setValue('');
-    count++;
-  });
 
-  Logger.log('Chores: reset ' + count + ' chore(s) for: ' + toReset.join(', ') +
-             ' (week ' + weekNum + ', day ' + dow + ', dom ' + dom + '/' + lastDom + ')');
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  var cadIdx     = hdrs.indexOf('Cadence');
+  var checkedIdx = hdrs.indexOf('Checked');
+  if (cadIdx === -1 || checkedIdx === -1) return;
+
+  var resetCount = 0;
+  for (var i = 1; i < rows.length; i++) {
+    var cadence = String(rows[i][cadIdx] || '');
+    if (toReset.indexOf(cadence) !== -1 && rows[i][checkedIdx]) {
+      sheet.getRange(i + 1, checkedIdx + 1).setValue(false);
+      resetCount++;
+    }
+  }
+  Logger.log('resetChoresByCadence_: reset ' + resetCount + ' chore(s). Cadences: ' + toReset.join(', '));
 }
+
+// ============================================================
+// MANUAL TEST — Call this to do a full dry run before going live
+// ============================================================
 
 /**
  * Run this from the Apps Script editor to test the full pipeline manually.
