@@ -218,6 +218,12 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Contracts (Issue #146)
+      case 'get_contracts':       return jsonOut_(webGetContracts_());
+      case 'add_contract':        return jsonOut_(webAddContract_(e));
+      case 'update_contract':     return jsonOut_(webUpdateContract_(e));
+      case 'delete_contract':     return jsonOut_(webDeleteContract_(e));
+      case 'log_contract_action': return jsonOut_(webLogContractAction_(e));
       // House Guests (Issue #150)
       case 'get_guests':    return jsonOut_(webGetGuests_());
       // Traveler Profiles / Visa Checker (Issue #123)
@@ -5494,4 +5500,133 @@ function webUpdateChore_(e) {
     }
   }
   return { ok: false, error: 'not found' };
+}
+
+// ============================================================
+// CONTRACTS (Issue #146)
+// ============================================================
+
+function webGetContracts_() {
+  return { ok: true, contracts: getContracts_() };
+}
+
+function webAddContract_(e) {
+  var p = e.parameter || {};
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CONTRACTS);
+  var id    = 'con_' + Date.now();
+  var tz    = Session.getScriptTimeZone();
+  sheet.appendRow([
+    id,
+    (p.name         || '').trim(),
+    (p.category     || '').trim(),
+    (p.counterparty || '').trim(),
+    (p.startDate    || ''),
+    (p.endDate      || ''),
+    (p.autoRenews   || 'Unknown'),
+    parseInt(p.noticeDays, 10) || 30,
+    p.monthlyCost !== '' && p.monthlyCost !== undefined ? Number(p.monthlyCost) : '',
+    (p.status       || 'Active'),
+    (p.docLink      || ''),
+    (p.notes        || '')
+  ]);
+  return { ok: true, id: id };
+}
+
+function webUpdateContract_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CONTRACTS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'no data' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, CONTRACT_HEADERS.length).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var row = i + 2;
+      var fields = {
+        'Name':               p.name,
+        'Category':           p.category,
+        'Counterparty':       p.counterparty,
+        'Start Date':         p.startDate,
+        'End Date':           p.endDate,
+        'Auto-Renews':        p.autoRenews,
+        'Notice Period Days': p.noticeDays !== undefined ? (parseInt(p.noticeDays, 10) || 30) : undefined,
+        'Monthly Cost':       p.monthlyCost !== undefined ? (p.monthlyCost !== '' ? Number(p.monthlyCost) : '') : undefined,
+        'Status':             p.status,
+        'Document Link':      p.docLink,
+        'Notes':              p.notes
+      };
+      CONTRACT_HEADERS.forEach(function(hdr, col) {
+        if (fields[hdr] !== undefined) {
+          sheet.getRange(row, col + 1).setValue(fields[hdr]);
+        }
+      });
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webDeleteContract_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CONTRACTS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'no data' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      sheet.deleteRow(i + 2);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// Log a renewal or termination action — updates contract status and
+// resolves any open contract_expiry flag for this contract.
+function webLogContractAction_(e) {
+  var p      = e.parameter || {};
+  var id     = (p.id || '').trim();
+  var action = (p.action || '').trim(); // 'Renewed' | 'Terminated'
+  var newEndDate = (p.newEndDate || '').trim(); // for renewals
+  if (!id || !action) return { ok: false, error: 'id and action required' };
+
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CONTRACTS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'no data' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, CONTRACT_HEADERS.length).getValues();
+  var found = false;
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === id) {
+      var row = i + 2;
+      // Update Status
+      sheet.getRange(row, CONTRACT_HEADERS.indexOf('Status') + 1).setValue(action);
+      // Update End Date if renewing with new date
+      if (action === 'Renewed' && newEndDate) {
+        sheet.getRange(row, CONTRACT_HEADERS.indexOf('End Date') + 1).setValue(newEndDate);
+        // Reset status back to Active for the renewed term
+        sheet.getRange(row, CONTRACT_HEADERS.indexOf('Status') + 1).setValue('Active');
+      }
+      found = true;
+      break;
+    }
+  }
+  if (!found) return { ok: false, error: 'not found' };
+
+  // Resolve the open contract_expiry flag if it exists
+  var flagKey   = 'contract_expiry_' + id;
+  var flagSheet = ss.getSheetByName(TABS.FLAGS);
+  if (flagSheet && flagSheet.getLastRow() > 1) {
+    var flags = flagSheet.getRange(2, 1, flagSheet.getLastRow() - 1, FLAG_HEADERS.length).getValues();
+    flags.forEach(function(r, fi) {
+      if (String(r[9]).trim() === flagKey && String(r[8]).toLowerCase() !== 'yes') {
+        flagSheet.getRange(fi + 2, FLAG_HEADERS.indexOf('Resolved') + 1).setValue('Yes');
+      }
+    });
+  }
+
+  return { ok: true };
 }

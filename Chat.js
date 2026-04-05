@@ -627,6 +627,40 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
 
+    // ---- CONTRACTS (Issue #146) -----------------------------------------------
+    (function() {
+      var active = (context.contracts || []).filter(function(c) {
+        return c.status === 'Active';
+      });
+      if (!active.length) return 'ACTIVE CONTRACTS:\n  (none on file)\n\n';
+      var lines = 'ACTIVE CONTRACTS (' + active.length + '):\n';
+      active.sort(function(a, b) {
+        var da = a.daysUntil === null ? 9999 : a.daysUntil;
+        var db = b.daysUntil === null ? 9999 : b.daysUntil;
+        return da - db;
+      }).forEach(function(c) {
+        var alert = c.alertStatus === 'Critical' ? ' \u26a0\ufe0f CRITICAL' :
+                    c.alertStatus === 'Warning'  ? ' \u26a0 WARNING' :
+                    c.alertStatus === 'Expired'  ? ' \u274c EXPIRED' : '';
+        var expiry = c.endDate
+          ? (c.daysUntil !== null
+              ? (c.daysUntil < 0  ? 'expired ' + Math.abs(c.daysUntil) + 'd ago' :
+                 c.daysUntil === 0 ? 'expires TODAY' :
+                 'expires in ' + c.daysUntil + 'd (' + c.endDate + ')')
+              : 'ends ' + c.endDate)
+          : 'no end date';
+        lines += '  [' + c.id + '] ' + c.name +
+                 (c.category     ? ' [' + c.category + ']' : '') +
+                 (c.counterparty ? ' — ' + c.counterparty  : '') +
+                 ' | ' + expiry +
+                 (c.autoRenews === 'Yes' ? ' | auto-renews' :
+                  c.autoRenews === 'No'  ? ' | no auto-renewal' : '') +
+                 (c.monthlyCost  ? ' | $' + c.monthlyCost + '/mo' : '') +
+                 alert + '\n';
+      });
+      return lines + '\n';
+    })() +
+
     // ---- COUNTRIES VISITED ---------------------------------------------------
     (function() {
       if (!context.countries || !context.countries.length) return '';
@@ -1151,6 +1185,12 @@ function buildChatContext_() {
     if (cardRes && cardRes.ok) cardsData = cardRes;
   } catch(e) { Logger.log('Chat context: cards — ' + e.message); }
 
+  // Contracts (Issue #146)
+  var contracts = [];
+  try {
+    contracts = getContracts_();
+  } catch(e) { Logger.log('Chat context: contracts — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1177,6 +1217,7 @@ function buildChatContext_() {
     prescriptions:   prescriptions,
     cardsData:       cardsData,
     upcomingGuests:  upcomingGuests,
+    contracts:       contracts,
   };
 }
 

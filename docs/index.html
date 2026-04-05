@@ -10730,6 +10730,248 @@ function CardsTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- Contracts Tab (Issue #146) ---------------------------------------------
+
+function ContractsTab({ apiUrl, apiToken }) {
+  const [contracts, setContracts]   = React.useState([]);
+  const [loading,   setLoading]     = React.useState(true);
+  const [error,     setError]       = React.useState(null);
+  const [showAdd,   setShowAdd]     = React.useState(false);
+  const [editing,   setEditing]     = React.useState(null);
+  const [busy,      setBusy]        = React.useState(false);
+  const [actionId,  setActionId]    = React.useState(null); // for log-action modal
+  const [actionType,setActionType]  = React.useState(null); // 'Renewed' | 'Terminated'
+  const [newEndDate,setNewEndDate]  = React.useState('');
+
+  function load() {
+    setLoading(true); setError(null);
+    fetch(apiUrl + '?action=get_contracts&token=' + encodeURIComponent(apiToken))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        setContracts((d.contracts || []).sort(function(a, b) {
+          var da = a.daysUntil === null || a.daysUntil === undefined ? 9999 : a.daysUntil;
+          var db = b.daysUntil === null || b.daysUntil === undefined ? 9999 : b.daysUntil;
+          return da - db;
+        }));
+        setLoading(false);
+      })
+      .catch(function(e) { setError(e.message); setLoading(false); });
+  }
+
+  React.useEffect(function() { load(); }, []);
+
+  function save(fields) {
+    setBusy(true);
+    var isEdit = !!fields.id;
+    var params = new URLSearchParams(Object.assign({ token: apiToken }, fields));
+    fetch(apiUrl + '?action=' + (isEdit ? 'update_contract' : 'add_contract') + '&' + params.toString())
+      .then(function(r) { return r.json(); })
+      .then(function() { setBusy(false); setShowAdd(false); setEditing(null); load(); })
+      .catch(function(e) { setBusy(false); alert('Save failed: ' + e.message); });
+  }
+
+  function del(id) {
+    if (!confirm('Delete this contract?')) return;
+    setBusy(true);
+    fetch(apiUrl + '?action=delete_contract&token=' + encodeURIComponent(apiToken) + '&id=' + encodeURIComponent(id))
+      .then(function(r) { return r.json(); })
+      .then(function() { setBusy(false); load(); })
+      .catch(function(e) { setBusy(false); alert('Delete failed: ' + e.message); });
+  }
+
+  function logAction(id, action, newEnd) {
+    setBusy(true);
+    var params = 'action=log_contract_action&token=' + encodeURIComponent(apiToken) +
+                 '&id=' + encodeURIComponent(id) +
+                 '&action=' + encodeURIComponent(action) +
+                 (newEnd ? '&newEndDate=' + encodeURIComponent(newEnd) : '');
+    fetch(apiUrl + '?' + params)
+      .then(function(r) { return r.json(); })
+      .then(function() { setBusy(false); setActionId(null); load(); })
+      .catch(function(e) { setBusy(false); alert('Action failed: ' + e.message); });
+  }
+
+  function alertBadge(status) {
+    if (status === 'Critical') return { bg: '#fdecea', color: '#c62828', label: '🔴 Critical' };
+    if (status === 'Warning')  return { bg: '#fff8e1', color: '#e65100', label: '🟡 Notice' };
+    if (status === 'Expired')  return { bg: '#fce4ec', color: '#880e4f', label: '⚠ Expired' };
+    return null;
+  }
+
+  var CATEGORIES = ['Housing','Insurance','Auto','Services','Professional','Financial','Other'];
+  var byCategory = {};
+  contracts.forEach(function(c) {
+    var cat = c.category || 'Other';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(c);
+  });
+
+  if (loading) return React.createElement('div', { style: { padding: 32, color: '#6b7fa8', fontSize: 14 } }, 'Loading contracts…');
+  if (error)   return React.createElement('div', { style: { padding: 32, color: '#ef5350', fontSize: 14 } }, 'Error: ' + error);
+
+  var alertCount = contracts.filter(function(c) { return c.alertStatus === 'Critical' || c.alertStatus === 'Warning' || c.alertStatus === 'Expired'; }).length;
+
+  return (
+    <div>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: '#4d6080' }}>
+          {contracts.length} contract{contracts.length !== 1 ? 's' : ''}
+          {alertCount > 0 && <span style={{ marginLeft: 8, background: '#fdecea', color: '#c62828', borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 700 }}>{alertCount} need attention</span>}
+        </div>
+        <button className="btn btn-small" onClick={function() { setEditing(null); setShowAdd(true); }} disabled={busy}>+ Add Contract</button>
+      </div>
+
+      {contracts.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
+          <div>No contracts yet. Add your first one.</div>
+        </div>
+      )}
+
+      {/* Cards grouped by category */}
+      {Object.keys(byCategory).sort().map(function(cat) {
+        return (
+          <div key={cat} style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#0d1b3e', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>{cat}</div>
+            {byCategory[cat].map(function(c) {
+              var badge = alertBadge(c.alertStatus);
+              var expired = c.status !== 'Active';
+              return (
+                <div key={c.id} className="bento-card" style={{ cursor: 'default', marginBottom: 10, opacity: expired ? 0.6 : 1 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#c9a84c', marginBottom: 3 }}>
+                        {c.name}
+                        {badge && <span style={{ marginLeft: 8, background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4 }}>{badge.label}</span>}
+                        {expired && <span style={{ marginLeft: 8, background: '#e8eaf6', color: '#5c6bc0', fontSize: 11, padding: '2px 7px', borderRadius: 4 }}>{c.status}</span>}
+                      </div>
+                      {c.counterparty && <div style={{ fontSize: 12, color: '#6b7fa8' }}>{c.counterparty}</div>}
+                      <div style={{ fontSize: 12, color: '#4d6080', marginTop: 4 }}>
+                        {c.endDate && <span>Expires: <strong>{c.endDate}</strong>{c.daysUntil !== null && c.daysUntil >= 0 ? ' (' + c.daysUntil + 'd)' : c.daysUntil < 0 ? ' (expired)' : ''}</span>}
+                        {c.autoRenews === 'Yes' && <span style={{ marginLeft: 10, color: '#43a047' }}>↻ auto-renews</span>}
+                        {c.autoRenews === 'No'  && <span style={{ marginLeft: 10, color: '#e65100' }}>✗ no auto-renewal</span>}
+                        {c.monthlyCost ? <span style={{ marginLeft: 10 }}>${c.monthlyCost}/mo</span> : null}
+                      </div>
+                      {c.notes && <div style={{ fontSize: 12, color: '#4d6080', marginTop: 3, fontStyle: 'italic' }}>{c.notes}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      {c.docLink && <a href={c.docLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#4d6080', textDecoration: 'none', border: '1px solid #2a3f6f', borderRadius: 4, padding: '3px 8px' }}>📄 Doc</a>}
+                      {c.status === 'Active' && <button className="btn btn-small" style={{ fontSize: 11 }} onClick={function() { setActionId(c.id); setActionType('Renewed'); setNewEndDate(''); }} disabled={busy}>Log Renewal</button>}
+                      {c.status === 'Active' && <button className="btn btn-small" style={{ fontSize: 11, background: 'transparent', border: '1px solid #ef5350', color: '#ef5350' }} onClick={function() { logAction(c.id, 'Terminated', ''); }} disabled={busy}>Terminate</button>}
+                      <button className="btn btn-small" style={{ fontSize: 11 }} onClick={function() { setEditing(c); setShowAdd(true); }} disabled={busy}>Edit</button>
+                      <button className="btn btn-small" style={{ fontSize: 11, background: 'transparent', border: '1px solid #3d5fa0', color: '#8b9dc3' }} onClick={function() { del(c.id); }} disabled={busy}>Delete</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Add/Edit Modal */}
+      {showAdd && (
+        <ContractModal
+          contract={editing}
+          categories={CATEGORIES}
+          busy={busy}
+          onClose={function() { setShowAdd(false); setEditing(null); }}
+          onSave={save}
+        />
+      )}
+
+      {/* Log Renewal Modal */}
+      {actionId && actionType === 'Renewed' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#0d1b3e', borderRadius: 10, padding: 28, width: 360, border: '1px solid #2a3f6f' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#c9a84c', marginBottom: 16 }}>Log Renewal</div>
+            <label style={{ fontSize: 12, color: '#8b9dc3', display: 'block', marginBottom: 4 }}>New End Date (leave blank to keep existing)</label>
+            <input type="date" value={newEndDate} onChange={function(ev) { setNewEndDate(ev.target.value); }}
+              style={{ width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #2a3f6f', background: '#06112a', color: '#c9d9ff', marginBottom: 16 }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-small" style={{ background: 'transparent', border: '1px solid #3d5fa0', color: '#8b9dc3' }} onClick={function() { setActionId(null); }}>Cancel</button>
+              <button className="btn btn-small" onClick={function() { logAction(actionId, 'Renewed', newEndDate); }} disabled={busy}>Confirm Renewal</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContractModal({ contract, categories, busy, onClose, onSave }) {
+  var isEdit = !!contract;
+  const [form, setForm] = React.useState(contract ? {
+    id:           contract.id,
+    name:         contract.name         || '',
+    category:     contract.category     || '',
+    counterparty: contract.counterparty || '',
+    startDate:    contract.startDate    || '',
+    endDate:      contract.endDate      || '',
+    autoRenews:   contract.autoRenews   || 'Unknown',
+    noticeDays:   String(contract.noticeDays || 30),
+    monthlyCost:  contract.monthlyCost  !== null ? String(contract.monthlyCost) : '',
+    status:       contract.status       || 'Active',
+    docLink:      contract.docLink      || '',
+    notes:        contract.notes        || '',
+  } : {
+    id: '', name: '', category: '', counterparty: '', startDate: '', endDate: '',
+    autoRenews: 'Unknown', noticeDays: '30', monthlyCost: '', status: 'Active', docLink: '', notes: ''
+  });
+
+  function field(label, key, type, opts) {
+    var inp;
+    if (type === 'select') {
+      inp = React.createElement('select', {
+        value: form[key], onChange: function(ev) { setForm(Object.assign({}, form, { [key]: ev.target.value })); },
+        style: { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #2a3f6f', background: '#06112a', color: '#c9d9ff', fontSize: 13 }
+      }, (opts || []).map(function(o) { return React.createElement('option', { key: o, value: o }, o); }));
+    } else {
+      inp = React.createElement('input', {
+        type: type || 'text', value: form[key],
+        onChange: function(ev) { setForm(Object.assign({}, form, { [key]: ev.target.value })); },
+        style: { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #2a3f6f', background: '#06112a', color: '#c9d9ff', fontSize: 13 }
+      });
+    }
+    return (
+      <div key={key} style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 11, color: '#8b9dc3', display: 'block', marginBottom: 3 }}>{label}</label>
+        {inp}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0d1b3e', borderRadius: 10, padding: 28, width: 480, maxHeight: '90vh', overflowY: 'auto', border: '1px solid #2a3f6f' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: '#c9a84c', marginBottom: 20 }}>{isEdit ? 'Edit Contract' : 'Add Contract'}</div>
+        {field('Name *', 'name')}
+        {field('Category', 'category', 'select', categories)}
+        {field('Counterparty (landlord, insurer, etc.)', 'counterparty')}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {field('Start Date', 'startDate', 'date')}
+          {field('End Date', 'endDate', 'date')}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          {field('Auto-Renews', 'autoRenews', 'select', ['Yes','No','Unknown'])}
+          {field('Notice Period (days)', 'noticeDays', 'number')}
+          {field('Monthly Cost ($)', 'monthlyCost', 'number')}
+        </div>
+        {isEdit && field('Status', 'status', 'select', ['Active','Expired','Terminated','Renewed'])}
+        {field('Document Link (Google Drive)', 'docLink')}
+        {field('Notes', 'notes')}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button className="btn btn-small" style={{ background: 'transparent', border: '1px solid #3d5fa0', color: '#8b9dc3' }} onClick={onClose}>Cancel</button>
+          <button className="btn btn-small" onClick={function() { if (!form.name.trim()) return alert('Name is required'); onSave(form); }} disabled={busy}>
+            {isEdit ? 'Save Changes' : 'Add Contract'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- Finances Tab -----------------------------------------------------------
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
@@ -10754,12 +10996,13 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
   const budgetMissing = budget && !budget.configured;
 
   const subTabs = [
-    { id: 'overview',  label: '💸 Overview' },
-    { id: 'budget',    label: '📊 Budget' },
-    { id: 'bills',     label: '🧾 Bills' },
-    { id: 'cashflow',  label: '💰 Cashflow' },
-    { id: 'cards',     label: '💳 Cards' },
-    { id: 'goals',     label: '🎯 Goals' },
+    { id: 'overview',   label: '💸 Overview' },
+    { id: 'budget',     label: '📊 Budget' },
+    { id: 'bills',      label: '🧾 Bills' },
+    { id: 'cashflow',   label: '💰 Cashflow' },
+    { id: 'cards',      label: '💳 Cards' },
+    { id: 'contracts',  label: '📋 Contracts' },
+    { id: 'goals',      label: '🎯 Goals' },
   ];
 
   return (
@@ -10914,6 +11157,11 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
       {/* ── Cards: Credit Card Hub ───────────────────────── */}
       {sub === 'cards' && (
         <CardsTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {/* ── Contracts: Active Contract & Agreement Tracker ── */}
+      {sub === 'contracts' && (
+        <ContractsTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
 
       {/* ── Goals: Financial Goals + What-If Planner ─────── */}

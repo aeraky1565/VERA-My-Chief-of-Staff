@@ -71,6 +71,7 @@ const TABS = {
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
   CHORES:             'Chores',              // Household chore checklist by cadence (Issue #124)
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
+  CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -118,6 +119,7 @@ const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year'];
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
+const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -231,6 +233,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS);
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);
   ensureSheet(ss, TABS.TRAVELER_PROFILES,    TRAVELER_PROFILE_HEADERS);
+  ensureSheet(ss, TABS.CONTRACTS,            CONTRACT_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -594,6 +597,9 @@ function nightlyRun() {
 
     // Step 0l: Capacity mode inference — score tomorrow's calendar load (Issue #8)
     try { inferCapacityMode_(); } catch (capErr) { Logger.log('inferCapacityMode_ error (non-fatal): ' + capErr.message); }
+
+    // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
+    try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();
@@ -1241,6 +1247,150 @@ function escapeHtml_(str) {
 // ============================================================
 // MORNING NUDGE — 7am email summary
 // ============================================================
+
+// ============================================================
+// CONTRACT TRACKER — Issue #146
+// ============================================================
+
+/**
+ * Reads active contracts and generates urgency-scaled flags for upcoming
+ * expirations. Called from nightlyRun().
+ *
+ * Flag logic:
+ *   - Within notice period (per-contract configurable, default 30 days) → Medium
+ *   - Within 14 days → High
+ *   - End date passed AND status still Active → High ("expired, no action logged")
+ *
+ * Uses flag key `contract_expiry_<id>` to prevent duplicate flags.
+ */
+function checkContracts_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONTRACTS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var tz      = Session.getScriptTimeZone();
+  var today   = new Date(); today.setHours(0, 0, 0, 0);
+  var data    = sheet.getRange(2, 1, sheet.getLastRow() - 1, CONTRACT_HEADERS.length).getValues();
+  var flagsGenerated = 0;
+
+  data.forEach(function(row) {
+    var id            = String(row[0]).trim();
+    var name          = String(row[1]).trim();
+    var category      = String(row[2]).trim();
+    var counterparty  = String(row[3]).trim();
+    var endDateRaw    = row[5];
+    var autoRenews    = String(row[6]).trim();
+    var noticeDays    = parseInt(row[7], 10) || 30;
+    var status        = String(row[9]).trim();
+
+    if (!id || !name || status === 'Expired' || status === 'Terminated' || status === 'Renewed') return;
+    if (!endDateRaw) return;
+
+    var endDate = new Date(endDateRaw); endDate.setHours(0, 0, 0, 0);
+    var daysUntil = Math.round((endDate - today) / 86400000);
+
+    var urgency, flagText, reason;
+
+    if (daysUntil < 0) {
+      // Already expired but status not updated
+      urgency  = 'High';
+      flagText = 'Contract expired with no action: ' + name +
+                 (counterparty ? ' (' + counterparty + ')' : '');
+      reason   = 'End date was ' + Utilities.formatDate(endDate, tz, 'MMM d, yyyy') +
+                 ' — status still shows Active. Log a renewal or termination.';
+    } else if (daysUntil <= 14) {
+      urgency  = 'High';
+      flagText = 'Contract expiring in ' + daysUntil + ' day' + (daysUntil === 1 ? '' : 's') + ': ' + name;
+      reason   = (counterparty ? counterparty + ' · ' : '') + category +
+                 (autoRenews === 'Yes' ? ' · auto-renews — shop around or let it roll?' :
+                  autoRenews === 'No'  ? ' · does NOT auto-renew — action required' : '');
+    } else if (daysUntil <= noticeDays) {
+      urgency  = 'Medium';
+      flagText = 'Contract notice window: ' + name + ' expires in ' + daysUntil + ' days';
+      reason   = (counterparty ? counterparty + ' · ' : '') + category +
+                 (autoRenews === 'Yes' ? ' · auto-renews — review or negotiate now' :
+                  autoRenews === 'No'  ? ' · no auto-renewal — start renewal process' : '');
+    } else {
+      return; // not in any alert window
+    }
+
+    var flagKey = 'contract_expiry_' + id;
+
+    // Check if this flag key already exists and is unresolved/unacknowledged
+    var flagSheet = ss.getSheetByName(TABS.FLAGS);
+    if (flagSheet && flagSheet.getLastRow() > 1) {
+      var existing = flagSheet.getRange(2, 1, flagSheet.getLastRow() - 1, FLAG_HEADERS.length).getValues();
+      var alreadyOpen = existing.some(function(r) {
+        return String(r[9]).trim() === flagKey &&
+               String(r[6]).toLowerCase() !== 'yes' &&
+               String(r[8]).toLowerCase() !== 'yes';
+      });
+      if (alreadyOpen) return;
+    }
+
+    writeFlags([{
+      source:  'Contracts',
+      flag:    flagText,
+      reason:  reason,
+      urgency: urgency,
+      key:     flagKey
+    }]);
+    flagsGenerated++;
+  });
+
+  Logger.log('checkContracts_: ' + flagsGenerated + ' contract flag(s) generated.');
+}
+
+/**
+ * Reads all contracts from the Contracts tab and returns enriched objects.
+ * Used by WebApp and Chat context.
+ */
+function getContracts_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONTRACTS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+
+  var tz    = Session.getScriptTimeZone();
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, CONTRACT_HEADERS.length).getValues();
+
+  return data.map(function(row, i) {
+    var endDateRaw = row[5];
+    var endDate    = endDateRaw ? new Date(endDateRaw) : null;
+    var daysUntil  = endDate ? Math.round((endDate - today) / 86400000) : null;
+    var noticeDays = parseInt(row[7], 10) || 30;
+    var alertStatus;
+    if (daysUntil === null) {
+      alertStatus = 'OK';
+    } else if (daysUntil < 0) {
+      alertStatus = 'Expired';
+    } else if (daysUntil <= 14) {
+      alertStatus = 'Critical';
+    } else if (daysUntil <= noticeDays) {
+      alertStatus = 'Warning';
+    } else {
+      alertStatus = 'OK';
+    }
+
+    return {
+      row:          i + 2,
+      id:           String(row[0]).trim(),
+      name:         String(row[1]).trim(),
+      category:     String(row[2]).trim(),
+      counterparty: String(row[3]).trim(),
+      startDate:    row[4] ? Utilities.formatDate(new Date(row[4]), tz, 'yyyy-MM-dd') : '',
+      endDate:      endDate ? Utilities.formatDate(endDate, tz, 'yyyy-MM-dd') : '',
+      autoRenews:   String(row[6]).trim(),
+      noticeDays:   noticeDays,
+      monthlyCost:  row[8] !== '' ? Number(row[8]) : null,
+      status:       String(row[9]).trim() || 'Active',
+      docLink:      String(row[10]).trim(),
+      notes:        String(row[11]).trim(),
+      daysUntil:    daysUntil,
+      alertStatus:  alertStatus
+    };
+  }).filter(function(c) { return c.id; });
+}
 
 // ============================================================
 // CAPACITY MODE — Issue #8
