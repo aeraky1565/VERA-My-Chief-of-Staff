@@ -235,11 +235,28 @@ function doGet(e) {
 // ---- doPost — Telegram webhook + write operations --------------------------
 
 function doPost(e) {
+  // ── Slack form-encoded payloads (Block Kit interactions + slash commands) ──
+  // Slack sends these as application/x-www-form-urlencoded, so GAS populates
+  // e.parameter rather than e.postData.contents being parseable JSON.
+  // Must be checked BEFORE the JSON.parse attempt below, which would fail.
+  if (e && e.parameter && (e.parameter.payload || e.parameter.command)) {
+    return handleSlackFormPost_(e);
+  }
+
   let body;
   try {
     body = JSON.parse(e.postData.contents);
   } catch (parseErr) {
     return errOut_('Invalid JSON body: ' + parseErr.message);
+  }
+
+  // ── Slack Events API (JSON body: event_callback or url_verification) ──────
+  if (body && (body.type === 'event_callback' || body.type === 'url_verification')) {
+    if (body.type === 'url_verification') {
+      return ContentService.createTextOutput(body.challenge || '')
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+    return handleSlackEvent_(body);
   }
 
   // Telegram sends webhook POSTs without a token — detect by update_id field.
@@ -4574,6 +4591,24 @@ function webLogGymAttend_(e, attended) {
   var id = ((e.parameter && e.parameter.id) || '').trim();
   if (!id) throw new Error('id is required');
   return logGymAttendance_(id, attended);
+}
+
+/**
+ * Logs attendance on the most recent gym session that has no answer yet.
+ * Called from Slack evening check-in button handlers (no session id needed).
+ * @param {string} attended  'Yes' or 'No'
+ */
+function webGymAttendLatest_(attended) {
+  var sessions = getGymLog_();
+  // Find the most recent session with no attendance logged
+  var open = sessions.filter(function(s) { return !s.attended; });
+  if (!open.length) {
+    Logger.log('webGymAttendLatest_: no open gym sessions to log');
+    return { ok: false, error: 'no open sessions' };
+  }
+  // Sort descending by date, take the latest
+  open.sort(function(a, b) { return b.date > a.date ? 1 : b.date < a.date ? -1 : 0; });
+  return logGymAttendance_(open[0].id, attended);
 }
 
 // ── Purchase History (Issue #111) ─────────────────────────────
