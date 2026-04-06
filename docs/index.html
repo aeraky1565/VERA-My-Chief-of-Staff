@@ -8257,14 +8257,21 @@ function PeopleTab({ giftData, giftLoading, busy,
                      onAddImportantDate, onUpdateImportantDate, onDeleteImportantDate,
                      onPreviewCalendarBirthdays, onImportCalendarBirthdays,
                      calPreviews, calPreviewLoading,
-                     wishListsData, wishListsLoading, onRefreshWishLists }) {
-  const [sub, setSub] = React.useState('dates');
-  const subTabs = [
+                     wishListsData, wishListsLoading, onRefreshWishLists, features }) {
+  const feat = features || {};
+  const allSubTabs = [
     { id: 'dates',     label: '📅 Important Dates' },
     { id: 'gifts',     label: '🎁 Gift Ideas'       },
-    { id: 'wishlists', label: '🎄 Wish Lists'        },
+    { id: 'wishlists', label: '🎄 Wish Lists',        featureKey: 'wishlists' },
     { id: 'people',    label: '👤 People'            },
   ];
+  const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
+  const [sub, setSub] = React.useState('dates');
+  React.useEffect(function() {
+    if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
+      setSub(subTabs[0].id);
+    }
+  }, [subTabs.map(function(t) { return t.id; }).join(',')]);
   return (
     <div>
       <div className="subtab-row">
@@ -8882,17 +8889,24 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
                         chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence,
                         vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle,
                         onVehicleTireChange, onVehicleEmissionInspect, onVehicleSafetyInspect,
-                        apiUrl, apiToken }) {
-  const [sub, setSub] = React.useState('steward');
-  const subTabs = [
+                        apiUrl, apiToken, features }) {
+  const feat = features || {};
+  const allSubTabs = [
     { id: 'steward',  label: '🏠 Steward'  },
     { id: 'vehicles', label: '🚗 Vehicles'  },
     { id: 'chores',   label: '🧹 Chores'   },
     { id: 'recipes',  label: '🍽️ Recipes'  },
-    { id: 'takeouts', label: '🥡 Takeouts'  },
-    { id: 'pantry',   label: '📦 Pantry'   },
+    { id: 'takeouts', label: '🥡 Takeouts',  featureKey: 'takeouts' },
+    { id: 'pantry',   label: '📦 Pantry',    featureKey: 'pantry'   },
     { id: 'guests',   label: '👥 Guests'   },
   ];
+  const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
+  const [sub, setSub] = React.useState('steward');
+  React.useEffect(function() {
+    if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
+      setSub(subTabs[0].id);
+    }
+  }, [subTabs.map(function(t) { return t.id; }).join(',')]);
   return (
     <div>
       <div className="subtab-row">
@@ -12034,14 +12048,21 @@ function HealthAppointmentsTab({ apiUrl, apiToken }) {
   );
 }
 
-function HealthTab({ apiUrl, apiToken }) {
-  const [sub, setSub] = React.useState('fitness');
-  const subTabs = [
-    { id: 'fitness',         label: '💪 Fitness' },
-    { id: 'morning_routine', label: '☀️ Morning Routine' },
+function HealthTab({ apiUrl, apiToken, features }) {
+  const feat = features || {};
+  const allSubTabs = [
+    { id: 'fitness',         label: '💪 Fitness',         featureKey: 'fitness' },
+    { id: 'morning_routine', label: '☀️ Morning Routine',  featureKey: 'morning_routine' },
     { id: 'prescriptions',   label: '💊 Prescriptions' },
     { id: 'appointments',    label: '🩺 Appointments' },
   ];
+  const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
+  const [sub, setSub] = React.useState(subTabs.length > 0 ? subTabs[0].id : '');
+  React.useEffect(function() {
+    if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
+      setSub(subTabs[0].id);
+    }
+  }, [subTabs.map(function(t) { return t.id; }).join(',')]);
   return (
     <div>
       <div className="subtab-row">
@@ -12978,6 +12999,43 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
       {/* Spending Chart */}
       <SpendingChart summaries={summaries} />
+
+      {/* Hidden Features card — only shown when at least one feature is disabled (Issue #134) */}
+      {(function() {
+        var FEATURE_LABELS = {
+          fitness:             '💪 Fitness',
+          morning_routine:     '☀️ Morning Routine',
+          pantry:              '📦 Pantry',
+          takeouts:            '🥡 Takeouts',
+          experiments:         '🧪 Experiments',
+          wish_list:           '🛍 Wish List',
+          wishlists:           '🎄 Wish Lists',
+          loyalty_programs:    '🎖 Loyalty Programs',
+          financial_scenarios: '📐 Financial Scenarios',
+        };
+        var feat = (status && status.features) || {};
+        var disabled = Object.keys(FEATURE_LABELS).filter(function(k) { return feat[k] === false; });
+        if (disabled.length === 0) return null;
+        return (
+          <div className="bento-card" style={{ cursor: 'default' }}>
+            <div className="bento-card-title">⚙️ Hidden Features</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+              {disabled.map(function(k) {
+                return (
+                  <span key={k} style={{
+                    padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                    background: 'rgba(107,127,168,.12)', color: '#6b7fa8',
+                    border: '1px solid rgba(107,127,168,.25)',
+                  }}>
+                    {FEATURE_LABELS[k]}
+                  </span>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: '#3d5070' }}>Toggle in Config tab to re-enable</div>
+          </div>
+        );
+      })()}
     </div>
     </div>
   );
@@ -14559,15 +14617,22 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
                       resources, resourcesLoading, onAddResource, onUpdateResource, onDeleteResource,
                       experiments, experimentsLoading, onAddExperiment, onUpdateExperiment, onDeleteExperiment, onAddExperimentCheckin,
                       wishList, wishListLoading, onAddWishItem, onUpdateWishItem, onMarkWishPurchased, onDeleteWishItem,
-                      busy }) {
-  const [sub, setSub] = React.useState('interests');
-  const subTabs = [
+                      busy, features }) {
+  const feat = features || {};
+  const allSubTabs = [
     { id: 'interests',   label: '💛 Interests' },
     { id: 'ideas',       label: '💡 Ideas' },
     { id: 'resources',   label: '📚 Resources' },
-    { id: 'experiments', label: '🧪 Experiments' },
-    { id: 'wish_list',   label: '🛍 Wish List' },
+    { id: 'experiments', label: '🧪 Experiments', featureKey: 'experiments' },
+    { id: 'wish_list',   label: '🛍 Wish List',   featureKey: 'wish_list'   },
   ];
+  const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
+  const [sub, setSub] = React.useState('interests');
+  React.useEffect(function() {
+    if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
+      setSub(subTabs[0].id);
+    }
+  }, [subTabs.map(function(t) { return t.id; }).join(',')]);
   return (
     <div>
       <div className="subtab-row">
@@ -17113,6 +17178,7 @@ function App() {
                 onMarkWishPurchased={handleMarkWishPurchased}
                 onDeleteWishItem={handleDeleteWishItem}
                 busy={busy}
+                features={status && status.features}
               />
             )}
 
@@ -17162,6 +17228,7 @@ function App() {
                 onVehicleSafetyInspect={handleVehicleSafetyInspect}
                 apiUrl={apiUrl}
                 apiToken={apiToken}
+                features={status && status.features}
               />
             )}
 
@@ -17187,6 +17254,7 @@ function App() {
                 wishListsData={wishListsData}
                 wishListsLoading={wishListsLoading}
                 onRefreshWishLists={() => loadWishListsData(apiUrl, apiToken)}
+                features={status && status.features}
               />
             )}
 
@@ -17294,7 +17362,7 @@ function App() {
             )}
 
             {/* Health tab */}
-            {activeTab === 'health' && <HealthTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeTab === 'health' && <HealthTab apiUrl={apiUrl} apiToken={apiToken} features={status && status.features} />}
 
             {/* Growth tab — Milestones, Goals + coming-soon sub-tabs (Issue #101) */}
             {activeTab === 'growth' && (

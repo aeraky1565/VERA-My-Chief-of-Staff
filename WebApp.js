@@ -438,6 +438,20 @@ function webGetStatus_() {
   // Most recent flag date = last run approximation
   const lastRun = all.length > 0 ? all[all.length - 1][1] : null;
 
+  // Feature flags for dashboard tab visibility (Issue #134)
+  // Keys default to enabled when missing from Config tab.
+  var featureCfg  = getConfigValues();
+  var featureKeys = [
+    'pantry', 'takeouts', 'experiments', 'wish_list',
+    'morning_routine', 'wishlists', 'loyalty_programs',
+    'financial_scenarios', 'fitness',
+  ];
+  var features = {};
+  featureKeys.forEach(function(k) {
+    var raw = featureCfg[k + '_enabled'];
+    features[k] = (raw === undefined || raw.toLowerCase() !== 'false');
+  });
+
   return {
     ok:             true,
     totalFlags:     all.length,
@@ -447,6 +461,7 @@ function webGetStatus_() {
     low:            active.filter(function(r) { return r[5] === 'Low';    }).length,
     lastRun:      formatDateVal_(lastRun),
     travelConfig: travelConfig,
+    features:     features,
   };
 }
 

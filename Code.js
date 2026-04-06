@@ -212,6 +212,14 @@ function createSheetTabs(ss) {
     ['fitness_travel_block_time',    '07:00'], // start time for auto-created trip gym sessions
     ['fitness_travel_block_duration','60'],    // duration in minutes for auto-created trip gym sessions
     ['pantry_enabled',              'false'], // set 'true' to enable purchase history + auto-restock (Issue #111)
+    // Dashboard tab visibility — Issue #134 (set 'false' to hide the subtab)
+    ['morning_routine_enabled',     'true'],
+    ['takeouts_enabled',            'true'],
+    ['experiments_enabled',         'true'],
+    ['wish_list_enabled',           'true'],
+    ['wishlists_enabled',           'true'],  // Christmas Wish Lists (People tab)
+    ['loyalty_programs_enabled',    'true'],  // reserved — no dedicated subtab yet
+    ['financial_scenarios_enabled', 'true'],  // reserved — no dedicated subtab yet
     ['pantry_restock_days_ahead',   '7'],     // days ahead to predict and auto-add items to shopping list
     ['pantry_ema_alpha',            '0.3'],   // EMA learning rate: higher = adapts faster to recent habits
     // Google Tasks integration (Issue #99)
