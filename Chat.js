@@ -785,6 +785,10 @@ function buildChatSystemPrompt_(context) {
     // Prescriptions (Issue #116)
     'ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes}  \u2014 add a prescription for Ahmed or Victoria\n' +
     'ACTION:mark_prescription_refilled|{person}|{medication}|{newRefillDate YYYY-MM-DD}  \u2014 update lastFilled=today and refillDate for a prescription\n' +
+    // Health Appointments (Issue #85)
+    'ACTION:log_health_visit|{appointmentType}|{YYYY-MM-DD or "today"}  \u2014 log that an appointment happened, resets Last Appointment + recomputes Next Due\n' +
+    'ACTION:add_health_appointment|{type}|{provider}|{intervalMonths}|{lastAppointment YYYY-MM-DD or blank}|{notes}  \u2014 add a new recurring health appointment tracker\n' +
+    'ACTION:query_health_due|{appointmentType}  \u2014 look up when a health appointment is next due (read-only, result returned to you)\n' +
     // Credit Card Hub (Issues #115 + #117)
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
@@ -850,6 +854,9 @@ function buildChatSystemPrompt_(context) {
     '- For update_career_position: use when Ahmed mentions a new role, promotion, company change, or updates his focus areas. Confirm the change before emitting the ACTION. Do not use this for temporary assignments or speculation.\n' +
     '- For add_prescription: use when Ahmed says "add X mg of Y for {person}", "log that {person} takes X", or "{person} was prescribed X". person = Ahmed or Victoria. dosage/frequency/refillDate are optional — leave blank if not mentioned.\n' +
     '- For mark_prescription_refilled: use when Ahmed says "{person} just refilled X", "picked up {person}\'s X prescription", or "got the X refill". Sets last filled to today. Ask for new refill date if not provided; do not guess it.\n' +
+    '- For log_health_visit: use when Ahmed says "I went to the dentist", "had my physical today", "just saw Dr X", or "log my eye exam". appointmentType can be partial (e.g. "dentist" matches "Dental Cleaning"). Date defaults to today.\n' +
+    '- For add_health_appointment: use when Ahmed says "add a reminder for my annual physical", "track my dermatologist every 12 months", or "add an eye exam reminder". Interval defaults to 12 months if not specified.\n' +
+    '- For query_health_due: use when Ahmed asks "when is my next dentist appointment?", "am I due for a physical?", or "when did I last see my eye doctor?". Emit this ACTION and include the result in your reply.\n' +
     '- For log_card_used: use when Ahmed says "I used my X card", "paid with my X", or "charged it to X". Confirm the card was logged. Card name can be partial (e.g. "Amex" matches "Amex Gold").\n' +
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
@@ -2104,6 +2111,58 @@ function executeActions_(rawText) {
           } else {
             errors.push('mark_prescription_refilled: no prescription found for ' + mrPerson + '/' + mrMed);
           }
+        }
+      }
+
+      // Health Appointments (Issue #85)
+      // ACTION:log_health_visit|{appointmentType}|{YYYY-MM-DD or "today"}
+      else if (type === 'log_health_visit') {
+        var hvType = (args[0] || '').trim().toLowerCase();
+        var hvDateRaw = (args[1] || 'today').trim().toLowerCase();
+        var hvDate = hvDateRaw === 'today'
+          ? Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
+          : hvDateRaw;
+        var hvAll   = getHealthAppointments_();
+        var hvMatch = hvAll.filter(function(a) { return a.type.toLowerCase().indexOf(hvType) >= 0; });
+        if (hvMatch.length > 0) {
+          var hvRes = webLogHealthVisit_({ parameter: { id: hvMatch[0].id, date: hvDate } });
+          executed.push('log_health_visit (' + hvMatch[0].type + ' on ' + hvDate + ', next due ' + (hvRes.nextDue || '?') + ')');
+        } else {
+          errors.push('log_health_visit: no appointment found matching "' + hvType + '"');
+        }
+      }
+
+      // ACTION:add_health_appointment|{type}|{provider}|{intervalMonths}|{lastAppointment YYYY-MM-DD}|{notes}
+      else if (type === 'add_health_appointment') {
+        var haType     = (args[0] || '').trim();
+        var haProvider = (args[1] || '').trim();
+        var haInterval = args[2] || '12';
+        var haLast     = (args[3] || '').trim();
+        var haNotes    = (args[4] || '').trim();
+        if (haType) {
+          webAddHealthAppointment_({ parameter: {
+            type: haType, provider: haProvider,
+            intervalMonths: haInterval, lastAppointment: haLast, notes: haNotes,
+          }});
+          executed.push('add_health_appointment (' + haType + (haProvider ? ' · ' + haProvider : '') + ')');
+        }
+      }
+
+      // ACTION:query_health_due|{appointmentType}  — read-only, result goes back to Claude via executed[]
+      else if (type === 'query_health_due') {
+        var qdType  = (args[0] || '').trim().toLowerCase();
+        var qdAll   = getHealthAppointments_();
+        var qdMatch = qdAll.filter(function(a) { return a.type.toLowerCase().indexOf(qdType) >= 0; });
+        if (qdMatch.length > 0) {
+          var qa = qdMatch[0];
+          var qdMsg = qa.type + ': ' + (qa.daysUntil === null
+            ? 'no last appointment recorded'
+            : qa.daysUntil < 0
+              ? 'overdue by ' + Math.abs(qa.daysUntil) + ' days (due ' + qa.nextDue + ')'
+              : 'due in ' + qa.daysUntil + ' days (' + qa.nextDue + ')');
+          executed.push('query_health_due: ' + qdMsg);
+        } else {
+          executed.push('query_health_due: no appointment found matching "' + qdType + '"');
         }
       }
 

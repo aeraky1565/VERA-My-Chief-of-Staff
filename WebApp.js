@@ -297,6 +297,12 @@ function doGet(e) {
       // Financial scenarios
       case 'saved_scenarios':       return jsonOut_(webGetSavedScenarios_(e.parameter));
       case 'sync_life_plan_doc':    return jsonOut_(webSyncLifePlanDoc_());
+      // Health Appointments (Issue #85)
+      case 'health_appointments':        return jsonOut_(webGetHealthAppointments_());
+      case 'add_health_appointment':     return jsonOut_(webAddHealthAppointment_(e));
+      case 'update_health_appointment':  return jsonOut_(webUpdateHealthAppointment_(e));
+      case 'delete_health_appointment':  return jsonOut_(webDeleteHealthAppointment_(e));
+      case 'log_health_visit':           return jsonOut_(webLogHealthVisit_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -6883,4 +6889,134 @@ function webGetFamilyWishLists_() {
   });
 
   return { ok: true, wishlists: wishlists };
+}
+
+// ============================================================
+// Health Appointments (Issue #85)
+// ============================================================
+
+function webGetHealthAppointments_() {
+  return { ok: true, appointments: getHealthAppointments_() };
+}
+
+function webAddHealthAppointment_(e) {
+  var p        = e.parameter || {};
+  var apptType = (p.type || '').trim();
+  if (!apptType) throw new Error('type is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
+  if (!sheet) throw new Error('Health Appointments tab not found');
+
+  var tz      = Session.getScriptTimeZone();
+  var today   = new Date();
+  var dateStr = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  var seq     = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0]).indexOf('HEALTH-' + dateStr) === 0) seq++; });
+  }
+  var id       = 'HEALTH-' + dateStr + '-' + String(seq).padStart(2, '0');
+  var interval = parseInt(p.intervalMonths || p.interval || '12', 10) || 12;
+  var lastRaw  = (p.lastAppointment || '').trim();
+  var nextDue  = '';
+  if (lastRaw) {
+    var d = new Date(lastRaw); d.setMonth(d.getMonth() + interval);
+    nextDue = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+  }
+
+  sheet.appendRow([
+    id, apptType, (p.provider || '').trim(), interval,
+    lastRaw, nextDue, (p.notes || '').trim(),
+    parseInt(p.reminderLeadDays || '30', 10) || 30,
+  ]);
+
+  Logger.log('webAddHealthAppointment_: ' + id + ' — ' + apptType);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateHealthAppointment_(e) {
+  var p     = e.parameter || {};
+  var id    = (p.id || '').trim();
+  var field = (p.field || '').trim().toLowerCase();
+  var value = (p.value != null ? String(p.value) : '').trim();
+  if (!id || !field) throw new Error('id and field are required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Health Appointments sheet is empty');
+
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  var rowNum = -1;
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) { rowNum = i + 2; break; }
+  }
+  if (rowNum < 0) throw new Error('Appointment not found: ' + id);
+
+  // col map (1-based): ID=1 Type=2 Provider=3 Interval=4 LastAppt=5 NextDue=6 Notes=7 LeadDays=8
+  var colMap = { type:2, provider:3, interval:4, lastappointment:5, nextdue:6, notes:7, reminderleaddays:8 };
+  var col = colMap[field.replace(/[^a-z]/g, '')];
+  if (!col) throw new Error('Unknown field: ' + field);
+
+  var writeVal = (field === 'interval' || field === 'reminderleaddays') ? (parseInt(value, 10) || 0) : value;
+  sheet.getRange(rowNum, col).setValue(writeVal);
+
+  // Recompute Next Due whenever Last Appointment or Interval changes
+  if (field === 'lastappointment' || field === 'interval') {
+    var row      = sheet.getRange(rowNum, 1, 1, 8).getValues()[0];
+    var lastRaw2 = row[4];
+    var interval2 = parseInt(row[3], 10) || 12;
+    if (lastRaw2) {
+      var nd = new Date(lastRaw2); nd.setMonth(nd.getMonth() + interval2);
+      sheet.getRange(rowNum, 6).setValue(
+        Utilities.formatDate(nd, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      );
+    }
+  }
+
+  Logger.log('webUpdateHealthAppointment_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, action: 'updated' };
+}
+
+function webDeleteHealthAppointment_(e) {
+  var id    = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Appointment not found: ' + id);
+
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) { sheet.deleteRow(i + 2); return { ok: true, id: id, action: 'deleted' }; }
+  }
+  throw new Error('Appointment not found: ' + id);
+}
+
+function webLogHealthVisit_(e) {
+  var p   = e.parameter || {};
+  var id  = (p.id || '').trim();
+  var tz  = Session.getScriptTimeZone();
+  var visitDate = (p.date || '').trim() ||
+                  Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  if (!id) throw new Error('id is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Appointment not found: ' + id);
+
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() !== id) continue;
+    var rowNum   = i + 2;
+    var interval = parseInt(sheet.getRange(rowNum, 4).getValue(), 10) || 12;
+    var nd       = new Date(visitDate); nd.setMonth(nd.getMonth() + interval);
+    var nextDue  = Utilities.formatDate(nd, tz, 'yyyy-MM-dd');
+    sheet.getRange(rowNum, 5).setValue(visitDate);
+    sheet.getRange(rowNum, 6).setValue(nextDue);
+    Logger.log('webLogHealthVisit_: ' + id + ' visited on ' + visitDate + ', next due ' + nextDue);
+    return { ok: true, id: id, visitDate: visitDate, nextDue: nextDue, action: 'logged' };
+  }
+  throw new Error('Appointment not found: ' + id);
 }

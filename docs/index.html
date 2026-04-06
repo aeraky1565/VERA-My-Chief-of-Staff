@@ -11880,12 +11880,171 @@ function PrescriptionsTab({ apiUrl, apiToken }) {
 
 // ---- Health tab --------------------------------------------------------------
 
+// ---- HealthAppointmentsTab (Issue #85) --------------------------------------
+function HealthAppointmentsTab({ apiUrl, apiToken }) {
+  const [appointments, setAppointments] = React.useState(null);
+  const [loading,      setLoading]      = React.useState(false);
+  const [busy,         setBusy]         = React.useState(false);
+  const [showAdd,      setShowAdd]      = React.useState(false);
+  const [form,         setForm]         = React.useState({ type: '', provider: '', intervalMonths: '12', lastAppointment: '', notes: '' });
+  const [error,        setError]        = React.useState('');
+
+  function load() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'health_appointments' })
+      .then(function(d) { if (d.ok) setAppointments(d.appointments || []); })
+      .catch(function(e) { setError(e.message); })
+      .finally(function() { setLoading(false); });
+  }
+
+  React.useEffect(load, [apiUrl, apiToken]);
+
+  async function handleLogVisit(id, type) {
+    if (!window.confirm('Log a visit for "' + type + '" today?')) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'log_health_visit', id: id });
+      load();
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  }
+
+  async function handleDelete(id, type) {
+    if (!window.confirm('Delete "' + type + '"?')) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_health_appointment', id: id });
+      setAppointments(function(prev) { return (prev || []).filter(function(a) { return a.id !== id; }); });
+    } catch (e) { setError(e.message); }
+    setBusy(false);
+  }
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!form.type.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, Object.assign({ action: 'add_health_appointment' }, form));
+      setForm({ type: '', provider: '', intervalMonths: '12', lastAppointment: '', notes: '' });
+      setShowAdd(false);
+      load();
+    } catch (err) { setError(err.message); }
+    setBusy(false);
+  }
+
+  function statusBadge(a) {
+    if (a.daysUntil === null) return { label: 'No data', color: '#6b7fa8', bg: 'rgba(107,127,168,.1)' };
+    if (a.daysUntil < 0)     return { label: 'Overdue', color: '#ef5350', bg: 'rgba(239,83,80,.1)' };
+    if (a.daysUntil <= 30)   return { label: 'Due soon', color: '#ffa726', bg: 'rgba(255,167,38,.1)' };
+    return { label: 'OK', color: '#66bb6a', bg: 'rgba(102,187,106,.1)' };
+  }
+
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading appointments…</div>;
+
+  return (
+    <div>
+      {error && <div style={{ color: '#ef5350', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, gap: 8 }}>
+        <button onClick={load} disabled={busy}
+          style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(100,160,255,.1)', border: '1px solid rgba(100,160,255,.3)', color: '#7ab4ff', fontSize: 12, cursor: 'pointer' }}>
+          ↻ Refresh
+        </button>
+        <button onClick={function() { setShowAdd(!showAdd); }} disabled={busy}
+          style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(100,200,120,.12)', border: '1px solid rgba(100,200,120,.35)', color: '#80d8a0', fontSize: 12, cursor: 'pointer' }}>
+          + Add Appointment
+        </button>
+      </div>
+
+      {showAdd && (
+        <form onSubmit={handleAdd} style={{ background: '#1a2540', border: '1px solid #2a3a5a', borderRadius: 10, padding: 16, marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <input required placeholder="Appointment Type *" value={form.type}
+            onChange={function(e) { setForm(function(p) { return Object.assign({}, p, { type: e.target.value }); }); }}
+            style={{ flex: '1 1 160px', padding: '6px 10px', borderRadius: 6, background: '#0e1a2e', border: '1px solid #2a3a5a', color: '#c0cfe8', fontSize: 13 }} />
+          <input placeholder="Provider" value={form.provider}
+            onChange={function(e) { setForm(function(p) { return Object.assign({}, p, { provider: e.target.value }); }); }}
+            style={{ flex: '1 1 140px', padding: '6px 10px', borderRadius: 6, background: '#0e1a2e', border: '1px solid #2a3a5a', color: '#c0cfe8', fontSize: 13 }} />
+          <input type="number" placeholder="Interval (months)" value={form.intervalMonths} min="1"
+            onChange={function(e) { setForm(function(p) { return Object.assign({}, p, { intervalMonths: e.target.value }); }); }}
+            style={{ flex: '0 1 130px', padding: '6px 10px', borderRadius: 6, background: '#0e1a2e', border: '1px solid #2a3a5a', color: '#c0cfe8', fontSize: 13 }} />
+          <input type="date" placeholder="Last Appointment" value={form.lastAppointment}
+            onChange={function(e) { setForm(function(p) { return Object.assign({}, p, { lastAppointment: e.target.value }); }); }}
+            style={{ flex: '0 1 150px', padding: '6px 10px', borderRadius: 6, background: '#0e1a2e', border: '1px solid #2a3a5a', color: '#c0cfe8', fontSize: 13 }} />
+          <input placeholder="Notes" value={form.notes}
+            onChange={function(e) { setForm(function(p) { return Object.assign({}, p, { notes: e.target.value }); }); }}
+            style={{ flex: '2 1 200px', padding: '6px 10px', borderRadius: 6, background: '#0e1a2e', border: '1px solid #2a3a5a', color: '#c0cfe8', fontSize: 13 }} />
+          <div style={{ flex: '0 0 auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button type="submit" disabled={busy}
+              style={{ padding: '6px 16px', borderRadius: 6, background: 'rgba(100,200,120,.2)', border: '1px solid rgba(100,200,120,.4)', color: '#80d8a0', fontSize: 13, cursor: 'pointer' }}>
+              Save
+            </button>
+            <button type="button" onClick={function() { setShowAdd(false); }}
+              style={{ padding: '6px 12px', borderRadius: 6, background: 'transparent', border: '1px solid #2a3a5a', color: '#6b7fa8', fontSize: 13, cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {(!appointments || appointments.length === 0) && (
+        <div className="empty-state" style={{ paddingTop: 32 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🩺</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: '#a0b0c8', marginBottom: 6 }}>No appointments tracked yet</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>Add your annual physical, dental cleaning, eye exam, etc.</div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(appointments || []).map(function(a) {
+          var badge = statusBadge(a);
+          return (
+            <div key={a.id} style={{ background: '#1a2540', border: '1px solid #2a3a5a', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 160px' }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#e8d9b0', marginBottom: 2 }}>{a.type}</div>
+                {a.provider && <div style={{ fontSize: 12, color: '#6b7fa8' }}>{a.provider}</div>}
+              </div>
+              <div style={{ flex: '0 1 120px', fontSize: 12, color: '#a0b0c8', textAlign: 'center' }}>
+                <div style={{ color: '#6b7fa8', marginBottom: 2 }}>Last visit</div>
+                <div>{a.lastAppointment || '—'}</div>
+              </div>
+              <div style={{ flex: '0 1 120px', fontSize: 12, color: '#a0b0c8', textAlign: 'center' }}>
+                <div style={{ color: '#6b7fa8', marginBottom: 2 }}>Next due</div>
+                <div>{a.nextDue || '—'}</div>
+              </div>
+              <div style={{ flex: '0 0 auto' }}>
+                <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+                               background: badge.bg, color: badge.color, border: '1px solid ' + badge.color + '55' }}>
+                  {badge.label}
+                  {a.daysUntil !== null && a.daysUntil < 0 ? ' ' + Math.abs(a.daysUntil) + 'd' : ''}
+                  {a.daysUntil !== null && a.daysUntil >= 0 && a.daysUntil <= 30 ? ' (' + a.daysUntil + 'd)' : ''}
+                </span>
+              </div>
+              <div style={{ flex: '0 0 auto', display: 'flex', gap: 6 }}>
+                <button onClick={function() { handleLogVisit(a.id, a.type); }} disabled={busy}
+                  style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(100,160,255,.1)', border: '1px solid rgba(100,160,255,.3)', color: '#7ab4ff', fontSize: 11, cursor: 'pointer' }}>
+                  Log Visit
+                </button>
+                <button onClick={function() { handleDelete(a.id, a.type); }} disabled={busy}
+                  style={{ padding: '4px 8px', borderRadius: 6, background: 'transparent', border: '1px solid #2a3a5a', color: '#4d6080', fontSize: 11, cursor: 'pointer' }}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HealthTab({ apiUrl, apiToken }) {
   const [sub, setSub] = React.useState('fitness');
   const subTabs = [
     { id: 'fitness',         label: '💪 Fitness' },
     { id: 'morning_routine', label: '☀️ Morning Routine' },
     { id: 'prescriptions',   label: '💊 Prescriptions' },
+    { id: 'appointments',    label: '🩺 Appointments' },
   ];
   return (
     <div>
@@ -11903,6 +12062,9 @@ function HealthTab({ apiUrl, apiToken }) {
       )}
       {sub === 'prescriptions' && (
         <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+      {sub === 'appointments' && (
+        <HealthAppointmentsTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
     </div>
   );

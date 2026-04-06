@@ -84,6 +84,7 @@ const TABS = {
   RESOURCES:           'Resources',            // Reference links + docs (Explore tab)
   BUCKET_ACTIVITIES:   'BucketActivities',     // Per-destination activity list (Issue #113)
   WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
+  HEALTH_APPOINTMENTS: 'Health Appointments',  // Recurring appointment tracker (Issue #85)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -146,6 +147,7 @@ const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
 const BUCKET_ACTIVITIES_HEADERS  = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
+const HEALTH_APPOINTMENT_HEADERS = ['ID', 'Appointment Type', 'Provider', 'Interval (months)', 'Last Appointment', 'Next Due', 'Notes', 'Reminder Lead Days']; // Issue #85
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -263,6 +265,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_GOALS,      FINANCIAL_GOAL_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS,  FINANCIAL_SCENARIO_HEADERS);
+  ensureSheet(ss, TABS.HEALTH_APPOINTMENTS,  HEALTH_APPOINTMENT_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -629,6 +632,9 @@ function nightlyRun() {
 
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); }
+
+    // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
+    try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();
