@@ -632,11 +632,12 @@ function handleSlackInteraction_(payload) {
       webSnooze_(value, 3);
 
     } else if (actionId === 'evening_checkin_yes') {
+      try { webGymAttendLatest_('Yes'); } catch (gErr) { Logger.log('evening_checkin_yes gym log error: ' + gErr.message); }
       var chatChannel = getSlackChannelId_('chat');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       sendSlackMessage_(chatChannel, ':muscle: Nice work, ' + userName + '! What did you do? _(e.g. 30 min run, yoga, weights)_');
       var logsChannel = getSlackChannelId_('logs');
-      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *logged movement* (details pending)');
+      if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *got movement* (logged as attended)');
 
     } else if (actionId === 'evening_checkin_walk') {
       try { webGymAttendLatest_('Yes'); } catch (gErr) { Logger.log('evening_checkin_walk gym log error: ' + gErr.message); }
