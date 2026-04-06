@@ -449,6 +449,7 @@ function webGetStatus_() {
     // Backend / behavioural feature flags
     'email_parser', 'pretrip_briefing', 'posttrip_capture',
     'gym_tracker', 'google_tasks', 'weekend_planner',
+    'pacing', 'reminders', 'explorer', 'email_admin',
   ];
   var features = {};
   featureKeys.forEach(function(k) {

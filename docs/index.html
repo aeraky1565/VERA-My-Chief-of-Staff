@@ -12810,13 +12810,14 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
   // Feature Flags card data (Issue #134)
   const FF_TAB_KEYS  = ['fitness','morning_routine','pantry','takeouts','experiments','wish_list','wishlists'];
-  const FF_FEAT_KEYS = ['email_parser','pretrip_briefing','posttrip_capture','gym_tracker','google_tasks','weekend_planner'];
+  const FF_FEAT_KEYS = ['email_parser','pretrip_briefing','posttrip_capture','gym_tracker','google_tasks','weekend_planner','pacing','reminders','explorer','email_admin'];
   const FF_LABELS    = {
     fitness: '💪 Fitness', morning_routine: '☀️ Morning Routine', pantry: '📦 Pantry',
     takeouts: '🥡 Takeouts', experiments: '🧪 Experiments', wish_list: '🛍 Wish List', wishlists: '🎄 Wish Lists',
     email_parser: '📧 Email Parsing', pretrip_briefing: '✈️ Pre-trip Briefing',
     posttrip_capture: '🗺️ Post-trip Capture', gym_tracker: '🏋️ Gym Tracker',
     google_tasks: '✅ Google Tasks', weekend_planner: '📅 Weekend Planner',
+    pacing: '🧘 Pacing', reminders: '🔔 Reminders', explorer: '🗺 Explorer', email_admin: '📬 Email Admin',
   };
   const ffFeat = (status && status.features) || {};
 
