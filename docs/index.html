@@ -8174,13 +8174,90 @@ function GiftIdeasView({ people, ideas, loading, busy,
   );
 }
 
+// ---- WishListsView (Issue #106) ---------------------------------------------
+function WishListsView({ wishlists, loading, onRefresh }) {
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading wish lists…</div>;
+
+  const note = wishlists && wishlists.note;
+  const items = (wishlists && wishlists.wishlists) || [];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: '#6b7fa8', flex: 1 }}>
+          Holiday &amp; seasonal wish lists, read directly from family Google Docs.
+        </div>
+        <button
+          onClick={onRefresh}
+          style={{ padding: '5px 12px', borderRadius: 8, background: 'rgba(100,160,255,0.1)',
+                   border: '1px solid rgba(100,160,255,0.3)', color: '#7ab4ff', fontSize: 12, cursor: 'pointer' }}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {note && (
+        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(255,200,60,0.08)',
+                      border: '1px solid rgba(255,200,60,0.25)', color: '#c9a84c', fontSize: 13, marginBottom: 16 }}>
+          ⚠️ {note}
+          <div style={{ fontSize: 12, color: '#7a8fb8', marginTop: 6 }}>
+            Add <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>wishlist_name</code> rows
+            to your Config tab with the Google Doc ID as the value.
+          </div>
+        </div>
+      )}
+
+      {items.length === 0 && !note && (
+        <div className="empty-state" style={{ paddingTop: 32 }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🎄</div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: '#a0b0c8', marginBottom: 6 }}>No wish lists configured</div>
+          <div style={{ fontSize: 13, color: '#4d6080' }}>
+            Add <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4 }}>wishlist_name</code> rows
+            to your Config tab (value = Google Doc ID).
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+        {items.map(function(wl) {
+          return (
+            <div key={wl.person} style={{ background: '#1a2540', border: '1px solid #2a3a5a',
+                                           borderRadius: 12, padding: 16, minWidth: 220, flex: '1 1 220px', maxWidth: 360 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#e8d9b0', marginBottom: 10 }}>
+                🎁 {wl.person}
+              </div>
+              {wl.error && (
+                <div style={{ fontSize: 12, color: '#ef5350', marginBottom: 8 }}>
+                  ⚠️ {wl.error}
+                </div>
+              )}
+              {wl.items.length === 0 && !wl.error && (
+                <div style={{ fontSize: 12, color: '#4d6080' }}>No unpurchased items found.</div>
+              )}
+              <ul style={{ margin: 0, padding: '0 0 0 18px', listStyle: 'disc' }}>
+                {wl.items.map(function(item, i) {
+                  return (
+                    <li key={i} style={{ fontSize: 13, color: '#c0cfe8', marginBottom: 4, lineHeight: 1.4 }}>
+                      {item}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PeopleTab({ giftData, giftLoading, busy,
                      onAddGiftPerson, onDeleteGiftPerson,
                      onAddGiftIdea, onDeleteGiftIdea,
                      datesData, datesLoading,
                      onAddImportantDate, onUpdateImportantDate, onDeleteImportantDate,
                      onPreviewCalendarBirthdays, onImportCalendarBirthdays,
-                     calPreviews, calPreviewLoading }) {
+                     calPreviews, calPreviewLoading,
+                     wishListsData, wishListsLoading, onRefreshWishLists }) {
   const [sub, setSub] = React.useState('dates');
   const subTabs = [
     { id: 'dates',     label: '📅 Important Dates' },
@@ -8229,12 +8306,11 @@ function PeopleTab({ giftData, giftLoading, busy,
       )}
 
       {sub === 'wishlists' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎄</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Wish Lists</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>Holiday and seasonal wish lists — linked from the family Google Docs, one per person.</div>
-          <div style={{ fontSize: 12, color: '#3a4d66', marginTop: 8 }}>Coming soon</div>
-        </div>
+        <WishListsView
+          wishlists={wishListsData}
+          loading={!!wishListsLoading}
+          onRefresh={onRefreshWishLists}
+        />
       )}
 
       {sub === 'people' && (
@@ -14496,6 +14572,8 @@ function App() {
   const [homeFront,  setHomeFront]  = useState(null); // { recipes, items } | null
   const [giftData,          setGiftData]          = useState(null);  // { people, ideas } | null — Issue #105
   const [giftLoading,       setGiftLoading]        = useState(false);
+  const [wishListsData,     setWishListsData]      = useState(null);  // { wishlists } | null — Issue #106
+  const [wishListsLoading,  setWishListsLoading]   = useState(false);
   const [datesData,         setDatesData]          = useState(null);  // { dates } | null — Issue #80
   const [datesLoading,      setDatesLoading]       = useState(false);
   const [calPreviews,       setCalPreviews]        = useState(null);  // birthday preview list from calendar
@@ -15292,6 +15370,18 @@ function App() {
     } catch (err) { setError('Could not delete gift idea: ' + err.message); loadGiftData(apiUrl, apiToken); }
   }
   // ---- End Gift Ideas ---------------------------------------------------------
+
+  // ---- Family Wish Lists (Issue #106) -----------------------------------------
+  async function loadWishListsData(url, token) {
+    if (!url || !token) return;
+    setWishListsLoading(true);
+    try {
+      const d = await apiGet(url, token, { action: 'get_wish_lists' });
+      if (d.ok) setWishListsData(d);
+    } catch (err) { setError('Wish Lists load failed: ' + err.message); }
+    setWishListsLoading(false);
+  }
+  // ---- End Family Wish Lists --------------------------------------------------
 
   // ---- Important Dates (Issue #80) -------------------------------------------
   async function loadDatesData(url, token) {
@@ -16670,7 +16760,7 @@ function App() {
                   if (tab === 'growth')   { loadGoals(apiUrl, apiToken); loadGrowth(apiUrl, apiToken); }
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
-                  if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); }
+                  if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); loadWishListsData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     { loadPTO(apiUrl, apiToken); loadProfiles(apiUrl, apiToken); } // upcomingTravel lives in PTO stats
@@ -16936,6 +17026,9 @@ function App() {
                 onImportCalendarBirthdays={handleImportCalendarBirthdays}
                 calPreviews={calPreviews}
                 calPreviewLoading={calPreviewLoading}
+                wishListsData={wishListsData}
+                wishListsLoading={wishListsLoading}
+                onRefreshWishLists={() => loadWishListsData(apiUrl, apiToken)}
               />
             )}
 

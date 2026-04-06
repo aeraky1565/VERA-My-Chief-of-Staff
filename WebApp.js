@@ -272,6 +272,8 @@ function doGet(e) {
       case 'update_resource':       return jsonOut_(webUpdateResource_(e));
       case 'delete_resource':       return jsonOut_(webDeleteResource_(e));
       case 'fetch_resource_content':return jsonOut_(webFetchResourceContent_(e));
+      // Family Wish Lists / Christmas Wish List Integration (Issue #106)
+      case 'get_wish_lists':        return jsonOut_(webGetFamilyWishLists_());
       // Wish List (Issue #131)
       case 'get_wish_list':         return jsonOut_(webGetWishList_());
       case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));
@@ -6821,4 +6823,65 @@ function webFetchResourceContent_(e) {
   } catch (err) {
     return { ok: false, error: 'cannot_read_file', name: resource['Name'], url: resource['URL'], detail: err.message };
   }
+}
+
+// ============================================================
+// Family / Christmas Wish Lists (Issue #106)
+// Config keys: wishlist_<person> = <Google Doc ID>
+// Parses each Doc and returns unpurchased (non-strikethrough) items
+// ============================================================
+
+function webGetFamilyWishLists_() {
+  var ss     = getSpreadsheet();
+  var config = ss.getSheetByName(TABS.CONFIG);
+  if (!config) return { ok: true, wishlists: [] };
+
+  // Collect all wishlist_* config entries
+  var rows    = config.getDataRange().getValues();
+  var entries = [];
+  rows.forEach(function(row) {
+    var key = String(row[0] || '').trim().toLowerCase();
+    var val = String(row[1] || '').trim();
+    if (key.indexOf('wishlist_') === 0 && val) {
+      var personRaw = key.replace('wishlist_', '');
+      var person    = personRaw.split('_').map(function(w) {
+        return w ? w.charAt(0).toUpperCase() + w.slice(1) : '';
+      }).join(' ').trim();
+      entries.push({ person: person, docId: val });
+    }
+  });
+
+  if (entries.length === 0) return { ok: true, wishlists: [], note: 'No wishlist_* keys found in Config tab.' };
+
+  var wishlists = entries.map(function(entry) {
+    try {
+      var doc   = DocumentApp.openById(entry.docId);
+      var paras = doc.getBody().getParagraphs();
+      var items = [];
+
+      paras.forEach(function(para) {
+        var text = para.getText().trim();
+        if (!text) return;
+
+        // Skip lines that are entirely strikethrough (purchased)
+        try {
+          var textEl   = para.editAsText();
+          var strikes  = 0;
+          var checkLen = Math.min(text.length, 20);
+          for (var i = 0; i < checkLen; i++) {
+            if (textEl.isStrikethrough(i)) strikes++;
+          }
+          if (strikes >= checkLen * 0.6) return; // majority strikethrough → skip
+        } catch (e) { /* non-text element — skip gracefully */ return; }
+
+        items.push(text);
+      });
+
+      return { person: entry.person, items: items, error: null };
+    } catch (err) {
+      return { person: entry.person, items: [], error: 'Could not open doc: ' + err.message };
+    }
+  });
+
+  return { ok: true, wishlists: wishlists };
 }
