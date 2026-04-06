@@ -107,6 +107,10 @@ function doGet(e) {
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
       case 'recipes':               return jsonOut_(webGetRecipes_());
       case 'recipe_to_shopping':    return jsonOut_(webRecipeToShopping_(e));
+      case 'meal_plan':             return jsonOut_(webGetMealPlan_(e));
+      case 'set_meal':              return jsonOut_(webSetMeal_(e));
+      case 'update_meal_status':    return jsonOut_(webUpdateMealStatus_(e));
+      case 'suggest_meals':         return jsonOut_(webSuggestMeals_(e));
       case 'takeouts':              return jsonOut_(webGetTakeouts_());
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
@@ -449,7 +453,7 @@ function webGetStatus_() {
     // Backend / behavioural feature flags
     'email_parser', 'pretrip_briefing', 'posttrip_capture',
     'gym_tracker', 'google_tasks', 'weekend_planner',
-    'pacing', 'reminders', 'explorer', 'email_admin',
+    'pacing', 'reminders', 'explorer', 'email_admin', 'meal_planner',
   ];
   var features = {};
   featureKeys.forEach(function(k) {
@@ -2203,6 +2207,46 @@ function webDeleteRecipe_(e) {
   if (!sheet) throw new Error('Recipes tab not found');
   sheet.deleteRow(rowNum);
   return { ok: true, row: rowNum, action: 'deleted' };
+}
+
+// ---- Meal Planner (Issue #122) ---------------------------------------------
+
+function webGetMealPlan_(e) {
+  var weekStart = (e && e.parameter && e.parameter.weekStart) || getCurrentWeekStart_();
+  var days      = getMealPlanWeek_(weekStart);
+  return { ok: true, weekStart: weekStart, days: days };
+}
+
+function webSetMeal_(e) {
+  var p         = (e && e.parameter) || {};
+  var weekStart = (p.weekStart || getCurrentWeekStart_()).trim();
+  var day       = (p.day || '').trim();
+  if (!day) throw new Error('day parameter required');
+  var id = upsertMealPlanEntry_(
+    weekStart, day, p.date || '',
+    p.mealName !== undefined ? p.mealName : undefined,
+    p.type     !== undefined ? p.type     : undefined,
+    p.status   !== undefined ? p.status   : undefined,
+    p.notes    !== undefined ? p.notes    : undefined
+  );
+  return { ok: true, id: id, day: day, weekStart: weekStart };
+}
+
+function webUpdateMealStatus_(e) {
+  var p         = (e && e.parameter) || {};
+  var weekStart = (p.weekStart || getCurrentWeekStart_()).trim();
+  var day       = (p.day    || '').trim();
+  var status    = (p.status || '').trim();
+  if (!day)    throw new Error('day parameter required');
+  if (!status) throw new Error('status parameter required');
+  var id = upsertMealPlanEntry_(weekStart, day, '', undefined, undefined, status, undefined);
+  return { ok: true, id: id, day: day, status: status };
+}
+
+function webSuggestMeals_(e) {
+  var weekStart   = ((e && e.parameter && e.parameter.weekStart) || getCurrentWeekStart_()).trim();
+  var suggestions = suggestWeekMeals_(weekStart);
+  return { ok: true, weekStart: weekStart, suggestions: suggestions };
 }
 
 // ---- Favorite Takeouts (Issue #112) ----------------------------------------

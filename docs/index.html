@@ -8882,6 +8882,209 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
   );
 }
 
+// ---- MealPlanSubTab (Issue #122) --------------------------------------------
+
+function MealPlanSubTab({ apiUrl, apiToken }) {
+  const DAYS      = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const DAY_FULL  = { Mon:'Monday', Tue:'Tuesday', Wed:'Wednesday', Thu:'Thursday',
+                      Fri:'Friday', Sat:'Saturday', Sun:'Sunday' };
+  const TYPE_COLORS = {
+    'Home Cooked': { bg:'rgba(102,187,106,.12)', color:'#66bb6a', border:'rgba(102,187,106,.3)' },
+    'Leftovers':   { bg:'rgba(107,127,168,.12)', color:'#7e9ab8', border:'rgba(107,127,168,.3)' },
+    'Takeout':     { bg:'rgba(66,165,245,.12)',  color:'#42a5f5', border:'rgba(66,165,245,.3)'  },
+    'Eating Out':  { bg:'rgba(126,87,194,.12)',  color:'#9575cd', border:'rgba(126,87,194,.3)'  },
+  };
+  const STATUS_COLORS = {
+    'Planned': { color:'#6b7fa8' },
+    'Cooked':  { color:'#66bb6a' },
+    'Skipped': { color:'#ef5350' },
+  };
+
+  const [days,       setDays]       = React.useState([]);
+  const [weekStart,  setWeekStart]  = React.useState('');
+  const [loading,    setLoading]    = React.useState(false);
+  const [suggesting, setSuggesting] = React.useState(false);
+  const [editDay,    setEditDay]    = React.useState(null);   // day being edited
+  const [editVal,    setEditVal]    = React.useState({ mealName:'', type:'Home Cooked' });
+  const [error,      setError]      = React.useState(null);
+
+  // Compute today's day abbreviation
+  const todayAbbrev = React.useMemo(function() {
+    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
+  }, []);
+
+  function load() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'meal_plan' })
+      .then(function(r) {
+        if (r.ok) { setDays(r.days || []); setWeekStart(r.weekStart || ''); }
+        else setError(r.error || 'Load failed');
+      })
+      .catch(function(e) { setError(e.message); })
+      .finally(function() { setLoading(false); });
+  }
+
+  React.useEffect(load, [apiUrl, apiToken]);
+
+  function suggestWeek() {
+    setSuggesting(true); setError(null);
+    apiGet(apiUrl, apiToken, { action: 'suggest_meals' })
+      .then(function(r) { if (r.ok) load(); else setError(r.error || 'Suggest failed'); })
+      .catch(function(e) { setError(e.message); })
+      .finally(function() { setSuggesting(false); });
+  }
+
+  function openEdit(day) {
+    var entry = days.find(function(d) { return d.day === day; }) || {};
+    setEditVal({ mealName: entry.mealName || '', type: entry.type || 'Home Cooked' });
+    setEditDay(day);
+  }
+
+  function saveEdit(day) {
+    if (!editVal.mealName.trim()) { setEditDay(null); return; }
+    apiGet(apiUrl, apiToken, { action: 'set_meal', day: day,
+      weekStart: weekStart, mealName: editVal.mealName.trim(), type: editVal.type })
+      .then(function(r) { if (r.ok) load(); })
+      .finally(function() { setEditDay(null); });
+  }
+
+  function updateStatus(day, status) {
+    apiGet(apiUrl, apiToken, { action: 'update_meal_status', day: day, weekStart: weekStart, status: status })
+      .then(function(r) { if (r.ok) load(); });
+  }
+
+  // Format weekStart label
+  var weekLabel = '';
+  if (weekStart) {
+    try {
+      var d = new Date(weekStart + 'T00:00:00');
+      weekLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    } catch(e) { weekLabel = weekStart; }
+  }
+
+  if (loading) return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading meal plan…</div>;
+
+  return (
+    <div>
+      {error && <div style={{ color:'#ef5350', fontSize:13, marginBottom:10 }}>{error}</div>}
+
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:'#e8eaf6' }}>Week of {weekLabel}</div>
+          <div style={{ fontSize:12, color:'#4d6080', marginTop:2 }}>Dinner plan — Mon through Sun</div>
+        </div>
+        <button onClick={suggestWeek} disabled={suggesting}
+          style={{ background:'rgba(201,168,76,.12)', border:'1px solid rgba(201,168,76,.3)',
+                   color:'#c9a84c', borderRadius:8, padding:'7px 16px', fontSize:12,
+                   fontWeight:600, cursor: suggesting ? 'wait' : 'pointer' }}>
+          {suggesting ? '✨ Suggesting…' : '✨ Suggest Week'}
+        </button>
+      </div>
+
+      {/* Day grid */}
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {DAYS.map(function(day) {
+          var entry   = days.find(function(d) { return d.day === day; }) || { day: day, mealName:'', type:'', status:'Planned' };
+          var isToday = day === todayAbbrev;
+          var tc      = TYPE_COLORS[entry.type] || {};
+          var sc      = STATUS_COLORS[entry.status] || STATUS_COLORS['Planned'];
+          var isEmpty = !entry.mealName;
+          var isEditing = editDay === day;
+
+          return (
+            <div key={day} style={{
+              background: isToday ? 'rgba(201,168,76,.06)' : '#0d1b3e',
+              border: '1px solid ' + (isToday ? 'rgba(201,168,76,.3)' : '#1e2e4a'),
+              borderRadius:10, padding:'12px 16px',
+              display:'flex', alignItems:'center', gap:12,
+            }}>
+              {/* Day label */}
+              <div style={{ width:44, flexShrink:0 }}>
+                <div style={{ fontSize:12, fontWeight:700, color: isToday ? '#c9a84c' : '#6b7fa8' }}>{day}</div>
+                {entry.date && <div style={{ fontSize:10, color:'#3d5070' }}>
+                  {(function(){ try { return new Date(entry.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch(e){ return entry.date; }})()}
+                </div>}
+              </div>
+
+              {/* Meal content */}
+              <div style={{ flex:1 }}>
+                {isEditing ? (
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <input
+                      autoFocus
+                      value={editVal.mealName}
+                      onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{mealName:e.target.value}); }); }}
+                      onKeyDown={function(e){ if(e.key==='Enter') saveEdit(day); if(e.key==='Escape') setEditDay(null); }}
+                      placeholder="Dinner name…"
+                      style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
+                               color:'#e8eaf6', fontSize:13, padding:'4px 10px', flex:1, minWidth:140 }}
+                    />
+                    <select value={editVal.type}
+                      onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{type:e.target.value}); }); }}
+                      style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
+                               color:'#c9d9ff', fontSize:12, padding:'4px 8px' }}>
+                      {['Home Cooked','Leftovers','Takeout','Eating Out'].map(function(t){
+                        return <option key={t} value={t}>{t}</option>;
+                      })}
+                    </select>
+                    <button onClick={function(){ saveEdit(day); }}
+                      style={{ background:'rgba(102,187,106,.15)', border:'1px solid rgba(102,187,106,.3)',
+                               color:'#66bb6a', borderRadius:6, padding:'4px 10px', fontSize:12, cursor:'pointer' }}>Save</button>
+                    <button onClick={function(){ setEditDay(null); }}
+                      style={{ background:'none', border:'none', color:'#4d6080', fontSize:12, cursor:'pointer' }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:14, color: isEmpty ? '#2e3d55' : '#e8eaf6', fontStyle: isEmpty ? 'italic' : 'normal' }}>
+                      {isEmpty ? '—' : entry.mealName}
+                    </span>
+                    {!isEmpty && entry.type && (
+                      <span style={{ fontSize:11, padding:'2px 8px', borderRadius:12, fontWeight:600,
+                        background: tc.bg, color: tc.color, border:'1px solid '+(tc.border||'transparent') }}>
+                        {entry.type}
+                      </span>
+                    )}
+                    {!isEmpty && (
+                      <span style={{ fontSize:11, color: sc.color, fontWeight:600 }}>{entry.status}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              {!isEditing && (
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <button onClick={function(){ openEdit(day); }}
+                    style={{ background:'rgba(107,127,168,.1)', border:'1px solid rgba(107,127,168,.2)',
+                             color:'#6b7fa8', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                    ✏️
+                  </button>
+                  {!isEmpty && entry.status !== 'Cooked' && (
+                    <button onClick={function(){ updateStatus(day,'Cooked'); }}
+                      style={{ background:'rgba(102,187,106,.1)', border:'1px solid rgba(102,187,106,.2)',
+                               color:'#66bb6a', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                      ✓
+                    </button>
+                  )}
+                  {!isEmpty && entry.status !== 'Skipped' && (
+                    <button onClick={function(){ updateStatus(day,'Skipped'); }}
+                      style={{ background:'rgba(239,83,80,.08)', border:'1px solid rgba(239,83,80,.2)',
+                               color:'#ef5350', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                      ✗
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---- HomeFrontTab ------------------------------------------------------------
 
 function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
@@ -8895,10 +9098,11 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
     { id: 'steward',  label: '🏠 Steward'  },
     { id: 'vehicles', label: '🚗 Vehicles'  },
     { id: 'chores',   label: '🧹 Chores'   },
-    { id: 'recipes',  label: '🍽️ Recipes'  },
-    { id: 'takeouts', label: '🥡 Takeouts',  featureKey: 'takeouts' },
-    { id: 'pantry',   label: '📦 Pantry',    featureKey: 'pantry'   },
-    { id: 'guests',   label: '👥 Guests'   },
+    { id: 'recipes',   label: '🍽️ Recipes'  },
+    { id: 'meal_plan', label: '🗓️ Meal Plan', featureKey: 'meal_planner' },
+    { id: 'takeouts',  label: '🥡 Takeouts',  featureKey: 'takeouts' },
+    { id: 'pantry',    label: '📦 Pantry',    featureKey: 'pantry'   },
+    { id: 'guests',    label: '👥 Guests'   },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('steward');
@@ -8956,6 +9160,9 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           busy={busy}
           onAddToShopping={onRecipeToShopping}
         />
+      )}
+      {sub === 'meal_plan' && (
+        <MealPlanSubTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
       {sub === 'takeouts' && (
         <TakeoutsView
@@ -12814,7 +13021,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
   // Feature Flags card data (Issue #134)
   const FF_TAB_KEYS  = ['fitness','morning_routine','pantry','takeouts','experiments','wish_list','wishlists'];
-  const FF_FEAT_KEYS = ['email_parser','pretrip_briefing','posttrip_capture','gym_tracker','google_tasks','weekend_planner','pacing','reminders','explorer','email_admin'];
+  const FF_FEAT_KEYS = ['email_parser','pretrip_briefing','posttrip_capture','gym_tracker','google_tasks','weekend_planner','pacing','reminders','explorer','email_admin','meal_planner'];
   const FF_LABELS    = {
     fitness: '💪 Fitness', morning_routine: '☀️ Morning Routine', pantry: '📦 Pantry',
     takeouts: '🥡 Takeouts', experiments: '🧪 Experiments', wish_list: '🛍 Wish List', wishlists: '🎄 Wish Lists',
@@ -12822,6 +13029,7 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
     posttrip_capture: '🗺️ Post-trip Capture', gym_tracker: '🏋️ Gym Tracker',
     google_tasks: '✅ Google Tasks', weekend_planner: '📅 Weekend Planner',
     pacing: '🧘 Pacing', reminders: '🔔 Reminders', explorer: '🗺 Explorer', email_admin: '📬 Email Admin',
+    meal_planner: '🗓️ Meal Planner',
   };
   const ffFeat = (status && status.features) || {};
 

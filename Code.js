@@ -84,6 +84,7 @@ const TABS = {
   RESOURCES:           'Resources',            // Reference links + docs (Explore tab)
   BUCKET_ACTIVITIES:   'BucketActivities',     // Per-destination activity list (Issue #113)
   WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
+  MEAL_PLAN:           'Meal Plan',            // Weekly dinner planner (Issue #122)
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
 };
 
@@ -101,6 +102,7 @@ const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Eve
 const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
 const RECIPE_HEADERS            = ['Name', 'Cuisine', 'Servings', 'Prep Time', 'Link', 'Ingredients', 'Tags', 'Notes'];
+const MEAL_PLAN_HEADERS         = ['ID', 'Week Start', 'Day', 'Date', 'Meal Name', 'Type', 'Status', 'Notes'];
 const TAKEOUT_RESTAURANT_HEADERS = ['Name', 'Cuisine', 'Phone', 'Website', 'Rating', 'Notes'];
 const TAKEOUT_ITEM_HEADERS       = ['Restaurant', 'Item', 'Description', 'Rating', 'Notes'];
 const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
@@ -226,6 +228,8 @@ function createSheetTabs(ss) {
     ['google_tasks_enabled',   'true'],   // set 'false' to disable Google Tasks fetch in dashboard and chat
     // Monthly Life Review (Issue #82)
     ['monthly_review_enabled', 'true'],   // set 'false' to disable monthly review generation
+    // Meal Planner (Issue #122)
+    ['meal_planner_enabled', 'true'],     // set 'false' to hide Meal Plan subtab
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -240,6 +244,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.INTEREST_LEDGER,  INTEREST_LEDGER_HEADERS);
   ensureSheet(ss, TABS.BILLS,            BILL_HEADERS);
   ensureSheet(ss, TABS.RECIPES,             RECIPE_HEADERS);
+  ensureSheet(ss, TABS.MEAL_PLAN,           MEAL_PLAN_HEADERS);
   ensureSheet(ss, TABS.TAKEOUT_RESTAURANTS, TAKEOUT_RESTAURANT_HEADERS);
   ensureSheet(ss, TABS.TAKEOUT_ITEMS,       TAKEOUT_ITEM_HEADERS);
   ensureSheet(ss, TABS.HOME_ITEMS,       HOME_ITEM_HEADERS);
@@ -648,6 +653,11 @@ function nightlyRun() {
 
     // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
     try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); }
+
+    // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
+    if (today.getDay() === 6) {
+      try { resetWeekMealPlan_(); } catch (mpErr) { Logger.log('resetWeekMealPlan_ error (non-fatal): ' + mpErr.message); }
+    }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();

@@ -723,6 +723,8 @@ function buildChatSystemPrompt_(context) {
     'ACTION:mark_bill_paid|{row_number_or_bill_name}\n' +
     'ACTION:add_recipe|{name}|{cuisine}|{servings}|{prep_time}|{ingredients_semicolon_sep}|{tags}\n' +
     'ACTION:delete_recipe|{row_number}\n' +
+    'ACTION:suggest_meals_week        — suggest and populate a full week of dinners (current week)\n' +
+    'ACTION:set_meal|{day}|{meal_name}|{type}  — set a specific dinner (day=Mon/Tue/.../Sun, type=Home Cooked/Takeout/Eating Out/Leftovers)\n' +
     'ACTION:add_home_item|{item_name}|{category}|{warranty_expiry_YYYY-MM-DD}|{interval_months}|{notes}\n' +
     'ACTION:record_home_service|{row_number_or_item_name}\n' +
     'ACTION:add_shopping_item|{store_name}|{item_text}\n' +
@@ -1558,6 +1560,23 @@ function executeActions_(rawText) {
         if (!drSheet) throw new Error('Recipes tab not found');
         drSheet.deleteRow(drRow);
         executed.push(type + ' (row ' + drRow + ')');
+      }
+
+      // ---- Meal Planner (Issue #122) ----------------------------------------
+      else if (type === 'suggest_meals_week') {
+        var smWeek = getCurrentWeekStart_();
+        var smSuggestions = suggestWeekMeals_(smWeek);
+        var smLines = smSuggestions.map(function(s) { return s.day + ': ' + s.meal + ' (' + s.type + ')'; });
+        executed.push('suggest_meals_week → ' + smLines.join(', '));
+      }
+      else if (type === 'set_meal') {
+        var smDay  = (args[0] || '').trim();
+        var smName = (args[1] || '').trim();
+        var smType = (args[2] || '').trim() || 'Home Cooked';
+        if (!smDay || !smName) throw new Error('day and meal_name required');
+        var smWeekStart = getCurrentWeekStart_();
+        upsertMealPlanEntry_(smWeekStart, smDay, '', smName, smType, 'Planned', '');
+        executed.push('set_meal (' + smDay + ': ' + smName + ')');
       }
 
       // ---- Home Items -------------------------------------------------------
