@@ -442,9 +442,13 @@ function webGetStatus_() {
   // Keys default to enabled when missing from Config tab.
   var featureCfg  = getConfigValues();
   var featureKeys = [
+    // Tab visibility
     'pantry', 'takeouts', 'experiments', 'wish_list',
     'morning_routine', 'wishlists', 'loyalty_programs',
     'financial_scenarios', 'fitness',
+    // Backend / behavioural feature flags
+    'email_parser', 'pretrip_briefing', 'posttrip_capture',
+    'gym_tracker', 'google_tasks', 'weekend_planner',
   ];
   var features = {};
   featureKeys.forEach(function(k) {
