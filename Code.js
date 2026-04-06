@@ -1077,7 +1077,7 @@ function getConfigValues() {
 
     data.forEach(function(row) {
       const key   = String(row[0] || '').trim();
-      const value = String(row[1] || '').trim();
+      const value = (row[1] === null || row[1] === undefined || row[1] === '') ? '' : String(row[1]).trim();
       if (key !== '') config[key] = value;
     });
 
