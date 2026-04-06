@@ -224,6 +224,8 @@ function createSheetTabs(ss) {
     ['pantry_ema_alpha',            '0.3'],   // EMA learning rate: higher = adapts faster to recent habits
     // Google Tasks integration (Issue #99)
     ['google_tasks_enabled',   'true'],   // set 'false' to disable Google Tasks fetch in dashboard and chat
+    // Monthly Life Review (Issue #82)
+    ['monthly_review_enabled', 'true'],   // set 'false' to disable monthly review generation
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -643,6 +645,9 @@ function nightlyRun() {
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
     try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); }
+
+    // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
+    try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); }
 
     // Step 1: Collect
     const events    = getUpcomingEvents();
