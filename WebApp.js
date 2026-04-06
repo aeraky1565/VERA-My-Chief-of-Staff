@@ -6863,16 +6863,15 @@ function webGetFamilyWishLists_() {
         var text = para.getText().trim();
         if (!text) return;
 
-        // Skip lines that are entirely strikethrough (purchased)
+        // Skip crossed-out lines: if first character is strikethrough, the whole line is struck
         try {
-          var textEl   = para.editAsText();
-          var strikes  = 0;
-          var checkLen = Math.min(text.length, 20);
-          for (var i = 0; i < checkLen; i++) {
-            if (textEl.isStrikethrough(i)) strikes++;
-          }
-          if (strikes >= checkLen * 0.6) return; // majority strikethrough → skip
-        } catch (e) { /* non-text element — skip gracefully */ return; }
+          if (para.editAsText().isStrikethrough(0)) return;
+        } catch (e) { return; } // non-text element — skip
+
+        // Skip lines where someone has claimed the item by adding their name/initials.
+        // Must start with a capital letter to avoid false-positives like "(hardcover)" or "- size".
+        // Patterns: "Item - Ahmed", "Item - V", "Item (Victoria)", "Item [AE]"
+        if (/(?:[-–—]\s*[A-Z][A-Za-z]{0,19}|[\(\[]\s*[A-Z][A-Za-z.]{0,19}\s*[\)\]])\s*$/.test(text)) return;
 
         items.push(text);
       });
