@@ -84,7 +84,7 @@ const TABS = {
   RESOURCES:           'Resources',            // Reference links + docs (Explore tab)
   BUCKET_ACTIVITIES:   'BucketActivities',     // Per-destination activity list (Issue #113)
   WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
-  HEALTH_APPOINTMENTS: 'Health Appointments',  // Recurring appointment tracker (Issue #85)
+  // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -147,7 +147,7 @@ const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
 const BUCKET_ACTIVITIES_HEADERS  = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
-const HEALTH_APPOINTMENT_HEADERS = ['ID', 'Appointment Type', 'Provider', 'Interval (months)', 'Last Appointment', 'Next Due', 'Notes', 'Reminder Lead Days']; // Issue #85
+// HEALTH_APPOINTMENT_HEADERS removed (Issue #85): appointments read from Google Calendar, no sheet needed
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -265,7 +265,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_GOALS,      FINANCIAL_GOAL_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS,  FINANCIAL_SCENARIO_HEADERS);
-  ensureSheet(ss, TABS.HEALTH_APPOINTMENTS,  HEALTH_APPOINTMENT_HEADERS);
+  // TABS.HEALTH_APPOINTMENTS removed — appointments read from Google Calendar (Issue #85)
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');

@@ -6892,131 +6892,89 @@ function webGetFamilyWishLists_() {
 }
 
 // ============================================================
-// Health Appointments (Issue #85)
+// Health Appointments (Issue #85) — Calendar-based
+// ============================================================
+// Appointments are read from Google Calendar events tagged:
+//   DR: Ahmed - Annual Physical
+//   DR: Victoria - Dentist Cleaning
+// No sheet is used. webLogHealthVisit_ creates a past calendar event.
 // ============================================================
 
 function webGetHealthAppointments_() {
   return { ok: true, appointments: getHealthAppointments_() };
 }
 
-function webAddHealthAppointment_(e) {
-  var p        = e.parameter || {};
-  var apptType = (p.type || '').trim();
+/**
+ * Creates a past Google Calendar event to record a health visit.
+ * Victoria's visits go on the first calendar listed in the victoria_calendars
+ * config key; all others go on the primary (Ahmed's) calendar.
+ *
+ * Params: person (default Ahmed), type (required), date (YYYY-MM-DD or blank = today)
+ */
+function webLogHealthVisit_(e) {
+  var p         = e.parameter || {};
+  var person    = (p.person || 'Ahmed').trim();
+  var apptType  = (p.type   || '').trim();
   if (!apptType) throw new Error('type is required');
 
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
-  if (!sheet) throw new Error('Health Appointments tab not found');
+  var tz        = Session.getScriptTimeZone();
+  var visitDate = new Date(p.date ? p.date : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+  visitDate.setHours(12, 0, 0, 0);  // noon avoids timezone edge-cases on all-day events
 
-  var tz      = Session.getScriptTimeZone();
-  var today   = new Date();
-  var dateStr = Utilities.formatDate(today, tz, 'yyyyMMdd');
-  var seq     = 1;
-  if (sheet.getLastRow() >= 2) {
-    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
-      .forEach(function(r) { if (String(r[0]).indexOf('HEALTH-' + dateStr) === 0) seq++; });
-  }
-  var id       = 'HEALTH-' + dateStr + '-' + String(seq).padStart(2, '0');
-  var interval = parseInt(p.intervalMonths || p.interval || '12', 10) || 12;
-  var lastRaw  = (p.lastAppointment || '').trim();
-  var nextDue  = '';
-  if (lastRaw) {
-    var d = new Date(lastRaw); d.setMonth(d.getMonth() + interval);
-    nextDue = Utilities.formatDate(d, tz, 'yyyy-MM-dd');
-  }
-
-  sheet.appendRow([
-    id, apptType, (p.provider || '').trim(), interval,
-    lastRaw, nextDue, (p.notes || '').trim(),
-    parseInt(p.reminderLeadDays || '30', 10) || 30,
-  ]);
-
-  Logger.log('webAddHealthAppointment_: ' + id + ' — ' + apptType);
-  return { ok: true, id: id, action: 'created' };
-}
-
-function webUpdateHealthAppointment_(e) {
-  var p     = e.parameter || {};
-  var id    = (p.id || '').trim();
-  var field = (p.field || '').trim().toLowerCase();
-  var value = (p.value != null ? String(p.value) : '').trim();
-  if (!id || !field) throw new Error('id and field are required');
-
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
-  if (!sheet || sheet.getLastRow() < 2) throw new Error('Health Appointments sheet is empty');
-
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  var rowNum = -1;
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === id) { rowNum = i + 2; break; }
-  }
-  if (rowNum < 0) throw new Error('Appointment not found: ' + id);
-
-  // col map (1-based): ID=1 Type=2 Provider=3 Interval=4 LastAppt=5 NextDue=6 Notes=7 LeadDays=8
-  var colMap = { type:2, provider:3, interval:4, lastappointment:5, nextdue:6, notes:7, reminderleaddays:8 };
-  var col = colMap[field.replace(/[^a-z]/g, '')];
-  if (!col) throw new Error('Unknown field: ' + field);
-
-  var writeVal = (field === 'interval' || field === 'reminderleaddays') ? (parseInt(value, 10) || 0) : value;
-  sheet.getRange(rowNum, col).setValue(writeVal);
-
-  // Recompute Next Due whenever Last Appointment or Interval changes
-  if (field === 'lastappointment' || field === 'interval') {
-    var row      = sheet.getRange(rowNum, 1, 1, 8).getValues()[0];
-    var lastRaw2 = row[4];
-    var interval2 = parseInt(row[3], 10) || 12;
-    if (lastRaw2) {
-      var nd = new Date(lastRaw2); nd.setMonth(nd.getMonth() + interval2);
-      sheet.getRange(rowNum, 6).setValue(
-        Utilities.formatDate(nd, Session.getScriptTimeZone(), 'yyyy-MM-dd')
-      );
+  // Choose calendar: Victoria → first victoria_calendars entry; Ahmed → primary
+  var cal = null;
+  var cfg = getConfigValues();
+  if (person.toLowerCase() === 'victoria') {
+    var vicList = (cfg['victoria_calendars'] || '')
+      .split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    if (vicList.length > 0) {
+      CalendarApp.getAllCalendars().forEach(function(c) {
+        if (!cal && vicList.indexOf(c.getName().toLowerCase()) !== -1) cal = c;
+      });
     }
   }
+  if (!cal) cal = CalendarApp.getDefaultCalendar();
 
-  Logger.log('webUpdateHealthAppointment_: ' + id + ' ' + field + '=' + value);
-  return { ok: true, id: id, action: 'updated' };
+  var title = 'DR: ' + person + ' - ' + apptType;
+  cal.createAllDayEvent(title, visitDate);
+
+  // Compute next due for the response
+  var interval = healthApptInterval_(apptType);
+  var nd       = new Date(visitDate); nd.setMonth(nd.getMonth() + interval);
+  var nextDue  = Utilities.formatDate(nd, tz, 'yyyy-MM-dd');
+  var visitStr = Utilities.formatDate(visitDate, tz, 'yyyy-MM-dd');
+
+  Logger.log('webLogHealthVisit_: created "' + title + '" on ' + visitStr + ' (' + cal.getName() + ')');
+  return {
+    ok: true, person: person, type: apptType,
+    visitDate: visitStr, nextDue: nextDue,
+    calendarName: cal.getName(), action: 'logged',
+  };
 }
 
-function webDeleteHealthAppointment_(e) {
-  var id    = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) throw new Error('id is required');
-
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
-  if (!sheet || sheet.getLastRow() < 2) throw new Error('Appointment not found: ' + id);
-
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() === id) { sheet.deleteRow(i + 2); return { ok: true, id: id, action: 'deleted' }; }
-  }
-  throw new Error('Appointment not found: ' + id);
+/**
+ * Creates a calendar event to start tracking a new appointment type.
+ * Uses the lastAppointment date if provided; otherwise today.
+ * This gives VERA a past event to anchor next-due computation.
+ */
+function webAddHealthAppointment_(e) {
+  var p    = e.parameter || {};
+  var type = (p.type || '').trim();
+  if (!type) throw new Error('type is required');
+  return webLogHealthVisit_({
+    parameter: {
+      person: (p.person || 'Ahmed').trim(),
+      type:   type,
+      date:   (p.lastAppointment || '').trim() || '',
+    },
+  });
 }
 
-function webLogHealthVisit_(e) {
-  var p   = e.parameter || {};
-  var id  = (p.id || '').trim();
-  var tz  = Session.getScriptTimeZone();
-  var visitDate = (p.date || '').trim() ||
-                  Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-
-  if (!id) throw new Error('id is required');
-
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.HEALTH_APPOINTMENTS);
-  if (!sheet || sheet.getLastRow() < 2) throw new Error('Appointment not found: ' + id);
-
-  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() !== id) continue;
-    var rowNum   = i + 2;
-    var interval = parseInt(sheet.getRange(rowNum, 4).getValue(), 10) || 12;
-    var nd       = new Date(visitDate); nd.setMonth(nd.getMonth() + interval);
-    var nextDue  = Utilities.formatDate(nd, tz, 'yyyy-MM-dd');
-    sheet.getRange(rowNum, 5).setValue(visitDate);
-    sheet.getRange(rowNum, 6).setValue(nextDue);
-    Logger.log('webLogHealthVisit_: ' + id + ' visited on ' + visitDate + ', next due ' + nextDue);
-    return { ok: true, id: id, visitDate: visitDate, nextDue: nextDue, action: 'logged' };
-  }
-  throw new Error('Appointment not found: ' + id);
+// These sheet-based operations are no longer applicable — appointments are
+// managed directly in Google Calendar.
+function webUpdateHealthAppointment_() {
+  return { ok: false, error: 'Edit appointments directly in Google Calendar.' };
+}
+function webDeleteHealthAppointment_() {
+  return { ok: false, error: 'Delete appointments directly in Google Calendar.' };
 }

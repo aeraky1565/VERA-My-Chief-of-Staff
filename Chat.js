@@ -785,10 +785,10 @@ function buildChatSystemPrompt_(context) {
     // Prescriptions (Issue #116)
     'ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes}  \u2014 add a prescription for Ahmed or Victoria\n' +
     'ACTION:mark_prescription_refilled|{person}|{medication}|{newRefillDate YYYY-MM-DD}  \u2014 update lastFilled=today and refillDate for a prescription\n' +
-    // Health Appointments (Issue #85)
-    'ACTION:log_health_visit|{appointmentType}|{YYYY-MM-DD or "today"}  \u2014 log that an appointment happened, resets Last Appointment + recomputes Next Due\n' +
-    'ACTION:add_health_appointment|{type}|{provider}|{intervalMonths}|{lastAppointment YYYY-MM-DD or blank}|{notes}  \u2014 add a new recurring health appointment tracker\n' +
-    'ACTION:query_health_due|{appointmentType}  \u2014 look up when a health appointment is next due (read-only, result returned to you)\n' +
+    // Health Appointments (Issue #85) — calendar-based (DR: prefix in Google Calendar)
+    'ACTION:log_health_visit|{appointmentType}|{YYYY-MM-DD or "today"}  \u2014 creates a "DR: Person - Type" event in Google Calendar to record a visit\n' +
+    'ACTION:add_health_appointment|{type}|{person}|{intervalMonths}|{lastAppointment YYYY-MM-DD or blank}|{notes}  \u2014 starts tracking a new appointment by creating a DR: calendar event\n' +
+    'ACTION:query_health_due|{appointmentType}  \u2014 look up when a health appointment is next due based on calendar history (read-only, result returned to you)\n' +
     // Credit Card Hub (Issues #115 + #117)
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
@@ -854,9 +854,9 @@ function buildChatSystemPrompt_(context) {
     '- For update_career_position: use when Ahmed mentions a new role, promotion, company change, or updates his focus areas. Confirm the change before emitting the ACTION. Do not use this for temporary assignments or speculation.\n' +
     '- For add_prescription: use when Ahmed says "add X mg of Y for {person}", "log that {person} takes X", or "{person} was prescribed X". person = Ahmed or Victoria. dosage/frequency/refillDate are optional — leave blank if not mentioned.\n' +
     '- For mark_prescription_refilled: use when Ahmed says "{person} just refilled X", "picked up {person}\'s X prescription", or "got the X refill". Sets last filled to today. Ask for new refill date if not provided; do not guess it.\n' +
-    '- For log_health_visit: use when Ahmed says "I went to the dentist", "had my physical today", "just saw Dr X", or "log my eye exam". appointmentType can be partial (e.g. "dentist" matches "Dental Cleaning"). Date defaults to today.\n' +
-    '- For add_health_appointment: use when Ahmed says "add a reminder for my annual physical", "track my dermatologist every 12 months", or "add an eye exam reminder". Interval defaults to 12 months if not specified.\n' +
-    '- For query_health_due: use when Ahmed asks "when is my next dentist appointment?", "am I due for a physical?", or "when did I last see my eye doctor?". Emit this ACTION and include the result in your reply.\n' +
+    '- For log_health_visit: use when Ahmed says "I went to the dentist", "had my physical today", "just saw Dr X", or "log my eye exam". appointmentType can be partial — VERA fuzzy-matches against existing calendar events to resolve person and full type. Date defaults to today. This creates a "DR: Person - Type" all-day event in Google Calendar.\n' +
+    '- For add_health_appointment: use when Ahmed says "start tracking my annual physical", "add a reminder for my dermatologist", or "add X\'s eye exam". Second arg is person (Ahmed/Victoria). Creates a DR: calendar event so VERA starts tracking it.\n' +
+    '- For query_health_due: use when Ahmed asks "when is my next dentist appointment?", "am I due for a physical?", or "when did I last see my eye doctor?". Reads from Google Calendar history. Emit this ACTION and include the result in your reply.\n' +
     '- For log_card_used: use when Ahmed says "I used my X card", "paid with my X", or "charged it to X". Confirm the card was logged. Card name can be partial (e.g. "Amex" matches "Amex Gold").\n' +
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
@@ -2114,37 +2114,36 @@ function executeActions_(rawText) {
         }
       }
 
-      // Health Appointments (Issue #85)
+      // Health Appointments (Issue #85) — calendar-based
       // ACTION:log_health_visit|{appointmentType}|{YYYY-MM-DD or "today"}
+      // Creates a DR: calendar event so VERA picks it up on next scan.
+      // Fuzzy-matches type against existing calendar appointments to resolve person.
       else if (type === 'log_health_visit') {
-        var hvType = (args[0] || '').trim().toLowerCase();
+        var hvType    = (args[0] || '').trim();
         var hvDateRaw = (args[1] || 'today').trim().toLowerCase();
-        var hvDate = hvDateRaw === 'today'
+        var hvDate    = hvDateRaw === 'today'
           ? Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
           : hvDateRaw;
-        var hvAll   = getHealthAppointments_();
-        var hvMatch = hvAll.filter(function(a) { return a.type.toLowerCase().indexOf(hvType) >= 0; });
-        if (hvMatch.length > 0) {
-          var hvRes = webLogHealthVisit_({ parameter: { id: hvMatch[0].id, date: hvDate } });
-          executed.push('log_health_visit (' + hvMatch[0].type + ' on ' + hvDate + ', next due ' + (hvRes.nextDue || '?') + ')');
-        } else {
-          errors.push('log_health_visit: no appointment found matching "' + hvType + '"');
-        }
+        var hvAll    = getHealthAppointments_();
+        var hvMatch  = hvAll.filter(function(a) {
+          return a.type.toLowerCase().indexOf(hvType.toLowerCase()) >= 0 ||
+                 hvType.toLowerCase().indexOf(a.type.toLowerCase()) >= 0;
+        });
+        var hvPerson = hvMatch.length > 0 ? hvMatch[0].person : 'Ahmed';
+        var hvActualType = hvMatch.length > 0 ? hvMatch[0].type : hvType;
+        var hvRes = webLogHealthVisit_({ parameter: { person: hvPerson, type: hvActualType, date: hvDate } });
+        executed.push('log_health_visit (' + hvPerson + ' · ' + hvActualType + ' on ' + hvRes.visitDate + ', next due ' + (hvRes.nextDue || '?') + ')');
       }
 
-      // ACTION:add_health_appointment|{type}|{provider}|{intervalMonths}|{lastAppointment YYYY-MM-DD}|{notes}
+      // ACTION:add_health_appointment|{type}|{person}|{intervalMonths}|{lastAppointment YYYY-MM-DD}|{notes}
+      // Creates a DR: calendar event so VERA starts tracking this appointment.
       else if (type === 'add_health_appointment') {
-        var haType     = (args[0] || '').trim();
-        var haProvider = (args[1] || '').trim();
-        var haInterval = args[2] || '12';
-        var haLast     = (args[3] || '').trim();
-        var haNotes    = (args[4] || '').trim();
+        var haType   = (args[0] || '').trim();
+        var haPerson = (args[1] || 'Ahmed').trim();
+        var haLast   = (args[3] || '').trim();
         if (haType) {
-          webAddHealthAppointment_({ parameter: {
-            type: haType, provider: haProvider,
-            intervalMonths: haInterval, lastAppointment: haLast, notes: haNotes,
-          }});
-          executed.push('add_health_appointment (' + haType + (haProvider ? ' · ' + haProvider : '') + ')');
+          var haRes = webLogHealthVisit_({ parameter: { person: haPerson, type: haType, date: haLast } });
+          executed.push('add_health_appointment (' + haPerson + ' · ' + haType + ' — calendar event created)');
         }
       }
 
