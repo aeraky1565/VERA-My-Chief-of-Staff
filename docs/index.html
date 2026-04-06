@@ -12808,6 +12808,18 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   const vacEnds      = pacingStatus?.vacationModeEnds || '';
   const pacingEnds   = pacingStatus?.pacingModeEnds || '';
 
+  // Feature Flags card data (Issue #134)
+  const FF_TAB_KEYS  = ['fitness','morning_routine','pantry','takeouts','experiments','wish_list','wishlists'];
+  const FF_FEAT_KEYS = ['email_parser','pretrip_briefing','posttrip_capture','gym_tracker','google_tasks','weekend_planner'];
+  const FF_LABELS    = {
+    fitness: '💪 Fitness', morning_routine: '☀️ Morning Routine', pantry: '📦 Pantry',
+    takeouts: '🥡 Takeouts', experiments: '🧪 Experiments', wish_list: '🛍 Wish List', wishlists: '🎄 Wish Lists',
+    email_parser: '📧 Email Parsing', pretrip_briefing: '✈️ Pre-trip Briefing',
+    posttrip_capture: '🗺️ Post-trip Capture', gym_tracker: '🏋️ Gym Tracker',
+    google_tasks: '✅ Google Tasks', weekend_planner: '📅 Weekend Planner',
+  };
+  const ffFeat = (status && status.features) || {};
+
   return (
     <div>
       {(showVacation || showPacing) && (
@@ -13001,52 +13013,29 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
       <SpendingChart summaries={summaries} />
 
       {/* Feature Flags card — always visible, shows all boolean config keys (Issue #134) */}
-      {(function() {
-        var TAB_KEYS  = ['fitness','morning_routine','pantry','takeouts','experiments','wish_list','wishlists'];
-        var FEAT_KEYS = ['email_parser','pretrip_briefing','posttrip_capture','gym_tracker','google_tasks','weekend_planner'];
-        var LABELS = {
-          fitness:             '💪 Fitness',
-          morning_routine:     '☀️ Morning Routine',
-          pantry:              '📦 Pantry',
-          takeouts:            '🥡 Takeouts',
-          experiments:         '🧪 Experiments',
-          wish_list:           '🛍 Wish List',
-          wishlists:           '🎄 Wish Lists',
-          email_parser:        '📧 Email Parsing',
-          pretrip_briefing:    '✈️ Pre-trip Briefing',
-          posttrip_capture:    '🗺️ Post-trip Capture',
-          gym_tracker:         '🏋️ Gym Tracker',
-          google_tasks:        '✅ Google Tasks',
-          weekend_planner:     '📅 Weekend Planner',
-        };
-        var feat = (status && status.features) || {};
-        function pill(k) {
-          var on = feat[k] !== false;
-          return (
-            <span key={k} style={{
-              padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-              background: on ? 'rgba(102,187,106,.1)'       : 'rgba(107,127,168,.08)',
-              color:      on ? '#4d9f6a'                    : '#4d6080',
-              border: '1px solid ' + (on ? 'rgba(102,187,106,.3)' : 'rgba(107,127,168,.2)'),
-            }}>
-              {LABELS[k]}
-            </span>
-          );
-        }
-        return (
-          <div className="bento-card" style={{ cursor: 'default' }}>
-            <div className="bento-card-title">⚙️ Feature Flags</div>
-            <div style={{ fontSize: 10, color: '#3d5070', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Tabs</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
-              {TAB_KEYS.map(pill)}
-            </div>
-            <div style={{ fontSize: 10, color: '#3d5070', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Features</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {FEAT_KEYS.map(pill)}
-            </div>
-          </div>
-        );
-      })()}
+      <div className="bento-card" style={{ cursor: 'default' }}>
+        <div className="bento-card-title">⚙️ Feature Flags</div>
+        <div style={{ fontSize: 10, color: '#3d5070', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Tabs</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
+          {FF_TAB_KEYS.map(function(k) {
+            var on = ffFeat[k] !== false;
+            return <span key={k} style={{ padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+              background: on ? 'rgba(102,187,106,.1)' : 'rgba(107,127,168,.08)',
+              color: on ? '#4d9f6a' : '#4d6080',
+              border: '1px solid ' + (on ? 'rgba(102,187,106,.3)' : 'rgba(107,127,168,.2)') }}>{FF_LABELS[k]}</span>;
+          })}
+        </div>
+        <div style={{ fontSize: 10, color: '#3d5070', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Features</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {FF_FEAT_KEYS.map(function(k) {
+            var on = ffFeat[k] !== false;
+            return <span key={k} style={{ padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+              background: on ? 'rgba(102,187,106,.1)' : 'rgba(107,127,168,.08)',
+              color: on ? '#4d9f6a' : '#4d6080',
+              border: '1px solid ' + (on ? 'rgba(102,187,106,.3)' : 'rgba(107,127,168,.2)') }}>{FF_LABELS[k]}</span>;
+          })}
+        </div>
+      </div>
     </div>
     </div>
   );
