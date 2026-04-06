@@ -82,6 +82,8 @@ const TABS = {
   EXPERIMENTS:         'Experiments',         // Personal experiment tracker (Issue #130)
   EXPERIMENT_CHECKINS: 'Experiment Checkins', // Per-experiment check-in log (Issue #130)
   RESOURCES:           'Resources',            // Reference links + docs (Explore tab)
+  BUCKET_ACTIVITIES:   'BucketActivities',     // Per-destination activity list (Issue #113)
+  WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -142,6 +144,8 @@ const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level'
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
 const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
+const BUCKET_ACTIVITIES_HEADERS  = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
+const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs

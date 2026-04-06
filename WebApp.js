@@ -267,10 +267,34 @@ function doGet(e) {
       case 'delete_experiment':      return jsonOut_(webDeleteExperiment_(e));
       case 'add_experiment_checkin': return jsonOut_(webAddExperimentCheckin_(e));
       // Resources (Explore tab)
-      case 'get_resources':    return jsonOut_(webGetResources_());
-      case 'add_resource':     return jsonOut_(webAddResource_(e));
-      case 'update_resource':  return jsonOut_(webUpdateResource_(e));
-      case 'delete_resource':  return jsonOut_(webDeleteResource_(e));
+      case 'get_resources':         return jsonOut_(webGetResources_());
+      case 'add_resource':          return jsonOut_(webAddResource_(e));
+      case 'update_resource':       return jsonOut_(webUpdateResource_(e));
+      case 'delete_resource':       return jsonOut_(webDeleteResource_(e));
+      case 'fetch_resource_content':return jsonOut_(webFetchResourceContent_(e));
+      // Wish List (Issue #131)
+      case 'get_wish_list':         return jsonOut_(webGetWishList_());
+      case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));
+      case 'update_wish_item':      return jsonOut_(webUpdateWishItem_(e));
+      case 'mark_wish_purchased':   return jsonOut_(webMarkWishPurchased_(e));
+      case 'delete_wish_item':      return jsonOut_(webDeleteWishItem_(e));
+      // Bucket List activities (Issue #113)
+      case 'add_bucket_activity':    return jsonOut_(webAddBucketActivity_(e));
+      case 'toggle_bucket_activity': return jsonOut_(webToggleBucketActivity_(e));
+      case 'delete_bucket_activity': return jsonOut_(webDeleteBucketActivity_(e));
+      // Pacing (Issue #139)
+      case 'get_pacing_status':     return jsonOut_(webGetPacingStatus_());
+      // Gym backfill (Issue #114)
+      case 'gym_backfill':          return jsonOut_(webGymBackfill_(e));
+      // Visa requirements (Issue #123)
+      case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
+      // Victoria PTO buffer
+      case 'victoria_pto_trigger_buffer': return jsonOut_(webTriggerVictoriaBuffer_(e));
+      // Skills — alias used by dashboard
+      case 'record_skill_practice': return jsonOut_(webRecordSkillPractice_(e));
+      // Financial scenarios
+      case 'saved_scenarios':       return jsonOut_(webGetSavedScenarios_(e.parameter));
+      case 'sync_life_plan_doc':    return jsonOut_(webSyncLifePlanDoc_());
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -6437,4 +6461,364 @@ function webDeleteResource_(e) {
   var f  = findGrowthRow_(TABS.RESOURCES, id);
   f.sheet.deleteRow(f.rowNum);
   return { ok: true, id: id, action: 'deleted' };
+}
+
+// ============================================================
+// Wish List (Issue #131)
+// ============================================================
+
+function webGetWishList_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.WISH_LIST);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, items: [] };
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, WISH_LIST_HEADERS.length).getValues();
+  var items   = [];
+  data.forEach(function(row, idx) {
+    var id = String(row[0] || '').trim();
+    if (!id) return;
+    items.push({
+      row: idx + 2, id: id,
+      person:        String(row[1] || '').trim(),
+      category:      String(row[2] || '').trim(),
+      item:          String(row[3] || '').trim(),
+      description:   String(row[4] || '').trim(),
+      urls:          String(row[5] || '').trim(),
+      price:         row[6] !== '' && row[6] !== null ? Number(row[6]) : null,
+      priority:      String(row[7] || 'Medium').trim(),
+      status:        String(row[8] || 'Dreaming').trim(),
+      dateAdded:     formatDateVal_(row[9]),
+      notes:         String(row[10] || '').trim(),
+      datePurchased: formatDateVal_(row[11]),
+    });
+  });
+  items.sort(function(a, b) { return (a.status === 'Purchased' ? 1 : 0) - (b.status === 'Purchased' ? 1 : 0); });
+  return { ok: true, items: items };
+}
+
+function webAddWishItem_(e) {
+  var p    = e.parameter || {};
+  var item = (p.item || '').trim();
+  if (!item) throw new Error('item is required');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.WISH_LIST);
+  if (!sheet) throw new Error('Wish List tab not found');
+  var tz       = Session.getScriptTimeZone();
+  var today    = new Date();
+  var dateStr  = Utilities.formatDate(today, tz, 'yyyyMMdd');
+  var addedStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+  var seq = 1;
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+      .forEach(function(r) { if (String(r[0] || '').indexOf('WISH-' + dateStr) === 0) seq++; });
+  }
+  var id    = 'WISH-' + dateStr + '-' + String(seq).padStart(2, '0');
+  var price = p.price !== '' && p.price != null ? Number(p.price) : '';
+  if (isNaN(price)) price = '';
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, WISH_LIST_HEADERS.length).setValues([[
+    id, (p.person || 'Ahmed').trim(), (p.category || 'Other').trim(), item,
+    (p.description || '').trim(), (p.urls || p.url || '').trim(), price,
+    (p.priority || 'Medium').trim(), (p.status || 'Dreaming').trim(),
+    addedStr, (p.notes || '').trim(), '',
+  ]]);
+  Logger.log('webAddWishItem_: ' + id + ' — ' + item);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateWishItem_(e) {
+  var p     = e.parameter || {};
+  var id    = (p.id || '').trim();
+  var field = (p.field || '').trim();
+  var value = (p.value != null ? String(p.value) : '').trim();
+  if (!id || !field) throw new Error('id and field are required');
+  var found  = findWishRow_(id);
+  var colMap = { person:2, category:3, item:4, description:5, urls:6, price:7, priority:8, status:9, notes:11 };
+  var col    = colMap[field.toLowerCase()];
+  if (!col) throw new Error('Unknown field: ' + field);
+  var writeVal = field.toLowerCase() === 'price' ? (value !== '' ? Number(value) : '') : value;
+  found.sheet.getRange(found.rowNum, col).setValue(writeVal);
+  Logger.log('webUpdateWishItem_: ' + id + ' ' + field + '=' + value);
+  return { ok: true, id: id, action: 'updated' };
+}
+
+function webMarkWishPurchased_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var found = findWishRow_(id);
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  found.sheet.getRange(found.rowNum, 9).setValue('Purchased');
+  found.sheet.getRange(found.rowNum, 12).setValue(today);
+  Logger.log('webMarkWishPurchased_: ' + id);
+  return { ok: true, id: id, action: 'purchased' };
+}
+
+function webDeleteWishItem_(e) {
+  var id    = ((e.parameter && e.parameter.id) || '').trim();
+  var found = findWishRow_(id);
+  found.sheet.deleteRow(found.rowNum);
+  Logger.log('webDeleteWishItem_: ' + id);
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+function findWishRow_(id) {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.WISH_LIST);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Wish List is empty');
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) return { sheet: sheet, rowNum: i + 2 };
+  }
+  throw new Error('Wish list item not found: ' + id);
+}
+
+// ============================================================
+// Bucket List Activities (Issue #113)
+// ============================================================
+
+function webAddBucketActivity_(e) {
+  var p        = e.parameter || {};
+  var bucketId = (p.bucketId || '').trim();
+  var activity = (p.activity || '').trim();
+  if (!bucketId) throw new Error('bucketId is required.');
+  if (!activity) throw new Error('activity is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (!sheet) throw new Error('BucketActivities tab not found. Run setupVERA() first.');
+  var id = 'ba_' + Date.now();
+  var dt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  sheet.appendRow([id, bucketId, activity, '', dt]);
+  return { ok: true, activity: { ID: id, 'Bucket ID': bucketId, Activity: activity, Done: '', 'Added Date': dt } };
+}
+
+function webToggleBucketActivity_(e) {
+  var p    = e.parameter || {};
+  var id   = (p.id   || '').trim();
+  var done = (p.done || '');
+  if (!id) throw new Error('id is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Activity not found.' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.getRange(i + 1, 4).setValue(done);
+      return { ok: true, id: id, done: done };
+    }
+  }
+  return { ok: false, error: 'Activity not found: ' + id };
+}
+
+function webDeleteBucketActivity_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('id is required.');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Activity not found.' };
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'Activity not found: ' + id };
+}
+
+// ============================================================
+// Pacing (Issue #139) / Gym Backfill (Issue #114)
+// ============================================================
+
+function webGetPacingStatus_() {
+  return getPacingStatus_();
+}
+
+function webGymBackfill_(e) {
+  var days   = parseInt((e.parameter && e.parameter.days) || '30', 10) || 30;
+  var result = backfillGymSessions_(days);
+  return { ok: true, added: result.added, skipped: result.skipped };
+}
+
+// ============================================================
+// Visa Requirements (Issue #123)
+// ============================================================
+
+function webGetVisaRequirements_(params) {
+  var destination = (params.destination || '').trim();
+  if (!destination) return { ok: false, error: 'destination required' };
+  var profilesResult = webGetProfiles_();
+  var profiles = profilesResult.profiles.filter(function(p) { return p.passportCountry; });
+  if (profiles.length === 0) return { ok: true, results: [], note: 'No passport countries set in profiles.' };
+  var cacheKey = 'passport_index_csv';
+  var cache    = CacheService.getScriptCache();
+  var csv      = cache.get(cacheKey);
+  if (!csv) {
+    try {
+      var resp = UrlFetchApp.fetch(
+        'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
+        { muteHttpExceptions: true }
+      );
+      csv = resp.getContentText();
+      cache.put(cacheKey, csv, 21600);
+    } catch (err) {
+      return { ok: false, error: 'Could not fetch visa data: ' + err.message };
+    }
+  }
+  var lines   = csv.split('\n');
+  var headers = lines[0].split(',');
+  function norm(s) { return String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  var aliases = {
+    'usa':'united states','us':'united states','unitedstatesofamerica':'united states',
+    'uk':'united kingdom','gb':'united kingdom','greatbritain':'united kingdom',
+    'uae':'united arab emirates','drc':'democratic republic of the congo',
+    'southkorea':'korea, south','northkorea':'korea, north',
+    'czechia':'czech republic','turkiye':'turkey',
+    'taiwan':'taiwan','russia':'russia','egypt':'egypt',
+    'canada':'canada','jordan':'jordan','france':'france','japan':'japan','germany':'germany'
+  };
+  var destNorm   = norm(destination);
+  var destLookup = aliases[destNorm] ? norm(aliases[destNorm]) : destNorm;
+  var destIdx = -1;
+  for (var i = 1; i < headers.length; i++) {
+    if (norm(headers[i]) === destLookup) { destIdx = i; break; }
+  }
+  if (destIdx === -1) return { ok: true, results: [], note: 'Destination "' + destination + '" not found. Try the full English country name.' };
+  var destName = headers[destIdx].trim();
+  var byName = {}; var nameOrder = [];
+  profiles.forEach(function(prof) {
+    if (!byName[prof.name]) { byName[prof.name] = []; nameOrder.push(prof.name); }
+    byName[prof.name].push(prof);
+  });
+  var order = { green: 0, yellow: 1, red: 2, grey: 3 };
+  var results = [];
+  nameOrder.forEach(function(name) {
+    var prs = byName[name].map(function(prof) {
+      var passNorm   = norm(prof.passportCountry);
+      var passLookup = aliases[passNorm] ? norm(aliases[passNorm]) : passNorm;
+      var status = null;
+      for (var j = 1; j < lines.length; j++) {
+        var cols = lines[j].split(',');
+        if (cols[0] && norm(cols[0]) === passLookup) { status = (cols[destIdx] || '').trim(); break; }
+      }
+      return { passportCountry: prof.passportCountry, status: status, label: visaStatusLabel_(status), color: visaStatusColor_(status) };
+    });
+    prs.sort(function(a, b) { return (order[a.color] || 3) - (order[b.color] || 3); });
+    results.push({ name: name, passports: prs });
+  });
+  return { ok: true, results: results, destination: destName };
+}
+
+function visaStatusLabel_(status) {
+  if (!status || status === '' || status === '-1') return 'No Data';
+  if (status === 'VR')  return 'Visa Required';
+  if (status === 'VOA') return 'Visa on Arrival';
+  if (status === 'ETA') return 'eTA / e-Visa';
+  if (status === 'CB')  return 'No Passport Control';
+  if (status === 'VF')  return 'Visa Free';
+  if (/^\d+$/.test(status)) return 'Visa Free (' + status + ' days)';
+  return status;
+}
+
+function visaStatusColor_(status) {
+  if (!status || status === '' || status === '-1') return 'grey';
+  if (status === 'VR') return 'red';
+  if (status === 'VOA' || status === 'ETA') return 'yellow';
+  if (status === 'VF' || /^\d+$/.test(status) || status === 'CB') return 'green';
+  return 'grey';
+}
+
+// ============================================================
+// Victoria PTO Buffer Trigger
+// ============================================================
+
+function webTriggerVictoriaBuffer_(e) {
+  var cfg     = readVictoriaPTOConfig_();
+  var current = readVictoriaPTOBufferRemaining_(cfg);
+  if (current <= 0) return { ok: false, error: 'No buffer days remaining.', remaining: 0 };
+  var newVal = current - 1;
+  setVictoriaPTOBufferRemaining_(newVal);
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  Logger.log('Victoria PTO Buffer Day triggered. Remaining: ' + newVal + '. Date: ' + today);
+  return { ok: true, remaining: newVal, triggeredOn: today };
+}
+
+// ============================================================
+// Skills — record_skill_practice (dashboard action name)
+// ============================================================
+
+function findSkillRow_(id) {
+  var sheet = getSpreadsheet().getSheetByName(TABS.SKILLS);
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) return i + 2;
+  }
+  return -1;
+}
+
+function webRecordSkillPractice_(e) {
+  var id = String((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var row = findSkillRow_(id);
+  if (row < 0) return { ok: false, error: 'skill not found: ' + id };
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  getSpreadsheet().getSheetByName(TABS.SKILLS).getRange(row, 7).setValue(today);
+  Logger.log('webRecordSkillPractice_: ' + id + ' on ' + today);
+  return { ok: true, id: id, lastPracticed: today, action: 'practice_recorded' };
+}
+
+// ============================================================
+// Financial Scenarios + Life Plan Doc Sync
+// ============================================================
+
+function webGetSavedScenarios_(params) {
+  var scenarios = getFinancialScenarios_((params && params.goalId) || null);
+  return { ok: true, scenarios: scenarios };
+}
+
+function webSyncLifePlanDoc_() {
+  try {
+    var data = readLifePlanDoc_();
+    return { ok: true, parsed: data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// ============================================================
+// Resource Content Fetch (Explore tab — Drive file reader)
+// ============================================================
+
+function webFetchResourceContent_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESOURCES);
+  if (!sheet) return { ok: false, error: 'Resources sheet not found' };
+  var rows = sheet.getDataRange().getValues();
+  var hdrs = rows[0];
+  var resource = null;
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === id) {
+      resource = {};
+      hdrs.forEach(function(h, j) { resource[h] = rows[i][j]; });
+      break;
+    }
+  }
+  if (!resource) return { ok: false, error: 'not found' };
+  var driveFileId = String(resource['Drive File ID'] || '').trim();
+  if (driveFileId && driveFileId.indexOf('://') !== -1) {
+    var dm = driveFileId.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+    if (!dm) dm = driveFileId.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+    driveFileId = dm ? dm[1] : '';
+  }
+  if (!driveFileId) return { ok: false, error: 'no_drive_file', name: resource['Name'], url: resource['URL'] };
+  try {
+    var doc  = DocumentApp.openById(driveFileId);
+    var text = doc.getBody().getText();
+    if (text.length > 12000) text = text.substring(0, 12000) + '\n[...content truncated...]';
+    return { ok: true, id: id, name: resource['Name'], content: text };
+  } catch (err) {
+    return { ok: false, error: 'cannot_read_file', name: resource['Name'], url: resource['URL'], detail: err.message };
+  }
 }
