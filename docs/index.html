@@ -13013,6 +13013,13 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
       {/* Feature Flags card — always visible, shows all boolean config keys (Issue #134) */}
       <div className="bento-card" style={{ cursor: 'default' }}>
         <div className="bento-card-title">⚙️ Feature Flags</div>
+        {status && !status.features && (
+          <div style={{ fontSize: 11, color: '#f0a030', background: 'rgba(240,160,48,.1)',
+                        border: '1px solid rgba(240,160,48,.3)', borderRadius: 6,
+                        padding: '4px 8px', marginBottom: 8 }}>
+            ⚠️ Redeploy Apps Script to see live values
+          </div>
+        )}
         <div style={{ fontSize: 10, color: '#3d5070', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Tabs</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12 }}>
           {FF_TAB_KEYS.map(function(k) {
