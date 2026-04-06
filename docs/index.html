@@ -11946,6 +11946,10 @@ function HealthAppointmentsTab({ apiUrl, apiToken }) {
 
   var visible = (appointments || []).filter(function(a) {
     return personFilter === 'All' || a.person === personFilter;
+  }).sort(function(a, b) {
+    var da = a.daysUntil === null || a.daysUntil === undefined ? 99999 : a.daysUntil;
+    var db = b.daysUntil === null || b.daysUntil === undefined ? 99999 : b.daysUntil;
+    return da - db;
   });
 
   if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading appointments…</div>;
