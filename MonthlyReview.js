@@ -66,6 +66,14 @@ function checkMonthlyReview_(ptoStats) {
   }]);
 
   archiveMonthlyReview_(label, monthKey, reviewText, ss);
+
+  // Send dedicated email
+  try {
+    sendMonthlyReviewEmail_(label, reviewText);
+  } catch (emailErr) {
+    Logger.log('checkMonthlyReview_: email send failed (non-fatal): ' + emailErr.message);
+  }
+
   Logger.log('checkMonthlyReview_: done.');
 }
 
@@ -352,4 +360,136 @@ function archiveMonthlyReview_(label, monthKey, reviewText, ss) {
   var now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
   sheet.appendRow([monthKey, label, now, reviewText]);
   Logger.log('archiveMonthlyReview_: archived ' + label + ' to "' + MONTHLY_REVIEWS_TAB_ + '" tab.');
+}
+
+// ============================================================
+// Email
+// ============================================================
+
+/**
+ * Sends a formatted HTML Monthly Life Review email.
+ * Uses the same VERA dark theme as morningNudge().
+ */
+function sendMonthlyReviewEmail_(label, reviewText) {
+  var to = CONFIG.MORNING_NUDGE_EMAIL;
+  if (!to) { Logger.log('sendMonthlyReviewEmail_: no recipient configured.'); return; }
+
+  // ── Logo (graceful fallback) ──────────────────────────────────────────────
+  var inlineImages = {};
+  var logoTag = '';
+  try {
+    var logoFileId = PropertiesService.getScriptProperties().getProperty('VERA_LOGO_FILE_ID');
+    if (logoFileId) {
+      inlineImages = { veraLogo: DriveApp.getFileById(logoFileId).getBlob() };
+      logoTag = '<img src="cid:veraLogo" alt="VERA" style="width:100%;display:block;border:0;" />';
+    }
+  } catch (e) { /* no logo — use text banner */ }
+
+  // ── Dashboard button ──────────────────────────────────────────────────────
+  var dashUrl = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || '';
+  var dashBtn = dashUrl
+    ? '<tr><td style="padding:0 0 24px 0;">' +
+      '<a href="' + dashUrl + '" style="display:inline-block;background:#0d1b3e;color:#c9a84c;' +
+      'font-size:14px;font-weight:700;letter-spacing:1px;padding:12px 28px;border-radius:6px;' +
+      'text-decoration:none;border:2px solid #c9a84c;">Open VERA Dashboard &rarr;</a>' +
+      '</td></tr>'
+    : '';
+
+  // ── Convert plain-text review into HTML sections ──────────────────────────
+  var sectionIcons = {
+    '🎯': '#c9a84c',   // Goals
+    '✅': '#66bb6a',   // Tasks
+    '💰': '#42a5f5',   // Finance
+    '🌴': '#26c6da',   // PTO
+    '✈️':  '#7e57c2',  // Travel
+    '⚑':  '#ef5350',   // Flags
+    '💡': '#ffa726',   // Insight
+  };
+
+  var htmlSections = '';
+  var lines = reviewText.split('\n');
+  var inSection = false;
+  var sectionBuf = [];
+
+  function flushSection_() {
+    if (!sectionBuf.length) return;
+    var heading = sectionBuf[0];
+    var icon    = heading.charAt(0);
+    var color   = sectionIcons[icon] || '#c9a84c';
+    var bodyLines = sectionBuf.slice(1).filter(function(l) { return l.trim() !== ''; });
+
+    htmlSections +=
+      '<tr><td style="padding:0 0 20px 0;">' +
+      '<p style="margin:0 0 8px;font-size:15px;font-weight:700;color:' + color + ';">' +
+      escapeHtml_(heading) + '</p>' +
+      bodyLines.map(function(l) {
+        return '<p style="margin:0 0 4px;font-size:13px;color:#c0cce8;padding-left:8px;">' +
+               escapeHtml_(l.trim()) + '</p>';
+      }).join('') +
+      '</td></tr>' +
+      '<tr><td style="padding:0 0 20px;border-bottom:1px solid #1e2e4a;">' +
+      '</td></tr><tr><td style="padding:12px 0 0;"></td></tr>';
+
+    sectionBuf = [];
+  }
+
+  lines.forEach(function(line) {
+    // Skip the header lines (title + divider)
+    if (line.indexOf('Monthly Life Review') !== -1) return;
+    if (/^━+$/.test(line.trim())) return;
+    if (line.trim() === '') {
+      if (sectionBuf.length) flushSection_();
+      return;
+    }
+    sectionBuf.push(line);
+  });
+  if (sectionBuf.length) flushSection_();
+
+  // ── Header banner (logo or text) ─────────────────────────────────────────
+  var headerBanner = logoTag
+    ? '<tr><td style="background:#0d1b3e;padding:0;">' + logoTag + '</td></tr>'
+    : '<tr><td style="background:#0d1b3e;padding:20px 32px;">' +
+      '<p style="margin:0;font-size:22px;font-weight:900;color:#c9a84c;letter-spacing:3px;">VERA</p>' +
+      '</td></tr>';
+
+  var htmlBody =
+    '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#07111f;' +
+    'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background:#07111f;padding:24px 0;">' +
+    '<tr><td align="center">' +
+    '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#0d1b3e;' +
+    'border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.5);">' +
+
+    // Logo / brand header
+    headerBanner +
+
+    // Title row
+    '<tr><td style="padding:28px 32px 8px;">' +
+    '<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#4d6080;' +
+    'letter-spacing:2px;text-transform:uppercase;">Monthly Life Review</p>' +
+    '<p style="margin:0;font-size:26px;font-weight:800;color:#e8eaf6;line-height:1.2;">' +
+    escapeHtml_(label) + '</p>' +
+    '</td></tr>' +
+
+    // Section content
+    '<tr><td style="padding:20px 32px 0;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0">' +
+    htmlSections +
+    dashBtn +
+    '</table></td></tr>' +
+
+    // Footer
+    '<tr><td style="padding:20px 32px 28px;border-top:1px solid #1e2e4a;">' +
+    '<p style="margin:0;font-size:11px;color:#2e3d55;text-align:center;">' +
+    'Generated by VERA · Your Chief of Staff</p>' +
+    '</td></tr>' +
+
+    '</table></td></tr></table></body></html>';
+
+  MailApp.sendEmail(to, '📅 ' + label + ' Life Review', reviewText, {
+    name:         'VERA',
+    htmlBody:     htmlBody,
+    inlineImages: inlineImages,
+  });
+  Logger.log('sendMonthlyReviewEmail_: sent to ' + to);
 }
