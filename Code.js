@@ -76,6 +76,11 @@ const TABS = {
   FINANCIAL_GOALS:    'Financial Goals',      // Financial goals + what-if scenarios (Issue #127)
   FINANCIAL_SCENARIOS:'Financial Scenarios',  // Saved what-if scenarios per goal (Issue #127)
   EMAIL_FOLLOW_UPS:   'Email Follow-ups',     // Email Admin follow-up tracking (Issue #144)
+  BOOKS:               'Books',               // Reading list (Issue #88)
+  COURSES:             'Courses',             // Courses & learning content (Issue #88)
+  SKILLS:              'Skills',              // Skill building + practice log (Issue #88)
+  EXPERIMENTS:         'Experiments',         // Personal experiment tracker (Issue #130)
+  EXPERIMENT_CHECKINS: 'Experiment Checkins', // Per-experiment check-in log (Issue #130)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -128,6 +133,13 @@ const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', '
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
 const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status'];
+// Growth (Issue #88) — column order matches row[] offsets used in Growth.js
+const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes'];
+const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category', 'Status', 'Rating', 'Notes', 'Date Finished'];
+const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes'];
+// Experiments (Issue #130) — column order matches row[] offsets used in Experiments.js
+const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
+const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs

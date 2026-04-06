@@ -248,6 +248,24 @@ function doGet(e) {
       case 'get_profiles':    return jsonOut_(webGetProfiles_());
       case 'save_profile':    return jsonOut_(webSaveProfile_(e));
       case 'delete_profile':  return jsonOut_(webDeleteProfile_(e));
+      // Growth — Personal Development + Skill Building (Issue #88)
+      case 'get_growth':      return jsonOut_(webGetGrowth_());
+      case 'add_book':        return jsonOut_(webAddBook_(e));
+      case 'update_book':     return jsonOut_(webUpdateBook_(e));
+      case 'delete_book':     return jsonOut_(webDeleteBook_(e));
+      case 'add_course':      return jsonOut_(webAddCourse_(e));
+      case 'update_course':   return jsonOut_(webUpdateCourse_(e));
+      case 'delete_course':   return jsonOut_(webDeleteCourse_(e));
+      case 'add_skill':       return jsonOut_(webAddSkill_(e));
+      case 'update_skill':    return jsonOut_(webUpdateSkill_(e));
+      case 'delete_skill':    return jsonOut_(webDeleteSkill_(e));
+      case 'record_practice': return jsonOut_(webRecordPractice_(e));
+      // Experiments — Explore tab (Issue #130)
+      case 'get_experiments':        return jsonOut_(webGetExperiments_());
+      case 'add_experiment':         return jsonOut_(webAddExperiment_(e));
+      case 'update_experiment':      return jsonOut_(webUpdateExperiment_(e));
+      case 'delete_experiment':      return jsonOut_(webDeleteExperiment_(e));
+      case 'add_experiment_checkin': return jsonOut_(webAddExperimentCheckin_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -6040,4 +6058,314 @@ function webSeedFinancialGoals_() {
   if (sheet.getLastRow() > 1) return { ok: false, error: 'Goals already exist — seed skipped.' };
   seeds.forEach(function(row) { sheet.appendRow(row); });
   return webGetFinancialGoals_();
+}
+
+// ============================================================
+// GROWTH — Personal Development + Skill Building (Issue #88)
+// ============================================================
+
+function webGetGrowth_() {
+  var ss = getSpreadsheet();
+
+  var books = [];
+  try {
+    var bSheet = ss.getSheetByName(TABS.BOOKS);
+    if (bSheet && bSheet.getLastRow() >= 2) {
+      bSheet.getRange(2, 1, bSheet.getLastRow() - 1, BOOK_HEADERS.length).getValues()
+        .forEach(function(r, i) {
+          var id = String(r[0] || '').trim();
+          if (!id) return;
+          books.push({
+            row: i + 2, id: id,
+            person:       String(r[1] || '').trim(),
+            title:        String(r[2] || '').trim(),
+            author:       String(r[3] || '').trim(),
+            category:     String(r[4] || '').trim(),
+            status:       String(r[5] || '').trim(),
+            rating:       r[6] !== '' ? Number(r[6]) : null,
+            dateStarted:  formatDateVal_(r[7]),
+            dateFinished: formatDateVal_(r[8]),
+            notes:        String(r[9] || '').trim(),
+          });
+        });
+    }
+  } catch (ex) { Logger.log('webGetGrowth_ books: ' + ex.message); }
+
+  var courses = [];
+  try {
+    var cSheet = ss.getSheetByName(TABS.COURSES);
+    if (cSheet && cSheet.getLastRow() >= 2) {
+      cSheet.getRange(2, 1, cSheet.getLastRow() - 1, COURSE_HEADERS.length).getValues()
+        .forEach(function(r, i) {
+          var id = String(r[0] || '').trim();
+          if (!id) return;
+          courses.push({
+            row: i + 2, id: id,
+            person:       String(r[1] || '').trim(),
+            title:        String(r[2] || '').trim(),
+            source:       String(r[3] || '').trim(),
+            category:     String(r[4] || '').trim(),
+            status:       String(r[5] || '').trim(),
+            rating:       r[6] !== '' ? Number(r[6]) : null,
+            notes:        String(r[7] || '').trim(),
+            dateFinished: formatDateVal_(r[8]),
+          });
+        });
+    }
+  } catch (ex) { Logger.log('webGetGrowth_ courses: ' + ex.message); }
+
+  var skills = [];
+  try {
+    var sSheet = ss.getSheetByName(TABS.SKILLS);
+    if (sSheet && sSheet.getLastRow() >= 2) {
+      sSheet.getRange(2, 1, sSheet.getLastRow() - 1, SKILL_HEADERS.length).getValues()
+        .forEach(function(r, i) {
+          var id = String(r[0] || '').trim();
+          if (!id) return;
+          skills.push({
+            row: i + 2, id: id,
+            person:        String(r[1] || '').trim(),
+            skill:         String(r[2] || '').trim(),
+            category:      String(r[3] || '').trim(),
+            level:         String(r[4] || '').trim(),
+            goalLink:      String(r[5] || '').trim(),
+            lastPracticed: formatDateVal_(r[6]),
+            notes:         String(r[7] || '').trim(),
+          });
+        });
+    }
+  } catch (ex) { Logger.log('webGetGrowth_ skills: ' + ex.message); }
+
+  return { ok: true, books: books, courses: courses, skills: skills };
+}
+
+function findGrowthRow_(tabName, id) {
+  if (!id) throw new Error('Missing ID');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(tabName);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error(tabName + ' sheet is empty');
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === String(id).trim()) return { sheet: sheet, rowNum: i + 2 };
+  }
+  throw new Error(tabName + ' row not found: ' + id);
+}
+
+function webAddBook_(e) {
+  var p = e.parameter || {};
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.BOOKS);
+  if (!sheet) throw new Error('Books tab not found');
+  var tz = Session.getScriptTimeZone();
+  var id = 'BK-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  sheet.appendRow([id, (p.person||'Ahmed').trim(), (p.title||'').trim(), (p.author||'').trim(),
+    (p.category||'').trim(), (p.status||'Want to Read').trim(), p.rating ? Number(p.rating) : '',
+    (p.dateStarted||'').trim(), (p.dateFinished||'').trim(), (p.notes||'').trim()]);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateBook_(e) {
+  var p = e.parameter || {};
+  var f = findGrowthRow_(TABS.BOOKS, (p.id||'').trim());
+  if (p.person       != null) f.sheet.getRange(f.rowNum, 2).setValue(p.person.trim());
+  if (p.title        != null) f.sheet.getRange(f.rowNum, 3).setValue(p.title.trim());
+  if (p.author       != null) f.sheet.getRange(f.rowNum, 4).setValue(p.author.trim());
+  if (p.category     != null) f.sheet.getRange(f.rowNum, 5).setValue(p.category.trim());
+  if (p.status       != null) f.sheet.getRange(f.rowNum, 6).setValue(p.status.trim());
+  if (p.rating       != null) f.sheet.getRange(f.rowNum, 7).setValue(p.rating ? Number(p.rating) : '');
+  if (p.dateStarted  != null) f.sheet.getRange(f.rowNum, 8).setValue(p.dateStarted.trim());
+  if (p.dateFinished != null) f.sheet.getRange(f.rowNum, 9).setValue(p.dateFinished.trim());
+  if (p.notes        != null) f.sheet.getRange(f.rowNum, 10).setValue(p.notes.trim());
+  return { ok: true, id: p.id, action: 'updated' };
+}
+
+function webDeleteBook_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  var f  = findGrowthRow_(TABS.BOOKS, id);
+  f.sheet.deleteRow(f.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+function webAddCourse_(e) {
+  var p = e.parameter || {};
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.COURSES);
+  if (!sheet) throw new Error('Courses tab not found');
+  var tz = Session.getScriptTimeZone();
+  var id = 'CR-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  sheet.appendRow([id, (p.person||'Ahmed').trim(), (p.title||'').trim(), (p.source||'').trim(),
+    (p.category||'').trim(), (p.status||'Want to Do').trim(), p.rating ? Number(p.rating) : '',
+    (p.notes||'').trim(), (p.dateFinished||'').trim()]);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateCourse_(e) {
+  var p = e.parameter || {};
+  var f = findGrowthRow_(TABS.COURSES, (p.id||'').trim());
+  if (p.person       != null) f.sheet.getRange(f.rowNum, 2).setValue(p.person.trim());
+  if (p.title        != null) f.sheet.getRange(f.rowNum, 3).setValue(p.title.trim());
+  if (p.source       != null) f.sheet.getRange(f.rowNum, 4).setValue(p.source.trim());
+  if (p.category     != null) f.sheet.getRange(f.rowNum, 5).setValue(p.category.trim());
+  if (p.status       != null) f.sheet.getRange(f.rowNum, 6).setValue(p.status.trim());
+  if (p.rating       != null) f.sheet.getRange(f.rowNum, 7).setValue(p.rating ? Number(p.rating) : '');
+  if (p.notes        != null) f.sheet.getRange(f.rowNum, 8).setValue(p.notes.trim());
+  if (p.dateFinished != null) f.sheet.getRange(f.rowNum, 9).setValue(p.dateFinished.trim());
+  return { ok: true, id: p.id, action: 'updated' };
+}
+
+function webDeleteCourse_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  var f  = findGrowthRow_(TABS.COURSES, id);
+  f.sheet.deleteRow(f.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+function webAddSkill_(e) {
+  var p = e.parameter || {};
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.SKILLS);
+  if (!sheet) throw new Error('Skills tab not found');
+  var tz = Session.getScriptTimeZone();
+  var id = 'SK-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  sheet.appendRow([id, (p.person||'Ahmed').trim(), (p.skill||'').trim(), (p.category||'').trim(),
+    (p.level||'Beginner').trim(), (p.goalLink||'').trim(), (p.lastPracticed||'').trim(), (p.notes||'').trim()]);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateSkill_(e) {
+  var p = e.parameter || {};
+  var f = findGrowthRow_(TABS.SKILLS, (p.id||'').trim());
+  if (p.person        != null) f.sheet.getRange(f.rowNum, 2).setValue(p.person.trim());
+  if (p.skill         != null) f.sheet.getRange(f.rowNum, 3).setValue(p.skill.trim());
+  if (p.category      != null) f.sheet.getRange(f.rowNum, 4).setValue(p.category.trim());
+  if (p.level         != null) f.sheet.getRange(f.rowNum, 5).setValue(p.level.trim());
+  if (p.goalLink      != null) f.sheet.getRange(f.rowNum, 6).setValue(p.goalLink.trim());
+  if (p.lastPracticed != null) f.sheet.getRange(f.rowNum, 7).setValue(p.lastPracticed.trim());
+  if (p.notes         != null) f.sheet.getRange(f.rowNum, 8).setValue(p.notes.trim());
+  return { ok: true, id: p.id, action: 'updated' };
+}
+
+function webDeleteSkill_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  var f  = findGrowthRow_(TABS.SKILLS, id);
+  f.sheet.deleteRow(f.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+function webRecordPractice_(e) {
+  var p   = e.parameter || {};
+  var id  = (p.id || '').trim();
+  var tz  = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var f   = findGrowthRow_(TABS.SKILLS, id);
+  f.sheet.getRange(f.rowNum, 7).setValue(today); // col 7 = Last Practiced
+  return { ok: true, id: id, lastPracticed: today };
+}
+
+// ============================================================
+// EXPERIMENTS — Explore tab (Issue #130)
+// ============================================================
+
+function webGetExperiments_() {
+  var ss = getSpreadsheet();
+
+  var checkinsMap = {};
+  try {
+    var ckSheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
+    if (ckSheet && ckSheet.getLastRow() >= 2) {
+      ckSheet.getRange(2, 1, ckSheet.getLastRow() - 1, EXPERIMENT_CHECKIN_HEADERS.length).getValues()
+        .forEach(function(r) {
+          var ckId  = String(r[0] || '').trim();
+          var expId = String(r[1] || '').trim();
+          if (!ckId || !expId) return;
+          if (!checkinsMap[expId]) checkinsMap[expId] = [];
+          checkinsMap[expId].push({ id: ckId, date: formatDateVal_(r[2]), note: String(r[3] || '').trim() });
+        });
+    }
+  } catch (ex) { Logger.log('webGetExperiments_ checkins: ' + ex.message); }
+
+  var experiments = [];
+  try {
+    var eSheet = ss.getSheetByName(TABS.EXPERIMENTS);
+    if (eSheet && eSheet.getLastRow() >= 2) {
+      eSheet.getRange(2, 1, eSheet.getLastRow() - 1, EXPERIMENT_HEADERS.length).getValues()
+        .forEach(function(r, i) {
+          var id = String(r[0] || '').trim();
+          if (!id) return;
+          experiments.push({
+            row: i + 2, id: id,
+            person:     String(r[1] || '').trim(),
+            title:      String(r[2] || '').trim(),
+            category:   String(r[3] || '').trim(),
+            hypothesis: String(r[4] || '').trim(),
+            startDate:  formatDateVal_(r[5]),
+            endDate:    formatDateVal_(r[6]),
+            status:     String(r[7] || '').trim(),
+            outcome:    String(r[8] || '').trim(),
+            notes:      String(r[9] || '').trim(),
+            checkins:   checkinsMap[id] || [],
+          });
+        });
+    }
+  } catch (ex) { Logger.log('webGetExperiments_: ' + ex.message); }
+
+  return { ok: true, experiments: experiments };
+}
+
+function webAddExperiment_(e) {
+  var p = e.parameter || {};
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.EXPERIMENTS);
+  if (!sheet) throw new Error('Experiments tab not found');
+  var tz = Session.getScriptTimeZone();
+  var id = 'EXP-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  sheet.appendRow([id, (p.person||'Ahmed').trim(), (p.title||'').trim(), (p.category||'').trim(),
+    (p.hypothesis||'').trim(), (p.startDate||'').trim(), (p.endDate||'').trim(),
+    (p.status||'Active').trim(), (p.outcome||'').trim(), (p.notes||'').trim()]);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateExperiment_(e) {
+  var p = e.parameter || {};
+  var f = findGrowthRow_(TABS.EXPERIMENTS, (p.id||'').trim());
+  if (p.person     != null) f.sheet.getRange(f.rowNum, 2).setValue(p.person.trim());
+  if (p.title      != null) f.sheet.getRange(f.rowNum, 3).setValue(p.title.trim());
+  if (p.category   != null) f.sheet.getRange(f.rowNum, 4).setValue(p.category.trim());
+  if (p.hypothesis != null) f.sheet.getRange(f.rowNum, 5).setValue(p.hypothesis.trim());
+  if (p.startDate  != null) f.sheet.getRange(f.rowNum, 6).setValue(p.startDate.trim());
+  if (p.endDate    != null) f.sheet.getRange(f.rowNum, 7).setValue(p.endDate.trim());
+  if (p.status     != null) f.sheet.getRange(f.rowNum, 8).setValue(p.status.trim());
+  if (p.outcome    != null) f.sheet.getRange(f.rowNum, 9).setValue(p.outcome.trim());
+  if (p.notes      != null) f.sheet.getRange(f.rowNum, 10).setValue(p.notes.trim());
+  return { ok: true, id: p.id, action: 'updated' };
+}
+
+function webDeleteExperiment_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  var f  = findGrowthRow_(TABS.EXPERIMENTS, id);
+  f.sheet.deleteRow(f.rowNum);
+  try {
+    var ckSheet = getSpreadsheet().getSheetByName(TABS.EXPERIMENT_CHECKINS);
+    if (ckSheet && ckSheet.getLastRow() >= 2) {
+      var rows = ckSheet.getRange(2, 1, ckSheet.getLastRow() - 1, 2).getValues();
+      for (var i = rows.length - 1; i >= 0; i--) {
+        if (String(rows[i][1]).trim() === id) ckSheet.deleteRow(i + 2);
+      }
+    }
+  } catch (ex) { Logger.log('webDeleteExperiment_ checkins cleanup: ' + ex.message); }
+  return { ok: true, id: id, action: 'deleted' };
+}
+
+function webAddExperimentCheckin_(e) {
+  var p     = e.parameter || {};
+  var expId = (p.experimentId || p.id || '').trim();
+  if (!expId) throw new Error('experimentId is required');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.EXPERIMENT_CHECKINS);
+  if (!sheet) throw new Error('Experiment Checkins tab not found');
+  var tz    = Session.getScriptTimeZone();
+  var id    = 'CK-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  sheet.appendRow([id, expId, (p.date || today).trim(), (p.note || '').trim()]);
+  return { ok: true, id: id, experimentId: expId, action: 'created' };
 }
