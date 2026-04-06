@@ -81,6 +81,7 @@ const TABS = {
   SKILLS:              'Skills',              // Skill building + practice log (Issue #88)
   EXPERIMENTS:         'Experiments',         // Personal experiment tracker (Issue #130)
   EXPERIMENT_CHECKINS: 'Experiment Checkins', // Per-experiment check-in log (Issue #130)
+  RESOURCES:           'Resources',            // Reference links + docs (Explore tab)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -140,6 +141,7 @@ const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level'
 // Experiments (Issue #130) — column order matches row[] offsets used in Experiments.js
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
 const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
+const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs

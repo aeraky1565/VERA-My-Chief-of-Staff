@@ -266,6 +266,11 @@ function doGet(e) {
       case 'update_experiment':      return jsonOut_(webUpdateExperiment_(e));
       case 'delete_experiment':      return jsonOut_(webDeleteExperiment_(e));
       case 'add_experiment_checkin': return jsonOut_(webAddExperimentCheckin_(e));
+      // Resources (Explore tab)
+      case 'get_resources':    return jsonOut_(webGetResources_());
+      case 'add_resource':     return jsonOut_(webAddResource_(e));
+      case 'update_resource':  return jsonOut_(webUpdateResource_(e));
+      case 'delete_resource':  return jsonOut_(webDeleteResource_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -6368,4 +6373,68 @@ function webAddExperimentCheckin_(e) {
   var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   sheet.appendRow([id, expId, (p.date || today).trim(), (p.note || '').trim()]);
   return { ok: true, id: id, experimentId: expId, action: 'created' };
+}
+
+// ============================================================
+// RESOURCES — Explore tab reference links + docs
+// ============================================================
+
+function webGetResources_() {
+  var ss    = getSpreadsheet();
+  var resources = [];
+  try {
+    var sheet = ss.getSheetByName(TABS.RESOURCES);
+    if (sheet && sheet.getLastRow() >= 2) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, RESOURCE_HEADERS.length).getValues()
+        .forEach(function(r, i) {
+          var id = String(r[0] || '').trim();
+          if (!id) return;
+          resources.push({
+            row:         i + 2,
+            id:          id,
+            name:        String(r[1] || '').trim(),
+            category:    String(r[2] || '').trim(),
+            appliesTo:   String(r[3] || '').trim(),
+            description: String(r[4] || '').trim(),
+            url:         String(r[5] || '').trim(),
+            tags:        String(r[6] || '').trim(),
+            driveFileId: String(r[7] || '').trim(),
+          });
+        });
+    }
+  } catch (ex) { Logger.log('webGetResources_: ' + ex.message); }
+  return { ok: true, resources: resources };
+}
+
+function webAddResource_(e) {
+  var p     = e.parameter || {};
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.RESOURCES);
+  if (!sheet) throw new Error('Resources tab not found');
+  var tz  = Session.getScriptTimeZone();
+  var id  = 'RES-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  // RESOURCE_HEADERS: ID | Name | Category | Applies To | Description | URL | Tags | Drive File ID
+  sheet.appendRow([id, (p.name||'').trim(), (p.category||'').trim(), (p.appliesTo||'Both').trim(),
+    (p.description||'').trim(), (p.url||'').trim(), (p.tags||'').trim(), (p.driveFileId||'').trim()]);
+  return { ok: true, id: id, action: 'created' };
+}
+
+function webUpdateResource_(e) {
+  var p = e.parameter || {};
+  var f = findGrowthRow_(TABS.RESOURCES, (p.id||'').trim());
+  if (p.name        != null) f.sheet.getRange(f.rowNum, 2).setValue(p.name.trim());
+  if (p.category    != null) f.sheet.getRange(f.rowNum, 3).setValue(p.category.trim());
+  if (p.appliesTo   != null) f.sheet.getRange(f.rowNum, 4).setValue(p.appliesTo.trim());
+  if (p.description != null) f.sheet.getRange(f.rowNum, 5).setValue(p.description.trim());
+  if (p.url         != null) f.sheet.getRange(f.rowNum, 6).setValue(p.url.trim());
+  if (p.tags        != null) f.sheet.getRange(f.rowNum, 7).setValue(p.tags.trim());
+  if (p.driveFileId != null) f.sheet.getRange(f.rowNum, 8).setValue(p.driveFileId.trim());
+  return { ok: true, id: p.id, action: 'updated' };
+}
+
+function webDeleteResource_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  var f  = findGrowthRow_(TABS.RESOURCES, id);
+  f.sheet.deleteRow(f.rowNum);
+  return { ok: true, id: id, action: 'deleted' };
 }
