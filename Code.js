@@ -546,6 +546,7 @@ function setupTriggers() {
 function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
+    var today = new Date();
 
     // Step -1: Escalate aged unacknowledged flags (Issue #5)
     try {

@@ -190,8 +190,11 @@ function getHealthAppointments_() {
     };
   });
 
-  // Sort by person then type
+  // Sort ascending by daysUntil (most overdue first), nulls last, then person, then type
   results.sort(function(a, b) {
+    var da = a.daysUntil != null ? a.daysUntil : 99999;
+    var db = b.daysUntil != null ? b.daysUntil : 99999;
+    if (da !== db) return da - db;
     var p = a.person.localeCompare(b.person);
     return p !== 0 ? p : a.type.localeCompare(b.type);
   });
