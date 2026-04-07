@@ -12,6 +12,17 @@
 var MEAL_PLAN_DAYS_  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 var MEAL_PLAN_TYPES_ = ['Home Cooked', 'Leftovers', 'Takeout', 'Eating Out'];
 
+/**
+ * Generates a unique row ID with the given prefix, e.g. "MP-20240407143022-482".
+ * @param {string} prefix  Short string prepended to the ID (e.g. 'MP')
+ * @returns {string}
+ */
+function generateId_(prefix) {
+  var ts  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMddHHmmss');
+  var rnd = Math.floor(Math.random() * 1000);
+  return (prefix || 'ID') + '-' + ts + '-' + rnd;
+}
+
 // Column indices (0-based) matching MEAL_PLAN_HEADERS
 var MP_COL_ = { ID: 0, WEEK_START: 1, DAY: 2, DATE: 3, MEAL_NAME: 4, TYPE: 5, STATUS: 6, NOTES: 7 };
 
