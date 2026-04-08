@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VERA Quick Reference — Developer Cheat Sheet</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0f1117;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  a { color: #a78bfa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── NAV ────────────────────────────────────────────────────── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #1a1d2e;
+    border-bottom: 1px solid #2d2f45;
+    padding: 8px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    align-items: center;
+  }
+  nav .brand {
+    color: #6c63ff;
+    font-weight: 700;
+    font-size: 15px;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+  nav a {
+    color: #94a3b8;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  nav a:hover { color: #a78bfa; }
+
+  /* ── LAYOUT ─────────────────────────────────────────────────── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  section { margin-bottom: 40px; }
+  .section-header {
+    font-size: 14px;
+    font-weight: 700;
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border-left: 3px solid #6c63ff;
+    padding: 6px 12px;
+    background: #1a1d2e;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-header span { font-size: 11px; color: #64748b; font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+  /* ── TABLES ─────────────────────────────────────────────────── */
+  .tbl-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid #2d2f45; }
+  table { width: 100%; border-collapse: collapse; background: #1a1d2e; }
+  thead th {
+    background: #0f1117;
+    color: #6c63ff;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid #2d2f45;
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid #1e2133; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #1e2133; }
+  td { padding: 6px 10px; vertical-align: top; }
+  td code, td .mono {
+    font-family: 'Courier New', 'Consolas', monospace;
+    font-size: 11.5px;
+    background: #0f1117;
+    color: #c084fc;
+    padding: 1px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  td .key { color: #38bdf8; }
+  td .note { color: #64748b; font-size: 11px; }
+  td .yes { color: #4ade80; font-weight: 600; }
+  td .no  { color: #94a3b8; }
+  td .opt { color: #fbbf24; }
+  td .hi  { color: #f87171; font-weight: 600; }
+  td .med { color: #fbbf24; font-weight: 600; }
+  td .low { color: #4ade80; font-weight: 600; }
+
+  /* pill badges */
+  .pill {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .pill-auto   { background:#1e3a5f; color:#60a5fa; }
+  .pill-manual { background:#1e3a2f; color:#4ade80; }
+  .pill-req    { background:#3a1e1e; color:#f87171; }
+  .pill-opt2   { background:#3a3a1e; color:#fbbf24; }
+  .pill-trigger{ background:#2d1e3a; color:#c084fc; }
+
+  /* description text in tables */
+  .desc { color: #cbd5e1; font-size: 12px; }
+
+  @media print {
+    nav { display: none; }
+    section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">VERA</div>
+  <a href="#triggers">Triggers</a>
+  <a href="#nightly">Nightly Pipeline</a>
+  <a href="#flag-sources">Flag Sources</a>
+  <a href="#cal-prefixes">Calendar Prefixes</a>
+  <a href="#config-keys">Config Keys</a>
+  <a href="#script-props">Script Properties</a>
+  <a href="#sheet-tabs">Sheet Tabs</a>
+  <a href="#slack">Slack Channels</a>
+  <a href="#get-actions">GET Actions</a>
+  <a href="#post-actions">POST Actions</a>
+  <a href="#patterns">Cross-Domain Patterns</a>
+  <a href="#health-intervals">Health Intervals</a>
+</nav>
+
+<div class="container">
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="triggers">
+    <div class="section-header">1. Triggers <span>setupTriggers() in Code.js</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Function</th><th>Schedule</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>nightlyRun</code></td>
+            <td>Daily 11 PM</td>
+            <td class="desc">Main intelligence pipeline — summaries, PTO, patterns, Claude flags, Slack log</td>
+          </tr>
+          <tr>
+            <td><code>morningNudge</code></td>
+            <td>Daily 7 AM</td>
+            <td class="desc">Morning email digest with active flags, tasks, calendar preview</td>
+          </tr>
+          <tr>
+            <td><code>hourlyCheck</code></td>
+            <td>Every 1 hour</td>
+            <td class="desc">Anticipator reminder rules (ergonomic, hydration, bills, packing) + Weekend Planner on Monday</td>
+          </tr>
+          <tr>
+            <td><code>checkFlightStatuses_</code></td>
+            <td>Every 15 min</td>
+            <td class="desc">Flight status monitoring via AviationStack — only active when trips are within 24h of departure</td>
+          </tr>
+          <tr>
+            <td><code>runEmailScan_</code></td>
+            <td>Every 30 min</td>
+            <td class="desc">Travel email parser — gated: <code>email_parser_enabled=true</code>. ⚠ Up to 144 Claude API calls/day when enabled</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="nightly">
+    <div class="section-header">2. Nightly Pipeline Steps <span>nightlyRun() in Code.js</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>Function</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill pill-trigger">-1</span></td><td><code>escalateAgedFlags_</code></td><td class="desc">Escalate unacknowledged flags aged 3d → "3d", 7d → "7d" in Escalated column</td></tr>
+          <tr><td><span class="pill pill-trigger">0</span></td><td><code>writeSummarySnapshot</code></td><td class="desc">Auto-populate Metrics + Summaries tabs from live data (Phase 5)</td></tr>
+          <tr><td><span class="pill pill-trigger">0a</span></td><td><code>syncCalendarBirthdaysToImportantDates_</code></td><td class="desc">Sync upcoming birthdays from Joint Chaos calendar → Important Dates tab</td></tr>
+          <tr><td><span class="pill pill-trigger">0a-ii</span></td><td><code>resetChoresByCadence_</code></td><td class="desc">Reset household chores checkboxes based on cadence (daily/weekly/monthly/etc.)</td></tr>
+          <tr><td><span class="pill pill-trigger">0b</span></td><td><code>writePTOSnapshot_</code></td><td class="desc">Write PTO tab snapshot + compute VERA calendar recommendations</td></tr>
+          <tr><td><span class="pill pill-trigger">0c</span></td><td><code>runExplorer_</code></td><td class="desc">Daily AI discovery bulletin — sends to Slack/email based on <code>explorer_interests</code></td></tr>
+          <tr><td><span class="pill pill-trigger">0d</span></td><td><code>getSuppressedKeyPatterns_</code></td><td class="desc">Signal Learning — load noise-suppressed patterns to filter from Claude's output</td></tr>
+          <tr><td><span class="pill pill-trigger">0e</span></td><td><code>recordExpiredFlags_</code></td><td class="desc">Signal Learning — record flags open 30+ days without action as "expired"</td></tr>
+          <tr><td><span class="pill pill-trigger">0f</span></td><td><code>checkPreTripBriefings_</code></td><td class="desc">48-hour pre-trip auto-briefing flags (weather, packing status, flight info)</td></tr>
+          <tr><td><span class="pill pill-trigger">0g</span></td><td><code>checkPostTripCapture_</code></td><td class="desc">Post-trip debrief prompt — fires N days after trip end</td></tr>
+          <tr><td><span class="pill pill-trigger">0h</span></td><td>(inline)</td><td class="desc">Reset Morning Routine checkboxes (Checked=false, Checked At=blank)</td></tr>
+          <tr><td><span class="pill pill-trigger">0i</span></td><td><code>checkGymSessions_</code></td><td class="desc">Gym session check-in — scans for ended EXERCISE-tagged calendar events</td></tr>
+          <tr><td><span class="pill pill-trigger">0j</span></td><td><code>checkFitnessConsistency_</code> / <code>checkFitnessTravelGap_</code></td><td class="desc">Weekly gym consistency check + travel gap gap detection</td></tr>
+          <tr><td><span class="pill pill-trigger">0k</span></td><td><code>autoRestockItems_</code> / <code>generatePantryFlags_</code></td><td class="desc">Pantry: auto-restock prediction + trip-overlap flags (gated: <code>pantry_enabled=true</code>)</td></tr>
+          <tr><td><span class="pill pill-trigger">0l</span></td><td><code>inferCapacityMode_</code></td><td class="desc">Score tomorrow's calendar load → infer busy/normal/light mode</td></tr>
+          <tr><td><span class="pill pill-trigger">0m</span></td><td><code>checkContracts_</code></td><td class="desc">Contract expiry flags — upcoming renewals/expirations in Contracts tab</td></tr>
+          <tr><td><span class="pill pill-trigger">0n</span></td><td><code>checkHealthAppointments_</code></td><td class="desc">Health appointment due-date checks — reads DR:-prefixed calendar events</td></tr>
+          <tr><td><span class="pill pill-trigger">0o</span></td><td><code>checkMonthlyReview_</code></td><td class="desc">Monthly Life Review — fires on 1st of month (gated: <code>monthly_review_enabled=true</code>)</td></tr>
+          <tr><td><span class="pill pill-trigger">0p</span></td><td><code>resetWeekMealPlan_</code></td><td class="desc">Saturday only: archive current meal week, seed next week</td></tr>
+          <tr><td><span class="pill pill-trigger">0q</span></td><td><code>checkCrossPatternFlags_</code></td><td class="desc">Cross-domain pattern recognition — compound signals across all domains (PatternRecognition.js)</td></tr>
+          <tr><td><span class="pill pill-trigger">1</span></td><td><code>getUpcomingEvents / getOpenTasks / getSummaries / getSharedInterestLedger_</code></td><td class="desc">Collect live data for Claude prompt</td></tr>
+          <tr><td><span class="pill pill-trigger">1b</span></td><td><code>suggestDueDates</code></td><td class="desc">AI-suggest due dates for undated tasks — writes back to Tasks tab</td></tr>
+          <tr><td><span class="pill pill-trigger">2–3</span></td><td><code>generateFlags</code></td><td class="desc">Build Claude prompt → call claude-sonnet-4-6 → parse flags JSON</td></tr>
+          <tr><td><span class="pill pill-trigger">4</span></td><td><code>writeFlags</code></td><td class="desc">Append flag rows to Flags tab with dedup (exact + fuzzy key matching)</td></tr>
+          <tr><td><span class="pill pill-trigger">4b</span></td><td><code>recordFlagsGenerated_</code></td><td class="desc">Signal Learning — record generated flag keys as "seen"</td></tr>
+          <tr><td><span class="pill pill-trigger">end</span></td><td><code>sendSlackLog_</code></td><td class="desc">Post nightly summary to #vera-logs (flag counts, step warnings, elapsed time)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="flag-sources">
+    <div class="section-header">3. Flag Sources <span>source: values written by writeFlags()</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Source Value</th><th>Module / Step</th><th>What it generates</th></tr></thead>
+        <tbody>
+          <tr><td><code>Calendar</code> / <code>Tasks</code> / <code>Summaries</code></td><td>Claude.js</td><td class="desc">Primary nightly Claude output — cross-domain analysis</td></tr>
+          <tr><td><code>Health Tracker</code></td><td>HealthTracker.js</td><td class="desc">Overdue / upcoming health appointments (DR: prefix events)</td></tr>
+          <tr><td><code>Fitness Tracker</code></td><td>Fitness.js</td><td class="desc">Weekly gym consistency and travel gap flags</td></tr>
+          <tr><td><code>Gym Tracker</code></td><td>GymTracker.js</td><td class="desc">Post-session check-in prompts</td></tr>
+          <tr><td><code>Pattern Recognition</code></td><td>PatternRecognition.js</td><td class="desc">Cross-domain compound pattern flags (all 7 patterns)</td></tr>
+          <tr><td><code>Pre-Trip Briefing</code></td><td>PreTripBriefing.js</td><td class="desc">48h pre-departure briefing</td></tr>
+          <tr><td><code>Post-Trip Capture</code></td><td>PostTripCapture.js</td><td class="desc">Post-return memory capture prompt</td></tr>
+          <tr><td><code>Email Parser</code></td><td>EmailParser.js</td><td class="desc">Parsed travel confirmations from inbox</td></tr>
+          <tr><td><code>Monthly Review</code></td><td>MonthlyReview.js</td><td class="desc">Monthly life review flag (1st of month)</td></tr>
+          <tr><td><code>Important Dates</code></td><td>ImportantDates.js</td><td class="desc">Upcoming birthdays, anniversaries (30-day lead)</td></tr>
+          <tr><td><code>Contracts</code></td><td>Code.js (checkContracts_)</td><td class="desc">Contract renewal / expiry alerts</td></tr>
+          <tr><td><code>Pantry Tracker</code></td><td>Pantry.js</td><td class="desc">Purchase-history restock flags (gated)</td></tr>
+          <tr><td><code>Finance</code></td><td>FinancialGoals.js</td><td class="desc">Financial goal milestone / savings rate alerts</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px">
+      <table style="width:auto; border:1px solid #2d2f45; border-radius:6px;">
+        <thead><tr><th>Urgency</th><th>Visual</th><th>Sheet Background</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td class="hi">High</td><td>🔴</td><td><code>#fee2e2</code> (red tint)</td><td class="desc">Needs attention soon — @mention in Slack</td></tr>
+          <tr><td class="med">Medium</td><td>🟡</td><td><code>#fef9c3</code> (yellow tint)</td><td class="desc">Review this week</td></tr>
+          <tr><td class="low">Low</td><td>🟢</td><td><code>#dcfce7</code> (green tint)</td><td class="desc">Good to know, no urgency</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="cal-prefixes">
+    <div class="section-header">4. Calendar Event Prefixes <span>Special title prefixes parsed by VERA</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Prefix</th><th>Example Title</th><th>Detected By</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>DR:</code></td>
+            <td><code>DR: Ahmed - Annual Physical</code><br><span class="note">DR: [Person] - [Type] - [Dr. Name (opt)]</span></td>
+            <td>HealthTracker.js</td>
+            <td class="desc">Tracks last-visit date per person+type, computes next-due, generates flag when overdue/approaching</td>
+          </tr>
+          <tr>
+            <td><code>EXERCISE</code> (in description)</td>
+            <td>Any title with <code>EXERCISE</code> in the event description</td>
+            <td>GymTracker.js</td>
+            <td class="desc">Logs attended gym session to Gym Log tab; generates check-in flag</td>
+          </tr>
+          <tr>
+            <td><code>TRIP:</code> (convention)</td>
+            <td><code>TRIP: Paris - CDG → ORD</code></td>
+            <td>FlightStatus.js, PreTripBriefing.js</td>
+            <td class="desc">Trip tracking — pre-trip briefing, packing, itinerary, post-trip capture. Any multi-day event works.</td>
+          </tr>
+          <tr>
+            <td><code>calendar_label:*</code></td>
+            <td><em>Config row, not an event prefix</em></td>
+            <td>Calendar.js</td>
+            <td class="desc">Maps calendar name to a display label for Claude prompt context</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="config-keys">
+    <div class="section-header">5. Config Tab Keys <span>All cfg['...'] lookups — Setting column in Config sheet</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Key</th><th>Default</th><th>Module</th><th>What it controls</th></tr></thead>
+        <tbody>
+          <!-- Core -->
+          <tr><td><code class="key">calendar_days_ahead</code></td><td>7</td><td>Calendar.js</td><td class="desc">Days of calendar events to fetch for nightly analysis</td></tr>
+          <tr><td><code class="key">task_age_threshold_days</code></td><td>7</td><td>Tasks.js / Code.js</td><td class="desc">Days before an open task is considered "neglected"</td></tr>
+          <tr><td><code class="key">max_flags_per_night</code></td><td>8</td><td>Claude.js</td><td class="desc">Maximum Claude-generated flags per nightly run</td></tr>
+          <tr><td><code class="key">morning_nudge_time</code></td><td>7</td><td>Code.js</td><td class="desc">Hour (24h) for morning nudge trigger</td></tr>
+          <tr><td><code class="key">snooze_default_days</code></td><td>2</td><td>WebApp.js</td><td class="desc">Default snooze duration in days</td></tr>
+          <tr><td><code class="key">finance_review_day</code></td><td>1</td><td>Code.js</td><td class="desc">Day of month for finance review</td></tr>
+          <tr><td><code class="key">active_sources</code></td><td>Calendar,Tasks,Summaries</td><td>Code.js</td><td class="desc">Comma-separated data sources included in Claude prompt</td></tr>
+          <tr><td><code class="key">skip_calendars</code></td><td>Holidays in United States</td><td>Calendar.js, HealthTracker.js, GymTracker.js</td><td class="desc">Comma-separated calendar names to ignore entirely</td></tr>
+          <tr><td><code class="key">victoria_calendars</code></td><td><em>blank</em></td><td>Calendar.js, WebApp.js</td><td class="desc">Comma-separated calendar names belonging to Victoria</td></tr>
+          <tr><td><code class="key">calendar_label:*</code></td><td><em>none</em></td><td>Calendar.js</td><td class="desc">Maps calendar name to display label (e.g. <code>calendar_label:Ahmed = personal</code>)</td></tr>
+          <!-- PTO -->
+          <tr><td><code class="key">pto_vacation_days</code></td><td>20</td><td>PTO.js</td><td class="desc">Annual vacation allocation in days</td></tr>
+          <tr><td><code class="key">pto_rollover_days</code></td><td>0</td><td>PTO.js</td><td class="desc">Days carried over from prior year</td></tr>
+          <tr><td><code class="key">pto_personal_hours</code></td><td>48</td><td>PTO.js</td><td class="desc">Annual personal time in hours</td></tr>
+          <tr><td><code class="key">pto_buffer_days</code></td><td>3</td><td>PTO.js</td><td class="desc">Reserve days held back from planning calculations</td></tr>
+          <!-- Features toggles -->
+          <tr><td><code class="key">email_parser_enabled</code></td><td>false</td><td>EmailParser.js</td><td class="desc">Enable 30-min inbox scan for travel confirmations. ⚠ Up to 144 Claude calls/day</td></tr>
+          <tr><td><code class="key">email_admin_enabled</code></td><td>false</td><td>EmailAdmin.js</td><td class="desc">Enable weekly inbox triage + follow-up tracking</td></tr>
+          <tr><td><code class="key">email_admin_frequency</code></td><td>weekly</td><td>EmailAdmin.js</td><td class="desc"><code>weekly</code> or <code>3days</code></td></tr>
+          <tr><td><code class="key">pretrip_briefing_enabled</code></td><td>true</td><td>PreTripBriefing.js</td><td class="desc">Generate 48h pre-departure briefing flags</td></tr>
+          <tr><td><code class="key">pretrip_briefing_hours</code></td><td>48</td><td>PreTripBriefing.js</td><td class="desc">Hours before departure to generate briefing</td></tr>
+          <tr><td><code class="key">posttrip_capture_enabled</code></td><td>true</td><td>PostTripCapture.js</td><td class="desc">Enable post-trip memory capture prompt</td></tr>
+          <tr><td><code class="key">posttrip_capture_delay_days</code></td><td>1</td><td>PostTripCapture.js</td><td class="desc">Days after trip end to fire capture flag</td></tr>
+          <tr><td><code class="key">gym_tracker_enabled</code></td><td>true</td><td>GymTracker.js</td><td class="desc">Enable gym session tracking from calendar EXERCISE tags</td></tr>
+          <tr><td><code class="key">gym_tracker_lookback_hours</code></td><td>24</td><td>GymTracker.js</td><td class="desc">Hours to look back for ended EXERCISE calendar events</td></tr>
+          <tr><td><code class="key">gym_sessions_per_week</code></td><td>3</td><td>PatternRecognition.js</td><td class="desc">Target gym sessions per week for pattern detection</td></tr>
+          <tr><td><code class="key">fitness_enabled</code></td><td>false</td><td>Fitness.js</td><td class="desc">Enable weekly gym consistency check flags</td></tr>
+          <tr><td><code class="key">fitness_weekly_target</code></td><td>4</td><td>Fitness.js</td><td class="desc">Target gym sessions per week for consistency flags</td></tr>
+          <tr><td><code class="key">fitness_low_flag_day</code></td><td>4</td><td>Fitness.js</td><td class="desc">Day of week to fire Low flag if behind (1=Sun … 7=Sat; 4=Wed)</td></tr>
+          <tr><td><code class="key">fitness_travel_block_time</code></td><td>07:00</td><td>Fitness.js</td><td class="desc">Start time for auto-created trip gym session blocks</td></tr>
+          <tr><td><code class="key">fitness_travel_block_duration</code></td><td>60</td><td>Fitness.js</td><td class="desc">Duration (minutes) for auto-created trip gym session blocks</td></tr>
+          <tr><td><code class="key">pacing_enabled</code></td><td>true</td><td>Pacing.js</td><td class="desc">Enable automatic pacing mode detection and suggestions</td></tr>
+          <tr><td><code class="key">pacing_flag_threshold</code></td><td>3</td><td>Pacing.js</td><td class="desc">Minimum High flags to trigger pacing mode offer</td></tr>
+          <tr><td><code class="key">pacing_mode_days</code></td><td>7</td><td>Pacing.js</td><td class="desc">Duration (days) for pacing mode when activated</td></tr>
+          <tr><td><code class="key">reminders_enabled</code></td><td>true</td><td>Reminders.js</td><td class="desc">Master switch for Anticipator reminder rules</td></tr>
+          <tr><td><code class="key">explorer_enabled</code></td><td>true</td><td>Reminders.js</td><td class="desc">Master switch for Explorer daily AI discovery</td></tr>
+          <tr><td><code class="key">explorer_interests</code></td><td>(built-in default)</td><td>Reminders.js</td><td class="desc">Interest topics injected into Explorer AI prompt</td></tr>
+          <tr><td><code class="key">ergonomic_interval_min</code></td><td>60</td><td>Reminders.js</td><td class="desc">Ergonomic break target interval in minutes</td></tr>
+          <tr><td><code class="key">hydration_interval_min</code></td><td>120</td><td>Reminders.js</td><td class="desc">Hydration reminder interval in minutes</td></tr>
+          <tr><td><code class="key">mobility_reminder_hour</code></td><td>20</td><td>Reminders.js</td><td class="desc">24h hour for evening mobility nudge</td></tr>
+          <tr><td><code class="key">weekend_planner_enabled</code></td><td>true</td><td>WeekendPlanner.js</td><td class="desc">Enable Monday morning Weekend Planner Slack message</td></tr>
+          <tr><td><code class="key">weekend_planner_hour</code></td><td>8</td><td>Reminders.js, WeekendPlanner.js</td><td class="desc">Hour to fire Weekend Planner (fires from hourlyCheck on Monday)</td></tr>
+          <tr><td><code class="key">weekend_planner_lookahead_days</code></td><td>21</td><td>WeekendPlanner.js</td><td class="desc">Days ahead to look for upcoming trips/events</td></tr>
+          <tr><td><code class="key">monthly_review_enabled</code></td><td>true</td><td>MonthlyReview.js</td><td class="desc">Generate monthly life review on 1st of each month</td></tr>
+          <tr><td><code class="key">meal_planner_enabled</code></td><td>true</td><td>Code.js / WebApp.js</td><td class="desc">Show Meal Plan tab in dashboard</td></tr>
+          <tr><td><code class="key">pantry_enabled</code></td><td>false</td><td>Pantry.js</td><td class="desc">Enable purchase history + auto-restock tracking</td></tr>
+          <tr><td><code class="key">pantry_restock_days_ahead</code></td><td>7</td><td>Pantry.js</td><td class="desc">Days ahead to predict and flag restock items</td></tr>
+          <tr><td><code class="key">pantry_ema_alpha</code></td><td>0.3</td><td>Pantry.js</td><td class="desc">EMA learning rate for pantry consumption model (higher = adapts faster)</td></tr>
+          <tr><td><code class="key">google_tasks_enabled</code></td><td>true</td><td>WebApp.js</td><td class="desc">Fetch Google Tasks in dashboard and chat</td></tr>
+          <!-- Dashboard visibility -->
+          <tr><td><code class="key">morning_routine_enabled</code></td><td>true</td><td>WebApp.js (status)</td><td class="desc">Show Morning Routine tab in dashboard</td></tr>
+          <tr><td><code class="key">takeouts_enabled</code></td><td>true</td><td>WebApp.js (status)</td><td class="desc">Show Takeouts tab in dashboard</td></tr>
+          <tr><td><code class="key">experiments_enabled</code></td><td>true</td><td>WebApp.js (status)</td><td class="desc">Show Experiments tab in dashboard</td></tr>
+          <tr><td><code class="key">wish_list_enabled</code></td><td>true</td><td>WebApp.js (status)</td><td class="desc">Show Wish List tab in dashboard</td></tr>
+          <tr><td><code class="key">wishlists_enabled</code></td><td>true</td><td>WebApp.js (status)</td><td class="desc">Show Christmas Wish Lists (People tab)</td></tr>
+          <!-- Important Dates -->
+          <tr><td><code class="key">dates_default_lead_time</code></td><td>30</td><td>ImportantDates.js</td><td class="desc">Default lead days for important date flags</td></tr>
+          <tr><td><code class="key">dates_high_urgency_days</code></td><td>1</td><td>ImportantDates.js</td><td class="desc">Days-until threshold for High urgency important date flag</td></tr>
+          <tr><td><code class="key">dates_medium_urgency_days</code></td><td>7</td><td>ImportantDates.js</td><td class="desc">Days-until threshold for Medium urgency important date flag</td></tr>
+          <!-- Memory -->
+          <tr><td><code class="key">memory_log_enabled</code></td><td>true</td><td>Memory.js</td><td class="desc">Enable VERA memory/reflection log</td></tr>
+          <tr><td><code class="key">memory_snapshot_day</code></td><td>0</td><td>Memory.js</td><td class="desc">Day of week for memory snapshot (0=Sun)</td></tr>
+          <tr><td><code class="key">memory_log_retention_months</code></td><td>12</td><td>Memory.js</td><td class="desc">Months of memory log to retain before pruning</td></tr>
+          <!-- Finance -->
+          <tr><td><code class="key">monthly_disposable_income</code></td><td>5000</td><td>FinancialGoals.js</td><td class="desc">Monthly disposable income for financial goal scenario simulation</td></tr>
+          <!-- Pattern Recognition -->
+          <tr><td><code class="key">pattern_max_flags</code></td><td>2</td><td>PatternRecognition.js</td><td class="desc">Max new pattern flags per nightly run</td></tr>
+          <tr><td><code class="key">pattern_dedup_days</code></td><td>7</td><td>PatternRecognition.js</td><td class="desc">Days to suppress same pattern key after it fires</td></tr>
+          <!-- Weather -->
+          <tr><td><code class="key">weather_location</code></td><td><em>blank</em></td><td>Weather.js</td><td class="desc">City name for weather ticker (e.g. <code>Austin, TX</code>)</td></tr>
+          <!-- Travel Day -->
+          <tr><td><code class="key">travel_day_briefing_enabled</code></td><td>true</td><td>TravelDayBriefing.js</td><td class="desc">Enable travel day briefing messages</td></tr>
+          <tr><td><code class="key">travel_companions</code></td><td><em>blank</em></td><td>TravelDayBriefing.js</td><td class="desc">Default travel companions string</td></tr>
+          <!-- External sheet hooks -->
+          <tr><td><code class="key">summary_sheet:*</code></td><td><em>none</em></td><td>Summaries.js</td><td class="desc">External sheet hook: value = <code>SheetID|TabName|CellRef|metric_name</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="script-props">
+    <div class="section-header">6. Script Properties <span>Project Settings → Script Properties in Apps Script editor</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Property Key</th><th>Required?</th><th>Used By</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code class="key">CLAUDE_API_KEY</code></td><td><span class="pill pill-req">Required</span></td><td>Claude.js</td><td class="desc">Anthropic API key for claude-sonnet-4-6</td></tr>
+          <tr><td><code class="key">VERA_SHEET_ID</code></td><td><span class="pill pill-req">Required</span></td><td>Code.js (CONFIG)</td><td class="desc">Google Sheet ID of the Life OS sheet</td></tr>
+          <tr><td><code class="key">MORNING_NUDGE_EMAIL</code></td><td><span class="pill pill-req">Required</span></td><td>Code.js (CONFIG)</td><td class="desc">Email address for morning nudge and error alerts</td></tr>
+          <tr><td><code class="key">VERA_WEB_TOKEN</code></td><td><span class="pill pill-req">Required</span></td><td>WebApp.js</td><td class="desc">Auth token for all WebApp GET/POST requests (<code>?token=...</code>)</td></tr>
+          <tr><td><code class="key">VERA_LOGO_FILE_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Code.js, MonthlyReview.js</td><td class="desc">Google Drive file ID for VERA logo in emails</td></tr>
+          <tr><td><code class="key">VERA_DASHBOARD_URL</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Code.js, MonthlyReview.js</td><td class="desc">Netlify/dashboard URL — shown as button in emails</td></tr>
+          <tr><td><code class="key">SLACK_BOT_TOKEN</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">Slack bot OAuth token (xoxb-...)</td></tr>
+          <tr><td><code class="key">SLACK_CHAT_CHANNEL_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">#vera-chat channel ID (bidirectional conversation)</td></tr>
+          <tr><td><code class="key">SLACK_NOTIFICATIONS_CHANNEL_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">#vera-notifications channel ID (flags with Block Kit buttons)</td></tr>
+          <tr><td><code class="key">SLACK_LOGS_CHANNEL_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">#vera-logs channel ID (nightly run summaries, errors)</td></tr>
+          <tr><td><code class="key">SLACK_AHMED_USER_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">Ahmed's Slack member ID for @mentions on High flags</td></tr>
+          <tr><td><code class="key">SLACK_VICTORIA_USER_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">Victoria's Slack member ID</td></tr>
+          <tr><td><code class="key">SLACK_ALLOWED_USER_IDS</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Slack.js</td><td class="desc">Comma-separated Slack member IDs authorized to chat with VERA</td></tr>
+          <tr><td><code class="key">TRANSACTIONS_SHEET_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Finance.js, WebApp.js</td><td class="desc">Separate Google Sheet ID for transaction history (Empower CSV format)</td></tr>
+          <tr><td><code class="key">SAT_SHEET_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Finance.js, WebApp.js</td><td class="desc">Simple Ass Tracker Google Sheet ID (household budget)</td></tr>
+          <tr><td><code class="key">AVIATIONSTACK_KEY</code></td><td><span class="pill pill-opt2">Optional</span></td><td>FlightStatus.js</td><td class="desc">AviationStack API key for flight status monitoring</td></tr>
+          <tr><td><code class="key">WEATHER_API_KEY</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Weather.js, WebApp.js</td><td class="desc">OpenWeather API key for weather ticker and destination forecasts</td></tr>
+          <tr><td><code class="key">VERA_SEARCH_API_KEY</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Chat.js</td><td class="desc">Serper.dev or Tavily API key for web search tool in chat</td></tr>
+          <tr><td><code class="key">VERA_SEARCH_ENGINE</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Chat.js</td><td class="desc"><code>serper</code> (default) or <code>tavily</code></td></tr>
+          <tr><td><code class="key">PACING_MODE_ACTIVE</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">Set to <code>true</code> when pacing mode is active (written by VERA)</td></tr>
+          <tr><td><code class="key">PACING_MODE_ENDS</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">ISO date string when pacing mode expires</td></tr>
+          <tr><td><code class="key">VACATION_MODE_ACTIVE</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">Set to <code>true</code> when vacation mode is active</td></tr>
+          <tr><td><code class="key">VACATION_MODE_ENDS</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">ISO date string when vacation mode expires</td></tr>
+          <tr><td><code class="key">VACATION_TRIP_NAME</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">Trip name stored when vacation mode activates</td></tr>
+          <tr><td><code class="key">PACING_FIRST_DETECTED</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">Epoch ms timestamp when overload was first detected</td></tr>
+          <tr><td><code class="key">PACING_OFFER_FLAG_KEY</code></td><td><span class="no">Runtime</span></td><td>Pacing.js</td><td class="desc">Flag key for the pacing offer flag (dedup guard)</td></tr>
+          <tr><td><code class="key">FLIGHT_STATUS_CACHE</code></td><td><span class="no">Runtime</span></td><td>FlightStatus.js</td><td class="desc">JSON cache of last known flight statuses</td></tr>
+          <tr><td><code class="key">LAST_NIGHTLY_RUN</code></td><td><span class="no">Runtime</span></td><td>Slack.js (App Home)</td><td class="desc">Timestamp of last successful nightly run</td></tr>
+          <tr><td><code class="key">SHOPPING_LIST_DOC_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>Shopping.js</td><td class="desc">Google Doc ID for shared shopping list</td></tr>
+          <tr><td><code class="key">LIFE_PLAN_DOC_ID</code></td><td><span class="pill pill-opt2">Optional</span></td><td>FinancialGoals.js</td><td class="desc">Google Doc ID for Life Plan document</td></tr>
+          <tr><td><code class="key">SLACK_PINNED_MORNING_TS</code></td><td><span class="no">Runtime</span></td><td>Slack.js</td><td class="desc">Slack message timestamp of pinned morning summary</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="sheet-tabs">
+    <div class="section-header">7. Sheet Tabs <span>TABS constant in Code.js — all 80+ tabs</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Constant</th><th>Tab Name</th><th>Purpose</th><th>Auto-managed?</th></tr></thead>
+        <tbody>
+          <tr><td><code>TABS.FLAGS</code></td><td>Flags</td><td class="desc">All VERA-generated flags with urgency, status, escalation</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.TASKS</code></td><td>Tasks</td><td class="desc">Open tasks with due dates, recurring, flagged status</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.METRICS</code></td><td>Metrics</td><td class="desc">VERA self-monitoring counts (tasks, flags, calendar); wiped nightly</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.SUMMARIES</code></td><td>Summaries</td><td class="desc">External life intelligence feed — [AUTO] rows wiped/rewritten nightly</td><td><span class="pill pill-auto">Hybrid</span></td></tr>
+          <tr><td><code>TABS.CONFIG</code></td><td>Config</td><td class="desc">Key/Value config rows driving all VERA behaviour</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.PROJECTS</code></td><td>Projects</td><td class="desc">Multi-step projects with Claude-generated subtasks</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.GOALS</code></td><td>Goals</td><td class="desc">Yearly goals Kanban (To Do / Doing / Done / Paused)</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.PTO</code></td><td>PTO</td><td class="desc">PTO planner snapshot — written nightly by writePTOSnapshot_</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.PTO_MEMORY</code></td><td>PTO Memory</td><td class="desc">Stateful PTO suggestion history; declined windows blacklist</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.REMINDERS_MEMORY</code></td><td>Reminders Memory</td><td class="desc">Reminder cooldown log — prevents duplicate nudges</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.INTEREST_LEDGER</code></td><td>Shared Interests</td><td class="desc">Shared interest ledger for Ahmed + Victoria</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.BILLS</code></td><td>Bills</td><td class="desc">Recurring bill tracker with paid status</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.RECIPES</code></td><td>Recipes</td><td class="desc">Recipe list with ingredients and tags</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.MEAL_PLAN</code></td><td>Meal Plan</td><td class="desc">Weekly dinner planner — Saturday reset auto-archives + seeds next week</td><td><span class="pill pill-auto">Hybrid</span></td></tr>
+          <tr><td><code>TABS.TAKEOUT_RESTAURANTS</code></td><td>Takeout Restaurants</td><td class="desc">Favorite takeout restaurant list</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.TAKEOUT_ITEMS</code></td><td>Takeout Items</td><td class="desc">Takeout menu items linked to restaurants</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.HOME_ITEMS</code></td><td>Home Items</td><td class="desc">Warranties + service log for home items</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.IDEAS</code></td><td>Ideas</td><td class="desc">Braindump repo — raw thoughts + structured ideas</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.ITINERARY</code></td><td>Itinerary</td><td class="desc">Trip itinerary items (flights, hotels, activities)</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.TRIP_META</code></td><td>TripMeta</td><td class="desc">Trip context and sentiment notes per trip key</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.PACKING_ITEMS</code></td><td>PackingItems</td><td class="desc">Per-trip packing list items by person and category</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.COUNTRIES</code></td><td>Countries</td><td class="desc">Countries visited tracker</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.BUCKET_LIST</code></td><td>Bucket List</td><td class="desc">Travel bucket list with priority stars</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.TRIP_RECOMMENDATIONS</code></td><td>TripRecommendations</td><td class="desc">AI-generated trip activity and dining suggestions</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.PROCESSED_EMAILS</code></td><td>Processed Emails</td><td class="desc">Email parser dedup + outcome log</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.MORNING_ROUTINE</code></td><td>Morning Routine</td><td class="desc">Daily routine checklist — nightly checkbox reset</td><td><span class="pill pill-auto">Hybrid</span></td></tr>
+          <tr><td><code>TABS.GYM_LOG</code></td><td>Gym Log</td><td class="desc">Gym session attendance log</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.PURCHASE_HISTORY</code></td><td>Purchase History</td><td class="desc">Pantry purchase history + consumption intelligence</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CAREER_POSITION</code></td><td>Career Position</td><td class="desc">Current role snapshot</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CAREER_GOALS</code></td><td>Career Goals</td><td class="desc">Long-horizon career targets</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CAREER_PROGRESSION</code></td><td>Career Progression</td><td class="desc">Career timeline / roles held</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CAREER_DEVELOPMENT</code></td><td>Career Development</td><td class="desc">Skills, courses, focus areas</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CAREER_WINS</code></td><td>Career Wins</td><td class="desc">Professional achievement log</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CAREER_NETWORK</code></td><td>Career Network</td><td class="desc">Professional relationships tracker</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.PRESCRIPTIONS</code></td><td>Prescriptions</td><td class="desc">Medication tracker for Ahmed + Victoria</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CREDIT_CARDS</code></td><td>Credit Cards</td><td class="desc">Card metadata + ownership (11 cards)</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CARD_REWARDS</code></td><td>Card Rewards</td><td class="desc">Per-card category reward rates</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CARD_PERKS</code></td><td>Card Perks</td><td class="desc">Monthly/annual perk tracker with last-used date</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.LOYALTY_PROGRAMS</code></td><td>Loyalty Programs</td><td class="desc">Points/miles balances per program</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.REWARDS_GOALS</code></td><td>Rewards Goals</td><td class="desc">Redemption goal tracking</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.GIFT_PEOPLE</code></td><td>Gift People</td><td class="desc">People list for gift ideas (Ahmed + Victoria seeded)</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.GIFT_IDEAS</code></td><td>Gift Ideas</td><td class="desc">Individual gift ideas linked to people</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.IMPORTANT_DATES</code></td><td>Important Dates</td><td class="desc">Birthdays, anniversaries, meaningful dates — synced from calendar</td><td><span class="pill pill-auto">Hybrid</span></td></tr>
+          <tr><td><code>TABS.CHORES</code></td><td>Chores</td><td class="desc">Household chore checklist — cadence-based nightly reset</td><td><span class="pill pill-auto">Hybrid</span></td></tr>
+          <tr><td><code>TABS.TRAVELER_PROFILES</code></td><td>Traveler Profiles</td><td class="desc">Passport + traveler profiles for visa checking</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.CONTRACTS</code></td><td>Contracts</td><td class="desc">Active contract + agreement tracker</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.VEHICLES</code></td><td>Vehicles</td><td class="desc">Vehicle tracker — oil, service, registration, tires</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.FINANCIAL_GOALS</code></td><td>Financial Goals</td><td class="desc">Financial goals + what-if scenario planning</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.FINANCIAL_SCENARIOS</code></td><td>Financial Scenarios</td><td class="desc">Saved what-if scenarios per goal</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.EMAIL_FOLLOW_UPS</code></td><td>Email Follow-ups</td><td class="desc">Email Admin follow-up tracking</td><td><span class="pill pill-auto">Auto</span></td></tr>
+          <tr><td><code>TABS.BOOKS</code></td><td>Books</td><td class="desc">Reading list per person</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.COURSES</code></td><td>Courses</td><td class="desc">Courses and learning content tracker</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.SKILLS</code></td><td>Skills</td><td class="desc">Skill building + practice log</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.EXPERIMENTS</code></td><td>Experiments</td><td class="desc">Personal experiment tracker with hypothesis + outcomes</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.EXPERIMENT_CHECKINS</code></td><td>Experiment Checkins</td><td class="desc">Per-experiment check-in log</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.RESOURCES</code></td><td>Resources</td><td class="desc">Reference links + docs (Explore tab)</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.BUCKET_ACTIVITIES</code></td><td>BucketActivities</td><td class="desc">Per-destination activity list linked to bucket list</td><td><span class="pill pill-manual">Manual</span></td></tr>
+          <tr><td><code>TABS.WISH_LIST</code></td><td>Wish List</td><td class="desc">Aspirational purchase tracker per person</td><td><span class="pill pill-manual">Manual</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="slack">
+    <div class="section-header">8. Slack Channels <span>Slack.js — getSlackChannelId_ channel map</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Channel</th><th>Property Key</th><th>Direction</th><th>What posts there</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>#vera-chat</code></td>
+            <td><code>SLACK_CHAT_CHANNEL_ID</code></td>
+            <td>Bidirectional</td>
+            <td class="desc">Ahmed + Victoria conversational chat. Messages processed async via CacheService queue. @mentions resolve to names via SLACK_AHMED_USER_ID / SLACK_VICTORIA_USER_ID.</td>
+          </tr>
+          <tr>
+            <td><code>#vera-notifications</code></td>
+            <td><code>SLACK_NOTIFICATIONS_CHANNEL_ID</code></td>
+            <td>Outbound only</td>
+            <td class="desc">Flag alerts with Block Kit Acknowledge + Snooze buttons. High-urgency flags @mention Ahmed via SLACK_AHMED_USER_ID. Morning nudge summary. Weekend Planner.</td>
+          </tr>
+          <tr>
+            <td><code>#vera-logs</code></td>
+            <td><code>SLACK_LOGS_CHANNEL_ID</code></td>
+            <td>Outbound only</td>
+            <td class="desc">Nightly run summaries (flag counts, step warnings, elapsed time). WebApp errors. Flight status updates. Feature fire confirmations.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="get-actions">
+    <div class="section-header">9. WebApp GET Actions <span>doGet() in WebApp.js — all require ?token=VERA_WEB_TOKEN</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>action param</th><th>Additional params</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>status</code></td><td>—</td><td class="desc">Flag counts (total, active, high/med/low), last run date, feature flags for dashboard tab visibility, travelConfig</td></tr>
+          <tr><td><code>flags</code></td><td><code>filter=active</code> (opt)</td><td class="desc">All flags, or unacknowledged+unresolved only when filter=active</td></tr>
+          <tr><td><code>tasks</code></td><td>—</td><td class="desc">Open tasks from Tasks tab</td></tr>
+          <tr><td><code>get_google_tasks</code></td><td>—</td><td class="desc">Tasks from Google Tasks API (gated: google_tasks_enabled)</td></tr>
+          <tr><td><code>complete_google_task</code></td><td><code>id</code></td><td class="desc">Mark a Google Task as complete</td></tr>
+          <tr><td><code>summaries</code></td><td>—</td><td class="desc">Summaries tab data</td></tr>
+          <tr><td><code>acknowledge</code></td><td><code>id</code></td><td class="desc">Acknowledge a flag by ID</td></tr>
+          <tr><td><code>snooze</code></td><td><code>id</code>, <code>days</code></td><td class="desc">Snooze a flag for N days</td></tr>
+          <tr><td><code>resolve</code></td><td><code>id</code></td><td class="desc">Resolve a flag by ID</td></tr>
+          <tr><td><code>complete_task</code></td><td><code>id</code></td><td class="desc">Mark a task as Done</td></tr>
+          <tr><td><code>add_task</code></td><td><code>task</code>, <code>dueDate</code>, <code>recurring</code></td><td class="desc">Add a new task</td></tr>
+          <tr><td><code>update_task</code></td><td><code>id</code>, <code>field</code>, <code>value</code></td><td class="desc">Update a task field</td></tr>
+          <tr><td><code>delete_task</code></td><td><code>id</code></td><td class="desc">Delete a task by ID</td></tr>
+          <tr><td><code>shopping</code></td><td>—</td><td class="desc">Shopping list by store</td></tr>
+          <tr><td><code>shopping_toggle</code></td><td>store, item</td><td class="desc">Toggle shopping item purchased state</td></tr>
+          <tr><td><code>shopping_add</code></td><td>store, item</td><td class="desc">Add item to shopping list</td></tr>
+          <tr><td><code>shopping_delete</code></td><td>store, item</td><td class="desc">Delete shopping item</td></tr>
+          <tr><td><code>shopping_update</code></td><td>params</td><td class="desc">Update shopping item text</td></tr>
+          <tr><td><code>projects</code></td><td>—</td><td class="desc">All projects with subtasks</td></tr>
+          <tr><td><code>complete_project_task</code></td><td><code>row</code></td><td class="desc">Complete a project subtask</td></tr>
+          <tr><td><code>add_project_task</code></td><td>project, task, priority, dueDate</td><td class="desc">Add subtask to project</td></tr>
+          <tr><td><code>update_project_task</code></td><td>params</td><td class="desc">Update project subtask</td></tr>
+          <tr><td><code>delete_project_task</code></td><td>params</td><td class="desc">Delete project subtask</td></tr>
+          <tr><td><code>goals</code></td><td>—</td><td class="desc">Yearly goals</td></tr>
+          <tr><td><code>add_goal / update_goal / delete_goal</code></td><td>params</td><td class="desc">Goal CRUD</td></tr>
+          <tr><td><code>interests</code></td><td>—</td><td class="desc">Shared Interest Ledger</td></tr>
+          <tr><td><code>pto</code></td><td>—</td><td class="desc">PTO snapshot + stats</td></tr>
+          <tr><td><code>budget</code></td><td>—</td><td class="desc">SAT budget data</td></tr>
+          <tr><td><code>bills</code></td><td>—</td><td class="desc">Bills list</td></tr>
+          <tr><td><code>bills_toggle</code></td><td>row</td><td class="desc">Toggle bill paid status</td></tr>
+          <tr><td><code>calendar_bills</code></td><td>—</td><td class="desc">Calendar-derived bill events</td></tr>
+          <tr><td><code>tx_list</code></td><td>—</td><td class="desc">Transaction list from Transactions sheet</td></tr>
+          <tr><td><code>recent_transactions</code></td><td>—</td><td class="desc">Recent transactions summary</td></tr>
+          <tr><td><code>cashflow</code></td><td>month, year</td><td class="desc">Monthly cashflow projection</td></tr>
+          <tr><td><code>recipes</code></td><td>—</td><td class="desc">Recipe list</td></tr>
+          <tr><td><code>meal_plan</code></td><td>week</td><td class="desc">Meal plan for a given week</td></tr>
+          <tr><td><code>set_meal / update_meal_status / suggest_meals</code></td><td>params</td><td class="desc">Meal plan management</td></tr>
+          <tr><td><code>takeouts</code></td><td>—</td><td class="desc">Takeout restaurants + items</td></tr>
+          <tr><td><code>homesteward</code></td><td>—</td><td class="desc">Home items + warranties + service log</td></tr>
+          <tr><td><code>ideas</code></td><td>—</td><td class="desc">Idea braindump + thought inbox</td></tr>
+          <tr><td><code>itinerary</code></td><td>tripKey</td><td class="desc">Trip itinerary items</td></tr>
+          <tr><td><code>get_trip_meta / set_trip_meta</code></td><td>tripKey</td><td class="desc">Trip context/sentiment notes</td></tr>
+          <tr><td><code>get_packing</code></td><td>tripKey</td><td class="desc">Packing list for a trip</td></tr>
+          <tr><td><code>generate_packing</code></td><td>tripKey, start, end</td><td class="desc">AI-generate full packing list</td></tr>
+          <tr><td><code>countries</code></td><td>—</td><td class="desc">Countries visited</td></tr>
+          <tr><td><code>get_bucket_list</code></td><td>—</td><td class="desc">Travel bucket list</td></tr>
+          <tr><td><code>flight_statuses</code></td><td>tripKey</td><td class="desc">Current flight statuses for a trip</td></tr>
+          <tr><td><code>force_flight_statuses</code></td><td>tripKey</td><td class="desc">Force-refresh flight statuses via AviationStack</td></tr>
+          <tr><td><code>recommendations</code></td><td>tripKey</td><td class="desc">AI trip activity/dining recommendations</td></tr>
+          <tr><td><code>chat</code></td><td>message, session</td><td class="desc">VERA conversational AI (Phase 4)</td></tr>
+          <tr><td><code>morning_routine</code></td><td>—</td><td class="desc">Morning routine checklist</td></tr>
+          <tr><td><code>gym_log</code></td><td>—</td><td class="desc">Gym session log</td></tr>
+          <tr><td><code>career</code></td><td>—</td><td class="desc">Career data (position, goals, progression, wins, network)</td></tr>
+          <tr><td><code>prescriptions</code></td><td>—</td><td class="desc">Medication tracker</td></tr>
+          <tr><td><code>cards</code></td><td>—</td><td class="desc">Credit card hub (cards, rewards, perks, loyalty, goals)</td></tr>
+          <tr><td><code>get_gift_data</code></td><td>—</td><td class="desc">Gift people + gift ideas</td></tr>
+          <tr><td><code>get_important_dates</code></td><td>—</td><td class="desc">Important dates list</td></tr>
+          <tr><td><code>get_chores</code></td><td>—</td><td class="desc">Household chores with cadence + status</td></tr>
+          <tr><td><code>financial_goals</code></td><td>—</td><td class="desc">Financial goals + scenarios</td></tr>
+          <tr><td><code>get_vehicles</code></td><td>—</td><td class="desc">Vehicle tracker data</td></tr>
+          <tr><td><code>get_contracts</code></td><td>—</td><td class="desc">Active contracts</td></tr>
+          <tr><td><code>health_appointments</code></td><td>—</td><td class="desc">Health appointments derived from DR: calendar events</td></tr>
+          <tr><td><code>get_growth</code></td><td>—</td><td class="desc">Books, courses, skills (Growth / Explore tab)</td></tr>
+          <tr><td><code>get_experiments</code></td><td>—</td><td class="desc">Personal experiments + check-ins</td></tr>
+          <tr><td><code>get_resources</code></td><td>—</td><td class="desc">Reference links and docs</td></tr>
+          <tr><td><code>get_wish_list</code></td><td>—</td><td class="desc">Aspirational wish list</td></tr>
+          <tr><td><code>get_pacing_status</code></td><td>—</td><td class="desc">Current pacing + vacation mode status</td></tr>
+          <tr><td><code>get_visa_requirements</code></td><td>origin, destination</td><td class="desc">Visa requirements for a traveler profile</td></tr>
+          <tr><td><code>dest_weather</code></td><td>location</td><td class="desc">Weather forecast for destination</td></tr>
+          <tr><td><code>tx_aliases / set_tx_alias</code></td><td>params</td><td class="desc">Transaction merchant alias management</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="post-actions">
+    <div class="section-header">10. WebApp POST Actions <span>doPost() in WebApp.js — JSON body required</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>action</th><th>Body params</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>chat</code></td><td><code>message</code>, <code>session</code></td><td class="desc">Process a chat message (same as GET chat)</td></tr>
+          <tr><td><code>acknowledge</code></td><td><code>id</code></td><td class="desc">Acknowledge a flag by ID</td></tr>
+          <tr><td><code>snooze</code></td><td><code>id</code>, <code>days</code></td><td class="desc">Snooze a flag for N days</td></tr>
+          <tr><td><code>resolve</code></td><td><code>id</code></td><td class="desc">Resolve a flag by ID</td></tr>
+          <tr><td><code>add_takeout_restaurant</code></td><td>name, cuisine, phone, website, rating, notes</td><td class="desc">Add a takeout restaurant</td></tr>
+          <tr><td><code>delete_takeout_restaurant</code></td><td>name</td><td class="desc">Delete a takeout restaurant</td></tr>
+          <tr><td><code>add_takeout_item</code></td><td>restaurant, item, description, rating, notes</td><td class="desc">Add a menu item to a restaurant</td></tr>
+          <tr><td><code>delete_takeout_item</code></td><td>restaurant, item</td><td class="desc">Delete a takeout menu item</td></tr>
+          <tr><td><code>log_purchase_run</code></td><td>items array</td><td class="desc">Log a grocery/shopping run to Purchase History</td></tr>
+          <tr><td colspan="3" style="color:#64748b; font-size:11px; padding:8px 10px;">Note: Slack Events API POSTs (type: event_callback) and Slack form payloads (Block Kit interactions) are handled automatically without auth token — detected by body.type or e.parameter.payload.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="patterns">
+    <div class="section-header">11. Cross-Domain Patterns <span>PatternRecognition.js — all 7 patterns</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Pattern Key</th><th>Trigger Conditions</th><th>Urgency</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>cross_high_stress_compound</code></td>
+            <td class="desc">overdueTasks ≥ 3 AND activeHighFlags ≥ 2 AND gymSessionsThisWeek = 0</td>
+            <td class="hi">High</td>
+          </tr>
+          <tr>
+            <td><code>cross_goal_behaviour_drift</code></td>
+            <td class="desc">activeGoals ≥ 2 AND gymSessionsThisWeek &lt; (gymTarget × 0.5) AND overdueTaskCount ≥ 2</td>
+            <td class="med">Medium</td>
+          </tr>
+          <tr>
+            <td><code>cross_social_calendar_gap</code></td>
+            <td class="desc">calendarEventsThisWeek ≤ 1 AND pacingMode = false AND vacationMode = false</td>
+            <td class="low">Low</td>
+          </tr>
+          <tr>
+            <td><code>cross_overload_no_pacing</code></td>
+            <td class="desc">intensityLevel = 'high' AND pacingMode = false AND activeHighFlags ≥ 2 AND overdueTaskCount ≥ 3</td>
+            <td class="med">Medium</td>
+          </tr>
+          <tr>
+            <td><code>cross_meal_chaos</code></td>
+            <td class="desc">takeoutRatio ≥ 0.70 (≥70% of meals are takeout/eating out) AND overdueTaskCount ≥ 2</td>
+            <td class="low">Low</td>
+          </tr>
+          <tr>
+            <td><code>cross_backlog_accumulation</code></td>
+            <td class="desc">neglectedTaskCount (age ≥ 14 days) ≥ 5 AND calendarEventsThisWeek ≥ 3</td>
+            <td class="med">Medium</td>
+          </tr>
+          <tr>
+            <td><code>cross_health_neglect</code></td>
+            <td class="desc">overdueHealthAppts ≥ 2 AND gymSessionsThisWeek = 0</td>
+            <td class="med">Medium</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px; color:#64748b; font-size:11px; padding:4px 0;">
+      Dedup: pattern suppressed if same key exists unresolved, or was resolved within <code>pattern_dedup_days</code> (default 7) days. Max <code>pattern_max_flags</code> (default 2) new patterns per run.
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <section id="health-intervals">
+    <div class="section-header">12. Health Appointment Default Intervals <span>HEALTH_APPT_INTERVAL_DEFAULTS_ in HealthTracker.js</span></div>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div class="tbl-wrap" style="flex:1; min-width:260px;">
+        <table>
+          <thead><tr><th>Type (exact match keys)</th><th>Interval (months)</th></tr></thead>
+          <tbody>
+            <tr><td><code>physical</code> / <code>annual physical</code></td><td>12</td></tr>
+            <tr><td><code>dental</code> / <code>dentist</code> / <code>dental cleaning</code> / <code>teeth cleaning</code></td><td>6</td></tr>
+            <tr><td><code>eye exam</code> / <code>optometrist</code> / <code>ophthalmologist</code></td><td>12</td></tr>
+            <tr><td><code>dermatology</code> / <code>dermatologist</code></td><td>12</td></tr>
+            <tr><td><code>gynecology</code> / <code>obgyn</code> / <code>gynaecology</code></td><td>12</td></tr>
+            <tr><td><code>therapy</code> / <code>therapist</code></td><td>1</td></tr>
+            <tr><td><code>cardiology</code> / <code>cardiologist</code></td><td>12</td></tr>
+            <tr><td><code>endocrinology</code> / <code>endocrinologist</code></td><td>12</td></tr>
+            <tr><td><code>allergist</code> / <code>allergy</code></td><td>12</td></tr>
+            <tr><td><code>chiropractor</code> / <code>chiropractic</code></td><td>1</td></tr>
+            <tr><td><code>urgent care</code></td><td>0 — never flagged (episodic)</td></tr>
+            <tr><td><em>Any other type</em></td><td>12 (fallback)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="margin-top:8px; color:#64748b; font-size:11px; padding:4px 0;">
+      Override per-appointment: add <code>interval:N</code> on any line in the Google Calendar event description. Lookback: 30 months. Lookahead: 24 months. Alert window: 30 days.
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
