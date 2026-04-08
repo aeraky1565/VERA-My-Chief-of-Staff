@@ -697,6 +697,8 @@ function nightlyRun() {
     if (events.length === 0 && tasks.length === 0 && summaries.length === 0) {
       Logger.log('nightlyRun: no events, tasks, or summaries tonight — skipping Claude call.');
       Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
+      var elapsedEmpty = Math.round((Date.now() - runStart) / 1000);
+      try { sendSlackLog_('\u2705 Nightly run \u2014 0 flags (no data) in ' + elapsedEmpty + 's'); } catch (e) {}
       return;
     }
 
