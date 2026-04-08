@@ -1,0 +1,184 @@
+/* VERA Documentation PDF Style */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.65;
+  color: #1a1a2e;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Page header banner ── */
+body::before {
+  content: '';
+  display: block;
+  background: linear-gradient(135deg, #6c63ff 0%, #8b85ff 100%);
+  height: 6pt;
+  width: 100%;
+  margin-bottom: 18pt;
+}
+
+h1 {
+  font-size: 20pt;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6c63ff 0%, #8b85ff 100%);
+  padding: 14pt 18pt 12pt;
+  margin: 20pt -18pt 16pt;
+  border-radius: 4pt;
+  line-height: 1.2;
+  page-break-before: always;
+}
+
+h1:first-of-type {
+  page-break-before: avoid;
+}
+
+h2 {
+  font-size: 14pt;
+  font-weight: 700;
+  color: #6c63ff;
+  border-bottom: 2pt solid #6c63ff;
+  padding-bottom: 4pt;
+  margin-top: 22pt;
+  margin-bottom: 8pt;
+}
+
+h3 {
+  font-size: 11.5pt;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-top: 16pt;
+  margin-bottom: 4pt;
+}
+
+h4 {
+  font-size: 10.5pt;
+  font-weight: 600;
+  color: #4a4a6a;
+  font-style: italic;
+  margin-top: 10pt;
+  margin-bottom: 3pt;
+}
+
+p {
+  margin: 0 0 7pt;
+}
+
+blockquote {
+  background: #f5f4ff;
+  border-left: 4pt solid #6c63ff;
+  margin: 10pt 0;
+  padding: 8pt 14pt;
+  color: #4a4a6a;
+  font-style: italic;
+  border-radius: 0 4pt 4pt 0;
+}
+
+/* ── Code blocks ── */
+pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 8.5pt;
+  line-height: 1.5;
+  padding: 10pt 12pt;
+  border-radius: 4pt;
+  overflow: hidden;
+  margin: 8pt 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 8.5pt;
+  color: #6c63ff;
+  background: #f0eeff;
+  padding: 1pt 4pt;
+  border-radius: 3pt;
+}
+
+pre code {
+  color: #cdd6f4;
+  background: none;
+  padding: 0;
+}
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10pt 0 12pt;
+  font-size: 9pt;
+  line-height: 1.4;
+}
+
+thead tr {
+  background: #6c63ff;
+  color: #ffffff;
+}
+
+thead th {
+  padding: 7pt 9pt;
+  font-weight: 600;
+  text-align: left;
+  border: 1pt solid #5a52e0;
+}
+
+tbody tr:nth-child(even) {
+  background: #f5f4ff;
+}
+
+tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+tbody td {
+  padding: 6pt 9pt;
+  border: 1pt solid #e0deff;
+  vertical-align: top;
+}
+
+/* ── Lists ── */
+ul, ol {
+  margin: 4pt 0 8pt;
+  padding-left: 20pt;
+}
+
+li {
+  margin-bottom: 3pt;
+  line-height: 1.5;
+}
+
+ul li::marker {
+  color: #6c63ff;
+}
+
+/* ── Horizontal rule ── */
+hr {
+  border: none;
+  border-top: 1pt solid #e0deff;
+  margin: 14pt 0;
+}
+
+/* ── Strong / em ── */
+strong { color: #1a1a2e; font-weight: 600; }
+em { color: #4a4a6a; }
+
+/* ── Page margins for print/PDF ── */
+@page {
+  size: letter;
+  margin: 0.75in 0.7in 0.75in 0.7in;
+  @bottom-center {
+    content: "VERA System Documentation   |   Page " counter(page);
+    font-family: 'Inter', sans-serif;
+    font-size: 8pt;
+    color: #9090b0;
+  }
+}

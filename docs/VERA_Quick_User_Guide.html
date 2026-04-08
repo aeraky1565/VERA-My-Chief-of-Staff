@@ -4,640 +4,1304 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VERA — Quick User Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
-    --accent:   #6c63ff;
-    --accent-lt:#ede9fe;
-    --bg:       #f8f9fc;
-    --card:     #ffffff;
-    --text:     #1a1d2e;
-    --muted:    #64748b;
-    --border:   #e2e8f0;
-    --red:      #ef4444;
-    --yellow:   #f59e0b;
-    --green:    #22c55e;
-    --shadow:   0 1px 6px rgba(0,0,0,0.08);
+    --cream:   #FBF8F3;
+    --warm:    #F5F0E8;
+    --border:  #E2D9CC;
+    --ink:     #2A2118;
+    --muted:   #8A7D6E;
+    --blue:    #2563A8;
+    --blue-bg: #EEF4FB;
+    --teal:    #0E6E78;
+    --teal-bg: #EBF6F7;
+    --amber:   #A05C00;
+    --amber-bg:#FDF3E3;
+    --green:   #1A6B35;
+    --green-bg:#EBF5EF;
+    --red:     #991B1B;
+    --red-bg:  #FEF2F2;
+    --purple:  #5B21B6;
+    --purple-bg:#F5F3FF;
+    --chat:    #1A5276;
+    --chat-bg: #EAF2FA;
   }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    font-size: 15px;
-    line-height: 1.65;
-  }
-
-  /* ── HEADER ──────────────────────────────────────────── */
-  header {
-    background: linear-gradient(135deg, #1a1d2e 0%, #2d2a5e 100%);
-    color: #fff;
-    padding: 48px 24px 40px;
-    text-align: center;
-  }
-  header .logo {
+    background: var(--cream);
+    color: var(--ink);
+    font-family: 'Plus Jakarta Sans', sans-serif;
     font-size: 13px;
-    letter-spacing: 4px;
-    text-transform: uppercase;
-    color: #a78bfa;
-    margin-bottom: 10px;
-  }
-  header h1 {
-    font-size: clamp(28px, 5vw, 42px);
-    font-weight: 700;
-    margin-bottom: 12px;
-  }
-  header p {
-    font-size: 16px;
-    color: #c4b5fd;
-    max-width: 500px;
-    margin: 0 auto;
+    line-height: 1.55;
   }
 
-  /* ── LAYOUT ──────────────────────────────────────────── */
-  .container {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 40px 20px 80px;
+  /* ── Header ───────────────────────────────────────────── */
+  .header {
+    background: var(--ink);
+    padding: 22px 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .header-left { display: flex; align-items: center; gap: 20px; }
+  .vera-name {
+    font-family: 'Lora', serif;
+    font-size: 32px;
+    font-weight: 600;
+    color: #FBF8F3;
+    letter-spacing: -0.5px;
+  }
+  .vera-sub {
+    font-size: 11px;
+    color: #9A8E80;
+    font-weight: 300;
+    line-height: 1.8;
+  }
+  .vera-sub strong { color: #C8B89A; font-weight: 500; }
+  .header-pill {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 11px;
+    color: #9A8E80;
+    white-space: nowrap;
   }
 
-  /* ── SECTION TITLES ──────────────────────────────────── */
-  .section-title {
+  /* ── Section label ────────────────────────────────────── */
+  .section-header {
+    padding: 10px 36px 8px;
+    background: var(--warm);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text);
-    margin: 48px 0 18px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid var(--accent);
   }
-  .section-title .num {
-    background: var(--accent);
-    color: #fff;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    font-weight: 700;
-    flex-shrink: 0;
+  .section-header .s-icon { font-size: 16px; }
+  .section-header .s-title {
+    font-family: 'Lora', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .section-header .s-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 4px;
   }
 
-  /* ── CARDS ───────────────────────────────────────────── */
-  .card {
-    background: var(--card);
-    border-radius: 12px;
-    padding: 20px 24px;
-    box-shadow: var(--shadow);
-    margin-bottom: 16px;
-  }
-
-  /* ── TIMELINE ────────────────────────────────────────── */
-  .timeline { display: flex; flex-direction: column; gap: 0; }
-  .tl-item {
-    display: flex;
-    gap: 16px;
-    padding: 14px 0;
+  /* ── Grid layouts ─────────────────────────────────────── */
+  .row-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
     border-bottom: 1px solid var(--border);
   }
-  .tl-item:last-child { border-bottom: none; }
-  .tl-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    background: var(--accent-lt);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
+  .row-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border-bottom: 1px solid var(--border);
   }
-  .tl-time {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--accent);
-    margin-bottom: 2px;
+  .row-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+    border-bottom: 1px solid var(--border);
   }
-  .tl-label { font-weight: 600; font-size: 14px; }
-  .tl-desc  { font-size: 13px; color: var(--muted); }
+  .row-auto {
+    display: grid;
+    grid-template-columns: 1fr 1.6fr 1.4fr;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
 
-  /* ── FLAG CARDS ──────────────────────────────────────── */
-  .flag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-  .flag-card {
-    border-radius: 12px;
+  /* ── Panels ───────────────────────────────────────────── */
+  .panel {
     padding: 18px 20px;
-    border-left: 5px solid;
+    border-right: 1px solid var(--border);
+    background: var(--cream);
   }
-  .flag-card.high   { background: #fef2f2; border-color: var(--red); }
-  .flag-card.medium { background: #fffbeb; border-color: var(--yellow); }
-  .flag-card.low    { background: #f0fdf4; border-color: var(--green); }
-  .flag-card .flag-level {
-    font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-  }
-  .flag-card.high   .flag-level { color: var(--red); }
-  .flag-card.medium .flag-level { color: var(--yellow); }
-  .flag-card.low    .flag-level { color: var(--green); }
-  .flag-card p { font-size: 13px; color: var(--muted); }
+  .panel:last-child { border-right: none; }
 
-  .action-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 18px;
-  }
-  .action-pill {
-    background: #f1f5f9;
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 13px;
-    font-weight: 500;
+  .panel-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 6px;
   }
+  .panel-title .pt-icon { font-size: 13px; }
 
-  /* ── WEEKLY RHYTHM ───────────────────────────────────── */
-  .day-grid { display: flex; flex-direction: column; gap: 8px; }
-  .day-row {
+  /* ── Cards / items ────────────────────────────────────── */
+  .item {
+    display: flex;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    border: 1px solid transparent;
+  }
+  .item:last-child { margin-bottom: 0; }
+  .item-icon { font-size: 18px; flex: 0 0 24px; line-height: 1.3; }
+  .item-body {}
+  .item-title { font-weight: 600; font-size: 12px; color: var(--ink); margin-bottom: 2px; }
+  .item-desc  { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+  .item.blue   { background: var(--blue-bg);   border-color: #CBE0F5; }
+  .item.teal   { background: var(--teal-bg);   border-color: #B8E0E4; }
+  .item.amber  { background: var(--amber-bg);  border-color: #F5DEB3; }
+  .item.green  { background: var(--green-bg);  border-color: #B8DCC4; }
+  .item.red    { background: var(--red-bg);    border-color: #FCA5A5; }
+  .item.purple { background: var(--purple-bg); border-color: #DDD6FE; }
+  .item.chat   { background: var(--chat-bg);   border-color: #B6D4EC; }
+  .item.warm   { background: var(--warm);      border-color: var(--border); }
+
+  /* ── Chat bubble examples ─────────────────────────────── */
+  .chat-example {
+    background: var(--warm);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .chat-example:last-child { margin-bottom: 0; }
+  .chat-q {
+    background: var(--chat-bg);
+    padding: 7px 11px;
+    font-size: 11.5px;
+    color: var(--chat);
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: flex-start;
-    gap: 14px;
-    padding: 12px 16px;
-    background: var(--bg);
-    border-radius: 8px;
+    gap: 7px;
   }
-  .day-label {
-    min-width: 80px;
+  .chat-q::before {
+    content: "💬";
+    font-size: 12px;
+    flex: 0 0 auto;
+    line-height: 1.4;
+  }
+  .chat-a {
+    padding: 7px 11px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+  }
+  .chat-a::before {
+    content: "✦";
+    color: var(--teal);
+    font-size: 11px;
+    flex: 0 0 auto;
+    line-height: 1.5;
+  }
+
+  /* ── Flag cards ───────────────────────────────────────── */
+  .flag-card {
+    border-radius: 6px;
+    padding: 9px 11px;
+    margin-bottom: 6px;
+    border-left: 3px solid;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .flag-card:last-child { margin-bottom: 0; }
+  .flag-card.high   { background: var(--red-bg);    border-color: var(--red);    }
+  .flag-card.medium { background: var(--amber-bg);  border-color: var(--amber);  }
+  .flag-card.low    { background: var(--green-bg);  border-color: var(--green);  }
+
+  .flag-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-top: 4px;
+  }
+  .high .flag-dot   { background: var(--red); }
+  .medium .flag-dot { background: var(--amber); }
+  .low .flag-dot    { background: var(--green); }
+
+  .flag-text { font-size: 11px; color: var(--ink); line-height: 1.4; }
+  .flag-label {
+    display: inline-block;
+    font-size: 9px;
     font-weight: 700;
-    font-size: 13px;
-    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 3px;
+  }
+  .high .flag-label   { background: var(--red);    color: white; }
+  .medium .flag-label { background: var(--amber);  color: white; }
+  .low .flag-label    { background: var(--green);  color: white; }
+
+  /* ── Action buttons ───────────────────────────────────── */
+  .action-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .act-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid;
+    cursor: default;
+  }
+  .act-btn.ack   { background: var(--blue-bg); border-color: #CBE0F5; color: var(--blue); }
+  .act-btn.snooze{ background: var(--amber-bg);border-color: #F5DEB3; color: var(--amber); }
+  .act-btn.res   { background: var(--green-bg);border-color: #B8DCC4; color: var(--green); }
+
+  /* ── Domain badges ────────────────────────────────────── */
+  .badge-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .domain-badge {
+    padding: 4px 9px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ── Timeline ─────────────────────────────────────────── */
+  .timeline { display: flex; flex-direction: column; gap: 0; }
+  .tl-item {
+    display: flex;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+  .tl-item:last-child { border-bottom: none; }
+  .tl-time {
+    flex: 0 0 62px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--blue);
     padding-top: 1px;
   }
-  .day-desc { font-size: 13px; color: var(--text); }
-
-  /* ── CHAT EXAMPLES ───────────────────────────────────── */
-  .chat-section { margin-bottom: 20px; }
-  .chat-topic {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--muted);
-    margin-bottom: 10px;
-    margin-top: 18px;
+  .tl-dot {
+    flex: 0 0 8px; height: 8px; width: 8px; border-radius: 50%;
+    background: var(--border); margin-top: 4px; border: 2px solid var(--muted);
   }
-  .bubble-list { display: flex; flex-direction: column; gap: 7px; }
-  .bubble {
-    display: inline-flex;
-    background: #f1f0ff;
-    color: #3730a3;
-    border-radius: 18px 18px 18px 4px;
-    padding: 9px 16px;
-    font-size: 14px;
-    width: fit-content;
-    max-width: 100%;
-  }
+  .tl-body { flex: 1; font-size: 11.5px; color: var(--ink); }
+  .tl-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
 
-  /* ── TRAVEL FLOW ─────────────────────────────────────── */
-  .flow { display: flex; flex-direction: column; gap: 0; }
-  .flow-step {
+  /* ── Tab strip ────────────────────────────────────────── */
+  .tab-strip {
     display: flex;
-    gap: 16px;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 5px;
   }
-  .flow-step:last-child { border-bottom: none; }
-  .flow-num {
-    width: 28px;
-    height: 28px;
+  .tab {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--warm);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ── Tip / note boxes ─────────────────────────────────── */
+  .tip-box {
+    background: var(--blue-bg);
+    border: 1px solid #CBE0F5;
+    border-left: 3px solid var(--blue);
+    border-radius: 0 6px 6px 0;
+    padding: 8px 11px;
+    font-size: 11px;
+    color: var(--blue);
+    line-height: 1.5;
+    margin-top: 10px;
+  }
+  .tip-box strong { font-weight: 600; }
+
+  .note-box {
+    background: var(--amber-bg);
+    border: 1px solid #F5DEB3;
+    border-left: 3px solid var(--amber);
+    border-radius: 0 6px 6px 0;
+    padding: 8px 11px;
+    font-size: 11px;
+    color: var(--amber);
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .note-box strong { font-weight: 600; }
+
+  .green-box {
+    background: var(--green-bg);
+    border: 1px solid #B8DCC4;
+    border-left: 3px solid var(--green);
+    border-radius: 0 6px 6px 0;
+    padding: 8px 11px;
+    font-size: 11px;
+    color: var(--green);
+    line-height: 1.5;
+    margin-top: 8px;
+  }
+  .green-box strong { font-weight: 600; }
+
+  /* ── Health table ─────────────────────────────────────── */
+  .health-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .health-table th {
+    text-align: left;
+    padding: 5px 8px;
+    background: var(--warm);
+    border: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .health-table td {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    color: var(--ink);
+    vertical-align: top;
+  }
+  .health-table tr:nth-child(even) td { background: var(--warm); }
+  code {
+    font-family: 'Courier New', monospace;
+    font-size: 10.5px;
+    background: var(--warm);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+
+  /* ── Step list ────────────────────────────────────────── */
+  .step-list { display: flex; flex-direction: column; gap: 6px; }
+  .step-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .step-num {
+    flex: 0 0 20px;
+    height: 20px;
+    width: 20px;
     border-radius: 50%;
-    background: var(--accent);
-    color: #fff;
-    font-size: 13px;
+    background: var(--ink);
+    color: var(--cream);
+    font-size: 10px;
     font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     margin-top: 1px;
   }
-  .flow-label { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-  .flow-desc  { font-size: 13px; color: var(--muted); }
+  .step-body { flex: 1; }
+  .step-title { font-weight: 600; font-size: 11.5px; color: var(--ink); margin-bottom: 1px; }
+  .step-desc  { font-size: 10.5px; color: var(--muted); line-height: 1.4; }
 
-  /* ── DR TABLE ────────────────────────────────────────── */
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th {
-    text-align: left;
-    padding: 8px 12px;
-    background: var(--accent);
-    color: #fff;
-    font-weight: 600;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  /* ── "Do nothing" checklist ───────────────────────────── */
+  .nothing-list { display: flex; flex-direction: column; gap: 5px; }
+  .nothing-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-size: 11px;
+    color: var(--ink);
+    line-height: 1.4;
   }
-  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #f8f7ff; }
-  code {
-    background: #f1f0ff;
-    color: #4c1d95;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-  }
-
-  /* ── CALLOUT ─────────────────────────────────────────── */
-  .callout {
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
-    border-radius: 10px;
-    padding: 16px 20px;
-  }
-  .callout-title {
+  .nothing-item::before {
+    content: "✓";
+    color: var(--green);
     font-weight: 700;
-    font-size: 14px;
-    color: #166534;
-    margin-bottom: 10px;
+    flex: 0 0 auto;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  /* ── Footer ───────────────────────────────────────────── */
+  .footer {
+    background: var(--ink);
+    padding: 10px 36px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
   }
-  .callout ul { padding-left: 20px; }
-  .callout li { font-size: 13px; color: #15803d; margin-bottom: 5px; }
+  .footer-text { font-size: 10px; color: #6A5E52; }
 
-  /* ── MONTH GRID ──────────────────────────────────────── */
-  .month-items { display: flex; flex-direction: column; gap: 8px; }
-  .month-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg);
-    border-radius: 8px;
-    border-left: 3px solid var(--accent);
-  }
-  .month-emoji { font-size: 20px; flex-shrink: 0; }
-  .month-label { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
-  .month-desc  { font-size: 13px; color: var(--muted); }
-
-  /* ── FOOTER ──────────────────────────────────────────── */
-  footer {
-    text-align: center;
-    padding: 32px 20px;
-    border-top: 1px solid var(--border);
-    color: var(--muted);
-    font-size: 12px;
-  }
-  footer strong { color: var(--accent); }
-
-  /* ── RESPONSIVE ──────────────────────────────────────── */
-  @media (max-width: 600px) {
-    .flag-grid { grid-template-columns: 1fr; }
-    header { padding: 36px 20px 28px; }
-    .section-title { font-size: 17px; }
-  }
+  /* ── Utility ──────────────────────────────────────────── */
+  .divider { height: 1px; background: var(--border); }
+  .small { font-size: 10px; color: var(--muted); }
+  strong.c-blue   { color: var(--blue); }
+  strong.c-teal   { color: var(--teal); }
+  strong.c-amber  { color: var(--amber); }
+  strong.c-green  { color: var(--green); }
+  strong.c-red    { color: var(--red); }
+  strong.c-purple { color: var(--purple); }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">VERA</div>
-  <h1>Your Personal Chief of Staff</h1>
-  <p>Always watching, so you don't have to.</p>
-</header>
+<!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
+<div class="header">
+  <div class="header-left">
+    <div class="vera-name">VERA</div>
+    <div class="vera-sub">
+      <strong>Your Personal Chief of Staff</strong><br>
+      Works behind the scenes, so you don't have to think about it
+    </div>
+  </div>
+  <div class="header-pill">Ahmed &amp; Victoria · 2026</div>
+</div>
 
-<div class="container">
 
-  <!-- ── 1. WHAT VERA DOES EVERY DAY ──────────────────── -->
-  <div class="section-title"><span class="num">1</span> What VERA Does Every Day</div>
-  <div class="card">
+<!-- ═══════════════════════════════════════════════════════
+     ROW 1 — How It Works · Your Daily Routine · Dashboard
+═══════════════════════════════════════════════════════════ -->
+<div class="section-header">
+  <span class="s-icon">☀️</span>
+  <span class="s-title">What VERA Does for You</span>
+  <span class="s-sub">— the basics</span>
+</div>
+
+<div class="row-3">
+
+  <!-- How It Works -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">✦</span> How It Works</div>
+
+    <div class="item blue">
+      <div class="item-icon">🌙</div>
+      <div class="item-body">
+        <div class="item-title">Every Night at 11 PM</div>
+        <div class="item-desc">VERA quietly reads your calendar, tasks, finances, PTO balance, travel plans, health appointments, home chores, contracts, and more — then figures out what you need to know.</div>
+      </div>
+    </div>
+
+    <div class="item teal">
+      <div class="item-icon">📬</div>
+      <div class="item-body">
+        <div class="item-title">Every Morning at 7 AM</div>
+        <div class="item-desc">You get a morning briefing email with today's priorities and new flags. Only arrives if there's something worth your attention. No email = everything's fine.</div>
+      </div>
+    </div>
+
+    <div class="item amber">
+      <div class="item-icon">🔔</div>
+      <div class="item-body">
+        <div class="item-title">Throughout the Day</div>
+        <div class="item-desc">Reminders, flight alerts, bill nudges, and packing prompts come through Slack (#vera-notifications) when relevant — not on a fixed schedule.</div>
+      </div>
+    </div>
+
+    <div class="item green">
+      <div class="item-icon">💬</div>
+      <div class="item-body">
+        <div class="item-title">Talk to VERA Anytime</div>
+        <div class="item-desc">Open the Chat tab in your dashboard or message #vera-chat on Slack. Ask anything in plain English — no commands to memorise.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily Routine -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🗓</span> Your Daily Routine with VERA</div>
+
     <div class="timeline">
       <div class="tl-item">
-        <div class="tl-icon">🌙</div>
-        <div>
-          <div class="tl-time">11:00 PM — Every night</div>
-          <div class="tl-label">VERA reads everything</div>
-          <div class="tl-desc">Your calendar, tasks, finances, health appointments, PTO balance, travel plans, home chores, contracts, and more are scanned. Any issues, patterns, or upcoming items are turned into flags.</div>
+        <div class="tl-time">7 AM</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body">
+          Open the morning email from VERA
+          <div class="tl-sub">Only arrives when there's something worth your attention</div>
         </div>
       </div>
       <div class="tl-item">
-        <div class="tl-icon">☀️</div>
-        <div>
-          <div class="tl-time">7:00 AM — Every morning</div>
-          <div class="tl-label">Morning briefing arrives</div>
-          <div class="tl-desc">You get an email with today's priorities, any new flags, and a quick calendar overview. Open the dashboard for the full view, or just read the email — it's your call.</div>
+        <div class="tl-time">~2 min</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body">
+          Scan your flags by urgency (🔴 High first)
+          <div class="tl-sub">Click the dashboard link for anything you want to action</div>
         </div>
       </div>
       <div class="tl-item">
-        <div class="tl-icon">⏰</div>
-        <div>
-          <div class="tl-time">Throughout the day</div>
-          <div class="tl-label">Reminders & alerts arrive in Slack</div>
-          <div class="tl-desc">Ergonomic breaks, hydration checks, bill reminders, packing nudges for upcoming trips, and flight status alerts all come through Slack (#vera-notifications) when relevant.</div>
+        <div class="tl-time">Done</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body">
+          Acknowledge, snooze, or resolve each flag
+          <div class="tl-sub">VERA takes care of the rest until tomorrow</div>
         </div>
       </div>
       <div class="tl-item">
-        <div class="tl-icon">✈️</div>
-        <div>
-          <div class="tl-time">48 hours before any trip</div>
-          <div class="tl-label">Pre-trip briefing</div>
-          <div class="tl-desc">VERA sends a trip summary: destination weather, your packing list completion %, key confirmation numbers, and flight status. No action needed — it arrives automatically.</div>
+        <div class="tl-time">Mon 8 AM</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body">
+          Weekend Planner arrives in Slack
+          <div class="tl-sub">Three weekend archetypes based on your goals and energy level</div>
         </div>
       </div>
       <div class="tl-item">
-        <div class="tl-icon">🗓️</div>
-        <div>
-          <div class="tl-time">Every Monday ~8 AM</div>
-          <div class="tl-label">Weekend Planner arrives in Slack</div>
-          <div class="tl-desc">VERA suggests three archetypes for the coming weekend based on your goals, energy level, and what you haven't tried yet. You decide — no commitment required.</div>
+        <div class="tl-time">1st of month</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body">
+          Monthly Life Review email
+          <div class="tl-sub">Goals, tasks, finance, PTO, and one thing to carry forward</div>
         </div>
       </div>
-      <div class="tl-item">
-        <div class="tl-icon">📅</div>
-        <div>
-          <div class="tl-time">1st of every month</div>
-          <div class="tl-label">Monthly Life Review</div>
-          <div class="tl-desc">A structured recap of the past month: goals progress, tasks done vs. overdue, spending summary, PTO burn-rate, and one thing to carry forward. Arrives as an email.</div>
+    </div>
+
+    <div class="tip-box">
+      <strong>Quiet night?</strong> If all your flags are resolved or snoozed, VERA sends no email at all. No news is good news.
+    </div>
+  </div>
+
+  <!-- Dashboard overview -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">📱</span> Dashboard — What's Inside</div>
+
+    <div class="tab-strip">
+      <div class="tab">🏠 Home</div>
+      <div class="tab">⚑ Flags</div>
+      <div class="tab">✅ Tasks</div>
+      <div class="tab">📁 Projects</div>
+      <div class="tab">🎯 Goals</div>
+      <div class="tab">🛒 Shopping</div>
+      <div class="tab">🌴 PTO</div>
+      <div class="tab">⭐ Milestones</div>
+      <div class="tab">💛 Interests</div>
+      <div class="tab">💡 Ideas</div>
+      <div class="tab">✈️ Travel</div>
+      <div class="tab">🏠 Home Items</div>
+      <div class="tab">🍝 Recipes</div>
+      <div class="tab">💰 Finance</div>
+      <div class="tab">🌍 Bucket List</div>
+      <div class="tab">💬 Chat</div>
+    </div>
+
+    <div class="tip-box" style="margin-top:10px;">
+      <strong>First time?</strong> Click the ⚙ gear icon → paste your Web App URL + token → Save. You're in.
+    </div>
+
+    <div style="margin-top:10px;">
+      <div class="panel-title"><span class="pt-icon">🏠</span> Home Tab — At a Glance</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+        <div class="item warm" style="margin:0;padding:7px 9px;">
+          <div class="item-icon" style="font-size:14px;">⚑</div>
+          <div class="item-body">
+            <div class="item-title" style="font-size:11px;">Flags Summary</div>
+            <div class="item-desc">High / Med / Low counts</div>
+          </div>
+        </div>
+        <div class="item warm" style="margin:0;padding:7px 9px;">
+          <div class="item-icon" style="font-size:14px;">✅</div>
+          <div class="item-body">
+            <div class="item-title" style="font-size:11px;">Tasks</div>
+            <div class="item-desc">Open + overdue count</div>
+          </div>
+        </div>
+        <div class="item warm" style="margin:0;padding:7px 9px;">
+          <div class="item-icon" style="font-size:14px;">🌴</div>
+          <div class="item-body">
+            <div class="item-title" style="font-size:11px;">PTO Balance</div>
+            <div class="item-desc">Days left + next PTO</div>
+          </div>
+        </div>
+        <div class="item warm" style="margin:0;padding:7px 9px;">
+          <div class="item-icon" style="font-size:14px;">✈️</div>
+          <div class="item-body">
+            <div class="item-title" style="font-size:11px;">Active Travel</div>
+            <div class="item-desc">Live card when travelling</div>
+          </div>
         </div>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- ── 2. UNDERSTANDING YOUR FLAGS ──────────────────── -->
-  <div class="section-title"><span class="num">2</span> Understanding Your Flags</div>
-  <div class="flag-grid">
+
+<!-- ═══════════════════════════════════════════════════════
+     ROW 2 — Understanding Flags
+═══════════════════════════════════════════════════════════ -->
+<div class="section-header">
+  <span class="s-icon">⚑</span>
+  <span class="s-title">Understanding Your Flags</span>
+  <span class="s-sub">— what VERA is telling you, and what to do about it</span>
+</div>
+
+<div class="row-auto">
+
+  <!-- Urgency levels -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🚦</span> Urgency Levels</div>
+
     <div class="flag-card high">
-      <div class="flag-level">🔴 High</div>
-      <p>Needs your attention soon. Something important is overdue, approaching, or compounding. Don't sit on these.</p>
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">High</div>
+        Needs your attention soon. Will keep escalating if ignored for 3+ days.
+      </div>
     </div>
+
     <div class="flag-card medium">
-      <div class="flag-level">🟡 Medium</div>
-      <p>Worth looking at this week. Not an emergency but worth addressing before it becomes one.</p>
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">Medium</div>
+        Worth looking at this week. No emergency, but don't let it slide.
+      </div>
     </div>
+
     <div class="flag-card low">
-      <div class="flag-level">🟢 Low</div>
-      <p>Good to know. No urgency. Could be an opportunity, a suggestion, or a heads-up about something a few weeks out.</p>
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">Low</div>
+        Good to know. Could be an opportunity, suggestion, or heads-up.
+      </div>
+    </div>
+
+    <div style="margin-top:10px;">
+      <div class="panel-title"><span class="pt-icon">👆</span> What to Do</div>
+      <div class="act-btn ack" style="margin-bottom:5px;display:flex;">✓&nbsp; <strong>Acknowledge</strong>&nbsp;— "I've seen this"</div>
+      <div class="act-btn snooze" style="margin-bottom:5px;display:flex;">💤&nbsp; <strong>Snooze</strong>&nbsp;— "Remind me in 2 days"</div>
+      <div class="act-btn res" style="display:flex;">✅&nbsp; <strong>Resolve</strong>&nbsp;— "Done, handled"</div>
+    </div>
+
+    <div class="note-box">
+      <strong>Heads up:</strong> If you ignore a flag for 3 days VERA bumps it up one urgency level. After 7 days it marks it as stale.
     </div>
   </div>
 
-  <div class="card" style="margin-top:16px;">
-    <p style="font-weight:600; margin-bottom:12px;">What to do with a flag:</p>
-    <div class="action-row">
-      <div class="action-pill">✅ <strong>Acknowledge</strong> — "I've seen this"</div>
-      <div class="action-pill">😴 <strong>Snooze</strong> — "Remind me in a few days"</div>
-      <div class="action-pill">✔️ <strong>Resolve</strong> — "Done / handled"</div>
-    </div>
-    <p style="font-size:13px; color:var(--muted); margin-top:14px;">
-      If you ignore a flag for 3 days, it gets <strong>escalated</strong> (shown more prominently). After 7 days, escalated again. VERA learns over time — flags you consistently ignore get suppressed so they stop appearing.
-    </p>
-  </div>
+  <!-- Flag examples -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">💡</span> Examples of Flags You Might See</div>
 
-  <!-- ── 3. YOUR WEEKLY RHYTHM ─────────────────────────── -->
-  <div class="section-title"><span class="num">3</span> Your Weekly Rhythm</div>
-  <div class="card">
-    <div class="day-grid">
-      <div class="day-row">
-        <div class="day-label">Every morning</div>
-        <div class="day-desc">Check your email or open the dashboard. Review any new flags. If something needs action, either handle it or snooze it.</div>
-      </div>
-      <div class="day-row">
-        <div class="day-label">Weekdays</div>
-        <div class="day-desc">VERA monitors tasks, appointments, bills, and cross-domain patterns automatically. Reminders arrive via Slack throughout the day.</div>
-      </div>
-      <div class="day-row">
-        <div class="day-label">Monday 8 AM</div>
-        <div class="day-desc">Weekend Planner message arrives in Slack with your weekly intensity forecast and three weekend ideas.</div>
-      </div>
-      <div class="day-row">
-        <div class="day-label">Saturday</div>
-        <div class="day-desc">Meal plan resets automatically — VERA archives the old week and seeds blank slots for the coming week.</div>
-      </div>
-      <div class="day-row">
-        <div class="day-label">1st of the month</div>
-        <div class="day-desc">Monthly Life Review flag appears + detailed email digest with your month in review.</div>
+    <div class="flag-card high" style="margin-bottom:5px;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">High · Travel</div>
+        Your Tampa trip is in 3 days — your packing list is only 40% done.
       </div>
     </div>
-  </div>
 
-  <!-- ── 4. TALKING TO VERA ─────────────────────────────── -->
-  <div class="section-title"><span class="num">4</span> Talking to VERA — Just Say What You Need</div>
-  <div class="card">
-    <p style="margin-bottom:4px;">Use the <strong>Chat tab</strong> in the dashboard or message <strong>#vera-chat</strong> on Slack. Type naturally — no commands to memorise. VERA understands plain English.</p>
-  </div>
+    <div class="flag-card high" style="margin-bottom:5px;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">High · Calendar</div>
+        You haven't responded to a meeting invite that starts in 2 days.
+      </div>
+    </div>
 
-  <div class="card">
-    <div class="chat-section">
-      <div class="chat-topic">🗂 Tasks &amp; Goals</div>
-      <div class="bubble-list">
-        <div class="bubble">"What's overdue right now?"</div>
-        <div class="bubble">"Add a task to call the insurance company by Friday"</div>
-        <div class="bubble">"What goals am I actively working on?"</div>
-        <div class="bubble">"Mark the dentist task as done"</div>
+    <div class="flag-card high" style="margin-bottom:5px;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">High · Pattern</div>
+        High workload + gym streak broken + no clear weekend — possible burnout building.
       </div>
     </div>
-    <div class="chat-section">
-      <div class="chat-topic">✈️ Travel</div>
-      <div class="bubble-list">
-        <div class="bubble">"What do I need to pack for the Paris trip?"</div>
-        <div class="bubble">"What's the weather in Rome this weekend?"</div>
-        <div class="bubble">"What time does our flight to London depart?"</div>
-        <div class="bubble">"Add the hotel confirmation to our Paris itinerary"</div>
+
+    <div class="flag-card medium" style="margin-bottom:5px;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">Medium · Finance</div>
+        Dining out spending jumped 66% vs last month — worth a look.
       </div>
     </div>
-    <div class="chat-section">
-      <div class="chat-topic">💰 Finance</div>
-      <div class="bubble-list">
-        <div class="bubble">"What did we spend on groceries this month?"</div>
-        <div class="bubble">"What bills are due this week?"</div>
-        <div class="bubble">"What's our top spending category?"</div>
+
+    <div class="flag-card medium" style="margin-bottom:5px;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">Medium · PTO</div>
+        You've only used 3 of 20 vacation days — you're falling behind pace.
       </div>
     </div>
-    <div class="chat-section">
-      <div class="chat-topic">🏥 Health &amp; Appointments</div>
-      <div class="bubble-list">
-        <div class="bubble">"When was Ahmed's last physical?"</div>
-        <div class="bubble">"Is Victoria's dentist appointment coming up?"</div>
-        <div class="bubble">"Log a doctor's visit for Ahmed — annual physical today"</div>
+
+    <div class="flag-card low" style="margin-bottom:5px;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">Low · Interests</div>
+        You noted interest in jazz concerts — there's a jazz festival in 5 days.
       </div>
     </div>
-    <div class="chat-section">
-      <div class="chat-topic">🏠 Home &amp; Chores</div>
-      <div class="bubble-list">
-        <div class="bubble">"What chores are due this week?"</div>
-        <div class="bubble">"When is the car's next oil change?"</div>
-        <div class="bubble">"Add dishwasher to the appliance tracker"</div>
-      </div>
-    </div>
-    <div class="chat-section">
-      <div class="chat-topic">🎯 General</div>
-      <div class="bubble-list">
-        <div class="bubble">"What should I focus on this week?"</div>
-        <div class="bubble">"Give me a summary of everything going on"</div>
-        <div class="bubble">"What flags need my attention right now?"</div>
-        <div class="bubble">"How's our PTO looking for the year?"</div>
+
+    <div class="flag-card low" style="margin-bottom:0;">
+      <div class="flag-dot"></div>
+      <div class="flag-text">
+        <div class="flag-label">Low · Travel</div>
+        Buenos Aires trip next month — Patagonia is on your bucket list and just 1.5h away.
       </div>
     </div>
   </div>
 
-  <!-- ── 5. PTO & TRAVEL ────────────────────────────────── -->
-  <div class="section-title"><span class="num">5</span> PTO &amp; Travel — What VERA Handles Automatically</div>
-  <div class="card">
-    <div class="flow">
-      <div class="flow-step">
-        <div class="flow-num">1</div>
-        <div>
-          <div class="flow-label">📅 Add a trip to Google Calendar</div>
-          <div class="flow-desc">That's all you need to do. VERA detects upcoming trips and begins tracking. Add flight and hotel details to the Travel tab for the full experience.</div>
+  <!-- What to do + escalation -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🔁</span> Flag Lifecycle</div>
+
+    <div class="step-list">
+      <div class="step-row">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Flag appears in your morning email</div>
+          <div class="step-desc">VERA generated it from the nightly analysis. Shows the source, reason, and urgency.</div>
         </div>
       </div>
-      <div class="flow-step">
-        <div class="flow-num">2</div>
-        <div>
-          <div class="flow-label">✈️ 48 hours before departure</div>
-          <div class="flow-desc">VERA sends a pre-trip briefing — destination weather, packing list progress, confirmation numbers, and flight status. No action needed.</div>
+      <div class="step-row">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">You acknowledge, snooze, or resolve</div>
+          <div class="step-desc">Do this from the dashboard or via button in the Slack notification. Takes one click.</div>
         </div>
       </div>
-      <div class="flow-step">
-        <div class="flow-num">3</div>
-        <div>
-          <div class="flow-label">🛫 On travel day</div>
-          <div class="flow-desc">Flight status is polled every 15 minutes. If anything changes — delays, gate changes, cancellations — you get a Slack notification immediately.</div>
+      <div class="step-row">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">After 3 days unacknowledged → escalated</div>
+          <div class="step-desc">VERA bumps the urgency level up one notch and marks it "3d". Still unread after 7 days → marked "7d stale".</div>
         </div>
       </div>
-      <div class="flow-step">
-        <div class="flow-num">4</div>
-        <div>
-          <div class="flow-label">🛬 Day after you return</div>
-          <div class="flow-desc">VERA prompts you to do a quick trip debrief via chat: best restaurants, highlights, what you'd skip, Victoria's favourites, would you return? Takes 2 minutes.</div>
-        </div>
-      </div>
-      <div class="flow-step">
-        <div class="flow-num">5</div>
-        <div>
-          <div class="flow-label">📊 Year-round: PTO tracking</div>
-          <div class="flow-desc">VERA tracks Ahmed's and Victoria's PTO separately — days used, days remaining, burn-rate, and "clear windows" (stretches with no obligations) for future planning.</div>
+      <div class="step-row">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">VERA learns over time</div>
+          <div class="step-desc">Flags you consistently ignore get suppressed — they stop showing up unless the situation genuinely worsens.</div>
         </div>
       </div>
     </div>
+
+    <div class="note-box">
+      <strong>Important:</strong> Use <em>Resolve</em>, not just Acknowledge, when something is actually done. Acknowledging leaves the flag open and it will keep appearing.
+    </div>
   </div>
 
-  <!-- ── 6. HEALTH APPOINTMENTS ─────────────────────────── -->
-  <div class="section-title"><span class="num">6</span> Health Appointments — How It Works</div>
-  <div class="card">
-    <p style="margin-bottom:14px;">When you schedule a doctor's appointment in <strong>Google Calendar</strong>, just add <code>DR:</code> to the start of the event title. VERA picks it up automatically.</p>
+</div>
 
-    <p style="font-weight:600; margin-bottom:8px;">Format:</p>
-    <p style="font-family:'Courier New',monospace; background:#f1f0ff; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:12px;">
-      DR: [Name] - [Appointment Type]<br>
-      DR: [Name] - [Appointment Type] - [Doctor Name]
-    </p>
 
-    <p style="font-weight:600; margin-bottom:8px;">Examples:</p>
-    <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:16px;">
-      <code>DR: Ahmed - Annual Physical</code>
-      <code>DR: Victoria - Dentist Cleaning</code>
-      <code>DR: Ahmed - Eye Exam - Dr. Patel</code>
+<!-- ═══════════════════════════════════════════════════════
+     ROW 3 — Chat Examples
+═══════════════════════════════════════════════════════════ -->
+<div class="section-header">
+  <span class="s-icon">💬</span>
+  <span class="s-title">Talking to VERA — Just Say What You Need</span>
+  <span class="s-sub">— dashboard Chat tab or #vera-chat on Slack · no commands to memorise</span>
+</div>
+
+<div class="row-4">
+
+  <!-- Tasks & Goals -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">✅</span> Tasks &amp; Goals</div>
+
+    <div class="chat-example">
+      <div class="chat-q">Add a task to call the dentist by Friday</div>
+      <div class="chat-a">Done — task added: "Call the dentist" due this Friday.</div>
     </div>
 
-    <p style="margin-bottom:14px; font-size:13px; color:var(--muted);">VERA tracks the last visit date and flags you when you're due for the next one based on standard medical intervals.</p>
+    <div class="chat-example">
+      <div class="chat-q">What's on my plate this week?</div>
+      <div class="chat-a">Here's a summary of your open tasks, upcoming events, and active flags for the week...</div>
+    </div>
 
-    <table>
-      <thead><tr><th>Appointment Type</th><th>Default Check-in</th></tr></thead>
+    <div class="chat-example">
+      <div class="chat-q">Mark the dentist task as done</div>
+      <div class="chat-a">Done! Task completed. Want me to book a follow-up?</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">What goals am I actively working on?</div>
+      <div class="chat-a">You have 3 goals in progress: Run a 5K, Learn Spanish, Kitchen renovation.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Create a project for the kitchen renovation</div>
+      <div class="chat-a">I'll put together a task checklist. What's the target completion date?</div>
+    </div>
+  </div>
+
+  <!-- Travel & Packing -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">✈️</span> Travel &amp; Packing</div>
+
+    <div class="chat-example">
+      <div class="chat-q">Generate a packing list for the Tampa trip</div>
+      <div class="chat-a">Generated 34 items across Ahmed, Victoria, and shared — based on your itinerary and weather. View it in the Travel tab.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Add dinner at Bern's Steakhouse on March 20 at 7pm in Tampa</div>
+      <div class="chat-a">Added to your Tampa itinerary — Bern's Steakhouse, March 20, 7:00 PM.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">What time does our flight to Tampa depart?</div>
+      <div class="chat-a">Your flight departs at 8:45 AM from MIA. Currently on time — gate TBA.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Log that we visited Tokyo in 2025, both of us</div>
+      <div class="chat-a">Logged! Tokyo, Japan — Ahmed &amp; Victoria, 2025. Added to your travel history.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Add Patagonia to our bucket list — 5 stars, dream trip</div>
+      <div class="chat-a">Added! Patagonia, Argentina — 5 ★, marked as Dream Trip.</div>
+    </div>
+  </div>
+
+  <!-- Finance & Home -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">💰</span> Finance &amp; Home</div>
+
+    <div class="chat-example">
+      <div class="chat-q">How's my spending this month vs last?</div>
+      <div class="chat-a">Dining is up 66%, grocery is flat, everything else is normal. Total is $3,240 vs $2,890 last month.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">What bills are due this week?</div>
+      <div class="chat-a">Internet ($89, due Thu) and car insurance ($214, due Fri). Both on autopay.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Log that I serviced the HVAC today</div>
+      <div class="chat-a">Service logged! Next service set to March 2027. Reminder added to your calendar.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">What chores are due this week?</div>
+      <div class="chat-a">Vacuum (overdue 2d), clean bathrooms (due today), change air filters (due Friday).</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Add dinner with Victoria Friday at 7pm to my calendar</div>
+      <div class="chat-a">Done — "Dinner with Victoria" added to Google Calendar for Friday at 7 PM.</div>
+    </div>
+  </div>
+
+  <!-- Health & Life -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🏥</span> Health, PTO &amp; Life</div>
+
+    <div class="chat-example">
+      <div class="chat-q">When was Ahmed's last physical?</div>
+      <div class="chat-a">Ahmed's last annual physical was March 2025 — you're due again in about 2 months.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">How's our PTO looking for the year?</div>
+      <div class="chat-a">Ahmed: 3 of 20 days used (behind pace). Victoria: 5 of 18 days used (on pace).</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">Victoria mentioned she loves hiking</div>
+      <div class="chat-a">Got it — logged "hiking" as an interest for Victoria under Fitness.</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">What should we do this weekend?</div>
+      <div class="chat-a">Based on your interests and open calendar, here are three ideas for the weekend...</div>
+    </div>
+
+    <div class="chat-example">
+      <div class="chat-q">What flags need my attention right now?</div>
+      <div class="chat-a">You have 2 High and 3 Medium active flags. The most urgent is the Tampa packing list.</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     ROW 4 — PTO · Travel · Health
+═══════════════════════════════════════════════════════════ -->
+<div class="section-header">
+  <span class="s-icon">🌴</span>
+  <span class="s-title">PTO, Travel &amp; Health — What VERA Handles Automatically</span>
+  <span class="s-sub">— you just live your life, VERA keeps an eye on the details</span>
+</div>
+
+<div class="row-3">
+
+  <!-- PTO & Clear Windows -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🌴</span> Your PTO Balance</div>
+
+    <div class="item green">
+      <div class="item-icon">📅</div>
+      <div class="item-body">
+        <div class="item-title">VERA Watches Your Burn-Down</div>
+        <div class="item-desc">VERA tracks how many vacation days you've used vs. your ideal pace. If you're falling behind it flags it automatically.</div>
+      </div>
+    </div>
+
+    <div class="item teal">
+      <div class="item-icon">🗓</div>
+      <div class="item-body">
+        <div class="item-title">Clear Window Suggestions</div>
+        <div class="item-desc">When VERA finds 3+ free workdays, it places a <strong class="c-green">green suggestion event</strong> on your Vera calendar. Leave it = accepted. Delete it = declined.</div>
+      </div>
+    </div>
+
+    <div class="item amber">
+      <div class="item-icon">⚠️</div>
+      <div class="item-body">
+        <div class="item-title">Buffer Day Alerts</div>
+        <div class="item-desc">If your buffer days have been sitting unused for too long, VERA places a <strong class="c-amber">yellow alert</strong> on Friday to nudge you.</div>
+      </div>
+    </div>
+
+    <div class="item purple">
+      <div class="item-icon">🎉</div>
+      <div class="item-body">
+        <div class="item-title">Milestone Countdowns</div>
+        <div class="item-desc">Any calendar event called "Wedding," "Trip," "Concert," etc. gets a <strong class="c-purple">purple milestone card</strong> with a live countdown.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Travel Pipeline -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">✈️</span> The Travel Pipeline — Start to Finish</div>
+
+    <div class="step-list">
+      <div class="step-row">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Book your trip → VERA starts tracking</div>
+          <div class="step-desc">Add the trip to your Life OS calendar and VERA picks it up automatically that night.</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Email parser reads confirmation emails</div>
+          <div class="step-desc">Forward flight/hotel confirmations to VERA or let it scan Gmail. It extracts structured itinerary data automatically.</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">48 hours before: Pre-trip briefing</div>
+          <div class="step-desc">Weather at destination, packing list completion %, flight status, and confirmation numbers — sent automatically via email.</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">During trip: Live flight status</div>
+          <div class="step-desc">Gate, terminal, delays, and departure time — polled every 15 minutes when your flight is within 24 hours.</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">After return: Memory capture</div>
+          <div class="step-desc">VERA prompts you to log memories and notes from the trip so they're preserved in your travel history.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip-box">
+      <strong>Bucket list bonus:</strong> If a destination near your trip is on your bucket list, VERA flags it before you leave so you can consider a side trip.
+    </div>
+  </div>
+
+  <!-- Health Tracking -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🏥</span> Health — How VERA Tracks Appointments</div>
+
+    <div class="item blue">
+      <div class="item-icon">📅</div>
+      <div class="item-body">
+        <div class="item-title">Add <code>DR:</code> to any calendar event</div>
+        <div class="item-desc">VERA automatically detects it as a health appointment and starts tracking the interval.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:8px;margin-bottom:8px;">
+      <div class="panel-title" style="margin-bottom:5px;"><span class="pt-icon">📋</span> Calendar Event Format</div>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;">
+        <div><code>DR: Ahmed - Annual Physical</code></div>
+        <div><code>DR: Victoria - Dentist</code></div>
+        <div><code>DR: Ahmed - Dermatologist</code></div>
+        <div><code>DR: Victoria - Eye Doctor</code></div>
+      </div>
+    </div>
+
+    <div class="panel-title" style="margin-top:10px;"><span class="pt-icon">⏱</span> Default Check-In Intervals</div>
+    <table class="health-table">
+      <thead>
+        <tr><th>Appointment Type</th><th>Interval</th></tr>
+      </thead>
       <tbody>
-        <tr><td>Annual Physical</td><td>Every 12 months</td></tr>
-        <tr><td>Dentist / Dental Cleaning</td><td>Every 6 months</td></tr>
-        <tr><td>Eye Exam / Optometrist</td><td>Every 12 months</td></tr>
-        <tr><td>Dermatology</td><td>Every 12 months</td></tr>
-        <tr><td>Gynecology / OB-GYN</td><td>Every 12 months</td></tr>
-        <tr><td>Therapy / Therapist</td><td>Every 1 month</td></tr>
-        <tr><td>Cardiology / Endocrinology</td><td>Every 12 months</td></tr>
-        <tr><td>Chiropractor</td><td>Every 1 month</td></tr>
-        <tr><td>Urgent Care</td><td>Never flagged — episodic</td></tr>
+        <tr><td>Annual Physical</td><td>12 months</td></tr>
+        <tr><td>Dentist</td><td>6 months</td></tr>
+        <tr><td>Eye Doctor</td><td>12 months</td></tr>
+        <tr><td>Dermatologist</td><td>12 months</td></tr>
+        <tr><td>Gynaecologist</td><td>12 months</td></tr>
+        <tr><td>Cardiologist</td><td>12 months</td></tr>
+        <tr><td>Therapist</td><td>1 month</td></tr>
       </tbody>
     </table>
-    <p style="font-size:12px; color:var(--muted); margin-top:10px;">To override an interval, add <code>interval:6</code> (for 6 months) anywhere in the calendar event description.</p>
+
+    <div class="tip-box">
+      <strong>No action needed.</strong> Once the <code>DR:</code> event is on the calendar, VERA tracks it forever and will flag you when you're due again.
+    </div>
   </div>
 
-  <!-- ── 7. WHAT TO EXPECT EACH MONTH ──────────────────── -->
-  <div class="section-title"><span class="num">7</span> What to Expect Each Month</div>
-  <div class="card">
-    <div class="month-items">
-      <div class="month-item">
-        <div class="month-emoji">📅</div>
-        <div>
-          <div class="month-label">1st of the month</div>
-          <div class="month-desc">Monthly Life Review flag + detailed email digest: goals progress, tasks, spending summary, PTO used/remaining, trip recap, and one reflection to carry forward.</div>
-        </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     ROW 5 — Monthly cadence · When to do nothing
+═══════════════════════════════════════════════════════════ -->
+<div class="section-header">
+  <span class="s-icon">📅</span>
+  <span class="s-title">Monthly Cadence &amp; When to Do Nothing</span>
+  <span class="s-sub">— what to expect over time, and what VERA handles without you</span>
+</div>
+
+<div class="row-2">
+
+  <!-- Monthly expectations -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">🗓</span> What Happens Each Month</div>
+
+    <div class="item blue">
+      <div class="item-icon">📊</div>
+      <div class="item-body">
+        <div class="item-title">1st of the Month — Monthly Life Review</div>
+        <div class="item-desc">A structured email recap: goals progress, tasks completed vs overdue, spending summary, PTO burn-rate, and one thing to carry forward into the new month.</div>
       </div>
-      <div class="month-item">
-        <div class="month-emoji">🎂</div>
-        <div>
-          <div class="month-label">30 days before birthdays &amp; anniversaries</div>
-          <div class="month-desc">VERA flags important dates well in advance so you have time to plan — not the morning of. Synced from your Joint Chaos Google Calendar automatically.</div>
-        </div>
+    </div>
+
+    <div class="item amber">
+      <div class="item-icon">🎂</div>
+      <div class="item-body">
+        <div class="item-title">Birthdays &amp; Anniversaries — 30 Days Out</div>
+        <div class="item-desc">VERA flags important dates 30 days in advance so you have time to plan. Birthdays synced from your calendar automatically appear in the Important Dates tracker.</div>
       </div>
-      <div class="month-item">
-        <div class="month-emoji">💳</div>
-        <div>
-          <div class="month-label">Bill due-date alerts</div>
-          <div class="month-desc">Bills tracked in the Finance tab are flagged a few days before they're due. You can mark them paid directly from the dashboard or Slack.</div>
-        </div>
+    </div>
+
+    <div class="item teal">
+      <div class="item-icon">💳</div>
+      <div class="item-body">
+        <div class="item-title">Bills — As Due Dates Approach</div>
+        <div class="item-desc">Upcoming bills are flagged as the due date approaches. VERA knows which are on autopay and which need your attention.</div>
       </div>
-      <div class="month-item">
-        <div class="month-emoji">🏥</div>
-        <div>
-          <div class="month-label">Health appointment reminders</div>
-          <div class="month-desc">30 days before any DR: appointment is due, a flag appears with suggested calendar windows for booking. No need to track these yourself.</div>
-        </div>
+    </div>
+
+    <div class="item purple">
+      <div class="item-icon">🎯</div>
+      <div class="item-body">
+        <div class="item-title">Goal Progress — Ongoing</div>
+        <div class="item-desc">Goals with a target date that are falling behind get flagged. Goals marked "Doing" are checked for recent activity — if there's been none, VERA nudges you.</div>
       </div>
-      <div class="month-item">
-        <div class="month-emoji">📄</div>
-        <div>
-          <div class="month-label">Contract &amp; subscription renewals</div>
-          <div class="month-desc">Contracts tracked in the Settings → Contracts tab are flagged when approaching their renewal date or notice period.</div>
-        </div>
+    </div>
+
+    <div class="item green">
+      <div class="item-icon">💪</div>
+      <div class="item-body">
+        <div class="item-title">Gym Streak — Weekly</div>
+        <div class="item-desc">VERA tracks your gym attendance. If you miss your typical frequency for a week, it surfaces a gentle nudge — no shame, just a heads-up.</div>
       </div>
     </div>
   </div>
 
-  <!-- ── 8. WHEN TO DO NOTHING ──────────────────────────── -->
-  <div class="section-title"><span class="num">8</span> When to Do Nothing</div>
-  <div class="callout">
-    <div class="callout-title">✅ VERA handles these automatically — no action needed:</div>
-    <ul>
-      <li>Escalating flags that sit unacknowledged for 3–7 days</li>
-      <li>Resetting your morning routine checklist every night</li>
-      <li>Syncing birthday events from your Joint Chaos calendar to Important Dates</li>
-      <li>Resetting household chores based on their cadence (daily / weekly / monthly)</li>
-      <li>Suggesting due dates for tasks you haven't dated yet</li>
-      <li>Refreshing all Summaries with the latest data every night</li>
-      <li>Suppressing flags you consistently ignore (Signal Learning)</li>
-      <li>Activating pacing mode when you're stretched across too many domains</li>
-      <li>Pausing reminders automatically when you're on vacation</li>
-      <li>Archiving old meal plans and seeding next week's every Saturday</li>
-      <li>Logging gym sessions from your calendar events</li>
-    </ul>
+  <!-- When to do nothing -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">✓</span> Things VERA Handles Without You</div>
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5;">
+      You don't need to do anything for these — VERA takes care of them automatically every night.
+    </div>
+
+    <div class="nothing-list">
+      <div class="nothing-item">Escalates flags that sit unacknowledged for 3–7 days</div>
+      <div class="nothing-item">Resets morning routine checkboxes each night</div>
+      <div class="nothing-item">Syncs birthday events from your calendar to the Important Dates tracker</div>
+      <div class="nothing-item">Resets chores on their cadence (daily, weekly, monthly)</div>
+      <div class="nothing-item">Suggests due dates for tasks that don't have one</div>
+      <div class="nothing-item">Archives old meal plan entries each Saturday and seeds the new week</div>
+      <div class="nothing-item">Learns which repeated flags you consistently ignore and suppresses them</div>
+      <div class="nothing-item">Writes nightly metrics to the Summaries tab (task counts, flag counts, calendar load)</div>
+      <div class="nothing-item">Detects cross-domain patterns (overload + no pacing, goal drift, health neglect)</div>
+      <div class="nothing-item">Polls flight status every 15 min when you're within 24h of departure</div>
+      <div class="nothing-item">Sends the pre-trip briefing 48h before every trip — no setup needed</div>
+      <div class="nothing-item">Prompts for trip memories after you return home</div>
+      <div class="nothing-item">Identifies clear PTO windows and places calendar suggestions automatically</div>
+      <div class="nothing-item">Flags upcoming health appointments when your interval is nearly due</div>
+    </div>
+
+    <div class="green-box">
+      <strong>The goal:</strong> Your only job is to review flags each morning and chat with VERA when you need something. Everything else runs itself.
+    </div>
   </div>
 
-</div><!-- .container -->
+</div>
 
-<footer>
-  <p>VERA runs silently on <strong>Google Apps Script</strong>. No servers, no subscriptions, no maintenance.</p>
-  <p style="margin-top:6px;">For the full technical reference see <strong>README.md</strong> · For inner workings see <strong>VERA_Documentation.md</strong> · For a quick-scan cheat sheet see <strong>VERA_Quick_Reference.html</strong></p>
-</footer>
+
+<!-- ═══════════════════════════════════════════════════════
+     ROW 6 — Slack · Finance · Victoria's View
+═══════════════════════════════════════════════════════════ -->
+<div class="section-header">
+  <span class="s-icon">💬</span>
+  <span class="s-title">Slack, Finance &amp; Shared Life</span>
+  <span class="s-sub">— how VERA reaches you in real time, and what it watches financially</span>
+</div>
+
+<div class="row-3">
+
+  <!-- Slack Channels -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">📱</span> Your Slack Channels</div>
+
+    <div class="item blue">
+      <div class="item-icon">💬</div>
+      <div class="item-body">
+        <div class="item-title">#vera-chat — Talk to VERA</div>
+        <div class="item-desc">Type anything here and VERA responds just like the dashboard Chat tab. Best for quick questions from your phone without opening the dashboard.</div>
+      </div>
+    </div>
+
+    <div class="item teal">
+      <div class="item-icon">🔔</div>
+      <div class="item-body">
+        <div class="item-title">#vera-notifications — Important Alerts</div>
+        <div class="item-desc">High-priority flag alerts, flight status changes, pre-trip briefings, and packing reminders. Includes <strong>Acknowledge / Snooze / Resolve</strong> buttons so you can act directly from Slack.</div>
+      </div>
+    </div>
+
+    <div class="item warm">
+      <div class="item-icon">📋</div>
+      <div class="item-body">
+        <div class="item-title">#vera-logs — System Activity</div>
+        <div class="item-desc">A background feed showing what VERA ran each night and how many flags it generated. You don't need to read this — it's mostly for troubleshooting.</div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <strong>Flag buttons in Slack:</strong> When a High flag notification arrives, you'll see ✓ Acknowledge, 💤 Snooze (2d), and ✅ Resolve buttons directly in the message. No need to open the dashboard.
+    </div>
+
+    <div class="tip-box" style="margin-top:8px;">
+      <strong>Reminders via Slack:</strong> Ergonomic breaks, hydration nudges, bill alerts, and packing prompts all arrive in #vera-notifications throughout the day — only when relevant.
+    </div>
+  </div>
+
+  <!-- Finance -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">💰</span> Finance — What VERA Watches</div>
+
+    <div class="item green">
+      <div class="item-icon">📊</div>
+      <div class="item-body">
+        <div class="item-title">Monthly Spending Trends</div>
+        <div class="item-desc">VERA reads your transactions and compares this month vs last month by category. Spikes (like +66% dining) get flagged automatically.</div>
+      </div>
+    </div>
+
+    <div class="item amber">
+      <div class="item-icon">💳</div>
+      <div class="item-body">
+        <div class="item-title">Bills &amp; Due Dates</div>
+        <div class="item-desc">Upcoming bills are tracked by due date. VERA flags ones that aren't on autopay and are approaching. You can also ask "What bills are due this week?" anytime.</div>
+      </div>
+    </div>
+
+    <div class="item blue">
+      <div class="item-icon">🧾</div>
+      <div class="item-body">
+        <div class="item-title">SAT Budget Integration</div>
+        <div class="item-desc">The household budget (Simple Ass Tracker) feeds into VERA's nightly summary — income, fixed costs, shared expense split, and transfer calculations are all visible via Chat.</div>
+      </div>
+    </div>
+
+    <div class="item purple">
+      <div class="item-icon">📈</div>
+      <div class="item-body">
+        <div class="item-title">Finance Overview Tab</div>
+        <div class="item-desc">The dashboard Finance tab shows your top spending categories, net vs budget, recent transaction highlights, and any anomalies VERA detected this month.</div>
+      </div>
+    </div>
+
+    <div class="tip-box">
+      <strong>How to add transactions:</strong> VERA reads from your Transactions sheet. Export from Empower (or your bank) in CSV format and paste into the Transactions tab — VERA picks them up the next night.
+    </div>
+  </div>
+
+  <!-- Ahmed & Victoria — shared life OS -->
+  <div class="panel">
+    <div class="panel-title"><span class="pt-icon">👥</span> Ahmed &amp; Victoria — Shared Life OS</div>
+
+    <div class="item blue">
+      <div class="item-icon">📊</div>
+      <div class="item-body">
+        <div class="item-title">Full Dashboard (Ahmed)</div>
+        <div class="item-desc">All tabs, all data, full Chat access. Primary interface for managing the household and reviewing all VERA intelligence.</div>
+      </div>
+    </div>
+
+    <div class="item teal">
+      <div class="item-icon">📱</div>
+      <div class="item-body">
+        <div class="item-title">Dashboard Lite (Victoria)</div>
+        <div class="item-desc">A streamlined view focused on Travel, Shopping, Tasks, and Chat. Same intelligence, lighter interface. VERA recognises Victoria's Slack messages separately.</div>
+      </div>
+    </div>
+
+    <div class="item green">
+      <div class="item-icon">🌴</div>
+      <div class="item-body">
+        <div class="item-title">PTO Tracked Separately</div>
+        <div class="item-desc">Ahmed and Victoria each have their own PTO tab. VERA tracks burn-down and clear windows for both independently and looks for overlap when suggesting vacation windows.</div>
+      </div>
+    </div>
+
+    <div class="item amber">
+      <div class="item-icon">🎁</div>
+      <div class="item-body">
+        <div class="item-title">Important Dates &amp; Gift Ideas</div>
+        <div class="item-desc">Birthdays and anniversaries from your calendar sync nightly. Gift ideas you've mentioned to VERA are stored against each person so you're never caught off guard.</div>
+      </div>
+    </div>
+
+    <div class="item purple">
+      <div class="item-icon">🍝</div>
+      <div class="item-body">
+        <div class="item-title">Shared Recipes &amp; Meal Plans</div>
+        <div class="item-desc">VERA resets the meal plan each Saturday. Ask "what's on the meal plan this week?" or "add pasta carbonara to my recipes" from either dashboard or Slack.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ─── Footer ─────────────────────────────────────────────── -->
+<div class="footer">
+  <span class="footer-text">VERA — Virtual Executive &amp; Reminder Assistant &nbsp;·&nbsp; Quick User Guide &nbsp;·&nbsp; Ahmed &amp; Victoria · 2026</span>
+  <span class="footer-text">github.com/aeraky1565/VERA-My-Chief-of-Staff</span>
+</div>
 
 </body>
 </html>
