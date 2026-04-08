@@ -311,6 +311,7 @@ function doGet(e) {
     }
   } catch (err) {
     Logger.log('doGet error: ' + err.message + '\n' + err.stack);
+    try { sendSlackLog_('\ud83d\udd34 WebApp error (doGet/' + (action || '?') + '): ' + err.message); } catch (se) {}
     return errOut_('Server error: ' + err.message, 500);
   }
 }
@@ -392,6 +393,7 @@ function doPost(e) {
     }
   } catch (err) {
     Logger.log('doPost error: ' + err.message + '\n' + err.stack);
+    try { sendSlackLog_('\ud83d\udd34 WebApp error (doPost/' + (action || '?') + '): ' + err.message); } catch (se) {}
     return errOut_('Server error: ' + err.message, 500);
   }
 }
@@ -4278,6 +4280,12 @@ function webProcessChat_(source) {
   const sessionId     = source.session       || (source.parameter && source.parameter.session)  || 'dashboard';
   const imageBase64   = source.imageBase64   || null;
   const imageMimeType = source.imageMimeType || null;
+  // Issue #158: Log chat session type to #vera-logs
+  try {
+    const src   = source.source || (source.parameter && source.parameter.source) || 'dashboard';
+    const label = src === 'dashboard' ? 'dashboard (Ahmed)' : src === 'dashboard-lite' ? 'dashboard-lite (Victoria)' : src;
+    sendSlackLog_('\ud83d\udcac Chat \u2014 ' + label);
+  } catch (logErr) { /* non-fatal */ }
   return processChat_(message, sessionId, imageBase64, imageMimeType);
 }
 

@@ -282,4 +282,8 @@ function checkHealthAppointments_() {
   });
 
   Logger.log('checkHealthAppointments_: ' + flagsGenerated + ' flag(s) generated.');
+  // Issue #158: Log to #vera-logs when appointments are flagged
+  if (flagsGenerated > 0) {
+    try { sendSlackLog_('\ud83c\udfe5 Health \u2014 ' + flagsGenerated + ' appointment' + (flagsGenerated > 1 ? 's' : '') + ' flagged (overdue or upcoming)'); } catch (e) {}
+  }
 }

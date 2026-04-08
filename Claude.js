@@ -661,6 +661,8 @@ function generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPat
 
   if (responseCode !== 200) {
     Logger.log('Claude API HTTP ' + responseCode + ': ' + responseText);
+    // Issue #158: Alert #vera-logs on Claude API failures (systematic issues)
+    try { sendSlackLog_('\ud83e\udd16 Claude API failed: HTTP ' + responseCode + ' \u2014 ' + responseText.substring(0, 120)); } catch (se) {}
     throw new Error('Claude API returned HTTP ' + responseCode + '. Check your API key and account credits.');
   }
 

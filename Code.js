@@ -546,13 +546,16 @@ function setupTriggers() {
 function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
-    var today = new Date();
+    var today        = new Date();
+    var runStart     = Date.now();
+    var stepFailures = [];  // Collects non-fatal step failure messages for #vera-logs summary
 
     // Step -1: Escalate aged unacknowledged flags (Issue #5)
     try {
       escalateAgedFlags_();
     } catch (escErr) {
       Logger.log('escalateAgedFlags_ error (non-fatal): ' + escErr.message);
+      stepFailures.push('escalateAgedFlags_: ' + escErr.message);
     }
 
     // Step 0: Auto-populate Summaries tab from live data (Phase 5)
@@ -560,11 +563,17 @@ function nightlyRun() {
 
     // Step 0a: Sync upcoming birthdays from Joint Chaos calendar → Important Dates (Issue #80)
     try { syncCalendarBirthdaysToImportantDates_(); }
-    catch (idErr) { Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message); }
+    catch (idErr) {
+      Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message);
+      stepFailures.push('syncCalendarBirthdays_: ' + idErr.message);
+    }
 
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
     try { resetChoresByCadence_(); }
-    catch (chErr) { Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message); }
+    catch (chErr) {
+      Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message);
+      stepFailures.push('resetChoresByCadence_: ' + chErr.message);
+    }
 
     // Step 0b: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;
@@ -573,6 +582,7 @@ function nightlyRun() {
       Logger.log('PTO snapshot written — vacation used: ' + (ptoStats && ptoStats.used ? ptoStats.used.vacationDays : '?') + ' days.');
     } catch (ptoErr) {
       Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
+      stepFailures.push('writePTOSnapshot_: ' + ptoErr.message);
     }
 
     // Step 0c: Explorer — daily AI discovery bulletin (Reminders.js)
@@ -580,6 +590,7 @@ function nightlyRun() {
       runExplorer_();
     } catch (expErr) {
       Logger.log('runExplorer_ error (non-fatal): ' + expErr.message);
+      stepFailures.push('runExplorer_: ' + expErr.message);
     }
 
     // Step 0d: Signal Learning — get suppressed patterns to filter noise (Issue #24)
@@ -591,6 +602,7 @@ function nightlyRun() {
       }
     } catch (slErr) {
       Logger.log('getSuppressedKeyPatterns_ error (non-fatal): ' + slErr.message);
+      stepFailures.push('getSuppressedKeyPatterns_: ' + slErr.message);
     }
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
@@ -598,6 +610,7 @@ function nightlyRun() {
       recordExpiredFlags_();
     } catch (expFlagErr) {
       Logger.log('recordExpiredFlags_ error (non-fatal): ' + expFlagErr.message);
+      stepFailures.push('recordExpiredFlags_: ' + expFlagErr.message);
     }
 
     // Step 0f: Pre-trip briefings (48-hour auto-summary) (Issue #81)
@@ -605,6 +618,7 @@ function nightlyRun() {
       checkPreTripBriefings_();
     } catch (ptbErr) {
       Logger.log('checkPreTripBriefings_ error (non-fatal): ' + ptbErr.message);
+      stepFailures.push('checkPreTripBriefings_: ' + ptbErr.message);
     }
 
     // Step 0g: Post-trip capture prompts (Issue #87)
@@ -612,6 +626,7 @@ function nightlyRun() {
       checkPostTripCapture_();
     } catch (ptcErr) {
       Logger.log('checkPostTripCapture_ error (non-fatal): ' + ptcErr.message);
+      stepFailures.push('checkPostTripCapture_: ' + ptcErr.message);
     }
 
     // Step 0h: Reset morning routine checkboxes for the new day
@@ -626,6 +641,7 @@ function nightlyRun() {
       }
     } catch (mrErr) {
       Logger.log('Morning routine reset error (non-fatal): ' + mrErr.message);
+      stepFailures.push('morningRoutineReset: ' + mrErr.message);
     }
 
     // Step 0i: Gym session check-in prompts (Issue #97)
@@ -633,31 +649,32 @@ function nightlyRun() {
       checkGymSessions_();
     } catch (gymErr) {
       Logger.log('checkGymSessions_ error (non-fatal): ' + gymErr.message);
+      stepFailures.push('checkGymSessions_: ' + gymErr.message);
     }
 
     // Step 0j: Fitness consistency + travel gap checks (Issue #84)
-    try { checkFitnessConsistency_(); } catch (fcErr) { Logger.log('checkFitnessConsistency_ error (non-fatal): ' + fcErr.message); }
-    try { checkFitnessTravelGap_();   } catch (ftErr) { Logger.log('checkFitnessTravelGap_ error (non-fatal): '   + ftErr.message); }
+    try { checkFitnessConsistency_(); } catch (fcErr) { Logger.log('checkFitnessConsistency_ error (non-fatal): ' + fcErr.message); stepFailures.push('checkFitnessConsistency_: ' + fcErr.message); }
+    try { checkFitnessTravelGap_();   } catch (ftErr) { Logger.log('checkFitnessTravelGap_ error (non-fatal): '   + ftErr.message); stepFailures.push('checkFitnessTravelGap_: '   + ftErr.message); }
 
     // Step 0k: Purchase history auto-restock + pantry trip-overlap flags (Issue #111)
-    try { autoRestockItems_();    } catch (arErr) { Logger.log('autoRestockItems_ error (non-fatal): '    + arErr.message); }
-    try { generatePantryFlags_(); } catch (pfErr) { Logger.log('generatePantryFlags_ error (non-fatal): ' + pfErr.message); }
+    try { autoRestockItems_();    } catch (arErr) { Logger.log('autoRestockItems_ error (non-fatal): '    + arErr.message); stepFailures.push('autoRestockItems_: '    + arErr.message); }
+    try { generatePantryFlags_(); } catch (pfErr) { Logger.log('generatePantryFlags_ error (non-fatal): ' + pfErr.message); stepFailures.push('generatePantryFlags_: ' + pfErr.message); }
 
     // Step 0l: Capacity mode inference — score tomorrow's calendar load (Issue #8)
-    try { inferCapacityMode_(); } catch (capErr) { Logger.log('inferCapacityMode_ error (non-fatal): ' + capErr.message); }
+    try { inferCapacityMode_(); } catch (capErr) { Logger.log('inferCapacityMode_ error (non-fatal): ' + capErr.message); stepFailures.push('inferCapacityMode_: ' + capErr.message); }
 
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
-    try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); }
+    try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
-    try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); }
+    try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); stepFailures.push('checkHealthAppointments_: ' + hErr.message); }
 
     // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
-    try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); }
+    try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); stepFailures.push('checkMonthlyReview_: ' + mrErr.message); }
 
     // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
     if (today.getDay() === 6) {
-      try { resetWeekMealPlan_(); } catch (mpErr) { Logger.log('resetWeekMealPlan_ error (non-fatal): ' + mpErr.message); }
+      try { resetWeekMealPlan_(); } catch (mpErr) { Logger.log('resetWeekMealPlan_ error (non-fatal): ' + mpErr.message); stepFailures.push('resetWeekMealPlan_: ' + mpErr.message); }
     }
 
     // Step 1: Collect
@@ -701,8 +718,27 @@ function nightlyRun() {
 
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
 
+    // Issue #158: Send high-level nightly summary to #vera-logs
+    try {
+      var elapsed     = Math.round((Date.now() - runStart) / 1000);
+      var flagCount   = (flags && flags.length) ? flags.length : 0;
+      var highCount   = flagCount ? flags.filter(function(f) { return f.urgency === 'High';   }).length : 0;
+      var medCount    = flagCount ? flags.filter(function(f) { return f.urgency === 'Medium'; }).length : 0;
+      var lowCount    = flagCount ? flags.filter(function(f) { return f.urgency === 'Low';    }).length : 0;
+      var summary     = '\u2705 Nightly run \u2014 ' + flagCount + ' flag' + (flagCount !== 1 ? 's' : '') + ' written';
+      if (flagCount > 0) summary += ' (' + highCount + ' High, ' + medCount + ' Med, ' + lowCount + ' Low)';
+      if (stepFailures.length) summary += ' \u00b7 ' + stepFailures.length + ' step warning' + (stepFailures.length > 1 ? 's' : '');
+      summary += ' in ' + elapsed + 's';
+      sendSlackLog_(summary);
+      if (stepFailures.length) {
+        sendSlackLog_('\u26a0\ufe0f Step warnings:\n' + stepFailures.map(function(f) { return '\u2022 ' + f; }).join('\n'));
+      }
+    } catch (slackSummaryErr) { /* non-fatal — never let logging break the run */ }
+
   } catch (e) {
     Logger.log('VERA nightly run ERROR: ' + e.message + '\n' + e.stack);
+    // Issue #158: Send failure alert to #vera-logs
+    try { sendSlackLog_('\u274c Nightly run FAILED: ' + e.message + ' (' + (e.fileName || 'Code') + ':' + (e.lineNumber || '?') + ')'); } catch (se) {}
     try {
       MailApp.sendEmail(
         CONFIG.MORNING_NUDGE_EMAIL,

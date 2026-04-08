@@ -376,6 +376,12 @@ function handleSlackEvent_(body) {
   if (event.type === 'message' && event.channel === getSlackChannelId_('chat')) {
     // File upload (image for Smart Scheduler) or regular chat — both queued async
     queueSlackMessage_(event);
+    // Issue #158: Log chat session to #vera-logs with user identity
+    try {
+      var slackUserId = event.user;
+      var userName    = (slackUserId && getSlackUserName_(slackUserId)) || slackUserId || 'unknown';
+      sendSlackLog_('\ud83d\udcac Chat \u2014 vera-chat (' + userName + ')');
+    } catch (logErr) { /* non-fatal */ }
   }
 
   if (event.type === 'reaction_added' && event.item && event.item.channel === getSlackChannelId_('notifications')) {

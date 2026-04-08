@@ -65,6 +65,9 @@ function checkMonthlyReview_(ptoStats) {
     key:     flagKey,
   }]);
 
+  // Issue #158: Log to #vera-logs
+  try { sendSlackLog_('\ud83d\udcc5 Monthly review written \u2014 ' + label); } catch (e) {}
+
   archiveMonthlyReview_(label, monthKey, reviewText, ss);
 
   // Send dedicated email

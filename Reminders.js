@@ -666,9 +666,11 @@ function callClaudeExplorer_(prompt) {
  * @param {string} message - Message body
  */
 function sendNudge_(ruleKey, subject, message) {
+  var channel;
   if (isSlackConfigured_()) {
     sendSlackNotification_(message);
     Logger.log('sendNudge_ [Slack]: ' + ruleKey);
+    channel = 'Slack';
   } else {
     MailApp.sendEmail(
       CONFIG.MORNING_NUDGE_EMAIL,
@@ -677,8 +679,11 @@ function sendNudge_(ruleKey, subject, message) {
       { name: 'VERA' }
     );
     Logger.log('sendNudge_ [Email]: ' + ruleKey);
+    channel = 'email';
   }
   markSent_(ruleKey, message);
+  // Issue #158: Log reminder delivery to #vera-logs
+  try { sendSlackLog_('\u23f0 Reminder sent \u2014 ' + subject + ' [' + channel + ']'); } catch (e) {}
 }
 
 // ============================================================

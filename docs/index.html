@@ -1557,7 +1557,7 @@ function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput })
         });
       } else {
         // Text-only: keep the existing GET path (no CORS concerns)
-        data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text });
+        data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text, source: 'dashboard' });
       }
       const veraMsg = { role: 'vera', text: data.reply };
       if (data.sources && data.sources.length > 0) veraMsg.sources = data.sources;
