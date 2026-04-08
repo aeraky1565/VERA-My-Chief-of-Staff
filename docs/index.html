@@ -11275,9 +11275,21 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
                        calBills, onCalBillToggle, onAddBill, onSyncTransactions, txList,
                        busy, apiUrl, apiToken,
                        financialGoals, goalsLoading, onLoadGoals, onAddGoal, onUpdateGoal, onDeleteGoal }) {
-  const [sub, setSub]           = React.useState('overview');
+  const [sub, setSub]                 = React.useState('overview');
   const [showAddBill, setShowAddBill] = React.useState(false);
+  const [recentTx,    setRecentTx]    = React.useState(null);
+  const [recentTxLoading, setRecentTxLoading] = React.useState(false);
   const hasTxData = summaries.some(s => s.source === '[AUTO] Transactions');
+
+  // Load recent transactions when Overview subtab is active
+  React.useEffect(function() {
+    if (sub !== 'overview' || !apiUrl || !apiToken || recentTx !== null) return;
+    setRecentTxLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'recent_transactions' })
+      .then(function(d) { setRecentTx((d && d.transactions) || []); })
+      .catch(function()  { setRecentTx([]); })
+      .finally(function() { setRecentTxLoading(false); });
+  }, [sub, apiUrl, apiToken]);
   // Count sheet bills that have a transaction match but aren't yet paid this month
   const syncCount = ((bills && bills.bills) || []).filter(function(b) { return b.txMatch && !b.paid; }).length;
 
@@ -11312,13 +11324,15 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
         ))}
       </div>
 
-      {/* ── Overview: Bento Dashboard (Coming Soon) ─────── */}
+      {/* ── Overview: Finance Bento Dashboard (Issue #77) ── */}
       {sub === 'overview' && (
-        <div className="empty-state" style={{ paddingTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚧</div>
-          <div style={{ fontWeight: 600, fontSize: 15, color: '#a0b0c8', marginBottom: 6 }}>Coming Soon</div>
-          <div style={{ fontSize: 13, color: '#4d6080' }}>The Finance Overview dashboard is on its way.</div>
-        </div>
+        <FinanceOverviewCard
+          summaries={summaries}
+          budget={budget}
+          bills={bills}
+          recentTx={recentTx}
+          recentTxLoading={recentTxLoading}
+        />
       )}
 
       {/* ── Budget: Spending Chart + Monthly Budget ─────── */}
@@ -12458,6 +12472,172 @@ function GrowthTab({ milestones, flags, tasks, onAction,
 }
 
 // ---- Spending chart (Home tab) ----------------------------------------------
+
+// ---- Finance Overview Card (Issue #77) ----------------------------------------
+
+function FinanceOverviewCard({ summaries, budget, bills, recentTx, recentTxLoading }) {
+  const today   = new Date();
+  const currDay = today.getDate();
+
+  const hasTxData = summaries.some(function(s) { return s.source === '[AUTO] Transactions'; });
+
+  // Bills Due Soon: unpaid expense bills sorted by days until their due day
+  const upcomingBills = React.useMemo(function() {
+    return ((bills && bills.bills) || [])
+      .filter(function(b) { return b.type !== 'Income' && !b.paid && b.dueDay; })
+      .map(function(b) {
+        var d = b.dueDay >= currDay ? b.dueDay - currDay : (31 - currDay + b.dueDay);
+        return Object.assign({}, b, { daysUntil: d });
+      })
+      .sort(function(a, b) { return a.daysUntil - b.daysUntil; })
+      .slice(0, 5);
+  }, [bills, currDay]);
+
+  // Budget Progress: cross-reference budget rows with spending categories from summaries
+  const budgetProgress = React.useMemo(function() {
+    var txRows  = summaries.filter(function(s) { return s.source === '[AUTO] Transactions'; });
+    var catRows = txRows.filter(function(s) {
+      return !s.metric.startsWith('Total Spending') && !s.metric.startsWith('Other (');
+    });
+    var spendMap = {};
+    catRows.forEach(function(r) {
+      var lbl = r.metric.replace(/\s+—\s+\w+$/, '').toLowerCase().trim();
+      var m   = r.value.match(/\$([0-9,]+)/);
+      spendMap[lbl] = m ? parseInt(m[1].replace(/,/g, '')) : 0;
+    });
+    return ((budget && budget.rows) || [])
+      .filter(function(r) { return r.value !== null; })
+      .map(function(r) {
+        var key      = r.label.toLowerCase().trim();
+        var budgeted = typeof r.value === 'number' ? r.value : parseFloat(String(r.value).replace(/[$,]/g, '')) || 0;
+        var actual   = spendMap[key] || 0;
+        var pct      = budgeted > 0 ? Math.round((actual / budgeted) * 100) : null;
+        return { label: r.label, budgeted: budgeted, actual: actual, pct: pct };
+      })
+      .filter(function(r) { return r.budgeted > 0 && r.actual > 0; })
+      .sort(function(a, b) { return (b.pct || 0) - (a.pct || 0); })
+      .slice(0, 7);
+  }, [summaries, budget]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Spending + Categories — reuse existing SpendingChart */}
+      {hasTxData
+        ? <SpendingChart summaries={summaries} budget={budget} />
+        : (
+          <div className="bento-card" style={{ cursor: 'default', textAlign: 'center', padding: '32px 16px' }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>💸</div>
+            <div style={{ fontSize: 13, color: '#a0b0c8', fontWeight: 600, marginBottom: 4 }}>No transaction data yet</div>
+            <div style={{ fontSize: 12, color: '#4d6080' }}>Connect your Transactions sheet via <strong style={{color:'#6b7fa8'}}>TRANSACTIONS_SHEET_ID</strong> in Script Properties.</div>
+          </div>
+        )
+      }
+
+      {/* Bills Due Soon + Budget Progress */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+        {/* Bills Due Soon */}
+        <div className="bento-card" style={{ cursor: 'default' }}>
+          <div className="bento-card-title" style={{ marginBottom: 14 }}>📌 Bills Due Soon</div>
+          {upcomingBills.length === 0
+            ? <div style={{ fontSize: 13, color: '#4d6080' }}>
+                {(bills && bills.bills && bills.bills.length > 0)
+                  ? <span><span style={{ color: '#66bb6a' }}>✓</span> All bills paid this month</span>
+                  : 'No bills — add them in the Bills tab.'}
+              </div>
+            : <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                {upcomingBills.map(function(b, i) {
+                  var clr  = b.daysUntil <= 2 ? '#ef5350' : b.daysUntil <= 7 ? '#ffa726' : '#66bb6a';
+                  var when = b.daysUntil === 0 ? 'Today' : b.daysUntil === 1 ? 'Tomorrow' : 'in ' + b.daysUntil + 'd';
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '7px 0', borderBottom: i < upcomingBills.length - 1 ? '1px solid #1a2d5a' : 'none' }}>
+                      <span style={{ fontSize: 13, color: '#dde1f0', overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap', maxWidth: '60%' }}>{b.bill}</span>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                        {b.amount != null && <span style={{ fontSize: 12, color: '#6b7fa8' }}>${Math.round(b.amount).toLocaleString()}</span>}
+                        <span style={{ fontSize: 11, fontWeight: 700, color: clr, minWidth: 54, textAlign: 'right' }}>{when}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+          }
+        </div>
+
+        {/* Budget Progress */}
+        <div className="bento-card" style={{ cursor: 'default' }}>
+          <div className="bento-card-title" style={{ marginBottom: 14 }}>📋 Budget Progress</div>
+          {!(budget && budget.configured)
+            ? <div style={{ fontSize: 13, color: '#4d6080' }}>SAT_SHEET_ID not configured — set it in Script Properties.</div>
+            : budgetProgress.length === 0
+              ? <div style={{ fontSize: 13, color: '#4d6080' }}>
+                  {hasTxData ? 'No overlapping budget + spend rows yet.' : 'Connect transactions to see budget progress.'}
+                </div>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                  {budgetProgress.map(function(r, i) {
+                    var over   = r.pct > 100;
+                    var barClr = over ? '#ef5350' : r.pct > 80 ? '#ffa726' : '#66bb6a';
+                    return (
+                      <div key={i}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, alignItems: 'baseline' }}>
+                          <span style={{ fontSize: 12, color: '#dde1f0', maxWidth: '52%', overflow: 'hidden',
+                            textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.label}</span>
+                          <span style={{ fontSize: 11, color: '#6b7fa8', fontWeight: 600, flexShrink: 0 }}>
+                            ${r.actual.toLocaleString()} / ${r.budgeted.toLocaleString()}
+                            {r.pct !== null && <span style={{ marginLeft: 4, color: barClr }}>({r.pct}%)</span>}
+                          </span>
+                        </div>
+                        <div style={{ height: 6, background: '#0d1b3e', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: Math.min(r.pct || 0, 100) + '%',
+                            background: barClr, borderRadius: 3, transition: 'width .5s ease' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+          }
+        </div>
+      </div>
+
+      {/* Recent Transactions */}
+      {recentTxLoading && (
+        <div className="bento-card" style={{ cursor: 'default', fontSize: 13, color: '#6b7fa8' }}>Loading recent transactions…</div>
+      )}
+      {!recentTxLoading && recentTx !== null && (
+        recentTx.length === 0
+          ? (
+            <div className="bento-card" style={{ cursor: 'default', textAlign: 'center', padding: '20px 16px' }}>
+              <div style={{ fontSize: 13, color: '#4d6080' }}>🧾 No transactions found — connect <strong style={{color:'#6b7fa8'}}>TRANSACTIONS_SHEET_ID</strong> in Script Properties.</div>
+            </div>
+          ) : (
+            <div className="bento-card" style={{ cursor: 'default' }}>
+              <div className="bento-card-title" style={{ marginBottom: 14 }}>🧾 Recent Transactions</div>
+              <div>
+                {recentTx.map(function(tx, i) {
+                  var isExp = tx.amount < 0;
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '7px 0', borderBottom: i < recentTx.length - 1 ? '1px solid #1a2d5a' : 'none' }}>
+                      <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: '#dde1f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.description}</div>
+                        <div style={{ fontSize: 11, color: '#4d6080' }}>{tx.category}{tx.date ? ' · ' + tx.date : ''}</div>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: isExp ? '#ef5350' : '#66bb6a',
+                        flexShrink: 0, marginLeft: 12 }}>
+                        {isExp ? '−' : '+'}${Math.abs(tx.amount).toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )
+      )}
+    </div>
+  );
+}
 
 function SpendingChart({ summaries, budget }) {
   const txRows   = summaries.filter(s => s.source === '[AUTO] Transactions');

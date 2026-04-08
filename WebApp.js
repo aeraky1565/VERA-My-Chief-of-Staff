@@ -101,6 +101,7 @@ function doGet(e) {
       case 'bills_toggle_cal':        return jsonOut_(webToggleCalBill_(e));
       case 'bills_sync_transactions': return jsonOut_(webSyncBillsFromTransactions_());
       case 'tx_list':                 return jsonOut_(webGetTxList_());
+      case 'recent_transactions':     return jsonOut_(webGetRecentTransactions_());
       case 'dest_weather':            return jsonOut_(webGetDestWeather_(e));
       case 'cashflow':                return jsonOut_(webGetCashflow_(e));
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
@@ -1495,6 +1496,67 @@ function webGetTxList_() {
       return { description: tx.rawDescription || tx.rawAccount, amount: tx.amount };
     })
   };
+}
+
+/**
+ * Returns the last N transactions across all months, sorted newest-first.
+ * Used by the Finance Overview tab (Issue #77).
+ */
+function webGetRecentTransactions_() {
+  var id = PropertiesService.getScriptProperties().getProperty('TRANSACTIONS_SHEET_ID');
+  if (!id) return { ok: true, transactions: [], configured: false };
+
+  var ss;
+  try {
+    ss = SpreadsheetApp.openById(id);
+  } catch (e) {
+    try { sendSlackLog_('\ud83d\udcca External sheet read failed: TRANSACTIONS_SHEET_ID (' + e.message + ')'); } catch (se) {}
+    return { ok: true, transactions: [], configured: true, error: e.message };
+  }
+
+  var sheetA = ss.getSheetByName('Transactions - Ahmed');
+  var sheetV = ss.getSheetByName('Transactions - Victoria');
+  var rawRows = [];
+
+  function readTabAll(sheet) {
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues();
+    rows.forEach(function(r) { rawRows.push(r); });
+  }
+
+  if (sheetA || sheetV) {
+    readTabAll(sheetA);
+    readTabAll(sheetV);
+  } else {
+    readTabAll(ss.getSheetByName('Transactions'));
+  }
+
+  var tz = Session.getScriptTimeZone();
+
+  var transactions = rawRows
+    .filter(function(r) { return r[0] && String(r[2] || '').trim(); })
+    .map(function(r) {
+      var d       = r[0] instanceof Date ? r[0] : new Date(r[0]);
+      var dateOk  = !isNaN(d.getTime());
+      var amount  = parseFloat(String(r[5]).replace(/[$,]/g, ''));
+      return {
+        date:        dateOk ? Utilities.formatDate(d, tz, 'MMM d') : '',
+        dateSort:    dateOk ? Utilities.formatDate(d, tz, 'yyyy-MM-dd') : '',
+        description: String(r[2] || '').trim(),
+        category:    String(r[3] || 'Uncategorized').trim(),
+        amount:      isNaN(amount) ? 0 : amount,
+        account:     String(r[1] || '').trim(),
+      };
+    })
+    .filter(function(t) { return t.description; })
+    .sort(function(a, b) {
+      if (b.dateSort < a.dateSort) return -1;
+      if (b.dateSort > a.dateSort) return  1;
+      return 0;
+    })
+    .slice(0, 12);
+
+  return { ok: true, transactions: transactions, configured: true };
 }
 
 /**
