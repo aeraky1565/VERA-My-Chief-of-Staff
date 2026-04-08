@@ -677,6 +677,9 @@ function nightlyRun() {
       try { resetWeekMealPlan_(); } catch (mpErr) { Logger.log('resetWeekMealPlan_ error (non-fatal): ' + mpErr.message); stepFailures.push('resetWeekMealPlan_: ' + mpErr.message); }
     }
 
+    // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
+    try { checkCrossPatternFlags_(); } catch (prErr) { Logger.log('checkCrossPatternFlags_ error (non-fatal): ' + prErr.message); stepFailures.push('checkCrossPatternFlags_: ' + prErr.message); }
+
     // Step 1: Collect
     const events    = getUpcomingEvents();
     const tasks     = getOpenTasks();
