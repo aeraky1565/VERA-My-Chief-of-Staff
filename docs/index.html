@@ -13745,15 +13745,15 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
 
   function openEdit(r) {
     setEditing(r);
-    setForm({ name: r.Name, category: r.Category, appliesTo: r['Applies To'] || 'Both',
-              description: r.Description, url: r.URL, driveFileId: r['Drive File ID'] || '', tags: r.Tags });
+    setForm({ name: r.name, category: r.category, appliesTo: r.appliesTo || 'Both',
+              description: r.description, url: r.url, driveFileId: r.driveFileId || '', tags: r.tags });
     setShowModal(true);
   }
 
   async function handleSubmit() {
     if (!form.name.trim() || !form.url.trim()) return;
     if (editing) {
-      await onUpdate(editing.ID, form);
+      await onUpdate(editing.id, form);
     } else {
       await onAdd(form);
     }
@@ -13764,7 +13764,7 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
   const grouped = {};
   const order   = [];
   (resources || []).forEach(function(r) {
-    const cat = r.Category || 'Other';
+    const cat = r.category || 'Other';
     if (!grouped[cat]) { grouped[cat] = []; order.push(cat); }
     grouped[cat].push(r);
   });
@@ -13800,35 +13800,35 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                 {cat}
               </div>
               {grouped[cat].map(r => (
-                <div key={r.ID} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
+                <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
                                          padding: '10px 12px', borderRadius: 8, marginBottom: 6,
                                          background: '#0d1b2a', border: '1px solid #1e2d40' }}>
                   <div style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}
-                       title={r['Drive File ID'] ? 'VERA can read this document' : 'Link only — VERA cannot read content'}>
-                    {r['Drive File ID'] ? '📄' : '🔗'}
+                       title={r.driveFileId ? 'VERA can read this document' : 'Link only — VERA cannot read content'}>
+                    {r.driveFileId ? '📄' : '🔗'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: '#c8d8ea' }}>{r.Name}</div>
-                      {r['Applies To'] && r['Applies To'] !== 'Both' && (
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#c8d8ea' }}>{r.name}</div>
+                      {r.appliesTo && r.appliesTo !== 'Both' && (
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                                       background: r['Applies To'] === 'Ahmed' ? '#1a3a5a' : '#3a1a4a',
-                                       color: r['Applies To'] === 'Ahmed' ? '#6ab0ff' : '#c080ff' }}>
-                          {r['Applies To']}
+                                       background: r.appliesTo === 'Ahmed' ? '#1a3a5a' : '#3a1a4a',
+                                       color: r.appliesTo === 'Ahmed' ? '#6ab0ff' : '#c080ff' }}>
+                          {r.appliesTo}
                         </span>
                       )}
                     </div>
-                    {r.Description && (
-                      <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 4 }}>{r.Description}</div>
+                    {r.description && (
+                      <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 4 }}>{r.description}</div>
                     )}
-                    {r.Tags && (
-                      <div style={{ fontSize: 11, color: '#3a5070' }}>{r.Tags.split(',').map(t => t.trim()).filter(Boolean).map(t => (
+                    {r.tags && (
+                      <div style={{ fontSize: 11, color: '#3a5070' }}>{r.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => (
                         <span key={t} style={{ background: '#1a2d42', borderRadius: 4, padding: '1px 6px', marginRight: 4 }}>{t}</span>
                       ))}</div>
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <a href={r._openUrl || r.URL} target="_blank" rel="noopener noreferrer"
+                    <a href={r.url} target="_blank" rel="noopener noreferrer"
                        style={{ fontSize: 12, color: '#4a9eff', textDecoration: 'none',
                                 padding: '4px 8px', border: '1px solid #1e3a5a', borderRadius: 5 }}>
                       ↗ Open
@@ -13836,11 +13836,11 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                     <button style={{ fontSize: 12, padding: '4px 8px', background: 'transparent',
                                      border: '1px solid #1e2d40', borderRadius: 5, color: '#7a99bb', cursor: 'pointer' }}
                             onClick={() => openEdit(r)} disabled={busy}>✏</button>
-                    {confirmId === r.ID ? (
+                    {confirmId === r.id ? (
                       <span style={{ display: 'flex', gap: 4 }}>
                         <button style={{ fontSize: 11, padding: '4px 7px', background: '#5a1a1a',
                                          border: '1px solid #8a2a2a', borderRadius: 5, color: '#ff7070', cursor: 'pointer' }}
-                                onClick={() => { onDelete(r.ID); setConfirmId(null); }} disabled={busy}>Confirm</button>
+                                onClick={() => { onDelete(r.id); setConfirmId(null); }} disabled={busy}>Confirm</button>
                         <button style={{ fontSize: 11, padding: '4px 7px', background: 'transparent',
                                          border: '1px solid #1e2d40', borderRadius: 5, color: '#4d6080', cursor: 'pointer' }}
                                 onClick={() => setConfirmId(null)}>Cancel</button>
@@ -13848,7 +13848,7 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                     ) : (
                       <button style={{ fontSize: 12, padding: '4px 8px', background: 'transparent',
                                        border: '1px solid #1e2d40', borderRadius: 5, color: '#7a4040', cursor: 'pointer' }}
-                              onClick={() => setConfirmId(r.ID)} disabled={busy}>🗑</button>
+                              onClick={() => setConfirmId(r.id)} disabled={busy}>🗑</button>
                     )}
                   </div>
                 </div>
