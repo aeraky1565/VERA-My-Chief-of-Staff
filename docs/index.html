@@ -13593,7 +13593,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
                 {idea.notes && (
                   <div style={{ color: '#9aa0a6', fontSize: 12, fontStyle: 'italic' }}>{idea.notes}</div>
                 )}
-                <div style={{ color: '#5f6368', fontSize: 11, marginTop: 4 }}>{idea.id} \u00b7 {idea.dateAdded}</div>
+                <div style={{ color: '#5f6368', fontSize: 11, marginTop: 4 }}>{idea.id} · {idea.dateAdded}</div>
               </div>
               {/* Right: actions */}
               {isThought ? (
@@ -13614,7 +13614,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
                     style={{ padding: '5px 12px', borderRadius: 6, border: 'none',
                              background: '#1a4a2a', color: '#43a047', cursor: 'pointer', fontSize: 12,
                              fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    \u2705 Task
+                    ✅ Task
                   </button>
                   <button
                     disabled={busy}
@@ -13635,7 +13635,7 @@ function IdeasTab({ ideas, onAdd, onPromote, onArchive, onShelve, busy }) {
                     style={{ padding: '5px 12px', borderRadius: 6, border: 'none',
                              background: '#1a4a2a', color: '#43a047', cursor: 'pointer', fontSize: 12,
                              fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    \u2705 Make Task
+                    ✅ Make Task
                   </button>
                   <button
                     disabled={busy}
