@@ -821,7 +821,6 @@ function writeFlags(flags) {
 
   let written = 0;
   let skipped = 0;
-  let seqNum  = 1;
 
   flags.forEach(function(flag) {
     const fp = makeFlagFingerprint_(flag.source, flag.flag, flag.key);
@@ -840,8 +839,8 @@ function writeFlags(flags) {
       return;
     }
 
-    const id = 'FLAG-' + timestamp + '-' + String(seqNum).padStart(2, '0');
-    seqNum++;
+    const rand2 = String(Math.floor(Math.random() * 90) + 10); // 10–99, never repeats across runs
+    const id = 'FLAG-' + timestamp + '-' + rand2;
 
     const row = [
       id,                     // A: ID
