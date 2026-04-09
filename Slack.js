@@ -863,8 +863,8 @@ function sendEveningCheckinSlack_() {
 
 /**
  * Handles an audio/voice message in #vera-chat.
- * Fetches Slack's built-in transcription via files.info, then routes the
- * transcribed text into the normal VERA chat pipeline.
+ * Polls Slack's files.info for the built-in transcription (async, may take ~10s),
+ * then routes the transcribed text into the normal VERA chat pipeline.
  */
 function processSlackVoiceMessage_(event) {
   var channel  = event.channel;
@@ -875,35 +875,59 @@ function processSlackVoiceMessage_(event) {
   var thinkingTs     = thinkingResult && thinkingResult.ts;
 
   try {
-    // Fetch full file info — Slack includes transcription here once ready
-    var token    = getSlackToken_();
-    var infoResp = UrlFetchApp.fetch(SLACK_API + 'files.info?file=' + encodeURIComponent(file.id), {
-      headers:            { Authorization: 'Bearer ' + token },
-      muteHttpExceptions: true,
-    });
-    var infoData = JSON.parse(infoResp.getContentText());
-    var fullFile = (infoData && infoData.ok) ? infoData.file : null;
-
-    // Extract transcript — Slack stores it in file.transcription / file.preview / VTT
+    var token      = getSlackToken_();
     var transcript = '';
-    if (fullFile) {
-      if (fullFile.preview) {
-        transcript = fullFile.preview.trim();
-      } else if (fullFile.vtt) {
-        // Strip WEBVTT header and timestamp lines, keep only spoken text
-        transcript = fullFile.vtt
+    var txStatus   = 'unknown';
+
+    // Poll files.info up to 5 times (total ~20s) waiting for Slack to finish
+    for (var attempt = 0; attempt < 5; attempt++) {
+      if (attempt > 0) Utilities.sleep(4000);
+
+      var infoResp = UrlFetchApp.fetch(SLACK_API + 'files.info?file=' + encodeURIComponent(file.id), {
+        headers:            { Authorization: 'Bearer ' + token },
+        muteHttpExceptions: true,
+      });
+      var infoData = JSON.parse(infoResp.getContentText());
+      var f        = (infoData && infoData.ok) ? infoData.file : null;
+
+      if (!f) {
+        Logger.log('processSlackVoiceMessage_: files.info failed — ' + JSON.stringify(infoData));
+        break;
+      }
+
+      // Log what Slack returned so we can diagnose issues
+      txStatus = (f.transcription && f.transcription.status) || 'no_transcription_field';
+      Logger.log('processSlackVoiceMessage_ attempt ' + (attempt + 1) +
+                 ' | status=' + txStatus +
+                 ' | has_vtt=' + !!f.vtt +
+                 ' | has_preview=' + !!f.preview);
+
+      // Extract transcript from whichever field is available
+      if (f.preview) {
+        transcript = f.preview.trim();
+      } else if (f.vtt) {
+        transcript = f.vtt
           .replace(/WEBVTT[\s\S]*?\n\n/, '')
           .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\n?/g, '')
           .replace(/<[^>]+>/g, '')
           .trim();
       }
+
+      if (transcript) break;
+
+      // If status is 'failed' or there's no transcription object at all, stop polling
+      if (txStatus === 'failed' || txStatus === 'no_transcription_field') break;
+      // status === 'processing' → keep polling
     }
 
     if (!transcript) {
       if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
-      sendSlackMessage_(channel,
-        '\uD83C\uDFA4 I received your voice message but the transcription isn\u2019t ready yet ' +
-        '(Slack usually takes a few seconds). Try resending it in a moment, or just type your message.');
+      var msg = txStatus === 'failed' || txStatus === 'no_transcription_field'
+        ? '\uD83C\uDFA4 Slack couldn\u2019t transcribe this voice message (transcription may not be ' +
+          'enabled on your plan, or the audio was unclear). Please type your message instead.'
+        : '\uD83C\uDFA4 The transcription is still processing after multiple retries. ' +
+          'Try resending in a moment, or just type your message.';
+      sendSlackMessage_(channel, msg);
       return;
     }
 
