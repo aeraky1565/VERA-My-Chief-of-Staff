@@ -519,9 +519,14 @@ function processSlackMessage_(event) {
     return;
   }
 
-  // ── Image upload → Smart Scheduler ──────────────────────────────────────
+  // ── File upload — route by type ──────────────────────────────────────────
   if (event.files && event.files.length > 0) {
-    processSlackSchedulerPhoto_(event);
+    var fileType = (event.files[0].mimetype || '').split('/')[0];
+    if (fileType === 'audio') {
+      processSlackVoiceMessage_(event);
+    } else {
+      processSlackSchedulerPhoto_(event);
+    }
     return;
   }
 
@@ -852,6 +857,69 @@ function sendEveningCheckinSlack_() {
   if (!channelId) return;
   var blocks = buildEveningCheckinBlocks_();
   sendSlackMessage_(channelId, 'Evening check-in', blocks);
+}
+
+// ─── VOICE MESSAGE — transcription via Slack's built-in transcript ───────────
+
+/**
+ * Handles an audio/voice message in #vera-chat.
+ * Fetches Slack's built-in transcription via files.info, then routes the
+ * transcribed text into the normal VERA chat pipeline.
+ */
+function processSlackVoiceMessage_(event) {
+  var channel  = event.channel;
+  var userId   = event.user;
+  var file     = event.files[0];
+
+  var thinkingResult = sendSlackMessage_(channel, '\uD83C\uDFA4 Transcribing\u2026');
+  var thinkingTs     = thinkingResult && thinkingResult.ts;
+
+  try {
+    // Fetch full file info — Slack includes transcription here once ready
+    var token    = getSlackToken_();
+    var infoResp = UrlFetchApp.fetch(SLACK_API + 'files.info?file=' + encodeURIComponent(file.id), {
+      headers:            { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true,
+    });
+    var infoData = JSON.parse(infoResp.getContentText());
+    var fullFile = (infoData && infoData.ok) ? infoData.file : null;
+
+    // Extract transcript — Slack stores it in file.transcription / file.preview / VTT
+    var transcript = '';
+    if (fullFile) {
+      if (fullFile.preview) {
+        transcript = fullFile.preview.trim();
+      } else if (fullFile.vtt) {
+        // Strip WEBVTT header and timestamp lines, keep only spoken text
+        transcript = fullFile.vtt
+          .replace(/WEBVTT[\s\S]*?\n\n/, '')
+          .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}\n?/g, '')
+          .replace(/<[^>]+>/g, '')
+          .trim();
+      }
+    }
+
+    if (!transcript) {
+      if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+      sendSlackMessage_(channel,
+        '\uD83C\uDFA4 I received your voice message but the transcription isn\u2019t ready yet ' +
+        '(Slack usually takes a few seconds). Try resending it in a moment, or just type your message.');
+      return;
+    }
+
+    // Route transcribed text through normal VERA chat pipeline
+    var sessionKey = 'slack_' + userId;
+    var result     = processChat_(transcript, sessionKey);
+    var reply      = (result && result.reply) ? result.reply : 'Sorry, something went wrong.';
+
+    if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+    sendSlackMessage_(channel, '\uD83C\uDFA4 _\u201c' + transcript + '\u201d_\n\n' + reply);
+
+  } catch (err) {
+    Logger.log('processSlackVoiceMessage_ error: ' + err.message);
+    if (thinkingTs) deleteSlackMessage_(channel, thinkingTs);
+    sendSlackMessage_(channel, 'Sorry, something went wrong with your voice message: ' + err.message);
+  }
 }
 
 // ─── SMART SCHEDULER — Slack image intake ────────────────────────────────────
