@@ -297,10 +297,20 @@ function buildChatSystemPrompt_(context) {
       var ds = e.start.split(' ')[0];
       var ln = '  - ' + e.title + ' | ' + ds + ' ' + ts + ' [' + dl + ']';
       if (e.location) ln += ' @ ' + e.location;
-      ln += ' (' + (e.calLabel || e.calendarName) + ')';
+      var calName = e.calLabel || e.calendarName || '';
+      ln += ' (' + calName + ')';
       if (e.myStatus && e.myStatus !== 'organizer' && e.myStatus !== 'accepted')
         ln += ' [RSVP: ' + e.myStatus + ']';
       if (e.eventColor) ln += ' [tagged: ' + e.eventColor + ']';
+      // Tag all-day events from extended-family / external calendars so Claude
+      // never mistakes them for Ahmed's or Victoria's travel (Bug #156)
+      var calLower = calName.toLowerCase();
+      var isJointChaos = calLower.indexOf('joint chaos') !== -1 || calLower.indexOf('joint') !== -1;
+      var isPersonal   = calLower.indexOf('ahmed') !== -1 || calLower.indexOf('personal') !== -1;
+      var isVera       = calLower.indexOf('vera') !== -1;
+      if (e.isAllDay && !isJointChaos && !isPersonal && !isVera) {
+        ln += ' [extended family — awareness only]';
+      }
       return ln;
     }).join('\n');
   }
@@ -451,7 +461,7 @@ function buildChatSystemPrompt_(context) {
     'OPEN TASKS (' + context.tasks.length + '):\n' + taskLines + googleTaskLines + '\n\n' +
     'SUMMARIES:\n' + summaryLines + '\n\n' +
     'PROJECTS:\n' + projectsLine + '\n\n' +
-    'UPCOMING CALENDAR EVENTS:\n' + calLines + '\n\n' +
+    'UPCOMING CALENDAR EVENTS (multi-day events from non-Joint-Chaos calendars are tagged [extended family — awareness only] — these are NOT Ahmed\'s or Victoria\'s events; do NOT infer travel or planning context from them):\n' + calLines + '\n\n' +
     'SHARED INTEREST LEDGER (top 20):\n' + interestLines + '\n\n' +
     'YEARLY GOALS (active):\n' + goalLines + '\n\n' +
     'PTO STATUS:\n' + ptoSection + '\n\n' +
@@ -804,6 +814,7 @@ function buildChatSystemPrompt_(context) {
     '- For create_task: use when Ahmed asks to add, create, or remember a task. Include due date if mentioned (YYYY-MM-DD). For the recurring field (3rd arg), pass the interval if Ahmed says "every month / weekly / daily / quarterly / yearly / every 2 weeks / every N days" etc. — use plain English like "Monthly", "Weekly", "Quarterly", "Yearly", "Bi-Weekly". Leave blank (empty string) for one-time tasks.\n' +
     '- For update_task: valid fields are "task" (rename), "dueDate" (YYYY-MM-DD), "status" (Open/Done/Paused), "recurring" (frequency string, or empty string to make it one-time), "notes".\n' +
     '- For create_calendar_event: VERA can and does create Google Calendar events directly via the Apps Script backend. Use this whenever Ahmed asks to schedule, block time, or add an event to his calendar. If the time is not mentioned, default to "all-day". If title or date are missing, ask for them before emitting the ACTION line. Never say you cannot create calendar events — you can.\n' +
+    '- CALENDAR HIERARCHY: There are three tiers of calendars: (1) "Vera" calendar — VERA\'s own calendar and the ONLY calendar VERA ever writes to. All create_calendar_event actions go here. (2) "Joint Chaos" (also labeled AE&VV or Our Joint Chaos) — Ahmed and Victoria\'s shared travel and vacation calendar. These ARE their events — use for planning, travel context, and suggestions. (3) All other calendars — extended family or external. These appear tagged [extended family — awareness only]. They exist purely for awareness of what is happening around the family. Never use them for planning, never suggest actions based on them, never offer to edit, reschedule, or cancel them. If Ahmed asks to change an event in one of these calendars, tell him it is an external calendar he would need to update directly.\n' +
     '- For create_project: before generating the plan, ask 2–4 targeted clarifying questions to understand scope, timeline, and constraints. Wait for the answers before emitting the ACTION line. Only skip questions if Ahmed has already provided enough context, or explicitly says "just create it" / "go ahead". Once you have the details, generate a comprehensive, exhaustive checklist — the goal is that Ahmed misses nothing. Think through every phase: planning, logistics, dependencies, admin/paperwork, communications, day-of execution, and follow-up. Explicitly include steps people commonly overlook. Aim for 20–30 tasks for complex projects. Order tasks chronologically. Assign priorities naturally (High for time-sensitive or blocking steps, Low for nice-to-haves). Separate tasks with ~ and optionally append |High or |Low to each task.\n' +
     '- For log_interest: when Ahmed or Victoria mentions liking something, wanting to try something, or expresses interest in a place, food, activity, or experience, log it automatically with ACTION:log_interest. Use person "Ahmed" or "Victoria". Pick the best category from: Food, Travel, Fitness, Culture, Hobbies, Learning, Other. Example: "Victoria mentioned she wants to visit Wimberley" → ACTION:log_interest|Victoria|visit Wimberley TX|Travel\n' +
     '- For add_bill: use empty string for optional fields (amount, dueDay, category, account) when not provided.\n' +
@@ -1462,7 +1473,8 @@ function executeActions_(rawText) {
         var evTime     = (args[2] || 'all-day').trim().toLowerCase();
         var evDuration = parseInt(args[3], 10) || 60;
         if (!evTitle || !evDate) throw new Error('Title and date are required for create_calendar_event');
-        var cal = CalendarApp.getDefaultCalendar();
+        var veraCalendars = CalendarApp.getCalendarsByName('Vera');
+        var cal = veraCalendars.length > 0 ? veraCalendars[0] : CalendarApp.getDefaultCalendar();
         if (evTime === 'all-day' || evTime === '') {
           var startD = new Date(evDate + 'T00:00:00');
           if (isNaN(startD.getTime())) throw new Error('Invalid date: ' + evDate);
