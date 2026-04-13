@@ -72,6 +72,10 @@ function readPTOConfig_() {
     // Use for extended family / shared calendars whose events shouldn't block Ahmed's scheduling windows.
     travelExtraCalendars: (raw['travel_extra_calendars'] || '')
                           .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    // Ahmed's personal Google Calendar name (optional). When set, events from this calendar
+    // are treated as trusted trip sources alongside Joint Chaos. Set via Config tab:
+    //   pto_personal_calendar = Ahmed Eleraky   (or whatever the calendar is named)
+    personalCalendarName: (raw['personal_calendar'] || '').trim(),
     // Keywords in event title OR description that identify inbound guest visits on gap calendars.
     // Uses the top-level 'house_guest_keywords' Config key (not pto_* prefixed).
     guestKeywords: (allKeys['house_guest_keywords'] || 'Visit,Staying,Guests')
@@ -721,6 +725,16 @@ function getUpcomingTravel_(cfg) {
     var ev               = allCalEvents[ei].ev;
     var calName          = allCalEvents[ei].calName;
     var isExtFam         = allCalEvents[ei].isExtendedFamily || false;
+
+    // Enforce calendar whitelist: only Joint Chaos and Ahmed's personal calendar
+    // are trusted trip sources. Any other calendar — regardless of which config list
+    // it came from — is treated as extended-family awareness only.
+    var calNameLower = calName.toLowerCase();
+    var isTrusted    = calNameLower.indexOf('joint') !== -1 ||
+                       calNameLower.indexOf('chaos') !== -1 ||
+                       (cfg.personalCalendarName &&
+                        calNameLower === cfg.personalCalendarName.toLowerCase());
+    if (!isTrusted) isExtFam = true;
 
     if (!ev.isAllDayEvent()) continue;
 

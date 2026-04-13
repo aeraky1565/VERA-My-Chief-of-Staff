@@ -1044,10 +1044,14 @@ function webGetPTO_() {
   var clearWins  = findClearWindows_(gapCals, today, 90, 3);
   var milestones = getMilestones_(gapCals, cfg, today);
 
+  // Only trusted trips (Joint Chaos / personal calendar) belong in the Travel tab.
+  // Extended-family trips are awareness-only and must not appear on the dashboard.
+  var ownTravel = travel.filter(function(t) { return !t.isExtendedFamily; });
+
   var ahmedStats = computePTOStats_(ptoResult, cfg, today);
   ahmedStats.clearWindows   = clearWins;
   ahmedStats.milestones     = milestones;
-  ahmedStats.upcomingTravel = travel;
+  ahmedStats.upcomingTravel = ownTravel;
 
   // ── Victoria ───────────────────────────────────────────────────────────────
   var victoriaStats = null;
@@ -1058,7 +1062,7 @@ function webGetPTO_() {
     // Share gap-calendar data (same calendars for both)
     victoriaStats.clearWindows   = clearWins;
     victoriaStats.milestones     = milestones;
-    victoriaStats.upcomingTravel = travel;
+    victoriaStats.upcomingTravel = ownTravel;
   } catch (vErr) {
     Logger.log('webGetPTO_: Victoria PTO error (non-fatal): ' + vErr.message);
   }
