@@ -680,17 +680,10 @@ function getUpcomingTravel_(cfg) {
     .map(function(n) { return n.trim(); })
     .filter(function(n) { return n && n !== cfg.calendarName; });
 
-  // Extra calendars scanned for trips only (not for clear-window blocking).
-  // Typically extended family calendars that are shared with Ahmed.
-  var extraCalNames = cfg.travelExtraCalendars || [];
-  var extraCalSet   = {};
-  extraCalNames.forEach(function(n) { extraCalSet[n] = true; });
-
-  // Merged list: gap calendars + extra-only travel calendars (deduplicated)
+  // Travel tab only shows Ahmed & Victoria's own trips.
+  // Extended-family / awareness-only calendars (travelExtraCalendars) are intentionally
+  // NOT scanned here — they belong to other people and must not create trip cards.
   var travelCalNames = gapCalNames.slice();
-  extraCalNames.forEach(function(n) {
-    if (travelCalNames.indexOf(n) === -1) travelCalNames.push(n);
-  });
 
   var travelIgnore  = cfg.travelIgnoreKeywords  || [];
   var travelRequire = cfg.travelRequireKeywords || []; // empty = no restriction
@@ -705,10 +698,9 @@ function getUpcomingTravel_(cfg) {
       Logger.log('getUpcomingTravel_: calendar not found — "' + calN + '"');
       continue;
     }
-    var rawEvs          = cal.getEvents(today, end);
-    var isExtendedFam   = !!extraCalSet[calN];
+    var rawEvs = cal.getEvents(today, end);
     for (var i = 0; i < rawEvs.length; i++) {
-      allCalEvents.push({ ev: rawEvs[i], calName: calN, isExtendedFamily: isExtendedFam });
+      allCalEvents.push({ ev: rawEvs[i], calName: calN });
     }
   }
 

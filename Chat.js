@@ -606,17 +606,6 @@ function buildChatSystemPrompt_(context) {
         }
       });
 
-      // Append extended-family trips as awareness-only (no itinerary/packing context)
-      var famTrips = travel.familyTrips || [];
-      if (famTrips.length > 0) {
-        lines += 'EXTENDED FAMILY TRIPS (awareness only \u2014 NOT Ahmed\u2019s or Victoria\u2019s events; ' +
-                 'never use for planning or scheduling, never offer to edit or reschedule):\n';
-        famTrips.forEach(function(t) {
-          lines += '  - ' + t.label + ' (' + t.startDate + ' \u2013 ' + t.endDate + ')\n';
-        });
-        lines += '\n';
-      }
-
       return lines + '\n';
     })() +
 
@@ -1134,12 +1123,7 @@ function buildChatContext_() {
     }
   } catch(e) { Logger.log('Chat context: trip meta — ' + e.message); }
 
-  // Split into Ahmed/Victoria's own trips (itinerary + packing support) vs
-  // extended-family trips (awareness only — shown separately, no planning context).
-  var ownTravelTrips = travelTrips.filter(function(t) { return !t.isExtendedFamily; });
-  var famTravelTrips = travelTrips.filter(function(t) { return !!t.isExtendedFamily; });
-
-  var travel = { trips: ownTravelTrips, familyTrips: famTravelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
+  var travel = { trips: travelTrips, itinByTrip: itinByTrip, packByTrip: packByTrip, tripContextMap: tripContextMap };
 
   // Upcoming guest windows — home/people context (Issue #150)
   var upcomingGuests = [];
