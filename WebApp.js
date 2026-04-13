@@ -93,6 +93,7 @@ function doGet(e) {
       case 'interests_add':    return jsonOut_(webAddInterest_(e));
       case 'interests_delete': return jsonOut_(webDeleteInterest_(e));
       case 'pto':                   return jsonOut_(webGetPTO_());
+      case 'debug_calendars':       return jsonOut_(webDebugCalendars_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
@@ -1064,6 +1065,31 @@ function webGetPTO_() {
   }
 
   return { ok: true, ahmedStats: ahmedStats, victoriaStats: victoriaStats };
+}
+
+/**
+ * TEMPORARY DEBUG — lists all Google Calendar names visible to this script,
+ * plus the pto_gap_calendars and pto_travel_extra_calendars config values.
+ * Call: ?action=debug_calendars&token=...
+ */
+function webDebugCalendars_() {
+  var cfg = readPTOConfig_();
+  var allCals = CalendarApp.getAllCalendars().map(function(c) {
+    return { name: c.getName(), id: c.getId() };
+  });
+  var gapCalNames = (cfg.gapCalendarsRaw || '').split(',').map(function(n) { return n.trim(); })
+    .filter(function(n) { return n && n !== cfg.calendarName; });
+  var gapFound = gapCalNames.map(function(n) {
+    var found = CalendarApp.getCalendarsByName(n);
+    return { name: n, found: found.length > 0 };
+  });
+  return {
+    ok: true,
+    allCalendars: allCals,
+    gapCalendarsRaw: cfg.gapCalendarsRaw,
+    travelExtraCalendars: cfg.travelExtraCalendars,
+    gapCalLookup: gapFound
+  };
 }
 
 /**
