@@ -4674,16 +4674,35 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
         )}
       </div>
 
+      {!selectedKey && tripsWBudget === null && (function() { loadTripsWithBudgets(); return null; })()}
+
       {!selectedKey && (
-        <div className="empty-state">
-          <div style={{ fontSize: 32, marginBottom: 10 }}>💰</div>
-          <div style={{ color: '#dde1f0', marginBottom: 6 }}>Trip Budget</div>
-          <div style={{ fontSize: 12, color: '#4d6080' }}>Select a trip above to view or set up its budget.</div>
+        <div style={{ padding: '18px 0' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {(trips || []).map(function(t) {
+              var hasBudget = tripsWBudget && tripsWBudget.indexOf(t.startDate + '|' + t.label) !== -1;
+              return (
+                <div key={t.startDate + t.label}
+                  onClick={function() { handleSelectTrip(t.startDate + '|' + t.label); }}
+                  style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 10,
+                           padding: '14px 18px', cursor: 'pointer', minWidth: 220, flex: '1 1 220px',
+                           transition: 'border-color 0.15s' }}
+                  onMouseEnter={function(e) { e.currentTarget.style.borderColor = '#5c9eff'; }}
+                  onMouseLeave={function(e) { e.currentTarget.style.borderColor = '#1e3060'; }}>
+                  <div style={{ fontWeight: 600, color: '#dde1f0', marginBottom: 4 }}>{t.label}</div>
+                  <div style={{ fontSize: 12, color: '#7c9cbf', marginBottom: 10 }}>{t.startDate} – {t.endDate}</div>
+                  <div style={{ fontSize: 12, color: hasBudget ? '#22c55e' : '#4d6080' }}>
+                    {hasBudget ? '💰 Budget set up' : '+ Set up budget'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
       {selectedKey && data === 'loading' && (
-        <div className="empty-state" style={{ color: '#5f6368' }}>Loading\u2026</div>
+        <div className="empty-state" style={{ color: '#5f6368' }}>Loading…</div>
       )}
 
       {selectedKey && data && data !== 'loading' && (function() {
@@ -4713,7 +4732,7 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
                 <div style={{ fontWeight: 700, color: '#c9a84c', marginBottom: 10, fontSize: 14 }}>Copy Budget from Previous Trip</div>
                 {tripsWBudget === null && (function() { loadTripsWithBudgets(); return null; })()}
                 {tripsWBudget === 'loading' ? (
-                  <div style={{ color: '#5f6368', fontSize: 13 }}>Loading\u2026</div>
+                  <div style={{ color: '#5f6368', fontSize: 13 }}>Loading…</div>
                 ) : (
                   <div>
                     {(tripsWBudget || []).filter(function(tk) { return tk !== selectedKey; }).length === 0 ? (
