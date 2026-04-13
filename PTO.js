@@ -702,7 +702,9 @@ function getUpcomingTravel_(cfg) {
       continue;
     }
     var rawEvs          = cal.getEvents(today, end);
-    var isExtendedFam   = !!extraCalSet[calN];
+    // Gap calendar membership always wins — if a calendar is in both gapCalNames
+    // and travelExtraCalendars (config mistake), treat it as trusted, not extended family.
+    var isExtendedFam   = !!extraCalSet[calN] && gapCalNames.indexOf(calN) === -1;
     for (var i = 0; i < rawEvs.length; i++) {
       allCalEvents.push({ ev: rawEvs[i], calName: calN, isExtendedFamily: isExtendedFam });
     }

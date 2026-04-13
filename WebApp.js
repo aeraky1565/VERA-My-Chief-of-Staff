@@ -1046,9 +1046,12 @@ function webGetPTO_() {
   var milestones = getMilestones_(gapCals, cfg, today);
 
   var ahmedStats = computePTOStats_(ptoResult, cfg, today);
+  // Only show Joint Chaos / personal trips — not extended family calendar events
+  var ownTravel = travel.filter(function(t) { return !t.isExtendedFamily; });
+
   ahmedStats.clearWindows   = clearWins;
   ahmedStats.milestones     = milestones;
-  ahmedStats.upcomingTravel = travel;
+  ahmedStats.upcomingTravel = ownTravel;
 
   // ── Victoria ───────────────────────────────────────────────────────────────
   var victoriaStats = null;
@@ -1059,7 +1062,7 @@ function webGetPTO_() {
     // Share gap-calendar data (same calendars for both)
     victoriaStats.clearWindows   = clearWins;
     victoriaStats.milestones     = milestones;
-    victoriaStats.upcomingTravel = travel;
+    victoriaStats.upcomingTravel = ownTravel;
   } catch (vErr) {
     Logger.log('webGetPTO_: Victoria PTO error (non-fatal): ' + vErr.message);
   }
@@ -2981,11 +2984,26 @@ function webGetItinerary_(e) {
       const endDt     = new Date(end   + 'T23:59:59');
       const tripLabel = tripKey.split('|')[1] || ''; // e.g. "Alaska Trip" from "2026-05-10|Alaska Trip"
 
+      // Build trusted calendar set: gap calendars (Joint Chaos) + personal primary calendar.
+      // Extended family calendars (Vignare Family, Eraky Family, etc.) are excluded.
+      var itinPtoCfg    = readPTOConfig_();
+      var itinGapNames  = (itinPtoCfg.gapCalendarsRaw || '').split(',')
+        .map(function(n) { return n.trim(); })
+        .filter(function(n) { return n && n !== itinPtoCfg.calendarName; });
+      var itinTrustedSet = {};
+      itinGapNames.forEach(function(n) { itinTrustedSet[n] = true; });
+      var itinUserEmail = Session.getEffectiveUser().getEmail();
+
+      function isItinTrustedCal_(cal) {
+        return cal.getId() === itinUserEmail || !!itinTrustedSet[cal.getName()];
+      }
+
       // Fetch per-event timezone via Calendar Advanced Service.
       // CalendarApp doesn't expose per-event timezone; Calendar.Events.list() does.
       // Keys stored as both resource id and iCalUID since ev.getId() returns iCalUID.
       var eventTzMap = {};  // eventId/iCalUID → { startTz, endTz }
       CalendarApp.getAllCalendars().forEach(function(cal) {
+        if (!isItinTrustedCal_(cal)) return;
         try {
           var result = Calendar.Events.list(cal.getId(), {
             singleEvents: true,
@@ -3008,6 +3026,7 @@ function webGetItinerary_(e) {
       });
 
       CalendarApp.getAllCalendars().forEach(function(cal) {
+        if (!isItinTrustedCal_(cal)) return;
         try {
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();
