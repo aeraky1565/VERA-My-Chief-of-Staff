@@ -2997,16 +2997,17 @@ function webGetItinerary_(e) {
 
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
-          var calNameLc = cal.getName().toLowerCase();
-          // Skip calendars explicitly listed as extended-family awareness sources
-          if (extraFamSet[calNameLc]) return;
-          // Also skip any calendar that isn't Joint Chaos, isn't owned by Ahmed,
-          // and isn't the configured personal calendar — catches family-only
-          // subscriptions that weren't added to travel_extra_calendars.
-          var isJointChaos = calNameLc.indexOf('joint') !== -1 || calNameLc.indexOf('chaos') !== -1;
-          var isOwned      = cal.isOwnedByMe();
-          var isPersonal   = itinPersonal && calNameLc === itinPersonal;
-          if (!isJointChaos && !isOwned && !isPersonal) return;
+          var calNameRaw = cal.getName();
+          // Skip calendars explicitly listed as extended-family awareness sources.
+          // Use exact name match (same approach as getUpcomingTravel_ trusted set).
+          if (extraFamSet[calNameRaw.toLowerCase()]) return;
+          // Also skip any calendar that isn't owned by Ahmed AND isn't a gap calendar
+          // (Joint Chaos or personal) — catches family subscriptions not in the extra list.
+          var isGapCal   = itinPtoCfg.gapCalendarsRaw && itinPtoCfg.gapCalendarsRaw
+                             .split(',').some(function(n) { return n.trim() === calNameRaw; });
+          var isOwned    = cal.isOwnedByMe();
+          var isPersonal = itinPersonal && calNameRaw.toLowerCase() === itinPersonal;
+          if (!isGapCal && !isOwned && !isPersonal) return;
 
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();

@@ -686,6 +686,13 @@ function getUpcomingTravel_(cfg) {
   var extraCalSet   = {};
   extraCalNames.forEach(function(n) { extraCalSet[n] = true; });
 
+  // Trusted-source set: gap calendars (already filtered to exclude work calendar).
+  // Any calendar in this set is Ahmed/Victoria's own — its trips are NOT extended family.
+  var trustedCalSet = {};
+  gapCalNames.forEach(function(n) { trustedCalSet[n] = true; });
+  // Also allow the configured personal calendar name if set
+  if (cfg.personalCalendarName) trustedCalSet[cfg.personalCalendarName] = true;
+
   // Merged list: gap calendars + extra-only travel calendars (deduplicated)
   var travelCalNames = gapCalNames.slice();
   extraCalNames.forEach(function(n) {
@@ -726,15 +733,11 @@ function getUpcomingTravel_(cfg) {
     var calName          = allCalEvents[ei].calName;
     var isExtFam         = allCalEvents[ei].isExtendedFamily || false;
 
-    // Enforce calendar whitelist: only Joint Chaos and Ahmed's personal calendar
-    // are trusted trip sources. Any other calendar — regardless of which config list
-    // it came from — is treated as extended-family awareness only.
-    var calNameLower = calName.toLowerCase();
-    var isTrusted    = calNameLower.indexOf('joint') !== -1 ||
-                       calNameLower.indexOf('chaos') !== -1 ||
-                       (cfg.personalCalendarName &&
-                        calNameLower === cfg.personalCalendarName.toLowerCase());
-    if (!isTrusted) isExtFam = true;
+    // Enforce calendar whitelist: only calendars in the trusted set (gap calendars
+    // + optional personal calendar) are Ahmed/Victoria's own trip sources.
+    // Any other calendar — regardless of which config list it came from — is
+    // treated as extended-family awareness only.
+    if (!trustedCalSet[calName]) isExtFam = true;
 
     if (!ev.isAllDayEvent()) continue;
 
