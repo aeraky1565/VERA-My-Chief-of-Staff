@@ -4382,6 +4382,516 @@ function BucketVisaStrip({ country, apiUrl, apiToken }) {
   );
 }
 
+// ---- Trip Budget Panel (Issue #96) -----------------------------------------
+
+function TripBudgetPanel({ trips, apiUrl, apiToken }) {
+  var [selectedKey,  setSelectedKey]  = React.useState(null);
+  var [budgetData,   setBudgetData]   = React.useState({}); // { [tripKey]: 'loading' | { items, summary } }
+  var [tripsWBudget, setTripsWBudget] = React.useState(null); // null | 'loading' | [tripKey, ...]
+  var [busy,         setBusy]         = React.useState(false);
+  var [error,        setError]        = React.useState(null);
+  var [editItem,     setEditItem]     = React.useState(null); // null | item object | { _new: true, tripKey }
+  var [settingsOpen, setSettingsOpen] = React.useState(false);
+  var [copyMode,     setCopyMode]     = React.useState(false);
+  var [copySource,   setCopySource]   = React.useState('');
+
+  var trip = selectedKey ? (trips || []).find(function(t) { return (t.startDate + '|' + t.label) === selectedKey; }) : null;
+  var data  = selectedKey ? budgetData[selectedKey] : null;
+
+  function api(params) {
+    var qs = Object.entries(Object.assign({ token: apiToken }, params))
+      .map(function(kv) { return encodeURIComponent(kv[0]) + '=' + encodeURIComponent(kv[1]); })
+      .join('&');
+    return fetch(apiUrl + '?' + qs).then(function(r) { return r.json(); });
+  }
+
+  function loadBudget(tripKey) {
+    if (!tripKey || budgetData[tripKey] === 'loading') return;
+    setBudgetData(function(prev) { return Object.assign({}, prev, { [tripKey]: 'loading' }); });
+    api({ action: 'get_trip_budget', tripKey: tripKey })
+      .then(function(d) {
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [tripKey]: d.ok ? d : { items: [], summary: null } }); });
+      })
+      .catch(function() {
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [tripKey]: { items: [], summary: null } }); });
+      });
+  }
+
+  function loadTripsWithBudgets() {
+    if (tripsWBudget) return;
+    setTripsWBudget('loading');
+    api({ action: 'list_trips_with_budgets' })
+      .then(function(d) { setTripsWBudget(d.ok ? (d.trips || []) : []); })
+      .catch(function() { setTripsWBudget([]); });
+  }
+
+  React.useEffect(function() {
+    if (selectedKey) loadBudget(selectedKey);
+  }, [selectedKey]); // eslint-disable-line
+
+  function handleSelectTrip(tk) {
+    setSelectedKey(tk);
+    setEditItem(null);
+    setSettingsOpen(false);
+    setCopyMode(false);
+  }
+
+  function handleImport() {
+    if (!selectedKey) return;
+    setBusy(true); setError(null);
+    api({ action: 'import_budget_from_itinerary', tripKey: selectedKey })
+      .then(function(d) {
+        if (!d.ok) { setError(d.error || 'Import failed'); return; }
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [selectedKey]: null }); });
+        loadBudget(selectedKey);
+      })
+      .catch(function(err) { setError(err.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleCopy() {
+    if (!selectedKey || !copySource) return;
+    setBusy(true); setError(null);
+    api({ action: 'copy_trip_budget', tripKey: selectedKey, sourceTripKey: copySource })
+      .then(function(d) {
+        if (!d.ok) { setError(d.error || 'Copy failed'); return; }
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [selectedKey]: null }); });
+        loadBudget(selectedKey);
+        setCopyMode(false);
+      })
+      .catch(function(err) { setError(err.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleSaveItem(fields) {
+    if (!selectedKey) return;
+    setBusy(true); setError(null);
+    api(Object.assign({ action: 'save_budget_item', tripKey: selectedKey }, fields))
+      .then(function(d) {
+        if (!d.ok) { setError(d.error || 'Save failed'); return; }
+        setEditItem(null);
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [selectedKey]: null }); });
+        loadBudget(selectedKey);
+      })
+      .catch(function(err) { setError(err.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleDeleteItem(id) {
+    if (!window.confirm('Delete this budget line?')) return;
+    setBusy(true); setError(null);
+    api({ action: 'delete_budget_item', id: id })
+      .then(function(d) {
+        if (!d.ok) { setError(d.error || 'Delete failed'); return; }
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [selectedKey]: null }); });
+        loadBudget(selectedKey);
+      })
+      .catch(function(err) { setError(err.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleSaveSettings(tripBudget, tripTravellers) {
+    if (!selectedKey) return;
+    setBusy(true); setError(null);
+    api({ action: 'set_trip_budget_settings', tripKey: selectedKey, tripBudget: tripBudget, tripTravellers: tripTravellers })
+      .then(function(d) {
+        if (!d.ok) { setError(d.error || 'Failed to save settings'); return; }
+        setSettingsOpen(false);
+        setBudgetData(function(prev) { return Object.assign({}, prev, { [selectedKey]: null }); });
+        loadBudget(selectedKey);
+      })
+      .catch(function(err) { setError(err.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  var cellStyle = {
+    padding: '7px 10px', borderBottom: '1px solid #0d1520', fontSize: 13, color: '#dde1f0',
+  };
+
+  function fmt(n) {
+    if (n === '' || n === null || n === undefined) return '\u2014';
+    return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function diffBadge(diff) {
+    if (!diff && diff !== 0) return null;
+    var over  = diff > 0;
+    var color = over ? '#e6a000' : '#4a9060';
+    var bg    = over ? '#2a1f00' : '#0d1a10';
+    return (
+      <span style={{ fontSize: 11, fontWeight: 700, color: color, background: bg,
+                     borderRadius: 8, padding: '2px 6px', marginLeft: 4 }}>
+        {over ? '+' : ''}{fmt(diff)}
+      </span>
+    );
+  }
+
+  // ---- Edit / Add item form ---
+  function BudgetItemForm({ item, onSave, onCancel }) {
+    var CATEGORIES = [
+      { value: 'flights',     label: '\u2708\uFE0F Flights' },
+      { value: 'lodging',     label: '\uD83C\uDFE8 Lodging' },
+      { value: 'transport',   label: '\uD83D\uDE97 Transportation' },
+      { value: 'food',        label: '\uD83C\uDF7D Food & Dining' },
+      { value: 'activities',  label: '\uD83C\uDFAD Activities' },
+      { value: 'shopping',    label: '\uD83D\uDED4 Shopping' },
+      { value: 'insurance',   label: '\uD83C\uDFE5 Travel Insurance' },
+      { value: 'custom',      label: '\u2795 Custom' },
+    ];
+    var [category, setCategory] = React.useState(item ? String(item.Category || '') : 'flights');
+    var [label,    setLabel]    = React.useState(item ? String(item.Label    || '') : '');
+    var [budgeted, setBudgeted] = React.useState(item ? String(item.Budgeted || '') : '');
+    var [actual,   setActual]   = React.useState(item ? String(item.Actual   || '') : '');
+    var [notes,    setNotes]    = React.useState(item ? String(item.Notes    || '') : '');
+
+    React.useEffect(function() {
+      if (!label && category) {
+        var cat = CATEGORIES.find(function(c) { return c.value === category; });
+        if (cat) setLabel(cat.label);
+      }
+    }, [category]); // eslint-disable-line
+
+    function submit(ev) {
+      ev.preventDefault();
+      var fields = { category: category, label: label, budgeted: budgeted, actual: actual, notes: notes };
+      if (item && item.ID) fields.id = item.ID;
+      onSave(fields);
+    }
+
+    var inp = { background: '#060f20', border: '1px solid #1e3060', borderRadius: 6,
+                color: '#dde1f0', padding: '6px 10px', fontSize: 13, width: '100%', boxSizing: 'border-box' };
+
+    return (
+      <form onSubmit={submit} style={{ background: '#0a1628', border: '1px solid #1e3060', borderRadius: 10,
+                                       padding: '16px 18px', marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, color: '#c9a84c', marginBottom: 10, fontSize: 14 }}>
+          {item && item.ID ? 'Edit Line Item' : 'Add Line Item'}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Category</div>
+            <select value={category} onChange={function(e) { setCategory(e.target.value); }} style={inp}>
+              {CATEGORIES.map(function(c) { return <option key={c.value} value={c.value}>{c.label}</option>; })}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Label</div>
+            <input value={label} onChange={function(e) { setLabel(e.target.value); }} required style={inp} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Budgeted ($)</div>
+            <input type="number" step="0.01" value={budgeted} onChange={function(e) { setBudgeted(e.target.value); }} style={inp} placeholder="0" />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Actual ($)</div>
+            <input type="number" step="0.01" value={actual} onChange={function(e) { setActual(e.target.value); }} style={inp} placeholder="0" />
+          </div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Notes</div>
+          <input value={notes} onChange={function(e) { setNotes(e.target.value); }} style={inp} placeholder="Optional" />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="submit" disabled={busy}
+            style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8,
+                     padding: '8px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Save
+          </button>
+          <button type="button" onClick={onCancel}
+            style={{ background: 'transparent', color: '#5f6368', border: '1px solid #1e3060',
+                     borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  // ---- Settings form ---
+  function SettingsForm({ summary, onSave, onCancel }) {
+    var [tripBudget,     setTripBudget]     = React.useState(summary && summary.tripBudget    ? String(summary.tripBudget)    : '');
+    var [tripTravellers, setTripTravellers] = React.useState(summary && summary.travellers ? String(summary.travellers) : '2');
+    var inp = { background: '#060f20', border: '1px solid #1e3060', borderRadius: 6,
+                color: '#dde1f0', padding: '6px 10px', fontSize: 13, width: '100%', boxSizing: 'border-box' };
+    function submit(ev) {
+      ev.preventDefault();
+      onSave(tripBudget, tripTravellers);
+    }
+    return (
+      <form onSubmit={submit} style={{ background: '#0a1628', border: '1px solid #1e3060', borderRadius: 10,
+                                       padding: '16px 18px', marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, color: '#c9a84c', marginBottom: 10, fontSize: 14 }}>Trip Settings</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Trip Budget Cap ($) <span style={{ color: '#4d6080' }}>optional</span></div>
+            <input type="number" step="1" value={tripBudget} onChange={function(e) { setTripBudget(e.target.value); }} style={inp} placeholder="e.g. 2000" />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 4 }}>Travellers</div>
+            <input type="number" min="1" step="1" value={tripTravellers} onChange={function(e) { setTripTravellers(e.target.value); }} style={inp} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="submit" disabled={busy}
+            style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8,
+                     padding: '8px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            Save
+          </button>
+          <button type="button" onClick={onCancel}
+            style={{ background: 'transparent', color: '#5f6368', border: '1px solid #1e3060',
+                     borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  var availableTrips = trips || [];
+
+  return (
+    <div>
+      {/* Trip selector */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: '#5c9eff', marginBottom: 6, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Select Trip</div>
+        {availableTrips.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#4d6080', fontStyle: 'italic' }}>No upcoming trips found. Add trips via the My Trips subtab.</div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {availableTrips.map(function(t) {
+              var tk   = t.startDate + '|' + t.label;
+              var active = tk === selectedKey;
+              return (
+                <button key={tk} onClick={function() { handleSelectTrip(tk); }}
+                  style={{ background: active ? '#1a3a6e' : '#0a1628', border: active ? '1px solid #5c9eff' : '1px solid #1e3060',
+                           borderRadius: 20, padding: '6px 14px', fontSize: 12, color: active ? '#fff' : '#8a9bb5',
+                           cursor: 'pointer', fontWeight: active ? 600 : 400 }}>
+                  {t.label} \u00b7 {t.startDate}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {!selectedKey && (
+        <div className="empty-state">
+          <div style={{ fontSize: 32, marginBottom: 10 }}>💰</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>Trip Budget</div>
+          <div style={{ fontSize: 12, color: '#4d6080' }}>Select a trip above to view or set up its budget.</div>
+        </div>
+      )}
+
+      {selectedKey && data === 'loading' && (
+        <div className="empty-state" style={{ color: '#5f6368' }}>Loading\u2026</div>
+      )}
+
+      {selectedKey && data && data !== 'loading' && (function() {
+        var items   = data.items   || [];
+        var summary = data.summary || {};
+        var hasItems = items.length > 0;
+
+        return (
+          <div>
+            {error && (
+              <div style={{ background: '#2a0d0d', border: '1px solid #6e1a1a', borderRadius: 8,
+                            padding: '10px 14px', marginBottom: 12, color: '#ff8080', fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+
+            {/* Settings / Edit forms */}
+            {settingsOpen && (
+              <SettingsForm summary={summary} onSave={handleSaveSettings} onCancel={function() { setSettingsOpen(false); }} />
+            )}
+            {editItem && (
+              <BudgetItemForm item={editItem._new ? null : editItem} onSave={handleSaveItem} onCancel={function() { setEditItem(null); }} />
+            )}
+            {copyMode && (
+              <div style={{ background: '#0a1628', border: '1px solid #1e3060', borderRadius: 10,
+                             padding: '16px 18px', marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, color: '#c9a84c', marginBottom: 10, fontSize: 14 }}>Copy Budget from Previous Trip</div>
+                {tripsWBudget === null && (function() { loadTripsWithBudgets(); return null; })()}
+                {tripsWBudget === 'loading' ? (
+                  <div style={{ color: '#5f6368', fontSize: 13 }}>Loading\u2026</div>
+                ) : (
+                  <div>
+                    {(tripsWBudget || []).filter(function(tk) { return tk !== selectedKey; }).length === 0 ? (
+                      <div style={{ color: '#4d6080', fontSize: 13, fontStyle: 'italic' }}>No other trips with budget data found.</div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <select value={copySource} onChange={function(e) { setCopySource(e.target.value); }}
+                          style={{ background: '#060f20', border: '1px solid #1e3060', borderRadius: 6,
+                                   color: '#dde1f0', padding: '6px 10px', fontSize: 13 }}>
+                          <option value="">\u2014 choose trip \u2014</option>
+                          {(tripsWBudget || []).filter(function(tk) { return tk !== selectedKey; }).map(function(tk) {
+                            var parts  = tk.split('|');
+                            var label  = parts.slice(1).join('|') || tk;
+                            return <option key={tk} value={tk}>{label} ({parts[0]})</option>;
+                          })}
+                        </select>
+                        <button onClick={handleCopy} disabled={busy || !copySource}
+                          style={{ background: '#1a3a6e', color: '#fff', border: 'none', borderRadius: 8,
+                                   padding: '7px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                          Copy
+                        </button>
+                        <button onClick={function() { setCopyMode(false); }}
+                          style={{ background: 'transparent', color: '#5f6368', border: '1px solid #1e3060',
+                                   borderRadius: 8, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Empty state — getting started */}
+            {!hasItems && !editItem && !copyMode && (
+              <div style={{ background: '#0a1628', border: '1px solid #1e3060', borderRadius: 12, padding: '24px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: 28, marginBottom: 10 }}>💰</div>
+                <div style={{ color: '#dde1f0', fontWeight: 600, marginBottom: 6 }}>No budget set up for this trip yet.</div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginTop: 16 }}>
+                  <button onClick={handleImport} disabled={busy}
+                    style={{ background: '#0d2040', color: '#5c9eff', border: '1px solid #1e3060', borderRadius: 8,
+                             padding: '9px 16px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                    📋 Import from Itinerary
+                  </button>
+                  <button onClick={function() { loadTripsWithBudgets(); setCopyMode(true); }} disabled={busy}
+                    style={{ background: '#0d2040', color: '#5c9eff', border: '1px solid #1e3060', borderRadius: 8,
+                             padding: '9px 16px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                    📑 Copy from Previous Trip
+                  </button>
+                  <button onClick={function() { setEditItem({ _new: true }); }} disabled={busy}
+                    style={{ background: '#0d2040', color: '#5c9eff', border: '1px solid #1e3060', borderRadius: 8,
+                             padding: '9px 16px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                    ✏️ Start Fresh
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Populated budget table */}
+            {hasItems && !editItem && (
+              <div>
+                {/* Header / summary row */}
+                <div style={{ background: summary.tripBudget && summary.actual > summary.tripBudget ? '#2a1800' : '#0a1628',
+                              border: '1px solid #1e3060', borderRadius: '10px 10px 0 0',
+                              padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, color: '#dde1f0', fontSize: 14 }}>{trip ? trip.label : selectedKey.split('|').slice(1).join('|')}</span>
+                    {trip && (
+                      <span style={{ fontSize: 11, color: '#8a9bb5', marginLeft: 8 }}>{trip.startDate} \u2013 {trip.endDate}</span>
+                    )}
+                  </div>
+                  {summary.tripBudget ? (
+                    <span style={{ fontSize: 12, color: '#5c9eff', background: '#0d2040', borderRadius: 10, padding: '3px 10px' }}>
+                      Cap: {fmt(summary.tripBudget)}
+                    </span>
+                  ) : null}
+                  <span style={{ fontSize: 12, color: '#8a9bb5' }}>
+                    {summary.travellers || 2} traveller{(summary.travellers || 2) !== 1 ? 's' : ''}
+                  </span>
+                  <button onClick={function() { setSettingsOpen(function(v) { return !v; }); }}
+                    style={{ background: 'transparent', color: '#5f6368', border: '1px solid #1e3060',
+                             borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+                    ⚙️ Settings
+                  </button>
+                </div>
+
+                {/* Line items table */}
+                <div style={{ border: '1px solid #1e3060', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
+                  {/* Header row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 60px',
+                                background: '#060f20', padding: '6px 10px',
+                                fontSize: 11, color: '#5c9eff', fontWeight: 700, letterSpacing: 0.5 }}>
+                    <div>Category</div>
+                    <div style={{ textAlign: 'right' }}>Budgeted</div>
+                    <div style={{ textAlign: 'right' }}>Actual</div>
+                    <div style={{ textAlign: 'right' }}>+/\u2212</div>
+                    <div />
+                  </div>
+
+                  {items.map(function(it) {
+                    var diff  = (Number(it.Actual) || 0) - (Number(it.Budgeted) || 0);
+                    var over  = it.Actual && it.Budgeted && Number(it.Actual) > Number(it.Budgeted);
+                    return (
+                      <div key={it.ID} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 60px',
+                                                borderTop: '1px solid #0d1520', alignItems: 'center' }}>
+                        <div style={Object.assign({}, cellStyle, { color: over ? '#e6a000' : '#dde1f0' })}>
+                          {it.Label || it.Category}
+                          {it.Notes ? <span style={{ fontSize: 10, color: '#4d6080', marginLeft: 6 }}>({it.Notes})</span> : null}
+                        </div>
+                        <div style={Object.assign({}, cellStyle, { textAlign: 'right', color: '#8a9bb5' })}>{fmt(it.Budgeted)}</div>
+                        <div style={Object.assign({}, cellStyle, { textAlign: 'right', color: over ? '#e6a000' : '#dde1f0' })}>{fmt(it.Actual)}</div>
+                        <div style={Object.assign({}, cellStyle, { textAlign: 'right' })}>
+                          {it.Actual !== '' && it.Actual !== null && it.Budgeted !== '' && it.Budgeted !== null
+                            ? diffBadge(diff) : <span style={{ color: '#2a3a50' }}>\u2014</span>}
+                        </div>
+                        <div style={Object.assign({}, cellStyle, { display: 'flex', gap: 4, justifyContent: 'flex-end' })}>
+                          <button onClick={function() { setEditItem(it); }}
+                            style={{ background: 'transparent', color: '#5c9eff', border: 'none',
+                                     fontSize: 12, cursor: 'pointer', padding: '2px 4px' }}>✏️</button>
+                          <button onClick={function() { handleDeleteItem(it.ID); }}
+                            style={{ background: 'transparent', color: '#6e3030', border: 'none',
+                                     fontSize: 12, cursor: 'pointer', padding: '2px 4px' }}>🗑</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Totals row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 60px',
+                                borderTop: '2px solid #1e3060', background: '#060f20', alignItems: 'center' }}>
+                    <div style={Object.assign({}, cellStyle, { fontWeight: 700, color: '#dde1f0' })}>Total</div>
+                    <div style={Object.assign({}, cellStyle, { textAlign: 'right', fontWeight: 700, color: '#8a9bb5' })}>{fmt(summary.budgeted)}</div>
+                    <div style={Object.assign({}, cellStyle, { textAlign: 'right', fontWeight: 700,
+                                color: summary.tripBudget && summary.actual > summary.tripBudget ? '#e6a000' : '#dde1f0' })}>
+                      {fmt(summary.actual)}
+                    </div>
+                    <div style={Object.assign({}, cellStyle, { textAlign: 'right', fontWeight: 700 })}>
+                      {diffBadge(summary.diff)}
+                    </div>
+                    <div style={cellStyle} />
+                  </div>
+
+                  {/* Per person row */}
+                  {(summary.travellers || 2) > 1 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 60px',
+                                  background: '#060f20', alignItems: 'center', borderTop: '1px solid #0d1520' }}>
+                      <div style={Object.assign({}, cellStyle, { fontSize: 11, color: '#5f6368', fontStyle: 'italic' })}>Per person</div>
+                      <div style={cellStyle} />
+                      <div style={Object.assign({}, cellStyle, { textAlign: 'right', fontSize: 12, color: '#8a9bb5' })}>
+                        {fmt(summary.perPerson)}
+                      </div>
+                      <div style={cellStyle} /><div style={cellStyle} />
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                  <button onClick={function() { setEditItem({ _new: true }); }} disabled={busy}
+                    style={{ background: '#0d2040', color: '#5c9eff', border: '1px solid #1e3060', borderRadius: 8,
+                             padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                    + Add Line Item
+                  </button>
+                  <button onClick={function() { setSettingsOpen(function(v) { return !v; }); }} disabled={busy}
+                    style={{ background: 'transparent', color: '#5f6368', border: '1px solid #1e3060', borderRadius: 8,
+                             padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
+                    ✏️ Edit Trip Settings
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 function BucketListPanel({ entries, busy, onLoad, onAdd, onMarkVisited, onDelete,
                            onAddActivity, onToggleActivity, onDeleteActivity, apiUrl, apiToken }) {
   var [filterWho,      setFilterWho]      = React.useState('all');
@@ -5261,13 +5771,9 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
         />
       )}
 
-      {/* Budget placeholder */}
+      {/* Trip Budget */}
       {sub === 'budget' && (
-        <div className="empty-state">
-          <div style={{ fontSize: 36, marginBottom: 12 }}>💰</div>
-          <div style={{ color: '#dde1f0', marginBottom: 6 }}>Trip Budget</div>
-          <div style={{ fontSize: 12, color: '#4d6080' }}>Coming soon</div>
-        </div>
+        <TripBudgetPanel trips={upcomingTravel} apiUrl={apiUrl} apiToken={apiToken} />
       )}
 
       {/* Traveler Profiles (Issue #123) */}

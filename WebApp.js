@@ -309,6 +309,14 @@ function doGet(e) {
       case 'update_health_appointment':  return jsonOut_(webUpdateHealthAppointment_(e));
       case 'delete_health_appointment':  return jsonOut_(webDeleteHealthAppointment_(e));
       case 'log_health_visit':           return jsonOut_(webLogHealthVisit_(e));
+      // Trip Budget (Issue #96)
+      case 'get_trip_budget':            return jsonOut_(webGetTripBudget_(e));
+      case 'save_budget_item':           return jsonOut_(webSaveBudgetItem_(e));
+      case 'delete_budget_item':         return jsonOut_(webDeleteBudgetItem_(e));
+      case 'set_trip_budget_settings':   return jsonOut_(webSetTripBudgetSettings_(e));
+      case 'import_budget_from_itinerary': return jsonOut_(webImportBudgetFromItinerary_(e));
+      case 'copy_trip_budget':           return jsonOut_(webCopyTripBudget_(e));
+      case 'list_trips_with_budgets':    return jsonOut_(webListTripsWithBudgets_());
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -3190,11 +3198,13 @@ function webGetTripMeta_(e) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
     for (let i = 0; i < data.length; i++) {
       if (String(data[i][0]).trim() === tripKey) {
-        return { ok: true, tripKey, context: String(data[i][1] || ''), notes: String(data[i][2] || ''), traveler: String(data[i][4] || '') };
+        return { ok: true, tripKey, context: String(data[i][1] || ''), notes: String(data[i][2] || ''), traveler: String(data[i][4] || ''),
+                 tripBudget: data[i][5] !== undefined ? Number(data[i][5]) || '' : '',
+                 tripTravellers: data[i][6] !== undefined ? Number(data[i][6]) || 2 : 2 };
       }
     }
   }
-  return { ok: true, tripKey, context: '', notes: '', traveler: '' };
+  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2 };
 }
 
 /**
@@ -3238,6 +3248,8 @@ function webSetTripMeta_(e) {
     (p.notes    || '').trim(),
     today,
     (p.traveler || '').trim(),
+    '',   // Trip Budget — set via set_trip_budget_settings
+    2,    // Trip Travellers default
   ]]);
   return { ok: true };
 }
@@ -7156,4 +7168,318 @@ function webUpdateHealthAppointment_() {
 }
 function webDeleteHealthAppointment_() {
   return { ok: false, error: 'Delete appointments directly in Google Calendar.' };
+}
+
+// ---- Trip Budget (Issue #96) ------------------------------------------------
+
+/**
+ * GET get_trip_budget — params: tripKey
+ * Returns { ok, tripKey, items: [...], summary: { budgeted, actual, diff, tripBudget, travellers } }
+ */
+function webGetTripBudget_(e) {
+  var p       = (e && e.parameter) ? e.parameter : {};
+  var tripKey = (p.tripKey || '').trim();
+  if (!tripKey) return { ok: false, error: 'tripKey required' };
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.TRIP_BUDGET);
+  if (!sheet) return { ok: true, tripKey: tripKey, items: [], summary: null };
+
+  var items = [];
+  if (sheet.getLastRow() >= 2) {
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      if (String(obj['Trip Key']).trim() === tripKey) items.push(obj);
+    });
+  }
+
+  // Fetch trip-level settings from TripMeta
+  var meta = {};
+  try { meta = webGetTripMeta_(e); } catch(err_) { /* graceful */ }
+  var tripBudget   = meta.tripBudget   || '';
+  var travellers   = meta.tripTravellers || 2;
+
+  var totalBudgeted = 0, totalActual = 0;
+  items.forEach(function(it) {
+    totalBudgeted += Number(it['Budgeted']) || 0;
+    totalActual   += Number(it['Actual'])   || 0;
+  });
+
+  var summary = {
+    budgeted:    totalBudgeted,
+    actual:      totalActual,
+    diff:        totalActual - totalBudgeted,
+    tripBudget:  tripBudget,
+    travellers:  travellers,
+    perPerson:   travellers > 1 ? (totalActual / travellers) : totalActual,
+  };
+
+  return { ok: true, tripKey: tripKey, items: items, summary: summary };
+}
+
+/**
+ * GET save_budget_item — params: tripKey, id (optional for update), category, label, budgeted, actual, notes
+ * Add (no id) or update (with id) a line item.
+ */
+function webSaveBudgetItem_(e) {
+  var p        = (e && e.parameter) ? e.parameter : {};
+  var tripKey  = (p.tripKey  || '').trim();
+  var id       = (p.id       || '').trim();
+  var category = (p.category || '').trim();
+  var label    = (p.label    || '').trim();
+  var budgeted = p.budgeted !== undefined ? (Number(p.budgeted) || 0) : '';
+  var actual   = p.actual   !== undefined ? (Number(p.actual)   || 0) : '';
+  var notes    = (p.notes    || '').trim();
+
+  if (!tripKey)  return { ok: false, error: 'tripKey required' };
+  if (!category) return { ok: false, error: 'category required' };
+  if (!label)    return { ok: false, error: 'label required' };
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.TRIP_BUDGET);
+  if (!sheet) throw new Error('Trip Budget tab not found. Run setupVERA() first.');
+
+  // Update existing item
+  if (id) {
+    if (sheet.getLastRow() >= 2) {
+      var rows = sheet.getDataRange().getValues();
+      var hdrs = rows[0];
+      var catIdx   = hdrs.indexOf('Category');
+      var labelIdx = hdrs.indexOf('Label');
+      var budgIdx  = hdrs.indexOf('Budgeted');
+      var actIdx   = hdrs.indexOf('Actual');
+      var notesIdx = hdrs.indexOf('Notes');
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][0]).trim() === id) {
+          if (catIdx   >= 0) sheet.getRange(i + 1, catIdx   + 1).setValue(category);
+          if (labelIdx >= 0) sheet.getRange(i + 1, labelIdx + 1).setValue(label);
+          if (budgIdx  >= 0 && p.budgeted !== undefined) sheet.getRange(i + 1, budgIdx + 1).setValue(budgeted);
+          if (actIdx   >= 0 && p.actual   !== undefined) sheet.getRange(i + 1, actIdx  + 1).setValue(actual);
+          if (notesIdx >= 0) sheet.getRange(i + 1, notesIdx + 1).setValue(notes);
+          return { ok: true, id: id, action: 'updated' };
+        }
+      }
+    }
+    return { ok: false, error: 'Item not found: ' + id };
+  }
+
+  // Add new item
+  var newId = 'BUDG-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') +
+              '-' + String(Date.now()).slice(-4);
+  sheet.appendRow([newId, tripKey, category, label, budgeted, actual, notes]);
+  return { ok: true, id: newId, action: 'added',
+           item: { ID: newId, 'Trip Key': tripKey, Category: category, Label: label,
+                   Budgeted: budgeted, Actual: actual, Notes: notes } };
+}
+
+/**
+ * GET delete_budget_item — params: id
+ */
+function webDeleteBudgetItem_(e) {
+  var id = ((e && e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.TRIP_BUDGET);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'not found' };
+
+  var rows = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, id: id };
+    }
+  }
+  return { ok: false, error: 'not found: ' + id };
+}
+
+/**
+ * GET set_trip_budget_settings — params: tripKey, tripBudget (optional), tripTravellers (optional)
+ * Stores trip-level budget cap and traveller count in TripMeta.
+ */
+function webSetTripBudgetSettings_(e) {
+  var p            = (e && e.parameter) ? e.parameter : {};
+  var tripKey      = (p.tripKey || '').trim();
+  if (!tripKey) return { ok: false, error: 'tripKey required' };
+
+  var ss    = getSpreadsheet();
+  ensureSheet(ss, TABS.TRIP_META, TRIP_META_HEADERS);
+  var sheet = ss.getSheetByName(TABS.TRIP_META);
+
+  var hdrsRow   = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var budgetCol = hdrsRow.indexOf('Trip Budget')     + 1;
+  var travCol   = hdrsRow.indexOf('Trip Travellers') + 1;
+
+  // If columns don't exist yet (old sheet), append header cells
+  if (budgetCol <= 0) {
+    budgetCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, budgetCol).setValue('Trip Budget');
+  }
+  if (travCol <= 0) {
+    travCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, travCol).setValue('Trip Travellers');
+  }
+
+  if (sheet.getLastRow() >= 2) {
+    var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() === tripKey) {
+        var rowNum = i + 2;
+        if (p.tripBudget     !== undefined) sheet.getRange(rowNum, budgetCol).setValue(Number(p.tripBudget)     || '');
+        if (p.tripTravellers !== undefined) sheet.getRange(rowNum, travCol).setValue(Number(p.tripTravellers)   || 2);
+        return { ok: true };
+      }
+    }
+  }
+
+  // No existing TripMeta row — create one with minimal data
+  var tz    = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  sheet.appendRow([tripKey, '', '', today, '',
+                   p.tripBudget     !== undefined ? (Number(p.tripBudget)     || '') : '',
+                   p.tripTravellers !== undefined ? (Number(p.tripTravellers) || 2)  : 2]);
+  return { ok: true };
+}
+
+/**
+ * GET import_budget_from_itinerary — params: tripKey
+ * Reads itinerary items for the trip and creates blank budget line items per detected category.
+ * Skips categories already present for this trip.
+ */
+function webImportBudgetFromItinerary_(e) {
+  var p       = (e && e.parameter) ? e.parameter : {};
+  var tripKey = (p.tripKey || '').trim();
+  if (!tripKey) return { ok: false, error: 'tripKey required' };
+
+  // Map itinerary types to budget categories
+  var typeToCategory = {
+    'flight':     { category: 'flights',   label: '\u2708\uFE0F Flights' },
+    'hotel':      { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
+    'stay':       { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
+    'car':        { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+    'transport':  { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+    'cruise':     { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
+    'train':      { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+    'bus':        { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+    'activity':   { category: 'activities', label: '\uD83C\uDFAD Activities' },
+    'tour':       { category: 'activities', label: '\uD83C\uDFAD Activities' },
+    'restaurant': { category: 'food',      label: '\uD83C\uDF7D Food & Dining' },
+  };
+
+  var ss         = getSpreadsheet();
+  var itinSheet  = ss.getSheetByName(TABS.ITINERARY);
+  var budgSheet  = ss.getSheetByName(TABS.TRIP_BUDGET);
+  if (!budgSheet) throw new Error('Trip Budget tab not found. Run setupVERA() first.');
+
+  // Collect existing categories for this trip
+  var existingCategories = {};
+  if (budgSheet.getLastRow() >= 2) {
+    var bRows  = budgSheet.getDataRange().getValues();
+    var bHdrs  = bRows[0];
+    var bTkIdx = bHdrs.indexOf('Trip Key');
+    var bCatIdx = bHdrs.indexOf('Category');
+    bRows.slice(1).forEach(function(r) {
+      if (String(r[bTkIdx]).trim() === tripKey) existingCategories[r[bCatIdx]] = true;
+    });
+  }
+
+  // Read itinerary
+  var seenCategories = {};
+  var added = [];
+  if (itinSheet && itinSheet.getLastRow() >= 2) {
+    var iRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    iRows.forEach(function(r) {
+      var rowTripKey = String(r[1]).trim();
+      if (rowTripKey !== tripKey) return;
+      var type    = String(r[2]).trim().toLowerCase();
+      var mapping = typeToCategory[type];
+      if (!mapping) return;
+      if (seenCategories[mapping.category])     return; // deduplicate per type
+      if (existingCategories[mapping.category]) return; // skip already present
+      seenCategories[mapping.category] = true;
+
+      var newId = 'BUDG-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') +
+                  '-' + String(Date.now()).slice(-4) + String(added.length);
+      budgSheet.appendRow([newId, tripKey, mapping.category, mapping.label, '', '', '']);
+      added.push({ id: newId, category: mapping.category, label: mapping.label });
+    });
+  }
+
+  return { ok: true, added: added, count: added.length };
+}
+
+/**
+ * GET copy_trip_budget — params: tripKey (destination), sourceTripKey
+ * Copies budgeted amounts from sourceTripKey; does not overwrite existing items.
+ */
+function webCopyTripBudget_(e) {
+  var p             = (e && e.parameter) ? e.parameter : {};
+  var tripKey       = (p.tripKey       || '').trim();
+  var sourceTripKey = (p.sourceTripKey || '').trim();
+  if (!tripKey)       return { ok: false, error: 'tripKey required' };
+  if (!sourceTripKey) return { ok: false, error: 'sourceTripKey required' };
+  if (tripKey === sourceTripKey) return { ok: false, error: 'Source and destination must differ' };
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.TRIP_BUDGET);
+  if (!sheet) throw new Error('Trip Budget tab not found. Run setupVERA() first.');
+
+  var existingCategories = {};
+  var sourceItems        = [];
+
+  if (sheet.getLastRow() >= 2) {
+    var rows    = sheet.getDataRange().getValues();
+    var hdrs    = rows[0];
+    var tkIdx   = hdrs.indexOf('Trip Key');
+    var catIdx  = hdrs.indexOf('Category');
+    var labIdx  = hdrs.indexOf('Label');
+    var budgIdx = hdrs.indexOf('Budgeted');
+    var notIdx  = hdrs.indexOf('Notes');
+
+    rows.slice(1).forEach(function(r) {
+      var rk = String(r[tkIdx]).trim();
+      if (rk === tripKey)       existingCategories[r[catIdx]] = true;
+      if (rk === sourceTripKey) {
+        sourceItems.push({ category: String(r[catIdx]), label: String(r[labIdx]),
+                           budgeted: r[budgIdx], notes: String(r[notIdx] || '') });
+      }
+    });
+  }
+
+  var added = [];
+  sourceItems.forEach(function(src) {
+    if (existingCategories[src.category]) return; // do not overwrite
+    var newId = 'BUDG-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') +
+                '-' + String(Date.now()).slice(-4) + String(added.length);
+    sheet.appendRow([newId, tripKey, src.category, src.label, src.budgeted, '', src.notes]);
+    added.push({ id: newId, category: src.category, label: src.label });
+  });
+
+  return { ok: true, added: added, count: added.length };
+}
+
+/**
+ * GET list_trips_with_budgets
+ * Returns trips that have at least one budget line item (for the Copy dropdown).
+ */
+function webListTripsWithBudgets_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.TRIP_BUDGET);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, trips: [] };
+
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  var tkIdx = hdrs.indexOf('Trip Key');
+
+  var seen = {};
+  rows.slice(1).forEach(function(r) {
+    var tk = String(r[tkIdx]).trim();
+    if (tk) seen[tk] = true;
+  });
+
+  return { ok: true, trips: Object.keys(seen) };
 }
