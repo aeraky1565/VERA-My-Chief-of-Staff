@@ -2993,9 +2993,16 @@ function webGetItinerary_(e) {
 
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
-          var calNameRaw = cal.getName();
-          // Skip calendars explicitly listed as extended-family awareness-only sources.
-          if (extraFamSet[calNameRaw.toLowerCase()]) return;
+          var calNameLc = cal.getName().toLowerCase();
+          // Skip calendars explicitly listed as extended-family awareness sources
+          if (extraFamSet[calNameLc]) return;
+          // Also skip any calendar that isn't Joint Chaos, isn't owned by Ahmed,
+          // and isn't the configured personal calendar — catches family-only
+          // subscriptions that weren't added to travel_extra_calendars.
+          var isJointChaos = calNameLc.indexOf('joint') !== -1 || calNameLc.indexOf('chaos') !== -1;
+          var isOwned      = cal.isOwnedByMe();
+          var isPersonal   = itinPersonal && calNameLc === itinPersonal;
+          if (!isJointChaos && !isOwned && !isPersonal) return;
 
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();

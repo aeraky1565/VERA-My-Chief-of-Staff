@@ -72,10 +72,6 @@ function readPTOConfig_() {
     // Use for extended family / shared calendars whose events shouldn't block Ahmed's scheduling windows.
     travelExtraCalendars: (raw['travel_extra_calendars'] || '')
                           .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
-    // Ahmed's personal Google Calendar name (optional). When set, events from this calendar
-    // are treated as trusted trip sources alongside Joint Chaos. Set via Config tab:
-    //   pto_personal_calendar = Ahmed Eleraky   (or whatever the calendar is named)
-    personalCalendarName: (raw['personal_calendar'] || '').trim(),
     // Keywords in event title OR description that identify inbound guest visits on gap calendars.
     // Uses the top-level 'house_guest_keywords' Config key (not pto_* prefixed).
     guestKeywords: (allKeys['house_guest_keywords'] || 'Visit,Staying,Guests')
@@ -680,10 +676,17 @@ function getUpcomingTravel_(cfg) {
     .map(function(n) { return n.trim(); })
     .filter(function(n) { return n && n !== cfg.calendarName; });
 
-  // Travel tab only shows Ahmed & Victoria's own trips.
-  // Extended-family / awareness-only calendars (travelExtraCalendars) are intentionally
-  // NOT scanned here — they belong to other people and must not create trip cards.
+  // Extra calendars scanned for trips only (not for clear-window blocking).
+  // Typically extended family calendars that are shared with Ahmed.
+  var extraCalNames = cfg.travelExtraCalendars || [];
+  var extraCalSet   = {};
+  extraCalNames.forEach(function(n) { extraCalSet[n] = true; });
+
+  // Merged list: gap calendars + extra-only travel calendars (deduplicated)
   var travelCalNames = gapCalNames.slice();
+  extraCalNames.forEach(function(n) {
+    if (travelCalNames.indexOf(n) === -1) travelCalNames.push(n);
+  });
 
   var travelIgnore  = cfg.travelIgnoreKeywords  || [];
   var travelRequire = cfg.travelRequireKeywords || []; // empty = no restriction
@@ -698,9 +701,10 @@ function getUpcomingTravel_(cfg) {
       Logger.log('getUpcomingTravel_: calendar not found — "' + calN + '"');
       continue;
     }
-    var rawEvs = cal.getEvents(today, end);
+    var rawEvs          = cal.getEvents(today, end);
+    var isExtendedFam   = !!extraCalSet[calN];
     for (var i = 0; i < rawEvs.length; i++) {
-      allCalEvents.push({ ev: rawEvs[i], calName: calN });
+      allCalEvents.push({ ev: rawEvs[i], calName: calN, isExtendedFamily: isExtendedFam });
     }
   }
 

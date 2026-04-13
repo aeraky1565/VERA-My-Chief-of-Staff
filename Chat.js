@@ -605,7 +605,6 @@ function buildChatSystemPrompt_(context) {
           lines += '  Packing: (none)\n';
         }
       });
-
       return lines + '\n';
     })() +
 
