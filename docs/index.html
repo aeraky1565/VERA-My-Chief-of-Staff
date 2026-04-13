@@ -4666,7 +4666,7 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
                   style={{ background: active ? '#1a3a6e' : '#0a1628', border: active ? '1px solid #5c9eff' : '1px solid #1e3060',
                            borderRadius: 20, padding: '6px 14px', fontSize: 12, color: active ? '#fff' : '#8a9bb5',
                            cursor: 'pointer', fontWeight: active ? 600 : 400 }}>
-                  {t.label} \u00b7 {t.startDate}
+                  {t.label} · {t.startDate}
                 </button>
               );
             })}
@@ -4723,7 +4723,7 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
                         <select value={copySource} onChange={function(e) { setCopySource(e.target.value); }}
                           style={{ background: '#060f20', border: '1px solid #1e3060', borderRadius: 6,
                                    color: '#dde1f0', padding: '6px 10px', fontSize: 13 }}>
-                          <option value="">\u2014 choose trip \u2014</option>
+                          <option value="">— choose trip —</option>
                           {(tripsWBudget || []).filter(function(tk) { return tk !== selectedKey; }).map(function(tk) {
                             var parts  = tk.split('|');
                             var label  = parts.slice(1).join('|') || tk;
@@ -4782,7 +4782,7 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ fontWeight: 700, color: '#dde1f0', fontSize: 14 }}>{trip ? trip.label : selectedKey.split('|').slice(1).join('|')}</span>
                     {trip && (
-                      <span style={{ fontSize: 11, color: '#8a9bb5', marginLeft: 8 }}>{trip.startDate} \u2013 {trip.endDate}</span>
+                      <span style={{ fontSize: 11, color: '#8a9bb5', marginLeft: 8 }}>{trip.startDate} – {trip.endDate}</span>
                     )}
                   </div>
                   {summary.tripBudget ? (
@@ -4809,7 +4809,7 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
                     <div>Category</div>
                     <div style={{ textAlign: 'right' }}>Budgeted</div>
                     <div style={{ textAlign: 'right' }}>Actual</div>
-                    <div style={{ textAlign: 'right' }}>+/\u2212</div>
+                    <div style={{ textAlign: 'right' }}>+/−</div>
                     <div />
                   </div>
 
@@ -4827,7 +4827,7 @@ function TripBudgetPanel({ trips, apiUrl, apiToken }) {
                         <div style={Object.assign({}, cellStyle, { textAlign: 'right', color: over ? '#e6a000' : '#dde1f0' })}>{fmt(it.Actual)}</div>
                         <div style={Object.assign({}, cellStyle, { textAlign: 'right' })}>
                           {it.Actual !== '' && it.Actual !== null && it.Budgeted !== '' && it.Budgeted !== null
-                            ? diffBadge(diff) : <span style={{ color: '#2a3a50' }}>\u2014</span>}
+                            ? diffBadge(diff) : <span style={{ color: '#2a3a50' }}>—</span>}
                         </div>
                         <div style={Object.assign({}, cellStyle, { display: 'flex', gap: 4, justifyContent: 'flex-end' })}>
                           <button onClick={function() { setEditItem(it); }}
