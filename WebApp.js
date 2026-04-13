@@ -2981,29 +2981,8 @@ function webGetItinerary_(e) {
         }
       });
 
-      // Only pull itinerary events from calendars that belong to Ahmed/Victoria.
-      // Extended-family / awareness-only calendars contain other people's trips and
-      // must not bleed into the itinerary view.
-      var itinPtoCfg   = readPTOConfig_();
-      var extraFamSet  = {};
-      (itinPtoCfg.travelExtraCalendars || []).forEach(function(n) {
-        extraFamSet[n.toLowerCase()] = true;
-      });
-      var itinPersonal = (itinPtoCfg.personalCalendarName || '').toLowerCase();
-
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
-          var calNameLc = cal.getName().toLowerCase();
-          // Skip calendars explicitly listed as extended-family awareness sources
-          if (extraFamSet[calNameLc]) return;
-          // Also skip any calendar that isn't Joint Chaos, isn't owned by Ahmed,
-          // and isn't the configured personal calendar — catches family-only
-          // subscriptions that weren't added to travel_extra_calendars.
-          var isJointChaos = calNameLc.indexOf('joint') !== -1 || calNameLc.indexOf('chaos') !== -1;
-          var isOwned      = cal.isOwnedByMe();
-          var isPersonal   = itinPersonal && calNameLc === itinPersonal;
-          if (!isJointChaos && !isOwned && !isPersonal) return;
-
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();
             const evLocation = (ev.getLocation() || '').trim();
