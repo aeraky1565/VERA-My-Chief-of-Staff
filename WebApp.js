@@ -2998,16 +2998,8 @@ function webGetItinerary_(e) {
       CalendarApp.getAllCalendars().forEach(function(cal) {
         try {
           var calNameRaw = cal.getName();
-          // Skip calendars explicitly listed as extended-family awareness sources.
-          // Use exact name match (same approach as getUpcomingTravel_ trusted set).
+          // Skip calendars explicitly listed as extended-family awareness-only sources.
           if (extraFamSet[calNameRaw.toLowerCase()]) return;
-          // Also skip any calendar that isn't owned by Ahmed AND isn't a gap calendar
-          // (Joint Chaos or personal) — catches family subscriptions not in the extra list.
-          var isGapCal   = itinPtoCfg.gapCalendarsRaw && itinPtoCfg.gapCalendarsRaw
-                             .split(',').some(function(n) { return n.trim() === calNameRaw; });
-          var isOwned    = cal.isOwnedByMe();
-          var isPersonal = itinPersonal && calNameRaw.toLowerCase() === itinPersonal;
-          if (!isGapCal && !isOwned && !isPersonal) return;
 
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();
