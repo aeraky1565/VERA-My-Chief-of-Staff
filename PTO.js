@@ -62,7 +62,7 @@ function readPTOConfig_() {
                            .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     // Multi-day events on gap calendars whose titles contain any of these strings
     // are excluded from the "Upcoming Travel" section (religious observances, etc.)
-    travelIgnoreKeywords:  (raw['travel_ignore_keywords'] || 'Ramadan,Eid,Lent,Holiday,Observance,Fast,Christmas,Hanukkah,Diwali,Passover')
+    travelIgnoreKeywords:  (raw['travel_ignore_keywords'] || 'Ramadan,Eid,Lent,Holiday,Observance,Fast,Hanukkah,Diwali,Passover')
                            .split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean),
     // When set, only multi-day events whose titles contain at least one of these
     // keywords are included as trips. Empty = include all multi-day events (old behaviour).
