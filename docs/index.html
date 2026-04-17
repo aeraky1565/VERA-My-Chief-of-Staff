@@ -14677,12 +14677,22 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <a href={r.url && /^https?:\/\//i.test(r.url) ? r.url : 'https://' + r.url}
-                       target="_blank" rel="noopener noreferrer"
-                       style={{ fontSize: 12, color: '#4a9eff', textDecoration: 'none',
-                                padding: '4px 8px', border: '1px solid #1e3a5a', borderRadius: 5 }}>
-                      ↗ Open
-                    </a>
+                    {(function() {
+                      var u = (r.url || '').trim();
+                      var href = null;
+                      if (/^https?:\/\//i.test(u))          href = u;                                        // already a full URL
+                      else if (u && /^[a-zA-Z0-9_-]{20,}$/.test(u)) href = 'https://drive.google.com/file/d/' + u + '/view'; // Drive file ID (PDF/Doc)
+                      else if (u && u.indexOf('.') !== -1)  href = 'https://' + u;                           // URL without protocol
+                      else if (r.driveFileId)               href = 'https://drive.google.com/file/d/' + r.driveFileId + '/view';
+                      if (!href) return null;
+                      return (
+                        <a href={href} target="_blank" rel="noopener noreferrer"
+                           style={{ fontSize: 12, color: '#4a9eff', textDecoration: 'none',
+                                    padding: '4px 8px', border: '1px solid #1e3a5a', borderRadius: 5 }}>
+                          ↗ Open
+                        </a>
+                      );
+                    })()}
                     <button style={{ fontSize: 12, padding: '4px 8px', background: 'transparent',
                                      border: '1px solid #1e2d40', borderRadius: 5, color: '#7a99bb', cursor: 'pointer' }}
                             onClick={() => openEdit(r)} disabled={busy}>✏</button>
