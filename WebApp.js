@@ -6649,10 +6649,19 @@ function webAddResource_(e) {
   if (!sheet) throw new Error('Resources tab not found');
   var tz  = Session.getScriptTimeZone();
   var id  = 'RES-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd') + '-' + String(sheet.getLastRow()).padStart(3, '0');
+  var url = (p.url || '').trim();
+  // Auto-extract Drive file ID from URL if not explicitly provided
+  var driveFileId = (p.driveFileId || '').trim() || extractDriveFileId_(url);
   // RESOURCE_HEADERS: ID | Name | Category | Applies To | Description | URL | Tags | Drive File ID
-  sheet.appendRow([id, (p.name||'').trim(), (p.category||'').trim(), (p.appliesTo||'Both').trim(),
-    (p.description||'').trim(), (p.url||'').trim(), (p.tags||'').trim(), (p.driveFileId||'').trim()]);
-  return { ok: true, id: id, action: 'created' };
+  var name     = (p.name||'').trim();
+  var category = (p.category||'').trim();
+  var appliesTo= (p.appliesTo||'Both').trim();
+  var desc     = (p.description||'').trim();
+  var tags     = (p.tags||'').trim();
+  sheet.appendRow([id, name, category, appliesTo, desc, url, tags, driveFileId]);
+  return { ok: true, id: id, action: 'created',
+           resource: { id: id, name: name, category: category, appliesTo: appliesTo,
+                       description: desc, url: url, tags: tags, driveFileId: driveFileId } };
 }
 
 function webUpdateResource_(e) {
@@ -6662,7 +6671,14 @@ function webUpdateResource_(e) {
   if (p.category    != null) f.sheet.getRange(f.rowNum, 3).setValue(p.category.trim());
   if (p.appliesTo   != null) f.sheet.getRange(f.rowNum, 4).setValue(p.appliesTo.trim());
   if (p.description != null) f.sheet.getRange(f.rowNum, 5).setValue(p.description.trim());
-  if (p.url         != null) f.sheet.getRange(f.rowNum, 6).setValue(p.url.trim());
+  if (p.url         != null) {
+    f.sheet.getRange(f.rowNum, 6).setValue(p.url.trim());
+    // Auto-extract Drive file ID from new URL (only if driveFileId not explicitly passed)
+    if (p.driveFileId == null) {
+      var extracted = extractDriveFileId_(p.url.trim());
+      if (extracted) f.sheet.getRange(f.rowNum, 8).setValue(extracted);
+    }
+  }
   if (p.tags        != null) f.sheet.getRange(f.rowNum, 7).setValue(p.tags.trim());
   if (p.driveFileId != null) f.sheet.getRange(f.rowNum, 8).setValue(p.driveFileId.trim());
   return { ok: true, id: p.id, action: 'updated' };
@@ -7001,35 +7017,62 @@ function webSyncLifePlanDoc_() {
 // Resource Content Fetch (Explore tab — Drive file reader)
 // ============================================================
 
+/**
+ * Extracts a Google Drive file ID from a URL or returns the raw value
+ * if it already looks like a file ID (long alphanumeric string, no dots).
+ * Returns '' if nothing useful is found.
+ */
+function extractDriveFileId_(url) {
+  if (!url) return '';
+  var u = String(url).trim();
+  // Already a raw file ID (no dots, no slashes, 25+ chars)
+  if (/^[a-zA-Z0-9_-]{25,}$/.test(u)) return u;
+  // /d/{id}/ pattern — Google Docs, Sheets, Slides, Drive preview
+  var m = u.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+  if (m) return m[1];
+  // ?id={id} or &id={id} pattern — Drive open/export links
+  m = u.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+  if (m) return m[1];
+  return '';
+}
+
 function webFetchResourceContent_(e) {
-  var id = ((e.parameter && e.parameter.id) || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
+  var query = ((e.parameter && (e.parameter.id || e.parameter.name)) || '').trim();
+  if (!query) return { ok: false, error: 'id or name required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.RESOURCES);
   if (!sheet) return { ok: false, error: 'Resources sheet not found' };
   var rows = sheet.getDataRange().getValues();
   var hdrs = rows[0];
   var resource = null;
+  // Try exact ID match first, then case-insensitive name match
   for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === id) {
+    if (String(rows[i][0]).trim() === query) {
       resource = {};
       hdrs.forEach(function(h, j) { resource[h] = rows[i][j]; });
       break;
     }
   }
-  if (!resource) return { ok: false, error: 'not found' };
-  var driveFileId = String(resource['Drive File ID'] || '').trim();
-  if (driveFileId && driveFileId.indexOf('://') !== -1) {
-    var dm = driveFileId.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
-    if (!dm) dm = driveFileId.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
-    driveFileId = dm ? dm[1] : '';
+  if (!resource) {
+    var ql = query.toLowerCase();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][1]).trim().toLowerCase().indexOf(ql) >= 0) {
+        resource = {};
+        hdrs.forEach(function(h, j) { resource[h] = rows[i][j]; });
+        break;
+      }
+    }
   }
+  if (!resource) return { ok: false, error: 'Resource not found matching: ' + query };
+  // Resolve Drive file ID — from dedicated column, then fall back to extracting from URL
+  var driveFileId = extractDriveFileId_(String(resource['Drive File ID'] || '').trim()) ||
+                    extractDriveFileId_(String(resource['URL'] || '').trim());
   if (!driveFileId) return { ok: false, error: 'no_drive_file', name: resource['Name'], url: resource['URL'] };
   try {
     var doc  = DocumentApp.openById(driveFileId);
     var text = doc.getBody().getText();
-    if (text.length > 12000) text = text.substring(0, 12000) + '\n[...content truncated...]';
-    return { ok: true, id: id, name: resource['Name'], content: text };
+    if (text.length > 12000) text = text.substring(0, 12000) + '\n[...content truncated at 12,000 chars...]';
+    return { ok: true, id: String(resource['ID'] || ''), name: resource['Name'], content: text };
   } catch (err) {
     return { ok: false, error: 'cannot_read_file', name: resource['Name'], url: resource['URL'], detail: err.message };
   }

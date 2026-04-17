@@ -581,6 +581,18 @@ function buildChatSystemPrompt_(context) {
     'PINNED NOTES (' + (context.pinnedNotes ? context.pinnedNotes.length : 0) + '):\n' + pinnedNoteLines + '\n\n' +
 
     (function() {
+      var refs = context.resources || [];
+      if (!refs.length) return '';
+      var lines = 'REFERENCE DOCUMENTS (' + refs.length + ') — use ACTION:read_resource to access content when asked:\n';
+      refs.forEach(function(r) {
+        lines += '  [' + r.id + '] ' + r.name + ' (' + r.category + ')' +
+                 (r.description ? ' — ' + r.description : '') +
+                 (r.canRead ? ' ✓readable' : ' ⚠link-only') + '\n';
+      });
+      return lines + '\n';
+    })() +
+
+    (function() {
       var travel = context.travel;
       if (!travel || !travel.trips || travel.trips.length === 0) {
         return 'UPCOMING TRIPS:\n  (No upcoming trips found)\n\n';
@@ -813,6 +825,8 @@ function buildChatSystemPrompt_(context) {
     // Credit Card Hub (Issues #115 + #117)
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
+    // Reference documents
+    'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
     '\n' +
 
     'RULES:\n' +
@@ -879,6 +893,7 @@ function buildChatSystemPrompt_(context) {
     '- For log_health_visit: use when Ahmed says "I went to the dentist", "had my physical today", "just saw Dr X", or "log my eye exam". appointmentType can be partial — VERA fuzzy-matches against existing calendar events to resolve person and full type. Date defaults to today. This creates a "DR: Person - Type" all-day event in Google Calendar.\n' +
     '- For add_health_appointment: use when Ahmed says "start tracking my annual physical", "add a reminder for my dermatologist", or "add X\'s eye exam". Second arg is person (Ahmed/Victoria). Creates a DR: calendar event so VERA starts tracking it.\n' +
     '- For query_health_due: use when Ahmed asks "when is my next dentist appointment?", "am I due for a physical?", or "when did I last see my eye doctor?". Reads from Google Calendar history. Emit this ACTION and include the result in your reply.\n' +
+    '- For read_resource: ONLY use when Ahmed explicitly asks about the contents of a specific document or policy (e.g. "what does my insurance doc say about X", "read my Verizon policy"). Pass the resource name or ID from REFERENCE DOCUMENTS above. Do not use proactively.\n' +
     '- For log_card_used: use when Ahmed says "I used my X card", "paid with my X", or "charged it to X". Confirm the card was logged. Card name can be partial (e.g. "Amex" matches "Amex Gold").\n' +
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
@@ -1229,6 +1244,18 @@ function buildChatContext_() {
     }
   } catch(e) { Logger.log('Chat context: pinnedNotes — ' + e.message); }
 
+  // Reference resources (metadata only — content fetched on demand via read_resource)
+  var resources = [];
+  try {
+    var resResult = webGetResources_();
+    if (resResult && resResult.resources) {
+      resources = resResult.resources.map(function(r) {
+        return { id: r.id, name: r.name, category: r.category, description: r.description,
+                 tags: r.tags, canRead: !!(r.driveFileId || extractDriveFileId_(r.url)) };
+      });
+    }
+  } catch(e) { Logger.log('Chat context: resources — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1257,6 +1284,7 @@ function buildChatContext_() {
     upcomingGuests:  upcomingGuests,
     contracts:       contracts,
     pinnedNotes:     pinnedNotes,
+    resources:       resources,
   };
 }
 
@@ -2197,6 +2225,20 @@ function executeActions_(rawText) {
         }
       }
 
+      // ACTION:read_resource|{name_or_id} — fetch document content; result triggers a second Claude pass
+      else if (type === 'read_resource') {
+        var rrQuery = (args[0] || '').trim();
+        if (rrQuery) {
+          var rrResult = webFetchResourceContent_({ parameter: { id: rrQuery } });
+          if (rrResult.ok) {
+            executed.push('READ_RESOURCE_CONTENT:' + rrResult.name + '\n' + rrResult.content);
+          } else {
+            executed.push('READ_RESOURCE_ERROR:' + rrQuery + ' — ' + (rrResult.error || 'unknown error') +
+                          (rrResult.detail ? ' (' + rrResult.detail + ')' : ''));
+          }
+        }
+      }
+
       // ACTION:query_health_due|{appointmentType}  — read-only, result goes back to Claude via executed[]
       else if (type === 'query_health_due') {
         var qdType  = (args[0] || '').trim().toLowerCase();
@@ -2349,6 +2391,25 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
 
   // Strip ACTION lines before returning to user
   var cleanReply = stripActions_(rawReply);
+
+  // Second pass — if read_resource was executed, feed the content back to Claude
+  var resourceContents = actionResult.executed.filter(function(x) {
+    return x.indexOf('READ_RESOURCE_CONTENT:') === 0 || x.indexOf('READ_RESOURCE_ERROR:') === 0;
+  });
+  if (resourceContents.length > 0) {
+    var resourceMsg = 'The following document content was retrieved:\n\n' + resourceContents.join('\n\n') +
+                      '\n\nPlease now answer the user\'s question using this content. Be specific and cite relevant sections.';
+    var secondResult = callClaudeChat_(
+      resourceMsg,
+      history.concat([
+        { role: 'user',      content: trimmedMsg },
+        { role: 'assistant', content: rawReply   }
+      ]),
+      sysPrompt, null, null
+    );
+    cleanReply = stripActions_(secondResult.text);
+    sources = (secondResult.sources || []).concat(sources);
+  }
 
   // Surface any action failures so the user knows something went wrong
   if (actionResult.errors.length > 0) {
