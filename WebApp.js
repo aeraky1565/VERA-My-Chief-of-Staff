@@ -7596,27 +7596,16 @@ function webCopyTaxYear_(e) {
 // ─── NOTES (Google Doc backed) (Issue #167) ───────────────────────────────────
 
 function webGetNoteCategories_() {
-  try {
-    var doc  = getNotesDoc_();
-    var tabs = doc.getTabs();
-    var cats = tabs.map(function(t) { return t.getTitle(); });
-    return { ok: true, categories: cats };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  // Categories are a fixed constant — no Doc access needed
+  return { ok: true, categories: NOTES_CATEGORIES };
 }
 
 function webGetNotes_(e) {
   try {
-    var doc      = getNotesDoc_();
     var category = e && e.parameter && e.parameter.category ? e.parameter.category : '';
-    var notes    = [];
-    var tabs     = doc.getTabs();
-    for (var i = 0; i < tabs.length; i++) {
-      var tabTitle = tabs[i].getTitle();
-      if (category && tabTitle !== category) continue;
-      var tabNotes = readNotesFromTab_(tabs[i], tabTitle);
-      notes = notes.concat(tabNotes);
+    var notes    = readAllNotes_(getNotesDocId_());
+    if (category) {
+      notes = notes.filter(function(n) { return n.category === category; });
     }
     // Sort: pinned first, then by date desc
     notes.sort(function(a, b) {
@@ -7632,18 +7621,14 @@ function webGetNotes_(e) {
 
 function webAddNote_(e) {
   try {
-    var p        = e.parameter;
-    var category = p.category || 'General';
-    var docId    = getNotesDocId_();
-    var tab      = getOrCreateNoteTab_(docId, category);
-    var body     = tab.asDocumentTab().getBody();
-    var tables   = body.getTables();
-    var table    = tables.length ? tables[0] : body.appendTable([NOTES_DOC_HEADERS]);
-    var id       = Utilities.getUuid();
-    var today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    var p      = e.parameter;
+    var docId  = getNotesDocId_();
+    var table  = getNotesTable_(docId);
+    var id     = Utilities.getUuid();
+    var today  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     // Insert after header row (position 1) so newest is at top
-    var newRow   = table.insertTableRow(1);
-    var vals     = [id, today, p.title || '', p.content || '', p.tags || '', p.relatedTo || '', p.pinned === 'true' ? 'true' : ''];
+    var newRow = table.insertTableRow(1);
+    var vals   = [id, today, p.title || '', p.content || '', p.tags || '', p.relatedTo || '', p.pinned === 'true' ? 'true' : '', p.category || 'General'];
     for (var c = 0; c < vals.length; c++) {
       if (c < newRow.getNumCells()) {
         newRow.getCell(c).setText(vals[c]);
@@ -7659,18 +7644,15 @@ function webAddNote_(e) {
 
 function webUpdateNote_(e) {
   try {
-    var p        = e.parameter;
-    if (!p.id || !p.category) return errOut_('Missing id or category', 400);
-    var docId = getNotesDocId_();
-    var tab   = getOrCreateNoteTab_(docId, p.category);
-    var rows = readNotesFromTab_(tab, p.category);
-    var note = null;
-    for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
+    var p     = e.parameter;
+    if (!p.id) return errOut_('Missing id', 400);
+    var notes = readAllNotes_(getNotesDocId_());
+    var note  = null;
+    for (var i = 0; i < notes.length; i++) { if (notes[i].id === p.id) { note = notes[i]; break; } }
     if (!note) return errOut_('Note not found', 404);
-    var body  = tab.asDocumentTab().getBody();
-    var table = body.getTables()[0];
-    var row   = table.getRow(note.rowIndex);
-    var fields = { 2: p.title, 3: p.content, 4: p.tags, 5: p.relatedTo, 6: p.pinned };
+    var table  = getNotesTable_(getNotesDocId_());
+    var row    = table.getRow(note.rowIndex);
+    var fields = { 2: p.title, 3: p.content, 4: p.tags, 5: p.relatedTo, 6: p.pinned, 7: p.category };
     for (var col in fields) {
       if (fields[col] !== undefined) row.getCell(parseInt(col)).setText(fields[col]);
     }
@@ -7682,17 +7664,14 @@ function webUpdateNote_(e) {
 
 function webDeleteNote_(e) {
   try {
-    var p = e.parameter;
-    if (!p.id || !p.category) return errOut_('Missing id or category', 400);
+    var p    = e.parameter;
+    if (!p.id) return errOut_('Missing id', 400);
     var docId = getNotesDocId_();
-    var tab   = getOrCreateNoteTab_(docId, p.category);
-    var rows = readNotesFromTab_(tab, p.category);
-    var note = null;
-    for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
+    var notes = readAllNotes_(docId);
+    var note  = null;
+    for (var i = 0; i < notes.length; i++) { if (notes[i].id === p.id) { note = notes[i]; break; } }
     if (!note) return errOut_('Note not found', 404);
-    var body  = tab.asDocumentTab().getBody();
-    var table = body.getTables()[0];
-    table.removeRow(note.rowIndex);
+    getNotesTable_(docId).removeRow(note.rowIndex);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -7701,18 +7680,15 @@ function webDeleteNote_(e) {
 
 function webPinNote_(e) {
   try {
-    var p = e.parameter;
-    if (!p.id || !p.category) return errOut_('Missing id or category', 400);
-    var docId = getNotesDocId_();
-    var tab   = getOrCreateNoteTab_(docId, p.category);
-    var rows = readNotesFromTab_(tab, p.category);
-    var note = null;
-    for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
+    var p    = e.parameter;
+    if (!p.id) return errOut_('Missing id', 400);
+    var docId  = getNotesDocId_();
+    var notes  = readAllNotes_(docId);
+    var note   = null;
+    for (var i = 0; i < notes.length; i++) { if (notes[i].id === p.id) { note = notes[i]; break; } }
     if (!note) return errOut_('Note not found', 404);
-    var body    = tab.asDocumentTab().getBody();
-    var table   = body.getTables()[0];
-    var newVal  = note.pinned ? '' : 'true';
-    table.getRow(note.rowIndex).getCell(6).setText(newVal);
+    var newVal = note.pinned ? '' : 'true';
+    getNotesTable_(docId).getRow(note.rowIndex).getCell(6).setText(newVal);
     return { ok: true, pinned: newVal === 'true' };
   } catch (err) {
     return { ok: false, error: err.message };

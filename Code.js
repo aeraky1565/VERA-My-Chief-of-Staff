@@ -142,7 +142,7 @@ const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', '
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
 var TAX_DOCUMENT_HEADERS = ['ID', 'Tax Year', 'Form Type', 'Issuer / Source', 'Account / Description', 'Category', 'Status', 'Document Link', 'Owner', 'Notes'];
-var NOTES_DOC_HEADERS = ['ID', 'Date Added', 'Title', 'Content', 'Tags', 'Related To', 'Pinned'];
+var NOTES_DOC_HEADERS = ['ID', 'Date Added', 'Title', 'Content', 'Tags', 'Related To', 'Pinned', 'Category'];
 var NOTES_CATEGORIES  = ['General', 'Travel', 'Lessons Learned', 'Reference', 'Finance', 'Health'];
 const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status'];
 // Growth (Issue #88) — column order matches row[] offsets used in Growth.js
@@ -2407,69 +2407,37 @@ function getNotesDocId_() {
 }
 
 /**
- * Opens the VERA Notes Google Doc fresh (required after REST API tab creation).
+ * Opens the VERA Notes Google Doc.
  */
 function getNotesDoc_() {
   return DocumentApp.openById(getNotesDocId_());
 }
 
 /**
- * Finds a tab by title, or creates it via the Docs REST API.
- * DocumentApp has no addTab() — creation requires the REST API.
- * Takes docId (string) so it can reopen the doc after REST creation.
- * Returns a DocumentTab object with a header table initialised.
+ * Returns the single notes table from the Doc body, creating it if absent.
+ * No REST API or GCP project setup required — plain DocumentApp only.
+ * @param {string} docId
+ * @returns {GoogleAppsScript.Document.Table}
  */
-function getOrCreateNoteTab_(docId, tabName) {
-  // Check existing tabs first
-  var doc  = DocumentApp.openById(docId);
-  var tabs = doc.getTabs();
-  for (var i = 0; i < tabs.length; i++) {
-    if (tabs[i].getTitle() === tabName) return tabs[i];
-  }
-
-  // Create via Docs REST API (the only way in Apps Script)
-  var token = ScriptApp.getOAuthToken();
-  var resp  = UrlFetchApp.fetch(
-    'https://docs.googleapis.com/v1/documents/' + docId + ':batchUpdate',
-    {
-      method:             'post',
-      contentType:        'application/json',
-      headers:            { Authorization: 'Bearer ' + token },
-      payload:            JSON.stringify({ requests: [{ createTab: { tabProperties: { title: tabName } } }] }),
-      muteHttpExceptions: true,
-    }
-  );
-  var result = JSON.parse(resp.getContentText());
-  if (!result.replies || !result.replies[0] || !result.replies[0].createTab) {
-    throw new Error('Failed to create Doc tab "' + tabName + '": ' + resp.getContentText());
-  }
-
-  // Reopen doc to see the new tab (DocumentApp caches state)
-  var freshTabs = DocumentApp.openById(docId).getTabs();
-  var newTab    = null;
-  for (var j = 0; j < freshTabs.length; j++) {
-    if (freshTabs[j].getTitle() === tabName) { newTab = freshTabs[j]; break; }
-  }
-  if (!newTab) throw new Error('Tab "' + tabName + '" created via REST but not found on reload');
-
-  // Seed with header row table
-  newTab.asDocumentTab().getBody().appendTable([NOTES_DOC_HEADERS]);
-  return newTab;
+function getNotesTable_(docId) {
+  var body   = DocumentApp.openById(docId).getBody();
+  var tables = body.getTables();
+  if (tables.length) return tables[0];
+  // First use: seed the table with the header row
+  return body.appendTable([NOTES_DOC_HEADERS]);
 }
 
 /**
- * Reads all rows from a Notes Doc tab's table. Returns array of note objects.
- * @param {DocumentTab} tab
- * @param {string} category - the tab name (used as category label)
+ * Reads all rows from the Notes Doc table. Returns array of note objects.
+ * Category is stored as col 7 in each row.
+ * @param {string} docId
+ * @returns {Array}
  */
-function readNotesFromTab_(tab, category) {
-  var body   = tab.asDocumentTab().getBody();
-  var tables = body.getTables();
-  if (!tables.length) return [];
-  var table  = tables[0];
-  var notes  = [];
+function readAllNotes_(docId) {
+  var table   = getNotesTable_(docId);
+  var notes   = [];
   var numRows = table.getNumRows();
-  for (var r = 1; r < numRows; r++) {  // skip header row
+  for (var r = 1; r < numRows; r++) {  // skip header row 0
     var row = table.getRow(r);
     var id  = row.getCell(0).getText().trim();
     if (!id) continue;
@@ -2481,7 +2449,7 @@ function readNotesFromTab_(tab, category) {
       tags:      row.getCell(4).getText().trim(),
       relatedTo: row.getCell(5).getText().trim(),
       pinned:    row.getCell(6).getText().trim() === 'true',
-      category:  category,
+      category:  row.getCell(7).getText().trim() || 'General',
       rowIndex:  r
     });
   }
@@ -2489,16 +2457,12 @@ function readNotesFromTab_(tab, category) {
 }
 
 /**
- * One-time setup: initialise all default category tabs in the Notes Doc.
- * Safe to run multiple times (skips tabs that already exist).
+ * One-time setup: ensures the Notes Doc has its header table.
+ * Safe to run multiple times. No REST API required.
  */
 function setupNotesDoc() {
-  var docId = getNotesDocId_();
-  for (var i = 0; i < NOTES_CATEGORIES.length; i++) {
-    getOrCreateNoteTab_(docId, NOTES_CATEGORIES[i]);
-    Logger.log('Notes tab ready: ' + NOTES_CATEGORIES[i]);
-  }
-  Logger.log('setupNotesDoc complete');
+  getNotesTable_(getNotesDocId_());
+  Logger.log('setupNotesDoc complete — header table ready.');
 }
 
 // ============================================================
