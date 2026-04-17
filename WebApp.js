@@ -7634,8 +7634,8 @@ function webAddNote_(e) {
   try {
     var p        = e.parameter;
     var category = p.category || 'General';
-    var doc      = getNotesDoc_();
-    var tab      = getOrCreateNoteTab_(doc, category);
+    var docId    = getNotesDocId_();
+    var tab      = getOrCreateNoteTab_(docId, category);
     var body     = tab.asDocumentTab().getBody();
     var tables   = body.getTables();
     var table    = tables.length ? tables[0] : body.appendTable([NOTES_DOC_HEADERS]);
@@ -7661,8 +7661,8 @@ function webUpdateNote_(e) {
   try {
     var p        = e.parameter;
     if (!p.id || !p.category) return errOut_('Missing id or category', 400);
-    var doc  = getNotesDoc_();
-    var tab  = getOrCreateNoteTab_(doc, p.category);
+    var docId = getNotesDocId_();
+    var tab   = getOrCreateNoteTab_(docId, p.category);
     var rows = readNotesFromTab_(tab, p.category);
     var note = null;
     for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
@@ -7684,8 +7684,8 @@ function webDeleteNote_(e) {
   try {
     var p = e.parameter;
     if (!p.id || !p.category) return errOut_('Missing id or category', 400);
-    var doc  = getNotesDoc_();
-    var tab  = getOrCreateNoteTab_(doc, p.category);
+    var docId = getNotesDocId_();
+    var tab   = getOrCreateNoteTab_(docId, p.category);
     var rows = readNotesFromTab_(tab, p.category);
     var note = null;
     for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
@@ -7703,8 +7703,8 @@ function webPinNote_(e) {
   try {
     var p = e.parameter;
     if (!p.id || !p.category) return errOut_('Missing id or category', 400);
-    var doc  = getNotesDoc_();
-    var tab  = getOrCreateNoteTab_(doc, p.category);
+    var docId = getNotesDocId_();
+    var tab   = getOrCreateNoteTab_(docId, p.category);
     var rows = readNotesFromTab_(tab, p.category);
     var note = null;
     for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }

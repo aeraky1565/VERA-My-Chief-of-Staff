@@ -2390,44 +2390,70 @@ function resetChoresByCadence_() {
 // ============================================================
 
 /**
- * Opens the VERA Notes Google Doc using the ID stored in Config tab (notes_doc_id).
- * Throws a clear error if not configured.
+ * Returns the Notes Doc ID from Config tab (notes_doc_id).
  */
-function getNotesDoc_() {
+function getNotesDocId_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.CONFIG);
   if (!sheet) throw new Error('Config tab not found');
   var data  = sheet.getDataRange().getValues();
-  var docId = '';
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === 'notes_doc_id') {
-      docId = String(data[i][1]).trim();
-      break;
+      var id = String(data[i][1]).trim();
+      if (id) return id;
     }
   }
-  if (!docId) throw new Error('notes_doc_id not set in Config tab. Create a Google Doc and add its ID there.');
-  return DocumentApp.openById(docId);
+  throw new Error('notes_doc_id not set in Config tab. Create a Google Doc and paste its ID there.');
 }
 
 /**
- * Finds a tab by title in the Notes Doc, or creates it with a header table.
- * Returns the DocumentTab object.
+ * Opens the VERA Notes Google Doc fresh (required after REST API tab creation).
  */
-function getOrCreateNoteTab_(doc, tabName) {
+function getNotesDoc_() {
+  return DocumentApp.openById(getNotesDocId_());
+}
+
+/**
+ * Finds a tab by title, or creates it via the Docs REST API.
+ * DocumentApp has no addTab() — creation requires the REST API.
+ * Takes docId (string) so it can reopen the doc after REST creation.
+ * Returns a DocumentTab object with a header table initialised.
+ */
+function getOrCreateNoteTab_(docId, tabName) {
+  // Check existing tabs first
+  var doc  = DocumentApp.openById(docId);
   var tabs = doc.getTabs();
   for (var i = 0; i < tabs.length; i++) {
     if (tabs[i].getTitle() === tabName) return tabs[i];
   }
-  // Create new tab
-  var newTab = doc.addTab({ title: tabName });
-  // Add header table
-  var body  = newTab.asDocumentTab().getBody();
-  var table = body.appendTable([NOTES_DOC_HEADERS]);
-  // Style header row
-  var headerRow = table.getRow(0);
-  for (var c = 0; c < NOTES_DOC_HEADERS.length; c++) {
-    headerRow.getCell(c).setBackgroundColor('#1a3060');
+
+  // Create via Docs REST API (the only way in Apps Script)
+  var token = ScriptApp.getOAuthToken();
+  var resp  = UrlFetchApp.fetch(
+    'https://docs.googleapis.com/v1/documents/' + docId + ':batchUpdate',
+    {
+      method:             'post',
+      contentType:        'application/json',
+      headers:            { Authorization: 'Bearer ' + token },
+      payload:            JSON.stringify({ requests: [{ createTab: { tabProperties: { title: tabName } } }] }),
+      muteHttpExceptions: true,
+    }
+  );
+  var result = JSON.parse(resp.getContentText());
+  if (!result.replies || !result.replies[0] || !result.replies[0].createTab) {
+    throw new Error('Failed to create Doc tab "' + tabName + '": ' + resp.getContentText());
   }
+
+  // Reopen doc to see the new tab (DocumentApp caches state)
+  var freshTabs = DocumentApp.openById(docId).getTabs();
+  var newTab    = null;
+  for (var j = 0; j < freshTabs.length; j++) {
+    if (freshTabs[j].getTitle() === tabName) { newTab = freshTabs[j]; break; }
+  }
+  if (!newTab) throw new Error('Tab "' + tabName + '" created via REST but not found on reload');
+
+  // Seed with header row table
+  newTab.asDocumentTab().getBody().appendTable([NOTES_DOC_HEADERS]);
   return newTab;
 }
 
@@ -2467,9 +2493,9 @@ function readNotesFromTab_(tab, category) {
  * Safe to run multiple times (skips tabs that already exist).
  */
 function setupNotesDoc() {
-  var doc = getNotesDoc_();
+  var docId = getNotesDocId_();
   for (var i = 0; i < NOTES_CATEGORIES.length; i++) {
-    getOrCreateNoteTab_(doc, NOTES_CATEGORIES[i]);
+    getOrCreateNoteTab_(docId, NOTES_CATEGORIES[i]);
     Logger.log('Notes tab ready: ' + NOTES_CATEGORIES[i]);
   }
   Logger.log('setupNotesDoc complete');
