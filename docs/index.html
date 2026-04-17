@@ -14036,16 +14036,16 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   const victoriaPersRemaining = pto?.victoriaStats?.remaining?.personalHours;
   const nextPTO               = pto?.ahmedStats?.nextPTO;
 
-  // Detect active trip (in progress) or imminent departure (starts tomorrow)
+  // Detect active trip (in progress) or imminent departure (within 24 h)
   var todayStr      = new Date().toISOString().slice(0, 10);
-  var _tmrw         = new Date(); _tmrw.setDate(_tmrw.getDate() + 1);
-  var tomorrowStr   = _tmrw.toISOString().slice(0, 10);
   var activeTrip    = (pto?.upcomingTravel || []).find(function(t) {
     return todayStr >= t.startDate && todayStr <= t.endDate;
   });
-  // Show banner the day before departure so nothing sneaks up on you
+  // Show banner whenever trip start is ≤ 24 hours away (time-based, not just calendar day)
   var imminentTrip  = !activeTrip && (pto?.upcomingTravel || []).find(function(t) {
-    return t.startDate === tomorrowStr;
+    var startMs = new Date(t.startDate + 'T00:00:00').getTime(); // midnight local time
+    var diffMs  = startMs - Date.now();
+    return diffMs > 0 && diffMs <= 86400000;
   });
   var displayTrip   = activeTrip || imminentTrip;
 
