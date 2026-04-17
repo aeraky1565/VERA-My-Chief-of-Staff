@@ -16075,7 +16075,7 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
                       resources, resourcesLoading, onAddResource, onUpdateResource, onDeleteResource,
                       experiments, experimentsLoading, onAddExperiment, onUpdateExperiment, onDeleteExperiment, onAddExperimentCheckin,
                       wishList, wishListLoading, onAddWishItem, onUpdateWishItem, onMarkWishPurchased, onDeleteWishItem,
-                      busy, features }) {
+                      busy, features, apiUrl, apiToken }) {
   const feat = features || {};
   const allSubTabs = [
     { id: 'interests',   label: '💛 Interests' },
@@ -18641,6 +18641,8 @@ function App() {
                 onDeleteWishItem={handleDeleteWishItem}
                 busy={busy}
                 features={status && status.features}
+                apiUrl={apiUrl}
+                apiToken={apiToken}
               />
             )}
 
