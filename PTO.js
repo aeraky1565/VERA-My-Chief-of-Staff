@@ -658,7 +658,8 @@ function detectCruises_(rawEvents, tz, today) {
 
 /**
  * Reads multi-day all-day events from all gap calendars (excluding the work
- * PTO calendar itself) for the next 180 days.
+ * PTO calendar itself) for the next 365 days so year-end trips (e.g. Christmas)
+ * are always visible.
  * Gap calendars are config-driven via pto_gap_calendars (e.g. "AE&VV - Our Joint Chaos").
  * Cruise trips (Board* … Disembark* event pairs) are detected and returned as
  * synthetic entries with isCruise: true and a normalised label.
@@ -668,7 +669,7 @@ function getUpcomingTravel_(cfg) {
   var tz    = Session.getScriptTimeZone();
   var today = new Date();
   today.setHours(0, 0, 0, 0);
-  var end = new Date(today.getTime() + 180 * 24 * 60 * 60 * 1000);
+  var end = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000);
 
   // Use gap calendars from config, but skip the work/PTO calendar — travel
   // entries should only come from shared/family calendars.
