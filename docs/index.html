@@ -11794,6 +11794,271 @@ function ContractModal({ contract, categories, busy, onClose, onSave }) {
   );
 }
 
+// ---- Tax Documents (Issue #166) ---------------------------------------------
+
+function TaxDocModal({ doc, busy, onClose, onSave }) {
+  const isEdit = !!doc;
+  const FORM_TYPES = ['W-2', '1099-INT', '1099-DIV', '1099-B', '1099-NEC', '1099-R', '1099-G', '1098', '1098-T', 'K-1', 'SSA-1099', 'Other'];
+  const [form, setForm] = React.useState({
+    taxYear:  doc ? doc.taxYear  : (new Date().getFullYear() - 1),
+    formType: doc ? doc.formType : '',
+    issuer:   doc ? doc.issuer   : '',
+    account:  doc ? doc.account  : '',
+    category: doc ? doc.category : 'Income',
+    status:   doc ? doc.status   : 'not_received',
+    docLink:  doc ? doc.docLink  : '',
+    owner:    doc ? doc.owner    : 'Ahmed',
+    notes:    doc ? doc.notes    : ''
+  });
+  const inp = { background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 6, color: '#dde1f0', padding: '7px 10px', width: '100%', fontSize: 13 };
+  const lbl = { fontSize: 12, color: '#7c9cbf', marginBottom: 4, display: 'block' };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 12, padding: 24, width: 480, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ fontWeight: 700, fontSize: 16, color: '#dde1f0', marginBottom: 18 }}>{isEdit ? 'Edit Document' : 'Add Tax Document'}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={lbl}>Tax Year</label>
+            <input type="number" style={inp} value={form.taxYear} onChange={ev => setForm(p => ({ ...p, taxYear: ev.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>Form Type</label>
+            <select style={inp} value={FORM_TYPES.indexOf(form.formType) !== -1 ? form.formType : 'Other'} onChange={ev => setForm(p => ({ ...p, formType: ev.target.value }))}>
+              {FORM_TYPES.map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Issuer / Source</label>
+            <input type="text" style={inp} placeholder="e.g. Verizon, Chase, Fidelity" value={form.issuer} onChange={ev => setForm(p => ({ ...p, issuer: ev.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>Account / Description</label>
+            <input type="text" style={inp} placeholder="e.g. Checking x1234" value={form.account} onChange={ev => setForm(p => ({ ...p, account: ev.target.value }))} />
+          </div>
+          <div>
+            <label style={lbl}>Category</label>
+            <select style={inp} value={form.category} onChange={ev => setForm(p => ({ ...p, category: ev.target.value }))}>
+              {['Income', 'Investment', 'Deduction', 'Business', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Owner</label>
+            <select style={inp} value={form.owner} onChange={ev => setForm(p => ({ ...p, owner: ev.target.value }))}>
+              {['Ahmed', 'Victoria', 'Joint'].map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Status</label>
+            <select style={inp} value={form.status} onChange={ev => setForm(p => ({ ...p, status: ev.target.value }))}>
+              {[['not_received','⬜ Not Received'],['received','📬 Received'],['verified','✅ Verified'],['uploaded','📤 Uploaded']].map(s => <option key={s[0]} value={s[0]}>{s[1]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Document Link</label>
+            <input type="text" style={inp} placeholder="Google Drive or TurboTax URL" value={form.docLink} onChange={ev => setForm(p => ({ ...p, docLink: ev.target.value }))} />
+          </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <label style={lbl}>Notes</label>
+          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={form.notes} onChange={ev => setForm(p => ({ ...p, notes: ev.target.value }))} />
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: 'transparent', color: '#7c9cbf', border: '1px solid #1e3060', borderRadius: 8, padding: '8px 18px', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => onSave(form)} disabled={busy} style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontWeight: 600 }}>{busy ? 'Saving…' : (isEdit ? 'Save Changes' : 'Add Document')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaxTab({ apiUrl, apiToken }) {
+  const currentTaxYear = new Date().getFullYear() - 1;
+  const [year,        setYear]        = React.useState(currentTaxYear);
+  const [docs,        setDocs]        = React.useState(null);
+  const [ownerFilter, setOwnerFilter] = React.useState('All');
+  const [editing,     setEditing]     = React.useState(null);
+  const [showAdd,     setShowAdd]     = React.useState(false);
+  const [busy,        setBusy]        = React.useState(false);
+  const [error,       setError]       = React.useState(null);
+  const [copyYear,    setCopyYear]    = React.useState('');
+  const [showCopy,    setShowCopy]    = React.useState(false);
+
+  function api(params) {
+    const qs = Object.entries({ token: apiToken, ...params })
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+    return fetch(`${apiUrl}?${qs}`).then(r => r.json());
+  }
+
+  function load() {
+    setDocs(null);
+    api({ action: 'get_tax_documents', year })
+      .then(d => setDocs(d.ok ? d.documents : []))
+      .catch(() => { setDocs([]); setError('Failed to load'); });
+  }
+
+  React.useEffect(() => { load(); }, [year]);
+
+  function cycleStatus(doc) {
+    const order = ['not_received', 'received', 'verified', 'uploaded'];
+    const next  = order[(order.indexOf(doc.status) + 1) % order.length];
+    setBusy(true);
+    api({ action: 'update_tax_document', id: doc.id, status: next })
+      .then(() => { load(); setBusy(false); })
+      .catch(() => setBusy(false));
+  }
+
+  function saveDoc(form) {
+    setBusy(true);
+    const action = editing ? 'update_tax_document' : 'add_tax_document';
+    const params = { action, ...form };
+    if (editing) params.id = editing.id;
+    api(params).then(() => { setBusy(false); setEditing(null); setShowAdd(false); load(); })
+      .catch(() => setBusy(false));
+  }
+
+  function deleteDoc(doc) {
+    if (!confirm(`Delete ${doc.formType} from ${doc.issuer}?`)) return;
+    api({ action: 'delete_tax_document', id: doc.id }).then(load);
+  }
+
+  function doCopyYear() {
+    if (!copyYear) return;
+    setBusy(true);
+    api({ action: 'copy_tax_year', fromYear: copyYear, toYear: year })
+      .then(() => { setBusy(false); setShowCopy(false); load(); })
+      .catch(() => setBusy(false));
+  }
+
+  const STATUS_META = {
+    not_received: { label: '⬜ Not Received', color: '#4d6080' },
+    received:     { label: '📬 Received',     color: '#c9a84c' },
+    verified:     { label: '✅ Verified',      color: '#5c9eff' },
+    uploaded:     { label: '📤 Uploaded',      color: '#22c55e' }
+  };
+
+  const filtered = (docs || []).filter(d => ownerFilter === 'All' || d.owner === ownerFilter);
+  const total    = filtered.length;
+  const uploaded = filtered.filter(d => d.status === 'uploaded').length;
+  const notRec   = filtered.filter(d => d.status === 'not_received').length;
+  const received = filtered.filter(d => d.status === 'received').length;
+  const verified = filtered.filter(d => d.status === 'verified').length;
+
+  const categories = ['Income', 'Investment', 'Deduction', 'Business', 'Other'];
+  const grouped = {};
+  categories.forEach(c => { grouped[c] = []; });
+  filtered.forEach(d => { (grouped[d.category] || grouped['Other']).push(d); });
+
+  const pillStyle = active => ({ background: active ? '#1a3060' : 'transparent', color: active ? '#5c9eff' : '#4d6080', border: '1px solid #1e3060', borderRadius: 20, padding: '4px 14px', fontSize: 12, cursor: 'pointer' });
+
+  return (
+    <div style={{ padding: '4px 0' }}>
+      {/* Year nav */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <button onClick={() => setYear(y => y - 1)} style={{ background: 'transparent', color: '#5c9eff', border: 'none', fontSize: 18, cursor: 'pointer' }}>‹</button>
+        <span style={{ fontWeight: 700, fontSize: 16, color: '#dde1f0', minWidth: 50, textAlign: 'center' }}>{year} Tax Year</span>
+        <button onClick={() => setYear(y => y + 1)} style={{ background: 'transparent', color: '#5c9eff', border: 'none', fontSize: 18, cursor: 'pointer' }}>›</button>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowAdd(true)} style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>+ Add Document</button>
+      </div>
+
+      {/* Progress bar */}
+      {docs && docs.length > 0 && (
+        <div style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ color: '#dde1f0', fontWeight: 600, fontSize: 13 }}>{uploaded} of {total} documents uploaded</span>
+            <span style={{ color: '#22c55e', fontSize: 13 }}>{total > 0 ? Math.round(uploaded / total * 100) : 0}%</span>
+          </div>
+          <div style={{ background: '#1e2a3a', borderRadius: 4, height: 6, marginBottom: 10 }}>
+            <div style={{ background: '#22c55e', borderRadius: 4, height: 6, width: `${total > 0 ? (uploaded / total * 100) : 0}%`, transition: 'width 0.3s' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+            <span style={{ color: '#4d6080' }}>⬜ {notRec} not received</span>
+            <span style={{ color: '#c9a84c' }}>📬 {received} received</span>
+            <span style={{ color: '#5c9eff' }}>✅ {verified} verified</span>
+            <span style={{ color: '#22c55e' }}>📤 {uploaded} uploaded</span>
+          </div>
+        </div>
+      )}
+
+      {/* Owner filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {['All', 'Ahmed', 'Victoria', 'Joint'].map(o => (
+          <button key={o} onClick={() => setOwnerFilter(o)} style={pillStyle(ownerFilter === o)}>{o}</button>
+        ))}
+      </div>
+
+      {/* Loading */}
+      {docs === null && <div style={{ color: '#4d6080', textAlign: 'center', padding: 40 }}>Loading…</div>}
+
+      {/* Empty state */}
+      {docs && docs.length === 0 && (
+        <div style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 10, padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>📄</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>No documents tracked for {year}</div>
+          <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 16 }}>Add documents or copy from a previous year.</div>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button onClick={() => setShowAdd(true)} style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, cursor: 'pointer' }}>+ Add Document</button>
+            <button onClick={() => setShowCopy(true)} style={{ background: '#0d2040', color: '#5c9eff', border: '1px solid #1e3060', borderRadius: 8, padding: '8px 18px', fontSize: 13, cursor: 'pointer' }}>Copy from Previous Year</button>
+          </div>
+        </div>
+      )}
+
+      {/* Copy year modal */}
+      {showCopy && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 12, padding: 24, width: 340 }}>
+            <div style={{ fontWeight: 700, color: '#dde1f0', marginBottom: 14 }}>Copy from Previous Year</div>
+            <select style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 6, color: '#dde1f0', padding: '7px 10px', width: '100%', fontSize: 13, marginBottom: 16 }} value={copyYear} onChange={ev => setCopyYear(ev.target.value)}>
+              <option value="">— select year —</option>
+              {[year-1, year-2, year-3].map(y => <option key={y} value={y}>{y} Tax Year</option>)}
+            </select>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowCopy(false)} style={{ background: 'transparent', color: '#7c9cbf', border: '1px solid #1e3060', borderRadius: 8, padding: '7px 16px', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={doCopyYear} disabled={!copyYear || busy} style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: 'pointer', fontWeight: 600 }}>{busy ? 'Copying…' : 'Copy'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document list grouped by category */}
+      {docs && docs.length > 0 && categories.map(cat => {
+        const catDocs = grouped[cat];
+        if (!catDocs || catDocs.length === 0) return null;
+        return (
+          <div key={cat} style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#4d6080', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>{cat}</div>
+            {catDocs.map(doc => {
+              const sm = STATUS_META[doc.status] || STATUS_META.not_received;
+              return (
+                <div key={doc.id} style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 8, padding: '10px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={() => cycleStatus(doc)} disabled={busy} title="Click to advance status" style={{ background: '#0a1628', border: '1px solid #1e3060', borderRadius: 6, color: sm.color, padding: '3px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 600, minWidth: 120 }}>{sm.label}</button>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#dde1f0', fontWeight: 600, fontSize: 13 }}>{doc.formType}</div>
+                    <div style={{ color: '#7c9cbf', fontSize: 12 }}>{doc.issuer}{doc.account ? ` — ${doc.account}` : ''}</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#3d5a7a', background: '#0a1628', border: '1px solid #1e3060', borderRadius: 10, padding: '2px 8px' }}>{doc.owner}</span>
+                  {doc.docLink && <a href={doc.docLink} target="_blank" style={{ color: '#5c9eff', fontSize: 12, textDecoration: 'none' }}>🔗</a>}
+                  <button onClick={() => setEditing(doc)} style={{ background: 'transparent', border: 'none', color: '#c9a84c', cursor: 'pointer', fontSize: 14 }}>✏</button>
+                  <button onClick={() => deleteDoc(doc)} style={{ background: 'transparent', border: 'none', color: '#e05252', cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {(showAdd || editing) && (
+        <TaxDocModal
+          doc={editing || null}
+          busy={busy}
+          onClose={() => { setShowAdd(false); setEditing(null); }}
+          onSave={saveDoc}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Finances Tab -----------------------------------------------------------
 
 function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, onBillToggle,
@@ -11837,6 +12102,7 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
     { id: 'cards',      label: '💳 Cards' },
     { id: 'contracts',  label: '📋 Contracts' },
     { id: 'goals',      label: '🎯 Goals' },
+    { id: 'tax',        label: '🧾 Tax' },
   ];
 
   return (
@@ -12014,6 +12280,9 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
           apiToken={apiToken}
         />
       )}
+
+      {/* ── Tax: Tax Document Checklist ──────────────────── */}
+      {sub === 'tax' && <TaxTab apiUrl={apiUrl} apiToken={apiToken} />}
 
     </div>
   );

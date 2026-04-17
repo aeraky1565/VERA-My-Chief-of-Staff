@@ -74,6 +74,7 @@ const TABS = {
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)
   FINANCIAL_GOALS:    'Financial Goals',      // Financial goals + what-if scenarios (Issue #127)
+  TAX_DOCUMENTS:      'Tax Documents',        // Tax document checklist (Issue #166)
   FINANCIAL_SCENARIOS:'Financial Scenarios',  // Saved what-if scenarios per goal (Issue #127)
   EMAIL_FOLLOW_UPS:   'Email Follow-ups',     // Email Admin follow-up tracking (Issue #144)
   BOOKS:               'Books',               // Reading list (Issue #88)
@@ -140,6 +141,7 @@ const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'S
 const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
+var TAX_DOCUMENT_HEADERS = ['ID', 'Tax Year', 'Form Type', 'Issuer / Source', 'Account / Description', 'Category', 'Status', 'Document Link', 'Owner', 'Notes'];
 const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status'];
 // Growth (Issue #88) — column order matches row[] offsets used in Growth.js
 const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes'];
@@ -282,6 +284,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_GOALS,      FINANCIAL_GOAL_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS,  FINANCIAL_SCENARIO_HEADERS);
+  ensureSheet(ss, TABS.TAX_DOCUMENTS,        TAX_DOCUMENT_HEADERS);
   // TABS.HEALTH_APPOINTMENTS removed — appointments read from Google Calendar (Issue #85)
   ensureSheet(ss, TABS.TRIP_BUDGET,          TRIP_BUDGET_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
@@ -668,6 +671,8 @@ function nightlyRun() {
 
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
+    checkTaxDocuments_();
+    Logger.log('Step 0n: tax document check done');
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
     try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); stepFailures.push('checkHealthAppointments_: ' + hErr.message); }
@@ -1349,6 +1354,62 @@ function escapeHtml_(str) {
 // ============================================================
 // MORNING NUDGE — 7am email summary
 // ============================================================
+
+// ============================================================
+// TAX DOCUMENTS — Issue #166
+// ============================================================
+
+function checkTaxDocuments_() {
+  try {
+    var ss   = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sh   = ss.getSheetByName(TABS.TAX_DOCUMENTS);
+    if (!sh || sh.getLastRow() < 2) return;
+    var rows = sh.getRange(2, 1, sh.getLastRow() - 1, TAX_DOCUMENT_HEADERS.length).getValues();
+    var today = new Date();
+    var year  = today.getFullYear();
+    // Tax year being checked is the PREVIOUS calendar year
+    var taxYear = year - 1;
+    var aprilDeadline = new Date(year, 3, 15); // April 15 of current year
+    var daysToDeadline = Math.floor((aprilDeadline - today) / 86400000);
+    var flagSheet = ss.getSheetByName(TABS.FLAGS);
+    if (!flagSheet) return;
+
+    rows.forEach(function(r) {
+      var id       = r[0];
+      var rowYear  = r[1];
+      var formType = r[2];
+      var issuer   = r[3];
+      var status   = r[6] || 'not_received';
+      if (!id || String(rowYear) !== String(taxYear)) return;
+
+      var flagKey = 'tax_doc_' + id;
+      // Check if flag already open
+      var allFlags = flagSheet.getLastRow() > 1
+        ? flagSheet.getRange(2, 1, flagSheet.getLastRow() - 1, 9).getValues()
+        : [];
+      var alreadyFlagged = allFlags.some(function(f) {
+        return f[0] === flagKey && !f[6] && !f[7] && !f[8]; // not ack/snoozed/resolved
+      });
+      if (alreadyFlagged) return;
+
+      // After Jan 31: flag any not_received
+      var jan31 = new Date(year, 0, 31);
+      if (today > jan31 && status === 'not_received') {
+        var flagRow = [flagKey, new Date(), 'Tax', formType + ' from ' + issuer + ' not yet received (Tax Year ' + taxYear + ')', 'Document may be late or missing', 'Medium', '', '', ''];
+        flagSheet.appendRow(flagRow);
+      }
+
+      // Within 30 days of April 15: flag anything not uploaded
+      if (daysToDeadline > 0 && daysToDeadline <= 30 && status !== 'uploaded') {
+        var urgency = daysToDeadline <= 7 ? 'High' : 'Medium';
+        var flagRow2 = [flagKey + '_deadline', new Date(), 'Tax', 'Tax deadline in ' + daysToDeadline + ' days — ' + formType + ' from ' + issuer + ' not yet uploaded', 'File before April 15', urgency, '', '', ''];
+        flagSheet.appendRow(flagRow2);
+      }
+    });
+  } catch (err) {
+    Logger.log('checkTaxDocuments_ error: ' + err.message);
+  }
+}
 
 // ============================================================
 // CONTRACT TRACKER — Issue #146

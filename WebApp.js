@@ -317,6 +317,12 @@ function doGet(e) {
       case 'import_budget_from_itinerary': return jsonOut_(webImportBudgetFromItinerary_(e));
       case 'copy_trip_budget':           return jsonOut_(webCopyTripBudget_(e));
       case 'list_trips_with_budgets':    return jsonOut_(webListTripsWithBudgets_());
+      // Tax Documents (Issue #166)
+      case 'get_tax_documents':   return jsonOut_(webGetTaxDocuments_(e));
+      case 'add_tax_document':    return jsonOut_(webAddTaxDocument_(e));
+      case 'update_tax_document': return jsonOut_(webUpdateTaxDocument_(e));
+      case 'delete_tax_document': return jsonOut_(webDeleteTaxDocument_(e));
+      case 'copy_tax_year':       return jsonOut_(webCopyTaxYear_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -7482,4 +7488,100 @@ function webListTripsWithBudgets_() {
   });
 
   return { ok: true, trips: Object.keys(seen) };
+}
+
+// ─── TAX DOCUMENTS ────────────────────────────────────────────────────────────
+
+function webGetTaxDocuments_(e) {
+  var ss  = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sh  = ss.getSheetByName(TABS.TAX_DOCUMENTS);
+  if (!sh || sh.getLastRow() < 2) return { ok: true, documents: [] };
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, TAX_DOCUMENT_HEADERS.length).getValues();
+  var yearFilter = e && e.parameter && e.parameter.year ? String(e.parameter.year) : null;
+  var docs = rows
+    .filter(function(r) { return r[0]; })
+    .filter(function(r) { return !yearFilter || String(r[1]) === yearFilter; })
+    .map(function(r) {
+      return {
+        id:          r[0],
+        taxYear:     r[1],
+        formType:    r[2],
+        issuer:      r[3],
+        account:     r[4],
+        category:    r[5],
+        status:      r[6] || 'not_received',
+        docLink:     r[7],
+        owner:       r[8] || 'Ahmed',
+        notes:       r[9]
+      };
+    });
+  return { ok: true, documents: docs };
+}
+
+function webAddTaxDocument_(e) {
+  var p  = e.parameter;
+  var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sh = ss.getSheetByName(TABS.TAX_DOCUMENTS);
+  if (!sh) return errOut_('Tax Documents sheet not found', 500);
+  var id = Utilities.getUuid();
+  sh.appendRow([
+    id, p.taxYear || '', p.formType || '', p.issuer || '', p.account || '',
+    p.category || 'Other', p.status || 'not_received', p.docLink || '',
+    p.owner || 'Ahmed', p.notes || ''
+  ]);
+  return { ok: true, id: id };
+}
+
+function webUpdateTaxDocument_(e) {
+  var p  = e.parameter;
+  if (!p.id) return errOut_('Missing id', 400);
+  var ss  = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sh  = ss.getSheetByName(TABS.TAX_DOCUMENTS);
+  if (!sh || sh.getLastRow() < 2) return errOut_('Not found', 404);
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map(function(r) { return r[0]; });
+  var idx = ids.indexOf(p.id);
+  if (idx === -1) return errOut_('Not found', 404);
+  var row = idx + 2;
+  if (p.taxYear   !== undefined) sh.getRange(row, 2).setValue(p.taxYear);
+  if (p.formType  !== undefined) sh.getRange(row, 3).setValue(p.formType);
+  if (p.issuer    !== undefined) sh.getRange(row, 4).setValue(p.issuer);
+  if (p.account   !== undefined) sh.getRange(row, 5).setValue(p.account);
+  if (p.category  !== undefined) sh.getRange(row, 6).setValue(p.category);
+  if (p.status    !== undefined) sh.getRange(row, 7).setValue(p.status);
+  if (p.docLink   !== undefined) sh.getRange(row, 8).setValue(p.docLink);
+  if (p.owner     !== undefined) sh.getRange(row, 9).setValue(p.owner);
+  if (p.notes     !== undefined) sh.getRange(row, 10).setValue(p.notes);
+  return { ok: true };
+}
+
+function webDeleteTaxDocument_(e) {
+  var p  = e.parameter;
+  if (!p.id) return errOut_('Missing id', 400);
+  var ss  = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sh  = ss.getSheetByName(TABS.TAX_DOCUMENTS);
+  if (!sh || sh.getLastRow() < 2) return errOut_('Not found', 404);
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().map(function(r) { return r[0]; });
+  var idx = ids.indexOf(p.id);
+  if (idx === -1) return errOut_('Not found', 404);
+  sh.deleteRow(idx + 2);
+  return { ok: true };
+}
+
+function webCopyTaxYear_(e) {
+  var p  = e.parameter;
+  if (!p.fromYear || !p.toYear) return errOut_('Missing fromYear or toYear', 400);
+  var ss  = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sh  = ss.getSheetByName(TABS.TAX_DOCUMENTS);
+  if (!sh || sh.getLastRow() < 2) return { ok: true, copied: 0 };
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, TAX_DOCUMENT_HEADERS.length).getValues();
+  var copied = 0;
+  rows.forEach(function(r) {
+    if (!r[0] || String(r[1]) !== String(p.fromYear)) return;
+    sh.appendRow([
+      Utilities.getUuid(), p.toYear, r[2], r[3], r[4],
+      r[5], 'not_received', r[7], r[8], r[9]
+    ]);
+    copied++;
+  });
+  return { ok: true, copied: copied };
 }
