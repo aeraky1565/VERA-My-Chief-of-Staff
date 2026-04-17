@@ -14598,10 +14598,13 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
 
   async function handleSubmit() {
     if (!form.name.trim() || !form.url.trim()) return;
+    var normalizedUrl = form.url.trim();
+    if (normalizedUrl && !/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = 'https://' + normalizedUrl;
+    var submitForm = Object.assign({}, form, { url: normalizedUrl });
     if (editing) {
-      await onUpdate(editing.id, form);
+      await onUpdate(editing.id, submitForm);
     } else {
-      await onAdd(form);
+      await onAdd(submitForm);
     }
     setShowModal(false);
   }
@@ -14674,7 +14677,8 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <a href={r.url} target="_blank" rel="noopener noreferrer"
+                    <a href={r.url && /^https?:\/\//i.test(r.url) ? r.url : 'https://' + r.url}
+                       target="_blank" rel="noopener noreferrer"
                        style={{ fontSize: 12, color: '#4a9eff', textDecoration: 'none',
                                 padding: '4px 8px', border: '1px solid #1e3a5a', borderRadius: 5 }}>
                       ↗ Open
