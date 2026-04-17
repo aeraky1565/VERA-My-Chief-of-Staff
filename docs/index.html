@@ -13639,9 +13639,13 @@ function SpendingChart({ summaries, budget }) {
 
 // ---- Active Travel Card (shown on Home tab when a trip is in progress) ------
 
-function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfig }) {
-  var tripKey = trip.startDate + '|' + trip.label;
-  var today   = new Date().toISOString().slice(0, 10);
+function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfig, departing }) {
+  var tripKey      = trip.startDate + '|' + trip.label;
+  var today        = new Date().toISOString().slice(0, 10);
+  var tomorrowStr  = new Date(new Date(today).getTime() + 86400000).toISOString().slice(0, 10);
+  // When banner fires "departing tomorrow", shift the display day to tomorrow so
+  // flights, hotel and door-out time reflect the actual departure day.
+  var displayDay   = departing ? tomorrowStr : today;
 
   const [items,            setItems]            = React.useState(null);
   const [flightStatuses,   setFlightStatuses]   = React.useState({});
@@ -13789,22 +13793,22 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
   }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived data ─────────────────────────────────────────────────────────
-  var dayNum    = Math.floor((new Date(today) - new Date(trip.startDate)) / 86400000) + 1;
+  var dayNum    = departing ? 1 : Math.floor((new Date(today) - new Date(trip.startDate)) / 86400000) + 1;
   var totalDays = Math.floor((new Date(trip.endDate) - new Date(trip.startDate)) / 86400000) + 1;
 
   var todayFlights = (items || [])
-    .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date === today; })
+    .filter(function(i) { return i.type === 'flight' && !i._synthetic && i.date === displayDay; })
     .sort(function(a, b) { return (a.startTime || '').localeCompare(b.startTime || ''); });
 
   var tonightHotel = (items || []).find(function(i) {
     if ((i.type !== 'hotel' && i.type !== 'cruise') || i._synthetic) return false;
     var m = {}; try { m = JSON.parse(i.metadata || '{}'); } catch(e) {}
     var checkout = m.checkoutDate || '';
-    return i.date <= today && (!checkout || checkout > today);
+    return i.date <= displayDay && (!checkout || checkout > displayDay);
   });
 
-  var isDepartureDay = today === trip.startDate;
-  var isReturnDay    = today === trip.endDate;
+  var isDepartureDay = displayDay === trip.startDate;
+  var isReturnDay    = displayDay === trip.endDate;
   var cfg            = travelConfig || {};
 
   // Extract first IATA code (3 uppercase letters) from a location string
@@ -13871,7 +13875,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: '#e8b44a' }}>
-          ✈️ Active Travel — {trip.label}
+          {departing ? '🧳 Departing Tomorrow' : '✈️ Active Travel'} — {trip.label}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Destination weather chip */}
@@ -13889,10 +13893,10 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
               </span>
             </div>
           )}
-          {/* Day counter badge */}
+          {/* Day counter badge — "Tomorrow" when pre-departure, otherwise "Day X of Y" */}
           <span style={{ fontSize: 11, fontWeight: 600, color: '#e8b44a', background: '#2a1e00',
                          borderRadius: 20, padding: '2px 10px', border: '1px solid #4a3800' }}>
-            Day {dayNum} of {totalDays}
+            {departing ? 'Tomorrow' : `Day ${dayNum} of ${totalDays}`}
           </span>
         </div>
       </div>
@@ -13921,7 +13925,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
           {todayFlights.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#4a5f80', letterSpacing: 1, textTransform: 'uppercase' }}>Today's Flights</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#4a5f80', letterSpacing: 1, textTransform: 'uppercase' }}>{departing ? "Tomorrow's Flights" : "Today's Flights"}</span>
                 <button onClick={forceRefreshStatuses} disabled={refreshingStatus}
                   style={{ background: 'none', border: 'none', cursor: refreshingStatus ? 'default' : 'pointer',
                            color: '#6b7fa8', fontSize: 14, padding: '0 2px', lineHeight: 1,
@@ -13983,7 +13987,7 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
 
           {/* No items fallback */}
           {todayFlights.length === 0 && !tonightHotel && !doorOutTime && !doorInTime && (
-            <div style={{ fontSize: 12, color: '#6b7fa8', fontStyle: 'italic' }}>No itinerary items for today.</div>
+            <div style={{ fontSize: 12, color: '#6b7fa8', fontStyle: 'italic' }}>No itinerary items for {departing ? 'tomorrow' : 'today'}.</div>
           )}
 
           {/* Door-In (return day only) */}
@@ -14032,11 +14036,18 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   const victoriaPersRemaining = pto?.victoriaStats?.remaining?.personalHours;
   const nextPTO               = pto?.ahmedStats?.nextPTO;
 
-  // Detect active trip (currently in progress)
-  var todayStr    = new Date().toISOString().slice(0, 10);
-  var activeTrip  = (pto?.upcomingTravel || []).find(function(t) {
+  // Detect active trip (in progress) or imminent departure (starts tomorrow)
+  var todayStr      = new Date().toISOString().slice(0, 10);
+  var _tmrw         = new Date(); _tmrw.setDate(_tmrw.getDate() + 1);
+  var tomorrowStr   = _tmrw.toISOString().slice(0, 10);
+  var activeTrip    = (pto?.upcomingTravel || []).find(function(t) {
     return todayStr >= t.startDate && todayStr <= t.endDate;
   });
+  // Show banner the day before departure so nothing sneaks up on you
+  var imminentTrip  = !activeTrip && (pto?.upcomingTravel || []).find(function(t) {
+    return t.startDate === tomorrowStr;
+  });
+  var displayTrip   = activeTrip || imminentTrip;
 
   // Pacing banner — shown when vacation mode or pacing mode is active (Issue #139)
   const showVacation = pacingStatus?.vacationMode;
@@ -14085,10 +14096,11 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
         </div>
       )}
     <div className="bento-grid">
-      {/* Active Travel Card — pinned to top when a trip is in progress */}
-      {activeTrip && (
+      {/* Active Travel Card — pinned to top when a trip is in progress or departing tomorrow */}
+      {displayTrip && (
         <ActiveTravelCard
-          trip={activeTrip}
+          trip={displayTrip}
+          departing={!!imminentTrip}
           apiUrl={apiUrl}
           apiToken={apiToken}
           travelConfig={status && status.travelConfig}
