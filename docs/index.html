@@ -15801,6 +15801,273 @@ function WishListTab({ wishList, onAdd, onUpdate, onMarkPurchased, onDelete, bus
   );
 }
 
+// ---- Notes tab (Issue #167) -------------------------------------------------
+
+var NOTES_CATEGORIES_LIST = ['General', 'Travel', 'Lessons Learned', 'Reference', 'Finance', 'Health'];
+
+function NoteModal({ note, busy, onClose, onSave }) {
+  var isEdit = !!note;
+  var inp = { background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 6, color: '#dde1f0', padding: '7px 10px', width: '100%', fontSize: 13, boxSizing: 'border-box' };
+  var lbl = { fontSize: 12, color: '#7c9cbf', marginBottom: 4, display: 'block' };
+  var [form, setForm] = React.useState({
+    title:     note ? (note.title     || '') : '',
+    category:  note ? (note.category  || 'General') : 'General',
+    content:   note ? (note.content   || '') : '',
+    tags:      note ? (note.tags      || '') : '',
+    relatedTo: note ? (note.relatedTo || '') : '',
+    pinned:    note ? (note.pinned    || false) : false,
+  });
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+         onClick={function(e) { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 12, padding: 24, width: 480, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ fontWeight: 700, fontSize: 16, color: '#dde1f0', marginBottom: 18 }}>{isEdit ? 'Edit Note' : 'Add Note'}</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Title *</label>
+          <input type="text" style={inp} value={form.title}
+            placeholder="Note title…"
+            onChange={function(ev) { setForm(function(p) { return Object.assign({}, p, { title: ev.target.value }); }); }} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Category</label>
+          <select style={inp} value={form.category}
+            onChange={function(ev) { setForm(function(p) { return Object.assign({}, p, { category: ev.target.value }); }); }}>
+            {NOTES_CATEGORIES_LIST.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+          </select>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Content</label>
+          <textarea rows={5} style={Object.assign({}, inp, { resize: 'vertical' })} value={form.content}
+            placeholder="Note content…"
+            onChange={function(ev) { setForm(function(p) { return Object.assign({}, p, { content: ev.target.value }); }); }} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <label style={lbl}>Tags</label>
+            <input type="text" style={inp} value={form.tags}
+              placeholder="e.g. finance, important"
+              onChange={function(ev) { setForm(function(p) { return Object.assign({}, p, { tags: ev.target.value }); }); }} />
+          </div>
+          <div>
+            <label style={lbl}>Related To</label>
+            <input type="text" style={inp} value={form.relatedTo}
+              placeholder="e.g. Trip to Paris, Q1 Budget"
+              onChange={function(ev) { setForm(function(p) { return Object.assign({}, p, { relatedTo: ev.target.value }); }); }} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <input type="checkbox" id="note-pinned" checked={!!form.pinned}
+            onChange={function(ev) { setForm(function(p) { return Object.assign({}, p, { pinned: ev.target.checked }); }); }} />
+          <label htmlFor="note-pinned" style={{ color: '#dde1f0', fontSize: 13, cursor: 'pointer' }}>Pin this note (shows in VERA chat context)</label>
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: 'transparent', color: '#7c9cbf', border: '1px solid #1e3060', borderRadius: 8, padding: '8px 18px', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={function() { onSave(form); }} disabled={busy || !form.title.trim()}
+            style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontWeight: 600 }}>
+            {busy ? 'Saving…' : (isEdit ? 'Save Changes' : 'Add Note')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotesTab({ apiUrl, apiToken }) {
+  var [notes,          setNotes]          = React.useState(null);
+  var [categories,     setCategories]     = React.useState(NOTES_CATEGORIES_LIST);
+  var [loading,        setLoading]        = React.useState(false);
+  var [error,          setError]          = React.useState(null);
+  var [search,         setSearch]         = React.useState('');
+  var [activeCategory, setActiveCategory] = React.useState('All');
+  var [editing,        setEditing]        = React.useState(null);
+  var [showAdd,        setShowAdd]        = React.useState(false);
+  var [busy,           setBusy]           = React.useState(false);
+
+  function api(params) {
+    var qs = Object.entries(Object.assign({ token: apiToken }, params))
+      .map(function(kv) { return encodeURIComponent(kv[0]) + '=' + encodeURIComponent(kv[1]); }).join('&');
+    return fetch(apiUrl + '?' + qs).then(function(r) { return r.json(); });
+  }
+
+  function loadCategories() {
+    api({ action: 'get_note_categories' })
+      .then(function(d) {
+        if (d.ok && d.categories && d.categories.length > 0) setCategories(d.categories);
+      })
+      .catch(function() {});
+  }
+
+  function loadNotes() {
+    setLoading(true);
+    setError(null);
+    var params = { action: 'get_notes' };
+    if (activeCategory !== 'All') params.category = activeCategory;
+    api(params)
+      .then(function(d) {
+        setLoading(false);
+        if (d.ok) setNotes(d.notes || []);
+        else setError(d.error || 'Failed to load notes');
+      })
+      .catch(function() { setLoading(false); setError('Network error'); });
+  }
+
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    loadCategories();
+  }, [apiUrl, apiToken]);
+
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    loadNotes();
+  }, [apiUrl, apiToken, activeCategory]);
+
+  function saveNote(form) {
+    setBusy(true);
+    var action = editing ? 'update_note' : 'add_note';
+    var params = Object.assign({ action: action }, form, { pinned: form.pinned ? 'true' : '' });
+    if (editing) { params.id = editing.id; params.category = editing.category; }
+    api(params)
+      .then(function() { setBusy(false); setEditing(null); setShowAdd(false); loadNotes(); })
+      .catch(function() { setBusy(false); });
+  }
+
+  function deleteNote(note) {
+    if (!confirm('Delete note "' + note.title + '"?')) return;
+    api({ action: 'delete_note', id: note.id, category: note.category })
+      .then(function() { loadNotes(); });
+  }
+
+  function pinNote(note) {
+    api({ action: 'pin_note', id: note.id, category: note.category })
+      .then(function() { loadNotes(); });
+  }
+
+  var searchLower = search.toLowerCase();
+  var displayed = (notes || []).filter(function(n) {
+    if (searchLower) {
+      return (n.title || '').toLowerCase().indexOf(searchLower) !== -1 ||
+             (n.content || '').toLowerCase().indexOf(searchLower) !== -1 ||
+             (n.tags || '').toLowerCase().indexOf(searchLower) !== -1;
+    }
+    return true;
+  });
+
+  var pillStyle = function(active) {
+    return { background: active ? '#1a3060' : 'transparent', color: active ? '#5c9eff' : '#4d6080', border: '1px solid #1e3060', borderRadius: 20, padding: '4px 14px', fontSize: 12, cursor: 'pointer' };
+  };
+
+  var cardStyle = { background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8, position: 'relative' };
+
+  return (
+    <div>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <input type="text" value={search} onChange={function(e) { setSearch(e.target.value); }}
+          placeholder="Search notes…"
+          style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 8, color: '#dde1f0', padding: '7px 12px', fontSize: 13, flex: 1 }} />
+        <button onClick={function() { setShowAdd(true); }}
+          style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          + Add Note
+        </button>
+      </div>
+
+      {/* Category pills */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <button onClick={function() { setActiveCategory('All'); }} style={pillStyle(activeCategory === 'All')}>All</button>
+        {categories.map(function(cat) {
+          return <button key={cat} onClick={function() { setActiveCategory(cat); }} style={pillStyle(activeCategory === cat)}>{cat}</button>;
+        })}
+      </div>
+
+      {/* Error */}
+      {error && <div style={{ color: '#e05252', marginBottom: 12, fontSize: 13 }}>{error}</div>}
+
+      {/* Loading */}
+      {loading && <div style={{ color: '#4d6080', textAlign: 'center', padding: 40 }}>Loading notes…</div>}
+
+      {/* Empty state */}
+      {!loading && notes !== null && displayed.length === 0 && (
+        <div style={{ background: '#0d1b2e', border: '1px solid #1e3060', borderRadius: 10, padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>📓</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>{search ? 'No notes match your search' : 'No notes yet'}</div>
+          <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 16 }}>
+            {search ? 'Try a different search term.' : 'Create a Google Doc, add its ID to Config tab as notes_doc_id, then run setupNotesDoc() once.'}
+          </div>
+          {!search && (
+            <button onClick={function() { setShowAdd(true); }}
+              style={{ background: '#1a56db', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, cursor: 'pointer' }}>
+              + Add First Note
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Card grid */}
+      {!loading && displayed.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+          {displayed.map(function(note) {
+            return (
+              <div key={note.id} style={cardStyle}>
+                {/* Top row: pin badge + category + date */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {note.pinned && (
+                    <span style={{ fontSize: 11, background: '#1a3060', color: '#f5c842', border: '1px solid #f5c842', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>📌 Pinned</span>
+                  )}
+                  <span style={{ fontSize: 11, background: '#0a1628', color: '#5c9eff', border: '1px solid #1e3060', borderRadius: 10, padding: '1px 8px' }}>{note.category}</span>
+                  <span style={{ fontSize: 11, color: '#3d5a7a', marginLeft: 'auto' }}>{note.dateAdded}</span>
+                </div>
+                {/* Title */}
+                <div style={{ color: '#dde1f0', fontWeight: 700, fontSize: 14 }}>{note.title}</div>
+                {/* Content snippet */}
+                <div style={{ color: '#7c9cbf', fontSize: 13, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {note.content}
+                </div>
+                {/* Tags */}
+                {note.tags && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {note.tags.split(',').map(function(tag) {
+                      return (
+                        <span key={tag.trim()} style={{ fontSize: 11, background: '#0a1628', color: '#4d6080', border: '1px solid #1e3060', borderRadius: 10, padding: '1px 8px' }}>
+                          {tag.trim()}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Related to */}
+                {note.relatedTo && (
+                  <div style={{ fontSize: 12, color: '#4d6080' }}>↳ {note.relatedTo}</div>
+                )}
+                {/* Action buttons */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button onClick={function() { pinNote(note); }} title={note.pinned ? 'Unpin' : 'Pin'}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, color: note.pinned ? '#f5c842' : '#3d5a7a', padding: 0 }}>
+                    {note.pinned ? '★' : '☆'}
+                  </button>
+                  <button onClick={function() { setEditing(note); }}
+                    style={{ background: 'transparent', border: 'none', color: '#c9a84c', cursor: 'pointer', fontSize: 14 }}>✏</button>
+                  <button onClick={function() { deleteNote(note); }}
+                    style={{ background: 'transparent', border: 'none', color: '#e05252', cursor: 'pointer', fontSize: 14 }}>🗑</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal */}
+      {(showAdd || editing) && (
+        <NoteModal
+          note={editing || null}
+          busy={busy}
+          onClose={function() { setShowAdd(false); setEditing(null); }}
+          onSave={saveNote}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Explore tab (Issue #101) -----------------------------------------------
 
 function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddInterest,
@@ -15816,6 +16083,7 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
     { id: 'resources',   label: '📚 Resources' },
     { id: 'experiments', label: '🧪 Experiments', featureKey: 'experiments' },
     { id: 'wish_list',   label: '🛍 Wish List',   featureKey: 'wish_list'   },
+    { id: 'notes',       label: '📓 Notes' },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('interests');
@@ -15887,6 +16155,9 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
               onDelete={onDeleteWishItem}
               busy={busy}
             />
+      )}
+      {sub === 'notes' && (
+        <NotesTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
     </div>
   );

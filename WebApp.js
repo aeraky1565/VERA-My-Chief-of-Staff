@@ -323,6 +323,13 @@ function doGet(e) {
       case 'update_tax_document': return jsonOut_(webUpdateTaxDocument_(e));
       case 'delete_tax_document': return jsonOut_(webDeleteTaxDocument_(e));
       case 'copy_tax_year':       return jsonOut_(webCopyTaxYear_(e));
+      // Notes (Issue #167)
+      case 'get_notes':           return jsonOut_(webGetNotes_(e));
+      case 'get_note_categories': return jsonOut_(webGetNoteCategories_());
+      case 'add_note':            return jsonOut_(webAddNote_(e));
+      case 'update_note':         return jsonOut_(webUpdateNote_(e));
+      case 'delete_note':         return jsonOut_(webDeleteNote_(e));
+      case 'pin_note':            return jsonOut_(webPinNote_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -7584,4 +7591,130 @@ function webCopyTaxYear_(e) {
     copied++;
   });
   return { ok: true, copied: copied };
+}
+
+// ─── NOTES (Google Doc backed) (Issue #167) ───────────────────────────────────
+
+function webGetNoteCategories_() {
+  try {
+    var doc  = getNotesDoc_();
+    var tabs = doc.getTabs();
+    var cats = tabs.map(function(t) { return t.getTitle(); });
+    return { ok: true, categories: cats };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function webGetNotes_(e) {
+  try {
+    var doc      = getNotesDoc_();
+    var category = e && e.parameter && e.parameter.category ? e.parameter.category : '';
+    var notes    = [];
+    var tabs     = doc.getTabs();
+    for (var i = 0; i < tabs.length; i++) {
+      var tabTitle = tabs[i].getTitle();
+      if (category && tabTitle !== category) continue;
+      var tabNotes = readNotesFromTab_(tabs[i], tabTitle);
+      notes = notes.concat(tabNotes);
+    }
+    // Sort: pinned first, then by date desc
+    notes.sort(function(a, b) {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return b.dateAdded.localeCompare(a.dateAdded);
+    });
+    return { ok: true, notes: notes };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function webAddNote_(e) {
+  try {
+    var p        = e.parameter;
+    var category = p.category || 'General';
+    var doc      = getNotesDoc_();
+    var tab      = getOrCreateNoteTab_(doc, category);
+    var body     = tab.asDocumentTab().getBody();
+    var tables   = body.getTables();
+    var table    = tables.length ? tables[0] : body.appendTable([NOTES_DOC_HEADERS]);
+    var id       = Utilities.getUuid();
+    var today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    // Insert after header row (position 1) so newest is at top
+    var newRow   = table.insertTableRow(1);
+    var vals     = [id, today, p.title || '', p.content || '', p.tags || '', p.relatedTo || '', p.pinned === 'true' ? 'true' : ''];
+    for (var c = 0; c < vals.length; c++) {
+      if (c < newRow.getNumCells()) {
+        newRow.getCell(c).setText(vals[c]);
+      } else {
+        newRow.appendTableCell(vals[c]);
+      }
+    }
+    return { ok: true, id: id };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function webUpdateNote_(e) {
+  try {
+    var p        = e.parameter;
+    if (!p.id || !p.category) return errOut_('Missing id or category', 400);
+    var doc  = getNotesDoc_();
+    var tab  = getOrCreateNoteTab_(doc, p.category);
+    var rows = readNotesFromTab_(tab, p.category);
+    var note = null;
+    for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
+    if (!note) return errOut_('Note not found', 404);
+    var body  = tab.asDocumentTab().getBody();
+    var table = body.getTables()[0];
+    var row   = table.getRow(note.rowIndex);
+    var fields = { 2: p.title, 3: p.content, 4: p.tags, 5: p.relatedTo, 6: p.pinned };
+    for (var col in fields) {
+      if (fields[col] !== undefined) row.getCell(parseInt(col)).setText(fields[col]);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function webDeleteNote_(e) {
+  try {
+    var p = e.parameter;
+    if (!p.id || !p.category) return errOut_('Missing id or category', 400);
+    var doc  = getNotesDoc_();
+    var tab  = getOrCreateNoteTab_(doc, p.category);
+    var rows = readNotesFromTab_(tab, p.category);
+    var note = null;
+    for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
+    if (!note) return errOut_('Note not found', 404);
+    var body  = tab.asDocumentTab().getBody();
+    var table = body.getTables()[0];
+    table.removeRow(note.rowIndex);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+function webPinNote_(e) {
+  try {
+    var p = e.parameter;
+    if (!p.id || !p.category) return errOut_('Missing id or category', 400);
+    var doc  = getNotesDoc_();
+    var tab  = getOrCreateNoteTab_(doc, p.category);
+    var rows = readNotesFromTab_(tab, p.category);
+    var note = null;
+    for (var i = 0; i < rows.length; i++) { if (rows[i].id === p.id) { note = rows[i]; break; } }
+    if (!note) return errOut_('Note not found', 404);
+    var body    = tab.asDocumentTab().getBody();
+    var table   = body.getTables()[0];
+    var newVal  = note.pinned ? '' : 'true';
+    table.getRow(note.rowIndex).getCell(6).setText(newVal);
+    return { ok: true, pinned: newVal === 'true' };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }

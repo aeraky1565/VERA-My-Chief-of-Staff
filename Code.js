@@ -142,6 +142,8 @@ const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', '
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
 var TAX_DOCUMENT_HEADERS = ['ID', 'Tax Year', 'Form Type', 'Issuer / Source', 'Account / Description', 'Category', 'Status', 'Document Link', 'Owner', 'Notes'];
+var NOTES_DOC_HEADERS = ['ID', 'Date Added', 'Title', 'Content', 'Tags', 'Related To', 'Pinned'];
+var NOTES_CATEGORIES  = ['General', 'Travel', 'Lessons Learned', 'Reference', 'Finance', 'Health'];
 const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status'];
 // Growth (Issue #88) — column order matches row[] offsets used in Growth.js
 const BOOK_HEADERS               = ['ID', 'Person', 'Title', 'Author', 'Category', 'Status', 'Rating', 'Date Started', 'Date Finished', 'Notes'];
@@ -2381,6 +2383,96 @@ function resetChoresByCadence_() {
     }
   }
   Logger.log('resetChoresByCadence_: reset ' + resetCount + ' chore(s). Cadences: ' + toReset.join(', '));
+}
+
+// ============================================================
+// NOTES — Google Doc-backed note storage (Issue #167)
+// ============================================================
+
+/**
+ * Opens the VERA Notes Google Doc using the ID stored in Config tab (notes_doc_id).
+ * Throws a clear error if not configured.
+ */
+function getNotesDoc_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) throw new Error('Config tab not found');
+  var data  = sheet.getDataRange().getValues();
+  var docId = '';
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === 'notes_doc_id') {
+      docId = String(data[i][1]).trim();
+      break;
+    }
+  }
+  if (!docId) throw new Error('notes_doc_id not set in Config tab. Create a Google Doc and add its ID there.');
+  return DocumentApp.openById(docId);
+}
+
+/**
+ * Finds a tab by title in the Notes Doc, or creates it with a header table.
+ * Returns the DocumentTab object.
+ */
+function getOrCreateNoteTab_(doc, tabName) {
+  var tabs = doc.getTabs();
+  for (var i = 0; i < tabs.length; i++) {
+    if (tabs[i].getTitle() === tabName) return tabs[i];
+  }
+  // Create new tab
+  var newTab = doc.addTab({ title: tabName });
+  // Add header table
+  var body  = newTab.asDocumentTab().getBody();
+  var table = body.appendTable([NOTES_DOC_HEADERS]);
+  // Style header row
+  var headerRow = table.getRow(0);
+  for (var c = 0; c < NOTES_DOC_HEADERS.length; c++) {
+    headerRow.getCell(c).setBackgroundColor('#1a3060');
+  }
+  return newTab;
+}
+
+/**
+ * Reads all rows from a Notes Doc tab's table. Returns array of note objects.
+ * @param {DocumentTab} tab
+ * @param {string} category - the tab name (used as category label)
+ */
+function readNotesFromTab_(tab, category) {
+  var body   = tab.asDocumentTab().getBody();
+  var tables = body.getTables();
+  if (!tables.length) return [];
+  var table  = tables[0];
+  var notes  = [];
+  var numRows = table.getNumRows();
+  for (var r = 1; r < numRows; r++) {  // skip header row
+    var row = table.getRow(r);
+    var id  = row.getCell(0).getText().trim();
+    if (!id) continue;
+    notes.push({
+      id:        id,
+      dateAdded: row.getCell(1).getText().trim(),
+      title:     row.getCell(2).getText().trim(),
+      content:   row.getCell(3).getText().trim(),
+      tags:      row.getCell(4).getText().trim(),
+      relatedTo: row.getCell(5).getText().trim(),
+      pinned:    row.getCell(6).getText().trim() === 'true',
+      category:  category,
+      rowIndex:  r
+    });
+  }
+  return notes;
+}
+
+/**
+ * One-time setup: initialise all default category tabs in the Notes Doc.
+ * Safe to run multiple times (skips tabs that already exist).
+ */
+function setupNotesDoc() {
+  var doc = getNotesDoc_();
+  for (var i = 0; i < NOTES_CATEGORIES.length; i++) {
+    getOrCreateNoteTab_(doc, NOTES_CATEGORIES[i]);
+    Logger.log('Notes tab ready: ' + NOTES_CATEGORIES[i]);
+  }
+  Logger.log('setupNotesDoc complete');
 }
 
 // ============================================================

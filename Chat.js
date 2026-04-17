@@ -428,6 +428,13 @@ function buildChatSystemPrompt_(context) {
                (i.tags ? ' — ' + i.tags : '');
       }).join('\n');
 
+  var pinnedNoteLines = (!context.pinnedNotes || context.pinnedNotes.length === 0)
+    ? '  (none pinned)'
+    : context.pinnedNotes.map(function(n) {
+        return '  [' + n.category + '] ' + n.title + ': ' + n.content.substring(0, 120) +
+               (n.tags ? ' — ' + n.tags : '');
+      }).join('\n');
+
   return (
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
     'You are the personal chief of staff for Ahmed (and his partner Victoria).\n\n' +
@@ -570,6 +577,8 @@ function buildChatSystemPrompt_(context) {
       return lines + '\n';
     })() +
     'IDEA BRAINDUMP (' + (context.ideas ? context.ideas.length : 0) + '):\n' + ideaLines + '\n\n' +
+
+    'PINNED NOTES (' + (context.pinnedNotes ? context.pinnedNotes.length : 0) + '):\n' + pinnedNoteLines + '\n\n' +
 
     (function() {
       var travel = context.travel;
@@ -1211,6 +1220,15 @@ function buildChatContext_() {
     contracts = getContracts_();
   } catch(e) { Logger.log('Chat context: contracts — ' + e.message); }
 
+  // Pinned notes (Issue #167) — top 5 pinned notes across all categories
+  var pinnedNotes = [];
+  try {
+    var notesRes = webGetNotes_({ parameter: {} });
+    if (notesRes && notesRes.notes) {
+      pinnedNotes = notesRes.notes.filter(function(n) { return n.pinned; }).slice(0, 5);
+    }
+  } catch(e) { Logger.log('Chat context: pinnedNotes — ' + e.message); }
+
   return {
     flags:           activeFlags,
     tasks:           tasks,
@@ -1238,6 +1256,7 @@ function buildChatContext_() {
     cardsData:       cardsData,
     upcomingGuests:  upcomingGuests,
     contracts:       contracts,
+    pinnedNotes:     pinnedNotes,
   };
 }
 
@@ -2292,6 +2311,25 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
         Logger.log('processChat_: capacity override set to ' + capOverride);
       } catch (capErr) { /* non-fatal */ }
     }
+  }
+
+  // ── Note capture shortcut (Issue #167) ───────────────────────────────────
+  var noteMatch = trimmedMsg.match(/^(?:note(?:\s*:|:)|save\s+a\s+note[:\s]|remember\s+this[:\s]|log\s+this[:\s])\s*(.+)/i);
+  if (noteMatch) {
+    var noteRaw = noteMatch[1].trim();
+    var noteParts = noteRaw.split(/\s*[—–-]{1,2}\s*/);
+    var noteTitle   = noteParts[0].trim();
+    var noteContent = noteParts.slice(1).join(' — ').trim() || noteTitle;
+    if (noteParts.length === 1) noteTitle = 'Quick Note';
+    try {
+      var notesUrl = ScriptApp.getService().getUrl();
+      UrlFetchApp.fetch(notesUrl + '?action=add_note&token=' + getWebToken_() +
+        '&category=General&title=' + encodeURIComponent(noteTitle) +
+        '&content=' + encodeURIComponent(noteContent));
+    } catch (noteErr) {
+      Logger.log('Note capture error: ' + noteErr.message);
+    }
+    return { reply: 'Got it — saved to your Notes (General): *' + noteTitle + '*' };
   }
 
   var history   = loadChatHistory_(sessionId);
