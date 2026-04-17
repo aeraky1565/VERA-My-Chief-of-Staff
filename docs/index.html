@@ -1518,6 +1518,34 @@ function SummariesTab({ summaries }) {
   );
 }
 
+// ---- InfoTip — collapsible data-source hint icon (Issue #165) ---------------
+function InfoTip({ text, open, onToggle }) {
+  if (!text) return null;
+  return (
+    <span style={{ marginLeft: 'auto', flexShrink: 0 }}>
+      <button onClick={onToggle} title="Data source info"
+        style={{ background: 'none', border: 'none', cursor: 'pointer',
+                 color: open ? '#5c9eff' : '#3d5a7a', fontSize: 14,
+                 padding: '0 4px', lineHeight: 1 }}>ℹ️</button>
+    </span>
+  );
+}
+function InfoTipBar({ text, onClose }) {
+  if (!text) return null;
+  return (
+    <div style={{ fontSize: 12, color: '#4d6080', background: '#111e35',
+                  border: '1px solid #1e2e4a', borderRadius: 8,
+                  padding: '8px 14px', marginBottom: 14,
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'flex-start', gap: 12 }}>
+      <span dangerouslySetInnerHTML={{ __html: text }} />
+      <button onClick={onClose}
+        style={{ background: 'none', border: 'none', color: '#3d5a7a',
+                 cursor: 'pointer', fontSize: 14, flexShrink: 0, lineHeight: 1 }}>✕</button>
+    </div>
+  );
+}
+
 // ---- Chat panel -------------------------------------------------------------
 
 function ChatPanel({ apiUrl, apiToken, messages, setMessages, input, setInput }) {
@@ -5574,20 +5602,23 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
   }
 
   const subTabs = [
-    { id: 'trips',      label: '✈️ My Trips' },
+    { id: 'trips',      label: '✈️ My Trips',    hint: 'Pulled from calendars listed in Config &rarr; <code>gap_calendars</code>. Multi-day events are grouped into trips automatically.' },
     { id: 'itinerary',  label: '🗺️ My Itinerary' },
     { id: 'packing',    label: '🎒 Packing' },
     { id: 'discover',   label: '✨ Discover' },
-    { id: 'budget',     label: '💰 Budget' },
+    { id: 'budget',     label: '💰 Budget',      hint: 'Manual entry linked to each trip. Import line items from your itinerary with the &ldquo;Import from Itinerary&rdquo; button.' },
     { id: 'countries',  label: '🌍 Countries' },
     { id: 'bucketlist', label: '🪣 Bucket List' },
     { id: 'profiles',   label: '👤 Profiles' },
   ];
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [sub]);
+  var activeHint = (subTabs.find(function(t) { return t.id === sub; }) || {}).hint || '';
 
   return (
     <div>
       {/* Sub-tab pills */}
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button
             key={s.id}
@@ -5595,7 +5626,9 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
             onClick={() => setSub(s.id)}
           >{s.label}</button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
 
       {/* My Trips — live from PTO upcomingTravel */}
       {sub === 'trips' && (
@@ -7254,13 +7287,16 @@ function PTOTab({ ahmedStats, victoriaStats, onTriggerBuffer, onTriggerVictoriaB
   }
 
   const subTabs = [
-    { id: 'ahmed',    label: 'Ahmed' },
-    { id: 'victoria', label: 'Victoria' },
+    { id: 'ahmed',    label: 'Ahmed',    hint: 'Pulled from Google Calendar. VERA counts events whose titles contain keywords from Config &rarr; <code>pto_keywords</code> (e.g. PTO, Vacation, OOO).' },
+    { id: 'victoria', label: 'Victoria', hint: 'Same as Ahmed &mdash; reads Victoria&rsquo;s calendar events matching Config &rarr; <code>pto_keywords</code>.' },
   ];
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [ptoSub]);
+  var activeHint = (subTabs.find(function(t) { return t.id === ptoSub; }) || {}).hint || '';
 
   return (
     <div>
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button key={s.id}
             className={`subtab-btn${ptoSub === s.id ? ' active' : ''}`}
@@ -7268,7 +7304,9 @@ function PTOTab({ ahmedStats, victoriaStats, onTriggerBuffer, onTriggerVictoriaB
             {s.label}
           </button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
       {ptoSub === 'ahmed' && (
         <PTOPersonView stats={ahmedStats} onTriggerBuffer={onTriggerBuffer} busy={busy} />
       )}
@@ -8785,21 +8823,24 @@ function PeopleTab({ giftData, giftLoading, busy,
                      wishListsData, wishListsLoading, onRefreshWishLists, features }) {
   const feat = features || {};
   const allSubTabs = [
-    { id: 'dates',     label: '📅 Important Dates' },
+    { id: 'dates',     label: '📅 Important Dates', hint: 'Add birthdays and anniversaries to Google Calendar as <strong>Birthday: Name</strong> or <strong>Anniversary: Name</strong>. VERA imports them automatically. You can also add dates manually below.' },
     { id: 'gifts',     label: '🎁 Gift Ideas'       },
     { id: 'wishlists', label: '🎄 Wish Lists',        featureKey: 'wishlists' },
     { id: 'people',    label: '👤 People'            },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('dates');
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [sub]);
   React.useEffect(function() {
     if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
       setSub(subTabs[0].id);
     }
   }, [subTabs.map(function(t) { return t.id; }).join(',')]);
+  var activeHint = (subTabs.find(function(t) { return t.id === sub; }) || {}).hint || '';
   return (
     <div>
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button key={s.id}
             className={`subtab-btn${sub === s.id ? ' active' : ''}`}
@@ -8807,7 +8848,9 @@ function PeopleTab({ giftData, giftLoading, busy,
             {s.label}
           </button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
 
       {sub === 'dates' && (
         <ImportantDatesView
@@ -12095,25 +12138,30 @@ function FinancesTab({ summaries, budget, budgetLoading, bills, billsLoading, on
   const budgetMissing = budget && !budget.configured;
 
   const subTabs = [
-    { id: 'overview',   label: '💸 Overview' },
+    { id: 'overview',   label: '💸 Overview',  hint: 'Pulled from the Summaries and Metrics tabs in your Life OS sheet, updated nightly. Add external data sources via Config &rarr; <code>summary_sheet:</code> rows.' },
     { id: 'budget',     label: '📊 Budget' },
     { id: 'bills',      label: '🧾 Bills' },
     { id: 'cashflow',   label: '💰 Cashflow' },
     { id: 'cards',      label: '💳 Cards' },
     { id: 'contracts',  label: '📋 Contracts' },
     { id: 'goals',      label: '🎯 Goals' },
-    { id: 'tax',        label: '🧾 Tax' },
+    { id: 'tax',        label: '🧾 Tax',       hint: 'Checklist of tax documents to gather. Mark items complete as you collect them for filing.' },
   ];
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [sub]);
+  var activeHint = (subTabs.find(function(t) { return t.id === sub; }) || {}).hint || '';
 
   return (
     <div>
       {/* Sub-tab pills */}
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
             onClick={() => setSub(s.id)}>{s.label}</button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
 
       {/* ── Overview: Finance Bento Dashboard (Issue #77) ── */}
       {sub === 'overview' && (
@@ -12974,12 +13022,6 @@ function HealthAppointmentsTab({ apiUrl, apiToken }) {
       {error   && <div style={{ color: '#ef5350', fontSize: 13, marginBottom: 10 }}>{error}</div>}
       {logMsg  && <div style={{ color: '#66bb6a', fontSize: 12, marginBottom: 10, padding: '6px 12px', background: 'rgba(102,187,106,.08)', borderRadius: 6 }}>{logMsg}</div>}
 
-      {/* Instructional note */}
-      <div style={{ fontSize: 12, color: '#4d6080', background: '#111e35', border: '1px solid #1e2e4a', borderRadius: 8, padding: '8px 14px', marginBottom: 14 }}>
-        Add appointments to Google Calendar with the title format <strong style={{ color: '#7ab4ff' }}>DR: Ahmed - Annual Physical</strong> — VERA tracks them automatically.
-        Optionally add <code style={{ color: '#a0b0c8' }}>interval:6</code> in the event description to override the default check frequency.
-      </div>
-
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         {/* Person filter pills */}
@@ -13072,24 +13114,29 @@ function HealthTab({ apiUrl, apiToken, features }) {
   const allSubTabs = [
     { id: 'fitness',         label: '💪 Fitness',         featureKey: 'fitness' },
     { id: 'morning_routine', label: '☀️ Morning Routine',  featureKey: 'morning_routine' },
-    { id: 'prescriptions',   label: '💊 Prescriptions' },
-    { id: 'appointments',    label: '🩺 Appointments' },
+    { id: 'prescriptions',   label: '💊 Prescriptions',   hint: 'Add prescriptions manually via the + button. VERA tracks refill schedules based on the days-supply you enter.' },
+    { id: 'appointments',    label: '🩺 Appointments',    hint: 'Add events to Google Calendar as <strong>DR: Ahmed - Annual Physical</strong>. VERA tracks them automatically. Add <code>interval:6</code> in the description to override the default check frequency.' },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState(subTabs.length > 0 ? subTabs[0].id : '');
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [sub]);
   React.useEffect(function() {
     if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
       setSub(subTabs[0].id);
     }
   }, [subTabs.map(function(t) { return t.id; }).join(',')]);
+  var activeHint = (subTabs.find(function(t) { return t.id === sub; }) || {}).hint || '';
   return (
     <div>
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
             onClick={() => setSub(s.id)}>{s.label}</button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
       {sub === 'fitness' && (
         <GymLogTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
@@ -13185,22 +13232,27 @@ function GrowthTab({ milestones, flags, tasks, onAction,
   const [sub, setSub] = React.useState('milestones');
   const [filterPerson, setFilterPerson] = React.useState('Ahmed');
   const subTabs = [
-    { id: 'milestones',           label: '🎯 Milestones' },
+    { id: 'milestones',           label: '🎯 Milestones',            hint: 'Pulled from all-day calendar events whose titles contain keywords from Config &rarr; <code>milestone_keywords</code> (e.g. Trip, Wedding, Vacation).' },
     { id: 'goals',                label: '🏆 Yearly Goals' },
     { id: 'personal_development', label: '📖 Personal Development' },
     { id: 'skill_building',       label: '🔧 Skill Building' },
   ];
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [sub]);
+  var activeHint = (subTabs.find(function(t) { return t.id === sub; }) || {}).hint || '';
   const books   = (growthData && growthData.books)   || [];
   const courses = (growthData && growthData.courses) || [];
   const skills  = (growthData && growthData.skills)  || [];
   return (
     <div>
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
             onClick={() => setSub(s.id)}>{s.label}</button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
       {sub === 'milestones' && (
         <MilestonesTab milestones={milestones} flags={flags} tasks={tasks} onAction={onAction} busy={busy} />
       )}
@@ -16083,23 +16135,28 @@ function ExploreTab({ interests, interestsLoading, onDeleteInterest, onAddIntere
     { id: 'resources',   label: '📚 Resources' },
     { id: 'experiments', label: '🧪 Experiments', featureKey: 'experiments' },
     { id: 'wish_list',   label: '🛍 Wish List',   featureKey: 'wish_list'   },
-    { id: 'notes',       label: '📓 Notes' },
+    { id: 'notes',       label: '📓 Notes',       hint: 'Pulled from a dedicated Google Doc. Create a blank Doc, paste its ID into Config &rarr; <code>notes_doc_id</code>, then run <code>setupNotesDoc()</code> once from the Apps Script editor.' },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('interests');
+  const [hintOpen, setHintOpen] = React.useState(false);
+  React.useEffect(function() { setHintOpen(false); }, [sub]);
   React.useEffect(function() {
     if (subTabs.length > 0 && !subTabs.find(function(t) { return t.id === sub; })) {
       setSub(subTabs[0].id);
     }
   }, [subTabs.map(function(t) { return t.id; }).join(',')]);
+  var activeHint = (subTabs.find(function(t) { return t.id === sub; }) || {}).hint || '';
   return (
     <div>
-      <div className="subtab-row">
+      <div className="subtab-row" style={{ display: 'flex', alignItems: 'center' }}>
         {subTabs.map(s => (
           <button key={s.id} className={`subtab-btn${sub === s.id ? ' active' : ''}`}
             onClick={() => setSub(s.id)}>{s.label}</button>
         ))}
+        <InfoTip text={activeHint} open={hintOpen} onToggle={() => setHintOpen(function(o) { return !o; })} />
       </div>
+      <InfoTipBar text={activeHint && hintOpen ? activeHint : ''} onClose={() => setHintOpen(false)} />
       {sub === 'interests' && (
         interestsLoading
           ? <div className="loading-text">Loading interests…</div>
