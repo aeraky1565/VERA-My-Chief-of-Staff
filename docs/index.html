@@ -14038,11 +14038,12 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
 
   // Detect active trip (in progress) or imminent departure (within 24 h)
   var todayStr      = new Date().toISOString().slice(0, 10);
-  var activeTrip    = (pto?.upcomingTravel || []).find(function(t) {
+  var upcomingTravel = pto?.ahmedStats?.upcomingTravel || [];
+  var activeTrip    = upcomingTravel.find(function(t) {
     return todayStr >= t.startDate && todayStr <= t.endDate;
   });
   // Show banner whenever trip start is ≤ 24 hours away (time-based, not just calendar day)
-  var imminentTrip  = !activeTrip && (pto?.upcomingTravel || []).find(function(t) {
+  var imminentTrip  = !activeTrip && upcomingTravel.find(function(t) {
     var startMs = new Date(t.startDate + 'T00:00:00').getTime(); // midnight local time
     var diffMs  = startMs - Date.now();
     return diffMs > 0 && diffMs <= 86400000;
@@ -16403,7 +16404,7 @@ function App() {
   // Keys: 'row:N' (sheet bills) or 'title:lowercasedTitle' (calendar-only bills).
   const paidLocksRef = useRef({});
 
-  const milestones = pto?.milestones || [];
+  const milestones = pto?.ahmedStats?.milestones || [];
 
   const loadAll = useCallback(async (url, token, activeOnly) => {
     if (!url || !token) return;
