@@ -18,9 +18,7 @@
  */
 function veraLog_(routine, category, status, summary, durationMs, error) {
   try {
-    // Skipped = routine was gated (disabled, day-of-week, cooldown) — not a real event, skip Slack
-    if (status === 'Skipped') return;
-    var emoji = { Success: '✅', Partial: '⚠️', Failed: '❌' }[status] || '🔹';
+    var emoji = { Success: '✅', Partial: '⚠️', Failed: '❌', Skipped: '⏭️' }[status] || '🔹';
     var parts = [emoji + ' *' + routine + '* [' + category + '] — ' + status];
     if (summary) parts.push(summary);
     if (durationMs != null && durationMs > 0) {
