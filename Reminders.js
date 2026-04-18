@@ -60,11 +60,13 @@ function hourlyCheck() {
         runWeekendPlanner_();
       } catch (wpErr) {
         Logger.log('runWeekendPlanner_ error (non-fatal): ' + wpErr.message);
+        veraLog_('runWeekendPlanner', 'Planning', 'Failed', '', 0, wpErr.message);
       }
     }
 
   } catch (e) {
     Logger.log('hourlyCheck error: ' + e.message + '\n' + e.stack);
+    try { sendSlackLog_('❌ *hourlyCheck* [Reminders] — Failed — ' + e.message); } catch (se) {}
   }
 }
 

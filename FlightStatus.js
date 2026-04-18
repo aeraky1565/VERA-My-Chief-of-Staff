@@ -182,6 +182,8 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
  * @param {string}  [targetTripKey]  If set, only process flights for this trip
  */
 function checkFlightStatuses_(forceRefresh, targetTripKey) {
+  var _fsStart = Date.now();
+  try {
   // Short-circuit if we received a 429 recently — don't waste requests
   if (!forceRefresh && isAviationStackRateLimited_()) {
     var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
@@ -394,7 +396,18 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   // ---- end Phase 2 -----------------------------------------------------------
 
   Logger.log('FlightStatus: done. checked=' + checked + ' skipped=' + skipped + ' errors=' + errors);
+  if (errors > 0) {
+    veraLog_('checkFlightStatuses', 'Travel', 'Partial',
+      'checked=' + checked + ' skipped=' + skipped + ' errors=' + errors, Date.now() - _fsStart);
+  } else {
+    veraLog_('checkFlightStatuses', 'Travel', 'Success',
+      'checked=' + checked + ' skipped=' + skipped, Date.now() - _fsStart);
+  }
   return { polled: checked, skipped: skipped, errors: errors };
+  } catch (err) {
+    Logger.log('checkFlightStatuses_ FATAL: ' + err.message + '\n' + (err.stack || ''));
+    veraLog_('checkFlightStatuses', 'Travel', 'Failed', '', Date.now() - _fsStart, err.message);
+  }
 }
 
 // ---- Standalone debug function (run manually from Apps Script editor) -------

@@ -29,9 +29,12 @@
  * Respects config key: travel_day_briefing_enabled (default: true)
  */
 function checkAndSendTravelDayBriefings_() {
+  var _tdbStart = Date.now();
+  try {
   var cfg = getConfigValues();
   if ((cfg['travel_day_briefing_enabled'] || 'true') === 'false') {
     Logger.log('TravelDayBriefing: disabled via config');
+    veraLog_('checkAndSendTravelDayBriefings', 'Travel', 'Skipped', 'travel_day_briefing_enabled=false', Date.now() - _tdbStart);
     return;
   }
 
@@ -63,13 +66,25 @@ function checkAndSendTravelDayBriefings_() {
   }
 
   Logger.log('TravelDayBriefing: ' + tripKeys.length + ' trip(s) today — sending briefings');
+  var sent = 0;
   tripKeys.forEach(function(tripKey) {
     try {
       sendTravelDayBriefing_(tripKey, tripMap[tripKey]);
+      sent++;
     } catch (err) {
       Logger.log('TravelDayBriefing: error for ' + tripKey + ' — ' + err.message);
+      veraLog_('checkAndSendTravelDayBriefings', 'Travel', 'Partial',
+        'Error sending briefing for ' + tripKey, Date.now() - _tdbStart, err.message);
     }
   });
+  if (sent > 0) {
+    veraLog_('checkAndSendTravelDayBriefings', 'Travel', 'Success',
+      sent + ' travel day briefing(s) sent', Date.now() - _tdbStart);
+  }
+  } catch (err) {
+    Logger.log('checkAndSendTravelDayBriefings_ FATAL: ' + err.message + '\n' + (err.stack || ''));
+    veraLog_('checkAndSendTravelDayBriefings', 'Travel', 'Failed', '', Date.now() - _tdbStart, err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------

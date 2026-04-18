@@ -37,6 +37,7 @@
  */
 function runWeekendPlanner_() {
   var _wpStart = Date.now();
+  try {
   Logger.log('runWeekendPlanner_: starting');
 
   var cfg = getConfigValues();
@@ -115,6 +116,10 @@ function runWeekendPlanner_() {
   veraLog_('runWeekendPlanner', 'Planning', 'Success',
     windows.length + ' weekend window(s) found, memo generated (' + memo.length + ' chars)',
     Date.now() - _wpStart);
+  } catch (err) {
+    Logger.log('runWeekendPlanner_ FATAL: ' + err.message + '\n' + (err.stack || ''));
+    veraLog_('runWeekendPlanner', 'Planning', 'Failed', '', Date.now() - _wpStart, err.message);
+  }
 }
 
 // ============================================================

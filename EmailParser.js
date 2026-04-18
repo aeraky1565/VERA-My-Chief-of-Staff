@@ -21,6 +21,7 @@ const MATCH_HOLD           = 50;    // score → hold for user confirmation
  */
 function runEmailScan_() {
   var _epStart = Date.now();
+  try {
   const enabled = getConfigValues()['email_parser_enabled'];
   if (enabled !== 'true') {
     veraLog_('runEmailScan', 'Email', 'Skipped', 'email_parser_enabled is not true', Date.now() - _epStart);
@@ -93,6 +94,10 @@ function runEmailScan_() {
   veraLog_('runEmailScan', 'Email', 'Success',
     candidates.length + ' candidate(s) classified from ' + threads.length + ' thread(s)',
     Date.now() - _epStart);
+  } catch (err) {
+    Logger.log('runEmailScan_ FATAL: ' + err.message + '\n' + (err.stack || ''));
+    veraLog_('runEmailScan', 'Email', 'Failed', '', Date.now() - _epStart, err.message);
+  }
 }
 
 // ─── GMAIL SEARCH ────────────────────────────────────────────────────────────

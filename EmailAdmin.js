@@ -35,6 +35,7 @@ var EA_LABELS = {
  */
 function runEmailAdmin_() {
   var _eaStart = Date.now();
+  try {
   // ── Step 1: Read config ──────────────────────────────────────────────────
   var config = getConfigValues();
 
@@ -288,6 +289,10 @@ function runEmailAdmin_() {
       counts.needs_reply + ' needs reply, ' + counts.follow_up + ' follow-up, ' +
       counts.informational + ' info, ' + counts.promotional + ' promo',
     Date.now() - _eaStart);
+  } catch (err) {
+    Logger.log('runEmailAdmin_ FATAL: ' + err.message + '\n' + (err.stack || ''));
+    veraLog_('runEmailAdmin', 'Email', 'Failed', '', Date.now() - _eaStart, err.message);
+  }
 }
 
 // ============================================================

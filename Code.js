@@ -2014,7 +2014,8 @@ function morningNudge() {
     Logger.log('Morning nudge sent (HTML): ' + total + ' active flags.');
 
   } catch (e) {
-    Logger.log('morningNudge ERROR: ' + e.message);
+    Logger.log('morningNudge ERROR: ' + e.message + '\n' + (e.stack || ''));
+    try { sendSlackLog_('❌ *morningNudge* [Nightly] — Failed — ' + e.message); } catch (se) {}
   }
 }
 
