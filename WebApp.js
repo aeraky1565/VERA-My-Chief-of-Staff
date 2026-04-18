@@ -229,8 +229,6 @@ function doGet(e) {
       case 'add_resell_item':    return jsonOut_(webAddResellItem_(e));
       case 'delete_resell_item': return jsonOut_(webDeleteResellItem_(e));
       case 'update_resell_item': return jsonOut_(webUpdateResellItem_(e));
-      // VERA Log (Issue #168)
-      case 'get_vera_log': return jsonOut_(webGetVeraLog_(e));
       // Financial Goals (Issue #127)
       case 'financial_goals':        return jsonOut_(webGetFinancialGoals_());
       case 'add_financial_goal':     return jsonOut_(webAddFinancialGoal_(e));
@@ -5886,34 +5884,6 @@ function webUpdateResellItem_(e) {
     return { ok: true };
   }
   return { ok: false, error: 'not found' };
-}
-
-// ============================================================
-// VERA LOG (Issue #168)
-// ============================================================
-
-function webGetVeraLog_(e) {
-  var p       = e.parameter || {};
-  var limit   = Math.min(parseInt(p.limit || 100, 10) || 100, 500);
-  var catFilt = (p.category || '').trim();
-  var stFilt  = (p.status   || '').trim();
-  var ss      = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet   = ss.getSheetByName(TABS.VERA_LOG);
-  var entries = [];
-  if (sheet && sheet.getLastRow() >= 2) {
-    var rows = sheet.getDataRange().getValues();
-    var hdrs = rows[0];
-    // Reverse so newest entries come first
-    rows.slice(1).reverse().forEach(function(r) {
-      if (!r[0]) return;
-      var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
-      if (catFilt && obj['Category'] !== catFilt) return;
-      if (stFilt  && obj['Status']   !== stFilt)  return;
-      entries.push(obj);
-    });
-  }
-  return { ok: true, entries: entries.slice(0, limit) };
 }
 
 // ============================================================

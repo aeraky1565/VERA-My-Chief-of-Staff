@@ -1,7 +1,7 @@
 /**
- * VERALog.js — Persistent audit log for major VERA routine invocations.
+ * VERALog.js — Posts a structured audit log entry to #vera-logs Slack channel
+ * for each major VERA routine invocation.
  *
- * Writes one row to the VERA Log sheet tab for each major routine run.
  * Fails silently so it never breaks the calling script.
  *
  * Usage:
@@ -18,23 +18,15 @@
  */
 function veraLog_(routine, category, status, summary, durationMs, error) {
   try {
-    var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-    var sheet = ss.getSheetByName(TABS.VERA_LOG);
-    if (!sheet) {
-      Logger.log('veraLog_: VERA Log sheet not found — skipping. Run createSheetTabs() to create it.');
-      return;
+    var emoji = { Success: '✅', Partial: '⚠️', Failed: '❌', Skipped: '⏭️' }[status] || '🔹';
+    var parts = [emoji + ' *' + routine + '* [' + category + '] — ' + status];
+    if (summary) parts.push(summary);
+    if (durationMs != null && durationMs > 0) {
+      var s = Math.round(durationMs / 1000);
+      parts.push(s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's');
     }
-    var id = 'vl_' + Date.now();
-    var ts = new Date().toISOString();
-    sheet.appendRow([id, ts, routine, category, status,
-                     durationMs != null ? durationMs : '',
-                     summary    != null ? summary    : '',
-                     error      != null ? error      : '']);
-    // Trim to 1000 rows max — delete oldest entries from row 2 onward
-    var lastRow = sheet.getLastRow();
-    if (lastRow > 1001) {
-      sheet.deleteRows(2, lastRow - 1001);
-    }
+    if (error) parts.push('Error: ' + error);
+    sendSlackLog_(parts.join(' — '));
   } catch (e) {
     // Never let logging crash the caller
     Logger.log('veraLog_ failed silently: ' + e.message);
