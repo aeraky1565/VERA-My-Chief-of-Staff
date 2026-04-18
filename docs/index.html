@@ -13641,8 +13641,10 @@ function SpendingChart({ summaries, budget }) {
 
 function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfig, departing }) {
   var tripKey      = trip.startDate + '|' + trip.label;
-  var today        = new Date().toISOString().slice(0, 10);
-  var tomorrowStr  = new Date(new Date(today).getTime() + 86400000).toISOString().slice(0, 10);
+  var _dCard   = new Date();
+  var today        = _dCard.getFullYear() + '-' + String(_dCard.getMonth()+1).padStart(2,'0') + '-' + String(_dCard.getDate()).padStart(2,'0');
+  var _dCardTmrw = new Date(_dCard); _dCardTmrw.setDate(_dCardTmrw.getDate() + 1);
+  var tomorrowStr  = _dCardTmrw.getFullYear() + '-' + String(_dCardTmrw.getMonth()+1).padStart(2,'0') + '-' + String(_dCardTmrw.getDate()).padStart(2,'0');
   // When banner fires "departing tomorrow", shift the display day to tomorrow so
   // flights, hotel and door-out time reflect the actual departure day.
   var displayDay   = departing ? tomorrowStr : today;
@@ -13709,9 +13711,11 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
   React.useEffect(function() {
     if (!items || !apiUrl || !apiToken) return;
 
-    var todayStr    = new Date().toISOString().slice(0, 10);
-    var nowHour     = new Date().getHours();
-    var tomorrowStr = new Date(new Date(todayStr).getTime() + 86400000).toISOString().slice(0, 10);
+    var _dNow    = new Date();
+    var todayStr    = _dNow.getFullYear() + '-' + String(_dNow.getMonth()+1).padStart(2,'0') + '-' + String(_dNow.getDate()).padStart(2,'0');
+    var nowHour     = _dNow.getHours();
+    var _dTmrw   = new Date(_dNow); _dTmrw.setDate(_dTmrw.getDate() + 1);
+    var tomorrowStr = _dTmrw.getFullYear() + '-' + String(_dTmrw.getMonth()+1).padStart(2,'0') + '-' + String(_dTmrw.getDate()).padStart(2,'0');
 
     // All trip flights sorted chronologically
     var allFlights = items
@@ -14037,7 +14041,8 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
   const nextPTO               = pto?.ahmedStats?.nextPTO;
 
   // Detect active trip (in progress) or imminent departure (within 24 h)
-  var todayStr      = new Date().toISOString().slice(0, 10);
+  var _dToday   = new Date();
+  var todayStr      = _dToday.getFullYear() + '-' + String(_dToday.getMonth()+1).padStart(2,'0') + '-' + String(_dToday.getDate()).padStart(2,'0');
   var upcomingTravel = pto?.ahmedStats?.upcomingTravel || [];
   var activeTrip    = upcomingTravel.find(function(t) {
     return todayStr >= t.startDate && todayStr <= t.endDate;
