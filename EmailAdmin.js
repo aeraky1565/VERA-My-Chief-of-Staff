@@ -34,7 +34,7 @@ var EA_LABELS = {
  * whether to actually proceed on a given day).
  */
 function runEmailAdmin_() {
-  var _eaStart = Date.now(); // Issue #168: VERA Log timing
+  var _eaStart = Date.now();
   // ── Step 1: Read config ──────────────────────────────────────────────────
   var config = getConfigValues();
 
@@ -283,7 +283,6 @@ function runEmailAdmin_() {
 
   sendSlackNotification_(lines.join('\n'), null, 'Low');
   Logger.log('runEmailAdmin_: complete. ' + JSON.stringify(counts));
-  // Issue #168: VERA Log
   veraLog_('runEmailAdmin', 'Email', 'Success',
     candidates.length + ' email(s) classified — ' +
       counts.needs_reply + ' needs reply, ' + counts.follow_up + ' follow-up, ' +

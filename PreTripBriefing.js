@@ -16,7 +16,7 @@
  * briefing per trip, fires once and never again.
  */
 function checkPreTripBriefings_() {
-  var _ptbStart = Date.now(); // Issue #168: VERA Log timing
+  var _ptbStart = Date.now();
   var cfg = getConfigValues();
   if ((cfg['pretrip_briefing_enabled'] || 'true') === 'false') {
     Logger.log('PreTripBriefing: disabled via config');
@@ -61,7 +61,6 @@ function checkPreTripBriefings_() {
       sendSlackLog_(':airplane: Pre-trip briefing written — ' + tripNames);
     } catch(slErr) {}
   }
-  // Issue #168: VERA Log
   veraLog_('checkPreTripBriefings', 'Travel', 'Success',
     trips.length + ' trip(s) in window, ' + flags.length + ' briefing(s) written',
     Date.now() - _ptbStart);

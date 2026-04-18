@@ -36,7 +36,7 @@
  *   - All-day Google Calendar event on the upcoming Saturday
  */
 function runWeekendPlanner_() {
-  var _wpStart = Date.now(); // Issue #168: VERA Log timing
+  var _wpStart = Date.now();
   Logger.log('runWeekendPlanner_: starting');
 
   var cfg = getConfigValues();
@@ -112,7 +112,6 @@ function runWeekendPlanner_() {
   createWeekendMemoEvent_(saturday, memo);
   Logger.log('runWeekendPlanner_: calendar event created on ' +
              Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
-  // Issue #168: VERA Log
   veraLog_('runWeekendPlanner', 'Planning', 'Success',
     windows.length + ' weekend window(s) found, memo generated (' + memo.length + ' chars)',
     Date.now() - _wpStart);

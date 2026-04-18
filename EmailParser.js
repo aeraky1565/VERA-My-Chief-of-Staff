@@ -20,7 +20,7 @@ const MATCH_HOLD           = 50;    // score → hold for user confirmation
  * Scans Gmail for travel confirmation emails and processes them.
  */
 function runEmailScan_() {
-  var _epStart = Date.now(); // Issue #168: VERA Log timing
+  var _epStart = Date.now();
   const enabled = getConfigValues()['email_parser_enabled'];
   if (enabled !== 'true') {
     veraLog_('runEmailScan', 'Email', 'Skipped', 'email_parser_enabled is not true', Date.now() - _epStart);
@@ -90,7 +90,6 @@ function runEmailScan_() {
   }
 
   Logger.log('EmailParser — scan complete');
-  // Issue #168: VERA Log
   veraLog_('runEmailScan', 'Email', 'Success',
     candidates.length + ' candidate(s) classified from ' + threads.length + ' thread(s)',
     Date.now() - _epStart);

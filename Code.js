@@ -751,7 +751,6 @@ function nightlyRun() {
       if (stepFailures.length) {
         sendSlackLog_('\u26a0\ufe0f Step warnings:\n' + stepFailures.map(function(f) { return '\u2022 ' + f; }).join('\n'));
       }
-      // Issue #168: Persist to VERA Log sheet
       veraLog_('nightlyRun', 'Nightly',
         stepFailures.length ? 'Partial' : 'Success',
         flagCount + ' flag' + (flagCount !== 1 ? 's' : '') + ' written' +

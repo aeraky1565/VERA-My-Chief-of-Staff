@@ -31,7 +31,7 @@ var MONTHLY_REVIEWS_HEADERS_ = ['Month Key', 'Month Label', 'Generated Date', 'R
  * @param {Object|null} ptoStats  Already-computed PTO snapshot from nightlyRun()
  */
 function checkMonthlyReview_(ptoStats) {
-  var _mrStart = Date.now(); // Issue #168: VERA Log timing
+  var _mrStart = Date.now();
   var cfg = getConfigValues();
   if (String(cfg['monthly_review_enabled'] || 'true').toLowerCase() === 'false') {
     veraLog_('checkMonthlyReview', 'Planning', 'Skipped', 'monthly_review_enabled=false', Date.now() - _mrStart);
@@ -86,7 +86,6 @@ function checkMonthlyReview_(ptoStats) {
   }
 
   Logger.log('checkMonthlyReview_: done.');
-  // Issue #168: VERA Log
   veraLog_('checkMonthlyReview', 'Planning', 'Success', label + ' review written', Date.now() - _mrStart);
 }
 
