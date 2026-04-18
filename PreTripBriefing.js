@@ -16,9 +16,11 @@
  * briefing per trip, fires once and never again.
  */
 function checkPreTripBriefings_() {
+  var _ptbStart = Date.now(); // Issue #168: VERA Log timing
   var cfg = getConfigValues();
   if ((cfg['pretrip_briefing_enabled'] || 'true') === 'false') {
     Logger.log('PreTripBriefing: disabled via config');
+    veraLog_('checkPreTripBriefings', 'Travel', 'Skipped', 'pretrip_briefing_enabled is false', Date.now() - _ptbStart);
     return;
   }
   var hoursWindow = parseInt(cfg['pretrip_briefing_hours'] || '48', 10) || 48;
@@ -26,6 +28,7 @@ function checkPreTripBriefings_() {
   var trips = getUpcomingTripsForBriefing_(hoursWindow);
   if (!trips.length) {
     Logger.log('PreTripBriefing: no trips departing within ' + hoursWindow + 'h window');
+    veraLog_('checkPreTripBriefings', 'Travel', 'Success', 'No trips within ' + hoursWindow + 'h window', Date.now() - _ptbStart);
     return;
   }
   Logger.log('PreTripBriefing: ' + trips.length + ' trip(s) in window → building briefings');
@@ -48,6 +51,10 @@ function checkPreTripBriefings_() {
       sendSlackLog_(':airplane: Pre-trip briefing written — ' + tripNames);
     } catch(slErr) {}
   }
+  // Issue #168: VERA Log
+  veraLog_('checkPreTripBriefings', 'Travel', 'Success',
+    trips.length + ' trip(s) in window, ' + flags.length + ' briefing(s) written',
+    Date.now() - _ptbStart);
 }
 
 // ─── TRIP DISCOVERY ──────────────────────────────────────────────────────────

@@ -20,8 +20,12 @@ const MATCH_HOLD           = 50;    // score → hold for user confirmation
  * Scans Gmail for travel confirmation emails and processes them.
  */
 function runEmailScan_() {
+  var _epStart = Date.now(); // Issue #168: VERA Log timing
   const enabled = getConfigValues()['email_parser_enabled'];
-  if (enabled !== 'true') return;
+  if (enabled !== 'true') {
+    veraLog_('runEmailScan', 'Email', 'Skipped', 'email_parser_enabled is not true', Date.now() - _epStart);
+    return;
+  }
 
   Logger.log('EmailParser v' + EMAIL_PARSER_VERSION + ' — scan started');
 
@@ -44,6 +48,7 @@ function runEmailScan_() {
 
   if (!candidates.length) {
     Logger.log('EmailParser — no new candidates, exiting');
+    veraLog_('runEmailScan', 'Email', 'Success', 'No new travel emails found (' + threads.length + ' threads checked)', Date.now() - _epStart);
     return;
   }
   Logger.log('EmailParser — ' + candidates.length + ' new candidates to classify');
@@ -85,6 +90,10 @@ function runEmailScan_() {
   }
 
   Logger.log('EmailParser — scan complete');
+  // Issue #168: VERA Log
+  veraLog_('runEmailScan', 'Email', 'Success',
+    candidates.length + ' candidate(s) classified from ' + threads.length + ' thread(s)',
+    Date.now() - _epStart);
 }
 
 // ─── GMAIL SEARCH ────────────────────────────────────────────────────────────

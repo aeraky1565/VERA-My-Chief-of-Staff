@@ -36,6 +36,7 @@
  *   - All-day Google Calendar event on the upcoming Saturday
  */
 function runWeekendPlanner_() {
+  var _wpStart = Date.now(); // Issue #168: VERA Log timing
   Logger.log('runWeekendPlanner_: starting');
 
   var cfg = getConfigValues();
@@ -43,12 +44,14 @@ function runWeekendPlanner_() {
   // Master switch
   if (String(cfg['weekend_planner_enabled'] || 'true').toLowerCase() === 'false') {
     Logger.log('runWeekendPlanner_: disabled (weekend_planner_enabled=false)');
+    veraLog_('runWeekendPlanner', 'Planning', 'Skipped', 'weekend_planner_enabled=false', Date.now() - _wpStart);
     return;
   }
 
   // Weekly cooldown — ~6.25 days (9000 min) prevents double-send
   if (wasRecentlySent_('weekend_planner', 9000)) {
     Logger.log('runWeekendPlanner_: already sent recently, skipping');
+    veraLog_('runWeekendPlanner', 'Planning', 'Skipped', 'Already sent recently (cooldown)', Date.now() - _wpStart);
     return;
   }
 
@@ -93,6 +96,7 @@ function runWeekendPlanner_() {
   var memo = callClaudeWeekendPlanner_(prompt);
   if (!memo) {
     Logger.log('runWeekendPlanner_: no memo returned from Claude, aborting');
+    veraLog_('runWeekendPlanner', 'Planning', 'Failed', 'No memo returned from Claude', Date.now() - _wpStart);
     return;
   }
 
@@ -108,6 +112,10 @@ function runWeekendPlanner_() {
   createWeekendMemoEvent_(saturday, memo);
   Logger.log('runWeekendPlanner_: calendar event created on ' +
              Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+  // Issue #168: VERA Log
+  veraLog_('runWeekendPlanner', 'Planning', 'Success',
+    windows.length + ' weekend window(s) found, memo generated (' + memo.length + ' chars)',
+    Date.now() - _wpStart);
 }
 
 // ============================================================

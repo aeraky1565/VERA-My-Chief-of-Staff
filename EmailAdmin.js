@@ -34,12 +34,14 @@ var EA_LABELS = {
  * whether to actually proceed on a given day).
  */
 function runEmailAdmin_() {
+  var _eaStart = Date.now(); // Issue #168: VERA Log timing
   // ── Step 1: Read config ──────────────────────────────────────────────────
   var config = getConfigValues();
 
   var enabled = config['email_admin_enabled'];
   if (enabled !== 'true') {
     Logger.log('runEmailAdmin_: email_admin_enabled is not true — skipping.');
+    veraLog_('runEmailAdmin', 'Email', 'Skipped', 'email_admin_enabled is not true', Date.now() - _eaStart);
     return;
   }
 
@@ -57,6 +59,7 @@ function runEmailAdmin_() {
     var dayOfWeek   = parseInt(Utilities.formatDate(now, tz, 'u'), 10) % 7; // 'u' = 1-Mon … 7-Sun → mod 7 → Sun=0
     if (dayOfWeek !== 0) {
       Logger.log('runEmailAdmin_: frequency=weekly but today is not Sunday — skipping.');
+      veraLog_('runEmailAdmin', 'Email', 'Skipped', 'frequency=weekly, not Sunday', Date.now() - _eaStart);
       return;
     }
   } else if (frequency === '3days') {
@@ -66,6 +69,7 @@ function runEmailAdmin_() {
       var daysSince = (now.getTime() - lastScanDate.getTime()) / (1000 * 60 * 60 * 24);
       if (daysSince < 3) {
         Logger.log('runEmailAdmin_: frequency=3days, last scan was ' + daysSince.toFixed(1) + ' days ago — skipping.');
+        veraLog_('runEmailAdmin', 'Email', 'Skipped', 'frequency=3days, last scan ' + daysSince.toFixed(1) + ' days ago', Date.now() - _eaStart);
         return;
       }
     }
@@ -151,6 +155,7 @@ function runEmailAdmin_() {
     props.setProperty(EMAIL_ADMIN_LAST_SCAN_KEY, now.toISOString());
     sendSlackLog_(':mailbox: Email Admin: no new emails to process');
     Logger.log('runEmailAdmin_: no candidates after filtering — done.');
+    veraLog_('runEmailAdmin', 'Email', 'Success', 'No new emails to process', Date.now() - _eaStart);
     return;
   }
 
@@ -278,6 +283,12 @@ function runEmailAdmin_() {
 
   sendSlackNotification_(lines.join('\n'), null, 'Low');
   Logger.log('runEmailAdmin_: complete. ' + JSON.stringify(counts));
+  // Issue #168: VERA Log
+  veraLog_('runEmailAdmin', 'Email', 'Success',
+    candidates.length + ' email(s) classified — ' +
+      counts.needs_reply + ' needs reply, ' + counts.follow_up + ' follow-up, ' +
+      counts.informational + ' info, ' + counts.promotional + ' promo',
+    Date.now() - _eaStart);
 }
 
 // ============================================================

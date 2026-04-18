@@ -9653,6 +9653,140 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- VERALogTab (Issue #168) -------------------------------------------------
+
+var VERA_LOG_CATEGORIES = ['Nightly', 'Email', 'Planning', 'Travel', 'Finance', 'Health'];
+var VERA_LOG_STATUSES   = ['Success', 'Partial', 'Failed', 'Skipped'];
+var VERA_LOG_STATUS_COLOR = { Success: '#4ade80', Partial: '#fbbf24', Failed: '#f87171', Skipped: '#6b7fa8' };
+
+function timeAgo(isoStr) {
+  if (!isoStr) return '';
+  var d = new Date(isoStr);
+  var diffMs = Date.now() - d.getTime();
+  var diffM  = Math.floor(diffMs / 60000);
+  if (diffM < 1)   return 'just now';
+  if (diffM < 60)  return diffM + 'm ago';
+  var diffH = Math.floor(diffM / 60);
+  if (diffH < 24)  return diffH + 'h ago';
+  var diffD = Math.floor(diffH / 24);
+  return diffD + 'd ago';
+}
+
+function fmtDuration(ms) {
+  if (!ms && ms !== 0) return '';
+  var s = Math.round(ms / 1000);
+  if (s < 60)  return s + 's';
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+
+function VERALogTab({ entries, loading, catFilter, setCatFilter, stFilter, setStFilter, onRefresh }) {
+  const [expandedErr, setExpandedErr] = React.useState({});
+
+  // Filter client-side
+  var filtered = (entries || []).filter(function(e) {
+    if (catFilter && e['Category'] !== catFilter) return false;
+    if (stFilter  && e['Status']   !== stFilter)  return false;
+    return true;
+  });
+
+  var pillStyle = function(active) {
+    return {
+      padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: active ? 700 : 400,
+      cursor: 'pointer', border: '1px solid ' + (active ? '#5c9eff' : '#1e3060'),
+      background: active ? '#0d1b3e' : 'transparent',
+      color: active ? '#5c9eff' : '#6b7fa8',
+    };
+  };
+
+  return (
+    <div>
+      {/* Filter bar */}
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginBottom:16 }}>
+        <span style={{ fontSize:11, color:'#4d6080', textTransform:'uppercase', letterSpacing:1, marginRight:4 }}>Category</span>
+        <span style={pillStyle(!catFilter)} onClick={() => setCatFilter('')}>All</span>
+        {VERA_LOG_CATEGORIES.map(function(c) {
+          return <span key={c} style={pillStyle(catFilter===c)} onClick={() => setCatFilter(c===catFilter?'':c)}>{c}</span>;
+        })}
+        <span style={{ marginLeft:12, fontSize:11, color:'#4d6080', textTransform:'uppercase', letterSpacing:1, marginRight:4 }}>Status</span>
+        {VERA_LOG_STATUSES.map(function(s) {
+          return (
+            <span key={s} style={Object.assign({}, pillStyle(stFilter===s), { color: stFilter===s ? VERA_LOG_STATUS_COLOR[s] : '#6b7fa8', borderColor: stFilter===s ? VERA_LOG_STATUS_COLOR[s] : '#1e3060' })}
+              onClick={() => setStFilter(s===stFilter?'':s)}>{s}</span>
+          );
+        })}
+        <button className="btn btn-ghost" style={{ marginLeft:'auto', fontSize:11, padding:'4px 12px' }}
+          onClick={onRefresh}>↻ Refresh</button>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading log…</div>
+      ) : entries === null ? (
+        <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Click Refresh to load the VERA activity log.</div>
+      ) : filtered.length === 0 ? (
+        <div className="empty-state" style={{ padding:40 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>📋</div>
+          <div>No log entries yet.</div>
+          <div style={{ fontSize:13, color:'#6b7fa8', marginTop:8 }}>
+            Entries appear after VERA's next nightly run or email scan.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {filtered.map(function(entry) {
+            var statusColor = VERA_LOG_STATUS_COLOR[entry['Status']] || '#6b7fa8';
+            var hasErr = !!(entry['Error'] && String(entry['Error']).trim());
+            var errOpen = !!expandedErr[entry['ID']];
+            return (
+              <div key={entry['ID']} style={{ background:'#13244d', border:'1px solid #1e3060',
+                borderRadius:10, padding:'12px 16px' }}>
+                {/* Top row */}
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                  {/* Status badge */}
+                  <span style={{ fontSize:10, fontWeight:700, padding:'2px 9px', borderRadius:20,
+                    background:'#0e1e3a', color: statusColor, border:'1px solid ' + statusColor,
+                    whiteSpace:'nowrap' }}>{entry['Status']}</span>
+                  {/* Routine name */}
+                  <span style={{ fontWeight:700, fontSize:13, color:'#dde1f0' }}>{entry['Routine']}</span>
+                  {/* Category chip */}
+                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:'#0e1e3a',
+                    color:'#8a9abf', border:'1px solid #1e3060' }}>{entry['Category']}</span>
+                  {/* Spacer + time + duration */}
+                  <span style={{ marginLeft:'auto', fontSize:11, color:'#4d6080', whiteSpace:'nowrap' }}>
+                    {timeAgo(entry['Timestamp'])}
+                    {entry['Duration (ms)'] ? <span style={{ marginLeft:6 }}>({fmtDuration(entry['Duration (ms)'])})</span> : null}
+                  </span>
+                </div>
+                {/* Summary */}
+                {entry['Summary'] && (
+                  <div style={{ fontSize:12, color:'#8a9abf', marginTop:6 }}>{entry['Summary']}</div>
+                )}
+                {/* Error */}
+                {hasErr && (
+                  <div style={{ marginTop:6 }}>
+                    <button onClick={function() { setExpandedErr(function(p) { return Object.assign({}, p, {[entry['ID']]: !p[entry['ID']]}); }); }}
+                      style={{ background:'none', border:'none', cursor:'pointer', fontSize:11,
+                               color:'#f87171', padding:0, textDecoration:'underline' }}>
+                      {errOpen ? '▾ Hide error' : '▸ Show error'}
+                    </button>
+                    {errOpen && (
+                      <div style={{ marginTop:4, fontSize:11, color:'#f87171', background:'#1a0a0a',
+                        border:'1px solid #3a1010', borderRadius:6, padding:'6px 10px',
+                        fontFamily:'monospace', whiteSpace:'pre-wrap', wordBreak:'break-word' }}>
+                        {entry['Error']}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- ResellListView (Issue #170) ---------------------------------------------
 
 function ResellListView({ apiUrl, apiToken }) {
@@ -16585,6 +16719,10 @@ function App() {
   const [growthData,  setGrowthData]  = useState(null); // books + courses + skills (Issue #88)
   const [pacingStatus, setPacingStatus] = useState(null); // vacation/pacing mode indicator (Issue #139)
   const [itineraries,      setItineraries]      = useState({}); // { [tripKey]: 'loading' | { items, tripMeta:{startDate,endDate} } }
+  const [veraLog,         setVeraLog]          = useState(null);   // null = not yet loaded
+  const [veraLogLoading,  setVeraLogLoading]   = useState(false);
+  const [veraLogCatFilter, setVeraLogCatFilter] = useState('');
+  const [veraLogStFilter,  setVeraLogStFilter]  = useState('');
   const [itinItemModal,    setItinItemModal]    = useState(null); // null | { mode:'add'|'edit', tripKey, item? }
   const [packingItems,     setPackingItems]     = useState({}); // { [tripKey]: 'loading' | { items: [...] } }
   const [tripMeta,         setTripMeta]         = useState({}); // { [tripKey]: { context, notes } | 'loading' }
@@ -17578,6 +17716,20 @@ function App() {
       setError('Could not delete item: ' + err.message);
     }
     setBusy(false);
+  }
+
+  // ---- VERA Log (Issue #168) ---------------------------------------------------
+
+  async function loadVeraLog(url, token) {
+    if (!url || !token) return;
+    setVeraLogLoading(true);
+    try {
+      const d = await apiGet(url, token, { action: 'get_vera_log', limit: 200 });
+      setVeraLog(d.entries || []);
+    } catch(e) {
+      setVeraLog([]);
+    }
+    setVeraLogLoading(false);
   }
 
   // ---- Chores handlers (Issue #124) -------------------------------------------
@@ -18741,7 +18893,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore', 'log'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -18758,6 +18910,7 @@ function App() {
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     { loadPTO(apiUrl, apiToken); loadProfiles(apiUrl, apiToken); } // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); loadFinancialGoals(); }
+                  if (tab === 'log')       loadVeraLog(apiUrl, apiToken);
                 }}
               >
                 {tab === 'home'       ? `🏠 Home` : ''}
@@ -18775,6 +18928,7 @@ function App() {
                 {tab === 'health'     ? `🏥 Health` : ''}
                 {tab === 'growth'     ? `🌱 Growth` : ''}
                 {tab === 'career'     ? `💼 Career` : ''}
+                {tab === 'log'        ? `📋 Log` : ''}
               </button>
             ))}
           </div>
@@ -19191,6 +19345,19 @@ function App() {
             )}
 
             {/* Career tab */}
+            {/* VERA Log tab (Issue #168) */}
+            {activeTab === 'log' && (
+              <VERALogTab
+                entries={veraLog}
+                loading={veraLogLoading}
+                catFilter={veraLogCatFilter}
+                setCatFilter={setVeraLogCatFilter}
+                stFilter={veraLogStFilter}
+                setStFilter={setVeraLogStFilter}
+                onRefresh={() => loadVeraLog(apiUrl, apiToken)}
+              />
+            )}
+
             {activeTab === 'career' && (
               <CareerTab
                 career={career}

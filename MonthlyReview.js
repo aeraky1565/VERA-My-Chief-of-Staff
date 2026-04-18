@@ -31,11 +31,18 @@ var MONTHLY_REVIEWS_HEADERS_ = ['Month Key', 'Month Label', 'Generated Date', 'R
  * @param {Object|null} ptoStats  Already-computed PTO snapshot from nightlyRun()
  */
 function checkMonthlyReview_(ptoStats) {
+  var _mrStart = Date.now(); // Issue #168: VERA Log timing
   var cfg = getConfigValues();
-  if (String(cfg['monthly_review_enabled'] || 'true').toLowerCase() === 'false') return;
+  if (String(cfg['monthly_review_enabled'] || 'true').toLowerCase() === 'false') {
+    veraLog_('checkMonthlyReview', 'Planning', 'Skipped', 'monthly_review_enabled=false', Date.now() - _mrStart);
+    return;
+  }
 
   var today = new Date();
-  if (today.getDate() !== 1) return;
+  if (today.getDate() !== 1) {
+    // Not the 1st of the month — normal skip, don't log (runs nightly, would be noise)
+    return;
+  }
 
   var tz         = Session.getScriptTimeZone();
   var priorMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -50,6 +57,7 @@ function checkMonthlyReview_(ptoStats) {
     var existing = flagSheet.getRange(2, 1, flagSheet.getLastRow() - 1, FLAG_HEADERS.length).getValues();
     if (existing.some(function(r) { return String(r[9]).trim() === flagKey; })) {
       Logger.log('checkMonthlyReview_: review for ' + label + ' already exists — skipping.');
+      veraLog_('checkMonthlyReview', 'Planning', 'Skipped', label + ' review already exists', Date.now() - _mrStart);
       return;
     }
   }
@@ -78,6 +86,8 @@ function checkMonthlyReview_(ptoStats) {
   }
 
   Logger.log('checkMonthlyReview_: done.');
+  // Issue #168: VERA Log
+  veraLog_('checkMonthlyReview', 'Planning', 'Success', label + ' review written', Date.now() - _mrStart);
 }
 
 // ============================================================
