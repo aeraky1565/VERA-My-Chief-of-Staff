@@ -9659,7 +9659,7 @@ var VERA_LOG_CATEGORIES = ['Nightly', 'Email', 'Planning', 'Travel', 'Finance', 
 var VERA_LOG_STATUSES   = ['Success', 'Partial', 'Failed', 'Skipped'];
 var VERA_LOG_STATUS_COLOR = { Success: '#4ade80', Partial: '#fbbf24', Failed: '#f87171', Skipped: '#6b7fa8' };
 
-function timeAgo(isoStr) {
+function veraLogTimeAgo_(isoStr) {
   if (!isoStr) return '';
   var d = new Date(isoStr);
   var diffMs = Date.now() - d.getTime();
@@ -9672,7 +9672,7 @@ function timeAgo(isoStr) {
   return diffD + 'd ago';
 }
 
-function fmtDuration(ms) {
+function veraLogFmtDuration_(ms) {
   if (!ms && ms !== 0) return '';
   var s = Math.round(ms / 1000);
   if (s < 60)  return s + 's';
@@ -9753,8 +9753,8 @@ function VERALogTab({ entries, loading, catFilter, setCatFilter, stFilter, setSt
                     color:'#8a9abf', border:'1px solid #1e3060' }}>{entry['Category']}</span>
                   {/* Spacer + time + duration */}
                   <span style={{ marginLeft:'auto', fontSize:11, color:'#4d6080', whiteSpace:'nowrap' }}>
-                    {timeAgo(entry['Timestamp'])}
-                    {entry['Duration (ms)'] ? <span style={{ marginLeft:6 }}>({fmtDuration(entry['Duration (ms)'])})</span> : null}
+                    {veraLogTimeAgo_(entry['Timestamp'])}
+                    {entry['Duration (ms)'] ? <span style={{ marginLeft:6 }}>({veraLogFmtDuration_(entry['Duration (ms)'])})</span> : null}
                   </span>
                 </div>
                 {/* Summary */}
