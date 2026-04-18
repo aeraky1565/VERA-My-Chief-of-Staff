@@ -54,57 +54,89 @@ function checkPreTripBriefings_() {
 
 /**
  * getUpcomingTripsForBriefing_(hoursWindow)
- * Scans the Itinerary tab, groups rows by tripKey, and returns trips
- * whose departure date falls within the next [hoursWindow] hours.
+ * Returns trips departing within the next [hoursWindow] hours.
+ *
+ * Source 1 (primary): gap-calendar all-day events via getUpcomingTravel_().
+ *   This guarantees any trip visible in the Travel tab fires a briefing,
+ *   even when no itinerary items have been added yet.
+ * Source 2 (supplemental): Itinerary tab rows.
+ *   Adds flight/hotel detail to matching calendar trips and also catches
+ *   manual-only trips that have no corresponding calendar event.
  *
  * @param  {number} hoursWindow  Hours ahead to look (e.g. 48)
  * @returns {Array}  [{ tripKey, tripLabel, departureDate, endDate, rows, hoursUntil }]
  */
 function getUpcomingTripsForBriefing_(hoursWindow) {
+  var now     = new Date();
+  var tripMap = {};
+
+  // ── Source 1: Gap-calendar trips (same data set as the Travel tab) ─────────
+  try {
+    var calCfg   = readPTOConfig_();
+    var calTrips = getUpcomingTravel_(calCfg);
+    calTrips.forEach(function(t) {
+      if (t.isExtendedFamily) return; // skip family-only extended-calendar events
+      var depDate    = new Date(t.startDate + 'T00:00:00');
+      var hoursUntil = (depDate.getTime() - now.getTime()) / 3600000;
+      if (hoursUntil <= 0 || hoursUntil > hoursWindow) return;
+      var tripKey = t.startDate + '|' + t.label;
+      if (!tripMap[tripKey]) {
+        tripMap[tripKey] = {
+          tripKey:       tripKey,
+          tripLabel:     t.label,
+          departureDate: depDate,
+          endDate:       new Date(t.endDate + 'T00:00:00'),
+          rows:          [],
+          hoursUntil:    hoursUntil,
+        };
+      }
+    });
+  } catch (calErr) {
+    Logger.log('getUpcomingTripsForBriefing_: calendar scan error (non-fatal) — ' + calErr.message);
+  }
+
+  // ── Source 2: Itinerary tab — merges detail rows into calendar trips and
+  //    catches manual-only trips that have no calendar event. ─────────────────
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.ITINERARY);
-  if (!sheet || sheet.getLastRow() < 2) return [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    data.forEach(function(row) {
+      var tripKey = String(row[1] || '').trim();
+      if (!tripKey) return;
 
-  var data     = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-  var tripMap  = {};
-  var now      = new Date();
+      // TripKey format: "YYYY-MM-DD|Trip Label" — departure date is the prefix
+      var datePart = tripKey.split('|')[0];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
 
-  data.forEach(function(row) {
-    var tripKey = String(row[1] || '').trim();
-    if (!tripKey) return;
+      var depDate    = new Date(datePart + 'T00:00:00');
+      var hoursUntil = (depDate.getTime() - now.getTime()) / 3600000;
+      if (hoursUntil <= 0 || hoursUntil > hoursWindow) return;
 
-    // TripKey format: "YYYY-MM-DD|Trip Label" — departure date is the prefix
-    var datePart = tripKey.split('|')[0];
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
+      if (!tripMap[tripKey]) {
+        // Manual-only trip — create entry if not already seeded from calendar
+        var parts     = tripKey.split('|');
+        var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
+        tripMap[tripKey] = {
+          tripKey:       tripKey,
+          tripLabel:     tripLabel,
+          departureDate: depDate,
+          endDate:       depDate,
+          rows:          [],
+          hoursUntil:    hoursUntil,
+        };
+      }
 
-    var depDate   = new Date(datePart + 'T00:00:00');
-    var hoursUntil = (depDate.getTime() - now.getTime()) / 3600000;
+      // Track the latest event date as the trip end date
+      var eventDate = String(row[4] || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+        var d = new Date(eventDate + 'T00:00:00');
+        if (d > tripMap[tripKey].endDate) tripMap[tripKey].endDate = d;
+      }
 
-    // Only trips departing in the future and within the window
-    if (hoursUntil <= 0 || hoursUntil > hoursWindow) return;
-
-    if (!tripMap[tripKey]) {
-      var parts     = tripKey.split('|');
-      var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
-      tripMap[tripKey] = {
-        tripKey:       tripKey,
-        tripLabel:     tripLabel,
-        departureDate: depDate,
-        endDate:       depDate,
-        rows:          [],
-        hoursUntil:    hoursUntil,
-      };
-    }
-
-    // Track the latest event date as the trip end date
-    var eventDate = String(row[4] || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
-      var d = new Date(eventDate + 'T00:00:00');
-      if (d > tripMap[tripKey].endDate) tripMap[tripKey].endDate = d;
-    }
-
-    tripMap[tripKey].rows.push(row);
-  });
+      tripMap[tripKey].rows.push(row);
+    });
+  }
 
   return Object.keys(tripMap).map(function(k) { return tripMap[k]; });
 }
