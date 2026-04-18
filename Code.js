@@ -88,6 +88,7 @@ const TABS = {
   MEAL_PLAN:           'Meal Plan',            // Weekly dinner planner (Issue #122)
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
+  RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -151,6 +152,7 @@ const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category
 const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes'];
 // Experiments (Issue #130) — column order matches row[] offsets used in Experiments.js
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
+const RESELL_LIST_HEADERS        = ['ID', 'Item', 'Category', 'Asking Price', 'Original Price', 'Platform', 'Priority', 'Status', 'Notes', 'Added Date'];
 const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
 const BUCKET_ACTIVITIES_HEADERS  = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
@@ -289,6 +291,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TAX_DOCUMENTS,        TAX_DOCUMENT_HEADERS);
   // TABS.HEALTH_APPOINTMENTS removed — appointments read from Google Calendar (Issue #85)
   ensureSheet(ss, TABS.TRIP_BUDGET,          TRIP_BUDGET_HEADERS);
+  ensureSheet(ss, TABS.RESELL_LIST,          RESELL_LIST_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');

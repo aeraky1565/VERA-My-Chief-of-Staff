@@ -9653,6 +9653,221 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- ResellListView (Issue #170) ---------------------------------------------
+
+function ResellListView({ apiUrl, apiToken }) {
+  const [items,   setItems]   = React.useState(null);
+  const [busy,    setBusy]    = React.useState(false);
+  const [showAdd, setShowAdd] = React.useState(false);
+  const [form,    setForm]    = React.useState({
+    item:'', category:'Other', askingPrice:'', originalPrice:'',
+    platform:'', priority:'Medium', notes:''
+  });
+
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    apiGet(apiUrl, apiToken, { action: 'get_resell_list' })
+      .then(function(d) { setItems(d.items || []); })
+      .catch(function()  { setItems([]); });
+  }, [apiUrl, apiToken]);
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  var allItems  = items || [];
+  var listed    = allItems.filter(function(i) { return i.Status === 'Listed'; });
+  var sold      = allItems.filter(function(i) { return i.Status === 'Sold'; });
+  var active    = allItems.filter(function(i) { return i.Status !== 'Sold' && i.Status !== 'Donated'; });
+  var listedVal = listed.reduce(function(s, i) { return s + (parseFloat(i['Asking Price']) || 0); }, 0);
+  var soldVal   = sold.reduce(function(s, i)   { return s + (parseFloat(i['Asking Price']) || 0); }, 0);
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  var PRIORITY_COLOR = { High: '#f87171', Medium: '#fbbf24', Low: '#4ade80' };
+
+  function fmtPrice(v) { return v ? '$' + parseFloat(v).toLocaleString() : null; }
+
+  function setF(key, val) { setForm(function(p) { return Object.assign({}, p, { [key]: val }); }); }
+
+  async function handleAdd() {
+    if (!form.item.trim()) return;
+    setBusy(true);
+    try {
+      var d = await apiGet(apiUrl, apiToken, { action: 'add_resell_item',
+        item: form.item, category: form.category, askingPrice: form.askingPrice,
+        originalPrice: form.originalPrice, platform: form.platform,
+        priority: form.priority, notes: form.notes });
+      setItems(function(prev) { return [...(prev || []), d.item]; });
+      setShowAdd(false);
+      setForm({ item:'', category:'Other', askingPrice:'', originalPrice:'', platform:'', priority:'Medium', notes:'' });
+    } finally { setBusy(false); }
+  }
+
+  async function handleStatus(id, status) {
+    setItems(function(prev) { return prev.map(function(i) { return i.ID === id ? Object.assign({}, i, { Status: status }) : i; }); });
+    try { await apiGet(apiUrl, apiToken, { action: 'update_resell_item', id: id, status: status }); }
+    catch(e) { /* silent — optimistic already applied */ }
+  }
+
+  async function handleDelete(id) {
+    setItems(function(prev) { return prev.filter(function(i) { return i.ID !== id; }); });
+    await apiGet(apiUrl, apiToken, { action: 'delete_resell_item', id: id });
+  }
+
+  if (items === null) return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading…</div>;
+
+  var sections = [
+    { label: '🔴 Unlisted', status: 'Unlisted', items: active.filter(function(i){ return i.Status === 'Unlisted'; }) },
+    { label: '🔵 Listed',   status: 'Listed',   items: listed },
+    { label: '✅ Sold',     status: 'Sold',     items: sold   },
+  ];
+
+  var inputSt = { width:'100%', padding:'7px 10px', borderRadius:7, background:'#0d1b3e',
+                  border:'1px solid #1e3060', color:'#dde1f0', fontSize:13, boxSizing:'border-box' };
+
+  return (
+    <div>
+      {/* Stats bar */}
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        {[
+          { label:'Active',  value: active.length,                                      color:'#dde1f0' },
+          { label:'Listed',  value: listed.length + (listedVal ? ' · $' + listedVal.toLocaleString() : ''), color:'#5c9eff' },
+          { label:'Sold',    value: sold.length   + (soldVal   ? ' · $' + soldVal.toLocaleString()   : ''), color:'#4ade80' },
+        ].map(function(s) {
+          return (
+            <div key={s.label} style={{ background:'#0e1e3a', border:'1px solid #1e3060',
+              borderRadius:8, padding:'8px 14px', minWidth:80 }}>
+              <div style={{ fontSize:10, color:'#6b7fa8', textTransform:'uppercase', letterSpacing:1 }}>{s.label}</div>
+              <div style={{ fontSize:15, fontWeight:700, color:s.color, marginTop:2 }}>{s.value}</div>
+            </div>
+          );
+        })}
+        <button className="btn btn-primary" style={{ marginLeft:'auto' }}
+          onClick={function(){ setShowAdd(true); }}>＋ Add Item</button>
+      </div>
+
+      {/* Add modal */}
+      {showAdd && (
+        <div className="modal-overlay" onClick={function(){ setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth:440 }} onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:16 }}>Add Resell Item</div>
+            {/* Text fields */}
+            {[
+              ['item',          'Item Name *',      'text',   'e.g. Sony WH-1000XM4'],
+              ['askingPrice',   'Asking Price ($)',  'number', '0.00'],
+              ['originalPrice', 'Paid ($)',          'number', '0.00'],
+              ['notes',         'Notes',             'text',   'Condition, serial #, etc.'],
+            ].map(function(row) {
+              var key=row[0], label=row[1], type=row[2], ph=row[3];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <input type={type} value={form[key]||''} placeholder={ph}
+                    onChange={function(e){ setF(key, e.target.value); }}
+                    style={inputSt} />
+                </div>
+              );
+            })}
+            {/* Selects */}
+            {[
+              ['category', 'Category', ['Electronics','Clothing','Furniture','Appliances','Sports','Books','Tools','Collectibles','Other']],
+              ['platform', 'Platform', ['','Facebook Marketplace','eBay','OfferUp','Craigslist','Poshmark','Other']],
+              ['priority', 'Priority', ['High','Medium','Low']],
+            ].map(function(row) {
+              var key=row[0], label=row[1], opts=row[2];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <select value={form[key]||''} onChange={function(e){ setF(key, e.target.value); }}
+                    style={inputSt}>
+                    {opts.map(function(o){ return <option key={o} value={o}>{o||'— None —'}</option>; })}
+                  </select>
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:8, marginTop:16, justifyContent:'flex-end' }}>
+              <button className="btn btn-ghost" onClick={function(){ setShowAdd(false); }}>Cancel</button>
+              <button className="btn btn-primary" disabled={busy || !form.item.trim()} onClick={handleAdd}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sections */}
+      {allItems.length === 0 ? (
+        <div className="empty-state" style={{ padding:40 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>💰</div>
+          <div>No resell items yet.</div>
+          <div style={{ fontSize:13, color:'#6b7fa8', marginTop:8 }}>
+            Add items you want to sell and track their listing status.
+          </div>
+        </div>
+      ) : (
+        sections.map(function(sec) {
+          if (sec.status === 'Sold' && sec.items.length === 0) return null;
+          return (
+            <div key={sec.status} style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#6b7fa8', textTransform:'uppercase',
+                            letterSpacing:1, marginBottom:8 }}>
+                {sec.label} <span style={{ fontWeight:400 }}>({sec.items.length})</span>
+              </div>
+              {sec.items.length === 0 ? (
+                <div style={{ fontSize:12, color:'#4d6080', padding:'4px 0' }}>None.</div>
+              ) : (
+                sec.items.map(function(it) {
+                  var askP = fmtPrice(it['Asking Price']);
+                  var origP = fmtPrice(it['Original Price']);
+                  return (
+                    <div key={it.ID} style={{ background:'#13244d', border:'1px solid #1e3060',
+                      borderRadius:10, padding:'12px 16px', marginBottom:8,
+                      display:'flex', alignItems:'flex-start', gap:12 }}>
+                      {/* Main info */}
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                          <span style={{ color: PRIORITY_COLOR[it.Priority] || '#4d6080', fontWeight:700, fontSize:13 }}>●</span>
+                          <span style={{ fontWeight:700, fontSize:14, color:'#dde1f0' }}>{it.Item}</span>
+                          <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:'#0e1e3a',
+                                         color:'#8a9abf', border:'1px solid #1e3060' }}>{it.Category}</span>
+                          {it.Platform && (
+                            <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:'#0e1e3a',
+                                           color:'#5c9eff', border:'1px solid #1e3060' }}>{it.Platform}</span>
+                          )}
+                        </div>
+                        <div style={{ marginTop:5, display:'flex', alignItems:'baseline', gap:8 }}>
+                          {askP  && <span style={{ fontSize:16, fontWeight:700, color:'#4ade80' }}>{askP}</span>}
+                          {origP && <span style={{ fontSize:11, color:'#4d6080' }}>paid {origP}</span>}
+                          {!askP && <span style={{ fontSize:13, color:'#4d6080' }}>No price set</span>}
+                        </div>
+                        {it.Notes && <div style={{ fontSize:11, color:'#6b7fa8', marginTop:4 }}>{it.Notes}</div>}
+                      </div>
+                      {/* Actions */}
+                      <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
+                        {it.Status === 'Unlisted' && (
+                          <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#5c9eff' }}
+                            disabled={busy} onClick={function(){ handleStatus(it.ID, 'Listed'); }}>List It</button>
+                        )}
+                        {it.Status === 'Listed' && (
+                          <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#4ade80' }}
+                            disabled={busy} onClick={function(){ handleStatus(it.ID, 'Sold'); }}>Mark Sold</button>
+                        )}
+                        {(it.Status === 'Unlisted' || it.Status === 'Listed') && (
+                          <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#a78bfa' }}
+                            disabled={busy} onClick={function(){ handleStatus(it.ID, 'Donated'); }}>Donated</button>
+                        )}
+                        <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#c0392b' }}
+                          disabled={busy} onClick={function(){ handleDelete(it.ID); }}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ---- HomeFrontTab ------------------------------------------------------------
 
 function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
@@ -9671,6 +9886,7 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
     { id: 'takeouts',  label: '🥡 Takeouts',  featureKey: 'takeouts' },
     { id: 'pantry',    label: '📦 Pantry',    featureKey: 'pantry'   },
     { id: 'guests',    label: '👥 Guests'   },
+    { id: 'resell',    label: '💰 Resell'   },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('steward');
@@ -9748,6 +9964,9 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
       )}
       {sub === 'guests' && (
         <GuestsView apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+      {sub === 'resell' && (
+        <ResellListView apiUrl={apiUrl} apiToken={apiToken} />
       )}
     </div>
   );

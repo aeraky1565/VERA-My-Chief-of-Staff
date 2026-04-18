@@ -224,6 +224,11 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Resell List (Issue #170)
+      case 'get_resell_list':    return jsonOut_(webGetResellList_());
+      case 'add_resell_item':    return jsonOut_(webAddResellItem_(e));
+      case 'delete_resell_item': return jsonOut_(webDeleteResellItem_(e));
+      case 'update_resell_item': return jsonOut_(webUpdateResellItem_(e));
       // Financial Goals (Issue #127)
       case 'financial_goals':        return jsonOut_(webGetFinancialGoals_());
       case 'add_financial_goal':     return jsonOut_(webAddFinancialGoal_(e));
@@ -5802,6 +5807,81 @@ function webUpdateChore_(e) {
       if (cadence && cadenceIdx !== -1) sheet.getRange(i + 1, cadenceIdx + 1).setValue(cadence);
       return { ok: true, id: id };
     }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+// ============================================================
+// RESELL LIST (Issue #170)
+// ============================================================
+
+function webGetResellList_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESELL_LIST);
+  var items = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    rows.slice(1).forEach(function(r) {
+      if (!r[0]) return;
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      items.push(obj);
+    });
+  }
+  return { ok: true, items: items };
+}
+
+function webAddResellItem_(e) {
+  var p    = e.parameter || {};
+  var item = (p.item || '').trim();
+  if (!item) return { ok: false, error: 'item required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESELL_LIST);
+  var id    = 'rs_' + Date.now();
+  var added = new Date().toISOString().slice(0, 10);
+  var askP  = p.askingPrice   ? parseFloat(p.askingPrice)   : '';
+  var origP = p.originalPrice ? parseFloat(p.originalPrice) : '';
+  sheet.appendRow([id, item, p.category || 'Other', askP, origP,
+                   p.platform || '', p.priority || 'Medium', 'Unlisted', p.notes || '', added]);
+  return { ok: true, item: {
+    ID: id, Item: item, Category: p.category || 'Other',
+    'Asking Price': askP, 'Original Price': origP,
+    Platform: p.platform || '', Priority: p.priority || 'Medium',
+    Status: 'Unlisted', Notes: p.notes || '', 'Added Date': added
+  }};
+}
+
+function webDeleteResellItem_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESELL_LIST);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]).trim() === id) { sheet.deleteRow(i + 1); return { ok: true }; }
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webUpdateResellItem_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.RESELL_LIST);
+  var rows  = sheet.getDataRange().getValues();
+  var hdrs  = rows[0];
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== id) continue;
+    var fields = { 'Status': p.status, 'Platform': p.platform, 'Priority': p.priority,
+                   'Asking Price': p.askingPrice, 'Notes': p.notes };
+    Object.keys(fields).forEach(function(key) {
+      if (fields[key] === undefined || fields[key] === null) return;
+      var col = hdrs.indexOf(key);
+      if (col !== -1) sheet.getRange(i + 1, col + 1).setValue(fields[key]);
+    });
+    return { ok: true };
   }
   return { ok: false, error: 'not found' };
 }
