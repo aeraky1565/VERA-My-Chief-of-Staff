@@ -373,12 +373,14 @@ function checkCrossPatternFlags_() {
   }
 
   // 4. Write
-  writeFlags(newFlags);
-  Logger.log('checkCrossPatternFlags_: ' + newFlags.length + ' cross-domain pattern flag(s) written.');
+  var written = writeFlags(newFlags);
+  Logger.log('checkCrossPatternFlags_: ' + written + ' cross-domain pattern flag(s) written (' + (newFlags.length - written) + ' deduplicated).');
 
-  // 5. Slack log (Issue #158)
-  try {
-    sendSlackLog_('\uD83D\uDD17 Pattern Recognition \u2014 ' + newFlags.length +
-      ' cross-domain pattern' + (newFlags.length > 1 ? 's' : '') + ' flagged');
-  } catch (e) { /* non-fatal */ }
+  // 5. Slack log — only if something was actually written
+  if (written > 0) {
+    try {
+      sendSlackLog_('\uD83D\uDD17 Pattern Recognition \u2014 ' + written +
+        ' cross-domain pattern' + (written > 1 ? 's' : '') + ' flagged');
+    } catch (e) { /* non-fatal */ }
+  }
 }

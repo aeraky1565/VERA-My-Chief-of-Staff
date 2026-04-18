@@ -65,7 +65,7 @@ function checkMonthlyReview_(ptoStats) {
   Logger.log('checkMonthlyReview_: building review for ' + label + '…');
   var reviewText = buildMonthlyReview_(label, priorMonth, ptoStats);
 
-  writeFlags([{
+  var written = writeFlags([{
     source:  'Monthly Review',
     flag:    label + ' Life Review — ready',
     reason:  reviewText,
@@ -73,8 +73,9 @@ function checkMonthlyReview_(ptoStats) {
     key:     flagKey,
   }]);
 
-  // Issue #158: Log to #vera-logs
-  try { sendSlackLog_('\ud83d\udcc5 Monthly review written \u2014 ' + label); } catch (e) {}
+  if (written > 0) {
+    try { sendSlackLog_('\ud83d\udcc5 Monthly review written \u2014 ' + label); } catch (e) {}
+  }
 
   archiveMonthlyReview_(label, monthKey, reviewText, ss);
 

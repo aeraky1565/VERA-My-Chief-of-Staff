@@ -37,29 +37,23 @@ function checkPreTripBriefings_() {
   trips.forEach(function(trip) {
     try {
       var flag = buildPreTripBriefingFlag_(trip);
-      if (!flag) return;
-
-      // Skip only if an UNRESOLVED (active/snoozed/acknowledged) flag already exists for
-      // this exact trip key.  If a previous briefing was Resolved the user may still need
-      // a fresh one — the permanent writeFlags() dedup is too aggressive for briefings.
-      if (pretripBriefingIsActive_(flag.key)) {
-        Logger.log('PreTripBriefing: active flag already exists for [' + flag.key + '] — skipping');
-        return;
-      }
-
-      flags.push(flag);
+      if (flag) flags.push(flag);
     } catch (err) {
       Logger.log('PreTripBriefing: error building briefing for ' + trip.tripKey + ' — ' + err.message);
     }
   });
 
   if (flags.length) {
-    writeFlagsDirect_(flags); // bypass permanent dedup — we already checked above
-    Logger.log('PreTripBriefing: wrote ' + flags.length + ' briefing flag(s)');
-    try {
-      var tripNames = trips.map(function(t) { return t.tripLabel || t.tripKey; }).join(', ');
-      sendSlackLog_(':airplane: Pre-trip briefing written — ' + tripNames);
-    } catch(slErr) {}
+    var written = writeFlags(flags);
+    if (written > 0) {
+      Logger.log('PreTripBriefing: wrote ' + written + ' briefing flag(s)');
+      try {
+        var tripNames = trips.slice(0, written).map(function(t) { return t.tripLabel || t.tripKey; }).join(', ');
+        sendSlackLog_(':airplane: Pre-trip briefing written — ' + tripNames);
+      } catch(slErr) {}
+    } else {
+      Logger.log('PreTripBriefing: ' + flags.length + ' trip(s) in window but all deduplicated — briefing already exists');
+    }
   }
   veraLog_('checkPreTripBriefings', 'Travel', 'Success',
     trips.length + ' trip(s) in window, ' + flags.length + ' briefing(s) written',
@@ -400,61 +394,3 @@ function getPackingStatusForBriefing_(tripKey) {
   return result;
 }
 
-/**
- * pretripBriefingIsActive_(key)
- * Returns true if a flag with this exact key already exists in the Flags sheet
- * AND has NOT been Resolved (i.e., is still open, acknowledged, or snoozed).
- * A Resolved briefing allows a fresh one to be generated on the next run.
- */
-function pretripBriefingIsActive_(key) {
-  if (!key) return false;
-  var safeKey = String(key).toLowerCase().replace(/[^a-z0-9_]/g, '').trim();
-  try {
-    var sheet = getSpreadsheet().getSheetByName(TABS.FLAGS);
-    if (!sheet || sheet.getLastRow() < 2) return false;
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, FLAG_HEADERS.length).getValues();
-    for (var i = 0; i < data.length; i++) {
-      var rowKey      = String(data[i][9] || '').toLowerCase().replace(/[^a-z0-9_]/g, '').trim();
-      var rowResolved = String(data[i][8] || '').trim().toUpperCase();
-      if (rowKey === safeKey && rowResolved !== 'YES') return true;
-    }
-  } catch (e) {
-    Logger.log('pretripBriefingIsActive_ error: ' + e.message);
-  }
-  return false;
-}
-
-/**
- * writeFlagsDirect_(flags)
- * Writes pre-trip briefing flags directly to the Flags sheet, bypassing the
- * permanent key-based dedup in writeFlags().  The active-flag check in
- * pretripBriefingIsActive_() already prevents duplicates.
- */
-function writeFlagsDirect_(flags) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.FLAGS);
-  if (!sheet) return;
-  var today    = new Date();
-  var tz       = Session.getScriptTimeZone();
-  var dateStr  = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
-  var timestamp = dateStr.replace(/-/g, '');
-
-  flags.forEach(function(flag) {
-    var rand2 = String(Math.floor(Math.random() * 90) + 10);
-    var id    = 'FLAG-' + timestamp + '-' + rand2;
-    sheet.appendRow([
-      id,
-      dateStr,
-      flag.source  || '',
-      flag.flag    || '',
-      flag.reason  || '',
-      flag.urgency || 'High',
-      'No',  // Acknowledged
-      '',    // Snoozed Until
-      'No',  // Resolved
-      flag.key || '',
-      '',    // Escalated
-    ]);
-  });
-  colorCodeFlags(sheet);
-}

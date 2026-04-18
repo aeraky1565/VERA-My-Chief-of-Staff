@@ -884,6 +884,7 @@ function writeFlags(flags) {
 
   if (written > 0) colorCodeFlags(sheet);
   Logger.log('writeFlags: ' + written + ' new flags written, ' + skipped + ' duplicates skipped.');
+  return written;
 }
 
 /**
