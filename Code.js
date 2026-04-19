@@ -719,9 +719,10 @@ function nightlyRun() {
     const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns);
 
     // Step 4: Write
+    var writtenCount = 0;
     if (flags && flags.length > 0) {
-      writeFlags(flags);
-      Logger.log('Wrote ' + flags.length + ' flags to sheet.');
+      writtenCount = writeFlags(flags);
+      Logger.log('Wrote ' + writtenCount + ' new flags to sheet (' + (flags.length - writtenCount) + ' deduplicated).');
 
       // Step 4b: Signal Learning — record generated flag keys as "seen"
       try {
@@ -739,12 +740,15 @@ function nightlyRun() {
     // Issue #158: Send high-level nightly summary to #vera-logs
     try {
       var elapsed     = Math.round((Date.now() - runStart) / 1000);
-      var flagCount   = (flags && flags.length) ? flags.length : 0;
-      var highCount   = flagCount ? flags.filter(function(f) { return f.urgency === 'High';   }).length : 0;
-      var medCount    = flagCount ? flags.filter(function(f) { return f.urgency === 'Medium'; }).length : 0;
-      var lowCount    = flagCount ? flags.filter(function(f) { return f.urgency === 'Low';    }).length : 0;
-      var summary     = '\u2705 Nightly run \u2014 ' + flagCount + ' flag' + (flagCount !== 1 ? 's' : '') + ' written';
+      var flagCount   = writtenCount;  // actual new flags written (post-dedup)
+      var generated   = (flags && flags.length) ? flags.length : 0;
+      var deduped     = generated - flagCount;
+      var highCount   = flagCount && flags ? flags.filter(function(f) { return f.urgency === 'High';   }).length : 0;
+      var medCount    = flagCount && flags ? flags.filter(function(f) { return f.urgency === 'Medium'; }).length : 0;
+      var lowCount    = flagCount && flags ? flags.filter(function(f) { return f.urgency === 'Low';    }).length : 0;
+      var summary     = '\u2705 Nightly run \u2014 ' + flagCount + ' new flag' + (flagCount !== 1 ? 's' : '') + ' written';
       if (flagCount > 0) summary += ' (' + highCount + ' High, ' + medCount + ' Med, ' + lowCount + ' Low)';
+      if (deduped > 0)   summary += ' \u00b7 ' + deduped + ' deduplicated';
       if (stepFailures.length) summary += ' \u00b7 ' + stepFailures.length + ' step warning' + (stepFailures.length > 1 ? 's' : '');
       summary += ' in ' + elapsed + 's';
       sendSlackLog_(summary);
@@ -753,8 +757,9 @@ function nightlyRun() {
       }
       veraLog_('nightlyRun', 'Nightly',
         stepFailures.length ? 'Partial' : 'Success',
-        flagCount + ' flag' + (flagCount !== 1 ? 's' : '') + ' written' +
+        flagCount + ' new flag' + (flagCount !== 1 ? 's' : '') + ' written' +
           (flagCount > 0 ? ' (' + highCount + 'H ' + medCount + 'M ' + lowCount + 'L)' : '') +
+          (deduped > 0 ? ' · ' + deduped + ' deduplicated' : '') +
           (stepFailures.length ? ' · ' + stepFailures.length + ' step warning(s)' : ''),
         elapsed * 1000,
         stepFailures.length ? stepFailures.join('; ') : '');
