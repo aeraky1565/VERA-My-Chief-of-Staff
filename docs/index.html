@@ -5371,7 +5371,7 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
       {/* Toolbar */}
       <div className="toolbar" style={{ marginBottom: 16 }}>
         <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { openNew(); }} disabled={busy}>＋ Add Person</button>
-        <span className="count-badge">{(profiles || []).length} travelers</span>
+        <span className="count-badge">{names.length} travelers</span>
       </div>
 
       {loading && <div className="loading-text">Loading profiles…</div>}
@@ -5430,7 +5430,8 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Country + expiry chip */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: (p.specialDocs || p.notes) ? 6 : 0 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0' }}>🌍 {p.passportCountry}</span>
+                      <CountryFlag name={p.passportCountry} size={18} />
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0' }}>{p.passportCountry}</span>
                       {expiryLabel && (
                         <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10,
                                        background: expiryBg, color: expiryColor,
