@@ -202,6 +202,7 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   var tz   = Session.getScriptTimeZone();        // hoisted — also used in Phase 2
   var rows = sheet.getDataRange().getValues();
   var checked = 0, skipped = 0, errors = 0;
+  var hasUpcomingFlights = false; // true if any sheet flight is still in the 0–1440 min window
 
   for (var i = 1; i < rows.length; i++) {
     var row  = rows[i];
@@ -265,6 +266,9 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     // Stop polling once departure time has passed — nothing actionable after the flight has left
     if (!forceRefresh && minutesUntilDep < 0) { skipped++; continue; }
 
+    // Flight is genuinely upcoming (0–1440 min window, not terminal, not departed)
+    if (!forceRefresh) hasUpcomingFlights = true;
+
     // Determine required poll interval (minutes)
     var intervalMin;
     if (minutesUntilDep > 360)      intervalMin = 180;  // 6–24h away → every 3h
@@ -291,6 +295,14 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
       Logger.log('FlightStatus: write error for row ' + (i+1) + ' — ' + writeErr.message);
       errors++;
     }
+  }
+
+  // ---- Early exit: no upcoming flights in Itinerary sheet --------------------
+  // If every sheet flight is either past departure, terminal, or outside the 24h window,
+  // skip Phase 2 entirely — no Calendar API calls, no AviationStack exposure.
+  if (!forceRefresh && !hasUpcomingFlights) {
+    Logger.log('FlightStatus: no upcoming flights in window — skipping Phase 2 calendar scan');
+    return { polled: checked, skipped: skipped, errors: errors };
   }
 
   // ---- Phase 2: Calendar-sourced flight events --------------------------------
