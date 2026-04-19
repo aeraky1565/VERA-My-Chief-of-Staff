@@ -5338,79 +5338,127 @@ const VISA_COLOR = {
 };
 
 function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
-  const [modal, setModal] = React.useState(null); // null | 'new' | profile-obj
-  const [form, setForm]   = React.useState({});
+  var [modal, setModal] = React.useState(null); // null | 'new' | profile-obj
+  var [form, setForm]   = React.useState({});
 
-  // Group by name (name is the combining key)
-  const groups = {};
+  // Group by name
+  var groups = {};
   (profiles || []).forEach(function(p) {
-    const n = p.name || 'Unknown';
+    var n = p.name || 'Unknown';
     if (!groups[n]) groups[n] = [];
     groups[n].push(p);
   });
-  const names = Object.keys(groups).sort();
+  var names = Object.keys(groups).sort();
 
   function openNew(defaultName) {
-    setForm({ name: defaultName || '', passportCountry:'', passportExpiry:'', specialDocs:'', notes:'' });
+    setForm({ name: defaultName || '', passportCountry: '', passportExpiry: '', specialDocs: '', notes: '' });
     setModal('new');
   }
-  function openEdit(p) { setForm({ ...p }); setModal(p); }
+  function openEdit(p) { setForm(Object.assign({}, p)); setModal(p); }
   function closeModal() { setModal(null); setForm({}); }
 
   async function handleSave() {
     if (!form.name || !form.passportCountry) return;
-    await onSave({ ...form, id: modal === 'new' ? '' : modal.id });
+    await onSave(Object.assign({}, form, { id: modal === 'new' ? '' : modal.id }));
     closeModal();
   }
 
+  var INP = { width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 };
+  var LBL = { display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 };
+
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-        <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0' }}>👤 Traveler Profiles</div>
-        <button className="btn-primary" onClick={() => openNew()} disabled={busy}>+ Add Person</button>
+      {/* Toolbar */}
+      <div className="toolbar" style={{ marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={function() { openNew(); }} disabled={busy}>＋ Add Person</button>
+        <span className="count-badge">{(profiles || []).length} travelers</span>
       </div>
 
       {loading && <div className="loading-text">Loading profiles…</div>}
+
       {!loading && names.length === 0 && (
         <div className="empty-state">
-          <div style={{ fontSize:32, marginBottom:10 }}>🛂</div>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🛂</div>
           <div>No traveler profiles yet.</div>
-          <div style={{ fontSize:12, color:'#4d6080', marginTop:6 }}>Add a person and their passport(s) to enable visa checking.</div>
+          <div style={{ fontSize: 12, color: '#4d6080', marginTop: 6 }}>Add a person and their passport(s) to track expiry and enable visa checking.</div>
         </div>
       )}
 
       {names.map(function(name) {
-        const passports = groups[name];
+        var passports = groups[name];
+        // initials avatar
+        var initials = name.split(' ').map(function(w) { return w[0]; }).join('').slice(0, 2).toUpperCase();
         return (
-          <div key={name} style={{ background:'#141826', border:'1px solid #2a3050', borderRadius:10, marginBottom:14, overflow:'hidden' }}>
+          <div key={name} className="card" style={{ padding: 0, marginBottom: 14, overflow: 'hidden' }}>
             {/* Person header */}
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 18px', background:'#0e1220' }}>
-              <div style={{ fontWeight:700, color:'#dde1f0', fontSize:16 }}>{name}</div>
-              <button className="btn-sm" onClick={() => openNew(name)} disabled={busy}>+ Passport</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: passports.length ? '1px solid #1e3060' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#1a2a4a', border: '1px solid #2a3a5a',
+                               display: 'flex', alignItems: 'center', justifyContent: 'center',
+                               fontSize: 13, fontWeight: 700, color: '#5c9eff', flexShrink: 0 }}>
+                  {initials}
+                </div>
+                <div style={{ fontWeight: 700, color: '#dde1f0', fontSize: 15 }}>{name}</div>
+              </div>
+              <button onClick={function() { openNew(name); }} disabled={busy}
+                style={{ padding: '5px 12px', borderRadius: 8, background: '#1a2a4a', border: '1px solid #2a3a5a',
+                         color: '#8a9abf', cursor: 'pointer', fontSize: 12 }}>
+                ＋ Passport
+              </button>
             </div>
-            {/* One row per passport */}
+
+            {/* Passport rows */}
             {passports.map(function(p, pi) {
-              var expiry   = p.passportExpiry ? new Date(p.passportExpiry) : null;
+              var expiry   = p.passportExpiry ? new Date(p.passportExpiry + 'T12:00:00') : null;
               var daysLeft = expiry ? Math.ceil((expiry - new Date()) / 86400000) : null;
-              var expiryColor = daysLeft === null ? '#5c7080' : daysLeft < 0 ? '#f87171' : daysLeft < 180 ? '#f87171' : daysLeft < 365 ? '#fbbf24' : '#4ade80';
+              var expiryLabel, expiryBg, expiryColor;
+              if (daysLeft === null) {
+                expiryLabel = null;
+              } else if (daysLeft < 0) {
+                expiryLabel = '⚠ EXPIRED'; expiryBg = '#f8717122'; expiryColor = '#f87171';
+              } else if (daysLeft < 180) {
+                expiryLabel = '⚠ ' + daysLeft + 'd left'; expiryBg = '#f8717122'; expiryColor = '#f87171';
+              } else if (daysLeft < 365) {
+                expiryLabel = 'Expiring · ' + daysLeft + 'd'; expiryBg = '#fbbf2422'; expiryColor = '#fbbf24';
+              } else {
+                expiryLabel = 'Valid · ' + daysLeft + 'd'; expiryBg = '#4ade8022'; expiryColor = '#4ade80';
+              }
+
               return (
-                <div key={p.id} style={{ padding:'12px 18px', borderTop:'1px solid #1a2040', display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:600, color:'#dde1f0', marginBottom:3 }}>🌍 {p.passportCountry}</div>
-                    {p.passportExpiry && (
-                      <div style={{ fontSize:12, color: expiryColor, marginBottom: p.specialDocs || p.notes ? 3 : 0 }}>
-                        Expires {p.passportExpiry}
-                        <span style={{ marginLeft:6 }}>
-                          {daysLeft === null ? '' : daysLeft < 0 ? '⚠️ EXPIRED' : '(' + daysLeft + 'd left)'}
+                <div key={p.id} style={{ padding: '12px 18px', borderTop: pi > 0 ? '1px solid #1e3060' : 'none',
+                                          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Country + expiry chip */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: (p.specialDocs || p.notes) ? 6 : 0 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0' }}>🌍 {p.passportCountry}</span>
+                      {expiryLabel && (
+                        <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10,
+                                       background: expiryBg, color: expiryColor,
+                                       border: '1px solid ' + expiryColor + '55', fontWeight: 600 }}>
+                          {expiryLabel}
+                        </span>
+                      )}
+                    </div>
+                    {/* Special docs pill */}
+                    {p.specialDocs && (
+                      <div style={{ marginBottom: p.notes ? 4 : 0 }}>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8,
+                                       background: '#1a2a4a', color: '#8ab4f8',
+                                       border: '1px solid #2a3a5a' }}>
+                          📋 {p.specialDocs}
                         </span>
                       </div>
                     )}
-                    {p.specialDocs && <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:2 }}>📋 {p.specialDocs}</div>}
-                    {p.notes      && <div style={{ fontSize:12, color:'#5c7080' }}>{p.notes}</div>}
+                    {/* Notes */}
+                    {p.notes && <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 2 }}>{p.notes}</div>}
                   </div>
-                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                    <button className="btn-sm" onClick={() => openEdit(p)}>✏️</button>
-                    <button className="btn-sm btn-danger" onClick={() => onDelete(p.id)} disabled={busy}>✕</button>
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <button onClick={function() { openEdit(p); }}
+                      style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Edit">✎</button>
+                    <button onClick={function() { if (window.confirm('Remove ' + p.passportCountry + ' passport for ' + p.name + '?')) onDelete(p.id); }}
+                      disabled={busy}
+                      style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
                   </div>
                 </div>
               );
@@ -5419,33 +5467,61 @@ function ProfilesView({ profiles, loading, busy, onSave, onDelete }) {
         );
       })}
 
+      {/* Add / Edit modal */}
       {modal && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-title">{modal === 'new' ? 'Add Passport' : 'Edit Passport'}</div>
-            {[
-              { key:'name',            label:'Person Name',      placeholder:'e.g. Ahmed' },
-              { key:'passportCountry', label:'Passport Country', placeholder:'e.g. Egypt' },
-              { key:'passportExpiry',  label:'Expiry Date',      type:'date' },
-              { key:'specialDocs',     label:'Special Docs',     placeholder:'e.g. US Green Card, UK Ancestry Visa' },
-              { key:'notes',           label:'Notes',            placeholder:'e.g. Renewed 2024' },
-            ].map(function(f) {
-              return (
-                <div key={f.key} style={{ marginBottom:12 }}>
-                  <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:4 }}>{f.label}</div>
-                  <input
-                    className="modal-input"
-                    type={f.type || 'text'}
-                    placeholder={f.placeholder || ''}
-                    value={form[f.key] || ''}
-                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                  />
-                </div>
-              );
-            })}
-            <div style={{ display:'flex', gap:10, marginTop:16 }}>
-              <button className="btn-primary" onClick={handleSave} disabled={busy || !form.name || !form.passportCountry}>Save</button>
-              <button className="btn-secondary" onClick={closeModal}>Cancel</button>
+          <div className="modal-box" style={{ maxWidth: 440 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>
+              {modal === 'new' ? 'Add Passport' : 'Edit Passport'}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={LBL}>Person Name *</label>
+              <input value={form.name || ''} placeholder="e.g. Ahmed"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { name: v }); }); }}
+                style={INP} />
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={LBL}>Passport Country *</label>
+              <input value={form.passportCountry || ''} placeholder="e.g. Egypt"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { passportCountry: v }); }); }}
+                style={INP} />
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={LBL}>Expiry Date</label>
+              <input type="date" value={form.passportExpiry || ''}
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { passportExpiry: v }); }); }}
+                style={INP} />
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={LBL}>Special Docs</label>
+              <input value={form.specialDocs || ''} placeholder="e.g. US Green Card, UK Ancestry Visa"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { specialDocs: v }); }); }}
+                style={INP} />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={LBL}>Notes</label>
+              <textarea value={form.notes || ''} placeholder="e.g. Renewed 2024"
+                onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={Object.assign({}, INP, { resize: 'vertical' })} />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={closeModal}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>
+                Cancel
+              </button>
+              <button type="button" disabled={busy || !form.name || !form.passportCountry} onClick={handleSave}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', fontWeight: 600, fontSize: 13,
+                         cursor: (busy || !form.name || !form.passportCountry) ? 'not-allowed' : 'pointer',
+                         opacity: (busy || !form.name || !form.passportCountry) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>
