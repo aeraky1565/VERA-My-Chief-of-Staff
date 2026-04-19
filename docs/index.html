@@ -15049,74 +15049,85 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
 
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
-            <div className="modal-title">{editing ? 'Edit Resource' : 'Add Resource'}</div>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <h2>{editing ? 'Edit Resource' : 'Add Resource'}</h2>
 
-            <label className="modal-label">Name *</label>
-            <input className="modal-input" placeholder="e.g. Verizon Medical Insurance Coverage"
-                   value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-
-            <label className="modal-label">Category</label>
-            <select className="modal-input" value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-              {RESOURCE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-
-            <label className="modal-label">Applies To</label>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-              {['Both', 'Ahmed', 'Victoria'].map(opt => (
-                <button key={opt} type="button"
-                        onClick={() => setForm(f => ({ ...f, appliesTo: opt }))}
-                        style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-                                 border: form.appliesTo === opt ? '1.5px solid #4a9eff' : '1px solid #1e2d40',
-                                 background: form.appliesTo === opt ? '#1a3050' : 'transparent',
-                                 color: form.appliesTo === opt ? '#c8d8ea' : '#4d6080' }}>
-                  {opt}
-                </button>
-              ))}
+            <div className="form-group">
+              <label className="form-label">Name *</label>
+              <input className="form-input" placeholder="e.g. Verizon Medical Insurance Coverage"
+                     value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
 
-            <label className="modal-label">URL * (Google Drive link or any web URL)</label>
-            <input className="modal-input" placeholder="https://docs.google.com/..."
-                   value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
-            {form.url && !/docs\.google\.com|drive\.google\.com/.test(form.url) && (
-              <div style={{ fontSize: 11, color: '#7a6a30', marginTop: -8, marginBottom: 8 }}>
-                ⚠ Non-Google Drive links are reference-only — VERA can't read their content.
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <select className="form-input" value={form.category}
+                      onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+                {RESOURCE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Applies To</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['Both', 'Ahmed', 'Victoria'].map(opt => (
+                  <button key={opt} type="button"
+                          onClick={() => setForm(f => ({ ...f, appliesTo: opt }))}
+                          style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+                                   border: form.appliesTo === opt ? '1.5px solid #4a9eff' : '1px solid #1e2d40',
+                                   background: form.appliesTo === opt ? '#1a3050' : 'transparent',
+                                   color: form.appliesTo === opt ? '#c8d8ea' : '#4d6080' }}>
+                    {opt}
+                  </button>
+                ))}
               </div>
-            )}
-            {form.url && /docs\.google\.com|drive\.google\.com/.test(form.url) && (
-              <div style={{ fontSize: 11, color: '#3a7a50', marginTop: -8, marginBottom: 8 }}>
-                ✓ Google Drive link detected — VERA will extract the file ID and read this document's content.
-              </div>
-            )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">URL * (Google Drive link or any web URL)</label>
+              <input className="form-input" placeholder="https://docs.google.com/..."
+                     value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))} />
+              {form.url && !/docs\.google\.com|drive\.google\.com/.test(form.url) && (
+                <div className="form-hint" style={{ color: '#9a8a40', marginTop: 6 }}>
+                  ⚠ Non-Google Drive links are reference-only — VERA can't read their content.
+                </div>
+              )}
+              {form.url && /docs\.google\.com|drive\.google\.com/.test(form.url) && (
+                <div className="form-hint" style={{ color: '#3a9a60', marginTop: 6 }}>
+                  ✓ Google Drive link detected — VERA will extract the file ID and read this document.
+                </div>
+              )}
+            </div>
 
             {editing && (
-              <>
-                <label className="modal-label">Drive File ID (auto-extracted — read only)</label>
+              <div className="form-group">
+                <label className="form-label">Drive File ID (auto-extracted)</label>
                 <div style={{ fontFamily: 'monospace', fontSize: 11, padding: '6px 10px', background: '#070f18',
-                              border: '1px solid #1e2d40', borderRadius: 6, color: '#4d6080', marginBottom: 14,
-                              wordBreak: 'break-all', minHeight: 28 }}>
+                              border: '1px solid #1e2d40', borderRadius: 6, wordBreak: 'break-all', minHeight: 28 }}>
                   {editing['Drive File ID']
                     ? <span style={{ color: '#3a9a60' }}>✓ {editing['Drive File ID']}</span>
-                    : <span style={{ color: '#8a5a30' }}>✗ Not extracted — VERA cannot read this document. Re-add with the correct Google Drive URL.</span>}
+                    : <span style={{ color: '#8a5a30' }}>✗ Not extracted — re-add with the correct Google Drive URL.</span>}
                 </div>
-              </>
+              </div>
             )}
 
-            <label className="modal-label">Description</label>
-            <textarea className="modal-input" rows={2}
-                      placeholder="What is this document about? (helps VERA know when to use it)"
-                      value={form.description}
-                      onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                      style={{ resize: 'vertical' }} />
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea className="form-input" rows={2}
+                        placeholder="What is this document about? (helps VERA know when to use it)"
+                        value={form.description}
+                        onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                        style={{ resize: 'vertical' }} />
+            </div>
 
-            <label className="modal-label">Tags (comma-separated)</label>
-            <input className="modal-input" placeholder="e.g. health, insurance, massage, dental"
-                   value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
+            <div className="form-group">
+              <label className="form-label">Tags (comma-separated)</label>
+              <input className="form-input" placeholder="e.g. health, insurance, massage, dental"
+                     value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} />
+            </div>
 
             <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn-primary"
+              <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn btn-primary"
                       onClick={handleSubmit}
                       disabled={busy || !form.name.trim() || !form.url.trim()}>
                 {editing ? 'Save Changes' : 'Add Resource'}
