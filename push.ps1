@@ -47,7 +47,7 @@ if ($gitStatus) {
     Write-Host ''
 
     $commitMsg = Read-Host 'Commit message (press Enter to use "update")'
-    if ($commitMsg -eq '') {
+    if (-not $commitMsg) {
         $commitMsg = 'update'
     }
 
