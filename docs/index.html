@@ -10098,6 +10098,28 @@ function CareerPositionModal({ form, setForm, busy, onSave, onClose }) {
             <option>Remote</option><option>Hybrid</option><option>On-site</option>
           </select>
         </div>
+        {inp('jobLevel', 'Job Level', 'e.g. L5 / Senior / Director')}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Base Salary ($)</label>
+            <input type="number" value={form.baseSalary || ''} placeholder="120000"
+              onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { baseSalary: v }); }); }}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Bonus %</label>
+            <input type="number" value={form.bonusPct || ''} placeholder="15"
+              onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { bonusPct: v }); }); }}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+          </div>
+        </div>
+        {inp('equity', 'Equity', 'e.g. 0.5% RSUs / $40k grant')}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Benefits</label>
+          <textarea value={form.benefits || ''} placeholder="e.g. Medical, Dental, Vision, 401k 4% match"
+            onChange={function(e) { var v = e.target.value; setForm(function(p) { return Object.assign({}, p, { benefits: v }); }); }}
+            rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+        </div>
         {inp('focusAreas', 'Focus Areas', 'Semicolon-separated, e.g. Growth;Strategy')}
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
@@ -10140,39 +10162,101 @@ function CareerPositionView({ position, busy, onUpdatePosition }) {
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
             <button className="btn btn-primary" style={{ fontSize: 12 }} onClick={openEdit}>✏️ Edit</button>
           </div>
-          <div className="card" style={{ padding: 20, maxWidth: 580 }}>
+          {/* ── Role ── */}
+          <div className="card" style={{ padding: 20, maxWidth: 600, marginBottom: 12 }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: '#dde1f0', marginBottom: 4 }}>{position.title}</div>
-            <div style={{ fontSize: 14, color: '#8a9abf', marginBottom: 14 }}>
+            <div style={{ fontSize: 14, color: '#8a9abf', marginBottom: 10 }}>
               {position.company}{position.department ? ' · ' + position.department : ''}
               {position.startDate ? ' · since ' + position.startDate : ''}
             </div>
-            {position.workStyle && (
-              <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: '#1a2a4a',
-                             color: '#8a9abf', display: 'inline-block', marginBottom: 12 }}>
-                {position.workStyle}
-              </span>
-            )}
-            {position.focusAreas && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: '#5c6a8a', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Focus Areas</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {position.focusAreas.split(';').map(function(f, i) {
-                    return f.trim() ? (
-                      <span key={i} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10,
-                                             background: '#162040', color: '#c9a84c', border: '1px solid #2a3060' }}>
-                        {f.trim()}
-                      </span>
-                    ) : null;
-                  })}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {position.workStyle && (
+                <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: '#1a2a4a', color: '#8a9abf', border: '1px solid #2a3a5a' }}>
+                  {position.workStyle}
+                </span>
+              )}
+              {position.jobLevel && (
+                <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: '#1a2a4a', color: '#5c9eff', border: '1px solid #2a3a5a' }}>
+                  {position.jobLevel}
+                </span>
+              )}
+            </div>
+          </div>
+          {/* ── Compensation ── */}
+          {(position.baseSalary !== '' || position.bonusPct !== '') && (function() {
+            var base    = parseFloat(position.baseSalary) || 0;
+            var bonus   = parseFloat(position.bonusPct)   || 0;
+            var total   = base > 0 ? base + base * bonus / 100 : 0;
+            function fmtK(v) { return v >= 1000 ? '$' + Math.round(v/1000) + 'k' : '$' + v; }
+            return (
+              <div className="card" style={{ padding: 20, maxWidth: 600, marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Compensation</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10 }}>
+                  {base > 0 && (
+                    <div style={{ background: '#0e1e3a', borderRadius: 8, padding: '10px 14px', border: '1px solid #1e3060' }}>
+                      <div style={{ fontSize: 10, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Base</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#4ade80' }}>{fmtK(base)}</div>
+                    </div>
+                  )}
+                  {bonus > 0 && (
+                    <div style={{ background: '#0e1e3a', borderRadius: 8, padding: '10px 14px', border: '1px solid #1e3060' }}>
+                      <div style={{ fontSize: 10, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Bonus</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a84c' }}>{bonus}%</div>
+                    </div>
+                  )}
+                  {position.equity && (
+                    <div style={{ background: '#0e1e3a', borderRadius: 8, padding: '10px 14px', border: '1px solid #1e3060' }}>
+                      <div style={{ fontSize: 10, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Equity</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#a06cd5' }}>{position.equity}</div>
+                    </div>
+                  )}
+                  {total > 0 && (
+                    <div style={{ background: '#0e1e3a', borderRadius: 8, padding: '10px 14px', border: '1px solid #2a3060' }}>
+                      <div style={{ fontSize: 10, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Est. Total</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#dde1f0' }}>~{fmtK(total)}</div>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-            {position.notes && (
-              <div style={{ fontSize: 13, color: '#6b7fa8', borderTop: '1px solid #1e3060', paddingTop: 12 }}>
-                {position.notes}
+            );
+          })()}
+          {/* ── Benefits ── */}
+          {position.benefits && (
+            <div className="card" style={{ padding: 20, maxWidth: 600, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Benefits</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {position.benefits.split(',').map(function(b, i) {
+                  return b.trim() ? (
+                    <span key={i} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: '#162040', color: '#8a9abf', border: '1px solid #2a3060' }}>
+                      {b.trim()}
+                    </span>
+                  ) : null;
+                })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          {/* ── Focus Areas ── */}
+          {position.focusAreas && (
+            <div className="card" style={{ padding: 20, maxWidth: 600, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Focus Areas</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {position.focusAreas.split(';').map(function(f, i) {
+                  return f.trim() ? (
+                    <span key={i} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 10, background: '#162040', color: '#c9a84c', border: '1px solid #2a3060' }}>
+                      {f.trim()}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
+          {/* ── Notes ── */}
+          {position.notes && (
+            <div className="card" style={{ padding: 20, maxWidth: 600 }}>
+              <div style={{ fontSize: 11, color: '#5c6a8a', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Notes</div>
+              <div style={{ fontSize: 13, color: '#6b7fa8' }}>{position.notes}</div>
+            </div>
+          )}
         </div>
       )}
       {editing && (
@@ -10183,9 +10267,11 @@ function CareerPositionView({ position, busy, onUpdatePosition }) {
   );
 }
 
-function CareerGoalsView({ goals, busy, onAddGoal, onUpdateGoal, onDeleteGoal }) {
+function CareerGoalsView({ goals, busy, onAddGoal, onUpdateGoal, onDeleteGoal, onUpdateGoalFull }) {
   var [showAdd, setShowAdd] = React.useState(false);
   var [form, setForm]       = React.useState({ horizon: '1yr', status: 'Active' });
+  var [editGoal, setEditGoal] = React.useState(null);
+  var [editForm, setEditForm] = React.useState({});
   var HORIZON_COLORS = { '1yr': '#5c9eff', '3yr': '#c9a84c', '5yr': '#a06cd5', '10yr': '#3cb371' };
   var STATUS_COLORS  = { Active: '#3cb371', Achieved: '#c9a84c', Paused: '#5c6a8a' };
   var STATUS_CYCLE   = { Active: 'Achieved', Achieved: 'Paused', Paused: 'Active' };
@@ -10196,6 +10282,9 @@ function CareerGoalsView({ goals, busy, onAddGoal, onUpdateGoal, onDeleteGoal })
     setForm({ horizon: '1yr', status: 'Active' });
     setShowAdd(false);
   }
+
+  function openEditGoal(g) { setEditGoal(g); setEditForm(Object.assign({}, g)); }
+  async function handleSaveGoal() { await onUpdateGoalFull(editGoal.id, editForm); setEditGoal(null); }
 
   return (
     <div>
@@ -10229,6 +10318,8 @@ function CareerGoalsView({ goals, busy, onAddGoal, onUpdateGoal, onDeleteGoal })
                          color: sColor, border: '1px solid ' + sColor + '55', cursor: 'pointer' }}>
                 {g.status}
               </button>
+              <button onClick={function() { openEditGoal(g); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Edit">✎</button>
               <button onClick={function() { if (window.confirm('Delete goal "' + g.title + '"?')) onDeleteGoal(g.id); }}
                 style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
             </div>
@@ -10292,13 +10383,72 @@ function CareerGoalsView({ goals, busy, onAddGoal, onUpdateGoal, onDeleteGoal })
           </div>
         </div>
       )}
+      {editGoal && (
+        <div className="modal-overlay" onClick={function() { setEditGoal(null); }}>
+          <div className="modal-box" style={{ maxWidth: 420 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Edit Goal</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Title *</label>
+              <input value={editForm.title || ''} placeholder="e.g. Become a Director of Product"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { title: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Horizon</label>
+                <select value={editForm.horizon || '1yr'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { horizon: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>1yr</option><option>3yr</option><option>5yr</option><option>10yr</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Status</label>
+                <select value={editForm.status || 'Active'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { status: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Active</option><option>Achieved</option><option>Paused</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Category</label>
+              <input value={editForm.category || ''} placeholder="e.g. Leadership, Technical, Visibility"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { category: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Target Date</label>
+              <input value={editForm.targetDate || ''} placeholder="e.g. Q4 2026"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { targetDate: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={editForm.notes || ''}
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setEditGoal(null); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !editForm.title} onClick={handleSaveGoal}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !editForm.title) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !editForm.title) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CareerProgressionView({ progression, busy, onAddProgression, onDeleteProgression }) {
+function CareerProgressionView({ progression, busy, onAddProgression, onDeleteProgression, onUpdateProgression }) {
   var [showAdd, setShowAdd] = React.useState(false);
   var [form, setForm]       = React.useState({ type: 'New Role' });
+  var [editProg, setEditProg] = React.useState(null);
+  var [editForm, setEditForm] = React.useState({});
   var TYPE_COLORS = { 'New Role': '#5c9eff', Promotion: '#3cb371', Lateral: '#c9a84c', Freelance: '#a06cd5', Sabbatical: '#e07b54' };
 
   function handleAdd() {
@@ -10307,6 +10457,9 @@ function CareerProgressionView({ progression, busy, onAddProgression, onDeletePr
     setForm({ type: 'New Role' });
     setShowAdd(false);
   }
+
+  function openEditProg(p) { setEditProg(p); setEditForm(Object.assign({}, p)); }
+  async function handleSaveProg() { await onUpdateProgression(editProg.id, editForm); setEditProg(null); }
 
   return (
     <div>
@@ -10339,8 +10492,12 @@ function CareerProgressionView({ progression, busy, onAddProgression, onDeletePr
                 </div>
               )}
             </div>
-            <button onClick={function() { if (window.confirm('Delete "' + p.title + '"?')) onDeleteProgression(p.id); }}
-              style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px', marginLeft: 12, flexShrink: 0 }}>×</button>
+            <div style={{ display: 'flex', gap: 4, marginLeft: 12, flexShrink: 0 }}>
+              <button onClick={function() { openEditProg(p); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Edit">✎</button>
+              <button onClick={function() { if (window.confirm('Delete "' + p.title + '"?')) onDeleteProgression(p.id); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+            </div>
           </div>
         );
       })}
@@ -10407,13 +10564,78 @@ function CareerProgressionView({ progression, busy, onAddProgression, onDeletePr
           </div>
         </div>
       )}
+      {editProg && (
+        <div className="modal-overlay" onClick={function() { setEditProg(null); }}>
+          <div className="modal-box" style={{ maxWidth: 440 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Edit Role</div>
+            {['title', 'company'].map(function(key) {
+              var labels = { title: 'Title *', company: 'Company *' };
+              var phs    = { title: 'e.g. Product Manager', company: 'e.g. Acme Corp' };
+              return (
+                <div key={key} style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{labels[key]}</label>
+                  <input value={editForm[key] || ''} placeholder={phs[key]}
+                    onChange={function(e) { var v = e.target.value; setEditForm(function(prev) { var n = Object.assign({}, prev); n[key] = v; return n; }); }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Start Year *</label>
+                <input value={editForm.startYear || ''} placeholder="e.g. 2021"
+                  onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { startYear: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>End Year</label>
+                <input value={editForm.endYear || ''} placeholder="blank = Present"
+                  onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { endYear: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Type</label>
+              <select value={editForm.type || 'New Role'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { type: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                <option>New Role</option><option>Promotion</option><option>Lateral</option><option>Freelance</option><option>Sabbatical</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Highlights</label>
+              <textarea value={editForm.highlights || ''}
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { highlights: v }); }); }}
+                rows={2} placeholder="Key achievements or responsibilities"
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={editForm.notes || ''}
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setEditProg(null); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !editForm.title || !editForm.company || !editForm.startYear} onClick={handleSaveProg}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !editForm.title || !editForm.company || !editForm.startYear) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !editForm.title || !editForm.company || !editForm.startYear) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CareerDevelopmentView({ development, busy, onAddDevelopment, onUpdateDevelopment, onDeleteDevelopment }) {
+function CareerDevelopmentView({ development, busy, onAddDevelopment, onUpdateDevelopment, onDeleteDevelopment, onUpdateDevelopmentFull }) {
   var [showAdd, setShowAdd] = React.useState(false);
   var [form, setForm]       = React.useState({ type: 'Skill', status: 'Planned' });
+  var [editDev, setEditDev] = React.useState(null);
+  var [editForm, setEditForm] = React.useState({});
   var TYPE_COLORS   = { Skill: '#5c9eff', Course: '#c9a84c', Certification: '#3cb371', 'Focus Area': '#a06cd5' };
   var STATUS_COLORS = { Planned: '#5c6a8a', 'In Progress': '#5c9eff', Completed: '#3cb371' };
   var STATUS_CYCLE  = { Planned: 'In Progress', 'In Progress': 'Completed', Completed: 'Planned' };
@@ -10426,6 +10648,9 @@ function CareerDevelopmentView({ development, busy, onAddDevelopment, onUpdateDe
     setForm({ type: 'Skill', status: 'Planned' });
     setShowAdd(false);
   }
+
+  function openEditDev(d) { setEditDev(d); setEditForm(Object.assign({}, d)); }
+  async function handleSaveDev() { await onUpdateDevelopmentFull(editDev.id, editForm); setEditDev(null); }
 
   return (
     <div>
@@ -10458,6 +10683,8 @@ function CareerDevelopmentView({ development, busy, onAddDevelopment, onUpdateDe
                          color: sColor, border: '1px solid ' + sColor + '55', cursor: 'pointer' }}>
                 {d.status}
               </button>
+              <button onClick={function() { openEditDev(d); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Edit">✎</button>
               <button onClick={function() { onDeleteDevelopment(d.id); }}
                 style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
             </div>
@@ -10515,14 +10742,67 @@ function CareerDevelopmentView({ development, busy, onAddDevelopment, onUpdateDe
           </div>
         </div>
       )}
+      {editDev && (
+        <div className="modal-overlay" onClick={function() { setEditDev(null); }}>
+          <div className="modal-box" style={{ maxWidth: 400 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Edit Development Item</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Item *</label>
+              <input value={editForm.item || ''} placeholder="e.g. SQL Advanced, AWS Cert"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { item: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Type</label>
+                <select value={editForm.type || 'Skill'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { type: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Skill</option><option>Course</option><option>Certification</option><option>Focus Area</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Status</label>
+                <select value={editForm.status || 'Planned'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { status: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Planned</option><option>In Progress</option><option>Completed</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Target Date</label>
+              <input value={editForm.targetDate || ''} placeholder="e.g. Q2 2026"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { targetDate: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={editForm.notes || ''}
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setEditDev(null); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !editForm.item} onClick={handleSaveDev}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !editForm.item) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !editForm.item) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CareerWinsView({ wins, busy, onAddWin, onDeleteWin }) {
+function CareerWinsView({ wins, busy, onAddWin, onDeleteWin, onUpdateWin }) {
   var today = new Date().toISOString().slice(0, 10);
   var [showAdd, setShowAdd] = React.useState(false);
   var [form, setForm]       = React.useState({ date: today, category: 'Project' });
+  var [editWin, setEditWin] = React.useState(null);
+  var [editForm, setEditForm] = React.useState({});
   var CAT_COLORS = { Promotion: '#3cb371', Recognition: '#c9a84c', Launch: '#5c9eff', Leadership: '#a06cd5', Project: '#4a9abf', Other: '#5c6a8a' };
 
   function handleAdd() {
@@ -10531,6 +10811,9 @@ function CareerWinsView({ wins, busy, onAddWin, onDeleteWin }) {
     setForm({ date: today, category: 'Project' });
     setShowAdd(false);
   }
+
+  function openEditWin(w) { setEditWin(w); setEditForm(Object.assign({}, w)); }
+  async function handleSaveWin() { await onUpdateWin(editWin.id, editForm); setEditWin(null); }
 
   return (
     <div>
@@ -10559,8 +10842,12 @@ function CareerWinsView({ wins, busy, onAddWin, onDeleteWin }) {
               {w.impact && <div style={{ fontSize: 13, color: '#8a9abf' }}>{w.impact}</div>}
               {w.notes && <div style={{ fontSize: 12, color: '#6b7fa8', marginTop: 4 }}>{w.notes}</div>}
             </div>
-            <button onClick={function() { if (window.confirm('Delete this win?')) onDeleteWin(w.id); }}
-              style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px', marginLeft: 12, flexShrink: 0 }}>×</button>
+            <div style={{ display: 'flex', gap: 4, marginLeft: 12, flexShrink: 0 }}>
+              <button onClick={function() { openEditWin(w); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Edit">✎</button>
+              <button onClick={function() { if (window.confirm('Delete this win?')) onDeleteWin(w.id); }}
+                style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+            </div>
           </div>
         );
       })}
@@ -10615,13 +10902,66 @@ function CareerWinsView({ wins, busy, onAddWin, onDeleteWin }) {
           </div>
         </div>
       )}
+      {editWin && (
+        <div className="modal-overlay" onClick={function() { setEditWin(null); }}>
+          <div className="modal-box" style={{ maxWidth: 420 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Edit Win</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Win *</label>
+              <textarea value={editForm.win || ''} placeholder="What did you achieve?"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { win: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Impact</label>
+              <input value={editForm.impact || ''} placeholder="e.g. Grew revenue by 20%, saved 5 hrs/week"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { impact: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Category</label>
+                <select value={editForm.category || 'Project'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { category: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Promotion</option><option>Recognition</option><option>Launch</option>
+                  <option>Leadership</option><option>Project</option><option>Other</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Date</label>
+                <input type="date" value={editForm.date || today}
+                  onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { date: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={editForm.notes || ''}
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setEditWin(null); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !editForm.win} onClick={handleSaveWin}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !editForm.win) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !editForm.win) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CareerNetworkView({ network, busy, onAddNetwork, onUpdateNetwork, onDeleteNetwork }) {
+function CareerNetworkView({ network, busy, onAddNetwork, onUpdateNetwork, onDeleteNetwork, onUpdateNetworkFull }) {
   var [showAdd, setShowAdd] = React.useState(false);
   var [form, setForm]       = React.useState({ relationship: 'Peer' });
+  var [editContact, setEditContact] = React.useState(null);
+  var [editForm, setEditForm] = React.useState({});
   var REL_COLORS = { Mentor: '#c9a84c', Sponsor: '#3cb371', Peer: '#5c9eff', Coach: '#a06cd5', Colleague: '#5c6a8a' };
 
   function handleAdd() {
@@ -10630,6 +10970,9 @@ function CareerNetworkView({ network, busy, onAddNetwork, onUpdateNetwork, onDel
     setForm({ relationship: 'Peer' });
     setShowAdd(false);
   }
+
+  function openEditContact(c) { setEditContact(c); setEditForm(Object.assign({}, c)); }
+  async function handleSaveContact() { await onUpdateNetworkFull(editContact.id, editForm); setEditContact(null); }
 
   return (
     <div>
@@ -10657,8 +11000,12 @@ function CareerNetworkView({ network, busy, onAddNetwork, onUpdateNetwork, onDel
                     </div>
                   )}
                 </div>
-                <button onClick={function() { if (window.confirm('Remove ' + c.name + '?')) onDeleteNetwork(c.id); }}
-                  style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button onClick={function() { openEditContact(c); }}
+                    style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Edit">✎</button>
+                  <button onClick={function() { if (window.confirm('Remove ' + c.name + '?')) onDeleteNetwork(c.id); }}
+                    style={{ background: 'none', border: 'none', color: '#5c6a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
                 <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: rColor + '22', color: rColor, border: '1px solid ' + rColor + '55' }}>{c.relationship}</span>
@@ -10730,17 +11077,73 @@ function CareerNetworkView({ network, busy, onAddNetwork, onUpdateNetwork, onDel
           </div>
         </div>
       )}
+      {editContact && (
+        <div className="modal-overlay" onClick={function() { setEditContact(null); }}>
+          <div className="modal-box" style={{ maxWidth: 400 }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 16 }}>Edit Contact</div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Name *</label>
+              <input value={editForm.name || ''} placeholder="Full name"
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { name: v }); }); }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+            </div>
+            {['role', 'company'].map(function(key) {
+              var labels = { role: 'Role', company: 'Company' };
+              var phs    = { role: 'e.g. VP of Engineering', company: 'e.g. Acme Corp' };
+              return (
+                <div key={key} style={{ marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{labels[key]}</label>
+                  <input value={editForm[key] || ''} placeholder={phs[key]}
+                    onChange={function(e) { var v = e.target.value; setEditForm(function(prev) { var n = Object.assign({}, prev); n[key] = v; return n; }); }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+                </div>
+              );
+            })}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Relationship</label>
+                <select value={editForm.relationship || 'Peer'} onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { relationship: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }}>
+                  <option>Mentor</option><option>Sponsor</option><option>Peer</option><option>Coach</option><option>Colleague</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Last Contact</label>
+                <input type="date" value={editForm.lastContact || ''}
+                  onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { lastContact: v }); }); }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 11, color: '#8a9abf', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Notes</label>
+              <textarea value={editForm.notes || ''}
+                onChange={function(e) { var v = e.target.value; setEditForm(function(p) { return Object.assign({}, p, { notes: v }); }); }}
+                rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, background: '#0d1b3e', border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13, resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={function() { setEditContact(null); }}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#1e2a3a', border: '1px solid #2a3a4a', color: '#6b7fa8', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+              <button type="button" disabled={busy || !editForm.name} onClick={handleSaveContact}
+                style={{ padding: '7px 16px', borderRadius: 8, background: '#5c9eff', border: 'none',
+                         color: '#fff', cursor: (busy || !editForm.name) ? 'not-allowed' : 'pointer',
+                         fontSize: 13, fontWeight: 600, opacity: (busy || !editForm.name) ? 0.5 : 1 }}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function CareerTab({ career, loading, busy,
                      onUpdatePosition,
-                     onAddGoal, onUpdateGoal, onDeleteGoal,
-                     onAddProgression, onDeleteProgression,
-                     onAddDevelopment, onUpdateDevelopment, onDeleteDevelopment,
-                     onAddWin, onDeleteWin,
-                     onAddNetwork, onUpdateNetwork, onDeleteNetwork }) {
+                     onAddGoal, onUpdateGoal, onDeleteGoal, onUpdateGoalFull,
+                     onAddProgression, onDeleteProgression, onUpdateProgression,
+                     onAddDevelopment, onUpdateDevelopment, onDeleteDevelopment, onUpdateDevelopmentFull,
+                     onAddWin, onDeleteWin, onUpdateWin,
+                     onAddNetwork, onUpdateNetwork, onDeleteNetwork, onUpdateNetworkFull }) {
   var [sub, setSub] = React.useState('position');
   var subTabs = [
     { id: 'position',    label: '📌 Position'   },
@@ -10767,25 +11170,27 @@ function CareerTab({ career, loading, busy,
       )}
       {!loading && sub === 'goals' && (
         <CareerGoalsView goals={data.goals || []} busy={busy}
-          onAddGoal={onAddGoal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal} />
+          onAddGoal={onAddGoal} onUpdateGoal={onUpdateGoal} onDeleteGoal={onDeleteGoal}
+          onUpdateGoalFull={onUpdateGoalFull} />
       )}
       {!loading && sub === 'progression' && (
         <CareerProgressionView progression={data.progression || []} busy={busy}
-          onAddProgression={onAddProgression} onDeleteProgression={onDeleteProgression} />
+          onAddProgression={onAddProgression} onDeleteProgression={onDeleteProgression}
+          onUpdateProgression={onUpdateProgression} />
       )}
       {!loading && sub === 'development' && (
         <CareerDevelopmentView development={data.development || []} busy={busy}
           onAddDevelopment={onAddDevelopment} onUpdateDevelopment={onUpdateDevelopment}
-          onDeleteDevelopment={onDeleteDevelopment} />
+          onDeleteDevelopment={onDeleteDevelopment} onUpdateDevelopmentFull={onUpdateDevelopmentFull} />
       )}
       {!loading && sub === 'wins' && (
         <CareerWinsView wins={data.wins || []} busy={busy}
-          onAddWin={onAddWin} onDeleteWin={onDeleteWin} />
+          onAddWin={onAddWin} onDeleteWin={onDeleteWin} onUpdateWin={onUpdateWin} />
       )}
       {!loading && sub === 'network' && (
         <CareerNetworkView network={data.network || []} busy={busy}
           onAddNetwork={onAddNetwork} onUpdateNetwork={onUpdateNetwork}
-          onDeleteNetwork={onDeleteNetwork} />
+          onDeleteNetwork={onDeleteNetwork} onUpdateNetworkFull={onUpdateNetworkFull} />
       )}
     </div>
   );
@@ -18059,6 +18464,56 @@ function App() {
     setBusy(false);
   }
 
+  async function handleUpdateCareerGoalFull(id, data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_goal_full', id, ...data });
+      showToast('🎯 Goal updated');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update goal: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerProgression(id, data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_progression', id, ...data });
+      showToast('📈 Role updated');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update role: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerDevelopmentFull(id, data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_dev_full', id, ...data });
+      showToast('🧠 Development item updated');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update development item: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerWin(id, data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_win', id, ...data });
+      showToast('🏆 Win updated');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update win: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleUpdateCareerNetworkFull(id, data) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_career_network_full', id, ...data });
+      showToast('🤝 Contact updated');
+      await loadCareer(apiUrl, apiToken);
+    } catch (err) { setError('Could not update contact: ' + err.message); }
+    setBusy(false);
+  }
+
   async function handleTriggerBuffer() {
     if (!window.confirm('Use one of Ahmed\'s buffer days? This will decrement the buffer count.')) return;
     setBusy(true);
@@ -19307,16 +19762,21 @@ function App() {
                 onAddGoal={handleAddCareerGoal}
                 onUpdateGoal={handleUpdateCareerGoal}
                 onDeleteGoal={handleDeleteCareerGoal}
+                onUpdateGoalFull={handleUpdateCareerGoalFull}
                 onAddProgression={handleAddCareerProgression}
                 onDeleteProgression={handleDeleteCareerProgression}
+                onUpdateProgression={handleUpdateCareerProgression}
                 onAddDevelopment={handleAddCareerDevelopment}
                 onUpdateDevelopment={handleUpdateCareerDevelopment}
                 onDeleteDevelopment={handleDeleteCareerDevelopment}
+                onUpdateDevelopmentFull={handleUpdateCareerDevelopmentFull}
                 onAddWin={handleAddCareerWin}
                 onDeleteWin={handleDeleteCareerWin}
+                onUpdateWin={handleUpdateCareerWin}
                 onAddNetwork={handleAddCareerNetwork}
                 onUpdateNetwork={handleUpdateCareerNetwork}
                 onDeleteNetwork={handleDeleteCareerNetwork}
+                onUpdateNetworkFull={handleUpdateCareerNetworkFull}
               />
             )}
           </div>

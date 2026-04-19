@@ -178,11 +178,16 @@ function doGet(e) {
       case 'add_career_development':     return jsonOut_(webAddCareerDevelopment_(e));
       case 'update_career_development':  return jsonOut_(webUpdateCareerDevelopment_(e));
       case 'delete_career_development':  return jsonOut_(webDeleteCareerDevelopment_(e));
-      case 'add_career_win':             return jsonOut_(webAddCareerWin_(e));
-      case 'delete_career_win':          return jsonOut_(webDeleteCareerWin_(e));
-      case 'add_career_network':         return jsonOut_(webAddCareerNetwork_(e));
-      case 'update_career_network':      return jsonOut_(webUpdateCareerNetwork_(e));
-      case 'delete_career_network':      return jsonOut_(webDeleteCareerNetwork_(e));
+      case 'add_career_win':              return jsonOut_(webAddCareerWin_(e));
+      case 'update_career_win':           return jsonOut_(webUpdateCareerWin_(e));
+      case 'delete_career_win':           return jsonOut_(webDeleteCareerWin_(e));
+      case 'update_career_goal_full':     return jsonOut_(webUpdateCareerGoalFull_(e));
+      case 'update_career_progression':  return jsonOut_(webUpdateCareerProgression_(e));
+      case 'update_career_dev_full':      return jsonOut_(webUpdateCareerDevelopmentFull_(e));
+      case 'update_career_network_full':  return jsonOut_(webUpdateCareerNetworkFull_(e));
+      case 'add_career_network':          return jsonOut_(webAddCareerNetwork_(e));
+      case 'update_career_network':       return jsonOut_(webUpdateCareerNetwork_(e));
+      case 'delete_career_network':       return jsonOut_(webDeleteCareerNetwork_(e));
       // Prescriptions tab (Issue #116)
       case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
       case 'add_prescription':           return jsonOut_(webAddPrescription_(e));
@@ -2488,10 +2493,12 @@ function webGetCareer_() {
     if (pSheet && pSheet.getLastRow() >= 2) {
       var pr = pSheet.getRange(2, 1, 1, CAREER_POSITION_HEADERS.length).getValues()[0];
       position = {
-        title: String(pr[0]||'').trim(), company: String(pr[1]||'').trim(),
-        department: String(pr[2]||'').trim(), startDate: String(pr[3]||'').trim(),
-        workStyle: String(pr[4]||'').trim(), focusAreas: String(pr[5]||'').trim(),
-        notes: String(pr[6]||'').trim(),
+        title: String(pr[0]||'').trim(),      company:    String(pr[1]||'').trim(),
+        department: String(pr[2]||'').trim(),  startDate:  String(pr[3]||'').trim(),
+        workStyle:  String(pr[4]||'').trim(),  jobLevel:   String(pr[5]||'').trim(),
+        baseSalary: pr[6] !== '' ? pr[6] : '', bonusPct:   pr[7] !== '' ? pr[7] : '',
+        equity:     String(pr[8]||'').trim(),  benefits:   String(pr[9]||'').trim(),
+        focusAreas: String(pr[10]||'').trim(), notes:      String(pr[11]||'').trim(),
       };
     }
   } catch(ex) { Logger.log('career position: ' + ex.message); }
@@ -2588,15 +2595,21 @@ function webUpdateCareerPosition_(e) {
   var sheet  = ss.getSheetByName(TABS.CAREER_POSITION);
   if (!sheet) throw new Error('Career Position tab not found');
   // Ensure at least one data row exists
-  if (sheet.getLastRow() < 2) sheet.getRange(2, 1, 1, CAREER_POSITION_HEADERS.length).setValues([['','','','','','','']]);
+  if (sheet.getLastRow() < 2) sheet.getRange(2, 1, 1, CAREER_POSITION_HEADERS.length)
+    .setValues([['','','','','','','','','','','','']]);
   sheet.getRange(2, 1, 1, CAREER_POSITION_HEADERS.length).setValues([[
-    (p.title       ||'').trim(),
-    (p.company     ||'').trim(),
-    (p.department  ||'').trim(),
-    (p.startDate   ||'').trim(),
-    (p.workStyle   ||'').trim(),
-    (p.focusAreas  ||'').trim(),
-    (p.notes       ||'').trim(),
+    (p.title      ||'').trim(),
+    (p.company    ||'').trim(),
+    (p.department ||'').trim(),
+    (p.startDate  ||'').trim(),
+    (p.workStyle  ||'').trim(),
+    (p.jobLevel   ||'').trim(),
+    p.baseSalary ? parseFloat(p.baseSalary) : '',
+    p.bonusPct   ? parseFloat(p.bonusPct)   : '',
+    (p.equity     ||'').trim(),
+    (p.benefits   ||'').trim(),
+    (p.focusAreas ||'').trim(),
+    (p.notes      ||'').trim(),
   ]]);
   return { ok: true, action: 'updated' };
 }
@@ -2731,6 +2744,92 @@ function webDeleteCareerWin_(e) {
     if (String(data[i][0]).trim() === id) { sheet.deleteRow(i+2); return { ok: true, action: 'deleted' }; }
   }
   throw new Error('Win not found: ' + id);
+}
+
+function webUpdateCareerGoalFull_(e) {
+  var p = e.parameter || {};
+  var id = (p.id||'').trim();
+  if (!id) throw new Error('id is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_GOALS);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() !== id) continue;
+    sheet.getRange(i+2, 1, 1, CAREER_GOAL_HEADERS.length).setValues([[
+      id, (p.title||'').trim(), (p.horizon||'').trim(), (p.category||'').trim(),
+      (p.status||'Active').trim(), (p.targetDate||'').trim(), (p.notes||'').trim(),
+    ]]);
+    return { ok: true };
+  }
+  throw new Error('Goal not found: ' + id);
+}
+
+function webUpdateCareerProgression_(e) {
+  var p = e.parameter || {};
+  var id = (p.id||'').trim();
+  if (!id) throw new Error('id is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_PROGRESSION);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() !== id) continue;
+    sheet.getRange(i+2, 1, 1, CAREER_PROGRESSION_HEADERS.length).setValues([[
+      id, (p.title||'').trim(), (p.company||'').trim(),
+      (p.startYear||'').trim(), (p.endYear||'').trim(),
+      (p.type||'').trim(), (p.highlights||'').trim(), (p.notes||'').trim(),
+    ]]);
+    return { ok: true };
+  }
+  throw new Error('Entry not found: ' + id);
+}
+
+function webUpdateCareerDevelopmentFull_(e) {
+  var p = e.parameter || {};
+  var id = (p.id||'').trim();
+  if (!id) throw new Error('id is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_DEVELOPMENT);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() !== id) continue;
+    sheet.getRange(i+2, 1, 1, CAREER_DEVELOPMENT_HEADERS.length).setValues([[
+      id, (p.item||'').trim(), (p.type||'').trim(), (p.status||'').trim(),
+      (p.targetDate||'').trim(), (p.notes||'').trim(),
+    ]]);
+    return { ok: true };
+  }
+  throw new Error('Item not found: ' + id);
+}
+
+function webUpdateCareerWin_(e) {
+  var p = e.parameter || {};
+  var id = (p.id||'').trim();
+  if (!id) throw new Error('id is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_WINS);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() !== id) continue;
+    sheet.getRange(i+2, 1, 1, CAREER_WIN_HEADERS.length).setValues([[
+      id, (p.date||'').trim(), (p.win||'').trim(),
+      (p.impact||'').trim(), (p.category||'').trim(), (p.notes||'').trim(),
+    ]]);
+    return { ok: true };
+  }
+  throw new Error('Win not found: ' + id);
+}
+
+function webUpdateCareerNetworkFull_(e) {
+  var p = e.parameter || {};
+  var id = (p.id||'').trim();
+  if (!id) throw new Error('id is required');
+  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_NETWORK);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() !== id) continue;
+    sheet.getRange(i+2, 1, 1, CAREER_NETWORK_HEADERS.length).setValues([[
+      id, (p.name||'').trim(), (p.role||'').trim(), (p.company||'').trim(),
+      (p.relationship||'').trim(), (p.lastContact||'').trim(), (p.notes||'').trim(),
+    ]]);
+    return { ok: true };
+  }
+  throw new Error('Contact not found: ' + id);
 }
 
 function webAddCareerNetwork_(e) {
