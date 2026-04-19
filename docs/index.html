@@ -5553,8 +5553,7 @@ function VisaCheckView({ profiles, upcomingTrips, busy, onCheck, visaResults, vi
         <div style={{ flex:1 }}>
           <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:6 }}>Destination Country</div>
           <input
-            className="modal-input"
-            style={{ margin:0 }}
+            style={{ width:'100%', padding:'8px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }}
             placeholder="e.g. France, Japan, United States…"
             value={destination}
             onChange={e => setDestination(e.target.value)}
@@ -5565,7 +5564,7 @@ function VisaCheckView({ profiles, upcomingTrips, busy, onCheck, visaResults, vi
             {trips.map(function(t, i) { return <option key={i} value={t} />; })}
           </datalist>
         </div>
-        <button className="btn-primary" onClick={handleCheck} disabled={busy || visaLoading || !destination.trim() || profiles.length === 0}>
+        <button className="btn btn-primary" onClick={handleCheck} disabled={busy || visaLoading || !destination.trim() || profiles.length === 0}>
           {visaLoading ? 'Checking…' : 'Check Visa'}
         </button>
       </div>
@@ -5972,10 +5971,13 @@ function GoalCard({ goal, projection, onEdit, onDelete, onSimulate, busy }) {
             {projection && projectionChip(projection, goal.targetDate)}
           </div>
         </div>
-        <div style={{ display:'flex', gap:6 }}>
-          <button className="btn-sm" onClick={() => onSimulate(goal)} title="What-If Simulator">🔮</button>
-          <button className="btn-sm" onClick={() => onEdit(goal)}>✏️</button>
-          <button className="btn-sm btn-danger" onClick={() => onDelete(goal.id)} disabled={busy}>✕</button>
+        <div style={{ display:'flex', gap:4 }}>
+          <button onClick={() => onSimulate(goal)} title="What-If Simulator"
+            style={{ background:'none', border:'none', color:'#5c6a8a', cursor:'pointer', fontSize:15, padding:'0 4px' }}>🔮</button>
+          <button onClick={() => onEdit(goal)}
+            style={{ background:'none', border:'none', color:'#5c6a8a', cursor:'pointer', fontSize:14, padding:'0 4px' }}>✎</button>
+          <button onClick={() => onDelete(goal.id)} disabled={busy}
+            style={{ background:'none', border:'none', color:'#5c6a8a', cursor:'pointer', fontSize:16, padding:'0 4px' }}>×</button>
         </div>
       </div>
 
@@ -6048,7 +6050,7 @@ function ScenarioSimulatorModal({ goal, apiUrl, apiToken, busy, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth:480 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-title">🔮 What-If Simulator</div>
+        <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:4 }}>🔮 What-If Simulator</div>
         <div style={{ fontSize:13, color:'#8ab4f8', marginBottom:16 }}>
           {goal.name} — {fmtMoney(goal.targetAmount)}{goal.targetDate ? ' by ' + fmtGoalDate(goal.targetDate) : ''}
         </div>
@@ -6070,16 +6072,18 @@ function ScenarioSimulatorModal({ goal, apiUrl, apiToken, busy, onClose }) {
 
         <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:4 }}>Amount ($)</div>
-          <input className="modal-input" type="number" min="0" placeholder="e.g. 30000"
-            value={amount} onChange={e => { setAmount(e.target.value); setResult(null); }} />
+          <input type="number" min="0" placeholder="e.g. 30000"
+            value={amount} onChange={e => { setAmount(e.target.value); setResult(null); }}
+            style={{ width:'100%', padding:'8px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }} />
         </div>
         <div style={{ marginBottom:16 }}>
           <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:4 }}>Description (optional)</div>
-          <input className="modal-input" placeholder="e.g. New car purchase"
-            value={description} onChange={e => setDescription(e.target.value)} />
+          <input placeholder="e.g. New car purchase"
+            value={description} onChange={e => setDescription(e.target.value)}
+            style={{ width:'100%', padding:'8px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }} />
         </div>
 
-        <button className="btn-primary" style={{ width:'100%', marginBottom:16 }}
+        <button className="btn btn-primary" style={{ width:'100%', marginBottom:16 }}
           onClick={runSim} disabled={loading || !amount}>
           {loading ? 'Calculating…' : 'Run Simulation'}
         </button>
@@ -6119,8 +6123,8 @@ function ScenarioSimulatorModal({ goal, apiUrl, apiToken, busy, onClose }) {
             </div>
 
             {!saved ? (
-              <button className="btn-secondary" style={{ marginTop:10, width:'100%' }}
-                onClick={saveScenario} disabled={saving}>
+              <button onClick={saveScenario} disabled={saving}
+                style={{ marginTop:10, width:'100%', padding:'7px 0', borderRadius:8, background:'#1e2a3a', border:'1px solid #2a3a4a', color:'#6b7fa8', cursor:saving?'not-allowed':'pointer', fontSize:13 }}>
                 {saving ? 'Saving…' : '💾 Save Scenario'}
               </button>
             ) : (
@@ -6129,7 +6133,8 @@ function ScenarioSimulatorModal({ goal, apiUrl, apiToken, busy, onClose }) {
           </div>
         )}
 
-        <button className="btn-secondary" style={{ width:'100%' }} onClick={onClose}>Close</button>
+        <button onClick={onClose}
+          style={{ width:'100%', padding:'7px 0', borderRadius:8, background:'#1e2a3a', border:'1px solid #2a3a4a', color:'#6b7fa8', cursor:'pointer', fontSize:13 }}>Close</button>
       </div>
     </div>
   );
@@ -6148,7 +6153,7 @@ function GoalFormModal({ goal, onSave, onClose, busy }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth:460 }} onClick={e => e.stopPropagation()}>
-        <div className="modal-title">{goal ? 'Edit Goal' : 'Add Financial Goal'}</div>
+        <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:16 }}>{goal ? 'Edit Goal' : 'Add Financial Goal'}</div>
 
         {[
           { key:'name',                label:'Goal Name',            placeholder:'e.g. House Down Payment' },
@@ -6162,33 +6167,42 @@ function GoalFormModal({ goal, onSave, onClose, busy }) {
         ].map(function(f) {
           return (
             <div key={f.key} style={{ marginBottom:10 }}>
-              <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:3 }}>{f.label}</div>
-              <input className="modal-input" type={f.type||'text'} placeholder={f.placeholder||''}
-                value={form[f.key]||''} onChange={e => set(f.key, e.target.value)} />
+              <div style={{ fontSize:11, color:'#8a9abf', marginBottom:3, textTransform:'uppercase', letterSpacing:1 }}>{f.label}</div>
+              <input type={f.type||'text'} placeholder={f.placeholder||''}
+                value={form[f.key]||''} onChange={e => set(f.key, e.target.value)}
+                style={{ width:'100%', padding:'8px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }} />
             </div>
           );
         })}
 
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
           <div>
-            <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:3 }}>Owner</div>
-            <select className="modal-input" value={form.owner||'Joint'} onChange={e => set('owner', e.target.value)}>
+            <div style={{ fontSize:11, color:'#8a9abf', marginBottom:3, textTransform:'uppercase', letterSpacing:1 }}>Owner</div>
+            <select value={form.owner||'Joint'} onChange={e => set('owner', e.target.value)}
+              style={{ width:'100%', padding:'8px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }}>
               {['Joint','Ahmed','Victoria'].map(o => <option key={o} value={o}>{o}</option>)}
             </select>
           </div>
           <div>
-            <div style={{ fontSize:12, color:'#8ab4f8', marginBottom:3 }}>Status</div>
-            <select className="modal-input" value={form.status||'Active'} onChange={e => set('status', e.target.value)}>
+            <div style={{ fontSize:11, color:'#8a9abf', marginBottom:3, textTransform:'uppercase', letterSpacing:1 }}>Status</div>
+            <select value={form.status||'Active'} onChange={e => set('status', e.target.value)}
+              style={{ width:'100%', padding:'8px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }}>
               {['Active','Achieved','Paused','Cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
         </div>
 
-        <div style={{ display:'flex', gap:10 }}>
-          <button className="btn-primary" onClick={() => onSave(form)} disabled={busy || !form.name || !form.targetAmount}>
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button type="button" onClick={onClose}
+            style={{ padding:'7px 16px', borderRadius:8, background:'#1e2a3a', border:'1px solid #2a3a4a', color:'#6b7fa8', cursor:'pointer', fontSize:13 }}>
+            Cancel
+          </button>
+          <button type="button" onClick={() => onSave(form)} disabled={busy || !form.name || !form.targetAmount}
+            style={{ padding:'7px 16px', borderRadius:8, background:'#5c9eff', border:'none', color:'#fff', fontWeight:600, fontSize:13,
+                     cursor:(busy || !form.name || !form.targetAmount)?'not-allowed':'pointer',
+                     opacity:(busy || !form.name || !form.targetAmount)?0.5:1 }}>
             {goal ? 'Save Changes' : 'Add Goal'}
           </button>
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
         </div>
       </div>
     </div>
@@ -6270,7 +6284,7 @@ function FinancialGoalsTab({ goals, goalsLoading, busy, onLoad, onAdd, onUpdate,
       {/* Add button */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
         <div style={{ fontSize:16, fontWeight:700, color:'#dde1f0' }}>🎯 Financial Goals</div>
-        <button className="btn-primary" onClick={() => setModal('add')}>+ Add Goal</button>
+        <button className="btn btn-primary" onClick={() => setModal('add')}>+ Add Goal</button>
       </div>
 
       {goals.length === 0 && (
@@ -6280,7 +6294,7 @@ function FinancialGoalsTab({ goals, goalsLoading, busy, onLoad, onAdd, onUpdate,
           <div style={{ fontSize:12, color:'#4d6080', marginTop:6 }}>
             Add goals like House Down Payment or Travel Fund, then simulate what-if scenarios.
           </div>
-          <button className="btn-primary" style={{ marginTop:14 }}
+          <button className="btn btn-primary" style={{ marginTop:14 }}
             onClick={() => apiGet(apiUrl, apiToken, { action:'seed_financial_goals' }).then(onLoad)}>
             Seed from Life Plan Doc
           </button>
@@ -15436,7 +15450,7 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
         <div style={{ fontSize: 13, color: '#4d6080' }}>
           Reference documents and policies VERA can consult when answering your questions.
         </div>
-        <button className="btn-primary" onClick={openAdd} disabled={busy}>+ Add Resource</button>
+        <button className="btn btn-primary" onClick={openAdd} disabled={busy}>+ Add Resource</button>
       </div>
 
       {(!resources || resources.length === 0) ? (
@@ -15447,7 +15461,7 @@ function ResourcesView({ resources, loading, busy, onAdd, onUpdate, onDelete }) 
             Add links to Google Docs, PDFs, or policy pages.<br/>
             VERA will reference them when answering relevant questions.
           </div>
-          <button className="btn-primary" onClick={openAdd} disabled={busy}>+ Add First Resource</button>
+          <button className="btn btn-primary" onClick={openAdd} disabled={busy}>+ Add First Resource</button>
         </div>
       ) : (
         <div>
