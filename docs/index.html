@@ -9656,13 +9656,15 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
 // ---- ResellListView (Issue #170) ---------------------------------------------
 
 function ResellListView({ apiUrl, apiToken }) {
-  const [items,   setItems]   = React.useState(null);
-  const [busy,    setBusy]    = React.useState(false);
-  const [showAdd, setShowAdd] = React.useState(false);
-  const [form,    setForm]    = React.useState({
+  const [items,    setItems]    = React.useState(null);
+  const [busy,     setBusy]     = React.useState(false);
+  const [showAdd,  setShowAdd]  = React.useState(false);
+  const [form,     setForm]     = React.useState({
     item:'', category:'Other', askingPrice:'', originalPrice:'',
     platform:'', priority:'Medium', notes:''
   });
+  const [editItem, setEditItem] = React.useState(null);
+  const [editForm, setEditForm] = React.useState({});
 
   React.useEffect(function() {
     if (!apiUrl || !apiToken) return;
@@ -9684,7 +9686,47 @@ function ResellListView({ apiUrl, apiToken }) {
 
   function fmtPrice(v) { return v ? '$' + parseFloat(v).toLocaleString() : null; }
 
-  function setF(key, val) { setForm(function(p) { return Object.assign({}, p, { [key]: val }); }); }
+  function setF(key, val)  { setForm(function(p)     { return Object.assign({}, p, { [key]: val }); }); }
+  function setEF(key, val) { setEditForm(function(p)  { return Object.assign({}, p, { [key]: val }); }); }
+
+  function openEdit(it) {
+    setEditItem(it);
+    setEditForm({
+      item:          it.Item               || '',
+      category:      it.Category           || 'Other',
+      askingPrice:   it['Asking Price']    || '',
+      originalPrice: it['Original Price']  || '',
+      platform:      it.Platform           || '',
+      priority:      it.Priority           || 'Medium',
+      status:        it.Status             || 'Unlisted',
+      notes:         it.Notes              || ''
+    });
+  }
+
+  async function handleSave() {
+    if (!editItem || !editForm.item.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_resell_item',
+        id: editItem.ID,
+        item: editForm.item, category: editForm.category,
+        askingPrice: editForm.askingPrice, originalPrice: editForm.originalPrice,
+        platform: editForm.platform, priority: editForm.priority,
+        status: editForm.status, notes: editForm.notes });
+      setItems(function(prev) {
+        return prev.map(function(i) {
+          if (i.ID !== editItem.ID) return i;
+          return Object.assign({}, i, {
+            Item: editForm.item, Category: editForm.category,
+            'Asking Price': editForm.askingPrice, 'Original Price': editForm.originalPrice,
+            Platform: editForm.platform, Priority: editForm.priority,
+            Status: editForm.status, Notes: editForm.notes
+          });
+        });
+      });
+      setEditItem(null);
+    } finally { setBusy(false); }
+  }
 
   async function handleAdd() {
     if (!form.item.trim()) return;
@@ -9792,6 +9834,54 @@ function ResellListView({ apiUrl, apiToken }) {
         </div>
       )}
 
+      {/* Edit modal */}
+      {editItem && (
+        <div className="modal-overlay" onClick={function(){ setEditItem(null); }}>
+          <div className="modal-box" style={{ maxWidth:440 }} onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:16 }}>Edit Item</div>
+            {[
+              ['item',          'Item Name *',      'text',   ''],
+              ['askingPrice',   'Asking Price ($)',  'number', '0.00'],
+              ['originalPrice', 'Paid ($)',          'number', '0.00'],
+              ['notes',         'Notes',             'text',   'Condition, serial #, etc.'],
+            ].map(function(row) {
+              var key=row[0], label=row[1], type=row[2], ph=row[3];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <input type={type} value={editForm[key]||''} placeholder={ph}
+                    onChange={function(e){ setEF(key, e.target.value); }}
+                    style={inputSt} />
+                </div>
+              );
+            })}
+            {[
+              ['category', 'Category', ['Electronics','Clothing','Furniture','Appliances','Sports','Books','Tools','Collectibles','Other']],
+              ['platform', 'Platform', ['','Facebook Marketplace','eBay','OfferUp','Craigslist','Poshmark','Other']],
+              ['priority', 'Priority', ['High','Medium','Low']],
+              ['status',   'Status',   ['Unlisted','Listed','Sold','Donated']],
+            ].map(function(row) {
+              var key=row[0], label=row[1], opts=row[2];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <select value={editForm[key]||''} onChange={function(e){ setEF(key, e.target.value); }}
+                    style={inputSt}>
+                    {opts.map(function(o){ return <option key={o} value={o}>{o||'— None —'}</option>; })}
+                  </select>
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:8, marginTop:16, justifyContent:'flex-end' }}>
+              <button className="btn btn-ghost" onClick={function(){ setEditItem(null); }}>Cancel</button>
+              <button className="btn btn-primary" disabled={busy || !editForm.item.trim()} onClick={handleSave}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sections */}
       {allItems.length === 0 ? (
         <div className="empty-state" style={{ padding:40 }}>
@@ -9853,6 +9943,8 @@ function ResellListView({ apiUrl, apiToken }) {
                           <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#a78bfa' }}
                             disabled={busy} onClick={function(){ handleStatus(it.ID, 'Donated'); }}>Donated</button>
                         )}
+                        <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#8a9abf' }}
+                          disabled={busy} onClick={function(){ openEdit(it); }}>✎</button>
                         <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#c0392b' }}
                           disabled={busy} onClick={function(){ handleDelete(it.ID); }}>✕</button>
                       </div>

@@ -5874,10 +5874,18 @@ function webUpdateResellItem_(e) {
   var hdrs  = rows[0];
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() !== id) continue;
-    var fields = { 'Status': p.status, 'Platform': p.platform, 'Priority': p.priority,
-                   'Asking Price': p.askingPrice, 'Notes': p.notes };
+    var fields = {
+      'Item':           p.item          !== undefined ? (p.item || '').trim()                                : undefined,
+      'Category':       p.category      !== undefined ? p.category                                          : undefined,
+      'Asking Price':   p.askingPrice   !== undefined ? (p.askingPrice   ? parseFloat(p.askingPrice)   : '') : undefined,
+      'Original Price': p.originalPrice !== undefined ? (p.originalPrice ? parseFloat(p.originalPrice) : '') : undefined,
+      'Platform':       p.platform      !== undefined ? p.platform                                          : undefined,
+      'Priority':       p.priority      !== undefined ? p.priority                                          : undefined,
+      'Status':         p.status        !== undefined ? p.status                                            : undefined,
+      'Notes':          p.notes         !== undefined ? p.notes                                             : undefined
+    };
     Object.keys(fields).forEach(function(key) {
-      if (fields[key] === undefined || fields[key] === null) return;
+      if (fields[key] === undefined) return;
       var col = hdrs.indexOf(key);
       if (col !== -1) sheet.getRange(i + 1, col + 1).setValue(fields[key]);
     });
