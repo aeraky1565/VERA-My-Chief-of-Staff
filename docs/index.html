@@ -1819,7 +1819,32 @@ const COUNTRY_ISO_MAP = {
 };
 
 function countryToIso(name) {
-  return COUNTRY_ISO_MAP[name] || null;
+  if (!name) return null;
+  if (COUNTRY_ISO_MAP[name]) return COUNTRY_ISO_MAP[name];
+  var ALIASES = {
+    'USA':'US','U.S.A.':'US','U.S.':'US','US':'US',
+    'UK':'GB','U.K.':'GB','Great Britain':'GB','Britain':'GB','England':'GB',
+    'UAE':'AE','U.A.E.':'AE',
+    'Korea':'KR','North Korea':'KP',
+    'Czechia':'CZ',
+    'Hong Kong':'HK','Macau':'MO',
+    'Palestine':'PS','Kosovo':'XK',
+    'DR Congo':'CD','Democratic Republic of Congo':'CD','Congo':'CD',
+    'Ivory Coast':'CI',"Cote d'Ivoire":'CI',
+    'Cape Verde':'CV','Cabo Verde':'CV',
+    'Eswatini':'SZ','Swaziland':'SZ',
+    'Myanmar':'MM','Burma':'MM',
+    'Laos':'LA',
+  };
+  if (ALIASES[name]) return ALIASES[name];
+  var lower = name.toLowerCase();
+  for (var key in COUNTRY_ISO_MAP) {
+    if (key.toLowerCase() === lower) return COUNTRY_ISO_MAP[key];
+  }
+  for (var ak in ALIASES) {
+    if (ak.toLowerCase() === lower) return ALIASES[ak];
+  }
+  return null;
 }
 
 // Renders a country flag <img> from flagcdn.com, or a fallback globe emoji.
