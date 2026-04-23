@@ -89,6 +89,7 @@ const TABS = {
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
+  COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -157,6 +158,7 @@ const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
 const BUCKET_ACTIVITIES_HEADERS  = ['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']; // Issue #113
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
+const COUPON_HEADERS             = ['ID', 'Store', 'Offer', 'Discount', 'Min Spend', 'Offer Code', 'Customer Code', 'Expires', 'Channel', 'Addressed To', 'Status', 'Added']; // Issue #173
 // HEALTH_APPOINTMENT_HEADERS removed (Issue #85): appointments read from Google Calendar, no sheet needed
 
 // ============================================================
@@ -292,6 +294,7 @@ function createSheetTabs(ss) {
   // TABS.HEALTH_APPOINTMENTS removed — appointments read from Google Calendar (Issue #85)
   ensureSheet(ss, TABS.TRIP_BUDGET,          TRIP_BUDGET_HEADERS);
   ensureSheet(ss, TABS.RESELL_LIST,          RESELL_LIST_HEADERS);
+  ensureSheet(ss, TABS.COUPONS,              COUPON_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -678,6 +681,9 @@ function nightlyRun() {
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
     checkTaxDocuments_();
     Logger.log('Step 0n: tax document check done');
+
+    // Step 0n-ii: Purge expired coupons — delete rows with expiry < today (Issue #173)
+    try { purgeExpiredCoupons_(); } catch (cpErr) { Logger.log('purgeExpiredCoupons_ error (non-fatal): ' + cpErr.message); stepFailures.push('purgeExpiredCoupons_: ' + cpErr.message); }
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
     try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); stepFailures.push('checkHealthAppointments_: ' + hErr.message); }
@@ -1277,6 +1283,27 @@ function buildMorningIntelligence_() {
       });
     }
   } catch (e) { Logger.log('buildMorningIntelligence_: bills — ' + e.message); }
+
+  // ---- Expiring coupons (≤3 days) — Issue #173 ----------------------------
+  try {
+    var couponSheet = getSpreadsheet().getSheetByName(TABS.COUPONS);
+    if (couponSheet && couponSheet.getLastRow() >= 2) {
+      var todayCp = new Date(); todayCp.setHours(0, 0, 0, 0);
+      couponSheet.getRange(2, 1, couponSheet.getLastRow() - 1, COUPON_HEADERS.length)
+        .getValues().forEach(function(r) {
+          if (!r[7]) return;  // no expiry
+          var exp = new Date(r[7]); exp.setHours(0, 0, 0, 0);
+          var d   = Math.round((exp - todayCp) / 86400000);
+          if (d >= 0 && d <= 3) {
+            var store   = escapeHtml_(String(r[1] || '').trim());
+            var offerTx = r[2] ? ' — ' + escapeHtml_(String(r[2]).trim()) : '';
+            var daysTx  = d === 0 ? 'expires TODAY' : 'expires in ' + d + ' day' + (d === 1 ? '' : 's');
+            focusRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• 🎟️ <strong>' +
+              store + '</strong> coupon ' + daysTx + offerTx + '</p>');
+          }
+        });
+    }
+  } catch (e) { Logger.log('buildMorningIntelligence_: coupons — ' + e.message); }
 
   // ---- Maintenance: Home items overdue or due within 14 days ---------------
   try {
@@ -2400,6 +2427,33 @@ function resetChoresByCadence_() {
     }
   }
   Logger.log('resetChoresByCadence_: reset ' + resetCount + ' chore(s). Cadences: ' + toReset.join(', '));
+}
+
+// ============================================================
+// COUPONS — Purge expired entries (Issue #173)
+// ============================================================
+
+/**
+ * Deletes coupon rows where expiry date is strictly before today (i.e. ≥1 day past).
+ * Called nightly from nightlyRun() so expired coupons disappear the day after expiry.
+ */
+function purgeExpiredCoupons_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.COUPONS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var rows  = sheet.getDataRange().getValues();
+  // Scan backward; col index 7 = Expires (0-based)
+  for (var i = rows.length - 1; i >= 1; i--) {
+    var raw    = rows[i][7];
+    var expiry = raw ? new Date(raw) : null;
+    if (expiry) {
+      expiry.setHours(0, 0, 0, 0);
+      var daysPast = Math.floor((today - expiry) / 86400000);
+      if (daysPast >= 1) sheet.deleteRow(i + 1);
+    }
+  }
+  Logger.log('purgeExpiredCoupons_: scan complete.');
 }
 
 // ============================================================

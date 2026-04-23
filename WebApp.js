@@ -229,6 +229,10 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Coupons (Issue #173)
+      case 'get_coupons':        return jsonOut_(webGetCoupons_());
+      case 'delete_coupon':      return jsonOut_(webDeleteCoupon_(e));
+      case 'mark_coupon_used':   return jsonOut_(webMarkCouponUsed_(e));
       // Resell List (Issue #170)
       case 'get_resell_list':    return jsonOut_(webGetResellList_());
       case 'add_resell_item':    return jsonOut_(webAddResellItem_(e));
@@ -422,6 +426,9 @@ function doPost(e) {
       case 'delete_takeout_item':        return jsonOut_(webDeleteTakeoutItem_(body));
       // Purchase History (Issue #111)
       case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
+      // Coupons (Issue #173)
+      case 'extract_coupon':             return jsonOut_(webExtractCoupon_(body));
+      case 'save_coupon':                return jsonOut_(webSaveCoupon_(body));
       default:                           return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -7923,4 +7930,144 @@ function webPinNote_(e) {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+// ============================================================
+// COUPONS — Issue #173
+// ============================================================
+
+/**
+ * POST extract_coupon — sends the image to Claude vision and returns structured fields.
+ * Body: { action, imageBase64, imageMimeType }
+ */
+function webExtractCoupon_(body) {
+  var b    = body || {};
+  var b64  = b.imageBase64;
+  var mime = b.imageMimeType || 'image/jpeg';
+  if (!b64) return { ok: false, error: 'imageBase64 required' };
+
+  var apiKey = getApiKey();
+  var prompt =
+    'Extract coupon/deal details from this image. ' +
+    'Return ONLY a valid JSON object (no markdown fences) with these exact keys:\n' +
+    'store (brand/store name), offer (full offer text), discount (amount or % only, e.g. "$75 OFF"), ' +
+    'minSpend (number only, no $ sign, empty string if none), ' +
+    'offerCode (promo/offer code if visible, else ""), ' +
+    'customerCode (personalised customer or account number if visible, else ""), ' +
+    'expires (YYYY-MM-DD if visible, else ""), ' +
+    'channel ("In-Store" | "Online" | "Both" | ""), ' +
+    'addressedTo (name printed on coupon if personalised, else "").';
+
+  var payload = {
+    model: CLAUDE_MODEL,
+    max_tokens: 512,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
+        { type: 'text',  text: prompt }
+      ]
+    }]
+  };
+
+  var resp = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(payload)
+  });
+  var result = JSON.parse(resp.getContentText());
+  var text   = (result.content && result.content[0] && result.content[0].text) || '';
+  // Strip any markdown fences Claude might add
+  text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
+  var extracted = JSON.parse(text);
+  return { ok: true, extracted: extracted };
+}
+
+/**
+ * GET get_coupons — returns all rows from Coupons sheet as JSON array.
+ */
+function webGetCoupons_() {
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.COUPONS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, coupons: [] };
+  var rows = sheet.getDataRange().getValues();
+  var hdrs = rows[0];
+  var tz   = Session.getScriptTimeZone();
+  var coupons = rows.slice(1).filter(function(r) { return r[0]; }).map(function(r) {
+    var obj = {};
+    hdrs.forEach(function(h, i) {
+      obj[h] = r[i] instanceof Date
+        ? Utilities.formatDate(r[i], tz, 'yyyy-MM-dd')
+        : r[i];
+    });
+    return obj;
+  });
+  return { ok: true, coupons: coupons };
+}
+
+/**
+ * POST save_coupon — appends a new coupon row or overwrites if body.id matches.
+ * Body: { action, id?, store, offer, discount, minSpend, offerCode, customerCode,
+ *         expires, channel, addressedTo }
+ */
+function webSaveCoupon_(body) {
+  var b     = body || {};
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.COUPONS);
+  if (!sheet) return { ok: false, error: 'Coupons sheet not found' };
+  var tz    = Session.getScriptTimeZone();
+  var id    = (b.id || '').toString().trim();
+  var row   = [
+    id || ('coup_' + Date.now()),
+    (b.store       || '').toString().trim(),
+    (b.offer       || '').toString().trim(),
+    (b.discount    || '').toString().trim(),
+    b.minSpend !== undefined && b.minSpend !== '' ? parseFloat(b.minSpend) : '',
+    (b.offerCode   || '').toString().trim(),
+    (b.customerCode|| '').toString().trim(),
+    (b.expires     || '').toString().trim(),
+    (b.channel     || '').toString().trim(),
+    (b.addressedTo || '').toString().trim(),
+    'Active',
+    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')
+  ];
+  // If id given, try to overwrite existing row
+  if (id && sheet.getLastRow() >= 2) {
+    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < existing.length; i++) {
+      if (String(existing[i][0]).trim() === id) {
+        sheet.getRange(i + 2, 1, 1, COUPON_HEADERS.length).setValues([row]);
+        return { ok: true, id: id };
+      }
+    }
+  }
+  sheet.appendRow(row);
+  return { ok: true, id: row[0] };
+}
+
+/**
+ * GET delete_coupon?id=… — permanently deletes a coupon row.
+ */
+function webDeleteCoupon_(e) {
+  var id = ((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.COUPONS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Coupon not found' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][0]).trim() === id) {
+      sheet.deleteRow(i + 2);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'Coupon not found: ' + id };
+}
+
+/**
+ * GET mark_coupon_used?id=… — deletes the coupon row immediately (used = gone).
+ */
+function webMarkCouponUsed_(e) {
+  return webDeleteCoupon_(e);   // same behaviour: remove the row
 }

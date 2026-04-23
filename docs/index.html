@@ -9771,6 +9771,284 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- CouponsTab (Issue #173) -------------------------------------------------
+
+function CouponsTab({ coupons, loading, busy, onExtract, onSave, onDelete, onMarkUsed }) {
+  const [uploading,    setUploading]    = React.useState(false);
+  const [extracted,    setExtracted]    = React.useState(null);   // raw fields from Claude
+  const [confirmForm,  setConfirmForm]  = React.useState(null);   // user-editable copy
+  const [copyTip,      setCopyTip]      = React.useState(null);   // { id, field }
+  const fileInputRef = React.useRef(null);
+
+  // ---- helpers ----
+  function expiryInfo(expiresStr) {
+    if (!expiresStr) return { label: '', color: '#888', days: null };
+    const exp   = new Date(expiresStr + 'T00:00:00');
+    const now   = new Date(); now.setHours(0, 0, 0, 0);
+    const days  = Math.round((exp - now) / 86400000);
+    if (days < 0)  return { label: 'EXPIRED',              color: '#888',   days };
+    if (days === 0) return { label: '⚠ Expires Today',     color: '#ef5350', days };
+    if (days <= 3)  return { label: `⚠ Expires in ${days}d`, color: '#ef5350', days };
+    return { label: `Valid · ${days}d`, color: '#43a047', days };
+  }
+
+  function copyCode(id, field, text) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopyTip({ id, field });
+    setTimeout(() => setCopyTip(null), 1500);
+  }
+
+  // ---- photo upload ----
+  async function handleFileChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    e.target.value = '';   // reset so same file can be re-selected
+    setUploading(true);
+    try {
+      const { base64, mimeType } = await resizeImage(file, 1600);
+      const result = await onExtract(base64, mimeType);
+      const ex = result || {};
+      setExtracted(ex);
+      setConfirmForm({
+        store:        ex.store        || '',
+        offer:        ex.offer        || '',
+        discount:     ex.discount     || '',
+        minSpend:     ex.minSpend     || '',
+        offerCode:    ex.offerCode    || '',
+        customerCode: ex.customerCode || '',
+        expires:      ex.expires      || '',
+        channel:      ex.channel      || '',
+        addressedTo:  ex.addressedTo  || '',
+      });
+    } catch (err) {
+      alert('Could not extract coupon: ' + err.message);
+    }
+    setUploading(false);
+  }
+
+  // ---- save (from confirmation modal) ----
+  async function handleSave() {
+    if (!confirmForm) return;
+    await onSave(confirmForm);
+    setConfirmForm(null);
+    setExtracted(null);
+  }
+
+  // ---- sort: soonest expiry first, no-expiry last, expired at very bottom ----
+  const sorted = [...(coupons || [])].sort((a, b) => {
+    const da = a.Expires ? new Date(a.Expires + 'T00:00:00') : null;
+    const db = b.Expires ? new Date(b.Expires + 'T00:00:00') : null;
+    const now = new Date(); now.setHours(0,0,0,0);
+    const expA = da ? Math.round((da - now) / 86400000) : 9999;
+    const expB = db ? Math.round((db - now) / 86400000) : 9999;
+    const buckA = expA < 0 ? 99999 : expA;
+    const buckB = expB < 0 ? 99999 : expB;
+    return buckA - buckB;
+  });
+
+  return (
+    <div>
+      {/* toolbar */}
+      <div className="toolbar">
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 12 }}
+          disabled={busy || uploading}
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+        >
+          {uploading ? '⏳ Extracting…' : '📷 Add Coupon'}
+        </button>
+        <span className="count-badge">{sorted.length} coupon{sorted.length !== 1 ? 's' : ''}</span>
+        {/* hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </div>
+
+      {/* empty state */}
+      {!loading && sorted.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🎟️</div>
+          <div>No coupons saved. Snap a photo to add one.</div>
+        </div>
+      )}
+
+      {/* coupon cards */}
+      {sorted.map(c => {
+        const exp = expiryInfo(c.Expires);
+        const expiring = exp.days !== null && exp.days >= 0 && exp.days <= 3;
+        const expired  = exp.days !== null && exp.days < 0;
+        return (
+          <div key={c.ID} className="card" style={{
+            borderLeft: expiring ? '4px solid #ef5350' : expired ? '4px solid #555' : undefined,
+            opacity: expired ? 0.6 : 1,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* store + channel */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{c.Store || '—'}</span>
+                  {c.Channel && (
+                    <span style={{ fontSize: 11, background: '#1e2a4a', color: '#8ab4f8',
+                                   borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                      {c.Channel}
+                    </span>
+                  )}
+                  {c.Discount && (
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#43a047' }}>
+                      {c.Discount}
+                    </span>
+                  )}
+                </div>
+                {/* offer description */}
+                {c.Offer && (
+                  <div style={{ fontSize: 13, color: '#b0b8d1', marginTop: 4 }}>{c.Offer}</div>
+                )}
+                {/* expiry chip */}
+                {c.Expires && (
+                  <div style={{ marginTop: 6 }}>
+                    <span style={{ fontSize: 11, color: exp.color, fontWeight: 600,
+                                   background: expired ? '#2a2a2a' : expiring ? '#3e1010' : '#0d2e12',
+                                   borderRadius: 4, padding: '2px 7px' }}>
+                      {exp.label}
+                    </span>
+                  </div>
+                )}
+                {/* codes */}
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {c['Offer Code'] && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                      <span style={{ color: '#8ab4f8', minWidth: 90 }}>Offer Code:</span>
+                      <span style={{ fontFamily: 'monospace', color: '#e8eaf6', letterSpacing: 1 }}>{c['Offer Code']}</span>
+                      <button
+                        onClick={() => copyCode(c.ID, 'offer', c['Offer Code'])}
+                        title="Copy"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#8ab4f8', padding: '0 4px' }}
+                      >
+                        {copyTip && copyTip.id === c.ID && copyTip.field === 'offer' ? '✓' : '📋'}
+                      </button>
+                    </div>
+                  )}
+                  {c['Customer Code'] && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                      <span style={{ color: '#8ab4f8', minWidth: 90 }}>Customer Code:</span>
+                      <span style={{ fontFamily: 'monospace', color: '#e8eaf6', letterSpacing: 1 }}>{c['Customer Code']}</span>
+                      <button
+                        onClick={() => copyCode(c.ID, 'customer', c['Customer Code'])}
+                        title="Copy"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#8ab4f8', padding: '0 4px' }}
+                      >
+                        {copyTip && copyTip.id === c.ID && copyTip.field === 'customer' ? '✓' : '📋'}
+                      </button>
+                    </div>
+                  )}
+                  {c['Addressed To'] && (
+                    <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                      Addressed to: {c['Addressed To']}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* action buttons */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+              <button
+                className="btn btn-primary"
+                style={{ fontSize: 11 }}
+                disabled={busy}
+                onClick={() => onMarkUsed(c.ID)}
+              >
+                ✓ Mark as Used
+              </button>
+              <button
+                style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '1px solid #ef5350',
+                         background: 'none', color: '#ef5350', cursor: 'pointer' }}
+                disabled={busy}
+                onClick={() => { if (window.confirm('Delete this coupon?')) onDelete(c.ID); }}
+              >
+                × Delete
+              </button>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Confirmation / edit modal */}
+      {confirmForm && (
+        <div className="modal-overlay" onClick={() => { setConfirmForm(null); setExtracted(null); }}>
+          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>🎟️ Confirm Coupon Details</div>
+
+            {[
+              { key: 'store',        label: 'Store',           type: 'text'   },
+              { key: 'offer',        label: 'Offer',           type: 'text'   },
+              { key: 'discount',     label: 'Discount',        type: 'text'   },
+              { key: 'minSpend',     label: 'Min Spend ($)',   type: 'number' },
+              { key: 'offerCode',    label: 'Offer Code',      type: 'text'   },
+              { key: 'customerCode', label: 'Customer Code',   type: 'text'   },
+              { key: 'expires',      label: 'Expiry Date',     type: 'date'   },
+              { key: 'addressedTo',  label: 'Addressed To',    type: 'text'   },
+            ].map(({ key, label, type }) => (
+              <div key={key} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1,
+                               color: '#888', marginBottom: 4 }}>{label}</div>
+                <input
+                  type={type}
+                  value={confirmForm[key] || ''}
+                  onChange={e => setConfirmForm(f => ({ ...f, [key]: e.target.value }))}
+                  style={{ width: '100%', boxSizing: 'border-box', background: '#1a2035',
+                           border: '1px solid #2e3a5c', borderRadius: 6, color: '#e8eaf6',
+                           padding: '7px 10px', fontSize: 14 }}
+                />
+              </div>
+            ))}
+
+            {/* channel select */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: 1,
+                             color: '#888', marginBottom: 4 }}>Channel</div>
+              <select
+                value={confirmForm.channel || ''}
+                onChange={e => setConfirmForm(f => ({ ...f, channel: e.target.value }))}
+                style={{ width: '100%', boxSizing: 'border-box', background: '#1a2035',
+                         border: '1px solid #2e3a5c', borderRadius: 6, color: '#e8eaf6',
+                         padding: '7px 10px', fontSize: 14 }}
+              >
+                <option value="">— not specified —</option>
+                <option value="In-Store">In-Store</option>
+                <option value="Online">Online</option>
+                <option value="Both">Both</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
+              <button
+                style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid #3a4a6b',
+                         background: 'none', color: '#b0b8d1', cursor: 'pointer', fontSize: 13 }}
+                onClick={() => { setConfirmForm(null); setExtracted(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={busy || !confirmForm.store}
+                onClick={handleSave}
+              >
+                Save Coupon
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- ResellListView (Issue #170) ---------------------------------------------
 
 function ResellListView({ apiUrl, apiToken }) {
@@ -17183,6 +17461,8 @@ function App() {
   const [shopping,        setShopping]        = useState([]);
   const [purchaseHistory, setPurchaseHistory] = useState([]);
   const [career,     setCareer]     = useState(null);  // { position, goals, progression, development, wins, network }
+  const [coupons,    setCoupons]    = useState([]);   // Issue #173
+  const [couponsLoading, setCouponsLoading] = useState(false); // Issue #173
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
@@ -18632,6 +18912,60 @@ function App() {
     setBusy(false);
   }
 
+  // ---- Coupons (Issue #173) --------------------------------------------------
+
+  async function loadCoupons(url, token) {
+    if (!url || !token) return;
+    setCouponsLoading(true);
+    try {
+      const data = await apiGet(url, token, { action: 'get_coupons' });
+      setCoupons(data.coupons || []);
+    } catch (err) { setError('Could not load coupons: ' + err.message); }
+    setCouponsLoading(false);
+  }
+
+  async function handleExtractCoupon(base64, mimeType) {
+    // Returns the extracted fields object; caller shows confirmation modal
+    const data = await apiPost(apiUrl, apiToken, {
+      action: 'extract_coupon',
+      imageBase64: base64,
+      imageMimeType: mimeType,
+    });
+    return data.extracted;
+  }
+
+  async function handleSaveCoupon(formData) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'save_coupon', ...formData });
+      showToast('🎟️ Coupon saved');
+      await loadCoupons(apiUrl, apiToken);
+    } catch (err) { setError('Could not save coupon: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleDeleteCoupon(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_coupon', id });
+      showToast('Coupon deleted');
+      await loadCoupons(apiUrl, apiToken);
+    } catch (err) { setError('Could not delete coupon: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleMarkCouponUsed(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'mark_coupon_used', id });
+      showToast('✓ Marked as used');
+      await loadCoupons(apiUrl, apiToken);
+    } catch (err) { setError('Could not update coupon: ' + err.message); }
+    setBusy(false);
+  }
+
+  // ---- End Coupons -----------------------------------------------------------
+
   async function handleTriggerBuffer() {
     if (!window.confirm('Use one of Ahmed\'s buffer days? This will decrement the buffer count.')) return;
     setBusy(true);
@@ -19420,7 +19754,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore', 'coupons'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -19434,6 +19768,7 @@ function App() {
                   if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); loadWishListsData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
+                  if (tab === 'coupons')    loadCoupons(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     { loadPTO(apiUrl, apiToken); loadProfiles(apiUrl, apiToken); } // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); loadFinancialGoals(); }
@@ -19455,6 +19790,7 @@ function App() {
                 {tab === 'health'     ? `🏥 Health` : ''}
                 {tab === 'growth'     ? `🌱 Growth` : ''}
                 {tab === 'career'     ? `💼 Career` : ''}
+                {tab === 'coupons'    ? `🎟️ Coupons` : ''}
 
               </button>
             ))}
@@ -19895,6 +20231,19 @@ function App() {
                 onUpdateNetwork={handleUpdateCareerNetwork}
                 onDeleteNetwork={handleDeleteCareerNetwork}
                 onUpdateNetworkFull={handleUpdateCareerNetworkFull}
+              />
+            )}
+
+            {/* Coupons tab — Issue #173 */}
+            {activeTab === 'coupons' && (
+              <CouponsTab
+                coupons={coupons}
+                loading={couponsLoading}
+                busy={busy}
+                onExtract={handleExtractCoupon}
+                onSave={handleSaveCoupon}
+                onDelete={handleDeleteCoupon}
+                onMarkUsed={handleMarkCouponUsed}
               />
             )}
           </div>
