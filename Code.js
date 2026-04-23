@@ -682,8 +682,9 @@ function nightlyRun() {
     checkTaxDocuments_();
     Logger.log('Step 0n: tax document check done');
 
-    // Step 0n-ii: Purge expired coupons — delete rows with expiry < today (Issue #173)
-    try { purgeExpiredCoupons_(); } catch (cpErr) { Logger.log('purgeExpiredCoupons_ error (non-fatal): ' + cpErr.message); stepFailures.push('purgeExpiredCoupons_: ' + cpErr.message); }
+    // Step 0n-ii: Coupon expiry flags + purge expired rows (Issue #173)
+    try { checkExpiringCoupons_(); } catch (cpErr) { Logger.log('checkExpiringCoupons_ error (non-fatal): ' + cpErr.message); stepFailures.push('checkExpiringCoupons_: ' + cpErr.message); }
+    try { purgeExpiredCoupons_();  } catch (cpErr) { Logger.log('purgeExpiredCoupons_ error (non-fatal): '  + cpErr.message); stepFailures.push('purgeExpiredCoupons_: '  + cpErr.message); }
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
     try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); stepFailures.push('checkHealthAppointments_: ' + hErr.message); }
@@ -2432,6 +2433,55 @@ function resetChoresByCadence_() {
 // ============================================================
 // COUPONS — Purge expired entries (Issue #173)
 // ============================================================
+
+/**
+ * Generates urgency-scaled flags for coupons expiring within 3 days.
+ * Uses flag key `coupon_expiry_<id>` to prevent duplicate flags.
+ * Called nightly from nightlyRun() before the Claude step.
+ */
+function checkExpiringCoupons_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.COUPONS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, COUPON_HEADERS.length).getValues();
+  var flagSheet = ss.getSheetByName(TABS.FLAGS);
+  var existingFlags = (flagSheet && flagSheet.getLastRow() > 1)
+    ? flagSheet.getRange(2, 1, flagSheet.getLastRow() - 1, FLAG_HEADERS.length).getValues()
+    : [];
+
+  var generated = 0;
+  data.forEach(function(row) {
+    var id     = String(row[0]).trim();
+    var store  = String(row[1]).trim();
+    var offer  = String(row[2]).trim();
+    var raw    = row[7];
+    var status = String(row[10]).trim();
+    if (!id || !raw || status === 'Used') return;
+
+    var expiry = new Date(raw); expiry.setHours(0, 0, 0, 0);
+    var days   = Math.round((expiry - today) / 86400000);
+    if (days > 3 || days < 0) return;   // outside alert window; purge handles past expiry
+
+    var urgency  = days <= 1 ? 'High' : 'Medium';
+    var daysTxt  = days === 0 ? 'TODAY' : 'in ' + days + ' day' + (days === 1 ? '' : 's');
+    var flagText = '🎟️ Coupon expiring ' + daysTxt + ': ' + store;
+    var reason   = offer ? offer : 'Check your saved coupons before this one expires.';
+
+    var flagKey  = 'coupon_expiry_' + id;
+    var alreadyOpen = existingFlags.some(function(r) {
+      return String(r[9]).trim() === flagKey &&
+             String(r[6]).toLowerCase() !== 'yes' &&
+             String(r[8]).toLowerCase() !== 'yes';
+    });
+    if (alreadyOpen) return;
+
+    writeFlags([{ source: 'Coupons', flag: flagText, reason: reason, urgency: urgency, key: flagKey }]);
+    generated++;
+  });
+  Logger.log('checkExpiringCoupons_: ' + generated + ' flag(s) generated.');
+}
 
 /**
  * Deletes coupon rows where expiry date is strictly before today (i.e. ≥1 day past).
