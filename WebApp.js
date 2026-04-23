@@ -337,6 +337,10 @@ function doGet(e) {
       case 'update_tax_document': return jsonOut_(webUpdateTaxDocument_(e));
       case 'delete_tax_document': return jsonOut_(webDeleteTaxDocument_(e));
       case 'copy_tax_year':       return jsonOut_(webCopyTaxYear_(e));
+      // Tax Preparer (Issue #174)
+      case 'get_tax_preparer':    return jsonOut_(webGetTaxPreparer_(e));
+      case 'save_tax_preparer':   return jsonOut_(webSaveTaxPreparer_(e));
+      case 'delete_tax_preparer': return jsonOut_(webDeleteTaxPreparer_(e));
       // Notes (Issue #167)
       case 'get_notes':           return jsonOut_(webGetNotes_(e));
       case 'get_note_categories': return jsonOut_(webGetNoteCategories_());
@@ -7828,6 +7832,82 @@ function webCopyTaxYear_(e) {
     copied++;
   });
   return { ok: true, copied: copied };
+}
+
+// ─── TAX PREPARER (Issue #174) ────────────────────────────────────────────────
+
+function webGetTaxPreparer_(e) {
+  var year = ((e.parameter || {}).year || '').toString().trim();
+  if (!year) return { ok: false, error: 'year required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.TAX_PREPARER);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, preparer: null };
+  var tz   = Session.getScriptTimeZone();
+  var rows = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() !== year) continue;
+    return { ok: true, preparer: {
+      taxYear:      rows[i][0],
+      type:         rows[i][1],
+      name:         rows[i][2],
+      firm:         rows[i][3],
+      phone:        rows[i][4],
+      email:        rows[i][5],
+      software:     rows[i][6],
+      filingStatus: rows[i][7] || 'Not Started',
+      filedDate:    rows[i][8] instanceof Date
+                      ? Utilities.formatDate(rows[i][8], tz, 'yyyy-MM-dd')
+                      : (rows[i][8] || ''),
+      confirmation: rows[i][9],
+      notes:        rows[i][10],
+    }};
+  }
+  return { ok: true, preparer: null };
+}
+
+function webSaveTaxPreparer_(e) {
+  var p    = e.parameter || {};
+  var year = (p.year || '').trim();
+  if (!year) return { ok: false, error: 'year required' };
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.TAX_PREPARER);
+  if (!sheet) return { ok: false, error: 'Tax Preparer sheet not found' };
+  var row = [
+    year,
+    (p.type         || '').trim(),
+    (p.name         || '').trim(),
+    (p.firm         || '').trim(),
+    (p.phone        || '').trim(),
+    (p.email        || '').trim(),
+    (p.software     || '').trim(),
+    (p.filingStatus || 'Not Started').trim(),
+    (p.filedDate    || '').trim(),
+    (p.confirmation || '').trim(),
+    (p.notes        || '').trim(),
+  ];
+  if (sheet.getLastRow() >= 2) {
+    var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() === year) {
+        sheet.getRange(i + 2, 1, 1, TAX_PREPARER_HEADERS.length).setValues([row]);
+        return { ok: true };
+      }
+    }
+  }
+  sheet.appendRow(row);
+  return { ok: true };
+}
+
+function webDeleteTaxPreparer_(e) {
+  var year  = ((e.parameter || {}).year || '').trim();
+  if (!year) return { ok: false, error: 'year required' };
+  var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.TAX_PREPARER);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true };
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = ids.length - 1; i >= 0; i--) {
+    if (String(ids[i][0]).trim() === year) { sheet.deleteRow(i + 2); return { ok: true }; }
+  }
+  return { ok: true };
 }
 
 // ─── NOTES (Google Doc backed) (Issue #167) ───────────────────────────────────

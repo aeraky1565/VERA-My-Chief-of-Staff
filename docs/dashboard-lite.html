@@ -1725,17 +1725,153 @@ function TaxDocModal({ doc, busy, onClose, onSave }) {
   );
 }
 
+// ---- Tax Preparer components (Issue #174) ------------------------------------
+
+function TaxPreparerModal({ preparer, year, busy, onSave, onDelete, onClose }) {
+  const SOFTWARE_OPTIONS = ['TurboTax', 'H&R Block', 'FreeTaxUSA', 'TaxAct', 'TaxSlayer', 'Other'];
+  const blank = { type: 'Accountant', name: '', firm: '', phone: '', email: '', software: 'TurboTax', filingStatus: 'Not Started', filedDate: '', confirmation: '', notes: '' };
+  const [form, setForm] = React.useState(preparer ? {
+    type: preparer.type || 'Accountant', name: preparer.name || '', firm: preparer.firm || '',
+    phone: preparer.phone || '', email: preparer.email || '', software: preparer.software || 'TurboTax',
+    filingStatus: preparer.filingStatus || 'Not Started', filedDate: preparer.filedDate || '',
+    confirmation: preparer.confirmation || '', notes: preparer.notes || '',
+  } : blank);
+  const set = (k, v) => setForm(p => Object.assign({}, p, { [k]: v }));
+  const inp = { background: '#161926', border: '1px solid #2a2f45', borderRadius: 6, color: '#dde1f0', padding: '7px 10px', width: '100%', fontSize: 13, boxSizing: 'border-box' };
+  const lbl = { fontSize: 11, color: '#6b7280', marginBottom: 3, display: 'block' };
+  const showFiled = form.filingStatus === 'Filed' || form.filingStatus === 'Complete';
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: '#1e2235', border: '1px solid #2a2f45', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 style={{ margin: '0 0 18px', color: '#dde1f0', fontSize: 15 }}>{preparer ? 'Edit Tax Preparer' : 'Set Tax Preparer'} — {year}</h3>
+
+        {/* Type toggle */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {['Accountant', 'Software'].map(function(t) { return (
+            <button key={t} onClick={() => set('type', t)}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid #2a2f45', cursor: 'pointer', fontWeight: 600, fontSize: 13,
+                       background: form.type === t ? '#2a3a6e' : 'transparent', color: form.type === t ? '#dde1f0' : '#6b7280' }}>
+              {t === 'Accountant' ? '🧑‍💼 Accountant' : '💻 Software'}
+            </button>
+          ); })}
+        </div>
+
+        {form.type === 'Accountant' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', marginBottom: 12 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={lbl}>Name *</label>
+              <input style={inp} value={form.name} placeholder="e.g. John Smith, CPA" onChange={e => set('name', e.target.value)} />
+            </div>
+            <div><label style={lbl}>Firm</label><input style={inp} value={form.firm} onChange={e => set('firm', e.target.value)} /></div>
+            <div><label style={lbl}>Phone</label><input style={inp} value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+            <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Email</label><input style={inp} value={form.email} onChange={e => set('email', e.target.value)} /></div>
+          </div>
+        )}
+
+        {form.type === 'Software' && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={lbl}>Software</label>
+            <select style={inp} value={form.software} onChange={e => set('software', e.target.value)}>
+              {SOFTWARE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', marginBottom: 12 }}>
+          <div style={{ gridColumn: showFiled ? '1' : '1 / -1' }}>
+            <label style={lbl}>Filing Status</label>
+            <select style={inp} value={form.filingStatus} onChange={e => set('filingStatus', e.target.value)}>
+              {['Not Started', 'In Progress', 'Filed', 'Complete'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          {showFiled && <>
+            <div><label style={lbl}>Filed Date</label><input type="date" style={inp} value={form.filedDate} onChange={e => set('filedDate', e.target.value)} /></div>
+            <div style={{ gridColumn: '1 / -1' }}><label style={lbl}>Confirmation #</label><input style={inp} value={form.confirmation} placeholder="e.g. 2XK-9901" onChange={e => set('confirmation', e.target.value)} /></div>
+          </>}
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={lbl}>Notes</label>
+          <textarea rows={2} style={{ ...inp, resize: 'vertical' }} value={form.notes} onChange={e => set('notes', e.target.value)} />
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {preparer
+            ? <button onClick={onDelete} disabled={busy} style={{ background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 12 }}>🗑 Remove</button>
+            : <div />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={{ background: '#2a2f45', color: '#a0a8c0', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => onSave(form)} disabled={busy || (form.type === 'Accountant' && !form.name.trim())}
+              style={{ background: '#4f6ef7', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 18px', cursor: 'pointer', fontWeight: 600,
+                       opacity: busy || (form.type === 'Accountant' && !form.name.trim()) ? 0.5 : 1 }}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaxPreparerCard({ preparer, year, onEdit }) {
+  const STATUS_COLORS = { 'Not Started': '#6b7280', 'In Progress': '#c9a84c', 'Filed': '#4f6ef7', 'Complete': '#22c55e' };
+  if (!preparer) {
+    return (
+      <div onClick={onEdit} style={{ background: 'transparent', border: '1px dashed #2a2f45', borderRadius: 10,
+          padding: '14px 18px', cursor: 'pointer', color: '#6b7280', fontSize: 14, textAlign: 'center', marginTop: 20 }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = '#4f6ef7'}
+        onMouseLeave={e => e.currentTarget.style.borderColor = '#2a2f45'}>
+        ＋ Set Tax Preparer for {year}
+      </div>
+    );
+  }
+  const statusColor  = STATUS_COLORS[preparer.filingStatus] || '#6b7280';
+  const isAccountant = preparer.type === 'Accountant';
+  return (
+    <div style={{ background: '#161926', border: '1px solid #2a2f45', borderRadius: 10, padding: '14px 16px', marginTop: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ fontWeight: 600, fontSize: 12, color: '#6b7280', letterSpacing: 0.5 }}>{isAccountant ? '🧑‍💼' : '💻'} TAX PREPARER — {year}</div>
+        <button onClick={onEdit} style={{ background: 'none', border: 'none', color: '#4f6ef7', cursor: 'pointer', fontSize: 13 }}>✏ Edit</button>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {isAccountant ? (
+          <>
+            <div style={{ color: '#dde1f0', fontWeight: 600, fontSize: 14 }}>{preparer.name}{preparer.firm ? ` — ${preparer.firm}` : ''}</div>
+            <div style={{ display: 'flex', gap: 14, marginTop: 4, flexWrap: 'wrap' }}>
+              {preparer.phone && <span style={{ color: '#a0a8c0', fontSize: 13 }}>📞 {preparer.phone}</span>}
+              {preparer.email && <span style={{ color: '#a0a8c0', fontSize: 13 }}>✉️ {preparer.email}</span>}
+            </div>
+          </>
+        ) : (
+          <div style={{ color: '#dde1f0', fontWeight: 600, fontSize: 14 }}>{preparer.software}</div>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: statusColor, background: '#161926', border: `1px solid ${statusColor}`, borderRadius: 12, padding: '2px 10px' }}>{preparer.filingStatus}</span>
+        {preparer.filedDate && <span style={{ fontSize: 12, color: '#a0a8c0' }}>{new Date(preparer.filedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+        {preparer.confirmation && <span style={{ fontSize: 12, color: '#a0a8c0' }}>· Conf: {preparer.confirmation}</span>}
+      </div>
+      {preparer.notes && <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>{preparer.notes}</div>}
+    </div>
+  );
+}
+
+// ---- TaxTab -----------------------------------------------------------------
+
 function TaxTab({ apiUrl, apiToken }) {
   const currentTaxYear = new Date().getFullYear() - 1;
-  const [year,        setYear]        = React.useState(currentTaxYear);
-  const [docs,        setDocs]        = React.useState(null);
-  const [ownerFilter, setOwnerFilter] = React.useState('All');
-  const [editing,     setEditing]     = React.useState(null);
-  const [showAdd,     setShowAdd]     = React.useState(false);
-  const [busy,        setBusy]        = React.useState(false);
-  const [error,       setError]       = React.useState(null);
-  const [copyYear,    setCopyYear]    = React.useState('');
-  const [showCopy,    setShowCopy]    = React.useState(false);
+  const [year,          setYear]          = React.useState(currentTaxYear);
+  const [docs,          setDocs]          = React.useState(null);
+  const [preparer,      setPreparer]      = React.useState(null);
+  const [preparerModal, setPreparerModal] = React.useState(false);
+  const [ownerFilter,   setOwnerFilter]   = React.useState('All');
+  const [editing,       setEditing]       = React.useState(null);
+  const [showAdd,       setShowAdd]       = React.useState(false);
+  const [busy,          setBusy]          = React.useState(false);
+  const [error,         setError]         = React.useState(null);
+  const [copyYear,      setCopyYear]      = React.useState('');
+  const [showCopy,      setShowCopy]      = React.useState(false);
 
   function api(params) {
     const qs = Object.entries({ token: apiToken, ...params })
@@ -1750,7 +1886,14 @@ function TaxTab({ apiUrl, apiToken }) {
       .catch(() => { setDocs([]); setError('Failed to load'); });
   }
 
-  React.useEffect(() => { if (apiUrl && apiToken) load(); }, [year, apiUrl, apiToken]);
+  function loadPreparer() {
+    setPreparer(null);
+    api({ action: 'get_tax_preparer', year })
+      .then(d => setPreparer(d.ok ? (d.preparer || false) : false))
+      .catch(() => setPreparer(false));
+  }
+
+  React.useEffect(() => { if (apiUrl && apiToken) { load(); loadPreparer(); } }, [year, apiUrl, apiToken]);
 
   function cycleStatus(doc) {
     const order = ['not_received','received','verified','uploaded'];
@@ -1772,6 +1915,21 @@ function TaxTab({ apiUrl, apiToken }) {
   function deleteDoc(doc) {
     if (!confirm(`Delete ${doc.formType} from ${doc.issuer}?`)) return;
     api({ action: 'delete_tax_document', id: doc.id }).then(load);
+  }
+
+  function savePreparer(form) {
+    setBusy(true);
+    api({ action: 'save_tax_preparer', year, ...form })
+      .then(() => { setBusy(false); setPreparerModal(false); loadPreparer(); })
+      .catch(() => setBusy(false));
+  }
+
+  function deletePreparer() {
+    if (!confirm('Remove tax preparer info for ' + year + '?')) return;
+    setBusy(true);
+    api({ action: 'delete_tax_preparer', year })
+      .then(() => { setBusy(false); setPreparerModal(false); setPreparer(false); })
+      .catch(() => setBusy(false));
   }
 
   function doCopyYear() {
@@ -1904,6 +2062,21 @@ function TaxTab({ apiUrl, apiToken }) {
       {(showAdd || editing) && (
         <TaxDocModal doc={editing || null} busy={busy}
           onClose={() => { setShowAdd(false); setEditing(null); }} onSave={saveDoc} />
+      )}
+
+      {/* Tax Preparer card + modal */}
+      <div style={{ marginTop: 24 }}>
+        <TaxPreparerCard preparer={preparer} year={year} onEdit={() => setPreparerModal(true)} />
+      </div>
+      {preparerModal && (
+        <TaxPreparerModal
+          preparer={preparer || null}
+          year={year}
+          busy={busy}
+          onSave={savePreparer}
+          onDelete={deletePreparer}
+          onClose={() => setPreparerModal(false)}
+        />
       )}
     </div>
   );

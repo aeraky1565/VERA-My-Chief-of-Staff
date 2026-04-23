@@ -75,6 +75,7 @@ const TABS = {
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)
   FINANCIAL_GOALS:    'Financial Goals',      // Financial goals + what-if scenarios (Issue #127)
   TAX_DOCUMENTS:      'Tax Documents',        // Tax document checklist (Issue #166)
+  TAX_PREPARER:       'Tax Preparer',         // Per-year tax preparer info (Issue #174)
   FINANCIAL_SCENARIOS:'Financial Scenarios',  // Saved what-if scenarios per goal (Issue #127)
   EMAIL_FOLLOW_UPS:   'Email Follow-ups',     // Email Admin follow-up tracking (Issue #144)
   BOOKS:               'Books',               // Reading list (Issue #88)
@@ -143,7 +144,8 @@ const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'S
 const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
 const FINANCIAL_GOAL_HEADERS     = ['ID', 'Name', 'Target Amount', 'Current Amount', 'Monthly Contribution', 'Target Date', 'APY', 'Owner', 'Account', 'Status', 'Notes', 'Created At'];
 const FINANCIAL_SCENARIO_HEADERS = ['ID', 'Goal ID', 'Label', 'Change Type', 'Amount', 'Notes', 'Created At'];
-var TAX_DOCUMENT_HEADERS = ['ID', 'Tax Year', 'Form Type', 'Issuer / Source', 'Account / Description', 'Category', 'Status', 'Document Link', 'Owner', 'Notes'];
+var TAX_DOCUMENT_HEADERS  = ['ID', 'Tax Year', 'Form Type', 'Issuer / Source', 'Account / Description', 'Category', 'Status', 'Document Link', 'Owner', 'Notes'];
+var TAX_PREPARER_HEADERS  = ['Tax Year', 'Type', 'Name', 'Firm', 'Phone', 'Email', 'Software', 'Filing Status', 'Filed Date', 'Confirmation', 'Notes']; // Issue #174
 var NOTES_DOC_HEADERS = ['ID', 'Date Added', 'Title', 'Content', 'Tags', 'Related To', 'Pinned', 'Category'];
 var NOTES_CATEGORIES  = ['General', 'Travel', 'Lessons Learned', 'Reference', 'Finance', 'Health'];
 const EMAIL_FOLLOW_UP_HEADERS    = ['Thread ID', 'Subject', 'Sender', 'Date Flagged', 'Status'];
@@ -291,6 +293,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.FINANCIAL_GOALS,      FINANCIAL_GOAL_HEADERS);
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS,  FINANCIAL_SCENARIO_HEADERS);
   ensureSheet(ss, TABS.TAX_DOCUMENTS,        TAX_DOCUMENT_HEADERS);
+  ensureSheet(ss, TABS.TAX_PREPARER,         TAX_PREPARER_HEADERS);
   // TABS.HEALTH_APPOINTMENTS removed — appointments read from Google Calendar (Issue #85)
   ensureSheet(ss, TABS.TRIP_BUDGET,          TRIP_BUDGET_HEADERS);
   ensureSheet(ss, TABS.RESELL_LIST,          RESELL_LIST_HEADERS);
