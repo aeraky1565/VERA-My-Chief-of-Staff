@@ -10363,6 +10363,7 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
                         chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence,
                         vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle,
                         onVehicleTireChange, onVehicleEmissionInspect, onVehicleSafetyInspect,
+                        coupons, couponsLoading, onExtractCoupon, onSaveCoupon, onDeleteCoupon, onMarkCouponUsed,
                         apiUrl, apiToken, features }) {
   const feat = features || {};
   const allSubTabs = [
@@ -10375,6 +10376,7 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
     { id: 'pantry',    label: '📦 Pantry',    featureKey: 'pantry'   },
     { id: 'guests',    label: '👥 Guests'   },
     { id: 'resell',    label: '💰 Resell'   },
+    { id: 'coupons',   label: '🎟️ Coupons'  },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('steward');
@@ -10455,6 +10457,17 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
       )}
       {sub === 'resell' && (
         <ResellListView apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+      {sub === 'coupons' && (
+        <CouponsTab
+          coupons={coupons || []}
+          loading={couponsLoading}
+          busy={busy}
+          onExtract={onExtractCoupon}
+          onSave={onSaveCoupon}
+          onDelete={onDeleteCoupon}
+          onMarkUsed={onMarkCouponUsed}
+        />
       )}
     </div>
   );
@@ -19754,7 +19767,7 @@ function App() {
           <StatusBar status={status} loading={loading} />
 
           <div className="tabs">
-            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore', 'coupons'].map(tab => (
+            {['home', 'chat', 'flags', 'tasks', 'projects', 'shopping', 'home_front', 'people', 'pto', 'travel', 'finances', 'health', 'career', 'growth', 'explore'].map(tab => (
               <button
                 key={tab}
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -19765,10 +19778,9 @@ function App() {
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); loadExperiments(apiUrl, apiToken); }
                   if (tab === 'growth')   { loadGoals(apiUrl, apiToken); loadGrowth(apiUrl, apiToken); }
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
-                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); }
+                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); loadCoupons(apiUrl, apiToken); }
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); loadWishListsData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
-                  if (tab === 'coupons')    loadCoupons(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
                   if (tab === 'travel')     { loadPTO(apiUrl, apiToken); loadProfiles(apiUrl, apiToken); } // upcomingTravel lives in PTO stats
                   if (tab === 'finances') { loadBudget(apiUrl, apiToken); loadBills(apiUrl, apiToken); loadCalendarBills(apiUrl, apiToken); loadTxList(apiUrl, apiToken); loadFinancialGoals(); }
@@ -19790,7 +19802,6 @@ function App() {
                 {tab === 'health'     ? `🏥 Health` : ''}
                 {tab === 'growth'     ? `🌱 Growth` : ''}
                 {tab === 'career'     ? `💼 Career` : ''}
-                {tab === 'coupons'    ? `🎟️ Coupons` : ''}
 
               </button>
             ))}
@@ -20015,6 +20026,12 @@ function App() {
                 onVehicleTireChange={handleVehicleTireChange}
                 onVehicleEmissionInspect={handleVehicleEmissionInspect}
                 onVehicleSafetyInspect={handleVehicleSafetyInspect}
+                coupons={coupons}
+                couponsLoading={couponsLoading}
+                onExtractCoupon={handleExtractCoupon}
+                onSaveCoupon={handleSaveCoupon}
+                onDeleteCoupon={handleDeleteCoupon}
+                onMarkCouponUsed={handleMarkCouponUsed}
                 apiUrl={apiUrl}
                 apiToken={apiToken}
                 features={status && status.features}
@@ -20234,18 +20251,6 @@ function App() {
               />
             )}
 
-            {/* Coupons tab — Issue #173 */}
-            {activeTab === 'coupons' && (
-              <CouponsTab
-                coupons={coupons}
-                loading={couponsLoading}
-                busy={busy}
-                onExtract={handleExtractCoupon}
-                onSave={handleSaveCoupon}
-                onDelete={handleDeleteCoupon}
-                onMarkUsed={handleMarkCouponUsed}
-              />
-            )}
           </div>
         </>
       )}
