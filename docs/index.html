@@ -12966,7 +12966,7 @@ function ContractModal({ contract, categories, busy, onClose, onSave }) {
 
 function TaxDocModal({ doc, busy, onClose, onSave }) {
   const isEdit = !!doc;
-  const FORM_TYPES = ['W-2', '1099-INT', '1099-DIV', '1099-B', '1099-NEC', '1099-R', '1099-G', '1098', '1098-T', 'K-1', 'SSA-1099', 'Other'];
+  const FORM_TYPES = ['W-2', '1099-INT', '1099-DIV', '1099-B', '1099-C', '1099-NEC', '1099-R', '1099-G', '1098', '1098-T', 'K-1', 'SSA-1099', 'Last Year Return', 'Other'];
   const [form, setForm] = React.useState({
     taxYear:  doc ? doc.taxYear  : (new Date().getFullYear() - 1),
     formType: doc ? doc.formType : '',
