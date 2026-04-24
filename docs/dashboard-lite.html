@@ -1692,7 +1692,7 @@ function TaxDocModal({ doc, busy, onClose, onSave }) {
           <div>
             <label style={lbl}>Category</label>
             <select style={inp} value={form.category} onChange={ev => setForm(p => ({ ...p, category: ev.target.value }))}>
-              {['Income','Investment','Deduction','Business','Other'].map(c => <option key={c} value={c}>{c}</option>)}
+              {['Income','Investment','Deduction','Business','Last Year Return','Other'].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
@@ -1953,7 +1953,7 @@ function TaxTab({ apiUrl, apiToken }) {
   const notRec    = filtered.filter(d => d.status === 'not_received').length;
   const received  = filtered.filter(d => d.status === 'received').length;
   const verified  = filtered.filter(d => d.status === 'verified').length;
-  const categories = ['Income','Investment','Deduction','Business','Other'];
+  const categories = ['Income','Investment','Deduction','Business','Last Year Return','Other'];
   const grouped   = {};
   categories.forEach(c => { grouped[c] = []; });
   filtered.forEach(d => { (grouped[d.category] || grouped['Other']).push(d); });
