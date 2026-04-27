@@ -15381,9 +15381,81 @@ function ActiveTravelCard({ trip, apiUrl, apiToken, onViewItinerary, travelConfi
   );
 }
 
+// ---- Mail/Package Counter card (Issue #175) ---------------------------------
+
+function MailCounterCard({ counter, busy, onReset }) {
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffH  = diffMs / 3600000;
+    if (diffH < 24 && d.toDateString() === now.toDateString()) {
+      return 'today ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  if (!counter) {
+    return (
+      <div className="bento-card">
+        <div className="bento-card-title">📬 Mail & Packages</div>
+        <div style={{ color: '#4d6080', fontSize: 13 }}>Loading…</div>
+      </div>
+    );
+  }
+
+  const allClear = counter.pieces === 0 && counter.packages === 0;
+
+  return (
+    <div className="bento-card">
+      <div className="bento-card-title">📬 Mail &amp; Packages</div>
+
+      {/* Counts */}
+      <div style={{ display: 'flex', gap: 24, marginBottom: 8 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: counter.pieces > 0 ? '#c9a84c' : '#22c55e', lineHeight: 1 }}>
+            {counter.pieces}
+          </div>
+          <div style={{ fontSize: 11, color: '#6b7fa8', marginTop: 2 }}>📬 pieces</div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: counter.packages > 0 ? '#c9a84c' : '#22c55e', lineHeight: 1 }}>
+            {counter.packages}
+          </div>
+          <div style={{ fontSize: 11, color: '#6b7fa8', marginTop: 2 }}>📦 packages</div>
+        </div>
+      </div>
+
+      {/* Status line */}
+      {allClear ? (
+        <div style={{ fontSize: 12, color: '#22c55e', marginBottom: 8 }}>
+          ✓ Mailbox is clear{counter.lastReset ? ' · reset ' + fmtTime(counter.lastReset) : ''}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#6b7fa8', marginBottom: 8 }}>
+          Last scan: {fmtTime(counter.lastScanRun)}
+        </div>
+      )}
+
+      {/* Reset button */}
+      {!allClear && (
+        <button
+          onClick={e => { e.stopPropagation(); onReset(); }}
+          disabled={busy}
+          style={{ background: '#1e3060', color: '#dde1f0', border: '1px solid #2a4080', borderRadius: 8,
+                   padding: '6px 14px', fontSize: 12, cursor: busy ? 'not-allowed' : 'pointer',
+                   width: '100%', fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Resetting…' : '✓ Got the mail!'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---- Home tab ---------------------------------------------------------------
 
-function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, pacingStatus, onNavigate, onViewItinerary, apiUrl, apiToken }) {
+function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries, status, pacingStatus, onNavigate, onViewItinerary, apiUrl, apiToken, mailCounter, mailCounterBusy, onResetMailCounter }) {
   const activeFlags    = flags.filter(f => !f.resolved && !f.acknowledged);
   const highFlags      = activeFlags.filter(f => f.urgency === 'High');
   const topFlag        = highFlags[0] || activeFlags[0];
@@ -15502,6 +15574,9 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
           <div className="bento-item" style={{ fontSize: 12, color: '#aab5d0' }}>Next: {nextTask.task}</div>
         )}
       </div>
+
+      {/* Mail & Packages */}
+      <MailCounterCard counter={mailCounter} busy={mailCounterBusy} onReset={onResetMailCounter} />
 
       {/* Projects */}
       <div className="bento-card" onClick={() => onNavigate('projects')}>
@@ -17708,6 +17783,8 @@ function App() {
   const [career,     setCareer]     = useState(null);  // { position, goals, progression, development, wins, network }
   const [coupons,    setCoupons]    = useState([]);   // Issue #173
   const [couponsLoading, setCouponsLoading] = useState(false); // Issue #173
+  const [mailCounter,     setMailCounter]     = useState(null);  // Issue #175
+  const [mailCounterBusy, setMailCounterBusy] = useState(false); // Issue #175
   const [pto,        setPTO]        = useState(null);
   const [budget,     setBudget]     = useState(null); // { ok, rows, configured } | null
   const [bills,      setBills]      = useState(null); // { ok, bills, currentMonth } | null
@@ -17823,6 +17900,7 @@ function App() {
       loadShopping(apiUrl, apiToken);
       loadPTO(apiUrl, apiToken);
       loadPacingStatus(apiUrl, apiToken);
+      loadMailCounter(); // Issue #175 — always load for Home tab bento card
     }
   }, [apiUrl, apiToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -19157,6 +19235,25 @@ function App() {
     setBusy(false);
   }
 
+  // ---- Mail/Package Counter (Issue #175) ------------------------------------
+
+  function loadMailCounter() {
+    if (!apiUrl || !apiToken) return;
+    apiGet(apiUrl, apiToken, { action: 'get_mail_counter' })
+      .then(d => setMailCounter(d.ok ? d : null))
+      .catch(() => setMailCounter(null));
+  }
+
+  async function handleResetMailCounter() {
+    setMailCounterBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'reset_mail_counter' });
+      showToast('📬 Mail counter reset');
+      loadMailCounter();
+    } catch (err) { setError('Could not reset mail counter: ' + err.message); }
+    setMailCounterBusy(false);
+  }
+
   // ---- Coupons (Issue #173) --------------------------------------------------
 
   async function loadCoupons(url, token) {
@@ -20005,6 +20102,7 @@ function App() {
                 className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab);
+                  if (tab === 'home')        loadMailCounter();
                   if (tab === 'tasks')      loadGoogleTasks(apiUrl, apiToken);
                   if (tab === 'projects')   loadProjects(apiUrl, apiToken);
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); loadExperiments(apiUrl, apiToken); }
@@ -20148,6 +20246,9 @@ function App() {
                   setActiveTab('travel');
                   loadPTO(apiUrl, apiToken);
                 }}
+                mailCounter={mailCounter}
+                mailCounterBusy={mailCounterBusy}
+                onResetMailCounter={handleResetMailCounter}
               />
             )}
 

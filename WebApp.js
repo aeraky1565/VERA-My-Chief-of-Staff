@@ -233,6 +233,9 @@ function doGet(e) {
       case 'get_coupons':        return jsonOut_(webGetCoupons_());
       case 'delete_coupon':      return jsonOut_(webDeleteCoupon_(e));
       case 'mark_coupon_used':   return jsonOut_(webMarkCouponUsed_(e));
+      // Mail/Package Counter (Issue #175)
+      case 'get_mail_counter':   return jsonOut_(webGetMailCounter_());
+      case 'reset_mail_counter': return jsonOut_(webResetMailCounter_());
       // Resell List (Issue #170)
       case 'get_resell_list':    return jsonOut_(webGetResellList_());
       case 'add_resell_item':    return jsonOut_(webAddResellItem_(e));
@@ -8150,4 +8153,31 @@ function webDeleteCoupon_(e) {
  */
 function webMarkCouponUsed_(e) {
   return webDeleteCoupon_(e);   // same behaviour: remove the row
+}
+
+// ─── MAIL/PACKAGE COUNTER (Issue #175) ────────────────────────────────────────
+
+/**
+ * Returns current mail/package counter state from Script Properties.
+ */
+function webGetMailCounter_() {
+  try {
+    var c = getMailCounter_();
+    return { ok: true, pieces: c.pieces, packages: c.packages,
+             lastScan: c.lastScan, lastScanRun: c.lastScanRun, lastReset: c.lastReset };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * Resets mail and package counters to 0.
+ */
+function webResetMailCounter_() {
+  try {
+    resetMailCounter_();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }

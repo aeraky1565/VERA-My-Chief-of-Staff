@@ -507,7 +507,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_' || handlerName === 'scanUSPSMail_') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -549,7 +549,15 @@ function setupTriggers() {
     .everyMinutes(30)
     .create();
 
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min.');
+  // USPS Informed Delivery scanner — runs at 10am to catch daily mail/package emails (Issue #175)
+  ScriptApp.newTrigger('scanUSPSMail_')
+    .timeBased()
+    .atHour(10)
+    .everyDays(1)
+    .inTimezone(Session.getScriptTimeZone())
+    .create();
+
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min, scanUSPSMail_ at 10am.');
 }
 
 // ============================================================
