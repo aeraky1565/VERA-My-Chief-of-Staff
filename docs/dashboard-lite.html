@@ -187,6 +187,12 @@
     .chat-send { background: #c9a84c; border: none; border-radius: 8px; color: #0d1b3e; cursor: pointer; font-size: 18px; font-weight: 700; padding: 10px 14px; transition: opacity .15s; flex-shrink: 0; }
     .chat-send:hover:not(:disabled) { opacity: 0.85; }
     .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+    .subtab-row { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+    .subtab-btn { background:none; border:1px solid #1e3060; border-radius:20px; color:#6b7fa8;
+                  font-size:12px; padding:5px 14px; cursor:pointer;
+                  transition:border-color .15s, color .15s; white-space:nowrap; }
+    .subtab-btn:hover  { border-color:#3d5fa0; color:#c9d9ff; }
+    .subtab-btn.active { border-color:#c9a84c; color:#c9a84c; background:rgba(201,168,76,.08); }
   </style>
 </head>
 <body>
@@ -2326,6 +2332,1734 @@ function CouponsLiteTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- Home Front components --------------------------------------------------
+
+function PurchaseHistoryTab({ items }) {
+  const [filter, setFilter] = React.useState('');
+  const filtered = (items || []).filter(item =>
+    !filter || item.normalized.toLowerCase().includes(filter.toLowerCase())
+  );
+  const confColor = { default: '#5f6a8a', learning: '#c9a84c', building: '#e8a020', calibrated: '#43a047' };
+
+  function relDate(ds) {
+    if (!ds) return '—';
+    const diff = Math.round((new Date() - new Date(ds + 'T00:00:00')) / 86400000);
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    if (diff < 30) return diff + 'd ago';
+    if (diff < 365) return Math.round(diff / 30) + 'mo ago';
+    return Math.round(diff / 365) + 'yr ago';
+  }
+
+  if (!items || items.length === 0) {
+    return (
+      <div className="empty-state" style={{ padding: 40 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+        <div>No purchase history yet.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Log a shopping run or scan a receipt in Chat to get started.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input
+        placeholder="Search items…"
+        value={filter} onChange={e => setFilter(e.target.value)}
+        style={{
+          width: '100%', boxSizing: 'border-box', background: '#0d1b3e',
+          border: '1px solid #1e3060', borderRadius: 6, color: '#dde1f0',
+          padding: '8px 12px', fontSize: 13, marginBottom: 16,
+        }}
+      />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+        {filtered.map((item, i) => (
+          <div key={i} style={{
+            background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 8, padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0', marginBottom: 6, textTransform: 'capitalize' }}>
+              {item.normalized}
+            </div>
+            <div style={{ fontSize: 12, color: '#8a9abf', lineHeight: 1.6 }}>
+              <div>Last: {relDate(item.lastDate)}{item.lastStore ? ' (' + item.lastStore + ')' : ''}</div>
+              <div>Every ~{item.avgDays}d</div>
+              {item.estimatedNext && <div style={{ color: '#c9a84c' }}>Next: {item.estimatedNext}</div>}
+            </div>
+            <div style={{
+              marginTop: 8, display: 'inline-block', fontSize: 10, fontWeight: 700,
+              color: confColor[item.confidence] || '#5f6a8a',
+              background: (confColor[item.confidence] || '#5f6a8a') + '22',
+              borderRadius: 20, padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.5px',
+            }}>
+              {item.confidence}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HomestewardView({ items, loading, busy, onRecordService }) {
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading home items…</div>;
+  if (!items || !items.length) return (
+    <div className="empty-state" style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🏠</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No home items yet</div>
+      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Home Items tab in your Life OS sheet.</div>
+    </div>
+  );
+
+  function warrantyBadge(days) {
+    if (days === null || days === undefined) return null;
+    if (days < 0)  return { label: '🔴 Expired',       color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (days <= 30) return { label: `🟡 Expires in ${days}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    return { label: '🟢 Valid',           color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
+  }
+  function serviceBadge(days) {
+    if (days === null || days === undefined) return null;
+    if (days < 0)  return { label: '🔴 Overdue',      color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (days <= 14) return { label: `🟡 Due in ${days}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    return { label: '🟢 Scheduled',       color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
+  }
+  function badge(b, label, color, bg) {
+    return <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, border: `1px solid ${color}`, color, background: bg, whiteSpace: 'nowrap' }}>{label}</span>;
+  }
+
+  const grouped = {}, uncategorised = [];
+  items.forEach(item => {
+    const cat = (item.category || '').trim();
+    if (!cat) { uncategorised.push(item); return; }
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(item);
+  });
+  const cats = Object.keys(grouped).sort();
+  if (uncategorised.length) cats.push('');
+
+  const overdueCount = items.filter(i => i.serviceDays !== null && i.serviceDays < 0).length;
+  const dueSoonCount = items.filter(i => i.serviceDays !== null && i.serviceDays >= 0 && i.serviceDays <= 14).length;
+
+  return (
+    <div>
+      {overdueCount > 0 && (
+        <div style={{ background: 'rgba(239,83,80,.1)', border: '1px solid rgba(239,83,80,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#ef5350' }}>
+          🔴 {overdueCount} item{overdueCount > 1 ? 's' : ''} overdue for service
+        </div>
+      )}
+      {!overdueCount && dueSoonCount > 0 && (
+        <div style={{ background: 'rgba(245,166,35,.1)', border: '1px solid rgba(245,166,35,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#f5a623' }}>
+          🟡 {dueSoonCount} item{dueSoonCount > 1 ? 's' : ''} due for service within 14 days
+        </div>
+      )}
+
+      {cats.map(cat => {
+        const catItems = (cat ? grouped[cat] : uncategorised);
+        return (
+          <div key={cat || '__none'} style={{ marginBottom: 20 }}>
+            {cat && (
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#c9a84c', borderBottom: '1px solid #1e3060', paddingBottom: 4, marginBottom: 8 }}>
+                {cat}
+              </div>
+            )}
+            {catItems.map((item, i) => {
+              const wb = warrantyBadge(item.warrantyDays);
+              const sb = serviceBadge(item.serviceDays);
+              return (
+                <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #0d1b3e' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0', flex: 1, minWidth: 120 }}>{item.item}</span>
+                    {item.warrantyExpiry && wb && badge(null, wb.label, wb.color, wb.bg)}
+                    {item.nextService && sb && badge(null, sb.label, sb.color, sb.bg)}
+                    <button
+                      style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid #2a4070', background: 'none', color: '#8899cc', cursor: item.intervalMonths ? 'pointer' : 'not-allowed', opacity: item.intervalMonths ? 1 : 0.4, whiteSpace: 'nowrap' }}
+                      onClick={() => item.intervalMonths && onRecordService(item.row)}
+                      disabled={busy || !item.intervalMonths}
+                      title={item.intervalMonths ? 'Record service & schedule next' : 'Set Interval (mo) to enable scheduling'}
+                    >✓ Record Service</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
+                    {item.warrantyExpiry && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🛡️ Warranty: {item.warrantyExpiry}</span>}
+                    {item.lastService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🔧 Last: {item.lastService}</span>}
+                    {item.nextService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>📅 Next: {item.nextService}</span>}
+                    {item.intervalMonths && <span style={{ fontSize: 11, color: '#6b7fa8' }}>↻ Every {item.intervalMonths}mo</span>}
+                  </div>
+                  {item.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 2 }}>{item.notes}</div>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function StarRating({ value, onChange, size }) {
+  const sz = size || 16;
+  return (
+    <span style={{ display: 'inline-flex', gap: 2 }}>
+      {[1,2,3,4,5].map(n => (
+        <span
+          key={n}
+          onClick={onChange ? () => onChange(n) : undefined}
+          style={{
+            fontSize: sz, lineHeight: 1,
+            color: n <= (value || 0) ? '#c9a84c' : '#2a4070',
+            cursor: onChange ? 'pointer' : 'default',
+            userSelect: 'none',
+          }}
+        >★</span>
+      ))}
+    </span>
+  );
+}
+
+function TakeoutsView({ takeouts, loading, busy, onAddRestaurant, onDeleteRestaurant, onAddItem, onDeleteItem }) {
+  const [expanded,    setExpanded]    = React.useState({});
+  const [addRestModal, setAddRestModal] = React.useState(false);
+  const [addItemFor,   setAddItemFor]   = React.useState(null);
+
+  const [restForm, setRestForm] = React.useState({ name: '', cuisine: '', phone: '', website: '', rating: 0, notes: '' });
+  const [itemForm, setItemForm] = React.useState({ item: '', description: '', rating: 0, notes: '' });
+
+  function toggleExpand(name) {
+    setExpanded(prev => ({ ...prev, [name]: !prev[name] }));
+  }
+
+  function openAddItem(restName) {
+    setItemForm({ item: '', description: '', rating: 0, notes: '' });
+    setAddItemFor(restName);
+  }
+
+  function openAddRest() {
+    setRestForm({ name: '', cuisine: '', phone: '', website: '', rating: 0, notes: '' });
+    setAddRestModal(true);
+  }
+
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading takeouts…</div>;
+
+  const inputStyle = {
+    width: '100%', padding: '7px 10px', borderRadius: 6,
+    background: '#0a1628', border: '1px solid #1e3060',
+    color: '#dde1f0', fontSize: 13, boxSizing: 'border-box',
+  };
+  const labelStyle = { fontSize: 11, color: '#6b7fa8', marginBottom: 4, display: 'block' };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button className="btn btn-primary" style={{ fontSize: 12 }} disabled={busy} onClick={openAddRest}>
+          ＋ Add Restaurant
+        </button>
+      </div>
+
+      {!takeouts || !takeouts.length ? (
+        <div className="empty-state" style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🥡</div>
+          <div style={{ color: '#dde1f0', marginBottom: 6 }}>No favorite takeouts yet</div>
+          <div style={{ fontSize: 12, color: '#4d6080' }}>Click "＋ Add Restaurant" to get started.</div>
+        </div>
+      ) : (
+        takeouts.map((r, i) => (
+          <div key={i} style={{
+            marginBottom: 10, borderRadius: 10,
+            background: '#0d1b3e', border: '1px solid #1e3060', overflow: 'hidden',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => toggleExpand(r.name)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a9abf', fontSize: 14, padding: 0, flexShrink: 0 }}
+              >{expanded[r.name] ? '▾' : '▸'}</button>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#dde1f0', flex: 1, minWidth: 100 }}>{r.name}</span>
+              {r.cuisine && (
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: '1px solid #2a4070', color: '#8899cc' }}>{r.cuisine}</span>
+              )}
+              <StarRating value={r.rating} size={14} />
+              <span style={{ fontSize: 11, color: '#6b7fa8' }}>
+                {r.items.length} item{r.items.length !== 1 ? 's' : ''}
+              </span>
+              {r.phone && (
+                <a href={'tel:' + r.phone} style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }} title={r.phone}>📞</a>
+              )}
+              {r.website && (
+                <a href={r.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }}>🔗</a>
+              )}
+              <button
+                onClick={() => onDeleteRestaurant(r.name)}
+                disabled={busy}
+                style={{ background: 'none', border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#5f3a3a', fontSize: 13, padding: '0 2px', flexShrink: 0 }}
+                title="Delete restaurant and all its items"
+              >🗑</button>
+            </div>
+
+            {expanded[r.name] && (
+              <div style={{ borderTop: '1px solid #1a2d5a', padding: '8px 16px 12px' }}>
+                {r.notes && (
+                  <div style={{ fontSize: 11, color: '#4d6080', marginBottom: 8, fontStyle: 'italic' }}>{r.notes}</div>
+                )}
+                {r.items.length === 0 && (
+                  <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 8 }}>No items yet — add your favorites below.</div>
+                )}
+                {r.items.map((it, j) => (
+                  <div key={j} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '8px 0', borderBottom: j < r.items.length - 1 ? '1px solid #131f3a' : 'none',
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0' }}>{it.item}</span>
+                        <StarRating value={it.rating} size={12} />
+                      </div>
+                      {it.description && (
+                        <div style={{ fontSize: 11, color: '#6b7fa8', marginTop: 2 }}>{it.description}</div>
+                      )}
+                      {it.notes && (
+                        <div style={{ fontSize: 11, color: '#4d6080', marginTop: 1, fontStyle: 'italic' }}>{it.notes}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => onDeleteItem(it.row)}
+                      disabled={busy}
+                      style={{ background: 'none', border: 'none', cursor: busy ? 'wait' : 'pointer', color: '#5f3a3a', fontSize: 12, padding: 0, flexShrink: 0 }}
+                      title="Remove item"
+                    >✕</button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => openAddItem(r.name)}
+                  disabled={busy}
+                  style={{
+                    marginTop: 10, background: 'none', border: '1px dashed #2a4070',
+                    borderRadius: 6, color: '#8a9abf', fontSize: 12,
+                    padding: '5px 14px', cursor: busy ? 'wait' : 'pointer', width: '100%',
+                  }}
+                >＋ Add Item</button>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+
+      {addRestModal && (
+        <div className="modal-overlay" onClick={() => setAddRestModal(false)}>
+          <div className="modal-box" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 14 }}>🥡 Add Restaurant</div>
+            <label style={labelStyle}>Restaurant Name *</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="e.g. Tony's Pizza"
+              value={restForm.name} onChange={e => setRestForm(f => ({ ...f, name: e.target.value }))} />
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Cuisine</label>
+                <input style={inputStyle} placeholder="e.g. Italian"
+                  value={restForm.cuisine} onChange={e => setRestForm(f => ({ ...f, cuisine: e.target.value }))} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Phone</label>
+                <input style={inputStyle} placeholder="Optional"
+                  value={restForm.phone} onChange={e => setRestForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+            </div>
+            <label style={labelStyle}>Website</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="https://..."
+              value={restForm.website} onChange={e => setRestForm(f => ({ ...f, website: e.target.value }))} />
+            <label style={labelStyle}>Rating</label>
+            <div style={{ marginBottom: 10 }}>
+              <StarRating value={restForm.rating} size={22} onChange={n => setRestForm(f => ({ ...f, rating: n }))} />
+            </div>
+            <label style={labelStyle}>Notes</label>
+            <input style={{ ...inputStyle, marginBottom: 16 }} placeholder="Optional"
+              value={restForm.notes} onChange={e => setRestForm(f => ({ ...f, notes: e.target.value }))} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn" style={{ fontSize: 13 }} onClick={() => setAddRestModal(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={busy || !restForm.name.trim()}
+                onClick={() => { onAddRestaurant(restForm); setAddRestModal(false); }}>
+                Save Restaurant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addItemFor && (
+        <div className="modal-overlay" onClick={() => setAddItemFor(null)}>
+          <div className="modal-box" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0', marginBottom: 4 }}>＋ Add Item</div>
+            <div style={{ fontSize: 12, color: '#6b7fa8', marginBottom: 14 }}>for <strong style={{ color: '#c9a84c' }}>{addItemFor}</strong></div>
+            <label style={labelStyle}>Item Name *</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="e.g. Pepperoni Pizza"
+              value={itemForm.item} onChange={e => setItemForm(f => ({ ...f, item: e.target.value }))} />
+            <label style={labelStyle}>Description</label>
+            <input style={{ ...inputStyle, marginBottom: 10 }} placeholder="Optional"
+              value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} />
+            <label style={labelStyle}>Rating</label>
+            <div style={{ marginBottom: 10 }}>
+              <StarRating value={itemForm.rating} size={22} onChange={n => setItemForm(f => ({ ...f, rating: n }))} />
+            </div>
+            <label style={labelStyle}>Notes</label>
+            <input style={{ ...inputStyle, marginBottom: 16 }} placeholder="Optional"
+              value={itemForm.notes} onChange={e => setItemForm(f => ({ ...f, notes: e.target.value }))} />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn" style={{ fontSize: 13 }} onClick={() => setAddItemFor(null)}>Cancel</button>
+              <button className="btn btn-primary" style={{ fontSize: 13 }} disabled={busy || !itemForm.item.trim()}
+                onClick={() => { onAddItem(addItemFor, itemForm); setAddItemFor(null); }}>
+                Save Item
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecipeView({ recipes, loading, busy, onAddToShopping }) {
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading recipes…</div>;
+  if (!recipes || !recipes.length) return (
+    <div className="empty-state" style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🍽️</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No recipes yet</div>
+      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Recipes tab in your Life OS sheet.</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {recipes.map((r, i) => {
+        const ingCount = r.ingredients ? r.ingredients.split(';').filter(s => s.trim()).length : 0;
+        return (
+          <div key={i} style={{ padding: '12px 0', borderBottom: '1px solid #0d1b3e' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#dde1f0', flex: 1, minWidth: 120 }}>{r.name}</span>
+              {r.cuisine && <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, border: '1px solid #2a4070', color: '#8899cc' }}>{r.cuisine}</span>}
+              {r.link && (
+                <a href={r.link} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: '#5c9eff', textDecoration: 'none' }}>🔗 Open</a>
+              )}
+              <button
+                style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, border: '1px solid #2a4070', background: 'none', color: '#8899cc', cursor: ingCount ? 'pointer' : 'not-allowed', opacity: ingCount ? 1 : 0.4, whiteSpace: 'nowrap' }}
+                onClick={() => ingCount && onAddToShopping(r.row, r.name)}
+                disabled={busy || !ingCount}
+                title={ingCount ? `Add ${ingCount} ingredients to Shopping List` : 'No ingredients listed'}
+              >📋 Add to Shopping</button>
+            </div>
+            <div style={{ display: 'flex', gap: 14, marginTop: 5, flexWrap: 'wrap' }}>
+              {r.servings  && <span style={{ fontSize: 11, color: '#6b7fa8' }}>👥 {r.servings} servings</span>}
+              {r.prepTime  && <span style={{ fontSize: 11, color: '#6b7fa8' }}>⏱ {r.prepTime}</span>}
+              {ingCount > 0 && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🥕 {ingCount} ingredient{ingCount !== 1 ? 's' : ''}</span>}
+              {r.tags      && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🏷 {r.tags}</span>}
+            </div>
+            {r.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 3 }}>{r.notes}</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const CADENCES = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Bimonthly', 'Quarterly', 'Annually', 'Seasonal'];
+
+const CADENCE_META = {
+  Daily:      { label: '☀️ Daily',      reset: 'Resets nightly'                    },
+  Weekly:     { label: '📅 Weekly',     reset: 'Resets every Friday'               },
+  Biweekly:   { label: '🗓️ Biweekly',  reset: 'Resets every other Friday'         },
+  Monthly:    { label: '📆 Monthly',    reset: 'Resets last day of month'          },
+  Bimonthly:  { label: '🔄 Bimonthly', reset: 'Resets every other month'          },
+  Quarterly:  { label: '📊 Quarterly', reset: 'Resets end of each quarter'        },
+  Annually:   { label: '🏆 Annually',  reset: 'Resets Dec 31'                     },
+  Seasonal:   { label: '🌿 Seasonal',  reset: 'No auto-reset'                     },
+};
+
+function ChoresView({ chores, loading, busy, onToggle, onAdd, onDelete, onUpdateCadence }) {
+  const [expanded,    setExpanded]    = React.useState({ Daily: true, Weekly: true, Biweekly: true, Monthly: true, Bimonthly: true, Quarterly: true, Annually: true, Seasonal: true });
+  const [addCadence,  setAddCadence]  = React.useState(null);
+  const [addText,     setAddText]     = React.useState('');
+  const [dragId,      setDragId]      = React.useState(null);
+  const [dragOverCad, setDragOverCad] = React.useState(null);
+
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading chores…</div>;
+
+  const byCategory = {};
+  CADENCES.forEach(function(c) { byCategory[c] = []; });
+  (chores || []).forEach(function(ch) {
+    var cat = ch.Cadence || 'Daily';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(ch);
+  });
+
+  const total   = (chores || []).length;
+  const done    = (chores || []).filter(function(c) { return c.Checked === true || c.Checked === 'TRUE'; }).length;
+  const pct     = total ? Math.round((done / total) * 100) : 0;
+
+  function handleDrop(cadence) {
+    if (dragId) {
+      onUpdateCadence(dragId, cadence);
+    }
+    setDragId(null);
+    setDragOverCad(null);
+  }
+
+  async function submitAdd(cadence) {
+    const text = addText.trim();
+    if (!text) return;
+    setAddText('');
+    setAddCadence(null);
+    await onAdd(text, cadence);
+  }
+
+  const inputStyle = {
+    flex: 1, padding: '5px 9px', borderRadius: 6, background: '#0a1628',
+    border: '1px solid #1e3060', color: '#dde1f0', fontSize: 13,
+  };
+
+  return (
+    <div>
+      {total > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7fa8', marginBottom: 4 }}>
+            <span>{done}/{total} chores done today</span>
+            <span>{pct}%</span>
+          </div>
+          <div style={{ height: 6, background: '#0e1e3a', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ width: pct + '%', height: '100%', background: pct === 100 ? '#2ecc71' : '#3a7bd5', borderRadius: 3, transition: 'width 0.3s' }} />
+          </div>
+        </div>
+      )}
+
+      {CADENCES.map(function(cadence) {
+        const items   = byCategory[cadence] || [];
+        const isOpen  = !!expanded[cadence];
+        const isOver  = dragOverCad === cadence;
+        const cadDone = items.filter(function(c) { return c.Checked === true || c.Checked === 'TRUE'; }).length;
+        const meta    = CADENCE_META[cadence];
+
+        return (
+          <div key={cadence}
+            style={{ marginBottom: 10, border: isOver ? '1px dashed #3a7bd5' : '1px solid #1e3060',
+                     borderRadius: 8, background: '#0e1e3a', transition: 'border 0.15s' }}
+            onDragOver={function(e) { e.preventDefault(); setDragOverCad(cadence); }}
+            onDragLeave={function() { if (dragOverCad === cadence) setDragOverCad(null); }}
+            onDrop={function(e) { e.preventDefault(); handleDrop(cadence); }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
+              onClick={function() { setExpanded(function(prev) { return Object.assign({}, prev, { [cadence]: !prev[cadence] }); }); }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0', flex: 1 }}>
+                {isOpen ? '▾' : '▸'} {meta.label}
+                <span style={{ fontSize: 11, color: '#4d6080', fontWeight: 400, marginLeft: 8 }}>
+                  {cadDone}/{items.length} · {meta.reset}
+                </span>
+              </span>
+              <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 8px' }}
+                disabled={busy}
+                onClick={function(e) { e.stopPropagation(); setAddText(''); setAddCadence(cadence); }}>
+                ＋ Add
+              </button>
+            </div>
+
+            {isOpen && (
+              <div style={{ padding: '0 14px 10px' }}>
+                {items.length === 0 && addCadence !== cadence && (
+                  <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 4 }}>No chores yet. Click ＋ Add to get started.</div>
+                )}
+                {items.map(function(ch) {
+                  const checked = ch.Checked === true || ch.Checked === 'TRUE';
+                  return (
+                    <div key={ch.ID}
+                      draggable
+                      onDragStart={function() { setDragId(ch.ID); }}
+                      onDragEnd={function() { setDragId(null); setDragOverCad(null); }}
+                      style={{ display: 'flex', alignItems: 'center', padding: '5px 0',
+                               borderBottom: '1px solid #0a1628', opacity: checked ? 0.55 : 1,
+                               cursor: 'grab' }}>
+                      <span style={{ marginRight: 8, cursor: 'default', color: '#4d6080', fontSize: 12 }}>⠿</span>
+                      <input type="checkbox" checked={checked} style={{ marginRight: 10, cursor: 'pointer' }}
+                        onChange={function() { onToggle(ch.ID, !checked); }} />
+                      <span style={{ flex: 1, fontSize: 13, color: checked ? '#4d6080' : '#dde1f0',
+                                     textDecoration: checked ? 'line-through' : 'none' }}>
+                        {ch.Chore}
+                      </span>
+                      <button className="btn btn-ghost" style={{ fontSize: 11, color: '#c0392b', padding: '1px 6px', marginLeft: 6 }}
+                        disabled={busy} onClick={function() { onDelete(ch.ID); }}>✕</button>
+                    </div>
+                  );
+                })}
+
+                {addCadence === cadence && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <input style={inputStyle} autoFocus placeholder={'Add ' + cadence.toLowerCase() + ' chore…'}
+                      value={addText}
+                      onChange={function(e) { setAddText(e.target.value); }}
+                      onKeyDown={function(e) { if (e.key === 'Enter') submitAdd(cadence); if (e.key === 'Escape') setAddCadence(null); }} />
+                    <button className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}
+                      disabled={busy || !addText.trim()} onClick={function() { submitAdd(cadence); }}>＋</button>
+                    <button className="btn btn-ghost" style={{ fontSize: 12 }}
+                      onClick={function() { setAddCadence(null); setAddText(''); }}>✕</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GuestsView({ apiUrl, apiToken }) {
+  const [guests,  setGuests]  = React.useState(null);
+  const [error,   setError]   = React.useState(null);
+
+  React.useEffect(() => {
+    if (!apiUrl || !apiToken) return;
+    apiGet(apiUrl, apiToken, { action: 'get_guests' })
+      .then(data => setGuests(data.guests || []))
+      .catch(err => { setError(err.message); setGuests([]); });
+  }, [apiUrl, apiToken]);
+
+  if (guests === null) {
+    return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading guests…</div>;
+  }
+
+  if (error) {
+    return <div style={{ fontSize: 13, color: '#f87171', padding: 16 }}>Error: {error}</div>;
+  }
+
+  if (!guests.length) {
+    return (
+      <div className="empty-state" style={{ padding: 40 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>👥</div>
+        <div>No upcoming guest windows found.</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
+          Add multi-day events to AE&amp;VV - Our Joint Chaos calendar with keywords like Visit, Staying, or Guests.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {guests.map((g, i) => {
+        const isStaying  = g.daysAway < 0;
+        const isToday    = g.daysAway === 0;
+        const isSoon     = g.daysAway >= 0 && g.daysAway <= 7;
+
+        let badgeColor = '#2a3a5e';
+        let badgeText  = 'In ' + g.daysAway + ' days';
+        if (isStaying || isToday) {
+          badgeColor = '#1a4a2e';
+          badgeText  = isToday ? '🟢 Arriving today' : '🟢 Currently staying';
+        } else if (isSoon) {
+          badgeColor = '#3a3010';
+          badgeText  = g.daysAway === 1 ? '🟡 Arriving tomorrow' : '🟡 Arriving in ' + g.daysAway + ' days';
+        }
+
+        return (
+          <div key={i} style={{
+            background: '#13244d', border: '1px solid #1e3060',
+            borderRadius: 10, padding: '16px 20px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#dde1f0' }}>{g.label}</div>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 10px',
+                borderRadius: 20, background: badgeColor, color: '#dde1f0',
+                whiteSpace: 'nowrap',
+              }}>{badgeText}</span>
+            </div>
+            <div style={{ fontSize: 13, color: '#8a9abf', marginTop: 8 }}>
+              <span>{g.arrivalDate} – {g.departureDate}</span>
+              <span style={{ margin: '0 8px', color: '#2a3a5e' }}>·</span>
+              <span>{g.durationDays} day{g.durationDays === 1 ? '' : 's'}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#4d6080', marginTop: 4 }}>{g.calendarName}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function vehicleStatusDot(days, yellowDays, redDays) {
+  if (days === null || days === undefined) return null;
+  if (days < 0)          return <span style={{color:'#f87171',fontWeight:700}}>🔴</span>;
+  if (days <= yellowDays) return <span style={{color:'#fbbf24',fontWeight:700}}>🟡</span>;
+  return <span style={{color:'#4ade80'}}>🟢</span>;
+}
+
+function oilStatusDot(mi) {
+  if (mi === null || mi === undefined) return null;
+  if (mi < 0)    return <span style={{color:'#f87171',fontWeight:700}}>🔴</span>;
+  if (mi <= 500) return <span style={{color:'#fbbf24',fontWeight:700}}>🟡</span>;
+  return <span style={{color:'#4ade80'}}>🟢</span>;
+}
+
+function tireStatusDot(mi) {
+  if (mi === null || mi === undefined) return null;
+  if (mi < 0)     return <span style={{color:'#f87171',fontWeight:700}}>🔴</span>;
+  if (mi <= 3000) return <span style={{color:'#fbbf24',fontWeight:700}}>🟡</span>;
+  return <span style={{color:'#4ade80'}}>🟢</span>;
+}
+
+function fmtVehicleDate(val) {
+  if (!val) return '—';
+  const d = new Date(val);
+  if (isNaN(d)) return String(val);
+  return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMileage, onAdd, onDelete, onTireChange, onEmissionInspect, onSafetyInspect }) {
+  const [oilModal,     setOilModal]     = React.useState(null);
+  const [mileModal,    setMileModal]    = React.useState(null);
+  const [addModal,     setAddModal]     = React.useState(false);
+  const [confirmDel,   setConfirmDel]   = React.useState(null);
+  const [inspectModal, setInspectModal] = React.useState(null);
+  const [oilMi,        setOilMi]        = React.useState('');
+  const [newMi,        setNewMi]        = React.useState('');
+  const [tireMi,       setTireMi]       = React.useState('');
+  const [inspectDate,  setInspectDate]  = React.useState('');
+  const [addForm,      setAddForm]      = React.useState({});
+
+  const FIELDS = [
+    'Nickname','Year','Make','Model','VIN','License Plate','State','Color','Driver',
+    'Purchase Date','Current Mileage','Oil Interval (mi)','Last Oil Change Date','Last Oil Change Mileage',
+    'Registration Expiry','Insurance Provider','Insurance Policy #','Insurance Expiry',
+    'Warranty Expiry (B2B)','Warranty Expiry (Powertrain)',
+    'Last Service','Next Service','Service Interval (mo)',
+    'Tire Size','Emission Inspection Expiry','Safety Inspection Expiry',
+    'Tires Last Replaced Date','Tires Last Replaced Mileage','Tire Interval (mi)',
+    'Tread Notes','Notes'
+  ];
+
+  const alerts = [];
+  (vehicles || []).forEach(function(v) {
+    const name = v['Nickname'] || (v['Year'] + ' ' + v['Make'] + ' ' + v['Model']);
+    const items = [];
+    if (v.milesUntilOilChange !== undefined && v.milesUntilOilChange <= 500) items.push('Oil change ' + (v.milesUntilOilChange < 0 ? 'overdue' : 'due in ' + Math.round(v.milesUntilOilChange) + ' mi'));
+    if (v.registrationDays !== null && v.registrationDays <= 30) items.push('Registration ' + (v.registrationDays < 0 ? 'expired' : 'expires in ' + v.registrationDays + 'd'));
+    if (v.insuranceDays !== null && v.insuranceDays <= 30) items.push('Insurance ' + (v.insuranceDays < 0 ? 'expired' : 'expires in ' + v.insuranceDays + 'd'));
+    if (v.warrantyB2bDays !== null && v.warrantyB2bDays <= 30) items.push('B2B Warranty ' + (v.warrantyB2bDays < 0 ? 'expired' : 'in ' + v.warrantyB2bDays + 'd'));
+    if (v.warrantyPowertrainDays !== null && v.warrantyPowertrainDays <= 90) items.push('Powertrain Warranty ' + (v.warrantyPowertrainDays < 0 ? 'expired' : 'in ' + v.warrantyPowertrainDays + 'd'));
+    if (v.serviceDays !== null && v.serviceDays <= 14) items.push('Service ' + (v.serviceDays < 0 ? 'overdue' : 'in ' + v.serviceDays + 'd'));
+    if (v.emissionDays !== null && v.emissionDays <= 30) items.push('Emission inspection ' + (v.emissionDays < 0 ? 'expired' : 'in ' + v.emissionDays + 'd'));
+    if (v.safetyDays !== null && v.safetyDays <= 30) items.push('Safety inspection ' + (v.safetyDays < 0 ? 'expired' : 'in ' + v.safetyDays + 'd'));
+    if (v.milesUntilTireChange !== null && v.milesUntilTireChange !== undefined && v.milesUntilTireChange <= 3000) items.push('Tires ' + (v.milesUntilTireChange < 0 ? 'overdue by ' + Math.abs(Math.round(v.milesUntilTireChange)) + ' mi' : 'due in ' + Math.round(v.milesUntilTireChange) + ' mi'));
+    if (items.length) alerts.push('⚠️ ' + name + ': ' + items.join(' · '));
+  });
+
+  const cardStyle = { background:'#1e293b', borderRadius:10, padding:16, marginBottom:16, border:'1px solid #334155' };
+  const rowStyle  = { display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:14 };
+  const labelStyle = { color:'#94a3b8', minWidth:160 };
+  const valStyle  = { color:'#e2e8f0', fontWeight:500 };
+  const btnStyle  = { background:'#334155', border:'none', borderRadius:6, color:'#e2e8f0', cursor:'pointer', padding:'6px 12px', margin:'0 4px 0 0', fontSize:12 };
+  const plateBadge = { display:'inline-block', border:'2px solid #f59e0b', borderRadius:5, padding:'1px 8px', fontFamily:'monospace', fontWeight:700, color:'#f59e0b', letterSpacing:2, fontSize:12, marginLeft:8 };
+
+  return (
+    <div>
+      {alerts.length > 0 && (
+        <div style={{ background:'#431407', border:'1px solid #f97316', borderRadius:8, padding:12, marginBottom:16, fontSize:13, lineHeight:1.8 }}>
+          {alerts.map((a,i) => <div key={i}>{a}</div>)}
+        </div>
+      )}
+
+      {loading && <div style={{color:'#94a3b8', padding:16}}>Loading vehicles…</div>}
+      {!loading && (!vehicles || vehicles.length === 0) && (
+        <div style={{color:'#94a3b8', padding:16}}>No vehicles yet. Add your first car!</div>
+      )}
+
+      {(vehicles || []).map(function(v) {
+        const fullName = [v['Year'], v['Make'], v['Model']].filter(Boolean).join(' ');
+        return (
+          <div key={v['ID']} style={cardStyle}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <div>
+                <span style={{fontSize:17, fontWeight:700, color:'#e2e8f0'}}>🚗 {fullName}</span>
+                {v['Nickname'] && <span style={{color:'#94a3b8', marginLeft:8, fontSize:13}}>[{v['Nickname']}]</span>}
+                {v['Driver'] && <span style={{color:'#94a3b8', marginLeft:8, fontSize:12}}>Driver: {v['Driver']}</span>}
+              </div>
+              <button onClick={() => setConfirmDel(v)} style={{...btnStyle, color:'#f87171', background:'transparent', border:'1px solid #f87171'}}>✕</button>
+            </div>
+            <div style={{marginBottom:8}}>
+              {v['State'] && <span style={{color:'#94a3b8', fontSize:12}}>{v['State']}</span>}
+              {v['License Plate'] && <span style={plateBadge}>{v['License Plate']}</span>}
+              {v['Color'] && <span style={{color:'#94a3b8', marginLeft:12, fontSize:12}}>{v['Color']}</span>}
+            </div>
+
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 24px', marginBottom:12}}>
+              <div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>🔧 Oil Change</span>
+                  <span style={valStyle}>
+                    {oilStatusDot(v.milesUntilOilChange)}{' '}
+                    {v.milesUntilOilChange !== undefined
+                      ? (v.milesUntilOilChange < 0 ? 'Overdue by ' + Math.abs(Math.round(v.milesUntilOilChange)) + ' mi' : Math.round(v.milesUntilOilChange) + ' mi left')
+                      : '—'}
+                  </span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Next at</span>
+                  <span style={valStyle}>{v.nextOilChangeMileage ? Math.round(v.nextOilChangeMileage).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Last</span>
+                  <span style={valStyle}>{fmtVehicleDate(v['Last Oil Change Date'])}</span>
+                </div>
+                <div style={{...rowStyle, marginTop:8}}>
+                  <span style={labelStyle}>🛞 Tires</span>
+                  <span style={valStyle}>
+                    {tireStatusDot(v.milesUntilTireChange)}{' '}
+                    {v.milesUntilTireChange !== null && v.milesUntilTireChange !== undefined
+                      ? (v.milesUntilTireChange < 0 ? 'Overdue by ' + Math.abs(Math.round(v.milesUntilTireChange)) + ' mi' : Math.round(v.milesUntilTireChange) + ' mi left')
+                      : '—'}
+                  </span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Next at</span>
+                  <span style={valStyle}>{v.nextTireChangeMileage ? Math.round(v.nextTireChangeMileage).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Last</span>
+                  <span style={valStyle}>{fmtVehicleDate(v['Tires Last Replaced Date'])}</span>
+                </div>
+              </div>
+              <div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>📍 Current Mileage</span>
+                  <span style={valStyle}>{v['Current Mileage'] ? Number(v['Current Mileage']).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+                <div style={rowStyle}>
+                  <span style={labelStyle}>&nbsp;&nbsp;&nbsp;Oil Interval</span>
+                  <span style={valStyle}>{v['Oil Interval (mi)'] ? Number(v['Oil Interval (mi)']).toLocaleString() + ' mi' : '—'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{borderTop:'1px solid #334155', paddingTop:10, marginBottom:10}}>
+              {[
+                { label:'📋 Registration', days: v.registrationDays, val: fmtVehicleDate(v['Registration Expiry']), y:30, r:0 },
+                { label:'🛡️ Insurance',    days: v.insuranceDays,     val: fmtVehicleDate(v['Insurance Expiry']),    y:30, r:0 },
+                { label:'🛡️ Warranty B2B', days: v.warrantyB2bDays,  val: fmtVehicleDate(v['Warranty Expiry (B2B)']), y:30, r:0 },
+                { label:'🛡️ Warranty PT',  days: v.warrantyPowertrainDays, val: fmtVehicleDate(v['Warranty Expiry (Powertrain)']), y:90, r:0 },
+                { label:'🔧 Next Service',     days: v.serviceDays,    val: fmtVehicleDate(v['Next Service']),                      y:14, r:0 },
+                { label:'🔬 Emission Inspect', days: v.emissionDays,  val: fmtVehicleDate(v['Emission Inspection Expiry']),        y:30, r:0 },
+                { label:'🔒 Safety Inspect',   days: v.safetyDays,    val: fmtVehicleDate(v['Safety Inspection Expiry']),          y:30, r:0 },
+              ].map(function(item) {
+                return (
+                  <div key={item.label} style={rowStyle}>
+                    <span style={labelStyle}>{item.label}</span>
+                    <span style={valStyle}>
+                      {vehicleStatusDot(item.days, item.y, item.r)}{' '}
+                      {item.val}{item.days !== null && item.days !== undefined ? ' (' + (item.days < 0 ? 'expired' : item.days + 'd') + ')' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{fontSize:11, color:'#64748b', marginBottom:10}}>
+              {v['VIN'] && <span>VIN: {v['VIN']}</span>}
+              {v['Tire Size'] && <span style={{marginLeft:16}}>Tires: {v['Tire Size']}</span>}
+            </div>
+
+            <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+              <button style={btnStyle} disabled={busy} onClick={() => { setOilMi(v['Current Mileage'] || ''); setOilModal(v); }}>🔧 Log Oil Change</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { setTireMi(v['Current Mileage'] || ''); setInspectModal({vehicle:v,type:'tire'}); }}>🛞 Log Tire Change</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { const d=new Date(); d.setFullYear(d.getFullYear()+1); setInspectDate(d.toISOString().slice(0,10)); setInspectModal({vehicle:v,type:'emission'}); }}>🔬 Log Emission</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { const d=new Date(); d.setFullYear(d.getFullYear()+1); setInspectDate(d.toISOString().slice(0,10)); setInspectModal({vehicle:v,type:'safety'}); }}>🔒 Log Safety</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { onService(v['ID']); }}>📋 Record Service</button>
+              <button style={btnStyle} disabled={busy} onClick={() => { setNewMi(v['Current Mileage'] || ''); setMileModal(v); }}>📍 Update Mileage</button>
+            </div>
+          </div>
+        );
+      })}
+
+      <button onClick={() => { setAddForm({}); setAddModal(true); }} style={{...btnStyle, padding:'8px 16px', fontSize:13}}>＋ Add Vehicle</button>
+
+      {oilModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:320,border:'1px solid #334155'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>🔧 Log Oil Change — {oilModal['Nickname'] || oilModal['Make']}</h3>
+            <label style={{color:'#94a3b8',fontSize:13}}>Current Odometer (mi)</label>
+            <input type="number" value={oilMi} onChange={e=>setOilMi(e.target.value)}
+              style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onOilChange(oilModal['ID'], oilMi); setOilModal(null); }}>Save</button>
+              <button style={btnStyle} onClick={() => setOilModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mileModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:320,border:'1px solid #334155'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>📍 Update Mileage — {mileModal['Nickname'] || mileModal['Make']}</h3>
+            <label style={{color:'#94a3b8',fontSize:13}}>Current Odometer (mi)</label>
+            <input type="number" value={newMi} onChange={e=>setNewMi(e.target.value)}
+              style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onMileage(mileModal['ID'], newMi); setMileModal(null); }}>Save</button>
+              <button style={btnStyle} onClick={() => setMileModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inspectModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:320,border:'1px solid #334155'}}>
+            {inspectModal.type === 'tire' ? (
+              <div>
+                <h3 style={{marginTop:0,color:'#e2e8f0'}}>🛞 Log Tire Change — {inspectModal.vehicle['Nickname'] || inspectModal.vehicle['Make']}</h3>
+                <label style={{color:'#94a3b8',fontSize:13}}>Current Odometer (mi)</label>
+                <input type="number" value={tireMi} onChange={e=>setTireMi(e.target.value)}
+                  style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+                <div style={{display:'flex',gap:8}}>
+                  <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                    onClick={() => { onTireChange(inspectModal.vehicle['ID'], tireMi); setInspectModal(null); }}>Save</button>
+                  <button style={btnStyle} onClick={() => setInspectModal(null)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h3 style={{marginTop:0,color:'#e2e8f0'}}>
+                  {inspectModal.type === 'emission' ? '🔬 Log Emission Inspection' : '🔒 Log Safety Inspection'} — {inspectModal.vehicle['Nickname'] || inspectModal.vehicle['Make']}
+                </h3>
+                <label style={{color:'#94a3b8',fontSize:13}}>New Expiry Date</label>
+                <input type="date" value={inspectDate} onChange={e=>setInspectDate(e.target.value)}
+                  style={{width:'100%',marginTop:4,marginBottom:16,padding:8,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:15}} />
+                <div style={{display:'flex',gap:8}}>
+                  <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                    onClick={() => {
+                      if (inspectModal.type === 'emission') onEmissionInspect(inspectModal.vehicle['ID'], inspectDate);
+                      else onSafetyInspect(inspectModal.vehicle['ID'], inspectDate);
+                      setInspectModal(null);
+                    }}>Save</button>
+                  <button style={btnStyle} onClick={() => setInspectModal(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {addModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',overflowY:'auto'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,width:'90%',maxWidth:520,border:'1px solid #334155',maxHeight:'90vh',overflowY:'auto'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>🚗 Add Vehicle</h3>
+            {FIELDS.map(function(f) {
+              return (
+                <div key={f} style={{marginBottom:10}}>
+                  <label style={{color:'#94a3b8',fontSize:12,display:'block'}}>{f}</label>
+                  <input value={addForm[f]||''} onChange={e=>setAddForm(prev=>({...prev,[f]:e.target.value}))}
+                    style={{width:'100%',padding:6,borderRadius:6,border:'1px solid #475569',background:'#0f172a',color:'#e2e8f0',fontSize:13,boxSizing:'border-box'}} />
+                </div>
+              );
+            })}
+            <div style={{display:'flex',gap:8,marginTop:8}}>
+              <button style={{...btnStyle,background:'#2563eb',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onAdd(addForm); setAddModal(false); }}>Add</button>
+              <button style={btnStyle} onClick={() => setAddModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDel && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'#1e293b',borderRadius:12,padding:24,minWidth:300,border:'1px solid #334155'}}>
+            <h3 style={{marginTop:0,color:'#e2e8f0'}}>Remove vehicle?</h3>
+            <p style={{color:'#94a3b8'}}>{confirmDel['Year']} {confirmDel['Make']} {confirmDel['Model']} ({confirmDel['Nickname']})</p>
+            <div style={{display:'flex',gap:8}}>
+              <button style={{...btnStyle,background:'#dc2626',color:'#fff',padding:'8px 16px'}} disabled={busy}
+                onClick={() => { onDelete(confirmDel['ID']); setConfirmDel(null); }}>Remove</button>
+              <button style={btnStyle} onClick={() => setConfirmDel(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MealPlanSubTab({ apiUrl, apiToken }) {
+  const DAYS      = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const DAY_FULL  = { Mon:'Monday', Tue:'Tuesday', Wed:'Wednesday', Thu:'Thursday',
+                      Fri:'Friday', Sat:'Saturday', Sun:'Sunday' };
+  const TYPE_COLORS = {
+    'Home Cooked': { bg:'rgba(102,187,106,.12)', color:'#66bb6a', border:'rgba(102,187,106,.3)' },
+    'Leftovers':   { bg:'rgba(107,127,168,.12)', color:'#7e9ab8', border:'rgba(107,127,168,.3)' },
+    'Takeout':     { bg:'rgba(66,165,245,.12)',  color:'#42a5f5', border:'rgba(66,165,245,.3)'  },
+    'Eating Out':  { bg:'rgba(126,87,194,.12)',  color:'#9575cd', border:'rgba(126,87,194,.3)'  },
+  };
+  const STATUS_COLORS = {
+    'Planned': { color:'#6b7fa8' },
+    'Cooked':  { color:'#66bb6a' },
+    'Skipped': { color:'#ef5350' },
+  };
+
+  const [days,       setDays]       = React.useState([]);
+  const [weekStart,  setWeekStart]  = React.useState('');
+  const [loading,    setLoading]    = React.useState(false);
+  const [suggesting, setSuggesting] = React.useState(false);
+  const [editDay,    setEditDay]    = React.useState(null);
+  const [editVal,    setEditVal]    = React.useState({ mealName:'', type:'Home Cooked' });
+  const [error,      setError]      = React.useState(null);
+
+  const todayAbbrev = React.useMemo(function() {
+    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
+  }, []);
+
+  function load() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'meal_plan' })
+      .then(function(r) {
+        if (r.ok) { setDays(r.days || []); setWeekStart(r.weekStart || ''); }
+        else setError(r.error || 'Load failed');
+      })
+      .catch(function(e) { setError(e.message); })
+      .finally(function() { setLoading(false); });
+  }
+
+  React.useEffect(load, [apiUrl, apiToken]);
+
+  function suggestWeek() {
+    setSuggesting(true); setError(null);
+    apiGet(apiUrl, apiToken, { action: 'suggest_meals' })
+      .then(function(r) { if (r.ok) load(); else setError(r.error || 'Suggest failed'); })
+      .catch(function(e) { setError(e.message); })
+      .finally(function() { setSuggesting(false); });
+  }
+
+  function openEdit(day) {
+    var entry = days.find(function(d) { return d.day === day; }) || {};
+    setEditVal({ mealName: entry.mealName || '', type: entry.type || 'Home Cooked' });
+    setEditDay(day);
+  }
+
+  function saveEdit(day) {
+    if (!editVal.mealName.trim()) { setEditDay(null); return; }
+    apiGet(apiUrl, apiToken, { action: 'set_meal', day: day,
+      weekStart: weekStart, mealName: editVal.mealName.trim(), type: editVal.type })
+      .then(function(r) { if (r.ok) load(); })
+      .finally(function() { setEditDay(null); });
+  }
+
+  function updateStatus(day, status) {
+    apiGet(apiUrl, apiToken, { action: 'update_meal_status', day: day, weekStart: weekStart, status: status })
+      .then(function(r) { if (r.ok) load(); });
+  }
+
+  var weekLabel = '';
+  if (weekStart) {
+    try {
+      var d = new Date(weekStart + 'T00:00:00');
+      weekLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+    } catch(e) { weekLabel = weekStart; }
+  }
+
+  if (loading) return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading meal plan…</div>;
+
+  return (
+    <div>
+      {error && <div style={{ color:'#ef5350', fontSize:13, marginBottom:10 }}>{error}</div>}
+
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:700, color:'#e8eaf6' }}>Week of {weekLabel}</div>
+          <div style={{ fontSize:12, color:'#4d6080', marginTop:2 }}>Dinner plan — Mon through Sun</div>
+        </div>
+        <button onClick={suggestWeek} disabled={suggesting}
+          style={{ background:'rgba(201,168,76,.12)', border:'1px solid rgba(201,168,76,.3)',
+                   color:'#c9a84c', borderRadius:8, padding:'7px 16px', fontSize:12,
+                   fontWeight:600, cursor: suggesting ? 'wait' : 'pointer' }}>
+          {suggesting ? '✨ Suggesting…' : '✨ Suggest Week'}
+        </button>
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {DAYS.map(function(day) {
+          var entry   = days.find(function(d) { return d.day === day; }) || { day: day, mealName:'', type:'', status:'Planned' };
+          var isToday = day === todayAbbrev;
+          var tc      = TYPE_COLORS[entry.type] || {};
+          var sc      = STATUS_COLORS[entry.status] || STATUS_COLORS['Planned'];
+          var isEmpty = !entry.mealName;
+          var isEditing = editDay === day;
+
+          return (
+            <div key={day} style={{
+              background: isToday ? 'rgba(201,168,76,.06)' : '#0d1b3e',
+              border: '1px solid ' + (isToday ? 'rgba(201,168,76,.3)' : '#1e2e4a'),
+              borderRadius:10, padding:'12px 16px',
+              display:'flex', alignItems:'center', gap:12,
+            }}>
+              <div style={{ width:44, flexShrink:0 }}>
+                <div style={{ fontSize:12, fontWeight:700, color: isToday ? '#c9a84c' : '#6b7fa8' }}>{day}</div>
+                {entry.date && <div style={{ fontSize:10, color:'#3d5070' }}>
+                  {(function(){ try { return new Date(entry.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch(e){ return entry.date; }})()}
+                </div>}
+              </div>
+
+              <div style={{ flex:1 }}>
+                {isEditing ? (
+                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                    <input
+                      autoFocus
+                      value={editVal.mealName}
+                      onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{mealName:e.target.value}); }); }}
+                      onKeyDown={function(e){ if(e.key==='Enter') saveEdit(day); if(e.key==='Escape') setEditDay(null); }}
+                      placeholder="Dinner name…"
+                      style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
+                               color:'#e8eaf6', fontSize:13, padding:'4px 10px', flex:1, minWidth:140 }}
+                    />
+                    <select value={editVal.type}
+                      onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{type:e.target.value}); }); }}
+                      style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
+                               color:'#c9d9ff', fontSize:12, padding:'4px 8px' }}>
+                      {['Home Cooked','Leftovers','Takeout','Eating Out'].map(function(t){
+                        return <option key={t} value={t}>{t}</option>;
+                      })}
+                    </select>
+                    <button onClick={function(){ saveEdit(day); }}
+                      style={{ background:'rgba(102,187,106,.15)', border:'1px solid rgba(102,187,106,.3)',
+                               color:'#66bb6a', borderRadius:6, padding:'4px 10px', fontSize:12, cursor:'pointer' }}>Save</button>
+                    <button onClick={function(){ setEditDay(null); }}
+                      style={{ background:'none', border:'none', color:'#4d6080', fontSize:12, cursor:'pointer' }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:14, color: isEmpty ? '#2e3d55' : '#e8eaf6', fontStyle: isEmpty ? 'italic' : 'normal' }}>
+                      {isEmpty ? '—' : entry.mealName}
+                    </span>
+                    {!isEmpty && entry.type && (
+                      <span style={{ fontSize:11, padding:'2px 8px', borderRadius:12, fontWeight:600,
+                        background: tc.bg, color: tc.color, border:'1px solid '+(tc.border||'transparent') }}>
+                        {entry.type}
+                      </span>
+                    )}
+                    {!isEmpty && (
+                      <span style={{ fontSize:11, color: sc.color, fontWeight:600 }}>{entry.status}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {!isEditing && (
+                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                  <button onClick={function(){ openEdit(day); }}
+                    style={{ background:'rgba(107,127,168,.1)', border:'1px solid rgba(107,127,168,.2)',
+                             color:'#6b7fa8', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                    ✏️
+                  </button>
+                  {!isEmpty && entry.status !== 'Cooked' && (
+                    <button onClick={function(){ updateStatus(day,'Cooked'); }}
+                      style={{ background:'rgba(102,187,106,.1)', border:'1px solid rgba(102,187,106,.2)',
+                               color:'#66bb6a', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                      ✓
+                    </button>
+                  )}
+                  {!isEmpty && entry.status !== 'Skipped' && (
+                    <button onClick={function(){ updateStatus(day,'Skipped'); }}
+                      style={{ background:'rgba(239,83,80,.08)', border:'1px solid rgba(239,83,80,.2)',
+                               color:'#ef5350', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                      ✗
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResellListView({ apiUrl, apiToken }) {
+  const [items,    setItems]    = React.useState(null);
+  const [busy,     setBusy]     = React.useState(false);
+  const [showAdd,  setShowAdd]  = React.useState(false);
+  const [form,     setForm]     = React.useState({
+    item:'', category:'Other', askingPrice:'', originalPrice:'',
+    platform:'', priority:'Medium', notes:''
+  });
+  const [editItem, setEditItem] = React.useState(null);
+  const [editForm, setEditForm] = React.useState({});
+
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    apiGet(apiUrl, apiToken, { action: 'get_resell_list' })
+      .then(function(d) { setItems(d.items || []); })
+      .catch(function()  { setItems([]); });
+  }, [apiUrl, apiToken]);
+
+  var allItems  = items || [];
+  var listed    = allItems.filter(function(i) { return i.Status === 'Listed'; });
+  var sold      = allItems.filter(function(i) { return i.Status === 'Sold'; });
+  var active    = allItems.filter(function(i) { return i.Status !== 'Sold' && i.Status !== 'Donated'; });
+  var listedVal = listed.reduce(function(s, i) { return s + (parseFloat(i['Asking Price']) || 0); }, 0);
+  var soldVal   = sold.reduce(function(s, i)   { return s + (parseFloat(i['Asking Price']) || 0); }, 0);
+
+  var PRIORITY_COLOR = { High: '#f87171', Medium: '#fbbf24', Low: '#4ade80' };
+
+  function fmtPrice(v) { return v ? '$' + parseFloat(v).toLocaleString() : null; }
+
+  function setF(key, val)  { setForm(function(p)     { return Object.assign({}, p, { [key]: val }); }); }
+  function setEF(key, val) { setEditForm(function(p)  { return Object.assign({}, p, { [key]: val }); }); }
+
+  function openEdit(it) {
+    setEditItem(it);
+    setEditForm({
+      item:          it.Item               || '',
+      category:      it.Category           || 'Other',
+      askingPrice:   it['Asking Price']    || '',
+      originalPrice: it['Original Price']  || '',
+      platform:      it.Platform           || '',
+      priority:      it.Priority           || 'Medium',
+      status:        it.Status             || 'Unlisted',
+      notes:         it.Notes              || ''
+    });
+  }
+
+  async function handleSave() {
+    if (!editItem || !editForm.item.trim()) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_resell_item',
+        id: editItem.ID,
+        item: editForm.item, category: editForm.category,
+        askingPrice: editForm.askingPrice, originalPrice: editForm.originalPrice,
+        platform: editForm.platform, priority: editForm.priority,
+        status: editForm.status, notes: editForm.notes });
+      setItems(function(prev) {
+        return prev.map(function(i) {
+          if (i.ID !== editItem.ID) return i;
+          return Object.assign({}, i, {
+            Item: editForm.item, Category: editForm.category,
+            'Asking Price': editForm.askingPrice, 'Original Price': editForm.originalPrice,
+            Platform: editForm.platform, Priority: editForm.priority,
+            Status: editForm.status, Notes: editForm.notes
+          });
+        });
+      });
+      setEditItem(null);
+    } finally { setBusy(false); }
+  }
+
+  async function handleAdd() {
+    if (!form.item.trim()) return;
+    setBusy(true);
+    try {
+      var d = await apiGet(apiUrl, apiToken, { action: 'add_resell_item',
+        item: form.item, category: form.category, askingPrice: form.askingPrice,
+        originalPrice: form.originalPrice, platform: form.platform,
+        priority: form.priority, notes: form.notes });
+      setItems(function(prev) { return [...(prev || []), d.item]; });
+      setShowAdd(false);
+      setForm({ item:'', category:'Other', askingPrice:'', originalPrice:'', platform:'', priority:'Medium', notes:'' });
+    } finally { setBusy(false); }
+  }
+
+  async function handleStatus(id, status) {
+    setItems(function(prev) { return prev.map(function(i) { return i.ID === id ? Object.assign({}, i, { Status: status }) : i; }); });
+    try { await apiGet(apiUrl, apiToken, { action: 'update_resell_item', id: id, status: status }); }
+    catch(e) { /* silent */ }
+  }
+
+  async function handleDelete(id) {
+    setItems(function(prev) { return prev.filter(function(i) { return i.ID !== id; }); });
+    await apiGet(apiUrl, apiToken, { action: 'delete_resell_item', id: id });
+  }
+
+  if (items === null) return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading…</div>;
+
+  var sections = [
+    { label: '🔴 Unlisted', status: 'Unlisted', items: active.filter(function(i){ return i.Status === 'Unlisted'; }) },
+    { label: '🔵 Listed',   status: 'Listed',   items: listed },
+    { label: '✅ Sold',     status: 'Sold',     items: sold   },
+  ];
+
+  var inputSt = { width:'100%', padding:'7px 10px', borderRadius:7, background:'#0d1b3e',
+                  border:'1px solid #1e3060', color:'#dde1f0', fontSize:13, boxSizing:'border-box' };
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        {[
+          { label:'Active',  value: active.length,                                      color:'#dde1f0' },
+          { label:'Listed',  value: listed.length + (listedVal ? ' · $' + listedVal.toLocaleString() : ''), color:'#5c9eff' },
+          { label:'Sold',    value: sold.length   + (soldVal   ? ' · $' + soldVal.toLocaleString()   : ''), color:'#4ade80' },
+        ].map(function(s) {
+          return (
+            <div key={s.label} style={{ background:'#0e1e3a', border:'1px solid #1e3060',
+              borderRadius:8, padding:'8px 14px', minWidth:80 }}>
+              <div style={{ fontSize:10, color:'#6b7fa8', textTransform:'uppercase', letterSpacing:1 }}>{s.label}</div>
+              <div style={{ fontSize:15, fontWeight:700, color:s.color, marginTop:2 }}>{s.value}</div>
+            </div>
+          );
+        })}
+        <button className="btn btn-primary" style={{ marginLeft:'auto' }}
+          onClick={function(){ setShowAdd(true); }}>＋ Add Item</button>
+      </div>
+
+      {showAdd && (
+        <div className="modal-overlay" onClick={function(){ setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth:440 }} onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:16 }}>Add Resell Item</div>
+            {[
+              ['item',          'Item Name *',      'text',   'e.g. Sony WH-1000XM4'],
+              ['askingPrice',   'Asking Price ($)',  'number', '0.00'],
+              ['originalPrice', 'Paid ($)',          'number', '0.00'],
+              ['notes',         'Notes',             'text',   'Condition, serial #, etc.'],
+            ].map(function(row) {
+              var key=row[0], label=row[1], type=row[2], ph=row[3];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <input type={type} value={form[key]||''} placeholder={ph}
+                    onChange={function(e){ setF(key, e.target.value); }}
+                    style={inputSt} />
+                </div>
+              );
+            })}
+            {[
+              ['category', 'Category', ['Electronics','Clothing','Furniture','Appliances','Sports','Books','Tools','Collectibles','Other']],
+              ['platform', 'Platform', ['','Facebook Marketplace','eBay','OfferUp','Craigslist','Poshmark','Other']],
+              ['priority', 'Priority', ['High','Medium','Low']],
+            ].map(function(row) {
+              var key=row[0], label=row[1], opts=row[2];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <select value={form[key]||''} onChange={function(e){ setF(key, e.target.value); }}
+                    style={inputSt}>
+                    {opts.map(function(o){ return <option key={o} value={o}>{o||'— None —'}</option>; })}
+                  </select>
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:8, marginTop:16, justifyContent:'flex-end' }}>
+              <button className="btn btn-ghost" onClick={function(){ setShowAdd(false); }}>Cancel</button>
+              <button className="btn btn-primary" disabled={busy || !form.item.trim()} onClick={handleAdd}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editItem && (
+        <div className="modal-overlay" onClick={function(){ setEditItem(null); }}>
+          <div className="modal-box" style={{ maxWidth:440 }} onClick={function(e){ e.stopPropagation(); }}>
+            <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:16 }}>Edit Item</div>
+            {[
+              ['item',          'Item Name *',      'text',   ''],
+              ['askingPrice',   'Asking Price ($)',  'number', '0.00'],
+              ['originalPrice', 'Paid ($)',          'number', '0.00'],
+              ['notes',         'Notes',             'text',   'Condition, serial #, etc.'],
+            ].map(function(row) {
+              var key=row[0], label=row[1], type=row[2], ph=row[3];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <input type={type} value={editForm[key]||''} placeholder={ph}
+                    onChange={function(e){ setEF(key, e.target.value); }}
+                    style={inputSt} />
+                </div>
+              );
+            })}
+            {[
+              ['category', 'Category', ['Electronics','Clothing','Furniture','Appliances','Sports','Books','Tools','Collectibles','Other']],
+              ['platform', 'Platform', ['','Facebook Marketplace','eBay','OfferUp','Craigslist','Poshmark','Other']],
+              ['priority', 'Priority', ['High','Medium','Low']],
+              ['status',   'Status',   ['Unlisted','Listed','Sold','Donated']],
+            ].map(function(row) {
+              var key=row[0], label=row[1], opts=row[2];
+              return (
+                <div key={key} style={{ marginBottom:10 }}>
+                  <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:4,
+                                  textTransform:'uppercase', letterSpacing:1 }}>{label}</label>
+                  <select value={editForm[key]||''} onChange={function(e){ setEF(key, e.target.value); }}
+                    style={inputSt}>
+                    {opts.map(function(o){ return <option key={o} value={o}>{o||'— None —'}</option>; })}
+                  </select>
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:8, marginTop:16, justifyContent:'flex-end' }}>
+              <button className="btn btn-ghost" onClick={function(){ setEditItem(null); }}>Cancel</button>
+              <button className="btn btn-primary" disabled={busy || !editForm.item.trim()} onClick={handleSave}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {allItems.length === 0 ? (
+        <div className="empty-state" style={{ padding:40 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>💰</div>
+          <div>No resell items yet.</div>
+          <div style={{ fontSize:13, color:'#6b7fa8', marginTop:8 }}>
+            Add items you want to sell and track their listing status.
+          </div>
+        </div>
+      ) : (
+        sections.map(function(sec) {
+          if (sec.status === 'Sold' && sec.items.length === 0) return null;
+          return (
+            <div key={sec.status} style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#6b7fa8', textTransform:'uppercase',
+                            letterSpacing:1, marginBottom:8 }}>
+                {sec.label} <span style={{ fontWeight:400 }}>({sec.items.length})</span>
+              </div>
+              {sec.items.length === 0 ? (
+                <div style={{ fontSize:12, color:'#4d6080', padding:'4px 0' }}>None.</div>
+              ) : (
+                sec.items.map(function(it) {
+                  var askP = fmtPrice(it['Asking Price']);
+                  var origP = fmtPrice(it['Original Price']);
+                  return (
+                    <div key={it.ID} style={{ background:'#13244d', border:'1px solid #1e3060',
+                      borderRadius:10, padding:'12px 16px', marginBottom:8,
+                      display:'flex', alignItems:'flex-start', gap:12 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                          <span style={{ color: PRIORITY_COLOR[it.Priority] || '#4d6080', fontWeight:700, fontSize:13 }}>●</span>
+                          <span style={{ fontWeight:700, fontSize:14, color:'#dde1f0' }}>{it.Item}</span>
+                          <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:'#0e1e3a',
+                                         color:'#8a9abf', border:'1px solid #1e3060' }}>{it.Category}</span>
+                          {it.Platform && (
+                            <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, background:'#0e1e3a',
+                                           color:'#5c9eff', border:'1px solid #1e3060' }}>{it.Platform}</span>
+                          )}
+                        </div>
+                        <div style={{ marginTop:5, display:'flex', alignItems:'baseline', gap:8 }}>
+                          {askP  && <span style={{ fontSize:16, fontWeight:700, color:'#4ade80' }}>{askP}</span>}
+                          {origP && <span style={{ fontSize:11, color:'#4d6080' }}>paid {origP}</span>}
+                          {!askP && <span style={{ fontSize:13, color:'#4d6080' }}>No price set</span>}
+                        </div>
+                        {it.Notes && <div style={{ fontSize:11, color:'#6b7fa8', marginTop:4 }}>{it.Notes}</div>}
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:4, flexShrink:0 }}>
+                        {it.Status === 'Unlisted' && (
+                          <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#5c9eff' }}
+                            disabled={busy} onClick={function(){ handleStatus(it.ID, 'Listed'); }}>List It</button>
+                        )}
+                        {it.Status === 'Listed' && (
+                          <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#4ade80' }}
+                            disabled={busy} onClick={function(){ handleStatus(it.ID, 'Sold'); }}>Mark Sold</button>
+                        )}
+                        {(it.Status === 'Unlisted' || it.Status === 'Listed') && (
+                          <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#a78bfa' }}
+                            disabled={busy} onClick={function(){ handleStatus(it.ID, 'Donated'); }}>Donated</button>
+                        )}
+                        <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#8a9abf' }}
+                          disabled={busy} onClick={function(){ openEdit(it); }}>✎</button>
+                        <button className="btn btn-ghost" style={{ fontSize:11, padding:'3px 9px', color:'#c0392b' }}
+                          disabled={busy} onClick={function(){ handleDelete(it.ID); }}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function HomeFrontLiteTab({ apiUrl, apiToken }) {
+  const SUBTABS = [
+    { id:'steward',   label:'🏠 Steward'   },
+    { id:'vehicles',  label:'🚗 Vehicles'  },
+    { id:'chores',    label:'✅ Chores'    },
+    { id:'recipes',   label:'🍽️ Recipes'   },
+    { id:'meal_plan', label:'📅 Meal Plan' },
+    { id:'takeouts',  label:'🥡 Takeouts'  },
+    { id:'pantry',    label:'🛒 Pantry'    },
+    { id:'guests',    label:'👥 Guests'    },
+    { id:'resell',    label:'💰 Resell'    },
+    { id:'coupons',   label:'🎟️ Coupons'   },
+  ];
+
+  const [sub,             setSub]             = React.useState('steward');
+  const [homeFront,       setHomeFront]       = React.useState(null);
+  const [chores,          setChores]          = React.useState(null);
+  const [choresLoading,   setChoresLoading]   = React.useState(false);
+  const [vehicles,        setVehicles]        = React.useState(null);
+  const [vehiclesLoading, setVehiclesLoading] = React.useState(false);
+  const [purchaseHistory, setPurchaseHistory] = React.useState(null);
+  const [phLoading,       setPhLoading]       = React.useState(false);
+  const [busy,            setBusy]            = React.useState(false);
+  const [toast,           setToast]           = React.useState(null);
+
+  function showToast(msg) {
+    setToast(msg);
+    setTimeout(function() { setToast(null); }, 3000);
+  }
+
+  function loadHomeFront() {
+    Promise.all([
+      apiGet(apiUrl, apiToken, { action: 'recipes' }),
+      apiGet(apiUrl, apiToken, { action: 'homesteward' }),
+      apiGet(apiUrl, apiToken, { action: 'takeouts' }),
+    ]).then(function(results) {
+      var rData = results[0], hData = results[1], tData = results[2];
+      setHomeFront({
+        recipes:  rData.recipes      || [],
+        items:    hData.items        || [],
+        takeouts: tData.restaurants  || [],
+      });
+    }).catch(function() { setHomeFront({ recipes:[], items:[], takeouts:[] }); });
+  }
+
+  function loadChores() {
+    setChoresLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'get_chores' })
+      .then(function(d) { setChores(d.chores || []); })
+      .catch(function() { setChores([]); })
+      .finally(function() { setChoresLoading(false); });
+  }
+
+  function loadVehicles() {
+    setVehiclesLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'get_vehicles' })
+      .then(function(d) { setVehicles(d.vehicles || []); })
+      .catch(function() { setVehicles([]); })
+      .finally(function() { setVehiclesLoading(false); });
+  }
+
+  function loadPurchaseHistory() {
+    setPhLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'purchase_history' })
+      .then(function(d) { setPurchaseHistory(d.history || []); })
+      .catch(function() { setPurchaseHistory([]); })
+      .finally(function() { setPhLoading(false); });
+  }
+
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    loadHomeFront();
+    loadChores();
+    loadVehicles();
+  }, [apiUrl, apiToken]);
+
+  React.useEffect(function() {
+    if (sub === 'pantry' && purchaseHistory === null && !phLoading) {
+      loadPurchaseHistory();
+    }
+  }, [sub]);
+
+  function handleRecordService(row) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, { action: 'homesteward_service', row: row })
+      .then(function() { loadHomeFront(); showToast('Service recorded'); })
+      .catch(function(e) { showToast('Error: ' + e.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleRecipeToShopping(row, recipeName) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, { action: 'recipe_to_shopping', row: row })
+      .then(function() { showToast((recipeName || 'Recipe') + ' added to shopping list'); })
+      .catch(function(e) { showToast('Error: ' + e.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleToggleChore(id, checked) {
+    apiGet(apiUrl, apiToken, { action: 'toggle_chore', id: id, checked: String(checked) })
+      .then(function() { loadChores(); })
+      .catch(function() {});
+  }
+
+  function handleAddChore(text, cadence) {
+    apiGet(apiUrl, apiToken, { action: 'add_chore', text: text, cadence: cadence })
+      .then(function() { loadChores(); })
+      .catch(function() {});
+  }
+
+  function handleDeleteChore(id) {
+    apiGet(apiUrl, apiToken, { action: 'delete_chore', id: id })
+      .then(function() { loadChores(); })
+      .catch(function() {});
+  }
+
+  function handleUpdateChoreCadence(id, cadence) {
+    apiGet(apiUrl, apiToken, { action: 'update_chore', id: id, cadence: cadence })
+      .then(function() { loadChores(); })
+      .catch(function() {});
+  }
+
+  function handleOilChange(id, mi) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_oil_change', id: id, mileage: mi })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleVehicleService(id) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_service', id: id })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleMileage(id, mi) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_mileage', id: id, mileage: mi })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleAddVehicle(form) {
+    apiGet(apiUrl, apiToken, Object.assign({ action: 'vehicle_add' }, form))
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleDeleteVehicle(id) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_delete', id: id })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleTireChange(id, mi) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_tire_change', id: id, mileage: mi })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleEmissionInspect(id, date) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_emission_inspect', id: id, date: date })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleSafetyInspect(id, date) {
+    apiGet(apiUrl, apiToken, { action: 'vehicle_safety_inspect', id: id, date: date })
+      .then(function() { loadVehicles(); }).catch(function() {});
+  }
+
+  function handleAddTakeoutRestaurant(data) {
+    apiPost(apiUrl, apiToken, Object.assign({ action: 'add_takeout_restaurant' }, data))
+      .then(function() { loadHomeFront(); }).catch(function() {});
+  }
+
+  function handleDeleteTakeoutRestaurant(name) {
+    apiPost(apiUrl, apiToken, { action: 'delete_takeout_restaurant', name: name })
+      .then(function() { loadHomeFront(); }).catch(function() {});
+  }
+
+  function handleAddTakeoutItem(restaurant, data) {
+    apiPost(apiUrl, apiToken, Object.assign({ action: 'add_takeout_item', restaurant: restaurant }, data))
+      .then(function() { loadHomeFront(); }).catch(function() {});
+  }
+
+  function handleDeleteTakeoutItem(row) {
+    apiPost(apiUrl, apiToken, { action: 'delete_takeout_item', row: row })
+      .then(function() { loadHomeFront(); }).catch(function() {});
+  }
+
+  return (
+    <div>
+      <div className="subtab-row">
+        {SUBTABS.map(function(t) {
+          return (
+            <button key={t.id}
+              className={'subtab-btn' + (sub === t.id ? ' active' : '')}
+              onClick={function() { setSub(t.id); }}>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {sub === 'steward' && (
+        <HomestewardView
+          items={homeFront ? homeFront.items : []}
+          loading={homeFront === null}
+          busy={busy}
+          onRecordService={handleRecordService}
+        />
+      )}
+
+      {sub === 'vehicles' && (
+        <VehiclesView
+          vehicles={vehicles}
+          loading={vehiclesLoading}
+          busy={busy}
+          onOilChange={handleOilChange}
+          onService={handleVehicleService}
+          onMileage={handleMileage}
+          onAdd={handleAddVehicle}
+          onDelete={handleDeleteVehicle}
+          onTireChange={handleTireChange}
+          onEmissionInspect={handleEmissionInspect}
+          onSafetyInspect={handleSafetyInspect}
+        />
+      )}
+
+      {sub === 'chores' && (
+        <ChoresView
+          chores={chores || []}
+          loading={choresLoading}
+          busy={busy}
+          onToggle={handleToggleChore}
+          onAdd={handleAddChore}
+          onDelete={handleDeleteChore}
+          onUpdateCadence={handleUpdateChoreCadence}
+        />
+      )}
+
+      {sub === 'recipes' && (
+        <RecipeView
+          recipes={homeFront ? homeFront.recipes : []}
+          loading={homeFront === null}
+          busy={busy}
+          onAddToShopping={handleRecipeToShopping}
+        />
+      )}
+
+      {sub === 'meal_plan' && (
+        <MealPlanSubTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {sub === 'takeouts' && (
+        <TakeoutsView
+          takeouts={homeFront ? homeFront.takeouts : []}
+          loading={homeFront === null}
+          busy={busy}
+          onAddRestaurant={handleAddTakeoutRestaurant}
+          onDeleteRestaurant={handleDeleteTakeoutRestaurant}
+          onAddItem={handleAddTakeoutItem}
+          onDeleteItem={handleDeleteTakeoutItem}
+        />
+      )}
+
+      {sub === 'pantry' && (
+        phLoading
+          ? <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading…</div>
+          : <PurchaseHistoryTab items={purchaseHistory || []} />
+      )}
+
+      {sub === 'guests' && (
+        <GuestsView apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {sub === 'resell' && (
+        <ResellListView apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {sub === 'coupons' && (
+        <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {toast && (
+        <div style={{ position:'fixed', bottom:28, right:28, background:'#1e3060',
+          border:'1px solid #c9a84c', borderRadius:10, padding:'12px 20px',
+          color:'#e8eaf6', fontSize:14, zIndex:9999 }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 const TOP_TABS = [
@@ -2335,6 +4069,7 @@ const TOP_TABS = [
   { id: 'cards',         label: '💳 Cards'          },
   { id: 'tax',           label: '🧾 Tax'            },
   { id: 'coupons',       label: '🎟️ Coupons'        },
+  { id: 'home_front',    label: '🏡 Home Front'     },
   { id: 'travel',        label: '✈️ Travel', disabled: true },
 ];
 
@@ -2547,6 +4282,10 @@ function App() {
 
         {activeTab === 'coupons' && (
           <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'home_front' && (
+          <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
       </div>
 
