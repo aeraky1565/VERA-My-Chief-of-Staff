@@ -9142,7 +9142,7 @@ function ChoresView({ chores, loading, busy, onToggle, onAdd, onDelete, onUpdate
                                cursor: 'grab' }}>
                       <span style={{ marginRight: 8, cursor: 'default', color: '#4d6080', fontSize: 12 }}>⠿</span>
                       <input type="checkbox" checked={checked} style={{ marginRight: 10, cursor: 'pointer' }}
-                        onChange={function() { onToggle(ch.ID, checked); }} />
+                        onChange={function() { onToggle(ch.ID, !checked); }} />
                       <span style={{ flex: 1, fontSize: 13, color: checked ? '#4d6080' : '#dde1f0',
                                      textDecoration: checked ? 'line-through' : 'none' }}>
                         {ch.Chore}
