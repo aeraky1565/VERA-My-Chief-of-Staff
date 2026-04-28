@@ -9020,18 +9020,21 @@ function PeopleTab({ giftData, giftLoading, busy,
 
 // ---- ChoresView --------------------------------------------------------------
 
-const CADENCES = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Seasonal'];
+const CADENCES = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Bimonthly', 'Quarterly', 'Annually', 'Seasonal'];
 
 const CADENCE_META = {
-  Daily:    { label: '☀️ Daily',    reset: 'Resets nightly'              },
-  Weekly:   { label: '📅 Weekly',   reset: 'Resets every Friday'         },
-  Biweekly: { label: '🗓️ Biweekly', reset: 'Resets every other Friday'   },
-  Monthly:  { label: '📆 Monthly',  reset: 'Resets last day of month'    },
-  Seasonal: { label: '🌿 Seasonal', reset: 'No auto-reset'               },
+  Daily:      { label: '☀️ Daily',      reset: 'Resets nightly'                    },
+  Weekly:     { label: '📅 Weekly',     reset: 'Resets every Friday'               },
+  Biweekly:   { label: '🗓️ Biweekly',  reset: 'Resets every other Friday'         },
+  Monthly:    { label: '📆 Monthly',    reset: 'Resets last day of month'          },
+  Bimonthly:  { label: '🔄 Bimonthly', reset: 'Resets every other month'          },
+  Quarterly:  { label: '📊 Quarterly', reset: 'Resets end of each quarter'        },
+  Annually:   { label: '🏆 Annually',  reset: 'Resets Dec 31'                     },
+  Seasonal:   { label: '🌿 Seasonal',  reset: 'No auto-reset'                     },
 };
 
 function ChoresView({ chores, loading, busy, onToggle, onAdd, onDelete, onUpdateCadence }) {
-  const [expanded,    setExpanded]    = React.useState({ Daily: true, Weekly: true, Biweekly: true, Monthly: true, Seasonal: true });
+  const [expanded,    setExpanded]    = React.useState({ Daily: true, Weekly: true, Biweekly: true, Monthly: true, Bimonthly: true, Quarterly: true, Annually: true, Seasonal: true });
   const [addCadence,  setAddCadence]  = React.useState(null); // which section's add input is open
   const [addText,     setAddText]     = React.useState('');
   const [dragId,      setDragId]      = React.useState(null);

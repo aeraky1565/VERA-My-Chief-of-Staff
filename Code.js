@@ -2390,20 +2390,24 @@ function addBillTypeColumn() {
 /**
  * Resets household chore checkboxes based on cadence.
  * Called from nightlyRun().
- *   Daily     — reset every night
- *   Weekly    — reset on Friday nights
- *   Biweekly  — reset on even ISO-week Friday nights
- *   Monthly   — reset on last day of the month
- *   Seasonal  — never auto-reset
+ *   Daily      — reset every night
+ *   Weekly     — reset on Friday nights
+ *   Biweekly   — reset on even ISO-week Friday nights
+ *   Monthly    — reset on last day of the month
+ *   Bimonthly  — reset on last day of Feb, Apr, Jun, Aug, Oct, Dec
+ *   Quarterly  — reset on last day of Mar, Jun, Sep, Dec
+ *   Annually   — reset on Dec 31
+ *   Seasonal   — never auto-reset
  */
 function resetChoresByCadence_() {
   var now    = new Date();
   var dow    = now.getDay();   // 0=Sun … 6=Sat
   var dom    = now.getDate();
-  var lastDom = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  var month  = now.getMonth(); // 0=Jan … 11=Dec
+  var lastDom = new Date(now.getFullYear(), month + 1, 0).getDate();
 
   // ISO week number
-  var d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  var d = new Date(Date.UTC(now.getFullYear(), month, dom));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   var weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
@@ -2411,11 +2415,20 @@ function resetChoresByCadence_() {
   var isFriday          = (dow === 5);
   var isBiweeklyFriday  = isFriday && (weekNum % 2 === 0);
   var isLastDayOfMonth  = (dom === lastDom);
+  // Bimonthly: last day of every other month (Feb/Apr/Jun/Aug/Oct/Dec = odd 0-indexed month)
+  var isBimonthlyReset  = isLastDayOfMonth && (month % 2 === 1);
+  // Quarterly: last day of Mar(2), Jun(5), Sep(8), Dec(11)
+  var isQuarterlyReset  = isLastDayOfMonth && (month % 3 === 2);
+  // Annually: Dec 31
+  var isAnnualReset     = isLastDayOfMonth && (month === 11);
 
   var toReset = ['Daily'];
-  if (isFriday)         toReset.push('Weekly');
-  if (isBiweeklyFriday) toReset.push('Biweekly');
-  if (isLastDayOfMonth) toReset.push('Monthly');
+  if (isFriday)          toReset.push('Weekly');
+  if (isBiweeklyFriday)  toReset.push('Biweekly');
+  if (isLastDayOfMonth)  toReset.push('Monthly');
+  if (isBimonthlyReset)  toReset.push('Bimonthly');
+  if (isQuarterlyReset)  toReset.push('Quarterly');
+  if (isAnnualReset)     toReset.push('Annually');
 
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);
