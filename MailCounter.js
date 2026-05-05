@@ -40,6 +40,7 @@ function scanUSPSMail_() {
         if (msgDate <= lastScanDate) continue;
 
         var body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, ' ');
+        Logger.log('📧 Processing email from ' + msgDate.toISOString() + ' | body preview: ' + body.replace(/\s+/g, ' ').substring(0, 300));
 
         // --- Parse mail pieces ---
         // "3 mailpiece(s)"  ← actual USPS format
