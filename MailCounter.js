@@ -39,7 +39,8 @@ function scanUSPSMail_() {
         // Skip already-processed emails
         if (msgDate <= lastScanDate) continue;
 
-        var body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, ' ');
+        // HTML body has the actual counts; plain text is just a stub with no numbers
+        var body = msg.getBody().replace(/<[^>]+>/g, ' ') || msg.getPlainBody();
         Logger.log('📧 Processing email from ' + msgDate.toISOString() + ' | body preview: ' + body.replace(/\s+/g, ' ').substring(0, 300));
 
         // --- Parse mail pieces ---
