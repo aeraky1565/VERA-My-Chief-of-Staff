@@ -42,17 +42,21 @@ function scanUSPSMail_() {
         var body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, ' ');
 
         // --- Parse mail pieces ---
-        // "3 pieces of First-Class Mail" / "1 piece of mail" / "2 mail pieces"
-        var pieceMatch1 = body.match(/(\d+)\s+pieces?\s+of\s+(?:First-Class\s+)?[Mm]ail/);
-        var pieceMatch2 = body.match(/(\d+)\s+[Mm]ail\s+pieces?/);
+        // "3 mailpiece(s)"  ← actual USPS format
+        // "3 pieces of First-Class Mail" / "1 piece of mail" / "2 mail pieces"  ← legacy
+        var pieceMatch1 = body.match(/(\d+)\s+mailpiece/i);
+        var pieceMatch2 = body.match(/(\d+)\s+pieces?\s+of\s+(?:First-Class\s+)?[Mm]ail/);
+        var pieceMatch3 = body.match(/(\d+)\s+[Mm]ail\s+pieces?/);
         var pieces = 0;
-        if (pieceMatch1) pieces = parseInt(pieceMatch1[1], 10);
+        if      (pieceMatch1) pieces = parseInt(pieceMatch1[1], 10);
         else if (pieceMatch2) pieces = parseInt(pieceMatch2[1], 10);
+        else if (pieceMatch3) pieces = parseInt(pieceMatch3[1], 10);
         mailDelta += pieces;
 
         // --- Parse packages ---
-        // "2 packages scheduled" / "1 package" / "3 packages arriving"
-        var pkgMatch = body.match(/(\d+)\s+packages?(?:\s+(?:scheduled|arriving|tracked|will|is|are))?/i);
+        // "0 inbound package(s)"  ← actual USPS format
+        // "2 packages scheduled" / "1 package arriving"  ← legacy
+        var pkgMatch = body.match(/(\d+)\s+(?:inbound\s+)?package/i);
         if (pkgMatch) pkgDelta += parseInt(pkgMatch[1], 10);
 
         // Track newest processed message date
