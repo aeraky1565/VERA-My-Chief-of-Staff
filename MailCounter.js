@@ -24,7 +24,7 @@ function scanUSPSMail_() {
     var lastScan = props.getProperty('MAIL_COUNTER_LAST_SCAN') || '2000-01-01T00:00:00.000Z';
     var lastScanDate = new Date(lastScan);
 
-    var threads = GmailApp.search('from:informeddelivery.usps.com', 0, 10);
+    var threads = GmailApp.search('from:informeddelivery.usps.com is:unread', 0, 10);
 
     var mailDelta    = 0;
     var pkgDelta     = 0;
