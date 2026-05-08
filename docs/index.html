@@ -17776,6 +17776,10 @@ function App() {
   const [status,     setStatus]     = useState(null);
   const [flags,      setFlags]      = useState([]);
   const [tasks,      setTasks]      = useState([]);
+  const [taskGroupsExpanded, setTaskGroupsExpanded] = useState({
+    overdue: true, today: true, tomorrow: true, next_3_days: true,
+    next_week: false, next_month: false, upcoming: false, no_date: false,
+  });
   const [summaries,  setSummaries]  = useState([]);
   const [projects,   setProjects]   = useState([]);
   const [goals,      setGoals]      = useState([]);
@@ -20193,26 +20197,79 @@ function App() {
                   : tasks.length === 0 && googleTasks.length === 0
                     ? <div className="empty-state">No open tasks found.</div>
                     : (() => {
-                        // Merge VERA + Google tasks, sort by due date (overdue first, undated last)
+                        const TASK_GROUPS = [
+                          { key: 'overdue',     label: '🔴 Overdue / Late' },
+                          { key: 'today',       label: '📌 Today'          },
+                          { key: 'tomorrow',    label: '➡️ Tomorrow'       },
+                          { key: 'next_3_days', label: '📅 Next 3 Days'   },
+                          { key: 'next_week',   label: '📆 Next Week'      },
+                          { key: 'next_month',  label: '🗓 Next Month'     },
+                          { key: 'upcoming',    label: '🔭 Upcoming'       },
+                          { key: 'no_date',     label: '— No Due Date'     },
+                        ];
+
+                        function getTaskGroup(task) {
+                          let days = task.daysUntilDue;
+                          if (days == null && task.dueDate) {
+                            const tod = new Date(); tod.setHours(0,0,0,0);
+                            days = Math.floor((new Date(task.dueDate + 'T00:00:00') - tod) / 86400000);
+                          }
+                          if (days == null) return 'no_date';
+                          if (days < 0)   return 'overdue';
+                          if (days === 0) return 'today';
+                          if (days === 1) return 'tomorrow';
+                          if (days <= 4)  return 'next_3_days';
+                          if (days <= 7)  return 'next_week';
+                          if (days <= 30) return 'next_month';
+                          return 'upcoming';
+                        }
+
                         const veraTasksMapped = tasks.map(t => ({ ...t, _source: 'vera' }));
                         const gTasksMapped    = googleTasks.map(t => ({ ...t, _source: 'google' }));
                         const merged = veraTasksMapped.concat(gTasksMapped).sort((a, b) => {
-                          if (a.isOverdue && !b.isOverdue) return -1;
-                          if (!a.isOverdue && b.isOverdue) return 1;
                           if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
                           if (a.dueDate && !b.dueDate) return -1;
                           if (!a.dueDate && b.dueDate) return 1;
                           return 0;
                         });
-                        return merged.map((task, i) => (
-                          <TaskCard
-                            key={(task._source === 'google' ? 'g-' : '') + (task.id || i)}
-                            task={task}
-                            onComplete={task._source === 'google' ? handleCompleteGoogleTask : handleComplete}
-                            onEdit={task._source === 'google' ? null : t => setTaskModal({ mode: 'edit', task: t })}
-                            completing={!!completingIds[task.id]}
-                          />
-                        ));
+
+                        const buckets = {};
+                        TASK_GROUPS.forEach(g => { buckets[g.key] = []; });
+                        merged.forEach(task => { buckets[getTaskGroup(task)].push(task); });
+
+                        return TASK_GROUPS.map(group => {
+                          const items = buckets[group.key];
+                          if (!items.length) return null;
+                          const isOpen = !!taskGroupsExpanded[group.key];
+                          return (
+                            <div key={group.key} style={{ marginBottom: 10 }}>
+                              <div
+                                style={{ display: 'flex', alignItems: 'center', padding: '8px 14px',
+                                         background: '#0e1e3a', borderRadius: 8, cursor: 'pointer',
+                                         border: '1px solid #1e3060', userSelect: 'none',
+                                         marginBottom: isOpen ? 6 : 0 }}
+                                onClick={() => setTaskGroupsExpanded(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
+                              >
+                                <span style={{ fontSize: 13, fontWeight: 600, color: '#dde1f0', flex: 1 }}>
+                                  {isOpen ? '▾' : '▸'} {group.label}
+                                </span>
+                                <span style={{ fontSize: 11, color: '#6b7fa8', background: '#0a1628',
+                                               padding: '2px 8px', borderRadius: 10, border: '1px solid #1e3060' }}>
+                                  {items.length}
+                                </span>
+                              </div>
+                              {isOpen && items.map((task, i) => (
+                                <TaskCard
+                                  key={(task._source === 'google' ? 'g-' : '') + (task.id || i)}
+                                  task={task}
+                                  onComplete={task._source === 'google' ? handleCompleteGoogleTask : handleComplete}
+                                  onEdit={task._source === 'google' ? null : t => setTaskModal({ mode: 'edit', task: t })}
+                                  completing={!!completingIds[task.id]}
+                                />
+                              ))}
+                            </div>
+                          );
+                        });
                       })()
                 }
                 {googleTasksError && (
