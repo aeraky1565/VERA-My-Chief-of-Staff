@@ -236,6 +236,16 @@ function doGet(e) {
       // Mail/Package Counter (Issue #175)
       case 'get_mail_counter':   return jsonOut_(webGetMailCounter_());
       case 'reset_mail_counter': return jsonOut_(webResetMailCounter_());
+      // Neighborhood Watch — Flyers (Issue #179)
+      case 'get_flyers':             return jsonOut_(webGetFlyers_());
+      case 'delete_flyer':           return jsonOut_(webDeleteFlyer_(e));
+      case 'update_flyer_status':    return jsonOut_(webUpdateFlyerStatus_(e));
+      case 'flyer_to_calendar':      return jsonOut_(webFlyerToCalendar_(e));
+      // Neighborhood Watch — HOA Monitor (Issue #179)
+      case 'get_hoa_config':     return jsonOut_(webGetHoaConfig_());
+      case 'set_hoa_config':     return jsonOut_(webSetHoaConfig_(e));
+      case 'get_hoa_scans':      return jsonOut_(webGetHoaScans_());
+      case 'run_hoa_scan':       return jsonOut_(webRunHoaScan_());
       // Resell List (Issue #170)
       case 'get_resell_list':    return jsonOut_(webGetResellList_());
       case 'add_resell_item':    return jsonOut_(webAddResellItem_(e));
@@ -436,6 +446,9 @@ function doPost(e) {
       // Coupons (Issue #173)
       case 'extract_coupon':             return jsonOut_(webExtractCoupon_(body));
       case 'save_coupon':                return jsonOut_(webSaveCoupon_(body));
+      // Neighborhood Watch — Flyer upload (Issue #179)
+      case 'extract_flyer':              return jsonOut_(webExtractFlyer_(body));
+      case 'save_flyer':                 return jsonOut_(webSaveFlyer_(body));
       default:                           return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -8177,6 +8190,221 @@ function webResetMailCounter_() {
   try {
     resetMailCounter_();
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// ─── NEIGHBORHOOD WATCH — FLYERS (Issue #179) ─────────────────────────────────
+
+/**
+ * POST extract_flyer — Claude Vision → structured flyer fields.
+ * Body: { imageBase64, imageMimeType? }
+ * Delegated to NeighborhoodWatcher.js webExtractFlyer_().
+ */
+// (handler is defined in NeighborhoodWatcher.js as webExtractFlyer_)
+
+/**
+ * POST save_flyer — appends a flyer row to NEIGHBORHOOD_FLYERS.
+ * Body: { title, type, date, time, location, description, recurring, tags, notes? }
+ */
+function webSaveFlyer_(body) {
+  try {
+    var b  = body || {};
+    var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sh = ss.getSheetByName(TABS.NEIGHBORHOOD_FLYERS);
+    if (!sh) return { ok: false, error: 'NEIGHBORHOOD_FLYERS sheet not found' };
+    var tz  = Session.getScriptTimeZone();
+    var id  = 'fly_' + Date.now();
+    var tags = b.tags;
+    if (Array.isArray(tags)) tags = tags.join(', ');
+    sh.appendRow([
+      id,
+      (b.title       || '').toString().trim(),
+      (b.type        || 'Event').toString().trim(),
+      (b.date        || '').toString().trim(),
+      (b.time        || '').toString().trim(),
+      (b.location    || '').toString().trim(),
+      (b.description || '').toString().trim(),
+      String(b.recurring === true || b.recurring === 'true'),
+      (tags          || '').toString().trim(),
+      '',   // Status — blank initially
+      Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'),
+      (b.notes       || '').toString().trim()
+    ]);
+    return { ok: true, id: id };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET get_flyers — returns all rows from NEIGHBORHOOD_FLYERS sorted by Date desc.
+ */
+function webGetFlyers_() {
+  try {
+    var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(TABS.NEIGHBORHOOD_FLYERS);
+    if (!sheet || sheet.getLastRow() < 2) return { ok: true, flyers: [] };
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    var flyers = rows.slice(1).filter(function(r) { return r[0]; }).map(function(r, idx) {
+      var obj = { _row: idx + 2 };
+      hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? r[i].toISOString() : r[i]; });
+      return obj;
+    });
+    // Sort: upcoming + recurring first, past last
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    flyers.sort(function(a, b) {
+      var da = a.Date ? new Date(a.Date + 'T00:00:00') : null;
+      var db = b.Date ? new Date(b.Date + 'T00:00:00') : null;
+      var ra = String(a.Recurring) === 'true';
+      var rb = String(b.Recurring) === 'true';
+      // Recurring events always float to top
+      if (ra && !rb) return -1;
+      if (!ra && rb) return 1;
+      // No date → bottom
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da - db;
+    });
+    return { ok: true, flyers: flyers };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET delete_flyer?row=N — deletes flyer row by sheet row number.
+ */
+function webDeleteFlyer_(e) {
+  try {
+    var row = parseInt((e.parameter || {}).row, 10);
+    if (!row || row < 2) return { ok: false, error: 'row param required (integer ≥ 2)' };
+    var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.NEIGHBORHOOD_FLYERS);
+    if (!sheet) return { ok: false, error: 'Sheet not found' };
+    sheet.deleteRow(row);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET update_flyer_status?row=N&status=Going — updates the Status cell.
+ * Status values: Going | Interested | Not Going | Done | (blank to clear)
+ */
+function webUpdateFlyerStatus_(e) {
+  try {
+    var row    = parseInt((e.parameter || {}).row, 10);
+    var status = ((e.parameter || {}).status || '').toString().trim();
+    if (!row || row < 2) return { ok: false, error: 'row param required' };
+    var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.NEIGHBORHOOD_FLYERS);
+    if (!sheet) return { ok: false, error: 'Sheet not found' };
+    // Status is column 10 (index 9, 1-based = 10)
+    var hdrs   = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var colIdx = hdrs.indexOf('Status');
+    if (colIdx < 0) colIdx = 9; // fallback: column J
+    sheet.getRange(row, colIdx + 1).setValue(status);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET flyer_to_calendar?title=...&date=YYYY-MM-DD&time=HH:MM&location=...&description=...
+ * Creates a Google Calendar event from flyer details.
+ */
+function webFlyerToCalendar_(e) {
+  try {
+    var p    = e.parameter || {};
+    var title    = (p.title    || 'Neighborhood Event').toString().trim();
+    var dateStr  = (p.date     || '').toString().trim();   // YYYY-MM-DD
+    var timeStr  = (p.time     || '').toString().trim();   // HH:MM or ''
+    var location = (p.location || '').toString().trim();
+    var desc     = (p.description || '').toString().trim();
+    if (!dateStr) return { ok: false, error: 'date param required (YYYY-MM-DD)' };
+    var cal = CalendarApp.getDefaultCalendar();
+    if (timeStr) {
+      var start = new Date(dateStr + 'T' + timeStr + ':00');
+      var end   = new Date(start.getTime() + 2 * 3600 * 1000); // 2-hour default
+      cal.createEvent(title, start, end, { location: location, description: desc });
+    } else {
+      cal.createAllDayEvent(title, new Date(dateStr + 'T12:00:00'),
+        { location: location, description: desc });
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// ─── NEIGHBORHOOD WATCH — HOA MONITOR (Issue #179) ────────────────────────────
+
+/**
+ * GET get_hoa_config — returns the configured HOA URL.
+ */
+function webGetHoaConfig_() {
+  try {
+    var url = PropertiesService.getScriptProperties().getProperty(NEIGHBORHOOD_HOA_URL_KEY) || '';
+    return { ok: true, url: url };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET set_hoa_config?url=... — saves the HOA URL to Script Properties.
+ */
+function webSetHoaConfig_(e) {
+  try {
+    var url = ((e.parameter || {}).url || '').toString().trim();
+    PropertiesService.getScriptProperties().setProperty(NEIGHBORHOOD_HOA_URL_KEY, url);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET get_hoa_scans — returns the last 20 HOA scan log rows.
+ */
+function webGetHoaScans_() {
+  try {
+    var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(TABS.NEIGHBORHOOD_HOA_SCANS);
+    if (!sheet || sheet.getLastRow() < 2) return { ok: true, scans: [] };
+    var rows = sheet.getDataRange().getValues();
+    var hdrs = rows[0];
+    var scans = rows.slice(1).filter(function(r) { return r[0]; }).map(function(r) {
+      var obj = {};
+      hdrs.forEach(function(h, i) { obj[h] = r[i] instanceof Date ? r[i].toISOString() : r[i]; });
+      return obj;
+    }).reverse().slice(0, 20); // newest first, max 20
+    return { ok: true, scans: scans };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
+ * GET run_hoa_scan — manually triggers the HOA website scanner.
+ * Returns { ok, itemsFound, flagsWritten } after scan completes.
+ */
+function webRunHoaScan_() {
+  try {
+    // Run the scanner synchronously (GAS execution limit applies)
+    scanHoaWebsite_();
+    // Read back the latest scan row to report counts
+    var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+    var sheet = ss.getSheetByName(TABS.NEIGHBORHOOD_HOA_SCANS);
+    if (sheet && sheet.getLastRow() >= 2) {
+      var lastRow = sheet.getRange(sheet.getLastRow(), 1, 1, 6).getValues()[0];
+      return { ok: true, itemsFound: lastRow[3] || 0, flagsWritten: lastRow[4] || 0 };
+    }
+    return { ok: true, itemsFound: 0, flagsWritten: 0 };
   } catch (err) {
     return { ok: false, error: err.message };
   }

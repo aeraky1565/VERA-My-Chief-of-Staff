@@ -3773,6 +3773,335 @@ function ResellListView({ apiUrl, apiToken }) {
   );
 }
 
+// ---- NeighborhoodWatchView (Issue #179) ---------------------------------------
+
+function NeighborhoodWatchView({ apiUrl, apiToken }) {
+  const [panel,        setPanel]        = React.useState('flyers');
+  const [flyers,       setFlyers]       = React.useState(null);
+  const [flyerLoading, setFlyerLoading] = React.useState(false);
+  const [extracting,   setExtracting]   = React.useState(false);
+  const [editDraft,    setEditDraft]    = React.useState(null);
+  const [previewUrl,   setPreviewUrl]   = React.useState(null);
+  const [hoaUrl,       setHoaUrl]       = React.useState('');
+  const [hoaUrlInput,  setHoaUrlInput]  = React.useState('');
+  const [hoaScans,     setHoaScans]     = React.useState(null);
+  const [scanning,     setScanning]     = React.useState(false);
+  const [busy,         setBusy]         = React.useState(false);
+  const [toast,        setToast]        = React.useState(null);
+  const fileRef = React.useRef(null);
+
+  function showToast(msg) { setToast(msg); setTimeout(function() { setToast(null); }, 3000); }
+
+  function loadFlyers() {
+    setFlyerLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'get_flyers' })
+      .then(function(d) { setFlyers(d.flyers || []); })
+      .catch(function() { setFlyers([]); })
+      .finally(function() { setFlyerLoading(false); });
+  }
+  function loadHoaConfig() {
+    apiGet(apiUrl, apiToken, { action: 'get_hoa_config' })
+      .then(function(d) { setHoaUrl(d.url || ''); setHoaUrlInput(d.url || ''); })
+      .catch(function() {});
+  }
+  function loadHoaScans() {
+    apiGet(apiUrl, apiToken, { action: 'get_hoa_scans' })
+      .then(function(d) { setHoaScans(d.scans || []); })
+      .catch(function() { setHoaScans([]); });
+  }
+
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    loadFlyers();
+    loadHoaConfig();
+    loadHoaScans();
+  }, [apiUrl, apiToken]);
+
+  function handleFileChange(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    setExtracting(true);
+    resizeImage(file, 1600).then(function(res) {
+      setPreviewUrl(res.preview);
+      var body = { action: 'extract_flyer', imageBase64: res.base64, imageMimeType: res.mimeType };
+      return apiPost(apiUrl, apiToken, body);
+    }).then(function(result) {
+      var f = result.flyer || {};
+      setEditDraft({
+        title:       f.title       || '',
+        type:        f.type        || 'Event',
+        date:        f.date        || '',
+        time:        f.time        || '',
+        location:    f.location    || '',
+        description: f.description || '',
+        recurring:   f.recurring === true || f.recurring === 'true',
+        tags:        Array.isArray(f.tags) ? f.tags.join(', ') : (f.tags || ''),
+        notes:       '',
+      });
+      setExtracting(false);
+    }).catch(function(err) {
+      showToast('Could not extract flyer: ' + err.message);
+      setExtracting(false);
+    });
+  }
+
+  function handleSaveFlyer() {
+    if (!editDraft) return;
+    setBusy(true);
+    var body = Object.assign({ action: 'save_flyer' }, editDraft);
+    apiPost(apiUrl, apiToken, body).then(function() {
+      setEditDraft(null);
+      setPreviewUrl(null);
+      loadFlyers();
+      showToast('Flyer saved ✓');
+    }).catch(function(err) {
+      showToast('Save failed: ' + err.message);
+    }).finally(function() { setBusy(false); });
+  }
+
+  function handleDeleteFlyer(row) {
+    if (!window.confirm('Delete this flyer?')) return;
+    apiGet(apiUrl, apiToken, { action: 'delete_flyer', row: String(row) });
+    setFlyers(function(prev) { return prev.filter(function(f) { return f._row !== row; }); });
+  }
+
+  function handleRsvp(row, status) {
+    apiGet(apiUrl, apiToken, { action: 'update_flyer_status', row: String(row), status: status });
+    setFlyers(function(prev) { return prev.map(function(f) { return f._row === row ? Object.assign({}, f, { Status: status }) : f; }); });
+  }
+
+  function handleAddToCalendar(flyer) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, {
+      action: 'flyer_to_calendar',
+      title: flyer.Title, date: flyer.Date, time: flyer.Time,
+      location: flyer.Location, description: flyer.Description,
+    }).then(function() {
+      showToast('Added to Calendar ✓');
+    }).catch(function(err) {
+      showToast('Calendar error: ' + err.message);
+    }).finally(function() { setBusy(false); });
+  }
+
+  function handleSaveHoaUrl() {
+    apiGet(apiUrl, apiToken, { action: 'set_hoa_config', url: hoaUrlInput })
+      .then(function() { setHoaUrl(hoaUrlInput); showToast('HOA URL saved ✓'); })
+      .catch(function() {});
+  }
+
+  function handleScanNow() {
+    setScanning(true);
+    apiGet(apiUrl, apiToken, { action: 'run_hoa_scan' }).then(function(d) {
+      showToast('Scan complete · ' + (d.itemsFound || 0) + ' items · ' + (d.flagsWritten || 0) + ' flags');
+      loadHoaScans();
+    }).catch(function(err) {
+      showToast('Scan error: ' + err.message);
+    }).finally(function() { setScanning(false); });
+  }
+
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var upcoming = (flyers || []).filter(function(f) {
+    if (String(f.Recurring) === 'true') return true;
+    if (!f.Date) return false;
+    return new Date(f.Date + 'T00:00:00') >= today;
+  });
+  var past = (flyers || []).filter(function(f) {
+    if (String(f.Recurring) === 'true') return false;
+    if (!f.Date) return true;
+    return new Date(f.Date + 'T00:00:00') < today;
+  });
+
+  var rsvpColors = { Going: '#43a047', Interested: '#c9a84c', 'Not Going': '#6b7fa8', Done: '#555' };
+
+  function FlyerCard(props) {
+    var f = props.f;
+    var dateStr = f.Date ? new Date(f.Date + 'T00:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }) : null;
+    return (
+      React.createElement('div', { style: { background:'#0d1b3e', border:'1px solid #1e3060', borderRadius:10, padding:'14px 16px', marginBottom:10 } },
+        React.createElement('div', { style: { display:'flex', justifyContent:'space-between', alignItems:'flex-start' } },
+          React.createElement('div', null,
+            React.createElement('span', { style: { fontWeight:700, fontSize:15, color:'#e8eaf6' } }, f.Title || '(no title)'),
+            f.Status && React.createElement('span', { style: { marginLeft:8, fontSize:11, background: rsvpColors[f.Status] || '#1e3060', color:'#fff', borderRadius:12, padding:'2px 8px' } }, f.Status)
+          ),
+          React.createElement('button', { onClick: function() { handleDeleteFlyer(f._row); },
+            style: { background:'none', border:'none', color:'#6b7fa8', cursor:'pointer', fontSize:16, padding:'0 4px' } }, '🗑')
+        ),
+        React.createElement('div', { style: { fontSize:12, color:'#8a9abf', marginTop:4, display:'flex', gap:12, flexWrap:'wrap' } },
+          String(f.Recurring) === 'true' && React.createElement('span', null, '🔁 Recurring'),
+          dateStr && React.createElement('span', null, '📅 ' + dateStr + (f.Time ? ' · ' + f.Time : '')),
+          f.Location && React.createElement('span', null, '📍 ' + f.Location)
+        ),
+        f.Description && React.createElement('div', { style: { fontSize:13, color:'#c9d9ff', marginTop:6 } }, f.Description),
+        f.Tags && React.createElement('div', { style: { fontSize:11, color:'#6b7fa8', marginTop:4 } }, f.Tags),
+        React.createElement('div', { style: { display:'flex', gap:6, marginTop:10, flexWrap:'wrap', alignItems:'center' } },
+          ['Going','Interested','Not Going'].map(function(s) {
+            return React.createElement('button', { key: s, onClick: function() { handleRsvp(f._row, f.Status === s ? '' : s); },
+              style: { fontSize:11, padding:'4px 10px', borderRadius:20, cursor:'pointer',
+                background: f.Status === s ? rsvpColors[s] : 'none',
+                border: '1px solid ' + (rsvpColors[s] || '#1e3060'),
+                color: f.Status === s ? '#fff' : (rsvpColors[s] || '#6b7fa8') } }, s);
+          }),
+          f.Status !== 'Done' && React.createElement('button', { onClick: function() { handleRsvp(f._row, 'Done'); },
+            style: { fontSize:11, padding:'4px 10px', borderRadius:20, cursor:'pointer',
+              background:'none', border:'1px solid #555', color:'#888' } }, '✓ Done'),
+          f.Date && React.createElement('button', { onClick: function() { handleAddToCalendar(f); }, disabled: busy,
+            style: { fontSize:11, padding:'4px 10px', borderRadius:20, cursor:'pointer',
+              background:'none', border:'1px solid #1e3060', color:'#8a9abf', marginLeft:'auto' } }, '📅 Calendar')
+        )
+      )
+    );
+  }
+
+  function inp(key, lbl) {
+    return (
+      React.createElement('div', { key: key, style: { marginBottom:10 } },
+        React.createElement('label', { style: { display:'block', fontSize:11, color:'#8a9abf', marginBottom:3, textTransform:'uppercase', letterSpacing:1 } }, lbl),
+        React.createElement('input', { type:'text', value: (editDraft && editDraft[key]) || '',
+          onChange: function(e) { var v = e.target.value; setEditDraft(function(p) { var n = Object.assign({}, p); n[key] = v; return n; }); },
+          style: { width:'100%', padding:'7px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 } })
+      )
+    );
+  }
+
+  return (
+    <div>
+      {/* Panel toggle */}
+      <div style={{ display:'flex', gap:8, marginBottom:18 }}>
+        {[{ id:'flyers', label:'🪧 Flyer Board' }, { id:'hoa', label:'🏘 HOA Watch' }].map(function(p) {
+          return (
+            <button key={p.id} onClick={function() { setPanel(p.id); }}
+              style={{ background: panel === p.id ? 'rgba(201,168,76,.08)' : 'none',
+                       border:'1px solid ' + (panel === p.id ? '#c9a84c' : '#1e3060'),
+                       borderRadius:20, color: panel === p.id ? '#c9a84c' : '#6b7fa8',
+                       fontSize:12, padding:'5px 14px', cursor:'pointer' }}>
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── FLYER BOARD ── */}
+      {panel === 'flyers' && (
+        <div>
+          <div className="toolbar">
+            <button className="btn btn-primary" style={{ fontSize:12 }}
+              disabled={extracting} onClick={function() { fileRef.current && fileRef.current.click(); }}>
+              {extracting ? '⏳ Extracting…' : '📷 Upload Flyer'}
+            </button>
+            {flyers && <span className="count-badge">{flyers.length} flyer{flyers.length !== 1 ? 's' : ''}</span>}
+            <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handleFileChange} />
+          </div>
+
+          {editDraft && (
+            <div style={{ background:'#111e42', border:'1px solid #c9a84c', borderRadius:12, padding:20, marginBottom:18 }}>
+              {previewUrl && <img src={previewUrl} style={{ maxHeight:120, borderRadius:8, marginBottom:14, display:'block' }} />}
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:14, color:'#e8eaf6' }}>🪧 Confirm Flyer Details</div>
+              {inp('title','Title')}
+              {inp('type','Type (Event / Notice / Other)')}
+              {inp('date','Date (YYYY-MM-DD)')}
+              {inp('time','Time (HH:MM)')}
+              {inp('location','Location')}
+              {inp('tags','Tags (comma-separated)')}
+              <div style={{ marginBottom:10 }}>
+                <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:3, textTransform:'uppercase', letterSpacing:1 }}>Description</label>
+                <textarea value={(editDraft && editDraft.description) || ''} rows={3}
+                  onChange={function(e) { var v = e.target.value; setEditDraft(function(p) { return Object.assign({}, p, { description: v }); }); }}
+                  style={{ width:'100%', padding:'7px 10px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13, resize:'vertical' }} />
+              </div>
+              <label style={{ fontSize:13, color:'#8a9abf', cursor:'pointer', display:'block', marginBottom:14 }}>
+                <input type="checkbox" checked={!!(editDraft && editDraft.recurring)}
+                  onChange={function(e) { var v = e.target.checked; setEditDraft(function(p) { return Object.assign({}, p, { recurring: v }); }); }}
+                  style={{ marginRight:6 }} />
+                Recurring event
+              </label>
+              <div style={{ display:'flex', gap:8 }}>
+                <button className="btn btn-primary" onClick={handleSaveFlyer} disabled={busy}>{busy ? 'Saving…' : 'Save Flyer'}</button>
+                <button className="btn" onClick={function() { setEditDraft(null); setPreviewUrl(null); }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {flyerLoading && <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading…</div>}
+          {!flyerLoading && flyers && flyers.length === 0 && !editDraft && (
+            <div style={{ textAlign:'center', padding:40 }}>
+              <div style={{ fontSize:32, marginBottom:12 }}>🪧</div>
+              <div style={{ color:'#c9d9ff' }}>No flyers yet.</div>
+              <div style={{ fontSize:13, color:'#6b7fa8', marginTop:8 }}>Upload a photo of a neighborhood flyer to get started.</div>
+            </div>
+          )}
+          {!flyerLoading && upcoming.length > 0 && (
+            <div>
+              <div style={{ fontSize:11, color:'#c9a84c', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Upcoming</div>
+              {upcoming.map(function(f) { return <FlyerCard key={f._row} f={f} />; })}
+            </div>
+          )}
+          {!flyerLoading && past.length > 0 && (
+            <div style={{ marginTop:16 }}>
+              <div style={{ fontSize:11, color:'#6b7fa8', textTransform:'uppercase', letterSpacing:1, marginBottom:8 }}>Past</div>
+              {past.map(function(f) { return <FlyerCard key={f._row} f={f} />; })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── HOA WATCH ── */}
+      {panel === 'hoa' && (
+        <div>
+          <div style={{ marginBottom:20 }}>
+            <label style={{ display:'block', fontSize:11, color:'#8a9abf', marginBottom:6, textTransform:'uppercase', letterSpacing:1 }}>HOA Website URL</label>
+            <div style={{ display:'flex', gap:8 }}>
+              <input type="url" value={hoaUrlInput} onChange={function(e) { setHoaUrlInput(e.target.value); }}
+                placeholder="https://myhoa.com/events"
+                style={{ flex:1, padding:'8px 12px', borderRadius:8, background:'#0d1b3e', border:'1px solid #1e3060', color:'#dde1f0', fontSize:13 }} />
+              <button className="btn btn-primary" style={{ fontSize:12, whiteSpace:'nowrap' }}
+                onClick={handleSaveHoaUrl} disabled={!hoaUrlInput.trim()}>💾 Save</button>
+            </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:20, flexWrap:'wrap' }}>
+            <button className="btn btn-primary" style={{ fontSize:12 }} disabled={scanning || !hoaUrl}
+              onClick={handleScanNow}>
+              {scanning ? '⏳ Scanning…' : '▶ Scan Now'}
+            </button>
+            {!hoaUrl && <span style={{ fontSize:12, color:'#6b7fa8' }}>Save a URL above to enable scanning</span>}
+          </div>
+          <div style={{ fontSize:11, color:'#c9a84c', textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>Scan History</div>
+          {hoaScans === null && <div style={{ fontSize:13, color:'#6b7fa8' }}>Loading…</div>}
+          {hoaScans && hoaScans.length === 0 && (
+            <div style={{ fontSize:13, color:'#6b7fa8', padding:'12px 0' }}>No scans yet. Click ▶ Scan Now to run your first check.</div>
+          )}
+          {hoaScans && hoaScans.map(function(s, i) {
+            var dt    = s['Scanned At'] ? new Date(s['Scanned At']) : null;
+            var dtStr = dt ? dt.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' · ' + dt.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }) : '—';
+            return (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', fontSize:13,
+                                    padding:'8px 0', borderBottom:'1px solid #1a2a4a', color:'#c9d9ff' }}>
+                <span>{dtStr}</span>
+                <span style={{ color:'#6b7fa8', fontSize:12 }}>
+                  {s['Items Found'] || 0} items · {s['New Flags'] || 0} flags
+                </span>
+              </div>
+            );
+          })}
+          <div style={{ fontSize:12, color:'#6b7fa8', marginTop:16, lineHeight:1.6 }}>
+            ℹ Flags appear in the VERA Flags tab. Items repeatedly ignored are suppressed automatically via Signal Learning.
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{ position:'fixed', bottom:28, right:28, background:'#1e3060',
+          border:'1px solid #c9a84c', borderRadius:10, padding:'12px 20px',
+          color:'#e8eaf6', fontSize:14, zIndex:9999 }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- HomeFrontLiteTab -------------------------------------------------------
+
 function HomeFrontLiteTab({ apiUrl, apiToken }) {
   const SUBTABS = [
     { id:'steward',   label:'🏠 Steward'   },
@@ -3783,8 +4112,9 @@ function HomeFrontLiteTab({ apiUrl, apiToken }) {
     { id:'takeouts',  label:'🥡 Takeouts'  },
     { id:'pantry',    label:'🛒 Pantry'    },
     { id:'guests',    label:'👥 Guests'    },
-    { id:'resell',    label:'💰 Resell'    },
-    { id:'coupons',   label:'🎟️ Coupons'   },
+    { id:'resell',             label:'💰 Resell'             },
+    { id:'coupons',            label:'🎟️ Coupons'            },
+    { id:'neighborhood_watch', label:'🏘 Watch'              },
   ];
 
   const [sub,             setSub]             = React.useState('steward');
@@ -4047,6 +4377,10 @@ function HomeFrontLiteTab({ apiUrl, apiToken }) {
 
       {sub === 'coupons' && (
         <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+
+      {sub === 'neighborhood_watch' && (
+        <NeighborhoodWatchView apiUrl={apiUrl} apiToken={apiToken} />
       )}
 
       {toast && (

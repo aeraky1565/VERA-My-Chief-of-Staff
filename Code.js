@@ -91,6 +91,8 @@ const TABS = {
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
   COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
+  NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board (Issue #179)
+  NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log (Issue #179)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -298,6 +300,10 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TRIP_BUDGET,          TRIP_BUDGET_HEADERS);
   ensureSheet(ss, TABS.RESELL_LIST,          RESELL_LIST_HEADERS);
   ensureSheet(ss, TABS.COUPONS,              COUPON_HEADERS);
+  ensureSheet(ss, TABS.NEIGHBORHOOD_FLYERS,
+    ['ID', 'Title', 'Type', 'Date', 'Time', 'Location', 'Description', 'Recurring', 'Tags', 'Status', 'Added', 'Notes']);
+  ensureSheet(ss, TABS.NEIGHBORHOOD_HOA_SCANS,
+    ['ID', 'Scanned At', 'URL', 'Items Found', 'New Flags', 'Notes']);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
@@ -507,7 +513,7 @@ function setupTriggers() {
   const existingTriggers = ScriptApp.getProjectTriggers();
   existingTriggers.forEach(function(trigger) {
     const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_' || handlerName === 'scanUSPSMail_') {
+    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_' || handlerName === 'scanUSPSMail_' || handlerName === 'scanHoaWebsite_') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
@@ -557,7 +563,16 @@ function setupTriggers() {
     .inTimezone(Session.getScriptTimeZone())
     .create();
 
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min, scanUSPSMail_ at 10am.');
+  // HOA website scanner — runs every Monday at 9am (Issue #179)
+  ScriptApp.newTrigger('scanHoaWebsite_')
+    .timeBased()
+    .everyWeeks(1)
+    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .atHour(9)
+    .inTimezone(Session.getScriptTimeZone())
+    .create();
+
+  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min, scanUSPSMail_ at 10am, scanHoaWebsite_ every Monday 9am.');
 }
 
 // ============================================================
