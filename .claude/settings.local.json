@@ -5,7 +5,8 @@
       "Bash(git add *)",
       "Bash(powershell.exe -File push.ps1)",
       "Bash(git commit -m ' *)",
-      "Bash(grep -E \"\\\\.js$|\\\\.html$\")"
+      "Bash(grep -E \"\\\\.js$|\\\\.html$\")",
+      "Bash(grep -v \"^[0-9]*:.*//.*ensureSheet\")"
     ]
   }
 }
