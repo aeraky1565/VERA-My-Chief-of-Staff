@@ -60,9 +60,11 @@ function getYearReview_(year) {
   // User-defined habits
   var habits = getHabits_().filter(function(h) { return h.active; });
 
-  // Virtual: Gym habit pulled from GymLog
-  var gymHabit = { id: '__gym__', name: 'Gym', cadence: 'Varies', color: '#26c6da', active: true, notes: '' };
+  // Virtual: Gym + Walk habits pulled from GymLog
+  var gymHabit  = { id: '__gym__',  name: 'Gym',        cadence: 'Varies', color: '#26c6da', active: true, notes: '' };
+  var walkHabit = { id: '__walk__', name: 'Daily Walk',  cadence: 'Daily',  color: '#66bb6a', active: true, notes: '' };
   habits.push(gymHabit);
+  habits.push(walkHabit);
 
   // User-defined completions
   var log     = getHabitLog_(y);
@@ -78,12 +80,18 @@ function getYearReview_(year) {
     var gymSheet = ss.getSheetByName(TABS.GYM_LOG);
     if (gymSheet && gymSheet.getLastRow() >= 2) {
       var gymData = gymSheet.getRange(2, 1, gymSheet.getLastRow() - 1, GYM_LOG_HEADERS.length).getValues();
-      completions['__gym__'] = {};
+      completions['__gym__']  = {};
+      completions['__walk__'] = {};
       gymData.forEach(function(r) {
+        var title    = String(r[1] || '').trim(); // Event Title
         var dateStr  = String(r[2] || '').trim(); // Event Date
         var attended = String(r[3] || '').trim(); // Attended
         if (dateStr.indexOf(String(y)) === 0 && attended === 'Yes') {
-          completions['__gym__'][dateStr] = true;
+          if (title.toLowerCase().indexOf('walk') !== -1) {
+            completions['__walk__'][dateStr] = true;
+          } else {
+            completions['__gym__'][dateStr] = true;
+          }
         }
       });
     }
