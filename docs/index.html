@@ -1938,7 +1938,100 @@ const CONTEXT_COLORS = {
  * @param {Object} hotelCheckoutDates Map of itemId → checkoutDate (YYYY-MM-DD) for multi-night hotels
  * @returns {Array} gap objects: { type, date, subtype? }
  */
-function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
+// Travel mode options per direction (outbound / return).
+// 'road_trip' suppresses the missing-transport gap warning — no reservation needed.
+const TRAVEL_MODES = [
+  { value: '',           label: '— mode —'     },
+  { value: 'flight',     label: '✈️ Flight'     },
+  { value: 'road_trip',  label: '🚗 Road Trip'  },
+  { value: 'train',      label: '🚆 Train'      },
+  { value: 'rental_car', label: '🚙 Rental Car' },
+  { value: 'bus',        label: '🚌 Bus'        },
+  { value: 'cruise',     label: '🛳️ Cruise'     },
+  { value: 'ferry',      label: '⛴️ Ferry'      },
+];
+
+// Mode icon helper (used in the header pill display)
+function travelModeLabel(value) {
+  const m = TRAVEL_MODES.find(function(m) { return m.value === value; });
+  return m ? m.label : '';
+}
+
+// Modes that self-transport (no itinerary event expected → suppress gap warning)
+const SELF_TRANSPORT_MODES = { road_trip: true };
+
+function TravelModeSelector({ outboundMode, returnMode, onSave, busy }) {
+  const [editing, setEditing] = React.useState(false);
+  const [ob, setOb] = React.useState(outboundMode || '');
+  const [ret, setRet] = React.useState(returnMode  || '');
+
+  // Sync if parent value changes (e.g. after load)
+  React.useEffect(function() { setOb(outboundMode  || ''); }, [outboundMode]);
+  React.useEffect(function() { setRet(returnMode   || ''); }, [returnMode]);
+
+  const selectStyle = {
+    background: '#07122b', border: '1px solid #1e3060', borderRadius: 6,
+    color: '#dde1f0', fontSize: 12, padding: '4px 8px', cursor: 'pointer',
+  };
+
+  if (!editing) {
+    const hasMode = ob || ret;
+    return (
+      <span
+        onClick={function() { if (!busy) setEditing(true); }}
+        style={{
+          fontSize: 12, cursor: busy ? 'default' : 'pointer',
+          color: hasMode ? '#8ab4f8' : '#4d6080',
+          textDecoration: hasMode ? 'none' : 'underline dotted',
+          userSelect: 'none',
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}
+      >
+        {hasMode
+          ? <>{travelModeLabel(ob)} {ob && ret ? '↔' : ''} {travelModeLabel(ret)}</>
+          : '+ Add travel mode'}
+      </span>
+    );
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 8,
+      padding: '8px 12px',
+    }}>
+      <div style={{ fontSize: 11, color: '#6b7fa8', fontWeight: 600 }}>OUTBOUND</div>
+      <select value={ob} onChange={function(e) { setOb(e.target.value); }} style={selectStyle}>
+        {TRAVEL_MODES.map(function(m) {
+          return <option key={m.value} value={m.value}>{m.label}</option>;
+        })}
+      </select>
+      <div style={{ fontSize: 11, color: '#6b7fa8', fontWeight: 600, marginLeft: 8 }}>RETURN</div>
+      <select value={ret} onChange={function(e) { setRet(e.target.value); }} style={selectStyle}>
+        {TRAVEL_MODES.map(function(m) {
+          return <option key={m.value} value={m.value}>{m.label}</option>;
+        })}
+      </select>
+      <button
+        className="btn btn-primary"
+        style={{ fontSize: 11, padding: '4px 10px' }}
+        disabled={busy}
+        onClick={function() { onSave && onSave(ob, ret); setEditing(false); }}
+      >
+        Save
+      </button>
+      <button
+        className="btn"
+        style={{ fontSize: 11, padding: '4px 10px' }}
+        onClick={function() { setOb(outboundMode || ''); setRet(returnMode || ''); setEditing(false); }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function computeItineraryGaps(items, tripDays, hotelCheckoutDates, outboundMode, returnMode) {
   var gaps = [];
   if (!tripDays || tripDays.length < 2) return gaps; // no meaningful gaps on a 1-day trip
 
@@ -1994,9 +2087,12 @@ function computeItineraryGaps(items, tripDays, hotelCheckoutDates) {
     if (!hotelCovered[d]) gaps.push({ type: 'missing_hotel', date: d });
   });
 
-  // Missing transport: arrival day and departure day
-  if (!dayTransport[firstDay]) gaps.push({ type: 'missing_transport', date: firstDay, subtype: 'arrival' });
-  if (!dayTransport[lastDay])  gaps.push({ type: 'missing_transport', date: lastDay,  subtype: 'departure' });
+  // Missing transport: arrival day and departure day.
+  // Suppressed when the trip's travel mode is self-transport (road_trip).
+  if (!dayTransport[firstDay] && !SELF_TRANSPORT_MODES[outboundMode])
+    gaps.push({ type: 'missing_transport', date: firstDay, subtype: 'arrival' });
+  if (!dayTransport[lastDay]  && !SELF_TRANSPORT_MODES[returnMode])
+    gaps.push({ type: 'missing_transport', date: lastDay,  subtype: 'departure' });
 
   return gaps;
 }
@@ -2404,7 +2500,7 @@ function AddItineraryItemModal({ tripKey, item, onSave, onClose, busy }) {
 }
 
 function ItineraryView({ trip, itinerary, loading, busy,
-                         tripContext, onSetContext, onSetTraveler, onLoadContext, onGoToPacking,
+                         tripContext, onSetContext, onSetTraveler, onSetMode, onLoadContext, onGoToPacking,
                          onAdd, onEdit, onDelete,
                          apiUrl, apiToken }) {
   if (loading) return <div className="loading-text">Loading itinerary…</div>;
@@ -2489,7 +2585,8 @@ function ItineraryView({ trip, itinerary, loading, busy,
   });
 
   // ── Gap detection (missing hotel / missing transport) ──────────────────────
-  var gaps = computeItineraryGaps(items, tripDays, hotelCheckoutDates);
+  var ctxMeta = (tripContext && tripContext !== 'loading') ? tripContext : {};
+  var gaps = computeItineraryGaps(items, tripDays, hotelCheckoutDates, ctxMeta.outboundMode, ctxMeta.returnMode);
   var missingHotelDays     = {};
   var missingTransportDays = {};
   gaps.forEach(function(g) {
@@ -2593,6 +2690,12 @@ function ItineraryView({ trip, itinerary, loading, busy,
           <TripContextBadge
             context={tripContext && tripContext !== 'loading' ? tripContext.context : ''}
             onSetContext={function(ctx) { if (onSetContext) onSetContext(ctx); }}
+            busy={busy}
+          />
+          <TravelModeSelector
+            outboundMode={tripContext && tripContext !== 'loading' ? (tripContext.outboundMode || '') : ''}
+            returnMode={tripContext && tripContext !== 'loading' ? (tripContext.returnMode || '') : ''}
+            onSave={function(ob, ret) { if (onSetMode) onSetMode(ob, ret); }}
             busy={busy}
           />
           {/* Traveler filter toggle */}
@@ -3260,6 +3363,12 @@ function TravelItineraryPanel({
                       if (onSetTripMeta) {
                         var cur = (tripMeta && tripMeta[tripKey]) || {};
                         onSetTripMeta(tripKey, cur.context || '', '', tv);
+                      }
+                    }}
+                    onSetMode={function(ob, ret) {
+                      if (onSetTripMeta) {
+                        var cur = (tripMeta && tripMeta[tripKey]) || {};
+                        onSetTripMeta(tripKey, cur.context || '', '', cur.traveler || '', ob, ret);
                       }
                     }}
                     onLoadContext={function() { if (onLoadTripMeta) onLoadTripMeta(tripKey); }}
@@ -20605,12 +20714,22 @@ function App() {
     }
   }
 
-  async function handleSetTripMeta(tripKey, context, notes, traveler) {
+  async function handleSetTripMeta(tripKey, context, notes, traveler, outboundMode, returnMode) {
     if (!apiUrl || !apiToken) return;
     try {
-      await apiGet(apiUrl, apiToken, { action: 'set_trip_meta', tripKey, context: context || '', notes: notes || '', traveler: traveler || '' });
+      const params = { action: 'set_trip_meta', tripKey, context: context || '', notes: notes || '', traveler: traveler || '' };
+      if (outboundMode !== undefined) params.outboundMode = outboundMode;
+      if (returnMode   !== undefined) params.returnMode   = returnMode;
+      await apiGet(apiUrl, apiToken, params);
       setTripMeta(function(prev) {
-        return Object.assign({}, prev, { [tripKey]: { context: context || '', notes: notes || '', traveler: traveler || '' } });
+        const existing = (prev && prev[tripKey] && prev[tripKey] !== 'loading') ? prev[tripKey] : {};
+        return Object.assign({}, prev, { [tripKey]: Object.assign({}, existing, {
+          context:      context      !== undefined ? (context      || '') : (existing.context      || ''),
+          notes:        notes        !== undefined ? (notes        || '') : (existing.notes        || ''),
+          traveler:     traveler     !== undefined ? (traveler     || '') : (existing.traveler     || ''),
+          outboundMode: outboundMode !== undefined ? (outboundMode || '') : (existing.outboundMode || ''),
+          returnMode:   returnMode   !== undefined ? (returnMode   || '') : (existing.returnMode   || ''),
+        }) });
       });
     } catch(err) { setError('Could not save trip context: ' + err.message); }
   }

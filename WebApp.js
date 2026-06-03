@@ -3430,13 +3430,18 @@ function webGetTripMeta_(e) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
     for (let i = 0; i < data.length; i++) {
       if (String(data[i][0]).trim() === tripKey) {
-        return { ok: true, tripKey, context: String(data[i][1] || ''), notes: String(data[i][2] || ''), traveler: String(data[i][4] || ''),
-                 tripBudget: data[i][5] !== undefined ? Number(data[i][5]) || '' : '',
-                 tripTravellers: data[i][6] !== undefined ? Number(data[i][6]) || 2 : 2 };
+        return { ok: true, tripKey,
+                 context:        String(data[i][1] || ''),
+                 notes:          String(data[i][2] || ''),
+                 traveler:       String(data[i][4] || ''),
+                 tripBudget:     data[i][5] !== undefined ? Number(data[i][5]) || '' : '',
+                 tripTravellers: data[i][6] !== undefined ? Number(data[i][6]) || 2 : 2,
+                 outboundMode:   String(data[i][7] || ''),
+                 returnMode:     String(data[i][8] || '') };
       }
     }
   }
-  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2 };
+  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2, outboundMode: '', returnMode: '' };
 }
 
 /**
@@ -3459,9 +3464,11 @@ function webSetTripMeta_(e) {
     for (let i = 0; i < ids.length; i++) {
       if (String(ids[i][0]).trim() === tripKey) {
         const rowNum = i + 2;
-        sheet.getRange(rowNum, 2).setValue((p.context  || '').trim());
-        sheet.getRange(rowNum, 3).setValue((p.notes    || '').trim());
-        sheet.getRange(rowNum, 5).setValue((p.traveler || '').trim());
+        sheet.getRange(rowNum, 2).setValue((p.context      || '').trim());
+        sheet.getRange(rowNum, 3).setValue((p.notes        || '').trim());
+        sheet.getRange(rowNum, 5).setValue((p.traveler     || '').trim());
+        if (p.outboundMode !== undefined) sheet.getRange(rowNum, 8).setValue((p.outboundMode || '').trim());
+        if (p.returnMode   !== undefined) sheet.getRange(rowNum, 9).setValue((p.returnMode   || '').trim());
         const dc = sheet.getRange(rowNum, 4);
         dc.setNumberFormat('@');
         dc.setValue(today);
@@ -3476,12 +3483,14 @@ function webSetTripMeta_(e) {
   dateCell.setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, TRIP_META_HEADERS.length).setValues([[
     tripKey,
-    (p.context  || '').trim(),
-    (p.notes    || '').trim(),
+    (p.context      || '').trim(),
+    (p.notes        || '').trim(),
     today,
-    (p.traveler || '').trim(),
+    (p.traveler     || '').trim(),
     '',   // Trip Budget — set via set_trip_budget_settings
     2,    // Trip Travellers default
+    (p.outboundMode || '').trim(),
+    (p.returnMode   || '').trim(),
   ]]);
   return { ok: true };
 }
