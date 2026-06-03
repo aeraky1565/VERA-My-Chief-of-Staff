@@ -4,7 +4,8 @@
       "Bash(gh issue *)",
       "Bash(git add *)",
       "Bash(powershell.exe -File push.ps1)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(grep -E \"\\\\.js$|\\\\.html$\")"
     ]
   }
 }
