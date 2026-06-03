@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue *)",
+      "Bash(git add *)",
+      "Bash(powershell.exe -File push.ps1)"
+    ]
+  }
+}
