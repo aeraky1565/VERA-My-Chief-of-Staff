@@ -15287,11 +15287,295 @@ function HealthAppointmentsTab({ apiUrl, apiToken }) {
   );
 }
 
+// ── Year in Review (Issue #179) ─────────────────────────────────────────────
+
+const HABIT_COLORS = [
+  '#4fc3f7','#81d4fa','#26c6da','#80cbc4',
+  '#a5d6a7','#c5e1a5','#fff176','#ffe082',
+  '#ffcc80','#ffab91','#f48fb1','#ce93d8',
+  '#b39ddb','#90caf9',
+];
+const HABIT_CADENCES = ['Daily','Weekdays','Weekends','Weekly','Custom'];
+
+function HabitContributionGrid({ habitId, completions, year, onToggle, color }) {
+  const jan1    = new Date(year, 0, 1);
+  const dec31   = new Date(year, 11, 31);
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Build weeks array: array of 7-slot columns (Sun=0..Sat=6)
+  // Start from the Sunday on or before Jan 1
+  const startDay = new Date(jan1);
+  startDay.setDate(startDay.getDate() - startDay.getDay());
+
+  const weeks = [];
+  const cur   = new Date(startDay);
+  while (cur <= dec31 || weeks.length < 53) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      const iso = cur.toISOString().slice(0, 10);
+      const inYear = cur.getFullYear() === year;
+      week.push({ iso, inYear });
+      cur.setDate(cur.getDate() + 1);
+      if (cur > dec31 && d === 6) break;
+    }
+    weeks.push(week);
+    if (cur > dec31) break;
+  }
+
+  const done = completions || {};
+  const sqSize = 11, gap = 2;
+
+  const monthLabels = [];
+  for (let m = 0; m < 12; m++) {
+    const d = new Date(year, m, 1);
+    // Find which week column this month starts in
+    const diff = Math.floor((d - startDay) / (7 * 86400000));
+    monthLabels.push({ label: d.toLocaleString('default', { month: 'short' }), col: diff });
+  }
+
+  const svgW = weeks.length * (sqSize + gap);
+  const svgH = 7 * (sqSize + gap) + 20; // +20 for month labels
+
+  return (
+    <svg width={svgW} height={svgH} style={{ display: 'block', overflow: 'visible' }}>
+      {/* Month labels */}
+      {monthLabels.map(function(ml) {
+        return <text key={ml.label} x={ml.col * (sqSize + gap)} y={12}
+          style={{ fontSize: 9, fill: '#6b82a8', fontFamily: 'monospace' }}>{ml.label}</text>;
+      })}
+      {/* Day squares */}
+      {weeks.map(function(week, wi) {
+        return week.map(function(day, di) {
+          if (!day.inYear) return null;
+          const completed = !!done[day.iso];
+          const isToday   = day.iso === todayStr;
+          const x = wi * (sqSize + gap);
+          const y = di * (sqSize + gap) + 16;
+          const fill = completed ? color : '#1e2d4a';
+          const stroke = isToday ? '#c9a84c' : 'none';
+          return (
+            <rect key={day.iso} x={x} y={y} width={sqSize} height={sqSize} rx={2}
+              fill={fill} stroke={stroke} strokeWidth={isToday ? 1.5 : 0}
+              style={{ cursor: 'pointer', opacity: day.inYear ? 1 : 0 }}
+              onClick={function() { onToggle && onToggle(habitId, day.iso, completed); }}>
+              <title>{day.iso}{completed ? ' ✓' : ''}</title>
+            </rect>
+          );
+        });
+      })}
+    </svg>
+  );
+}
+
+function YearInReviewTab({ apiUrl, apiToken }) {
+  const year = new Date().getFullYear();
+  const [data,         setData]         = React.useState(null);
+  const [loading,      setLoading]      = React.useState(true);
+  const [busy,         setBusy]         = React.useState(false);
+  const [showAdd,      setShowAdd]      = React.useState(false);
+  const [addForm,      setAddForm]      = React.useState({ name: '', cadence: 'Daily', color: HABIT_COLORS[0], notes: '' });
+  const [editHabit,    setEditHabit]    = React.useState(null);
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const d = await apiGet(apiUrl, apiToken, { action: 'get_year_review', year });
+      setData(d);
+    } catch(e) { /* silent */ }
+    setLoading(false);
+  }
+
+  React.useEffect(function() { load(); }, []);
+
+  async function toggleDay(habitId, dateStr, wasCompleted) {
+    if (habitId === '__gym__') return; // gym is read-only
+    setBusy(true);
+    try {
+      const action = wasCompleted ? 'unlog_habit' : 'log_habit';
+      await apiPost(apiUrl, apiToken, { action, habitId, date: dateStr });
+      // Optimistic update
+      setData(function(prev) {
+        if (!prev) return prev;
+        const c = Object.assign({}, prev.completions);
+        if (!c[habitId]) c[habitId] = {};
+        const dayMap = Object.assign({}, c[habitId]);
+        if (wasCompleted) delete dayMap[dateStr];
+        else dayMap[dateStr] = true;
+        c[habitId] = dayMap;
+        return Object.assign({}, prev, { completions: c });
+      });
+    } catch(e) { /* silent */ }
+    setBusy(false);
+  }
+
+  async function addHabit() {
+    if (!addForm.name.trim()) return;
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'add_habit', ...addForm });
+      setShowAdd(false);
+      setAddForm({ name: '', cadence: 'Daily', color: HABIT_COLORS[0], notes: '' });
+      await load();
+    } catch(e) { /* silent */ }
+    setBusy(false);
+  }
+
+  async function deleteHabit(id) {
+    if (!confirm('Remove this habit? (Existing log entries are kept)')) return;
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, { action: 'delete_habit', id });
+      await load();
+    } catch(e) { /* silent */ }
+    setBusy(false);
+  }
+
+  if (loading) return <div className="loading-text">Loading Year in Review…</div>;
+  if (!data)   return <div style={{ color: '#c9a84c', padding: 16 }}>Could not load habit data.</div>;
+
+  const habits      = data.habits      || [];
+  const completions = data.completions || {};
+
+  // Compute completion % for each habit
+  const totalDays = new Date(year, 11, 31) - new Date(year, 0, 1);
+  const daysPassed = Math.min(
+    Math.floor((Date.now() - new Date(year, 0, 1)) / 86400000) + 1,
+    365
+  );
+
+  function pct(habitId, cadence) {
+    const done   = Object.keys(completions[habitId] || {}).length;
+    let   denom  = daysPassed;
+    if (cadence === 'Weekdays') denom = Math.floor(daysPassed * 5 / 7);
+    if (cadence === 'Weekends') denom = Math.floor(daysPassed * 2 / 7);
+    if (cadence === 'Weekly')   denom = Math.floor(daysPassed / 7);
+    return denom > 0 ? Math.round((done / denom) * 100) : 0;
+  }
+
+  return (
+    <div style={{ padding: '0 4px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <h2 style={{ margin: 0, color: '#c9a84c', fontSize: 18 }}>{year} In Review</h2>
+        <button className="btn-sm" onClick={function() { setShowAdd(true); }} disabled={busy}>
+          + Add Habit
+        </button>
+      </div>
+
+      {/* Add Habit Modal */}
+      {showAdd && (
+        <div className="modal-overlay" onClick={function(e) { if (e.target === e.currentTarget) setShowAdd(false); }}>
+          <div className="modal-box" style={{ maxWidth: 420 }}>
+            <div className="modal-title">New Habit</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input className="modal-input" placeholder="Habit name"
+                value={addForm.name} onChange={function(e) { setAddForm(function(f) { return Object.assign({}, f, { name: e.target.value }); }); }} />
+              <select className="modal-input" value={addForm.cadence}
+                onChange={function(e) { setAddForm(function(f) { return Object.assign({}, f, { cadence: e.target.value }); }); }}>
+                {HABIT_CADENCES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+              </select>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {HABIT_COLORS.map(function(c) {
+                  return (
+                    <div key={c} onClick={function() { setAddForm(function(f) { return Object.assign({}, f, { color: c }); }); }}
+                      style={{ width: 24, height: 24, borderRadius: 4, background: c, cursor: 'pointer',
+                               border: addForm.color === c ? '2px solid #c9a84c' : '2px solid transparent' }} />
+                  );
+                })}
+              </div>
+              <textarea className="modal-input" placeholder="Notes (optional)" rows={2}
+                value={addForm.notes} onChange={function(e) { setAddForm(function(f) { return Object.assign({}, f, { notes: e.target.value }); }); }} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={function() { setShowAdd(false); }}>Cancel</button>
+              <button className="btn-primary" onClick={addHabit} disabled={busy || !addForm.name.trim()}>Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Habit rows */}
+      {habits.length === 0 && (
+        <div style={{ color: '#4d6080', textAlign: 'center', paddingTop: 40 }}>
+          No habits yet. Click "+ Add Habit" to start tracking.
+        </div>
+      )}
+
+      {habits.map(function(h) {
+        const p     = pct(h.id, h.cadence);
+        const done  = Object.keys(completions[h.id] || {}).length;
+        const today = (completions[h.id] || {})[todayStr];
+        const isGym = h.id === '__gym__';
+        return (
+          <div key={h.id} style={{ marginBottom: 28 }}>
+            {/* Habit header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: h.color, flexShrink: 0 }} />
+              <span style={{ color: '#e8edf5', fontWeight: 600, fontSize: 14 }}>{h.name}</span>
+              <span style={{ color: '#6b82a8', fontSize: 12 }}>{h.cadence}</span>
+              {!isGym && (
+                <button
+                  onClick={function() { toggleDay(h.id, todayStr, !!today); }}
+                  disabled={busy}
+                  style={{
+                    marginLeft: 4,
+                    padding: '2px 10px',
+                    borderRadius: 12,
+                    border: 'none',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    background: today ? h.color : '#1e2d4a',
+                    color: today ? '#0d1b3e' : '#aab5d0',
+                    fontWeight: 600,
+                  }}>
+                  {today ? '✓ Done today' : 'Mark today'}
+                </button>
+              )}
+              {isGym && <span style={{ color: '#4d6080', fontSize: 11 }}>from Gym Log</span>}
+              <span style={{ marginLeft: 'auto', color: h.color, fontWeight: 700, fontSize: 15 }}>{p}%</span>
+              <span style={{ color: '#4d6080', fontSize: 11 }}>{done}d</span>
+              {!isGym && (
+                <button onClick={function() { deleteHabit(h.id); }} disabled={busy}
+                  style={{ background: 'none', border: 'none', color: '#4d6080', cursor: 'pointer', fontSize: 13, padding: '0 4px' }}>✕</button>
+              )}
+            </div>
+            {/* Contribution grid */}
+            <div style={{ overflowX: 'auto' }}>
+              <HabitContributionGrid
+                habitId={h.id}
+                completions={completions[h.id] || {}}
+                year={year}
+                color={h.color}
+                onToggle={isGym ? null : toggleDay}
+              />
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Legend */}
+      {habits.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, color: '#4d6080', fontSize: 11 }}>
+          <div style={{ width: 11, height: 11, borderRadius: 2, background: '#1e2d4a', border: '1px solid #2a3f5f' }} />
+          <span>Not done</span>
+          <div style={{ width: 11, height: 11, borderRadius: 2, background: '#4fc3f7', marginLeft: 8 }} />
+          <span>Completed</span>
+          <div style={{ width: 11, height: 11, borderRadius: 2, background: 'transparent', border: '1.5px solid #c9a84c', marginLeft: 8 }} />
+          <span>Today</span>
+          <span style={{ marginLeft: 'auto' }}>Click any square to toggle</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HealthTab({ apiUrl, apiToken, features }) {
   const feat = features || {};
   const allSubTabs = [
     { id: 'fitness',         label: '💪 Fitness',         featureKey: 'fitness' },
     { id: 'morning_routine', label: '☀️ Morning Routine',  featureKey: 'morning_routine' },
+    { id: 'year_in_review',  label: '🗓️ Year in Review' },
     { id: 'prescriptions',   label: '💊 Prescriptions',   hint: 'Add prescriptions manually via the + button. VERA tracks refill schedules based on the days-supply you enter.' },
     { id: 'appointments',    label: '🩺 Appointments',    hint: 'Add events to Google Calendar as <strong>DR: Ahmed - Annual Physical</strong>. VERA tracks them automatically. Add <code>interval:6</code> in the description to override the default check frequency.' },
   ];
@@ -15320,6 +15604,9 @@ function HealthTab({ apiUrl, apiToken, features }) {
       )}
       {sub === 'morning_routine' && (
         <MorningRoutineTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
+      {sub === 'year_in_review' && (
+        <YearInReviewTab apiUrl={apiUrl} apiToken={apiToken} />
       )}
       {sub === 'prescriptions' && (
         <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />

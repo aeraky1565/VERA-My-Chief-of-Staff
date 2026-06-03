@@ -166,6 +166,13 @@ function doGet(e) {
       case 'gym_log':                  return jsonOut_(webGetGymLog_());
       case 'gym_attend':               return jsonOut_(webLogGymAttend_(e, 'Yes'));
       case 'gym_skip':                 return jsonOut_(webLogGymAttend_(e, 'No'));
+      // Habits / Year in Review (Issue #179)
+      case 'get_year_review':          return jsonOut_(webGetYearReview_(e));
+      case 'add_habit':                return jsonOut_(webAddHabit_(e));
+      case 'update_habit':             return jsonOut_(webUpdateHabit_(e));
+      case 'delete_habit':             return jsonOut_(webDeleteHabit_(e));
+      case 'log_habit':                return jsonOut_(webLogHabit_(e));
+      case 'unlog_habit':              return jsonOut_(webUnlogHabit_(e));
       case 'purchase_history':         return jsonOut_(webGetPurchaseHistory_());
       case 'log_purchase_run':         return jsonOut_(webLogPurchaseRun_(e));
       case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
@@ -5147,6 +5154,51 @@ function webGymAttendLatest_(attended) {
   // Sort descending by date, take the latest
   open.sort(function(a, b) { return b.date > a.date ? 1 : b.date < a.date ? -1 : 0; });
   return logGymAttendance_(open[0].id, attended);
+}
+
+// ── Habits / Year in Review (Issue #179) ──────────────────────
+
+function webGetYearReview_(e) {
+  var year = parseInt((e.parameter && e.parameter.year) || new Date().getFullYear(), 10);
+  return Object.assign({ ok: true }, getYearReview_(year));
+}
+
+function webAddHabit_(e) {
+  var b = parseBody_(e);
+  if (!b.name) return { ok: false, error: 'name required' };
+  return addHabit_(b.name, b.cadence, b.color, b.notes);
+}
+
+function webUpdateHabit_(e) {
+  var b = parseBody_(e);
+  if (!b.id) return { ok: false, error: 'id required' };
+  var fields = {};
+  if (b.name    !== undefined) fields.Name    = b.name;
+  if (b.cadence !== undefined) fields.Cadence = b.cadence;
+  if (b.color   !== undefined) fields.Color   = b.color;
+  if (b.active  !== undefined) fields.Active  = b.active;
+  if (b.notes   !== undefined) fields.Notes   = b.notes;
+  return updateHabit_(b.id, fields);
+}
+
+function webDeleteHabit_(e) {
+  var b = parseBody_(e);
+  if (!b.id) return { ok: false, error: 'id required' };
+  return deleteHabit_(b.id);
+}
+
+function webLogHabit_(e) {
+  var b = parseBody_(e);
+  if (!b.habitId) return { ok: false, error: 'habitId required' };
+  if (!b.date)    return { ok: false, error: 'date required' };
+  return logHabitCompletion_(b.habitId, b.date, b.notes || '');
+}
+
+function webUnlogHabit_(e) {
+  var b = parseBody_(e);
+  if (!b.habitId) return { ok: false, error: 'habitId required' };
+  if (!b.date)    return { ok: false, error: 'date required' };
+  return unlogHabitCompletion_(b.habitId, b.date);
 }
 
 // ── Purchase History (Issue #111) ─────────────────────────────

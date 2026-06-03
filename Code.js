@@ -92,8 +92,10 @@ const TABS = {
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
   COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
-  NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board (Issue #179)
-  NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log (Issue #179)
+  NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board
+  NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log
+  HABITS:     'Habits',    // Habit definitions (Issue #179)
+  HABIT_LOG:  'HabitLog',  // Per-day habit completion log (Issue #179)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -125,6 +127,8 @@ const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', '
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const GYM_LOG_HEADERS          = ['ID', 'Event Title', 'Event Date', 'Attended', 'Logged At'];
+const HABITS_HEADERS           = ['ID', 'Name', 'Cadence', 'Color', 'Active', 'Notes'];
+const HABIT_LOG_HEADERS        = ['ID', 'Habit ID', 'Date', 'Notes'];
 const PURCHASE_HISTORY_HEADERS   = ['ID', 'Item', 'Normalized', 'Category', 'Date', 'Quantity', 'Unit', 'Store', 'Price', 'Source', 'Notes'];
 const CAREER_POSITION_HEADERS    = ['Title', 'Company', 'Department', 'Start Date', 'Work Style', 'Job Level', 'Base Salary', 'Bonus Pct', 'Equity', 'Benefits', 'Focus Areas', 'Notes'];
 const CAREER_GOAL_HEADERS        = ['ID', 'Title', 'Horizon', 'Category', 'Status', 'Target Date', 'Notes'];
@@ -273,6 +277,8 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
   ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
+  ensureSheet(ss, TABS.HABITS,               HABITS_HEADERS);
+  ensureSheet(ss, TABS.HABIT_LOG,            HABIT_LOG_HEADERS);
   ensureSheet(ss, TABS.PURCHASE_HISTORY,     PURCHASE_HISTORY_HEADERS);
   ensureSheet(ss, TABS.CAREER_POSITION,      CAREER_POSITION_HEADERS);
   ensureSheet(ss, TABS.CAREER_GOALS,         CAREER_GOAL_HEADERS);

@@ -8,7 +8,9 @@
       "Bash(grep -E \"\\\\.js$|\\\\.html$\")",
       "Bash(grep -v \"^[0-9]*:.*//.*ensureSheet\")",
       "Bash(grep -E \"\\\\.\\(js|html\\)$\")",
-      "Bash(powershell -File push.ps1)"
+      "Bash(powershell -File push.ps1)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:github-production-user-asset-6210df.s3.amazonaws.com)"
     ]
   }
 }
