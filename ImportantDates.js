@@ -32,6 +32,30 @@ function syncCalendarBirthdaysToImportantDates_() {
     return;
   }
 
+  // ── Step 0: Remove duplicate rows (Person + MM-DD collision) ──────────────
+  // Keeps the first occurrence of each (Person, MM-DD) pair and deletes the rest.
+  if (sheet.getLastRow() >= 2) {
+    var allData  = sheet.getDataRange().getValues();
+    var hdrs0    = allData[0];
+    var dateIdx  = hdrs0.indexOf('Date');
+    var personIdx = hdrs0.indexOf('Person');
+    var seen0    = {};
+    // Scan bottom-up so deleteRow indices stay valid
+    for (var r0 = allData.length - 1; r0 >= 1; r0--) {
+      var rowId0 = String(allData[r0][0] || '').trim();
+      if (!rowId0) continue;
+      var mmdd0   = toMmDd_(allData[r0][dateIdx]);
+      var person0 = String(allData[r0][personIdx] || '').trim().toLowerCase();
+      var dkey0   = person0 + '|' + mmdd0;
+      if (seen0[dkey0]) {
+        sheet.deleteRow(r0 + 1); // +1 because getValues is 0-indexed
+        Logger.log('ImportantDates: removed duplicate row for ' + dkey0);
+      } else {
+        seen0[dkey0] = true;
+      }
+    }
+  }
+
   // Load existing entries for duplicate-checking
   var existing = [];
   if (sheet.getLastRow() >= 2) {

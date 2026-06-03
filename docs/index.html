@@ -8580,8 +8580,23 @@ function ImportantDatesView({ dates, loading, busy, onAdd, onDelete, onUpdate,
 
   if (loading) return <div className="loading-text">Loading important dates…</div>;
 
+  // Dedup: keep only the first entry per (Person + MM-DD) to surface any
+  // sheet duplicates that snuck in before the nightly sync fix.
+  var _seenKeys = {};
+  var dedupedDates = dates.filter(function(d) {
+    var rawDate = String(d.Date || '');
+    // Normalise to MM-DD regardless of whether the cell stored a Date or string
+    var mmdd = rawDate.match(/^(\d{2}-\d{2})$/) ? rawDate
+             : rawDate.match(/^\d{4}-(\d{2}-\d{2})$/) ? rawDate.slice(5)
+             : rawDate.slice(4, 9).replace(' ', '-'); // fallback
+    var key = String(d.Person || '').toLowerCase() + '|' + mmdd;
+    if (_seenKeys[key]) return false;
+    _seenKeys[key] = true;
+    return true;
+  });
+
   // Enrich each date with computed daysUntil
-  var enriched = dates.map(function(d) {
+  var enriched = dedupedDates.map(function(d) {
     return Object.assign({}, d, { _days: daysUntil(String(d.Date || '')) });
   }).sort(function(a,b) { return a._days - b._days; });
 
