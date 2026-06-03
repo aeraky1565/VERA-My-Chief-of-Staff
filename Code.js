@@ -70,6 +70,7 @@ const TABS = {
   GIFT_IDEAS:         'Gift Ideas',           // Individual gift ideas linked to people (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
   CHORES:             'Chores',              // Household chore checklist by cadence (Issue #124)
+  CHORES_FOR_OTHERS:  'ChoresForOthers',     // One-off tasks assigned to neighbor kids / helpers (Issue #180)
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
   VEHICLES:           'Vehicles',             // Vehicle tracker — oil, service, registration (Issue #125)

@@ -231,6 +231,12 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      // Chores For Others (Issue #180)
+      case 'get_chores_for_others':      return jsonOut_(webGetChoresForOthers_());
+      case 'add_chore_for_others':       return jsonOut_(webAddChoreForOthers_(e));
+      case 'complete_chore_for_others':  return jsonOut_(webCompleteChoreForOthers_(e));
+      case 'update_chore_for_others':    return jsonOut_(webUpdateChoreForOthers_(e));
+      case 'delete_chore_for_others':    return jsonOut_(webDeleteChoreForOthers_(e));
       // Coupons (Issue #173)
       case 'get_coupons':        return jsonOut_(webGetCoupons_());
       case 'delete_coupon':      return jsonOut_(webDeleteCoupon_(e));
@@ -8109,6 +8115,45 @@ function webExtractCoupon_(body) {
   text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '').trim();
   var extracted = JSON.parse(text);
   return { ok: true, extracted: extracted };
+}
+
+// ---- Chores For Others (Issue #180) -----------------------------------------
+
+function webGetChoresForOthers_() {
+  return { ok: true, chores: getChoresForOthers_() };
+}
+
+function webAddChoreForOthers_(e) {
+  var p        = e.parameter || {};
+  var task     = (p.task     || '').trim();
+  var assignee = (p.assignee || '').trim();
+  var reward   = (p.reward   || '').trim();
+  var notes    = (p.notes    || '').trim();
+  if (!task) throw new Error('Task is required');
+  return addChoreForOthers_(task, assignee, reward, notes);
+}
+
+function webCompleteChoreForOthers_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('id is required');
+  return completeChoreForOthers_(id);
+}
+
+function webUpdateChoreForOthers_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var fields = {};
+  ['Task', 'Assignee', 'Reward', 'Status', 'Notes'].forEach(function(f) {
+    if (p[f] !== undefined) fields[f] = p[f];
+  });
+  return updateChoreForOthers_(id, fields);
+}
+
+function webDeleteChoreForOthers_(e) {
+  var id = ((e.parameter && e.parameter.id) || '').trim();
+  if (!id) throw new Error('id is required');
+  return deleteChoreForOthers_(id);
 }
 
 /**

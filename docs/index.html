@@ -10822,28 +10822,244 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
   );
 }
 
+// ---- ChoresForOthersView (Issue #180) ----------------------------------------
+
+function ChoreForOthersModal({ chore, onSave, onClose, busy }) {
+  const editing = !!chore;
+  const [task,     setTask]     = React.useState(chore ? chore.Task     : '');
+  const [assignee, setAssignee] = React.useState(chore ? chore.Assignee : '');
+  const [reward,   setReward]   = React.useState(chore ? chore.Reward   : '');
+  const [notes,    setNotes]    = React.useState(chore ? chore.Notes    : '');
+
+  function handleSave() {
+    if (!task.trim()) return;
+    onSave({ task: task.trim(), assignee: assignee.trim(), reward: reward.trim(), notes: notes.trim() });
+  }
+
+  const inputStyle = {
+    width: '100%', background: '#07122b', border: '1px solid #1e3060',
+    borderRadius: 6, padding: '8px 12px', color: '#dde1f0', fontSize: 13,
+    boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12,
+        padding: 28, width: 420, maxWidth: '95vw',
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#dde1f0', marginBottom: 20 }}>
+          {editing ? 'Edit Chore' : 'Assign Chore'}
+        </div>
+
+        <label style={{ fontSize: 12, color: '#8a9abf', display: 'block', marginBottom: 4 }}>Task *</label>
+        <input autoFocus value={task} onChange={e => setTask(e.target.value)}
+          placeholder="e.g. Mow the front lawn"
+          style={{ ...inputStyle, marginBottom: 14 }} />
+
+        <label style={{ fontSize: 12, color: '#8a9abf', display: 'block', marginBottom: 4 }}>Assignee</label>
+        <input value={assignee} onChange={e => setAssignee(e.target.value)}
+          placeholder="e.g. Jake next door"
+          style={{ ...inputStyle, marginBottom: 14 }} />
+
+        <label style={{ fontSize: 12, color: '#8a9abf', display: 'block', marginBottom: 4 }}>Reward <span style={{ color: '#6b7fa8' }}>(optional)</span></label>
+        <input value={reward} onChange={e => setReward(e.target.value)}
+          placeholder="e.g. $10 or Pizza"
+          style={{ ...inputStyle, marginBottom: 14 }} />
+
+        <label style={{ fontSize: 12, color: '#8a9abf', display: 'block', marginBottom: 4 }}>Notes <span style={{ color: '#6b7fa8' }}>(optional)</span></label>
+        <input value={notes} onChange={e => setNotes(e.target.value)}
+          placeholder="Any details…"
+          style={{ ...inputStyle, marginBottom: 20 }} />
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave}
+            disabled={busy || !task.trim()}>
+            {editing ? 'Save' : 'Assign'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChoresForOthersView({ chores, loading, busy, onAdd, onComplete, onEdit, onDelete }) {
+  const [modal,       setModal]       = React.useState(null); // null | { mode:'add' } | { mode:'edit', chore }
+  const [showDone,    setShowDone]    = React.useState(false);
+
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading…</div>;
+
+  const open = (chores || []).filter(c => c.Status !== 'Done');
+  const done = (chores || []).filter(c => c.Status === 'Done');
+
+  // Colour a circle based on first letter of assignee
+  function avatarColor(name) {
+    const colors = ['#1565c0','#6a1b9a','#ad1457','#00695c','#e65100','#4527a0'];
+    var code = 0;
+    for (var i = 0; i < (name || '').length; i++) code += name.charCodeAt(i);
+    return colors[code % colors.length];
+  }
+
+  function renderCard(c) {
+    const initials = (c.Assignee || '?').trim().split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    const bg       = avatarColor(c.Assignee);
+    return (
+      <div key={c.ID} style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '12px 14px', borderRadius: 8,
+        background: '#0d1b3e', border: '1px solid #1e3060',
+      }}>
+        {/* Assignee avatar */}
+        <div style={{
+          width: 34, height: 34, borderRadius: '50%', background: bg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
+        }}>
+          {initials}
+        </div>
+
+        {/* Task + assignee */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, color: '#dde1f0', fontWeight: 500 }}>{c.Task}</div>
+          {c.Assignee && (
+            <div style={{ fontSize: 11, color: '#6b7fa8', marginTop: 2 }}>{c.Assignee}</div>
+          )}
+        </div>
+
+        {/* Reward badge */}
+        {c.Reward && (
+          <span style={{
+            background: 'rgba(201,168,76,0.15)', color: '#c9a84c',
+            borderRadius: 20, padding: '2px 9px', fontSize: 11, fontWeight: 700, flexShrink: 0,
+          }}>
+            {c.Reward}
+          </span>
+        )}
+
+        {/* Actions */}
+        <button className="btn btn-primary" style={{ fontSize: 11, padding: '4px 10px', flexShrink: 0 }}
+          disabled={busy}
+          onClick={() => onComplete && onComplete(c.ID)}
+          title="Mark done"
+        >✓ Done</button>
+        <button className="btn-edit" style={{ fontSize: 13 }} disabled={busy}
+          onClick={() => setModal({ mode: 'edit', chore: c })} title="Edit">✏️</button>
+        <button className="btn-edit" style={{ fontSize: 13, opacity: 0.7 }} disabled={busy}
+          onClick={() => onDelete && onDelete(c.ID)} title="Delete">🗑️</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <span style={{ fontSize: 12, color: '#6b7fa8' }}>
+          {open.length} open · {done.length} completed
+        </span>
+        <button className="btn btn-primary" style={{ fontSize: 12 }}
+          disabled={busy} onClick={() => setModal({ mode: 'add' })}>
+          + Assign Chore
+        </button>
+      </div>
+
+      {/* Open tasks */}
+      {open.length === 0 ? (
+        <div className="empty-state">
+          <div style={{ fontSize: 28, marginBottom: 10 }}>🧹</div>
+          <div>No open chores — assign one with the button above.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {open.map(renderCard)}
+        </div>
+      )}
+
+      {/* Completed (collapsible) */}
+      {done.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <button
+            onClick={() => setShowDone(v => !v)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#6b7fa8', fontSize: 12, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6, padding: 0,
+            }}
+          >
+            <span style={{ fontSize: 10 }}>{showDone ? '▼' : '▶'}</span>
+            Completed ({done.length})
+          </button>
+          {showDone && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {done.map(c => (
+                <div key={c.ID} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', borderRadius: 8,
+                  background: 'rgba(67,160,71,0.05)', border: '1px solid rgba(67,160,71,0.15)',
+                }}>
+                  <span style={{ fontSize: 13, color: '#4a5a7a', textDecoration: 'line-through', flex: 1 }}>
+                    {c.Task}
+                  </span>
+                  {c.Assignee && <span style={{ fontSize: 11, color: '#4a5a7a' }}>{c.Assignee}</span>}
+                  {c.Reward   && <span style={{ fontSize: 11, color: '#6b7fa8'  }}>{c.Reward}</span>}
+                  <span style={{ fontSize: 11, color: '#43a047', fontWeight: 700 }}>✓</span>
+                  <button className="btn-edit" style={{ fontSize: 13, opacity: 0.7 }} disabled={busy}
+                    onClick={() => onDelete && onDelete(c.ID)} title="Delete">🗑️</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal */}
+      {modal && (
+        <ChoreForOthersModal
+          chore={modal.mode === 'edit' ? modal.chore : null}
+          busy={busy}
+          onClose={() => setModal(null)}
+          onSave={fields => {
+            if (modal.mode === 'edit') {
+              onEdit && onEdit(modal.chore.ID, fields);
+            } else {
+              onAdd && onAdd(fields);
+            }
+            setModal(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- HomeFrontTab ------------------------------------------------------------
 
 function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToShopping, purchaseHistory,
                         onAddTakeoutRestaurant, onDeleteTakeoutRestaurant, onAddTakeoutItem, onDeleteTakeoutItem,
                         chores, choresLoading, onToggleChore, onAddChore, onDeleteChore, onUpdateChoreCadence,
+                        choresForOthers, choresForOthersLoading, onAddChoreForOthers, onCompleteChoreForOthers, onEditChoreForOthers, onDeleteChoreForOthers,
                         vehicles, vehiclesLoading, onVehicleOilChange, onVehicleService, onVehicleMileage, onAddVehicle, onDeleteVehicle,
                         onVehicleTireChange, onVehicleEmissionInspect, onVehicleSafetyInspect,
                         coupons, couponsLoading, onExtractCoupon, onSaveCoupon, onDeleteCoupon, onMarkCouponUsed,
                         apiUrl, apiToken, features }) {
   const feat = features || {};
   const allSubTabs = [
-    { id: 'steward',  label: '🏠 Steward'  },
-    { id: 'vehicles', label: '🚗 Vehicles'  },
-    { id: 'chores',   label: '🧹 Chores'   },
-    { id: 'recipes',   label: '🍽️ Recipes'  },
-    { id: 'meal_plan', label: '🗓️ Meal Plan', featureKey: 'meal_planner' },
-    { id: 'takeouts',  label: '🥡 Takeouts',  featureKey: 'takeouts' },
-    { id: 'pantry',    label: '📦 Pantry',    featureKey: 'pantry'   },
-    { id: 'guests',    label: '👥 Guests'   },
-    { id: 'resell',              label: '💰 Resell'              },
-    { id: 'coupons',             label: '🎟️ Coupons'             },
-    { id: 'neighborhood_watch',  label: '🏘 Watch'               },
+    { id: 'steward',           label: '🏠 Steward'    },
+    { id: 'vehicles',          label: '🚗 Vehicles'   },
+    { id: 'chores',            label: '🧹 Chores'     },
+    { id: 'chores_for_others', label: '🧒 For Others' },
+    { id: 'recipes',           label: '🍽️ Recipes'    },
+    { id: 'meal_plan',         label: '🗓️ Meal Plan',  featureKey: 'meal_planner' },
+    { id: 'takeouts',          label: '🥡 Takeouts',   featureKey: 'takeouts' },
+    { id: 'pantry',            label: '📦 Pantry',     featureKey: 'pantry'   },
+    { id: 'guests',            label: '👥 Guests'     },
+    { id: 'resell',            label: '💰 Resell'     },
+    { id: 'coupons',           label: '🎟️ Coupons'    },
+    { id: 'neighborhood_watch', label: '🏘 Watch'     },
   ];
   const subTabs = allSubTabs.filter(function(t) { return !t.featureKey || feat[t.featureKey] !== false; });
   const [sub, setSub] = React.useState('steward');
@@ -10892,6 +11108,17 @@ function HomeFrontTab({ homeFront, loading, busy, onRecordService, onRecipeToSho
           onAdd={onAddChore}
           onDelete={onDeleteChore}
           onUpdateCadence={onUpdateChoreCadence}
+        />
+      )}
+      {sub === 'chores_for_others' && (
+        <ChoresForOthersView
+          chores={choresForOthers}
+          loading={choresForOthersLoading}
+          busy={busy}
+          onAdd={onAddChoreForOthers}
+          onComplete={onCompleteChoreForOthers}
+          onEdit={onEditChoreForOthers}
+          onDelete={onDeleteChoreForOthers}
         />
       )}
       {sub === 'recipes' && (
@@ -18273,8 +18500,10 @@ function App() {
   const [datesLoading,      setDatesLoading]       = useState(false);
   const [calPreviews,       setCalPreviews]        = useState(null);  // birthday preview list from calendar
   const [calPreviewLoading, setCalPreviewLoading]  = useState(false);
-  const [chores,            setChores]             = useState([]);
-  const [choresLoading,     setChoresLoading]      = useState(false);
+  const [chores,                 setChores]                = useState([]);
+  const [choresLoading,          setChoresLoading]         = useState(false);
+  const [choresForOthers,        setChoresForOthers]       = useState([]);
+  const [choresForOthersLoading, setChoresForOthersLoading] = useState(false);
   const [vehicles,          setVehicles]           = useState([]);
   const [vehiclesLoading,   setVehiclesLoading]    = useState(false);
   const [profiles,          setProfiles]           = useState([]);
@@ -19339,6 +19568,66 @@ function App() {
     } catch (err) {
       setError('Could not update chore: ' + err.message);
       await loadChores(apiUrl, apiToken);
+    }
+  }
+
+  // ---- Chores For Others handlers (Issue #180) --------------------------------
+
+  async function loadChoresForOthers(url, token) {
+    if (!url || !token) return;
+    setChoresForOthersLoading(true);
+    try {
+      const data = await apiGet(url, token, { action: 'get_chores_for_others' });
+      setChoresForOthers(data.chores || []);
+    } catch (err) {
+      setError('Could not load chores for others: ' + err.message);
+    }
+    setChoresForOthersLoading(false);
+  }
+
+  async function handleAddChoreForOthers({ task, assignee, reward, notes }) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'add_chore_for_others', task, assignee, reward, notes });
+      showToast('✓ Chore assigned');
+      await loadChoresForOthers(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not assign chore: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleCompleteChoreForOthers(id) {
+    setChoresForOthers(prev => prev.map(c => c.ID === id ? { ...c, Status: 'Done' } : c));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'complete_chore_for_others', id });
+      showToast('✓ Marked done');
+    } catch (err) {
+      setError('Could not complete chore: ' + err.message);
+      await loadChoresForOthers(apiUrl, apiToken);
+    }
+  }
+
+  async function handleEditChoreForOthers(id, { task, assignee, reward, notes }) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_chore_for_others', id, Task: task, Assignee: assignee, Reward: reward, Notes: notes });
+      showToast('✓ Chore updated');
+      await loadChoresForOthers(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not update chore: ' + err.message);
+    }
+    setBusy(false);
+  }
+
+  async function handleDeleteChoreForOthers(id) {
+    if (!window.confirm('Delete this chore? This cannot be undone.')) return;
+    setChoresForOthers(prev => prev.filter(c => c.ID !== id));
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_chore_for_others', id });
+    } catch (err) {
+      setError('Could not delete chore: ' + err.message);
+      await loadChoresForOthers(apiUrl, apiToken);
     }
   }
 
@@ -20605,7 +20894,7 @@ function App() {
                   if (tab === 'explore')  { loadInterests(apiUrl, apiToken); loadIdeas(apiUrl, apiToken); loadResources(apiUrl, apiToken); loadWishList(apiUrl, apiToken); loadExperiments(apiUrl, apiToken); }
                   if (tab === 'growth')   { loadGoals(apiUrl, apiToken); loadGrowth(apiUrl, apiToken); }
                   if (tab === 'shopping')   loadShopping(apiUrl, apiToken);
-                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); loadCoupons(apiUrl, apiToken); }
+                  if (tab === 'home_front') { loadHomeFront(apiUrl, apiToken); loadPurchaseHistory(apiUrl, apiToken); loadChores(apiUrl, apiToken); loadChoresForOthers(apiUrl, apiToken); loadVehicles(apiUrl, apiToken); loadCoupons(apiUrl, apiToken); }
                   if (tab === 'people')    { loadGiftData(apiUrl, apiToken); loadDatesData(apiUrl, apiToken); loadWishListsData(apiUrl, apiToken); }
                   if (tab === 'career')     loadCareer(apiUrl, apiToken);
                   if (tab === 'pto')        loadPTO(apiUrl, apiToken);
@@ -20900,6 +21189,12 @@ function App() {
                 onAddChore={handleAddChore}
                 onDeleteChore={handleDeleteChore}
                 onUpdateChoreCadence={handleUpdateChoreCadence}
+                choresForOthers={choresForOthers}
+                choresForOthersLoading={choresForOthersLoading}
+                onAddChoreForOthers={handleAddChoreForOthers}
+                onCompleteChoreForOthers={handleCompleteChoreForOthers}
+                onEditChoreForOthers={handleEditChoreForOthers}
+                onDeleteChoreForOthers={handleDeleteChoreForOthers}
                 vehicles={vehicles}
                 vehiclesLoading={vehiclesLoading}
                 onVehicleOilChange={handleVehicleOilChange}
