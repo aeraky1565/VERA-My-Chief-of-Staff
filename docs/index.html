@@ -15371,6 +15371,7 @@ function YearInReviewTab({ apiUrl, apiToken }) {
   const year = new Date().getFullYear();
   const [data,         setData]         = React.useState(null);
   const [loading,      setLoading]      = React.useState(true);
+  const [loadError,    setLoadError]    = React.useState('');
   const [busy,         setBusy]         = React.useState(false);
   const [showAdd,      setShowAdd]      = React.useState(false);
   const [addForm,      setAddForm]      = React.useState({ name: '', cadence: 'Daily', color: HABIT_COLORS[0], notes: '' });
@@ -15379,10 +15380,11 @@ function YearInReviewTab({ apiUrl, apiToken }) {
 
   async function load() {
     setLoading(true);
+    setLoadError('');
     try {
       const d = await apiGet(apiUrl, apiToken, { action: 'get_year_review', year });
       setData(d);
-    } catch(e) { /* silent */ }
+    } catch(e) { setLoadError(e.message || 'Unknown error'); }
     setLoading(false);
   }
 
@@ -15432,7 +15434,7 @@ function YearInReviewTab({ apiUrl, apiToken }) {
   }
 
   if (loading) return <div className="loading-text">Loading Year in Review…</div>;
-  if (!data)   return <div style={{ color: '#c9a84c', padding: 16 }}>Could not load habit data.</div>;
+  if (!data)   return <div style={{ color: '#c9a84c', padding: 16 }}>Could not load habit data{loadError ? ': ' + loadError : '.'}</div>;
 
   const habits      = data.habits      || [];
   const completions = data.completions || {};
