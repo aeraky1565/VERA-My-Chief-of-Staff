@@ -85,8 +85,9 @@ function getYearReview_(year) {
       gymData.forEach(function(r) {
         var title    = String(r[1] || '').trim(); // Event Title
         var dateStr  = String(r[2] || '').trim(); // Event Date
-        var attended = String(r[3] || '').trim(); // Attended
-        if (dateStr.indexOf(String(y)) === 0 && attended === 'Yes') {
+        var attended = r[3]; // Attended — checkbox (true) or text ('Yes')
+        var didAttend = attended === true || String(attended).trim().toLowerCase() === 'yes';
+        if (dateStr.indexOf(String(y)) === 0 && didAttend) {
           if (title.toLowerCase().indexOf('walk') !== -1) {
             completions['__walk__'][dateStr] = true;
           } else {
