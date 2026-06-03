@@ -845,6 +845,36 @@ function findTaskRow_(id) {
  * Yearly/Annual, "Every N days/weeks/months", and plain "N days/weeks/months".
  * Returns null if the recurring string is empty or unrecognised as recurring.
  */
+var DAY_NAMES_ = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+
+// Returns the target weekday index (0=Sun…6=Sat) if recurringStr is a day-of-week
+// pattern like "every sunday" or "every monday". Returns -1 otherwise.
+function parseDayOfWeek_(recurringStr) {
+  var s = String(recurringStr || '').trim().toLowerCase();
+  var m = s.match(/^every\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/);
+  if (!m) return -1;
+  return DAY_NAMES_.indexOf(m[1]);
+}
+
+// Given a base date and a target weekday index, returns the next date (strictly
+// after base) that falls on that weekday.
+function nextWeekday_(base, targetDay) {
+  var d = new Date(base);
+  d.setHours(0, 0, 0, 0);
+  var diff = ((targetDay - d.getDay()) + 7) % 7;
+  if (diff === 0) diff = 7; // always move forward at least one day
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+// Returns true if this recurring value anchors to a fixed weekday and should
+// never drift (day-of-week patterns OR plain "weekly" which preserves the
+// original due-date's weekday).
+function isWeekdayAnchored_(recurringStr) {
+  var s = String(recurringStr || '').trim().toLowerCase();
+  return s === 'weekly' || parseDayOfWeek_(s) !== -1;
+}
+
 function computeNextDueDate_(fromDate, recurringStr) {
   var s = String(recurringStr || '').trim().toLowerCase();
   if (!s || s === 'no' || s === 'false' || s === '0') return null;
@@ -852,6 +882,12 @@ function computeNextDueDate_(fromDate, recurringStr) {
   var base = fromDate instanceof Date ? new Date(fromDate) : new Date();
   base.setHours(0, 0, 0, 0);
   var next = new Date(base);
+
+  // Explicit day-of-week: "every sunday", "every monday", etc.
+  var targetDay = parseDayOfWeek_(s);
+  if (targetDay !== -1) {
+    return nextWeekday_(base, targetDay);
+  }
 
   if (s === 'daily') {
     next.setDate(next.getDate() + 1);
@@ -908,8 +944,24 @@ function webCompleteTask_(id) {
   const tz      = Session.getScriptTimeZone();
   const today   = new Date(); today.setHours(0, 0, 0, 0);
   const baseDate = dueRaw ? new Date(dueRaw) : today;
-  // If original due date has already passed, advance from today instead
-  const fromDate = baseDate < today ? today : baseDate;
+  baseDate.setHours(0, 0, 0, 0);
+
+  // For weekday-anchored recurring (weekly / every sunday / etc.): advance the
+  // original due date by intervals until we land in the future. This preserves
+  // the weekday regardless of how late the task was completed.
+  // For date-driven recurring (monthly, etc.): use today as the base when
+  // the original due date has already passed.
+  var fromDate;
+  if (isWeekdayAnchored_(recurringVal) && baseDate < today) {
+    fromDate = new Date(baseDate);
+    var safety = 0;
+    while (fromDate <= today && safety++ < 52) {
+      fromDate = computeNextDueDate_(fromDate, recurringVal);
+    }
+  } else {
+    fromDate = baseDate < today ? today : baseDate;
+  }
+
   const nextDate = computeNextDueDate_(fromDate, recurringVal);
 
   if (!nextDate) {

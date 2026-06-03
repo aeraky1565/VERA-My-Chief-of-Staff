@@ -1205,7 +1205,7 @@ function FlagCard({ flag, onAction, busy }) {
 
 // ---- Task form modal (add + edit) -------------------------------------------
 
-const RECURRING_PRESETS = ['', 'Daily', 'Weekly', 'Bi-Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Yearly'];
+const RECURRING_PRESETS = ['', 'Daily', 'Weekly', 'Every Sunday', 'Every Monday', 'Every Tuesday', 'Every Wednesday', 'Every Thursday', 'Every Friday', 'Every Saturday', 'Bi-Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Yearly'];
 
 function TaskFormModal({ task, onSave, onClose, busy }) {
   const isEdit    = !!task;
