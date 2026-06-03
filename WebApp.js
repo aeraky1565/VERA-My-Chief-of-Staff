@@ -81,10 +81,12 @@ function doGet(e) {
       case 'shopping_delete': return jsonOut_(webDeleteShoppingItem_(e));
       case 'shopping_update': return jsonOut_(webUpdateShoppingItem_(e));
       case 'projects':              return jsonOut_(webGetProjects_());
+      case 'create_project':        return jsonOut_(webCreateProject_(e));
       case 'complete_project_task': return jsonOut_(webCompleteProjectTask_(e.parameter.row));
       case 'add_project_task':      return jsonOut_(webAddProjectTask_(e));
       case 'update_project_task':   return jsonOut_(webUpdateProjectTask_(e));
       case 'delete_project_task':   return jsonOut_(webDeleteProjectTask_(e));
+      case 'close_project':         return jsonOut_(webCloseProject_(e));
       case 'goals':        return jsonOut_(webGetGoals_());
       case 'add_goal':    return jsonOut_(webAddGoal_(e));
       case 'update_goal': return jsonOut_(webUpdateGoal_(e));
@@ -1084,6 +1086,34 @@ function webDeleteProjectTask_(e) {
 
   sheet.deleteRow(rowNum);
   return { ok: true, rowNum: rowNum, action: 'deleted' };
+}
+
+function webCreateProject_(e) {
+  var name  = ((e.parameter && e.parameter.name)  || '').trim();
+  var tasks = ((e.parameter && e.parameter.tasks) || '').trim();
+  if (!name)  throw new Error('Project name is required');
+  if (!tasks) throw new Error('At least one task is required');
+  var taskLines = tasks.split('\n').map(function(t) { return t.trim(); }).filter(Boolean);
+  return createProject_(name, taskLines);
+}
+
+function webCloseProject_(e) {
+  var projectId = ((e.parameter && e.parameter.projectId) || '').trim();
+  if (!projectId) throw new Error('projectId is required');
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Projects tab not found or empty');
+
+  var numRows = sheet.getLastRow() - 1;
+  var data    = sheet.getRange(2, 1, numRows, 4).getValues(); // ID, Name, Task, Status
+  var updated = 0;
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === projectId && String(data[i][3]).trim() !== 'Done') {
+      sheet.getRange(i + 2, 4).setValue('Done');
+      updated++;
+    }
+  }
+  return { ok: true, projectId: projectId, tasksMarkedDone: updated };
 }
 
 // ---- PTO -------------------------------------------------------------------

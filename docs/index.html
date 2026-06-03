@@ -6903,14 +6903,80 @@ function GoalModal({ mode, goal, defaultStatus, onSave, onClose, busy }) {
 
 const PRIORITY_COLORS = { High: '#e53935', Medium: '#f9a825', Low: '#43a047' };
 
-function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDeleteTask, busy }) {
-  const [activeProject, setActiveProject] = React.useState(null);
+function NewProjectModal({ onSave, onClose, busy }) {
+  const [name,  setName]  = React.useState('');
+  const [tasks, setTasks] = React.useState('');
 
-  // Auto-select first project when list loads or changes
+  function handleSave() {
+    if (!name.trim() || !tasks.trim()) return;
+    onSave({ name: name.trim(), tasks: tasks.trim() });
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12,
+        padding: 28, width: 440, maxWidth: '95vw',
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#dde1f0', marginBottom: 20 }}>
+          New Project
+        </div>
+        <label style={{ fontSize: 12, color: '#8a9abf', display: 'block', marginBottom: 6 }}>Project Name</label>
+        <input
+          autoFocus
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g. Europe Trip Planning"
+          style={{
+            width: '100%', background: '#07122b', border: '1px solid #1e3060',
+            borderRadius: 6, padding: '8px 12px', color: '#dde1f0', fontSize: 14,
+            boxSizing: 'border-box', marginBottom: 16,
+          }}
+        />
+        <label style={{ fontSize: 12, color: '#8a9abf', display: 'block', marginBottom: 6 }}>
+          Tasks <span style={{ color: '#6b7fa8' }}>(one per line — optionally append |High or |Low)</span>
+        </label>
+        <textarea
+          value={tasks}
+          onChange={e => setTasks(e.target.value)}
+          placeholder={"Book flights|High\nFind hotel\nGet travel insurance|Medium"}
+          rows={6}
+          style={{
+            width: '100%', background: '#07122b', border: '1px solid #1e3060',
+            borderRadius: 6, padding: '8px 12px', color: '#dde1f0', fontSize: 13,
+            boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit',
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={busy || !name.trim() || !tasks.trim()}
+          >
+            Create Project
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDeleteTask, onCreateProject, onCloseProject, busy }) {
+  const [activeProject,  setActiveProject]  = React.useState(null);
+  const [showClosed,     setShowClosed]     = React.useState(false);
+
+  const activeProjects = projects.filter(p => p.tasks.some(t => t.status !== 'Done'));
+  const closedProjects = projects.filter(p => p.tasks.length > 0 && p.tasks.every(t => t.status === 'Done'));
+
+  // Auto-select first active project when list loads or changes
   React.useEffect(() => {
-    if (projects.length > 0) {
+    if (activeProjects.length > 0) {
       setActiveProject(prev =>
-        projects.find(p => p.projectId === prev) ? prev : projects[0].projectId
+        activeProjects.find(p => p.projectId === prev) ? prev : activeProjects[0].projectId
       );
     } else {
       setActiveProject(null);
@@ -6921,10 +6987,18 @@ function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDelete
     return (
       <div className="empty-state">
         <div style={{ fontSize: 32, marginBottom: 12 }}>🏗️</div>
-        <div>No projects yet — ask VERA in the Chat tab to create one.</div>
+        <div>No projects yet.</div>
         <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
-          Try: "Create a project for planning our Europe trip"
+          Click <strong style={{ color: '#c9a84c' }}>+ New Project</strong> above or ask VERA in the Chat tab.
         </div>
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: 16 }}
+          onClick={onCreateProject}
+          disabled={busy}
+        >
+          + New Project
+        </button>
       </div>
     );
   }
@@ -6933,40 +7007,59 @@ function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDelete
 
   return (
     <div>
-      {/* Project sub-tabs */}
-      <div style={{
-        display: 'flex', gap: 2, flexWrap: 'wrap',
-        borderBottom: '1px solid #1e3060', marginBottom: 20,
-      }}>
-        {projects.map(p => {
-          const pending  = p.tasks.filter(t => t.status !== 'Done').length;
-          const isActive = p.projectId === activeProject;
-          return (
-            <button
-              key={p.projectId}
-              onClick={() => setActiveProject(p.projectId)}
-              style={{
-                background: isActive ? '#0d1b3e' : 'none',
-                border: 'none', cursor: 'pointer',
-                padding: '9px 16px', fontSize: 13, fontWeight: 600,
-                color: isActive ? '#c9a84c' : '#8a9abf',
-                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
-                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
-                borderRadius: '4px 4px 0 0',
-              }}
-            >
-              {p.projectName}
-              <span style={{
-                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
-                color: pending === 0 ? '#43a047' : '#c9a84c',
-                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
-              }}>
-                {pending === 0 ? '✓' : pending}
-              </span>
-            </button>
-          );
-        })}
+      {/* Header row: sub-tabs + New Project button */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginBottom: 0 }}>
+        <div style={{
+          flex: 1, display: 'flex', gap: 2, flexWrap: 'wrap',
+          borderBottom: '1px solid #1e3060',
+        }}>
+          {activeProjects.map(p => {
+            const pending  = p.tasks.filter(t => t.status !== 'Done').length;
+            const isActive = p.projectId === activeProject;
+            return (
+              <button
+                key={p.projectId}
+                onClick={() => setActiveProject(p.projectId)}
+                style={{
+                  background: isActive ? '#0d1b3e' : 'none',
+                  border: 'none', cursor: 'pointer',
+                  padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                  color: isActive ? '#c9a84c' : '#8a9abf',
+                  borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+                  marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
+                  borderRadius: '4px 4px 0 0',
+                }}
+              >
+                {p.projectName}
+                <span style={{
+                  background: 'rgba(201,168,76,0.15)', color: '#c9a84c',
+                  borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
+                }}>
+                  {pending}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 12, marginBottom: 1, flexShrink: 0 }}
+          onClick={onCreateProject}
+          disabled={busy}
+        >
+          + New Project
+        </button>
       </div>
+      <div style={{ marginBottom: 20 }} />
+
+      {/* No active projects — all done */}
+      {!current && activeProjects.length === 0 && closedProjects.length > 0 && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7fa8' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🎉</div>
+          <div style={{ fontSize: 15, color: '#dde1f0' }}>All projects complete!</div>
+          <div style={{ fontSize: 13, marginTop: 6 }}>Start a new one with the button above.</div>
+        </div>
+      )}
 
       {/* Selected project task list */}
       {current && (
@@ -7065,6 +7158,41 @@ function ProjectsTab({ projects, onCompleteTask, onAddTask, onEditTask, onDelete
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* Closed projects collapsible section */}
+      {closedProjects.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <button
+            onClick={() => setShowClosed(v => !v)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#6b7fa8', fontSize: 12, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6, padding: 0,
+            }}
+          >
+            <span style={{ fontSize: 10 }}>{showClosed ? '▼' : '▶'}</span>
+            Closed Projects ({closedProjects.length})
+          </button>
+          {showClosed && (
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {closedProjects.map(p => (
+                <div key={p.projectId} style={{
+                  padding: '10px 16px', borderRadius: 8,
+                  background: 'rgba(67,160,71,0.05)', border: '1px solid rgba(67,160,71,0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <span style={{ fontSize: 13, color: '#4a5a7a', textDecoration: 'line-through' }}>
+                    {p.projectName}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#43a047', fontWeight: 700 }}>
+                    ✓ {p.tasks.length} tasks complete
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -18193,6 +18321,7 @@ function App() {
   const [googleTasksError, setGoogleTasksError] = useState(null);
   const [taskModal,        setTaskModal]        = useState(null); // null | { mode:'add' } | { mode:'edit', task }
   const [projectTaskModal, setProjectTaskModal] = useState(null); // null | { mode:'add', project } | { mode:'edit', task }
+  const [newProjectModal,  setNewProjectModal]  = useState(false);
   const [goalModal,        setGoalModal]        = useState(null); // null | { mode:'add', status? } | { mode:'edit', goal }
   const [interestModal,    setInterestModal]    = useState(false); // true = show AddInterestModal
   const [dragGoalId,       setDragGoalId]       = useState(null);
@@ -19819,6 +19948,19 @@ function App() {
     setBusy(false);
   }
 
+  async function handleCreateProject({ name, tasks }) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'create_project', name, tasks });
+      showToast('✓ Project created');
+      setNewProjectModal(false);
+      loadProjects(apiUrl, apiToken);
+    } catch (err) {
+      setError('Could not create project: ' + err.message);
+    }
+    setBusy(false);
+  }
+
   async function handleSaveGoal({ title, description, status, category, year, progress, notes }) {
     if (!title.trim()) return;
     setBusy(true);
@@ -20394,6 +20536,15 @@ function App() {
         />
       )}
 
+      {/* New project modal */}
+      {newProjectModal && (
+        <NewProjectModal
+          onSave={handleCreateProject}
+          onClose={() => setNewProjectModal(false)}
+          busy={busy}
+        />
+      )}
+
       {/* Project task add/edit modal */}
       {projectTaskModal && (
         <ProjectTaskModal
@@ -20467,7 +20618,7 @@ function App() {
                 {tab === 'chat'       ? `💬 Chat` : ''}
                 {tab === 'flags'      ? `🚩 Flags${status ? ` (${status.activeFlags})` : ''}` : ''}
                 {tab === 'tasks'      ? `✅ Tasks${tasks.length ? ` (${tasks.length})` : ''}` : ''}
-                {tab === 'projects'   ? `🏗️ Projects${projects.length ? ` (${projects.length})` : ''}` : ''}
+                {tab === 'projects'   ? `🏗️ Projects${projects.filter(p => p.tasks.some(t => t.status !== 'Done')).length ? ` (${projects.filter(p => p.tasks.some(t => t.status !== 'Done')).length})` : ''}` : ''}
                 {tab === 'shopping'   ? `🛒 Shopping` : ''}
                 {tab === 'home_front' ? `🏡 Home Front` : ''}
                 {tab === 'people'     ? `👥 People`      : ''}
@@ -20673,6 +20824,7 @@ function App() {
                     onAddTask={p => setProjectTaskModal({ mode: 'add', project: p })}
                     onEditTask={t => setProjectTaskModal({ mode: 'edit', task: t })}
                     onDeleteTask={handleDeleteProjectTask}
+                    onCreateProject={() => setNewProjectModal(true)}
                     busy={busy}
                   />
             )}
