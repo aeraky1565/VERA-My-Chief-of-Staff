@@ -5159,8 +5159,14 @@ function webGymAttendLatest_(attended) {
 // ── Habits / Year in Review (Issue #179) ──────────────────────
 
 function webGetYearReview_(e) {
-  var year = parseInt((e.parameter && e.parameter.year) || new Date().getFullYear(), 10);
-  return Object.assign({ ok: true }, getYearReview_(year));
+  try {
+    var year = parseInt((e.parameter && e.parameter.year) || new Date().getFullYear(), 10);
+    var result = getYearReview_(year);
+    return Object.assign({ ok: true }, result);
+  } catch (err) {
+    Logger.log('webGetYearReview_ error: ' + err.message + '\n' + err.stack);
+    return { ok: false, error: 'year_review: ' + err.message };
+  }
 }
 
 function webAddHabit_(e) {
