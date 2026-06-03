@@ -3423,8 +3423,8 @@ function webGetTripMeta_(e) {
   if (!tripKey) throw new Error('tripKey is required');
 
   const ss = getSpreadsheet();
-  ensureSheet(ss, TABS.TRIP_META, TRIP_META_HEADERS);
   const sheet = ss.getSheetByName(TABS.TRIP_META);
+  if (!sheet) return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '' };
 
   if (sheet.getLastRow() >= 2) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
@@ -3449,8 +3449,8 @@ function webSetTripMeta_(e) {
   if (!tripKey) throw new Error('tripKey is required');
 
   const ss    = getSpreadsheet();
-  ensureSheet(ss, TABS.TRIP_META, TRIP_META_HEADERS);
   const sheet = ss.getSheetByName(TABS.TRIP_META);
+  if (!sheet) throw new Error('TripMeta tab not found. Run setupVERA() to create it.');
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
 
@@ -3496,8 +3496,8 @@ function webGetPacking_(e) {
   if (!tripKey) throw new Error('tripKey is required');
 
   const ss = getSpreadsheet();
-  ensureSheet(ss, TABS.PACKING_ITEMS, PACKING_ITEM_HEADERS);
   const sheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  if (!sheet) return { ok: true, items: [] };
 
   const items = [];
   if (sheet.getLastRow() >= 2) {
@@ -3555,8 +3555,8 @@ function webAddPackingItem_(e) {
   }
 
   const ss = getSpreadsheet();
-  ensureSheet(ss, TABS.PACKING_ITEMS, PACKING_ITEM_HEADERS);
   const sheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  if (!sheet) throw new Error('PackingItems tab not found. Run setupVERA() to create it.');
   const tz    = Session.getScriptTimeZone();
 
   // Generate ID: PACK-YYYYMMDD-NN
@@ -3998,8 +3998,8 @@ function webGeneratePacking_(e) {
   const packingData = parsePackingResponse_(rawText);
 
   // Step 9 — Clear existing AI items for this trip (bottom-to-top to avoid row shifting)
-  ensureSheet(ss, TABS.PACKING_ITEMS, PACKING_ITEM_HEADERS);
   const packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  if (!packSheet) throw new Error('PackingItems tab not found. Run setupVERA() to create it.');
   if (packSheet.getLastRow() >= 2) {
     const allRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
     const rowsToDelete = [];
@@ -4066,8 +4066,8 @@ function webGetRecommendations_(e) {
   const tripKey = (p.tripKey || '').trim();
   if (!tripKey) throw new Error('tripKey is required');
   const ss = getSpreadsheet();
-  ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS, TRIP_RECS_HEADERS);
   const sheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  if (!sheet) return { ok: true, recs: [] };
   if (sheet.getLastRow() < 2) return { ok: true, recs: [] };
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
   const recs = [];
@@ -4408,8 +4408,8 @@ function webGenerateRecommendations_(e) {
   const recsData = parseRecsResponse_(rawText);
 
   // Clear existing AI recs for this trip
-  ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS, TRIP_RECS_HEADERS);
   const recSheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  if (!recSheet) throw new Error('TripRecommendations tab not found. Run setupVERA() to create it.');
   if (recSheet.getLastRow() >= 2) {
     const allRows = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
     const toDelete = [];
@@ -7665,8 +7665,8 @@ function webSetTripBudgetSettings_(e) {
   if (!tripKey) return { ok: false, error: 'tripKey required' };
 
   var ss    = getSpreadsheet();
-  ensureSheet(ss, TABS.TRIP_META, TRIP_META_HEADERS);
   var sheet = ss.getSheetByName(TABS.TRIP_META);
+  if (!sheet) throw new Error('TripMeta tab not found. Run setupVERA() to create it.');
 
   var hdrsRow   = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var budgetCol = hdrsRow.indexOf('Trip Budget')     + 1;

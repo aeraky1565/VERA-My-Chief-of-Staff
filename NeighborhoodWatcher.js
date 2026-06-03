@@ -114,14 +114,15 @@ function scanHoaWebsite_() {
     if (flags.length > 0) writeFlags(flags);
     recordFlagsGenerated_(flagKeys);
 
-    // Log scan to NEIGHBORHOOD_HOA_SCANS sheet
+    // Log scan to NEIGHBORHOOD_HOA_SCANS sheet (only if tab already exists — don't auto-create)
     var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-    var sh = ensureSheet(ss, TABS.NEIGHBORHOOD_HOA_SCANS,
-               ['ID', 'Scanned At', 'URL', 'Items Found', 'New Flags', 'Notes']);
-    var lastRow = sh.getLastRow();
-    var newId   = lastRow > 1
-      ? parseInt(sh.getRange(lastRow, 1).getValue() || '0', 10) + 1 : 1;
-    sh.appendRow([newId, new Date().toISOString(), hoaUrl, items.length, flags.length, '']);
+    var sh = ss.getSheetByName(TABS.NEIGHBORHOOD_HOA_SCANS);
+    if (sh) {
+      var lastRow = sh.getLastRow();
+      var newId   = lastRow > 1
+        ? parseInt(sh.getRange(lastRow, 1).getValue() || '0', 10) + 1 : 1;
+      sh.appendRow([newId, new Date().toISOString(), hoaUrl, items.length, flags.length, '']);
+    }
 
     Logger.log('🏘 HOA scan complete. ' + items.length + ' items found, ' + flags.length + ' flags written.');
   } catch (err) {

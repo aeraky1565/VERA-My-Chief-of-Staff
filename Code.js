@@ -290,6 +290,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.GIFT_IDEAS,           GIFT_IDEAS_HEADERS);
   ensureSheet(ss, TABS.IMPORTANT_DATES,      IMPORTANT_DATES_HEADERS);
   ensureSheet(ss, TABS.CHORES,               CHORES_HEADERS);
+  ensureSheet(ss, TABS.CHORES_FOR_OTHERS,    CHORES_FOR_OTHERS_HEADERS);
   ensureSheet(ss, TABS.TRAVELER_PROFILES,    TRAVELER_PROFILE_HEADERS);
   ensureSheet(ss, TABS.CONTRACTS,            CONTRACT_HEADERS);
   ensureSheet(ss, TABS.VEHICLES,             VEHICLE_HEADERS);
@@ -305,6 +306,15 @@ function createSheetTabs(ss) {
     ['ID', 'Title', 'Type', 'Date', 'Time', 'Location', 'Description', 'Recurring', 'Tags', 'Status', 'Added', 'Notes']);
   ensureSheet(ss, TABS.NEIGHBORHOOD_HOA_SCANS,
     ['ID', 'Scanned At', 'URL', 'Items Found', 'New Flags', 'Notes']);
+  ensureSheet(ss, TABS.EMAIL_FOLLOW_UPS,     EMAIL_FOLLOW_UP_HEADERS);
+  ensureSheet(ss, TABS.BOOKS,                BOOK_HEADERS);
+  ensureSheet(ss, TABS.COURSES,              COURSE_HEADERS);
+  ensureSheet(ss, TABS.SKILLS,               SKILL_HEADERS);
+  ensureSheet(ss, TABS.EXPERIMENTS,          EXPERIMENT_HEADERS);
+  ensureSheet(ss, TABS.EXPERIMENT_CHECKINS,  EXPERIMENT_CHECKIN_HEADERS);
+  ensureSheet(ss, TABS.RESOURCES,            RESOURCE_HEADERS);
+  ensureSheet(ss, TABS.BUCKET_ACTIVITIES,    BUCKET_ACTIVITIES_HEADERS);
+  ensureSheet(ss, TABS.WISH_LIST,            WISH_LIST_HEADERS);
   ensureSheet(ss, TABS.CONFIG,               CONFIG_HEADERS, configDefaults);
 
   Logger.log('All VERA tabs verified/created.');
