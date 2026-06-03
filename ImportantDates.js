@@ -9,6 +9,21 @@
  * already have a matching entry in the Important Dates sheet.
  * Called from nightlyRun() in Code.js.
  */
+/**
+ * Normalises a Date column value (JS Date object, "YYYY-MM-DD", or "MM-DD")
+ * to "MM-DD" so dedup comparisons are always apples-to-apples.
+ */
+function toMmDd_(val) {
+  if (val instanceof Date) {
+    return String(val.getMonth() + 1).padStart(2, '0') + '-' +
+           String(val.getDate()).padStart(2, '0');
+  }
+  var s = String(val || '').trim();
+  var m = s.match(/^\d{4}-(\d{2}-\d{2})$/);
+  if (m) return m[1]; // YYYY-MM-DD → MM-DD
+  return s;           // already MM-DD or empty
+}
+
 function syncCalendarBirthdaysToImportantDates_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
@@ -59,8 +74,9 @@ function syncCalendarBirthdaysToImportantDates_() {
                   String(start.getDate()).padStart(2, '0');
 
     // Match: same MM-DD AND person name appears in either Person or Label (case-insensitive)
+    // toMmDd_() normalises JS Date objects and YYYY-MM-DD strings to MM-DD before comparing.
     var alreadyExists = existing.some(function(e) {
-      var sameDateish   = String(e['Date'] || '').indexOf(dateKey) !== -1;
+      var sameDateish   = toMmDd_(e['Date']) === dateKey;
       var samePersonish = String(e['Person'] || '').toLowerCase().indexOf(person.toLowerCase()) !== -1 ||
                           String(e['Label']  || '').toLowerCase().indexOf(person.toLowerCase()) !== -1;
       return sameDateish && samePersonish;
