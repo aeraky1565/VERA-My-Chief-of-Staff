@@ -8,9 +8,6 @@
 // Also surfaces GymTracker data as a built-in virtual habit.
 // ============================================================
 
-var HABITS_HEADERS    = ['ID', 'Name', 'Cadence', 'Color', 'Active', 'Notes'];
-var HABIT_LOG_HEADERS = ['ID', 'Habit ID', 'Date', 'Notes'];
-
 // ---- Read -------------------------------------------------------------------
 
 function getHabits_() {
