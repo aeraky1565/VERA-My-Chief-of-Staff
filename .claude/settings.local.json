@@ -3,7 +3,8 @@
     "allow": [
       "Bash(gh issue *)",
       "Bash(git add *)",
-      "Bash(powershell.exe -File push.ps1)"
+      "Bash(powershell.exe -File push.ps1)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
