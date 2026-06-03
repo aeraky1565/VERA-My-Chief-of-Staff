@@ -16385,28 +16385,33 @@ function HomeTab({ flags, tasks, projects, shopping, pto, milestones, summaries,
       <MailCounterCard counter={mailCounter} busy={mailCounterBusy} onReset={onResetMailCounter} />
 
       {/* Projects */}
-      <div className="bento-card" onClick={() => onNavigate('projects')}>
-        <div className="bento-card-title">🏗️ Projects</div>
-        {projects.length === 0 ? (
-          <div style={{ fontSize: 13, color: '#4d6080' }}>No projects yet</div>
-        ) : (
-          <>
-            <div className="bento-card-main">{projects.length}</div>
-            <div className="bento-card-sub">active projects</div>
-            <div className="bento-card-list">
-              {projects.slice(0, 3).map(p => {
-                const pending = p.tasks.filter(t => t.status !== 'Done').length;
-                return (
-                  <div key={p.projectId} className="bento-item">
-                    {p.projectName}
-                    {pending > 0 && <span style={{ color: '#c9a84c', marginLeft: 6 }}>({pending})</span>}
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
+      {(() => {
+        const activeProjs = projects.filter(p => p.tasks.some(t => t.status !== 'Done'));
+        return (
+          <div className="bento-card" onClick={() => onNavigate('projects')}>
+            <div className="bento-card-title">🏗️ Projects</div>
+            {activeProjs.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#4d6080' }}>No active projects</div>
+            ) : (
+              <>
+                <div className="bento-card-main">{activeProjs.length}</div>
+                <div className="bento-card-sub">active projects</div>
+                <div className="bento-card-list">
+                  {activeProjs.slice(0, 3).map(p => {
+                    const pending = p.tasks.filter(t => t.status !== 'Done').length;
+                    return (
+                      <div key={p.projectId} className="bento-item">
+                        {p.projectName}
+                        {pending > 0 && <span style={{ color: '#c9a84c', marginLeft: 6 }}>({pending})</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Shopping */}
       <div className="bento-card" onClick={() => onNavigate('shopping')}>
