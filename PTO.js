@@ -1392,8 +1392,37 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
   if (ss) savePTOMemory_(ss, workingMemory);
 
   // ---- Type 2: Buffer Day Alert -------------------------------------------
+  // Stateful: if user deletes the event, treat it as "declined for this week"
+  // and don't re-suggest until the following Monday.
+  var bProps         = PropertiesService.getScriptProperties();
+  var bEventId       = bProps.getProperty('PTO_BUFFER_EVENT_ID')       || '';
+  var bEventDate     = bProps.getProperty('PTO_BUFFER_EVENT_DATE')      || '';
+  var bDeclinedUntil = bProps.getProperty('PTO_BUFFER_DECLINED_UNTIL')  || '';
+
+  // Detect if the tracked event was deleted by the user (= declined)
+  if (bEventId && bEventDate) {
+    var bFound = false;
+    for (var i2c = 0; i2c < existing.length; i2c++) {
+      if (existing[i2c].getId() === bEventId) { bFound = true; break; }
+    }
+    if (!bFound) {
+      // User deleted it — mark declined until next Monday after that Friday
+      var bDecline = new Date(bEventDate + 'T00:00:00');
+      bDecline.setDate(bDecline.getDate() + ((8 - bDecline.getDay()) % 7 || 7)); // next Monday
+      bDeclinedUntil = Utilities.formatDate(bDecline, tz, 'yyyy-MM-dd');
+      bProps.setProperty('PTO_BUFFER_DECLINED_UNTIL', bDeclinedUntil);
+      bProps.deleteProperty('PTO_BUFFER_EVENT_ID');
+      bProps.deleteProperty('PTO_BUFFER_EVENT_DATE');
+      bEventId   = '';
+      bEventDate = '';
+      Logger.log('PTO Buffer: event deleted by user — declined until ' + bDeclinedUntil);
+    }
+  }
+
+  // Clear any stale VERA Buffer Day events that we no longer track (safety sweep)
   for (var i2 = 0; i2 < existing.length; i2++) {
-    if (existing[i2].getTitle().indexOf('VERA Buffer Day') === 0) {
+    if (existing[i2].getTitle().indexOf('VERA Buffer Day') === 0 &&
+        existing[i2].getId() !== bEventId) {
       try { existing[i2].deleteEvent(); } catch(e2) {}
     }
   }
@@ -1416,24 +1445,63 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
     }
 
     var shouldTrigger = (daysSinceLast > 30 || daysToNext > 21);
-    if (shouldTrigger) {
-      // Find nearest upcoming Friday
-      var friday = new Date(today.getTime());
-      friday.setDate(friday.getDate() + 1); // start tomorrow
-      var safetyBreak = 0;
-      while (friday.getDay() !== 5 && safetyBreak < 14) {
-        friday.setDate(friday.getDate() + 1);
-        safetyBreak++;
-      }
+
+    // Find nearest upcoming Friday
+    var friday = new Date(today.getTime());
+    friday.setDate(friday.getDate() + 1); // start tomorrow
+    var safetyBreak = 0;
+    while (friday.getDay() !== 5 && safetyBreak < 14) {
+      friday.setDate(friday.getDate() + 1);
+      safetyBreak++;
+    }
+    var fridayStr = Utilities.formatDate(friday, tz, 'yyyy-MM-dd');
+
+    // Skip if this Friday is within the declined window
+    var declinedThisWeek = bDeclinedUntil && fridayStr < bDeclinedUntil;
+
+    if (shouldTrigger && !declinedThisWeek && !bEventId) {
+      // No existing tracked event for this Friday — create one
       var fridayEnd = new Date(friday.getTime());
       fridayEnd.setDate(fridayEnd.getDate() + 1);
       try {
         var bufEvent = vera.createAllDayEvent('VERA Buffer Day — consider taking this off', friday, fridayEnd);
         bufEvent.setColor(CalendarApp.EventColor.YELLOW);
+        bProps.setProperty('PTO_BUFFER_EVENT_ID',   bufEvent.getId());
+        bProps.setProperty('PTO_BUFFER_EVENT_DATE',  fridayStr);
+        Logger.log('PTO Buffer: created for ' + fridayStr + ' (id: ' + bufEvent.getId() + ')');
       } catch(e3) {
         Logger.log('PTO: could not create buffer event: ' + e3.message);
       }
+    } else if (!shouldTrigger || declinedThisWeek) {
+      // Trigger cleared or week declined — remove any lingering tracked event
+      if (bEventId) {
+        for (var i2d = 0; i2d < existing.length; i2d++) {
+          if (existing[i2d].getId() === bEventId) {
+            try { existing[i2d].deleteEvent(); } catch(e2d) {}
+            break;
+          }
+        }
+        bProps.deleteProperty('PTO_BUFFER_EVENT_ID');
+        bProps.deleteProperty('PTO_BUFFER_EVENT_DATE');
+      }
+      if (!shouldTrigger) {
+        // Trigger gone — also clear any lingering declined window
+        bProps.deleteProperty('PTO_BUFFER_DECLINED_UNTIL');
+      }
     }
+  } else {
+    // No buffer remaining — clean up if anything was tracked
+    if (bEventId) {
+      for (var i2e = 0; i2e < existing.length; i2e++) {
+        if (existing[i2e].getId() === bEventId) {
+          try { existing[i2e].deleteEvent(); } catch(e2e) {}
+          break;
+        }
+      }
+      bProps.deleteProperty('PTO_BUFFER_EVENT_ID');
+      bProps.deleteProperty('PTO_BUFFER_EVENT_DATE');
+    }
+    bProps.deleteProperty('PTO_BUFFER_DECLINED_UNTIL');
   }
 
   // ---- Type 3: Milestone Countdowns ---------------------------------------
