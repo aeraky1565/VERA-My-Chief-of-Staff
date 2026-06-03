@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // VERA — Claude.js
 // Builds the intelligence prompt and calls the Anthropic API
 // ============================================================
@@ -124,12 +124,16 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
   }
 
   // ---- Format: Shared Interest Ledger ------------------------------------
+  // Rotate which 12 entries are shown each day so Claude sees different items
+  // each night rather than always flagging the same top entries.
   const ledgerEntries = Array.isArray(ledger) ? ledger : [];
   let ledgerSection;
   if (ledgerEntries.length === 0) {
     ledgerSection = 'No interests logged yet.';
   } else {
-    ledgerSection = ledgerEntries.slice(0, 20).map(function(i) {
+    var ledgerDayOffset = new Date().getDate() % Math.max(1, ledgerEntries.length);
+    var ledgerRotated   = ledgerEntries.slice(ledgerDayOffset).concat(ledgerEntries.slice(0, ledgerDayOffset));
+    ledgerSection = ledgerRotated.slice(0, 12).map(function(i) {
       return '- ' + i.person + ': ' + i.interest + ' [' + i.category + ', logged ' + i.date + ']';
     }).join('\n');
   }
@@ -315,14 +319,42 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     var ss_t = getSpreadsheet();
     var today_t = new Date(); today_t.setHours(0, 0, 0, 0);
 
+    // Load Trip Meta traveler map so we can label who's travelling on each trip
+    var travelerMap_t = {};
+    try {
+      var metaSheet_t = ss_t.getSheetByName(TABS.TRIP_META);
+      if (metaSheet_t && metaSheet_t.getLastRow() >= 2) {
+        metaSheet_t.getRange(2, 1, metaSheet_t.getLastRow() - 1, TRIP_META_HEADERS.length)
+          .getValues()
+          .forEach(function(r) {
+            var tk = String(r[0] || '').trim();
+            if (tk) travelerMap_t[tk] = String(r[4] || '').trim(); // index 4 = Traveler
+          });
+      }
+    } catch(tme) {}
+
     tripsSectionStr = tripsForPrompt.length === 0
       ? 'No upcoming trips.'
       : tripsForPrompt.map(function(trip) {
           var daysAway = trip.daysAway !== undefined ? trip.daysAway
             : (trip.startDate ? Math.round((new Date(trip.startDate) - today_t) / 86400000) : null);
           var tripKey  = trip.startDate + '|' + trip.label;
+          var traveler = travelerMap_t[tripKey] || '';
           var line     = '- ' + trip.label + ' (starts: ' + trip.startDate + ')';
           if (daysAway !== null) line += ' [' + daysAway + ' days away]';
+          // Traveler attribution — critical for distinguishing Ahmed's vs Victoria's trips
+          if (traveler) {
+            var travLow = traveler.toLowerCase();
+            if (travLow.indexOf('ahmed') === -1 && travLow.indexOf('victoria') !== -1) {
+              line += ' [VICTORIA ONLY — Ahmed not travelling]';
+            } else if (travLow.indexOf('ahmed') !== -1 && travLow.indexOf('victoria') === -1) {
+              line += ' [Ahmed only]';
+            } else {
+              line += ' [Both]';
+            }
+          } else if (trip.isExtendedFamily) {
+            line += ' [extended family — may not involve Ahmed]';
+          }
           line += ' | TripKey: ' + tripKey;
 
           // Count packing items
@@ -346,8 +378,14 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
           } catch(ie) {}
 
           line += ' | packing: ' + packCount + ' items, itinerary: ' + itinCount + ' items';
-          if (daysAway !== null && daysAway <= 7 && packCount === 0) line += ' ⚠ NO PACKING LIST';
-          if (daysAway !== null && daysAway <= 14 && itinCount === 0) line += ' ⚠ NO ITINERARY';
+          // Only flag missing prep for trips Ahmed is on
+          var ahmedOnTrip = !traveler ||
+                            traveler.toLowerCase().indexOf('ahmed') !== -1 ||
+                            (!traveler && !trip.isExtendedFamily);
+          if (ahmedOnTrip) {
+            if (daysAway !== null && daysAway <= 7 && packCount === 0) line += ' ⚠ NO PACKING LIST';
+            if (daysAway !== null && daysAway <= 14 && itinCount === 0) line += ' ⚠ NO ITINERARY';
+          }
           return line;
         }).join('\n');
   } catch (tripErr) {
@@ -378,18 +416,25 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     var bRes = webGetBucketList_();
     var bEntries = (bRes && bRes.entries) || [];
     var bUnvisited = bEntries.filter(function(b) { return !b['Visited']; });
-    bucketListSectionStr = bUnvisited.length === 0
-      ? 'No unvisited bucket list destinations.'
-      : '(' + bUnvisited.length + ' unvisited)\n' + bUnvisited.map(function(b) {
-          var stars = b['Stars'] ? '\u2605'.repeat(Math.min(5, Number(b['Stars']))) : '';
+    if (bUnvisited.length === 0) {
+      bucketListSectionStr = 'No unvisited bucket list destinations.';
+    } else {
+      // Rotate which 6 entries are shown each week so VERA suggests different destinations.
+      var bWeekNum = Math.floor(Date.now() / (7 * 24 * 3600 * 1000)) % Math.max(1, bUnvisited.length);
+      var bRotated = bUnvisited.slice(bWeekNum).concat(bUnvisited.slice(0, bWeekNum));
+      var bSlice   = bRotated.slice(0, 6);
+      bucketListSectionStr = '(' + bUnvisited.length + ' total unvisited — showing 6 this week)\n' +
+        bSlice.map(function(b) {
+          var stars = b['Stars'] ? '★'.repeat(Math.min(5, Number(b['Stars']))) : '';
           var s = '- ' + b['Country'];
           if (b['City'])        s += ', ' + b['City'];
           if (stars)            s += ' [' + stars + ']';
-          if (b['Target Year']) s += ' \u2014 target ' + b['Target Year'];
-          if (b['Dream Trip'])  s += ' \uD83C\uDF1F';
-          if (b['Notes'])       s += ' \u2014 ' + b['Notes'];
+          if (b['Target Year']) s += ' — target ' + b['Target Year'];
+          if (b['Dream Trip'])  s += ' 🌟';
+          if (b['Notes'])       s += ' — ' + b['Notes'];
           return s;
         }).join('\n');
+    }
   } catch (bErr) {
     bucketListSectionStr = '(unavailable)';
   }
@@ -462,10 +507,12 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Do NOT flag an idea if it already has a corresponding open task or ongoing project.\n\n' +
 
     'SHARED INTEREST LEDGER RULES:\n' +
-    '- The ledger below records things Ahmed and Victoria have specifically mentioned wanting or liking.\n' +
-    '- Cross-reference it against calendar events and tasks. If a connection exists — a relevant venue, event, experience, or opportunity — generate a flag.\n' +
-    '- Example triggers: a food festival nearby when Victoria logged "Ethiopian food"; a free weekend when Ahmed logged "boutique fitness class"; a travel event when either logged a destination.\n' +
-    '- Use source "General" for interest-driven flags. Urgency is usually Low or Medium unless time-sensitive (e.g. tickets close tonight).\n' +
+    '- The ledger records things Ahmed and Victoria have mentioned wanting or liking. Only a ROTATING SAMPLE of 12 entries is shown each night — the full ledger is larger.\n' +
+    '- Only generate a flag when there is a CONCRETE, TIME-SENSITIVE trigger visible in today\'s data (an upcoming calendar event, a nearby date window, a task due soon). Do NOT flag "Ahmed likes X" without a specific hook.\n' +
+    '- Bad example (do NOT do): "Ahmed logged hiking — consider planning a hike." This is vague and will repeat every night.\n' +
+    '- Good example: "A free weekend appears on Ahmed\'s calendar next weekend AND he logged \'boutique fitness class\' — consider booking one."\n' +
+    '- At most 1 interest-ledger flag per nightly run.\n' +
+    '- Use source "General". Urgency Low unless genuinely time-sensitive.\n' +
     '- Do NOT flag interests that already have an open task or upcoming calendar event addressing them.\n\n' +
 
     'BILLS INTELLIGENCE RULES:\n' +
@@ -494,7 +541,8 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Use source "Tasks". Key format: project_overdue_[name_snake] or project_abandoned_[name_snake].\n\n' +
 
     'PRE-TRIP INTELLIGENCE RULES:\n' +
-    '- The Upcoming Trips section shows travel on Ahmed\'s calendar.\n' +
+    '- The Upcoming Trips section shows travel detected from shared calendars. Each trip is labelled with its traveler (Both / Ahmed only / VICTORIA ONLY / extended family).\n' +
+    '- ONLY generate packing/itinerary flags for trips labelled "Both" or "Ahmed only". NEVER flag trips labelled "VICTORIA ONLY" or "extended family" for missing packing lists or itineraries — Ahmed is not travelling on those.\n' +
     '- If a trip is ⚠ NO PACKING LIST within 7 days: urgency = High, flag "{{trip}} in N days — packing list not started".\n' +
     '- If a trip is ⚠ NO ITINERARY within 14 days: urgency = Medium, flag "{{trip}} has no itinerary yet".\n' +
     '- If a trip is within 3 days AND has packing/itinerary items: urgency = Low, "Final prep check for {{trip}}".\n' +
@@ -573,8 +621,8 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Goal + Calendar: Is there a clear free window this week that aligns with an active goal?\n' +
     '- Interest Ledger + Calendar: Has Ahmed/Victoria expressed interest in something with a nearby opportunity?\n' +
     '- Countries Visited + Upcoming Trips: Is the upcoming destination a country Ahmed has never visited? That\'s a milestone worth flagging.\n' +
-    '- Bucket List + Upcoming Trips: Is there a bucket list destination near a planned trip? Could they add a stopover or side trip?\n' +
-    '- Bucket List + PTO/Calendar: Is there a clear PTO window that aligns with a dream-trip destination?\n' +
+    '- Bucket List + Upcoming Trips: Only flag if the bucket list destination is geographically adjacent to a confirmed upcoming trip (same region/country) AND the trip is within 60 days. Do NOT flag "could visit someday".\n' +
+    '- Bucket List + PTO/Calendar: Only flag if there is a SPECIFIC confirmed clear PTO window already identified in the PTO STATUS section AND the destination target year matches the current or next year. Do NOT generate this flag if no clear window is confirmed.\n' +
     '- Financial Goal + Calendar/Tasks: Is there an upcoming large expense (trip, event) that could push a goal off-track?\n' +
     '- Financial Goal + Bills: Is the monthly bill load crowding out goal contributions?\n' +
     'Generate up to 2 cross-domain flags from this synthesis — these are often the most valuable insights.\n\n' +
