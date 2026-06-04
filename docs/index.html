@@ -5757,6 +5757,359 @@ function VisaCheckView({ profiles, upcomingTrips, busy, onCheck, visaResults, vi
   );
 }
 
+// ---- Luggage Planner --------------------------------------------------------
+
+const BAG_TYPES = [
+  { value: 'carry-on',      label: '🎒 Carry-on' },
+  { value: 'personal-item', label: '👜 Personal Item' },
+  { value: 'checked',       label: '🧳 Checked Bag' },
+  { value: 'duffle',        label: '🏋️ Duffle' },
+  { value: 'backpack',      label: '🎒 Backpack' },
+];
+
+const BAG_OWNER_LABELS = { ahmed: 'Ahmed', victoria: 'Victoria', shared: 'Shared' };
+
+function CapacityBar({ usedL, totalL, pct }) {
+  const color = pct > 95 ? '#f87171' : pct > 80 ? '#fbbf24' : '#4ade80';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ flex: 1, background: '#1e2a38', borderRadius: 6, height: 14, overflow: 'hidden' }}>
+        <div style={{ width: Math.min(pct, 100) + '%', background: color, height: '100%', borderRadius: 6, transition: 'width 0.4s' }} />
+      </div>
+      <span style={{ fontSize: 12, color: color, fontWeight: 700, minWidth: 80, textAlign: 'right' }}>
+        {usedL}L / {totalL}L ({pct}%)
+      </span>
+    </div>
+  );
+}
+
+function LuggagePanel({ trips, packingItems, tripLuggage, luggageProfiles, busy,
+                        onLoadProfiles, onLoadTripLuggage, onSetTripLuggage,
+                        onAllocate, onSaveProfile, onDeleteProfile, apiUrl, apiToken }) {
+  const [expanded,    setExpanded]    = React.useState(null);
+  const [showBagForm, setShowBagForm] = React.useState(false);
+  const [editBag,     setEditBag]     = React.useState(null); // null = new
+  const [bagForm,     setBagForm]     = React.useState({ owner: 'ahmed', name: '', type: 'carry-on', capacityL: '', maxWeightKg: '', dimensionsCm: '', notes: '' });
+  const [allocating,  setAllocating]  = React.useState({});
+  const [savingBag,   setSavingBag]   = React.useState(false);
+
+  // Load profiles once on mount
+  React.useEffect(function() {
+    if (!luggageProfiles) onLoadProfiles();
+  }, []);
+
+  function openBagForm(bag) {
+    if (bag) {
+      setEditBag(bag.id);
+      setBagForm({ owner: bag.owner, name: bag.name, type: bag.type,
+                   capacityL: bag.capacityL, maxWeightKg: bag.maxWeightKg || '',
+                   dimensionsCm: bag.dimensionsCm || '', notes: bag.notes || '' });
+    } else {
+      setEditBag(null);
+      setBagForm({ owner: 'ahmed', name: '', type: 'carry-on', capacityL: '', maxWeightKg: '', dimensionsCm: '', notes: '' });
+    }
+    setShowBagForm(true);
+  }
+
+  async function handleSaveBag() {
+    if (!bagForm.name || !bagForm.capacityL) return;
+    setSavingBag(true);
+    try {
+      await onSaveProfile(editBag ? Object.assign({ id: editBag }, bagForm) : bagForm);
+      setShowBagForm(false);
+    } finally { setSavingBag(false); }
+  }
+
+  async function handleAllocate(tripKey) {
+    setAllocating(function(a) { return Object.assign({}, a, { [tripKey]: true }); });
+    try {
+      await onAllocate(tripKey);
+    } finally {
+      setAllocating(function(a) { return Object.assign({}, a, { [tripKey]: false }); });
+    }
+  }
+
+  function toggleBag(tripKey, bagId, currentIds) {
+    var next = currentIds.includes(bagId)
+      ? currentIds.filter(function(id) { return id !== bagId; })
+      : currentIds.concat(bagId);
+    onSetTripLuggage(tripKey, next);
+  }
+
+  // Determine which bags to show for a trip based on travelers
+  function bagsForTrip(trip, allProfiles) {
+    if (!allProfiles) return [];
+    var meta       = trip && trip.tripKey && tripLuggage && tripLuggage[trip.tripKey];
+    var travelersRaw = (trip && trip.tripTravellers) || '';
+    var isShared   = travelersRaw.toLowerCase().indexOf('victoria') !== -1;
+    return allProfiles.filter(function(b) {
+      if (b.owner === 'shared') return true;
+      if (b.owner === 'ahmed') return true;
+      if (b.owner === 'victoria') return isShared;
+      return true;
+    });
+  }
+
+  var profiles = luggageProfiles || [];
+
+  return (
+    <div style={{ padding: '16px 0' }}>
+      {/* Bag Library header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 16, color: '#e2e8f0' }}>🧳 Bag Library</h3>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>Define your bags once, select them per trip</p>
+        </div>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={() => openBagForm(null)}>+ Add Bag</button>
+      </div>
+
+      {/* Bag Library grid */}
+      {profiles.length === 0 && !showBagForm && (
+        <div style={{ background: '#1e2a38', borderRadius: 10, padding: 24, textAlign: 'center', color: '#64748b', marginBottom: 20 }}>
+          No bags defined yet. Click <strong>+ Add Bag</strong> to create your first bag profile.
+        </div>
+      )}
+      {profiles.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {profiles.map(function(bag) {
+            var ownerColor = bag.owner === 'ahmed' ? '#4fc3f7' : bag.owner === 'victoria' ? '#f9a8d4' : '#a78bfa';
+            return (
+              <div key={bag.id} style={{ background: '#1e2a38', borderRadius: 10, padding: 14, border: '1px solid #2d3a4a', position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{bag.name}</div>
+                    <div style={{ fontSize: 11, color: ownerColor, marginTop: 2 }}>{BAG_OWNER_LABELS[bag.owner] || bag.owner} · {(BAG_TYPES.find(function(t) { return t.value === bag.type; }) || {}).label || bag.type}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#c9a84c' }}>{bag.capacityL}L</div>
+                    {bag.maxWeightKg && <div style={{ fontSize: 10, color: '#64748b' }}>max {bag.maxWeightKg}kg</div>}
+                  </div>
+                </div>
+                {bag.dimensionsCm && <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>📐 {bag.dimensionsCm} cm</div>}
+                {bag.notes && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontStyle: 'italic' }}>{bag.notes}</div>}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button onClick={() => openBagForm(bag)} style={{ fontSize: 11, padding: '3px 10px', background: '#2d3a4a', border: '1px solid #3d4a5a', borderRadius: 6, color: '#94a3b8', cursor: 'pointer' }}>Edit</button>
+                  <button onClick={() => onDeleteProfile(bag.id)} style={{ fontSize: 11, padding: '3px 10px', background: '#2d1a1a', border: '1px solid #5a2d2d', borderRadius: 6, color: '#f87171', cursor: 'pointer' }}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add/Edit bag form */}
+      {showBagForm && (
+        <div style={{ background: '#1a2332', border: '1px solid #2d3a4a', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+          <h4 style={{ margin: '0 0 14px', color: '#e2e8f0', fontSize: 14 }}>{editBag ? 'Edit Bag' : 'New Bag'}</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Owner</label>
+              <select value={bagForm.owner} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { owner: ev.target.value }); }); }}
+                style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13 }}>
+                <option value="ahmed">Ahmed</option>
+                <option value="victoria">Victoria</option>
+                <option value="shared">Shared</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Type</label>
+              <select value={bagForm.type} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { type: ev.target.value }); }); }}
+                style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13 }}>
+                {BAG_TYPES.map(function(t) { return <option key={t.value} value={t.value}>{t.label}</option>; })}
+              </select>
+            </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Bag Name *</label>
+              <input value={bagForm.name} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { name: ev.target.value }); }); }}
+                placeholder="e.g. Carry-on, Large Checked" style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Capacity (Liters) *</label>
+              <input type="number" value={bagForm.capacityL} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { capacityL: ev.target.value }); }); }}
+                placeholder="e.g. 45" style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Max Weight (kg)</label>
+              <input type="number" value={bagForm.maxWeightKg} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { maxWeightKg: ev.target.value }); }); }}
+                placeholder="e.g. 7 for cabin bags" style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Dimensions (cm)</label>
+              <input value={bagForm.dimensionsCm} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { dimensionsCm: ev.target.value }); }); }}
+                placeholder="e.g. 55x35x20" style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: '#64748b', display: 'block', marginBottom: 4 }}>Notes</label>
+              <input value={bagForm.notes} onChange={function(ev) { setBagForm(function(f) { return Object.assign({}, f, { notes: ev.target.value }); }); }}
+                placeholder="e.g. Delta allows 10kg" style={{ width: '100%', background: '#0f1923', border: '1px solid #2d3a4a', borderRadius: 6, color: '#e2e8f0', padding: '6px 10px', fontSize: 13, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <button className="btn-primary" onClick={handleSaveBag} disabled={savingBag || !bagForm.name || !bagForm.capacityL}
+              style={{ fontSize: 13, padding: '7px 18px' }}>{savingBag ? 'Saving…' : editBag ? 'Save Changes' : 'Add Bag'}</button>
+            <button onClick={() => setShowBagForm(false)} style={{ fontSize: 13, padding: '7px 14px', background: '#2d3a4a', border: 'none', borderRadius: 8, color: '#94a3b8', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ borderTop: '1px solid #1e2a38', margin: '8px 0 20px' }} />
+      <h3 style={{ margin: '0 0 14px', fontSize: 16, color: '#e2e8f0' }}>🗂️ Per-Trip Allocation</h3>
+
+      {/* Per-trip allocation cards */}
+      {trips.length === 0 && (
+        <div style={{ color: '#64748b', textAlign: 'center', padding: 24 }}>No upcoming trips found.</div>
+      )}
+      {trips.map(function(trip) {
+        var tripKey   = trip.startDate + '|' + trip.label;
+        var luggage   = tripLuggage && tripLuggage[tripKey];
+        var selIds    = (luggage && luggage.selectedBagIds) || [];
+        var capByBag  = (luggage && luggage.capacityByBag)  || [];
+        var rec       = (luggage && luggage.allocationNote)  || '';
+        var allocAt   = luggage && luggage.allocatedAt;
+        var isOpen    = expanded === tripKey;
+        var availBags = bagsForTrip(trip, profiles);
+        var items     = (packingItems && packingItems[tripKey]) || [];
+        var isAllocating = allocating[tripKey];
+
+        // Group items by bag assignment for display
+        var itemsByBag = {};
+        items.forEach(function(it) {
+          var bid = it.bagId || 'unassigned';
+          if (!itemsByBag[bid]) itemsByBag[bid] = [];
+          itemsByBag[bid].push(it);
+        });
+
+        return (
+          <div key={tripKey} style={{ background: '#1e2a38', borderRadius: 12, marginBottom: 12, border: '1px solid #2d3a4a', overflow: 'hidden' }}>
+            {/* Trip header row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', cursor: 'pointer' }}
+                 onClick={() => {
+                   setExpanded(isOpen ? null : tripKey);
+                   if (!isOpen && !luggage) onLoadTripLuggage(tripKey);
+                 }}>
+              <div>
+                <div style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 14 }}>{trip.label}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                  {trip.startDate}{trip.endDate && trip.endDate !== trip.startDate ? ' → ' + trip.endDate : ''}
+                  {selIds.length > 0 && <span style={{ marginLeft: 10, color: '#c9a84c' }}>{selIds.length} bag{selIds.length > 1 ? 's' : ''} selected</span>}
+                </div>
+              </div>
+              <span style={{ color: '#64748b', fontSize: 18 }}>{isOpen ? '▲' : '▼'}</span>
+            </div>
+
+            {/* Expanded content */}
+            {isOpen && (
+              <div style={{ padding: '0 18px 18px', borderTop: '1px solid #2d3a4a' }}>
+
+                {/* Bag selector */}
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, fontWeight: 600 }}>SELECT BAGS FOR THIS TRIP</div>
+                  {availBags.length === 0 && <div style={{ color: '#64748b', fontSize: 12 }}>No bags in your library yet. Add some above.</div>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {availBags.map(function(bag) {
+                      var selected = selIds.includes(bag.id);
+                      var ownerColor = bag.owner === 'ahmed' ? '#4fc3f7' : bag.owner === 'victoria' ? '#f9a8d4' : '#a78bfa';
+                      return (
+                        <button key={bag.id}
+                          onClick={() => toggleBag(tripKey, bag.id, selIds)}
+                          style={{
+                            padding: '6px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontWeight: selected ? 700 : 400,
+                            background: selected ? '#0d2a3a' : '#1a2332',
+                            border: '2px solid ' + (selected ? ownerColor : '#2d3a4a'),
+                            color: selected ? ownerColor : '#64748b',
+                            transition: 'all 0.2s',
+                          }}>
+                          {bag.name} <span style={{ opacity: 0.7 }}>{bag.capacityL}L</span>
+                          {bag.owner !== 'shared' && <span style={{ fontSize: 10, marginLeft: 6, opacity: 0.7 }}>({BAG_OWNER_LABELS[bag.owner]})</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Allocate button */}
+                <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button className="btn-primary"
+                    disabled={selIds.length === 0 || items.length === 0 || isAllocating}
+                    onClick={() => handleAllocate(tripKey)}
+                    style={{ fontSize: 13, padding: '8px 18px' }}>
+                    {isAllocating ? '✨ Allocating…' : '✨ Allocate with AI'}
+                  </button>
+                  {selIds.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Select at least one bag to allocate</span>}
+                  {selIds.length > 0 && items.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>Generate a packing list first (Packing tab)</span>}
+                  {allocAt && <span style={{ fontSize: 11, color: '#475569' }}>Last run: {allocAt}</span>}
+                </div>
+
+                {/* Capacity bars */}
+                {capByBag.length > 0 && (
+                  <div style={{ marginTop: 16, background: '#0f1923', borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, marginBottom: 10 }}>CAPACITY</div>
+                    {capByBag.map(function(b) {
+                      var ownerColor = b.owner === 'ahmed' ? '#4fc3f7' : b.owner === 'victoria' ? '#f9a8d4' : '#a78bfa';
+                      return (
+                        <div key={b.bagId} style={{ marginBottom: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <span style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{b.name}</span>
+                            <span style={{ fontSize: 11, color: ownerColor }}>{BAG_OWNER_LABELS[b.owner] || b.owner}</span>
+                          </div>
+                          <CapacityBar usedL={b.usedL} totalL={b.totalL} pct={b.pct} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* AI Recommendation */}
+                {rec && (
+                  <div style={{ marginTop: 14, background: '#0d1f2d', border: '1px solid #1e4060', borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 11, color: '#4fc3f7', fontWeight: 700, marginBottom: 6 }}>✨ VERA RECOMMENDATION</div>
+                    <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>{rec}</div>
+                  </div>
+                )}
+
+                {/* Overflow items */}
+                {luggage && luggage.overflowItems && luggage.overflowItems.length > 0 && (
+                  <div style={{ marginTop: 10, background: '#2a1010', border: '1px solid #5a2020', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 11, color: '#f87171', fontWeight: 700, marginBottom: 6 }}>⚠ OVERFLOW — Doesn't Fit</div>
+                    {(luggage.overflowItems || []).map(function(oid) {
+                      var it = items.find(function(i) { return i.id === oid; });
+                      return <div key={oid} style={{ fontSize: 12, color: '#fca5a5', marginBottom: 2 }}>• {it ? it.item : oid}</div>;
+                    })}
+                  </div>
+                )}
+
+                {/* Item list with bag badges */}
+                {items.length > 0 && capByBag.length > 0 && (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>ITEM ASSIGNMENTS</div>
+                    <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                      {items.map(function(it) {
+                        var bagProfile = it.bagId && it.bagId !== 'overflow' ? profiles.find(function(b) { return b.id === it.bagId; }) : null;
+                        var badgeColor = it.bagId === 'overflow' ? '#f87171' : bagProfile ? (bagProfile.owner === 'ahmed' ? '#4fc3f7' : bagProfile.owner === 'victoria' ? '#f9a8d4' : '#a78bfa') : '#475569';
+                        var badgeLabel = it.bagId === 'overflow' ? '⚠ Overflow' : bagProfile ? bagProfile.name : 'Unassigned';
+                        return (
+                          <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #1e2a38' }}>
+                            <div style={{ fontSize: 13, color: '#cbd5e1' }}>{it.item}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {it.volumeL && <span style={{ fontSize: 11, color: '#475569' }}>{it.volumeL}L</span>}
+                              <span style={{ fontSize: 11, fontWeight: 600, color: badgeColor, background: badgeColor + '22', border: '1px solid ' + badgeColor + '44', borderRadius: 10, padding: '2px 8px' }}>{badgeLabel}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---- Travel Tab -------------------------------------------------------------
 
 function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripKey, itineraryFocusTripKey, busy,
@@ -5772,6 +6125,9 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
                      onAddBucketActivity, onToggleBucketActivity, onDeleteBucketActivity,
                      recommendations, onLoadRecs, onGenerateRecs, onAcceptRec, onDismissRec,
                      profiles, profilesLoading, onSaveProfile, onDeleteProfile,
+                     luggageProfiles, tripLuggage,
+                     onLoadLuggageProfiles, onLoadTripLuggage, onSetTripLuggage, onAllocateLuggage,
+                     onSaveLuggageProfile, onDeleteLuggageProfile,
                      apiUrl, apiToken }) {
   const [sub,           setSub]           = React.useState('trips');
   const [autoExpandKey, setAutoExpandKey] = React.useState(null);
@@ -5817,6 +6173,7 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
     { id: 'trips',      label: '✈️ My Trips',    hint: 'Pulled from calendars listed in Config &rarr; <code>gap_calendars</code>. Multi-day events are grouped into trips automatically.' },
     { id: 'itinerary',  label: '🗺️ My Itinerary' },
     { id: 'packing',    label: '🎒 Packing' },
+    { id: 'luggage',    label: '🧳 Luggage' },
     { id: 'discover',   label: '✨ Discover' },
     { id: 'budget',     label: '💰 Budget',      hint: 'Manual entry linked to each trip. Import line items from your itinerary with the &ldquo;Import from Itinerary&rdquo; button.' },
     { id: 'countries',  label: '🌍 Countries' },
@@ -5968,6 +6325,25 @@ function TravelTab({ pto, itineraries, packingItems, tripMeta, packingFocusTripK
           onToggleItem={onTogglePackingItem}
           onAddItem={onAddPackingItem}
           onDeleteItem={onDeletePackingItem}
+        />
+      )}
+
+      {/* Luggage Planner sub-tab */}
+      {sub === 'luggage' && (
+        <LuggagePanel
+          trips={upcomingTravel}
+          packingItems={packingItems}
+          tripLuggage={tripLuggage}
+          luggageProfiles={luggageProfiles}
+          busy={busy}
+          onLoadProfiles={onLoadLuggageProfiles}
+          onLoadTripLuggage={onLoadTripLuggage}
+          onSetTripLuggage={onSetTripLuggage}
+          onAllocate={onAllocateLuggage}
+          onSaveProfile={onSaveLuggageProfile}
+          onDeleteProfile={onDeleteLuggageProfile}
+          apiUrl={apiUrl}
+          apiToken={apiToken}
         />
       )}
 
@@ -18944,6 +19320,8 @@ function App() {
   const [countriesLoaded,  setCountriesLoaded]  = useState(false);
   const [bucketList,       setBucketList]       = useState(null); // null = not loaded yet
   const [recommendations,  setRecommendations]  = useState({}); // { [tripKey]: 'loading' | [...recs] }
+  const [luggageProfiles,  setLuggageProfiles]  = useState(null); // null = not loaded; array when loaded
+  const [tripLuggage,      setTripLuggage]      = useState({}); // { [tripKey]: { selectedBagIds, profiles, capacityByBag, ... } }
   const CHAT_STORAGE_KEY = 'vera_chat_messages';
   const [chatMessages, setChatMessages] = useState(function() {
     try {
@@ -21134,6 +21512,79 @@ function App() {
     setTimeout(function() { setPackingFocusTripKey(tripKey); }, 0);
   }
 
+  // ---- Luggage Planner handlers ----
+
+  async function loadLuggageProfiles() {
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'get_luggage_profiles' });
+      setLuggageProfiles(data.profiles || []);
+    } catch(err) { setError('Could not load luggage profiles: ' + err.message); }
+  }
+
+  async function loadTripLuggage(tripKey) {
+    if (!tripKey || !apiUrl || !apiToken) return;
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'get_trip_luggage', tripKey });
+      setTripLuggage(function(prev) {
+        return Object.assign({}, prev, { [tripKey]: {
+          selectedBagIds: data.selectedBagIds || [],
+          profiles:       data.profiles       || [],
+          allocationNote: data.allocationNote || '',
+          capacityByBag:  data.capacityByBag  || [],
+          overflowItems:  data.overflowItems  || [],
+          allocatedAt:    data.allocatedAt    || '',
+        }});
+      });
+    } catch(err) { setError('Could not load trip luggage: ' + err.message); }
+  }
+
+  async function handleSetTripLuggage(tripKey, bagIds) {
+    // Optimistic update
+    setTripLuggage(function(prev) {
+      var existing = prev[tripKey] || {};
+      return Object.assign({}, prev, { [tripKey]: Object.assign({}, existing, { selectedBagIds: bagIds }) });
+    });
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'set_trip_luggage', tripKey, bagIds: JSON.stringify(bagIds) });
+    } catch(err) { setError('Could not save bag selection: ' + err.message); }
+  }
+
+  async function handleAllocateLuggage(tripKey) {
+    setBusy(true);
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action: 'allocate_luggage', tripKey });
+      // Refresh packing items (volumeL + bagId now written)
+      await loadPacking(tripKey);
+      // Update local luggage state
+      setTripLuggage(function(prev) {
+        var existing = prev[tripKey] || {};
+        return Object.assign({}, prev, { [tripKey]: Object.assign({}, existing, {
+          capacityByBag:  data.capacityByBag  || [],
+          allocationNote: data.recommendation || '',
+          overflowItems:  data.overflowItems  || [],
+          allocatedAt:    new Date().toLocaleString(),
+        })});
+      });
+      showToast('✨ Luggage allocated by VERA');
+    } catch(err) { setError('Allocation failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleSaveLuggageProfile(fields) {
+    try {
+      const params = Object.assign({ action: 'save_luggage_profile' }, fields);
+      await apiGet(apiUrl, apiToken, params);
+      await loadLuggageProfiles();
+    } catch(err) { setError('Could not save bag profile: ' + err.message); }
+  }
+
+  async function handleDeleteLuggageProfile(id) {
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_luggage_profile', id });
+      await loadLuggageProfiles();
+    } catch(err) { setError('Could not delete bag profile: ' + err.message); }
+  }
+
   // ---- Recommendations handlers (Issue #73) -----------------------------------
 
   async function loadRecs(tripKey) {
@@ -21743,6 +22194,14 @@ function App() {
                     profilesLoading={profilesLoading}
                     onSaveProfile={handleSaveProfile}
                     onDeleteProfile={handleDeleteProfile}
+                    luggageProfiles={luggageProfiles}
+                    tripLuggage={tripLuggage}
+                    onLoadLuggageProfiles={loadLuggageProfiles}
+                    onLoadTripLuggage={loadTripLuggage}
+                    onSetTripLuggage={handleSetTripLuggage}
+                    onAllocateLuggage={handleAllocateLuggage}
+                    onSaveLuggageProfile={handleSaveLuggageProfile}
+                    onDeleteLuggageProfile={handleDeleteLuggageProfile}
                     apiUrl={apiUrl}
                     apiToken={apiToken}
                   />
