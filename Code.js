@@ -96,6 +96,7 @@ const TABS = {
   NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log
   HABITS:     'Habits',    // Habit definitions (Issue #179)
   HABIT_LOG:  'HabitLog',  // Per-day habit completion log (Issue #179)
+  LUGGAGE_PROFILES: 'LuggageProfiles', // Reusable bag definitions (luggage planner)
 };
 
 // ---- Column Headers --------------------------------------------------------
@@ -119,7 +120,8 @@ const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warrant
 const IDEA_HEADERS              = ['ID', 'Date Added', 'Idea', 'Category', 'Tags', 'Notes', 'Status'];
 const ITINERARY_HEADERS         = ['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start Time', 'End Time', 'Location', 'Notes', 'Metadata'];
 const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date', 'Traveler', 'Trip Budget', 'Trip Travellers', 'Outbound Mode', 'Return Mode', 'Luggage JSON'];
-const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
+const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date', 'Volume L', 'Bag ID'];
+const LUGGAGE_PROFILE_HEADERS   = ['ID', 'Owner', 'Name', 'Type', 'Capacity L', 'Max Weight KG', 'Dimensions CM', 'Notes', 'Active'];
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
@@ -279,6 +281,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
   ensureSheet(ss, TABS.HABITS,               HABITS_HEADERS);
   ensureSheet(ss, TABS.HABIT_LOG,            HABIT_LOG_HEADERS);
+  ensureSheet(ss, TABS.LUGGAGE_PROFILES,     LUGGAGE_PROFILE_HEADERS);
   ensureSheet(ss, TABS.PURCHASE_HISTORY,     PURCHASE_HISTORY_HEADERS);
   ensureSheet(ss, TABS.CAREER_POSITION,      CAREER_POSITION_HEADERS);
   ensureSheet(ss, TABS.CAREER_GOALS,         CAREER_GOAL_HEADERS);

@@ -142,6 +142,12 @@ function doGet(e) {
       case 'update_packing_item':   return jsonOut_(webUpdatePackingItem_(e));
       case 'delete_packing_item':   return jsonOut_(webDeletePackingItem_(e));
       case 'generate_packing':      return jsonOut_(webGeneratePacking_(e));
+      case 'get_luggage_profiles':  return jsonOut_(webGetLuggageProfiles_(e));
+      case 'save_luggage_profile':  return jsonOut_(webSaveLuggageProfile_(e));
+      case 'delete_luggage_profile':return jsonOut_(webDeleteLuggageProfile_(e));
+      case 'get_trip_luggage':      return jsonOut_(webGetTripLuggage_(e));
+      case 'set_trip_luggage':      return jsonOut_(webSetTripLuggage_(e));
+      case 'allocate_luggage':      return jsonOut_(webAllocateLuggage_(e));
       case 'countries':             return jsonOut_(webGetCountries_());
       case 'add_country':           return jsonOut_(webAddCountry_(e));
       case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
@@ -4070,6 +4076,293 @@ function webGeneratePacking_(e) {
 
   // Return all items for this trip
   return webGetPacking_(e);
+}
+
+// ---- Luggage Planner -------------------------------------------------------
+
+function webGetLuggageProfiles_(e) {
+  var p     = (e && e.parameter) ? e.parameter : {};
+  var owner = (p.owner || '').trim().toLowerCase();
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.LUGGAGE_PROFILES);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, profiles: [] };
+
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, LUGGAGE_PROFILE_HEADERS.length).getValues();
+  var profiles = data
+    .filter(function(r) {
+      if (String(r[8] || '').trim().toUpperCase() === 'FALSE') return false;
+      if (owner && String(r[1] || '').trim().toLowerCase() !== owner) return false;
+      return String(r[0] || '').trim() !== '';
+    })
+    .map(function(r) {
+      return {
+        id:           String(r[0]).trim(),
+        owner:        String(r[1]).trim().toLowerCase(),
+        name:         String(r[2]).trim(),
+        type:         String(r[3]).trim(),
+        capacityL:    parseFloat(r[4]) || 0,
+        maxWeightKg:  parseFloat(r[5]) || null,
+        dimensionsCm: String(r[6] || '').trim(),
+        notes:        String(r[7] || '').trim(),
+      };
+    });
+  return { ok: true, profiles: profiles };
+}
+
+function webSaveLuggageProfile_(e) {
+  var p     = (e && e.parameter) ? e.parameter : {};
+  var id    = (p.id || '').trim();
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.LUGGAGE_PROFILES);
+  if (!sheet) throw new Error('LuggageProfiles tab not found. Run setupVERA() first.');
+
+  var owner        = (p.owner        || 'ahmed').trim().toLowerCase();
+  var name         = (p.name         || '').trim();
+  var type         = (p.type         || 'carry-on').trim();
+  var capacityL    = parseFloat(p.capacityL) || 0;
+  var maxWeightKg  = p.maxWeightKg ? parseFloat(p.maxWeightKg) : '';
+  var dimensionsCm = (p.dimensionsCm || '').trim();
+  var notes        = (p.notes        || '').trim();
+
+  if (!name) throw new Error('name is required');
+
+  if (id) {
+    if (sheet.getLastRow() < 2) throw new Error('Profile not found: ' + id);
+    var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() === id) {
+        sheet.getRange(i + 2, 2, 1, 7).setValues([[owner, name, type, capacityL, maxWeightKg, dimensionsCm, notes]]);
+        return { ok: true, id: id };
+      }
+    }
+    throw new Error('Profile not found: ' + id);
+  }
+
+  var today    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
+  var existing = sheet.getLastRow() >= 2
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues()
+        .filter(function(r) { return String(r[0]).indexOf('BAG-' + today) === 0; }).length
+    : 0;
+  id = 'BAG-' + today + '-' + String(existing + 1).padStart(2, '0');
+  sheet.appendRow([id, owner, name, type, capacityL, maxWeightKg, dimensionsCm, notes, 'TRUE']);
+  return { ok: true, id: id };
+}
+
+function webDeleteLuggageProfile_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.LUGGAGE_PROFILES);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Profile not found: ' + id);
+  var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() === id) {
+      sheet.getRange(i + 2, 9).setValue('FALSE');
+      return { ok: true };
+    }
+  }
+  throw new Error('Profile not found: ' + id);
+}
+
+function webGetTripLuggage_(e) {
+  var p       = (e && e.parameter) ? e.parameter : {};
+  var tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  var ss        = getSpreadsheet();
+  var metaSheet = ss.getSheetByName(TABS.TRIP_META);
+  var selectedBagIds = [];
+  var allocationNote = '';
+  var capacityByBag  = [];
+  var overflowItems  = [];
+  var allocatedAt    = '';
+  if (metaSheet && metaSheet.getLastRow() >= 2) {
+    var rows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]).trim() === tripKey) {
+        try {
+          var raw = String(rows[i][9] || '').trim();
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            selectedBagIds = parsed.bagIds           || [];
+            allocationNote = parsed.recommendation   || '';
+            capacityByBag  = parsed.capacityByBag    || [];
+            overflowItems  = parsed.overflowItems    || [];
+            allocatedAt    = parsed.allocatedAt      || '';
+          }
+        } catch(e_) { /* ignore malformed JSON */ }
+        break;
+      }
+    }
+  }
+
+  var allProfiles = webGetLuggageProfiles_({}).profiles || [];
+  var selected    = allProfiles.filter(function(pr) { return selectedBagIds.indexOf(pr.id) !== -1; });
+
+  return { ok: true, selectedBagIds: selectedBagIds, profiles: selected,
+           allocationNote: allocationNote, capacityByBag: capacityByBag,
+           overflowItems: overflowItems, allocatedAt: allocatedAt };
+}
+
+function webSetTripLuggage_(e) {
+  var p       = (e && e.parameter) ? e.parameter : {};
+  var tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  var rawIds = (p.bagIds || '').trim();
+  var bagIds = [];
+  try {
+    var parsed = JSON.parse(rawIds);
+    bagIds = Array.isArray(parsed) ? parsed : [];
+  } catch(e_) {
+    bagIds = rawIds ? rawIds.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+  }
+
+  var ss        = getSpreadsheet();
+  var metaSheet = ss.getSheetByName(TABS.TRIP_META);
+  if (!metaSheet) throw new Error('TripMeta tab not found.');
+
+  if (metaSheet.getLastRow() >= 2) {
+    var rows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]).trim() === tripKey) {
+        var existingJson = {};
+        try { existingJson = JSON.parse(String(rows[i][9] || '{}')) || {}; } catch(e_) {}
+        existingJson.bagIds = bagIds;
+        metaSheet.getRange(i + 2, 10).setValue(JSON.stringify(existingJson));
+        return { ok: true };
+      }
+    }
+  }
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  metaSheet.appendRow([tripKey, '', '', today, '', '', 2, '', '', JSON.stringify({ bagIds: bagIds })]);
+  return { ok: true };
+}
+
+function webAllocateLuggage_(e) {
+  var p       = (e && e.parameter) ? e.parameter : {};
+  var tripKey = (p.tripKey || '').trim();
+  if (!tripKey) throw new Error('tripKey is required');
+
+  var luggageData = webGetTripLuggage_(e);
+  if (!luggageData.selectedBagIds || !luggageData.selectedBagIds.length) {
+    throw new Error('No bags selected for this trip. Select bags first.');
+  }
+  var bags = luggageData.profiles;
+
+  var packResult = webGetPacking_(e);
+  var items = packResult.items || [];
+  if (!items.length) throw new Error('No packing items found for this trip. Generate a packing list first.');
+
+  var tripLabel = tripKey.indexOf('|') >= 0 ? tripKey.substring(tripKey.indexOf('|') + 1) : tripKey;
+
+  var bagLines = bags.map(function(b) {
+    var line = '- ' + b.id + ' (' + b.owner + '): ' + b.name + ' ' + b.capacityL + 'L';
+    if (b.maxWeightKg) line += ' [max ' + b.maxWeightKg + 'kg]';
+    if (b.dimensionsCm) line += ' [' + b.dimensionsCm + 'cm]';
+    return line;
+  }).join('\n');
+
+  var itemLines = items.map(function(it) {
+    var vol = (it.volumeL != null && it.volumeL !== '') ? String(it.volumeL) : 'null';
+    return '- ' + it.id + ' | ' + it.person + ' | ' + it.category + ' | ' + it.item + ' | volumeL=' + vol;
+  }).join('\n');
+
+  var prompt = 'You are VERA, a smart packing organizer. Allocate packing items to bags for the trip: ' + tripLabel + '.\n\n' +
+    'BAGS:\n' + bagLines + '\n\n' +
+    'PACKING ITEMS (id | person | category | item | existing volumeL):\n' + itemLines + '\n\n' +
+    'RULES:\n' +
+    '- Assign each item to exactly one bag ID from the list above.\n' +
+    '- Prefer ahmed\'s items in ahmed\'s bags, victoria\'s in victoria\'s. Shared items go wherever space allows.\n' +
+    '- Estimate volumeL for each item if null (be realistic: T-shirt=0.3L, jeans=1.5L, dress=0.8L, sneakers=2L, dress shoes=2.5L, toiletry kit=1.5L, laptop=3L, phone charger=0.2L, medicine pouch=0.3L, jacket=2L, swimwear=0.5L, shorts=0.5L).\n' +
+    '- Do NOT exceed any bag\'s capacity. If items don\'t fit, set bagId to "overflow".\n' +
+    '- Consider weight limits if specified.\n' +
+    '- After allocating, write a short recommendation (1-3 sentences): capacity usage per bag, whether any bag is over/under-utilized, and a practical suggestion (downsize, upgrade, or you\'re good).\n\n' +
+    'CRITICAL: Respond with raw JSON only — no markdown, no explanation, no code fences.\n' +
+    '{\n' +
+    '  "assignments": [\n' +
+    '    {"id": "PACK-xxx", "bagId": "BAG-xxx", "volumeL": 0.9},\n' +
+    '    ...\n' +
+    '  ],\n' +
+    '  "recommendation": "..."\n' +
+    '}';
+
+  var rawText = callClaude_(prompt);
+  var allocation = parseAllocationResponse_(rawText);
+
+  var bagTotals = {};
+  bags.forEach(function(b) { bagTotals[b.id] = { usedL: 0, totalL: b.capacityL, name: b.name, owner: b.owner }; });
+  var overflowItems = [];
+  allocation.assignments.forEach(function(a) {
+    if (a.bagId === 'overflow') { overflowItems.push(a.id); return; }
+    if (bagTotals[a.bagId]) bagTotals[a.bagId].usedL += (parseFloat(a.volumeL) || 0);
+  });
+  var capacityByBag = Object.keys(bagTotals).map(function(bid) {
+    var b   = bagTotals[bid];
+    var pct = b.totalL > 0 ? Math.round((b.usedL / b.totalL) * 100) : 0;
+    return { bagId: bid, name: b.name, owner: b.owner, usedL: Math.round(b.usedL * 10) / 10, totalL: b.totalL, pct: pct };
+  });
+
+  // Write volumeL + bagId back to PackingItems sheet
+  var ss        = getSpreadsheet();
+  var packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
+  if (packSheet && packSheet.getLastRow() >= 2) {
+    var packData = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, 1).getValues();
+    var assignMap = {};
+    allocation.assignments.forEach(function(a) { assignMap[a.id] = a; });
+    for (var ri = 0; ri < packData.length; ri++) {
+      var rid = String(packData[ri][0]).trim();
+      if (assignMap[rid]) {
+        packSheet.getRange(ri + 2, 9).setValue(assignMap[rid].volumeL || '');  // col I: Volume L
+        packSheet.getRange(ri + 2, 10).setValue(assignMap[rid].bagId  || '');  // col J: Bag ID
+      }
+    }
+  }
+
+  // Persist allocation result to TripMeta luggage JSON
+  var metaSheet = ss.getSheetByName(TABS.TRIP_META);
+  if (metaSheet && metaSheet.getLastRow() >= 2) {
+    var metaRows = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+    for (var mi = 0; mi < metaRows.length; mi++) {
+      if (String(metaRows[mi][0]).trim() === tripKey) {
+        var existing = {};
+        try { existing = JSON.parse(String(metaRows[mi][9] || '{}')); } catch(e_) {}
+        existing.recommendation = allocation.recommendation;
+        existing.capacityByBag  = capacityByBag;
+        existing.overflowItems  = overflowItems;
+        existing.allocatedAt    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+        metaSheet.getRange(mi + 2, 10).setValue(JSON.stringify(existing));
+        break;
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    assignments:    allocation.assignments,
+    recommendation: allocation.recommendation,
+    capacityByBag:  capacityByBag,
+    overflowItems:  overflowItems,
+  };
+}
+
+function parseAllocationResponse_(rawContent) {
+  try {
+    var cleaned = (rawContent || '').trim()
+      .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    var start = cleaned.indexOf('{');
+    var end   = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('No JSON object found');
+    var parsed = JSON.parse(cleaned.substring(start, end + 1));
+    return {
+      assignments:    Array.isArray(parsed.assignments)  ? parsed.assignments  : [],
+      recommendation: String(parsed.recommendation || ''),
+    };
+  } catch(err) {
+    Logger.log('parseAllocationResponse_ failed: ' + err.message);
+    return { assignments: [], recommendation: '' };
+  }
 }
 
 // ---- Trip Recommendations (Issue #73) --------------------------------------
