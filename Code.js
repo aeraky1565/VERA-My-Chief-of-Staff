@@ -96,8 +96,6 @@ const TABS = {
   NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log
   HABITS:     'Habits',    // Habit definitions (Issue #179)
   HABIT_LOG:  'HabitLog',  // Per-day habit completion log (Issue #179)
-  MEMORY_LOG:      'Memory Log',      // Longitudinal event log (Memory.js)
-  MEMORY_SNAPSHOT: 'Memory Snapshot', // Weekly metric snapshots (Memory.js)
 };
 
 // ---- Column Headers --------------------------------------------------------

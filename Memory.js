@@ -53,17 +53,7 @@ function appendMemoryEvent_(type, who, title, detail, context) {
 
     var ss    = getSpreadsheet();
     var sheet = ss.getSheetByName(TABS.MEMORY_LOG);
-    if (!sheet) {
-      sheet = ss.insertSheet(TABS.MEMORY_LOG);
-      sheet.getRange(1, 1, 1, MEMORY_LOG_HEADERS.length).setValues([MEMORY_LOG_HEADERS]);
-      sheet.setColumnWidth(1, 120);
-      sheet.setColumnWidth(3, 120);
-      sheet.setColumnWidth(4, 90);
-      sheet.setColumnWidth(5, 200);
-      sheet.setColumnWidth(6, 250);
-      sheet.setColumnWidth(7, 140);
-      sheet.hideSheet();
-    }
+    if (!sheet) return; // tab not set up — skip silently
 
     var tz        = Session.getScriptTimeZone();
     var now       = new Date();
@@ -122,11 +112,7 @@ function writeWeeklySnapshot_() {
 
     // ── Ensure snapshot sheet exists ──────────────────────────────────────────
     var snapSheet = ss.getSheetByName(TABS.MEMORY_SNAPSHOT);
-    if (!snapSheet) {
-      snapSheet = ss.insertSheet(TABS.MEMORY_SNAPSHOT);
-      snapSheet.getRange(1, 1, 1, MEMORY_SNAPSHOT_HEADERS.length).setValues([MEMORY_SNAPSHOT_HEADERS]);
-      snapSheet.hideSheet();
-    }
+    if (!snapSheet) return; // tab not set up — skip silently
 
     // ── Dedup: skip if this week already snapshotted ──────────────────────────
     if (snapSheet.getLastRow() >= 2) {
