@@ -3,3 +3,5 @@
 
 # Node / build artifacts (if any)
 node_modules/
+node_modules/
+docs/_app.jsx
