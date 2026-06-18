@@ -2107,6 +2107,32 @@ function morningNudge() {
  *   - Write auto-counts (Tasks/Calendar/Flags) into the new Metrics tab
  *   - Clear the old [AUTO] rows from the Summaries tab (which now holds external data)
  */
+/**
+ * sortTabsAlphabetically — run once from the Apps Script editor.
+ * Moves Config → position 0, Flags → position 1, then sorts all remaining
+ * tabs alphabetically (case-insensitive) in positions 2+.
+ */
+function sortTabsAlphabetically() {
+  var ss = getSpreadsheet();
+  var sheets = ss.getSheets();
+
+  // Separate pinned tabs from the rest
+  var pinned = ['Config', 'Flags'];
+  var rest = sheets
+    .map(function(s) { return s.getName(); })
+    .filter(function(n) { return pinned.indexOf(n) === -1; })
+    .sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
+
+  var ordered = pinned.concat(rest);
+
+  ordered.forEach(function(name, idx) {
+    var sheet = ss.getSheetByName(name);
+    if (sheet) ss.setActiveSheet(sheet), ss.moveActiveSheet(idx + 1);
+  });
+
+  Logger.log('Tabs sorted. Order: ' + ordered.join(', '));
+}
+
 function addMetricsTab() {
   const ss = getSpreadsheet();
   ensureSheet(ss, TABS.METRICS, METRIC_HEADERS);
