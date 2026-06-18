@@ -3498,6 +3498,7 @@ function webSetTripMeta_(e) {
     2,    // Trip Travellers default
     (p.outboundMode || '').trim(),
     (p.returnMode   || '').trim(),
+    '',   // Luggage JSON
   ]]);
   return { ok: true };
 }
