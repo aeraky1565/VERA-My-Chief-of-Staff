@@ -13,6 +13,42 @@ Write-Host '  VERA Push' -ForegroundColor Cyan
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
 
+# ---- Step 0: Compile dashboard JSX → plain JS -----------------------------
+Write-Host '[0/2] Compiling dashboard (JSX → JS)...' -ForegroundColor Yellow
+
+# Only recompile if index.html is newer than _app.js
+$indexHtml = 'docs\index.html'
+$appJs     = 'docs\_app.js'
+$appJsx    = 'docs\_app.jsx'
+
+# Extract JSX from index.html into _app.jsx
+node -e "
+const fs = require('fs');
+const html = fs.readFileSync('$indexHtml', 'utf-8');
+const match = html.match(/<script type=\"text\/babel\">([\s\S]*?)<\/script>\s*<\/body>/);
+if (match) { fs.writeFileSync('$appJsx', match[1], 'utf-8'); process.exit(0); }
+else { console.error('No <script type=text/babel> found in index.html'); process.exit(1); }
+"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'ERROR: Could not extract JSX from index.html.' -ForegroundColor Red
+    Read-Host 'Press Enter to exit'
+    exit 1
+}
+
+babel "$appJsx" -o "$appJs"
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'ERROR: Babel compile failed.' -ForegroundColor Red
+    Write-Host 'Make sure Babel is installed: npm install -g @babel/core @babel/cli @babel/plugin-transform-react-jsx' -ForegroundColor Red
+    Read-Host 'Press Enter to exit'
+    exit 1
+}
+
+Remove-Item $appJsx -ErrorAction SilentlyContinue
+Write-Host 'Dashboard compiled.' -ForegroundColor Green
+Write-Host ''
+
 # ---- Step 1: Push to Google Apps Script via clasp --------------------------
 Write-Host '[1/2] Pushing to Google Apps Script...' -ForegroundColor Yellow
 
