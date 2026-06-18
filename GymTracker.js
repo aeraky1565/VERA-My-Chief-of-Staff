@@ -280,15 +280,3 @@ function backfillGymSessions_(lookbackDays) {
 function testBackfillGymSessions() {
   Logger.log(JSON.stringify(backfillGymSessions_(30)));
 }
-
-function testGymLogRead() {
-  var sheet = getSpreadsheet().getSheetByName(TABS.GYM_LOG);
-  if (!sheet || sheet.getLastRow() < 2) { Logger.log('No data'); return; }
-  var data = sheet.getRange(2, 1, Math.min(sheet.getLastRow() - 1, 20), GYM_LOG_HEADERS.length).getValues();
-  data.forEach(function(r, i) {
-    Logger.log('Row ' + (i+2) + ': id=' + JSON.stringify(r[0]) +
-      ' title=' + JSON.stringify(r[1]) +
-      ' date=' + JSON.stringify(r[2]) + ' (type=' + (r[2] instanceof Date ? 'Date' : typeof r[2]) + ')' +
-      ' attended=' + JSON.stringify(r[3]));
-  });
-}
