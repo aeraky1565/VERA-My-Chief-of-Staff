@@ -97,6 +97,10 @@ function checkAndSendTravelDayBriefings_() {
  * @param {Array}  todayItems  — raw Itinerary sheet rows for today
  */
 function sendTravelDayBriefing_(tripKey, todayItems) {
+  if (!isNotifEnabled_('travel_day_briefing')) {
+    Logger.log('sendTravelDayBriefing_: skipped — travel_day_briefing disabled');
+    return;
+  }
   var tz        = Session.getScriptTimeZone();
   var parts     = tripKey.split('|');
   var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
@@ -125,11 +129,14 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
   var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems);
 
-  MailApp.sendEmail(recipients.join(','), subject, plainText, {
-    name:     'Travel Briefing',
-    htmlBody: htmlBody,
-  });
-  Logger.log('TravelDayBriefing: sent for "' + tripLabel + '" to ' + recipients.join(', '));
+  var travelCh = getNotifChannel_('travel_day_briefing');
+  if (travelCh === 'email') {
+    MailApp.sendEmail(recipients.join(','), subject, plainText, { name: 'Travel Briefing', htmlBody: htmlBody });
+    Logger.log('TravelDayBriefing: sent email for "' + tripLabel + '" to ' + recipients.join(', '));
+  } else {
+    sendSlack_(travelCh, '✈️ *' + subject + '*\n\n' + plainText);
+    Logger.log('TravelDayBriefing: sent Slack/' + travelCh + ' for "' + tripLabel + '"');
+  }
 }
 
 // ---------------------------------------------------------------------------

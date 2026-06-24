@@ -381,6 +381,10 @@ function doGet(e) {
       case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));
       case 'update_trip_gift':  return jsonOut_(webUpdateTripGift_(e));
       case 'delete_trip_gift':  return jsonOut_(webDeleteTripGift_(e));
+      // Notification Map (Issue #188)
+      case 'get_notification_map': return jsonOut_(webGetNotificationMap_());
+      case 'set_notif_enabled':    return jsonOut_(webSetNotifEnabled_(e));
+      case 'set_notif_channel':    return jsonOut_(webSetNotifChannel_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -8682,4 +8686,71 @@ function webDeleteTripGift_(e) {
     }
   }
   return { ok: false, error: 'not found' };
+}
+
+// ---- Notification Map (Issue #188) -----------------------------------------
+function webGetNotificationMap_() {
+  var config = getConfigValues();
+  var notifications = NOTIF_REGISTRY.map(function(n) {
+    var enabledVal = config['notif_' + n.key + '_enabled'];
+    var enabled = enabledVal === undefined || String(enabledVal).toUpperCase() !== 'FALSE';
+    var channelOverride = config['notif_' + n.key + '_channel'];
+    return {
+      key: n.key, label: n.label, emoji: n.emoji, category: n.category,
+      channel: channelOverride || n.channel, description: n.description,
+      enabled: enabled, locked: n.locked
+    };
+  });
+  return { ok: true, notifications: notifications };
+}
+
+function webSetNotifEnabled_(e) {
+  var p = e.parameter || {};
+  var key = (p.key || '').trim();
+  var enabled = p.enabled;
+  if (!key) return { ok: false, error: 'key required' };
+  var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
+  if (!entry) return { ok: false, error: 'unknown key' };
+  if (entry.locked) return { ok: false, error: 'locked' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+  if (!sheet) return { ok: false, error: 'Config sheet not found' };
+  var configKey = 'notif_' + key + '_enabled';
+  var value = (enabled === 'true' || enabled === true) ? 'TRUE' : 'FALSE';
+  var data = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 2).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === configKey) {
+      sheet.getRange(i + 2, 2).setValue(value);
+      _configCache_ = null;
+      return { ok: true };
+    }
+  }
+  sheet.appendRow([configKey, value]);
+  _configCache_ = null;
+  return { ok: true };
+}
+
+function webSetNotifChannel_(e) {
+  var p = e.parameter || {};
+  var key = (p.key || '').trim();
+  var channel = (p.channel || '').trim();
+  var valid = ['vera-chat', 'vera-notifications', 'vera-logs', 'email'];
+  if (!key) return { ok: false, error: 'key required' };
+  if (valid.indexOf(channel) === -1) return { ok: false, error: 'invalid channel' };
+  var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
+  if (!entry) return { ok: false, error: 'unknown key' };
+  if (entry.locked) return { ok: false, error: 'locked' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+  if (!sheet) return { ok: false, error: 'Config sheet not found' };
+  var configKey = 'notif_' + key + '_channel';
+  var data = sheet.getRange(2, 1, Math.max(sheet.getLastRow() - 1, 1), 2).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === configKey) {
+      sheet.getRange(i + 2, 2).setValue(channel);
+      _configCache_ = null;
+      return { ok: true };
+    }
+  }
+  sheet.appendRow([configKey, channel]);
+  _configCache_ = null;
+  return { ok: true };
 }

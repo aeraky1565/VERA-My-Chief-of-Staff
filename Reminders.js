@@ -120,7 +120,8 @@ function checkErgonomicBreak_(hour, isWeekday, cfg) {
     'Desk break reminder',
     '⏰ Desk break time!\n\n' +
     'You\'ve been seated for ~60 minutes. Stand up, clasp your hands behind your head, ' +
-    'open your chest — thoracic stretch for 60 seconds. Your spine will thank you. 🙏'
+    'open your chest — thoracic stretch for 60 seconds. Your spine will thank you. 🙏',
+    'desk_break'
   );
 }
 
@@ -142,7 +143,8 @@ function checkHydration_(hour, isWeekday, cfg) {
     'Hydration check',
     '💧 Hydration check!\n\n' +
     'Have you had water in the last 2 hours? Grab a glass now — ' +
-    'staying ahead of thirst keeps energy and focus up.'
+    'staying ahead of thirst keeps energy and focus up.',
+    'water_break'
   );
 }
 
@@ -183,7 +185,8 @@ function checkCalendarOpportunity_(now, hour, isWeekday, cfg) {
   sendNudge_(
     ruleKey,
     'Open calendar window',
-    '📅 You have a free block of ~90 min with no meetings coming up.\n\n' + suggestion
+    '📅 You have a free block of ~90 min with no meetings coming up.\n\n' + suggestion,
+    'calendar_opportunity'
   );
 }
 
@@ -247,6 +250,11 @@ function checkEveningMobility_(now, hour, cfg) {
 
   if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
 
+  if (!isNotifEnabled_('gym_checkin')) {
+    Logger.log('checkEveningMobility_: skipped — gym_checkin disabled');
+    return;
+  }
+
   // Evening check-in goes to #vera-chat (bidirectional) with Yes/No buttons when Slack is configured
   if (isSlackConfigured_()) {
     sendEveningCheckinSlack_();
@@ -257,7 +265,8 @@ function checkEveningMobility_(now, hour, cfg) {
       ruleKey,
       'Evening mobility check',
       '🧘 Evening check-in: did you get your mobility or movement session in today?\n\n' +
-      'Even 10 minutes of stretching counts. Make it happen before the night winds down!'
+      'Even 10 minutes of stretching counts. Make it happen before the night winds down!',
+      'evening_mobility'
     );
   }
 }
@@ -317,7 +326,8 @@ function checkBillsDue_(now, hour, cfg) {
     sendNudge_(
       ruleKey,
       'Bill reminder: ' + billName,
-      '💰 Bill reminder: ' + billName + amtStr + ' is ' + dayStr + '.\n\nMark it paid in VERA once done.'
+      '💰 Bill reminder: ' + billName + amtStr + ' is ' + dayStr + '.\n\nMark it paid in VERA once done.',
+      'bill_due'
     );
   });
 }
@@ -376,7 +386,8 @@ function checkTripPackingReminder_(now, hour, cfg) {
       ruleKey,
       trip.label + ' — packing list empty',
       '🧳 Your ' + trip.label + ' trip is in ' + daysAway + ' day' + (daysAway === 1 ? '' : 's') + '.\n\n' +
-      'Packing list isn\'t started yet! Open VERA chat and say "generate packing list for ' + trip.label + '" to get started.'
+      'Packing list isn\'t started yet! Open VERA chat and say "generate packing list for ' + trip.label + '" to get started.',
+      'packing_reminder'
     );
   });
 }
@@ -437,7 +448,8 @@ function checkGoalCheckin_(now, hour, cfg) {
     '🎯 Goal check-in!\n\n' +
     'These goal' + (stalledGoals.length === 1 ? '' : 's') + ' have been in progress for a while:\n\n' +
     goalList + '\n\n' +
-    'Make any moves this week? Open VERA chat to update progress or add tasks.'
+    'Make any moves this week? Open VERA chat to update progress or add tasks.',
+    'goal_checkin'
   );
 }
 
@@ -496,7 +508,8 @@ function checkHomeServiceDue_(now, hour, cfg) {
       ruleKey,
       'Home maintenance: ' + itemName,
       '🔧 Home maintenance reminder: ' + itemName + ' — ' + statusStr + '.\n\n' +
-      'Open VERA chat and say "record service for ' + itemName + '" once done.'
+      'Open VERA chat and say "record service for ' + itemName + '" once done.',
+      'home_service'
     );
   });
 }
@@ -542,7 +555,7 @@ function runExplorer_() {
     return;
   }
 
-  sendNudge_(ruleKey, 'Daily Discovery', discovery);
+  sendNudge_(ruleKey, 'Daily Discovery', discovery, 'daily_discovery');
   Logger.log('runExplorer_: discovery sent (' + discovery.length + ' chars).');
 }
 
@@ -663,28 +676,28 @@ function callClaudeExplorer_(prompt) {
  * or plain-text email fallback (CONFIG.MORNING_NUDGE_EMAIL).
  * Always records the send to the Reminders Memory tab via markSent_().
  *
- * @param {string} ruleKey - Unique key for this reminder (used for dedup)
- * @param {string} subject - Email subject line (also used as log label)
- * @param {string} message - Message body
+ * @param {string} ruleKey   - Unique key for this reminder (used for dedup)
+ * @param {string} subject  - Email subject line (also used as log label)
+ * @param {string} message  - Message body
+ * @param {string} [notifKey] - NOTIF_REGISTRY key for channel routing (Issue #188)
  */
-function sendNudge_(ruleKey, subject, message) {
+function sendNudge_(ruleKey, subject, message, notifKey) {
+  if (notifKey && !isNotifEnabled_(notifKey)) {
+    Logger.log('sendNudge_ [skipped \u2014 disabled]: ' + ruleKey);
+    return;
+  }
+  var ch = notifKey ? getNotifChannel_(notifKey) : (isSlackConfigured_() ? 'vera-notifications' : 'email');
   var channel;
-  if (isSlackConfigured_()) {
-    sendSlackNotification_(message);
-    Logger.log('sendNudge_ [Slack]: ' + ruleKey);
-    channel = 'Slack';
-  } else {
-    MailApp.sendEmail(
-      CONFIG.MORNING_NUDGE_EMAIL,
-      'VERA: ' + subject,
-      message,
-      { name: 'VERA' }
-    );
+  if (ch === 'email') {
+    MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: ' + subject, message, { name: 'VERA' });
     Logger.log('sendNudge_ [Email]: ' + ruleKey);
     channel = 'email';
+  } else {
+    sendSlack_(ch, message);
+    Logger.log('sendNudge_ [Slack/' + ch + ']: ' + ruleKey);
+    channel = ch;
   }
   markSent_(ruleKey, message);
-  // Issue #158: Log reminder delivery to #vera-logs
   try { sendSlackLog_('\u23f0 Reminder sent \u2014 ' + subject + ' [' + channel + ']'); } catch (e) {}
 }
 
