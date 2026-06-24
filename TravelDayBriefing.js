@@ -40,24 +40,55 @@ function checkAndSendTravelDayBriefings_() {
 
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.ITINERARY);
-  if (!sheet || sheet.getLastRow() < 2) return;
-
   var tz    = Session.getScriptTimeZone();
   var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
 
-  // Group rows by tripKey where Date column = today
-  // Google Sheets may auto-convert date strings to Date objects — handle both
-  var tripMap = {};
-  data.forEach(function(row) {
-    var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
-      ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
-      : String(row[4] || '').trim();
-    var tripKey = String(row[1] || '').trim();
-    if (!tripKey || rowDate !== today) return;
-    if (!tripMap[tripKey]) tripMap[tripKey] = [];
-    tripMap[tripKey].push(row);
-  });
+  // tripMap: tripKey → rows for today (may be empty array for active trips with no items today)
+  var tripMap    = {};
+  var tripRanges = {}; // tripKey → { min, max } across all itinerary rows
+
+  if (sheet && sheet.getLastRow() >= 2) {
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+    data.forEach(function(row) {
+      var tripKey = String(row[1] || '').trim();
+      if (!tripKey) return;
+      var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
+        ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
+        : String(row[4] || '').trim();
+      if (!rowDate || !/^\d{4}-\d{2}-\d{2}$/.test(rowDate)) return;
+      // Track date range for this trip
+      if (!tripRanges[tripKey]) tripRanges[tripKey] = { min: rowDate, max: rowDate };
+      if (rowDate < tripRanges[tripKey].min) tripRanges[tripKey].min = rowDate;
+      if (rowDate > tripRanges[tripKey].max) tripRanges[tripKey].max = rowDate;
+      // Collect today's rows
+      if (rowDate === today) {
+        if (!tripMap[tripKey]) tripMap[tripKey] = [];
+        tripMap[tripKey].push(row);
+      }
+    });
+    // Include active trips where today falls in their date range but no rows for today
+    Object.keys(tripRanges).forEach(function(tripKey) {
+      var r = tripRanges[tripKey];
+      if (!tripMap[tripKey] && today >= r.min && today <= r.max) {
+        tripMap[tripKey] = [];
+      }
+    });
+  }
+
+  // Also catch calendar-based trips with no itinerary rows at all
+  try {
+    var calCfg   = readPTOConfig_();
+    var calTrips = getUpcomingTravel_(calCfg);
+    calTrips.forEach(function(t) {
+      if (t.isExtendedFamily) return;
+      var key = t.startDate + '|' + t.label;
+      if (!tripMap[key] && today >= t.startDate && today <= t.endDate) {
+        tripMap[key] = [];
+      }
+    });
+  } catch (calErr) {
+    Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);
+  }
 
   var tripKeys = Object.keys(tripMap);
   if (!tripKeys.length) {
@@ -236,7 +267,10 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
  * @returns {string} HTML string, or '' if items is empty
  */
 function buildTravelScheduleSection_(items) {
-  if (!items || !items.length) return '';
+  if (!items || !items.length) {
+    return '<p style="margin:0 0 16px;font-size:13px;color:#888;font-style:italic;">' +
+      "Today's activities haven't been logged yet — add them in the VERA Travel tab.</p>";
+  }
   var BLUE = '#1565c0';
 
   function typeIcon(t) {
@@ -348,23 +382,28 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items) {
     '----------------',
   ];
 
-  items.forEach(function(row) {
-    var type   = String(row[2] || '').trim();
-    var title  = String(row[3] || '').trim() || '(untitled)';
-    var startT = String(row[5] || '').trim();
-    var endT   = String(row[6] || '').trim();
-    var loc    = String(row[7] || '').trim();
-    var notes  = String(row[8] || '').trim();
-    var meta   = {};
-    if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch(e_) {} }
+  if (!items || !items.length) {
+    lines.push("Today's activities haven't been logged yet.");
+    lines.push('Add them in the VERA Travel tab \u2192 Itinerary.');
+  } else {
+    items.forEach(function(row) {
+      var type   = String(row[2] || '').trim();
+      var title  = String(row[3] || '').trim() || '(untitled)';
+      var startT = String(row[5] || '').trim();
+      var endT   = String(row[6] || '').trim();
+      var loc    = String(row[7] || '').trim();
+      var notes  = String(row[8] || '').trim();
+      var meta   = {};
+      if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch(e_) {} }
 
-    var time = (startT || 'All day') + (endT && endT !== startT ? ' \u2013 ' + endT : '');
-    var line = time + '  [' + (type || 'event') + ']  ' + title;
-    if (loc)  line += '\n  Location: ' + loc;
-    if (meta.confirmationNumber) line += '\n  Conf#: ' + String(meta.confirmationNumber);
-    if (notes) line += '\n  Note: ' + notes;
-    lines.push(line);
-  });
+      var time = (startT || 'All day') + (endT && endT !== startT ? ' \u2013 ' + endT : '');
+      var line = time + '  [' + (type || 'event') + ']  ' + title;
+      if (loc)  line += '\n  Location: ' + loc;
+      if (meta.confirmationNumber) line += '\n  Conf#: ' + String(meta.confirmationNumber);
+      if (notes) line += '\n  Note: ' + notes;
+      lines.push(line);
+    });
+  }
 
   lines.push('', 'Have a great trip!');
   return lines.join('\n');
