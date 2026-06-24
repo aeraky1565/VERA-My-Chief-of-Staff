@@ -385,6 +385,9 @@ function doGet(e) {
       case 'get_notification_map': return jsonOut_(webGetNotificationMap_());
       case 'set_notif_enabled':    return jsonOut_(webSetNotifEnabled_(e));
       case 'set_notif_channel':    return jsonOut_(webSetNotifChannel_(e));
+      // Config Editor (Issue #189)
+      case 'get_config_rows':  return jsonOut_(webGetConfigRows_());
+      case 'set_config_value': return jsonOut_(webSetConfigValue_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -8751,6 +8754,45 @@ function webSetNotifChannel_(e) {
     }
   }
   sheet.appendRow([configKey, channel]);
+  _configCache_ = null;
+  return { ok: true };
+}
+
+// ---- Config Editor (Issue #189) -------------------------------------------
+
+function webGetConfigRows_() {
+  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+  if (!sheet) return { ok: false, error: 'Config sheet not found' };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true, rows: [] };
+  var data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  var rows = [];
+  data.forEach(function(row) {
+    var key = String(row[0] || '').trim();
+    if (key) rows.push({ key: key, value: String(row[1] !== undefined ? row[1] : '') });
+  });
+  return { ok: true, rows: rows };
+}
+
+function webSetConfigValue_(e) {
+  var p = e.parameter || {};
+  var key   = (p.key   || '').trim();
+  var value = (p.value !== undefined ? p.value : '');
+  if (!key) return { ok: false, error: 'key required' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+  if (!sheet) return { ok: false, error: 'Config sheet not found' };
+  var lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    var data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim() === key) {
+        sheet.getRange(i + 2, 2).setValue(value);
+        _configCache_ = null;
+        return { ok: true };
+      }
+    }
+  }
+  sheet.appendRow([key, value]);
   _configCache_ = null;
   return { ok: true };
 }
