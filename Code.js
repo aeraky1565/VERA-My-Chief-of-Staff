@@ -90,6 +90,7 @@ const TABS = {
   MEAL_PLAN:           'Meal Plan',            // Weekly dinner planner (Issue #122)
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
+  TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
   COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
   NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board
@@ -123,6 +124,7 @@ const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
+const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes']; // Issue #187
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
@@ -271,6 +273,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.ITINERARY,        ITINERARY_HEADERS);
   ensureSheet(ss, TABS.TRIP_META,        TRIP_META_HEADERS);
   ensureSheet(ss, TABS.PACKING_ITEMS,    PACKING_ITEM_HEADERS);
+  ensureSheet(ss, TABS.TRIP_GIFTS,       TRIP_GIFT_HEADERS);
   ensureSheet(ss, TABS.COUNTRIES,             COUNTRIES_HEADERS);
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);

@@ -376,6 +376,11 @@ function doGet(e) {
       case 'update_note':         return jsonOut_(webUpdateNote_(e));
       case 'delete_note':         return jsonOut_(webDeleteNote_(e));
       case 'pin_note':            return jsonOut_(webPinNote_(e));
+      // Trip Gift List (Issue #187)
+      case 'get_trip_gifts':    return jsonOut_(webGetTripGifts_(e));
+      case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));
+      case 'update_trip_gift':  return jsonOut_(webUpdateTripGift_(e));
+      case 'delete_trip_gift':  return jsonOut_(webDeleteTripGift_(e));
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {
@@ -8603,4 +8608,78 @@ function webRunHoaScan_() {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+}
+
+// ============================================================
+// Trip Gift List (Issue #187)
+// ============================================================
+
+function webGetTripGifts_(e) {
+  var tripKey = ((e.parameter || {}).tripKey || '').trim();
+  if (!tripKey) return { ok: false, error: 'tripKey required' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: true, gifts: [] };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_GIFT_HEADERS.length).getValues();
+  var gifts = data
+    .filter(function(r) { return String(r[0]).trim() && String(r[1]).trim() === tripKey; })
+    .map(function(r, i) {
+      return {
+        id:        String(r[0]).trim(),
+        tripKey:   String(r[1]).trim(),
+        recipient: String(r[2]).trim(),
+        item:      String(r[3]).trim(),
+        amount:    r[4] !== '' ? Number(r[4]) : null,
+        purchased: String(r[5]).toLowerCase() === 'yes',
+        notes:     String(r[6]).trim(),
+      };
+    });
+  return { ok: true, gifts: gifts };
+}
+
+function webAddTripGift_(e) {
+  var p = e.parameter || {};
+  var tripKey   = (p.tripKey   || '').trim();
+  var recipient = (p.recipient || '').trim();
+  var item      = (p.item      || '').trim();
+  if (!tripKey || !item) return { ok: false, error: 'tripKey and item required' };
+  var id     = 'GIFT-' + Date.now();
+  var amount = p.amount !== undefined && p.amount !== '' ? Number(p.amount) : '';
+  var sheet  = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
+  sheet.appendRow([id, tripKey, recipient, item, amount, 'No', p.notes || '']);
+  return { ok: true, id: id };
+}
+
+function webUpdateTripGift_(e) {
+  var p  = e.parameter || {};
+  var id = (p.id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'not found' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_GIFT_HEADERS.length).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() !== id) continue;
+    var row = i + 2;
+    if (p.recipient !== undefined) sheet.getRange(row, 3).setValue(p.recipient);
+    if (p.item      !== undefined) sheet.getRange(row, 4).setValue(p.item);
+    if (p.amount    !== undefined) sheet.getRange(row, 5).setValue(p.amount !== '' ? Number(p.amount) : '');
+    if (p.purchased !== undefined) sheet.getRange(row, 6).setValue(p.purchased === 'true' ? 'Yes' : 'No');
+    if (p.notes     !== undefined) sheet.getRange(row, 7).setValue(p.notes);
+    return { ok: true };
+  }
+  return { ok: false, error: 'not found' };
+}
+
+function webDeleteTripGift_(e) {
+  var id = ((e.parameter || {}).id || '').trim();
+  if (!id) return { ok: false, error: 'id required' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
+  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'not found' };
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][0]).trim() === id) {
+      sheet.deleteRow(i + 2);
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'not found' };
 }
