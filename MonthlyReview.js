@@ -384,6 +384,10 @@ function archiveMonthlyReview_(label, monthKey, reviewText, ss) {
  * Uses the same VERA dark theme as morningNudge().
  */
 function sendMonthlyReviewEmail_(label, reviewText) {
+  if (!isNotifEnabled_('monthly_review')) {
+    Logger.log('sendMonthlyReviewEmail_: skipped — monthly_review disabled');
+    return;
+  }
   var to = CONFIG.MORNING_NUDGE_EMAIL;
   if (!to) { Logger.log('sendMonthlyReviewEmail_: no recipient configured.'); return; }
 
@@ -499,10 +503,12 @@ function sendMonthlyReviewEmail_(label, reviewText) {
 
     '</table></td></tr></table></body></html>';
 
-  MailApp.sendEmail(to, '📅 ' + label + ' Life Review', reviewText, {
-    name:         'VERA',
-    htmlBody:     htmlBody,
-    inlineImages: inlineImages,
-  });
-  Logger.log('sendMonthlyReviewEmail_: sent to ' + to);
+  var reviewCh = getNotifChannel_('monthly_review');
+  if (reviewCh === 'email') {
+    MailApp.sendEmail(to, '📅 ' + label + ' Life Review', reviewText, { name: 'VERA', htmlBody: htmlBody, inlineImages: inlineImages });
+    Logger.log('sendMonthlyReviewEmail_: sent email to ' + to);
+  } else {
+    sendSlack_(reviewCh, '🌙 *' + label + ' Life Review*\n\n' + reviewText.substring(0, 3000));
+    Logger.log('sendMonthlyReviewEmail_: sent Slack/' + reviewCh);
+  }
 }

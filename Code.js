@@ -99,6 +99,51 @@ const TABS = {
   HABIT_LOG:  'HabitLog',  // Per-day habit completion log (Issue #179)
 };
 
+// ---- Notification Registry (Issue #188) ------------------------------------
+const NOTIF_REGISTRY = [
+  // Morning & Discovery
+  { key: 'morning_briefing',    label: 'Morning Briefing',      emoji: '☀️',  category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'Daily morning context digest', locked: false },
+  { key: 'daily_discovery',     label: 'Daily Discovery',       emoji: '🔍', category: 'Morning & Discovery',  channel: 'vera-notifications', description: 'VERA-curated daily interest pick', locked: false },
+  // Wellness Reminders
+  { key: 'desk_break',          label: 'Desk Break',            emoji: '🪑', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Ergonomic break reminder', locked: false },
+  { key: 'water_break',         label: 'Water Break',           emoji: '💧', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Hydration reminder', locked: false },
+  { key: 'evening_mobility',    label: 'Evening Mobility',      emoji: '🏃', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Evening mobility / stretch nudge', locked: false },
+  // Planning Nudges
+  { key: 'calendar_opportunity',label: 'Calendar Opportunity',  emoji: '📅', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Free-time block suggestion', locked: false },
+  { key: 'goal_checkin',        label: 'Goal Check-in',         emoji: '🎯', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly goal progress nudge', locked: false },
+  // Flags & Alerts
+  { key: 'flag_high',           label: 'High Urgency Flags',    emoji: '🔴', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly high-urgency flag alerts', locked: false },
+  { key: 'flag_medium',         label: 'Medium Urgency Flags',  emoji: '🟡', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly medium-urgency flag alerts', locked: false },
+  { key: 'flag_low',            label: 'Low Urgency Flags',     emoji: '🟢', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly low-urgency flag alerts', locked: false },
+  { key: 'bill_due',            label: 'Bill Due',              emoji: '💳', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Upcoming bill due reminders', locked: false },
+  { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false },
+  { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false },
+  { key: 'contract_expiry',     label: 'Contract Expiry',       emoji: '📋', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Contract approaching expiry', locked: false },
+  { key: 'coupon_expiry',       label: 'Coupon Expiry',         emoji: '🎟️',  category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Coupon or deal expiring soon', locked: false },
+  // Travel
+  { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false },
+  { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false },
+  // Routines
+  { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false },
+  { key: 'monthly_review',      label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false },
+  { key: 'usps_mail',           label: 'USPS Mail Scan',        emoji: '📬', category: 'Routines',             channel: 'vera-notifications', description: 'Daily USPS mail notification', locked: false },
+  // System Logs (locked)
+  { key: 'nightly_log',         label: 'Nightly Run Summary',   emoji: '📋', category: 'System Logs',          channel: 'vera-logs',          description: 'Nightly automation summary', locked: true },
+  { key: 'error_alerts',        label: 'Error Alerts',          emoji: '⚠️',  category: 'System Logs',          channel: 'vera-logs',          description: 'System error notifications', locked: true },
+];
+
+function isNotifEnabled_(key) {
+  var val = getConfigValues()['notif_' + key + '_enabled'];
+  return val === undefined || String(val).toUpperCase() !== 'FALSE';
+}
+
+function getNotifChannel_(key) {
+  var override = getConfigValues()['notif_' + key + '_channel'];
+  if (override) return override;
+  var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
+  return entry ? entry.channel : 'vera-notifications';
+}
+
 // ---- Column Headers --------------------------------------------------------
 const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
 const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes'];
@@ -252,6 +297,11 @@ function createSheetTabs(ss) {
     // Meal Planner (Issue #122)
     ['meal_planner_enabled', 'true'],     // set 'false' to hide Meal Plan subtab
   ];
+
+  // Seed notif_*_enabled = TRUE for each registry entry if missing (Issue #188)
+  NOTIF_REGISTRY.forEach(function(n) {
+    configDefaults.push(['notif_' + n.key + '_enabled', 'TRUE']);
+  });
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
   ensureSheet(ss, TABS.TASKS,        TASK_HEADERS);
@@ -1771,6 +1821,10 @@ function getCapacityMode_() {
  * Sender display name is set to "VERA".
  */
 function morningNudge() {
+  if (!isNotifEnabled_('morning_briefing')) {
+    Logger.log('morningNudge: skipped — morning_briefing disabled');
+    return;
+  }
   try {
     const ss    = getSpreadsheet();
     const sheet = ss.getSheetByName(TABS.FLAGS);
@@ -2089,8 +2143,14 @@ function morningNudge() {
       inlineImages: inlineImages,
     };
 
-    MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions);
-    Logger.log('Morning nudge sent (HTML): ' + total + ' active flags.');
+    var morningCh = getNotifChannel_('morning_briefing');
+    if (morningCh === 'email') {
+      MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions);
+      Logger.log('Morning nudge sent (HTML email): ' + total + ' active flags.');
+    } else {
+      sendSlack_(morningCh, plainText);
+      Logger.log('Morning nudge sent (Slack/' + morningCh + '): ' + total + ' active flags.');
+    }
 
   } catch (e) {
     Logger.log('morningNudge ERROR: ' + e.message + '\n' + (e.stack || ''));
