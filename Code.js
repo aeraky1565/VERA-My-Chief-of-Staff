@@ -1821,6 +1821,12 @@ function getCapacityMode_() {
  * Sender display name is set to "VERA".
  */
 function morningNudge() {
+  // Travel day briefing is independent — fires even if morning_briefing is disabled
+  try { checkAndSendTravelDayBriefings_(); } catch (tdbErr) {
+    Logger.log('TravelDayBriefing error (non-fatal): ' + tdbErr.message);
+    try { sendSlackLog_('❌ checkAndSendTravelDayBriefings_ failed: ' + tdbErr.message); } catch (se) {}
+  }
+
   if (!isNotifEnabled_('morning_briefing')) {
     Logger.log('morningNudge: skipped — morning_briefing disabled');
     return;
