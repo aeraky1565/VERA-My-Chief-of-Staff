@@ -408,8 +408,11 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights) {
     if (insights.dep_local && insights.arr_local) {
       lines.push('\uD83D\uDEEB Times:       ' + insights.dep_local + ' \u2192 ' + insights.arr_local);
     }
-    if (insights.sleep_tip) {
-      lines.push('\uD83D\uDCA4 Sleep tip:   ' + insights.sleep_tip);
+    if (insights.pre_trip_tip) {
+      lines.push('\uD83D\uDCC5 Before you go: ' + insights.pre_trip_tip);
+    }
+    if (insights.arrival_tip) {
+      lines.push('\uD83D\uDCA4 On arrival:    ' + insights.arrival_tip);
     }
     lines.push('');
   }
@@ -565,7 +568,8 @@ function buildTravelFlightInsightsData_(sortedItems, homeCity) {
       '  "dest_local_time": "arr time formatted as h:MM AM/PM in destination local time, or null",\n' +
       '  "tz_offset_hours": number (positive=ahead of home, negative=behind; 0 if same timezone),\n' +
       '  "tz_offset_label": "e.g. +5h or -3h or same timezone",\n' +
-      '  "sleep_tip": "1 concise sentence: east travel = stay awake approach; west = shift bedtime earlier; same tz = no adjustment needed",\n' +
+      '  "pre_trip_tip": "1 sentence: what to do in the days before departure to prepare — direction-specific (west = shift bedtime earlier, east = stay up later; say no adjustment needed if same tz)",\n' +
+      '  "arrival_tip": "1 sentence: what to do after landing to recover faster (e.g. stay awake until local bedtime, seek morning sunlight)",\n' +
       '  "distance_miles": number (great-circle miles, integer),\n' +
       '  "haul_category": "Short-haul or Medium-haul or Long-haul or Ultra-long-haul",\n' +
       '  "daynight_pct_day": integer 0-100 (% of flight time in daylight based on route and departure time),\n' +
@@ -666,12 +670,18 @@ function buildTravelFlightInsightsSection_(insights) {
 
   html += '</table>';
 
-  // 💤 Sleep tip (full width below table)
-  if (insights.sleep_tip) {
+  // Tips (full width below table)
+  if (insights.pre_trip_tip) {
     html +=
-      '<p style="margin:12px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
-      'padding:10px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
-      '💤 ' + escapeHtml_(insights.sleep_tip) + '</p>';
+      '<p style="margin:8px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
+      'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
+      '📅 <strong>Before you go:</strong> ' + escapeHtml_(insights.pre_trip_tip) + '</p>';
+  }
+  if (insights.arrival_tip) {
+    html +=
+      '<p style="margin:6px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
+      'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
+      '💤 <strong>On arrival:</strong> ' + escapeHtml_(insights.arrival_tip) + '</p>';
   }
 
   return html;
