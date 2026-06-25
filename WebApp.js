@@ -3190,6 +3190,9 @@ function isItineraryCalendarRelevant_(title, location, tripLabel) {
     if (titleLower.indexOf(HOTEL_WORDS[i]) !== -1) return { include: true, type: 'hotel' };
   }
 
+  // 4a. Cruise stay prefix
+  if (titleLower.indexOf('cruise stay') !== -1) return { include: true, type: 'cruise' };
+
   // 5. Transport keywords
   for (i = 0; i < TRANSPORT_WORDS.length; i++) {
     if (titleLower.indexOf(TRANSPORT_WORDS[i]) !== -1) return { include: true, type: 'transport' };
