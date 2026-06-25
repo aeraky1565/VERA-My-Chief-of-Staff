@@ -148,7 +148,13 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   // To add a new section, implement buildXxxSection_(data) → HTML string,
   // then push { id: 'xxx', builder: buildXxxSection_, data: payload } here.
   // The HTML assembler (buildTravelDayEmailHtml_) never needs to change.
+  // Compute flight insights once — feeds both HTML sections pipeline and plain-text path
+  var cfg      = getConfigValues();
+  var homeCity = String(cfg['weather_location'] || '').trim();
+  var insights = buildTravelFlightInsightsData_(sortedItems, homeCity);
+
   var sections = [
+    { id: 'flight_insights', builder: buildTravelFlightInsightsSection_, data: insights },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
     { id: 'schedule', builder: buildTravelScheduleSection_, data: sortedItems },
@@ -158,7 +164,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var recipients = getTravelDayRecipients_(tripKey);
   var subject    = '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
-  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems);
+  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights);
 
   var travelCh = getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
@@ -370,17 +376,46 @@ function getTravelDayRecipients_(tripKey) {
 // ---------------------------------------------------------------------------
 
 /**
- * buildTravelDayPlainText_(tripLabel, dateLabel, items)
- * Plain-text fallback for email clients that don't render HTML.
+ * buildTravelDayPlainText_(tripLabel, dateLabel, items, insights)
+ * Plain-text fallback for email clients that don't render HTML, and for Slack.
+ * @param {Object|null} insights  — optional result from buildTravelFlightInsightsData_()
  */
-function buildTravelDayPlainText_(tripLabel, dateLabel, items) {
+function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights) {
   var lines = [
     '\u2708\uFE0F Travel Day \u2014 ' + tripLabel,
     dateLabel,
     '',
-    "TODAY'S SCHEDULE",
-    '----------------',
   ];
+
+  // ── Useful to Know block ──────────────────────────────────────────────────
+  if (insights) {
+    lines.push('USEFUL TO KNOW');
+    lines.push('--------------');
+    if (insights.origin_code && insights.dest_code) {
+      lines.push('\u23F0 Timezone:    ' + insights.origin_code + ' \u2192 ' +
+        insights.dest_code + '  ' + (insights.tz_offset_label || ''));
+    }
+    if (insights.distance_miles) {
+      lines.push('\uD83D\uDCCF Distance:    ~' +
+        Number(insights.distance_miles).toLocaleString() + ' miles' +
+        (insights.haul_category ? ' \u00B7 ' + insights.haul_category : ''));
+    }
+    if (insights.daynight_pct_day != null) {
+      var filled = Math.round(insights.daynight_pct_day / 10);
+      var bar    = '\u2588'.repeat(filled) + '\u2591'.repeat(10 - filled);
+      lines.push('\uD83C\uDF17 Your flight: ' + bar + '  ' + insights.daynight_pct_day + '% daytime');
+    }
+    if (insights.dep_local && insights.arr_local) {
+      lines.push('\uD83D\uDEEB Times:       ' + insights.dep_local + ' \u2192 ' + insights.arr_local);
+    }
+    if (insights.sleep_tip) {
+      lines.push('\uD83D\uDCA4 Sleep tip:   ' + insights.sleep_tip);
+    }
+    lines.push('');
+  }
+
+  lines.push("TODAY'S SCHEDULE");
+  lines.push('----------------');
 
   if (!items || !items.length) {
     lines.push("Today's activities haven't been logged yet.");
@@ -454,6 +489,192 @@ function webSendTravelBriefing_(e) {
     Logger.log('webSendTravelBriefing_ error: ' + err.message);
     return { ok: false, error: err.message };
   }
+}
+
+// ---------------------------------------------------------------------------
+
+
+// ---------------------------------------------------------------------------
+// Flight Insights ("Useful to Know") section — Issue #195
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelFlightInsightsData_(sortedItems, homeCity)
+ *
+ * Calls Claude to compute timezone, distance, day-night ratio, and local times
+ * for the first flight found in today's itinerary items.
+ *
+ * Returns a parsed insights object or null (on error / no flight / disabled).
+ * Called once in sendTravelDayBriefing_() and threaded to both HTML + plain-text.
+ *
+ * @param {Array}  sortedItems  — today's Itinerary rows sorted by start time
+ * @param {string} homeCity     — from Config 'weather_location', e.g. "Washington DC"
+ * @returns {Object|null}
+ */
+function buildTravelFlightInsightsData_(sortedItems, homeCity) {
+  try {
+    var cfg = getConfigValues();
+    if (String(cfg['sleep_tz_advisor_enabled'] || 'true').toLowerCase() === 'false') {
+      return null;
+    }
+
+    // Find first flight row
+    var flight = null;
+    for (var i = 0; i < sortedItems.length; i++) {
+      var t = String(sortedItems[i][2] || '').toLowerCase().trim();
+      if (t === 'flight' || t === 'plane') { flight = sortedItems[i]; break; }
+    }
+    if (!flight) return null;
+
+    var meta = {};
+    if (flight[9]) { try { meta = JSON.parse(String(flight[9])); } catch(e_) {} }
+
+    // Extract IATA codes: prefer meta.origin/meta.dest, fall back to location field
+    function iataFromLocation(loc) {
+      var codes = (loc || '').match(/\b([A-Z]{3})\b/g) || [];
+      return codes;
+    }
+    var locCodes = iataFromLocation(String(flight[7] || ''));
+    var origin   = meta.origin || locCodes[0] || null;
+    var dest     = meta.dest   || (locCodes.length > 1 ? locCodes[locCodes.length - 1] : null);
+
+    var depTime  = meta.dep_scheduled || String(flight[5] || '').trim();
+    var arrTime  = meta.arr_scheduled || String(flight[6] || '').trim();
+    var flightDate = (function() {
+      var d = flight[4];
+      if (d instanceof Date && !isNaN(d.getTime())) {
+        return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      }
+      return String(d || '').trim();
+    }());
+
+    var prompt =
+      'You are a flight insights assistant. A traveler is flying today.\n' +
+      'Origin airport: ' + (origin || 'unknown') + '\n' +
+      'Destination airport: ' + (dest || 'unknown') + '\n' +
+      'Home city (for timezone reference): ' + (homeCity || 'unknown') + '\n' +
+      'Flight date: ' + (flightDate || 'today') + '\n' +
+      (depTime ? 'Departure time (local to origin airport): ' + depTime + '\n' : '') +
+      (arrTime ? 'Arrival time (local to destination airport): ' + arrTime + '\n' : '') +
+      'Home IANA timezone: ' + Session.getScriptTimeZone() + '\n\n' +
+      'Return ONLY a valid JSON object with exactly these fields (no explanation):\n' +
+      '{\n' +
+      '  "origin_code": "IATA code or null",\n' +
+      '  "origin_local_time": "dep time formatted as h:MM AM/PM in origin local time, or null",\n' +
+      '  "dest_code": "IATA code or null",\n' +
+      '  "dest_local_time": "arr time formatted as h:MM AM/PM in destination local time, or null",\n' +
+      '  "tz_offset_hours": number (positive=ahead of home, negative=behind; 0 if same timezone),\n' +
+      '  "tz_offset_label": "e.g. +5h or -3h or same timezone",\n' +
+      '  "sleep_tip": "1 concise sentence: east travel = stay awake approach; west = shift bedtime earlier; same tz = no adjustment needed",\n' +
+      '  "distance_miles": number (great-circle miles, integer),\n' +
+      '  "haul_category": "Short-haul or Medium-haul or Long-haul or Ultra-long-haul",\n' +
+      '  "daynight_pct_day": integer 0-100 (% of flight time in daylight based on route and departure time),\n' +
+      '  "dep_local": "e.g. 10:30 AM (IAD) or null",\n' +
+      '  "arr_local": "e.g. 11:45 PM (LHR) or null"\n' +
+      '}\n' +
+      'Haul categories: Short-haul <1500 mi, Medium-haul 1500-3500 mi, Long-haul 3500-7000 mi, Ultra-long-haul >7000 mi.';
+
+    var result = callClaudeJson_(prompt, null);
+    if (!result || typeof result !== 'object') return null;
+
+    // Attach raw offset for recovery-day calculations by the dashboard card
+    if (typeof result.tz_offset_hours !== 'number') result.tz_offset_hours = 0;
+    return result;
+
+  } catch (err) {
+    Logger.log('buildTravelFlightInsightsData_ error (non-fatal): ' + err.message);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelFlightInsightsSection_(insights)
+ *
+ * HTML section builder for the "Useful to Know" panel in the travel day email.
+ * Registered in the sections pipeline as { id: 'flight_insights', builder: buildTravelFlightInsightsSection_, data: insights }.
+ *
+ * @param {Object|null} insights  — result from buildTravelFlightInsightsData_(), or null
+ * @returns {string} HTML string, or '' if insights is null
+ */
+function buildTravelFlightInsightsSection_(insights) {
+  if (!insights) return '';
+
+  var BLUE  = '#1565c0';
+  var DARK  = '#111111';
+  var GREY  = '#555555';
+  var LGREY = '#888888';
+
+  var html =
+    '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+    'letter-spacing:1.5px;text-transform:uppercase;">Useful to Know</p>';
+
+  // Helper: one row in the insights table
+  function row(emoji, label, value) {
+    if (!value) return '';
+    return (
+      '<tr>' +
+      '<td style="padding:4px 8px 4px 0;font-size:13px;width:20px;vertical-align:top;">' + emoji + '</td>' +
+      '<td style="padding:4px 8px 4px 0;font-size:12px;color:' + LGREY + ';white-space:nowrap;vertical-align:top;">' + label + '</td>' +
+      '<td style="padding:4px 0;font-size:13px;color:' + DARK + ';vertical-align:top;">' + value + '</td>' +
+      '</tr>'
+    );
+  }
+
+  html += '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">';
+
+  // ⏰ Timezone
+  if (insights.origin_code && insights.dest_code && insights.tz_offset_label) {
+    var tzVal = escapeHtml_(insights.origin_code) + ' → ' +
+      escapeHtml_(insights.dest_code) + ' &nbsp;<strong>' +
+      escapeHtml_(insights.tz_offset_label) + '</strong>';
+    html += row('⏰', 'Timezone', tzVal);
+  }
+
+  // 📏 Distance
+  if (insights.distance_miles) {
+    var distVal = '~' + Number(insights.distance_miles).toLocaleString() + ' miles';
+    if (insights.haul_category) {
+      distVal += ' &nbsp;<span style="font-size:11px;color:' + LGREY + ';background:#f0f0f5;' +
+        'padding:2px 6px;border-radius:10px;">' + escapeHtml_(insights.haul_category) + '</span>';
+    }
+    html += row('📏', 'Distance', distVal);
+  }
+
+  // 🌗 Day-night ratio
+  if (insights.daynight_pct_day != null) {
+    var pct    = Math.max(0, Math.min(100, Math.round(insights.daynight_pct_day)));
+    var dayW   = pct;
+    var nightW = 100 - pct;
+    var barHtml =
+      '<table cellpadding="0" cellspacing="0" style="display:inline-table;vertical-align:middle;' +
+      'border-radius:4px;overflow:hidden;width:120px;">' +
+      '<tr>' +
+      (dayW   > 0 ? '<td style="width:' + dayW   + '%;height:8px;background:#e8b44a;"></td>' : '') +
+      (nightW > 0 ? '<td style="width:' + nightW + '%;height:8px;background:#2a2a3a;"></td>' : '') +
+      '</tr></table>' +
+      '&nbsp;<span style="font-size:12px;color:' + LGREY + ';">' + pct + '% daytime</span>';
+    html += row('🌗', 'Your flight', barHtml);
+  }
+
+  // 🛫 Local times
+  if (insights.dep_local && insights.arr_local) {
+    var timesVal = escapeHtml_(insights.dep_local) + ' → ' + escapeHtml_(insights.arr_local);
+    html += row('🛫', 'Times', timesVal);
+  }
+
+  html += '</table>';
+
+  // 💤 Sleep tip (full width below table)
+  if (insights.sleep_tip) {
+    html +=
+      '<p style="margin:12px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
+      'padding:10px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
+      '💤 ' + escapeHtml_(insights.sleep_tip) + '</p>';
+  }
+
+  return html;
 }
 
 // ---------------------------------------------------------------------------

@@ -106,6 +106,7 @@ function doGet(e) {
       case 'tx_list':                 return jsonOut_(webGetTxList_());
       case 'recent_transactions':     return jsonOut_(webGetRecentTransactions_());
       case 'dest_weather':            return jsonOut_(webGetDestWeather_(e));
+      case 'get_flight_insights':     return jsonOut_(webGetFlightInsights_(e));
       case 'cashflow':                return jsonOut_(webGetCashflow_(e));
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
@@ -1780,6 +1781,41 @@ function resolveIataToCity_(iata) {
     Logger.log('resolveIataToCity_ error for "' + iata + '": ' + e.message);
   }
   return null;
+}
+
+/**
+ * GET ?action=get_flight_insights&origin=IAD&dest=LHR&depTime=10:30&arrTime=22:45&flightDate=2026-06-25
+ * Returns Claude-generated "Useful to Know" flight insights for the active travel card.
+ * Delegates to buildTravelFlightInsightsData_() in TravelDayBriefing.js.
+ */
+function webGetFlightInsights_(e) {
+  try {
+    var p        = (e && e.parameter) || {};
+    var origin   = String(p.origin   || '').trim().toUpperCase();
+    var dest     = String(p.dest     || '').trim().toUpperCase();
+    var depTime  = String(p.depTime  || '').trim();
+    var arrTime  = String(p.arrTime  || '').trim();
+    var flightDate = String(p.flightDate || '').trim();
+
+    if (!origin && !dest) return { ok: false, error: 'origin or dest required' };
+
+    // Build a synthetic single-row array matching the Itinerary row schema
+    // [0]=id, [1]=tripKey, [2]=type, [3]=title, [4]=date, [5]=startTime, [6]=endTime, [7]=location, [8]=notes, [9]=metadata
+    var metaJson = JSON.stringify({ origin: origin, dest: dest,
+      dep_scheduled: depTime, arr_scheduled: arrTime });
+    var syntheticRow = ['', '', 'flight', origin + ' → ' + dest,
+      flightDate, depTime, arrTime, origin + ' → ' + dest, '', metaJson];
+
+    var cfg      = getConfigValues();
+    var homeCity = String(cfg['weather_location'] || '').trim();
+    var insights = buildTravelFlightInsightsData_([syntheticRow], homeCity);
+
+    if (!insights) return { ok: false, error: 'No insights generated' };
+    return { ok: true, insights: insights };
+  } catch (err) {
+    Logger.log('webGetFlightInsights_ error: ' + err.message);
+    return { ok: false, error: err.message };
+  }
 }
 
 /**
