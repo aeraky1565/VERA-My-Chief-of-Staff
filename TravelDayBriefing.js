@@ -569,7 +569,7 @@ function buildTravelFlightInsightsData_(sortedItems, homeCity) {
       '  "tz_offset_hours": number (positive=ahead of home, negative=behind; 0 if same timezone),\n' +
       '  "tz_offset_label": "e.g. +5h or -3h or same timezone",\n' +
       '  "pre_trip_tip": "1 sentence: what to do in the days before departure to prepare — direction-specific (west = shift bedtime earlier, east = stay up later; say no adjustment needed if same tz)",\n' +
-      '  "arrival_tip": "1 sentence: what to do after landing to recover faster (e.g. stay awake until local bedtime, seek morning sunlight)",\n' +
+      '  "arrival_tip": "REQUIRED — write exactly 1 sentence of specific advice for after landing. Never return null. Westward flight: advise staying awake until local bedtime to reset the body clock. Eastward flight: advise avoiding naps and going to sleep at local time. Same timezone: write that no adjustment is needed but getting morning sunlight helps.",\n' +
       '  "distance_miles": number (great-circle miles, integer),\n' +
       '  "haul_category": "Short-haul or Medium-haul or Long-haul or Ultra-long-haul",\n' +
       '  "daynight_pct_day": integer 0-100 (% of flight time in daylight based on route and departure time),\n' +
