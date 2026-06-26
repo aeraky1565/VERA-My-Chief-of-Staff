@@ -1840,6 +1840,9 @@ function getCapacityMode_() {
  */
 function morningNudge() {
   try {
+    // Travel day briefing runs unconditionally — independent of flag state
+    try { checkAndSendTravelDayBriefings_(); } catch (tdbErr) { Logger.log('morningNudge: TravelDayBriefing error — ' + tdbErr.message); }
+
     const ss    = getSpreadsheet();
     const sheet = ss.getSheetByName(TABS.FLAGS);
 
