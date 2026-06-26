@@ -1784,6 +1784,33 @@ function resolveIataToCity_(iata) {
 }
 
 /**
+ * Resolves a 3-letter IATA code to its country name via the AirportGap API.
+ * Shares the same endpoint as resolveIataToCity_() — just reads a different attribute.
+ * `cache` is a plain object used for memoization across calls within the same invocation.
+ * Returns the country string (e.g. "United States") or null on failure.
+ *
+ * Config key: home_country (default "United States") — country string must match exactly.
+ */
+function resolveIataCountry_(iata, cache) {
+  if (!iata) return null;
+  var key = iata.toUpperCase();
+  if (cache && cache[key] !== undefined) return cache[key];
+  try {
+    var resp = UrlFetchApp.fetch('https://airportgap.com/api/airports/' + encodeURIComponent(key),
+                                 { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) { if (cache) cache[key] = null; return null; }
+    var attrs = JSON.parse(resp.getContentText()).data.attributes;
+    var country = (attrs && attrs.country) ? String(attrs.country) : null;
+    if (cache) cache[key] = country;
+    return country;
+  } catch (e) {
+    Logger.log('resolveIataCountry_ error for "' + iata + '": ' + e.message);
+    if (cache) cache[key] = null;
+    return null;
+  }
+}
+
+/**
  * GET ?action=get_flight_insights&origin=IAD&dest=LHR&depTime=10:30&arrTime=22:45&flightDate=2026-06-25
  * Returns Claude-generated "Useful to Know" flight insights for the active travel card.
  * Delegates to buildTravelFlightInsightsData_() in TravelDayBriefing.js.
@@ -4262,7 +4289,15 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     'RULES:\n' +
     '- Prioritize days marked "NO DINING" with a dining rec, and days marked "NO ACTIVITIES" with an activity rec.\n' +
     '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Work Trip → quick sights near hotel, good coffee; Family → family-friendly attractions.\n' +
-    '- For layovers ≥ 7 hours, recommend things to do near the layover airport. For layovers under 7 hours, do NOT suggest leaving the airport — suggest airport lounge, terminal food, or nothing at all.\n' +
+    (function() {
+      var lCfg    = getConfigValues();
+      var domMinH = parseInt(lCfg['layover_domestic_min_hours'] || '5', 10);
+      var intlMinH = parseInt(lCfg['layover_intl_min_hours']    || '8', 10);
+      return '- Domestic layovers ≥ ' + domMinH + 'h and international layovers ≥ ' + intlMinH + 'h: ' +
+        'you MAY recommend leaving the airport — use the connecting airport code and connection type ' +
+        'from the gap summary to factor in realistic city access time (e.g. DXB metro = 25 min, ORD traffic = 60+ min). ' +
+        'Under these thresholds, do NOT suggest leaving the airport — suggest lounge, terminal dining, or nothing.\n';
+    }()) +
     '- Include a mix of: dining, activities, coffee/morning spots, and hidden gems.\n' +
     '- Use real venue names and real details from your web search.\n\n' +
     'CRITICAL — RESPONSE FORMAT:\n' +
@@ -4324,7 +4359,7 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
     if (ACTIVITY[type])  dateMap[date].activity = true;
     if (type === 'flight') {
       if (!flightsByDate[date]) flightsByDate[date] = [];
-      flightsByDate[date].push({ start: String(row[5] || ''), end: String(row[6] || '') });
+      flightsByDate[date].push({ start: String(row[5] || ''), end: String(row[6] || ''), meta: String(row[9] || '') });
     }
   });
 
@@ -4352,12 +4387,34 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
 
     if (info.transport) {
       if (isLayover) {
+        // Extract IATA codes from flight metadata to determine domestic vs. international
+        var meta1 = {}; try { meta1 = JSON.parse(sorted[0].meta); } catch(e_) {}
+        var meta2 = {}; try { meta2 = JSON.parse(sorted[1].meta); } catch(e_) {}
+        var connectingCode = ((meta1.dest  || meta2.origin || '')).toUpperCase();
+        var originCode     = (meta1.origin || '').toUpperCase();
+        var finalCode      = (meta2.dest   || '').toUpperCase();
+
+        var gapCfg       = getConfigValues();
+        var homeCountry  = String(gapCfg['home_country'] || 'United States');
+        var domesticMin  = parseInt(gapCfg['layover_domestic_min_hours'] || '5', 10) * 60;
+        var intlMin      = parseInt(gapCfg['layover_intl_min_hours']     || '8', 10) * 60;
+
+        var iataCache       = {};
+        var originCountry   = resolveIataCountry_(originCode,  iataCache);
+        var finalCountry    = resolveIataCountry_(finalCode,   iataCache);
+        var isDomestic      = !!(originCountry && finalCountry &&
+                                 originCountry === finalCountry &&
+                                 originCountry === homeCountry);
+        var connectionType  = isDomestic ? 'domestic' : 'international';
+        var thresholdMins   = isDomestic ? domesticMin : intlMin;
+
+        var connectLabel = connectingCode ? connectingCode + ' (' + connectionType + ')' : connectionType;
         var layoverLabel = layoverMins >= 0
           ? (Math.floor(layoverMins / 60) + 'h' + (layoverMins % 60 > 0 ? (layoverMins % 60) + 'm' : '') + ' layover')
           : 'layover (duration unknown)';
-        notes.push('TRANSIT DAY — ' + layoverLabel);
-        if (layoverMins < 0 || layoverMins < 420) {
-          notes.push('⚠ DO NOT suggest leaving airport');
+        notes.push('TRANSIT DAY — ' + connectLabel + ', ' + layoverLabel);
+        if (layoverMins < 0 || layoverMins < thresholdMins) {
+          notes.push('⚠ under ' + (thresholdMins / 60) + 'h threshold — DO NOT suggest leaving airport');
         }
       } else {
         notes.push('transport ✓');
