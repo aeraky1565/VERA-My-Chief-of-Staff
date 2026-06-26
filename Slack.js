@@ -170,6 +170,16 @@ function sendSlackLog_(text) {
   if (channelId) sendSlackMessage_(channelId, text);
 }
 
+/**
+ * Sends to a Slack channel by *name* (e.g. 'vera-notifications') rather than
+ * channel ID. Thin wrapper around sendSlackMessage_ + getSlackChannelId_.
+ * Used by morningNudge, MonthlyReview, TravelDayBriefing, Reminders, Memory.
+ */
+function sendSlack_(channelName, text, blocks) {
+  var channelId = getSlackChannelId_(channelName);
+  if (channelId) sendSlackMessage_(channelId, text, blocks);
+}
+
 // ─── BLOCK KIT BUILDERS ──────────────────────────────────────────────────────
 
 /**

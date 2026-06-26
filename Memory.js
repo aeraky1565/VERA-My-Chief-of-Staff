@@ -299,6 +299,144 @@ function pruneMemoryLog_() {
   }
 }
 
+// ── Weekly Trend Review ───────────────────────────────────────────────────────
+
+/**
+ * Reads the last two weekly snapshots, computes week-over-week deltas, calls
+ * Claude for a short narrative, then delivers via Slack / email.
+ *
+ * Guards:
+ *  - weekly_trend_review_enabled (default true)
+ *  - Only fires on the configured snapshot day (memory_snapshot_day, default 0 = Sunday)
+ *  - Requires ≥2 weeks of snapshot data
+ */
+function sendWeeklyTrendReview_() {
+  try {
+    var cfg = getConfigValues();
+    if ((cfg['weekly_trend_review_enabled'] || 'true') === 'false') {
+      Logger.log('sendWeeklyTrendReview_: disabled'); return;
+    }
+    if (!isNotifEnabled_('weekly_trend_review')) {
+      Logger.log('sendWeeklyTrendReview_: notif disabled'); return;
+    }
+
+    var snapshotDay = parseInt(cfg['memory_snapshot_day'] || '0', 10);
+    var today       = new Date();
+    if (today.getDay() !== snapshotDay) {
+      Logger.log('sendWeeklyTrendReview_: not snapshot day'); return;
+    }
+
+    var ss        = getSpreadsheet();
+    var snapSheet = ss.getSheetByName(TABS.MEMORY_SNAPSHOT);
+    if (!snapSheet || snapSheet.getLastRow() < 2) {
+      Logger.log('sendWeeklyTrendReview_: no snapshot data yet'); return;
+    }
+
+    var snapData = snapSheet.getRange(2, 1, snapSheet.getLastRow() - 1, MEMORY_SNAPSHOT_HEADERS.length).getValues();
+
+    // Collect sorted unique week keys
+    var weeksSeen = {};
+    snapData.forEach(function(r) { if (r[0]) weeksSeen[String(r[0])] = true; });
+    var weeks = Object.keys(weeksSeen).sort();
+    if (weeks.length < 2) {
+      Logger.log('sendWeeklyTrendReview_: need ≥2 weeks of data (have ' + weeks.length + ')'); return;
+    }
+
+    var thisWeek = weeks[weeks.length - 1];
+    var lastWeek = weeks[weeks.length - 2];
+
+    // Build metric map: 'metric_who' → value
+    function buildMap(weekKey) {
+      var map = {};
+      snapData.filter(function(r) { return String(r[0]) === weekKey; }).forEach(function(r) {
+        var label = String(r[1]) + (String(r[2]) !== 'System' ? '_' + String(r[2]).toLowerCase() : '');
+        map[label] = parseFloat(r[3]) || 0;
+      });
+      return map;
+    }
+
+    var curr = buildMap(thisWeek);
+    var prev = buildMap(lastWeek);
+    var allKeys = Object.keys(Object.assign({}, curr, prev)).sort();
+
+    // Friendly label map
+    var LABELS = {
+      active_flags_high:             'High flags',
+      active_flags_medium:           'Medium flags',
+      active_flags_low:              'Low flags',
+      open_tasks:                    'Open tasks',
+      overdue_tasks:                 'Overdue tasks',
+      active_projects:               'Active projects',
+      open_goals:                    'Open goals',
+      gym_sessions_this_week_ahmed:  'Gym sessions (Ahmed)',
+      pto_vacation_remaining_ahmed:  'Vacation days left (Ahmed)',
+      pto_vacation_remaining_victoria: 'Vacation days left (Victoria)',
+      bills_unpaid:                  'Unpaid bills',
+    };
+
+    var deltaLines = [];
+    allKeys.forEach(function(k) {
+      var c = curr[k] !== undefined ? curr[k] : null;
+      var p = prev[k] !== undefined ? prev[k] : null;
+      if (c === null && p === null) return;
+      var d = (c !== null && p !== null) ? (c - p) : null;
+      var ds = d === null ? '(no prior)' : (d > 0 ? '+' + d : (d < 0 ? String(d) : '±0'));
+      var label = LABELS[k] || k.replace(/_/g, ' ');
+      deltaLines.push(label + ': ' + (c !== null ? c : '?') + ' (' + ds + ')');
+    });
+
+    if (deltaLines.length === 0) { Logger.log('sendWeeklyTrendReview_: no deltas to report'); return; }
+
+    // Call Claude for a brief narrative
+    var narrative = '';
+    try {
+      var reviewPrompt =
+        'You are VERA, Ahmed\'s Chief of Staff. It is Sunday. Here are week-over-week metrics (' + lastWeek + ' → ' + thisWeek + '):\n\n' +
+        deltaLines.map(function(l) { return '  ' + l; }).join('\n') + '\n\n' +
+        'Write exactly 3 sentences for Ahmed\'s weekly trend digest: ' +
+        '(1) What improved this week? (2) What regressed or needs attention? (3) One concrete suggestion for next week. ' +
+        'Be specific, data-driven, and direct. No filler. No headers.';
+      var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method:  'post',
+        headers: {
+          'x-api-key':         PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY') || '',
+          'anthropic-version': '2023-06-01',
+          'content-type':      'application/json',
+        },
+        payload:             JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 200, messages: [{ role: 'user', content: reviewPrompt }] }),
+        muteHttpExceptions:  true,
+      });
+      if (resp.getResponseCode() === 200) {
+        var body = JSON.parse(resp.getContentText());
+        narrative = (body.content && body.content[0] && body.content[0].text) ? body.content[0].text.trim() : '';
+      }
+    } catch (aiErr) {
+      Logger.log('sendWeeklyTrendReview_ Claude error (non-fatal): ' + aiErr.message);
+    }
+
+    // Build message
+    var tz       = Session.getScriptTimeZone();
+    var dateStr  = Utilities.formatDate(today, tz, 'MMM d');
+    var header   = '*📊 Weekly Trend Review — ' + dateStr + ' (' + thisWeek + ')*';
+    var bullets  = deltaLines.map(function(l) { return '• ' + l; }).join('\n');
+    var message  = header + '\n\n' + bullets + (narrative ? '\n\n_' + narrative + '_' : '');
+
+    // Deliver
+    var ch = getNotifChannel_('weekly_trend_review');
+    if (ch === 'email') {
+      MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekly Trend Review — ' + dateStr, message, { name: 'VERA' });
+      Logger.log('sendWeeklyTrendReview_: sent via email');
+    } else {
+      sendSlack_(ch, message);
+      Logger.log('sendWeeklyTrendReview_: sent via Slack/' + ch);
+    }
+    try { sendSlackLog_('📊 Weekly Trend Review sent — ' + thisWeek + ' vs ' + lastWeek); } catch (e) {}
+
+  } catch (e) {
+    Logger.log('sendWeeklyTrendReview_ error (non-fatal): ' + e.message);
+  }
+}
+
 // ── Context builder for chat ──────────────────────────────────────────────────
 
 /**
