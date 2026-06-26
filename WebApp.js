@@ -4262,7 +4262,7 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     'RULES:\n' +
     '- Prioritize days marked "NO DINING" with a dining rec, and days marked "NO ACTIVITIES" with an activity rec.\n' +
     '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Work Trip → quick sights near hotel, good coffee; Family → family-friendly attractions.\n' +
-    '- For layovers ≥ 6 hours, recommend things to do near the layover airport.\n' +
+    '- For layovers ≥ 7 hours, recommend things to do near the layover airport. For layovers under 7 hours, do NOT suggest leaving the airport — suggest airport lounge, terminal food, or nothing at all.\n' +
     '- Include a mix of: dining, activities, coffee/morning spots, and hidden gems.\n' +
     '- Use real venue names and real details from your web search.\n\n' +
     'CRITICAL — RESPONSE FORMAT:\n' +
@@ -4304,8 +4304,14 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
   var ACTIVITY  = { city_tour: 1, museum: 1, beach: 1, mountain: 1, camera: 1, show: 1,
                     spa: 1, skiing: 1, snorkeling: 1, theme_park: 1, shopping: 1, market: 1 };
 
-  // Build per-date coverage map
-  var dateMap = {};
+  function timeToMins_(t) {
+    var m = String(t || '').match(/(\d{1,2}):(\d{2})/);
+    return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : -1;
+  }
+
+  // Build per-date coverage map + track flights for layover detection
+  var dateMap     = {};
+  var flightsByDate = {};
   itinData.forEach(function(row) {
     if (String(row[1]).trim() !== tripKey) return;
     var date = String(row[4]).trim();
@@ -4316,6 +4322,10 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
     if (type === 'hotel' || type === 'cruise') dateMap[date].hotel = true;
     if (DINING[type])    dateMap[date].dining   = true;
     if (ACTIVITY[type])  dateMap[date].activity = true;
+    if (type === 'flight') {
+      if (!flightsByDate[date]) flightsByDate[date] = [];
+      flightsByDate[date].push({ start: String(row[5] || ''), end: String(row[6] || '') });
+    }
   });
 
   var tz    = Session.getScriptTimeZone();
@@ -4327,12 +4337,39 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
     var dayName = Utilities.formatDate(d, tz, 'EEE MMM d');
     var info    = dateMap[ds] || {};
     var notes   = [];
-    if (info.transport) notes.push('transport ✓');
-    if (info.hotel)     notes.push('accommodation ✓');
-    if (info.dining)    notes.push('dining ✓');
-    else                notes.push('NO DINING');
-    if (info.activity)  notes.push('activity ✓');
-    else                notes.push('NO ACTIVITIES');
+
+    // Detect layover days (multiple flights on same date)
+    var dayFlights  = flightsByDate[ds] || [];
+    var isLayover   = dayFlights.length >= 2;
+    var layoverMins = -1;
+    if (isLayover) {
+      // Sort by start time, then compute gap between first flight's arrival and second flight's departure
+      var sorted = dayFlights.slice().sort(function(a, b) { return timeToMins_(a.start) - timeToMins_(b.start); });
+      var arrMins = timeToMins_(sorted[0].end);
+      var depMins = timeToMins_(sorted[1].start);
+      if (arrMins >= 0 && depMins > arrMins) layoverMins = depMins - arrMins;
+    }
+
+    if (info.transport) {
+      if (isLayover) {
+        var layoverLabel = layoverMins >= 0
+          ? (Math.floor(layoverMins / 60) + 'h' + (layoverMins % 60 > 0 ? (layoverMins % 60) + 'm' : '') + ' layover')
+          : 'layover (duration unknown)';
+        notes.push('TRANSIT DAY — ' + layoverLabel);
+        if (layoverMins < 0 || layoverMins < 420) {
+          notes.push('⚠ DO NOT suggest leaving airport');
+        }
+      } else {
+        notes.push('transport ✓');
+      }
+    }
+
+    if (info.hotel)    notes.push('accommodation ✓');
+    if (info.dining)   notes.push('dining ✓');
+    else if (!isLayover) notes.push('NO DINING');
+    if (info.activity) notes.push('activity ✓');
+    else if (!isLayover) notes.push('NO ACTIVITIES');
+
     lines.push(dayName + ': ' + notes.join(', '));
     d = new Date(d.getTime() + 86400000);
   }
