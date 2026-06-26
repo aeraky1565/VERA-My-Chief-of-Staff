@@ -558,8 +558,10 @@ function runExplorer_() {
  * @param {Array}  ledger    - From getSharedInterestLedger_() (top 20 active entries)
  */
 function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger) {
-  var tz    = Session.getScriptTimeZone();
-  var today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
+  var tz      = Session.getScriptTimeZone();
+  var nowDate = new Date();
+  var today   = Utilities.formatDate(nowDate, tz, 'EEEE, MMMM d, yyyy');
+  var timeStr = Utilities.formatDate(nowDate, tz, 'h:mm a');
 
   var goalLines = goals.length === 0
     ? '  (none)'
@@ -594,7 +596,7 @@ function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger
       }).join('\n');
 
   return (
-    'You are VERA in "discovery mode". Today is ' + today + '.\n\n' +
+    'You are VERA in "discovery mode". Today is ' + today + ' (current time: ' + timeStr + '). This message is generated at night for Ahmed to read tomorrow morning.\n\n' +
     'Ahmed\'s yearly goals:\n' + goalLines + '\n\n' +
     'Open tasks (top 10):\n' + taskLines + '\n\n' +
     'Upcoming calendar (next 7 days):\n' + eventLines + '\n\n' +
@@ -610,6 +612,11 @@ function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger
     '- Connect dots across goals, tasks, and calendar in ways Ahmed might not immediately notice\n' +
     '- Are specific and actionable (not generic advice like "get enough sleep")\n' +
     '- Are opportunistic and forward-looking — save urgency for Flags\n\n' +
+    'IMPORTANT — language rules:\n' +
+    '- This message is generated at night for Ahmed to read tomorrow morning. Do NOT assume he is currently doing any activity.\n' +
+    '- Calendar events listed as "in 0d" are scheduled for today but have NOT necessarily started. Never say "you\'re on the cruise", "you\'re stepping onto", or presuppose he is already mid-activity.\n' +
+    '- Use only forward-looking language: "you have", "coming up", "today you\'re scheduled for", "this week". Never "you\'re currently".\n' +
+    '- Only connect data points that are explicitly in the data above. Do not invent facts or assume details not present.\n\n' +
     'Format as a short, warm message. Max 200 words. ' +
     'Start with exactly "🔍 Daily Discovery" on its own line. No markdown headers or code fences.'
   );
