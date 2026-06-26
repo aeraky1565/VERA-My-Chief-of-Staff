@@ -412,6 +412,9 @@ function checkGoalCheckin_(now, hour, cfg) {
 
   if (suppressed.indexOf('goal_stall') !== -1) return;
 
+  // Skip during active trips — goal-stalling nags are tone-deaf on vacation
+  try { if (isInVacationMode_()) { Logger.log('checkGoalCheckin_: vacation mode active, skipping'); return; } } catch(e) {}
+
   var currentYear  = now.getFullYear();
   var currentMonth = now.getMonth(); // 0-indexed
 
@@ -547,7 +550,10 @@ function runExplorer_() {
     'specialty coffee, Egyptian culture, boutique fitness, local events, home improvement';
   var ledger    = getSharedInterestLedger_().slice(0, 20); // top 20 active entries
 
-  var prompt    = buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger);
+  var travelCtx       = getTravelContextForPlanner_();
+  var explorerHistory = readExplorerHistory_();
+
+  var prompt    = buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger, travelCtx, explorerHistory);
   var discovery = callClaudeExplorer_(prompt);
 
   if (!discovery) {
@@ -557,20 +563,24 @@ function runExplorer_() {
 
   sendNudge_(ruleKey, 'Daily Discovery', discovery, 'daily_discovery');
   Logger.log('runExplorer_: discovery sent (' + discovery.length + ' chars).');
+  writeExplorerHistory_(discovery);
 }
 
 /**
  * Builds the Claude prompt for the Explorer mode.
- * Injects goals, tasks, calendar, summaries, interests, and the Shared Interest Ledger.
+ * Injects goals, tasks, calendar, summaries, interests, Shared Interest Ledger,
+ * travel context, bucket list inspiration, and anti-recycle history.
  *
- * @param {Array}  goals     - From getGoals_()
- * @param {Array}  tasks     - From getOpenTasks()
- * @param {Array}  events    - From getUpcomingEvents()
- * @param {Array}  summaries - From getSummaries()
- * @param {string} interests - Config string of general interests
- * @param {Array}  ledger    - From getSharedInterestLedger_() (top 20 active entries)
+ * @param {Array}  goals           - From getGoals_()
+ * @param {Array}  tasks           - From getOpenTasks()
+ * @param {Array}  events          - From getUpcomingEvents()
+ * @param {Array}  summaries       - From getSummaries()
+ * @param {string} interests       - Config string of general interests
+ * @param {Array}  ledger          - From getSharedInterestLedger_() (top 20 active entries)
+ * @param {Object} travelCtx       - From getTravelContextForPlanner_() (optional)
+ * @param {Array}  explorerHistory - From readExplorerHistory_() (optional)
  */
-function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger) {
+function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger, travelCtx, explorerHistory) {
   var tz    = Session.getScriptTimeZone();
   var today = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d, yyyy');
 
@@ -606,26 +616,87 @@ function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger
                ' (' + i.category + ', logged ' + i.date + ')';
       }).join('\n');
 
-  return (
-    'You are VERA in "discovery mode". Today is ' + today + '.\n\n' +
-    'Ahmed\'s yearly goals:\n' + goalLines + '\n\n' +
-    'Open tasks (top 10):\n' + taskLines + '\n\n' +
-    'Upcoming calendar (next 7 days):\n' + eventLines + '\n\n' +
-    'Life context (summaries):\n' + summaryLines + '\n\n' +
-    'Ahmed\'s general interests: ' + interests + '\n\n' +
-    'Shared Interest Ledger (specific things Ahmed and Victoria have mentioned wanting or liking):\n' +
-    ledgerLines + '\n\n' +
-    'When surfacing discoveries, cross-reference the Shared Interest Ledger. ' +
+  // ---- Travel context block ---------------------------------------------------
+  var tCtx = travelCtx || {};
+  var travelLines = ['=== TRAVEL CONTEXT ==='];
+  if (tCtx.currentTrip) {
+    var ct = tCtx.currentTrip;
+    var endParts = String(ct.endDate || '').split('-');
+    var endDateObj = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10));
+    var endDateFmt = Utilities.formatDate(endDateObj, tz, 'MMM d');
+    travelLines.push('Ahmed is currently traveling: ' + ct.label + ' (through ' + endDateFmt + ').');
+    travelLines.push('Tailor ALL discoveries to this destination — local experiences, nearby attractions, things to do on the trip. Do NOT suggest home errands or Austin-based activities.');
+    if (tCtx.currentTripOnBucketList) {
+      travelLines.push('★ This destination is on Ahmed\'s bucket list — lean into once-in-a-trip discoveries.');
+    }
+  } else {
+    travelLines.push('Ahmed is home. Suggestions may include local events, drivable day trips, or home-based discoveries.');
+  }
+  if (tCtx.upcomingTrips && tCtx.upcomingTrips.length > 0) {
+    tCtx.upcomingTrips.forEach(function(t) {
+      travelLines.push('Upcoming trip: ' + t.label + ' in ' + t.daysAway + ' day(s) — pre-trip discoveries (things to book, research, or prepare) are welcome.');
+    });
+  }
+  var travelBlock = travelLines.join('\n');
+
+  // ---- Bucket list inspiration block -----------------------------------------
+  var bucketBlock = '';
+  var bList = tCtx.bucketList || [];
+  if (bList.length > 0 && !tCtx.currentTrip) {
+    var bLines = [
+      '=== DREAM DESTINATIONS (use as flavor — do not force) ===',
+      'Unvisited destinations on Ahmed\'s bucket list. A discovery that\'s culturally adjacent counts (e.g. Japanese cooking class if Japan is listed). Do not contrive connections.',
+    ];
+    bList.forEach(function(b) {
+      var starCount = Math.min(5, Math.max(1, Number(b['Stars']) || 1));
+      var stars = '';
+      for (var s = 0; s < starCount; s++) stars += '★';
+      var line = stars + ' ' + b['City'] + ', ' + b['Country'];
+      if (b['Target Year']) line += ' (target ' + b['Target Year'] + ')';
+      if (b['Dream Trip']) line += ' — ' + b['Dream Trip'];
+      bLines.push(line);
+    });
+    bucketBlock = bLines.join('\n');
+  }
+
+  // ---- Anti-recycle history block --------------------------------------------
+  var historyBlock = '';
+  var history = explorerHistory || [];
+  if (history.length > 0) {
+    var hLines = ['=== RECENT DISCOVERIES — DO NOT REPEAT ==='];
+    history.forEach(function(h) {
+      hLines.push(h.date + ': ' + h.text);
+    });
+    historyBlock = hLines.join('\n');
+  }
+
+  // ---- Assemble --------------------------------------------------------------
+  var parts = [
+    'You are VERA in "discovery mode". Today is ' + today + '.\n',
+    'Ahmed\'s yearly goals:\n' + goalLines,
+    '\nOpen tasks (top 10):\n' + taskLines,
+    '\nUpcoming calendar (next 7 days):\n' + eventLines,
+    '\nLife context (summaries):\n' + summaryLines,
+    '\nAhmed\'s general interests: ' + interests,
+    '\nShared Interest Ledger (specific things Ahmed and Victoria have mentioned wanting or liking):\n' + ledgerLines,
+    '\n' + travelBlock,
+  ];
+  if (bucketBlock) parts.push('\n' + bucketBlock);
+  if (historyBlock) parts.push('\n' + historyBlock);
+  parts.push(
+    '\nWhen surfacing discoveries, cross-reference the Shared Interest Ledger. ' +
     'If you find a match between a discovery and a logged interest, call it out naturally — ' +
     'e.g. "Victoria mentioned wanting to visit Round Rock — there\'s a farmers market there this weekend." ' +
-    'Personalised connections are far more valuable than generic suggestions.\n\n' +
-    'Surface 2-3 non-obvious, forward-looking observations or suggestions that:\n' +
+    'Personalised connections are far more valuable than generic suggestions.\n' +
+    '\nSurface 2-3 non-obvious, forward-looking observations or suggestions that:\n' +
     '- Connect dots across goals, tasks, and calendar in ways Ahmed might not immediately notice\n' +
     '- Are specific and actionable (not generic advice like "get enough sleep")\n' +
-    '- Are opportunistic and forward-looking — save urgency for Flags\n\n' +
-    'Format as a short, warm message. Max 200 words. ' +
+    '- Are opportunistic and forward-looking — save urgency for Flags\n' +
+    '- When traveling, are rooted in the current destination\n' +
+    '\nFormat as a short, warm message. Max 200 words. ' +
     'Start with exactly "🔍 Daily Discovery" on its own line. No markdown headers or code fences.'
   );
+  return parts.join('');
 }
 
 /**
@@ -665,6 +736,43 @@ function callClaudeExplorer_(prompt) {
   if (!json.content || !json.content[0] || !json.content[0].text) return null;
 
   return json.content[0].text.trim();
+}
+
+/**
+ * Reads the last 7 explorer discovery entries from Script Properties.
+ * Returns [] on any error (non-fatal).
+ *
+ * @returns {Array} [{ date, text }]
+ */
+function readExplorerHistory_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty('EXPLORER_HISTORY');
+    if (!raw) return [];
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, 7) : [];
+  } catch (e) {
+    Logger.log('readExplorerHistory_: error: ' + e.message);
+    return [];
+  }
+}
+
+/**
+ * Prepends the current discovery to EXPLORER_HISTORY, keeping only the last 7 entries.
+ * Called only after successful delivery.
+ *
+ * @param {string} discoveryText
+ */
+function writeExplorerHistory_(discoveryText) {
+  try {
+    var dateLabel = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d');
+    var existing  = readExplorerHistory_();
+    var entry     = { date: dateLabel, text: String(discoveryText || '').substring(0, 200) };
+    var updated   = [entry].concat(existing).slice(0, 7);
+    PropertiesService.getScriptProperties().setProperty('EXPLORER_HISTORY', JSON.stringify(updated));
+    Logger.log('writeExplorerHistory_: saved ' + updated.length + ' entries');
+  } catch (e) {
+    Logger.log('writeExplorerHistory_: error: ' + e.message);
+  }
 }
 
 // ============================================================
