@@ -89,6 +89,8 @@ function runAnticipatorRules_(now, hour, isWeekday, cfg) {
     function() { checkTripPackingReminder_(now, hour, cfg); },
     function() { checkGoalCheckin_(now, hour, cfg); },
     function() { checkHomeServiceDue_(now, hour, cfg); },
+    // Feature 12 — Morning wellness check-in
+    function() { checkMorningWellnessCheckin_(now, hour, cfg); },
   ];
 
   rules.forEach(function(rule) {
@@ -259,6 +261,37 @@ function checkEveningMobility_(now, hour, cfg) {
       '🧘 Evening check-in: did you get your mobility or movement session in today?\n\n' +
       'Even 10 minutes of stretching counts. Make it happen before the night winds down!'
     );
+  }
+}
+
+// ---- Rule: Morning wellness check-in (Feature 12) -------------------------
+
+/**
+ * Fires once each morning at the configured hour to:
+ *  1. Auto-pull last night's sleep from Google Fit
+ *  2. Send a 3-row rating Block Kit message to #vera-chat
+ * Keyed by date so it fires at most once per day.
+ */
+function checkMorningWellnessCheckin_(now, hour, cfg) {
+  if (String(cfg['wellness_log_enabled'] || 'true').toLowerCase() === 'false') return;
+
+  var targetHour = parseInt(cfg['wellness_checkin_hour'] || '8', 10);
+  if (hour !== targetHour) return;
+
+  var tz      = Session.getScriptTimeZone();
+  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var ruleKey = 'wellness_' + dateStr;
+
+  if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
+
+  // Auto-log sleep hours from Google Fit
+  var sleepHours = null;
+  try { sleepHours = fetchGoogleFitSleep_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit error — ' + e.message); }
+
+  if (isSlackConfigured_()) {
+    sendMorningWellnessSlack_(sleepHours);
+    markSent_(ruleKey, 'morning_wellness_checkin');
+    Logger.log('checkMorningWellnessCheckin_: sent for ' + dateStr);
   }
 }
 

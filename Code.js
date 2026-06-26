@@ -99,6 +99,7 @@ const TABS = {
   HABIT_LOG:       'HabitLog',        // Per-day habit completion log (Issue #179)
   MEMORY_LOG:      'Memory Log',      // Longitudinal event log (Issue #9)
   MEMORY_SNAPSHOT: 'Memory Snapshot', // Weekly metric snapshots for trend reviews (Issue #9)
+  WELLNESS_LOG:    'Wellness Log',    // Daily wellness inputs + Google Fit sleep (Feature 12)
 };
 
 // ---- Notification Registry (Issue #188) ------------------------------------
@@ -110,6 +111,7 @@ const NOTIF_REGISTRY = [
   { key: 'desk_break',          label: 'Desk Break',            emoji: '🪑', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Ergonomic break reminder', locked: false },
   { key: 'water_break',         label: 'Water Break',           emoji: '💧', category: 'Wellness Reminders',   channel: 'vera-notifications', description: 'Hydration reminder', locked: false },
   { key: 'evening_mobility',    label: 'Evening Mobility',      emoji: '🏃', category: 'Wellness Reminders',   channel: 'vera-chat',          description: 'Evening mobility / stretch nudge', locked: false },
+  { key: 'health_performance_insight', label: 'Health–Performance Insight', emoji: '🔬', category: 'Wellness Reminders', channel: 'vera-notifications', description: 'Weekly + monthly health vs performance correlation', locked: false },
   // Planning Nudges
   { key: 'calendar_opportunity',label: 'Calendar Opportunity',  emoji: '📅', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Free-time block suggestion', locked: false },
   { key: 'goal_checkin',        label: 'Goal Check-in',         emoji: '🎯', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly goal progress nudge', locked: false },
@@ -220,6 +222,7 @@ const COUPON_HEADERS             = ['ID', 'Store', 'Offer', 'Discount', 'Min Spe
 // HEALTH_APPOINTMENT_HEADERS removed (Issue #85): appointments read from Google Calendar, no sheet needed
 const MEMORY_LOG_HEADERS         = ['ID', 'Timestamp', 'Type', 'Who', 'Title', 'Detail', 'Context'];           // Issue #9
 const MEMORY_SNAPSHOT_HEADERS    = ['Week Key', 'Metric', 'Who', 'Value', 'As Of'];                             // Issue #9
+const WELLNESS_LOG_HEADERS       = ['ID', 'Date', 'Who', 'Metric', 'Value', 'Source', 'Logged At'];             // Feature 12
 
 // ============================================================
 // SETUP — Run once to create all sheet tabs
@@ -300,6 +303,9 @@ function createSheetTabs(ss) {
     ['monthly_review_enabled', 'true'],   // set 'false' to disable monthly review generation
     // Meal Planner (Issue #122)
     ['meal_planner_enabled', 'true'],     // set 'false' to hide Meal Plan subtab
+    // Health–Performance Correlation (Feature 12)
+    ['wellness_checkin_hour', '8'],       // 24h hour for morning wellness check-in prompt
+    ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
   ];
 
   ensureSheet(ss, TABS.FLAGS,        FLAG_HEADERS);
@@ -333,6 +339,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.HABIT_LOG,            HABIT_LOG_HEADERS);
   ensureSheet(ss, TABS.MEMORY_LOG,           MEMORY_LOG_HEADERS);
   ensureSheet(ss, TABS.MEMORY_SNAPSHOT,      MEMORY_SNAPSHOT_HEADERS);
+  ensureSheet(ss, TABS.WELLNESS_LOG,         WELLNESS_LOG_HEADERS);
   ensureSheet(ss, TABS.PURCHASE_HISTORY,     PURCHASE_HISTORY_HEADERS);
   ensureSheet(ss, TABS.CAREER_POSITION,      CAREER_POSITION_HEADERS);
   ensureSheet(ss, TABS.CAREER_GOALS,         CAREER_GOAL_HEADERS);
@@ -793,6 +800,11 @@ function nightlyRun() {
 
     // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
     try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); stepFailures.push('checkMonthlyReview_: ' + mrErr.message); }
+
+    // Step 0o-ii: Health–performance insight — monthly deep dive on 1st (Feature 12)
+    if (today.getDate() === 1) {
+      try { sendHealthPerformanceInsightMonthly_(); } catch (hiErr) { Logger.log('sendHealthPerformanceInsightMonthly_ error (non-fatal): ' + hiErr.message); stepFailures.push('health_insight_monthly: ' + hiErr.message); }
+    }
 
     // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
     if (today.getDay() === 6) {

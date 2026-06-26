@@ -385,6 +385,12 @@ function sendWeeklyTrendReview_() {
       deltaLines.push(label + ': ' + (c !== null ? c : '?') + ' (' + ds + ')');
     });
 
+    // Append wellness summary line if data exists (Feature 12)
+    try {
+      var wellnessLine = getHealthPerformanceSummaryLine_();
+      if (wellnessLine) deltaLines.push(wellnessLine);
+    } catch (wErr) { Logger.log('getHealthPerformanceSummaryLine_ error (non-fatal): ' + wErr.message); }
+
     if (deltaLines.length === 0) { Logger.log('sendWeeklyTrendReview_: no deltas to report'); return; }
 
     // Call Claude for a brief narrative

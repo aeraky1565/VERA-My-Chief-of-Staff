@@ -310,6 +310,75 @@ function buildEveningCheckinBlocks_() {
 }
 
 /**
+ * Builds the morning wellness check-in Block Kit message (3 rows × 5 rating buttons).
+ * @param {number|null} sleepHours - Auto-logged sleep hours from Google Fit, or null if unavailable.
+ */
+function buildMorningWellnessBlocks_(sleepHours) {
+  var metrics = [
+    { label: 'Energy today',  id: 'energy' },
+    { label: 'Mood / stress', id: 'mood'   },
+    { label: 'Sleep quality', id: 'sleep'  },
+  ];
+
+  var blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: ':sunny: *Morning check-in* — 3 quick taps:' +
+          (sleepHours !== null ? '\n_Sleep: ' + sleepHours + 'h auto-logged from Google Fit_' : ''),
+      },
+    },
+  ];
+
+  metrics.forEach(function(m) {
+    var buttons = [1, 2, 3, 4, 5].map(function(n) {
+      return {
+        type:      'button',
+        text:      { type: 'plain_text', text: String(n) },
+        action_id: 'wellness_' + m.id + '_' + n,
+        value:     String(n),
+      };
+    });
+    blocks.push({
+      type: 'actions',
+      block_id: 'wellness_row_' + m.id,
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: m.label },
+          action_id: 'wellness_label_' + m.id,
+          value: 'noop',
+        },
+      ].concat(buttons),
+    });
+  });
+
+  return blocks;
+}
+
+/**
+ * Sends the morning wellness check-in to #vera-chat.
+ * @param {number|null} sleepHours - From Google Fit, or null.
+ */
+function sendMorningWellnessSlack_(sleepHours) {
+  var chatChannel = getSlackChannelId_('chat');
+  if (!chatChannel) { Logger.log('sendMorningWellnessSlack_: no chat channel configured'); return; }
+
+  var blocks  = buildMorningWellnessBlocks_(sleepHours);
+  var token   = PropertiesService.getScriptProperties().getProperty('SLACK_BOT_TOKEN') || '';
+  if (!token) return;
+
+  UrlFetchApp.fetch('https://slack.com/api/chat.postMessage', {
+    method:      'post',
+    contentType: 'application/json',
+    headers:     { Authorization: 'Bearer ' + token },
+    payload:     JSON.stringify({ channel: chatChannel, blocks: blocks }),
+    muteHttpExceptions: true,
+  });
+}
+
+/**
  * Builds the dynamic App Home view for a given user.
  */
 function buildAppHome_(userId) {
@@ -641,6 +710,14 @@ function handleSlackInteraction_(payload) {
   else if (actionId === 'evening_checkin_walk')ackText = ':walking: Walking counts! Logged as movement for today.';
   else if (actionId === 'evening_checkin_no')  ackText = ':ok_hand: No worries — logged as skipped.';
   else if (actionId === 'mark_bill_paid')      ackText = ':white_check_mark: Bill marked as paid.';
+  else if (actionId && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0) {
+    // wellness_energy_3, wellness_mood_4, wellness_sleep_5, etc.
+    var wParts  = actionId.split('_'); // ['wellness', metric, value]
+    var wMetric = wParts[1] || '';
+    var wVal    = wParts[2] || '';
+    var wLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
+    ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
+  }
 
   if (ackText) sendSlackResponse_(responseUrl, ackText, null, true);
 
@@ -674,6 +751,18 @@ function handleSlackInteraction_(payload) {
 
     } else if (actionId === 'mark_bill_paid') {
       webMarkBillPaid_(value);
+
+    } else if (actionId && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0) {
+      // wellness_energy_3 → metric='energy', value=3
+      var wParts  = actionId.split('_');
+      var wMetric = wParts[1] || '';
+      var wVal    = parseFloat(wParts[2]);
+      // Map abbreviated IDs to canonical metric names
+      var wMetricMap = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
+      var canonMetric = wMetricMap[wMetric] || wMetric;
+      if (!isNaN(wVal) && canonMetric) {
+        try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); } catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
+      }
     }
   } catch (err) {
     Logger.log('handleSlackInteraction_ error: ' + err.message);
