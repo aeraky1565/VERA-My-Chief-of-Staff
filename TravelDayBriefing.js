@@ -118,7 +118,10 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var homeCity = String(cfg['weather_location'] || '').trim();
   var insights = buildTravelFlightInsightsData_(sortedItems, homeCity);
 
+  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights);
+
   var sections = [
+    { id: 'narrative',      builder: buildTravelNarrativeSection_,      data: narrativeData },
     { id: 'flight_insights', builder: buildTravelFlightInsightsSection_, data: insights },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
@@ -634,6 +637,103 @@ function buildTravelFlightInsightsSection_(insights) {
   }
 
   return html;
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// VERA Narrative section — Claude-powered travel day story
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelDayNarrativeData_(sortedItems, tripLabel, insights)
+ *
+ * Calls Claude to write a fun, conversational narrative about the day's
+ * itinerary. Returns the narrative string, or null on error/disabled.
+ *
+ * @param {Array}       sortedItems  — today's Itinerary rows sorted by start time
+ * @param {string}      tripLabel    — e.g. "Paris" or "Austin · SXSW"
+ * @param {Object|null} insights     — flight insights object (optional context)
+ * @returns {string|null}
+ */
+function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights) {
+  try {
+    if (!sortedItems || sortedItems.length === 0) return null;
+
+    // Build a compact plain-text summary of the day's items for Claude
+    var itemLines = sortedItems.map(function(row) {
+      var type   = String(row[2] || '').trim();
+      var title  = String(row[3] || '').trim() || '(untitled)';
+      var startT = String(row[5] || '').trim();
+      var endT   = String(row[6] || '').trim();
+      var loc    = String(row[7] || '').trim();
+      var notes  = String(row[8] || '').trim();
+      var meta   = {};
+      if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch (e_) {} }
+
+      var parts = [type ? '[' + type + ']' : '[event]', title];
+      if (startT) parts.push(startT + (endT && endT !== startT ? '–' + endT : ''));
+      if (loc)   parts.push('at ' + loc);
+      if (meta.confirmationNumber) parts.push('conf# ' + meta.confirmationNumber);
+      if (notes) parts.push('(' + notes + ')');
+      return parts.join(' · ');
+    }).join('\n');
+
+    var flightContext = '';
+    if (insights) {
+      if (insights.dep_local && insights.arr_local) {
+        flightContext += ' Flight: ' + insights.dep_local + ' → ' + insights.arr_local + '.';
+      }
+      if (insights.tz_offset_label && insights.tz_offset_label !== 'same timezone') {
+        flightContext += ' Timezone shift: ' + insights.tz_offset_label + '.';
+      }
+      if (insights.sleep_tip) {
+        flightContext += ' ' + insights.sleep_tip;
+      }
+    }
+
+    var prompt =
+      'You are VERA, Ahmed\'s sharp, witty Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
+      'Here\'s today\'s itinerary:\n' + itemLines + '\n' +
+      (flightContext ? '\nFlight context: ' + flightContext + '\n' : '') +
+      '\nWrite a 3–4 sentence narrative about this travel day in VERA\'s voice: ' +
+      'confident, warm, slightly witty, like a well-informed friend who knows your schedule cold. ' +
+      'Don\'t list items — paint the arc of the day. Reference specific times and places. ' +
+      'End with one practical heads-up or encouragement relevant to the day. ' +
+      'No markdown, no headers, no bullet points. Just prose.';
+
+    var narrative = callClaudeExplorer_(prompt);
+    return narrative || null;
+
+  } catch (err) {
+    Logger.log('buildTravelDayNarrativeData_ error (non-fatal): ' + err.message);
+    return null;
+  }
+}
+
+/**
+ * buildTravelNarrativeSection_(narrativeText)
+ *
+ * HTML section builder for the VERA narrative panel.
+ * Renders as a warm italic intro block at the top of the email body.
+ *
+ * @param {string|null} narrativeText
+ * @returns {string} HTML string, or '' if narrativeText is null/empty
+ */
+function buildTravelNarrativeSection_(narrativeText) {
+  if (!narrativeText) return '';
+
+  var BLUE = '#1565c0';
+
+  return (
+    '<div style="margin-bottom:4px;padding:16px 20px;background:#f0f4ff;' +
+    'border-left:4px solid ' + BLUE + ';border-radius:0 6px 6px 0;">' +
+    '<p style="margin:0 0 6px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+    'letter-spacing:1.5px;text-transform:uppercase;">Your Day</p>' +
+    '<p style="margin:0;font-size:14px;line-height:1.65;color:#333333;font-style:italic;">' +
+    escapeHtml_(narrativeText) + '</p>' +
+    '</div>'
+  );
 }
 
 // ---------------------------------------------------------------------------
