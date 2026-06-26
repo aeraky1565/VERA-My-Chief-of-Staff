@@ -76,6 +76,9 @@ function runWeekendPlanner_() {
   var ptoResult = getPTOEvents_(ptoCfg);
   var ptoStats  = computePTOStats_(ptoResult, ptoCfg, today);
 
+  var travelCtx   = getTravelContextForPlanner_();
+  var planHistory = readPlannerHistory_();
+
   Logger.log('runWeekendPlanner_: windows=' + windows.length +
              ', events=' + events.length +
              ', tasks=' + tasks.length +
@@ -84,14 +87,16 @@ function runWeekendPlanner_() {
 
   // ---- Build prompt + call Claude -------------------------------------------
   var prompt = buildWeekendPlannerPrompt_({
-    windows:   windows,
-    events:    events,
-    tasks:     tasks,
-    intensity: intensity,
-    goals:     goals,
-    ledger:    ledger,
-    ptoStats:  ptoStats,
-    today:     today,
+    windows:    windows,
+    events:     events,
+    tasks:      tasks,
+    intensity:  intensity,
+    goals:      goals,
+    ledger:     ledger,
+    ptoStats:   ptoStats,
+    today:      today,
+    travelCtx:  travelCtx,
+    planHistory: planHistory,
   });
 
   var memo = callClaudeWeekendPlanner_(prompt);
@@ -116,6 +121,7 @@ function runWeekendPlanner_() {
   veraLog_('runWeekendPlanner', 'Planning', 'Success',
     windows.length + ' weekend window(s) found, memo generated (' + memo.length + ' chars)',
     Date.now() - _wpStart);
+  writePlannerHistory_(memo);
   } catch (err) {
     Logger.log('runWeekendPlanner_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('runWeekendPlanner', 'Planning', 'Failed', '', Date.now() - _wpStart, err.message);
@@ -376,6 +382,60 @@ function buildWeekendPlannerPrompt_(ctx) {
     Logger.log('buildWeekendPlannerPrompt_: ptoSummaryForClaude_ error: ' + e.message);
   }
 
+  // ---- Block A: Travel context -----------------------------------------------
+  var tCtx = ctx.travelCtx || {};
+  var travelLines = ['=== TRAVEL CONTEXT ==='];
+  if (tCtx.currentTrip) {
+    var ct = tCtx.currentTrip;
+    var endParts = String(ct.endDate || '').split('-');
+    var endDateObj = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10));
+    var endDateFmt = Utilities.formatDate(endDateObj, tz, 'MMM d');
+    travelLines.push('Ahmed is currently traveling: ' + ct.label + ' (through ' + endDateFmt + ').');
+    travelLines.push('IMPORTANT: Reframe ALL three suggestions around this destination. Do NOT suggest home-based activities, errands, or anything requiring Ahmed to be at home.');
+    if (tCtx.currentTripOnBucketList) {
+      travelLines.push('★ This destination is on Ahmed\'s bucket list — acknowledge and amplify this.');
+    }
+  } else {
+    travelLines.push('Ahmed is home this weekend. Suggestions may be home-region or feasibly drivable.');
+  }
+  if (tCtx.upcomingTrips && tCtx.upcomingTrips.length > 0) {
+    tCtx.upcomingTrips.forEach(function(t) {
+      travelLines.push('Upcoming travel: ' + t.label + ' departs in ' + t.daysAway + ' day(s) — factor in prep energy and logistics if relevant.');
+    });
+  }
+  var travelBlock = travelLines.join('\n');
+
+  // ---- Block B: Bucket list inspiration --------------------------------------
+  var bucketBlock = '';
+  var bList = tCtx.bucketList || [];
+  if (bList.length > 0) {
+    var bLines = [
+      '=== DREAM DESTINATIONS (inspiration/flavor — do not force) ===',
+      'These are unvisited destinations on Ahmed\'s bucket list. Use as stepping-stones or flavor where naturally relevant (e.g. if Japan is listed, a Japanese cooking class qualifies as THE PROTOTYPE). Do not contrive connections.',
+    ];
+    bList.forEach(function(b) {
+      var starCount = Math.min(5, Math.max(1, Number(b['Stars']) || 1));
+      var stars = '';
+      for (var s = 0; s < starCount; s++) stars += '★';
+      var line = stars + ' ' + b['City'] + ', ' + b['Country'];
+      if (b['Target Year']) line += ' (target ' + b['Target Year'] + ')';
+      if (b['Dream Trip']) line += ' — ' + b['Dream Trip'];
+      bLines.push(line);
+    });
+    bucketBlock = bLines.join('\n');
+  }
+
+  // ---- Block C: Anti-recycle history -----------------------------------------
+  var historyBlock = '';
+  var history = ctx.planHistory || [];
+  if (history.length > 0) {
+    var hLines = ['=== RECENT WEEKEND PLANS — DO NOT REPEAT OR REPHRASE ==='];
+    history.forEach(function(h) {
+      hLines.push(h.date + ': ' + h.text);
+    });
+    historyBlock = hLines.join('\n');
+  }
+
   // ---- Output instructions ---------------------------------------------------
   // Find the nearest upcoming Saturday date for the memo header
   var sat = computeNextSaturday_(ctx.today);
@@ -399,10 +459,11 @@ function buildWeekendPlannerPrompt_(ctx) {
     'One sentence — which of the three, and why, for this specific week.\n\n' +
     'Rules: no bullets, no markdown headers, no code fences.\n' +
     '2-4 sentences per section. Total: 250-350 words.\n' +
-    'Specific — name real goals, real interests, real dates.';
+    'Specific — name real goals, real interests, real dates.\n' +
+    'When traveling, ground all three archetypes (THE EXTENSION, THE CONTRAST, THE PROTOTYPE) in the current destination. VERA RECOMMENDS must reflect the travel context, not the home city.';
 
   // ---- Assemble --------------------------------------------------------------
-  return [
+  var sections = [
     'You are VERA, a personal chief-of-staff operating in Weekend Planner mode.',
     'Today is ' + todayStr + '. Ahmed lives in ' + (getConfigValues()['weekend_planner_home_city'] || 'Austin, TX') + '.',
     '',
@@ -427,9 +488,14 @@ function buildWeekendPlannerPrompt_(ctx) {
     '=== PTO STATUS ===',
     ptoSection,
     '',
-    '=== YOUR TASK ===',
-    outputInstructions,
-  ].join('\n');
+    travelBlock,
+  ];
+  if (bucketBlock) { sections.push(''); sections.push(bucketBlock); }
+  if (historyBlock) { sections.push(''); sections.push(historyBlock); }
+  sections.push('');
+  sections.push('=== YOUR TASK ===');
+  sections.push(outputInstructions);
+  return sections.join('\n');
 }
 
 // ============================================================
@@ -566,6 +632,116 @@ function readActiveFlagsForPlanner_() {
 }
 
 // ============================================================
+// TRAVEL CONTEXT + PLAN HISTORY
+// ============================================================
+
+/**
+ * Gathers travel state, bucket list, and trip proximity for the planner prompt.
+ * Non-fatal — every sub-call is try/caught; returns safe defaults on failure.
+ *
+ * @returns {{ isOnVacation, currentTrip, upcomingTrips, bucketList, currentTripOnBucketList }}
+ */
+function getTravelContextForPlanner_() {
+  var result = {
+    isOnVacation:           false,
+    currentTrip:            null,
+    upcomingTrips:          [],
+    bucketList:             [],
+    currentTripOnBucketList: false,
+  };
+
+  try {
+    result.isOnVacation = isInVacationMode_();
+  } catch (e) {
+    Logger.log('getTravelContextForPlanner_: isInVacationMode_ error: ' + e.message);
+  }
+
+  try {
+    var ptoCfg   = readPTOConfig_();
+    var allTrips = getUpcomingTravel_(ptoCfg);
+    var todayMidnight = new Date();
+    todayMidnight.setHours(0, 0, 0, 0);
+    var tz = Session.getScriptTimeZone();
+    var todayStr = Utilities.formatDate(todayMidnight, tz, 'yyyy-MM-dd');
+
+    allTrips.forEach(function(t) {
+      if (t.startDate <= todayStr && t.endDate >= todayStr) {
+        if (!result.currentTrip) result.currentTrip = t;
+      } else if (t.startDate > todayStr && t.daysAway <= 21) {
+        result.upcomingTrips.push(t);
+      }
+    });
+  } catch (e) {
+    Logger.log('getTravelContextForPlanner_: getUpcomingTravel_ error: ' + e.message);
+  }
+
+  try {
+    var bRes     = webGetBucketList_();
+    var bEntries = (bRes && bRes.entries) || [];
+    result.bucketList = bEntries
+      .filter(function(b) { return !b['Visited']; })
+      .sort(function(a, b_) { return (Number(b_['Stars']) || 0) - (Number(a['Stars']) || 0); })
+      .slice(0, 8);
+  } catch (e) {
+    Logger.log('getTravelContextForPlanner_: bucketList error: ' + e.message);
+  }
+
+  if (result.currentTrip && result.bucketList.length > 0) {
+    var label = String(result.currentTrip.label || '').toLowerCase();
+    result.currentTripOnBucketList = result.bucketList.some(function(b) {
+      var city    = String(b['City']    || '').toLowerCase();
+      var country = String(b['Country'] || '').toLowerCase();
+      return (city    && label.indexOf(city)    !== -1) ||
+             (country && label.indexOf(country) !== -1);
+    });
+  }
+
+  Logger.log('getTravelContextForPlanner_: isOnVacation=' + result.isOnVacation +
+             ', currentTrip=' + (result.currentTrip ? result.currentTrip.label : 'none') +
+             ', upcomingTrips=' + result.upcomingTrips.length +
+             ', bucketList=' + result.bucketList.length +
+             ', onBucketList=' + result.currentTripOnBucketList);
+  return result;
+}
+
+/**
+ * Reads the last 4 weekend plan entries from Script Properties.
+ * Returns [] on any error (non-fatal).
+ *
+ * @returns {Array} [{ date, text }]
+ */
+function readPlannerHistory_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty('WKND_PLAN_HISTORY');
+    if (!raw) return [];
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, 4) : [];
+  } catch (e) {
+    Logger.log('readPlannerHistory_: error: ' + e.message);
+    return [];
+  }
+}
+
+/**
+ * Prepends the current plan text to WKND_PLAN_HISTORY, keeping only the last 4 entries.
+ * Called only after successful plan delivery — not on Claude failure.
+ *
+ * @param {string} planText
+ */
+function writePlannerHistory_(planText) {
+  try {
+    var dateLabel = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d');
+    var existing  = readPlannerHistory_();
+    var entry     = { date: dateLabel, text: String(planText || '').substring(0, 400) };
+    var updated   = [entry].concat(existing).slice(0, 4);
+    PropertiesService.getScriptProperties().setProperty('WKND_PLAN_HISTORY', JSON.stringify(updated));
+    Logger.log('writePlannerHistory_: saved ' + updated.length + ' entries');
+  } catch (e) {
+    Logger.log('writePlannerHistory_: error: ' + e.message);
+  }
+}
+
+// ============================================================
 // DATE HELPERS
 // ============================================================
 
@@ -679,6 +855,8 @@ function testWeekendPlannerPrompt() {
     windows: windows, events: events, tasks: tasks,
     intensity: intensity, goals: goals, ledger: ledger,
     ptoStats: ptoStats, today: today,
+    travelCtx: getTravelContextForPlanner_(),
+    planHistory: readPlannerHistory_(),
   });
   Logger.log('PROMPT (' + prompt.length + ' chars):\n' + prompt);
   Logger.log('=== testWeekendPlannerPrompt: END ===');
