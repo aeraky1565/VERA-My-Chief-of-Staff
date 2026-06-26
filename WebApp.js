@@ -3366,6 +3366,7 @@ function webGetItinerary_(e) {
               date:      evDate,
               startTime: evTime,
               endTime:   evEnd,
+              allDay:    ev.isAllDayEvent(),
               location:  evLocation,
               notes:     '',
               metadata:  JSON.stringify(evMeta),
