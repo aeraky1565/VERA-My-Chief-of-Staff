@@ -317,18 +317,16 @@ function buildTravelScheduleSection_(items) {
           '</tr>'
         );
       }
-      addRow_('Conf #',       details.confirmationNumber);
-      addRow_('Seat',         details.seatAssignment);
-      addRow_('Meal',         details.mealPreference);
-      addRow_('Loyalty',      details.loyaltyNumber);
-      addRow_('Directions',   details.directions);
-      addRow_('Parking',      details.parkingInfo);
-      addRow_('Check-in',     details.checkInInstructions);
-      addRow_('Contact',      details.contactPhone);
-      addRow_('Wi-Fi',        details.wifiInfo);
-      addRow_('Cancellation', details.cancellationPolicy);
-      addRow_('Requests',     details.specialRequests);
-      addRow_('Note',         details.importantNotes);
+      addRow_('Conf #',    details.confirmationNumber);
+      addRow_('Seat',      details.seatAssignment);
+      addRow_('Loyalty',   details.loyaltyNumber);
+      addRow_('Address',   details.address !== loc ? details.address : null);
+      addRow_('Directions',details.directions);
+      addRow_('Parking',   details.parkingInfo);
+      addRow_('Check-in',  details.checkInInstructions);
+      addRow_('Contact',   details.contactPhone);
+      addRow_('Wi-Fi',     details.wifiInfo);
+      addRow_('Note',      details.importantNotes);
       if (notes) addRow_('Notes', notes);
 
       if (tableRows.length) {
@@ -396,11 +394,8 @@ function buildTravelItemDetailsData_(row) {
     checkInInstructions: meta.checkInInstructions || null,
     contactPhone:        meta.contactPhone        || null,
     wifiInfo:            meta.wifiInfo            || null,
-    cancellationPolicy:  meta.cancellationPolicy  || null,
-    specialRequests:     meta.specialRequests     || null,
     importantNotes:      meta.importantNotes      || null,
     seatAssignment:      meta.seatAssignment      || null,
-    mealPreference:      meta.mealPreference      || null,
     loyaltyNumber:       meta.loyaltyNumber       || null,
     notFound:            false,
   };
@@ -409,7 +404,7 @@ function buildTravelItemDetailsData_(row) {
   // A "rich" item has a street-level address (digit present) + 2+ detail fields.
   var hasStreetAddress = /\d/.test(loc);
   var metaFieldCount = ['confirmationNumber','parkingInfo','checkInInstructions',
-                        'contactPhone','wifiInfo','cancellationPolicy']
+                        'contactPhone','wifiInfo']
                        .filter(function(k) { return !!meta[k]; }).length;
   var isFlight = (type === 'flight' || type === 'plane');
   var needsEnrichment = !isFlight && !(hasStreetAddress && metaFieldCount >= 2);
@@ -423,9 +418,11 @@ function buildTravelItemDetailsData_(row) {
   Logger.log('TravelDayBriefing details: enriching "' + title + '" via Claude/web-search');
   var sysprompt =
     'You are VERA, a personal chief-of-staff AI. Find concrete, actionable day-of ' +
-    'travel details for the given itinerary item. Be honest — if you cannot ' +
-    'confidently determine a piece of information, set it to null. ' +
-    'Do NOT guess or hallucinate addresses, phone numbers, or directions. ' +
+    'details for the given itinerary item. The goal is offline survival info — ' +
+    'things the user needs if they have no cell service: address to navigate to, ' +
+    'directions, a phone number to call, parking, check-in instructions. ' +
+    'Be honest — if you cannot confidently determine something, set it to null. ' +
+    'Do NOT guess or hallucinate addresses or phone numbers. ' +
     'Use the web_search tool if available to look up accurate information. ' +
     'Respond ONLY with a valid JSON object, no markdown, no preamble.';
 
@@ -486,8 +483,7 @@ function buildTravelItemDetailsData_(row) {
 function hasAnyDetails_(details) {
   return !!(details.confirmationNumber || details.address || details.directions ||
             details.parkingInfo || details.checkInInstructions || details.contactPhone ||
-            details.wifiInfo || details.cancellationPolicy || details.specialRequests ||
-            details.importantNotes || details.seatAssignment || details.mealPreference ||
+            details.wifiInfo || details.importantNotes || details.seatAssignment ||
             details.loyaltyNumber);
 }
 
