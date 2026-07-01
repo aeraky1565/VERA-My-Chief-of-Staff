@@ -100,6 +100,7 @@ const TABS = {
   MEMORY_LOG:      'Memory Log',      // Longitudinal event log (Issue #9)
   MEMORY_SNAPSHOT: 'Memory Snapshot', // Weekly metric snapshots for trend reviews (Issue #9)
   WELLNESS_LOG:    'Wellness Log',    // Daily wellness inputs + Google Fit sleep (Feature 12)
+  HOUSEHOLD_INFO:  'HouseholdInfo',   // Household cheat sheet — insurance, utilities, contacts, etc.
 };
 
 // ---- Notification Registry (Issue #188) ------------------------------------

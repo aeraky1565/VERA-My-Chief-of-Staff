@@ -377,6 +377,8 @@ function doGet(e) {
       case 'update_note':         return jsonOut_(webUpdateNote_(e));
       case 'delete_note':         return jsonOut_(webDeleteNote_(e));
       case 'pin_note':            return jsonOut_(webPinNote_(e));
+      // Household Cheat Sheet
+      case 'get_household_info': return jsonOut_(webGetHouseholdInfo_());
       // Trip Gift List (Issue #187)
       case 'get_trip_gifts':    return jsonOut_(webGetTripGifts_(e));
       case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));
