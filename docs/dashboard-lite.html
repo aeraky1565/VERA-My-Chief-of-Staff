@@ -4394,6 +4394,158 @@ function HomeFrontLiteTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- HouseholdLiteTab -------------------------------------------------------
+
+function HouseholdLiteTab({ apiUrl, apiToken }) {
+  const [data,         setData]         = React.useState(null);
+  const [loading,      setLoading]      = React.useState(false);
+  const [revealed,     setRevealed]     = React.useState({});
+  const [openSections, setOpenSections] = React.useState({});
+
+  async function load() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    try {
+      const res = await apiGet(apiUrl, apiToken, { action: 'get_household_info' });
+      setData(res);
+      if (res.sections) {
+        const open = {};
+        res.sections.forEach(s => { open[s.section] = true; });
+        setOpenSections(open);
+      }
+    } catch (err) { /* silent */ }
+    setLoading(false);
+  }
+
+  React.useEffect(() => { load(); }, [apiUrl, apiToken]);
+
+  const SENSITIVE = ['id', '#', 'number', 'account', 'ssn', 'vin', 'policy', 'member', 'pin'];
+  function isSensitive(label) {
+    const l = label.toLowerCase();
+    return SENSITIVE.some(k => l.includes(k));
+  }
+  function maskValue(val) {
+    const s = String(val);
+    return s.length <= 4 ? '••••' : '••••' + s.slice(-4);
+  }
+
+  if (loading) return (
+    <div style={{ color:'#6b7fa8', padding:32, textAlign:'center' }}>Loading household info...</div>
+  );
+  if (!data || !data.sections || data.sections.length === 0) return (
+    <div style={{ color:'#6b7fa8', padding:32, textAlign:'center' }}>
+      <div style={{ fontSize:32, marginBottom:12 }}>🏡</div>
+      <div style={{ fontSize:14, marginBottom:8 }}>No household info yet.</div>
+      <div style={{ fontSize:12, color:'#4a5a7a' }}>
+        Create a <strong>HouseholdInfo</strong> sheet tab in the VERA spreadsheet and add rows to get started.
+      </div>
+    </div>
+  );
+
+  const sheetUrl = data.sheetUrl || '';
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:18, fontWeight:700, color:'#dde1f0' }}>Household Cheat Sheet</div>
+          <div style={{ fontSize:12, color:'#6b7fa8', marginTop:2 }}>Shared quick reference — offline survival info</div>
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          {sheetUrl && (
+            <a href={sheetUrl} target="_blank" rel="noreferrer"
+               style={{ fontSize:12, padding:'6px 12px', borderRadius:6,
+                        background:'rgba(255,255,255,0.07)', color:'#8a9abf',
+                        textDecoration:'none', display:'inline-flex', alignItems:'center', gap:4 }}>
+              ✏️ Edit in Sheets
+            </a>
+          )}
+          <button onClick={() => window.print()}
+                  style={{ fontSize:12, padding:'6px 12px', borderRadius:6,
+                           background:'rgba(255,255,255,0.07)', color:'#8a9abf',
+                           border:'none', cursor:'pointer' }}>
+            🖨 Print
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {data.sections.map((section, si) => {
+          const isOpen = openSections[section.section] !== false;
+          return (
+            <div key={section.section}
+                 style={{ borderRadius:10, overflow:'hidden', background:'#0d1b3e', border:'1px solid #1e3060' }}>
+              <button onClick={() => setOpenSections(prev => ({ ...prev, [section.section]: !isOpen }))}
+                      style={{ width:'100%', display:'flex', alignItems:'center',
+                               justifyContent:'space-between', padding:'14px 20px',
+                               background:'none', border:'none', cursor:'pointer', textAlign:'left' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:15, fontWeight:700, color:'#dde1f0' }}>{section.section}</span>
+                  {section.lastUpdated && (
+                    <span style={{ fontSize:11, color:'#4a5a7a' }}>Updated {section.lastUpdated}</span>
+                  )}
+                </div>
+                <span style={{ color:'#4a5a7a', fontSize:12 }}>{isOpen ? '▲' : '▼'}</span>
+              </button>
+
+              {isOpen && (
+                <div style={{ padding:'0 20px 16px' }}>
+                  {section.subsections.map((subsection, ssi) => (
+                    <div key={subsection.subsection || '_'}
+                         style={{ marginBottom: ssi < section.subsections.length - 1 ? 20 : 0 }}>
+                      {subsection.subsection && (
+                        <div style={{ fontSize:11, fontWeight:700, color:'#c9a84c',
+                                      letterSpacing:'1.5px', textTransform:'uppercase',
+                                      marginBottom:10, paddingTop: ssi === 0 ? 4 : 12 }}>
+                          {subsection.subsection}
+                        </div>
+                      )}
+                      <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                        <tbody>
+                          {subsection.rows.map((row, ri) => {
+                            const revKey     = `${si}_${ssi}_${ri}`;
+                            const sensitive  = isSensitive(row.label);
+                            const isRevealed = revealed[revKey];
+                            const displayVal = sensitive && !isRevealed ? maskValue(row.value) : row.value;
+                            return (
+                              <tr key={ri} style={{ borderBottom:'1px solid rgba(30,48,96,0.5)' }}>
+                                <td style={{ padding:'8px 16px 8px 0', fontSize:12, fontWeight:600,
+                                             color:'#8a9abf', whiteSpace:'nowrap', verticalAlign:'top', width:'28%' }}>
+                                  {row.label}
+                                </td>
+                                <td style={{ padding:'8px 0', fontSize:13, color:'#dde1f0', verticalAlign:'top' }}>
+                                  {displayVal}
+                                  {sensitive && (
+                                    <button onClick={() => setRevealed(prev => ({ ...prev, [revKey]: !isRevealed }))}
+                                            style={{ marginLeft:8, fontSize:10, color:'#4a5a7a',
+                                                     background:'none', border:'none', cursor:'pointer', padding:'0 4px' }}>
+                                      {isRevealed ? 'hide' : 'show'}
+                                    </button>
+                                  )}
+                                </td>
+                                {row.notes && (
+                                  <td style={{ padding:'8px 0 8px 12px', fontSize:11, color:'#4a5a7a',
+                                               fontStyle:'italic', verticalAlign:'top' }}>
+                                    {row.notes}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 const TOP_TABS = [
@@ -4404,6 +4556,7 @@ const TOP_TABS = [
   { id: 'tax',           label: '🧾 Tax'            },
   { id: 'coupons',       label: '🎟️ Coupons'        },
   { id: 'home_front',    label: '🏡 Home Front'     },
+  { id: 'household',     label: '🏠 Household'      },
   { id: 'travel',        label: '✈️ Travel', disabled: true },
 ];
 
@@ -4620,6 +4773,10 @@ function App() {
 
         {activeTab === 'home_front' && (
           <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'household' && (
+          <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
       </div>
 
