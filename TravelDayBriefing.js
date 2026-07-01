@@ -879,11 +879,12 @@ function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights) {
       'You are VERA, Ahmed\'s sharp, witty Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
       'Here\'s today\'s itinerary:\n' + itemLines + '\n' +
       (flightContext ? '\nFlight context: ' + flightContext + '\n' : '') +
-      '\nWrite a 3–4 sentence narrative about this travel day in VERA\'s voice: ' +
+      '\nWrite a short narrative about this travel day in VERA\'s voice: ' +
       'confident, warm, slightly witty, like a well-informed friend who knows your schedule cold. ' +
+      'Use 2–3 short paragraphs (separated by a blank line). ' +
       'Don\'t list items — paint the arc of the day. Reference specific times and places. ' +
       'End with one practical heads-up or encouragement relevant to the day. ' +
-      'No markdown, no headers, no bullet points. Just prose.';
+      'No markdown, no headers, no bullet points. Plain text paragraphs only.';
 
     var narrative = callClaudeExplorer_(prompt);
     return narrative || null;
@@ -908,13 +909,20 @@ function buildTravelNarrativeSection_(narrativeText) {
 
   var BLUE = '#1565c0';
 
+  var paragraphs = narrativeText.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean);
+  var parasHtml = paragraphs.map(function(p, i) {
+    var isLast = (i === paragraphs.length - 1);
+    return '<p style="margin:0' + (isLast ? '' : ' 0 10px') +
+           ';font-size:14px;line-height:1.65;color:#333333;font-style:italic;">' +
+           escapeHtml_(p) + '</p>';
+  }).join('');
+
   return (
     '<div style="margin-bottom:4px;padding:16px 20px;background:#f0f4ff;' +
     'border-left:4px solid ' + BLUE + ';border-radius:0 6px 6px 0;">' +
-    '<p style="margin:0 0 6px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+    '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
     'letter-spacing:1.5px;text-transform:uppercase;">Your Day</p>' +
-    '<p style="margin:0;font-size:14px;line-height:1.65;color:#333333;font-style:italic;">' +
-    escapeHtml_(narrativeText) + '</p>' +
+    parasHtml +
     '</div>'
   );
 }
