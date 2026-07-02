@@ -378,7 +378,10 @@ function doGet(e) {
       case 'delete_note':         return jsonOut_(webDeleteNote_(e));
       case 'pin_note':            return jsonOut_(webPinNote_(e));
       // Household Cheat Sheet
-      case 'get_household_info': return jsonOut_(webGetHouseholdInfo_());
+      case 'get_household_info':    return jsonOut_(webGetHouseholdInfo_());
+      case 'update_household_row':  return jsonOut_(webUpdateHouseholdRow_(e));
+      case 'add_household_row':     return jsonOut_(webAddHouseholdRow_(e));
+      case 'delete_household_row':  return jsonOut_(webDeleteHouseholdRow_(e));
       // Trip Gift List (Issue #187)
       case 'get_trip_gifts':    return jsonOut_(webGetTripGifts_(e));
       case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));

@@ -4396,11 +4396,68 @@ function HomeFrontLiteTab({ apiUrl, apiToken }) {
 
 // ---- HouseholdLiteTab -------------------------------------------------------
 
+function HouseholdRowModal({ initial, onSave, onClose, busy }) {
+  const [form, setForm] = React.useState({
+    section:    initial.section    || '',
+    subsection: initial.subsection || '',
+    label:      initial.label      || '',
+    value:      initial.value      || '',
+    notes:      initial.notes      || '',
+  });
+  const isAdd = !initial.rowNum;
+  function field(key, label, required) {
+    return (
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:11, fontWeight:600, color:'#8a9abf', marginBottom:4 }}>{label}{required ? ' *' : ''}</div>
+        <input
+          value={form[key]}
+          onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
+          style={{ width:'100%', background:'#0a1628', border:'1px solid #1e3060', borderRadius:6,
+                   padding:'8px 10px', color:'#dde1f0', fontSize:13, boxSizing:'border-box' }}
+        />
+      </div>
+    );
+  }
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:1000,
+                  display:'flex', alignItems:'center', justifyContent:'center' }}
+         onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background:'#0d1b3e', border:'1px solid #1e3060', borderRadius:12,
+                    padding:24, width:400, maxWidth:'90vw' }}>
+        <div style={{ fontSize:15, fontWeight:700, color:'#dde1f0', marginBottom:16 }}>
+          {isAdd ? 'Add Row' : 'Edit Row'}
+        </div>
+        {field('section',    'Section',    true)}
+        {field('subsection', 'Subsection', false)}
+        {field('label',      'Label',      true)}
+        {field('value',      'Value',      true)}
+        {field('notes',      'Notes',      false)}
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
+          <button onClick={onClose} disabled={busy}
+                  style={{ padding:'8px 16px', borderRadius:6, background:'rgba(255,255,255,0.07)',
+                           color:'#8a9abf', border:'none', cursor:'pointer', fontSize:13 }}>
+            Cancel
+          </button>
+          <button onClick={() => onSave(form)} disabled={busy || !form.section || !form.label || !form.value}
+                  style={{ padding:'8px 16px', borderRadius:6, background:'#1565c0',
+                           color:'#fff', border:'none', cursor:'pointer', fontSize:13, fontWeight:600 }}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HouseholdLiteTab({ apiUrl, apiToken }) {
   const [data,         setData]         = React.useState(null);
   const [loading,      setLoading]      = React.useState(false);
+  const [busy,         setBusy]         = React.useState(false);
   const [revealed,     setRevealed]     = React.useState({});
   const [openSections, setOpenSections] = React.useState({});
+  const [modal,        setModal]        = React.useState(null); // null | row object (with isAdd flag)
+  const [inlineEdit,   setInlineEdit]   = React.useState(null); // null | { rowNum, value }
+  const inlineRef = React.useRef(null);
 
   async function load() {
     if (!apiUrl || !apiToken) return;
@@ -4411,13 +4468,23 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
       if (res.sections) {
         const open = {};
         res.sections.forEach(s => { open[s.section] = true; });
-        setOpenSections(open);
+        setOpenSections(prev => {
+          // Preserve any manually-closed sections
+          const merged = {};
+          res.sections.forEach(s => { merged[s.section] = prev[s.section] !== false; });
+          return merged;
+        });
       }
     } catch (err) { /* silent */ }
     setLoading(false);
   }
 
   React.useEffect(() => { load(); }, [apiUrl, apiToken]);
+
+  // Auto-focus inline input when it appears
+  React.useEffect(() => {
+    if (inlineEdit && inlineRef.current) inlineRef.current.focus();
+  }, [inlineEdit]);
 
   const SENSITIVE = ['id', '#', 'number', 'account', 'ssn', 'vin', 'policy', 'member', 'pin'];
   function isSensitive(label) {
@@ -4429,7 +4496,50 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
     return s.length <= 4 ? '••••' : '••••' + s.slice(-4);
   }
 
-  if (loading) return (
+  async function handleSaveModal(form) {
+    setBusy(true);
+    try {
+      if (modal.rowNum) {
+        await apiGet(apiUrl, apiToken, { action: 'update_household_row', rowNum: modal.rowNum, ...form });
+      } else {
+        await apiGet(apiUrl, apiToken, { action: 'add_household_row', ...form });
+      }
+      setModal(null);
+      await load();
+    } catch (err) { alert('Save failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleInlineSave(row, newValue) {
+    if (newValue === row.value) { setInlineEdit(null); return; }
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, {
+        action: 'update_household_row',
+        rowNum: row.rowNum,
+        section: row.section, subsection: row.subsection,
+        label: row.label, value: newValue, notes: row.notes,
+      });
+      await load();
+    } catch (err) { alert('Save failed: ' + err.message); }
+    setInlineEdit(null);
+    setBusy(false);
+  }
+
+  async function handleDelete(row) {
+    if (!window.confirm(`Delete "${row.label}"?`)) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'delete_household_row', rowNum: row.rowNum });
+      await load();
+    } catch (err) { alert('Delete failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  const iconBtn = { background:'none', border:'none', cursor:'pointer', padding:'0 3px',
+                    fontSize:13, opacity:0.5, lineHeight:1 };
+
+  if (loading && !data) return (
     <div style={{ color:'#6b7fa8', padding:32, textAlign:'center' }}>Loading household info...</div>
   );
   if (!data || !data.sections || data.sections.length === 0) return (
@@ -4437,7 +4547,7 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
       <div style={{ fontSize:32, marginBottom:12 }}>🏡</div>
       <div style={{ fontSize:14, marginBottom:8 }}>No household info yet.</div>
       <div style={{ fontSize:12, color:'#4a5a7a' }}>
-        Create a <strong>HouseholdInfo</strong> sheet tab in the VERA spreadsheet and add rows to get started.
+        Run <strong>setupHouseholdInfoSheet_()</strong> in the Apps Script editor, then reload.
       </div>
     </div>
   );
@@ -4446,6 +4556,10 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
 
   return (
     <div>
+      {modal && (
+        <HouseholdRowModal initial={modal} onSave={handleSaveModal} onClose={() => setModal(null)} busy={busy} />
+      )}
+
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
         <div>
           <div style={{ fontSize:18, fontWeight:700, color:'#dde1f0' }}>Household Cheat Sheet</div>
@@ -4457,7 +4571,7 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
                style={{ fontSize:12, padding:'6px 12px', borderRadius:6,
                         background:'rgba(255,255,255,0.07)', color:'#8a9abf',
                         textDecoration:'none', display:'inline-flex', alignItems:'center', gap:4 }}>
-              ✏️ Edit in Sheets
+              ↗ Sheets
             </a>
           )}
           <button onClick={() => window.print()}
@@ -4506,16 +4620,38 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
                             const revKey     = `${si}_${ssi}_${ri}`;
                             const sensitive  = isSensitive(row.label);
                             const isRevealed = revealed[revKey];
+                            const isInline   = inlineEdit && inlineEdit.rowNum === row.rowNum;
                             const displayVal = sensitive && !isRevealed ? maskValue(row.value) : row.value;
                             return (
-                              <tr key={ri} style={{ borderBottom:'1px solid rgba(30,48,96,0.5)' }}>
+                              <tr key={ri}
+                                  style={{ borderBottom:'1px solid rgba(30,48,96,0.5)' }}
+                                  className="household-row">
                                 <td style={{ padding:'8px 16px 8px 0', fontSize:12, fontWeight:600,
-                                             color:'#8a9abf', whiteSpace:'nowrap', verticalAlign:'top', width:'28%' }}>
+                                             color:'#8a9abf', whiteSpace:'nowrap', verticalAlign:'middle', width:'28%' }}>
                                   {row.label}
                                 </td>
-                                <td style={{ padding:'8px 0', fontSize:13, color:'#dde1f0', verticalAlign:'top' }}>
-                                  {displayVal}
-                                  {sensitive && (
+                                <td style={{ padding:'6px 0', fontSize:13, color:'#dde1f0', verticalAlign:'middle' }}>
+                                  {isInline ? (
+                                    <input
+                                      ref={inlineRef}
+                                      defaultValue={row.value}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleInlineSave(row, e.target.value);
+                                        if (e.key === 'Escape') setInlineEdit(null);
+                                      }}
+                                      onBlur={e => handleInlineSave(row, e.target.value)}
+                                      style={{ width:'100%', background:'#0a1628', border:'1px solid #1565c0',
+                                               borderRadius:5, padding:'4px 8px', color:'#dde1f0',
+                                               fontSize:13, boxSizing:'border-box' }}
+                                    />
+                                  ) : (
+                                    <span
+                                      onClick={() => !sensitive && setInlineEdit({ rowNum: row.rowNum, value: row.value })}
+                                      style={{ cursor: sensitive ? 'default' : 'text' }}>
+                                      {displayVal}
+                                    </span>
+                                  )}
+                                  {sensitive && !isInline && (
                                     <button onClick={() => setRevealed(prev => ({ ...prev, [revKey]: !isRevealed }))}
                                             style={{ marginLeft:8, fontSize:10, color:'#4a5a7a',
                                                      background:'none', border:'none', cursor:'pointer', padding:'0 4px' }}>
@@ -4523,12 +4659,10 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
                                     </button>
                                   )}
                                 </td>
-                                {row.notes && (
-                                  <td style={{ padding:'8px 0 8px 12px', fontSize:11, color:'#4a5a7a',
-                                               fontStyle:'italic', verticalAlign:'top' }}>
-                                    {row.notes}
-                                  </td>
-                                )}
+                                <td style={{ padding:'6px 0 6px 8px', verticalAlign:'middle', whiteSpace:'nowrap' }}>
+                                  <button title="Edit" onClick={() => setModal(row)} style={iconBtn} disabled={busy}>✏️</button>
+                                  <button title="Delete" onClick={() => handleDelete(row)} style={iconBtn} disabled={busy}>🗑️</button>
+                                </td>
                               </tr>
                             );
                           })}
@@ -4536,6 +4670,14 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
                       </table>
                     </div>
                   ))}
+                  <button
+                    onClick={() => setModal({ section: section.section, subsection: '', label: '', value: '', notes: '' })}
+                    disabled={busy}
+                    style={{ marginTop:12, fontSize:12, padding:'5px 12px', borderRadius:6,
+                             background:'rgba(21,101,192,0.15)', color:'#5b9bd5',
+                             border:'1px dashed rgba(21,101,192,0.4)', cursor:'pointer' }}>
+                    + Add row
+                  </button>
                 </div>
               )}
             </div>
