@@ -122,6 +122,28 @@ function sendSlackResponse_(responseUrl, text, blocks, replaceOriginal) {
 }
 
 /**
+ * Sends a message visible only to one user in a channel (chat.postEphemeral).
+ * Unlike response_url + response_type:'ephemeral' (which Slack ignores for button
+ * callbacks), this API call works reliably for interactive component interactions.
+ */
+function postSlackEphemeral_(channelId, userId, text) {
+  if (!channelId || !userId || !text) return;
+  var token = getSlackToken_();
+  if (!token) return;
+  try {
+    UrlFetchApp.fetch('https://slack.com/api/chat.postEphemeral', {
+      method:      'post',
+      contentType: 'application/json; charset=utf-8',
+      headers:     { Authorization: 'Bearer ' + token },
+      payload:     JSON.stringify({ channel: channelId, user: userId, text: String(text) }),
+      muteHttpExceptions: true,
+    });
+  } catch (err) {
+    Logger.log('postSlackEphemeral_ exception: ' + err.message);
+  }
+}
+
+/**
  * Publishes the App Home view for a user.
  */
 function updateAppHome_(userId) {
@@ -700,6 +722,7 @@ function handleSlackInteraction_(payload) {
   var value       = action.value;
   var responseUrl = payload.response_url;
   var userId      = payload.user && payload.user.id;
+  var channelId   = payload.channel && payload.channel.id;
 
   // ── Send the visual response to Slack FIRST (3-second deadline) ─────────
   // Any sheet reads/writes happen AFTER the ack so Slack never times out.
@@ -719,7 +742,10 @@ function handleSlackInteraction_(payload) {
     ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
   }
 
-  if (ackText) sendSlackResponse_(responseUrl, ackText, null, true);
+  // Wellness buttons need all three rows to stay tappable — don't replace the original.
+  // Instead we send a true ephemeral ack via chat.postEphemeral after the write (below).
+  var isWellnessAction = ackText && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
+  if (ackText && !isWellnessAction) sendSlackResponse_(responseUrl, ackText, null, true);
 
   // ── Heavy work (sheet reads/writes) AFTER the ack ────────────────────────
   try {
@@ -762,6 +788,8 @@ function handleSlackInteraction_(payload) {
       var canonMetric = wMetricMap[wMetric] || wMetric;
       if (!isNaN(wVal) && canonMetric) {
         try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); } catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
+        // Ephemeral confirmation — original 3-row message stays intact for the other two taps
+        if (ackText && channelId && userId) postSlackEphemeral_(channelId, userId, ackText);
       }
     }
   } catch (err) {
