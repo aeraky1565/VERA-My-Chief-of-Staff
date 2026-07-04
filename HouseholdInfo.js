@@ -119,6 +119,8 @@ function webDeleteHouseholdRow_(e) {
   return { ok: true };
 }
 
+function setupHouseholdInfoSheet() { setupHouseholdInfoSheet_(); }
+
 // Run once manually to create the sheet with headers + sample placeholder rows.
 function setupHouseholdInfoSheet_() {
   const ss    = getSpreadsheet();
