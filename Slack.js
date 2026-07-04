@@ -121,27 +121,6 @@ function sendSlackResponse_(responseUrl, text, blocks, replaceOriginal) {
   }
 }
 
-/**
- * Sends a message visible only to one user in a channel (chat.postEphemeral).
- * Unlike response_url + response_type:'ephemeral' (which Slack ignores for button
- * callbacks), this API call works reliably for interactive component interactions.
- */
-function postSlackEphemeral_(channelId, userId, text) {
-  if (!channelId || !userId || !text) return;
-  var token = getSlackToken_();
-  if (!token) return;
-  try {
-    UrlFetchApp.fetch('https://slack.com/api/chat.postEphemeral', {
-      method:      'post',
-      contentType: 'application/json; charset=utf-8',
-      headers:     { Authorization: 'Bearer ' + token },
-      payload:     JSON.stringify({ channel: channelId, user: userId, text: String(text) }),
-      muteHttpExceptions: true,
-    });
-  } catch (err) {
-    Logger.log('postSlackEphemeral_ exception: ' + err.message);
-  }
-}
 
 /**
  * Publishes the App Home view for a user.
@@ -783,13 +762,22 @@ function handleSlackInteraction_(payload) {
       var wParts  = actionId.split('_');
       var wMetric = wParts[1] || '';
       var wVal    = parseFloat(wParts[2]);
+      var wLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
       // Map abbreviated IDs to canonical metric names
       var wMetricMap = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
       var canonMetric = wMetricMap[wMetric] || wMetric;
       if (!isNaN(wVal) && canonMetric) {
+        // Replace only the tapped metric's row with a ✓ indicator; pass other rows through unchanged.
+        // Uses response_url (always available, no extra scopes) rather than chat.postEphemeral.
+        var curBlocks = (payload.message && payload.message.blocks) || [];
+        var ackBlocks = curBlocks.map(function(b) {
+          if (b.block_id === 'wellness_row_' + wMetric) {
+            return { type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: ':white_check_mark: *' + wLabel + '*  ' + wVal + '/5 logged' } };
+          }
+          return b;
+        });
+        sendSlackResponse_(responseUrl, ackText, ackBlocks.length ? ackBlocks : null, true);
         try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); } catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
-        // Ephemeral confirmation — original 3-row message stays intact for the other two taps
-        if (ackText && channelId && userId) postSlackEphemeral_(channelId, userId, ackText);
       }
     }
   } catch (err) {
