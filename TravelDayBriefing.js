@@ -177,13 +177,34 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
     try { loungeData = buildTravelLoungeData_(travelAirports, loungePerks); } catch (lErr) { Logger.log('lounge data error: ' + lErr.message); }
   }
 
+  // Tomorrow flight preview — re-read the sheet for the same trip key, next day, flights only
+  var tomorrowFlights = [];
+  try {
+    var _itSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (_itSheet && _itSheet.getLastRow() >= 2) {
+      var _tomorrow = Utilities.formatDate(new Date(Date.now() + 86400000), tz, 'yyyy-MM-dd');
+      var _allRows  = _itSheet.getRange(2, 1, _itSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+      tomorrowFlights = _allRows.filter(function(row) {
+        var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
+          ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
+          : String(row[4] || '').trim();
+        return String(row[1] || '').trim() === tripKey &&
+               rowDate === _tomorrow &&
+               String(row[2] || '').trim().toLowerCase() === 'flight';
+      }).sort(function(a, b) {
+        return String(a[5] || '') < String(b[5] || '') ? -1 : 1;
+      });
+    }
+  } catch (tmrwErr) { Logger.log('tomorrow flights error (non-fatal): ' + tmrwErr.message); }
+
   var sections = [
-    { id: 'narrative',      builder: buildTravelNarrativeSection_,      data: narrativeData },
-    { id: 'flight_insights', builder: buildTravelFlightInsightsSection_, data: insights },
-    { id: 'lounge_access',  builder: buildTravelLoungeSection_,         data: loungeData },
+    { id: 'narrative',       builder: buildTravelNarrativeSection_,      data: narrativeData },
+    { id: 'flight_insights', builder: buildTravelFlightInsightsSection_,  data: insights },
+    { id: 'lounge_access',   builder: buildTravelLoungeSection_,          data: loungeData },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
-    { id: 'schedule', builder: buildTravelScheduleSection_, data: sortedItems },
+    { id: 'schedule',          builder: buildTravelScheduleSection_,      data: sortedItems },
+    { id: 'tomorrow_flights',  builder: buildTravelTomorrowSection_,      data: tomorrowFlights },
     // Future: { id: 'group_notes',   builder: buildTravelGroupNotesSection_,   data: null },
   ];
 
@@ -1011,6 +1032,9 @@ function buildTravelLoungeData_(airports, loungePerks) {
     'IMPORTANT: Only include lounges you are CONFIDENT exist and are accessible through these specific programs.\n' +
     'If you are not certain a lounge exists at an airport for a given program, OMIT it entirely — do not guess.\n' +
     'If no lounges are confidently known, return { "lounges": [], "tip": "" }.\n\n' +
+    'For guest_limit: state the exact cap and any per-guest fee (e.g. "2 guests at no charge; additional guests $50 each").\n' +
+    'For access_window: state any time restriction on entry (e.g. "Must enter at least 1 hour before close").\n' +
+    'If there are multiple lounges at the same airport, the tip should compare them (e.g. which is better for guests).\n\n' +
     'Return ONLY a valid JSON object (no markdown, no preamble):\n' +
     '{\n' +
     '  "lounges": [\n' +
@@ -1024,10 +1048,12 @@ function buildTravelLoungeData_(airports, loungePerks) {
     '      "terminal": "C",\n' +
     '      "location_notes": "Airside, past security",\n' +
     '      "hours": "5:00 AM – 10:00 PM",\n' +
-    '      "access_notes": "Complimentary; guest fees apply"\n' +
+    '      "guest_limit": "Guest fee: $32/person" or null,\n' +
+    '      "access_window": "Must enter at least 1 hour before close" or null,\n' +
+    '      "access_notes": "Capacity limits apply — check app before visiting" or null\n' +
     '    }\n' +
     '  ],\n' +
-    '  "tip": "One sentence tip about using these lounges, or empty string if none."\n' +
+    '  "tip": "One sentence tip — compare lounge options at the same airport if applicable, otherwise general advice. Empty string if nothing useful."\n' +
     '}';
 
   var result = callClaudeJson_(prompt, null);
@@ -1079,11 +1105,14 @@ function buildTravelLoungeSection_(data) {
       (airportLabel ? '<p style="margin:0 0 4px;font-size:12px;color:' + LGREY + ';">' + airportLabel + '</p>' : '') +
       '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">';
 
-    function loungeRow(label, val) {
+    var AMBER = '#a05c00';
+
+    function loungeRow(label, val, warnColor) {
       if (!val) return '';
+      var valColor = warnColor || GREY;
       return '<tr>' +
         '<td style="padding:2px 8px 2px 0;font-size:12px;font-weight:600;color:' + LGREY + ';white-space:nowrap;vertical-align:top;">' + label + '</td>' +
-        '<td style="padding:2px 0;font-size:12px;color:' + GREY + ';vertical-align:top;">' + escapeHtml_(String(val)) + '</td>' +
+        '<td style="padding:2px 0;font-size:12px;color:' + valColor + ';vertical-align:top;">' + escapeHtml_(String(val)) + '</td>' +
         '</tr>';
     }
 
@@ -1091,7 +1120,8 @@ function buildTravelLoungeSection_(data) {
     html += loungeRow('Location',  lounge.location_notes);
     html += loungeRow('Hours',     lounge.hours);
     html += loungeRow('Access',    accessVia || null);
-    html += loungeRow('Note',      lounge.access_notes);
+    html += loungeRow('Guests',    lounge.guest_limit   ? '⚠ ' + lounge.guest_limit   : null, AMBER);
+    html += loungeRow('Note',      lounge.access_window ? '⚠ ' + lounge.access_window : (lounge.access_notes || null), lounge.access_window ? AMBER : null);
 
     html += '</table></div>';
   });
@@ -1103,6 +1133,64 @@ function buildTravelLoungeSection_(data) {
       '💡 ' + escapeHtml_(data.tip) + '</p>';
   }
 
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelTomorrowSection_(tomorrowFlights)
+ *
+ * HTML section builder for a compact "Coming Up Tomorrow" flight preview.
+ * Visually recessed (light background, muted label) to signal preview context —
+ * not today's action items. Returns '' if array is empty.
+ *
+ * @param {Array} tomorrowFlights — Itinerary rows for tomorrow's flights (same trip)
+ * @returns {string} HTML string or ''
+ */
+function buildTravelTomorrowSection_(tomorrowFlights) {
+  if (!tomorrowFlights || !tomorrowFlights.length) return '';
+
+  var MUTED_BLUE = '#7a9ccb';
+  var DARK       = '#2e3a50';
+  var SUBTEXT    = '#8a96aa';
+
+  var html =
+    '<div style="background:#f7f8fb;border:1px solid #e6eaf2;border-radius:6px;padding:16px 20px;">' +
+    '<p style="margin:0 0 12px;font-size:10.5px;font-weight:700;color:' + MUTED_BLUE + ';' +
+    'letter-spacing:1.5px;text-transform:uppercase;">Coming Up Tomorrow</p>';
+
+  tomorrowFlights.forEach(function(row, i) {
+    var title  = String(row[3] || '').trim() || 'Flight';
+    var startT = String(row[5] || '').trim();
+    var endT   = String(row[6] || '').trim();
+    var loc    = String(row[7] || '').trim();
+    var meta   = {};
+    try { meta = JSON.parse(String(row[9] || '{}')); } catch (e_) {}
+
+    var route = '';
+    if (meta.origin && meta.dest) {
+      route = escapeHtml_(meta.origin) + ' → ' + escapeHtml_(meta.dest);
+    } else if (loc) {
+      route = escapeHtml_(loc);
+    }
+
+    var timeStr = startT || '';
+    if (endT && endT !== startT) timeStr += ' – ' + endT;
+
+    html +=
+      (i > 0 ? '<div style="height:1px;background:#e8ecf4;margin:10px 0;"></div>' : '') +
+      '<div style="display:flex;align-items:flex-start;gap:10px;">' +
+      '<div style="font-size:16px;padding-top:1px;flex-shrink:0;">✈️</div>' +
+      '<div>' +
+      '<p style="margin:0 0 1px;font-size:13px;font-weight:600;color:' + DARK + ';">' +
+      escapeHtml_(title) + (route ? ' &nbsp;·&nbsp; ' + route : '') + '</p>' +
+      (timeStr ? '<p style="margin:0;font-size:12px;color:' + SUBTEXT + ';">' + escapeHtml_(timeStr) + '</p>' : '') +
+      '</div>' +
+      '</div>';
+  });
+
+  html += '</div>';
   return html;
 }
 
