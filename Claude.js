@@ -625,6 +625,10 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     '- Bucket List + PTO/Calendar: Only flag if there is a SPECIFIC confirmed clear PTO window already identified in the PTO STATUS section AND the destination target year matches the current or next year. Do NOT generate this flag if no clear window is confirmed.\n' +
     '- Financial Goal + Calendar/Tasks: Is there an upcoming large expense (trip, event) that could push a goal off-track?\n' +
     '- Financial Goal + Bills: Is the monthly bill load crowding out goal contributions?\n' +
+    '- Prescription + Travel: Is there an Rx refill due before or during an upcoming trip? Missed refills while traveling are high-consequence.\n' +
+    '- Gift Deadline + Wish List: Is there an upcoming birthday or occasion in IMPORTANT DATES for someone who has items in GIFT IDEAS or WISH LIST? Surface the best-fit ideas.\n' +
+    '- Skill + Open Calendar: Is there a goal-linked skill (from SKILLS) that hasn\'t been practiced in 14+ days AND a relatively free week ahead? Suggest carving out practice time.\n' +
+    '- Loyalty / Perk + Upcoming Trip: Are there expiring loyalty points, airline miles, or card travel credits that align with an upcoming trip? Flag the opportunity to use them.\n' +
     'Generate up to 2 cross-domain flags from this synthesis — these are often the most valuable insights.\n\n' +
 
     'FINANCIAL GOALS FLAG RULES:\n' +

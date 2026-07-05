@@ -153,7 +153,10 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var homeCity = String(cfg['weather_location'] || '').trim();
   var insights = buildTravelFlightInsightsData_(sortedItems, homeCity);
 
+  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights);
+
   var sections = [
+    { id: 'narrative',      builder: buildTravelNarrativeSection_,      data: narrativeData },
     { id: 'flight_insights', builder: buildTravelFlightInsightsSection_, data: insights },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
@@ -297,22 +300,32 @@ function buildTravelScheduleSection_(items) {
     'letter-spacing:1.5px;text-transform:uppercase;">Today\'s Schedule</p>';
 
   items.forEach(function(row) {
-    var type    = String(row[2] || '').trim();
-    var title   = String(row[3] || '').trim() || '(untitled)';
-    var startT  = String(row[5] || '').trim();
-    var endT    = String(row[6] || '').trim();
-    var loc     = String(row[7] || '').trim();
-    var notes   = String(row[8] || '').trim();
-    var meta    = {};
-    if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch(e_) {} }
+    var type   = String(row[2] || '').trim();
+    var title  = String(row[3] || '').trim() || '(untitled)';
+    var startT = String(row[5] || '').trim();
+    var endT   = String(row[6] || '').trim();
+    var loc    = String(row[7] || '').trim();
+    var notes  = String(row[8] || '').trim();
 
     var timeStr = startT || 'All day';
     if (endT && endT !== startT) timeStr += ' \u2013 ' + endT;
-
     var typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1).toLowerCase() : '';
 
+    // Enrich with actionable day-of details (conf#, directions, parking, etc.)
+    var details = null;
+    try { details = buildTravelItemDetailsData_(row); } catch (enrichErr) {
+      Logger.log('TravelDayBriefing: enrichment error for "' + title + '": ' + enrichErr.message);
+    }
+
+    // Use enriched address if it's more specific than the raw location column
+    var displayAddress = loc;
+    if (details && details.address && details.address !== loc &&
+        details.address.length > loc.length) {
+      displayAddress = details.address;
+    }
+
     html +=
-      '<div style="display:flex;align-items:flex-start;margin-bottom:18px;">' +
+      '<div style="display:flex;align-items:flex-start;margin-bottom:22px;">' +
       '<div style="width:34px;flex-shrink:0;font-size:20px;padding-top:2px;">' +
       typeIcon(type) + '</div>' +
       '<div style="flex:1;">' +
@@ -323,23 +336,196 @@ function buildTravelScheduleSection_(items) {
       (typeLabel ? ' \u00B7 ' + escapeHtml_(typeLabel) : '') +
       '</p>';
 
-    if (loc) {
-      html += '<p style="margin:0 0 3px;font-size:13px;color:#555555;">' +
-              '\uD83D\uDCCD ' + escapeHtml_(loc) + '</p>';
+    if (displayAddress) {
+      html += '<p style="margin:0 0 6px;font-size:13px;color:#555555;">' +
+              '\uD83D\uDCCD ' + escapeHtml_(displayAddress) + '</p>';
     }
-    if (meta.confirmationNumber) {
-      html += '<p style="margin:0 0 3px;font-size:12px;color:#888888;">' +
-              'Conf# ' + escapeHtml_(String(meta.confirmationNumber)) + '</p>';
-    }
-    if (notes) {
-      html += '<p style="margin:0;font-size:12px;color:#888888;font-style:italic;">' +
-              escapeHtml_(notes) + '</p>';
+
+    // \u2500\u2500 Details block \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    if (details && details.notFound) {
+      html += '<p style="margin:0;font-size:12px;color:#aaaaaa;font-style:italic;">' +
+              'No further details found \u2014 you may want to check manually.</p>';
+    } else if (details) {
+      var tableRows = [];
+      function addRow_(label, val) {
+        if (!val) return;
+        tableRows.push(
+          '<tr>' +
+          '<td style="padding:3px 10px 3px 0;font-size:12px;font-weight:600;' +
+          'color:#555555;white-space:nowrap;vertical-align:top;">' + label + '</td>' +
+          '<td style="padding:3px 0;font-size:12px;color:#333333;vertical-align:top;">' +
+          escapeHtml_(String(val)) + '</td>' +
+          '</tr>'
+        );
+      }
+      addRow_('Conf #',    details.confirmationNumber);
+      addRow_('Seat',      details.seatAssignment);
+      addRow_('Loyalty',   details.loyaltyNumber);
+      addRow_('Address',   details.address !== loc ? details.address : null);
+      addRow_('Directions',details.directions);
+      addRow_('Parking',   details.parkingInfo);
+      addRow_('Check-in',  details.checkInInstructions);
+      addRow_('Contact',   details.contactPhone);
+      addRow_('Wi-Fi',     details.wifiInfo);
+      addRow_('Note',      details.importantNotes);
+      if (notes) addRow_('Notes', notes);
+
+      if (tableRows.length) {
+        html +=
+          '<table cellpadding="0" cellspacing="0" ' +
+          'style="margin-top:2px;padding-top:6px;border-top:1px solid #f0f0f5;width:100%;">' +
+          tableRows.join('') +
+          '</table>';
+      }
+    } else {
+      // Enrichment call failed \u2014 fall back to raw itinerary data
+      var meta = {};
+      if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch (e_) {} }
+      if (meta.confirmationNumber) {
+        html += '<p style="margin:0 0 3px;font-size:12px;color:#888888;">' +
+                'Conf# ' + escapeHtml_(String(meta.confirmationNumber)) + '</p>';
+      }
+      if (notes) {
+        html += '<p style="margin:0;font-size:12px;color:#888888;font-style:italic;">' +
+                escapeHtml_(notes) + '</p>';
+      }
     }
 
     html += '</div></div>';
   });
 
   return html;
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelItemDetailsData_(row)
+ *
+ * Enriches one itinerary row with actionable day-of details.
+ * Priority: (1) existing Metadata JSON from col 9, (2) Claude + web search
+ * for gaps when the item is sparse and not a flight.
+ *
+ * Returns a details object with fields: confirmationNumber, address,
+ * directions, parkingInfo, checkInInstructions, contactPhone, wifiInfo,
+ * cancellationPolicy, specialRequests, importantNotes, seatAssignment,
+ * mealPreference, loyaltyNumber, notFound.
+ * notFound=true only when there is genuinely nothing to show.
+ *
+ * @param {Array} row — one Itinerary sheet row
+ * @returns {Object}
+ */
+function buildTravelItemDetailsData_(row) {
+  var type  = String(row[2] || '').trim().toLowerCase();
+  var title = String(row[3] || '').trim();
+  var tz    = Session.getScriptTimeZone();
+  var date  = (row[4] instanceof Date && !isNaN(row[4].getTime()))
+    ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
+    : String(row[4] || '').trim();
+  var loc   = String(row[7] || '').trim();
+  var meta  = {};
+  if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch (e_) {} }
+
+  // ── Step 1: pull all already-known fields from metadata ────────────────────
+  var details = {
+    confirmationNumber:  meta.confirmationNumber  || null,
+    address:             loc                      || null,
+    directions:          null,
+    parkingInfo:         meta.parkingInfo         || null,
+    checkInInstructions: meta.checkInInstructions || null,
+    contactPhone:        meta.contactPhone        || null,
+    wifiInfo:            meta.wifiInfo            || null,
+    importantNotes:      meta.importantNotes      || null,
+    seatAssignment:      meta.seatAssignment      || null,
+    loyaltyNumber:       meta.loyaltyNumber       || null,
+    notFound:            false,
+  };
+
+  // ── Step 2: heuristic — skip enrichment for flights and already-rich items ─
+  // A "rich" item has a street-level address (digit present) + 2+ detail fields.
+  var hasStreetAddress = /\d/.test(loc);
+  var metaFieldCount = ['confirmationNumber','parkingInfo','checkInInstructions',
+                        'contactPhone','wifiInfo']
+                       .filter(function(k) { return !!meta[k]; }).length;
+  var isFlight = (type === 'flight' || type === 'plane');
+  var needsEnrichment = !isFlight && !(hasStreetAddress && metaFieldCount >= 2);
+
+  if (!needsEnrichment) {
+    Logger.log('TravelDayBriefing details: "' + title + '" — itinerary data only');
+    return details;
+  }
+
+  // ── Step 3: Claude + web search for missing details ────────────────────────
+  Logger.log('TravelDayBriefing details: enriching "' + title + '" via Claude/web-search');
+  var sysprompt =
+    'You are VERA, a personal chief-of-staff AI. Find concrete, actionable day-of ' +
+    'details for the given itinerary item. The goal is offline survival info — ' +
+    'things the user needs if they have no cell service: address to navigate to, ' +
+    'directions, a phone number to call, parking, check-in instructions. ' +
+    'Be honest — if you cannot confidently determine something, set it to null. ' +
+    'Do NOT guess or hallucinate addresses or phone numbers. ' +
+    'Use the web_search tool if available to look up accurate information. ' +
+    'Respond ONLY with a valid JSON object, no markdown, no preamble.';
+
+  var knownParts = [];
+  if (details.confirmationNumber) knownParts.push('confirmation: ' + details.confirmationNumber);
+  if (details.address)            knownParts.push('location (may be city-only): ' + details.address);
+  var knownStr = knownParts.length ? '\nAlready known: ' + knownParts.join('; ') : '';
+
+  var userprompt =
+    'Find day-of details for this itinerary item:\n' +
+    'Title: ' + title + '\n' +
+    'Type: ' + (type || 'unknown') + '\n' +
+    'Date: ' + date + knownStr + '\n\n' +
+    'Return ONLY a JSON object with these fields (null if unknown/uncertain):\n' +
+    '{\n' +
+    '  "address": "full street address or null",\n' +
+    '  "directions": "brief how-to-get-there note or null",\n' +
+    '  "contactPhone": "venue/reservation phone or null",\n' +
+    '  "parkingInfo": "parking details or null",\n' +
+    '  "importantNotes": "one key arrival tip or null",\n' +
+    '  "found": true or false\n' +
+    '}\n' +
+    'Set found=false if you genuinely cannot find useful details for this item.';
+
+  var rawText = callClaudeWithWebSearch_(sysprompt, userprompt, 512);
+  if (!rawText) {
+    details.notFound = !hasAnyDetails_(details);
+    return details;
+  }
+
+  // Parse JSON from Claude's response
+  var enriched = null;
+  try {
+    var cleaned = rawText.trim()
+      .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    var start = cleaned.indexOf('{'); var end = cleaned.lastIndexOf('}');
+    if (start !== -1 && end !== -1) enriched = JSON.parse(cleaned.substring(start, end + 1));
+  } catch (parseErr) {
+    Logger.log('TravelDayBriefing details: JSON parse failed for "' + title + '": ' + parseErr.message);
+  }
+
+  if (enriched) {
+    // Merge — only fill nulls, never overwrite existing itinerary data
+    if (!details.address    && enriched.address)       details.address       = enriched.address;
+    if (!details.directions && enriched.directions)    details.directions    = enriched.directions;
+    if (!details.contactPhone && enriched.contactPhone) details.contactPhone = enriched.contactPhone;
+    if (!details.parkingInfo  && enriched.parkingInfo)  details.parkingInfo  = enriched.parkingInfo;
+    if (!details.importantNotes && enriched.importantNotes) details.importantNotes = enriched.importantNotes;
+    if (enriched.found === false && !hasAnyDetails_(details)) details.notFound = true;
+  } else {
+    if (!hasAnyDetails_(details)) details.notFound = true;
+  }
+
+  return details;
+}
+
+/** Returns true if at least one actionable detail field has a value. */
+function hasAnyDetails_(details) {
+  return !!(details.confirmationNumber || details.address || details.directions ||
+            details.parkingInfo || details.checkInInstructions || details.contactPhone ||
+            details.wifiInfo || details.importantNotes || details.seatAssignment ||
+            details.loyaltyNumber);
 }
 
 // ---------------------------------------------------------------------------
@@ -685,6 +871,111 @@ function buildTravelFlightInsightsSection_(insights) {
   }
 
   return html;
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// VERA Narrative section — Claude-powered travel day story
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelDayNarrativeData_(sortedItems, tripLabel, insights)
+ *
+ * Calls Claude to write a fun, conversational narrative about the day's
+ * itinerary. Returns the narrative string, or null on error/disabled.
+ *
+ * @param {Array}       sortedItems  — today's Itinerary rows sorted by start time
+ * @param {string}      tripLabel    — e.g. "Paris" or "Austin · SXSW"
+ * @param {Object|null} insights     — flight insights object (optional context)
+ * @returns {string|null}
+ */
+function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights) {
+  try {
+    if (!sortedItems || sortedItems.length === 0) return null;
+
+    // Build a compact plain-text summary of the day's items for Claude
+    var itemLines = sortedItems.map(function(row) {
+      var type   = String(row[2] || '').trim();
+      var title  = String(row[3] || '').trim() || '(untitled)';
+      var startT = String(row[5] || '').trim();
+      var endT   = String(row[6] || '').trim();
+      var loc    = String(row[7] || '').trim();
+      var notes  = String(row[8] || '').trim();
+      var meta   = {};
+      if (row[9]) { try { meta = JSON.parse(String(row[9])); } catch (e_) {} }
+
+      var parts = [type ? '[' + type + ']' : '[event]', title];
+      if (startT) parts.push(startT + (endT && endT !== startT ? '–' + endT : ''));
+      if (loc)   parts.push('at ' + loc);
+      if (meta.confirmationNumber) parts.push('conf# ' + meta.confirmationNumber);
+      if (notes) parts.push('(' + notes + ')');
+      return parts.join(' · ');
+    }).join('\n');
+
+    var flightContext = '';
+    if (insights) {
+      if (insights.dep_local && insights.arr_local) {
+        flightContext += ' Flight: ' + insights.dep_local + ' → ' + insights.arr_local + '.';
+      }
+      if (insights.tz_offset_label && insights.tz_offset_label !== 'same timezone') {
+        flightContext += ' Timezone shift: ' + insights.tz_offset_label + '.';
+      }
+      if (insights.sleep_tip) {
+        flightContext += ' ' + insights.sleep_tip;
+      }
+    }
+
+    var prompt =
+      'You are VERA, Ahmed\'s sharp, witty Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
+      'Here\'s today\'s itinerary:\n' + itemLines + '\n' +
+      (flightContext ? '\nFlight context: ' + flightContext + '\n' : '') +
+      '\nWrite a short narrative about this travel day in VERA\'s voice: ' +
+      'confident, warm, slightly witty, like a well-informed friend who knows your schedule cold. ' +
+      'Use 2–3 short paragraphs (separated by a blank line). ' +
+      'Don\'t list items — paint the arc of the day. Reference specific times and places. ' +
+      'End with one practical heads-up or encouragement relevant to the day. ' +
+      'No markdown, no headers, no bullet points. Plain text paragraphs only.';
+
+    var narrative = callClaudeExplorer_(prompt);
+    return narrative || null;
+
+  } catch (err) {
+    Logger.log('buildTravelDayNarrativeData_ error (non-fatal): ' + err.message);
+    return null;
+  }
+}
+
+/**
+ * buildTravelNarrativeSection_(narrativeText)
+ *
+ * HTML section builder for the VERA narrative panel.
+ * Renders as a warm italic intro block at the top of the email body.
+ *
+ * @param {string|null} narrativeText
+ * @returns {string} HTML string, or '' if narrativeText is null/empty
+ */
+function buildTravelNarrativeSection_(narrativeText) {
+  if (!narrativeText) return '';
+
+  var BLUE = '#1565c0';
+
+  var paragraphs = narrativeText.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean);
+  var parasHtml = paragraphs.map(function(p, i) {
+    var isLast = (i === paragraphs.length - 1);
+    return '<p style="margin:0' + (isLast ? '' : ' 0 10px') +
+           ';font-size:14px;line-height:1.65;color:#333333;font-style:italic;">' +
+           escapeHtml_(p) + '</p>';
+  }).join('');
+
+  return (
+    '<div style="margin-bottom:4px;padding:16px 20px;background:#f0f4ff;' +
+    'border-left:4px solid ' + BLUE + ';border-radius:0 6px 6px 0;">' +
+    '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+    'letter-spacing:1.5px;text-transform:uppercase;">Your Day</p>' +
+    parasHtml +
+    '</div>'
+  );
 }
 
 // ---------------------------------------------------------------------------

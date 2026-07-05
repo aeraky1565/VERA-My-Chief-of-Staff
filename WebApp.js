@@ -377,6 +377,11 @@ function doGet(e) {
       case 'update_note':         return jsonOut_(webUpdateNote_(e));
       case 'delete_note':         return jsonOut_(webDeleteNote_(e));
       case 'pin_note':            return jsonOut_(webPinNote_(e));
+      // Household Cheat Sheet
+      case 'get_household_info':    return jsonOut_(webGetHouseholdInfo_());
+      case 'update_household_row':  return jsonOut_(webUpdateHouseholdRow_(e));
+      case 'add_household_row':     return jsonOut_(webAddHouseholdRow_(e));
+      case 'delete_household_row':  return jsonOut_(webDeleteHouseholdRow_(e));
       // Trip Gift List (Issue #187)
       case 'get_trip_gifts':    return jsonOut_(webGetTripGifts_(e));
       case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));
@@ -429,27 +434,10 @@ function doPost(e) {
   // processTelegramUpdate_ sends "⏳ Thinking..." immediately via UrlFetchApp so
   // the user sees instant feedback, then edits the message with Claude's real answer.
   // Deduplication (CacheService) inside processTelegramUpdate_ prevents retry loops.
+  // Telegram was replaced by Slack entirely. processTelegramUpdate_/Queue_ no longer exist.
+  // Safely ignore any stray Telegram webhook POSTs rather than crashing with ReferenceError.
   if (body && body.update_id !== undefined) {
-    // Return 200 OK immediately so Telegram never times out waiting for Claude.
-    // Queue the update in ScriptCache and fire a one-shot trigger to process it.
-    // Without this, the 10-20s Claude call causes Telegram to retry the delivery,
-    // creating concurrent executions that result in a 302 on the next message.
-    try {
-      var sc  = CacheService.getScriptCache();
-      var qId = String(body.update_id);
-      sc.put('TG_Q_' + qId, JSON.stringify(body), 120);
-      var existing = sc.get('TG_Q_IDS') || '';
-      sc.put('TG_Q_IDS', existing ? existing + ',' + qId : qId, 120);
-      // One trigger at a time — delete any existing queue trigger first
-      ScriptApp.getProjectTriggers().forEach(function(t) {
-        if (t.getHandlerFunction() === 'processTelegramQueue_') ScriptApp.deleteTrigger(t);
-      });
-      ScriptApp.newTrigger('processTelegramQueue_').timeBased().after(100).create();
-    } catch (qErr) {
-      // Fallback: process synchronously if queuing/trigger creation fails
-      Logger.log('Queue fallback (sync): ' + qErr.message);
-      try { processTelegramUpdate_(body); } catch (e) { Logger.log('Sync error: ' + e.message); }
-    }
+    Logger.log('doPost: received stale Telegram update_id=' + body.update_id + ' — ignoring (Slack-only now)');
     return jsonOut_({ ok: true });
   }
 

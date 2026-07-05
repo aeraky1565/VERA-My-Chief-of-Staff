@@ -22,7 +22,7 @@
 // Entry point: checkCrossPatternFlags_() — called from nightlyRun()
 // ============================================================
 
-var PATTERN_MAX_FLAGS_DEFAULT_  = 2;
+var PATTERN_MAX_FLAGS_DEFAULT_  = 3;  // increased from 2 — new opportunity patterns added
 var PATTERN_DEDUP_DAYS_DEFAULT_ = 7;
 
 // ============================================================
@@ -165,6 +165,99 @@ function buildCrossDomainSnapshot_() {
     snap.takeoutRatio = null;
   }
 
+  // ---- Prescriptions due within 7 days ----
+  // PRESCRIPTION_HEADERS: ID[0] Person[1] Medication[2] Dosage[3] Freq[4] Doctor[5]
+  //   Pharmacy[6] Rx#[7] Last Filled[8] Refill Date[9] Days Supply[10] Active[11] Notes[12]
+  try {
+    var ss2      = getSpreadsheet();
+    var rxSheet  = ss2.getSheetByName(TABS.PRESCRIPTIONS);
+    snap.prescriptionsDueSoon = [];
+    if (rxSheet && rxSheet.getLastRow() >= 2) {
+      var rxRows = rxSheet.getRange(2, 1, rxSheet.getLastRow() - 1, PRESCRIPTION_HEADERS.length).getValues();
+      var sevenDaysOut = new Date(today); sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
+      rxRows.forEach(function(r) {
+        if (String(r[11] || '').toLowerCase() !== 'yes') return; // Active only
+        var refillDate = r[9] ? new Date(r[9]) : null;
+        if (!refillDate || isNaN(refillDate.getTime())) return;
+        refillDate.setHours(0, 0, 0, 0);
+        if (refillDate <= sevenDaysOut) {
+          var daysLeft = Math.round((refillDate.getTime() - today.getTime()) / 86400000);
+          snap.prescriptionsDueSoon.push({ person: String(r[1] || ''), medication: String(r[2] || ''), daysLeft: daysLeft });
+        }
+      });
+    }
+  } catch (e) {
+    Logger.log('PatternRecognition snapshot: prescriptions error — ' + e.message);
+    snap.prescriptionsDueSoon = [];
+  }
+
+  // ---- Important dates with gift ideas within 21 days ----
+  // IMPORTANT_DATES_HEADERS: ID[0] Date[1] Label[2] Person[3] Recurring[4] Lead Time[5] Notes[6] Last Actioned Year[7]
+  // GIFT_IDEAS_HEADERS: ID[0] Person[1] Idea[2] Added Date[3]
+  try {
+    var ss3         = getSpreadsheet();
+    var datesSheet  = ss3.getSheetByName(TABS.IMPORTANT_DATES);
+    var ideasSheet  = ss3.getSheetByName(TABS.GIFT_IDEAS);
+    snap.giftDeadlines = [];
+    if (datesSheet && datesSheet.getLastRow() >= 2 && ideasSheet && ideasSheet.getLastRow() >= 2) {
+      // Build set of people who have gift ideas
+      var giftPeople = {};
+      ideasSheet.getRange(2, 1, ideasSheet.getLastRow() - 1, GIFT_IDEAS_HEADERS.length).getValues()
+        .forEach(function(r) { if (r[1]) giftPeople[String(r[1]).toLowerCase()] = true; });
+
+      var thisYear    = today.getFullYear();
+      var twentyOneDaysOut = new Date(today); twentyOneDaysOut.setDate(twentyOneDaysOut.getDate() + 21);
+      datesSheet.getRange(2, 1, datesSheet.getLastRow() - 1, IMPORTANT_DATES_HEADERS.length).getValues()
+        .forEach(function(r) {
+          var dateStr = String(r[1] || '').trim(); // MM-DD or full date
+          if (!dateStr) return;
+          // Parse MM-DD recurring dates by prepending this year
+          var parsed = dateStr.length <= 5 ? new Date(thisYear + '-' + dateStr) : new Date(dateStr);
+          if (isNaN(parsed.getTime())) return;
+          parsed.setHours(0, 0, 0, 0);
+          // If already passed this year for a recurring date, check next year
+          if (parsed < today && String(r[4] || '').toLowerCase() === 'yes') {
+            parsed.setFullYear(thisYear + 1);
+          }
+          var daysAway = Math.round((parsed.getTime() - today.getTime()) / 86400000);
+          if (daysAway < 0 || daysAway > 21) return;
+          var person = String(r[3] || '').trim();
+          if (person && giftPeople[person.toLowerCase()]) {
+            snap.giftDeadlines.push({ label: String(r[2] || ''), person: person, daysAway: daysAway });
+          }
+        });
+    }
+  } catch (e) {
+    Logger.log('PatternRecognition snapshot: important dates/gifts error — ' + e.message);
+    snap.giftDeadlines = [];
+  }
+
+  // ---- Skills with Goal Link not practiced in 14+ days (when calendar is light) ----
+  // SKILL_HEADERS: ID[0] Person[1] Skill[2] Category[3] Level[4] Goal Link[5] Last Practiced[6] Notes[7]
+  try {
+    var ss4        = getSpreadsheet();
+    var skillSheet = ss4.getSheetByName(TABS.SKILLS);
+    snap.neglectedGoalSkills = [];
+    if (skillSheet && skillSheet.getLastRow() >= 2) {
+      var fourteenDaysAgo = new Date(today); fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+      skillSheet.getRange(2, 1, skillSheet.getLastRow() - 1, SKILL_HEADERS.length).getValues()
+        .forEach(function(r) {
+          var goalLink = String(r[5] || '').trim();
+          if (!goalLink) return; // only skills linked to a goal
+          var lastPracticed = r[6] ? new Date(r[6]) : null;
+          var daysSince = lastPracticed && !isNaN(lastPracticed.getTime())
+            ? Math.round((today.getTime() - lastPracticed.getTime()) / 86400000)
+            : 999; // never practiced
+          if (daysSince >= 14) {
+            snap.neglectedGoalSkills.push({ skill: String(r[2] || ''), person: String(r[1] || ''), daysSince: daysSince });
+          }
+        });
+    }
+  } catch (e) {
+    Logger.log('PatternRecognition snapshot: skills error — ' + e.message);
+    snap.neglectedGoalSkills = [];
+  }
+
   return snap;
 }
 
@@ -281,6 +374,45 @@ function evaluateCrossPatterns_(snap) {
         'Medium'
       );
     }
+  }
+
+  // Pattern 8: Prescription Refill Due Soon
+  if (snap.prescriptionsDueSoon && snap.prescriptionsDueSoon.length > 0) {
+    snap.prescriptionsDueSoon.forEach(function(rx) {
+      var urgency = rx.daysUntil <= 3 ? 'High' : 'Medium';
+      add(
+        'cross_rx_refill_' + rx.medication.replace(/\s+/g, '_').toLowerCase(),
+        rx.who + '’s Rx for ' + rx.medication + ' refill ' + (rx.daysUntil <= 0 ? 'is overdue' : 'due in ' + rx.daysUntil + ' day' + (rx.daysUntil === 1 ? '' : 's')),
+        rx.who + '’s prescription for ' + rx.medication + (rx.daysUntil <= 0 ? ' is past refill date' : ' refill due in ' + rx.daysUntil + ' day(s)') + ' · Contact pharmacy or prescriber',
+        urgency
+      );
+    });
+  }
+
+  // Pattern 9: Gift Deadline Approaching + Ideas Exist
+  if (snap.giftDeadlines && snap.giftDeadlines.length > 0) {
+    snap.giftDeadlines.forEach(function(g) {
+      var urgency = g.daysUntil <= 7 ? 'High' : 'Medium';
+      add(
+        'cross_gift_deadline_' + g.person.replace(/\s+/g, '_').toLowerCase(),
+        g.person + '’s ' + g.occasion + ' in ' + g.daysUntil + ' day' + (g.daysUntil === 1 ? '' : 's') + ' — ' + g.ideaCount + ' gift idea' + (g.ideaCount === 1 ? '' : 's') + ' available',
+        g.occasion + ' for ' + g.person + ' is in ' + g.daysUntil + ' day(s) · ' + g.ideaCount + ' idea(s) in Gift Ideas · Review and order',
+        urgency
+      );
+    });
+  }
+
+  // Pattern 10: Goal-Linked Skill Neglected + Light Calendar Week
+  if (snap.neglectedGoalSkills && snap.neglectedGoalSkills.length > 0 &&
+      snap.calendarEventsThisWeek !== null && snap.calendarEventsThisWeek <= 2) {
+    snap.neglectedGoalSkills.slice(0, 2).forEach(function(sk) {
+      add(
+        'cross_skill_neglect_' + sk.skill.replace(/\s+/g, '_').toLowerCase(),
+        sk.skill + ' last practiced ' + sk.daysSince + ' days ago — goal-linked + light week ahead',
+        sk.skill + ' hasn’t been practiced in ' + sk.daysSince + ' days · Linked to a goal · This week has only ' + snap.calendarEventsThisWeek + ' scheduled event(s) — good time to practice',
+        'Low'
+      );
+    });
   }
 
   // Sort: High → Medium → Low

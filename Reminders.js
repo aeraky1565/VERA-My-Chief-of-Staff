@@ -89,6 +89,8 @@ function runAnticipatorRules_(now, hour, isWeekday, cfg) {
     function() { checkTripPackingReminder_(now, hour, cfg); },
     function() { checkGoalCheckin_(now, hour, cfg); },
     function() { checkHomeServiceDue_(now, hour, cfg); },
+    // Feature 12 — Morning wellness check-in
+    function() { checkMorningWellnessCheckin_(now, hour, cfg); },
   ];
 
   rules.forEach(function(rule) {
@@ -268,6 +270,37 @@ function checkEveningMobility_(now, hour, cfg) {
       'Even 10 minutes of stretching counts. Make it happen before the night winds down!',
       'evening_mobility'
     );
+  }
+}
+
+// ---- Rule: Morning wellness check-in (Feature 12) -------------------------
+
+/**
+ * Fires once each morning at the configured hour to:
+ *  1. Auto-pull last night's sleep from Google Fit
+ *  2. Send a 3-row rating Block Kit message to #vera-chat
+ * Keyed by date so it fires at most once per day.
+ */
+function checkMorningWellnessCheckin_(now, hour, cfg) {
+  if (String(cfg['wellness_log_enabled'] || 'true').toLowerCase() === 'false') return;
+
+  var targetHour = parseInt(cfg['wellness_checkin_hour'] || '8', 10);
+  if (hour !== targetHour) return;
+
+  var tz      = Session.getScriptTimeZone();
+  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var ruleKey = 'wellness_' + dateStr;
+
+  if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
+
+  // Auto-log sleep hours from Google Fit
+  var sleepHours = null;
+  try { sleepHours = fetchGoogleFitSleep_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit error — ' + e.message); }
+
+  if (isSlackConfigured_()) {
+    sendMorningWellnessSlack_(sleepHours);
+    markSent_(ruleKey, 'morning_wellness_checkin');
+    Logger.log('checkMorningWellnessCheckin_: sent for ' + dateStr);
   }
 }
 
@@ -693,6 +726,11 @@ function buildExplorerPrompt_(goals, tasks, events, summaries, interests, ledger
     '- Are specific and actionable (not generic advice like "get enough sleep")\n' +
     '- Are opportunistic and forward-looking — save urgency for Flags\n' +
     '- When traveling, are rooted in the current destination\n' +
+    '\nIMPORTANT — language rules:\n' +
+    '- This message is generated at night for Ahmed to read tomorrow morning. Do NOT assume he is currently doing any activity.\n' +
+    '- Calendar events listed as "in 0d" are scheduled for today but have NOT necessarily started. Never say "you\'re on the cruise", "you\'re stepping onto", or presuppose he is already mid-activity.\n' +
+    '- Use only forward-looking language: "you have", "coming up", "today you\'re scheduled for", "this week". Never "you\'re currently".\n' +
+    '- Only connect data points that are explicitly in the data above. Do not invent facts or assume details not present.\n' +
     '\nFormat as a short, warm message. Max 200 words. ' +
     'Start with exactly "🔍 Daily Discovery" on its own line. No markdown headers or code fences.'
   );

@@ -101,6 +101,76 @@ function doWebSearch_(rawQuery) {
   }
 }
 
+/**
+ * callClaudeWithWebSearch_(systemPrompt, userPrompt, maxTokens)
+ *
+ * Shared agentic helper: calls Claude with the web-search tool available
+ * (when VERA_SEARCH_API_KEY is configured). If Claude requests a search,
+ * executes doWebSearch_() and feeds the results back, looping up to 4
+ * times. Returns the final plain-text response, or '' on error.
+ *
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @param {number} [maxTokens=1024]
+ * @returns {string}
+ */
+function callClaudeWithWebSearch_(systemPrompt, userPrompt, maxTokens) {
+  maxTokens = maxTokens || 1024;
+  var apiKey   = getApiKey();
+  var tools    = getSearchTools_();
+  var messages = [{ role: 'user', content: userPrompt }];
+  var rawText  = '';
+
+  for (var iter = 0; iter < 4; iter++) {
+    var requestBody = {
+      model:      CLAUDE_MODEL,
+      max_tokens: maxTokens,
+      messages:   messages,
+    };
+    if (systemPrompt)  requestBody.system = systemPrompt;
+    if (tools.length)  requestBody.tools  = tools;
+
+    var response = UrlFetchApp.fetch(CLAUDE_API_URL, {
+      method:  'post',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      payload:            JSON.stringify(requestBody),
+      muteHttpExceptions: true,
+    });
+
+    if (response.getResponseCode() !== 200) {
+      Logger.log('callClaudeWithWebSearch_ HTTP ' + response.getResponseCode());
+      return '';
+    }
+
+    var json = JSON.parse(response.getContentText());
+
+    if (json.stop_reason === 'tool_use') {
+      var assistantMsg = { role: 'assistant', content: json.content };
+      var toolResults  = [];
+      (json.content || []).forEach(function(block) {
+        if (block.type !== 'tool_use') return;
+        var results = doWebSearch_((block.input || {}).query || '');
+        var text    = results.map(function(r) { return r.title + ': ' + r.snippet; }).join('\n\n') || 'No results found.';
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: text });
+      });
+      messages = messages.concat([assistantMsg, { role: 'user', content: toolResults }]);
+      continue;
+    }
+
+    rawText = (json.content || [])
+      .filter(function(b) { return b.type === 'text'; })
+      .map(function(b) { return b.text; })
+      .join('');
+    break;
+  }
+
+  return rawText;
+}
+
 // ============================================================
 // PROACTIVE INSIGHTS — Issue #24
 // ============================================================
