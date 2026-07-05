@@ -1238,7 +1238,18 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div style="color:#8ab4f8;padding:30px;font-family:sans-serif;font-size:15px">Starting VERA…</div></div>
+<script>
+window.onerror=function(msg,src,line,col,err){
+  var d=document.getElementById('root');
+  if(d)d.innerHTML='<div style="color:#f87171;padding:20px;font-family:monospace;font-size:13px;background:#1a0505;margin:20px;border-radius:8px;line-height:1.6"><b style=\"font-size:15px\">⚠ JavaScript Error</b><br><br>'+String(msg).replace(/</g,'&lt;')+'<br><br>Line: '+line+', Col: '+col+(src?'<br>File: '+String(src).replace(/</g,'&lt;'):'')+'<br><br>Please screenshot this entire screen and share.</div>';
+  return false;
+};
+window.addEventListener('unhandledrejection',function(e){
+  var d=document.getElementById('root');
+  if(d&&d.textContent.indexOf('Starting')!==-1)d.innerHTML='<div style="color:#f87171;padding:20px;font-family:monospace;font-size:13px;background:#1a0505;margin:20px;border-radius:8px;line-height:1.6"><b style=\"font-size:15px\">⚠ Unhandled Promise Rejection</b><br><br>'+(e.reason?String(e.reason.message||e.reason).replace(/</g,'&lt;'):'unknown')+'<br><br>Please screenshot this entire screen and share.</div>';
+});
+</script>
 <script>const{useState,useEffect,useCallback,useRef}=React;const VERA_CHAT_WELCOME='Hi Ahmed — ask me about your flags, tasks, or summaries, or tell me to take action on something. (Shift+Enter for a new line, Enter to send.)';// ---- Helpers ----------------------------------------------------------------
 function stored(key,fallback=''){return localStorage.getItem(key)||fallback;}function urgencyClass(u){return(u||'').toLowerCase();}// Compute days until a date string. MM-DD = annual (rolls to next year if passed).
 // YYYY-MM-DD = one-time. Returns negative if date has passed.
