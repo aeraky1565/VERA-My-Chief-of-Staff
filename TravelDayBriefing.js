@@ -155,9 +155,32 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
 
   var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights);
 
+  // Lounge access — extract departure/layover airports from flight rows
+  var travelAirports = (function() {
+    var flightRows = sortedItems.filter(function(r) { return String(r[2]||'').trim().toLowerCase() === 'flight'; });
+    var airports = [];
+    var seen = {};
+    flightRows.forEach(function(r, i) {
+      var meta = {};
+      try { meta = JSON.parse(String(r[9]||'{}')); } catch(e) {}
+      var orig = (meta.origin || '').trim().toUpperCase() || (String(r[7]||'').match(/\b([A-Z]{3})\b/)||[])[1] || '';
+      var dest = (meta.dest   || '').trim().toUpperCase() || (String(r[7]||'').match(/\b([A-Z]{3})\b/g)||[]).slice(-1)[0] || '';
+      if (orig && !seen[orig]) { seen[orig] = true; airports.push({ code: orig, role: i === 0 ? 'departure' : 'layover' }); }
+      // dest is a layover only if there's another flight after this one; otherwise it's the arrival (omitted)
+      if (dest && !seen[dest] && i < flightRows.length - 1) { seen[dest] = true; airports.push({ code: dest, role: 'layover' }); }
+    });
+    return airports;
+  })();
+  var loungePerks = getLoungePerkPrograms_();
+  var loungeData  = { lounges: [], tip: '' };
+  if (loungePerks.length > 0 && travelAirports.length > 0) {
+    try { loungeData = buildTravelLoungeData_(travelAirports, loungePerks); } catch (lErr) { Logger.log('lounge data error: ' + lErr.message); }
+  }
+
   var sections = [
     { id: 'narrative',      builder: buildTravelNarrativeSection_,      data: narrativeData },
     { id: 'flight_insights', builder: buildTravelFlightInsightsSection_, data: insights },
+    { id: 'lounge_access',  builder: buildTravelLoungeSection_,         data: loungeData },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
     { id: 'schedule', builder: buildTravelScheduleSection_, data: sortedItems },
@@ -868,6 +891,216 @@ function buildTravelFlightInsightsSection_(insights) {
       '<p style="margin:6px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
       'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
       '💤 <strong>On arrival:</strong> ' + escapeHtml_(insights.arrival_tip) + '</p>';
+  }
+
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Lounge Access section — Issue #187
+// ---------------------------------------------------------------------------
+
+/**
+ * getLoungePerkPrograms_()
+ *
+ * Reads TABS.CARD_PERKS and TABS.CREDIT_CARDS.
+ * Returns deduplicated array of lounge program objects for active cards.
+ * Returns [] if the sheet is missing, empty, or no lounge perks found.
+ *
+ * @returns {Array} [{ program: string, card: string }, ...]
+ */
+function getLoungePerkPrograms_() {
+  try {
+    var ss = getSpreadsheet();
+
+    // Build set of active card names from Credit Cards sheet
+    var ccSheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+    var activeCards = {};
+    if (ccSheet && ccSheet.getLastRow() >= 2) {
+      var ccData = ccSheet.getRange(2, 1, ccSheet.getLastRow() - 1, 10).getValues();
+      ccData.forEach(function(row) {
+        var cardName = String(row[1] || '').trim();
+        var active   = String(row[9] || '').trim().toLowerCase();
+        if (cardName && active !== 'false' && active !== 'no' && active !== '0') {
+          activeCards[cardName.toLowerCase()] = cardName;
+        }
+      });
+    }
+
+    // Read Card Perks sheet; headers: ID, Card Name, Perk, Amount, Frequency, Category, Last Used
+    var cpSheet = ss.getSheetByName(TABS.CARD_PERKS);
+    if (!cpSheet || cpSheet.getLastRow() < 2) return [];
+
+    var cpData = cpSheet.getRange(2, 1, cpSheet.getLastRow() - 1, 7).getValues();
+    var loungeKeywords = ['lounge', 'priority pass', 'centurion', 'capital one lounge'];
+
+    var results = [];
+    var seen    = {};
+
+    cpData.forEach(function(row) {
+      var cardName = String(row[1] || '').trim();
+      var perkName = String(row[2] || '').trim();
+      if (!cardName || !perkName) return;
+
+      // Only include perks for active cards (or if Credit Cards sheet is empty/missing)
+      var isActive = Object.keys(activeCards).length === 0 ||
+                     !!activeCards[cardName.toLowerCase()];
+      if (!isActive) return;
+
+      var perkLower = perkName.toLowerCase();
+      var matchedProgram = null;
+      loungeKeywords.forEach(function(kw) {
+        if (!matchedProgram && perkLower.indexOf(kw) !== -1) {
+          // Normalize program name
+          if (perkLower.indexOf('centurion') !== -1) {
+            matchedProgram = 'Centurion Lounge';
+          } else if (perkLower.indexOf('priority pass') !== -1) {
+            matchedProgram = 'Priority Pass';
+          } else if (perkLower.indexOf('capital one') !== -1) {
+            matchedProgram = 'Capital One Lounge';
+          } else {
+            matchedProgram = perkName; // use raw perk name as program label
+          }
+        }
+      });
+
+      if (!matchedProgram) return;
+
+      var key = matchedProgram + '|' + cardName;
+      if (!seen[key]) {
+        seen[key] = true;
+        results.push({ program: matchedProgram, card: cardName });
+      }
+    });
+
+    return results;
+  } catch (err) {
+    Logger.log('getLoungePerkPrograms_ error (non-fatal): ' + err.message);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelLoungeData_(airports, loungePerks)
+ *
+ * Calls Claude to look up lounges at the given airports for the given programs.
+ * Only departure and layover airports are passed; arrivals are excluded.
+ *
+ * @param {Array} airports    — [{ code: 'IAD', role: 'departure'|'layover' }, ...]
+ * @param {Array} loungePerks — result of getLoungePerkPrograms_()
+ * @returns {{ lounges: Array, tip: string }}
+ */
+function buildTravelLoungeData_(airports, loungePerks) {
+  var programList = loungePerks.map(function(p) {
+    return p.program + ' (via ' + p.card + ')';
+  }).join(', ');
+
+  var airportList = airports.map(function(a) {
+    return a.code + ' (' + a.role + ')';
+  }).join(', ');
+
+  var prompt =
+    'You are a travel assistant with detailed knowledge of airport lounges worldwide.\n' +
+    'Ahmed holds the following lounge access programs: ' + programList + '.\n' +
+    'Today\'s relevant airports (departure and layovers only): ' + airportList + '.\n\n' +
+    'For each airport, list only the lounges Ahmed can access through his programs.\n' +
+    'IMPORTANT: Only include lounges you are CONFIDENT exist and are accessible through these specific programs.\n' +
+    'If you are not certain a lounge exists at an airport for a given program, OMIT it entirely — do not guess.\n' +
+    'If no lounges are confidently known, return { "lounges": [], "tip": "" }.\n\n' +
+    'Return ONLY a valid JSON object (no markdown, no preamble):\n' +
+    '{\n' +
+    '  "lounges": [\n' +
+    '    {\n' +
+    '      "airport_code": "IAD",\n' +
+    '      "airport_name": "Washington Dulles International",\n' +
+    '      "role": "departure",\n' +
+    '      "program": "Priority Pass",\n' +
+    '      "card": "AMEX Platinum",\n' +
+    '      "lounge_name": "Club at IAD",\n' +
+    '      "terminal": "C",\n' +
+    '      "location_notes": "Airside, past security",\n' +
+    '      "hours": "5:00 AM – 10:00 PM",\n' +
+    '      "access_notes": "Complimentary; guest fees apply"\n' +
+    '    }\n' +
+    '  ],\n' +
+    '  "tip": "One sentence tip about using these lounges, or empty string if none."\n' +
+    '}';
+
+  var result = callClaudeJson_(prompt, null);
+  if (!result || typeof result !== 'object') return { lounges: [], tip: '' };
+  if (!Array.isArray(result.lounges)) result.lounges = [];
+  if (typeof result.tip !== 'string') result.tip = '';
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * buildTravelLoungeSection_(data)
+ *
+ * HTML section builder for the "🛋️ Lounge Access" panel.
+ * Returns '' if data.lounges is empty (section skipped silently by pipeline).
+ *
+ * @param {{ lounges: Array, tip: string }} data
+ * @returns {string} HTML string or ''
+ */
+function buildTravelLoungeSection_(data) {
+  if (!data || !data.lounges || !data.lounges.length) return '';
+
+  var BLUE  = '#1565c0';
+  var DARK  = '#111111';
+  var GREY  = '#555555';
+  var LGREY = '#888888';
+
+  var html =
+    '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+    'letter-spacing:1.5px;text-transform:uppercase;">🛋️ Lounge Access</p>';
+
+  data.lounges.forEach(function(lounge, i) {
+    var airportLabel = lounge.airport_code
+      ? escapeHtml_(lounge.airport_code) + (lounge.airport_name ? ' — ' + escapeHtml_(lounge.airport_name) : '')
+      : '';
+    var roleLabel = lounge.role
+      ? ' <span style="font-size:11px;color:' + LGREY + ';background:#f0f0f5;padding:2px 6px;border-radius:10px;">' +
+        escapeHtml_(lounge.role.charAt(0).toUpperCase() + lounge.role.slice(1)) + '</span>'
+      : '';
+    var accessVia = (lounge.card ? escapeHtml_(lounge.card) : '') +
+                   (lounge.program ? ' · ' + escapeHtml_(lounge.program) : '');
+
+    html +=
+      (i > 0 ? '<div style="height:1px;background:#f0f0f5;margin:12px 0;"></div>' : '') +
+      '<div style="margin-bottom:4px;">' +
+      '<p style="margin:0 0 2px;font-size:14px;font-weight:600;color:' + DARK + ';">' +
+      escapeHtml_(lounge.lounge_name || 'Airport Lounge') + roleLabel + '</p>' +
+      (airportLabel ? '<p style="margin:0 0 4px;font-size:12px;color:' + LGREY + ';">' + airportLabel + '</p>' : '') +
+      '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">';
+
+    function loungeRow(label, val) {
+      if (!val) return '';
+      return '<tr>' +
+        '<td style="padding:2px 8px 2px 0;font-size:12px;font-weight:600;color:' + LGREY + ';white-space:nowrap;vertical-align:top;">' + label + '</td>' +
+        '<td style="padding:2px 0;font-size:12px;color:' + GREY + ';vertical-align:top;">' + escapeHtml_(String(val)) + '</td>' +
+        '</tr>';
+    }
+
+    html += loungeRow('Terminal',  lounge.terminal);
+    html += loungeRow('Location',  lounge.location_notes);
+    html += loungeRow('Hours',     lounge.hours);
+    html += loungeRow('Access',    accessVia || null);
+    html += loungeRow('Note',      lounge.access_notes);
+
+    html += '</table></div>';
+  });
+
+  if (data.tip) {
+    html +=
+      '<p style="margin:12px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
+      'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
+      '💡 ' + escapeHtml_(data.tip) + '</p>';
   }
 
   return html;
