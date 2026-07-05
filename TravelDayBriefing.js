@@ -21,6 +21,56 @@
 // ============================================================
 
 /**
+ * getCalendarFlightsForToday_(tripKey, tz)
+ * Fallback: reads timed Google Calendar events for today that look like flights
+ * (title matches airline-code + flight-number pattern, e.g. "UA640").
+ * Returns an array of synthetic Itinerary row arrays (same 10-column layout)
+ * so they can be passed directly to sendTravelDayBriefing_().
+ * Only called when the Itinerary sheet has no rows for the trip today.
+ */
+function getCalendarFlightsForToday_(tripKey, tz) {
+  var today      = new Date();
+  var startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+  var endOfDay   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+  var rows       = [];
+  try {
+    CalendarApp.getAllCalendars().forEach(function(cal) {
+      cal.getEvents(startOfDay, endOfDay).forEach(function(ev) {
+        if (ev.isAllDayEvent()) return;
+        var title = ev.getTitle();
+        // Must match an airline code + flight number (e.g. UA640, AA123, DL456)
+        if (!/\b[A-Z]{2}\d+\b/.test(title)) return;
+        // Extract up to two 3-letter IATA airport codes from the title
+        var iata   = title.match(/\b([A-Z]{3})\b/g) || [];
+        var origin = iata[0] || '';
+        var dest   = iata[1] || '';
+        var loc    = ev.getLocation() || (origin && dest ? origin + ' → ' + dest : title);
+        var startStr = Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
+        var endStr   = Utilities.formatDate(ev.getEndTime(),   tz, 'HH:mm');
+        // Pull confirmation number from description if present
+        var desc      = ev.getDescription() || '';
+        var confMatch = desc.match(/conf(?:irmation)?[#:\s]+([A-Z0-9]{5,8})/i);
+        var meta = JSON.stringify({
+          origin:              origin,
+          dest:                dest,
+          confirmationNumber:  confMatch ? confMatch[1] : '',
+          dep_scheduled:       ev.getStartTime().toISOString(),
+          arr_scheduled:       ev.getEndTime().toISOString()
+        });
+        // [ID, TripKey, Type, Title, Date, StartTime, EndTime, Location, Notes, Metadata]
+        rows.push(['', tripKey, 'flight', title,
+                   ev.getStartTime(), startStr, endStr, loc, '', meta]);
+      });
+    });
+  } catch (e) {
+    Logger.log('getCalendarFlightsForToday_ error: ' + e.message);
+  }
+  return rows.sort(function(a, b) {
+    return String(a[5]) < String(b[5]) ? -1 : 1;
+  });
+}
+
+/**
  * checkAndSendTravelDayBriefings_()
  * Entry point. Called from morningNudge() each morning.
  * Scans the Itinerary sheet for rows whose Date = today,
@@ -89,6 +139,17 @@ function checkAndSendTravelDayBriefings_() {
   } catch (calErr) {
     Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);
   }
+
+  // Calendar fallback: if a trip was found but has no sheet rows, try timed GCal events
+  Object.keys(tripMap).forEach(function(key) {
+    if (tripMap[key].length === 0) {
+      var calRows = getCalendarFlightsForToday_(key, tz);
+      if (calRows.length) {
+        Logger.log('TravelDayBriefing: calendar fallback provided ' + calRows.length + ' flight(s) for ' + key);
+        tripMap[key] = calRows;
+      }
+    }
+  });
 
   var tripKeys = Object.keys(tripMap);
   if (!tripKeys.length) {
