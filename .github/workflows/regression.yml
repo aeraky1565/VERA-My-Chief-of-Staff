@@ -1,0 +1,61 @@
+name: VERA Regression Tests
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Playwright
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Wait for GitHub Pages deployment
+        run: |
+          echo "Waiting 90s for Pages to deploy..."
+          sleep 90
+
+      - name: Run regression tests
+        env:
+          VERA_URL: ${{ secrets.VERA_URL }}
+          VERA_TOKEN: ${{ secrets.VERA_TOKEN }}
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright test tests/regression.spec.js --reporter=list
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set — skipping Slack notification"
+            exit 0
+          fi
+          EMOJI=$([ "$JOB_STATUS" = "success" ] && echo "✅" || echo "❌")
+          COMMIT_MSG=$(git log -1 --pretty=format:%s)
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          curl -sX POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"${EMOJI} VERA Regression: *${JOB_STATUS}* after push to \`main\`\n\`${COMMIT_SHA}\` ${COMMIT_MSG}\"}"

@@ -3,5 +3,11 @@
 
 # Node / build artifacts (if any)
 node_modules/
-node_modules/
 docs/_app.jsx
+
+# Playwright test outputs
+test-results/
+playwright-report/
+
+# Local env (credentials — never commit)
+.env.local

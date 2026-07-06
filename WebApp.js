@@ -394,6 +394,8 @@ function doGet(e) {
       // Config Editor (Issue #189)
       case 'get_config_rows':  return jsonOut_(webGetConfigRows_());
       case 'set_config_value': return jsonOut_(webSetConfigValue_(e));
+      // Regression testing
+      case 'regression_test':  return handleRegressionTest_(e);
       default:               return errOut_('Unknown action: ' + action);
     }
   } catch (err) {

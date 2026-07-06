@@ -1,0 +1,10 @@
+{
+  "name": "vera-dashboard-tests",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  },
+  "scripts": {
+    "test:regression": "playwright test tests/regression.spec.js"
+  }
+}
