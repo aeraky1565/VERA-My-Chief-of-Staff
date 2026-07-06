@@ -18,6 +18,8 @@ jobs:
           node-version: '20'
 
       - name: Install Playwright
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
         run: |
           npm install
           npx playwright install --with-deps chromium
