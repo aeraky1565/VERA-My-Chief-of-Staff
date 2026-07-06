@@ -37,9 +37,12 @@ test.describe('Tier 1 — Basic health (no credentials)', () => {
   });
 
   test('settings modal appears when not configured', async ({ page }) => {
-    // Fresh page with empty localStorage → settings modal must appear
-    await page.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 20000 });
-    await expect(page.getByText('Web App URL')).toBeVisible({ timeout: 12000 });
+    // Fresh page with empty localStorage → settings modal must appear.
+    // React 18 createRoot renders concurrently, so wait for #root to be
+    // non-empty before asserting the modal, not just networkidle.
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await expect(page.locator('#root')).not.toBeEmpty({ timeout: 15000 });
+    await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 10000 });
   });
 });
 
