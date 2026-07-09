@@ -101,6 +101,7 @@ const TABS = {
   MEMORY_SNAPSHOT: 'Memory Snapshot', // Weekly metric snapshots for trend reviews (Issue #9)
   WELLNESS_LOG:    'Wellness Log',    // Daily wellness inputs + Google Fit sleep (Feature 12)
   HOUSEHOLD_INFO:  'HouseholdInfo',   // Household cheat sheet — insurance, utilities, contacts, etc.
+  BANK_ACCOUNTS:   'Bank Accounts',   // Bank/payment account tracker — metadata + min-balance for bills
 };
 
 // ---- Notification Registry (Issue #188) ------------------------------------
@@ -190,6 +191,7 @@ const CAREER_WIN_HEADERS         = ['ID', 'Date', 'Win', 'Impact', 'Category', '
 const CAREER_NETWORK_HEADERS     = ['ID', 'Name', 'Role', 'Company', 'Relationship', 'Last Contact', 'Notes'];
 const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Frequency', 'Doctor', 'Pharmacy', 'Rx Number', 'Last Filled', 'Refill Date', 'Days Supply', 'Active', 'Notes'];
 const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes'];
+const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
 const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used'];
 const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
@@ -371,6 +373,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.FINANCIAL_SCENARIOS,  FINANCIAL_SCENARIO_HEADERS);
   ensureSheet(ss, TABS.TAX_DOCUMENTS,        TAX_DOCUMENT_HEADERS);
   ensureSheet(ss, TABS.TAX_PREPARER,         TAX_PREPARER_HEADERS);
+  ensureSheet(ss, TABS.BANK_ACCOUNTS,        BANK_ACCOUNT_HEADERS);
   // TABS.HEALTH_APPOINTMENTS removed — appointments read from Google Calendar (Issue #85)
   ensureSheet(ss, TABS.TRIP_BUDGET,          TRIP_BUDGET_HEADERS);
   ensureSheet(ss, TABS.RESELL_LIST,          RESELL_LIST_HEADERS);

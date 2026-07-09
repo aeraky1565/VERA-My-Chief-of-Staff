@@ -127,7 +127,12 @@ function doGet(e) {
       case 'shelve_thought':        return jsonOut_(webShelveThought_(e));
       case 'delete_task':           return jsonOut_(webDeleteTask_(id));
       case 'add_bill':              return jsonOut_(webAddBill_(e));
+      case 'update_bill':           return jsonOut_(webUpdateBill_(e));
       case 'delete_bill':           return jsonOut_(webDeleteBill_(e));
+      case 'get_bank_accounts':     return jsonOut_(webGetBankAccounts_());
+      case 'add_bank_account':      return jsonOut_(webAddBankAccount_(e));
+      case 'update_bank_account':   return jsonOut_(webUpdateBankAccount_(e));
+      case 'delete_bank_account':   return jsonOut_(webDeleteBankAccount_(e));
       case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
       case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
@@ -1603,6 +1608,32 @@ function webDeleteBill_(e) {
   if (row < 2 || row > sheet.getLastRow()) return { ok: false, error: 'Row out of range' };
   sheet.deleteRow(row);
   return { ok: true, deleted: row };
+}
+
+function webUpdateBill_(e) {
+  var p        = e.parameter || {};
+  var row      = parseInt(p.row || '0', 10);
+  if (!row) return { ok: false, error: 'Missing row' };
+  var billName = (p.bill || p.name || '').trim();
+  if (!billName) return { ok: false, error: 'Bill name is required' };
+  var sheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+  if (!sheet) return { ok: false, error: 'Bills tab not found' };
+  if (row < 2 || row > sheet.getLastRow()) return { ok: false, error: 'Row out of range' };
+  // Preserve the Paid column (col G) — read it before overwriting
+  var paidVal = sheet.getRange(row, 7).getValue();
+  // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes | Type
+  sheet.getRange(row, 1, 1, BILL_HEADERS.length).setValues([[
+    billName,
+    p.amount  !== undefined && p.amount  !== '' ? (Number(p.amount)  || '') : '',
+    p.dueDay  !== undefined && p.dueDay  !== '' ? (Number(p.dueDay)  || '') : '',
+    (p.frequency || 'Monthly').trim(),
+    (p.category  || '').trim(),
+    (p.account   || '').trim(),
+    paidVal,
+    (p.notes     || '').trim(),
+    (p.type      || 'Expense').trim(),
+  ]]);
+  return { ok: true, row: row, bill: billName, action: 'updated' };
 }
 
 // ---- Transaction Matching Helpers ------------------------------------------
