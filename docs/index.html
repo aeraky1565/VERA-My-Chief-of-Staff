@@ -1638,7 +1638,7 @@ function AccountsTab({apiUrl,apiToken,bills}){
         notes:bill.notes||'',type:bill.type||'Expense'
       });
       // Fetch fresh bills so the UI reflects the change immediately
-      const freshData=await apiGet(apiUrl,apiToken,{action:'get_bills'});
+      const freshData=await apiGet(apiUrl,apiToken,{action:'bills'});
       setLocalBills(freshData&&freshData.bills||[]);
       setEditBill(null);
     }catch(err){setError('Reassign failed: '+err.message);}
