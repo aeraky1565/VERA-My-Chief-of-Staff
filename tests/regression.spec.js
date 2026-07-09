@@ -86,6 +86,17 @@ test.describe('Tier 2 — Authenticated UI', () => {
     await settingsBtns.last().click();
     await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
   });
+
+  test('notification/config modal opens via bell icon', async ({ page }) => {
+    await page.goto(BASE_URL, { waitUntil: 'load', timeout: 20000 });
+    await page.waitForSelector('button.btn-settings', { timeout: 30000 });
+    // Click the 🔔 button (first .btn-settings)
+    const settingsBtns = page.locator('button.btn-settings');
+    await settingsBtns.first().click();
+    await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
+    // Modal should not show a hard error — loading state is OK
+    await expect(page.locator('text=Error loading')).not.toBeVisible({ timeout: 3000 });
+  });
 });
 
 // ─── Tier 3: Apps Script API health ─────────────────────────────────────────
@@ -109,6 +120,32 @@ test.describe('Tier 3 — Apps Script API', () => {
     const resp = await ctx.get(`${VERA_URL}?action=status&token=${VERA_TOKEN}`, {
       timeout: 20000,
     });
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(data.ok).toBe(true);
+  });
+
+  test('get_notification_map returns ok', async () => {
+    if (!HAS_CREDS) {
+      test.skip(true, 'VERA_URL / VERA_TOKEN not set');
+    }
+    const resp = await ctx.get(
+      `${VERA_URL}?action=get_notification_map&token=${VERA_TOKEN}`,
+      { timeout: 20000 }
+    );
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(data.ok).toBe(true);
+  });
+
+  test('get_config_rows returns ok', async () => {
+    if (!HAS_CREDS) {
+      test.skip(true, 'VERA_URL / VERA_TOKEN not set');
+    }
+    const resp = await ctx.get(
+      `${VERA_URL}?action=get_config_rows&token=${VERA_TOKEN}`,
+      { timeout: 20000 }
+    );
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(data.ok).toBe(true);
