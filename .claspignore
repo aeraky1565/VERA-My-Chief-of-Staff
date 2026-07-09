@@ -12,3 +12,15 @@ docs/**
 **/docs/**
 *.ps1
 *.md
+# Node / Playwright — not Google Apps Script
+node_modules/**
+tests/**
+test-results/**
+playwright-report/**
+playwright.config.js
+package.json
+package-lock.json
+scripts/**
+.github/**
+.gitignore
+.env*

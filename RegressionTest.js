@@ -1,4 +1,4 @@
-// ============================================================
+// =============================================================
 // VERA — Regression Test Handler
 // Called via WebApp.js: action=regression_test
 // Runs read-only checks across all major system areas.
