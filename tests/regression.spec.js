@@ -11,7 +11,7 @@ const HAS_CREDS = !!VERA_URL && !!VERA_TOKEN;
 
 const TAB_LABELS = [
   'home', 'chat', 'flags', 'tasks', 'projects', 'shopping',
-  'home_front', 'people', 'pto', 'travel', 'finances', 'health',
+  'Home Front', 'people', 'pto', 'travel', 'finances', 'health',
   'career', 'growth', 'explore'
 ];
 

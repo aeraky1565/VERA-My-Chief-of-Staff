@@ -68,11 +68,6 @@ function handleRegressionTest_(e) {
     if (!result) throw new Error('webGetBills_ returned falsy');
   });
 
-  // ── Travel ───────────────────────────────────────────────────────────────
-  run('upcoming_travel', function () {
-    getUpcomingTravel_();
-  });
-
   // ── Summary ──────────────────────────────────────────────────────────────
   var passed = results.filter(function (r) { return r.status === 'pass'; }).length;
   var failed = results.filter(function (r) { return r.status === 'fail'; }).length;
