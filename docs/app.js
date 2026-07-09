@@ -337,7 +337,7 @@ function AccountsTab({apiUrl,apiToken,bills}){
   function ownerBg(owner){return owner==='Ahmed'?'#0d2040':owner==='Victoria'?'#1a0d30':'#0d1a10';}
 
   // Bills assigned to each account
-  const allBills=(bills||[]).filter(b=>b.type!=='Income');
+  const allBills=((bills&&bills.bills)||[]).filter(b=>b.type!=='Income');
   const knownNames=new Set(accounts.map(a=>a.name));
   function billsFor(accountName){return allBills.filter(b=>b.account===accountName);}
   const unassigned=allBills.filter(b=>!b.account||!knownNames.has(b.account));
