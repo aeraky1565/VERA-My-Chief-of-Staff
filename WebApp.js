@@ -98,6 +98,7 @@ function doGet(e) {
       case 'debug_calendars':       return jsonOut_(webDebugCalendars_());
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
+      case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
       case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
@@ -1334,6 +1335,191 @@ function webGetBudget_() {
   }
 }
 
+// ---- Tracker Budget (Issue #187) -------------------------------------------
+
+/**
+ * Reads the "Tracker" tab from the SAT spreadsheet and returns a structured
+ * breakdown of shared, Ahmed-personal, and Victoria-personal expenses.
+ *
+ * The Tracker tab uses a 3-column layout:
+ *   Col B (idx 1): Ahmed label    Col C (idx 2): Ahmed value
+ *   Col E (idx 4): Shared label   Col F (idx 5): Shared amount   Col G (idx 6): Payer
+ *   Col I (idx 8): Victoria label Col J (idx 9): Victoria value
+ *
+ * Column positions are detected dynamically from the header area so the
+ * function degrades gracefully if the layout shifts.
+ */
+function webGetTrackerBudget_() {
+  var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  if (!satId) return { ok: true, configured: false };
+
+  var ss;
+  try { ss = SpreadsheetApp.openById(satId); }
+  catch (err) { return { ok: false, error: 'Cannot open SAT sheet: ' + err.message }; }
+
+  var sheet = ss.getSheetByName('Tracker');
+  if (!sheet) return { ok: true, configured: false, error: 'Tracker tab not found' };
+
+  var data = sheet.getDataRange().getValues();
+
+  // --- Dynamic column detection ---
+  var sharedLabelCol = 4, sharedAmountCol = 5, payerCol = 6;
+  var ahmedLabelCol = 1, ahmedValueCol = 2;
+  var victoriaLabelCol = 8, victoriaValueCol = 9;
+
+  // Find "Shared Expenses" / "Account" header to pin columns
+  for (var ri = 0; ri < Math.min(8, data.length); ri++) {
+    var hrow = data[ri];
+    for (var ci = 0; ci < hrow.length; ci++) {
+      var hcell = String(hrow[ci] || '').trim();
+      if (hcell === 'Account' && payerCol === 6) {
+        payerCol = ci;
+        sharedAmountCol = ci - 1;
+        sharedLabelCol  = ci - 2;
+      }
+      if (hcell === 'Monthly Income' && ahmedLabelCol === 1) {
+        ahmedLabelCol  = ci;
+        ahmedValueCol  = ci + 1;
+      } else if (hcell === 'Monthly Income' && ci > ahmedLabelCol + 2 && victoriaLabelCol === 8) {
+        victoriaLabelCol = ci;
+        victoriaValueCol = ci + 1;
+      }
+    }
+  }
+
+  // --- Helpers ---
+  var DUE_DAY_RE = /\((\d+)(?:st|nd|rd|th)\)/i;
+  function parseAmt(val) {
+    if (typeof val === 'number') return val;
+    var n = parseFloat(String(val || '').replace(/[$,%]/g,'').replace(/,/g,'').trim());
+    return isNaN(n) ? null : n;
+  }
+  function parseName(lbl) { return String(lbl || '').replace(DUE_DAY_RE,'').trim(); }
+  function parseDueDay(lbl) { var m = String(lbl||'').match(DUE_DAY_RE); return m ? parseInt(m[1],10) : null; }
+
+  // --- State machines ---
+  var sharedFixed = [], sharedNiceToHave = [];
+  var ahmedFixed  = [], ahmedNiceToHave  = [];
+  var victoriaFixed = [], victoriaNiceToHave = [];
+  var ahmedIncome    = { gross: 0, net: 0 };
+  var victoriaIncome = { gross: 0, net: 0 };
+  var summary = {};
+
+  var sharedSec   = null;  // 'fixed' | 'nice' | 'whatif'
+  var ahmedSec    = null;  // 'income' | 'expHdr' | 'fixed' | 'nice' | 'done'
+  var victoriaSec = null;
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var sl  = String(row[sharedLabelCol]   || '').trim();
+    var sa  = row[sharedAmountCol];
+    var py  = String(row[payerCol]         || '').trim();
+    var al  = String(row[ahmedLabelCol]    || '').trim();
+    var av  = row[ahmedValueCol];
+    var vl  = String(row[victoriaLabelCol] || '').trim();
+    var vv  = row[victoriaValueCol];
+
+    // --- Shared section ---
+    if (sl.startsWith('Total Shared Expenses'))           { summary.totalShared            = parseAmt(sa); }
+    else if (sl.startsWith("Ahmed's Contribution"))        { summary.ahmedContribution       = parseAmt(sa); }
+    else if (sl.startsWith("Victoria's Contribution"))     { summary.victoriaContribution    = parseAmt(sa); }
+    else if (sl.startsWith("Ahmed's Transfer to AMEX Checking")) { summary.ahmedTransferChecking  = parseAmt(sa); }
+    else if (sl.startsWith("Victoria's Transfer to AMEX Checking")) { summary.victoriaTransferChecking = parseAmt(sa); }
+    else if (sl.startsWith("Ahmed's Transfer to AMEX Savings"))   { summary.ahmedTransferSavings   = parseAmt(sa); }
+    else if (sl.startsWith("Victoria's Transfer to AMEX Savings")) { summary.victoriaTransferSavings = parseAmt(sa); }
+    else if (sl === 'Fixed Expenses' && row[payerCol] !== 'Ahmed') { sharedSec = 'fixed'; } // guard: not a data row masquerading as header
+    else if (sl === 'Nice to Have Expenses')               { sharedSec = 'nice'; }
+    else if (sl === 'What If Scenarios')                   { sharedSec = 'whatif'; }
+    else if (sl && sl !== 'Account' && sl !== 'Monthly Expenses' && (sharedSec === 'fixed' || sharedSec === 'nice')) {
+      var amt = parseAmt(sa);
+      var entry = { name: parseName(sl), amount: amt !== null ? amt : 0, paidBy: py || 'Unknown', dueDay: parseDueDay(sl) };
+      if (sharedSec === 'fixed') sharedFixed.push(entry);
+      else sharedNiceToHave.push(entry);
+    }
+
+    // --- Ahmed section ---
+    if      (al === 'Monthly Income')                           { ahmedSec = 'income'; }
+    else if (al === 'Gross Income'    && ahmedSec === 'income') { ahmedIncome.gross = parseAmt(av) || 0; }
+    else if (al === 'Net Income'      && ahmedSec === 'income') { ahmedIncome.net   = parseAmt(av) || 0; }
+    else if (al === 'Monthly Expenses')                         { ahmedSec = 'expHdr'; }
+    else if (al === 'Fixed Expenses'  && ahmedSec === 'expHdr') { ahmedSec = 'fixed'; }
+    else if (al === 'Nice to Have Expenses')                    { ahmedSec = 'nice'; }
+    else if (al === 'Personal Savings Contribution' || al === 'Shared Expense Contribution') { ahmedSec = 'done'; }
+    else if (al && (ahmedSec === 'fixed' || ahmedSec === 'nice')) {
+      var aAmt = parseAmt(av);
+      var aEntry = { name: al, amount: aAmt !== null ? aAmt : 0 };
+      if (ahmedSec === 'fixed') ahmedFixed.push(aEntry); else ahmedNiceToHave.push(aEntry);
+    }
+
+    // --- Victoria section ---
+    if      (vl === 'Monthly Income')                              { victoriaSec = 'income'; }
+    else if (vl === 'Gross Income'    && victoriaSec === 'income') { victoriaIncome.gross = parseAmt(vv) || 0; }
+    else if (vl === 'Net Income'      && victoriaSec === 'income') { victoriaIncome.net   = parseAmt(vv) || 0; }
+    else if (vl === 'Monthly Expenses')                            { victoriaSec = 'expHdr'; }
+    else if (vl === 'Fixed Expenses'  && victoriaSec === 'expHdr') { victoriaSec = 'fixed'; }
+    else if (vl === 'Nice to Have Expenses')                       { victoriaSec = 'nice'; }
+    else if (vl === 'Personal Savings Contribution' || vl === 'Shared Expense Contribution') { victoriaSec = 'done'; }
+    else if (vl && (victoriaSec === 'fixed' || victoriaSec === 'nice')) {
+      var vAmt = parseAmt(vv);
+      var vEntry = { name: vl, amount: vAmt !== null ? vAmt : 0 };
+      if (victoriaSec === 'fixed') victoriaFixed.push(vEntry); else victoriaNiceToHave.push(vEntry);
+    }
+  }
+
+  // --- Derived totals ---
+  var ahmedCard = 0, victoriaCard = 0, jointAmt = 0;
+  sharedFixed.concat(sharedNiceToHave).forEach(function(e) {
+    if (e.paidBy === 'Ahmed') ahmedCard += e.amount;
+    else if (e.paidBy === 'Victoria') victoriaCard += e.amount;
+    else jointAmt += e.amount;
+  });
+  var totalSF  = sharedFixed.reduce(function(s,e){return s+e.amount;},0);
+  var totalSNH = sharedNiceToHave.reduce(function(s,e){return s+e.amount;},0);
+  summary.totalSharedFixed      = Math.round(totalSF  * 100) / 100;
+  summary.totalSharedNiceToHave = Math.round(totalSNH * 100) / 100;
+  if (!summary.totalShared) summary.totalShared = Math.round((totalSF + totalSNH) * 100) / 100;
+  summary.ahmedCardCovered    = Math.round(ahmedCard    * 100) / 100;
+  summary.victoriaCardCovered = Math.round(victoriaCard * 100) / 100;
+  summary.jointCovered        = Math.round(jointAmt     * 100) / 100;
+
+  return {
+    ok: true, configured: true,
+    sharedFixed:        sharedFixed,
+    sharedNiceToHave:   sharedNiceToHave,
+    ahmedFixed:         ahmedFixed,
+    ahmedNiceToHave:    ahmedNiceToHave,
+    victoriaFixed:      victoriaFixed,
+    victoriaNiceToHave: victoriaNiceToHave,
+    ahmedIncome:        ahmedIncome,
+    victoriaIncome:     victoriaIncome,
+    summary:            summary
+  };
+}
+
+/**
+ * Fuzzy-matches a bill title against shared expense entry names in the Tracker.
+ * Returns the matched entry name (without due-day suffix) or '' if no match.
+ */
+function findTrackerBudgetEntry_(title, trackerSheet) {
+  var data = trackerSheet.getDataRange().getValues();
+  var titleLower = title.toLowerCase();
+  var DUE_RE = /\((\d+)(?:st|nd|rd|th)\)/i;
+  var inShared = false;
+  for (var i = 0; i < data.length; i++) {
+    var label = String(data[i][4] || '').trim(); // col E (shared label)
+    if (label === 'Fixed Expenses' || label === 'Nice to Have Expenses') { inShared = true; continue; }
+    if (label === 'What If Scenarios' || label.startsWith('Total Shared')) break;
+    if (!inShared || !label || label === 'Account') continue;
+    var entryName = label.replace(DUE_RE,'').trim();
+    var entryLower = entryName.toLowerCase();
+    if (entryLower === titleLower) return entryName;
+    // Contains match (both ways) with minimum length guard
+    if (entryLower.length >= 4 && titleLower.indexOf(entryLower) !== -1) return entryName;
+    if (titleLower.length >= 4 && entryLower.indexOf(titleLower) !== -1) return entryName;
+  }
+  return '';
+}
+
 // ---- Bills (Issue #57) -----------------------------------------------------
 
 /**
@@ -1509,7 +1695,8 @@ function webGetBills_() {
       account:   String(row[5] || '').trim(),
       paid:      paidVal === currMonth,
       notes:     String(row[7] || '').trim(),
-      type:      String(row[8] || 'Expense').trim() || 'Expense', // 'Expense'|'Income'
+      type:        String(row[8] || 'Expense').trim() || 'Expense', // 'Expense'|'Income'
+      budgetEntry: String(row[9] || '').trim(),
       txMatch:      matchMap[idx] ? { description: matchMap[idx].description, amount: matchMap[idx].amount } : null,
       txCandidates: matchMap[idx] ? (matchMap[idx].candidates || []) : [],
     });
@@ -1611,27 +1798,34 @@ function webDeleteBill_(e) {
 }
 
 function webUpdateBill_(e) {
-  var p        = e.parameter || {};
-  var row      = parseInt(p.row || '0', 10);
+  var p   = e.parameter || {};
+  var row = parseInt(p.row || '0', 10);
   if (!row) return { ok: false, error: 'Missing row' };
-  var billName = (p.bill || p.name || '').trim();
-  if (!billName) return { ok: false, error: 'Bill name is required' };
   var sheet = getSpreadsheet().getSheetByName(TABS.BILLS);
   if (!sheet) return { ok: false, error: 'Bills tab not found' };
   if (row < 2 || row > sheet.getLastRow()) return { ok: false, error: 'Row out of range' };
-  // Preserve the Paid column (col G) — read it before overwriting
-  var paidVal = sheet.getRange(row, 7).getValue();
-  // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes | Type
+
+  // Read existing row to support partial-patch calls (e.g. only passing account or budgetEntry)
+  var numCols = Math.min(sheet.getLastColumn(), BILL_HEADERS.length);
+  var existing = sheet.getRange(row, 1, 1, numCols).getValues()[0];
+  var def = function(pval, idx) { return pval !== undefined && pval !== null ? pval : (existing[idx] || ''); };
+
+  var billName = (p.bill || p.name || '').trim() || String(existing[0] || '').trim();
+  if (!billName) return { ok: false, error: 'Bill name is required' };
+
+  // BILL_HEADERS: Bill | Amount | Due Day | Frequency | Category | Account | Paid | Notes | Type | Budget Entry
+  var paidVal = existing[6]; // preserve Paid column
   sheet.getRange(row, 1, 1, BILL_HEADERS.length).setValues([[
     billName,
-    p.amount  !== undefined && p.amount  !== '' ? (Number(p.amount)  || '') : '',
-    p.dueDay  !== undefined && p.dueDay  !== '' ? (Number(p.dueDay)  || '') : '',
-    (p.frequency || 'Monthly').trim(),
-    (p.category  || '').trim(),
-    (p.account   || '').trim(),
+    p.amount   !== undefined && p.amount  !== '' ? (Number(p.amount)  || '') : (existing[1] !== '' ? existing[1] : ''),
+    p.dueDay   !== undefined && p.dueDay  !== '' ? (Number(p.dueDay)  || '') : (existing[2] !== '' ? existing[2] : ''),
+    (p.frequency !== undefined ? p.frequency : String(existing[3] || 'Monthly')).trim() || 'Monthly',
+    (p.category  !== undefined ? p.category  : String(existing[4] || '')).trim(),
+    (p.account   !== undefined ? p.account   : String(existing[5] || '')).trim(),
     paidVal,
-    (p.notes     || '').trim(),
-    (p.type      || 'Expense').trim(),
+    (p.notes     !== undefined ? p.notes     : String(existing[7] || '')).trim(),
+    (p.type      !== undefined ? p.type      : String(existing[8] || 'Expense')).trim() || 'Expense',
+    (p.budgetEntry !== undefined ? p.budgetEntry : String(existing[9] || '')).trim(),
   ]]);
   return { ok: true, row: row, bill: billName, action: 'updated' };
 }
@@ -2462,6 +2656,16 @@ function webToggleCalBill_(e) {
       // Derive due day from calendar event date
       dueDay = parseInt(p.date.split('-')[2], 10) || '';
     }
+    // Attempt to auto-link to a Tracker budget entry by name
+    var budgetEntryAuto = '';
+    try {
+      var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+      if (satId) {
+        var satSS = SpreadsheetApp.openById(satId);
+        var trkSheet = satSS.getSheetByName('Tracker');
+        if (trkSheet) budgetEntryAuto = findTrackerBudgetEntry_(title, trkSheet);
+      }
+    } catch(err_) { /* non-critical, skip */ }
     var newRow = [
       title,
       p.amount ? (parseFloat(String(p.amount).replace(/,/g, '')) || '') : '',
@@ -2471,7 +2675,8 @@ function webToggleCalBill_(e) {
       '',   // account — user can enrich later
       '',   // paid — will be set below
       (p.notes || '').trim(),
-      'Expense', // Type column (col 9) — calendar bills are always expenses
+      'Expense',       // Type column
+      budgetEntryAuto, // Budget Entry — auto-linked if name matches Tracker
     ];
     sheet.getRange(sheet.getLastRow() + 1, 1, 1, BILL_HEADERS.length).setValues([newRow]);
     rowNum = sheet.getLastRow();
