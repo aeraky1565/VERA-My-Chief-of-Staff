@@ -1351,14 +1351,24 @@ function webGetBudget_() {
  */
 function webGetTrackerBudget_() {
   var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
-  if (!satId) return { ok: true, configured: false };
+  if (!satId) return { ok: true, configured: false, error: 'SAT_SHEET_ID not set in Script Properties' };
 
   var ss;
   try { ss = SpreadsheetApp.openById(satId); }
   catch (err) { return { ok: false, error: 'Cannot open SAT sheet: ' + err.message }; }
 
+  // Try exact "Tracker" first, then fall back to any tab containing "tracker" (case-insensitive)
   var sheet = ss.getSheetByName('Tracker');
-  if (!sheet) return { ok: true, configured: false, error: 'Tracker tab not found' };
+  if (!sheet) {
+    var allSheets = ss.getSheets();
+    var sheetNames = allSheets.map(function(s){return s.getName();});
+    var match = allSheets.filter(function(s){return s.getName().toLowerCase().indexOf('tracker') >= 0;})[0];
+    if (match) {
+      sheet = match;
+    } else {
+      return { ok: true, configured: false, error: 'No Tracker tab found. Available tabs: ' + sheetNames.join(', ') };
+    }
+  }
 
   var data = sheet.getDataRange().getValues();
 
