@@ -99,6 +99,7 @@ function doGet(e) {
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
+      case 'debug_tracker':         return jsonOut_(webDebugTracker_());
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
       case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
@@ -1349,6 +1350,24 @@ function webGetBudget_() {
  * Column positions are detected dynamically from the header area so the
  * function degrades gracefully if the layout shifts.
  */
+function webDebugTracker_() {
+  var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  if (!satId) return { ok: false, error: 'SAT_SHEET_ID not set' };
+  var ss;
+  try { ss = SpreadsheetApp.openById(satId); } catch(e) { return { ok: false, error: e.message }; }
+  var sheet = ss.getSheetByName('Tracker');
+  if (!sheet) {
+    var names = ss.getSheets().map(function(s){return s.getName();});
+    return { ok: false, error: 'No Tracker tab. Tabs: ' + names.join(', ') };
+  }
+  var data = sheet.getDataRange().getValues();
+  // Return first 25 rows, first 12 columns, with row indices
+  var rows = data.slice(0, 25).map(function(r, i) {
+    return { row: i, cells: r.slice(0, 12).map(function(c){ return c === '' || c === null ? null : String(c); }) };
+  });
+  return { ok: true, tabName: sheet.getName(), totalRows: data.length, totalCols: data[0] ? data[0].length : 0, preview: rows };
+}
+
 function webGetTrackerBudget_() {
   var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
   if (!satId) return { ok: true, configured: false, error: 'SAT_SHEET_ID not set in Script Properties' };
@@ -1492,6 +1511,14 @@ function webGetTrackerBudget_() {
   summary.victoriaCardCovered = Math.round(victoriaCard * 100) / 100;
   summary.jointCovered        = Math.round(jointAmt     * 100) / 100;
 
+  // When nothing parsed, include raw rows so frontend can show diagnostic
+  var debugRows = null;
+  if (sharedFixed.length === 0 && ahmedFixed.length === 0) {
+    debugRows = data.slice(0, 30).map(function(r, i) {
+      return [i].concat(r.slice(0, 12).map(function(c){ return c === '' ? null : (typeof c === 'number' ? c : String(c)); }));
+    });
+  }
+
   return {
     ok: true, configured: true,
     sharedFixed:        sharedFixed,
@@ -1502,7 +1529,9 @@ function webGetTrackerBudget_() {
     victoriaNiceToHave: victoriaNiceToHave,
     ahmedIncome:        ahmedIncome,
     victoriaIncome:     victoriaIncome,
-    summary:            summary
+    summary:            summary,
+    _debug:             debugRows,
+    _detectedCols:      debugRows ? {sharedLabelCol:sharedLabelCol,sharedAmountCol:sharedAmountCol,payerCol:payerCol,ahmedLabelCol:ahmedLabelCol,victoriaLabelCol:victoriaLabelCol} : null
   };
 }
 
