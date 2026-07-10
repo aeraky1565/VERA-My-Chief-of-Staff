@@ -100,6 +100,7 @@ function doGet(e) {
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
+      case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
       case 'calendar_bills':          return jsonOut_(webGetCalendarBills_());
@@ -1391,30 +1392,12 @@ function webGetTrackerBudget_() {
 
   var data = sheet.getDataRange().getValues();
 
-  // --- Dynamic column detection ---
+  // Column indices — hardcoded per confirmed Tracker sheet structure:
+  // B(1)=Ahmed label, C(2)=Ahmed value, E(4)=Shared label, F(5)=Shared amount,
+  // G(6)=Payer, I(8)=Victoria label, J(9)=Victoria value
   var sharedLabelCol = 4, sharedAmountCol = 5, payerCol = 6;
   var ahmedLabelCol = 1, ahmedValueCol = 2;
   var victoriaLabelCol = 8, victoriaValueCol = 9;
-
-  // Find "Shared Expenses" / "Account" header to pin columns
-  for (var ri = 0; ri < Math.min(8, data.length); ri++) {
-    var hrow = data[ri];
-    for (var ci = 0; ci < hrow.length; ci++) {
-      var hcell = String(hrow[ci] || '').trim();
-      if (hcell === 'Account' && payerCol === 6) {
-        payerCol = ci;
-        sharedAmountCol = ci - 1;
-        sharedLabelCol  = ci - 2;
-      }
-      if (hcell === 'Monthly Income' && ahmedLabelCol === 1) {
-        ahmedLabelCol  = ci;
-        ahmedValueCol  = ci + 1;
-      } else if (hcell === 'Monthly Income' && ci > ahmedLabelCol + 2 && victoriaLabelCol === 8) {
-        victoriaLabelCol = ci;
-        victoriaValueCol = ci + 1;
-      }
-    }
-  }
 
   // --- Helpers ---
   var DUE_DAY_RE = /\((\d+)(?:st|nd|rd|th)\)/i;
@@ -1461,7 +1444,7 @@ function webGetTrackerBudget_() {
     else if (sl === 'What If Scenarios')                   { sharedSec = 'whatif'; }
     else if (sl && sl !== 'Account' && sl !== 'Monthly Expenses' && (sharedSec === 'fixed' || sharedSec === 'nice')) {
       var amt = parseAmt(sa);
-      var entry = { name: parseName(sl), amount: amt !== null ? amt : 0, paidBy: py || 'Unknown', dueDay: parseDueDay(sl) };
+      var entry = { name: parseName(sl), amount: amt !== null ? amt : 0, paidBy: py || 'Unknown', dueDay: parseDueDay(sl), rowNum: i+1 };
       if (sharedSec === 'fixed') sharedFixed.push(entry);
       else sharedNiceToHave.push(entry);
     }
@@ -1476,7 +1459,7 @@ function webGetTrackerBudget_() {
     else if (al === 'Personal Savings Contribution' || al === 'Shared Expense Contribution') { ahmedSec = 'done'; }
     else if (al && (ahmedSec === 'fixed' || ahmedSec === 'nice')) {
       var aAmt = parseAmt(av);
-      var aEntry = { name: al, amount: aAmt !== null ? aAmt : 0 };
+      var aEntry = { name: al, amount: aAmt !== null ? aAmt : 0, rowNum: i+1 };
       if (ahmedSec === 'fixed') ahmedFixed.push(aEntry); else ahmedNiceToHave.push(aEntry);
     }
 
@@ -1490,7 +1473,7 @@ function webGetTrackerBudget_() {
     else if (vl === 'Personal Savings Contribution' || vl === 'Shared Expense Contribution') { victoriaSec = 'done'; }
     else if (vl && (victoriaSec === 'fixed' || victoriaSec === 'nice')) {
       var vAmt = parseAmt(vv);
-      var vEntry = { name: vl, amount: vAmt !== null ? vAmt : 0 };
+      var vEntry = { name: vl, amount: vAmt !== null ? vAmt : 0, rowNum: i+1 };
       if (victoriaSec === 'fixed') victoriaFixed.push(vEntry); else victoriaNiceToHave.push(vEntry);
     }
   }
@@ -1533,6 +1516,23 @@ function webGetTrackerBudget_() {
     _debug:             debugRows,
     _detectedCols:      debugRows ? {sharedLabelCol:sharedLabelCol,sharedAmountCol:sharedAmountCol,payerCol:payerCol,ahmedLabelCol:ahmedLabelCol,victoriaLabelCol:victoriaLabelCol} : null
   };
+}
+
+function webUpdateTrackerEntry_(e) {
+  var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
+  if (!satId) return { ok: false, error: 'SAT_SHEET_ID not configured' };
+  var rowParam = parseInt(e.parameter.row || '0', 10);
+  var colParam = parseInt(e.parameter.col !== undefined ? e.parameter.col : '-1', 10);
+  var value    = e.parameter.value !== undefined ? e.parameter.value : '';
+  if (!rowParam || colParam < 0) return { ok: false, error: 'Invalid row/col' };
+  var ss;
+  try { ss = SpreadsheetApp.openById(satId); }
+  catch (err) { return { ok: false, error: 'Cannot open SAT sheet: ' + err.message }; }
+  var sheet = ss.getSheetByName('Tracker');
+  if (!sheet) return { ok: false, error: 'Tracker tab not found' };
+  var numVal = parseFloat(value);
+  sheet.getRange(rowParam, colParam + 1).setValue(isNaN(numVal) ? value : numVal);
+  return { ok: true };
 }
 
 /**
