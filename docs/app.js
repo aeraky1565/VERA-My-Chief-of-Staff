@@ -445,8 +445,8 @@ function AccountsTab({apiUrl,apiToken,bills,split}){
   var _victoriaPct=(split&&split.victoria!=null?split.victoria:40)/100;
   var _ahmedJoint=_jointTotal*_ahmedPct;
   var _victoriaJoint=_jointTotal*_victoriaPct;
-  var _ahmedShared=(sharedSpend&&sharedSpend.ahmed)||0;
-  var _victoriaShared=(sharedSpend&&sharedSpend.victoria)||0;
+  var _ahmedShared=0;
+  var _victoriaShared=0;
   var _victoriaOwesAhmed=_ahmedShared*_victoriaPct;
   var _ahmedOwesVictoria=_victoriaShared*_ahmedPct;
   var _ahmedNet=_ahmedJoint-_victoriaOwesAhmed+_ahmedOwesVictoria;
