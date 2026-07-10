@@ -621,8 +621,8 @@ function FinanceSummaryTab({bills,accounts,budget,split,saveSplit,trackerBudget,
   var day15Total=day15Bills.reduce(function(s,e){return s+(e.amount||0);},0);
   var day25Total=day25Bills.reduce(function(s,e){return s+(e.amount||0);},0);
   var cumulDay1=day1Total;
-  var cumulDay15=day1Total+day15Total;
-  var cumulDay25=day1Total+day15Total+day25Total;
+  var cumulDay15=day15Total;
+  var cumulDay25=day25Total;
 
   function fmtD(n){return'$'+Math.abs(Math.round(n)).toLocaleString();}
 
