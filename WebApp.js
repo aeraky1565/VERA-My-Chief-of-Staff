@@ -2307,10 +2307,13 @@ function webSetTxAlias_(e) {
  * e.g. "Netflix Subscription $15.99" → 15.99, "$1,200" → 1200
  */
 function parseAmountFromText_(text) {
-  var match = String(text || '').match(/\$([\d,]+(?:\.\d{2})?)/);
-  if (!match) return null;
-  var val = parseFloat(match[1].replace(/,/g, ''));
-  return isNaN(val) ? null : val;
+  if (!text) return null;
+  var s = String(text);
+  var labeled = s.match(/amount[:\s]+\$?([\d,]+(?:\.\d{1,2})?)/i);
+  if (labeled) { var lv = parseFloat(labeled[1].replace(/,/g, '')); return isNaN(lv) ? null : lv; }
+  var dollar = s.match(/\$([\d,]+(?:\.\d{1,2})?)/);
+  if (dollar) { var dv = parseFloat(dollar[1].replace(/,/g, '')); return isNaN(dv) ? null : dv; }
+  return null;
 }
 
 /**
