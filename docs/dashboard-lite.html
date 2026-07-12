@@ -5469,23 +5469,28 @@ function FinBudgetLiteTab({ apiUrl, apiToken }) {
 
 const TOP_TABS = [
   { id: 'chat',          label: '💬 Chat'          },
+  { id: 'household',     label: '🏠 Household'      },
   { id: 'shopping',      label: '🛒 Shopping'      },
-  { id: 'fin_summary',   label: '💰 Summary'        },
-  { id: 'fin_budget',    label: '📊 Budget'         },
   { id: 'cards',         label: '💳 Cards'          },
-  { id: 'tax',           label: '🧾 Tax'            },
   { id: 'coupons',       label: '🎟️ Coupons'        },
   { id: 'prescriptions', label: '💊 Prescriptions' },
   { id: 'travel',        label: '✈️ Travel'         },
+  { id: 'finances',      label: '💰 Finances'       },
   { id: 'home_front',    label: '🏡 Home Front'     },
-  { id: 'household',     label: '🏠 Household'      },
+];
+
+const FINANCE_TABS = [
+  { id: 'fin_summary', label: '💰 Summary' },
+  { id: 'fin_budget',  label: '📊 Budget'  },
+  { id: 'tax',         label: '🧾 Tax'     },
 ];
 
 function App() {
   const [apiUrl,       setApiUrl]       = useState(() => stored('vera_url'));
   const [apiToken,     setApiToken]     = useState(() => stored('vera_token'));
   const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
-  const [activeTab,    setActiveTab]    = useState('chat');
+  const [activeTab,       setActiveTab]       = useState('chat');
+  const [activeFinanceTab, setActiveFinanceTab] = useState('fin_summary');
   const [shopping,     setShopping]     = useState([]);
   const [busy,         setBusy]         = useState(false);
   const [error,        setError]        = useState(null);
@@ -5684,10 +5689,6 @@ function App() {
           <CardsTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
-        {activeTab === 'tax' && (
-          <TaxTab apiUrl={apiUrl} apiToken={apiToken} />
-        )}
-
         {activeTab === 'coupons' && (
           <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
@@ -5704,12 +5705,21 @@ function App() {
           <TravelLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
-        {activeTab === 'fin_summary' && (
-          <FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} />
-        )}
-
-        {activeTab === 'fin_budget' && (
-          <FinBudgetLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        {activeTab === 'finances' && (
+          <div>
+            <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+              {FINANCE_TABS.map(t => (
+                <button key={t.id}
+                  className={'subtab-btn' + (activeFinanceTab === t.id ? ' active' : '')}
+                  onClick={() => setActiveFinanceTab(t.id)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {activeFinanceTab === 'fin_summary' && <FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_budget'  && <FinBudgetLiteTab  apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'tax'         && <TaxTab            apiUrl={apiUrl} apiToken={apiToken} />}
+          </div>
         )}
       </div>
 
