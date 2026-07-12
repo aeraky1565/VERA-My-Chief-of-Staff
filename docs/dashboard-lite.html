@@ -5088,6 +5088,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
       setItineraries(prev => ({ ...prev, [tripKey]: data }));
     } catch(e) {
       setItineraries(prev => ({ ...prev, [tripKey]: { items: [] } }));
+      setError('Could not load itinerary: ' + (e.message || 'API error'));
     }
   }
 
@@ -5099,16 +5100,16 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   }
 
   function toggleTrip(tripKey, trip) {
+    const wasOpen = expanded.has(tripKey);
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(tripKey)) {
-        next.delete(tripKey);
-      } else {
-        next.add(tripKey);
-        if (!itineraries[tripKey]) loadItinerary(tripKey, trip.startDate, trip.endDate);
-      }
+      if (next.has(tripKey)) next.delete(tripKey);
+      else next.add(tripKey);
       return next;
     });
+    if (!wasOpen && !itineraries[tripKey]) {
+      loadItinerary(tripKey, trip.startDate, trip.endDate);
+    }
   }
 
   async function handleSave(params) {
@@ -5169,7 +5170,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
           const tripKey = `${t.startDate}|${t.label}`;
           const isOpen = expanded.has(tripKey);
           const tripData = itineraries[tripKey];
-          const isLoading = tripData === 'loading';
+          const isLoading = !tripData || tripData === 'loading';
           return (
             <div key={tripKey} style={{marginBottom:10,border:'1px solid #2a3a50',
               borderRadius:10,overflow:'hidden'}}>
