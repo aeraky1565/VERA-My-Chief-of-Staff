@@ -4911,6 +4911,61 @@ function VERANoticesCard({ trip, itinerary, tripMeta }) {
   );
 }
 
+// --- UsefulToKnowCard --------------------------------------------------------
+function UsefulToKnowCard({ insights }) {
+  const [open, setOpen] = useState(false);
+  if (!insights) return null;
+  return (
+    <div style={{background:'#0a1a2e',border:'1px solid #1e3a5f',borderRadius:8,
+      padding:'10px 14px',marginBottom:12}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+        cursor:'pointer',marginBottom:open?8:0}} onClick={()=>setOpen(o=>!o)}>
+        <div style={{fontWeight:700,color:'#8ab4f8',fontSize:12}}>🧠 Useful to Know</div>
+        <span style={{fontSize:11,color:'#6b7fa8'}}>{open?'▲':'▼'}</span>
+      </div>
+      {open && (
+        <div style={{display:'flex',flexDirection:'column',gap:4}}>
+          {(insights.origin_code && insights.dest_code) && (
+            <div style={{fontSize:12,color:'#c8d8f0'}}>
+              ⏰ {insights.origin_code} → {insights.dest_code}
+              {insights.tz_offset_label ? '  '+insights.tz_offset_label : ''}
+            </div>
+          )}
+          {insights.distance_miles && (
+            <div style={{fontSize:12,color:'#c8d8f0'}}>
+              📏 ~{Number(insights.distance_miles).toLocaleString()} miles
+              {insights.haul_category ? ' · '+insights.haul_category : ''}
+            </div>
+          )}
+          {insights.daynight_pct_day != null && (() => {
+            const f = Math.round((insights.daynight_pct_day||0)/10);
+            return (
+              <div style={{fontSize:12,color:'#c8d8f0',fontFamily:'monospace'}}>
+                🌗 {'█'.repeat(Math.max(0,f))}{'░'.repeat(Math.max(0,10-f))}  {insights.daynight_pct_day}% daytime
+              </div>
+            );
+          })()}
+          {(insights.dep_local && insights.arr_local) && (
+            <div style={{fontSize:12,color:'#c8d8f0'}}>
+              🛫 {insights.dep_local} → {insights.arr_local}
+            </div>
+          )}
+          {insights.pre_trip_tip && (
+            <div style={{fontSize:11,color:'#8ab4f8',fontStyle:'italic',marginTop:2}}>
+              📅 {insights.pre_trip_tip}
+            </div>
+          )}
+          {(insights.arrival_tip || insights.sleep_tip) && (
+            <div style={{fontSize:11,color:'#8ab4f8',fontStyle:'italic',marginTop:1}}>
+              💤 {insights.arrival_tip || insights.sleep_tip}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- SummaryLitePanel --------------------------------------------------------
 function SummaryLitePanel({ trip, itinerary, travelerFilter }) {
   const allItems = itinerary?.items || [];
@@ -5368,6 +5423,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   const [itineraries, setItineraries]   = useState({});
   const [tripMetas, setTripMetas]       = useState({});
   const [packingData, setPackingData]   = useState({});
+  const [flightInsights, setFlightInsights] = useState({});
   const [tripTabs, setTripTabs]         = useState({});
   const [travelerFilters, setTravelerFilters] = useState({});
   const [expanded, setExpanded]     = useState(new Set());
@@ -5390,6 +5446,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
     try {
       const data = await apiGet(apiUrl, apiToken, { action:'itinerary', tripKey, startDate, endDate });
       setItineraries(prev => ({ ...prev, [tripKey]:data }));
+      loadFlightInsights(tripKey, data.items || []);
     } catch(e) {
       setItineraries(prev => ({ ...prev, [tripKey]:{ items:[] } }));
       setError('Could not load itinerary: ' + (e.message || 'API error'));
@@ -5415,6 +5472,28 @@ function TravelLiteTab({ apiUrl, apiToken }) {
     } catch(e) {
       setPackingData(prev => ({ ...prev, [tripKey]:{ items:[] } }));
     }
+  }
+
+  async function loadFlightInsights(tripKey, items) {
+    if (!items || !items.length) return;
+    const fl = items.filter(i => i.type==='flight' && !i._synthetic)
+      .sort((a,b) => a.date.localeCompare(b.date)||(a.startTime||'').localeCompare(b.startTime||''))[0];
+    if (!fl) return;
+    let meta = {};
+    try { meta = JSON.parse(fl.metadata||'{}'); } catch(e) {}
+    const titleCodes = (fl.title||'').match(/\b([A-Z]{3})\b/g) || [];
+    const locCodes   = (fl.location||'').match(/\b([A-Z]{3})\b/g) || [];
+    const origin = meta.origin || locCodes[0] || titleCodes[0] || '';
+    const dest   = meta.dest   || (locCodes.length>1 ? locCodes[locCodes.length-1] : '')
+                               || (titleCodes.length>1 ? titleCodes[titleCodes.length-1] : '');
+    if (!origin && !dest) return;
+    try {
+      const r = await apiGet(apiUrl, apiToken, {
+        action:'get_flight_insights', origin, dest,
+        depTime:fl.startTime||'', arrTime:fl.endTime||'', flightDate:fl.date||''
+      });
+      if (r?.ok && r.insights) setFlightInsights(prev => ({ ...prev, [tripKey]:r.insights }));
+    } catch(e) {}
   }
 
   async function refreshItin(tripKey) {
@@ -5599,6 +5678,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                   ) : (
                     <>
                       <VERANoticesCard trip={t} itinerary={tripData} tripMeta={meta} />
+                      <UsefulToKnowCard insights={flightInsights[tripKey]} />
                       <ItineraryDayView
                         trip={{...t,tripKey}} itinerary={filteredItin} busy={busy}
                         onAdd={()=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
