@@ -4688,6 +4688,276 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- Finance helpers --------------------------------------------------------
+
+function fmtMny(v) {
+  if (v == null || v === '') return '—';
+  return '$' + Math.round(Number(v)).toLocaleString();
+}
+
+function payerChip(paidBy) {
+  const color = paidBy === 'Ahmed' ? '#5c9eff' : paidBy === 'Victoria' ? '#c97ef2' : '#2bb5a0';
+  return (
+    <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8,
+      border: '1px solid ' + color, color, whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {paidBy}
+    </span>
+  );
+}
+
+function useTrackerBudget(apiUrl, apiToken) {
+  const [tb, setTb] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  async function load() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    try { const d = await apiGet(apiUrl, apiToken, { action: 'budget_tracker' }); setTb(d && d.ok ? d : null); }
+    catch(e) { setTb(null); }
+    setLoading(false);
+  }
+  React.useEffect(() => { load(); }, [apiUrl, apiToken]);
+  return [tb, loading, load];
+}
+
+function getSplit() {
+  try { const s = JSON.parse(localStorage.getItem('vera_split') || 'null'); if (s && typeof s.ahmed === 'number') return s; } catch(e) {}
+  return { ahmed: 60, victoria: 40 };
+}
+
+// ---- Finance Summary Lite tab -----------------------------------------------
+
+function FinSummaryLiteTab({ apiUrl, apiToken }) {
+  const [tb, loading, reload] = useTrackerBudget(apiUrl, apiToken);
+  const split = getSplit();
+  const blue = '#5c9eff', purple = '#c97ef2', teal = '#2bb5a0', gold = '#c9a84c';
+
+  const cardStyle = { background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12, padding: '18px 20px', marginBottom: 14 };
+  const labelStyle = { color: '#6b7fa8', fontSize: 12 };
+  const valStyle = (color) => ({ color: color || gold, fontWeight: 700, fontSize: 22, fontVariantNumeric: 'tabular-nums' });
+
+  if (loading) return <div style={{ color: '#4d6080', padding: 32, textAlign: 'center' }}>Loading tracker…</div>;
+  if (!tb) return (
+    <div style={cardStyle}>
+      <div style={{ color: '#ef5350', marginBottom: 10 }}>Tracker data not loaded.</div>
+      <button onClick={reload} style={{ background: '#0d2040', border: '1px solid #5c9eff', color: '#5c9eff', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontSize: 12 }}>Load</button>
+    </div>
+  );
+
+  const s = tb.summary || {};
+  const ahmedPct = split.ahmed / 100, victoriaPct = split.victoria / 100;
+
+  // Day-of-month checkpoints
+  const jointFixed = (tb.sharedFixed || []).filter(e => e.paidBy === 'Joint');
+  const day1  = jointFixed.filter(e => e.dueDay && e.dueDay <= 7);
+  const day15 = jointFixed.filter(e => e.dueDay && e.dueDay >= 8 && e.dueDay <= 20);
+  const day25 = jointFixed.filter(e => !e.dueDay || e.dueDay >= 21);
+  const sum = arr => arr.reduce((t, e) => t + (e.amount || 0), 0);
+
+  const checkpoints = [
+    { label: 'Day 1', sub: 'Beginning of month', bills: day1,  total: sum(day1)  },
+    { label: 'Day 15', sub: 'Mid month',          bills: day15, total: sum(day15) },
+    { label: 'Day 25', sub: 'End of month',        bills: day25, total: sum(day25) },
+  ];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: 11, color: '#4d6080' }}>Based on Tracker</span>
+        <button onClick={reload} style={{ fontSize: 10, color: blue, background: 'none', border: '1px solid #2a3a4a', borderRadius: 5, cursor: 'pointer', padding: '1px 8px' }}>↻ Refresh</button>
+      </div>
+
+      {/* Transfer calculator */}
+      <div style={cardStyle}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#dde1f0', marginBottom: 14 }}>💸 Monthly Transfers</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
+          <div>
+            <div style={labelStyle}>Ahmed → AMEX Checking</div>
+            <div style={valStyle(blue)}>{fmtMny(s.ahmedTransferChecking)}</div>
+          </div>
+          <div>
+            <div style={labelStyle}>Victoria → AMEX Checking</div>
+            <div style={valStyle(purple)}>{fmtMny(s.victoriaTransferChecking)}</div>
+          </div>
+          <div>
+            <div style={labelStyle}>Ahmed → AMEX Savings</div>
+            <div style={valStyle(blue)}>{fmtMny(s.ahmedTransferSavings)}</div>
+          </div>
+          <div>
+            <div style={labelStyle}>Victoria → AMEX Savings</div>
+            <div style={valStyle(purple)}>{fmtMny(s.victoriaTransferSavings)}</div>
+          </div>
+        </div>
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #1e3060', fontSize: 12, color: '#4d6080' }}>
+          Total shared: <span style={{ color: teal, fontWeight: 600 }}>{fmtMny(s.totalShared)}</span>
+          &nbsp;·&nbsp;Split {split.ahmed}/{split.victoria}
+          &nbsp;→&nbsp;<span style={{ color: blue }}>Ahmed {fmtMny(s.totalShared * ahmedPct)}</span>
+          &nbsp;|&nbsp;<span style={{ color: purple }}>Victoria {fmtMny(s.totalShared * victoriaPct)}</span>
+        </div>
+      </div>
+
+      {/* Balance checkpoints */}
+      <div style={{ fontWeight: 600, fontSize: 12, color: '#6b7fa8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Joint Account Balance Checkpoints</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        {checkpoints.map(cp => (
+          <div key={cp.label} style={{ ...cardStyle, marginBottom: 0 }}>
+            <div style={{ fontWeight: 700, color: teal, fontSize: 13, marginBottom: 2 }}>{cp.label}</div>
+            <div style={{ fontSize: 10, color: '#4d6080', marginBottom: 10 }}>{cp.sub}</div>
+            {cp.bills.length === 0
+              ? <div style={{ fontSize: 11, color: '#4d6080' }}>No bills due</div>
+              : cp.bills.map((b, i) => (
+                  <div key={i} style={{ fontSize: 11, color: '#8a9abf', display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%' }}>{b.name}</span>
+                    <span style={{ color: gold, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtMny(b.amount)}</span>
+                  </div>
+                ))
+            }
+            <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid #1e3060', display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+              <span style={{ color: '#6b7fa8' }}>Needed</span>
+              <span style={{ color: teal, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(cp.total)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Finance Budget Lite tab -------------------------------------------------
+
+function FinBudgetLiteTab({ apiUrl, apiToken }) {
+  const [tb, loading, reload] = useTrackerBudget(apiUrl, apiToken);
+  const split = getSplit();
+  const blue = '#5c9eff', purple = '#c97ef2', teal = '#2bb5a0', gold = '#c9a84c';
+  const ahmedPct = split.ahmed / 100, victoriaPct = split.victoria / 100;
+
+  const cardStyle = { background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12, padding: '16px 18px', flex: 1, minWidth: 0 };
+  const sectionLabel = { fontSize: 10, color: '#4d6080', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 };
+
+  function PersonCard({ label, color, fixed, nice }) {
+    const total = [...(fixed||[]), ...(nice||[])].reduce((s, e) => s + (e.amount || 0), 0);
+    return (
+      <div style={cardStyle}>
+        <div style={{ fontWeight: 700, fontSize: 13, color, marginBottom: 12 }}>{label}</div>
+        {(fixed||[]).length > 0 && <>
+          <div style={sectionLabel}>Fixed</div>
+          {fixed.map((e, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#dde1f0', padding: '3px 0', borderBottom: '1px solid #0d1b3e' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{e.name}</span>
+              <span style={{ color: gold, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtMny(e.amount)}</span>
+            </div>
+          ))}
+        </>}
+        {(nice||[]).length > 0 && <>
+          <div style={{ ...sectionLabel, marginTop: 10 }}>Nice to Have</div>
+          {nice.map((e, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#dde1f0', padding: '3px 0', borderBottom: '1px solid #0d1b3e' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{e.name}</span>
+              <span style={{ color: gold, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtMny(e.amount)}</span>
+            </div>
+          ))}
+        </>}
+        <div style={{ marginTop: 10, paddingTop: 6, borderTop: '1px solid #1e3060', display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+          <span style={{ color: '#6b7fa8' }}>Personal total</span>
+          <span style={{ fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(total)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  function SharedCard({ fixed, nice }) {
+    const fixedTotal = (fixed||[]).reduce((s, e) => s + (e.amount || 0), 0);
+    const niceTotal  = (nice||[]).reduce((s, e) => s + (e.amount || 0), 0);
+    const grand = fixedTotal + niceTotal;
+    return (
+      <div style={{ ...cardStyle, flex: '0 0 38%' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: teal, marginBottom: 12 }}>Shared Expenses</div>
+        {(fixed||[]).length > 0 && <>
+          <div style={sectionLabel}>Fixed</div>
+          {fixed.map((e, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#dde1f0', padding: '3px 0', borderBottom: '1px solid #0d1b3e', gap: 6 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{e.name}</span>
+              {payerChip(e.paidBy)}
+              <span style={{ color: gold, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtMny(e.amount)}</span>
+            </div>
+          ))}
+        </>}
+        {(nice||[]).length > 0 && <>
+          <div style={{ ...sectionLabel, marginTop: 10 }}>Nice to Have</div>
+          {nice.map((e, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: '#dde1f0', padding: '3px 0', borderBottom: '1px solid #0d1b3e', gap: 6 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{e.name}</span>
+              {payerChip(e.paidBy)}
+              <span style={{ color: gold, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{fmtMny(e.amount)}</span>
+            </div>
+          ))}
+        </>}
+        <div style={{ marginTop: 10, paddingTop: 6, borderTop: '1px solid #1e3060', fontSize: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ color: '#6b7fa8' }}>Grand total</span>
+            <span style={{ fontWeight: 700, color: teal, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(grand)}</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#4d6080' }}>
+            {split.ahmed}/{split.victoria} split →&nbsp;
+            <span style={{ color: blue }}>Ahmed {fmtMny(grand * ahmedPct)}</span>
+            &nbsp;|&nbsp;
+            <span style={{ color: purple }}>Victoria {fmtMny(grand * victoriaPct)}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return <div style={{ color: '#4d6080', padding: 32, textAlign: 'center' }}>Loading tracker…</div>;
+  if (!tb) return (
+    <div style={{ background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12, padding: 20 }}>
+      <div style={{ color: '#ef5350', marginBottom: 10 }}>Tracker data not loaded.</div>
+      <button onClick={reload} style={{ background: '#0d2040', border: '1px solid #5c9eff', color: '#5c9eff', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontSize: 12 }}>Load</button>
+    </div>
+  );
+
+  const s = tb.summary || {};
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{ fontSize: 11, color: '#4d6080' }}>Based on Tracker</span>
+        <button onClick={reload} style={{ fontSize: 10, color: blue, background: 'none', border: '1px solid #2a3a4a', borderRadius: 5, cursor: 'pointer', padding: '1px 8px' }}>↻ Refresh</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <PersonCard label="Ahmed Personal" color={blue} fixed={tb.ahmedFixed} nice={tb.ahmedNiceToHave} />
+        <SharedCard fixed={tb.sharedFixed} nice={tb.sharedNiceToHave} />
+        <PersonCard label="Victoria Personal" color={purple} fixed={tb.victoriaFixed} nice={tb.victoriaNiceToHave} />
+      </div>
+
+      {/* Summary band */}
+      <div style={{ background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12, padding: '14px 18px' }}>
+        <div style={{ fontWeight: 700, fontSize: 12, color: '#6b7fa8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Summary</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 13 }}>
+          <div style={{ color: '#6b7fa8' }}>Ahmed net income</div>
+          <div style={{ color: blue, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(tb.ahmedIncome && tb.ahmedIncome.net)}</div>
+          <div style={{ color: '#6b7fa8' }}>Victoria net income</div>
+          <div style={{ color: purple, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(tb.victoriaIncome && tb.victoriaIncome.net)}</div>
+          <div style={{ color: '#6b7fa8' }}>Total shared</div>
+          <div style={{ color: teal, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(s.totalShared)}</div>
+          <div style={{ color: '#6b7fa8' }}>Transfer → AMEX Checking</div>
+          <div>
+            <span style={{ color: blue, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(s.ahmedTransferChecking)}</span>
+            <span style={{ color: '#4d6080' }}> | </span>
+            <span style={{ color: purple, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(s.victoriaTransferChecking)}</span>
+          </div>
+          <div style={{ color: '#6b7fa8' }}>Transfer → AMEX Savings</div>
+          <div>
+            <span style={{ color: blue, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(s.ahmedTransferSavings)}</span>
+            <span style={{ color: '#4d6080' }}> | </span>
+            <span style={{ color: purple, fontVariantNumeric: 'tabular-nums' }}>{fmtMny(s.victoriaTransferSavings)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 const TOP_TABS = [
@@ -4699,6 +4969,8 @@ const TOP_TABS = [
   { id: 'coupons',       label: '🎟️ Coupons'        },
   { id: 'home_front',    label: '🏡 Home Front'     },
   { id: 'household',     label: '🏠 Household'      },
+  { id: 'fin_summary',   label: '💰 Summary'        },
+  { id: 'fin_budget',    label: '📊 Budget'         },
   { id: 'travel',        label: '✈️ Travel', disabled: true },
 ];
 
@@ -4919,6 +5191,14 @@ function App() {
 
         {activeTab === 'household' && (
           <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'fin_summary' && (
+          <FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'fin_budget' && (
+          <FinBudgetLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
       </div>
 
