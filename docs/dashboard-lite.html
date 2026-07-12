@@ -4825,6 +4825,285 @@ function ItinItemRow({ item, onEdit, onDelete }) {
   );
 }
 
+// --- Travel shared helpers ---------------------------------------------------
+
+function fmtDayHeader(dateStr, dayNum) {
+  if (dateStr === '_undated') return 'Undated';
+  try {
+    const d = new Date(dateStr + 'T12:00:00');
+    const full = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+    return `Day ${dayNum} — ${full}`;
+  } catch(e) { return dateStr; }
+}
+
+const CONTEXT_COLORS = {
+  'Anniversary Trip':'#ff6b9d','Romantic Couples Getaway':'#ff6b9d','Honeymoon':'#ff6b9d',
+  'Work Trip':'#4d8af0','Family Trip':'#56cc9d','Visiting Family':'#56cc9d',
+  'Visiting Friends':'#f7c948',"Girls Trip":'#c084fc','Group Trip':'#94a3b8',
+  'Solo Adventure':'#fb923c',
+};
+const SELF_TRANSPORT = new Set(['road_trip','rental_car']);
+const TRANSPORT_TYPES_SET = new Set(['flight','train','bus','ferry','cruise','rental_car','driving']);
+const HOTEL_TYPES_SET = new Set(['hotel','arranged_stay','cruise']);
+const TRAVEL_MODE_LABELS = {
+  flight:'✈️ Flight', road_trip:'🚗 Road Trip', train:'🚆 Train',
+  rental_car:'🚙 Rental Car', bus:'🚌 Bus', cruise:'🛳️ Cruise', ferry:'⛴️ Ferry',
+};
+const PACK_CAT_ICON = {
+  'Documents':'📄','Clothing':'👕','Shoes':'👟','Toiletries':'🧴','Electronics':'🔌',
+  'Medications':'💊','Entertainment':'🎮','Beach/Pool':'🏖️','Outdoor/Hiking':'🥾',
+  'Formal/Dress':'👔','Snacks':'🍿','Baby/Kids':'👶','Romantic':'💝',
+};
+
+function tripDateRange(startDate, endDate) {
+  const dates = [];
+  const cur = new Date(startDate + 'T12:00:00');
+  const end = new Date(endDate + 'T12:00:00');
+  while (cur <= end) { dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
+  return dates;
+}
+
+// --- VERANoticesCard ---------------------------------------------------------
+function VERANoticesCard({ trip, itinerary, tripMeta }) {
+  if (!itinerary || !itinerary.items || !trip.startDate || !trip.endDate) return null;
+  const items = itinerary.items;
+  const dates = tripDateRange(trip.startDate, trip.endDate);
+  if (dates.length < 2) return null;
+  const notices = [];
+  const out = tripMeta?.outboundMode || '';
+  const ret = tripMeta?.returnMode || '';
+
+  if (!SELF_TRANSPORT.has(out)) {
+    const arrDay = dates[0];
+    if (!items.some(i => i.date === arrDay && TRANSPORT_TYPES_SET.has(i.type)))
+      notices.push({ icon:'✈', date: arrDay, msg:'No arrival transport planned' });
+  }
+  if (!SELF_TRANSPORT.has(ret)) {
+    const depDay = dates[dates.length-1];
+    if (!items.some(i => i.date === depDay && TRANSPORT_TYPES_SET.has(i.type)))
+      notices.push({ icon:'✈', date: depDay, msg:'No departure transport planned' });
+  }
+  for (const date of dates.slice(1, -1)) {
+    const has = items.some(i => {
+      if (!HOTEL_TYPES_SET.has(i.type)) return false;
+      if (i.date === date) return true;
+      try {
+        const m = JSON.parse(i.metadata||'{}');
+        return m.checkoutDate && i.date <= date && m.checkoutDate > date;
+      } catch(e) { return false; }
+    });
+    if (!has) notices.push({ icon:'🏨', date, msg:'No accommodation planned' });
+  }
+  if (!notices.length) return null;
+  return (
+    <div style={{background:'#0a1628',border:'1px solid #1e3a5a',borderRadius:8,
+      padding:'11px 14px',marginBottom:12}}>
+      <div style={{fontWeight:600,color:'#8ab4f8',fontSize:12,marginBottom:6}}>💡 VERA Notices</div>
+      {notices.map((n,i) => {
+        const label = new Date(n.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+        return (
+          <div key={i} style={{fontSize:12,color:'#e05a5a',display:'flex',gap:6,marginBottom:3}}>
+            <span>{n.icon}</span><span>{label}: {n.msg}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- SummaryLitePanel --------------------------------------------------------
+function SummaryLitePanel({ trip, itinerary, travelerFilter }) {
+  const allItems = itinerary?.items || [];
+  const items = allItems.filter(item => {
+    if (travelerFilter === 'Both') return true;
+    try { const m=JSON.parse(item.metadata||'{}'); const tv=m.traveler||'Both'; return tv==='Both'||tv===travelerFilter; }
+    catch(e) { return true; }
+  });
+  const dates = (trip.startDate && trip.endDate) ? tripDateRange(trip.startDate, trip.endDate) : [];
+  const byDate = {};
+  items.forEach(item => {
+    const d = item.date || '_undated';
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push(item);
+  });
+  if (!dates.length) return <div style={{color:'#4d6080',padding:'24px 0',textAlign:'center',fontSize:12}}>No date range</div>;
+  return (
+    <div style={{paddingTop:8}}>
+      {dates.map((date, idx) => {
+        const dayItems = (byDate[date]||[]).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+        const timedItems = dayItems.filter(i=>i.startTime);
+        const label = new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+        return (
+          <div key={date} style={{background:'#0a1628',border:'1px solid #1a2a40',
+            borderRadius:8,padding:'9px 12px',marginBottom:7}}>
+            <div style={{fontWeight:700,color:'#8ab4f8',fontSize:12,marginBottom:3}}>
+              Day {idx+1} — {label}
+            </div>
+            <div style={{fontSize:11,color:'#4d6080',marginBottom:5}}>
+              {dayItems.length} event{dayItems.length!==1?'s':''} scheduled
+            </div>
+            {timedItems.length===0 ? (
+              <div style={{fontSize:12,color:'#4d6080',fontStyle:'italic'}}>No events scheduled</div>
+            ) : timedItems.map(item => (
+              <div key={item.id} style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:12}}>
+                <span style={{color:'#4d6080',minWidth:42,fontSize:11,fontVariantNumeric:'tabular-nums'}}>
+                  {item.startTime}
+                </span>
+                <span>{ITIN_TYPE_ICON[item.type]||'📌'}</span>
+                <span style={{color:'#c8d4e8'}}>{item.title}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- PackingLitePanel --------------------------------------------------------
+function PackingLitePanel({ tripKey, packingData, apiUrl, apiToken, onReload }) {
+  const [personFilter, setPersonFilter] = useState('all');
+  const [adding, setAdding]     = useState(false);
+  const [newPerson, setNewPerson]   = useState('shared');
+  const [newCat, setNewCat]     = useState('Clothing');
+  const [newItem, setNewItem]   = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [packBusy, setPackBusy] = useState(false);
+
+  if (!packingData || packingData === 'loading') {
+    return <div style={{textAlign:'center',color:'#6b7fa8',padding:'24px',fontSize:13}}>Loading packing list…</div>;
+  }
+  const allItems = packingData.items || [];
+  const filtered = personFilter==='all' ? allItems : allItems.filter(i=>i.person===personFilter);
+  const byCategory = {};
+  filtered.forEach(item => {
+    const cat = item.category || 'Other';
+    if (!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push(item);
+  });
+  const checkedCount = allItems.filter(i=>i.checked).length;
+
+  async function toggleItem(id, checked) {
+    setPackBusy(true);
+    try { await apiGet(apiUrl,apiToken,{action:'update_packing_item',id,checked:String(checked)}); await onReload(); }
+    catch(e) {} finally { setPackBusy(false); }
+  }
+  async function deleteItem(id) {
+    setPackBusy(true);
+    try { await apiGet(apiUrl,apiToken,{action:'delete_packing_item',id}); await onReload(); }
+    catch(e) {} finally { setPackBusy(false); }
+  }
+  async function addItem() {
+    if (!newItem.trim()) return;
+    setPackBusy(true);
+    try {
+      await apiGet(apiUrl,apiToken,{action:'add_packing_item',tripKey,person:newPerson,category:newCat,item:newItem.trim()});
+      setNewItem(''); setAdding(false); await onReload();
+    } catch(e) {} finally { setPackBusy(false); }
+  }
+  async function generatePacking() {
+    if (!window.confirm('Generate AI packing list? Existing AI suggestions will be replaced.')) return;
+    setGenerating(true);
+    try {
+      const startDate = tripKey.split('|')[0];
+      await apiGet(apiUrl,apiToken,{action:'generate_packing',tripKey,startDate});
+      await onReload();
+    } catch(e) {} finally { setGenerating(false); }
+  }
+
+  const personTabs=[{id:'all',label:'All',color:'#8ab4f8'},{id:'ahmed',label:'Ahmed',color:'#5c9eff'},
+    {id:'victoria',label:'Victoria',color:'#b87cff'},{id:'shared',label:'Shared',color:'#56cc9d'}];
+
+  return (
+    <div style={{paddingTop:8}}>
+      <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
+        <div style={{display:'flex',gap:4,flex:1,flexWrap:'wrap'}}>
+          {personTabs.map(p => (
+            <button key={p.id} onClick={()=>setPersonFilter(p.id)}
+              style={{padding:'4px 9px',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer',
+                border: personFilter===p.id?`1px solid ${p.color}`:'1px solid #2a3a50',
+                background: personFilter===p.id?`${p.color}22`:'#0d1117',
+                color: personFilter===p.id?p.color:'#6b7fa8'}}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <span style={{fontSize:11,color:'#4d6080'}}>{checkedCount}/{allItems.length} packed</span>
+        <button onClick={generatePacking} disabled={generating}
+          style={{padding:'4px 9px',borderRadius:6,fontSize:11,cursor:'pointer',
+            background:'#0d1a10',border:'1px solid #2a6040',color:'#56cc9d',
+            opacity:generating?0.6:1,whiteSpace:'nowrap'}}>
+          {generating?'⏳':'✨ Generate'}
+        </button>
+        <button onClick={()=>setAdding(a=>!a)}
+          style={{padding:'4px 9px',borderRadius:6,fontSize:11,cursor:'pointer',
+            background:'#0d2040',border:'1px solid #3d6fa0',color:'#5c9eff'}}>
+          + Add
+        </button>
+      </div>
+
+      {adding && (
+        <div style={{background:'#0a1628',border:'1px solid #1e3050',borderRadius:8,padding:'10px',marginBottom:10}}>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
+            <select value={newPerson} onChange={e=>setNewPerson(e.target.value)}
+              style={{fontSize:12,background:'#0d1b3e',color:'#c8d4e8',border:'1px solid #2a3a50',borderRadius:6,padding:'4px 6px'}}>
+              <option value="ahmed">Ahmed</option><option value="victoria">Victoria</option><option value="shared">Shared</option>
+            </select>
+            <select value={newCat} onChange={e=>setNewCat(e.target.value)}
+              style={{fontSize:12,background:'#0d1b3e',color:'#c8d4e8',border:'1px solid #2a3a50',borderRadius:6,padding:'4px 6px'}}>
+              {Object.keys(PACK_CAT_ICON).map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <input value={newItem} onChange={e=>setNewItem(e.target.value)} placeholder="Item name…"
+              onKeyDown={e=>{if(e.key==='Enter')addItem();if(e.key==='Escape')setAdding(false);}}
+              style={{flex:1,fontSize:12,background:'#0d1b3e',color:'#c8d4e8',border:'1px solid #2a3a50',borderRadius:6,padding:'5px 8px'}} />
+            <button onClick={addItem} disabled={packBusy||!newItem.trim()}
+              style={{padding:'5px 10px',borderRadius:6,fontSize:12,cursor:'pointer',
+                background:'#1a3a6c',border:'1px solid #3d6fa0',color:'#5c9eff',
+                opacity:(packBusy||!newItem.trim())?0.5:1}}>Add</button>
+            <button onClick={()=>setAdding(false)}
+              style={{padding:'5px 8px',borderRadius:6,fontSize:12,cursor:'pointer',
+                background:'none',border:'1px solid #2a3a50',color:'#6b7fa8'}}>✕</button>
+          </div>
+        </div>
+      )}
+
+      {Object.keys(byCategory).sort().map(cat => (
+        <div key={cat} style={{marginBottom:10}}>
+          <div style={{fontSize:11,color:'#6b7fa8',fontWeight:600,padding:'3px 0',
+            borderBottom:'1px solid #1a2a40',marginBottom:4}}>
+            {PACK_CAT_ICON[cat]||'📦'} {cat}
+          </div>
+          {byCategory[cat].map(item => (
+            <div key={item.id} style={{display:'flex',alignItems:'center',gap:8,
+              padding:'4px 2px',borderBottom:'1px solid #0a1628'}}>
+              <input type="checkbox" checked={!!item.checked}
+                onChange={e=>toggleItem(item.id,e.target.checked)}
+                style={{cursor:'pointer',accentColor:'#5c9eff',width:14,height:14,flexShrink:0}} />
+              <span style={{flex:1,fontSize:12,
+                color:item.checked?'#4d6080':'#c8d4e8',
+                textDecoration:item.checked?'line-through':'none'}}>
+                {item.item}
+              </span>
+              {item.source==='ai'&&<span style={{fontSize:9,color:'#4d6080'}}>ai</span>}
+              <button onClick={()=>deleteItem(item.id)}
+                style={{background:'none',border:'none',color:'#4d6080',cursor:'pointer',fontSize:12,padding:'0 2px'}}>🗑</button>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {filtered.length===0&&(
+        <div style={{textAlign:'center',color:'#4d6080',padding:'24px 0',fontSize:12,fontStyle:'italic'}}>
+          No items yet — use ✨ Generate for AI suggestions or + Add manually.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- ItineraryDayView --------------------------------------------------------
 function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
   const items = itinerary?.items || [];
   const byDate = {};
@@ -4851,15 +5130,6 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
     dates = Object.keys(byDate).filter(d => d !== '_undated').sort();
   }
   if (byDate['_undated']) dates.push('_undated');
-
-  function fmtDayHeader(dateStr, dayNum) {
-    if (dateStr === '_undated') return 'Undated';
-    try {
-      const d = new Date(dateStr + 'T12:00:00');
-      const full = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
-      return `Day ${dayNum} — ${full}`;
-    } catch(e) { return dateStr; }
-  }
 
   return (
     <div style={{paddingTop:8}}>
@@ -5095,7 +5365,11 @@ function AddItineraryItemLiteModal({ mode, item, tripKey, tripStartDate, tripEnd
 function TravelLiteTab({ apiUrl, apiToken }) {
   const [pto, setPto]               = useState(null);
   const [ptoLoading, setPtoLoading] = useState(false);
-  const [itineraries, setItineraries] = useState({});
+  const [itineraries, setItineraries]   = useState({});
+  const [tripMetas, setTripMetas]       = useState({});
+  const [packingData, setPackingData]   = useState({});
+  const [tripTabs, setTripTabs]         = useState({});
+  const [travelerFilters, setTravelerFilters] = useState({});
   const [expanded, setExpanded]     = useState(new Set());
   const [modal, setModal]           = useState(null);
   const [busy, setBusy]             = useState(false);
@@ -5106,83 +5380,108 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   useEffect(() => {
     if (!apiUrl || !apiToken || pto) return;
     setPtoLoading(true);
-    apiGet(apiUrl, apiToken, { action: 'pto' })
+    apiGet(apiUrl, apiToken, { action:'pto' })
       .then(d => { setPto(d); setPtoLoading(false); })
       .catch(() => { setPtoLoading(false); });
   }, [apiUrl, apiToken]);
 
   async function loadItinerary(tripKey, startDate, endDate) {
-    setItineraries(prev => ({ ...prev, [tripKey]: 'loading' }));
+    setItineraries(prev => ({ ...prev, [tripKey]:'loading' }));
     try {
       const data = await apiGet(apiUrl, apiToken, { action:'itinerary', tripKey, startDate, endDate });
-      setItineraries(prev => ({ ...prev, [tripKey]: data }));
+      setItineraries(prev => ({ ...prev, [tripKey]:data }));
     } catch(e) {
-      setItineraries(prev => ({ ...prev, [tripKey]: { items: [] } }));
+      setItineraries(prev => ({ ...prev, [tripKey]:{ items:[] } }));
       setError('Could not load itinerary: ' + (e.message || 'API error'));
+    }
+  }
+
+  async function loadTripMeta(tripKey) {
+    setTripMetas(prev => ({ ...prev, [tripKey]:'loading' }));
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action:'get_trip_meta', tripKey });
+      setTripMetas(prev => ({ ...prev, [tripKey]:data }));
+      if (data.traveler) setTravelerFilters(prev => ({ ...prev, [tripKey]:data.traveler }));
+    } catch(e) {
+      setTripMetas(prev => ({ ...prev, [tripKey]:{} }));
+    }
+  }
+
+  async function loadPacking(tripKey) {
+    setPackingData(prev => ({ ...prev, [tripKey]:'loading' }));
+    try {
+      const data = await apiGet(apiUrl, apiToken, { action:'get_packing', tripKey });
+      setPackingData(prev => ({ ...prev, [tripKey]:data }));
+    } catch(e) {
+      setPackingData(prev => ({ ...prev, [tripKey]:{ items:[] } }));
     }
   }
 
   async function refreshItin(tripKey) {
     const trip = trips.find(t => `${t.startDate}|${t.label}` === tripKey);
     if (!trip) return;
-    const data = await apiGet(apiUrl, apiToken, { action:'itinerary', tripKey, startDate: trip.startDate, endDate: trip.endDate });
-    setItineraries(prev => ({ ...prev, [tripKey]: data }));
+    const data = await apiGet(apiUrl, apiToken, { action:'itinerary', tripKey, startDate:trip.startDate, endDate:trip.endDate });
+    setItineraries(prev => ({ ...prev, [tripKey]:data }));
   }
 
   function toggleTrip(tripKey, trip) {
     const wasOpen = expanded.has(tripKey);
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(tripKey)) next.delete(tripKey);
-      else next.add(tripKey);
+      if (next.has(tripKey)) next.delete(tripKey); else next.add(tripKey);
       return next;
     });
-    if (!wasOpen && !itineraries[tripKey]) {
-      loadItinerary(tripKey, trip.startDate, trip.endDate);
+    if (!wasOpen) {
+      if (!itineraries[tripKey]) loadItinerary(tripKey, trip.startDate, trip.endDate);
+      if (!tripMetas[tripKey])   loadTripMeta(tripKey);
     }
   }
 
-  async function handleSave(params) {
-    setBusy(true);
-    setError(null);
+  function setTripTab(tripKey, tab) {
+    setTripTabs(prev => ({ ...prev, [tripKey]:tab }));
+    if (tab === 'packing' && !packingData[tripKey]) loadPacking(tripKey);
+  }
+
+  async function handleSetTraveler(tripKey, traveler) {
+    setTravelerFilters(prev => ({ ...prev, [tripKey]:traveler }));
+    const meta = (tripMetas[tripKey] && tripMetas[tripKey]!=='loading') ? tripMetas[tripKey] : {};
     try {
-      const action = params.id ? 'update_itinerary_item' : 'add_itinerary_item';
-      await apiGet(apiUrl, apiToken, { action, ...params });
+      await apiGet(apiUrl, apiToken, { action:'set_trip_meta', tripKey,
+        context:meta.context||'', notes:meta.notes||'', traveler });
+      setTripMetas(prev => ({ ...prev, [tripKey]:{ ...meta, traveler } }));
+    } catch(e) {}
+  }
+
+  async function handleSave(params) {
+    setBusy(true); setError(null);
+    try {
+      await apiGet(apiUrl, apiToken, { action: params.id ? 'update_itinerary_item' : 'add_itinerary_item', ...params });
       setModal(null);
       await refreshItin(params.tripKey);
-    } catch(e) {
-      setError(e.message || 'Could not save item');
-    }
+    } catch(e) { setError(e.message || 'Could not save item'); }
     setBusy(false);
   }
 
   async function handleDelete(id, tripKey) {
     if (!window.confirm('Delete this itinerary item?')) return;
     setBusy(true);
-    try {
-      await apiGet(apiUrl, apiToken, { action:'delete_itinerary_item', id });
-      await refreshItin(tripKey);
-    } catch(e) {
-      setError(e.message || 'Could not delete item');
-    }
+    try { await apiGet(apiUrl, apiToken, { action:'delete_itinerary_item', id }); await refreshItin(tripKey); }
+    catch(e) { setError(e.message || 'Could not delete item'); }
     setBusy(false);
   }
 
-  if (!apiUrl || !apiToken) {
+  if (!apiUrl || !apiToken)
     return <div style={{textAlign:'center',color:'#4d6080',padding:'40px 20px',fontSize:14}}>Configure your API URL and token in settings.</div>;
-  }
-
-  if (ptoLoading) {
+  if (ptoLoading)
     return <div style={{textAlign:'center',color:'#6b7fa8',padding:'40px 20px',fontSize:14}}>Loading trips…</div>;
-  }
 
   return (
     <div style={{padding:'0 0 40px'}}>
       {error && (
-        <div style={{background:'#2a0d0d',border:'1px solid #7a2020',borderRadius:8,padding:'10px 14px',
-          marginBottom:12,color:'#f87171',fontSize:13}}>
+        <div style={{background:'#2a0d0d',border:'1px solid #7a2020',borderRadius:8,
+          padding:'10px 14px',marginBottom:12,color:'#f87171',fontSize:13}}>
           ⚠️ {error}
-          <button onClick={() => setError(null)} style={{float:'right',background:'none',border:'none',
+          <button onClick={()=>setError(null)} style={{float:'right',background:'none',border:'none',
             color:'#f87171',cursor:'pointer',fontSize:14}}>✕</button>
         </div>
       )}
@@ -5191,71 +5490,135 @@ function TravelLiteTab({ apiUrl, apiToken }) {
         <div style={{textAlign:'center',padding:'60px 20px'}}>
           <div style={{fontSize:40,marginBottom:12}}>✈️</div>
           <div style={{color:'#6b7fa8',fontSize:14}}>No upcoming trips found.</div>
-          <div style={{color:'#4d6080',fontSize:12,marginTop:8}}>
-            Add multi-day travel events to your calendar to see them here.
-          </div>
+          <div style={{color:'#4d6080',fontSize:12,marginTop:8}}>Add multi-day travel events to your calendar to see them here.</div>
         </div>
-      ) : (
-        trips.map(t => {
-          const tripKey = `${t.startDate}|${t.label}`;
-          const isOpen = expanded.has(tripKey);
-          const tripData = itineraries[tripKey];
-          const isLoading = !tripData || tripData === 'loading';
-          return (
-            <div key={tripKey} style={{marginBottom:10,border:'1px solid #2a3a50',
-              borderRadius:10,overflow:'hidden'}}>
-              {/* Trip header */}
-              <div onClick={() => toggleTrip(tripKey, t)}
-                style={{display:'flex',alignItems:'center',gap:12,padding:'13px 16px',
-                  background: isOpen ? '#131e2e' : '#0d1117',cursor:'pointer',userSelect:'none',
-                  transition:'background .15s'}}>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:15,color:'#dde1f0'}}>{t.label}</div>
-                  <div style={{fontSize:12,color:'#6b7fa8',marginTop:2}}>
-                    {t.startDate} – {t.endDate}
+      ) : trips.map(t => {
+        const tripKey = `${t.startDate}|${t.label}`;
+        const isOpen  = expanded.has(tripKey);
+        const tripData = itineraries[tripKey];
+        const isItinLoading = !tripData || tripData === 'loading';
+        const meta = (tripMetas[tripKey] && tripMetas[tripKey]!=='loading') ? tripMetas[tripKey] : null;
+        const activeTab = tripTabs[tripKey] || 'agenda';
+        const traveler  = travelerFilters[tripKey] || 'Both';
+        const ctxColor  = (meta?.context && CONTEXT_COLORS[meta.context]) || null;
+
+        const filteredItin = (tripData && tripData.items) ? {
+          ...tripData,
+          items: tripData.items.filter(item => {
+            if (traveler==='Both') return true;
+            try { const m=JSON.parse(item.metadata||'{}'); const tv=m.traveler||'Both'; return tv==='Both'||tv===traveler; }
+            catch(e) { return true; }
+          })
+        } : tripData;
+
+        return (
+          <div key={tripKey} style={{marginBottom:10,border:'1px solid #2a3a50',borderRadius:10,overflow:'hidden'}}>
+            {/* Trip header */}
+            <div onClick={()=>toggleTrip(tripKey,t)}
+              style={{display:'flex',alignItems:'center',gap:12,padding:'13px 16px',
+                background:isOpen?'#131e2e':'#0d1117',cursor:'pointer',userSelect:'none',transition:'background .15s'}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15,color:'#dde1f0'}}>{t.label}</div>
+                <div style={{fontSize:12,color:'#6b7fa8',marginTop:2}}>{t.startDate} – {t.endDate}</div>
+              </div>
+              <DaysAwayChip daysAway={t.daysAway} />
+              <div style={{fontSize:16,color:'#8ab4f8',lineHeight:1,
+                transform:isOpen?'rotate(180deg)':'rotate(0deg)',transition:'transform .2s'}}>▾</div>
+            </div>
+
+            {/* Expanded body */}
+            {isOpen && (
+              <div style={{background:'#0d1117',borderTop:'1px solid #2a3a50'}}>
+
+                {/* Context tag + travel mode + traveler selector */}
+                <div style={{padding:'10px 16px 0',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                  {meta?.context && (
+                    <span style={{fontSize:12,fontWeight:600,borderRadius:12,padding:'3px 10px',
+                      color:ctxColor||'#8ab4f8',background:`${ctxColor||'#8ab4f8'}22`,
+                      border:`1px solid ${ctxColor||'#8ab4f8'}55`}}>
+                      {meta.context}
+                    </span>
+                  )}
+                  {meta?.outboundMode && (
+                    <span style={{fontSize:11,color:'#6b7fa8',background:'#0d1628',
+                      border:'1px solid #2a3a50',borderRadius:10,padding:'2px 8px'}}>
+                      {TRAVEL_MODE_LABELS[meta.outboundMode]||meta.outboundMode}
+                    </span>
+                  )}
+                  {meta?.returnMode && meta.returnMode!==meta.outboundMode && (
+                    <span style={{fontSize:11,color:'#6b7fa8',background:'#0d1628',
+                      border:'1px solid #2a3a50',borderRadius:10,padding:'2px 8px'}}>
+                      ↩ {TRAVEL_MODE_LABELS[meta.returnMode]||meta.returnMode}
+                    </span>
+                  )}
+                  <div style={{display:'flex',gap:4,marginLeft:'auto'}}>
+                    {['Ahmed','Victoria','Both'].map(tv => {
+                      const c = tv==='Ahmed'?{on:'#5c9eff',bg:'#0d2040'}:tv==='Victoria'?{on:'#b87cff',bg:'#1a0d30'}:{on:'#4a9060',bg:'#0d1a10'};
+                      return (
+                        <button key={tv}
+                          onClick={e=>{e.stopPropagation();handleSetTraveler(tripKey,tv);}}
+                          style={{padding:'3px 8px',borderRadius:6,cursor:'pointer',fontSize:11,fontWeight:600,
+                            border:traveler===tv?`2px solid ${c.on}`:'2px solid transparent',
+                            background:traveler===tv?c.bg:'#1e2a3a',color:traveler===tv?c.on:'#6b7fa8'}}>
+                          {tv}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <DaysAwayChip daysAway={t.daysAway} />
-                <div style={{fontSize:16,color:'#8ab4f8',lineHeight:1,
-                  transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                  transition:'transform .2s'}}>▾</div>
-              </div>
 
-              {/* Expanded body */}
-              {isOpen && (
-                <div style={{padding:'0 16px 16px',background:'#0d1117',
-                  borderTop:'1px solid #2a3a50'}}>
-                  {isLoading ? (
+                {/* Subtab buttons */}
+                <div style={{padding:'8px 16px',display:'flex',gap:6,borderBottom:'1px solid #1a2a40'}}>
+                  {[['agenda','📅 Agenda'],['summary','📋 Summary'],['packing','🎒 Packing']].map(([tab,label]) => (
+                    <button key={tab}
+                      onClick={e=>{e.stopPropagation();setTripTab(tripKey,tab);}}
+                      style={{padding:'5px 12px',borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:600,
+                        background:activeTab===tab?'#1a3a6c':'#0d1a2e',
+                        border:activeTab===tab?'1px solid #3d6fa0':'1px solid #1a2a40',
+                        color:activeTab===tab?'#5c9eff':'#4d6080'}}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab content */}
+                <div style={{padding:'0 16px 16px'}}>
+                  {activeTab === 'packing' ? (
+                    <PackingLitePanel
+                      tripKey={tripKey}
+                      packingData={packingData[tripKey]}
+                      apiUrl={apiUrl} apiToken={apiToken}
+                      onReload={()=>loadPacking(tripKey)}
+                    />
+                  ) : isItinLoading ? (
                     <div style={{padding:'24px 0',textAlign:'center',color:'#6b7fa8',fontSize:13}}>
                       Loading itinerary…
                     </div>
+                  ) : activeTab === 'summary' ? (
+                    <SummaryLitePanel trip={{...t,tripKey}} itinerary={filteredItin} travelerFilter={traveler} />
                   ) : (
-                    <ItineraryDayView
-                      trip={{...t, tripKey}}
-                      itinerary={tripData}
-                      busy={busy}
-                      onAdd={() => setModal({ mode:'add', tripKey, tripStartDate: t.startDate, tripEndDate: t.endDate })}
-                      onEdit={item => setModal({ mode:'edit', item, tripKey, tripStartDate: t.startDate, tripEndDate: t.endDate })}
-                      onDelete={id => handleDelete(id, tripKey)}
-                    />
+                    <>
+                      <VERANoticesCard trip={t} itinerary={tripData} tripMeta={meta} />
+                      <ItineraryDayView
+                        trip={{...t,tripKey}} itinerary={filteredItin} busy={busy}
+                        onAdd={()=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
+                        onEdit={item=>setModal({mode:'edit',item,tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
+                        onDelete={id=>handleDelete(id,tripKey)}
+                      />
+                    </>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })
-      )}
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {modal && (
         <AddItineraryItemLiteModal
-          mode={modal.mode}
-          item={modal.item}
-          tripKey={modal.tripKey}
-          tripStartDate={modal.tripStartDate}
-          tripEndDate={modal.tripEndDate}
-          onSave={handleSave}
-          onClose={() => setModal(null)}
-          busy={busy}
+          mode={modal.mode} item={modal.item} tripKey={modal.tripKey}
+          tripStartDate={modal.tripStartDate} tripEndDate={modal.tripEndDate}
+          onSave={handleSave} onClose={()=>setModal(null)} busy={busy}
         />
       )}
     </div>
