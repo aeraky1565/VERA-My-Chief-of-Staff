@@ -4833,11 +4833,33 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
     if (!byDate[d]) byDate[d] = [];
     byDate[d].push(item);
   });
-  const dates = Object.keys(byDate).sort((a,b) => {
-    if (a === '_undated') return 1;
-    if (b === '_undated') return -1;
-    return a < b ? -1 : 1;
-  });
+
+  // Generate all dates in the trip range so days show even with no items
+  let dates = [];
+  if (trip.startDate && trip.endDate) {
+    const cur = new Date(trip.startDate + 'T12:00:00');
+    const end = new Date(trip.endDate + 'T12:00:00');
+    while (cur <= end) {
+      dates.push(cur.toISOString().slice(0, 10));
+      cur.setDate(cur.getDate() + 1);
+    }
+    Object.keys(byDate).forEach(d => {
+      if (d !== '_undated' && !dates.includes(d)) dates.push(d);
+    });
+    dates.sort();
+  } else {
+    dates = Object.keys(byDate).filter(d => d !== '_undated').sort();
+  }
+  if (byDate['_undated']) dates.push('_undated');
+
+  function fmtDayHeader(dateStr, dayNum) {
+    if (dateStr === '_undated') return 'Undated';
+    try {
+      const d = new Date(dateStr + 'T12:00:00');
+      const full = d.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+      return `Day ${dayNum} — ${full}`;
+    } catch(e) { return dateStr; }
+  }
 
   return (
     <div style={{paddingTop:8}}>
@@ -4851,20 +4873,28 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
           No itinerary items yet.
         </div>
       )}
-      {dates.map(date => (
-        <div key={date} style={{marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:'#8ab4f8',padding:'6px 8px',
-            background:'#0a1628',borderRadius:6,marginBottom:4,letterSpacing:'0.04em',
-            textTransform:'uppercase'}}>
-            {date === '_undated' ? 'Undated' : fmtDate(date)}
+      {dates.map((date, idx) => {
+        const dayItems = byDate[date] || [];
+        const dayNum = date === '_undated' ? '' : idx + 1;
+        return (
+          <div key={date} style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:700,color:'#8ab4f8',padding:'6px 8px',
+              background:'#0a1628',borderRadius:6,marginBottom:4,letterSpacing:'0.03em'}}>
+              {fmtDayHeader(date, dayNum)}
+            </div>
+            {dayItems.length === 0 ? (
+              <div style={{textAlign:'center',color:'#4d6080',padding:'10px 0',
+                fontSize:12,fontStyle:'italic'}}>No events scheduled</div>
+            ) : (
+              dayItems.map(item => (
+                <ItinItemRow key={item.id} item={item}
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item.id)} />
+              ))
+            )}
           </div>
-          {byDate[date].map(item => (
-            <ItinItemRow key={item.id} item={item}
-              onEdit={() => onEdit(item)}
-              onDelete={() => onDelete(item.id)} />
-          ))}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
