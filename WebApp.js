@@ -417,10 +417,15 @@ function doGet(e) {
 
 function doPost(e) {
   // ── Slack form-encoded payloads (Block Kit interactions + slash commands) ──
-  // Slack sends these as application/x-www-form-urlencoded, so GAS populates
-  // e.parameter rather than e.postData.contents being parseable JSON.
-  // Must be checked BEFORE the JSON.parse attempt below, which would fail.
-  if (e && e.parameter && (e.parameter.payload || e.parameter.command)) {
+  // Slack sends application/x-www-form-urlencoded. GAS *sometimes* populates
+  // e.parameter from it; other times it doesn't. Route to handleSlackFormPost_
+  // when either (a) e.parameter has payload/command, or (b) the Content-Type
+  // header signals form-encoded — the fallback parser inside will handle it.
+  var isFormEncoded = e && e.postData && (
+    (e.parameter && (e.parameter.payload || e.parameter.command)) ||
+    (e.postData.type && e.postData.type.indexOf('x-www-form-urlencoded') !== -1)
+  );
+  if (isFormEncoded) {
     return handleSlackFormPost_(e);
   }
 
