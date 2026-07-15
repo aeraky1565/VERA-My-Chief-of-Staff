@@ -508,7 +508,14 @@ function handleSlackFormPost_(e) {
   if (payloadStr) {
     try {
       var payload = JSON.parse(payloadStr);
-      handleSlackInteraction_(payload);
+      var ackPayload = handleSlackInteraction_(payload);
+      if (ackPayload) {
+        // Return the ack as the HTTP response body — Slack accepts this and
+        // it avoids the extra UrlFetchApp roundtrip of sendSlackResponse_,
+        // keeping total response time well under Slack's 3-second deadline.
+        return ContentService.createTextOutput(JSON.stringify(ackPayload))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     } catch (err) {
       Logger.log('Slack interaction parse error: ' + err.message + ' | raw=' + payloadStr.substring(0, 200));
     }
@@ -721,12 +728,32 @@ function handleSlackInteraction_(payload) {
     ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
   }
 
-  // Wellness buttons need all three rows to stay tappable — don't replace the original.
-  // Instead we send a true ephemeral ack via chat.postEphemeral after the write (below).
+  // ── Build the ack payload to return as the HTTP response body ────────────
+  // Returning JSON from doPost is faster than calling sendSlackResponse_
+  // (which makes an extra UrlFetchApp roundtrip to Slack's response_url,
+  // often pushing the total time past Slack's 3-second deadline).
   var isWellnessAction = ackText && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
-  if (ackText && !isWellnessAction) sendSlackResponse_(responseUrl, ackText, null, true);
+  var responsePayload = null;
+  if (isWellnessAction) {
+    // Build modified blocks now (before any sheet writes) so they're ready to return.
+    var wBlockParts  = actionId.split('_');
+    var wBlockMetric = wBlockParts[1] || '';
+    var wBlockVal    = parseFloat(wBlockParts[2]);
+    var wBlockLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wBlockMetric] || wBlockMetric;
+    var curBlocks = (payload.message && payload.message.blocks) || [];
+    var ackBlocks = curBlocks.map(function(b) {
+      if (b.block_id === 'wellness_row_' + wBlockMetric) {
+        return { type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: ':white_check_mark: *' + wBlockLabel + '*  ' + wBlockVal + '/5 logged' } };
+      }
+      return b;
+    });
+    responsePayload = { replace_original: true, text: ackText };
+    if (ackBlocks.length) responsePayload.blocks = ackBlocks;
+  } else if (ackText) {
+    responsePayload = { replace_original: true, text: ackText };
+  }
 
-  // ── Heavy work (sheet reads/writes) AFTER the ack ────────────────────────
+  // ── Sheet reads/writes (fast, local ops — no extra network call) ──────────
   try {
     if (actionId === 'acknowledge_flag') {
       webAcknowledge_(value);
@@ -757,33 +784,22 @@ function handleSlackInteraction_(payload) {
     } else if (actionId === 'mark_bill_paid') {
       webMarkBillPaid_(value);
 
-    } else if (actionId && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0) {
+    } else if (isWellnessAction) {
       // wellness_energy_3 → metric='energy', value=3
-      var wParts  = actionId.split('_');
-      var wMetric = wParts[1] || '';
-      var wVal    = parseFloat(wParts[2]);
-      var wLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
-      // Map abbreviated IDs to canonical metric names
+      var wParts     = actionId.split('_');
+      var wMetric    = wParts[1] || '';
+      var wVal       = parseFloat(wParts[2]);
       var wMetricMap = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
       var canonMetric = wMetricMap[wMetric] || wMetric;
       if (!isNaN(wVal) && canonMetric) {
-        // Replace only the tapped metric's row with a ✓ indicator; pass other rows through unchanged.
-        // Uses response_url (always available, no extra scopes) rather than chat.postEphemeral.
-        var curBlocks = (payload.message && payload.message.blocks) || [];
-        var ackBlocks = curBlocks.map(function(b) {
-          if (b.block_id === 'wellness_row_' + wMetric) {
-            return { type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: ':white_check_mark: *' + wLabel + '*  ' + wVal + '/5 logged' } };
-          }
-          return b;
-        });
-        sendSlackResponse_(responseUrl, ackText, ackBlocks.length ? ackBlocks : null, true);
         try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); } catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
       }
     }
   } catch (err) {
     Logger.log('handleSlackInteraction_ error: ' + err.message);
-    // Response was already sent above; just log the error
   }
+
+  return responsePayload;
 }
 
 // ─── SLASH COMMANDS ──────────────────────────────────────────────────────────
