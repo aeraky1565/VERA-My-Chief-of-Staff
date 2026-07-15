@@ -698,20 +698,19 @@ function handleSlackReaction_(event) {
 // ─── INTERACTION HANDLING ────────────────────────────────────────────────────
 
 /**
- * Handles Block Kit button clicks.
+ * Handles Block Kit button clicks. Returns the ack payload as an object
+ * (for handleSlackFormPost_ to send as the HTTP response body) in < 500ms
+ * by deferring ALL sheet writes and secondary Slack messages to a one-shot
+ * trigger via queueInteraction_. This is the same async pattern used by
+ * queueSlackMessage_ / processSlackQueue_ for chat messages.
  */
 function handleSlackInteraction_(payload) {
-  if (!payload || !payload.actions || !payload.actions.length) return;
+  if (!payload || !payload.actions || !payload.actions.length) return null;
 
-  var action      = payload.actions[0];
-  var actionId    = action.action_id;
-  var value       = action.value;
-  var responseUrl = payload.response_url;
-  var userId      = payload.user && payload.user.id;
-  var channelId   = payload.channel && payload.channel.id;
+  var action   = payload.actions[0];
+  var actionId = action.action_id || '';
 
-  // ── Send the visual response to Slack FIRST (3-second deadline) ─────────
-  // Any sheet reads/writes happen AFTER the ack so Slack never times out.
+  // ── Build ack text (pure in-memory, no I/O) ─────────────────────────────
   var ackText = '';
   if      (actionId === 'acknowledge_flag')    ackText = ':white_check_mark: Flag acknowledged.';
   else if (actionId === 'snooze_flag')         ackText = ':zzz: Snoozed for 3 days.';
@@ -719,31 +718,27 @@ function handleSlackInteraction_(payload) {
   else if (actionId === 'evening_checkin_walk')ackText = ':walking: Walking counts! Logged as movement for today.';
   else if (actionId === 'evening_checkin_no')  ackText = ':ok_hand: No worries — logged as skipped.';
   else if (actionId === 'mark_bill_paid')      ackText = ':white_check_mark: Bill marked as paid.';
-  else if (actionId && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0) {
-    // wellness_energy_3, wellness_mood_4, wellness_sleep_5, etc.
-    var wParts  = actionId.split('_'); // ['wellness', metric, value]
+  else if (actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0) {
+    var wParts  = actionId.split('_'); // ['wellness', metric, rating]
     var wMetric = wParts[1] || '';
     var wVal    = wParts[2] || '';
     var wLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
     ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
   }
 
-  // ── Build the ack payload to return as the HTTP response body ────────────
-  // Returning JSON from doPost is faster than calling sendSlackResponse_
-  // (which makes an extra UrlFetchApp roundtrip to Slack's response_url,
-  // often pushing the total time past Slack's 3-second deadline).
-  var isWellnessAction = ackText && actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
+  // ── Build response payload (in-memory, for wellness also mutates blocks) ─
+  var isWellnessAction = actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
   var responsePayload = null;
-  if (isWellnessAction) {
-    // Build modified blocks now (before any sheet writes) so they're ready to return.
-    var wBlockParts  = actionId.split('_');
-    var wBlockMetric = wBlockParts[1] || '';
-    var wBlockVal    = parseFloat(wBlockParts[2]);
-    var wBlockLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wBlockMetric] || wBlockMetric;
+  if (isWellnessAction && ackText) {
+    var wbParts  = actionId.split('_');
+    var wbMetric = wbParts[1] || '';
+    var wbVal    = parseFloat(wbParts[2]);
+    var wbLabel  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wbMetric] || wbMetric;
     var curBlocks = (payload.message && payload.message.blocks) || [];
     var ackBlocks = curBlocks.map(function(b) {
-      if (b.block_id === 'wellness_row_' + wBlockMetric) {
-        return { type: 'section', block_id: b.block_id, text: { type: 'mrkdwn', text: ':white_check_mark: *' + wBlockLabel + '*  ' + wBlockVal + '/5 logged' } };
+      if (b.block_id === 'wellness_row_' + wbMetric) {
+        return { type: 'section', block_id: b.block_id,
+                 text: { type: 'mrkdwn', text: ':white_check_mark: *' + wbLabel + '*  ' + wbVal + '/5 logged' } };
       }
       return b;
     });
@@ -753,7 +748,71 @@ function handleSlackInteraction_(payload) {
     responsePayload = { replace_original: true, text: ackText };
   }
 
-  // ── Sheet reads/writes (fast, local ops — no extra network call) ──────────
+  // ── Defer sheet writes + secondary messages to async trigger ─────────────
+  queueInteraction_(payload);
+
+  return responsePayload; // returned in < 500ms — HTTP body sent to Slack immediately
+}
+
+/**
+ * Stores the interaction payload in CacheService and fires a one-shot trigger
+ * (~200ms delay) so the sheet writes happen outside the HTTP request window.
+ */
+function queueInteraction_(payload) {
+  try {
+    var sc  = CacheService.getScriptCache();
+    var qId = 'INT_' + Date.now();
+    sc.put(qId, JSON.stringify(payload), 120);
+    var existing = sc.get('INT_Q_IDS') || '';
+    sc.put('INT_Q_IDS', existing ? existing + ',' + qId : qId, 120);
+
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === 'processInteractionQueue_') ScriptApp.deleteTrigger(t);
+    });
+    ScriptApp.newTrigger('processInteractionQueue_').timeBased().after(200).create();
+  } catch (err) {
+    Logger.log('queueInteraction_ error: ' + err.message);
+    // Fallback: process synchronously rather than silently dropping the action
+    try { processInteraction_(payload); } catch (e2) { Logger.log('processInteraction_ sync fallback: ' + e2.message); }
+  }
+}
+
+/**
+ * Processes all queued Slack interactions. Called by the one-shot trigger.
+ */
+function processInteractionQueue_() {
+  var sc  = CacheService.getScriptCache();
+  var ids = sc.get('INT_Q_IDS');
+  if (!ids) return;
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) { Logger.log('processInteractionQueue_: lock timeout'); return; }
+  try {
+    sc.remove('INT_Q_IDS');
+    ids.split(',').forEach(function(qId) {
+      var json = sc.get(qId);
+      if (!json) return;
+      sc.remove(qId);
+      try { processInteraction_(JSON.parse(json)); }
+      catch (err) { Logger.log('processInteractionQueue_ error for ' + qId + ': ' + err.message); }
+    });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Executes the actual sheet writes and secondary Slack messages for a button click.
+ * Called asynchronously via processInteractionQueue_ (one-shot trigger).
+ */
+function processInteraction_(payload) {
+  var action   = payload.actions[0];
+  var actionId = action.action_id || '';
+  var value    = action.value;
+  var userId   = payload.user && payload.user.id;
+
+  var isWellnessAction = actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
+
   try {
     if (actionId === 'acknowledge_flag') {
       webAcknowledge_(value);
@@ -785,21 +844,19 @@ function handleSlackInteraction_(payload) {
       webMarkBillPaid_(value);
 
     } else if (isWellnessAction) {
-      // wellness_energy_3 → metric='energy', value=3
-      var wParts     = actionId.split('_');
-      var wMetric    = wParts[1] || '';
-      var wVal       = parseFloat(wParts[2]);
-      var wMetricMap = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
+      var wParts      = actionId.split('_');
+      var wMetric     = wParts[1] || '';
+      var wVal        = parseFloat(wParts[2]);
+      var wMetricMap  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
       var canonMetric = wMetricMap[wMetric] || wMetric;
       if (!isNaN(wVal) && canonMetric) {
-        try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); } catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
+        try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); }
+        catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
       }
     }
   } catch (err) {
-    Logger.log('handleSlackInteraction_ error: ' + err.message);
+    Logger.log('processInteraction_ error: ' + err.message);
   }
-
-  return responsePayload;
 }
 
 // ─── SLASH COMMANDS ──────────────────────────────────────────────────────────
