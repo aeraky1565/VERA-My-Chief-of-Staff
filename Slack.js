@@ -508,6 +508,9 @@ function handleSlackFormPost_(e) {
   if (payloadStr) {
     try {
       var payload = JSON.parse(payloadStr);
+      try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_INTERACT',
+        new Date().toISOString() + ' actionId=' + (payload.actions && payload.actions[0] && payload.actions[0].action_id || '?'));
+      } catch(te) {}
       var ackPayload = handleSlackInteraction_(payload);
       if (ackPayload) {
         // Return the ack as the HTTP response body — Slack accepts this and
@@ -770,6 +773,7 @@ function queueInteraction_(payload) {
       if (t.getHandlerFunction() === 'processInteractionQueue_') ScriptApp.deleteTrigger(t);
     });
     ScriptApp.newTrigger('processInteractionQueue_').timeBased().after(200).create();
+    try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_QUEUED', new Date().toISOString() + ' qId=' + qId); } catch(te) {}
   } catch (err) {
     Logger.log('queueInteraction_ error: ' + err.message);
     // Fallback: process synchronously rather than silently dropping the action
@@ -812,6 +816,7 @@ function processInteraction_(payload) {
   var userId   = payload.user && payload.user.id;
 
   var isWellnessAction = actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
+  try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_PROCESSED', new Date().toISOString() + ' actionId=' + actionId); } catch(te) {}
 
   try {
     if (actionId === 'acknowledge_flag') {

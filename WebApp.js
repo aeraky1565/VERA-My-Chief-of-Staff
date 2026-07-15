@@ -100,6 +100,7 @@ function doGet(e) {
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
+      case 'debug_slack':           return jsonOut_(webDebugSlack_());
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -416,6 +417,19 @@ function doGet(e) {
 // ---- doPost — Telegram webhook + write operations --------------------------
 
 function doPost(e) {
+  // ── Diagnostic trace (temporary) — records every POST so debug_slack can show it ──
+  try {
+    var trace = {
+      t: new Date().toISOString(),
+      postDataType: e && e.postData ? (e.postData.type || 'null') : 'no_postData',
+      hasParamPayload: !!(e && e.parameter && e.parameter.payload),
+      hasParamCommand: !!(e && e.parameter && e.parameter.command),
+      contentsLen: e && e.postData && e.postData.contents ? e.postData.contents.length : 0,
+      contentsHead: e && e.postData && e.postData.contents ? e.postData.contents.substring(0, 120) : '',
+    };
+    PropertiesService.getScriptProperties().setProperty('SLACK_LAST_POST', JSON.stringify(trace));
+  } catch (traceErr) { Logger.log('trace error: ' + traceErr.message); }
+
   // ── Slack form-encoded payloads (Block Kit interactions + slash commands) ──
   // Slack sends application/x-www-form-urlencoded. GAS *sometimes* populates
   // e.parameter from it; other times it doesn't. Route to handleSlackFormPost_
@@ -1356,6 +1370,21 @@ function webGetBudget_() {
  * Column positions are detected dynamically from the header area so the
  * function degrades gracefully if the layout shifts.
  */
+function webDebugSlack_() {
+  var props = PropertiesService.getScriptProperties();
+  var lastPost       = props.getProperty('SLACK_LAST_POST')       || 'never';
+  var lastInteract   = props.getProperty('SLACK_LAST_INTERACT')   || 'never';
+  var lastQueued     = props.getProperty('SLACK_LAST_QUEUED')     || 'never';
+  var lastProcessed  = props.getProperty('SLACK_LAST_PROCESSED')  || 'never';
+  return {
+    ok: true,
+    lastPost:      JSON.parse(lastPost === 'never' ? 'null' : lastPost),
+    lastInteract:  lastInteract,
+    lastQueued:    lastQueued,
+    lastProcessed: lastProcessed,
+  };
+}
+
 function webDebugTracker_() {
   var satId = PropertiesService.getScriptProperties().getProperty('SAT_SHEET_ID');
   if (!satId) return { ok: false, error: 'SAT_SHEET_ID not set' };
