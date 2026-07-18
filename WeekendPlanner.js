@@ -106,6 +106,10 @@ function runWeekendPlanner_() {
     return;
   }
 
+  // Save history immediately after Claude generates the memo, before any delivery
+  // steps that could throw — ensures anti-repeat context is always recorded.
+  writePlannerHistory_(memo);
+
   // ---- Deliver ---------------------------------------------------------------
   // 1. Slack / email push
   sendNudge_('weekend_planner', 'VERA Weekend Memo', memo);
@@ -121,7 +125,6 @@ function runWeekendPlanner_() {
   veraLog_('runWeekendPlanner', 'Planning', 'Success',
     windows.length + ' weekend window(s) found, memo generated (' + memo.length + ' chars)',
     Date.now() - _wpStart);
-  writePlannerHistory_(memo);
   } catch (err) {
     Logger.log('runWeekendPlanner_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('runWeekendPlanner', 'Planning', 'Failed', '', Date.now() - _wpStart, err.message);
@@ -732,7 +735,7 @@ function writePlannerHistory_(planText) {
   try {
     var dateLabel = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d');
     var existing  = readPlannerHistory_();
-    var entry     = { date: dateLabel, text: String(planText || '').substring(0, 400) };
+    var entry     = { date: dateLabel, text: String(planText || '').substring(0, 1500) };
     var updated   = [entry].concat(existing).slice(0, 4);
     PropertiesService.getScriptProperties().setProperty('WKND_PLAN_HISTORY', JSON.stringify(updated));
     Logger.log('writePlannerHistory_: saved ' + updated.length + ' entries');
