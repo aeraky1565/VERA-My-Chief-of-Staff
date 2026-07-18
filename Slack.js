@@ -511,14 +511,9 @@ function handleSlackFormPost_(e) {
       try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_INTERACT',
         new Date().toISOString() + ' actionId=' + (payload.actions && payload.actions[0] && payload.actions[0].action_id || '?'));
       } catch(te) {}
-      var ackPayload = handleSlackInteraction_(payload);
-      if (ackPayload) {
-        // Return the ack as the HTTP response body — Slack accepts this and
-        // it avoids the extra UrlFetchApp roundtrip of sendSlackResponse_,
-        // keeping total response time well under Slack's 3-second deadline.
-        return ContentService.createTextOutput(JSON.stringify(ackPayload))
-          .setMimeType(ContentService.MimeType.JSON);
-      }
+      // Synchronous handler: does data writes + POSTs to response_url in-process.
+      // Total wall-clock time ~1–2 s, well within Slack's 3-second deadline.
+      handleSlackInteractionSync_(payload);
     } catch (err) {
       Logger.log('Slack interaction parse error: ' + err.message + ' | raw=' + payloadStr.substring(0, 200));
     }
@@ -701,11 +696,107 @@ function handleSlackReaction_(event) {
 // ─── INTERACTION HANDLING ────────────────────────────────────────────────────
 
 /**
- * Handles Block Kit button clicks. Returns the ack payload as an object
- * (for handleSlackFormPost_ to send as the HTTP response body) in < 500ms
- * by deferring ALL sheet writes and secondary Slack messages to a one-shot
- * trigger via queueInteraction_. This is the same async pattern used by
- * queueSlackMessage_ / processSlackQueue_ for chat messages.
+ * Handles Block Kit button clicks synchronously:
+ *   1. Writes data (sheet writes, secondary Slack messages)
+ *   2. POSTs to payload.response_url to update the original message
+ * Total wall-clock time is ~1–2 s, within Slack's 3-second deadline.
+ */
+function handleSlackInteractionSync_(payload) {
+  if (!payload || !payload.actions || !payload.actions.length) return;
+  var action   = payload.actions[0];
+  var actionId = action.action_id || '';
+  var value    = action.value;
+  var userId   = payload.user && payload.user.id;
+  var isWellness = actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
+
+  var ackText = '';
+  var updatedBlocks = null;
+
+  try {
+    if (actionId === 'acknowledge_flag') {
+      webAcknowledge_(value);
+      ackText = ':white_check_mark: Flag acknowledged.';
+
+    } else if (actionId === 'snooze_flag') {
+      webSnooze_(value, 3);
+      ackText = ':zzz: Snoozed for 3 days.';
+
+    } else if (actionId === 'evening_checkin_yes') {
+      try { webGymAttendLatest_('Yes'); } catch (e) { Logger.log('gym log: ' + e.message); }
+      var chatCh = getSlackChannelId_('chat');
+      var uName  = getSlackUserName_(userId) || 'Ahmed';
+      sendSlackMessage_(chatCh, ':muscle: Nice work, ' + uName + '! What did you do? _(e.g. 30 min run, yoga, weights)_');
+      var logsCh = getSlackChannelId_('logs');
+      if (logsCh) sendSlackMessage_(logsCh, ':person_in_lotus_position: Evening check-in — ' + uName + ' *got movement* (logged as attended)');
+      ackText = ':white_check_mark: Got it — logged! What did you do? _(Reply in #vera-chat)_';
+
+    } else if (actionId === 'evening_checkin_walk') {
+      try { webGymAttendLatest_('Yes'); } catch (e) { Logger.log('gym log: ' + e.message); }
+      var logsCh = getSlackChannelId_('logs');
+      var uName  = getSlackUserName_(userId) || 'Ahmed';
+      if (logsCh) sendSlackMessage_(logsCh, ':person_in_lotus_position: Evening check-in — ' + uName + ' *walked* (logged as attended)');
+      ackText = ':walking: Walking counts! Logged as movement for today.';
+
+    } else if (actionId === 'evening_checkin_no') {
+      try { webGymAttendLatest_('No'); } catch (e) { Logger.log('gym log: ' + e.message); }
+      var logsCh = getSlackChannelId_('logs');
+      var uName  = getSlackUserName_(userId) || 'Ahmed';
+      if (logsCh) sendSlackMessage_(logsCh, ':person_in_lotus_position: Evening check-in — ' + uName + ' *skipped* movement today');
+      ackText = ':ok_hand: No worries — logged as skipped.';
+
+    } else if (actionId === 'mark_bill_paid') {
+      webMarkBillPaid_(value);
+      ackText = ':white_check_mark: Bill marked as paid.';
+
+    } else if (isWellness) {
+      var parts  = actionId.split('_');
+      var metric = parts[1] || '';
+      var val    = parseFloat(parts[2]);
+      var canon  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' }[metric] || metric;
+      var label  = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[metric] || metric;
+      if (!isNaN(val) && canon) {
+        try { logWellness_('Ahmed', canon, val, 'manual'); }
+        catch (e) { Logger.log('wellness log: ' + e.message); }
+      }
+      ackText = ':white_check_mark: ' + label + ' logged as *' + val + '/5*.';
+      var curBlocks = (payload.message && payload.message.blocks) || [];
+      var newBlocks = curBlocks.map(function(b) {
+        if (b.block_id === 'wellness_row_' + metric) {
+          return { type: 'section', block_id: b.block_id,
+                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + label + '*  ' + val + '/5 logged' } };
+        }
+        return b;
+      });
+      if (newBlocks.length) updatedBlocks = newBlocks;
+    }
+  } catch (err) {
+    Logger.log('handleSlackInteractionSync_ error: ' + err.message);
+  }
+
+  // Update the original Slack message via response_url
+  if (ackText && payload.response_url) {
+    var msg = { replace_original: true, text: ackText };
+    if (updatedBlocks) msg.blocks = updatedBlocks;
+    try {
+      var r = UrlFetchApp.fetch(payload.response_url, {
+        method:             'post',
+        contentType:        'application/json; charset=utf-8',
+        payload:            JSON.stringify(msg),
+        muteHttpExceptions: true,
+      });
+      try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_UPDATE',
+        new Date().toISOString() + ' response_url=' + r.getResponseCode() + ' ' + r.getContentText().substring(0, 60)); } catch(te) {}
+    } catch (e) {
+      Logger.log('handleSlackInteractionSync_ response_url error: ' + e.message);
+    }
+  }
+
+  try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_PROCESSED',
+    new Date().toISOString() + ' actionId=' + actionId); } catch(te) {}
+}
+
+/**
+ * Legacy async handler — kept for backward compat. Not called by current flow.
  */
 function handleSlackInteraction_(payload) {
   if (!payload || !payload.actions || !payload.actions.length) return null;

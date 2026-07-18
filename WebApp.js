@@ -1376,12 +1376,14 @@ function webDebugSlack_() {
   var lastInteract   = props.getProperty('SLACK_LAST_INTERACT')   || 'never';
   var lastQueued     = props.getProperty('SLACK_LAST_QUEUED')     || 'never';
   var lastProcessed  = props.getProperty('SLACK_LAST_PROCESSED')  || 'never';
+  var lastUpdate     = props.getProperty('SLACK_LAST_UPDATE')     || 'never';
   return {
     ok: true,
     lastPost:      JSON.parse(lastPost === 'never' ? 'null' : lastPost),
     lastInteract:  lastInteract,
     lastQueued:    lastQueued,
     lastProcessed: lastProcessed,
+    lastUpdate:    lastUpdate,
   };
 }
 
