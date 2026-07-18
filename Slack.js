@@ -884,30 +884,57 @@ function processInteraction_(payload) {
     Logger.log('processInteraction_ error: ' + err.message);
   }
 
-  // Update the original Slack message via chat.update
+  // Update the original Slack message
   if (ackText) {
-    var msgTs     = payload.message && payload.message.ts;
-    var channelId = (payload.channel && payload.channel.id) ||
-                    (payload.container && payload.container.channel_id);
-    if (msgTs && channelId) {
-      var updatePayload = { channel: channelId, ts: msgTs, text: ackText };
-      if (updatedBlocks) updatePayload.blocks = updatedBlocks;
+    var updateMsg = { replace_original: true, text: ackText };
+    if (updatedBlocks) updateMsg.blocks = updatedBlocks;
+
+    var updateResult = 'no_method';
+
+    // Method 1: response_url (Slack's designed mechanism — no bot scope needed, works in any channel)
+    var responseUrl = payload.response_url;
+    if (responseUrl) {
       try {
-        var updResp = UrlFetchApp.fetch(SLACK_API + 'chat.update', {
+        var urlResp = UrlFetchApp.fetch(responseUrl, {
           method:             'post',
           contentType:        'application/json; charset=utf-8',
-          headers:            { Authorization: 'Bearer ' + getSlackToken_() },
-          payload:            JSON.stringify(updatePayload),
+          payload:            JSON.stringify(updateMsg),
           muteHttpExceptions: true,
         });
-        try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_UPDATE',
-          new Date().toISOString() + ' code=' + updResp.getResponseCode() + ' body=' + updResp.getContentText().substring(0, 120)); } catch(te) {}
-      } catch (updErr) {
-        Logger.log('chat.update error: ' + updErr.message);
+        updateResult = 'responseUrl=' + urlResp.getResponseCode() + ' ' + urlResp.getContentText().substring(0, 80);
+      } catch (urlErr) {
+        updateResult = 'responseUrl_err=' + urlErr.message.substring(0, 80);
+        Logger.log('response_url error: ' + urlErr.message);
       }
     } else {
-      Logger.log('processInteraction_: no msgTs or channelId — cannot update message. ts=' + msgTs + ' ch=' + channelId);
+      // Method 2: chat.update API (fallback when response_url absent)
+      var msgTs     = payload.message && payload.message.ts;
+      var channelId = (payload.channel && payload.channel.id) ||
+                      (payload.container && payload.container.channel_id);
+      if (msgTs && channelId) {
+        var apiPayload = { channel: channelId, ts: msgTs, text: ackText };
+        if (updatedBlocks) apiPayload.blocks = updatedBlocks;
+        try {
+          var apiResp = UrlFetchApp.fetch(SLACK_API + 'chat.update', {
+            method:             'post',
+            contentType:        'application/json; charset=utf-8',
+            headers:            { Authorization: 'Bearer ' + getSlackToken_() },
+            payload:            JSON.stringify(apiPayload),
+            muteHttpExceptions: true,
+          });
+          updateResult = 'chatUpdate=' + apiResp.getResponseCode() + ' ' + apiResp.getContentText().substring(0, 80);
+        } catch (updErr) {
+          updateResult = 'chatUpdate_err=' + updErr.message.substring(0, 80);
+          Logger.log('chat.update error: ' + updErr.message);
+        }
+      } else {
+        updateResult = 'no_ts_or_channel ts=' + msgTs + ' ch=' + channelId;
+        Logger.log('processInteraction_: ' + updateResult);
+      }
     }
+
+    try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_UPDATE',
+      new Date().toISOString() + ' ' + updateResult); } catch(te) {}
   }
 }
 
