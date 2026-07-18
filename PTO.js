@@ -1393,7 +1393,7 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
 
   // ---- Type 2: Buffer Day Alert -------------------------------------------
   // Stateful: if user deletes the event, treat it as "declined for this week"
-  // and don't re-suggest until the following Monday.
+  // and don't re-suggest until the following week.
   var bProps         = PropertiesService.getScriptProperties();
   var bEventId       = bProps.getProperty('PTO_BUFFER_EVENT_ID')       || '';
   var bEventDate     = bProps.getProperty('PTO_BUFFER_EVENT_DATE')      || '';
@@ -1406,9 +1406,9 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
       if (existing[i2c].getId() === bEventId) { bFound = true; break; }
     }
     if (!bFound) {
-      // User deleted it — mark declined until next Monday after that Friday
+      // User deleted it — skip this week; re-suggest the following Friday
       var bDecline = new Date(bEventDate + 'T00:00:00');
-      bDecline.setDate(bDecline.getDate() + ((8 - bDecline.getDay()) % 7 || 7)); // next Monday
+      bDecline.setDate(bDecline.getDate() + 7); // one week forward = the following Friday
       bDeclinedUntil = Utilities.formatDate(bDecline, tz, 'yyyy-MM-dd');
       bProps.setProperty('PTO_BUFFER_DECLINED_UNTIL', bDeclinedUntil);
       bProps.deleteProperty('PTO_BUFFER_EVENT_ID');
