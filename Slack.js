@@ -818,12 +818,17 @@ function processInteraction_(payload) {
   var isWellnessAction = actionId.indexOf('wellness_') === 0 && actionId.indexOf('wellness_label_') !== 0;
   try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_PROCESSED', new Date().toISOString() + ' actionId=' + actionId); } catch(te) {}
 
+  var ackText = '';
+  var updatedBlocks = null;
+
   try {
     if (actionId === 'acknowledge_flag') {
       webAcknowledge_(value);
+      ackText = ':white_check_mark: Flag acknowledged.';
 
     } else if (actionId === 'snooze_flag') {
       webSnooze_(value, 3);
+      ackText = ':zzz: Snoozed for 3 days.';
 
     } else if (actionId === 'evening_checkin_yes') {
       try { webGymAttendLatest_('Yes'); } catch (gErr) { Logger.log('evening_checkin_yes gym log error: ' + gErr.message); }
@@ -832,21 +837,25 @@ function processInteraction_(payload) {
       sendSlackMessage_(chatChannel, ':muscle: Nice work, ' + userName + '! What did you do? _(e.g. 30 min run, yoga, weights)_');
       var logsChannel = getSlackChannelId_('logs');
       if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *got movement* (logged as attended)');
+      ackText = ':white_check_mark: Got it — logged! What did you do? _(Reply in #vera-chat)_';
 
     } else if (actionId === 'evening_checkin_walk') {
       try { webGymAttendLatest_('Yes'); } catch (gErr) { Logger.log('evening_checkin_walk gym log error: ' + gErr.message); }
       var logsChannel = getSlackChannelId_('logs');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *walked* (logged as attended)');
+      ackText = ':walking: Walking counts! Logged as movement for today.';
 
     } else if (actionId === 'evening_checkin_no') {
       try { webGymAttendLatest_('No'); } catch (gErr) { Logger.log('evening_checkin_no gym log error: ' + gErr.message); }
       var logsChannel = getSlackChannelId_('logs');
       var userName    = getSlackUserName_(userId) || 'Ahmed';
       if (logsChannel) sendSlackMessage_(logsChannel, ':person_in_lotus_position: Evening check-in — ' + userName + ' *skipped* movement today');
+      ackText = ':ok_hand: No worries — logged as skipped.';
 
     } else if (actionId === 'mark_bill_paid') {
       webMarkBillPaid_(value);
+      ackText = ':white_check_mark: Bill marked as paid.';
 
     } else if (isWellnessAction) {
       var wParts      = actionId.split('_');
@@ -854,13 +863,51 @@ function processInteraction_(payload) {
       var wVal        = parseFloat(wParts[2]);
       var wMetricMap  = { energy: 'energy', mood: 'mood', sleep: 'sleep_quality' };
       var canonMetric = wMetricMap[wMetric] || wMetric;
+      var wLabel      = { energy: 'Energy', mood: 'Mood', sleep: 'Sleep quality' }[wMetric] || wMetric;
       if (!isNaN(wVal) && canonMetric) {
         try { logWellness_('Ahmed', canonMetric, wVal, 'manual'); }
         catch (wErr) { Logger.log('wellness log error: ' + wErr.message); }
       }
+      ackText = ':white_check_mark: ' + wLabel + ' logged as *' + wVal + '/5*.';
+      // Replace the button row with a confirmation line
+      var curBlocks = (payload.message && payload.message.blocks) || [];
+      var newBlocks = curBlocks.map(function(b) {
+        if (b.block_id === 'wellness_row_' + wMetric) {
+          return { type: 'section', block_id: b.block_id,
+                   text: { type: 'mrkdwn', text: ':white_check_mark: *' + wLabel + '*  ' + wVal + '/5 logged' } };
+        }
+        return b;
+      });
+      if (newBlocks.length) updatedBlocks = newBlocks;
     }
   } catch (err) {
     Logger.log('processInteraction_ error: ' + err.message);
+  }
+
+  // Update the original Slack message via chat.update
+  if (ackText) {
+    var msgTs     = payload.message && payload.message.ts;
+    var channelId = (payload.channel && payload.channel.id) ||
+                    (payload.container && payload.container.channel_id);
+    if (msgTs && channelId) {
+      var updatePayload = { channel: channelId, ts: msgTs, text: ackText };
+      if (updatedBlocks) updatePayload.blocks = updatedBlocks;
+      try {
+        var updResp = UrlFetchApp.fetch(SLACK_API + 'chat.update', {
+          method:             'post',
+          contentType:        'application/json; charset=utf-8',
+          headers:            { Authorization: 'Bearer ' + getSlackToken_() },
+          payload:            JSON.stringify(updatePayload),
+          muteHttpExceptions: true,
+        });
+        try { PropertiesService.getScriptProperties().setProperty('SLACK_LAST_UPDATE',
+          new Date().toISOString() + ' code=' + updResp.getResponseCode() + ' body=' + updResp.getContentText().substring(0, 120)); } catch(te) {}
+      } catch (updErr) {
+        Logger.log('chat.update error: ' + updErr.message);
+      }
+    } else {
+      Logger.log('processInteraction_: no msgTs or channelId — cannot update message. ts=' + msgTs + ' ch=' + channelId);
+    }
   }
 }
 
