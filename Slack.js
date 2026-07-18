@@ -277,10 +277,11 @@ function buildMorningNudgeBlocks_(flags, capacityMode, heldCount) {
  * Builds the evening check-in Block Kit message with Yes / No buttons.
  */
 function buildEveningCheckinBlocks_() {
+  var dayName = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEEE');
   return [
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: ':person_in_lotus_position: *Evening check-in* — did you get movement in today?\nReply here or tap a button to log it.' },
+      text: { type: 'mrkdwn', text: ':person_in_lotus_position: *' + dayName + ' Evening Check-In* — did you get movement in today?\nReply here or tap a button to log it.' },
     },
     {
       type: 'actions',
@@ -315,6 +316,7 @@ function buildEveningCheckinBlocks_() {
  * @param {number|null} sleepHours - Auto-logged sleep hours from Google Fit, or null if unavailable.
  */
 function buildMorningWellnessBlocks_(sleepHours) {
+  var dayName = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEEE');
   var metrics = [
     { label: 'Energy today',  id: 'energy' },
     { label: 'Mood / stress', id: 'mood'   },
@@ -326,7 +328,7 @@ function buildMorningWellnessBlocks_(sleepHours) {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: ':sunny: *Morning check-in* — 3 quick taps:' +
+        text: ':sunny: *' + dayName + ' Morning Check-In* — 3 quick taps:' +
           (sleepHours !== null ? '\n_Sleep: ' + sleepHours + 'h auto-logged from Google Fit_' : ''),
       },
     },
