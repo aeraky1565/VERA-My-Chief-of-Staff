@@ -1406,9 +1406,9 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
       if (existing[i2c].getId() === bEventId) { bFound = true; break; }
     }
     if (!bFound) {
-      // User deleted it — skip this week; re-suggest the following Friday
+      // User deleted it — suppress until next Monday so it can re-appear the following week
       var bDecline = new Date(bEventDate + 'T00:00:00');
-      bDecline.setDate(bDecline.getDate() + 7); // one week forward = the following Friday
+      bDecline.setDate(bDecline.getDate() + ((8 - bDecline.getDay()) % 7 || 7)); // next Monday after that Friday
       bDeclinedUntil = Utilities.formatDate(bDecline, tz, 'yyyy-MM-dd');
       bProps.setProperty('PTO_BUFFER_DECLINED_UNTIL', bDeclinedUntil);
       bProps.deleteProperty('PTO_BUFFER_EVENT_ID');
@@ -1456,8 +1456,8 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
     }
     var fridayStr = Utilities.formatDate(friday, tz, 'yyyy-MM-dd');
 
-    // Skip if this Friday is within the declined window
-    var declinedThisWeek = bDeclinedUntil && fridayStr < bDeclinedUntil;
+    // Skip if today is still within the declined window (i.e. before next Monday)
+    var declinedThisWeek = bDeclinedUntil && todayStr < bDeclinedUntil;
 
     if (shouldTrigger && !declinedThisWeek && !bEventId) {
       // No existing tracked event for this Friday — create one
