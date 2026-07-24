@@ -86,29 +86,39 @@ function runWeekendPlanner_() {
              ', intensity=' + intensity.level);
 
   // ---- Build prompt + call Claude -------------------------------------------
+  var weekendCal = getWeekendCalendarEvents_();
+
   var prompt = buildWeekendPlannerPrompt_({
-    windows:    windows,
-    events:     events,
-    tasks:      tasks,
-    intensity:  intensity,
-    goals:      goals,
-    ledger:     ledger,
-    ptoStats:   ptoStats,
-    today:      today,
-    travelCtx:  travelCtx,
-    planHistory: planHistory,
+    windows:     windows,
+    events:      events,
+    tasks:       tasks,
+    intensity:   intensity,
+    goals:       goals,
+    ledger:      ledger,
+    ptoStats:    ptoStats,
+    today:       today,
+    travelCtx:   travelCtx,
+    planHistory:  planHistory,
+    weekendCal:  weekendCal,
   });
 
-  var memo = callClaudeWeekendPlanner_(prompt);
+  var claudeResult = callClaudeWeekendPlanner_(prompt);
+  if (!claudeResult) {
+    Logger.log('runWeekendPlanner_: no result returned from Claude, aborting');
+    veraLog_('runWeekendPlanner', 'Planning', 'Failed', 'No result returned from Claude', Date.now() - _wpStart);
+    return;
+  }
+  var memo       = claudeResult.memo || '';
+  var activities = claudeResult.activities || [];
   if (!memo) {
-    Logger.log('runWeekendPlanner_: no memo returned from Claude, aborting');
-    veraLog_('runWeekendPlanner', 'Planning', 'Failed', 'No memo returned from Claude', Date.now() - _wpStart);
+    Logger.log('runWeekendPlanner_: empty memo in Claude response, aborting');
+    veraLog_('runWeekendPlanner', 'Planning', 'Failed', 'Empty memo in Claude response', Date.now() - _wpStart);
     return;
   }
 
   // Save history immediately after Claude generates the memo, before any delivery
   // steps that could throw — ensures anti-repeat context is always recorded.
-  writePlannerHistory_(memo);
+  writePlannerHistory_(memo, activities);
 
   // ---- Deliver ---------------------------------------------------------------
   // 1. Slack / email push
@@ -431,39 +441,57 @@ function buildWeekendPlannerPrompt_(ctx) {
   // ---- Block C: Anti-recycle history -----------------------------------------
   var historyBlock = '';
   var history = ctx.planHistory || [];
-  if (history.length > 0) {
-    var hLines = ['=== RECENT WEEKEND PLANS — DO NOT REPEAT OR REPHRASE ==='];
-    history.forEach(function(h) {
-      hLines.push(h.date + ': ' + h.text);
+  var allPastActivities = [];
+  history.forEach(function(h) {
+    (h.activities || []).forEach(function(a) {
+      if (a && allPastActivities.indexOf(a) === -1) allPastActivities.push(a);
     });
-    historyBlock = hLines.join('\n');
+  });
+  if (allPastActivities.length > 0) {
+    historyBlock =
+      '=== RECENTLY SUGGESTED ACTIVITIES — DO NOT REPEAT, REPHRASE, OR SUGGEST NEARBY VARIANTS ===\n' +
+      allPastActivities.map(function(a) { return '- ' + a; }).join('\n');
   }
 
+  // ---- Weekend calendar block ------------------------------------------------
+  var weekendCalSection = (ctx.weekendCal && ctx.weekendCal.length > 0)
+    ? ctx.weekendCal.join('\n')
+    : 'Nothing scheduled — both days appear clear.';
+
   // ---- Output instructions ---------------------------------------------------
-  // Find the nearest upcoming Saturday date for the memo header
   var sat = computeNextSaturday_(ctx.today);
   var satStr = Utilities.formatDate(sat, tz, 'MMM d');
 
+  var travelNote = '';
+  if (ctx.travelCtx && ctx.travelCtx.currentTrip) {
+    travelNote = 'Ahmed is currently traveling — ' + ctx.travelCtx.currentTrip.label +
+      '. ALL suggestions must be grounded in that destination. Do NOT suggest anything at home or requiring Ahmed to be home.\n\n';
+  }
+
   var outputInstructions =
-    'Generate a "Weekend Decision Memo" with exactly this structure:\n\n' +
-    'Weekend Memo — ' + satStr + '\n\n' +
-    'THE EXTENSION\n' +
-    'One specific weekend idea anchored to an active goal or in-progress task.\n' +
-    'Name the goal. Name the activity. Say why this specific weekend.\n\n' +
-    'THE CONTRAST\n' +
-    (ctx.intensity.level === 'high'
-      ? 'Suggest Zero-Input (nature, quiet, no agenda). Ahmed needs to recharge.\n'
-      : 'Social but low-effort option. ') +
-    'Be direct: "You need [X] because [Y]."\n\n' +
-    'THE PROTOTYPE\n' +
-    'One new city, neighbourhood, or experience NOT already in the Interest Ledger.\n' +
-    'Brief and evocative. Why this place? Why now?\n\n' +
-    'VERA RECOMMENDS\n' +
-    'One sentence — which of the three, and why, for this specific week.\n\n' +
-    'Rules: no bullets, no markdown headers, no code fences.\n' +
-    '2-4 sentences per section. Total: 250-350 words.\n' +
-    'Specific — name real goals, real interests, real dates.\n' +
-    'When traveling, ground all three archetypes (THE EXTENSION, THE CONTRAST, THE PROTOTYPE) in the current destination. VERA RECOMMENDS must reflect the travel context, not the home city.';
+    'Write a Weekend Memo for the weekend of ' + satStr + '.\n\n' +
+    travelNote +
+    'FORMAT: 2–3 paragraphs of prose. No section labels. No headers ("THE EXTENSION", "THE CONTRAST", etc. — those are retired). No bullets. No numbered lists. No "VERA RECOMMENDS" line.\n\n' +
+    'PARAGRAPH 1 — MINDSET (always present, always first):\n' +
+    'Acknowledge what the week was and what the weekend should be. Draw on what VERA actually knows — but translate it into human terms, not a status report. Do NOT say "you had N flags" or "N overdue tasks." Instead, name what actually happened: a specific meeting string, a specific thing that has been sitting, a specific pressure. 2–3 sentences.\n\n' +
+    'PARAGRAPH 2 — THE ONE THING (optional, omit if not warranted):\n' +
+    'Include this paragraph ONLY if there is a clear, self-contained task that (a) can be meaningfully advanced in 1–2 focused hours at home, (b) is genuinely overdue or directly tied to a stated goal, AND (c) is feasible this specific weekend given what\'s already on the calendar. If no such task exists, omit this paragraph entirely — do not manufacture one.\n' +
+    'When included: name the goal, name the specific action step, say why this weekend specifically (not someday).\n\n' +
+    'PARAGRAPH 3 — WHAT TO DO (always present, always last):\n' +
+    'One specific suggestion — a place, outing, or activity. It must:\n' +
+    '• Be appropriate for the current season and conditions (today is ' + todayStr + ')\n' +
+    '• Not have appeared in the recent suggested-activities history\n' +
+    '• Be distance-appropriate (easy Sunday morning = 20–40 min away; half-day = can be further)\n' +
+    '• Connect naturally to a stated interest or active goal — not forced\n' +
+    '• Be grounded in THIS specific weekend: say what makes now the right time\n' +
+    'Do not suggest anything that the weekend calendar shows is already committed. Do not recycle places from the recent history.\n\n' +
+    'VOICE: warm, direct, specific. Write like a trusted advisor who knows Ahmed well — not a corporate brief, not a travel blog, not a productivity app. Short sentences. No padding.\n\n' +
+    'TARGET LENGTH: 200–280 words total. Longer only if the specificity earns it.\n\n' +
+    'Return ONLY valid JSON — no preamble, no markdown fences:\n' +
+    '{\n' +
+    '  "memo": "Full memo text — the 2–3 paragraphs, with a \'Weekend Memo — ' + satStr + '\' header on the first line",\n' +
+    '  "activities": ["Exact name of each place or activity suggested, one per entry — used for anti-repeat tracking"]\n' +
+    '}';
 
   // ---- Assemble --------------------------------------------------------------
   var sections = [
@@ -492,6 +520,9 @@ function buildWeekendPlannerPrompt_(ctx) {
     ptoSection,
     '',
     travelBlock,
+    '',
+    '=== THIS WEEKEND\'S CALENDAR (' + satStr + '–' + Utilities.formatDate(new Date(sat.getTime() + 86400000), tz, 'MMM d') + ') ===',
+    weekendCalSection,
   ];
   if (bucketBlock) { sections.push(''); sections.push(bucketBlock); }
   if (historyBlock) { sections.push(''); sections.push(historyBlock); }
@@ -507,40 +538,16 @@ function buildWeekendPlannerPrompt_(ctx) {
 
 /**
  * Calls Claude to generate the Weekend Decision Memo.
+ * Returns { memo: string, activities: string[] } or null on failure.
  *
  * @param {string} prompt
- * @returns {string|null}
+ * @returns {{ memo: string, activities: string[] }|null}
  */
 function callClaudeWeekendPlanner_(prompt) {
-  var apiKey = getApiKey();
-  var requestBody = {
-    model:      CLAUDE_MODEL,
-    max_tokens: 1200,
-    messages:   [{ role: 'user', content: prompt }],
-  };
-
-  var fetchOptions = {
-    method:             'post',
-    contentType:        'application/json',
-    headers: {
-      'x-api-key':         apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    payload:            JSON.stringify(requestBody),
-    muteHttpExceptions: true,
-  };
-
-  var response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
-  if (response.getResponseCode() !== 200) {
-    Logger.log('callClaudeWeekendPlanner_ HTTP ' + response.getResponseCode() +
-               ': ' + response.getContentText().substring(0, 200));
-    return null;
-  }
-
-  var json = JSON.parse(response.getContentText());
-  if (!json.content || !json.content[0] || !json.content[0].text) return null;
-
-  return json.content[0].text.trim();
+  var result = callClaudeJson_(prompt, null);
+  if (!result || typeof result !== 'object' || !result.memo) return null;
+  if (!Array.isArray(result.activities)) result.activities = [];
+  return result;
 }
 
 // ============================================================
@@ -708,17 +715,23 @@ function getTravelContextForPlanner_() {
 }
 
 /**
- * Reads the last 4 weekend plan entries from Script Properties.
- * Returns [] on any error (non-fatal).
+ * Reads planner history from Script Properties.
+ * Returns an array of { date, activities: string[] } entries.
+ * Handles both old format ({ date, text }) and new format ({ date, activities }).
  *
- * @returns {Array} [{ date, text }]
+ * @returns {Array} [{ date, activities: string[] }]
  */
 function readPlannerHistory_() {
   try {
     var raw = PropertiesService.getScriptProperties().getProperty('WKND_PLAN_HISTORY');
     if (!raw) return [];
     var parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.slice(0, 4) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(0, 24).map(function(entry) {
+      if (Array.isArray(entry.activities)) return entry;
+      // Migrate old { date, text } format — no activity extraction possible
+      return { date: entry.date || '', activities: [] };
+    });
   } catch (e) {
     Logger.log('readPlannerHistory_: error: ' + e.message);
     return [];
@@ -726,21 +739,71 @@ function readPlannerHistory_() {
 }
 
 /**
- * Prepends the current plan text to WKND_PLAN_HISTORY, keeping only the last 4 entries.
+ * Prepends the current plan to WKND_PLAN_HISTORY, keeping last 24 entries (~6 months).
+ * Stores compact { date, activities[] } rather than full memo text.
  * Called only after successful plan delivery — not on Claude failure.
  *
- * @param {string} planText
+ * @param {string}   planText   — full memo text (for legacy callers)
+ * @param {string[]} activities — suggested activity/place names from Claude JSON response
  */
-function writePlannerHistory_(planText) {
+function writePlannerHistory_(planText, activities) {
   try {
-    var dateLabel = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d');
+    var dateLabel = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMM d, yyyy');
     var existing  = readPlannerHistory_();
-    var entry     = { date: dateLabel, text: String(planText || '').substring(0, 1500) };
-    var updated   = [entry].concat(existing).slice(0, 4);
+    var entry     = {
+      date:       dateLabel,
+      activities: Array.isArray(activities) ? activities : [],
+    };
+    var updated = [entry].concat(existing).slice(0, 24);
     PropertiesService.getScriptProperties().setProperty('WKND_PLAN_HISTORY', JSON.stringify(updated));
-    Logger.log('writePlannerHistory_: saved ' + updated.length + ' entries');
+    Logger.log('writePlannerHistory_: saved ' + updated.length + ' entries (' + entry.activities.length + ' activities this week)');
   } catch (e) {
     Logger.log('writePlannerHistory_: error: ' + e.message);
+  }
+}
+
+// ============================================================
+// WEEKEND CALENDAR
+// ============================================================
+
+/**
+ * Returns a flat list of calendar events for the upcoming Saturday and Sunday.
+ * Used in the prompt so Claude knows what's already committed before making suggestions.
+ *
+ * @returns {string[]} e.g. ["Saturday · Family lunch (1:00 PM – 3:00 PM)", "Sunday · all day"]
+ */
+function getWeekendCalendarEvents_() {
+  try {
+    var tz  = Session.getScriptTimeZone();
+    var sat = computeNextSaturday_(new Date());
+    var mon = new Date(sat.getTime() + 2 * 24 * 60 * 60 * 1000);
+    mon.setHours(0, 0, 0, 0);
+    var sun = new Date(sat.getTime() + 24 * 60 * 60 * 1000);
+
+    var results = [];
+    var cals    = CalendarApp.getAllCalendars();
+    cals.forEach(function(cal) {
+      try {
+        cal.getEvents(sat, mon).forEach(function(ev) {
+          var title    = ev.getTitle() || '(untitled)';
+          var dayLabel = ev.getStartTime() < sun ? 'Saturday' : 'Sunday';
+          var timeStr;
+          if (ev.isAllDayEvent()) {
+            timeStr = 'all day';
+          } else {
+            timeStr = Utilities.formatDate(ev.getStartTime(), tz, 'h:mm a');
+            var endT = Utilities.formatDate(ev.getEndTime(), tz, 'h:mm a');
+            if (endT && endT !== timeStr) timeStr += ' – ' + endT;
+          }
+          results.push(dayLabel + ' · ' + title + ' (' + timeStr + ')');
+        });
+      } catch (calErr) {/* skip inaccessible calendars */}
+    });
+
+    return results;
+  } catch (e) {
+    Logger.log('getWeekendCalendarEvents_ error (non-fatal): ' + e.message);
+    return [];
   }
 }
 
