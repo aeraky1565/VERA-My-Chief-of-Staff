@@ -86,20 +86,25 @@ function runWeekendPlanner_() {
              ', intensity=' + intensity.level);
 
   // ---- Build prompt + call Claude -------------------------------------------
-  var weekendCal = getWeekendCalendarEvents_();
+  var weekendCal      = getWeekendCalendarEvents_();
+  var weekendCapacity = classifyWeekend_(weekendCal, travelCtx);
+
+  Logger.log('runWeekendPlanner_: weekendCapacity.type=' + weekendCapacity.type +
+             ', eventCount=' + weekendCapacity.eventCount);
 
   var prompt = buildWeekendPlannerPrompt_({
-    windows:     windows,
-    events:      events,
-    tasks:       tasks,
-    intensity:   intensity,
-    goals:       goals,
-    ledger:      ledger,
-    ptoStats:    ptoStats,
-    today:       today,
-    travelCtx:   travelCtx,
-    planHistory:  planHistory,
-    weekendCal:  weekendCal,
+    windows:          windows,
+    events:           events,
+    tasks:            tasks,
+    intensity:        intensity,
+    goals:            goals,
+    ledger:           ledger,
+    ptoStats:         ptoStats,
+    today:            today,
+    travelCtx:        travelCtx,
+    planHistory:      planHistory,
+    weekendCal:       weekendCal,
+    weekendCapacity:  weekendCapacity,
   });
 
   var claudeResult = callClaudeWeekendPlanner_(prompt);
@@ -342,16 +347,45 @@ function buildWeekendPlannerPrompt_(ctx) {
     ' | Overdue tasks: ' + ctx.intensity.overdueTaskCount +
     ' | Upcoming meetings (5 days): ' + ctx.intensity.meetingCount;
   if (ctx.intensity.level === 'high') {
-    intensitySection += '\n⚠️ Weight The Contrast heavily — Ahmed needs a rest-oriented option.';
+    intensitySection += '\n⚠️ High intensity week — the outing suggestion should lean toward rest and low-effort, not more activity.';
   }
 
   // ---- Ledger section --------------------------------------------------------
-  var ledgerEntries = Array.isArray(ctx.ledger) ? ctx.ledger : [];
-  var ledgerSection = ledgerEntries.length === 0
+  var capForLedger    = ctx.weekendCapacity || { type: 'open' };
+  var isAwayWeekend   = capForLedger.type === 'traveling' || capForLedger.type === 'pre_major_trip';
+  var destLabelLower  = (tCtx.currentTrip ? String(tCtx.currentTrip.label || '') : '').toLowerCase();
+  var ledgerEntries   = Array.isArray(ctx.ledger) ? ctx.ledger : [];
+  var ledgerSection   = ledgerEntries.length === 0
     ? 'No interests logged yet.'
     : ledgerEntries.map(function(i) {
         return '- ' + i.person + ': ' + i.interest + ' [' + i.category + ', logged ' + i.date + ']';
       }).join('\n');
+
+  // Instruction header appended to the ledger so Claude knows the filtering rules
+  var ledgerContextNote;
+  if (capForLedger.type === 'traveling') {
+    ledgerContextNote =
+      '\nUSAGE RULE (traveling): Only reference interests that are directly achievable at ' +
+      (tCtx.currentTrip ? tCtx.currentTrip.label : 'the current destination') +
+      '. Skip any interest tied to a different location, language, home project, or business goal. ' +
+      '"Learn French" is only relevant if the destination is France or a French-speaking region. ' +
+      '"eBay store" is not relevant on vacation anywhere. Apply this logic to every item.';
+  } else if (capForLedger.type === 'pre_major_trip') {
+    ledgerContextNote =
+      '\nUSAGE RULE (pre-departure): Avoid referencing business goals, learning programs, or anything requiring multi-session commitment. ' +
+      'Only light, local interests are relevant this weekend.';
+  } else if (capForLedger.type === 'house_guests') {
+    ledgerContextNote =
+      '\nUSAGE RULE (house guests): Prefer interests that work in a social setting or that guests can share. ' +
+      'Skip solo learning interests, business goals, or anything that requires Ahmed to be alone.';
+  } else {
+    ledgerContextNote =
+      '\nUSAGE RULE: Reference interests that are genuinely achievable this weekend. ' +
+      'Language-learning interests are only relevant if there is a connection to the activity being suggested — ' +
+      'do not surface "learn French" unless the suggestion directly involves French language, cuisine, or culture. ' +
+      'Business and development interests are only relevant if the task paragraph is included.';
+  }
+  ledgerSection += ledgerContextNote;
 
   // ---- Goals section ---------------------------------------------------------
   var activeGoals = (ctx.goals || [])
@@ -397,6 +431,8 @@ function buildWeekendPlannerPrompt_(ctx) {
 
   // ---- Block A: Travel context -----------------------------------------------
   var tCtx = ctx.travelCtx || {};
+  var cap  = ctx.weekendCapacity || { type: 'open', note: '' };
+
   var travelLines = ['=== TRAVEL CONTEXT ==='];
   if (tCtx.currentTrip) {
     var ct = tCtx.currentTrip;
@@ -404,38 +440,47 @@ function buildWeekendPlannerPrompt_(ctx) {
     var endDateObj = new Date(parseInt(endParts[0], 10), parseInt(endParts[1], 10) - 1, parseInt(endParts[2], 10));
     var endDateFmt = Utilities.formatDate(endDateObj, tz, 'MMM d');
     travelLines.push('Ahmed is currently traveling: ' + ct.label + ' (through ' + endDateFmt + ').');
-    travelLines.push('IMPORTANT: Reframe ALL three suggestions around this destination. Do NOT suggest home-based activities, errands, or anything requiring Ahmed to be at home.');
+    travelLines.push('CRITICAL: Do NOT suggest anything at home or requiring Ahmed to be home. Every suggestion must be at or near ' + ct.label + '.');
     if (tCtx.currentTripOnBucketList) {
-      travelLines.push('★ This destination is on Ahmed\'s bucket list — acknowledge and amplify this.');
+      travelLines.push('★ This destination is on Ahmed\'s bucket list.');
     }
   } else {
-    travelLines.push('Ahmed is home this weekend. Suggestions may be home-region or feasibly drivable.');
+    travelLines.push('Ahmed is home this weekend.');
   }
   if (tCtx.upcomingTrips && tCtx.upcomingTrips.length > 0) {
     tCtx.upcomingTrips.forEach(function(t) {
-      travelLines.push('Upcoming travel: ' + t.label + ' departs in ' + t.daysAway + ' day(s) — factor in prep energy and logistics if relevant.');
+      travelLines.push('Upcoming trip: ' + t.label + ' departs in ' + t.daysAway + ' day(s).');
     });
   }
   var travelBlock = travelLines.join('\n');
 
-  // ---- Block B: Bucket list inspiration --------------------------------------
+  // ---- Block B: Bucket list — ONLY when traveling AND geographically matching -
+  // Never surface at home: the match between home weekends and bucket list
+  // destinations is too loose and leads to forced, irrelevant suggestions.
   var bucketBlock = '';
-  var bList = tCtx.bucketList || [];
-  if (bList.length > 0) {
-    var bLines = [
-      '=== DREAM DESTINATIONS (inspiration/flavor — do not force) ===',
-      'These are unvisited destinations on Ahmed\'s bucket list. Use as stepping-stones or flavor where naturally relevant (e.g. if Japan is listed, a Japanese cooking class qualifies as THE PROTOTYPE). Do not contrive connections.',
-    ];
-    bList.forEach(function(b) {
-      var starCount = Math.min(5, Math.max(1, Number(b['Stars']) || 1));
-      var stars = '';
-      for (var s = 0; s < starCount; s++) stars += '★';
-      var line = stars + ' ' + b['City'] + ', ' + b['Country'];
-      if (b['Target Year']) line += ' (target ' + b['Target Year'] + ')';
-      if (b['Dream Trip']) line += ' — ' + b['Dream Trip'];
-      bLines.push(line);
+  if (tCtx.currentTrip) {
+    var destLabel = String(tCtx.currentTrip.label || '').toLowerCase();
+    var bList = (tCtx.bucketList || []).filter(function(b) {
+      var city    = String(b['City']    || '').toLowerCase();
+      var country = String(b['Country'] || '').toLowerCase();
+      return (city    && destLabel.indexOf(city)    !== -1) ||
+             (country && destLabel.indexOf(country) !== -1);
     });
-    bucketBlock = bLines.join('\n');
+    if (bList.length > 0) {
+      var bLines = [
+        '=== BUCKET LIST ITEMS AT THIS DESTINATION ===',
+        'These are items on Ahmed\'s bucket list that match the current destination. Reference them specifically if they are directly achievable this weekend.',
+      ];
+      bList.forEach(function(b) {
+        var starCount = Math.min(5, Math.max(1, Number(b['Stars']) || 1));
+        var stars = '';
+        for (var s = 0; s < starCount; s++) stars += '★';
+        var line = stars + ' ' + b['City'] + ', ' + b['Country'];
+        if (b['Dream Trip']) line += ' — ' + b['Dream Trip'];
+        bLines.push(line);
+      });
+      bucketBlock = bLines.join('\n');
+    }
   }
 
   // ---- Block C: Anti-recycle history -----------------------------------------
@@ -471,27 +516,89 @@ function buildWeekendPlannerPrompt_(ctx) {
   var outputInstructions =
     'Write a Weekend Memo for the weekend of ' + satStr + '.\n\n' +
     travelNote +
-    'FORMAT: 2–3 paragraphs of prose. No section labels. No headers ("THE EXTENSION", "THE CONTRAST", etc. — those are retired). No bullets. No numbered lists. No "VERA RECOMMENDS" line.\n\n' +
-    'PARAGRAPH 1 — MINDSET (always present, always first):\n' +
-    'Acknowledge what the week was and what the weekend should be. Draw on what VERA actually knows — but translate it into human terms, not a status report. Do NOT say "you had N flags" or "N overdue tasks." Instead, name what actually happened: a specific meeting string, a specific thing that has been sitting, a specific pressure. 2–3 sentences.\n\n' +
-    'PARAGRAPH 2 — THE ONE THING (optional, omit if not warranted):\n' +
-    'Include this paragraph ONLY if there is a clear, self-contained task that (a) can be meaningfully advanced in 1–2 focused hours at home, (b) is genuinely overdue or directly tied to a stated goal, AND (c) is feasible this specific weekend given what\'s already on the calendar. If no such task exists, omit this paragraph entirely — do not manufacture one.\n' +
-    'When included: name the goal, name the specific action step, say why this weekend specifically (not someday).\n\n' +
-    'PARAGRAPH 3 — WHAT TO DO (always present, always last):\n' +
-    'One specific suggestion — a place, outing, or activity. It must:\n' +
-    '• Be appropriate for the current season and conditions (today is ' + todayStr + ')\n' +
-    '• Not have appeared in the recent suggested-activities history\n' +
-    '• Be distance-appropriate (easy Sunday morning = 20–40 min away; half-day = can be further)\n' +
-    '• Connect naturally to a stated interest or active goal — not forced\n' +
-    '• Be grounded in THIS specific weekend: say what makes now the right time\n' +
-    'Do not suggest anything that the weekend calendar shows is already committed. Do not recycle places from the recent history.\n\n' +
-    'VOICE: warm, direct, specific. Write like a trusted advisor who knows Ahmed well — not a corporate brief, not a travel blog, not a productivity app. Short sentences. No padding.\n\n' +
-    'TARGET LENGTH: 200–280 words total. Longer only if the specificity earns it.\n\n' +
-    'Return ONLY valid JSON — no preamble, no markdown fences:\n' +
-    '{\n' +
-    '  "memo": "Full memo text — the 2–3 paragraphs, with a \'Weekend Memo — ' + satStr + '\' header on the first line",\n' +
-    '  "activities": ["Exact name of each place or activity suggested, one per entry — used for anti-repeat tracking"]\n' +
-    '}';
+    // ---- Capacity-specific instructions ----------------------------------------
+    (function() {
+      var capType = cap.type;
+      var lines = [
+        'FORMAT: 2–3 paragraphs of prose. No section labels. No headers. No bullets. No lists.',
+        '',
+        '=== WEEKEND STATE: ' + capType.toUpperCase() + ' ===',
+        cap.note,
+        '',
+      ];
+
+      // Paragraph 1 — always required
+      lines.push(
+        'PARAGRAPH 1 — MINDSET (always present, always first):',
+        'Acknowledge what the week was and what the weekend should be. Use what VERA knows — but write in human terms, not a status report. Do NOT cite numbers ("N flags", "N overdue tasks"). Instead name the actual thing: a specific run of meetings, a specific project that has been sitting. 2–3 sentences.',
+        ''
+      );
+
+      // Paragraph 2 — task — conditional on capacity
+      if (capType === 'traveling' || capType === 'busy' || capType === 'pre_major_trip') {
+        lines.push(
+          'PARAGRAPH 2 — TASK: OMIT.',
+          'Do not include a productivity suggestion. Weekend capacity does not support it.',
+          ''
+        );
+      } else {
+        lines.push(
+          'PARAGRAPH 2 — THE ONE THING (optional — omit entirely if not warranted):',
+          'Include ONLY if there is a self-contained task that: (a) can be meaningfully advanced in 1–2 hours at home, (b) is genuinely overdue or tied to a stated goal, AND (c) fits this weekend given what is already on the calendar. If no such task exists, skip this paragraph. Do not manufacture one.',
+          'When included: name the goal, name the specific action, say why this weekend not next.',
+          ''
+        );
+      }
+
+      // Paragraph 3 — outing — shaped by capacity type
+      lines.push('PARAGRAPH 3 — WHAT TO DO (always present, always last):');
+      if (capType === 'traveling') {
+        lines.push(
+          'One specific suggestion at or near the current destination (' + (tCtx.currentTrip ? tCtx.currentTrip.label : 'destination') + ').',
+          'Do NOT suggest anything at home or requiring travel back. Reference the actual destination — its neighborhoods, culture, food, or geography.',
+          'If a matching bucket list item exists (see above), you may reference it specifically.'
+        );
+      } else if (capType === 'pre_major_trip') {
+        lines.push(
+          'Something very short, local, and low-energy — under 2 hours, close to home. The weekend is pre-departure. Packing, logistics, and mental prep take priority.',
+          'Do not suggest anything ambitious, a full-day trip, or anything that adds logistical complexity.'
+        );
+      } else if (capType === 'house_guests') {
+        lines.push(
+          'Something that works with guests — social, low-logistics, near home.',
+          'Do not suggest solo activities, distant day trips, or anything that separates Ahmed from the guests.'
+        );
+      } else if (capType === 'busy') {
+        lines.push(
+          'The weekend is already full. If there is a genuine gap (see THIS WEEKEND\'S CALENDAR), suggest one very brief, low-friction thing to fill it. If there is no real gap, acknowledge the weekend is spoken for and skip any outing suggestion — the memo may end after paragraph 1.'
+        );
+      } else {
+        lines.push(
+          'One specific place, outing, or activity. It must:',
+          '• Be appropriate for the current season and conditions (today is ' + todayStr + ')',
+          '• Not appear in the recent suggested-activities history',
+          '• Be distance-appropriate (easy Sunday morning = 20–40 min away; half-day = further is fine)',
+          '• Connect naturally to a stated interest or goal — not forced',
+          '• Be grounded in THIS specific weekend: say what makes now the right time',
+          'Do not suggest anything already on the weekend calendar.'
+        );
+      }
+
+      lines.push(
+        '',
+        'VOICE: warm, direct, specific. Trusted advisor who knows Ahmed well — not a corporate brief, not a travel blog. Short sentences. No padding.',
+        '',
+        'TARGET LENGTH: 150–250 words. Longer only if the specificity earns it.',
+        '',
+        'Return ONLY valid JSON — no preamble, no markdown fences:',
+        '{',
+        '  "memo": "Full memo text — the paragraphs, with a \'Weekend Memo — ' + satStr + '\' header on the first line",',
+        '  "activities": ["Exact name of each place or activity suggested — used for anti-repeat tracking"]',
+        '}'
+      );
+
+      return lines.join('\n');
+    })();
 
   // ---- Assemble --------------------------------------------------------------
   var sections = [
@@ -760,6 +867,95 @@ function writePlannerHistory_(planText, activities) {
   } catch (e) {
     Logger.log('writePlannerHistory_: error: ' + e.message);
   }
+}
+
+// ============================================================
+// WEEKEND CAPACITY CLASSIFIER
+// ============================================================
+
+/**
+ * classifyWeekend_(weekendCal, travelCtx)
+ *
+ * Reads the weekend's actual state before the memo is drafted.
+ * Returns a capacity object the prompt uses to decide what kind of memo to write.
+ *
+ * Types:
+ *   'traveling'      — Ahmed is currently on a trip; all suggestions must be at the destination
+ *   'pre_major_trip' — A trip departs within 4 days of the weekend; this weekend is pre-departure
+ *   'house_guests'   — Calendar signals guests or family visitors; social/near-home suggestions
+ *   'busy'           — 4+ events on the weekend calendar; suggest nothing ambitious
+ *   'light'          — 1–3 events; one meaningful suggestion appropriate
+ *   'open'           — No events; full latitude
+ *
+ * @param {string[]} weekendCal  — output of getWeekendCalendarEvents_()
+ * @param {Object}   travelCtx   — output of getTravelContextForPlanner_()
+ * @returns {{ type, eventCount, preTripLabel, preTripDaysAway, hasHouseGuests, note }}
+ */
+function classifyWeekend_(weekendCal, travelCtx) {
+  var result = {
+    type:             'open',
+    eventCount:       (weekendCal || []).length,
+    preTripLabel:     null,
+    preTripDaysAway:  null,
+    hasHouseGuests:   false,
+    note:             '',
+  };
+
+  // 1. Currently traveling → destination-only
+  if (travelCtx && travelCtx.currentTrip) {
+    result.type = 'traveling';
+    result.note = 'Ahmed is traveling: ' + travelCtx.currentTrip.label +
+      '. Every suggestion must be grounded in that destination and its immediate surroundings.';
+    return result;
+  }
+
+  // 2. Major trip departing within 4 days of the weekend (Mon–Thu after Sunday)
+  var upcoming = (travelCtx && travelCtx.upcomingTrips) ? travelCtx.upcomingTrips : [];
+  var preTripMatch = null;
+  upcoming.forEach(function(t) {
+    if (t.daysAway !== undefined && t.daysAway <= 4) {
+      if (!preTripMatch || t.daysAway < preTripMatch.daysAway) preTripMatch = t;
+    }
+  });
+  if (preTripMatch) {
+    result.type            = 'pre_major_trip';
+    result.preTripLabel    = preTripMatch.label;
+    result.preTripDaysAway = preTripMatch.daysAway;
+    result.note = 'Trip to "' + preTripMatch.label + '" departs in ' + preTripMatch.daysAway +
+      ' day(s). This weekend is pre-departure: suggest only something short, local, and low-energy. Packing and prep take priority. Do not suggest anything ambitious or time-consuming.';
+    return result;
+  }
+
+  // 3. House guests — scan calendar event titles for guest/family signals
+  var guestKeywords = ['guest', 'guests', 'family', 'visit', 'visiting', 'stay', 'in-law',
+                       'parents', 'sister', 'brother', 'cousin', 'eraky', 'hosting'];
+  var calEvents = weekendCal || [];
+  calEvents.forEach(function(ev) {
+    var lower = ev.toLowerCase();
+    guestKeywords.forEach(function(kw) {
+      if (lower.indexOf(kw) !== -1) result.hasHouseGuests = true;
+    });
+  });
+  if (result.hasHouseGuests) {
+    result.type = 'house_guests';
+    result.note = 'Calendar signals house guests or family visitors this weekend. Suggestions should work with — not around — guests: social, local, low-logistics.';
+    return result;
+  }
+
+  // 4. Capacity by event count
+  var count = result.eventCount;
+  if (count >= 4) {
+    result.type = 'busy';
+    result.note = 'The weekend already has ' + count + ' calendar events. Do not add more. If the weekend is this full, the memo may simply acknowledge it is spoken for and offer one very brief, low-friction note — or no outing suggestion at all.';
+  } else if (count >= 1) {
+    result.type = 'light';
+    result.note = 'Weekend has ' + count + ' event(s). Room for one well-chosen suggestion that fits around what is already there.';
+  } else {
+    result.type = 'open';
+    result.note = 'Weekend is clear — no calendar commitments. Full latitude for a meaningful suggestion.';
+  }
+
+  return result;
 }
 
 // ============================================================
