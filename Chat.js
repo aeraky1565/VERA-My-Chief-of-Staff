@@ -897,6 +897,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
     // Reference documents
     'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
+    'ACTION:complete_debrief|{tripKey}  \u2014 log that a post-trip debrief conversation has been completed for {tripKey}. Emit once, at the very end of a debrief session after all items are logged.\n' +
     '\n' +
 
     'RULES:\n' +
@@ -977,7 +978,8 @@ function buildChatSystemPrompt_(context) {
     '  4. Anything Victoria specifically loved? (\u2192 ACTION:log_interest|Victoria|{thing}|{best category})\n' +
     '  5. Would you go back? (\u2192 ACTION:add_bucket_item or ACTION:update_bucket_item if destination already in bucket list)\n' +
     'After the questions, emit ACTION:add_country if the destination isn\'t already in COUNTRIES VISITED, ' +
-    'using the trip notes as the Notes field. Confirm each item logged. End with a brief summary of what was captured.\n' +
+    'using the trip notes as the Notes field. Confirm each item logged. End with a brief summary of what was captured. ' +
+    'Then emit ACTION:complete_debrief|{tripKey} (use the TripKey from RECENTLY COMPLETED TRIPS) to record that the debrief is complete — this triggers the recap email.\n' +
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
@@ -2360,6 +2362,18 @@ function executeActions_(rawText) {
             errors.push('update_loyalty_points: no program found matching "' + ulProg + '"');
           }
         }
+      }
+
+      // ---- Post-trip debrief completion marker ----------------------------
+      else if (type === 'complete_debrief') {
+        var cdTripKey = (args[0] || '').trim();
+        if (!cdTripKey) throw new Error('TripKey required for complete_debrief');
+        var cdSafeKey = 'POSTTRIP_DEBRIEF_' + cdTripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        PropertiesService.getScriptProperties().setProperty(
+          cdSafeKey,
+          JSON.stringify({ completed: new Date().toISOString(), tripKey: cdTripKey })
+        );
+        executed.push('complete_debrief (' + cdTripKey + ')');
       }
 
     } catch (e) {

@@ -214,7 +214,8 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var homeCity = String(cfg['weather_location'] || '').trim();
   var insights = buildTravelFlightInsightsData_(sortedItems, homeCity);
 
-  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights);
+  var toneMode      = getTripToneMode_(tripKey);
+  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode);
 
   // Lounge access — extract departure/layover airports from flight rows
   var travelAirports = (function() {
@@ -272,7 +273,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var recipients = getTravelDayRecipients_(tripKey);
   var subject    = '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
-  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights);
+  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData);
 
   var travelCh = getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
@@ -671,12 +672,26 @@ function getTravelDayRecipients_(tripKey) {
  * Plain-text fallback for email clients that don't render HTML, and for Slack.
  * @param {Object|null} insights  — optional result from buildTravelFlightInsightsData_()
  */
-function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights) {
+function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData) {
   var lines = [
     '\u2708\uFE0F Travel Day \u2014 ' + tripLabel,
     dateLabel,
     '',
   ];
+
+  // Tagline block (Napa email ~~ ... ~~ style)
+  if (narrativeData && narrativeData.tagline) {
+    lines.push('~~');
+    lines.push(narrativeData.tagline);
+    lines.push('~~');
+    lines.push('');
+  }
+
+  // VERA narrative
+  if (narrativeData && narrativeData.narrative) {
+    lines.push(narrativeData.narrative);
+    lines.push('');
+  }
 
   // ── Useful to Know block ──────────────────────────────────────────────────
   if (insights) {
@@ -732,6 +747,12 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights) {
       if (notes) line += '\n  Note: ' + notes;
       lines.push(line);
     });
+  }
+
+  // Tip from narrative
+  if (narrativeData && narrativeData.tip) {
+    lines.push('');
+    lines.push('Tip: ' + narrativeData.tip);
   }
 
   lines.push('', 'Have a great trip!');
@@ -1018,6 +1039,20 @@ function getLoungePerkPrograms_() {
     var cpData = cpSheet.getRange(2, 1, cpSheet.getLastRow() - 1, 7).getValues();
     var loungeKeywords = ['lounge', 'priority pass', 'centurion', 'capital one lounge'];
 
+  // Tagline block (Napa email ~~ ... ~~ style)
+  if (narrativeData && narrativeData.tagline) {
+    lines.push('~~');
+    lines.push(narrativeData.tagline);
+    lines.push('~~');
+    lines.push('');
+  }
+
+  // VERA narrative
+  if (narrativeData && narrativeData.narrative) {
+    lines.push(narrativeData.narrative);
+    lines.push('');
+  }
+
     var results = [];
     var seen    = {};
 
@@ -1262,17 +1297,44 @@ function buildTravelTomorrowSection_(tomorrowFlights) {
 // ---------------------------------------------------------------------------
 
 /**
- * buildTravelDayNarrativeData_(sortedItems, tripLabel, insights)
+ * getTripToneMode_(tripKey)
+ * Returns 'personal' for anniversary/romantic trips (checked against TripMeta Context),
+ * 'professional' otherwise. Used to tune Claude voice in travel emails.
+ */
+function getTripToneMode_(tripKey) {
+  try {
+    var ss    = getSpreadsheet();
+    var sheet = ss.getSheetByName(TABS.TRIP_META);
+    if (!sheet || sheet.getLastRow() < 2) return 'professional';
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    for (var i = 0; i < data.length; i++) {
+      var key     = String(data[i][0] || '').trim();
+      var context = String(data[i][1] || '').trim().toLowerCase();
+      if (key === tripKey &&
+          (context.indexOf('anniversary trip') !== -1 ||
+           context.indexOf('romantic couples getaway') !== -1)) {
+        return 'personal';
+      }
+    }
+  } catch (e) {
+    Logger.log('getTripToneMode_: error (non-fatal) — ' + e.message);
+  }
+  return 'professional';
+}
+
+/**
+ * buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode)
  *
- * Calls Claude to write a fun, conversational narrative about the day's
- * itinerary. Returns the narrative string, or null on error/disabled.
+ * Calls Claude to generate a tagline, narrative, and tip for the travel day.
+ * Returns { tagline, narrative, tip } or null on error/empty.
  *
  * @param {Array}       sortedItems  — today's Itinerary rows sorted by start time
  * @param {string}      tripLabel    — e.g. "Paris" or "Austin · SXSW"
  * @param {Object|null} insights     — flight insights object (optional context)
- * @returns {string|null}
+ * @param {string}      toneMode     — 'professional' (default) or 'personal'
+ * @returns {{ tagline, narrative, tip }|null}
  */
-function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights) {
+function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode) {
   try {
     if (!sortedItems || sortedItems.length === 0) return null;
 
@@ -1308,19 +1370,30 @@ function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights) {
       }
     }
 
-    var prompt =
-      'You are VERA, Ahmed\'s sharp, witty Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
-      'Here\'s today\'s itinerary:\n' + itemLines + '\n' +
-      (flightContext ? '\nFlight context: ' + flightContext + '\n' : '') +
-      '\nWrite a short narrative about this travel day in VERA\'s voice: ' +
-      'confident, warm, slightly witty, like a well-informed friend who knows your schedule cold. ' +
-      'Use 2–3 short paragraphs (separated by a blank line). ' +
-      'Don\'t list items — paint the arc of the day. Reference specific times and places. ' +
-      'End with one practical heads-up or encouragement relevant to the day. ' +
-      'No markdown, no headers, no bullet points. Plain text paragraphs only.';
+    var tone = toneMode || 'professional';
+    var toneDesc = tone === 'personal'
+      ? '"personal": warm, intimate, slightly playful — like a close friend who arranged the whole trip.'
+      : '"professional": polished, first-class concierge. Warm but refined. Email may be forwarded to travel companions.';
 
-    var narrative = callClaudeExplorer_(prompt);
-    return narrative || null;
+    var prompt =
+      'You are VERA, Ahmed\'s Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
+      'Itinerary:\n' + itemLines + '\n' +
+      (flightContext ? '\nFlight context: ' + flightContext + '\n' : '') +
+      '\nTone mode: ' + tone + '\n- ' + toneDesc + '\n\n' +
+      'Return ONLY valid JSON (no markdown, no preamble):\n' +
+      '{\n' +
+      '  "tagline": "One thematic line (or two short lines joined by \\\\n) capturing the spirit of today. Day-specific — reference actual activities. Professional: sophisticated. Personal: playful or heartfelt.",\n' +
+      '  "narrative": "2–3 short paragraphs painting the arc of the day. Reference specific times and places. Don\'t list — tell the story. No markdown, no headers.",\n' +
+      '  "tip": "One sentence: a practical heads-up or encouragement specific to today."\n' +
+      '}';
+
+    var result = callClaudeJson_(prompt, null);
+    if (!result || typeof result !== 'object') return null;
+    return {
+      tagline:   String(result.tagline   || '').trim(),
+      narrative: String(result.narrative || '').trim(),
+      tip:       String(result.tip       || '').trim(),
+    };
 
   } catch (err) {
     Logger.log('buildTravelDayNarrativeData_ error (non-fatal): ' + err.message);
@@ -1329,35 +1402,73 @@ function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights) {
 }
 
 /**
- * buildTravelNarrativeSection_(narrativeText)
+ * buildTravelNarrativeSection_(narrativeData)
  *
  * HTML section builder for the VERA narrative panel.
- * Renders as a warm italic intro block at the top of the email body.
+ * Accepts either the new { tagline, narrative, tip } object or a legacy plain-text string.
+ * Renders: tagline block (centered italic) → narrative → tip box.
  *
- * @param {string|null} narrativeText
- * @returns {string} HTML string, or '' if narrativeText is null/empty
+ * @param {{ tagline, narrative, tip }|string|null} narrativeData
+ * @returns {string} HTML string, or '' if narrativeData is null/empty
  */
-function buildTravelNarrativeSection_(narrativeText) {
-  if (!narrativeText) return '';
+function buildTravelNarrativeSection_(narrativeData) {
+  if (!narrativeData) return '';
+
+  var tagline   = '';
+  var narrative = '';
+  var tip       = '';
+
+  if (typeof narrativeData === 'string') {
+    narrative = narrativeData; // legacy plain-text path
+  } else {
+    tagline   = narrativeData.tagline   || '';
+    narrative = narrativeData.narrative || '';
+    tip       = narrativeData.tip       || '';
+  }
+
+  if (!narrative && !tagline) return '';
 
   var BLUE = '#1565c0';
+  var html = '';
 
-  var paragraphs = narrativeText.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean);
-  var parasHtml = paragraphs.map(function(p, i) {
-    var isLast = (i === paragraphs.length - 1);
-    return '<p style="margin:0' + (isLast ? '' : ' 0 10px') +
-           ';font-size:14px;line-height:1.65;color:#333333;font-style:italic;">' +
-           escapeHtml_(p) + '</p>';
-  }).join('');
+  // Tagline block — centered italic, between thin horizontal rules
+  if (tagline) {
+    html +=
+      '<div style="text-align:center;padding:12px 0 8px;color:#555;font-style:italic;' +
+      'border-top:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;margin-bottom:16px;">' +
+      escapeHtml_(tagline).replace(/\n/g, '<br>') +
+      '</div>';
+  }
 
-  return (
-    '<div style="margin-bottom:4px;padding:16px 20px;background:#f0f4ff;' +
-    'border-left:4px solid ' + BLUE + ';border-radius:0 6px 6px 0;">' +
-    '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
-    'letter-spacing:1.5px;text-transform:uppercase;">Your Day</p>' +
-    parasHtml +
-    '</div>'
-  );
+  // VERA narrative — existing blue-left-bordered block
+  if (narrative) {
+    var paragraphs = narrative.split(/\n\n+/).map(function(p) { return p.trim(); }).filter(Boolean);
+    var parasHtml = paragraphs.map(function(p, i) {
+      var isLast = (i === paragraphs.length - 1);
+      return '<p style="margin:0' + (isLast ? '' : ' 0 10px') +
+             ';font-size:14px;line-height:1.65;color:#333333;font-style:italic;">' +
+             escapeHtml_(p) + '</p>';
+    }).join('');
+
+    html +=
+      '<div style="margin-bottom:' + (tip ? '0' : '4') + 'px;padding:16px 20px;background:#f0f4ff;' +
+      'border-left:4px solid ' + BLUE + ';border-radius:0 6px 6px 0;">' +
+      '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+      'letter-spacing:1.5px;text-transform:uppercase;">Your Day</p>' +
+      parasHtml +
+      '</div>';
+  }
+
+  // Tip box — labeled, blue left border
+  if (tip) {
+    html +=
+      '<div style="margin-top:8px;margin-bottom:4px;padding:10px 14px;background:#f0f4ff;' +
+      'border-left:3px solid ' + BLUE + ';font-size:13px;line-height:1.5;">' +
+      '<strong>Tip:</strong> ' + escapeHtml_(tip) +
+      '</div>';
+  }
+
+  return html;
 }
 
 // ---------------------------------------------------------------------------
