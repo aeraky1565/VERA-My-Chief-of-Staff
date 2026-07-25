@@ -239,13 +239,24 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
     try { loungeData = buildTravelLoungeData_(travelAirports, loungePerks); } catch (lErr) { Logger.log('lounge data error: ' + lErr.message); }
   }
 
-  // Tomorrow flight preview — re-read the sheet for the same trip key, next day, flights only
+  // Tomorrow flight preview + return-day detection — single sheet read for both
   var tomorrowFlights = [];
+  var isReturnDay     = false;
   try {
     var _itSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
     if (_itSheet && _itSheet.getLastRow() >= 2) {
       var _tomorrow = Utilities.formatDate(new Date(Date.now() + 86400000), tz, 'yyyy-MM-dd');
       var _allRows  = _itSheet.getRange(2, 1, _itSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+      // Find the latest itinerary date for this trip → is today the final day?
+      var _maxDate = '';
+      _allRows.forEach(function(row) {
+        if (String(row[1]||'').trim() !== tripKey) return;
+        var rd = (row[4] instanceof Date && !isNaN(row[4].getTime()))
+          ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
+          : String(row[4]||'').trim();
+        if (rd && rd > _maxDate) _maxDate = rd;
+      });
+      isReturnDay = (_maxDate !== '' && _maxDate === today);
       tomorrowFlights = _allRows.filter(function(row) {
         var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
           ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
@@ -258,6 +269,8 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
       });
     }
   } catch (tmrwErr) { Logger.log('tomorrow flights error (non-fatal): ' + tmrwErr.message); }
+  // Attach return-day flag to insights so section builders can suppress stale pre-trip tips
+  if (insights) { insights.isReturnDay = isReturnDay; }
 
   var sections = [
     { id: 'narrative',       builder: buildTravelNarrativeSection_,      data: narrativeData },
@@ -273,7 +286,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var recipients = getTravelDayRecipients_(tripKey);
   var subject    = '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
-  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData);
+  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData, loungeData);
 
   var travelCh = getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
@@ -668,11 +681,12 @@ function getTravelDayRecipients_(tripKey) {
 // ---------------------------------------------------------------------------
 
 /**
- * buildTravelDayPlainText_(tripLabel, dateLabel, items, insights)
+ * buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData)
  * Plain-text fallback for email clients that don't render HTML, and for Slack.
- * @param {Object|null} insights  — optional result from buildTravelFlightInsightsData_()
+ * @param {Object|null} insights   — optional result from buildTravelFlightInsightsData_()
+ * @param {Object|null} loungeData — optional result from buildTravelLoungeData_()
  */
-function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData) {
+function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData) {
   var lines = [
     '\u2708\uFE0F Travel Day \u2014 ' + tripLabel,
     dateLabel,
@@ -714,12 +728,29 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrati
     if (insights.dep_local && insights.arr_local) {
       lines.push('\uD83D\uDEEB Times:       ' + insights.dep_local + ' \u2192 ' + insights.arr_local);
     }
-    if (insights.pre_trip_tip) {
+    if (insights.pre_trip_tip && !insights.isReturnDay) {
       lines.push('\uD83D\uDCC5 Before you go: ' + insights.pre_trip_tip);
     }
     if (insights.arrival_tip) {
       lines.push('\uD83D\uDCA4 On arrival:    ' + insights.arrival_tip);
     }
+    lines.push('');
+  }
+
+  // \u2500\u2500 Lounge Access block \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  if (loungeData && loungeData.lounges && loungeData.lounges.length) {
+    lines.push('LOUNGE ACCESS');
+    lines.push('-------------');
+    loungeData.lounges.forEach(function(lounge) {
+      var name = lounge.lounge_name || 'Airport Lounge';
+      var role = lounge.role ? ' (' + lounge.role + ')' : '';
+      lines.push(name + role);
+      if (lounge.airport_code) lines.push('  ' + lounge.airport_code + (lounge.terminal ? ' \u00B7 Terminal ' + lounge.terminal : ''));
+      if (lounge.hours)        lines.push('  Hours: ' + lounge.hours);
+      if (lounge.card)         lines.push('  Access: ' + lounge.card + (lounge.program ? ' \u00B7 ' + lounge.program : ''));
+      if (lounge.guest_limit)  lines.push('  Guests: ' + lounge.guest_limit);
+    });
+    if (loungeData.tip) lines.push('\uD83D\uDCA1 ' + loungeData.tip);
     lines.push('');
   }
 
@@ -983,7 +1014,7 @@ function buildTravelFlightInsightsSection_(insights) {
   html += '</table>';
 
   // Tips (full width below table)
-  if (insights.pre_trip_tip) {
+  if (insights.pre_trip_tip && !insights.isReturnDay) {
     html +=
       '<p style="margin:8px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
       'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
