@@ -85,6 +85,18 @@ function runWeekendPlanner_() {
              ', flags=' + activeFlags.length +
              ', intensity=' + intensity.level);
 
+  // ---- Fetch contextual sections (weather, events, continuity) ---------------
+  var homeCity    = String(cfg['weekend_planner_home_city'] || '').trim();
+  var weatherData = getWeekendWeather_(homeCity);
+  var localEvents = searchLocalEvents_(homeCity);
+  var carryNote   = getCarryForwardNote_();
+  var radarDates  = getUpcomingImportantDates_(14);
+
+  Logger.log('runWeekendPlanner_: weatherData=' + (weatherData ? 'ok' : 'null') +
+             ', localEvents=' + localEvents.length +
+             ', carryNote=' + (carryNote ? 'yes' : 'none') +
+             ', radarDates=' + radarDates.length);
+
   // ---- Build prompt + call Claude -------------------------------------------
   var weekendCal      = getWeekendCalendarEvents_();
   var weekendCapacity = classifyWeekend_(weekendCal, travelCtx);
@@ -105,6 +117,9 @@ function runWeekendPlanner_() {
     planHistory:      planHistory,
     weekendCal:       weekendCal,
     weekendCapacity:  weekendCapacity,
+    weatherData:      weatherData,
+    localEvents:      localEvents,
+    carryNote:        carryNote,
   });
 
   var claudeResult = callClaudeWeekendPlanner_(prompt);
@@ -125,16 +140,19 @@ function runWeekendPlanner_() {
   // steps that could throw — ensures anti-repeat context is always recorded.
   writePlannerHistory_(memo, activities);
 
+  // ---- Assemble full calendar description ------------------------------------
+  var description = assembleWeekendMemoText_(memo, weatherData, carryNote, localEvents, radarDates);
+
   // ---- Deliver ---------------------------------------------------------------
   // 1. Slack / email push
-  sendNudge_('weekend_planner', 'VERA Weekend Memo', memo);
-  Logger.log('runWeekendPlanner_: nudge sent (' + memo.length + ' chars)');
+  sendNudge_('weekend_planner', 'VERA Weekend Memo', description);
+  Logger.log('runWeekendPlanner_: nudge sent (' + description.length + ' chars)');
 
   // 2. Calendar event on upcoming Saturday (full memo in description)
   var saturday = (windows.length > 0 && windows[0].weekendStart)
     ? parseDateStr_(windows[0].weekendStart)
     : computeNextSaturday_(today);
-  createWeekendMemoEvent_(saturday, memo);
+  createWeekendMemoEvent_(saturday, description);
   Logger.log('runWeekendPlanner_: calendar event created on ' +
              Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
   veraLog_('runWeekendPlanner', 'Planning', 'Success',
@@ -633,6 +651,52 @@ function buildWeekendPlannerPrompt_(ctx) {
   ];
   if (bucketBlock) { sections.push(''); sections.push(bucketBlock); }
   if (historyBlock) { sections.push(''); sections.push(historyBlock); }
+
+  // ---- Weather context -------------------------------------------------------
+  if (ctx.weatherData) {
+    var wLines = [];
+    if (ctx.weatherData.sat) {
+      var sw = ctx.weatherData.sat;
+      var swLine = 'Saturday: ' + sw.temp + '°F, ' + sw.condition;
+      if (sw.feelsLike && sw.feelsLike !== sw.temp) swLine += ', feels like ' + sw.feelsLike + '°';
+      if (sw.note) swLine += ' — ' + sw.note;
+      wLines.push(swLine);
+    }
+    if (ctx.weatherData.sun) {
+      var uw = ctx.weatherData.sun;
+      var uwLine = 'Sunday: ' + uw.temp + '°F, ' + uw.condition;
+      if (uw.feelsLike && uw.feelsLike !== uw.temp) uwLine += ', feels like ' + uw.feelsLike + '°';
+      if (uw.stormNote) uwLine += ' — ' + uw.stormNote;
+      wLines.push(uwLine);
+    }
+    if (wLines.length > 0) {
+      sections.push('');
+      sections.push('=== THIS WEEKEND\'S WEATHER ===');
+      sections.push(wLines.join('\n'));
+      if (ctx.weatherData.sun && ctx.weatherData.sun.stormNote) {
+        sections.push('Important: Sunday outdoor window is limited. Factor this into your outing timing suggestion.');
+      }
+    }
+  }
+
+  // ---- Continuity from last week --------------------------------------------
+  if (ctx.carryNote) {
+    sections.push('');
+    sections.push('=== CONTINUITY FROM LAST WEEK ===');
+    sections.push(ctx.carryNote);
+    sections.push('If this activity still fits the weekend and capacity supports it, reference it naturally in paragraph 3. Do not force it.');
+  }
+
+  // ---- Local events context -------------------------------------------------
+  if (ctx.localEvents && ctx.localEvents.length > 0) {
+    sections.push('');
+    sections.push('=== LOCAL EVENTS THIS WEEKEND ===');
+    sections.push('(Real events nearby — mention one if it genuinely fits interests or capacity. Do not fabricate details.)');
+    sections.push(ctx.localEvents.map(function(ev) {
+      return ev.day + ' · ' + ev.title + (ev.detail ? ' — ' + ev.detail : '');
+    }).join('\n'));
+  }
+
   sections.push('');
   sections.push('=== YOUR TASK ===');
   sections.push(outputInstructions);
@@ -1033,6 +1097,373 @@ function computeNextSaturday_(today) {
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+// ============================================================
+// CONTEXTUAL DATA — Weather, Local Events, Continuity
+// ============================================================
+
+/**
+ * Fetches OWM 5-day forecast and extracts Saturday + Sunday data.
+ * Returns { sat: {temp, feelsLike, condition, note}, sun: {temp, feelsLike, condition, stormNote} }
+ * or null if no API key / fetch fails.
+ *
+ * @param {string} homeCity
+ * @returns {{sat, sun}|null}
+ */
+function getWeekendWeather_(homeCity) {
+  try {
+    var apiKey = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
+    if (!apiKey || !homeCity) return null;
+
+    var coords = geocodeLocation_(homeCity, apiKey);
+    if (!coords) return null;
+
+    var url = 'https://api.openweathermap.org/data/2.5/forecast?' +
+              'lat=' + coords.lat + '&lon=' + coords.lon +
+              '&appid=' + encodeURIComponent(apiKey) +
+              '&units=imperial&cnt=40';
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) {
+      Logger.log('getWeekendWeather_ HTTP ' + resp.getResponseCode());
+      return null;
+    }
+    var data = JSON.parse(resp.getContentText());
+    if (!data || !data.list || data.list.length === 0) return null;
+
+    var tz  = Session.getScriptTimeZone();
+    var sat = computeNextSaturday_(new Date());
+    var sun = new Date(sat.getTime() + 86400000);
+    var satStr = Utilities.formatDate(sat, tz, 'yyyy-MM-dd');
+    var sunStr = Utilities.formatDate(sun, tz, 'yyyy-MM-dd');
+
+    var satEntries = [], sunEntries = [];
+    data.list.forEach(function(entry) {
+      var localDate = Utilities.formatDate(new Date(entry.dt * 1000), tz, 'yyyy-MM-dd');
+      if (localDate === satStr) satEntries.push(entry);
+      else if (localDate === sunStr) sunEntries.push(entry);
+    });
+
+    if (satEntries.length === 0 && sunEntries.length === 0) return null;
+
+    function closestToHour(entries, targetHour) {
+      if (!entries || entries.length === 0) return null;
+      var best = entries[0], bestDiff = 999;
+      entries.forEach(function(e) {
+        var h = parseInt(Utilities.formatDate(new Date(e.dt * 1000), tz, 'H'), 10);
+        var diff = Math.abs(h - targetHour);
+        if (diff < bestDiff) { bestDiff = diff; best = e; }
+      });
+      return best;
+    }
+
+    var result = { sat: null, sun: null };
+
+    if (satEntries.length > 0) {
+      var satNoon    = closestToHour(satEntries, 12);
+      var satEarly   = closestToHour(satEntries, 9);
+      var satEvening = closestToHour(satEntries, 18);
+      if (satNoon) {
+        var satTemp   = Math.round(satNoon.main.temp);
+        var satFeels  = Math.round(satNoon.main.feels_like);
+        var satCond   = (satNoon.weather && satNoon.weather[0]) ? satNoon.weather[0].main : '';
+        var satNote   = '';
+        if (satEarly) {
+          var earlyTemp = Math.round(satEarly.main.temp);
+          var earlyRain = Math.round((satEarly.pop || 0) * 100);
+          if (earlyTemp >= 90 || earlyRain >= 30) satNote = 'Better in the morning';
+        }
+        if (satEvening) {
+          var eveRain = Math.round((satEvening.pop || 0) * 100);
+          if (eveRain < 20) satNote = satNote ? satNote + ' · Evening clears' : 'Evening clears';
+        }
+        result.sat = { temp: satTemp, feelsLike: satFeels, condition: satCond, note: satNote };
+      }
+    }
+
+    if (sunEntries.length > 0) {
+      var sunNoon      = closestToHour(sunEntries, 12);
+      var sunAfternoon = closestToHour(sunEntries, 15);
+      if (sunNoon) {
+        var sunTemp   = Math.round(sunNoon.main.temp);
+        var sunFeels  = Math.round(sunNoon.main.feels_like);
+        var sunCond   = (sunNoon.weather && sunNoon.weather[0]) ? sunNoon.weather[0].main : '';
+        var sunStorm  = '';
+        if (sunAfternoon) {
+          var aftRain = Math.round((sunAfternoon.pop || 0) * 100);
+          if (aftRain >= 40) sunStorm = 'Storms likely after 2pm — morning is the outdoor window';
+          else if (aftRain >= 20) sunStorm = 'Possible afternoon showers';
+        }
+        result.sun = { temp: sunTemp, feelsLike: sunFeels, condition: sunCond, stormNote: sunStorm };
+      }
+    }
+
+    return (result.sat || result.sun) ? result : null;
+  } catch (e) {
+    Logger.log('getWeekendWeather_ error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Searches for local events this weekend via doWebSearch_().
+ * Returns [] if VERA_SEARCH_API_KEY is not configured.
+ *
+ * @param {string} homeCity
+ * @returns {Array} [{ day, title, detail }]
+ */
+function searchLocalEvents_(homeCity) {
+  try {
+    if (!homeCity) return [];
+    var raw = doWebSearch_('events in ' + homeCity + ' this weekend');
+    if (!raw || raw.length === 0) return [];
+
+    var events = [];
+    raw.slice(0, 3).forEach(function(r) {
+      var title  = String(r.title  || '').replace(/\s+/g, ' ').trim().substring(0, 90);
+      var detail = String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 130);
+      if (!title) return;
+      var combined = (title + ' ' + detail).toLowerCase();
+      var day = 'Weekend';
+      if (combined.indexOf('saturday') !== -1) day = 'Sat';
+      else if (combined.indexOf('sunday') !== -1) day = 'Sun';
+      events.push({ day: day, title: title, detail: detail });
+    });
+    return events;
+  } catch (e) {
+    Logger.log('searchLocalEvents_ error: ' + e.message);
+    return [];
+  }
+}
+
+/**
+ * Checks whether last week's suggested activities appeared on the prior weekend's calendar.
+ * Returns a carry-forward string for activities with no calendar match, or null if all matched.
+ *
+ * @returns {string|null}
+ */
+function getCarryForwardNote_() {
+  try {
+    var history = readPlannerHistory_();
+    if (!history || history.length === 0) return null;
+
+    var priorActivities = (history[0].activities || []).filter(function(a) { return !!a; });
+    if (priorActivities.length === 0) return null;
+
+    // Scan the prior weekend's calendar (last Saturday + Sunday)
+    var tz = Session.getScriptTimeZone();
+    var thisSat  = computeNextSaturday_(new Date());
+    var priorSat = new Date(thisSat.getTime() - 7 * 24 * 60 * 60 * 1000);
+    var priorMon = new Date(priorSat.getTime() + 2 * 24 * 60 * 60 * 1000);
+    priorMon.setHours(0, 0, 0, 0);
+
+    var calTitles = [];
+    CalendarApp.getAllCalendars().forEach(function(cal) {
+      try {
+        cal.getEvents(priorSat, priorMon).forEach(function(ev) {
+          var t = (ev.getTitle() || '').toLowerCase().trim();
+          if (t) calTitles.push(t);
+        });
+      } catch (e) { /* skip inaccessible calendars */ }
+    });
+
+    var missed = priorActivities.filter(function(activity) {
+      var actLower = activity.toLowerCase().trim();
+      return !calTitles.some(function(calTitle) {
+        return calTitle.indexOf(actLower) !== -1 || actLower.indexOf(calTitle) !== -1;
+      });
+    });
+
+    if (missed.length === 0) return null;
+
+    var names = missed.join(' and ');
+    var verb  = missed.length === 1 ? 'was' : 'were';
+    return names + ' ' + verb + ' suggested last week — no record on the calendar. Worth revisiting if timing works.';
+  } catch (e) {
+    Logger.log('getCarryForwardNote_ error: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * Reads the Important Dates sheet and returns entries falling within the next N days.
+ * Sorted by ascending date.
+ *
+ * @param {number} days
+ * @returns {Array} [{ dateLabel, label, person, daysAway }]
+ */
+function getUpcomingImportantDates_(days) {
+  try {
+    var ss    = getSpreadsheet();
+    var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+
+    var hdrs       = sheet.getRange(1, 1, 1, IMPORTANT_DATES_HEADERS.length).getValues()[0];
+    var dateIdx    = hdrs.indexOf('Date');
+    var labelIdx   = hdrs.indexOf('Label');
+    var personIdx  = hdrs.indexOf('Person');
+    if (dateIdx < 0 || labelIdx < 0) return [];
+
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, IMPORTANT_DATES_HEADERS.length).getValues();
+    var today  = new Date();
+    today.setHours(0, 0, 0, 0);
+    var cutoff = new Date(today.getTime() + days * 24 * 60 * 60 * 1000);
+    var tz     = Session.getScriptTimeZone();
+    var result = [];
+
+    rows.forEach(function(row) {
+      if (!row[0]) return;
+      var rawDate = row[dateIdx];
+      if (!rawDate) return;
+
+      // Normalize to MM-DD
+      var mmdd;
+      if (rawDate instanceof Date) {
+        mmdd = String(rawDate.getMonth() + 1).padStart(2, '0') + '-' +
+               String(rawDate.getDate()).padStart(2, '0');
+      } else {
+        var s = String(rawDate).trim();
+        var m = s.match(/^\d{4}-(\d{2}-\d{2})$/);
+        mmdd  = m ? m[1] : s;
+      }
+      if (!mmdd || !/^\d{2}-\d{2}$/.test(mmdd)) return;
+
+      var mo   = parseInt(mmdd.split('-')[0], 10) - 1;
+      var dy   = parseInt(mmdd.split('-')[1], 10);
+      var yr   = today.getFullYear();
+      var date = new Date(yr, mo, dy);
+      if (date < today) date = new Date(yr + 1, mo, dy);
+      if (date > cutoff) return;
+
+      var daysAway = Math.ceil((date - today) / 86400000);
+      result.push({
+        date:      date,
+        dateLabel: Utilities.formatDate(date, tz, 'MMM d'),
+        label:     String(row[labelIdx]  || '').trim(),
+        person:    personIdx >= 0 ? String(row[personIdx] || '').trim() : '',
+        daysAway:  daysAway,
+      });
+    });
+
+    result.sort(function(a, b) { return a.date - b.date; });
+    return result;
+  } catch (e) {
+    Logger.log('getUpcomingImportantDates_ error: ' + e.message);
+    return [];
+  }
+}
+
+// ============================================================
+// PLAIN-TEXT SECTION FORMATTERS
+// ============================================================
+
+/**
+ * @param {{sat, sun}|null} weatherData
+ * @returns {string}
+ */
+function formatWeatherBlock_(weatherData) {
+  if (!weatherData) return '';
+  var lines = [];
+  if (weatherData.sat) {
+    var s    = weatherData.sat;
+    var line = 'SAT · ' + s.temp + '°F';
+    if (s.condition) line += ' · ' + s.condition;
+    if (s.feelsLike && s.feelsLike !== s.temp) line += ' · Feels like ' + s.feelsLike + '°';
+    if (s.note) line += ' · ' + s.note;
+    lines.push(line);
+  }
+  if (weatherData.sun) {
+    var u    = weatherData.sun;
+    var ul   = 'SUN · ' + u.temp + '°F';
+    if (u.condition) ul += ' · ' + u.condition;
+    if (u.feelsLike && u.feelsLike !== u.temp) ul += ' · Feels like ' + u.feelsLike + '°';
+    if (u.stormNote) ul += ' · ' + u.stormNote;
+    lines.push(ul);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * @param {string|null} carryNote
+ * @returns {string}
+ */
+function formatCarryBlock_(carryNote) {
+  if (!carryNote) return '';
+  return '↩ Last week: ' + carryNote;
+}
+
+/**
+ * @param {Array} events — [{ day, title, detail }]
+ * @returns {string}
+ */
+function formatLocalEventsBlock_(events) {
+  if (!events || events.length === 0) return '';
+  return events.map(function(ev) {
+    var line = ev.day + ' · ' + ev.title;
+    if (ev.detail) line += '\n     ' + ev.detail;
+    return line;
+  }).join('\n');
+}
+
+/**
+ * @param {Array} upcomingDates — [{ dateLabel, label, person, daysAway }]
+ * @returns {string}
+ */
+function formatRadarBlock_(upcomingDates) {
+  if (!upcomingDates || upcomingDates.length === 0) return '';
+  return upcomingDates.map(function(d) {
+    var line = d.dateLabel + ' · ' + d.label;
+    if (d.person && d.person.toLowerCase() !== d.label.toLowerCase()) line += ' (' + d.person + ')';
+    line += ' · ' + (d.daysAway === 1 ? '1 day out' : d.daysAway + ' days out');
+    return line;
+  }).join('\n');
+}
+
+/**
+ * Assembles the full calendar event description by wrapping Claude's prose memo
+ * with weather, carry-forward, local events, and radar sections.
+ *
+ * @param {string}      memo         — Claude's raw memo text
+ * @param {Object|null} weatherData  — from getWeekendWeather_()
+ * @param {string|null} carryNote    — from getCarryForwardNote_()
+ * @param {Array}       localEvents  — from searchLocalEvents_()
+ * @param {Array}       radarDates   — from getUpcomingImportantDates_()
+ * @returns {string}
+ */
+function assembleWeekendMemoText_(memo, weatherData, carryNote, localEvents, radarDates) {
+  var parts   = [];
+  var divider = '────────────────────────────────';
+
+  var weatherBlock = formatWeatherBlock_(weatherData);
+  if (weatherBlock) parts.push(weatherBlock);
+
+  var carryBlock = formatCarryBlock_(carryNote);
+  if (carryBlock) parts.push(carryBlock);
+
+  if (parts.length > 0) parts.push('');
+  parts.push(memo);
+
+  var eventsBlock = formatLocalEventsBlock_(localEvents);
+  if (eventsBlock) {
+    parts.push('');
+    parts.push(divider);
+    parts.push('IN THE AREA');
+    parts.push(eventsBlock);
+  }
+
+  var radarBlock = formatRadarBlock_(radarDates);
+  if (radarBlock) {
+    parts.push('');
+    parts.push(divider);
+    parts.push('ON YOUR RADAR');
+    parts.push(radarBlock);
+  }
+
+  parts.push('');
+  parts.push(divider);
+  parts.push('VERA · Chief of Staff');
+
+  return parts.join('\n');
 }
 
 // ============================================================
