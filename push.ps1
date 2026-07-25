@@ -66,7 +66,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host 'Deploying new version to live web app...' -ForegroundColor Yellow
-npx clasp deploy --deploymentId AKfycbx2GF3nKQvCoXT1TJiB9WuQwnuifK9oS-yoKsUHMKajvfM_rCYWNZpVwdX-Hp3ckXR9 --description "Auto-deployed" 2>&1 | Out-Host
+npx clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta --description "Auto-deployed" 2>&1 | Out-Host
 
 Write-Host 'Apps Script: done.' -ForegroundColor Green
 Write-Host ''
