@@ -561,6 +561,7 @@ function webGetStatus_() {
     'email_parser', 'pretrip_briefing', 'posttrip_capture',
     'gym_tracker', 'google_tasks', 'weekend_planner',
     'pacing', 'reminders', 'explorer', 'email_admin', 'meal_planner',
+    'day_sequencing',
   ];
   var features = {};
   featureKeys.forEach(function(k) {

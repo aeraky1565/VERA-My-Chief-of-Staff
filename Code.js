@@ -309,6 +309,7 @@ function createSheetTabs(ss) {
     // Health–Performance Correlation (Feature 12)
     ['wellness_checkin_hour', '8'],       // 24h hour for morning wellness check-in prompt
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
+    ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
   ];
 
   // Seed notif_*_enabled = TRUE for each registry entry if missing (Issue #188)
@@ -1485,10 +1486,13 @@ function buildMorningIntelligence_() {
 
   // ---- Day Sequencing section (Issue #187) --------------------------------
   var calPlanHtml = '';
-  try {
-    calPlanHtml = buildDaySequencingSection_();
-  } catch (calPlanErr) {
-    Logger.log('buildMorningIntelligence_: day sequencing (non-fatal) — ' + calPlanErr.message);
+  var daySeqEnabled = String(getConfigValues()['day_sequencing_enabled'] || 'true').toLowerCase() !== 'false';
+  if (daySeqEnabled) {
+    try {
+      calPlanHtml = buildDaySequencingSection_();
+    } catch (calPlanErr) {
+      Logger.log('buildMorningIntelligence_: day sequencing (non-fatal) — ' + calPlanErr.message);
+    }
   }
 
   // ---- Assemble HTML -------------------------------------------------------
