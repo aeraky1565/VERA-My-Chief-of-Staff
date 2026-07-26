@@ -54,8 +54,8 @@ function hourlyCheck() {
     Logger.log('hourlyCheck: hour=' + hour + ', isWeekday=' + isWeekday);
     runAnticipatorRules_(now, hour, isWeekday, cfg);
 
-    // Weekend Planner — fires Monday ~8am, once per week
-    if (day === 1 && hour === Number(cfg['weekend_planner_hour'] || 8)) {
+    // Weekend Planner — fires Wednesday ~8am, once per week
+    if (day === 3 && hour === Number(cfg['weekend_planner_hour'] || 8)) {
       try {
         runWeekendPlanner_();
       } catch (wpErr) {
