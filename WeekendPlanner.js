@@ -135,7 +135,7 @@ function runWeekendPlanner_() {
   // Raw, unfiltered web-search candidates — Claude curates these into the
   // render-ready list below (claudeResult.localEvents), it does not go
   // straight to the memo/email/calendar event.
-  var localEventCandidates = searchLocalEvents_(homeCity);
+  var localEventCandidates = searchLocalEvents_(homeCity, today);
   var carryNote            = getCarryForwardNote_();
   var radarDates           = getRadarDatesForWeekendMemo_(14);
 
@@ -1368,13 +1368,28 @@ function getWeekendWeather_(homeCity) {
  * is far better at that judgment; see buildWeekendPlannerPrompt_'s
  * "LOCAL EVENTS THIS WEEKEND" section and the localEvents field it returns.
  *
+ * The query is scoped to the actual upcoming weekend's dates (e.g. "August
+ * 1-2"), not the literal phrase "this weekend" — that phrase isn't a real
+ * date to a search index, so it mostly surfaced evergreen SEO/aggregator
+ * pages that happen to use the words "this weekend" in their copy, rather
+ * than pages actually about that specific weekend. A dated query biases
+ * results toward pages that mention those dates, giving the curation step
+ * something real to find when it exists.
+ *
  * @param {string} homeCity
+ * @param {Date}   today
  * @returns {Array} up to 6 raw candidates: [{ title, snippet, link }]
  */
-function searchLocalEvents_(homeCity) {
+function searchLocalEvents_(homeCity, today) {
   try {
     if (!homeCity) return [];
-    var raw = doWebSearch_('events in ' + homeCity + ' this weekend', 6);
+    var tz  = Session.getScriptTimeZone();
+    var sat = computeNextSaturday_(today || new Date());
+    var sun = new Date(sat.getTime() + 86400000);
+    var dateRange = (sat.getMonth() === sun.getMonth())
+      ? Utilities.formatDate(sat, tz, 'MMMM d') + '-' + Utilities.formatDate(sun, tz, 'd')
+      : Utilities.formatDate(sat, tz, 'MMMM d') + '-' + Utilities.formatDate(sun, tz, 'MMMM d');
+    var raw = doWebSearch_('events in ' + homeCity + ' ' + dateRange, 6);
     if (!raw || raw.length === 0) return [];
 
     return raw.map(function(r) {
