@@ -344,6 +344,13 @@ function buildWeekendPlannerPrompt_(ctx) {
 
   var todayStr = Utilities.formatDate(ctx.today, tz, 'EEEE, MMM d, yyyy');
 
+  // Hoisted from "Block A: Travel context" below — the ledger section needs it
+  // first. Referencing tCtx before this line used to crash every single run
+  // (var hoisting gives you the declaration but not the assignment), which is
+  // why the memo never generated: "Cannot read properties of undefined
+  // (reading 'currentTrip')".
+  var tCtx = ctx.travelCtx || {};
+
   // ---- Windows section -------------------------------------------------------
   var windowsSection;
   if (ctx.windows.length === 0) {
@@ -371,7 +378,6 @@ function buildWeekendPlannerPrompt_(ctx) {
   // ---- Ledger section --------------------------------------------------------
   var capForLedger    = ctx.weekendCapacity || { type: 'open' };
   var isAwayWeekend   = capForLedger.type === 'traveling' || capForLedger.type === 'pre_major_trip';
-  var destLabelLower  = (tCtx.currentTrip ? String(tCtx.currentTrip.label || '') : '').toLowerCase();
   var ledgerEntries   = Array.isArray(ctx.ledger) ? ctx.ledger : [];
   var ledgerSection   = ledgerEntries.length === 0
     ? 'No interests logged yet.'
@@ -448,7 +454,7 @@ function buildWeekendPlannerPrompt_(ctx) {
   }
 
   // ---- Block A: Travel context -----------------------------------------------
-  var tCtx = ctx.travelCtx || {};
+  // tCtx is hoisted to the top of the function — the ledger section above needs it too.
   var cap  = ctx.weekendCapacity || { type: 'open', note: '' };
 
   var travelLines = ['=== TRAVEL CONTEXT ==='];
