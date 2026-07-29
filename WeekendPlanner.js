@@ -1093,7 +1093,7 @@ function writePlannerHistory_(planText, activities) {
  *
  * @param {string[]} weekendCal  — output of getWeekendCalendarEvents_()
  * @param {Object}   travelCtx   — output of getTravelContextForPlanner_()
- * @returns {{ type, eventCount, preTripLabel, preTripDaysAway, hasHouseGuests, note }}
+ * @returns {{ type, eventCount, preTripLabel, preTripDaysAway, hasHouseGuests, houseGuestDetail, note }}
  */
 function classifyWeekend_(weekendCal, travelCtx) {
   var result = {
@@ -1102,6 +1102,7 @@ function classifyWeekend_(weekendCal, travelCtx) {
     preTripLabel:     null,
     preTripDaysAway:  null,
     hasHouseGuests:   false,
+    houseGuestDetail: null,
     note:             '',
   };
 
@@ -1134,15 +1135,26 @@ function classifyWeekend_(weekendCal, travelCtx) {
   var guestKeywords = ['guest', 'guests', 'family', 'visit', 'visiting', 'stay', 'in-law',
                        'parents', 'sister', 'brother', 'cousin', 'eraky', 'hosting'];
   var calEvents = weekendCal || [];
+  var houseGuestDetail = null;
   calEvents.forEach(function(ev) {
     var lower = ev.toLowerCase();
     guestKeywords.forEach(function(kw) {
       if (lower.indexOf(kw) !== -1) result.hasHouseGuests = true;
     });
+    // Some guest-visit events are self-annotated with a stay-length marker
+    // right in the title, e.g. "Eraky Family Visit (Week 2 of 6)" — surface
+    // that in the badge instead of a generic "House Guests" label.
+    if (!houseGuestDetail) {
+      var m = ev.match(/\(week\s+\d+\s+of\s+\d+\)/i);
+      if (m) houseGuestDetail = m[0].replace(/^\(|\)$/g, '');
+    }
   });
   if (result.hasHouseGuests) {
     result.type = 'house_guests';
-    result.note = 'Calendar signals house guests or family visitors this weekend. Suggestions should work with — not around — guests: social, local, low-logistics.';
+    result.houseGuestDetail = houseGuestDetail;
+    result.note = 'Calendar signals house guests or family visitors this weekend' +
+      (houseGuestDetail ? ' (' + houseGuestDetail + ')' : '') +
+      '. Suggestions should work with — not around — guests: social, local, low-logistics.';
     return result;
   }
 
@@ -1626,7 +1638,10 @@ function capacityBadgeLabel_(weekendCapacity) {
     case 'pre_major_trip':
       return 'Trip in ' + weekendCapacity.preTripDaysAway +
              (weekendCapacity.preTripDaysAway === 1 ? ' day' : ' days');
-    case 'house_guests':   return 'House Guests';
+    case 'house_guests':
+      return weekendCapacity.houseGuestDetail
+        ? 'House Guests (' + weekendCapacity.houseGuestDetail + ')'
+        : 'House Guests';
     case 'busy':           return weekendCapacity.eventCount + ' events on the calendar';
     default:                return '';
   }
