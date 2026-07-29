@@ -51,14 +51,15 @@ function getSearchTools_() {
  * Execute a web search via Serper.dev (default) or Tavily.
  * Engine selected by Script Property VERA_SEARCH_ENGINE ('serper'|'tavily').
  * Applies PII regex scrub before the query leaves the server.
- * Returns array of { title, snippet, link } (up to 3), or [] on error.
+ * Returns array of { title, snippet, link } (up to numResults, default 3), or [] on error.
  */
-function doWebSearch_(rawQuery) {
+function doWebSearch_(rawQuery, numResults) {
   var apiKey = PropertiesService.getScriptProperties()
                  .getProperty('VERA_SEARCH_API_KEY') || '';
   var engine = PropertiesService.getScriptProperties()
                  .getProperty('VERA_SEARCH_ENGINE') || 'serper';
   if (!apiKey) return [];
+  var n = numResults || 3;
 
   // ── PII scrub (syntactic safety net) ──────────────────────────────────────
   var q = (rawQuery || '').trim().substring(0, 200);
@@ -76,11 +77,11 @@ function doWebSearch_(rawQuery) {
       var tvResp = fetchTracked_('tavily', 'https://api.tavily.com/search', {
         method: 'post',
         headers: { 'Content-Type': 'application/json' },
-        payload: JSON.stringify({ api_key: apiKey, query: q, max_results: 3 }),
+        payload: JSON.stringify({ api_key: apiKey, query: q, max_results: n }),
         muteHttpExceptions: true
       });
       var tvData = JSON.parse(tvResp.getContentText());
-      return (tvData.results || []).slice(0, 3).map(function(r) {
+      return (tvData.results || []).slice(0, n).map(function(r) {
         return { title: r.title || '', snippet: r.content || '', link: r.url || '' };
       });
     }
@@ -88,11 +89,11 @@ function doWebSearch_(rawQuery) {
     var srResp = fetchTracked_('serper', 'https://google.serper.dev/search', {
       method: 'post',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
-      payload: JSON.stringify({ q: q, num: 3 }),
+      payload: JSON.stringify({ q: q, num: n }),
       muteHttpExceptions: true
     });
     var srData = JSON.parse(srResp.getContentText());
-    return (srData.organic || []).slice(0, 3).map(function(r) {
+    return (srData.organic || []).slice(0, n).map(function(r) {
       return { title: r.title || '', snippet: r.snippet || '', link: r.link || '' };
     });
   } catch (e) {

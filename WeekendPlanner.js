@@ -130,14 +130,17 @@ function runWeekendPlanner_() {
              ', intensity=' + intensity.level);
 
   // ---- Fetch contextual sections (weather, events, continuity) ---------------
-  var homeCity    = String(cfg['weekend_planner_home_city'] || '').trim();
-  var weatherData = getWeekendWeather_(homeCity);
-  var localEvents = searchLocalEvents_(homeCity);
-  var carryNote   = getCarryForwardNote_();
-  var radarDates  = getRadarDatesForWeekendMemo_(14);
+  var homeCity             = String(cfg['weekend_planner_home_city'] || '').trim();
+  var weatherData          = getWeekendWeather_(homeCity);
+  // Raw, unfiltered web-search candidates — Claude curates these into the
+  // render-ready list below (claudeResult.localEvents), it does not go
+  // straight to the memo/email/calendar event.
+  var localEventCandidates = searchLocalEvents_(homeCity);
+  var carryNote            = getCarryForwardNote_();
+  var radarDates           = getRadarDatesForWeekendMemo_(14);
 
   Logger.log('runWeekendPlanner_: weatherData=' + (weatherData ? 'ok' : 'null') +
-             ', localEvents=' + localEvents.length +
+             ', localEventCandidates=' + localEventCandidates.length +
              ', carryNote=' + (carryNote ? 'yes' : 'none') +
              ', radarDates=' + radarDates.length);
 
@@ -162,7 +165,7 @@ function runWeekendPlanner_() {
     weekendCal:       weekendCal,
     weekendCapacity:  weekendCapacity,
     weatherData:      weatherData,
-    localEvents:      localEvents,
+    localEvents:      localEventCandidates,
     carryNote:        carryNote,
   });
 
@@ -172,13 +175,16 @@ function runWeekendPlanner_() {
     veraLog_('runWeekendPlanner', 'Planning', 'Failed', 'No result returned from Claude', Date.now() - _wpStart);
     return;
   }
-  var memo       = claudeResult.memo || '';
-  var activities = claudeResult.activities || [];
+  var memo               = claudeResult.memo || '';
+  var activities         = claudeResult.activities || [];
+  var curatedLocalEvents = claudeResult.localEvents || [];
   if (!memo) {
     Logger.log('runWeekendPlanner_: empty memo in Claude response, aborting');
     veraLog_('runWeekendPlanner', 'Planning', 'Failed', 'Empty memo in Claude response', Date.now() - _wpStart);
     return;
   }
+  Logger.log('runWeekendPlanner_: curatedLocalEvents=' + curatedLocalEvents.length +
+             ' (from ' + localEventCandidates.length + ' raw candidates)');
 
   // Save history immediately after Claude generates the memo, before any delivery
   // steps that could throw — ensures anti-repeat context is always recorded.
@@ -187,7 +193,7 @@ function runWeekendPlanner_() {
   // ---- Assemble full calendar description ------------------------------------
   // description keeps the full plain-text content — it's the record on the
   // calendar event and the email's plain-text fallback part.
-  var description = assembleWeekendMemoText_(memo, weatherData, carryNote, localEvents, radarDates);
+  var description = assembleWeekendMemoText_(memo, weatherData, carryNote, curatedLocalEvents, radarDates);
 
   // ---- Deliver ---------------------------------------------------------------
   // 1. Calendar event first — its htmlLink is what the email links back to.
@@ -201,7 +207,7 @@ function runWeekendPlanner_() {
 
   // 2. Polished HTML email — the primary read surface. description is the
   // plain-text fallback for clients that don't render HTML.
-  var htmlBody = buildWeekendMemoHtml_(memo, weatherData, carryNote, localEvents, radarDates,
+  var htmlBody = buildWeekendMemoHtml_(memo, weatherData, carryNote, curatedLocalEvents, radarDates,
                                         weekendCapacity, saturday, calendarLink);
   MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekend Memo', description,
                      { name: 'VERA', htmlBody: htmlBody });
@@ -676,10 +682,19 @@ function buildWeekendPlannerPrompt_(ctx) {
         '',
         'TARGET LENGTH: 150–250 words. Longer only if the specificity earns it.',
         '',
+        'LOCAL EVENTS CURATION: Look at RAW LOCAL SEARCH RESULTS above (if present) and pick out at ' +
+        'most 2 that are a genuinely specific, dated event happening on ' + satStr + ' or the following ' +
+        'day — not a category page, "things to do" listicle, or generic town/venue calendar. A real ' +
+        'candidate names one identifiable happening (a concert, a market, a talk, a festival) with a ' +
+        'date or day that falls on this weekend. If a result only gives a page title, a site name, or a ' +
+        'list of many unrelated dates, it is not a candidate — skip it. If nothing in the raw results ' +
+        'qualifies, return an empty array; do not invent an event or repurpose a page title as one.',
+        '',
         'Return ONLY valid JSON — no preamble, no markdown fences:',
         '{',
         '  "memo": "Full memo text — the paragraphs, with a \'Weekend Memo — ' + satStr + '\' header on the first line",',
-        '  "activities": ["Exact name of each place or activity suggested — used for anti-repeat tracking"]',
+        '  "activities": ["Exact name of each place or activity suggested — used for anti-repeat tracking"],',
+        '  "localEvents": [{ "day": "Sat, Sun, or Weekend", "title": "The actual event name — never a page title or site name", "detail": "One clean sentence you write yourself: venue, time, why it is worth knowing about — never a copied/truncated snippet" }]',
         '}'
       );
 
@@ -756,12 +771,23 @@ function buildWeekendPlannerPrompt_(ctx) {
   }
 
   // ---- Local events context -------------------------------------------------
+  // Raw, unfiltered web-search candidates — a mix of real single events and
+  // junk (category pages, "things to do" listicles, generic city calendars).
+  // Curation happens below, in the localEvents field of the JSON response —
+  // a string heuristic tried to do this here and consistently let junk
+  // through, because an aggregator page reads as perfectly clean prose.
   if (ctx.localEvents && ctx.localEvents.length > 0) {
     sections.push('');
-    sections.push('=== LOCAL EVENTS THIS WEEKEND ===');
-    sections.push('(Real events nearby — mention one if it genuinely fits interests or capacity. Do not fabricate details.)');
-    sections.push(ctx.localEvents.map(function(ev) {
-      return ev.day + ' · ' + ev.title + (ev.detail ? ' — ' + ev.detail : '');
+    sections.push('=== RAW LOCAL SEARCH RESULTS (' + satStr + '–' +
+      Utilities.formatDate(new Date(sat.getTime() + 86400000), tz, 'MMM d') + ') ===');
+    sections.push(
+      'Unfiltered web search results for "events in the area this weekend." Most of these are ' +
+      'NOT real events — they are category pages, "things to do" listicles, or generic town ' +
+      'calendars that happen to mention many dates. Do not treat a page title or a site name as an ' +
+      'event name.'
+    );
+    sections.push(ctx.localEvents.map(function(ev, i) {
+      return (i + 1) + '. ' + ev.title + (ev.snippet ? ' — ' + ev.snippet : '');
     }).join('\n'));
   }
 
@@ -777,16 +803,40 @@ function buildWeekendPlannerPrompt_(ctx) {
 
 /**
  * Calls Claude to generate the Weekend Decision Memo.
- * Returns { memo: string, activities: string[] } or null on failure.
+ * Returns { memo: string, activities: string[], localEvents: Array } or null on failure.
  *
  * @param {string} prompt
- * @returns {{ memo: string, activities: string[] }|null}
+ * @returns {{ memo: string, activities: string[], localEvents: Array }|null}
  */
 function callClaudeWeekendPlanner_(prompt) {
   var result = callClaudeJson_(prompt, null);
   if (!result || typeof result !== 'object' || !result.memo) return null;
   if (!Array.isArray(result.activities)) result.activities = [];
+  result.localEvents = sanitizeCuratedLocalEvents_(result.localEvents);
   return result;
+}
+
+/**
+ * Validates Claude's curated localEvents array. Claude is the primary judge
+ * of "is this a real event" (see buildWeekendPlannerPrompt_'s curation
+ * instructions) — this is just a cheap last-resort safety net against a
+ * stray scraped artifact leaking into Claude's own output, plus malformed
+ * entries (missing title).
+ *
+ * @param {*} raw — whatever Claude returned for localEvents
+ * @returns {Array} [{ day, title, detail }]
+ */
+function sanitizeCuratedLocalEvents_(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(function(ev) {
+    if (!ev || !ev.title) return false;
+    var combined = String(ev.title) + ' ' + String(ev.detail || '');
+    if (combined.indexOf('](') !== -1 || /#{2,}/.test(combined)) return false;
+    return true;
+  }).map(function(ev) {
+    var day = (ev.day === 'Sat' || ev.day === 'Sun') ? ev.day : 'Weekend';
+    return { day: day, title: String(ev.title).trim(), detail: ev.detail ? String(ev.detail).trim() : '' };
+  }).slice(0, 2);
 }
 
 // ============================================================
@@ -1293,59 +1343,31 @@ function getWeekendWeather_(homeCity) {
 }
 
 /**
- * Heuristic check for scraped-listing-page junk in a search result title/snippet —
- * markdown link syntax, heading markers, or a density of special characters that
- * signals raw page markup rather than a single event's plain-text description.
- * Real single-event snippets (e.g. "Wolf Trap: James Taylor · Gates 5PM · $65")
- * don't trip this; aggregator-page snippets like
- * "by Guys & Girls (20s & 30s) Going Out Group]( Reston Plays Games ### ..." do.
- *
- * @param {string} text
- * @returns {boolean} true if the text looks like scraped junk, not a clean snippet
- */
-function looksLikeScrapedJunk_(text) {
-  if (!text) return true;
-  if (text.indexOf('](') !== -1) return true;          // markdown link syntax
-  if (/#{2,}/.test(text)) return true;                  // ## / ### heading markers
-  // 3+ occurrences of markup characters signals scraped page structure (nav
-  // markers, repeated headings) — a single stray character ("Ranked #1...")
-  // is normal prose and must not trip this.
-  var specialChars = (text.match(/[#\[\]{}|*_~`]/g) || []).length;
-  if (specialChars >= 3 && specialChars / text.length > 0.03) return true;
-  return false;
-}
-
-/**
- * Searches for local events this weekend via doWebSearch_().
- * Returns [] if VERA_SEARCH_API_KEY is not configured, or if every candidate
- * result looks like scraped listing-page junk rather than a clean, single-event
- * description (Issue: a garbled result was worse than no section at all).
+ * Fetches raw local-events search candidates via doWebSearch_() for Claude to
+ * curate — this does NOT decide what's a real event vs. a listing/aggregator
+ * page. A string heuristic used to try that here and consistently let junk
+ * through (a category page reads as clean prose — no markdown, no special
+ * characters — right up until you realize it's not describing one specific
+ * event). Claude, given these raw candidates plus the actual weekend dates,
+ * is far better at that judgment; see buildWeekendPlannerPrompt_'s
+ * "LOCAL EVENTS THIS WEEKEND" section and the localEvents field it returns.
  *
  * @param {string} homeCity
- * @returns {Array} [{ day, title, detail }]
+ * @returns {Array} up to 6 raw candidates: [{ title, snippet, link }]
  */
 function searchLocalEvents_(homeCity) {
   try {
     if (!homeCity) return [];
-    var raw = doWebSearch_('events in ' + homeCity + ' this weekend');
+    var raw = doWebSearch_('events in ' + homeCity + ' this weekend', 6);
     if (!raw || raw.length === 0) return [];
 
-    var events = [];
-    raw.slice(0, 3).forEach(function(r) {
-      var title  = String(r.title  || '').replace(/\s+/g, ' ').trim().substring(0, 90);
-      var detail = String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 130);
-      if (!title) return;
-      if (looksLikeScrapedJunk_(title) || looksLikeScrapedJunk_(detail)) {
-        Logger.log('searchLocalEvents_: rejected junk result — "' + title + '"');
-        return;
-      }
-      var combined = (title + ' ' + detail).toLowerCase();
-      var day = 'Weekend';
-      if (combined.indexOf('saturday') !== -1) day = 'Sat';
-      else if (combined.indexOf('sunday') !== -1) day = 'Sun';
-      events.push({ day: day, title: title, detail: detail });
-    });
-    return events;
+    return raw.map(function(r) {
+      return {
+        title:   String(r.title   || '').replace(/\s+/g, ' ').trim().substring(0, 150),
+        snippet: String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 300),
+        link:    String(r.link    || '').trim(),
+      };
+    }).filter(function(r) { return !!r.title; });
   } catch (e) {
     Logger.log('searchLocalEvents_ error: ' + e.message);
     return [];
@@ -1517,7 +1539,7 @@ function formatRadarBlock_(upcomingDates) {
  * @param {string}      memo         — Claude's raw memo text
  * @param {Object|null} weatherData  — from getWeekendWeather_()
  * @param {string|null} carryNote    — from getCarryForwardNote_()
- * @param {Array}       localEvents  — from searchLocalEvents_()
+ * @param {Array}       localEvents  — curated by Claude, from callClaudeWeekendPlanner_()'s result
  * @param {Array}       radarDates   — from getRadarDatesForWeekendMemo_()
  * @returns {string}
  */
@@ -1713,7 +1735,7 @@ function htmlRadarBlock_(dates) {
  * @param {string}      memo            Claude's raw memo text
  * @param {Object|null} weatherData     from getWeekendWeather_()
  * @param {string|null} carryNote       from getCarryForwardNote_()
- * @param {Array}       localEvents     from searchLocalEvents_()
+ * @param {Array}       localEvents     curated by Claude, from callClaudeWeekendPlanner_()'s result
  * @param {Array}       radarDates      from getRadarDatesForWeekendMemo_()
  * @param {Object}      weekendCapacity from classifyWeekend_()
  * @param {Date}        saturdayDate    the upcoming Saturday
