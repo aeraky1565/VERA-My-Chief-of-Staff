@@ -143,6 +143,10 @@ function runWeekendPlanner_() {
              ', localEventCandidates=' + localEventCandidates.length +
              ', carryNote=' + (carryNote ? 'yes' : 'none') +
              ', radarDates=' + radarDates.length);
+  localEventCandidates.forEach(function(c, i) {
+    Logger.log('runWeekendPlanner_: raw candidate ' + (i + 1) + ' — "' + c.title + '" — ' +
+               c.snippet.substring(0, 120));
+  });
 
   // ---- Build prompt + call Claude -------------------------------------------
   var weekendCal      = getWeekendCalendarEvents_();
