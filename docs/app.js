@@ -72,7 +72,16 @@ if(!dayTransport[firstDay]&&!SELF_TRANSPORT_MODES[outboundMode])gaps.push({type:
 /**
  * FlightStatusBadge — small pill badge showing live flight status.
  * Props: { status } — the flight_status object stored in item metadata
- */function FlightStatusBadge({status}){if(!status)return null;var s=status.status||'scheduled';var delay=status.delay_min||0;var label,color,bg;if(s==='cancelled'){label='Cancelled';color='#ff6b6b';bg='#2a0a0a';}else if(s==='diverted'){label='Diverted';color='#ff9444';bg='#1a0f00';}else if(s==='landed'){label='Landed ✓';color='#4ac89a';bg='#0a1a14';}else if(delay>0){label='Delayed +'+delay+'min';color='#e8b44a';bg='#1a1200';}else if(s==='active'){label='On Time ✓';color='#4ac84a';bg='#0a1a0a';}else{label='Scheduled';color='#6b7fa8';bg='#1a2030';}return/*#__PURE__*/React.createElement("span",{style:{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,color:color,background:bg,letterSpacing:0.3,whiteSpace:'nowrap'}},label);}// ─────────────────────────────────────────────────────────────────────────────
+ */function FlightStatusBadge({status}){if(!status)return null;var s=status.status||'scheduled';var delay=status.delay_min||0;var label,color,bg;if(s==='cancelled'){label='Cancelled';color='#ff6b6b';bg='#2a0a0a';}else if(s==='diverted'){label='Diverted';color='#ff9444';bg='#1a0f00';}else if(s==='landed'){label='Landed ✓';color='#4ac89a';bg='#0a1a14';}else if(delay>0){label='Delayed +'+delay+'min';color='#e8b44a';bg='#1a1200';}else if(s==='active'){label='On Time ✓';color='#4ac84a';bg='#0a1a0a';}else{label='Scheduled';color='#6b7fa8';bg='#1a2030';}
+// Issue #138: a status that stopped refreshing must never keep reading as
+// reassuring. Terminal states (landed/cancelled) cannot change, so they are
+// left alone; everything else loses its checkmark and green, keeps what it
+// last said for context, and states how old that is.
+var stale=status.freshness==='stale';var aging=status.freshness==='aging';var age=status.ageText||'';var terminal=(s==='landed'||s==='cancelled');
+if(stale&&!terminal){label=label.replace(' ✓','')+' · NOT LIVE'+(age?' ('+age+')':'');color='#e8b44a';bg='#241a00';}
+else if(aging&&!terminal){label=label.replace(' ✓','')+(age?' · '+age:'');color='#a89a72';bg='#1a1810';}
+var tip=stale&&!terminal?'Status is NOT live — last successful check was '+(age||'unknown')+' ago.'+(status.fetchError?' Reason: '+status.fetchError+'.':'')+' Confirm directly with the airline.':(age?'Last checked '+age+' ago':'');
+return/*#__PURE__*/React.createElement("span",{title:tip,style:{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,color:color,background:bg,letterSpacing:0.3,whiteSpace:'nowrap'}},label);}// ─────────────────────────────────────────────────────────────────────────────
 /**
  * TripContextBadge — inline editable chip for trip context/sentiment.
  * Shows "Add trip context" link when empty; coloured chip when set.

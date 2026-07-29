@@ -13,40 +13,28 @@ Write-Host '  VERA Push' -ForegroundColor Cyan
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host ''
 
-# ---- Step 0: Compile dashboard JSX → plain JS -----------------------------
-Write-Host '[0/2] Compiling dashboard (JSX → JS)...' -ForegroundColor Yellow
+# ---- Step 0: Build dashboard (sync docs/app.js -> docs/index.html) ---------
+# There is NO JSX/Babel step. Commit ada15e2 removed type="text/babel" because
+# the app is authored directly in React.createElement form. The old Babel step
+# here had been silently dead ever since — it looked for a <script
+# type="text/babel"> block that no longer exists.
+#
+# What actually matters: index.html is the self-contained file GitHub Pages
+# serves, and docs/app.js holds the same app code in editable form. Keeping the
+# two in sync by hand failed silently once already (commit 58c4245 updated
+# app.js but not index.html, so a shipped feature never reached the dashboard),
+# so the sync is mechanical now.
+Write-Host '[0/2] Building dashboard (app.js -> index.html)...' -ForegroundColor Yellow
 
-# Only recompile if index.html is newer than _app.js
-$indexHtml = 'docs\index.html'
-$appJs     = 'docs\_app.js'
-$appJsx    = 'docs\_app.jsx'
-
-# Extract JSX from index.html into _app.jsx
-node -e "
-const fs = require('fs');
-const html = fs.readFileSync('$indexHtml', 'utf-8');
-const match = html.match(/<script type=\"text\/babel\">([\s\S]*?)<\/script>\s*<\/body>/);
-if (match) { fs.writeFileSync('$appJsx', match[1], 'utf-8'); process.exit(0); }
-else { console.error('No <script type=text/babel> found in index.html'); process.exit(1); }
-"
+node docs/build.js
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host 'ERROR: Could not extract JSX from index.html.' -ForegroundColor Red
+    Write-Host 'ERROR: Dashboard build failed.' -ForegroundColor Red
     Read-Host 'Press Enter to exit'
     exit 1
 }
 
-babel "$appJsx" -o "$appJs"
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host 'ERROR: Babel compile failed.' -ForegroundColor Red
-    Write-Host 'Make sure Babel is installed: npm install -g @babel/core @babel/cli @babel/plugin-transform-react-jsx' -ForegroundColor Red
-    Read-Host 'Press Enter to exit'
-    exit 1
-}
-
-Remove-Item $appJsx -ErrorAction SilentlyContinue
-Write-Host 'Dashboard compiled.' -ForegroundColor Green
+Write-Host 'Dashboard built.' -ForegroundColor Green
 Write-Host ''
 
 # ---- Step 1: Push to Google Apps Script via clasp --------------------------
