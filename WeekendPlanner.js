@@ -152,8 +152,17 @@ function runWeekendPlanner_() {
   var weekendCal      = getWeekendCalendarEvents_();
   var weekendCapacity = classifyWeekend_(weekendCal, travelCtx);
 
+  if (weekendCapacity.type === 'house_guests') {
+    var stayDetail = getHouseGuestStayDetail_();
+    if (stayDetail) {
+      weekendCapacity.houseGuestDetail = 'Week ' + stayDetail.weekNumber + ' of ' + stayDetail.totalWeeks;
+      weekendCapacity.note += ' (' + weekendCapacity.houseGuestDetail + ')';
+    }
+  }
+
   Logger.log('runWeekendPlanner_: weekendCapacity.type=' + weekendCapacity.type +
-             ', eventCount=' + weekendCapacity.eventCount);
+             ', eventCount=' + weekendCapacity.eventCount +
+             (weekendCapacity.houseGuestDetail ? ', houseGuestDetail=' + weekendCapacity.houseGuestDetail : ''));
 
   var prompt = buildWeekendPlannerPrompt_({
     windows:          windows,
@@ -1081,6 +1090,12 @@ function writePlannerHistory_(planText, activities) {
 // WEEKEND CAPACITY CLASSIFIER
 // ============================================================
 
+// Shared by classifyWeekend_ (detects a house-guest weekend from event
+// titles) and getHouseGuestStayDetail_ (computes which week of a multi-week
+// stay this weekend falls in, from the matched event's real dates).
+var GUEST_KEYWORDS_ = ['guest', 'guests', 'family', 'visit', 'visiting', 'stay', 'in-law',
+                        'parents', 'sister', 'brother', 'cousin', 'eraky', 'hosting'];
+
 /**
  * classifyWeekend_(weekendCal, travelCtx)
  *
@@ -1135,30 +1150,21 @@ function classifyWeekend_(weekendCal, travelCtx) {
     return result;
   }
 
-  // 3. House guests — scan calendar event titles for guest/family signals
-  var guestKeywords = ['guest', 'guests', 'family', 'visit', 'visiting', 'stay', 'in-law',
-                       'parents', 'sister', 'brother', 'cousin', 'eraky', 'hosting'];
+  // 3. House guests — scan calendar event titles for guest/family signals.
+  // GUEST_KEYWORDS_ is shared with getHouseGuestStayDetail_(), which computes
+  // houseGuestDetail (a "Week N of M" figure) from the matched event's real
+  // start/end dates — titles are never pre-annotated with that, so it can't
+  // be extracted here via string matching.
   var calEvents = weekendCal || [];
-  var houseGuestDetail = null;
   calEvents.forEach(function(ev) {
     var lower = ev.toLowerCase();
-    guestKeywords.forEach(function(kw) {
+    GUEST_KEYWORDS_.forEach(function(kw) {
       if (lower.indexOf(kw) !== -1) result.hasHouseGuests = true;
     });
-    // Some guest-visit events are self-annotated with a stay-length marker
-    // right in the title, e.g. "Eraky Family Visit (Week 2 of 6)" — surface
-    // that in the badge instead of a generic "House Guests" label.
-    if (!houseGuestDetail) {
-      var m = ev.match(/\(week\s+\d+\s+of\s+\d+\)/i);
-      if (m) houseGuestDetail = m[0].replace(/^\(|\)$/g, '');
-    }
   });
   if (result.hasHouseGuests) {
     result.type = 'house_guests';
-    result.houseGuestDetail = houseGuestDetail;
-    result.note = 'Calendar signals house guests or family visitors this weekend' +
-      (houseGuestDetail ? ' (' + houseGuestDetail + ')' : '') +
-      '. Suggestions should work with — not around — guests: social, local, low-logistics.';
+    result.note = 'Calendar signals house guests or family visitors this weekend. Suggestions should work with — not around — guests: social, local, low-logistics.';
     return result;
   }
 
@@ -1220,6 +1226,69 @@ function getWeekendCalendarEvents_() {
   } catch (e) {
     Logger.log('getWeekendCalendarEvents_ error (non-fatal): ' + e.message);
     return [];
+  }
+}
+
+/**
+ * When this weekend falls inside a multi-day guest-stay calendar event (e.g.
+ * "Guest Stay: Eraky Family", an all-day event spanning Jul 18 – Sep 1),
+ * computes which full Saturday–Sunday weekend of the stay this one is.
+ * There's no pre-written "week" label on these events — it has to be
+ * computed from the event's real start/end dates, not extracted from text.
+ *
+ * Weekend 1 is the first full Sat–Sun contained in the stay (the arrival
+ * weekend itself, if arrival lands on a Saturday). "totalWeeks" is the count
+ * of such full weekends across the whole stay. A short (<8 day) guest event
+ * — a single weekend visit, not a multi-week stay — returns null; it
+ * doesn't need a week count.
+ *
+ * @returns {{ weekNumber: number, totalWeeks: number }|null}
+ */
+function getHouseGuestStayDetail_() {
+  try {
+    var sat = computeNextSaturday_(new Date());
+    var mon = new Date(sat.getTime());
+    mon.setDate(mon.getDate() + 2);
+    mon.setHours(0, 0, 0, 0);
+
+    var match = null;
+    CalendarApp.getAllCalendars().forEach(function(cal) {
+      if (match) return;
+      try {
+        cal.getEvents(sat, mon).forEach(function(ev) {
+          if (match || !ev.isAllDayEvent()) return;
+          var lower = (ev.getTitle() || '').toLowerCase();
+          var isGuestEvent = GUEST_KEYWORDS_.some(function(kw) { return lower.indexOf(kw) !== -1; });
+          if (!isGuestEvent) return;
+          var start = ev.getAllDayStartDate();
+          var end   = ev.getAllDayEndDate(); // exclusive
+          var spanDays = Math.round((end.getTime() - start.getTime()) / 86400000);
+          if (spanDays < 8) return; // single-weekend guest event — no week count needed
+          match = { start: start, end: end };
+        });
+      } catch (calErr) { /* skip inaccessible calendars */ }
+    });
+    if (!match) return null;
+
+    // Walk from the stay's start in 7-day (setDate-based, DST-safe)
+    // increments, collecting every Saturday whose following Sunday still
+    // falls within the stay.
+    var weekends = [];
+    var d = new Date(match.start.getTime());
+    while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
+    while (d.getTime() < match.end.getTime()) {
+      var wknSun = new Date(d.getTime());
+      wknSun.setDate(wknSun.getDate() + 1);
+      if (wknSun.getTime() < match.end.getTime()) weekends.push(d.getTime());
+      d.setDate(d.getDate() + 7);
+    }
+
+    var idx = weekends.indexOf(sat.getTime());
+    if (idx === -1 || weekends.length === 0) return null;
+    return { weekNumber: idx + 1, totalWeeks: weekends.length };
+  } catch (e) {
+    Logger.log('getHouseGuestStayDetail_ error (non-fatal): ' + e.message);
+    return null;
   }
 }
 
