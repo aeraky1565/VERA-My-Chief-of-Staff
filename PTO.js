@@ -665,7 +665,32 @@ function detectCruises_(rawEvents, tz, today) {
  * synthetic entries with isCruise: true and a normalised label.
  * @returns {Array} [{ label, startDate, endDate, daysAway, calendarName, isCruise? }]
  */
+// Per-execution memoization cache — every one of getUpcomingTravel_'s 11 call
+// sites across the codebase builds its cfg via readPTOConfig_() with no
+// per-caller variation, so within a single script execution this always scans
+// the same 365-day, multi-calendar window for the same result. Without this,
+// a single nightlyRun() was independently re-running the full scan 5-6 times
+// (writePTOSnapshot_, generateFlags' prompt builder, checkPreTripBriefings_,
+// checkFitnessConsistency_, checkFitnessTravelGap_, runExplorer_'s
+// getTravelContextForPlanner_), which was expensive enough on its own to
+// contribute to hitting the GAS 6-minute execution limit.
+var _upcomingTravelCache_ = null;
+
 function getUpcomingTravel_(cfg) {
+  var cacheKey = JSON.stringify({
+    gapCalendarsRaw:       cfg.gapCalendarsRaw,
+    calendarName:          cfg.calendarName,
+    travelExtraCalendars:  cfg.travelExtraCalendars,
+    travelIgnoreKeywords:  cfg.travelIgnoreKeywords,
+    travelRequireKeywords: cfg.travelRequireKeywords,
+  });
+  if (_upcomingTravelCache_ && _upcomingTravelCache_.key === cacheKey) {
+    // .slice() so a caller mutating the array (push/sort/splice) can't corrupt
+    // the shared cache for every other caller in this execution. No current
+    // caller does this (verified), but it's cheap insurance for future ones.
+    return _upcomingTravelCache_.result.slice();
+  }
+
   var tz    = Session.getScriptTimeZone();
   var today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -800,7 +825,11 @@ function getUpcomingTravel_(cfg) {
   // adjacent to or contained within a longer trip on the same calendar period.
   travel = filterSubEvents_(travel);
 
-  return travel;
+  // Store the untouched array in the cache and hand the caller a copy — same
+  // reasoning as the cache-hit branch above: this call's array must never be
+  // the same object a caller could mutate.
+  _upcomingTravelCache_ = { key: cacheKey, result: travel };
+  return travel.slice();
 }
 
 /**
