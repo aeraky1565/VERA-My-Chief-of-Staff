@@ -2651,6 +2651,7 @@ function addWeekendPlannerConfig() {
     ['weekend_planner_lookahead_days', '21'],
     ['weekend_planner_hour',           '8'],
     ['weekend_planner_home_city',      'Austin, TX'],
+    ['weekend_planner_narrative_calendars', 'Ahmed ElEraky,aaeleraky@gmail.com,AE&VV - Our Joint Chaos'],
   ];
 
   // Read existing keys so we don't overwrite manual edits
