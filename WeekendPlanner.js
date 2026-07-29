@@ -185,20 +185,38 @@ function runWeekendPlanner_() {
   writePlannerHistory_(memo, activities);
 
   // ---- Assemble full calendar description ------------------------------------
+  // description keeps the full plain-text content — it's the record on the
+  // calendar event and the email's plain-text fallback part.
   var description = assembleWeekendMemoText_(memo, weatherData, carryNote, localEvents, radarDates);
 
   // ---- Deliver ---------------------------------------------------------------
-  // 1. Slack / email push
-  sendNudge_('weekend_planner', 'VERA Weekend Memo', description);
-  Logger.log('runWeekendPlanner_: nudge sent (' + description.length + ' chars)');
-
-  // 2. Calendar event on upcoming Saturday (full memo in description)
+  // 1. Calendar event first — its htmlLink is what the email links back to.
   var saturday = (windows.length > 0 && windows[0].weekendStart)
     ? parseDateStr_(windows[0].weekendStart)
     : computeNextSaturday_(today);
-  createWeekendMemoEvent_(saturday, description);
+  var calendarLink = createWeekendMemoEvent_(saturday, description);
   Logger.log('runWeekendPlanner_: calendar event created on ' +
-             Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+             Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd') +
+             (calendarLink ? '' : ' (no link returned)'));
+
+  // 2. Polished HTML email — the primary read surface. description is the
+  // plain-text fallback for clients that don't render HTML.
+  var htmlBody = buildWeekendMemoHtml_(memo, weatherData, carryNote, localEvents, radarDates,
+                                        weekendCapacity, saturday, calendarLink);
+  MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekend Memo', description,
+                     { name: 'VERA', htmlBody: htmlBody });
+  Logger.log('runWeekendPlanner_: HTML email sent (' + htmlBody.length + ' chars)');
+
+  // 3. Short Slack ping — points at the email rather than duplicating it.
+  if (isSlackConfigured_()) {
+    var pingDelivered = sendSlack_('vera-notifications', '🗓️ Weekend memo is ready — check your email.');
+    Logger.log('runWeekendPlanner_: Slack ping ' + (pingDelivered ? 'sent' : 'FAILED'));
+  }
+
+  // Bypassing sendNudge_ for this dual-channel delivery, so record the
+  // cooldown/history entry directly — same dedup contract as before.
+  markSent_('weekend_planner', description);
+
   veraLog_('runWeekendPlanner', 'Planning', 'Success',
     windows.length + ' weekend window(s) found, memo generated (' + memo.length + ' chars)',
     Date.now() - _wpStart);
@@ -777,12 +795,16 @@ function callClaudeWeekendPlanner_(prompt) {
 
 
 /**
- * Creates an all-day Google Calendar event on saturdayDate
- * with the full memo in the event description.
- * Clears any previous "VERA Weekend Memo" events first.
+ * Creates the "VERA Weekend Memo" all-day calendar event via the Advanced
+ * Calendar Service (Calendar.Events.insert, already enabled — appsscript.json)
+ * rather than basic CalendarApp — this returns the event's htmlLink directly
+ * in the response, which the HTML email links back to. CalendarApp's
+ * createAllDayEvent gives no link, and bridging its event ID over to the
+ * Advanced Service afterward is an avoidable GAS interop quirk.
  *
  * @param {Date}   saturdayDate
- * @param {string} memo
+ * @param {string} memo  Full plain-text calendar description (unchanged content)
+ * @returns {string|null} the event's htmlLink, or null if creation failed
  */
 function createWeekendMemoEvent_(saturdayDate, memo) {
   clearOldWeekendMemoEvents_();
@@ -791,11 +813,29 @@ function createWeekendMemoEvent_(saturdayDate, memo) {
   var cal    = getCalendarByName_(ptoCfg.veraCalendarName);
   if (!cal) {
     Logger.log('createWeekendMemoEvent_: "' + ptoCfg.veraCalendarName + '" calendar not found — skipping event creation');
-    return;
+    return null;
   }
-  cal.createAllDayEvent('VERA Weekend Memo', saturdayDate, { description: memo });
-  Logger.log('createWeekendMemoEvent_: event created in "' + ptoCfg.veraCalendarName + '" on ' +
-             Utilities.formatDate(saturdayDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+
+  var tz         = Session.getScriptTimeZone();
+  var dateStr    = Utilities.formatDate(saturdayDate, tz, 'yyyy-MM-dd');
+  // All-day events use an EXCLUSIVE end date (the day after the last day),
+  // per the Calendar API — for a single-day event that's saturdayDate + 1.
+  var nextDayStr = Utilities.formatDate(new Date(saturdayDate.getTime() + 86400000), tz, 'yyyy-MM-dd');
+
+  try {
+    var created = Calendar.Events.insert({
+      summary:     'VERA Weekend Memo',
+      description: memo,
+      start: { date: dateStr },
+      end:   { date: nextDayStr },
+    }, cal.getId());
+
+    Logger.log('createWeekendMemoEvent_: event created in "' + ptoCfg.veraCalendarName + '" on ' + dateStr);
+    return created.htmlLink || null;
+  } catch (e) {
+    Logger.log('createWeekendMemoEvent_ error: ' + e.message);
+    return null;
+  }
 }
 
 /**
@@ -1515,6 +1555,233 @@ function assembleWeekendMemoText_(memo, weatherData, carryNote, localEvents, rad
   parts.push('VERA · Chief of Staff');
 
   return parts.join('\n');
+}
+
+// ============================================================
+// HTML EMAIL — polished rendering for the Weekend Memo email
+// ============================================================
+//
+// Table-based, fully inline-styled markup — Gmail and Outlook strip or
+// ignore CSS custom properties, flexbox/grid, and @media queries in email,
+// so this is a deliberately different (safer) approach from a web artifact:
+// no dark-mode variant, no CSS variables. One considered light palette,
+// same structure as the plain-text calendar version (weather, continuity,
+// memo, in the area, radar), same content — just rendered richly instead
+// of as divider-separated plain text.
+
+var WKND_EMAIL_COLORS_ = {
+  ink:        '#1A1A1E',
+  inkSoft:    '#72706B',
+  canvas:     '#F5F3EF',
+  card:       '#FFFFFF',
+  accent:     '#2C3E55',
+  rule:       '#E0DBD3',
+  badgeBg:    '#EDE8DF',
+  badgeText:  '#6B5C47',
+  warn:       '#7A4F1E',
+  carryBg:    '#FAF8F5',
+  carryBorder:'#B8A99A',
+};
+
+/** Escapes text for safe inclusion in HTML — every piece of live content (memo prose, search results, sheet data) passes through this. */
+function escapeHtmlWknd_(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Human-readable capacity badge text. Only shown for the four states that
+ * are actually atypical — an ordinary open/light weekend gets no badge,
+ * matching the mockup's use of the badge to flag something worth knowing,
+ * not to label every weekend.
+ * @param {Object} weekendCapacity — from classifyWeekend_()
+ * @returns {string} badge text, or '' for open/light weekends
+ */
+function capacityBadgeLabel_(weekendCapacity) {
+  if (!weekendCapacity) return '';
+  switch (weekendCapacity.type) {
+    case 'traveling':      return 'Traveling';
+    case 'pre_major_trip':
+      return 'Trip in ' + weekendCapacity.preTripDaysAway +
+             (weekendCapacity.preTripDaysAway === 1 ? ' day' : ' days');
+    case 'house_guests':   return 'House Guests';
+    case 'busy':           return weekendCapacity.eventCount + ' events on the calendar';
+    default:                return '';
+  }
+}
+
+function htmlSectionLabel_(text) {
+  return '<div style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:' +
+    WKND_EMAIL_COLORS_.inkSoft + ';font-weight:600;margin-bottom:10px;">' + escapeHtmlWknd_(text) + '</div>';
+}
+
+function htmlDivider_() {
+  return '<tr><td style="padding:0 24px;"><div style="border-top:1px solid ' + WKND_EMAIL_COLORS_.rule + ';margin:22px 0;"></div></td></tr>';
+}
+
+/** @param {{sat,sun}|null} weatherData @returns {string} '' or a full <tr> row */
+function htmlWeatherBlock_(weatherData) {
+  if (!weatherData || (!weatherData.sat && !weatherData.sun)) return '';
+  var c = WKND_EMAIL_COLORS_;
+
+  function dayCell(label, d) {
+    if (!d) return '<td style="padding:12px 16px;"></td>';
+    var lines =
+      '<div style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:' + c.inkSoft + ';margin-bottom:4px;">' + escapeHtmlWknd_(label) + '</div>' +
+      '<div style="font-size:24px;font-weight:700;color:' + c.accent + ';line-height:1.1;">' + escapeHtmlWknd_(d.temp) + '&deg;F</div>' +
+      (d.condition ? '<div style="font-size:12px;color:' + c.ink + ';margin-top:3px;">' + escapeHtmlWknd_(d.condition) +
+        (d.feelsLike && d.feelsLike !== d.temp ? ' &middot; Feels like ' + escapeHtmlWknd_(d.feelsLike) + '&deg;' : '') + '</div>' : '') +
+      (d.note ? '<div style="font-size:11px;color:' + c.inkSoft + ';margin-top:4px;font-style:italic;">' + escapeHtmlWknd_(d.note) + '</div>' : '') +
+      (d.stormNote ? '<div style="font-size:11px;color:' + c.warn + ';margin-top:4px;font-style:italic;">' + escapeHtmlWknd_(d.stormNote) + '</div>' : '');
+    return '<td width="50%" style="padding:12px 16px;">' + lines + '</td>';
+  }
+
+  return '<tr><td style="padding:20px 24px 0;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background:' + c.badgeBg + ';border-radius:3px;"><tr>' +
+    dayCell('Saturday', weatherData.sat) +
+    '<td width="1" style="background:' + c.rule + ';"></td>' +
+    dayCell('Sunday', weatherData.sun) +
+    '</tr></table></td></tr>';
+}
+
+/** @param {string|null} carryNote @returns {string} '' or a full <tr> row */
+function htmlCarryBlock_(carryNote) {
+  if (!carryNote) return '';
+  var c = WKND_EMAIL_COLORS_;
+  return '<tr><td style="padding:16px 24px 0;">' +
+    '<div style="border-left:2px solid ' + c.carryBorder + ';background:' + c.carryBg + ';padding:10px 12px;border-radius:0 2px 2px 0;">' +
+    '<span style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;color:' + c.inkSoft + ';">&#8617; Last week</span>' +
+    '<div style="font-size:12.5px;color:' + c.inkSoft + ';line-height:1.55;margin-top:4px;">' + escapeHtmlWknd_(carryNote) + '</div>' +
+    '</div></td></tr>';
+}
+
+/** @param {string} memo — Claude's raw memo text, paragraphs separated by blank lines */
+function htmlMemoBlock_(memo) {
+  var c = WKND_EMAIL_COLORS_;
+  var paragraphs = String(memo || '').split(/\n\s*\n/).map(function(p) { return p.trim(); }).filter(Boolean);
+  var html = paragraphs.map(function(p) {
+    return '<p style="margin:0 0 16px;font-family:Georgia,\'Times New Roman\',serif;font-size:15.5px;line-height:1.75;color:' +
+      c.ink + ';">' + escapeHtmlWknd_(p) + '</p>';
+  }).join('');
+  return '<tr><td style="padding:22px 24px 0;">' + htmlSectionLabel_('Memo') + html + '</td></tr>';
+}
+
+/** @param {Array} events — [{ day, title, detail }] from searchLocalEvents_() @returns {string} '' or a full <tr> row */
+function htmlLocalEventsBlock_(events) {
+  if (!events || events.length === 0) return '';
+  var c = WKND_EMAIL_COLORS_;
+  var rows = events.map(function(ev, i) {
+    var last = i === events.length - 1;
+    return '<tr>' +
+      '<td width="40" valign="top" style="padding:10px 0;border-bottom:' + (last ? 'none' : '1px solid ' + c.rule) + ';font-size:11px;font-weight:700;color:' + c.accent + ';letter-spacing:0.04em;text-transform:uppercase;">' + escapeHtmlWknd_(ev.day) + '</td>' +
+      '<td valign="top" style="padding:10px 0;border-bottom:' + (last ? 'none' : '1px solid ' + c.rule) + ';">' +
+        '<div style="font-size:14px;color:' + c.ink + ';font-weight:500;line-height:1.4;">' + escapeHtmlWknd_(ev.title) + '</div>' +
+        (ev.detail ? '<div style="font-size:12px;color:' + c.inkSoft + ';margin-top:2px;">' + escapeHtmlWknd_(ev.detail) + '</div>' : '') +
+      '</td></tr>';
+  }).join('');
+  return '<tr><td style="padding:22px 24px 0;">' + htmlSectionLabel_('In the Area') +
+    '<table width="100%" cellpadding="0" cellspacing="0">' + rows + '</table></td></tr>';
+}
+
+/** @param {Array} dates — [{ dateLabel, label, person, daysAway }] from getRadarDatesForWeekendMemo_() @returns {string} '' or a full <tr> row */
+function htmlRadarBlock_(dates) {
+  if (!dates || dates.length === 0) return '';
+  var c = WKND_EMAIL_COLORS_;
+  var rows = dates.map(function(d, i) {
+    var last = i === dates.length - 1;
+    var personSuffix = (d.person && d.person.toLowerCase() !== d.label.toLowerCase())
+      ? ' <span style="color:' + c.inkSoft + ';">(' + escapeHtmlWknd_(d.person) + ')</span>' : '';
+    var daysText = d.daysAway === 1 ? '1 day out' : d.daysAway + ' days out';
+    return '<tr>' +
+      '<td width="50" valign="top" style="padding:9px 0;border-bottom:' + (last ? 'none' : '1px solid ' + c.rule) + ';font-size:12px;font-weight:700;color:' + c.accent + ';">' + escapeHtmlWknd_(d.dateLabel) + '</td>' +
+      '<td valign="top" style="padding:9px 0;border-bottom:' + (last ? 'none' : '1px solid ' + c.rule) + ';">' +
+        '<div style="font-size:14px;color:' + c.ink + ';font-weight:500;">' + escapeHtmlWknd_(d.label) + personSuffix + '</div>' +
+        '<div style="font-size:12px;color:' + c.inkSoft + ';margin-top:2px;">' + daysText + '</div>' +
+      '</td></tr>';
+  }).join('');
+  return '<tr><td style="padding:22px 24px 0;">' + htmlSectionLabel_('On Your Radar') +
+    '<table width="100%" cellpadding="0" cellspacing="0">' + rows + '</table></td></tr>';
+}
+
+/**
+ * Assembles the full HTML email body — same content and structure as
+ * assembleWeekendMemoText_ (weather, continuity, memo, in the area, radar),
+ * rendered richly instead of as plain divider-separated text. Includes a
+ * link back to the calendar event, which holds the same content in plain
+ * text form as a self-contained record.
+ *
+ * @param {string}      memo            Claude's raw memo text
+ * @param {Object|null} weatherData     from getWeekendWeather_()
+ * @param {string|null} carryNote       from getCarryForwardNote_()
+ * @param {Array}       localEvents     from searchLocalEvents_()
+ * @param {Array}       radarDates      from getRadarDatesForWeekendMemo_()
+ * @param {Object}      weekendCapacity from classifyWeekend_()
+ * @param {Date}        saturdayDate    the upcoming Saturday
+ * @param {string|null} calendarLink    htmlLink from createWeekendMemoEvent_(), or null
+ * @returns {string} full HTML document
+ */
+function buildWeekendMemoHtml_(memo, weatherData, carryNote, localEvents, radarDates, weekendCapacity, saturdayDate, calendarLink) {
+  var c  = WKND_EMAIL_COLORS_;
+  var tz = Session.getScriptTimeZone();
+  var sundayDate = new Date(saturdayDate.getTime() + 86400000);
+  var dateRange  = Utilities.formatDate(saturdayDate, tz, 'MMM d') + '&ndash;' + Utilities.formatDate(sundayDate, tz, 'd');
+  var badge      = capacityBadgeLabel_(weekendCapacity);
+
+  var rows = [];
+
+  // Masthead
+  rows.push(
+    '<tr><td style="padding:0 24px 14px;border-bottom:1.5px solid ' + c.accent + ';">' +
+    '<table width="100%" cellpadding="0" cellspacing="0"><tr>' +
+    '<td style="font-family:Georgia,\'Times New Roman\',serif;font-size:21px;letter-spacing:0.1em;color:' + c.accent + ';text-transform:uppercase;">VERA</td>' +
+    '<td align="right" style="font-size:11px;letter-spacing:0.13em;text-transform:uppercase;color:' + c.inkSoft + ';">Weekend Memo</td>' +
+    '</tr></table></td></tr>'
+  );
+
+  // Meta row — date + optional capacity badge
+  rows.push(
+    '<tr><td style="padding:18px 24px 0;font-size:13px;font-weight:600;letter-spacing:0.03em;color:' + c.ink + ';">' +
+    'Saturday &ndash; Sunday &middot; ' + dateRange +
+    (badge ? '&nbsp;&nbsp;<span style="font-size:11px;letter-spacing:0.07em;text-transform:uppercase;background:' +
+      c.badgeBg + ';color:' + c.badgeText + ';padding:3px 9px;border-radius:2px;font-weight:500;">' + escapeHtmlWknd_(badge) + '</span>' : '') +
+    '</td></tr>'
+  );
+
+  rows.push(htmlWeatherBlock_(weatherData));
+  rows.push(htmlCarryBlock_(carryNote));
+  rows.push(htmlMemoBlock_(memo));
+
+  var eventsBlock = htmlLocalEventsBlock_(localEvents);
+  if (eventsBlock) { rows.push(htmlDivider_()); rows.push(eventsBlock); }
+
+  var radarBlock = htmlRadarBlock_(radarDates);
+  if (radarBlock) { rows.push(htmlDivider_()); rows.push(radarBlock); }
+
+  // Calendar link
+  if (calendarLink) {
+    rows.push(
+      '<tr><td style="padding:26px 24px 0;">' +
+      '<a href="' + calendarLink + '" style="display:inline-block;background:' + c.accent +
+      ';color:' + c.canvas + ';font-size:13px;font-weight:600;letter-spacing:0.03em;padding:10px 20px;border-radius:3px;text-decoration:none;">' +
+      'View on your calendar &rarr;</a></td></tr>'
+    );
+  }
+
+  // Footer
+  rows.push(
+    '<tr><td style="padding:28px 24px 32px;border-top:1px solid ' + c.rule + ';margin-top:20px;font-size:11px;color:' +
+    c.inkSoft + ';letter-spacing:0.05em;">VERA &middot; Chief of Staff</td></tr>'
+  );
+
+  return (
+    '<!DOCTYPE html><html><body style="margin:0;padding:0;background:' + c.canvas +
+    ';font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Arial,sans-serif;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background:' + c.canvas + ';padding:40px 0;">' +
+    '<tr><td align="center">' +
+    '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:' + c.canvas + ';">' +
+    rows.join('') +
+    '</table></td></tr></table></body></html>'
+  );
 }
 
 // ============================================================
