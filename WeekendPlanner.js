@@ -21,11 +21,49 @@
 //   weekend_planner_lookahead_days — days to scan for clear windows (default 21)
 //   weekend_planner_hour          — 24h hour to fire on Monday (default 8)
 //   weekend_planner_home_city     — base city for driving-radius framing (default "Austin, TX")
+//   weekend_planner_narrative_calendars — comma-separated calendar names allowed
+//     to shape the memo's prose/events list (default "Ahmed ElEraky,aaeleraky@gmail.com,
+//     AE&VV - Our Joint Chaos"). Other calendars are still used for scheduling
+//     awareness (capacity/intensity, window detection) but never described in the memo.
 // ============================================================
 
 // ============================================================
 // MAIN ORCHESTRATOR
 // ============================================================
+
+/**
+ * Restricts events to calendars whose content should shape the memo's
+ * narrative — the user's own calendar(s) and the shared household one — as
+ * opposed to every calendar VERA can see for scheduling awareness. A
+ * "conference trip" or similar from an unrelated calendar (extended family,
+ * work calendars other than the user's own) must never be woven into the
+ * memo's prose as if it's the user's business; those calendars stay visible
+ * to capacity/intensity classification and window detection, just not to
+ * what Claude writes about.
+ *
+ * Config-driven via weekend_planner_narrative_calendars (comma-separated
+ * calendar names, case-insensitive exact match against event.calendarName).
+ * Fails open (returns the unfiltered list) if the config value is somehow
+ * empty — an empty memo is worse than an over-broad one.
+ *
+ * @param {Array}  events  From getUpcomingEvents() — every calendar
+ * @param {Object} cfg     From getConfigValues()
+ * @returns {Array} events whose calendarName is in the allowed list
+ */
+function filterToNarrativeCalendars_(events, cfg) {
+  var raw = String(
+    (cfg && cfg['weekend_planner_narrative_calendars']) ||
+    'Ahmed ElEraky,aaeleraky@gmail.com,AE&VV - Our Joint Chaos'
+  );
+  var allowed = raw.split(',')
+    .map(function(s) { return s.trim().toLowerCase(); })
+    .filter(function(s) { return s; });
+  if (allowed.length === 0) return events;
+
+  return events.filter(function(ev) {
+    return allowed.indexOf(String(ev.calendarName || '').toLowerCase()) !== -1;
+  });
+}
 
 /**
  * Runs the Weekend Planner. Called from hourlyCheck() in Reminders.js
@@ -66,7 +104,13 @@ function runWeekendPlanner_() {
   var gapCals   = getGapCalendars_(ptoCfg);
   var windows   = getWeekendWindows_(gapCals, today, lookAheadDays);
 
-  var events    = getUpcomingEvents(21);
+  // events is intentionally kept broad — every calendar VERA can see — because
+  // computeIntensitySignal_() below is a scheduling-awareness use (how full is
+  // the week), not a narrative one. narrativeEvents is the narrower set that
+  // actually gets described in the memo's prose and events list; see
+  // filterToNarrativeCalendars_ for why the split exists.
+  var events          = getUpcomingEvents(21);
+  var narrativeEvents = filterToNarrativeCalendars_(events, cfg);
   var tasks     = getOpenTasks();
   var activeFlags = readActiveFlagsForPlanner_();
   var intensity = computeIntensitySignal_(activeFlags, tasks, events);
@@ -80,7 +124,7 @@ function runWeekendPlanner_() {
   var planHistory = readPlannerHistory_();
 
   Logger.log('runWeekendPlanner_: windows=' + windows.length +
-             ', events=' + events.length +
+             ', events=' + events.length + ' (narrative-scoped: ' + narrativeEvents.length + ')' +
              ', tasks=' + tasks.length +
              ', flags=' + activeFlags.length +
              ', intensity=' + intensity.level);
@@ -90,7 +134,7 @@ function runWeekendPlanner_() {
   var weatherData = getWeekendWeather_(homeCity);
   var localEvents = searchLocalEvents_(homeCity);
   var carryNote   = getCarryForwardNote_();
-  var radarDates  = getUpcomingImportantDates_(14);
+  var radarDates  = getRadarDatesForWeekendMemo_(14);
 
   Logger.log('runWeekendPlanner_: weatherData=' + (weatherData ? 'ok' : 'null') +
              ', localEvents=' + localEvents.length +
@@ -106,7 +150,7 @@ function runWeekendPlanner_() {
 
   var prompt = buildWeekendPlannerPrompt_({
     windows:          windows,
-    events:           events,
+    events:           narrativeEvents,
     tasks:            tasks,
     intensity:        intensity,
     goals:            goals,
@@ -1209,8 +1253,33 @@ function getWeekendWeather_(homeCity) {
 }
 
 /**
+ * Heuristic check for scraped-listing-page junk in a search result title/snippet —
+ * markdown link syntax, heading markers, or a density of special characters that
+ * signals raw page markup rather than a single event's plain-text description.
+ * Real single-event snippets (e.g. "Wolf Trap: James Taylor · Gates 5PM · $65")
+ * don't trip this; aggregator-page snippets like
+ * "by Guys & Girls (20s & 30s) Going Out Group]( Reston Plays Games ### ..." do.
+ *
+ * @param {string} text
+ * @returns {boolean} true if the text looks like scraped junk, not a clean snippet
+ */
+function looksLikeScrapedJunk_(text) {
+  if (!text) return true;
+  if (text.indexOf('](') !== -1) return true;          // markdown link syntax
+  if (/#{2,}/.test(text)) return true;                  // ## / ### heading markers
+  // 3+ occurrences of markup characters signals scraped page structure (nav
+  // markers, repeated headings) — a single stray character ("Ranked #1...")
+  // is normal prose and must not trip this.
+  var specialChars = (text.match(/[#\[\]{}|*_~`]/g) || []).length;
+  if (specialChars >= 3 && specialChars / text.length > 0.03) return true;
+  return false;
+}
+
+/**
  * Searches for local events this weekend via doWebSearch_().
- * Returns [] if VERA_SEARCH_API_KEY is not configured.
+ * Returns [] if VERA_SEARCH_API_KEY is not configured, or if every candidate
+ * result looks like scraped listing-page junk rather than a clean, single-event
+ * description (Issue: a garbled result was worse than no section at all).
  *
  * @param {string} homeCity
  * @returns {Array} [{ day, title, detail }]
@@ -1226,6 +1295,10 @@ function searchLocalEvents_(homeCity) {
       var title  = String(r.title  || '').replace(/\s+/g, ' ').trim().substring(0, 90);
       var detail = String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 130);
       if (!title) return;
+      if (looksLikeScrapedJunk_(title) || looksLikeScrapedJunk_(detail)) {
+        Logger.log('searchLocalEvents_: rejected junk result — "' + title + '"');
+        return;
+      }
       var combined = (title + ' ' + detail).toLowerCase();
       var day = 'Weekend';
       if (combined.indexOf('saturday') !== -1) day = 'Sat';
@@ -1295,65 +1368,40 @@ function getCarryForwardNote_() {
  * @param {number} days
  * @returns {Array} [{ dateLabel, label, person, daysAway }]
  */
-function getUpcomingImportantDates_(days) {
-  try {
-    var ss    = getSpreadsheet();
-    var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
-    if (!sheet || sheet.getLastRow() < 2) return [];
-
-    var hdrs       = sheet.getRange(1, 1, 1, IMPORTANT_DATES_HEADERS.length).getValues()[0];
-    var dateIdx    = hdrs.indexOf('Date');
-    var labelIdx   = hdrs.indexOf('Label');
-    var personIdx  = hdrs.indexOf('Person');
-    if (dateIdx < 0 || labelIdx < 0) return [];
-
-    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, IMPORTANT_DATES_HEADERS.length).getValues();
-    var today  = new Date();
-    today.setHours(0, 0, 0, 0);
-    var cutoff = new Date(today.getTime() + days * 24 * 60 * 60 * 1000);
-    var tz     = Session.getScriptTimeZone();
-    var result = [];
-
-    rows.forEach(function(row) {
-      if (!row[0]) return;
-      var rawDate = row[dateIdx];
-      if (!rawDate) return;
-
-      // Normalize to MM-DD
-      var mmdd;
-      if (rawDate instanceof Date) {
-        mmdd = String(rawDate.getMonth() + 1).padStart(2, '0') + '-' +
-               String(rawDate.getDate()).padStart(2, '0');
-      } else {
-        var s = String(rawDate).trim();
-        var m = s.match(/^\d{4}-(\d{2}-\d{2})$/);
-        mmdd  = m ? m[1] : s;
-      }
-      if (!mmdd || !/^\d{2}-\d{2}$/.test(mmdd)) return;
-
-      var mo   = parseInt(mmdd.split('-')[0], 10) - 1;
-      var dy   = parseInt(mmdd.split('-')[1], 10);
-      var yr   = today.getFullYear();
-      var date = new Date(yr, mo, dy);
-      if (date < today) date = new Date(yr + 1, mo, dy);
-      if (date > cutoff) return;
-
-      var daysAway = Math.ceil((date - today) / 86400000);
-      result.push({
-        date:      date,
-        dateLabel: Utilities.formatDate(date, tz, 'MMM d'),
-        label:     String(row[labelIdx]  || '').trim(),
-        person:    personIdx >= 0 ? String(row[personIdx] || '').trim() : '',
-        daysAway:  daysAway,
-      });
-    });
-
-    result.sort(function(a, b) { return a.date - b.date; });
-    return result;
-  } catch (e) {
-    Logger.log('getUpcomingImportantDates_ error: ' + e.message);
-    return [];
-  }
+/**
+ * Adapts the canonical getUpcomingImportantDates_() (ImportantDates.js) to the
+ * { date, dateLabel, label, person, daysAway } shape formatRadarBlock_() expects.
+ *
+ * WeekendPlanner.js used to carry its own divergent reimplementation of
+ * getUpcomingImportantDates_ — same name as the one in ImportantDates.js, a
+ * silent collision in GAS's shared global namespace (undefined behavior over
+ * which one actually ran). That copy also always treated every date as
+ * year-agnostic recurring MM-DD, silently discarding the year on any
+ * one-time YYYY-MM-DD entry. Deleted in favor of this thin adapter over the
+ * one real implementation.
+ *
+ * @param {number} daysAhead
+ * @returns {Array} [{ date, dateLabel, label, person, daysAway }]
+ */
+function getRadarDatesForWeekendMemo_(daysAhead) {
+  var tz    = Session.getScriptTimeZone();
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return getUpcomingImportantDates_(daysAhead).map(function(e) {
+    // getUpcomingImportantDates_ returns the RAW sheet cell in e['Date'] (often
+    // just "MM-DD" with no year), not the resolved target date — parsing that
+    // directly is a trap: new Date('08-02') silently resolves to year 2001 in
+    // this runtime rather than throwing. Reconstruct the real date from
+    // daysUntil instead, using the exact arithmetic the source already used.
+    var date = new Date(today.getTime() + e['daysUntil'] * 86400000);
+    return {
+      date:      date,
+      dateLabel: Utilities.formatDate(date, tz, 'MMM d'),
+      label:     String(e['Label']  || '').trim(),
+      person:    String(e['Person'] || '').trim(),
+      daysAway:  e['daysUntil'],
+    };
+  });
 }
 
 // ============================================================
@@ -1430,7 +1478,7 @@ function formatRadarBlock_(upcomingDates) {
  * @param {Object|null} weatherData  — from getWeekendWeather_()
  * @param {string|null} carryNote    — from getCarryForwardNote_()
  * @param {Array}       localEvents  — from searchLocalEvents_()
- * @param {Array}       radarDates   — from getUpcomingImportantDates_()
+ * @param {Array}       radarDates   — from getRadarDatesForWeekendMemo_()
  * @returns {string}
  */
 function assembleWeekendMemoText_(memo, weatherData, carryNote, localEvents, radarDates) {

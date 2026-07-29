@@ -32,31 +32,90 @@ function syncCalendarBirthdaysToImportantDates_() {
     return;
   }
 
-  // ── Step 0: Remove duplicate rows (Person + MM-DD collision) ──────────────
-  // Keeps the first occurrence of each (Person, MM-DD) pair and deletes the rest.
-  if (sheet.getLastRow() >= 2) {
-    var allData  = sheet.getDataRange().getValues();
-    var hdrs0    = allData[0];
-    var dateIdx  = hdrs0.indexOf('Date');
-    var personIdx = hdrs0.indexOf('Person');
-    var seen0    = {};
-    // Scan bottom-up so deleteRow indices stay valid
-    for (var r0 = allData.length - 1; r0 >= 1; r0--) {
-      var rowId0 = String(allData[r0][0] || '').trim();
-      if (!rowId0) continue;
-      var mmdd0   = toMmDd_(allData[r0][dateIdx]);
-      var person0 = String(allData[r0][personIdx] || '').trim().toLowerCase();
-      var dkey0   = person0 + '|' + mmdd0;
-      if (seen0[dkey0]) {
-        sheet.deleteRow(r0 + 1); // +1 because getValues is 0-indexed
-        Logger.log('ImportantDates: removed duplicate row for ' + dkey0);
-      } else {
-        seen0[dkey0] = true;
-      }
-    }
+  // Find the "Joint Chaos" calendar (case-insensitive name match)
+  var targetCal = null;
+  CalendarApp.getAllCalendars().forEach(function(c) {
+    if (c.getName().toLowerCase().indexOf('joint chaos') !== -1) targetCal = c;
+  });
+  if (!targetCal) {
+    Logger.log('ImportantDates: "Joint Chaos" calendar not found — skipping sync.');
+    return;
   }
 
-  // Load existing entries for duplicate-checking
+  // Scan events in the next 30 days. Build a person -> live MM-DD map from
+  // birthday events up front — used below both to self-heal a stale sheet
+  // row and to decide whether an event is already represented.
+  var now     = new Date();
+  var horizon = new Date(now.getTime() + 30 * 86400000);
+  var events  = targetCal.getEvents(now, horizon);
+  var liveBirthdays = {}; // personLower -> { person, dateKey }
+  events.forEach(function(ev) {
+    var title = ev.getTitle();
+    if (title.toLowerCase().indexOf('birthday') === -1) return;
+    var person = title.replace(/'?s?\s*birthday\s*$/i, '').trim();
+    if (!person) return;
+    var start   = ev.getStartTime();
+    var dateKey = String(start.getMonth() + 1).padStart(2, '0') + '-' +
+                  String(start.getDate()).padStart(2, '0');
+    liveBirthdays[person.toLowerCase()] = { person: person, dateKey: dateKey };
+  });
+
+  // ── Step 0: Collapse duplicate birthday rows (same person, any date) ──────
+  // The old version only caught exact (Person, MM-DD) collisions, which missed
+  // the case where a stale sheet row disagrees with the calendar's current
+  // date for the same person — the scan below would then add a SECOND row
+  // instead of recognizing it as the same birthday. ("Kelly E's Birthday"
+  // ended up on the sheet twice: 07-29 and 08-02.) This pass keeps one row
+  // per person for birthday-labeled entries, correcting its date to whatever
+  // the live calendar currently shows. Scoped to rows whose Label matches
+  // "...'s Birthday" so manually-entered anniversaries/other dates that
+  // happen to share a Person value are never touched.
+  if (sheet.getLastRow() >= 2) {
+    var allData   = sheet.getDataRange().getValues();
+    var hdrs0     = allData[0];
+    var dateIdx0  = hdrs0.indexOf('Date');
+    var labelIdx0 = hdrs0.indexOf('Label');
+    var personIdx0 = hdrs0.indexOf('Person');
+    var keepRow   = {}; // personLower -> row index into allData
+    var toDelete  = [];
+
+    for (var r0 = 1; r0 < allData.length; r0++) {
+      var rowId0 = String(allData[r0][0] || '').trim();
+      if (!rowId0) continue;
+      var label0 = String(allData[r0][labelIdx0] || '').trim();
+      if (!/'s\s+birthday$/i.test(label0)) continue; // only touch birthday-sync rows
+      var person0 = String(allData[r0][personIdx0] || '').trim().toLowerCase();
+      if (!person0) continue;
+
+      if (keepRow[person0] === undefined) {
+        keepRow[person0] = r0;
+      } else {
+        toDelete.push(r0); // second+ row for this person — drop it
+      }
+    }
+
+    // Correct the kept row's date to match the live calendar, when we have one.
+    Object.keys(keepRow).forEach(function(personLower) {
+      var live = liveBirthdays[personLower];
+      if (!live) return;
+      var r = keepRow[personLower];
+      var currentMmDd = toMmDd_(allData[r][dateIdx0]);
+      if (currentMmDd !== live.dateKey) {
+        sheet.getRange(r + 1, dateIdx0 + 1).setValue(live.dateKey);
+        Logger.log('ImportantDates: corrected "' + live.person + '" date ' +
+                    currentMmDd + ' -> ' + live.dateKey);
+      }
+    });
+
+    // Delete extras bottom-up so row indices stay valid.
+    toDelete.sort(function(a, b) { return b - a; });
+    toDelete.forEach(function(r) {
+      sheet.deleteRow(r + 1); // +1 because getValues is 0-indexed
+      Logger.log('ImportantDates: removed duplicate birthday row at index ' + r);
+    });
+  }
+
+  // Load existing entries for duplicate-checking (post-dedup, post-correction)
   var existing = [];
   if (sheet.getLastRow() >= 2) {
     var rows = sheet.getDataRange().getValues();
@@ -69,21 +128,7 @@ function syncCalendarBirthdaysToImportantDates_() {
     });
   }
 
-  // Find the "Joint Chaos" calendar (case-insensitive name match)
-  var targetCal = null;
-  CalendarApp.getAllCalendars().forEach(function(c) {
-    if (c.getName().toLowerCase().indexOf('joint chaos') !== -1) targetCal = c;
-  });
-  if (!targetCal) {
-    Logger.log('ImportantDates: "Joint Chaos" calendar not found — skipping sync.');
-    return;
-  }
-
-  // Scan events in the next 30 days
-  var now     = new Date();
-  var horizon = new Date(now.getTime() + 30 * 86400000);
-  var events  = targetCal.getEvents(now, horizon);
-  var added   = 0;
+  var added = 0;
 
   events.forEach(function(ev) {
     var title = ev.getTitle();
@@ -97,13 +142,15 @@ function syncCalendarBirthdaysToImportantDates_() {
     var dateKey = String(start.getMonth() + 1).padStart(2, '0') + '-' +
                   String(start.getDate()).padStart(2, '0');
 
-    // Match: same MM-DD AND person name appears in either Person or Label (case-insensitive)
-    // toMmDd_() normalises JS Date objects and YYYY-MM-DD strings to MM-DD before comparing.
+    // Match on PERSON alone (not date+person) — a date mismatch means the
+    // sheet was stale and has already been corrected above, not that this is
+    // a different occasion. Scoped to birthday-labeled rows so this can't
+    // false-match an unrelated entry that happens to mention the same name.
     var alreadyExists = existing.some(function(e) {
-      var sameDateish   = toMmDd_(e['Date']) === dateKey;
-      var samePersonish = String(e['Person'] || '').toLowerCase().indexOf(person.toLowerCase()) !== -1 ||
-                          String(e['Label']  || '').toLowerCase().indexOf(person.toLowerCase()) !== -1;
-      return sameDateish && samePersonish;
+      var label = String(e['Label'] || '');
+      if (!/'s\s+birthday$/i.test(label)) return false;
+      return String(e['Person'] || '').toLowerCase().indexOf(person.toLowerCase()) !== -1 ||
+             label.toLowerCase().indexOf(person.toLowerCase()) !== -1;
     });
 
     if (!alreadyExists) {
