@@ -676,6 +676,7 @@ function nightlyRun() {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
     var today        = new Date();
     var runStart     = Date.now();
+    var DEADLINE     = runStart + 5.5 * 60 * 1000;  // 5 min 30 s — 30 s buffer before GAS kills at 6 min
     var stepFailures = [];  // Collects non-fatal step failure messages for #vera-logs summary
 
     // Step -1: Escalate aged unacknowledged flags (Issue #5)
@@ -686,10 +687,77 @@ function nightlyRun() {
       stepFailures.push('escalateAgedFlags_: ' + escErr.message);
     }
 
+    // === CRITICAL PATH: hoisted to run first so generateFlags never times out ===
+
+    // Step 0d [hoisted]: Signal Learning — get suppressed patterns to filter noise (Issue #24)
+    var suppressedPatterns = [];
+    try {
+      suppressedPatterns = getSuppressedKeyPatterns_();
+      if (suppressedPatterns.length > 0) {
+        Logger.log('SignalLearning: suppressing ' + suppressedPatterns.length + ' noise pattern(s): ' + suppressedPatterns.join(', '));
+      }
+    } catch (slErr) {
+      Logger.log('getSuppressedKeyPatterns_ error (non-fatal): ' + slErr.message);
+      stepFailures.push('getSuppressedKeyPatterns_: ' + slErr.message);
+    }
+
+    // Step 0b [hoisted]: PTO snapshot + Vera calendar recommendations (Issue #19)
+    var ptoStats = null;
+    try {
+      ptoStats = writePTOSnapshot_();
+      Logger.log('PTO snapshot written — vacation used: ' + (ptoStats && ptoStats.used ? ptoStats.used.vacationDays : '?') + ' days.');
+    } catch (ptoErr) {
+      Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
+      stepFailures.push('writePTOSnapshot_: ' + ptoErr.message);
+    }
+
+    // Step 1: Collect
+    const events    = getUpcomingEvents();
+    const tasks     = getOpenTasks();
+    const summaries = getSummaries();
+    const ledger    = getSharedInterestLedger_();
+
+    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length);
+
+    // Step 2: Skip Claude if there is no meaningful data to reason about.
+    // Only bypasses when ALL THREE are simultaneously empty (rare: quiet weekends,
+    // cleared task list during travel, etc.). Any one non-empty source proceeds normally.
+    if (events.length === 0 && tasks.length === 0 && summaries.length === 0) {
+      Logger.log('nightlyRun: no events, tasks, or summaries tonight — skipping Claude call.');
+      Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
+      var elapsedEmpty = Math.round((Date.now() - runStart) / 1000);
+      try { sendSlackLog_('\u2705 Nightly run \u2014 0 flags (no data) in ' + elapsedEmpty + 's'); } catch (e) {}
+      return;
+    }
+
+    // Step 2 & 3: Package + Reason (Claude) — pass suppressed patterns for noise filtering
+    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns);
+
+    // Step 4: Write
+    var writtenCount = 0;
+    if (flags && flags.length > 0) {
+      writtenCount = writeFlags(flags);
+      Logger.log('Wrote ' + writtenCount + ' new flags to sheet (' + (flags.length - writtenCount) + ' deduplicated).');
+
+      // Step 4b: Signal Learning — record generated flag keys as "seen"
+      try {
+        var flagKeys = flags.map(function(f) { return f.key || ''; }).filter(function(k) { return k; });
+        if (flagKeys.length > 0) recordFlagsGenerated_(flagKeys);
+      } catch (slErr) {
+        Logger.log('recordFlagsGenerated_ error (non-fatal): ' + slErr.message);
+      }
+    } else {
+      Logger.log('No flags generated tonight — nothing to write.');
+    }
+
+    Logger.log('=== Critical path done in ' + Math.round((Date.now() - runStart) / 1000) + 's — flags written ===');
+
+    // === SUPPLEMENTARY STEPS — run after critical path ===
+
     // Step 0: Auto-populate Summaries tab from live data (Phase 5)
     writeSummarySnapshot();
 
-    // Step 0a: Sync upcoming birthdays from Joint Chaos calendar → Important Dates (Issue #80)
+    // Step 0a: Sync upcoming birthdays from Joint Chaos calendar to Important Dates (Issue #80)
     try { syncCalendarBirthdaysToImportantDates_(); }
     catch (idErr) {
       Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message);
@@ -704,39 +772,9 @@ function nightlyRun() {
     }
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
-    try { writeWeeklySnapshot_(); }    catch (wsErr) { Logger.log('writeWeeklySnapshot_ error (non-fatal): '    + wsErr.message); stepFailures.push('writeWeeklySnapshot_: '    + wsErr.message); }
-    try { pruneMemoryLog_(); }         catch (pmErr) { Logger.log('pruneMemoryLog_ error (non-fatal): '         + pmErr.message); stepFailures.push('pruneMemoryLog_: '         + pmErr.message); }
-    try { sendWeeklyTrendReview_(); }  catch (wtrErr) { Logger.log('sendWeeklyTrendReview_ error (non-fatal): ' + wtrErr.message); stepFailures.push('sendWeeklyTrendReview_: '  + wtrErr.message); }
-
-    // Step 0b: PTO snapshot + Vera calendar recommendations (Issue #19)
-    var ptoStats = null;
-    try {
-      ptoStats = writePTOSnapshot_();
-      Logger.log('PTO snapshot written — vacation used: ' + (ptoStats && ptoStats.used ? ptoStats.used.vacationDays : '?') + ' days.');
-    } catch (ptoErr) {
-      Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
-      stepFailures.push('writePTOSnapshot_: ' + ptoErr.message);
-    }
-
-    // Step 0c: Explorer — daily AI discovery bulletin (Reminders.js)
-    try {
-      runExplorer_();
-    } catch (expErr) {
-      Logger.log('runExplorer_ error (non-fatal): ' + expErr.message);
-      stepFailures.push('runExplorer_: ' + expErr.message);
-    }
-
-    // Step 0d: Signal Learning — get suppressed patterns to filter noise (Issue #24)
-    var suppressedPatterns = [];
-    try {
-      suppressedPatterns = getSuppressedKeyPatterns_();
-      if (suppressedPatterns.length > 0) {
-        Logger.log('SignalLearning: suppressing ' + suppressedPatterns.length + ' noise pattern(s): ' + suppressedPatterns.join(', '));
-      }
-    } catch (slErr) {
-      Logger.log('getSuppressedKeyPatterns_ error (non-fatal): ' + slErr.message);
-      stepFailures.push('getSuppressedKeyPatterns_: ' + slErr.message);
-    }
+    try { writeWeeklySnapshot_(); }    catch (wsErr)  { Logger.log('writeWeeklySnapshot_ error (non-fatal): '    + wsErr.message);  stepFailures.push('writeWeeklySnapshot_: '    + wsErr.message);  }
+    try { pruneMemoryLog_(); }         catch (pmErr)  { Logger.log('pruneMemoryLog_ error (non-fatal): '         + pmErr.message);  stepFailures.push('pruneMemoryLog_: '         + pmErr.message);  }
+    try { sendWeeklyTrendReview_(); }  catch (wtrErr) { Logger.log('sendWeeklyTrendReview_ error (non-fatal): '  + wtrErr.message); stepFailures.push('sendWeeklyTrendReview_: '  + wtrErr.message); }
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
     try {
@@ -769,7 +807,7 @@ function nightlyRun() {
         var mrRows = mrSheet.getLastRow() - 1;
         var resetVals = [];
         for (var mri = 0; mri < mrRows; mri++) resetVals.push([false, '']);
-        mrSheet.getRange(2, 5, mrRows, 2).setValues(resetVals); // cols 5–6: Checked, Checked At
+        mrSheet.getRange(2, 5, mrRows, 2).setValues(resetVals); // cols 5-6: Checked, Checked At
         Logger.log('Morning routine: reset ' + mrRows + ' item(s) to unchecked.');
       }
     } catch (mrErr) {
@@ -811,7 +849,7 @@ function nightlyRun() {
     // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
     try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); stepFailures.push('checkMonthlyReview_: ' + mrErr.message); }
 
-    // Step 0o-ii: Health–performance insight — monthly deep dive on 1st (Feature 12)
+    // Step 0o-ii: Health-performance insight — monthly deep dive on 1st (Feature 12)
     if (today.getDate() === 1) {
       try { sendHealthPerformanceInsightMonthly_(); } catch (hiErr) { Logger.log('sendHealthPerformanceInsightMonthly_ error (non-fatal): ' + hiErr.message); stepFailures.push('health_insight_monthly: ' + hiErr.message); }
     }
@@ -824,46 +862,20 @@ function nightlyRun() {
     // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
     try { checkCrossPatternFlags_(); } catch (prErr) { Logger.log('checkCrossPatternFlags_ error (non-fatal): ' + prErr.message); stepFailures.push('checkCrossPatternFlags_: ' + prErr.message); }
 
-    // Step 1: Collect
-    const events    = getUpcomingEvents();
-    const tasks     = getOpenTasks();
-    const summaries = getSummaries();
-    const ledger    = getSharedInterestLedger_();
-
-    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length);
-
-    // Step 1b: Suggest due dates for undated tasks (writes back to sheet)
-    suggestDueDates(tasks);
-
-    // Step 2: Skip Claude if there is no meaningful data to reason about.
-    // Only bypasses when ALL THREE are simultaneously empty (rare: quiet weekends,
-    // cleared task list during travel, etc.). Any one non-empty source proceeds normally.
-    if (events.length === 0 && tasks.length === 0 && summaries.length === 0) {
-      Logger.log('nightlyRun: no events, tasks, or summaries tonight — skipping Claude call.');
-      Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
-      var elapsedEmpty = Math.round((Date.now() - runStart) / 1000);
-      try { sendSlackLog_('\u2705 Nightly run \u2014 0 flags (no data) in ' + elapsedEmpty + 's'); } catch (e) {}
-      return;
+    // Step 1b: Suggest due dates for undated tasks — budget-guarded (Claude API, 1024 tokens)
+    if (Date.now() < DEADLINE) {
+      try { suggestDueDates(tasks); } catch (sdErr) { Logger.log('suggestDueDates error (non-fatal): ' + sdErr.message); stepFailures.push('suggestDueDates: ' + sdErr.message); }
+    } else {
+      Logger.log('suggestDueDates: skipped — time budget exceeded');
+      stepFailures.push('suggestDueDates: skipped (time budget)');
     }
 
-    // Step 2 & 3: Package + Reason (Claude) — pass suppressed patterns for noise filtering
-    const flags = generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPatterns);
-
-    // Step 4: Write
-    var writtenCount = 0;
-    if (flags && flags.length > 0) {
-      writtenCount = writeFlags(flags);
-      Logger.log('Wrote ' + writtenCount + ' new flags to sheet (' + (flags.length - writtenCount) + ' deduplicated).');
-
-      // Step 4b: Signal Learning — record generated flag keys as "seen"
-      try {
-        var flagKeys = flags.map(function(f) { return f.key || ''; }).filter(function(k) { return k; });
-        if (flagKeys.length > 0) recordFlagsGenerated_(flagKeys);
-      } catch (slErr) {
-        Logger.log('recordFlagsGenerated_ error (non-fatal): ' + slErr.message);
-      }
+    // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
+    if (Date.now() < DEADLINE) {
+      try { runExplorer_(); } catch (expErr) { Logger.log('runExplorer_ error (non-fatal): ' + expErr.message); stepFailures.push('runExplorer_: ' + expErr.message); }
     } else {
-      Logger.log('No flags generated tonight — nothing to write.');
+      Logger.log('runExplorer_: skipped — time budget exceeded');
+      stepFailures.push('runExplorer_: skipped (time budget)');
     }
 
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
