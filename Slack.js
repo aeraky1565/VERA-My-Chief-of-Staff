@@ -28,12 +28,19 @@ function isSlackConfigured_() {
 }
 
 function getSlackChannelId_(name) {
+  // NOTIF_REGISTRY defaults and every Config notif_*_channel override use the
+  // full 'vera-chat' / 'vera-notifications' / 'vera-logs' form, but the map
+  // below is keyed by the short suffix. Strip the prefix before matching so
+  // both forms resolve — a caller passing 'vera-chat' used to miss the map
+  // entirely and silently fall through to a nonexistent 'vera-chat' Script
+  // Property, no-op'ing every send.
+  var short = String(name || '').replace(/^vera-/, '');
   var map = {
     chat:          'SLACK_CHAT_CHANNEL_ID',
     notifications: 'SLACK_NOTIFICATIONS_CHANNEL_ID',
     logs:          'SLACK_LOGS_CHANNEL_ID',
   };
-  return PropertiesService.getScriptProperties().getProperty(map[name] || name) || '';
+  return PropertiesService.getScriptProperties().getProperty(map[short] || name) || '';
 }
 
 function getSlackAllowedUserIds_() {
@@ -186,10 +193,17 @@ function sendSlackLog_(text) {
  * Sends to a Slack channel by *name* (e.g. 'vera-notifications') rather than
  * channel ID. Thin wrapper around sendSlackMessage_ + getSlackChannelId_.
  * Used by morningNudge, MonthlyReview, TravelDayBriefing, Reminders, Memory.
+ *
+ * @returns {boolean} true only if a channel ID resolved AND Slack accepted the
+ *   message. Callers should check this — silently discarding it is how the
+ *   getSlackChannelId_ prefix bug went unnoticed for three weeks (sendNudge_
+ *   logged "sent" to #vera-logs regardless of the actual outcome).
  */
 function sendSlack_(channelName, text, blocks) {
   var channelId = getSlackChannelId_(channelName);
-  if (channelId) sendSlackMessage_(channelId, text, blocks);
+  if (!channelId) return false;
+  var result = sendSlackMessage_(channelId, text, blocks);
+  return !!(result && result.ok);
 }
 
 // ─── BLOCK KIT BUILDERS ──────────────────────────────────────────────────────

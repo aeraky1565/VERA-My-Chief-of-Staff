@@ -833,18 +833,25 @@ function sendNudge_(ruleKey, subject, message, notifKey) {
     return;
   }
   var ch = notifKey ? getNotifChannel_(notifKey) : (isSlackConfigured_() ? 'vera-notifications' : 'email');
-  var channel;
+  var channel, delivered;
   if (ch === 'email') {
     MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: ' + subject, message, { name: 'VERA' });
     Logger.log('sendNudge_ [Email]: ' + ruleKey);
     channel = 'email';
+    delivered = true;   // MailApp.sendEmail throws on failure rather than failing silently
   } else {
-    sendSlack_(ch, message);
-    Logger.log('sendNudge_ [Slack/' + ch + ']: ' + ruleKey);
+    delivered = sendSlack_(ch, message);
+    Logger.log('sendNudge_ [Slack/' + ch + ']: ' + ruleKey + (delivered ? '' : ' \u2014 FAILED'));
     channel = ch;
   }
   markSent_(ruleKey, message);
-  try { sendSlackLog_('\u23f0 Reminder sent \u2014 ' + subject + ' [' + channel + ']'); } catch (e) {}
+  try {
+    // Issue: this used to log "sent" unconditionally, which is exactly how the
+    // getSlackChannelId_ prefix bug went unnoticed for three weeks straight.
+    sendSlackLog_(delivered
+      ? '\u23f0 Reminder sent \u2014 ' + subject + ' [' + channel + ']'
+      : '\u26a0\ufe0f Reminder FAILED to send \u2014 ' + subject + ' [' + channel + '] \u2014 channel did not resolve or Slack rejected it');
+  } catch (e) {}
 }
 
 // ============================================================
