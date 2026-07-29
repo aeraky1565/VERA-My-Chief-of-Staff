@@ -1640,7 +1640,7 @@ function getDaySequencingAnalysis_(todayEvents, freeWindows, weekLoad, weatherSu
     '"weekNote":"string or null",' +
     '"taskSuggestions":[{"task":"task name","window":"10:30–11:00 AM"}] or null}';
 
-  var response = UrlFetchApp.fetch(CLAUDE_API_URL, {
+  var response = fetchTracked_('anthropic', CLAUDE_API_URL, {
     method:      'post',
     contentType: 'application/json',
     headers: {
@@ -2218,6 +2218,32 @@ function morningNudge() {
     // ---- Weather ticker (graceful — empty string if not configured) -----
     const weatherTicker = getWeatherTicker_();
 
+    // ---- Data freshness notice (Issue #138) -----------------------------
+    // Names any source that failed to refresh, so nothing in this email is
+    // read as current when it is not.
+    let stalenessNotice     = '';
+    let stalenessPlainText  = '';
+    try {
+      const degradedList = getDegradedSources_();
+      if (degradedList.length > 0) {
+        const items = degradedList.map(function(d) {
+          return '<li style="margin:0 0 3px;">' + d.source +
+                 ' <span style="color:#999999;">(last good data: ' + d.staleForText + ')</span></li>';
+        }).join('');
+        stalenessNotice =
+          '<div style="margin-top:24px;padding:12px 14px;background:#fff8e6;border-left:3px solid #e8b44a;border-radius:4px;">' +
+          '<p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#8a6d1f;letter-spacing:0.5px;text-transform:uppercase;">⚠️ Some data is not live</p>' +
+          '<ul style="margin:0;padding-left:18px;font-size:13px;color:#6b5514;">' + items + '</ul>' +
+          '</div>';
+        stalenessPlainText = '\nNOT LIVE — these sources failed to refresh:\n' +
+          degradedList.map(function(d) {
+            return '  - ' + d.source + ' (last good data: ' + d.staleForText + ')';
+          }).join('\n') + '\n';
+      }
+    } catch (staleErr) {
+      Logger.log('morningNudge: staleness notice error — ' + staleErr.message);
+    }
+
     // ---- Today's calendar events ----------------------------------------
     let todayEvents = [];
     try {
@@ -2374,6 +2400,7 @@ function morningNudge() {
       calendarSection +
       taskBadges +
       intelligenceSection +
+      stalenessNotice +
       '</td></tr>' +
 
       // Footer
@@ -2414,6 +2441,7 @@ function morningNudge() {
       lowCount  > 0 ? '  Low priority:    ' + lowCount  : '',
       calPlainText,
       taskPlainText,
+      stalenessPlainText,
       '',
       'Open VERA: ' + veraLink,
       dashboardPlainText,

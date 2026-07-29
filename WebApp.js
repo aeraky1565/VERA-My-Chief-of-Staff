@@ -2062,7 +2062,7 @@ function webGetRecentTransactions_() {
 function resolveIataToCity_(iata) {
   var url = 'https://airportgap.com/api/airports/' + encodeURIComponent(iata);
   try {
-    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var response = fetchTracked_('airportgap', url, { muteHttpExceptions: true });
     if (response.getResponseCode() !== 200) return null;
     var data = JSON.parse(response.getContentText());
     if (data && data.data && data.data.attributes && data.data.attributes.city) {
@@ -2087,7 +2087,7 @@ function resolveIataCountry_(iata, cache) {
   var key = iata.toUpperCase();
   if (cache && cache[key] !== undefined) return cache[key];
   try {
-    var resp = UrlFetchApp.fetch('https://airportgap.com/api/airports/' + encodeURIComponent(key),
+    var resp = fetchTracked_('airportgap', 'https://airportgap.com/api/airports/' + encodeURIComponent(key),
                                  { muteHttpExceptions: true });
     if (resp.getResponseCode() !== 200) { if (cache) cache[key] = null; return null; }
     var attrs = JSON.parse(resp.getContentText()).data.attributes;
@@ -4033,7 +4033,7 @@ function geocodePackingDestination_(destination) {
   try {
     const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
                 encodeURIComponent(destination) + '&count=1&language=en&format=json';
-    const resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const resp = fetchTracked_('open-meteo', url, { muteHttpExceptions: true });
     const data = JSON.parse(resp.getContentText());
     if (!data.results || data.results.length === 0) return null;
     const r = data.results[0];
@@ -4093,7 +4093,11 @@ function getPackingWeather_(destination, startDate, endDate) {
         '&temperature_unit=fahrenheit';
     }
 
-    const wResp = UrlFetchApp.fetch(weatherUrl, { muteHttpExceptions: true });
+    // Issue #138: this previously parsed the body without checking the status
+    // code, so an error page would throw inside JSON.parse. fetchWithHealth_
+    // returns null on any non-200 and records the reason.
+    const wResp = fetchWithHealth_('open-meteo', weatherUrl);
+    if (!wResp) return '';
     const wData = JSON.parse(wResp.getContentText());
     if (!wData.daily) return '';
 
@@ -4390,7 +4394,7 @@ function webGeneratePacking_(e) {
     payload:            JSON.stringify(requestBody),
     muteHttpExceptions: true,
   };
-  const response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+  const response = fetchTracked_('anthropic', CLAUDE_API_URL, fetchOptions);
   const json     = JSON.parse(response.getContentText());
   if (!json.content || !json.content[0]) throw new Error('Claude API returned unexpected response');
   const rawText = json.content[0].text || '';
@@ -4835,7 +4839,7 @@ function webGenerateRecommendations_(e) {
     };
     if (tools.length) requestBody.tools = tools;
 
-    const response     = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    const response     = fetchTracked_('anthropic', CLAUDE_API_URL, {
       method:  'post',
       headers: {
         'Content-Type':      'application/json',
@@ -5298,6 +5302,30 @@ function webGetFlightStatuses_(e) {
   if (!tripKey) return { ok: false, error: 'Missing tripKey' };
   var sheet    = getSpreadsheet().getSheetByName(TABS.ITINERARY);
   var statuses = {};
+  var tz       = Session.getScriptTimeZone();
+  var now      = Date.now();
+
+  /**
+   * Issue #138: attaches freshness so the client can render "Not live" rather
+   * than a confident value. The staleness threshold tracks the polling cadence
+   * the flight should be on, so a flight 30 minutes out goes stale far sooner
+   * than one two days away.
+   */
+  function withFreshness(statusObj, depMs) {
+    var minsUntilDep = isNaN(depMs) ? 9999 : (depMs - now) / 60000;
+    var staleAfter   = flightStaleAfterMin_(minsUntilDep);
+    var fresh        = freshnessOf_(statusObj.lastChecked, staleAfter);
+    return Object.assign({}, statusObj, {
+      freshness:     fresh.state,      // 'live' | 'aging' | 'stale'
+      freshnessLabel: fresh.label,     // 'Live' | 'Aging' | 'Not live'
+      ageMinutes:    fresh.ageMin,
+      ageText:       fresh.ageText,
+      staleAfterMin: staleAfter,
+      lastCheckedIso: statusObj.lastChecked
+        ? Utilities.formatDate(new Date(statusObj.lastChecked), tz, "yyyy-MM-dd'T'HH:mm:ssXXX")
+        : null,
+    });
+  }
 
   // Phase 1: Itinerary sheet rows (manually added or CSV-imported flights)
   if (sheet) {
@@ -5308,7 +5336,21 @@ function webGetFlightStatuses_(e) {
       var id   = String(rows[i][0] || '');                         // col A = ID
       var meta = {};
       try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch(e_) {}
-      if (meta.flight_status) statuses[id] = meta.flight_status;
+      if (!meta.flight_status) continue;
+
+      var rDateRaw = rows[i][4];
+      var rDate    = (rDateRaw instanceof Date)
+        ? Utilities.formatDate(rDateRaw, tz, 'yyyy-MM-dd')
+        : String(rDateRaw || '').trim();
+      var rTimeRaw = rows[i][5];
+      var rTime    = (rTimeRaw instanceof Date)
+        ? Utilities.formatDate(rTimeRaw, tz, 'HH:mm')
+        : String(rTimeRaw || '').trim();
+
+      statuses[id] = withFreshness(
+        meta.flight_status,
+        new Date(rDate + 'T' + (rTime || '00:00') + ':00').getTime()
+      );
     }
   }
 
@@ -5319,11 +5361,30 @@ function webGetFlightStatuses_(e) {
   for (var calId in calCache) {
     var entry = calCache[calId];
     if (entry && entry.tripKey === tripKey && entry.status) {
-      statuses[calId] = entry.status;
+      var cTime = entry.time || entry.status.dep_scheduled || '00:00';
+      statuses[calId] = withFreshness(
+        entry.status,
+        entry.date ? new Date(entry.date + 'T' + cTime + ':00').getTime() : NaN
+      );
     }
   }
 
-  return { ok: true, statuses: statuses };
+  // Source-level health, so the client can show one banner rather than
+  // decorating every row when the provider itself is down.
+  var health = getApiHealth_('aviationstack');
+
+  return {
+    ok:       true,
+    statuses: statuses,
+    sourceHealth: {
+      aviationstack: {
+        healthy:             health.healthy,
+        consecutiveFailures: health.consecutiveFailures,
+        lastError:           health.lastError,
+        lastSuccessAgo:      health.lastSuccess ? formatAge_(now - health.lastSuccess) : null,
+      },
+    },
+  };
 }
 
 /**
@@ -7703,7 +7764,7 @@ function webGetVisaRequirements_(params) {
   var csv      = cache.get(cacheKey);
   if (!csv) {
     try {
-      var resp = UrlFetchApp.fetch(
+      var resp = fetchTracked_('passport-index',
         'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
         { muteHttpExceptions: true }
       );
@@ -8673,7 +8734,7 @@ function webExtractCoupon_(body) {
     }]
   };
 
-  var resp = UrlFetchApp.fetch(CLAUDE_API_URL, {
+  var resp = fetchTracked_('anthropic', CLAUDE_API_URL, {
     method: 'post',
     contentType: 'application/json',
     muteHttpExceptions: true,

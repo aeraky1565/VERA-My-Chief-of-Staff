@@ -461,12 +461,41 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
     ideasSection = '(unavailable)';
   }
 
+  // ---- Data freshness caveat (Issue #138) ---------------------------------
+  // When an external source is failing, its numbers below are either stale or
+  // marked "(unavailable)". Claude must not read a missing value as a signal
+  // (e.g. "spending dropped to zero") or trust a stale one as current.
+  let dataCaveatSection = '';
+  try {
+    const degraded = getDegradedSources_();
+    if (degraded.length > 0) {
+      dataCaveatSection =
+        '⚠️ DATA FRESHNESS CAVEAT — READ FIRST:\n' +
+        'The following data sources failed to refresh, so any values from them below are ' +
+        'stale, incomplete, or shown as "(unavailable)":\n' +
+        degraded.map(function(d) {
+          return '  - ' + d.source + ' (last good data: ' + d.staleForText +
+                 (d.error ? '; reason: ' + String(d.error).substring(0, 100) : '') + ')';
+        }).join('\n') + '\n' +
+        'Rules for these sources:\n' +
+        '- Do NOT treat a missing or "(unavailable)" value as a real change. An absent ' +
+        'number means the fetch failed, not that the underlying figure moved.\n' +
+        '- Do NOT generate flags whose reasoning depends on a value from a degraded source.\n' +
+        '- If something genuinely important cannot be assessed because of this, you may raise ' +
+        'ONE Low-urgency "General" flag noting the data gap itself.\n\n';
+    }
+  } catch (caveatErr) {
+    Logger.log('buildPrompt: could not build data caveat — ' + caveatErr.message);
+  }
+
   // ---- Assemble the Full Prompt -------------------------------------------
   const prompt =
     'You are VERA — Virtual Executive & Reminder Assistant. ' +
     'You are the personal chief of staff for Ahmed and Victoria, a 2-person household.\n\n' +
 
     'Today is ' + today + '.\n\n' +
+
+    dataCaveatSection +
 
     'Your role is to think ahead and surface what matters, not just report what exists. ' +
     'As you analyze the data below, ask yourself:\n' +
@@ -707,7 +736,7 @@ function generateFlags(events, tasks, summaries, ptoStats, ledger, suppressedPat
 
   Logger.log('Calling Claude API (' + CLAUDE_MODEL + ')...');
 
-  const response     = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+  const response     = fetchTracked_('anthropic', CLAUDE_API_URL, fetchOptions);
   const responseCode = response.getResponseCode();
   const responseText = response.getContentText();
 

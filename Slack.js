@@ -79,10 +79,21 @@ function sendSlackMessage_(channelId, text, blocks, threadTs) {
       muteHttpExceptions: true,
     });
     var result = JSON.parse(resp.getContentText());
-    if (!result.ok) Logger.log('Slack sendMessage error: ' + result.error + ' | channel: ' + channelId);
+    // Issue #138: Slack answers HTTP 200 even when the API call itself failed,
+    // so health has to key off result.ok rather than the status code.
+    // recordApiHealth_ suppresses Slack delivery for the 'slack' source itself
+    // (API_HEALTH_NO_SLACK_) — otherwise an outage would try to report through
+    // the very channel that is down.
+    if (!result.ok) {
+      Logger.log('Slack sendMessage error: ' + result.error + ' | channel: ' + channelId);
+      recordApiHealth_('slack', false, String(result.error || 'unknown'), resp.getResponseCode());
+    } else {
+      recordApiHealth_('slack', true, '', resp.getResponseCode());
+    }
     return result;
   } catch (err) {
     Logger.log('Slack sendMessage exception: ' + err.message);
+    recordApiHealth_('slack', false, err.message, 0);
     return { ok: false, error: err.message };
   }
 }

@@ -1123,11 +1123,8 @@ function getWeekendWeather_(homeCity) {
               'lat=' + coords.lat + '&lon=' + coords.lon +
               '&appid=' + encodeURIComponent(apiKey) +
               '&units=imperial&cnt=40';
-    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (resp.getResponseCode() !== 200) {
-      Logger.log('getWeekendWeather_ HTTP ' + resp.getResponseCode());
-      return null;
-    }
+    var resp = fetchWithHealth_('openweathermap', url);
+    if (!resp) return null;   // failure already recorded by the wrapper
     var data = JSON.parse(resp.getContentText());
     if (!data || !data.list || data.list.length === 0) return null;
 

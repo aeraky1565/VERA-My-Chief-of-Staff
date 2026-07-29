@@ -67,23 +67,21 @@ function geocodeLocation_(location, apiKey) {
     var url = 'https://api.openweathermap.org/geo/1.0/direct?q=' +
               encodeURIComponent(candidates[i]) +
               '&limit=1&appid=' + encodeURIComponent(apiKey);
+    var response = fetchWithHealth_('openweathermap', url);
+    if (!response) continue;   // failure already recorded by the wrapper
     try {
-      var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-      if (response.getResponseCode() !== 200) {
-        Logger.log('Geocoding HTTP ' + response.getResponseCode() + ' for "' + candidates[i] + '": ' +
-                   response.getContentText().substring(0, 200));
-        continue;
-      }
       var results = JSON.parse(response.getContentText());
       if (results && results.length > 0) {
         return { lat: results[0].lat, lon: results[0].lon };
       }
     } catch (e) {
-      Logger.log('geocodeLocation_ error for "' + candidates[i] + '": ' + e.message);
+      Logger.log('geocodeLocation_ parse error for "' + candidates[i] + '": ' + e.message);
+      recordApiHealth_('openweathermap', false, 'geocode parse error: ' + e.message, 200);
     }
   }
 
   Logger.log('Geocoding: no results for "' + location + '" (tried: ' + candidates.join(', ') + ')');
+  recordApiHealth_('openweathermap', false, 'no geocoding results for "' + location + '"', 200);
   return null;
 }
 
@@ -99,16 +97,13 @@ function fetchWeatherForecast_(location, apiKey) {
             'lat=' + coords.lat + '&lon=' + coords.lon +
             '&appid=' + encodeURIComponent(apiKey) +
             '&units=imperial&cnt=8';
+  var response = fetchWithHealth_('openweathermap', url);
+  if (!response) return null;
   try {
-    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) {
-      Logger.log('Weather forecast HTTP ' + response.getResponseCode() + ': ' +
-                 response.getContentText().substring(0, 200));
-      return null;
-    }
     return JSON.parse(response.getContentText());
   } catch (e) {
-    Logger.log('fetchWeatherForecast_ error: ' + e.message);
+    Logger.log('fetchWeatherForecast_ parse error: ' + e.message);
+    recordApiHealth_('openweathermap', false, 'forecast parse error: ' + e.message, 200);
     return null;
   }
 }
@@ -135,15 +130,19 @@ function findForecastSlot_(list, targetHour, tzOffsetSec) {
 function fetchAQI_(lat, lon, apiKey) {
   var url = 'https://api.openweathermap.org/data/2.5/air_pollution?lat=' +
             lat + '&lon=' + lon + '&appid=' + encodeURIComponent(apiKey);
+  var response = fetchWithHealth_('openweathermap-aqi', url);
+  if (!response) return null;
   try {
-    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) return null;
     var data = JSON.parse(response.getContentText());
     var idx  = (data.list && data.list[0]) ? data.list[0].main.aqi : null;
-    if (!idx) return null;
+    if (!idx) {
+      recordApiHealth_('openweathermap-aqi', false, 'response contained no AQI index', 200);
+      return null;
+    }
     return { index: idx, label: AQI_LABELS[idx] || 'Unknown', color: AQI_COLORS[idx] || '#888888' };
   } catch (e) {
     Logger.log('fetchAQI_ error: ' + e.message);
+    recordApiHealth_('openweathermap-aqi', false, 'AQI parse error: ' + e.message, 200);
     return null;
   }
 }
@@ -156,15 +155,19 @@ function fetchUVIndex_(lat, lon) {
   var url = 'https://api.open-meteo.com/v1/forecast' +
             '?latitude=' + lat + '&longitude=' + lon +
             '&hourly=uv_index&forecast_days=1&timezone=auto';
+  var response = fetchWithHealth_('open-meteo', url);
+  if (!response) return null;
   try {
-    var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-    if (response.getResponseCode() !== 200) return null;
     var data = JSON.parse(response.getContentText());
-    if (!data.hourly || !data.hourly.uv_index) return null;
+    if (!data.hourly || !data.hourly.uv_index) {
+      recordApiHealth_('open-meteo', false, 'response contained no uv_index series', 200);
+      return null;
+    }
     var hour = parseInt(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'H'), 10);
     return Math.round(data.hourly.uv_index[hour] || 0);
   } catch (e) {
     Logger.log('fetchUVIndex_ error: ' + e.message);
+    recordApiHealth_('open-meteo', false, 'UV parse error: ' + e.message, 200);
     return null;
   }
 }
@@ -176,8 +179,9 @@ function fetchUVIndex_(lat, lon) {
  * Returns '' if no meaningful data is available.
  */
 function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi) {
-  var sep   = '<span style="color:rgba(201,168,76,0.6);margin:0 10px;">|</span>';
-  var parts = [];
+  var sep     = '<span style="color:rgba(201,168,76,0.6);margin:0 10px;">|</span>';
+  var muted   = '#8a8a8a';   // Issue #138: a dash in grey reads as "no data", not as a value
+  var parts   = [];
 
   if (slot9am) {
     var e9 = weatherEmoji_(slot9am.weather[0].main);
@@ -190,15 +194,26 @@ function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi) {
     parts.push(e6 + '&nbsp;<strong style="color:#ffffff;">6PM</strong>&nbsp;' + t6 + '&deg;F');
   }
 
-  parts.push('🌧️&nbsp;Rain&nbsp;<strong style="color:#ffffff;">' + rainPct + '%</strong>');
+  // Issue #138: rainPct is null when no forecast slot was available. Previously
+  // this defaulted to 0 and rendered "Rain 0%" — a fabricated value presented
+  // as fact. Show an explicit dash instead.
+  if (rainPct === null || rainPct === undefined) {
+    parts.push('🌧️&nbsp;Rain&nbsp;<strong style="color:' + muted + ';">&mdash;</strong>');
+  } else {
+    parts.push('🌧️&nbsp;Rain&nbsp;<strong style="color:#ffffff;">' + rainPct + '%</strong>');
+  }
 
   if (aqi) {
     parts.push('🌿&nbsp;AQI&nbsp;<strong style="color:' + aqi.color + ';">' + aqi.label + '</strong>');
+  } else {
+    parts.push('🌿&nbsp;AQI&nbsp;<strong style="color:' + muted + ';">&mdash;</strong>');
   }
 
   if (uvi !== null && uvi !== undefined) {
     var uvColor = uvi <= 2 ? '#43a047' : uvi <= 5 ? '#f9a825' : uvi <= 7 ? '#e53935' : '#7b1fa2';
     parts.push('☀️&nbsp;UV&nbsp;<strong style="color:' + uvColor + ';">' + uvi + '</strong>');
+  } else {
+    parts.push('☀️&nbsp;UV&nbsp;<strong style="color:' + muted + ';">&mdash;</strong>');
   }
 
   if (parts.length === 0) return '';
@@ -208,6 +223,24 @@ function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi) {
     '<td style="background:#0d1b3e;padding:10px 24px;border-top:1px solid rgba(201,168,76,0.25);">' +
     '<p style="margin:0;text-align:center;font-size:13px;color:#cccccc;letter-spacing:0.3px;">' +
     parts.join(sep) +
+    '</p>' +
+    '</td>' +
+    '</tr>'
+  );
+}
+
+/**
+ * Issue #138: replaces the silent empty string when weather cannot be fetched.
+ * The ticker vanishing entirely was indistinguishable from "weather not
+ * configured" — this says plainly that the data is missing and why.
+ */
+function buildWeatherUnavailableHtml_(reason) {
+  return (
+    '<tr>' +
+    '<td style="background:#0d1b3e;padding:10px 24px;border-top:1px solid rgba(201,168,76,0.25);">' +
+    '<p style="margin:0;text-align:center;font-size:13px;color:#8a8a8a;letter-spacing:0.3px;">' +
+    '⚠️&nbsp;Weather <strong style="color:#e8b44a;">not live</strong>' +
+    (reason ? '&nbsp;&mdash;&nbsp;' + reason : '') +
     '</p>' +
     '</td>' +
     '</tr>'
@@ -226,10 +259,19 @@ function getWeatherTicker_() {
     var cfg      = getConfigValues();
     var location = (cfg['weather_location'] || '').trim();
     var apiKey   = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
+
+    // Genuinely not configured — stay silent. This is the one case where an
+    // empty ticker is correct, because there is nothing the user expects to see.
     if (!location || !apiKey) return '';
 
     var forecast = fetchWeatherForecast_(location, apiKey);
-    if (!forecast) return '';
+    if (!forecast) {
+      // Issue #138: configured but failing. Say so instead of vanishing.
+      var health = getApiHealth_('openweathermap');
+      return buildWeatherUnavailableHtml_(
+        health.lastError ? health.lastError.substring(0, 80) : 'forecast fetch failed'
+      );
+    }
 
     var lat      = forecast.city.coord.lat;
     var lon      = forecast.city.coord.lon;
@@ -237,7 +279,12 @@ function getWeatherTicker_() {
 
     var slot9am = findForecastSlot_(forecast.list, 9,  tzOffset);
     var slot6pm = findForecastSlot_(forecast.list, 18, tzOffset);
-    var rainPct = Math.round(((slot9am && slot9am.pop) ? slot9am.pop : 0) * 100);
+
+    // null (not 0) when there is no slot to read a probability from — buildTickerHtml_
+    // renders that as a dash rather than inventing "Rain 0%".
+    var rainPct = (slot9am && slot9am.pop !== undefined && slot9am.pop !== null)
+      ? Math.round(slot9am.pop * 100)
+      : null;
 
     var aqi = fetchAQI_(lat, lon, apiKey);
     var uvi = fetchUVIndex_(lat, lon);
@@ -245,7 +292,8 @@ function getWeatherTicker_() {
     return buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi);
   } catch (e) {
     Logger.log('getWeatherTicker_ error: ' + e.message);
-    return '';
+    recordApiHealth_('openweathermap', false, 'ticker build error: ' + e.message, 0);
+    return buildWeatherUnavailableHtml_('weather lookup errored');
   }
 }
 

@@ -188,7 +188,7 @@ function suggestDueDates(tasks) {
     muteHttpExceptions: true,
   };
 
-  const response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+  const response = fetchTracked_('anthropic', CLAUDE_API_URL, fetchOptions);
   if (response.getResponseCode() !== 200) {
     Logger.log('suggestDueDates: Claude API error ' + response.getResponseCode() + ' — ' + response.getContentText().substring(0, 200));
     return 0;

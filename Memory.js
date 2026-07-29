@@ -402,7 +402,7 @@ function sendWeeklyTrendReview_() {
         'Write exactly 3 sentences for Ahmed\'s weekly trend digest: ' +
         '(1) What improved this week? (2) What regressed or needs attention? (3) One concrete suggestion for next week. ' +
         'Be specific, data-driven, and direct. No filler. No headers.';
-      var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      var resp = fetchTracked_('anthropic', 'https://api.anthropic.com/v1/messages', {
         method:  'post',
         headers: {
           'x-api-key':         PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY') || '',

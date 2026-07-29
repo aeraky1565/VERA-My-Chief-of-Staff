@@ -345,7 +345,7 @@ function classifyEmailsWithClaude_(candidates, tone) {
       muteHttpExceptions: true
     };
 
-    var response     = UrlFetchApp.fetch(CLAUDE_API_URL, options);
+    var response     = fetchTracked_('anthropic', CLAUDE_API_URL, options);
     var responseCode = response.getResponseCode();
     var responseText = response.getContentText();
 

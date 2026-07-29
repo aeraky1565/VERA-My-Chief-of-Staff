@@ -73,7 +73,7 @@ function doWebSearch_(rawQuery) {
 
   try {
     if (engine === 'tavily') {
-      var tvResp = UrlFetchApp.fetch('https://api.tavily.com/search', {
+      var tvResp = fetchTracked_('tavily', 'https://api.tavily.com/search', {
         method: 'post',
         headers: { 'Content-Type': 'application/json' },
         payload: JSON.stringify({ api_key: apiKey, query: q, max_results: 3 }),
@@ -85,7 +85,7 @@ function doWebSearch_(rawQuery) {
       });
     }
     // Default: Serper.dev
-    var srResp = UrlFetchApp.fetch('https://google.serper.dev/search', {
+    var srResp = fetchTracked_('serper', 'https://google.serper.dev/search', {
       method: 'post',
       headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' },
       payload: JSON.stringify({ q: q, num: 3 }),
@@ -130,7 +130,7 @@ function callClaudeWithWebSearch_(systemPrompt, userPrompt, maxTokens) {
     if (systemPrompt)  requestBody.system = systemPrompt;
     if (tools.length)  requestBody.tools  = tools;
 
-    var response = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    var response = fetchTracked_('anthropic', CLAUDE_API_URL, {
       method:  'post',
       headers: {
         'Content-Type':      'application/json',
@@ -1433,7 +1433,7 @@ function callClaudeChat_(userMessage, history, systemPrompt, imageBase64, imageM
       muteHttpExceptions: true,
     };
 
-    var response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+    var response = fetchTracked_('anthropic', CLAUDE_API_URL, fetchOptions);
     var httpCode = response.getResponseCode();
     var bodyText = response.getContentText();
 

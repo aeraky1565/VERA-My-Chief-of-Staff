@@ -327,7 +327,7 @@ function generateMonthlyInsight_(reviewText) {
     'Reply with only the sentence, no prefix or explanation.\n\n' +
     reviewText;
 
-  var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+  var response = fetchTracked_('anthropic', 'https://api.anthropic.com/v1/messages', {
     method:      'post',
     contentType: 'application/json',
     headers: {

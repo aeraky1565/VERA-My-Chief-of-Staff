@@ -149,7 +149,7 @@ function callClaudeBatch_(candidates) {
   };
 
   try {
-    const response = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    const response = fetchTracked_('anthropic', CLAUDE_API_URL, {
       method:  'post',
       headers: {
         'Content-Type':      'application/json',
@@ -458,7 +458,7 @@ function callClaudeJson_(prompt, fallback) {
       max_tokens: 1024,
       messages:   [{ role: 'user', content: prompt }],
     };
-    const response = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    const response = fetchTracked_('anthropic', CLAUDE_API_URL, {
       method:  'post',
       headers: {
         'Content-Type':      'application/json',

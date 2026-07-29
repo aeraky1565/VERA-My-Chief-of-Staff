@@ -33,7 +33,7 @@ function scanHoaWebsite_() {
     }
 
     // Fetch page content
-    var response = UrlFetchApp.fetch(hoaUrl, { muteHttpExceptions: true });
+    var response = fetchTracked_('hoa-website', hoaUrl, { muteHttpExceptions: true });
     var html     = response.getContentText();
 
     // Strip scripts, styles, and all tags → plain text, truncate for Claude
@@ -63,7 +63,7 @@ function scanHoaWebsite_() {
       messages:   [{ role: 'user', content: claudePrompt }]
     };
 
-    var claudeResp = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    var claudeResp = fetchTracked_('anthropic', CLAUDE_API_URL, {
       method:          'post',
       contentType:     'application/json',
       muteHttpExceptions: true,
@@ -175,7 +175,7 @@ function webExtractFlyer_(body) {
     }]
   };
 
-  var resp   = UrlFetchApp.fetch(CLAUDE_API_URL, {
+  var resp   = fetchTracked_('anthropic', CLAUDE_API_URL, {
     method:          'post',
     contentType:     'application/json',
     muteHttpExceptions: true,

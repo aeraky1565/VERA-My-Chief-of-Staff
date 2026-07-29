@@ -763,7 +763,7 @@ function callClaudeExplorer_(prompt) {
     muteHttpExceptions: true,
   };
 
-  var response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+  var response = fetchTracked_('anthropic', CLAUDE_API_URL, fetchOptions);
   if (response.getResponseCode() !== 200) {
     Logger.log('callClaudeExplorer_ HTTP ' + response.getResponseCode() + ': ' +
                response.getContentText().substring(0, 200));

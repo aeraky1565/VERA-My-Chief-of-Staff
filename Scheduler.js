@@ -94,7 +94,7 @@ function extractEventsFromImage_(base64, mimeType) {
   };
 
   try {
-    var response = UrlFetchApp.fetch(CLAUDE_API_URL, fetchOptions);
+    var response = fetchTracked_('anthropic', CLAUDE_API_URL, fetchOptions);
     if (response.getResponseCode() !== 200) {
       Logger.log('Scheduler: Claude vision error (' + response.getResponseCode() + '): ' +
                  response.getContentText().substring(0, 300));

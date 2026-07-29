@@ -307,21 +307,29 @@ function buildExternalSheetRows_() {
       const cellRef    = parts[2].trim();
       const metricName = parts[3].trim();
 
+      // Issue #138: a metric that silently disappears is worse than one marked
+      // unavailable — generateFlags() cannot tell the difference between "this
+      // number is fine" and "this number never loaded". Emit the row either way.
       try {
         const extSS    = SpreadsheetApp.openById(sheetId);
         const extSheet = extSS.getSheetByName(tabName);
 
         if (!extSheet) {
-          Logger.log('Summaries: tab "' + tabName + '" not found in sheet ' + sheetId + ' — skipping.');
+          Logger.log('Summaries: tab "' + tabName + '" not found in sheet ' + sheetId + ' — marking unavailable.');
+          recordApiHealth_('sheet:' + sourceName, false, 'tab "' + tabName + '" not found', 0);
+          rows.push(row_(AUTO_PREFIX + ' ' + sourceName, metricName, '(unavailable)', today));
           return;
         }
 
         const value = extSheet.getRange(cellRef).getValue();
         rows.push(row_(AUTO_PREFIX + ' ' + sourceName, metricName, value, today));
+        recordApiHealth_('sheet:' + sourceName, true, '', 200);
         Logger.log('Summaries: read [' + sourceName + '] ' + metricName + ' = ' + value);
 
       } catch (extErr) {
         Logger.log('Summaries: failed to read "' + sourceName + '" — ' + extErr.message);
+        recordApiHealth_('sheet:' + sourceName, false, extErr.message, 0);
+        rows.push(row_(AUTO_PREFIX + ' ' + sourceName, metricName, '(unavailable)', today));
       }
     });
 

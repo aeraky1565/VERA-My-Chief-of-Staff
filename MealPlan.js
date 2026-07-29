@@ -256,7 +256,7 @@ function suggestWeekMeals_(weekStart) {
     '[{"day":"Mon","meal":"Pasta Carbonara","type":"Home Cooked"},{"day":"Tue",...}]';
 
   var apiKey  = getApiKey();
-  var response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+  var response = fetchTracked_('anthropic', 'https://api.anthropic.com/v1/messages', {
     method:      'post',
     contentType: 'application/json',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },

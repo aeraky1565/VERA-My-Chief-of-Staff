@@ -88,16 +88,24 @@ function fetchGoogleFitSleep_() {
     );
   } catch (e) {
     Logger.log('fetchGoogleFitSleep_: fetch error — ' + e.message);
+    recordApiHealth_('googlefit', false, e.message, 0);
     return null;
   }
 
   if (response.getResponseCode() !== 200) {
     Logger.log('fetchGoogleFitSleep_: non-200 response — ' + response.getContentText().substring(0, 200));
+    recordApiHealth_('googlefit', false,
+      String(response.getContentText() || '').substring(0, 200), response.getResponseCode());
     return null;
   }
 
   var body;
-  try { body = JSON.parse(response.getContentText()); } catch (e) { return null; }
+  try {
+    body = JSON.parse(response.getContentText());
+  } catch (e) {
+    recordApiHealth_('googlefit', false, 'parse error: ' + e.message, 200);
+    return null;
+  }
 
   // Sum sleep segment durations (all segment types count)
   var totalMs = 0;
@@ -113,6 +121,11 @@ function fetchGoogleFitSleep_() {
       });
     });
   });
+
+  // The API answered, so the source is healthy either way. An empty result
+  // usually means the watch was not worn — that is real data, not an outage,
+  // and must not mark Google Fit as degraded.
+  recordApiHealth_('googlefit', true, '', 200);
 
   if (totalMs === 0) {
     Logger.log('fetchGoogleFitSleep_: no sleep data returned for yesterday');
@@ -315,7 +328,7 @@ function sendHealthPerformanceInsightMonthly_() {
         'gym frequency and habits, low-wellness weeks vs. performance dips). Then give 1 concrete recommendation. ' +
         'Be direct and specific. No filler. No markdown headers. Keep it under 120 words.';
 
-      var resp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      var resp = fetchTracked_('anthropic', 'https://api.anthropic.com/v1/messages', {
         method:      'post',
         contentType: 'application/json',
         headers:     { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },

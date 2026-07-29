@@ -96,6 +96,7 @@ function fetchFlightStatus_(flightIata, flightDate) {
   var key = getAviationStackKey_();
   if (!key) {
     Logger.log('FlightStatus: AVIATIONSTACK_KEY not set in Script Properties');
+    recordApiHealth_('aviationstack', false, 'AVIATIONSTACK_KEY not set in Script Properties', 0);
     return null;
   }
 
@@ -110,15 +111,18 @@ function fetchFlightStatus_(flightIata, flightDate) {
     var code = resp.getResponseCode();
     if (code === 429) {
       setAviationStackBackoff_(resp.getContentText());
+      recordApiHealth_('aviationstack', false, 'rate limited / quota exhausted', 429);
       return null;
     }
     if (code !== 200) {
       Logger.log('FlightStatus: AviationStack HTTP ' + code + ' for ' + flightIata);
+      recordApiHealth_('aviationstack', false, 'HTTP error for ' + flightIata, code);
       return null;
     }
     var json = JSON.parse(resp.getContentText());
     if (!json.data || json.data.length === 0) {
       Logger.log('FlightStatus: No data returned for ' + flightIata);
+      recordApiHealth_('aviationstack', false, 'no data returned for ' + flightIata, code);
       return null;
     }
     // Pick the result whose scheduled departure date matches flightDate (YYYY-MM-DD).
@@ -140,6 +144,8 @@ function fetchFlightStatus_(flightIata, flightDate) {
       return m ? m[1] : null;
     }
 
+    recordApiHealth_('aviationstack', true, '', code);
+
     return {
       status:        d.flight_status  || 'scheduled',
       dep_scheduled: toHHMM(dep.scheduled),
@@ -155,8 +161,54 @@ function fetchFlightStatus_(flightIata, flightDate) {
     };
   } catch (err) {
     Logger.log('FlightStatus: fetch error for ' + flightIata + ' — ' + err.message);
+    recordApiHealth_('aviationstack', false, 'fetch error for ' + flightIata + ': ' + err.message, 0);
     return null;
   }
+}
+
+// ---- Polling cadence + staleness --------------------------------------------
+
+/**
+ * How often a flight should be polled, given how far out departure is.
+ * Single source of truth for both the sheet and calendar polling phases,
+ * and for the staleness thresholds derived from it.
+ *
+ * @param {number} minutesUntilDep  Minutes until scheduled departure (may be negative)
+ * @returns {number} Required poll interval in minutes
+ */
+function flightPollIntervalMin_(minutesUntilDep) {
+  if (minutesUntilDep > 360) return 180;  // 6–24h away → every 3h
+  if (minutesUntilDep > 60)  return 60;   // 1–6h away  → every 60min
+  return 15;                              // <1h away   → every 15min
+}
+
+/**
+ * A status is stale once it is older than twice the interval it should have
+ * been refreshed at — i.e. at least one scheduled poll was missed entirely.
+ *
+ * @param {number} minutesUntilDep  Minutes until scheduled departure
+ * @returns {number} Age in minutes past which the status is "Not live"
+ */
+function flightStaleAfterMin_(minutesUntilDep) {
+  return flightPollIntervalMin_(minutesUntilDep) * 2;
+}
+
+/**
+ * Stamps a cached flight status with the fact that its last refresh failed.
+ *
+ * Deliberately leaves lastChecked untouched so the value's age keeps growing
+ * honestly — the whole point of Issue #138 is that a status which stopped
+ * refreshing must not keep looking current.
+ *
+ * @param {Object} statusObj  Existing flight_status object (mutated in place)
+ * @returns {Object} The same object, stamped
+ */
+function stampFlightFetchFailure_(statusObj) {
+  if (!statusObj) return statusObj;
+  var health = getApiHealth_('aviationstack');
+  statusObj.fetchFailedAt = Date.now();
+  statusObj.fetchError    = health.lastError || 'refresh failed';
+  return statusObj;
 }
 
 // ---- Sheet update helper ----------------------------------------------------
@@ -188,6 +240,9 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   if (!forceRefresh && isAviationStackRateLimited_()) {
     var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
     Logger.log('FlightStatus: skipping — rate-limit backoff active until ' + new Date(until).toISOString());
+    // Issue #138: a backoff window is precisely when every status silently goes
+    // stale, so the staleness check matters more here than on the normal path.
+    checkStaleFlightStatus_();
     return { polled: 0, skipped: 0, errors: 0 };
   }
 
@@ -270,10 +325,7 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     if (!forceRefresh) hasUpcomingFlights = true;
 
     // Determine required poll interval (minutes)
-    var intervalMin;
-    if (minutesUntilDep > 360)      intervalMin = 180;  // 6–24h away → every 3h
-    else if (minutesUntilDep > 60)  intervalMin = 60;   // 1–6h away  → every 60min
-    else                             intervalMin = 15;   // <1h away   → every 15min
+    var intervalMin = flightPollIntervalMin_(minutesUntilDep);
 
     // Rate-limit check
     var lastChecked = (meta.flight_status || {}).lastChecked || 0;
@@ -282,7 +334,20 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     // Poll AviationStack
     Logger.log('FlightStatus: checking ' + flightNum + ' on ' + date + ' (row ' + (i+1) + ')');
     var statusObj = fetchFlightStatus_(flightNum, date);
-    if (!statusObj) { errors++; continue; }
+    if (!statusObj) {
+      errors++;
+      // Issue #138: the refresh failed but a previous status is still cached.
+      // Stamp it so downstream renders "Not live" instead of the stale value.
+      if (meta.flight_status) {
+        stampFlightFetchFailure_(meta.flight_status);
+        try {
+          updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta));
+        } catch (stampErr) {
+          Logger.log('FlightStatus: could not stamp stale status on row ' + (i+1) + ' — ' + stampErr.message);
+        }
+      }
+      continue;
+    }
 
     // Merge into metadata and write back
     meta.flight_status = statusObj;
@@ -302,6 +367,9 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   // skip Phase 2 entirely — no Calendar API calls, no AviationStack exposure.
   if (!forceRefresh && !hasUpcomingFlights) {
     Logger.log('FlightStatus: no upcoming flights in window — skipping Phase 2 calendar scan');
+    // Calendar-sourced flights live only in the cache, so they still need
+    // a staleness pass even when the sheet has nothing upcoming.
+    checkStaleFlightStatus_();
     return { polled: checked, skipped: skipped, errors: errors };
   }
 
@@ -386,15 +454,31 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
         // Stop polling once departure time has passed — nothing actionable after the flight has left
         if (!forceRefresh && minsUntilEv < 0) { skipped++; continue; }
 
-        var calInterval = minsUntilEv > 360 ? 180 : minsUntilEv > 60 ? 60 : 15;
+        var calInterval = flightPollIntervalMin_(minsUntilEv);
         if (!forceRefresh && (now - (cachedStatus.lastChecked || 0)) < calInterval * 60000) { skipped++; continue; }
 
         // Poll AviationStack
         Logger.log('FlightStatus: checking calendar flight ' + calFlightNum + ' on ' + evDate + ' (' + calId + ')');
         var calStatusObj = fetchFlightStatus_(calFlightNum, evDate);
-        if (!calStatusObj) { errors++; continue; }
+        if (!calStatusObj) {
+          errors++;
+          // Issue #138: stamp the cached calendar status so it stops reading as live.
+          if (cachedEntry.status) {
+            stampFlightFetchFailure_(cachedEntry.status);
+            calCache[calId] = cachedEntry;
+          }
+          continue;
+        }
 
-        calCache[calId] = { tripKey: evTripKey, flightNum: calFlightNum, status: calStatusObj };
+        // `date` is stored so checkStaleFlightStatus_() can reconstruct the
+        // departure time without re-scanning every calendar.
+        calCache[calId] = {
+          tripKey:   evTripKey,
+          flightNum: calFlightNum,
+          date:      evDate,
+          time:      evTime,
+          status:    calStatusObj,
+        };
         checked++;
         Logger.log('FlightStatus: updated calendar ' + calFlightNum + ' → ' + calStatusObj.status
           + (calStatusObj.delay_min ? ' (' + calStatusObj.delay_min + 'min delay)' : ''));
@@ -406,6 +490,11 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
 
   setCalFlightStatusCache_(calCache);
   // ---- end Phase 2 -----------------------------------------------------------
+
+  // Issue #138: alert on anything that is departing soon but no longer refreshing.
+  // Skipped on force-refresh — the user is looking at the dashboard and will see
+  // the badge, so a push notification would just be noise.
+  if (!forceRefresh) checkStaleFlightStatus_();
 
   Logger.log('FlightStatus: done. checked=' + checked + ' skipped=' + skipped + ' errors=' + errors);
   if (errors > 0) {
@@ -420,6 +509,171 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     Logger.log('checkFlightStatuses_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('checkFlightStatuses', 'Travel', 'Failed', '', Date.now() - _fsStart, err.message);
   }
+}
+
+// ---- Travel-day staleness alert (Issue #138) --------------------------------
+
+/**
+ * Actively alerts when a flight is departing soon and its status has stopped
+ * refreshing. A badge on the dashboard is easy to miss when you are already at
+ * the airport, so this pushes a Slack notification and writes a flag.
+ *
+ * Runs on the same 15-minute trigger as checkFlightStatuses_().
+ *
+ * Repeat suppression comes free from writeFlags() — it fingerprint-dedups
+ * against every flag ever written, so the key flight_status_stale_<num>_<date>
+ * can only produce one alert per flight per date.
+ *
+ * @param {number} [withinHours]  Departure horizon to alert on (default 6)
+ * @returns {Object} { checked, alerted }
+ */
+function checkStaleFlightStatus_(withinHours) {
+  var horizonH = withinHours || 6;
+  var now      = Date.now();
+  var tz       = Session.getScriptTimeZone();
+  var checked  = 0;
+  var alerted  = 0;
+
+  /**
+   * Evaluates one flight and raises an alert if its status is not live.
+   * @param {string} flightNum  e.g. 'UA1140'
+   * @param {string} date       yyyy-MM-dd
+   * @param {number} depMs      Scheduled departure epoch ms
+   * @param {Object} statusObj  Cached flight_status, may be null
+   */
+  function evaluate(flightNum, date, depMs, statusObj) {
+    if (isNaN(depMs)) return;
+    var minsUntilDep = (depMs - now) / 60000;
+
+    // Only flights still ahead of us, inside the alert horizon
+    if (minsUntilDep < 0 || minsUntilDep > horizonH * 60) return;
+
+    // Terminal states are final — a landed or cancelled flight cannot go stale
+    var s = (statusObj || {}).status;
+    if (s === 'landed' || s === 'cancelled') return;
+
+    checked++;
+
+    var staleAfter = flightStaleAfterMin_(minsUntilDep);
+    var fresh      = freshnessOf_((statusObj || {}).lastChecked, staleAfter);
+    if (fresh.state !== 'stale') return;
+
+    var depTime  = Utilities.formatDate(new Date(depMs), tz, 'h:mm a');
+    var hoursOut = Math.round(minsUntilDep / 6) / 10;   // one decimal place
+    var health   = getApiHealth_('aviationstack');
+    var why      = health.lastError || (statusObj ? 'status stopped refreshing' : 'no status ever retrieved');
+
+    var shownAs = statusObj && statusObj.status
+      ? 'Last known status was "' + statusObj.status + '"' +
+        (statusObj.delay_min ? ' (' + statusObj.delay_min + 'min delay)' : '') +
+        ', from ' + fresh.ageText + ' ago. Treat it as unconfirmed.'
+      : 'No live status has been retrieved for this flight at all.';
+
+    var flagKey  = 'flight_status_stale_' + flightNum + '_' + date;
+    var flagText = 'Flight status NOT LIVE for ' + flightNum + ' departing ' + depTime;
+    var reason   = shownAs + ' Reason: ' + why +
+                   ' Check with the airline directly before relying on this.';
+
+    // This runs every 15 minutes for as long as the flight stays stale, so both
+    // the push and the flag must be gated on the SAME fingerprint writeFlags
+    // uses. Without this the flag would dedup correctly but the Slack push would
+    // repeat for hours.
+    try {
+      var flagSheet = getSpreadsheet().getSheetByName(TABS.FLAGS);
+      if (flagSheet && getExistingFlagFingerprints_(flagSheet)
+                         .has(makeFlagFingerprint_('Travel', flagText, flagKey))) {
+        return;   // already alerted for this flight on this date
+      }
+    } catch (dedupErr) {
+      Logger.log('checkStaleFlightStatus_: dedup check failed — ' + dedupErr.message);
+    }
+
+    // Push now — a flag alone would not surface until the next morning email
+    try {
+      sendSlackNotification_(
+        '⚠️ *Flight status not live* — ' + flightNum + ' departs ' + depTime +
+        ' (' + hoursOut + 'h)\n' + shownAs + '\n_' + why + '_',
+        null,
+        'High'
+      );
+    } catch (slackErr) {
+      Logger.log('checkStaleFlightStatus_: Slack notify failed — ' + slackErr.message);
+    }
+
+    try {
+      writeFlags([{
+        source:  'Travel',
+        flag:    flagText,
+        reason:  reason,
+        urgency: 'High',
+        key:     flagKey,
+      }]);
+      alerted++;
+    } catch (flagErr) {
+      Logger.log('checkStaleFlightStatus_: writeFlags failed — ' + flagErr.message);
+    }
+  }
+
+  try {
+    // ---- Sheet-sourced flights ----
+    var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (sheet) {
+      var rows = sheet.getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        if (String(rows[i][2] || '').trim() !== 'flight') continue;
+
+        var dateRaw = rows[i][4];
+        var date    = (dateRaw instanceof Date)
+          ? Utilities.formatDate(dateRaw, tz, 'yyyy-MM-dd')
+          : String(dateRaw || '').trim();
+
+        var timeRaw   = rows[i][5];
+        var startTime = (timeRaw instanceof Date)
+          ? Utilities.formatDate(timeRaw, tz, 'HH:mm')
+          : String(timeRaw || '').trim();
+
+        if (!date) continue;
+
+        var meta = {};
+        try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch (e) { meta = {}; }
+
+        var flightNum = (meta.flightNum || '').trim();
+        if (!flightNum) {
+          var fm = String(rows[i][3] || '').match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
+          if (fm) flightNum = fm[1] + fm[2];
+        }
+        if (!flightNum) continue;
+
+        evaluate(flightNum, date,
+                 new Date(date + 'T' + (startTime || '00:00') + ':00').getTime(),
+                 meta.flight_status);
+      }
+    }
+
+    // ---- Calendar-sourced flights ----
+    var calCache = getCalFlightStatusCache_();
+    Object.keys(calCache).forEach(function(calId) {
+      var entry = calCache[calId];
+      if (!entry || !entry.status || !entry.flightNum) return;
+      var st      = entry.status;
+      var depDate = entry.date || '';
+      // Prefer the stored calendar time; fall back to the scheduled departure
+      // from the API payload for cache entries written before `date`/`time`
+      // were persisted.
+      var depTime = entry.time || st.dep_scheduled || '';
+      if (!depDate || !depTime) return;
+      evaluate(entry.flightNum, depDate,
+               new Date(depDate + 'T' + depTime + ':00').getTime(),
+               st);
+    });
+
+    Logger.log('checkStaleFlightStatus_: evaluated ' + checked + ' upcoming flight(s), ' +
+               alerted + ' alert(s) raised.');
+  } catch (e) {
+    Logger.log('checkStaleFlightStatus_ error: ' + e.message + '\n' + (e.stack || ''));
+  }
+
+  return { checked: checked, alerted: alerted };
 }
 
 // ---- Standalone debug function (run manually from Apps Script editor) -------

@@ -355,6 +355,30 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
   });
   html += sectionParts.join('<div style="height:1px;background:#f0f0f5;margin:20px 0;"></div>');
 
+  // ── Data freshness notice (Issue #138) ───────────────────────────────────
+  // This is the highest-stakes email VERA sends — anything shown here can change
+  // what the user does at the airport, so a failed refresh must be stated plainly.
+  try {
+    var degradedTravel = getDegradedSources_();
+    if (degradedTravel.length > 0) {
+      html +=
+        '<div style="margin-top:24px;padding:12px 14px;background:#fff8e6;border-left:3px solid #e8b44a;border-radius:4px;">' +
+        '<p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#8a6d1f;letter-spacing:0.5px;text-transform:uppercase;">' +
+        '⚠️ Some data is not live</p>' +
+        '<ul style="margin:0;padding-left:18px;font-size:13px;color:#6b5514;">' +
+        degradedTravel.map(function(d) {
+          return '<li style="margin:0 0 3px;">' + escapeHtml_(d.source) +
+                 ' <span style="color:#999999;">(last good data: ' + escapeHtml_(d.staleForText) + ')</span></li>';
+        }).join('') +
+        '</ul>' +
+        '<p style="margin:8px 0 0;font-size:12px;color:#6b5514;">' +
+        'Confirm anything time-critical directly with the airline or provider.</p>' +
+        '</div>';
+    }
+  } catch (staleErr) {
+    Logger.log('TravelDayBriefing: staleness notice error — ' + staleErr.message);
+  }
+
   // ── Footer ───────────────────────────────────────────────────────────────
   html +=
     '</td></tr>' +
