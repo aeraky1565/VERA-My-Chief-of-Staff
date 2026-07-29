@@ -898,6 +898,8 @@ function buildChatSystemPrompt_(context) {
     // Reference documents
     'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
     'ACTION:complete_debrief|{tripKey}  \u2014 log that a post-trip debrief conversation has been completed for {tripKey}. Emit once, at the very end of a debrief session after all items are logged.\n' +
+    // Day Sequencing (Issue #187)
+    'ACTION:apply_day_plan  \u2014 apply VERA\'s day sequencing plan from this morning\'s briefing by creating time-block events on the Vera calendar for any suggested time shifts. Use when Ahmed says "apply today\'s plan", "block out my day", "apply the plan", or similar.\n' +
     '\n' +
 
     'RULES:\n' +
@@ -980,6 +982,7 @@ function buildChatSystemPrompt_(context) {
     'After the questions, emit ACTION:add_country if the destination isn\'t already in COUNTRIES VISITED, ' +
     'using the trip notes as the Notes field. Confirm each item logged. End with a brief summary of what was captured. ' +
     'Then emit ACTION:complete_debrief|{tripKey} (use the TripKey from RECENTLY COMPLETED TRIPS) to record that the debrief is complete — this triggers the recap email.\n' +
+    '- For apply_day_plan: emit ACTION:apply_day_plan (no arguments) when Ahmed says "apply today\'s plan", "block out my day", "apply the sequencing", or similar. This reads today\'s cached plan and creates 📌 time-block events on the Vera calendar for any suggested time shifts. Tell Ahmed how many blocks were added.\n' +
     '- COUNTRIES + BUCKET LIST INTELLIGENCE: When Ahmed mentions upcoming travel, cross-check against visited countries (first-time destinations are exciting milestones) and bucket list. ' +
     'If a planned destination matches or is near a bucket list item, proactively mention it. ' +
     'If Ahmed mentions a place he has never visited, offer to add it to the bucket list.\n' +
@@ -2374,6 +2377,38 @@ function executeActions_(rawText) {
           JSON.stringify({ completed: new Date().toISOString(), tripKey: cdTripKey })
         );
         executed.push('complete_debrief (' + cdTripKey + ')');
+      }
+
+      // Day Sequencing (Issue #187)
+      else if (type === 'apply_day_plan') {
+        var dpTz    = Session.getScriptTimeZone();
+        var dpToday = Utilities.formatDate(new Date(), dpTz, 'yyyy-MM-dd');
+        var dpJson  = PropertiesService.getScriptProperties().getProperty('day_plan_' + dpToday);
+        if (!dpJson) throw new Error('No day plan found for today — was the morning nudge sent today?');
+        var dpPlan   = JSON.parse(dpJson);
+        var dpCals   = CalendarApp.getCalendarsByName('Vera');
+        var dpCal    = dpCals.length > 0 ? dpCals[0] : CalendarApp.getDefaultCalendar();
+        var dpBlocks = [];
+        (dpPlan.sequence || []).forEach(function(item) {
+          if (!item.suggestedTime) return;
+          var note = (item.note || '').toLowerCase();
+          if (note.indexOf('keep') === 0) return;
+          var tm = (item.suggestedTime || '').match(/(\d+):(\d+)\s*(AM|PM)/i);
+          if (!tm) return;
+          var h = parseInt(tm[1], 10);
+          var m = parseInt(tm[2], 10);
+          if (tm[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+          if (tm[3].toUpperCase() === 'AM' && h === 12) h = 0;
+          var startDT = new Date(dpToday + 'T00:00:00');
+          startDT.setHours(h, m, 0, 0);
+          var endDT = new Date(startDT.getTime() + 60 * 60 * 1000);
+          dpCal.createEvent('📌 ' + (item.title || 'Block'), startDT, endDT);
+          dpBlocks.push((item.title || 'Block') + ' @ ' + item.suggestedTime);
+        });
+        var dpMsg = dpBlocks.length === 0
+          ? 'apply_day_plan (no time shifts needed — all events already optimally sequenced)'
+          : 'apply_day_plan (' + dpBlocks.length + ' blocks added to Vera calendar: ' + dpBlocks.join(', ') + ')';
+        executed.push(dpMsg);
       }
 
     } catch (e) {

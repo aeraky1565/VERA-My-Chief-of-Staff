@@ -309,6 +309,7 @@ function createSheetTabs(ss) {
     // Health–Performance Correlation (Feature 12)
     ['wellness_checkin_hour', '8'],       // 24h hour for morning wellness check-in prompt
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
+    ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
   ];
 
   // Seed notif_*_enabled = TRUE for each registry entry if missing (Issue #188)
@@ -1483,8 +1484,19 @@ function buildMorningIntelligence_() {
     });
   } catch (e) { Logger.log('buildMorningIntelligence_: travel — ' + e.message); }
 
+  // ---- Day Sequencing section (Issue #187) --------------------------------
+  var calPlanHtml = '';
+  var daySeqEnabled = String(getConfigValues()['day_sequencing_enabled'] || 'true').toLowerCase() !== 'false';
+  if (daySeqEnabled) {
+    try {
+      calPlanHtml = buildDaySequencingSection_();
+    } catch (calPlanErr) {
+      Logger.log('buildMorningIntelligence_: day sequencing (non-fatal) — ' + calPlanErr.message);
+    }
+  }
+
   // ---- Assemble HTML -------------------------------------------------------
-  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0) return '';
+  if (focusRows.length === 0 && maintRows.length === 0 && travelRows.length === 0 && calPlanHtml === '') return '';
 
   html += '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">';
 
@@ -1506,6 +1518,7 @@ function buildMorningIntelligence_() {
   }
 
   html += '</div>';
+  html += calPlanHtml;
   return html;
 }
 
@@ -1518,6 +1531,233 @@ function escapeHtml_(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ============================================================
+// DAY SEQUENCING — Issue #187
+// "Your Day, Sequenced" section in the morning nudge
+// ============================================================
+
+/**
+ * Returns a short weather string for Claude's day-planning prompt.
+ * Example: "77°F morning / 84°F afternoon, light rain, 40% chance of rain"
+ */
+function getWeatherSummaryForPlanning_() {
+  try {
+    var cfg      = getConfigValues();
+    var location = (cfg['weather_location'] || '').trim();
+    var apiKey   = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
+    if (!location || !apiKey) return '';
+
+    var forecast = fetchWeatherForecast_(location, apiKey);
+    if (!forecast) return '';
+
+    var tzOffset = forecast.city.timezone;
+    var slot9am  = findForecastSlot_(forecast.list, 9,  tzOffset);
+    var slot3pm  = findForecastSlot_(forecast.list, 15, tzOffset);
+    if (!slot9am) return '';
+
+    var temp      = Math.round(slot9am.main.temp);
+    var hiTemp    = slot3pm ? Math.round(slot3pm.main.temp) : temp;
+    var condition = (slot9am.weather && slot9am.weather[0]) ? slot9am.weather[0].description : '';
+    var rainPct   = Math.round((slot9am.pop || 0) * 100);
+
+    return temp + '°F morning / ' + hiTemp + '°F afternoon' +
+           (condition ? ', ' + condition : '') +
+           ', ' + rainPct + '% chance of rain';
+  } catch (e) {
+    Logger.log('getWeatherSummaryForPlanning_: ' + e.message);
+    return '';
+  }
+}
+
+/**
+ * Calls the Claude API to generate a day sequencing analysis and caches the result
+ * in ScriptProperties (day_plan_YYYY-MM-DD) so Chat can apply it later.
+ *
+ * @returns {Object|null} Parsed analysis JSON or null on failure
+ */
+function getDaySequencingAnalysis_(todayEvents, freeWindows, weekLoad, weatherSummary, tasks, capMode) {
+  var apiKey = getApiKey();
+  var tz     = Session.getScriptTimeZone();
+  var today  = new Date();
+
+  // Week load: convert day offsets to day names
+  var weekLoadLines = Object.keys(weekLoad).sort(function(a, b) { return a - b; }).map(function(d) {
+    var date    = new Date(today.getTime() + parseInt(d, 10) * 86400000);
+    var dayName = Utilities.formatDate(date, tz, 'EEEE');
+    var n       = weekLoad[d];
+    return dayName + ': ' + n + ' event' + (n !== 1 ? 's' : '');
+  });
+
+  // Format today's events
+  var eventLines = todayEvents.map(function(e) {
+    var parts   = e.start.split(' ');
+    var startTm = parts.length > 1 ? parts[1] : e.start;
+    var endParts = e.end.split(' ');
+    var endTm    = endParts.length > 1 ? endParts[1] : e.end;
+    var loc     = e.location ? ' (at: ' + e.location + ')' : '';
+    return '- ' + e.title + ': ' + startTm + ' – ' + endTm + loc;
+  });
+
+  // Format free windows
+  var freeLines = freeWindows.map(function(fw) {
+    return '- Free from ' + Utilities.formatDate(fw, tz, 'h:mm a');
+  });
+
+  var prompt =
+    'You are VERA, a personal chief of staff. Analyze today\'s calendar and return an optimal day plan.\n\n' +
+    'TODAY\'S EVENTS (already on the calendar — do not create new ones):\n' +
+    (eventLines.length > 0 ? eventLines.join('\n') : '(none)') + '\n\n' +
+    (freeLines.length > 0 ? 'FREE WINDOWS TODAY:\n' + freeLines.join('\n') + '\n\n' : '') +
+    (weekLoadLines.length > 0 ? 'REST OF WEEK OUTLOOK:\n' + weekLoadLines.join('\n') + '\n\n' : '') +
+    (weatherSummary ? 'WEATHER TODAY: ' + weatherSummary + '\n\n' : '') +
+    (tasks.length > 0
+      ? 'UNSCHEDULED TASKS (only suggest if a realistic gap exists):\n' +
+        tasks.map(function(t) { return '- ' + t; }).join('\n') + '\n\n'
+      : '') +
+    'CAPACITY MODE: ' + capMode + '\n\n' +
+    'INSTRUCTIONS:\n' +
+    '1. Propose the best sequence/timing for today\'s existing events. You may suggest shifting times for efficiency (group by location, match energy to task type, avoid bad weather for outdoor tasks). Keep shifts realistic — most events stay near their current time.\n' +
+    '2. Add weekNote only if there is a meaningful load-balancing or pressure insight about the week ahead. Omit (null) if the week looks normal.\n' +
+    '3. Suggest 1–2 task insertions ONLY if: there is a clear free window, the task fits, and it genuinely makes sense today. Use null for taskSuggestions if not applicable.\n' +
+    '4. If capacity mode is "busy", minimize suggestions — only impactful changes.\n' +
+    '5. Keep each note under 10 words. Write in second person.\n\n' +
+    'Respond with ONLY valid JSON — no prose, no markdown fences:\n' +
+    '{"sequence":[{"title":"event title","suggestedTime":"9:00 AM","note":"reason or Keep as scheduled"}],' +
+    '"weekNote":"string or null",' +
+    '"taskSuggestions":[{"task":"task name","window":"10:30–11:00 AM"}] or null}';
+
+  var response = UrlFetchApp.fetch(CLAUDE_API_URL, {
+    method:      'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      model:      CLAUDE_MODEL,
+      max_tokens: 600,
+      messages:   [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (response.getResponseCode() !== 200) {
+    Logger.log('getDaySequencingAnalysis_: Claude returned ' + response.getResponseCode() +
+               ' — ' + response.getContentText().substring(0, 200));
+    return null;
+  }
+
+  var raw = JSON.parse(response.getContentText()).content[0].text.trim();
+  raw = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  var analysis = JSON.parse(raw);
+
+  // Cache for Chat apply action
+  try {
+    var planKey = 'day_plan_' + Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    PropertiesService.getScriptProperties().setProperty(planKey, JSON.stringify(analysis));
+  } catch (cacheErr) {
+    Logger.log('getDaySequencingAnalysis_: cache write failed (non-fatal) — ' + cacheErr.message);
+  }
+
+  return analysis;
+}
+
+/**
+ * Renders the "Your Day, Sequenced" HTML section from a Claude analysis object.
+ */
+function buildCalPlanHtml_(analysis) {
+  if (!analysis || !analysis.sequence || analysis.sequence.length === 0) return '';
+
+  var html = '<div style="margin-top:24px;padding-top:20px;border-top:1px solid #f0f0f5;">';
+  html += '<p style="margin:0 0 10px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">📆 Your Day, Sequenced</p>';
+
+  analysis.sequence.forEach(function(item) {
+    var title     = escapeHtml_(item.title        || '');
+    var time      = escapeHtml_(item.suggestedTime || '');
+    var note      = escapeHtml_(item.note          || '');
+    var isKeep    = note.toLowerCase().indexOf('keep') === 0;
+    var noteColor = '#5c6bc0';
+    html += '<p style="margin:0 0 6px;font-size:14px;color:#333333;">' +
+            '<strong style="min-width:64px;display:inline-block;color:#0d1b3e;">' + time + '</strong>' +
+            '&nbsp;' + title +
+            (!isKeep && note
+              ? ' <span style="font-size:12px;color:' + noteColor + ';"> — ' + note + '</span>'
+              : '') +
+            '</p>';
+  });
+
+  if (analysis.weekNote) {
+    html += '<p style="margin:12px 0 0;font-size:13px;color:#666666;padding:8px 12px;' +
+            'background:#f7f7fa;border-left:3px solid #c9a84c;border-radius:3px;">' +
+            escapeHtml_(analysis.weekNote) + '</p>';
+  }
+
+  if (analysis.taskSuggestions && analysis.taskSuggestions.length > 0) {
+    html += '<p style="margin:14px 0 4px;font-size:11px;font-weight:700;color:#0d1b3e;letter-spacing:1px;text-transform:uppercase;">If time allows</p>';
+    analysis.taskSuggestions.forEach(function(ts) {
+      html += '<p style="margin:0 0 4px;font-size:13px;color:#555555;">&bull; ' +
+              escapeHtml_(ts.task || '') +
+              (ts.window ? ' <span style="color:#aaaaaa;">&middot; ' + escapeHtml_(ts.window) + '</span>' : '') +
+              '</p>';
+    });
+  }
+
+  html += '<p style="margin:14px 0 0;font-size:12px;color:#aaaaaa;font-style:italic;">' +
+          'Reply to VERA to apply this plan to your calendar</p>';
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Orchestrates data collection and renders the "Your Day, Sequenced" section.
+ * Returns empty string when suppressed (< 2 timed events, analysis fails, etc.).
+ */
+function buildDaySequencingSection_() {
+  // Single calendar call covers today + week
+  var allEvents = getUpcomingEvents(7);
+
+  var todayTimedEvents = allEvents.filter(function(e) {
+    return e.daysUntil === 0 && !e.isAllDay;
+  });
+
+  if (todayTimedEvents.length < 2) return '';
+
+  // Week load: days 1–6, timed events only
+  var weekLoad = {};
+  allEvents.filter(function(e) {
+    return e.daysUntil >= 1 && e.daysUntil <= 6 && !e.isAllDay;
+  }).forEach(function(e) {
+    weekLoad[e.daysUntil] = (weekLoad[e.daysUntil] || 0) + 1;
+  });
+
+  // Free windows today
+  var freeWindows = [];
+  try {
+    var fw = findNextFreeWindow_(new Date(), todayTimedEvents, 30);
+    if (fw) freeWindows.push(fw);
+  } catch (e) { Logger.log('buildDaySequencingSection_: free window — ' + e.message); }
+
+  // Weather
+  var weatherSummary = '';
+  try { weatherSummary = getWeatherSummaryForPlanning_(); } catch (e) {}
+
+  // Unscheduled open tasks (top 5, not overdue)
+  var tasks = [];
+  try {
+    tasks = getOpenTasks()
+      .filter(function(t) { return !t.isOverdue; })
+      .slice(0, 5)
+      .map(function(t) { return t.task; });
+  } catch (e) {}
+
+  // Capacity mode
+  var capMode = 'normal';
+  try { capMode = getCapacityMode_().mode; } catch (e) {}
+
+  var analysis = getDaySequencingAnalysis_(todayTimedEvents, freeWindows, weekLoad, weatherSummary, tasks, capMode);
+  return buildCalPlanHtml_(analysis);
 }
 
 // ============================================================
