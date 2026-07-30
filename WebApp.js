@@ -3931,11 +3931,19 @@ function webGetPacking_(e) {
     return 0;
   });
 
-  // Also fetch trip meta (context)
-  let meta = { context: '', notes: '' };
+  // Also fetch trip meta (context, notes, traveler, travel modes, budget)
+  let meta = { context: '', notes: '', traveler: '', outboundMode: '', returnMode: '' };
   try {
     const metaResult = webGetTripMeta_(e);
-    meta = { context: metaResult.context || '', notes: metaResult.notes || '' };
+    meta = {
+      context:        metaResult.context        || '',
+      notes:          metaResult.notes          || '',
+      traveler:       metaResult.traveler       || '',
+      tripBudget:     metaResult.tripBudget      !== undefined ? metaResult.tripBudget      : '',
+      tripTravellers: metaResult.tripTravellers !== undefined ? metaResult.tripTravellers : 2,
+      outboundMode:   metaResult.outboundMode   || '',
+      returnMode:     metaResult.returnMode     || '',
+    };
   } catch(err) { /* graceful */ }
 
   return { ok: true, tripKey, items, meta };
