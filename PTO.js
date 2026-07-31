@@ -697,7 +697,8 @@ function getUpcomingTravel_(cfg) {
   var end = new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000);
 
   // Use gap calendars from config, but skip the work/PTO calendar — travel
-  // entries should only come from shared/family calendars.
+  // entries come from shared/family calendars plus the user's own primary
+  // calendar (added below, in Phase 1), never the work calendar.
   var gapCalNames = (cfg.gapCalendarsRaw || '').split(',')
     .map(function(n) { return n.trim(); })
     .filter(function(n) { return n && n !== cfg.calendarName; });
@@ -720,6 +721,20 @@ function getUpcomingTravel_(cfg) {
   // ---- Phase 1: Collect ALL events from all travel calendars (including single-day)
   // We need single-day events too so cruise Board/Disembark days can be detected.
   var allCalEvents = [];   // [{ ev, calName, isExtendedFamily }]
+
+  // The user's own primary calendar is always scanned too — a trip added
+  // there is just as real as one on a shared/family calendar. Not the same
+  // concept as travelExtraCalendars (extended-family visibility), so it's
+  // always isExtendedFamily: false. Guard against double-scanning in case
+  // it's also (redundantly) named in gap/extra config.
+  var personalCal = CalendarApp.getDefaultCalendar();
+  if (personalCal && travelCalNames.indexOf(personalCal.getName()) === -1) {
+    var personalEvs = personalCal.getEvents(today, end);
+    for (var pi = 0; pi < personalEvs.length; pi++) {
+      allCalEvents.push({ ev: personalEvs[pi], calName: personalCal.getName(), isExtendedFamily: false });
+    }
+  }
+
   for (var c = 0; c < travelCalNames.length; c++) {
     var calN = travelCalNames[c];
     var cal  = getCalendarByName_(calN);
