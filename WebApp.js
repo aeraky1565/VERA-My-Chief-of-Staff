@@ -3559,6 +3559,59 @@ function findItineraryRow_(id) {
 }
 
 /**
+ * Collapses duplicate calendar-sourced itinerary items — the same real-world
+ * event (e.g. a flight) added to more than one trusted calendar produces one
+ * item per calendar upstream; this merges each such group down to one.
+ *
+ * A pure function (array in, array out — no CalendarApp/Sheet access) so it's
+ * unit-testable on its own. Expects each item to carry two transient scoring
+ * fields set by the caller: `_descLength` (length of the event's trimmed
+ * description) and `_isPersonal` (true if the item came from the user's own
+ * primary calendar). Both are stripped from the returned items.
+ *
+ * Matching: exact match on date + startTime + endTime + title (trimmed,
+ * case-insensitive) — deliberately strict, so two different events that
+ * happen to share a time slot are never merged.
+ *
+ * Winner selection within a matched group:
+ *   1. Higher `_descLength` wins (richer description = more useful copy).
+ *   2. Tie → the non-personal ("shared") calendar's copy wins.
+ *   3. Still tied → whichever was encountered first (stable, deterministic).
+ *
+ * @param {Array} calendarItems
+ * @returns {Array} deduped items, `_descLength`/`_isPersonal` removed
+ */
+function dedupeItineraryCalendarItems_(calendarItems) {
+  var groups = {};
+  var order  = [];
+  (calendarItems || []).forEach(function(it) {
+    var key = it.date + '|' + it.startTime + '|' + it.endTime + '|' +
+              String(it.title || '').trim().toLowerCase();
+    if (!groups[key]) { groups[key] = []; order.push(key); }
+    groups[key].push(it);
+  });
+
+  var result = [];
+  order.forEach(function(key) {
+    var group = groups[key];
+    var winner = group[0];
+    for (var i = 1; i < group.length; i++) {
+      var candidate = group[i];
+      if (candidate._descLength > winner._descLength) {
+        winner = candidate;
+      } else if (candidate._descLength === winner._descLength &&
+                 winner._isPersonal && !candidate._isPersonal) {
+        winner = candidate;
+      }
+    }
+    delete winner._descLength;
+    delete winner._isPersonal;
+    result.push(winner);
+  });
+  return result;
+}
+
+/**
  * Returns all stored itinerary items for a trip + auto-pulled calendar events
  * within the trip date range.
  * Params: tripKey (required), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD)
@@ -3655,6 +3708,11 @@ function webGetItinerary_(e) {
         }
       });
 
+      // Collected separately from `items` so the same real-world event added to
+      // multiple trusted calendars (e.g. a flight on both the personal calendar
+      // and "AE&VV - Our Joint Chaos") can be deduped before it ever reaches the
+      // frontend — see dedupeItineraryCalendarItems_.
+      var calendarItems = [];
       CalendarApp.getAllCalendars().forEach(function(cal) {
         if (!isItinTrustedCal_(cal)) return;
         try {
@@ -3690,7 +3748,7 @@ function webGetItinerary_(e) {
               var timedEndDate = Utilities.formatDate(ev.getEndTime(), evEndTz, 'yyyy-MM-dd');
               if (timedEndDate !== evDate) evMeta.checkoutDate = timedEndDate;
             }
-            items.push({
+            calendarItems.push({
               id:        'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16),
               tripKey:   tripKey,
               type:      relevance.type,    // 'flight' / 'hotel' / 'transport' / 'calendar'
@@ -3704,10 +3762,15 @@ function webGetItinerary_(e) {
               metadata:  JSON.stringify(evMeta),
               source:    'calendar',
               row:       null,
+              // Transient — used only by dedupeItineraryCalendarItems_ below,
+              // stripped before the item is returned to the frontend.
+              _descLength: (ev.getDescription() || '').trim().length,
+              _isPersonal: cal.getId() === itinUserEmail,
             });
           });
         } catch (calErr) { /* skip inaccessible calendar */ }
       });
+      items.push.apply(items, dedupeItineraryCalendarItems_(calendarItems));
     } catch (calEx) {
       Logger.log('Itinerary: calendar pull failed — ' + calEx.message);
     }
