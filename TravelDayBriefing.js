@@ -6,13 +6,15 @@
 // Architecture:
 //   checkAndSendTravelDayBriefings_()   ← entry point (called from morningNudge)
 //     └─ sendTravelDayBriefing_(tripKey, items)
+//          ├─ enrichTravelItems_(items)   ← once, shared by schedule + map + plain text
 //          ├─ buildTravelDayEmailHtml_(label, date, sections)
 //          │    └─ sections pipeline: [{ id, builder, data }, ...]
-//          │         └─ buildTravelScheduleSection_(items)   ← today's only section
+//          │         ├─ buildTravelScheduleSection_(enrichedItems)
+//          │         ├─ buildTravelMapSection_({items, apiKey, directionsUrl})
 //          │         // Future: buildTravelWeatherSection_
 //          │         // Future: buildTravelFlightStatusSection_
 //          │         // Future: buildTravelGroupNotesSection_
-//          ├─ buildTravelDayPlainText_(label, date, items)
+//          ├─ buildTravelDayPlainText_(label, date, items, ..., directionsUrl)
 //          └─ getTravelDayRecipients_(tripKey)
 //
 // To add a new email section: implement buildXxxSection_(data) → HTML,
@@ -272,13 +274,20 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   // Attach return-day flag to insights so section builders can suppress stale pre-trip tips
   if (insights) { insights.isReturnDay = isReturnDay; }
 
+  // Enrich once, share across the schedule + map sections (and plain text) \u2014
+  // see enrichTravelItems_'s doc comment for why this can't happen per-section.
+  var enrichedItems    = enrichTravelItems_(sortedItems);
+  var directionsUrl    = buildTravelDirectionsUrl_(enrichedItems);
+  var staticMapsApiKey = PropertiesService.getScriptProperties().getProperty('GOOGLE_STATIC_MAPS_API_KEY') || '';
+
   var sections = [
     { id: 'narrative',       builder: buildTravelNarrativeSection_,      data: narrativeData },
     { id: 'flight_insights', builder: buildTravelFlightInsightsSection_,  data: insights },
     { id: 'lounge_access',   builder: buildTravelLoungeSection_,          data: loungeData },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
-    { id: 'schedule',          builder: buildTravelScheduleSection_,      data: sortedItems },
+    { id: 'schedule',          builder: buildTravelScheduleSection_,      data: enrichedItems },
+    { id: 'map',               builder: buildTravelMapSection_,           data: { items: enrichedItems, apiKey: staticMapsApiKey, directionsUrl: directionsUrl } },
     { id: 'tomorrow_flights',  builder: buildTravelTomorrowSection_,      data: tomorrowFlights },
     // Future: { id: 'group_notes',   builder: buildTravelGroupNotesSection_,   data: null },
   ];
@@ -286,7 +295,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var recipients = getTravelDayRecipients_(tripKey);
   var subject    = '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
-  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData, loungeData);
+  var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData, loungeData, directionsUrl);
 
   var travelCh = getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
@@ -395,7 +404,7 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
 // ---------------------------------------------------------------------------
 
 /**
- * buildTravelScheduleSection_(items)
+ * buildTravelScheduleSection_(enrichedItems)
  *
  * Section builder: renders all today's itinerary items sorted by start time.
  * Called by the section pipeline in buildTravelDayEmailHtml_().
@@ -415,11 +424,11 @@ function buildTravelDayEmailHtml_(tripLabel, dateLabel, sections) {
  *
  * Shows: title · time range · type label · location · conf# · notes
  *
- * @param {Array} items — sorted flat row array (all types)
- * @returns {string} HTML string, or '' if items is empty
+ * @param {Array} enrichedItems — from enrichTravelItems_(), [{ row, details, displayAddress }]
+ * @returns {string} HTML string, or '' if enrichedItems is empty
  */
-function buildTravelScheduleSection_(items) {
-  if (!items || !items.length) {
+function buildTravelScheduleSection_(enrichedItems) {
+  if (!enrichedItems || !enrichedItems.length) {
     return '<p style="margin:0 0 16px;font-size:13px;color:#888;font-style:italic;">' +
       "Today's activities haven't been logged yet — add them in the VERA Travel tab.</p>";
   }
@@ -442,7 +451,8 @@ function buildTravelScheduleSection_(items) {
     '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
     'letter-spacing:1.5px;text-transform:uppercase;">Today\'s Schedule</p>';
 
-  items.forEach(function(row) {
+  enrichedItems.forEach(function(entry) {
+    var row    = entry.row;
     var type   = String(row[2] || '').trim();
     var title  = String(row[3] || '').trim() || '(untitled)';
     var startT = String(row[5] || '').trim();
@@ -454,18 +464,12 @@ function buildTravelScheduleSection_(items) {
     if (endT && endT !== startT) timeStr += ' \u2013 ' + endT;
     var typeLabel = type ? type.charAt(0).toUpperCase() + type.slice(1).toLowerCase() : '';
 
-    // Enrich with actionable day-of details (conf#, directions, parking, etc.)
-    var details = null;
-    try { details = buildTravelItemDetailsData_(row); } catch (enrichErr) {
-      Logger.log('TravelDayBriefing: enrichment error for "' + title + '": ' + enrichErr.message);
-    }
-
-    // Use enriched address if it's more specific than the raw location column
-    var displayAddress = loc;
-    if (details && details.address && details.address !== loc &&
-        details.address.length > loc.length) {
-      displayAddress = details.address;
-    }
+    // Already enriched once, up in enrichTravelItems_() — reused here (and by
+    // buildTravelMapSection_) rather than re-fetched, since enrichment makes a
+    // live Claude + web-search call per item, and doing that twice per item
+    // per day would double the cost/latency for no benefit.
+    var details        = entry.details;
+    var displayAddress = entry.displayAddress;
 
     html +=
       '<div style="display:flex;align-items:flex-start;margin-bottom:22px;">' +
@@ -538,6 +542,133 @@ function buildTravelScheduleSection_(items) {
   });
 
   return html;
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * enrichTravelItems_(items)
+ *
+ * Runs buildTravelItemDetailsData_() once per item and computes each item's
+ * best-known address (enriched if it's more specific than the raw location
+ * column, otherwise the raw location) up front. Both buildTravelScheduleSection_
+ * and buildTravelMapSection_ consume this shared result rather than each
+ * calling buildTravelItemDetailsData_() themselves — that call can make a
+ * live Claude + web-search request per item, and doing it twice per item
+ * per day would double the cost/latency for no benefit.
+ *
+ * @param {Array} items — sorted flat row array (all types)
+ * @returns {Array} [{ row, details, displayAddress }]
+ */
+function enrichTravelItems_(items) {
+  return (items || []).map(function(row) {
+    var title = String(row[3] || '').trim() || '(untitled)';
+    var loc   = String(row[7] || '').trim();
+
+    var details = null;
+    try { details = buildTravelItemDetailsData_(row); } catch (enrichErr) {
+      Logger.log('TravelDayBriefing: enrichment error for "' + title + '": ' + enrichErr.message);
+    }
+
+    var displayAddress = loc;
+    if (details && details.address && details.address !== loc &&
+        details.address.length > loc.length) {
+      displayAddress = details.address;
+    }
+
+    return { row: row, details: details, displayAddress: displayAddress };
+  });
+}
+
+/**
+ * buildTravelDirectionsUrl_(enrichedItems)
+ *
+ * Builds a Google Maps Directions URL chaining every item with a usable
+ * address, in the day's existing chronological order — the first stop
+ * becomes the origin, the last the destination, everything between becomes
+ * a waypoint. Google resolves plain address/place text server-side when the
+ * link is opened; no geocoding is needed here.
+ *
+ * @param {Array} enrichedItems — from enrichTravelItems_()
+ * @returns {string|null} Directions URL, or null if fewer than 2 usable stops
+ */
+function buildTravelDirectionsUrl_(enrichedItems) {
+  var stops = (enrichedItems || [])
+    .map(function(e) { return e.displayAddress; })
+    .filter(function(a) { return !!a; });
+  if (stops.length < 2) return null;
+
+  var origin      = encodeURIComponent(stops[0]);
+  var destination = encodeURIComponent(stops[stops.length - 1]);
+  var waypoints    = stops.slice(1, -1).map(encodeURIComponent).join('|');
+
+  var url = 'https://www.google.com/maps/dir/?api=1&origin=' + origin +
+            '&destination=' + destination;
+  if (waypoints) url += '&waypoints=' + waypoints;
+  return url;
+}
+
+/**
+ * buildTravelStaticMapUrl_(enrichedItems, apiKey)
+ *
+ * Builds a Google Static Maps image URL with one marker per item that has a
+ * usable address. Static Maps resolves plain address text server-side, same
+ * as the Directions URL — no geocoding needed. Capped at 10 markers to keep
+ * the URL length and rendered image reasonable.
+ *
+ * @param {Array} enrichedItems — from enrichTravelItems_()
+ * @param {string} apiKey — GOOGLE_STATIC_MAPS_API_KEY script property
+ * @returns {string|null} Static Maps image URL, or null if fewer than 2 usable stops or no key
+ */
+function buildTravelStaticMapUrl_(enrichedItems, apiKey) {
+  if (!apiKey) return null;
+  var stops = (enrichedItems || [])
+    .map(function(e) { return e.displayAddress; })
+    .filter(function(a) { return !!a; })
+    .slice(0, 10);
+  if (stops.length < 2) return null;
+
+  var markers = stops.map(function(addr) {
+    return 'markers=' + encodeURIComponent(addr);
+  }).join('&');
+
+  return 'https://maps.googleapis.com/maps/api/staticmap?size=600x300&scale=2&' +
+         markers + '&key=' + apiKey;
+}
+
+/**
+ * buildTravelMapSection_(data)
+ *
+ * Section builder: a static map image of today's stops, wrapped in a link to
+ * live turn-by-turn Google Maps directions — the closest approximation of an
+ * interactive map achievable inside an email (email clients strip
+ * <script>/<iframe>, so a real interactive map can't render here at all;
+ * see the dashboard's Map tab for that).
+ *
+ * Skipped entirely (returns '') if fewer than 2 items have a usable address,
+ * or the Static Maps API key isn't configured — matches the "empty sections
+ * are silently dropped" convention already used by every other section here.
+ *
+ * @param {{items: Array, apiKey: string, directionsUrl: string|null}} data
+ * @returns {string}
+ */
+function buildTravelMapSection_(data) {
+  var items          = (data && data.items) || [];
+  var apiKey         = (data && data.apiKey) || '';
+  var directionsUrl  = (data && data.directionsUrl) || null;
+
+  var mapUrl = buildTravelStaticMapUrl_(items, apiKey);
+  if (!mapUrl || !directionsUrl) return '';
+
+  return (
+    '<p style="margin:24px 0 16px;font-size:11px;font-weight:700;color:#1565c0;' +
+    'letter-spacing:1.5px;text-transform:uppercase;">Today\'s Route</p>' +
+    '<a href="' + directionsUrl + '" style="display:block;text-decoration:none;">' +
+    '<img src="' + mapUrl + '" alt="Map of today\'s stops" width="600" ' +
+    'style="width:100%;max-width:600px;border-radius:8px;display:block;" /></a>' +
+    '<p style="margin:8px 0 0;font-size:12px;color:#888888;">' +
+    'Tap the map for turn-by-turn directions</p>'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -705,12 +836,13 @@ function getTravelDayRecipients_(tripKey) {
 // ---------------------------------------------------------------------------
 
 /**
- * buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData)
+ * buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData, directionsUrl)
  * Plain-text fallback for email clients that don't render HTML, and for Slack.
- * @param {Object|null} insights   — optional result from buildTravelFlightInsightsData_()
- * @param {Object|null} loungeData — optional result from buildTravelLoungeData_()
+ * @param {Object|null} insights      — optional result from buildTravelFlightInsightsData_()
+ * @param {Object|null} loungeData    — optional result from buildTravelLoungeData_()
+ * @param {string|null} directionsUrl — optional result from buildTravelDirectionsUrl_(), same value used in the HTML map section
  */
-function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData) {
+function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrativeData, loungeData, directionsUrl) {
   var lines = [
     '\u2708\uFE0F Travel Day \u2014 ' + tripLabel,
     dateLabel,
@@ -802,6 +934,13 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrati
       if (notes) line += '\n  Note: ' + notes;
       lines.push(line);
     });
+  }
+
+  if (directionsUrl) {
+    lines.push('');
+    lines.push("TODAY'S ROUTE");
+    lines.push('-------------');
+    lines.push(directionsUrl);
   }
 
   // Tip from narrative
