@@ -691,6 +691,22 @@ function getUpcomingTravel_(cfg) {
     return _upcomingTravelCache_.result.slice();
   }
 
+  // Cross-request cache (survives across separate web-app executions, unlike
+  // _upcomingTravelCache_ above). Every dashboard load hits action=pto, which
+  // calls this function fresh each time — without this, the full multi-calendar
+  // 365-day scan (including the user's own busy primary calendar) re-runs on
+  // every single page load/reconnect. 10 min TTL: absorbs repeated dashboard
+  // loads without letting a newly-added trip go stale for long.
+  var scriptCacheKey = 'upcoming_travel_' + cacheKey.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').slice(0, 200);
+  try {
+    var cachedTravel = CacheService.getScriptCache().get(scriptCacheKey);
+    if (cachedTravel) {
+      var parsedTravel = JSON.parse(cachedTravel);
+      _upcomingTravelCache_ = { key: cacheKey, result: parsedTravel };
+      return parsedTravel.slice();
+    }
+  } catch (e_) {}
+
   var tz    = Session.getScriptTimeZone();
   var today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -727,12 +743,16 @@ function getUpcomingTravel_(cfg) {
   // concept as travelExtraCalendars (extended-family visibility), so it's
   // always isExtendedFamily: false. Guard against double-scanning in case
   // it's also (redundantly) named in gap/extra config.
-  var personalCal = CalendarApp.getDefaultCalendar();
-  if (personalCal && travelCalNames.indexOf(personalCal.getName()) === -1) {
-    var personalEvs = personalCal.getEvents(today, end);
-    for (var pi = 0; pi < personalEvs.length; pi++) {
-      allCalEvents.push({ ev: personalEvs[pi], calName: personalCal.getName(), isExtendedFamily: false });
+  try {
+    var personalCal = CalendarApp.getDefaultCalendar();
+    if (personalCal && travelCalNames.indexOf(personalCal.getName()) === -1) {
+      var personalEvs = personalCal.getEvents(today, end);
+      for (var pi = 0; pi < personalEvs.length; pi++) {
+        allCalEvents.push({ ev: personalEvs[pi], calName: personalCal.getName(), isExtendedFamily: false });
+      }
     }
+  } catch (personalCalErr) {
+    Logger.log('getUpcomingTravel_: personal calendar scan failed — ' + personalCalErr.message);
   }
 
   for (var c = 0; c < travelCalNames.length; c++) {
@@ -844,6 +864,9 @@ function getUpcomingTravel_(cfg) {
   // reasoning as the cache-hit branch above: this call's array must never be
   // the same object a caller could mutate.
   _upcomingTravelCache_ = { key: cacheKey, result: travel };
+  try {
+    CacheService.getScriptCache().put(scriptCacheKey, JSON.stringify(travel), 600);
+  } catch (e_) {}
   return travel.slice();
 }
 
