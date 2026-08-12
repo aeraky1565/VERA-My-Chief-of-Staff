@@ -32,8 +32,20 @@ function scanHoaWebsite_() {
       return;
     }
 
-    // Fetch page content
-    var response = fetchTracked_('hoa-website', hoaUrl, { muteHttpExceptions: true });
+    // Fetch page content. Browser-like headers — UrlFetchApp's default User-Agent
+    // ("Mozilla/5.0 (compatible; Google-Apps-Script)") reads as a bot to
+    // Cloudflare-style protection, which was blocking every attempt with a
+    // "Just a moment..." challenge page (HTTP 429). This won't get past a real
+    // JS challenge, only a User-Agent/header check — see ApiHealth.js's
+    // 'hoa-website' record after the next scan to confirm which case this is.
+    var response = fetchTracked_('hoa-website', hoaUrl, {
+      muteHttpExceptions: true,
+      headers: {
+        'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
     var html     = response.getContentText();
 
     // Strip scripts, styles, and all tags → plain text, truncate for Claude
