@@ -215,6 +215,27 @@ function setVictoriaPTOBufferRemaining_(newVal) {
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['victoria_pto_buffer_remaining', Math.max(0, newVal)]]);
 }
 
+/**
+ * Writes an arbitrary key/value pair to the Config tab (creates the row if
+ * missing, overwrites if present). Generic version of the pattern above —
+ * used by checkPTOYearRollover_() to write both pto_year and
+ * pto_rollover_days without a dedicated function per key.
+ */
+function setPTOConfigValue_(key, value) {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CONFIG);
+  if (!sheet) return;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === key) {
+      sheet.getRange(i + 1, 2).setValue(value);
+      return;
+    }
+  }
+  // Not found — append
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([[key, value]]);
+}
+
 // ---- Calendar helpers -------------------------------------------------------
 
 /**
@@ -1722,6 +1743,48 @@ function writeVERARecommendations_(stats, cfg, ss, memory) {
   }
 
   Logger.log('PTO: VERA calendar recommendations updated (' + windows.length + ' suggestions, ' + milestones.length + ' milestones).');
+}
+
+/**
+ * checkPTOYearRollover_()
+ * Called from nightlyRun() before writePTOSnapshot_(). Ahmed only — Victoria's
+ * PTO profile is a separate, independently-configured pool with no rollover
+ * concept tied to this. Advances pto_year and recomputes pto_rollover_days
+ * once the real calendar year has moved past cfg.year, so the dashboard and
+ * the burn-down/accrual-cap math never run against a stale year.
+ *
+ * Rollover = (prior year's annual allocation + prior year's own rollover)
+ * minus what was actually used that year, floored at 0. Not truncated by the
+ * accrual cap — per Verizon's own policy, existing earned balance is never
+ * reduced or taken away, the cap only blocks *further* accrual while over it.
+ *
+ * The `nowYear <= cfg.year` check doubles as the "already processed" guard:
+ * once pto_year is written forward, this is a no-op until the calendar year
+ * advances again — no separate marker needed.
+ */
+function checkPTOYearRollover_() {
+  var cfg     = readPTOConfig_(); // cfg.year is still the OUTGOING year here
+  var nowYear = new Date().getFullYear();
+  if (nowYear <= cfg.year) return;
+
+  var priorEvents  = getPTOEvents_(cfg).events; // scoped to cfg.year, Jan 1 - Dec 31
+  var usedVacDays  = 0;
+  priorEvents.forEach(function(ev) {
+    if (ev.type === 'Vacation') usedVacDays += ev.weekdays;
+  });
+
+  var priorTotal   = cfg.vacationDays + cfg.rolloverDays;
+  var newRollover  = Math.max(0, priorTotal - usedVacDays);
+
+  setPTOConfigValue_('pto_year', String(nowYear));
+  setPTOConfigValue_('pto_rollover_days', String(newRollover));
+
+  Logger.log('checkPTOYearRollover_: rolled ' + cfg.year + ' → ' + nowYear +
+    ' (used ' + usedVacDays + 'd of ' + priorTotal + 'd → rollover ' + newRollover + 'd)');
+  try {
+    sendSlackLog_('🎉 New vacation year: ' + nowYear + ' — rolled over ' +
+      newRollover + 'd from ' + cfg.year + '.');
+  } catch (e) {}
 }
 
 // ---- Snapshot (nightly) ------------------------------------------------------

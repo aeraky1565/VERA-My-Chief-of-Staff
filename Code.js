@@ -701,6 +701,15 @@ function nightlyRun() {
       stepFailures.push('getSuppressedKeyPatterns_: ' + slErr.message);
     }
 
+    // Step 0a2: Advance the PTO year + rollover once the calendar year has
+    // turned over, before anything below reads cfg.year/cfg.rolloverDays.
+    try {
+      checkPTOYearRollover_();
+    } catch (yrErr) {
+      Logger.log('checkPTOYearRollover_ error (non-fatal): ' + yrErr.message);
+      stepFailures.push('checkPTOYearRollover_: ' + yrErr.message);
+    }
+
     // Step 0b [hoisted]: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;
     try {
