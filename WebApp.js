@@ -1236,6 +1236,7 @@ function webGetPTO_() {
   ahmedStats.clearWindows   = clearWins;
   ahmedStats.milestones     = milestones;
   ahmedStats.upcomingTravel = ownTravel;
+  ahmedStats.accrualCap     = computeAccrualCapStatus_(cfg, ahmedStats.used.vacationDays, ptoResult.events, today);
 
   // ── Victoria ───────────────────────────────────────────────────────────────
   var victoriaStats = null;

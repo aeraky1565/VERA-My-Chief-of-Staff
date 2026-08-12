@@ -46,6 +46,10 @@ function readPTOConfig_() {
     year:              parseInt(raw['year'] || String(new Date().getFullYear()), 10),
     rolloverDays:      parseInt(raw['rollover_days']  || '0',  10),
     bufferDays:        parseInt(raw['buffer_days']    || '3',  10),
+    // Day of month Verizon posts the monthly vacation accrual (Jan-Oct only).
+    // Not stated anywhere else in this codebase — defaults to the 15th ("mid
+    // month") per pto_accrual_day in Config; adjust there if the real date differs.
+    accrualDay:        parseInt(raw['accrual_day']    || '15', 10),
     gapCalendarsRaw:   raw['gap_calendars'] || 'Verizon Calendar,AE&VV - Our Joint Chaos',
     milestoneKeywords: (raw['milestone_keywords'] || 'Wedding,Graduation,Trip,Travel,Concert,Birthday')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }),
@@ -1178,6 +1182,119 @@ function getMilestones_(gapCalendars, cfg, today) {
   return results;
 }
 
+// ---- Vacation accrual cap (Ahmed only — Verizon-specific) --------------------
+
+// Verizon's vacation accrual cap drops from 150% to 125% of the annual
+// vacation benefit on this date. Applies to Ahmed only — Victoria's PTO
+// profile (readVictoriaPTOConfig_) has no accrual cap concept.
+var ACCRUAL_CAP_SWITCH_DATE_ = '2026-12-31';
+
+/**
+ * Computes Ahmed's vacation accrual-cap status: current balance vs. the cap,
+ * the next monthly accrual date, and whether he's on track to still be over
+ * the cap on that date (in which case that month's accrual is permanently
+ * lost, per Verizon's policy — missed accruals are not made up later).
+ *
+ * Accrual runs monthly Jan-Oct only (~10%/month); there is no accrual in
+ * Nov/Dec, so the "next accrual date" rolls to next January during those
+ * months.
+ *
+ * @param {Object} cfg          - from readPTOConfig_() (Ahmed only)
+ * @param {number} usedVacDays  - vacation days already taken this year (stats.used.vacationDays)
+ * @param {Array}  events       - ptoResult.events (from getPTOEvents_()) — used to net out
+ *                                planned Vacation days landing before the next accrual date
+ * @param {Date}   today
+ * @returns {Object} accrual-cap status
+ */
+function computeAccrualCapStatus_(cfg, usedVacDays, events, today) {
+  var tz       = Session.getScriptTimeZone();
+  var todayStr = Utilities.formatDate(today, tz, 'yyyy-MM-dd');
+
+  var annualBenefitHrs = cfg.vacationDays * 8;
+  var capPct = todayStr >= ACCRUAL_CAP_SWITCH_DATE_ ? 1.25 : 1.50;
+  var capHrs = annualBenefitHrs * capPct;
+
+  // Today's real balance: annual benefit + rollover, minus days actually
+  // taken. Deliberately NOT subtracting planned-but-not-yet-taken days —
+  // those don't reduce the real balance until they land.
+  var currentBalanceHrs = (cfg.vacationDays + cfg.rolloverDays - usedVacDays) * 8;
+
+  // ---- Next monthly accrual date (Jan-Oct only) ----------------------------
+  var accrualDay = cfg.accrualDay || 15;
+  var y = today.getFullYear();
+  var m = today.getMonth(); // 0-11
+  var d = today.getDate();
+  var candidateMonth = d > accrualDay ? m + 1 : m;
+  var nextAccrualDate = (candidateMonth > 9)
+    ? new Date(y + 1, 0, accrualDay)   // past Oct's accrual (or in Nov/Dec) — next accrual is next January
+    : new Date(y, candidateMonth, accrualDay);
+  var nextAccrualDateStr = Utilities.formatDate(nextAccrualDate, tz, 'yyyy-MM-dd');
+
+  // Planned Vacation days landing before the next accrual date will reduce
+  // the balance by then, same as if already taken.
+  var plannedHrsBeforeAccrual = 0;
+  for (var i = 0; i < events.length; i++) {
+    var ev = events[i];
+    if (ev.type === 'Vacation' && ev.status === 'Planned' && ev.startDate < nextAccrualDateStr) {
+      plannedHrsBeforeAccrual += (ev.weekdays || 0) * 8;
+    }
+  }
+
+  var projectedBalanceAtAccrual = currentBalanceHrs - plannedHrsBeforeAccrual;
+  var atRisk                    = projectedBalanceAtAccrual > capHrs;
+  var hoursToClearByAccrual     = atRisk ? (projectedBalanceAtAccrual - capHrs) : 0;
+  var suggestedDaysToTake       = atRisk ? Math.ceil(hoursToClearByAccrual / 8) : 0;
+
+  return {
+    capPct:                    capPct,
+    annualBenefitHrs:          annualBenefitHrs,
+    capHrs:                    capHrs,
+    currentBalanceHrs:         currentBalanceHrs,
+    nextAccrualDate:           nextAccrualDateStr,
+    projectedBalanceAtAccrual: projectedBalanceAtAccrual,
+    atRisk:                    atRisk,
+    hoursToClearByAccrual:     hoursToClearByAccrual,
+    suggestedDaysToTake:       suggestedDaysToTake,
+  };
+}
+
+/**
+ * checkAccrualCapRisk_()
+ * Called from writePTOSnapshot_() once accrualCap status is computed. Ahmed
+ * only — Victoria's PTO profile has no accrual cap. Writes a High flag
+ * (dashboard Flags tab + a Slack log ping) when Ahmed is on track to still be
+ * over the accrual cap on the next monthly accrual date, meaning that
+ * month's accrual would be permanently lost (Verizon does not make up missed
+ * accruals). Deduplicated by writeFlags()'s key fingerprinting, keyed per
+ * accrual date — so each at-risk month can flag independently rather than
+ * firing once ever.
+ *
+ * @param {Object} accrualCapStatus - from computeAccrualCapStatus_()
+ */
+function checkAccrualCapRisk_(accrualCapStatus) {
+  if (!accrualCapStatus || !accrualCapStatus.atRisk) return;
+
+  var reason = 'Vacation balance is ' + Math.round(accrualCapStatus.currentBalanceHrs) +
+    ' hrs, projected to still be over the ' + Math.round(accrualCapStatus.capHrs) +
+    ' hr cap (' + Math.round(accrualCapStatus.capPct * 100) + '%) on ' +
+    accrualCapStatus.nextAccrualDate + ' — take ' + accrualCapStatus.suggestedDaysToTake +
+    ' more vacation day(s) before then to avoid losing that month\'s accrual.';
+
+  var flag = {
+    source:  'PTO',
+    flag:    'Vacation accrual at risk — cap reached before next accrual',
+    reason:  reason,
+    urgency: 'High',
+    key:     'pto_accrual_cap_risk_' + accrualCapStatus.nextAccrualDate,
+  };
+
+  var written = writeFlags([flag]);
+  if (written > 0) {
+    Logger.log('checkAccrualCapRisk_: wrote accrual-cap-risk flag for ' + accrualCapStatus.nextAccrualDate);
+    try { sendSlackLog_('🏖️ Vacation accrual at risk — ' + reason); } catch (e) {}
+  }
+}
+
 // ---- Stats computation ------------------------------------------------------
 
 /**
@@ -1643,6 +1760,10 @@ function writePTOSnapshot_() {
   stats.clearWindows   = windows;
   stats.milestones     = milestones;
   stats.upcomingTravel = travel;
+  stats.accrualCap     = computeAccrualCapStatus_(cfg, stats.used.vacationDays, ptoResult.events, today);
+  try { checkAccrualCapRisk_(stats.accrualCap); } catch (accrualErr) {
+    Logger.log('writePTOSnapshot_: checkAccrualCapRisk_ error (non-fatal): ' + accrualErr.message);
+  }
 
   // Write PTO sheet tab
   var sheet = ss.getSheetByName(TABS.PTO);
