@@ -2224,8 +2224,16 @@ function morningNudge() {
     const dashboardPlainText = dashboardUrl ? '\nDashboard: ' + dashboardUrl : '';
     const veraLink = dashboardUrl || 'https://aeraky1565.github.io/VERA-My-Chief-of-Staff/';
 
+    // ---- Today's calendar events (fetched early — the weather ticker uses
+    // these to localize to wherever today's events actually are, when on a
+    // trip) --------------------------------------------------------------
+    let todayEventsAll = [];
+    try {
+      todayEventsAll = getUpcomingEvents().filter(function(e) { return e.daysUntil === 0; });
+    } catch (calErr) { Logger.log('morningNudge: calendar fetch error — ' + calErr.message); }
+
     // ---- Weather ticker (graceful — empty string if not configured) -----
-    const weatherTicker = getWeatherTicker_();
+    const weatherTicker = getWeatherTicker_(todayEventsAll);
 
     // ---- Data freshness notice (Issue #138) -----------------------------
     // Names any source that failed to refresh, so nothing in this email is
@@ -2253,11 +2261,7 @@ function morningNudge() {
       Logger.log('morningNudge: staleness notice error — ' + staleErr.message);
     }
 
-    // ---- Today's calendar events ----------------------------------------
-    let todayEvents = [];
-    try {
-      todayEvents = getUpcomingEvents().filter(function(e) { return e.daysUntil === 0; }).slice(0, 5);
-    } catch (calErr) { Logger.log('morningNudge: calendar fetch error — ' + calErr.message); }
+    const todayEvents = todayEventsAll.slice(0, 5);
 
     let calendarSection = '';
     if (todayEvents.length > 0) {

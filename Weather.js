@@ -247,25 +247,107 @@ function buildWeatherUnavailableHtml_(reason) {
   );
 }
 
+// ---- Trip-aware location resolution ---------------------------
+
+/**
+ * True if today falls within any currently-detected trip (reuses
+ * getUpcomingTravel_ — the same trip detection already powering the PTO/
+ * Travel tab, including its 10-min cross-request cache). Extended-family
+ * trips (someone else's travel, incidentally visible on a shared calendar)
+ * don't count — only Ahmed's own.
+ */
+function isTodayOnATrip_() {
+  var cfg    = readPTOConfig_();
+  var travel = getUpcomingTravel_(cfg);
+  var tz     = Session.getScriptTimeZone();
+  var todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  return travel.some(function(t) {
+    return !t.isExtendedFamily && todayStr >= t.startDate && todayStr <= t.endDate;
+  });
+}
+
+/**
+ * Resolves which location's weather to show for a given hour of today,
+ * while traveling: prefers a timed event whose span covers that hour (so a
+ * travel day can show a different city for 9AM vs 6PM), then falls back to
+ * the day's first event with any location set. Returns null (caller falls
+ * back to home) if nothing usable is found.
+ *
+ * @param {Array}  todayEvents  From getUpcomingEvents(), already
+ *                               filtered to daysUntil===0 and chronologically sorted.
+ * @param {number} targetHour   0-23, local time.
+ */
+function resolveTripWeatherLocation_(todayEvents, targetHour) {
+  function hourOf(str) {
+    var t = (str || '').split(' ')[1]; // "yyyy-MM-dd HH:mm z" -> "HH:mm"
+    if (!t) return null;
+    var h = parseInt(t.split(':')[0], 10);
+    return isNaN(h) ? null : h;
+  }
+
+  var covering = (todayEvents || []).find(function(e) {
+    if (e.isAllDay || !e.location) return false;
+    var startH = hourOf(e.start), endH = hourOf(e.end);
+    if (startH === null || endH === null) return false;
+    return startH <= targetHour && targetHour <= endH;
+  });
+  if (covering) return covering.location;
+
+  var firstWithLocation = (todayEvents || []).find(function(e) { return !!e.location; });
+  return firstWithLocation ? firstWithLocation.location : null;
+}
+
 // ---- Main entry point ----------------------------------------
 
 /**
  * Builds and returns the weather ticker <tr> HTML string.
  * Returns '' (empty string) if not configured or if any error occurs,
  * so the morning email always sends even without weather data.
+ *
+ * @param {Array} [todayEvents] From getUpcomingEvents() (daysUntil===0).
+ *                               When today falls within a detected trip, used
+ *                               to localize the 9AM/6PM slots to wherever
+ *                               that day's events actually are — falling back
+ *                               to the home weather_location whenever there's
+ *                               no trip, no usable event location, or the
+ *                               resolved location fails to geocode/forecast.
  */
-function getWeatherTicker_() {
+function getWeatherTicker_(todayEvents) {
   try {
     var cfg      = getConfigValues();
-    var location = (cfg['weather_location'] || '').trim();
+    var home     = (cfg['weather_location'] || '').trim();
     var apiKey   = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
 
     // Genuinely not configured — stay silent. This is the one case where an
     // empty ticker is correct, because there is nothing the user expects to see.
-    if (!location || !apiKey) return '';
+    if (!home || !apiKey) return '';
 
-    var forecast = fetchWeatherForecast_(location, apiKey);
-    if (!forecast) {
+    var loc9am = home, loc6pm = home;
+    try {
+      if (isTodayOnATrip_()) {
+        loc9am = resolveTripWeatherLocation_(todayEvents, 9)  || home;
+        loc6pm = resolveTripWeatherLocation_(todayEvents, 18) || home;
+      }
+    } catch (tripErr) {
+      Logger.log('getWeatherTicker_: trip-location lookup failed, using home — ' + tripErr.message);
+    }
+
+    // Memoized per-location fetch with a fallback to home if a trip location
+    // fails to geocode/forecast — "location can't be extracted" degrades to
+    // the same behavior as not being on a trip at all, not a blank ticker.
+    var cache = {};
+    function forecastFor(loc) {
+      if (!cache.hasOwnProperty(loc)) cache[loc] = fetchWeatherForecast_(loc, apiKey);
+      if (cache[loc]) return cache[loc];
+      if (loc === home) return null;
+      if (!cache.hasOwnProperty(home)) cache[home] = fetchWeatherForecast_(home, apiKey);
+      return cache[home];
+    }
+
+    var forecast9 = forecastFor(loc9am);
+    var forecast6 = (loc6pm === loc9am) ? forecast9 : forecastFor(loc6pm);
+
+    if (!forecast9 && !forecast6) {
       // Issue #138: configured but failing. Say so instead of vanishing.
       var health = getApiHealth_('openweathermap');
       return buildWeatherUnavailableHtml_(
@@ -273,12 +355,8 @@ function getWeatherTicker_() {
       );
     }
 
-    var lat      = forecast.city.coord.lat;
-    var lon      = forecast.city.coord.lon;
-    var tzOffset = forecast.city.timezone;  // seconds from UTC
-
-    var slot9am = findForecastSlot_(forecast.list, 9,  tzOffset);
-    var slot6pm = findForecastSlot_(forecast.list, 18, tzOffset);
+    var slot9am = forecast9 ? findForecastSlot_(forecast9.list, 9,  forecast9.city.timezone) : null;
+    var slot6pm = forecast6 ? findForecastSlot_(forecast6.list, 18, forecast6.city.timezone) : null;
 
     // null (not 0) when there is no slot to read a probability from — buildTickerHtml_
     // renders that as a dash rather than inventing "Rain 0%".
@@ -286,6 +364,12 @@ function getWeatherTicker_() {
       ? Math.round(slot9am.pop * 100)
       : null;
 
+    // AQI/UV are point-in-place metrics — tied to the 9AM location (or the
+    // 6PM one if there's no 9AM slot), same single-location basis as before
+    // this change on any non-trip day.
+    var primary = forecast9 || forecast6;
+    var lat = primary.city.coord.lat;
+    var lon = primary.city.coord.lon;
     var aqi = fetchAQI_(lat, lon, apiKey);
     var uvi = fetchUVIndex_(lat, lon);
 
@@ -300,7 +384,8 @@ function getWeatherTicker_() {
 // ---- Debug helper -------------------------------------------
 
 function testWeather() {
-  var ticker = getWeatherTicker_();
+  var todayEvents = getUpcomingEvents().filter(function(e) { return e.daysUntil === 0; });
+  var ticker = getWeatherTicker_(todayEvents);
   if (!ticker) {
     Logger.log('testWeather: no ticker returned — check weather_location Config row and WEATHER_API_KEY Script Property.');
   } else {
