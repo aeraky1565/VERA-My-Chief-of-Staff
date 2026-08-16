@@ -178,20 +178,27 @@ function fetchUVIndex_(lat, lon) {
  * Assembles the ticker <tr> row from forecast data.
  * Returns '' if no meaningful data is available.
  */
-function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi) {
+function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi, awayLabel9am, awayLabel6pm) {
   var sep     = '<span style="color:rgba(201,168,76,0.6);margin:0 10px;">|</span>';
   var muted   = '#8a8a8a';   // Issue #138: a dash in grey reads as "no data", not as a value
   var parts   = [];
 
+  // A city tag only appears when that slot is NOT the home location — the
+  // absence of a tag already means "this is your default city," so a home
+  // reading never gets a redundant label.
+  function awayTag(label) {
+    return label ? ' <span style="color:#8ab4f8;font-size:11px;">(' + escapeHtml_(label) + ')</span>' : '';
+  }
+
   if (slot9am) {
     var e9 = weatherEmoji_(slot9am.weather[0].main);
     var t9 = Math.round(slot9am.main.temp);
-    parts.push(e9 + '&nbsp;<strong style="color:#ffffff;">9AM</strong>&nbsp;' + t9 + '&deg;F');
+    parts.push(e9 + '&nbsp;<strong style="color:#ffffff;">9AM</strong>&nbsp;' + t9 + '&deg;F' + awayTag(awayLabel9am));
   }
   if (slot6pm) {
     var e6 = weatherEmoji_(slot6pm.weather[0].main);
     var t6 = Math.round(slot6pm.main.temp);
-    parts.push(e6 + '&nbsp;<strong style="color:#ffffff;">6PM</strong>&nbsp;' + t6 + '&deg;F');
+    parts.push(e6 + '&nbsp;<strong style="color:#ffffff;">6PM</strong>&nbsp;' + t6 + '&deg;F' + awayTag(awayLabel6pm));
   }
 
   // Issue #138: rainPct is null when no forecast slot was available. Previously
@@ -336,18 +343,24 @@ function getWeatherTicker_(todayEvents) {
     // fails to geocode/forecast — "location can't be extracted" degrades to
     // the same behavior as not being on a trip at all, not a blank ticker.
     var cache = {};
-    function forecastFor(loc) {
+    function rawForecast(loc) {
       if (!cache.hasOwnProperty(loc)) cache[loc] = fetchWeatherForecast_(loc, apiKey);
-      if (cache[loc]) return cache[loc];
-      if (loc === home) return null;
-      if (!cache.hasOwnProperty(home)) cache[home] = fetchWeatherForecast_(home, apiKey);
-      return cache[home];
+      return cache[loc];
+    }
+    // Resolves a forecast for the requested location, falling back to home if
+    // it fails — and reports which location was ACTUALLY used, so the ticker
+    // never labels a home-fallback reading as if it were the trip city.
+    function forecastFor(loc) {
+      var f = rawForecast(loc);
+      if (f) return { forecast: f, usedLoc: loc };
+      if (loc === home) return { forecast: null, usedLoc: home };
+      return { forecast: rawForecast(home), usedLoc: home };
     }
 
-    var forecast9 = forecastFor(loc9am);
-    var forecast6 = (loc6pm === loc9am) ? forecast9 : forecastFor(loc6pm);
+    var r9 = forecastFor(loc9am);
+    var r6 = (loc6pm === loc9am) ? r9 : forecastFor(loc6pm);
 
-    if (!forecast9 && !forecast6) {
+    if (!r9.forecast && !r6.forecast) {
       // Issue #138: configured but failing. Say so instead of vanishing.
       var health = getApiHealth_('openweathermap');
       return buildWeatherUnavailableHtml_(
@@ -355,8 +368,8 @@ function getWeatherTicker_(todayEvents) {
       );
     }
 
-    var slot9am = forecast9 ? findForecastSlot_(forecast9.list, 9,  forecast9.city.timezone) : null;
-    var slot6pm = forecast6 ? findForecastSlot_(forecast6.list, 18, forecast6.city.timezone) : null;
+    var slot9am = r9.forecast ? findForecastSlot_(r9.forecast.list, 9,  r9.forecast.city.timezone) : null;
+    var slot6pm = r6.forecast ? findForecastSlot_(r6.forecast.list, 18, r6.forecast.city.timezone) : null;
 
     // null (not 0) when there is no slot to read a probability from — buildTickerHtml_
     // renders that as a dash rather than inventing "Rain 0%".
@@ -367,13 +380,18 @@ function getWeatherTicker_(todayEvents) {
     // AQI/UV are point-in-place metrics — tied to the 9AM location (or the
     // 6PM one if there's no 9AM slot), same single-location basis as before
     // this change on any non-trip day.
-    var primary = forecast9 || forecast6;
+    var primary = r9.forecast || r6.forecast;
     var lat = primary.city.coord.lat;
     var lon = primary.city.coord.lon;
     var aqi = fetchAQI_(lat, lon, apiKey);
     var uvi = fetchUVIndex_(lat, lon);
 
-    return buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi);
+    // Only label a slot when it actually ended up somewhere other than home —
+    // no tag at all already means "this is your default city."
+    var awayLabel9am = (r9.usedLoc !== home) ? r9.usedLoc : null;
+    var awayLabel6pm = (r6.usedLoc !== home) ? r6.usedLoc : null;
+
+    return buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi, awayLabel9am, awayLabel6pm);
   } catch (e) {
     Logger.log('getWeatherTicker_ error: ' + e.message);
     recordApiHealth_('openweathermap', false, 'ticker build error: ' + e.message, 0);
