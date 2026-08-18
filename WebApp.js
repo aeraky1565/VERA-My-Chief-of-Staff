@@ -223,6 +223,7 @@ function doGet(e) {
       case 'add_card_perk':              return jsonOut_(webAddCardPerk_(e));
       case 'delete_card_perk':           return jsonOut_(webDeleteCardPerk_(e));
       case 'toggle_card_perk':           return jsonOut_(webToggleCardPerk_(e));
+      case 'clear_perk_review':          return jsonOut_(webClearPerkReview_(e));
       case 'add_loyalty_program':        return jsonOut_(webAddLoyaltyProgram_(e));
       case 'update_loyalty_program':     return jsonOut_(webUpdateLoyaltyProgram_(e));
       case 'delete_loyalty_program':     return jsonOut_(webDeleteLoyaltyProgram_(e));
@@ -6010,6 +6011,7 @@ function webGetCards_() {
       frequency: String(r[4] || 'Monthly'),
       category:  String(r[5] || ''),
       lastUsed:  String(r[6] || ''),
+      needsReview: String(r[7] || '').trim().toLowerCase() === 'yes',
     };
   });
 
@@ -6207,14 +6209,26 @@ function webToggleCardPerk_(e) {
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       var freq       = String(rows[i][4] || 'Monthly');
-      var currentPeriod = freq === 'Annual'
-        ? Utilities.formatDate(now, tz, 'yyyy')
-        : Utilities.formatDate(now, tz, 'yyyy-MM');
+      var currentPeriod = cardPerkPeriodKey_(freq, now, tz);
       var lastUsed   = String(rows[i][6] || '').trim();
       var newUsed    = (lastUsed === currentPeriod) ? '' : currentPeriod;
       sheet.getRange(i + 1, 7).setValue(newUsed);
       return { ok: true, used: newUsed !== '', period: currentPeriod };
     }
+  }
+  throw new Error('Card perk not found: ' + id);
+}
+
+function webClearPerkReview_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  var reviewCol = ensureCardPerkNeedsReviewColumn_(sheet);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) { sheet.getRange(i + 1, reviewCol).setValue(''); return { ok: true }; }
   }
   throw new Error('Card perk not found: ' + id);
 }

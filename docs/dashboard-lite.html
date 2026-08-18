@@ -1031,7 +1031,7 @@ function CardModal({ mode, card, onSave, onClose, busy }) {
   );
 }
 
-function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onDeletePerk, onTogglePerk, busy }) {
+function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onDeletePerk, onTogglePerk, onClearReview, busy }) {
   const cardRewards = rewards.filter(function(r) { return r.cardName === card.cardName; });
   const cardPerks   = perks.filter(function(p) { return p.cardName === card.cardName; });
   const [newReward, setNewReward] = React.useState({ category:'', rate:'', rateType:'x points', conditions:'' });
@@ -1040,12 +1040,15 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
   const setPk = (k, v) => setNewPerk(prev => Object.assign({}, prev, { [k]: v }));
 
   const now = new Date();
-  const curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-  const curYear  = String(now.getFullYear());
+  const curMonth   = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  const curYear    = String(now.getFullYear());
+  const curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
 
   function isPerkUsed(perk) {
     if (!perk.lastUsed) return false;
-    return perk.frequency === 'Annual' ? perk.lastUsed === curYear : perk.lastUsed === curMonth;
+    if (perk.frequency === 'Annual') return perk.lastUsed === curYear;
+    if (perk.frequency === 'Quarterly') return perk.lastUsed === curQuarter;
+    return perk.lastUsed === curMonth;
   }
 
   const perkGroups = ['Monthly', 'Quarterly', 'Annual'];
@@ -1138,8 +1141,16 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                       <span style={{ fontSize:13, color: used ? '#86efac' : '#dde1f0' }}>{pk.perk}</span>
                       {pk.amount && <span style={{ fontSize:11, color:'#a0a8c0' }}>${pk.amount}</span>}
                       <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
-                        {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : 'this month'}
+                        {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
                       </span>
+                      {pk.needsReview && (
+                        <span title="VERA couldn't confirm this benefit is still current — review the terms, then clear this flag."
+                          style={{ background:'#78350f', color:'#fcd34d', fontSize:10, fontWeight:700, borderRadius:4, padding:'2px 6px', display:'flex', alignItems:'center', gap:4 }}>
+                          ⚠ Needs Review
+                          <button onClick={() => onClearReview(pk.id)} disabled={busy}
+                            style={{ background:'none', border:'none', color:'#fcd34d', cursor:'pointer', fontSize:11, padding:0, lineHeight:1 }}>×</button>
+                        </span>
+                      )}
                       <button onClick={() => onDeletePerk(pk.id)} disabled={busy}
                         style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:14, marginLeft:'auto' }}>×</button>
                     </div>
@@ -1393,6 +1404,15 @@ function CardsTab({ apiUrl, apiToken }) {
     setBusy(false);
   }
 
+  async function handleClearReview(id) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'clear_perk_review', id });
+      await load();
+    } catch (err) { setError('Clear review failed: ' + err.message); }
+    setBusy(false);
+  }
+
   async function handleSaveProgram(form) {
     setBusy(true);
     try {
@@ -1640,7 +1660,7 @@ function CardsTab({ apiUrl, apiToken }) {
         <CardDetailModal card={modal.data} rewards={rewards} perks={perks} busy={busy}
           onClose={() => setModal(null)}
           onAddReward={handleAddReward} onDeleteReward={handleDeleteReward}
-          onAddPerk={handleAddPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} />
+          onAddPerk={handleAddPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} onClearReview={handleClearReview} />
       )}
       {modal && modal.type === 'program' && (
         <LoyaltyModal mode={modal.data ? 'edit' : 'add'} program={modal.data} busy={busy}

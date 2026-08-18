@@ -193,7 +193,7 @@ const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Fre
 const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes'];
 const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
-const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used'];
+const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used', 'Needs Review'];
 const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
 const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
 const GIFT_PEOPLE_HEADERS        = ['Name'];
@@ -310,6 +310,7 @@ function createSheetTabs(ss) {
     ['wellness_checkin_hour', '8'],       // 24h hour for morning wellness check-in prompt
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
+    ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
   ];
 
   // Seed notif_*_enabled = TRUE for each registry entry if missing (Issue #188)
@@ -845,6 +846,12 @@ function nightlyRun() {
 
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
+
+    // Step 0m-ii: Card perk expiry reminders — flag/email/calendar 2 weeks before a perk period resets unused (Issue #187)
+    try { checkCardPerksExpiring_(); } catch (cpeErr) { Logger.log('checkCardPerksExpiring_ error (non-fatal): ' + cpeErr.message); stepFailures.push('checkCardPerksExpiring_: ' + cpeErr.message); }
+    // Step 0m-iii: Monthly card perk relevance check — verify with issuer via web search, flag stale perks for review (Issue #187)
+    try { checkCardPerksActive_(); } catch (cpaErr) { Logger.log('checkCardPerksActive_ error (non-fatal): ' + cpaErr.message); stepFailures.push('checkCardPerksActive_: ' + cpaErr.message); }
+
     checkTaxDocuments_();
     Logger.log('Step 0n: tax document check done');
 
@@ -1932,6 +1939,284 @@ function checkContracts_() {
   });
 
   Logger.log('checkContracts_: ' + flagsGenerated + ' contract flag(s) generated.');
+}
+
+// ============================================================
+// CARD PERKS — proactive expiry reminders + monthly relevance check
+// ============================================================
+
+/**
+ * Computes the current "period key" for a perk's Frequency — used to detect
+ * whether a perk has already been marked used this period. Shared by
+ * webToggleCardPerk_ (WebApp.js) and checkCardPerksExpiring_ below so both
+ * always agree on period boundaries.
+ * Annual='yyyy', Quarterly='yyyy-Q#', Monthly='yyyy-MM' (the default).
+ */
+function cardPerkPeriodKey_(freq, date, tz) {
+  var year = Utilities.formatDate(date, tz, 'yyyy');
+  if (freq === 'Annual') return year;
+  if (freq === 'Quarterly') {
+    var month = parseInt(Utilities.formatDate(date, tz, 'M'), 10); // 1-12
+    var q     = Math.floor((month - 1) / 3) + 1;
+    return year + '-Q' + q;
+  }
+  return Utilities.formatDate(date, tz, 'yyyy-MM'); // Monthly (default)
+}
+
+/**
+ * Last calendar day of the current period for a perk's Frequency — the date
+ * its unused allotment resets and is lost (no rollover). Annual -> Dec 31.
+ * Quarterly -> last day of the current calendar quarter. Monthly -> last
+ * day of the current month.
+ */
+function cardPerkPeriodEnd_(freq, today, tz) {
+  var year  = parseInt(Utilities.formatDate(today, tz, 'yyyy'), 10);
+  var month = parseInt(Utilities.formatDate(today, tz, 'M'), 10); // 1-12
+  var endMonth;
+  if (freq === 'Annual')         endMonth = 12;
+  else if (freq === 'Quarterly') endMonth = Math.ceil(month / 3) * 3;
+  else                            endMonth = month; // Monthly (default)
+  var d = new Date(year, endMonth, 0); // day 0 of the NEXT month = last day of endMonth
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Ensures the Card Perks sheet has a "Needs Review" column, adding it if
+ * missing. CARD_PERK_HEADERS grew after the live sheet was already seeded —
+ * ensureSheet() only writes headers to a blank sheet, so an already-populated
+ * sheet never picks up new header columns automatically. This self-heals it
+ * on first run instead of requiring a manual migration step.
+ * Returns the column's 1-based index.
+ */
+function ensureCardPerkNeedsReviewColumn_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var header  = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var idx     = header.indexOf('Needs Review');
+  if (idx !== -1) return idx + 1;
+  var newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('Needs Review');
+  return newCol;
+}
+
+/**
+ * Returns the primary shared/joint calendar (the same one PTO's gap-calendar
+ * config already treats as "the shared calendar" — first entry of
+ * pto_gap_calendars that isn't the work calendar), or null if unavailable.
+ * Reused here instead of hardcoding a calendar name so it stays in sync with
+ * however that Config value is set.
+ */
+function getPrimarySharedCalendar_() {
+  try {
+    var cfg   = readPTOConfig_();
+    var names = (cfg.gapCalendarsRaw || '').split(',')
+      .map(function(n) { return n.trim(); })
+      .filter(function(n) { return n && n !== cfg.calendarName; });
+    if (!names.length) return null;
+    return getCalendarByName_(names[0]);
+  } catch (e) {
+    Logger.log('getPrimarySharedCalendar_: ' + e.message);
+    return null;
+  }
+}
+
+/**
+ * checkCardPerksExpiring_()
+ * Nightly. Reminds Ahmed + Victoria when a tracked card perk is within 14
+ * days of its period reset and hasn't been marked used — writes a High
+ * flag (shows on Home), emails both, and marks the deadline on the shared
+ * calendar. Modeled directly on checkContracts_() above; skips perks tied
+ * to an inactive card or currently paused for review (checkCardPerksActive_).
+ */
+function checkCardPerksExpiring_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var cardSheet   = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var activeCards = {}; // Card Name -> true, only for cards not explicitly marked inactive
+  if (cardSheet && cardSheet.getLastRow() >= 2) {
+    cardSheet.getRange(2, 1, cardSheet.getLastRow() - 1, CREDIT_CARD_HEADERS.length).getValues()
+      .forEach(function(r) {
+        var name   = String(r[1] || '').trim();
+        var active = String(r[9] || '').trim().toLowerCase();
+        if (name && active !== 'no' && active !== 'false') activeCards[name] = true;
+      });
+  }
+
+  var reviewCol = ensureCardPerkNeedsReviewColumn_(sheet);
+  var numRows   = sheet.getLastRow() - 1;
+  var lastCol   = Math.max(CARD_PERK_HEADERS.length, reviewCol);
+  var data      = sheet.getRange(2, 1, numRows, lastCol).getValues();
+
+  var tz    = Session.getScriptTimeZone();
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+
+  var flagsGenerated = 0;
+  var sharedCal = null;
+
+  data.forEach(function(row) {
+    var id          = String(row[0]).trim();
+    var cardName    = String(row[1]).trim();
+    var perkName    = String(row[2]).trim();
+    var amount      = row[3];
+    var freq        = String(row[4] || 'Monthly').trim();
+    var lastUsed    = String(row[6] || '').trim();
+    var needsReview = String(row[reviewCol - 1] || '').trim();
+
+    if (!id || !cardName || !perkName) return;
+    if (!activeCards[cardName]) return;   // card not found or marked inactive
+    if (needsReview) return;              // paused pending review
+
+    var periodKey = cardPerkPeriodKey_(freq, today, tz);
+    if (lastUsed === periodKey) return;   // already used this period
+
+    var periodEnd = cardPerkPeriodEnd_(freq, today, tz);
+    var daysUntil = Math.round((periodEnd - today) / 86400000);
+    if (daysUntil < 0 || daysUntil > 14) return; // outside the reminder window
+
+    var amountStr = amount ? ('$' + amount) : '';
+    var flagText  = 'Perk expiring in ' + daysUntil + ' day' + (daysUntil === 1 ? '' : 's') + ': ' +
+                     perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' — ' + cardName;
+    var reason    = freq + ' perk resets ' + Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy') +
+                     ' — use it or lose it.';
+
+    writeFlags([{
+      source:  'Card Perks',
+      flag:    flagText,
+      reason:  reason,
+      urgency: 'High',
+      key:     'perk_expiry_' + id + '_' + periodKey,
+    }]);
+    flagsGenerated++;
+
+    try {
+      var recipients     = [CONFIG.MORNING_NUDGE_EMAIL];
+      var victoriaEmail  = (getConfigValues()['victoria_email'] || '').trim();
+      if (victoriaEmail) recipients.push(victoriaEmail);
+      var subject = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
+      var body    = flagText + '\n\n' + reason +
+        '\n\nMark it used from the dashboard (Finances → Cards → ' + cardName + ') once you\'ve redeemed it.';
+      MailApp.sendEmail(recipients.join(','), subject, body, { name: 'VERA' });
+    } catch (emailErr) {
+      Logger.log('checkCardPerksExpiring_: email error for ' + id + ' — ' + emailErr.message);
+    }
+
+    try {
+      if (!sharedCal) sharedCal = getPrimarySharedCalendar_();
+      if (sharedCal) {
+        var evTitle = '⏰ ' + perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' expires today — ' + cardName;
+        sharedCal.createAllDayEvent(evTitle, periodEnd);
+      }
+    } catch (calErr) {
+      Logger.log('checkCardPerksExpiring_: calendar error for ' + id + ' — ' + calErr.message);
+    }
+  });
+
+  Logger.log('checkCardPerksExpiring_: ' + flagsGenerated + ' perk flag(s) generated.');
+}
+
+/**
+ * checkCardPerksActive_()
+ * Runs once a month (the 1st). For each perk on an active card, checks with
+ * the issuer via web search (same doWebSearch_ + Claude-judgment pattern as
+ * scanHoaWebsite_ in NeighborhoodWatcher.js) whether it still looks current.
+ * Best-effort/fuzzy by design — UNKNOWN/inconclusive results never trigger
+ * anything. When a perk looks CHANGED, sets Needs Review (pausing expiry
+ * reminders for it) and writes a Medium flag asking the user to check it.
+ * Never edits Amount/Frequency/Category itself.
+ */
+function checkCardPerksActive_() {
+  if (new Date().getDate() !== 1) return; // once a month — same gating style as runEmailAdmin's weekly check
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  if (!sheet || sheet.getLastRow() < 2) return;
+
+  var cardSheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var cardInfo  = {}; // Card Name -> { issuer, active }
+  if (cardSheet && cardSheet.getLastRow() >= 2) {
+    cardSheet.getRange(2, 1, cardSheet.getLastRow() - 1, CREDIT_CARD_HEADERS.length).getValues()
+      .forEach(function(r) {
+        var name   = String(r[1] || '').trim();
+        var issuer = String(r[2] || '').trim();
+        var active = String(r[9] || '').trim().toLowerCase();
+        if (name) cardInfo[name] = { issuer: issuer, active: active !== 'no' && active !== 'false' };
+      });
+  }
+
+  var reviewCol = ensureCardPerkNeedsReviewColumn_(sheet);
+  var numRows   = sheet.getLastRow() - 1;
+  var lastCol   = Math.max(CARD_PERK_HEADERS.length, reviewCol);
+  var data      = sheet.getRange(2, 1, numRows, lastCol).getValues();
+  var tz        = Session.getScriptTimeZone();
+  var monthKey  = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var year      = Utilities.formatDate(new Date(), tz, 'yyyy');
+
+  var reviewsFlagged = 0;
+
+  data.forEach(function(row, idx) {
+    var id          = String(row[0]).trim();
+    var cardName    = String(row[1]).trim();
+    var perkName    = String(row[2]).trim();
+    var amount      = row[3];
+    var freq        = String(row[4] || 'Monthly').trim();
+    var needsReview = String(row[reviewCol - 1] || '').trim();
+
+    if (!id || !cardName || !perkName) return;
+    var card = cardInfo[cardName];
+    if (!card || !card.active) return; // inactive/unknown card — nothing to verify
+    if (needsReview) return;           // already flagged, waiting on the user
+
+    var results;
+    try {
+      results = doWebSearch_(card.issuer + ' ' + cardName + ' ' + perkName + ' benefit ' + year, 4);
+    } catch (searchErr) {
+      Logger.log('checkCardPerksActive_: search error for ' + id + ' — ' + searchErr.message);
+      return;
+    }
+    if (!results || !results.length) return; // no search configured / nothing to judge from
+
+    var snippetText = results.map(function(r) { return r.title + ' — ' + r.snippet; }).join('\n');
+    var prompt =
+      'A credit card benefit tracker has this entry: card "' + cardName + '" (issuer ' + card.issuer +
+      '), perk "' + perkName + '", amount $' + amount + ', frequency ' + freq + '.\n\n' +
+      'Web search results about this benefit:\n' + snippetText + '\n\n' +
+      'Based ONLY on these results, does this perk still appear to be currently offered as described ' +
+      '(same or similar amount/cadence)? Reply with EXACTLY one word: CURRENT, CHANGED, or UNKNOWN. ' +
+      'Use UNKNOWN if the results are inconclusive or unrelated — never guess.';
+
+    var verdict = 'UNKNOWN';
+    try {
+      var payload = { model: CLAUDE_MODEL, max_tokens: 10, messages: [{ role: 'user', content: prompt }] };
+      var resp = fetchTracked_('anthropic', CLAUDE_API_URL, {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        headers: { 'x-api-key': getApiKey(), 'anthropic-version': '2023-06-01' },
+        payload: JSON.stringify(payload),
+      });
+      var text = JSON.parse(resp.getContentText()).content[0].text.trim().toUpperCase();
+      if (text.indexOf('CHANGED') !== -1)      verdict = 'CHANGED';
+      else if (text.indexOf('CURRENT') !== -1) verdict = 'CURRENT';
+    } catch (claudeErr) {
+      Logger.log('checkCardPerksActive_: Claude error for ' + id + ' — ' + claudeErr.message);
+      return;
+    }
+
+    if (verdict !== 'CHANGED') return; // CURRENT or UNKNOWN — no action, never flag on uncertainty
+
+    sheet.getRange(idx + 2, reviewCol).setValue('Yes');
+    writeFlags([{
+      source:  'Card Perks',
+      flag:    'Perk may have changed: ' + perkName + ' — ' + cardName,
+      reason:  'Web search suggests this benefit\'s terms may no longer match the tracker (was $' +
+               amount + ' ' + freq.toLowerCase() + '). Review and update Card Perks, or clear the flag if it\'s still accurate.',
+      urgency: 'Medium',
+      key:     'perk_review_' + id + '_' + monthKey,
+    }]);
+    reviewsFlagged++;
+  });
+
+  Logger.log('checkCardPerksActive_: ' + reviewsFlagged + ' perk(s) flagged for review.');
 }
 
 /**
