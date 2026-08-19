@@ -208,6 +208,39 @@ function readTripRows_(tripKey) {
 }
 
 /**
+ * getTripBoundsByKey_(tripKey)
+ * Looks up departure/end dates and label for one specific, already-known
+ * tripKey — for callers like the chat debrief-completion action that don't
+ * want to scan for trips within a date window the way
+ * getRecentlyCompletedTrips_() does.
+ *
+ * @param  {string} tripKey
+ * @returns {{tripKey, tripLabel, departureDate, endDate}|null}
+ */
+function getTripBoundsByKey_(tripKey) {
+  var datePart = String(tripKey || '').split('|')[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+
+  var rows = readTripRows_(tripKey);
+  if (!rows.length) return null;
+
+  var parts     = tripKey.split('|');
+  var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
+  var departureDate = new Date(datePart + 'T00:00:00');
+  var endDate        = new Date(datePart + 'T00:00:00');
+
+  rows.forEach(function(row) {
+    var eventDate = String(row[4] || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+      var d = new Date(eventDate + 'T00:00:00');
+      if (d > endDate) endDate = d;
+    }
+  });
+
+  return { tripKey: tripKey, tripLabel: tripLabel, departureDate: departureDate, endDate: endDate };
+}
+
+/**
  * sendPostTripNudgeEmail_(trip)
  * Sends a brief day-after email nudging Ahmed to debrief in Chat.
  * Templated prose — no Claude call needed.

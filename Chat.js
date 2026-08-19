@@ -2377,6 +2377,17 @@ function executeActions_(rawText) {
           cdSafeKey,
           JSON.stringify({ completed: new Date().toISOString(), tripKey: cdTripKey })
         );
+        // Send the recap now — checkPostTripCapture_'s nightly pass only
+        // catches trips 2-4 days post-end, so a debrief done outside that
+        // window would otherwise never get a recap. sendPostTripRecapEmail_
+        // dedups via its own Script Property, so this is safe even if the
+        // nightly pass also lands within the window for this trip.
+        try {
+          var cdTrip = getTripBoundsByKey_(cdTripKey);
+          if (cdTrip) sendPostTripRecapEmail_(cdTrip);
+        } catch (cdErr) {
+          Logger.log('complete_debrief: recap email error for ' + cdTripKey + ' — ' + cdErr.message);
+        }
         executed.push('complete_debrief (' + cdTripKey + ')');
       }
 
