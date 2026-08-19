@@ -2384,9 +2384,15 @@ function executeActions_(rawText) {
         // nightly pass also lands within the window for this trip.
         try {
           var cdTrip = getTripBoundsByKey_(cdTripKey);
-          if (cdTrip) sendPostTripRecapEmail_(cdTrip);
+          if (cdTrip) {
+            sendPostTripRecapEmail_(cdTrip);
+          } else {
+            Logger.log('complete_debrief: no itinerary rows found for tripKey ' + cdTripKey);
+            sendSlackLog_('🔴 complete_debrief: could not find itinerary rows for "' + cdTripKey + '" — recap email not sent. Check the Itinerary tab for a Trip Key mismatch.');
+          }
         } catch (cdErr) {
           Logger.log('complete_debrief: recap email error for ' + cdTripKey + ' — ' + cdErr.message);
+          sendSlackLog_('🔴 complete_debrief: recap email failed for "' + cdTripKey + '" — ' + cdErr.message);
         }
         executed.push('complete_debrief (' + cdTripKey + ')');
       }
