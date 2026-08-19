@@ -2021,6 +2021,130 @@ function getPrimarySharedCalendar_() {
 }
 
 /**
+ * perkMerchantLabel_(perkName)
+ * Strips common trailing "type" words from a free-text perk name to get a
+ * cleaner merchant/provider label for the badge — e.g. "lululemon Credit"
+ * -> "lululemon", "Uber Cash" -> "Uber". Falls back to the original string
+ * if stripping would empty it out.
+ */
+function perkMerchantLabel_(perkName) {
+  var stripped = String(perkName || '')
+    .replace(/\s+(Credit|Cash|Reimbursement|Voucher|Membership|Bonus)$/i, '')
+    .trim();
+  return stripped || perkName;
+}
+
+/**
+ * perkBadgeInitials_(name)
+ * Two-letter initials for a badge tile: first letters of the first two
+ * words, or the first two letters of a single-word name.
+ */
+function perkBadgeInitials_(name) {
+  var words = String(name || '').trim().split(/\s+/).filter(function(w) { return w.length; });
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  if (words.length === 1) return words[0].substring(0, 2).toUpperCase();
+  return '??';
+}
+
+/**
+ * perkBadgeColor_(name)
+ * Deterministic hash-to-hue color, matching the dashboard's cardChipColor()
+ * (docs/app.js) exactly, so the same card/merchant name gets the same badge
+ * color everywhere in VERA — no external logo service involved (Clearbit's
+ * free Logo API shut down in Dec 2025).
+ */
+function perkBadgeColor_(name) {
+  var h = 0;
+  var s = String(name || '');
+  for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+  return 'hsl(' + (h % 360) + ',55%,40%)';
+}
+
+/**
+ * buildCardPerkEmailHtml_(data)
+ * Badge-based perk-expiry email: a merchant badge leads (what to use, where),
+ * a smaller card badge is secondary ("via <card>"), and an urgency pill by
+ * days-remaining — scannable without reading a word. Matches the visual
+ * shell every other VERA email uses (blue header, 600px white card, footer).
+ *
+ * @param {{perkName, cardName, amountStr, freq, periodEndLabel, daysUntil, reason}} data
+ * @returns {string} HTML email body
+ */
+function buildCardPerkEmailHtml_(data) {
+  var perkName   = escapeHtml_(data.perkName);
+  var cardName   = escapeHtml_(data.cardName);
+  var merchantLabel  = perkMerchantLabel_(data.perkName);
+  var merchantBadge  = escapeHtml_(perkBadgeInitials_(merchantLabel));
+  var cardBadge      = escapeHtml_(perkBadgeInitials_(data.cardName));
+  var merchantColor  = perkBadgeColor_(merchantLabel);
+  var cardColor      = perkBadgeColor_(data.cardName);
+
+  var urgent    = data.daysUntil <= 3;
+  var pillBg    = urgent ? '#fdecea' : '#fff4e0';
+  var pillColor = urgent ? '#c62828' : '#b5690a';
+  var pillLabel = escapeHtml_('Expires in ' + data.daysUntil + ' day' + (data.daysUntil === 1 ? '' : 's'));
+
+  var headerSub = escapeHtml_((data.amountStr ? data.amountStr + ' · ' : '') + 'resets ' + data.periodEndLabel);
+  var ticketAmountLine = escapeHtml_((data.amountStr ? data.amountStr + ' · ' : '') + data.freq);
+
+  return (
+    '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f6f9;' +
+    'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif;">' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:24px 0;">' +
+    '<tr><td align="center">' +
+    '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;' +
+    'border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.10);">' +
+    '<tr><td style="padding:28px 36px 24px;background:#1565c0;">' +
+    '<p style="margin:0 0 6px;font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);' +
+    'letter-spacing:2px;text-transform:uppercase;">Perk Expiring</p>' +
+    '<p style="margin:0 0 4px;font-size:24px;font-weight:700;color:#ffffff;line-height:1.25;">' + perkName + '</p>' +
+    '<p style="margin:0;font-size:14px;color:rgba(255,255,255,0.85);">' + headerSub + '</p>' +
+    '</td></tr>' +
+    '<tr><td style="padding:28px 36px 32px;">' +
+    '<div style="border:1px solid #e8eaf0;border-radius:10px;padding:20px;background:#fbfbfd;">' +
+      '<table width="100%" cellpadding="0" cellspacing="0"><tr>' +
+        '<td valign="top">' +
+          '<table cellpadding="0" cellspacing="0"><tr>' +
+            '<td valign="top" style="padding-right:12px;">' +
+              '<div style="width:44px;height:44px;border-radius:10px;background:' + merchantColor + ';' +
+              'color:#ffffff;font-weight:700;font-size:15px;line-height:44px;text-align:center;' +
+              'box-shadow:0 1px 3px rgba(0,0,0,0.18);">' + merchantBadge + '</div>' +
+            '</td>' +
+            '<td valign="middle">' +
+              '<p style="margin:0 0 2px;font-size:17px;font-weight:700;color:#1a1d29;">' + perkName + '</p>' +
+              '<p style="margin:0;font-size:13px;color:#1565c0;font-weight:700;">' + ticketAmountLine + '</p>' +
+            '</td>' +
+          '</tr></table>' +
+        '</td>' +
+        '<td valign="top" align="right" style="white-space:nowrap;">' +
+          '<span style="font-size:11px;font-weight:700;padding:5px 10px;border-radius:20px;' +
+          'background:' + pillBg + ';color:' + pillColor + ';">' + pillLabel + '</span>' +
+        '</td>' +
+      '</tr></table>' +
+      '<table cellpadding="0" cellspacing="0" style="margin:14px 0 0 56px;"><tr>' +
+        '<td valign="middle" style="padding-right:8px;">' +
+          '<div style="width:20px;height:20px;border-radius:5px;background:' + cardColor + ';' +
+          'color:#ffffff;font-weight:700;font-size:9px;line-height:20px;text-align:center;">' + cardBadge + '</div>' +
+        '</td>' +
+        '<td valign="middle" style="font-size:12.5px;color:#6b7280;">' +
+          'via <strong style="color:#3a3f4d;font-weight:600;">' + cardName + '</strong>' +
+        '</td>' +
+      '</tr></table>' +
+      '<p style="margin:16px 0 0 56px;padding-top:14px;border-top:1px dashed #e2e4ea;' +
+      'font-size:12.5px;color:#6b7280;line-height:1.55;">' + escapeHtml_(data.reason) + '</p>' +
+    '</div>' +
+    '<p style="margin-top:20px;font-size:12.5px;color:#6b7280;line-height:1.6;">' +
+      'Mark it used from the dashboard (Finances → Cards → ' + cardName + ') once you’ve redeemed it.' +
+    '</p>' +
+    '</td></tr>' +
+    '<tr><td style="padding:14px 36px;background:#f7f7fa;border-top:1px solid #eeeeee;">' +
+    '<p style="margin:0;font-size:12px;color:#aaaaaa;text-align:center;">' +
+    'Sent automatically by VERA — your Chief of Staff.</p>' +
+    '</td></tr></table></td></tr></table></body></html>'
+  );
+}
+
+/**
  * checkCardPerksExpiring_()
  * Nightly. Reminds Ahmed + Victoria when a tracked card perk is within 14
  * days of its period reset and hasn't been marked used — writes a High
@@ -2094,10 +2218,19 @@ function checkCardPerksExpiring_() {
       var recipients     = [CONFIG.MORNING_NUDGE_EMAIL];
       var victoriaEmail  = (getConfigValues()['victoria_email'] || '').trim();
       if (victoriaEmail) recipients.push(victoriaEmail);
-      var subject = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
-      var body    = flagText + '\n\n' + reason +
+      var subject  = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
+      var plainBody = flagText + '\n\n' + reason +
         '\n\nMark it used from the dashboard (Finances → Cards → ' + cardName + ') once you\'ve redeemed it.';
-      MailApp.sendEmail(recipients.join(','), subject, body, { name: 'VERA' });
+      var htmlBody = buildCardPerkEmailHtml_({
+        perkName:       perkName,
+        cardName:       cardName,
+        amountStr:      amountStr,
+        freq:           freq,
+        periodEndLabel: Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy'),
+        daysUntil:      daysUntil,
+        reason:         reason,
+      });
+      MailApp.sendEmail(recipients.join(','), subject, plainBody, { name: 'VERA', htmlBody: htmlBody });
     } catch (emailErr) {
       Logger.log('checkCardPerksExpiring_: email error for ' + id + ' — ' + emailErr.message);
     }
