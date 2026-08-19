@@ -2214,35 +2214,49 @@ function checkCardPerksExpiring_() {
     }]);
     flagsGenerated++;
 
-    try {
-      var recipients     = [CONFIG.MORNING_NUDGE_EMAIL];
-      var victoriaEmail  = (getConfigValues()['victoria_email'] || '').trim();
-      if (victoriaEmail) recipients.push(victoriaEmail);
-      var subject  = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
-      var plainBody = flagText + '\n\n' + reason +
-        '\n\nMark it used from the dashboard (Finances → Cards → ' + cardName + ') once you\'ve redeemed it.';
-      var htmlBody = buildCardPerkEmailHtml_({
-        perkName:       perkName,
-        cardName:       cardName,
-        amountStr:      amountStr,
-        freq:           freq,
-        periodEndLabel: Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy'),
-        daysUntil:      daysUntil,
-        reason:         reason,
-      });
-      MailApp.sendEmail(recipients.join(','), subject, plainBody, { name: 'VERA', htmlBody: htmlBody });
-    } catch (emailErr) {
-      Logger.log('checkCardPerksExpiring_: email error for ' + id + ' — ' + emailErr.message);
-    }
+    // Email + calendar: narrower window than the flag (7 days, not 14) and
+    // fired exactly once per perk per period — the flag above already relies
+    // on writeFlags' own fingerprint dedup, but nothing gated these two, so
+    // they were firing on every nightly pass for as long as the perk stayed
+    // inside the window (up to 15 emails/duplicate calendar events).
+    if (daysUntil <= 7) {
+      var notifyKey = 'PERK_NOTIFY_' + id.toUpperCase().replace(/[^A-Z0-9]/g, '_') +
+                       '_' + periodKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+      var notifyProps = PropertiesService.getScriptProperties();
+      if (!notifyProps.getProperty(notifyKey)) {
+        try {
+          var recipients     = [CONFIG.MORNING_NUDGE_EMAIL];
+          var victoriaEmail  = (getConfigValues()['victoria_email'] || '').trim();
+          if (victoriaEmail) recipients.push(victoriaEmail);
+          var subject  = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
+          var plainBody = flagText + '\n\n' + reason +
+            '\n\nMark it used from the dashboard (Finances → Cards → ' + cardName + ') once you\'ve redeemed it.';
+          var htmlBody = buildCardPerkEmailHtml_({
+            perkName:       perkName,
+            cardName:       cardName,
+            amountStr:      amountStr,
+            freq:           freq,
+            periodEndLabel: Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy'),
+            daysUntil:      daysUntil,
+            reason:         reason,
+          });
+          MailApp.sendEmail(recipients.join(','), subject, plainBody, { name: 'VERA', htmlBody: htmlBody });
+        } catch (emailErr) {
+          Logger.log('checkCardPerksExpiring_: email error for ' + id + ' — ' + emailErr.message);
+        }
 
-    try {
-      if (!sharedCal) sharedCal = getPrimarySharedCalendar_();
-      if (sharedCal) {
-        var evTitle = '⏰ ' + perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' expires today — ' + cardName;
-        sharedCal.createAllDayEvent(evTitle, periodEnd);
+        try {
+          if (!sharedCal) sharedCal = getPrimarySharedCalendar_();
+          if (sharedCal) {
+            var evTitle = '⏰ ' + perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' expires today — ' + cardName;
+            sharedCal.createAllDayEvent(evTitle, periodEnd);
+          }
+        } catch (calErr) {
+          Logger.log('checkCardPerksExpiring_: calendar error for ' + id + ' — ' + calErr.message);
+        }
+
+        notifyProps.setProperty(notifyKey, new Date().toISOString());
       }
-    } catch (calErr) {
-      Logger.log('checkCardPerksExpiring_: calendar error for ' + id + ' — ' + calErr.message);
     }
   });
 
