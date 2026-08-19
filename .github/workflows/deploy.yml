@@ -1,0 +1,66 @@
+name: Deploy to Apps Script
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.js'
+      - 'appsscript.json'
+      - '!playwright.config.js'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Restore clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "ERROR: CLASPRC_JSON secret is not set. Add it under Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+          echo "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+
+      - name: Syntax-check every Apps Script file before pushing
+        run: |
+          for f in *.js; do
+            [ "$f" = "playwright.config.js" ] && continue
+            echo "checking $f"
+            node --check "$f"
+          done
+
+      - name: Push to Apps Script
+        run: clasp push --force
+
+      - name: Deploy new version
+        run: |
+          clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta \
+            --description "Auto-deploy $(git rev-parse --short HEAD)"
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set — skipping Slack notification"
+            exit 0
+          fi
+          COMMIT_MSG=$(git log -1 --pretty=format:%s)
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          curl -sX POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"❌ VERA Apps Script deploy *failed* after push to \`main\`\n\`${COMMIT_SHA}\` ${COMMIT_MSG}\"}"
