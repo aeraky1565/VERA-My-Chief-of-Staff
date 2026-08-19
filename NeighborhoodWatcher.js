@@ -35,9 +35,8 @@ function scanHoaWebsite_() {
     // Fetch page content. Browser-like headers — UrlFetchApp's default User-Agent
     // ("Mozilla/5.0 (compatible; Google-Apps-Script)") reads as a bot to
     // Cloudflare-style protection, which was blocking every attempt with a
-    // "Just a moment..." challenge page (HTTP 429). This won't get past a real
-    // JS challenge, only a User-Agent/header check — see ApiHealth.js's
-    // 'hoa-website' record after the next scan to confirm which case this is.
+    // "Just a moment..." challenge page (HTTP 429). Confirmed this was a plain
+    // User-Agent/header check, not a JS challenge — the site scans clean now.
     var response = fetchTracked_('hoa-website', hoaUrl, {
       muteHttpExceptions: true,
       headers: {
