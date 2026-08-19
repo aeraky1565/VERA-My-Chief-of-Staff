@@ -16,7 +16,7 @@
  * Idempotent: if a row for the same date + metric already exists, overwrites its value.
  *
  * @param {string} who    - Typically 'Ahmed'
- * @param {string} metric - 'sleep_hours', 'sleep_quality', 'energy', or 'mood'
+ * @param {string} metric - 'sleep_hours', 'sleep_quality', 'energy', 'mood', or 'steps'
  * @param {number} value  - Numeric value
  * @param {string} source - 'google_fit' or 'manual'
  */
@@ -139,10 +139,101 @@ function fetchGoogleFitSleep_() {
 }
 
 /**
+ * Fetches yesterday's step count from Google Fit and logs it to WELLNESS_LOG.
+ * Same window/auth/error-handling shape as fetchGoogleFitSleep_ — shares the
+ * 'googlefit' ApiHealth source since both depend on the same Fitness API scope.
+ * Returns the step count as an integer, or null if no data.
+ */
+function fetchGoogleFitSteps_() {
+  var cfg = getConfigValues();
+  if (String(cfg['wellness_log_enabled'] || 'true').toLowerCase() === 'false') return null;
+
+  var tz = Session.getScriptTimeZone();
+  var now = new Date();
+
+  // Yesterday midnight → today midnight (in ms)
+  var todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var yesterdayMidnight = new Date(todayMidnight.getTime() - 86400000);
+
+  var startMs = yesterdayMidnight.getTime();
+  var endMs   = todayMidnight.getTime();
+
+  var token = ScriptApp.getOAuthToken();
+  var payload = {
+    aggregateBy: [{ dataTypeName: 'com.google.step_count.delta' }],
+    bucketByTime: { durationMillis: 86400000 },
+    startTimeMillis: startMs,
+    endTimeMillis:   endMs,
+  };
+
+  var response;
+  try {
+    response = UrlFetchApp.fetch(
+      'https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate',
+      {
+        method:             'post',
+        contentType:        'application/json',
+        headers:            { Authorization: 'Bearer ' + token },
+        payload:            JSON.stringify(payload),
+        muteHttpExceptions: true,
+      }
+    );
+  } catch (e) {
+    Logger.log('fetchGoogleFitSteps_: fetch error — ' + e.message);
+    recordApiHealth_('googlefit', false, e.message, 0);
+    return null;
+  }
+
+  if (response.getResponseCode() !== 200) {
+    Logger.log('fetchGoogleFitSteps_: non-200 response — ' + response.getContentText().substring(0, 200));
+    recordApiHealth_('googlefit', false,
+      String(response.getContentText() || '').substring(0, 200), response.getResponseCode());
+    return null;
+  }
+
+  var body;
+  try {
+    body = JSON.parse(response.getContentText());
+  } catch (e) {
+    recordApiHealth_('googlefit', false, 'parse error: ' + e.message, 200);
+    return null;
+  }
+
+  // Sum step count deltas (integer counts, not durations)
+  var totalSteps = 0;
+  var buckets = body.bucket || [];
+  buckets.forEach(function(bucket) {
+    var datasets = bucket.dataset || [];
+    datasets.forEach(function(ds) {
+      var points = ds.point || [];
+      points.forEach(function(pt) {
+        var values = pt.value || [];
+        values.forEach(function(v) {
+          totalSteps += v.intVal || 0;
+        });
+      });
+    });
+  });
+
+  // The API answered, so the source is healthy either way — a 0-step day is
+  // real data (e.g. watch not worn), not an outage.
+  recordApiHealth_('googlefit', true, '', 200);
+
+  if (totalSteps === 0) {
+    Logger.log('fetchGoogleFitSteps_: no step data returned for yesterday');
+    return null;
+  }
+
+  logWellness_('Ahmed', 'steps', totalSteps, 'google_fit');
+  Logger.log('fetchGoogleFitSteps_: logged ' + totalSteps + ' steps from Google Fit');
+  return totalSteps;
+}
+
+/**
  * Reads WELLNESS_LOG, GYM_LOG, and HABIT_LOG for a given week.
  *
  * @param {number} weeksBack - 0 = current Mon–Sun week, 1 = last week, etc.
- * @returns {{ sleep_hours_avg, sleep_quality_avg, energy_avg, mood_avg, gym_sessions, habit_completion_pct, has_data }}
+ * @returns {{ sleep_hours_avg, sleep_quality_avg, energy_avg, mood_avg, steps_avg, gym_sessions, habit_completion_pct, has_data }}
  */
 function getWellnessByWeek_(weeksBack) {
   var tz    = Session.getScriptTimeZone();
@@ -163,6 +254,7 @@ function getWellnessByWeek_(weeksBack) {
     sleep_quality_avg:  null,
     energy_avg:         null,
     mood_avg:           null,
+    steps_avg:          null,
     gym_sessions:       0,
     habit_completion_pct: null,
     has_data:           false,
@@ -174,8 +266,8 @@ function getWellnessByWeek_(weeksBack) {
   var wellSheet = ss.getSheetByName(TABS.WELLNESS_LOG);
   if (wellSheet && wellSheet.getLastRow() > 1) {
     var wellData = wellSheet.getRange(2, 1, wellSheet.getLastRow() - 1, WELLNESS_LOG_HEADERS.length).getValues();
-    var sums     = { sleep_hours: 0, sleep_quality: 0, energy: 0, mood: 0 };
-    var counts   = { sleep_hours: 0, sleep_quality: 0, energy: 0, mood: 0 };
+    var sums     = { sleep_hours: 0, sleep_quality: 0, energy: 0, mood: 0, steps: 0 };
+    var counts   = { sleep_hours: 0, sleep_quality: 0, energy: 0, mood: 0, steps: 0 };
 
     wellData.forEach(function(row) {
       var dateStr = String(row[1] || '').trim();
@@ -193,6 +285,7 @@ function getWellnessByWeek_(weeksBack) {
     if (counts.sleep_quality > 0) { result.sleep_quality_avg = Math.round((sums.sleep_quality / counts.sleep_quality) * 10) / 10; result.has_data = true; }
     if (counts.energy > 0)        { result.energy_avg        = Math.round((sums.energy / counts.energy) * 10) / 10; result.has_data = true; }
     if (counts.mood > 0)          { result.mood_avg          = Math.round((sums.mood / counts.mood) * 10) / 10; result.has_data = true; }
+    if (counts.steps > 0)         { result.steps_avg         = Math.round(sums.steps / counts.steps); result.has_data = true; }
   }
 
   // ── Gym Log ───────────────────────────────────────────────────────────────
@@ -253,6 +346,7 @@ function getHealthPerformanceSummaryLine_() {
     if (week.mood_avg !== null)          parts.push('mood ' + week.mood_avg);
     if (week.sleep_quality_avg !== null) parts.push('sleep quality ' + week.sleep_quality_avg);
     if (week.sleep_hours_avg !== null)   parts.push('sleep ' + week.sleep_hours_avg + 'h');
+    if (week.steps_avg !== null)         parts.push('steps ' + week.steps_avg.toLocaleString());
     if (parts.length === 0) return '';
 
     var perf = [];
@@ -306,6 +400,7 @@ function sendHealthPerformanceInsightMonthly_() {
     if (d.sleep_quality_avg !== null) cols.push('quality ' + d.sleep_quality_avg + '/5');
     if (d.energy_avg !== null)        cols.push('energy ' + d.energy_avg + '/5');
     if (d.mood_avg !== null)          cols.push('mood ' + d.mood_avg + '/5');
+    if (d.steps_avg !== null)         cols.push('steps ' + d.steps_avg.toLocaleString());
     cols.push('gym ' + d.gym_sessions + '×');
     if (d.habit_completion_pct !== null) cols.push('habits ' + d.habit_completion_pct + '%');
     return cols.join(' · ');
@@ -322,7 +417,7 @@ function sendHealthPerformanceInsightMonthly_() {
       var prompt =
         'You are VERA, Ahmed\'s Chief of Staff. Here is week-by-week health and performance data for the past month:\n\n' +
         tableText + '\n\n' +
-        'Metrics: sleep hours (from Google Fit), sleep quality/energy/mood (rated 1–5 by Ahmed each morning), ' +
+        'Metrics: sleep hours and steps (from Google Fit), sleep quality/energy/mood (rated 1–5 by Ahmed each morning), ' +
         'gym sessions attended, and habit completion percentage.\n\n' +
         'Identify 2–3 specific, data-backed patterns you observe (e.g. correlations between sleep and energy, ' +
         'gym frequency and habits, low-wellness weeks vs. performance dips). Then give 1 concrete recommendation. ' +

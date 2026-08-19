@@ -293,12 +293,14 @@ function checkMorningWellnessCheckin_(now, hour, cfg) {
 
   if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
 
-  // Auto-log sleep hours from Google Fit
+  // Auto-log sleep hours + steps from Google Fit
   var sleepHours = null;
-  try { sleepHours = fetchGoogleFitSleep_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit error — ' + e.message); }
+  try { sleepHours = fetchGoogleFitSleep_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit sleep error — ' + e.message); }
+  var steps = null;
+  try { steps = fetchGoogleFitSteps_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit steps error — ' + e.message); }
 
   if (isSlackConfigured_()) {
-    sendMorningWellnessSlack_(sleepHours);
+    sendMorningWellnessSlack_(sleepHours, steps);
     markSent_(ruleKey, 'morning_wellness_checkin');
     Logger.log('checkMorningWellnessCheckin_: sent for ' + dateStr);
   }

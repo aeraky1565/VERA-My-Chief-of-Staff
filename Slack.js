@@ -340,7 +340,7 @@ function buildEveningCheckinBlocks_() {
  * Builds the morning wellness check-in Block Kit message (3 rows × 5 rating buttons).
  * @param {number|null} sleepHours - Auto-logged sleep hours from Google Fit, or null if unavailable.
  */
-function buildMorningWellnessBlocks_(sleepHours) {
+function buildMorningWellnessBlocks_(sleepHours, steps) {
   var dayName = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'EEEE');
   var metrics = [
     { label: 'Energy today',  id: 'energy' },
@@ -348,13 +348,17 @@ function buildMorningWellnessBlocks_(sleepHours) {
     { label: 'Sleep quality', id: 'sleep'  },
   ];
 
+  var fitParts = [];
+  if (sleepHours !== null) fitParts.push('Sleep: ' + sleepHours + 'h');
+  if (steps !== null)      fitParts.push('Steps: ' + steps.toLocaleString());
+
   var blocks = [
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: ':sunny: *' + dayName + ' Morning Check-In* — 3 quick taps:' +
-          (sleepHours !== null ? '\n_Sleep: ' + sleepHours + 'h auto-logged from Google Fit_' : ''),
+          (fitParts.length ? '\n_' + fitParts.join(' · ') + ' auto-logged from Google Fit_' : ''),
       },
     },
   ];
@@ -388,12 +392,13 @@ function buildMorningWellnessBlocks_(sleepHours) {
 /**
  * Sends the morning wellness check-in to #vera-chat.
  * @param {number|null} sleepHours - From Google Fit, or null.
+ * @param {number|null} steps - From Google Fit, or null.
  */
-function sendMorningWellnessSlack_(sleepHours) {
+function sendMorningWellnessSlack_(sleepHours, steps) {
   var chatChannel = getSlackChannelId_('chat');
   if (!chatChannel) { Logger.log('sendMorningWellnessSlack_: no chat channel configured'); return; }
 
-  var blocks  = buildMorningWellnessBlocks_(sleepHours);
+  var blocks  = buildMorningWellnessBlocks_(sleepHours, steps);
   var token   = PropertiesService.getScriptProperties().getProperty('SLACK_BOT_TOKEN') || '';
   if (!token) return;
 
