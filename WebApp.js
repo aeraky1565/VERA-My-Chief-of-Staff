@@ -101,6 +101,7 @@ function doGet(e) {
       case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
       case 'debug_slack':           return jsonOut_(webDebugSlack_());
+      case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
@@ -1387,6 +1388,40 @@ function webDebugSlack_() {
     lastQueued:    lastQueued,
     lastProcessed: lastProcessed,
     lastUpdate:    lastUpdate,
+  };
+}
+
+/**
+ * Web-exposed view of the API_HEALTH_STATE map (ApiHealth.js) plus whether
+ * the Static Maps email key is configured — lets Issue #210's Google Fit /
+ * Maps-in-email verification happen from a browser instead of requiring the
+ * Apps Script editor. Never returns the actual key value, only whether one
+ * is set.
+ */
+function webDebugApiHealth_() {
+  var state = getApiHealthState_();
+  var tz    = Session.getScriptTimeZone();
+
+  function stamp(ms) {
+    return ms ? Utilities.formatDate(new Date(ms), tz, 'MM/dd HH:mm') : 'never';
+  }
+
+  var sources = {};
+  Object.keys(state).forEach(function(s) {
+    var e = state[s];
+    sources[s] = {
+      ok:                  !e.consecutiveFailures,
+      lastSuccess:         stamp(e.lastSuccess),
+      lastFailure:         stamp(e.lastFailure),
+      consecutiveFailures: e.consecutiveFailures || 0,
+      lastError:           e.lastError || '',
+    };
+  });
+
+  return {
+    ok: true,
+    sources: sources,
+    staticMapsKeyConfigured: !!(PropertiesService.getScriptProperties().getProperty('GOOGLE_STATIC_MAPS_API_KEY')),
   };
 }
 
