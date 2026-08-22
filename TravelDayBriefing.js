@@ -645,9 +645,12 @@ function buildTravelStaticMapUrl_(enrichedItems, apiKey) {
  * <script>/<iframe>, so a real interactive map can't render here at all;
  * see the dashboard's Map tab for that).
  *
- * Skipped entirely (returns '') if fewer than 2 items have a usable address,
- * or the Static Maps API key isn't configured — matches the "empty sections
- * are silently dropped" convention already used by every other section here.
+ * Skipped entirely (returns '') if the Static Maps API key isn't configured —
+ * that's a config issue, not something the reader can fix, so it matches the
+ * "empty sections are silently dropped" convention every other section here
+ * uses. But if fewer than 2 items have a usable address, that IS something
+ * the reader can fix (log more stops with addresses), so this shows a short
+ * explanatory line instead of silently vanishing.
  *
  * @param {{items: Array, apiKey: string, directionsUrl: string|null}} data
  * @returns {string}
@@ -657,8 +660,22 @@ function buildTravelMapSection_(data) {
   var apiKey         = (data && data.apiKey) || '';
   var directionsUrl  = (data && data.directionsUrl) || null;
 
+  if (!apiKey) return '';
+
+  var usableStops = items.filter(function(e) { return !!(e && e.displayAddress); }).length;
+  if (usableStops < 2 || !directionsUrl) {
+    return (
+      '<p style="margin:24px 0 16px;font-size:11px;font-weight:700;color:#1565c0;' +
+      'letter-spacing:1.5px;text-transform:uppercase;">Today\'s Route</p>' +
+      '<p style="margin:0;font-size:12.5px;color:#999999;font-style:italic;">' +
+      'Not enough stops with addresses logged today to build a route map — ' +
+      'add at least 2 items with addresses in the VERA Travel tab and it\'ll show up next time.' +
+      '</p>'
+    );
+  }
+
   var mapUrl = buildTravelStaticMapUrl_(items, apiKey);
-  if (!mapUrl || !directionsUrl) return '';
+  if (!mapUrl) return ''; // apiKey present + 2+ stops but build still failed — unexpected, stay silent rather than show a broken image
 
   return (
     '<p style="margin:24px 0 16px;font-size:11px;font-weight:700;color:#1565c0;' +
