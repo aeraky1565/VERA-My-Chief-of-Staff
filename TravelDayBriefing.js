@@ -23,49 +23,76 @@
 // ============================================================
 
 /**
- * getCalendarFlightsForToday_(tripKey, tz)
- * Fallback: reads timed Google Calendar events for today that look like flights
- * (title matches airline-code + flight-number pattern, e.g. "UA640").
+ * getCalendarItemsForToday_(tripKey, tripLabel, tz)
+ * Fallback: reads today's events from the same "trusted calendar" set
+ * webGetItinerary_() uses for the dashboard's auto-pull (WebApp.js) — gap/
+ * shared calendars + the user's personal primary calendar, explicitly
+ * excluding extended-family calendars — and keeps any event
+ * isItineraryCalendarRelevant_() (WebApp.js) judges relevant to this trip
+ * by keyword/location match against tripLabel. That's the same relevance
+ * check the dashboard's Travel tab already relies on; no GAS file boundary
+ * to cross since every .js file shares one global scope.
+ *
  * Returns an array of synthetic Itinerary row arrays (same 10-column layout)
- * so they can be passed directly to sendTravelDayBriefing_().
- * Only called when the Itinerary sheet has no rows for the trip today.
+ * so they can be passed directly to sendTravelDayBriefing_() unchanged —
+ * every downstream consumer (enrichTravelItems_, the schedule/map section
+ * builders, the plain-text builder) only ever cared about this row shape,
+ * never about whether it came from the sheet or a calendar.
+ *
+ * Only called when the Itinerary sheet has no rows for the trip today —
+ * deliberately conservative so this can't double up a manually-logged item.
  */
-function getCalendarFlightsForToday_(tripKey, tz) {
+function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
   var today      = new Date();
   var startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
   var endOfDay   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
   var rows       = [];
   try {
+    var cfg      = readPTOConfig_();
+    var gapNames = (cfg.gapCalendarsRaw || '').split(',')
+      .map(function(n) { return n.trim(); })
+      .filter(function(n) { return n && n !== cfg.calendarName; });
+    var trustedSet = {};
+    gapNames.forEach(function(n) { trustedSet[n] = true; });
+    var userEmail = Session.getEffectiveUser().getEmail();
+
     CalendarApp.getAllCalendars().forEach(function(cal) {
+      if (cal.getId() !== userEmail && !trustedSet[cal.getName()]) return;
+
       cal.getEvents(startOfDay, endOfDay).forEach(function(ev) {
-        if (ev.isAllDayEvent()) return;
-        var title = ev.getTitle();
-        // Must match an airline code + flight number (e.g. UA640, AA123, DL456)
-        if (!/\b[A-Z]{2}\d+\b/.test(title)) return;
-        // Extract up to two 3-letter IATA airport codes from the title
-        var iata   = title.match(/\b([A-Z]{3})\b/g) || [];
-        var origin = iata[0] || '';
-        var dest   = iata[1] || '';
-        var loc    = ev.getLocation() || (origin && dest ? origin + ' → ' + dest : title);
-        var startStr = Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
-        var endStr   = Utilities.formatDate(ev.getEndTime(),   tz, 'HH:mm');
-        // Pull confirmation number from description if present
-        var desc      = ev.getDescription() || '';
-        var confMatch = desc.match(/conf(?:irmation)?[#:\s]+([A-Z0-9]{5,8})/i);
-        var meta = JSON.stringify({
-          origin:              origin,
-          dest:                dest,
-          confirmationNumber:  confMatch ? confMatch[1] : '',
-          dep_scheduled:       ev.getStartTime().toISOString(),
-          arr_scheduled:       ev.getEndTime().toISOString()
-        });
+        var title    = (ev.getTitle()    || '(No title)').trim();
+        var location = (ev.getLocation() || '').trim();
+
+        var relevance = isItineraryCalendarRelevant_(title, location, tripLabel);
+        if (!relevance.include) return;
+
+        var allDay   = ev.isAllDayEvent();
+        var startStr = allDay ? '' : Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
+        var endStr   = allDay ? '' : Utilities.formatDate(ev.getEndTime(),   tz, 'HH:mm');
+
+        var meta = {};
+        if (relevance.type === 'flight') {
+          // Preserve the same flight-detail extraction the old flight-only
+          // fallback did, so flight-day briefings don't lose any detail.
+          var iata      = title.match(/\b([A-Z]{3})\b/g) || [];
+          var desc      = ev.getDescription() || '';
+          var confMatch = desc.match(/conf(?:irmation)?[#:\s]+([A-Z0-9]{5,8})/i);
+          meta = {
+            origin:             iata[0] || '',
+            dest:               iata[1] || '',
+            confirmationNumber: confMatch ? confMatch[1] : '',
+            dep_scheduled:      ev.getStartTime().toISOString(),
+            arr_scheduled:      ev.getEndTime().toISOString(),
+          };
+        }
+
         // [ID, TripKey, Type, Title, Date, StartTime, EndTime, Location, Notes, Metadata]
-        rows.push(['', tripKey, 'flight', title,
-                   ev.getStartTime(), startStr, endStr, loc, '', meta]);
+        rows.push(['', tripKey, relevance.type, title,
+                   ev.getStartTime(), startStr, endStr, location, '', JSON.stringify(meta)]);
       });
     });
   } catch (e) {
-    Logger.log('getCalendarFlightsForToday_ error: ' + e.message);
+    Logger.log('getCalendarItemsForToday_ error: ' + e.message);
   }
   return rows.sort(function(a, b) {
     return String(a[5]) < String(b[5]) ? -1 : 1;
@@ -142,12 +169,15 @@ function checkAndSendTravelDayBriefings_() {
     Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);
   }
 
-  // Calendar fallback: if a trip was found but has no sheet rows, try timed GCal events
+  // Calendar fallback: if a trip was found but has no sheet rows, pull in
+  // whatever today's trusted-calendar events are actually relevant to it.
   Object.keys(tripMap).forEach(function(key) {
     if (tripMap[key].length === 0) {
-      var calRows = getCalendarFlightsForToday_(key, tz);
+      var keyParts  = key.split('|');
+      var tripLabel = keyParts.length > 1 ? keyParts.slice(1).join('|') : key;
+      var calRows   = getCalendarItemsForToday_(key, tripLabel, tz);
       if (calRows.length) {
-        Logger.log('TravelDayBriefing: calendar fallback provided ' + calRows.length + ' flight(s) for ' + key);
+        Logger.log('TravelDayBriefing: calendar fallback provided ' + calRows.length + ' item(s) for ' + key);
         tripMap[key] = calRows;
       }
     }
