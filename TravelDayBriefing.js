@@ -23,6 +23,24 @@
 // ============================================================
 
 /**
+ * isVirtualMeetingLocation_(location)
+ * Same virtual-meeting keyword check isItineraryCalendarRelevant_ (WebApp.js)
+ * already applies internally — duplicated here in miniature because that
+ * function only exposes include/exclude, not *why*, and getCalendarItemsForToday_
+ * needs to know specifically "was this excluded for being virtual" before
+ * applying its own looser has-a-real-location fallback.
+ */
+function isVirtualMeetingLocation_(location) {
+  var VIRTUAL_LOCS = ['zoom', 'google meet', 'teams', 'webex', 'skype',
+                       'conference room', 'meet.google', 'whereby'];
+  var loc = location.toLowerCase();
+  for (var i = 0; i < VIRTUAL_LOCS.length; i++) {
+    if (loc.indexOf(VIRTUAL_LOCS[i]) !== -1) return true;
+  }
+  return false;
+}
+
+/**
  * getCalendarItemsForToday_(tripKey, tripLabel, tz)
  * Fallback: reads today's events from the same "trusted calendar" set
  * webGetItinerary_() uses for the dashboard's auto-pull (WebApp.js) — gap/
@@ -64,7 +82,19 @@ function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
         var location = (ev.getLocation() || '').trim();
 
         var relevance = isItineraryCalendarRelevant_(title, location, tripLabel);
-        if (!relevance.include) return;
+        if (!relevance.include) {
+          // isItineraryCalendarRelevant_ requires the trip-label keyword to
+          // literally appear in the title/location — which misses something
+          // like a lunch/dinner reservation whose venue name doesn't contain
+          // the destination (e.g. trip "Anniversary Weekend", venue "The
+          // Grove Bistro"). This function only ever runs when the trip has
+          // ZERO logged items for today, so err toward including any event
+          // with a real (non-virtual) location rather than dropping it —
+          // worst case is one extra row easily deleted from the Travel tab;
+          // the alternative is a real trip plan silently never showing up.
+          if (!location || isVirtualMeetingLocation_(location)) return;
+          relevance = { include: true, type: 'calendar' };
+        }
 
         var allDay   = ev.isAllDayEvent();
         var startStr = allDay ? '' : Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
