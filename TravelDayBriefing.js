@@ -42,7 +42,7 @@ function isVirtualMeetingLocation_(location) {
 
 /**
  * getCalendarItemsForToday_(tripKey, tripLabel, tz)
- * Fallback: reads today's events from the same "trusted calendar" set
+ * Reads today's events from the same "trusted calendar" set
  * webGetItinerary_() uses for the dashboard's auto-pull (WebApp.js) — gap/
  * shared calendars + the user's personal primary calendar, explicitly
  * excluding extended-family calendars — and keeps any event
@@ -57,8 +57,9 @@ function isVirtualMeetingLocation_(location) {
  * builders, the plain-text builder) only ever cared about this row shape,
  * never about whether it came from the sheet or a calendar.
  *
- * Only called when the Itinerary sheet has no rows for the trip today —
- * deliberately conservative so this can't double up a manually-logged item.
+ * Called for every active trip today, whether or not it already has logged
+ * Itinerary rows — the caller (checkAndSendTravelDayBriefings_) merges these
+ * in and dedups by title against whatever's already there.
  */
 function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
   var today      = new Date();
@@ -87,11 +88,12 @@ function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
           // literally appear in the title/location — which misses something
           // like a lunch/dinner reservation whose venue name doesn't contain
           // the destination (e.g. trip "Anniversary Weekend", venue "The
-          // Grove Bistro"). This function only ever runs when the trip has
-          // ZERO logged items for today, so err toward including any event
-          // with a real (non-virtual) location rather than dropping it —
-          // worst case is one extra row easily deleted from the Travel tab;
-          // the alternative is a real trip plan silently never showing up.
+          // Grove Bistro"). Err toward including any event with a real
+          // (non-virtual) location rather than dropping it — worst case is
+          // one extra row easily deleted from the Travel tab; the
+          // alternative is a real trip plan silently never showing up. The
+          // caller's title-based dedup still keeps this from ever doubling
+          // up something already logged manually.
           if (!location || isVirtualMeetingLocation_(location)) return;
           relevance = { include: true, type: 'calendar' };
         }
@@ -199,17 +201,34 @@ function checkAndSendTravelDayBriefings_() {
     Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);
   }
 
-  // Calendar fallback: if a trip was found but has no sheet rows, pull in
-  // whatever today's trusted-calendar events are actually relevant to it.
+  // Merge in today's relevant calendar events alongside whatever Itinerary
+  // rows already exist for the trip today — always, not just when the trip
+  // has zero logged items, so a manually-logged morning activity and an
+  // afternoon dinner plan that only lives on the calendar both show up.
+  // Deduped by title: both sides are already scoped to today by this point,
+  // so title alone is enough to tell "already logged" from "new." A manual
+  // row always wins a collision — it's what the user deliberately entered.
   Object.keys(tripMap).forEach(function(key) {
-    if (tripMap[key].length === 0) {
-      var keyParts  = key.split('|');
-      var tripLabel = keyParts.length > 1 ? keyParts.slice(1).join('|') : key;
-      var calRows   = getCalendarItemsForToday_(key, tripLabel, tz);
-      if (calRows.length) {
-        Logger.log('TravelDayBriefing: calendar fallback provided ' + calRows.length + ' item(s) for ' + key);
-        tripMap[key] = calRows;
-      }
+    var keyParts  = key.split('|');
+    var tripLabel = keyParts.length > 1 ? keyParts.slice(1).join('|') : key;
+    var calRows   = getCalendarItemsForToday_(key, tripLabel, tz);
+    if (!calRows.length) return;
+
+    var existingTitles = {};
+    tripMap[key].forEach(function(row) {
+      existingTitles[String(row[3] || '').trim().toLowerCase()] = true;
+    });
+
+    var added = 0;
+    calRows.forEach(function(calRow) {
+      var titleKey = String(calRow[3] || '').trim().toLowerCase();
+      if (existingTitles[titleKey]) return; // already logged manually today — skip
+      tripMap[key].push(calRow);
+      existingTitles[titleKey] = true;
+      added++;
+    });
+    if (added) {
+      Logger.log('TravelDayBriefing: calendar auto-pull added ' + added + ' item(s) for ' + key);
     }
   });
 
