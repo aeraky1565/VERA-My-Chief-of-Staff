@@ -218,6 +218,7 @@
     }
     .bento-card-sub { font-size: 12px; color: #6b7fa8; margin-bottom: 10px; }
     .bento-card-list { display: flex; flex-direction: column; gap: 4px; }
+    .loading-text { color: #6b7fa8; font-size: 13px; padding: 48px; text-align: center; }
   </style>
 </head>
 <body>
@@ -5158,6 +5159,330 @@ function FinCashflowLiteTab({ apiUrl, apiToken }) {
   return <CashflowView apiUrl={apiUrl} apiToken={apiToken} bills={bills} />;
 }
 
+// ---- Finances: Accounts + Contracts + Goals (ported from docs/app.js) --------
+
+const VISA_COLOR={green:{bg:'#0a2a1a',border:'#1a7a3a',text:'#4ade80'},yellow:{bg:'#2a2200',border:'#7a6500',text:'#fbbf24'},red:{bg:'#2a0a0a',border:'#7a1a1a',text:'#f87171'},grey:{bg:'#1a1e2e',border:'#3a4060',text:'#8ab4f8'}};
+
+function fmtMoney(n){if(n==null||n==='')return'—';return'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});}
+
+function fmtGoalDate(d){if(!d)return'—';var dt=new Date(d+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+
+function projectionChip(proj,targetDate){if(!proj)return null;if(proj.achieved)return/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:700,color:'#4ade80',background:'#0a2a1a',border:'1px solid #1a7a3a',borderRadius:8,padding:'2px 8px'}},"✓ Achieved");if(proj.noContribution)return/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:700,color:'#fbbf24',background:'#2a2200',border:'1px solid #7a6500',borderRadius:8,padding:'2px 8px'}},"⚠ No contribution set");if(!proj.projectedDate)return null;var onTrack=proj.onTrack!==false;var dEl=proj.daysEarlyOrLate;var label=onTrack?dEl!==null?dEl===0?'On target':dEl+'d early':'On track':dEl!==null?Math.abs(dEl)+'d late':'Off track';return/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:700,color:onTrack?'#4ade80':'#f87171',background:onTrack?'#0a2a1a':'#2a0a0a',border:'1px solid '+(onTrack?'#1a7a3a':'#7a1a1a'),borderRadius:8,padding:'2px 8px'}},onTrack?'✓':'⚠'," ",label);}
+
+function GoalCard({goal,projection,onEdit,onDelete,onSimulate,busy}){const pct=goal.targetAmount>0?Math.min(100,Math.round(goal.currentAmount/goal.targetAmount*100)):0;const ownerColor=goal.owner==='Ahmed'?'#5c9eff':goal.owner==='Victoria'?'#b87cff':'#4ade80';const ownerBg=goal.owner==='Ahmed'?'#0d2040':goal.owner==='Victoria'?'#1a0d30':'#0a2a1a';const statusColor=goal.status==='Achieved'?'#4ade80':goal.status==='Active'?'#8ab4f8':'#fbbf24';return/*#__PURE__*/React.createElement("div",{style:{background:'#141826',border:'1px solid #2a3050',borderRadius:12,padding:'18px 20px',marginBottom:14}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}},/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontSize:16,fontWeight:700,color:'#dde1f0',marginBottom:4}},goal.name),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:10,fontWeight:700,color:ownerColor,background:ownerBg,borderRadius:8,padding:'1px 8px'}},goal.owner),/*#__PURE__*/React.createElement("span",{style:{fontSize:10,color:statusColor}},goal.status),projection&&projectionChip(projection,goal.targetDate))),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:4}},/*#__PURE__*/React.createElement("button",{onClick:()=>onSimulate(goal),title:"What-If Simulator",style:{background:'none',border:'none',color:'#5c6a8a',cursor:'pointer',fontSize:15,padding:'0 4px'}},"🔮"),/*#__PURE__*/React.createElement("button",{onClick:()=>onEdit(goal),style:{background:'none',border:'none',color:'#5c6a8a',cursor:'pointer',fontSize:14,padding:'0 4px'}},"✎"),/*#__PURE__*/React.createElement("button",{onClick:()=>onDelete(goal.id),disabled:busy,style:{background:'none',border:'none',color:'#5c6a8a',cursor:'pointer',fontSize:16,padding:'0 4px'}},"×"))),/*#__PURE__*/React.createElement("div",{style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',fontSize:12,color:'#8ab4f8',marginBottom:4}},/*#__PURE__*/React.createElement("span",null,fmtMoney(goal.currentAmount)," saved"),/*#__PURE__*/React.createElement("span",null,pct,"% of ",fmtMoney(goal.targetAmount))),/*#__PURE__*/React.createElement("div",{style:{height:8,background:'#1a2040',borderRadius:4,overflow:'hidden'}},/*#__PURE__*/React.createElement("div",{style:{height:'100%',width:pct+'%',background:pct>=100?'#4ade80':pct>=60?'#5c9eff':'#fbbf24',borderRadius:4,transition:'width .4s'}}))),/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}},[{label:'Monthly',value:goal.monthlyContribution?fmtMoney(goal.monthlyContribution)+'/mo':'—'},{label:'Target Date',value:fmtGoalDate(goal.targetDate)},{label:'Projected',value:projection&&!projection.noContribution&&!projection.achieved&&projection.projectedDate?fmtGoalDate(projection.projectedDate):projection&&projection.achieved?'Done ✓':'—'}].map(function(s){return/*#__PURE__*/React.createElement("div",{key:s.label,style:{background:'#0d1520',borderRadius:8,padding:'8px 10px'}},/*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#5c7080',marginBottom:2,textTransform:'uppercase',letterSpacing:'0.05em'}},s.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,fontWeight:600,color:'#dde1f0'}},s.value));})),goal.notes&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#5c7080',marginTop:8}},goal.notes));}
+
+function GoalFormModal({goal,onSave,onClose,busy}){const[form,setForm]=React.useState(goal?{name:goal.name,targetAmount:goal.targetAmount,currentAmount:goal.currentAmount,targetDate:goal.targetDate,monthlyContribution:goal.monthlyContribution,apy:goal.apy,owner:goal.owner||'Joint',account:goal.account,status:goal.status||'Active',notes:goal.notes}:{name:'',targetAmount:'',currentAmount:'0',targetDate:'',monthlyContribution:'',apy:'0',owner:'Joint',account:'',status:'Active',notes:''});const set=(k,v)=>setForm(prev=>({...prev,[k]:v}));return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:onClose},/*#__PURE__*/React.createElement("div",{className:"modal-box",style:{maxWidth:460},onClick:e=>e.stopPropagation()},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:16}},goal?'Edit Goal':'Add Financial Goal'),[{key:'name',label:'Goal Name',placeholder:'e.g. House Down Payment'},{key:'targetAmount',label:'Target Amount ($)',placeholder:'e.g. 150000',type:'number'},{key:'currentAmount',label:'Current Amount ($)',placeholder:'e.g. 12000',type:'number'},{key:'monthlyContribution',label:'Monthly Contribution ($)',placeholder:'e.g. 2000',type:'number'},{key:'targetDate',label:'Target Date',type:'date'},{key:'apy',label:'APY % (optional)',placeholder:'e.g. 4.5',type:'number'},{key:'account',label:'Account',placeholder:'e.g. Joint Savings'},{key:'notes',label:'Notes',placeholder:'Optional'}].map(function(f){return/*#__PURE__*/React.createElement("div",{key:f.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#8a9abf',marginBottom:3,textTransform:'uppercase',letterSpacing:1}},f.label),/*#__PURE__*/React.createElement("input",{type:f.type||'text',placeholder:f.placeholder||'',value:form[f.key]||'',onChange:e=>set(f.key,e.target.value),style:{width:'100%',padding:'8px 10px',borderRadius:8,background:'#0d1b3e',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13}}));}),/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}},/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#8a9abf',marginBottom:3,textTransform:'uppercase',letterSpacing:1}},"Owner"),/*#__PURE__*/React.createElement("select",{value:form.owner||'Joint',onChange:e=>set('owner',e.target.value),style:{width:'100%',padding:'8px 10px',borderRadius:8,background:'#0d1b3e',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13}},['Joint','Ahmed','Victoria'].map(o=>/*#__PURE__*/React.createElement("option",{key:o,value:o},o)))),/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#8a9abf',marginBottom:3,textTransform:'uppercase',letterSpacing:1}},"Status"),/*#__PURE__*/React.createElement("select",{value:form.status||'Active',onChange:e=>set('status',e.target.value),style:{width:'100%',padding:'8px 10px',borderRadius:8,background:'#0d1b3e',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13}},['Active','Achieved','Paused','Cancelled'].map(s=>/*#__PURE__*/React.createElement("option",{key:s,value:s},s))))),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,justifyContent:'flex-end'}},/*#__PURE__*/React.createElement("button",{type:"button",onClick:onClose,style:{padding:'7px 16px',borderRadius:8,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:'pointer',fontSize:13}},"Cancel"),/*#__PURE__*/React.createElement("button",{type:"button",onClick:()=>onSave(form),disabled:busy||!form.name||!form.targetAmount,style:{padding:'7px 16px',borderRadius:8,background:'#5c9eff',border:'none',color:'#fff',fontWeight:600,fontSize:13,cursor:busy||!form.name||!form.targetAmount?'not-allowed':'pointer',opacity:busy||!form.name||!form.targetAmount?0.5:1}},goal?'Save Changes':'Add Goal'))));}
+
+function ScenarioSimulatorModal({goal,apiUrl,apiToken,busy,onClose}){const[changeType,setChangeType]=React.useState('one-time');const[amount,setAmount]=React.useState('');const[description,setDescription]=React.useState('');const[result,setResult]=React.useState(null);const[loading,setLoading]=React.useState(false);const[saving,setSaving]=React.useState(false);const[saved,setSaved]=React.useState(false);async function runSim(){if(!amount)return;setLoading(true);setResult(null);try{const data=await apiGet(apiUrl,apiToken,{action:'simulate_scenario',goalId:goal.id,changeType,amount});if(data.ok)setResult(data.result);}catch(e){}setLoading(false);}async function saveScenario(){if(!result)return;setSaving(true);try{await apiGet(apiUrl,apiToken,{action:'save_scenario',goalId:goal.id,label:description||changeType+' $'+amount,changeType,amount,notes:description});setSaved(true);}catch(e){}setSaving(false);}const VC=VISA_COLOR;// reuse color map: green/yellow/red/grey
+const baseColor=result?result.baseline.onTrack?VC.green:VC.red:VC.grey;const scenColor=result?result.atRisk?VC.red:result.scenario.noContribution?VC.red:VC.green:VC.grey;return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:onClose},/*#__PURE__*/React.createElement("div",{className:"modal-box",style:{maxWidth:480},onClick:e=>e.stopPropagation()},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:4}},"🔮 What-If Simulator"),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#8ab4f8',marginBottom:16}},goal.name," — ",fmtMoney(goal.targetAmount),goal.targetDate?' by '+fmtGoalDate(goal.targetDate):''),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,marginBottom:12}},[['one-time','💳 One-time purchase'],['recurring','🔄 Recurring expense']].map(function([v,l]){var active=changeType===v;return/*#__PURE__*/React.createElement("button",{key:v,onClick:()=>{setChangeType(v);setResult(null);},style:{flex:1,padding:'8px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:12,border:active?'1.5px solid #5c9eff':'1.5px solid #2a3a50',background:active?'#0d2040':'#0d1520',color:active?'#5c9eff':'#8ab4f8'}},l);})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#8ab4f8',marginBottom:4}},"Amount ($)"),/*#__PURE__*/React.createElement("input",{type:"number",min:"0",placeholder:"e.g. 30000",value:amount,onChange:e=>{setAmount(e.target.value);setResult(null);},style:{width:'100%',padding:'8px 10px',borderRadius:8,background:'#0d1b3e',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13}})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#8ab4f8',marginBottom:4}},"Description (optional)"),/*#__PURE__*/React.createElement("input",{placeholder:"e.g. New car purchase",value:description,onChange:e=>setDescription(e.target.value),style:{width:'100%',padding:'8px 10px',borderRadius:8,background:'#0d1b3e',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13}})),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{width:'100%',marginBottom:16},onClick:runSim,disabled:loading||!amount},loading?'Calculating…':'Run Simulation'),result&&/*#__PURE__*/React.createElement("div",{style:{marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{background:baseColor.bg,border:'1px solid '+baseColor.border,borderRadius:8,padding:'12px 14px',marginBottom:8}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#5c7080',marginBottom:4,textTransform:'uppercase'}},"Without this change"),/*#__PURE__*/React.createElement("div",{style:{fontSize:14,fontWeight:700,color:baseColor.text}},result.baseline.achieved?'✓ Already achieved':result.baseline.noContribution?'No contribution set':result.baseline.projectedDate?fmtGoalDate(result.baseline.projectedDate):'—'),result.baseline.daysEarlyOrLate!==null&&!result.baseline.achieved&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#8ab4f8',marginTop:2}},result.baseline.onTrack?result.baseline.daysEarlyOrLate+' days early':Math.abs(result.baseline.daysEarlyOrLate)+' days late')),/*#__PURE__*/React.createElement("div",{style:{background:scenColor.bg,border:'1px solid '+scenColor.border,borderRadius:8,padding:'12px 14px',marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#5c7080',marginBottom:4,textTransform:'uppercase'}},"With ",changeType==='one-time'?'$'+Number(amount).toLocaleString()+' purchase':'$'+Number(amount).toLocaleString()+'/mo increase'),/*#__PURE__*/React.createElement("div",{style:{fontSize:14,fontWeight:700,color:scenColor.text}},result.scenario.noContribution?'Goal becomes unreachable':result.scenario.projectedDate?fmtGoalDate(result.scenario.projectedDate):'—'),result.delayDays>0&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#fbbf24',marginTop:2}},"Delay: ",result.delayLabel)),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#dde1f0',background:'#0d1520',borderRadius:8,padding:'10px 12px',lineHeight:1.5}},result.verdict),!saved?/*#__PURE__*/React.createElement("button",{onClick:saveScenario,disabled:saving,style:{marginTop:10,width:'100%',padding:'7px 0',borderRadius:8,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:saving?'not-allowed':'pointer',fontSize:13}},saving?'Saving…':'💾 Save Scenario'):/*#__PURE__*/React.createElement("div",{style:{marginTop:10,textAlign:'center',fontSize:13,color:'#4ade80'}},"✓ Scenario saved")),/*#__PURE__*/React.createElement("button",{onClick:onClose,style:{width:'100%',padding:'7px 0',borderRadius:8,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:'pointer',fontSize:13}},"Close")));}
+
+function AccountFormModal({mode,account,busy,onClose,onSave}){
+  const[form,setForm]=React.useState(account?{name:account.name,institution:account.institution,type:account.type,owner:account.owner,notes:account.notes}:{name:'',institution:'',type:'Checking',owner:'Joint',notes:''});
+  function set(k,v){setForm(p=>({...p,[k]:v}));}
+  const typeOpts=['Checking','Savings','Credit Card','Brokerage','Cash'];
+  const ownerOpts=[{label:'Joint',color:'#2bb5a0',bg:'#0d1a10'},{label:'Ahmed',color:'#5c9eff',bg:'#0d2040'},{label:'Victoria',color:'#c97ef2',bg:'#1a0d30'}];
+  function submit(e){e.preventDefault();if(!form.name.trim())return;onSave({name:form.name.trim(),institution:form.institution.trim(),type:form.type,owner:form.owner,notes:form.notes.trim()});}
+  return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:onClose},
+    /*#__PURE__*/React.createElement("div",{className:"modal-box",style:{maxWidth:400},onClick:e=>e.stopPropagation()},
+      /*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:16,color:'#dde1f0',marginBottom:16}},mode==='add'?'+ Add Account':'Edit Account'),
+      /*#__PURE__*/React.createElement("form",{onSubmit:submit},
+        /*#__PURE__*/React.createElement("div",{className:"form-group"},
+          /*#__PURE__*/React.createElement("label",{className:"form-label"},"Account Name *"),
+          /*#__PURE__*/React.createElement("input",{className:"form-input",value:form.name,onChange:e=>set('name',e.target.value),placeholder:"e.g. Joint Checking, Ahmed Chase",autoFocus:true})
+        ),
+        /*#__PURE__*/React.createElement("div",{className:"form-group"},
+          /*#__PURE__*/React.createElement("label",{className:"form-label"},"Banking Institution"),
+          /*#__PURE__*/React.createElement("input",{className:"form-input",value:form.institution,onChange:e=>set('institution',e.target.value),placeholder:"e.g. Chase, Capital One, Ally"})
+        ),
+        /*#__PURE__*/React.createElement("div",{className:"form-group"},
+          /*#__PURE__*/React.createElement("label",{className:"form-label"},"Account Type"),
+          /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,flexWrap:'wrap'}},typeOpts.map(t=>/*#__PURE__*/React.createElement("button",{key:t,type:"button",onClick:()=>set('type',t),style:{padding:'4px 10px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,border:form.type===t?'1.5px solid #5c9eff':'1.5px solid #2a3a4a',background:form.type===t?'#0d2040':'#1e2a3a',color:form.type===t?'#5c9eff':'#6b7fa8'}},t)))
+        ),
+        /*#__PURE__*/React.createElement("div",{className:"form-group"},
+          /*#__PURE__*/React.createElement("label",{className:"form-label"},"Owner"),
+          /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6}},ownerOpts.map(o=>/*#__PURE__*/React.createElement("button",{key:o.label,type:"button",onClick:()=>set('owner',o.label),style:{padding:'4px 12px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600,border:form.owner===o.label?'1.5px solid '+o.color:'1.5px solid #2a3a4a',background:form.owner===o.label?o.bg:'#1e2a3a',color:form.owner===o.label?o.color:'#6b7fa8'}},o.label)))
+        ),
+        /*#__PURE__*/React.createElement("div",{className:"form-group"},
+          /*#__PURE__*/React.createElement("label",{className:"form-label"},"Notes"),
+          /*#__PURE__*/React.createElement("input",{className:"form-input",value:form.notes,onChange:e=>set('notes',e.target.value),placeholder:"Optional"})
+        ),
+        /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:10,justifyContent:'flex-end',marginTop:8}},
+          /*#__PURE__*/React.createElement("button",{type:"button",onClick:onClose,style:{padding:'8px 18px',borderRadius:8,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:'pointer',fontSize:13}},"Cancel"),
+          /*#__PURE__*/React.createElement("button",{type:"submit",disabled:busy||!form.name.trim(),style:{padding:'8px 18px',borderRadius:8,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:'#5c9eff',color:'#fff',opacity:busy||!form.name.trim()?0.5:1}},busy?'Saving…':mode==='add'?'Add Account':'Save')
+        )
+      )
+    )
+  );
+}
+
+function AccountsTab({apiUrl,apiToken,bills,split}){
+  const[accounts,setAccounts]=React.useState([]);
+  const[loading,setLoading]=React.useState(true);
+  const[busy,setBusy]=React.useState(false);
+  const[error,setError]=React.useState('');
+  const[localBills,setLocalBills]=React.useState(null);// null = use prop; set after reassign to reflect server state immediately
+  const[modal,setModal]=React.useState(null);// null | {mode:'add'} | {mode:'edit',account:{...}}
+  const[expanded,setExpanded]=React.useState({});// accountName -> bool
+  const[editBill,setEditBill]=React.useState(null);// bill being reassigned
+
+  async function load(){
+    setLoading(true);setError('');
+    try{const d=await apiGet(apiUrl,apiToken,{action:'get_bank_accounts'});setAccounts(d.accounts||[]);}
+    catch(err){setError('Could not load accounts: '+err.message);}
+    setLoading(false);
+  }
+  React.useEffect(()=>{load();},[]);
+
+  function ownerColor(owner){return owner==='Ahmed'?'#5c9eff':owner==='Victoria'?'#c97ef2':'#2bb5a0';}
+  function ownerBg(owner){return owner==='Ahmed'?'#0d2040':owner==='Victoria'?'#1a0d30':'#0d1a10';}
+
+  // Bills assigned to each account — use localBills (refreshed after reassign) or fall back to prop
+  const effectiveBills=localBills!==null?localBills:(bills&&bills.bills||[]);
+  const allBills=effectiveBills.filter(b=>b.type!=='Income');
+  const knownNames=new Set(accounts.map(a=>a.name));
+  function billsFor(accountName){return allBills.filter(b=>b.account===accountName);}
+  const unassigned=allBills.filter(b=>!b.account||!knownNames.has(b.account));
+
+  function fmtAmt(v){if(!v&&v!==0)return'—';return'$'+Math.round(v).toLocaleString();}
+  function minBalance(accountName){
+    const bs=billsFor(accountName);
+    const total=bs.reduce(function(s,b){return s+(b.amount||0);},0);
+    const hasVar=bs.some(b=>!b.amount);
+    return{total,hasVar};
+  }
+
+  async function saveAccount(fields){
+    setBusy(true);
+    try{
+      if(modal&&modal.mode==='edit'&&modal.account){
+        await apiGet(apiUrl,apiToken,Object.assign({action:'update_bank_account',row:modal.account.row},fields));
+      } else {
+        await apiGet(apiUrl,apiToken,Object.assign({action:'add_bank_account'},fields));
+      }
+      await load();setModal(null);
+    }catch(err){setError('Save failed: '+err.message);}
+    setBusy(false);
+  }
+
+  async function deleteAccount(account){
+    if(!confirm('Delete "'+account.name+'"?'))return;
+    setBusy(true);
+    try{await apiGet(apiUrl,apiToken,{action:'delete_bank_account',row:account.row});await load();}
+    catch(err){setError('Delete failed: '+err.message);}
+    setBusy(false);
+  }
+
+  async function reassignBill(bill,newAccount){
+    setBusy(true);
+    try{
+      await apiGet(apiUrl,apiToken,{
+        action:'update_bill',row:bill.row,
+        bill:bill.bill,amount:bill.amount!=null?bill.amount:'',
+        dueDay:bill.dueDay!=null?bill.dueDay:'',
+        frequency:bill.frequency||'Monthly',
+        category:bill.category||'',account:newAccount,
+        notes:bill.notes||'',type:bill.type||'Expense'
+      });
+      // Fetch fresh bills so the UI reflects the change immediately
+      const freshData=await apiGet(apiUrl,apiToken,{action:'bills'});
+      setLocalBills(freshData&&freshData.bills||[]);
+      setEditBill(null);
+    }catch(err){setError('Reassign failed: '+err.message);}
+    setBusy(false);
+  }
+
+  function BillRow({b}){
+    var dueLabel=b.dueDay?'Due '+b.dueDay+'th':b.dueDate?b.dueDate:'';
+    var paidStyle={opacity:b.paid?0.45:1};
+    return/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'6px 0',borderBottom:'1px solid #0d1b3e',gap:8,...paidStyle}},
+      /*#__PURE__*/React.createElement("div",{style:{flex:1,fontSize:12,color:'#dde1f0'}},b.bill,b.notes&&/*#__PURE__*/React.createElement("span",{style:{color:'#4d6080',marginLeft:6,fontSize:11}},b.notes)),
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#c9a84c',fontVariantNumeric:'tabular-nums',minWidth:64,textAlign:'right'}},b.amount!=null?fmtAmt(b.amount):'—'),
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',minWidth:80,textAlign:'right'}},dueLabel),
+      /*#__PURE__*/React.createElement("span",{style:{fontSize:10,padding:'2px 7px',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',color:'#6b7fa8',background:'#0a1628'},onClick:()=>setEditBill({bill:b,currentAccount:b.account})},'✎')
+    );
+  }
+
+  function AccountCard({account}){
+    var mb=minBalance(account.name);
+    var count=billsFor(account.name).length;
+    var isOpen=!!expanded[account.name];
+    var clr=ownerColor(account.owner);
+    var bg=ownerBg(account.owner);
+    return/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{cursor:'default',marginBottom:12}},
+      /*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:10,marginBottom:8}},
+        /*#__PURE__*/React.createElement("div",{style:{flex:1}},
+          /*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:14,color:'#dde1f0'}},account.name),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginTop:2}},account.institution&&account.type?account.institution+' · '+account.type:account.institution||account.type||'')
+        ),
+        /*#__PURE__*/React.createElement("span",{style:{fontSize:11,padding:'3px 10px',borderRadius:10,border:'1px solid '+clr,color:clr,background:bg}},account.owner||'—'),
+        /*#__PURE__*/React.createElement("button",{onClick:()=>setModal({mode:'edit',account}),style:{padding:'3px 8px',borderRadius:6,background:'#1e2a3a',border:'1px solid #2a3a4a',color:'#6b7fa8',cursor:'pointer',fontSize:11}},'Edit'),
+        /*#__PURE__*/React.createElement("button",{onClick:()=>deleteAccount(account),disabled:busy,style:{padding:'3px 8px',borderRadius:6,background:'#1e2a3a',border:'1px solid #3a1a1a',color:'#ef5350',cursor:'pointer',fontSize:11}},'✕')
+      ),
+      /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:24,padding:'10px 0',borderTop:'1px solid #0d1b3e',borderBottom:isOpen?'1px solid #0d1b3e':'none',marginBottom:isOpen?8:0}},
+        /*#__PURE__*/React.createElement("div",null,
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}},'Min Balance Needed'),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:'#c9a84c',fontVariantNumeric:'tabular-nums'}},mb.total>0?fmtAmt(mb.total)+(mb.hasVar?'+':''):'—')
+        ),
+        /*#__PURE__*/React.createElement("div",null,
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}},'Bills'),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:'#dde1f0'}},count)
+        )
+      ),
+      count>0&&/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#5c9eff',cursor:'pointer',marginTop:isOpen?0:2},onClick:()=>setExpanded(prev=>({...prev,[account.name]:!prev[account.name]}))},isOpen?'▾ Hide bills':'▸ Show bills'),
+      isOpen&&/*#__PURE__*/React.createElement("div",{style:{marginTop:6}},billsFor(account.name).sort(function(a,b){return(a.dueDay||99)-(b.dueDay||99);}).map(function(b,i){return/*#__PURE__*/React.createElement(BillRow,{key:i,b:b});}))
+    );
+  }
+
+  // Owner-level rollup for summary row
+  var _blue='#5c9eff';var _purple='#c97ef2';var _teal='#2bb5a0';
+  function billsTotal(accts){return accts.reduce(function(s,a){return s+billsFor(a.name).reduce(function(ss,b){return ss+(b.amount||0);},0);},0);}
+  var _ahmedAccts=accounts.filter(function(a){return a.owner==='Ahmed';});
+  var _victoriaAccts=accounts.filter(function(a){return a.owner==='Victoria';});
+  var _jointAccts=accounts.filter(function(a){return a.owner==='Joint';});
+  var _jointTotal=billsTotal(_jointAccts);
+  var _ahmedPct=(split&&split.ahmed!=null?split.ahmed:60)/100;
+  var _victoriaPct=(split&&split.victoria!=null?split.victoria:40)/100;
+  var _ahmedJoint=_jointTotal*_ahmedPct;
+  var _victoriaJoint=_jointTotal*_victoriaPct;
+  var _ahmedShared=0;
+  var _victoriaShared=0;
+  var _victoriaOwesAhmed=_ahmedShared*_victoriaPct;
+  var _ahmedOwesVictoria=_victoriaShared*_ahmedPct;
+  var _ahmedNet=_ahmedJoint-_victoriaOwesAhmed+_ahmedOwesVictoria;
+  var _victoriaNet=_victoriaJoint-_ahmedOwesVictoria+_victoriaOwesAhmed;
+  function _fmtD(n){return'$'+Math.abs(Math.round(n)).toLocaleString();}
+
+  if(loading)return/*#__PURE__*/React.createElement("div",{style:{padding:20,color:'#4d6080',fontSize:13}},"Loading accounts…");
+  return/*#__PURE__*/React.createElement("div",null,
+    error&&/*#__PURE__*/React.createElement("div",{style:{color:'#ef5350',fontSize:12,marginBottom:10}},error),
+    /*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#dde1f0',fontWeight:600}},"🏦 Accounts"),
+      /*#__PURE__*/React.createElement("button",{onClick:()=>setModal({mode:'add'}),style:{padding:'6px 14px',borderRadius:8,background:'#0d2040',border:'1px solid #5c9eff',color:'#5c9eff',fontSize:12,fontWeight:600,cursor:'pointer'}},"+ Add Account")
+    ),
+    // Owner summary row
+    accounts.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}},
+      [
+        {label:'Ahmed',color:_blue,accts:_ahmedAccts},
+        {label:'Victoria',color:_purple,accts:_victoriaAccts},
+        {label:'Joint',color:_teal,accts:_jointAccts}
+      ].map(function(o,i){
+        var tot=billsTotal(o.accts);
+        return/*#__PURE__*/React.createElement("div",{key:i,style:{background:'#0d1628',border:'1px solid '+o.color+'44',borderRadius:8,padding:'10px 12px'}},
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,fontWeight:700,color:o.color,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}},o.label),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:18,fontWeight:700,color:'#dde1f0',fontVariantNumeric:'tabular-nums'}},tot>0?_fmtD(tot):'—'),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',marginTop:2}},o.accts.length," account",o.accts.length!==1?'s':'')
+        );
+      })
+    ),
+    // Transfer calculation box
+    accounts.length>0&&_jointTotal>0&&/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{cursor:'default',marginBottom:14,background:'#070f1e',border:'1px solid #1e3060'}},
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',fontWeight:600,marginBottom:10}},"💰 Monthly Transfer Calculation"),
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginBottom:8}},"Joint bills: ",_fmtD(_jointTotal)," — split "+(split&&split.ahmed||60)+"/"+(split&&split.victoria||40)),
+      /*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:20,flexWrap:'wrap'}},
+        /*#__PURE__*/React.createElement("div",null,
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:_blue,marginBottom:1}},"Ahmed → Joint"),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:_blue,fontVariantNumeric:'tabular-nums'}},_fmtD(_ahmedNet),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:400,marginLeft:2}},"/mo"))
+        ),
+        /*#__PURE__*/React.createElement("div",null,
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:_purple,marginBottom:1}},"Victoria → Joint"),
+          /*#__PURE__*/React.createElement("div",{style:{fontSize:20,fontWeight:700,color:_purple,fontVariantNumeric:'tabular-nums'}},_fmtD(_victoriaNet),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:400,marginLeft:2}},"/mo"))
+        )
+      ),
+      (_ahmedShared>0||_victoriaShared>0)&&/*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',marginTop:8,borderTop:'1px solid #1e3060',paddingTop:6}},"Includes shared card reimbursements · Edit amounts in the Summary tab")
+    ),
+    accounts.length===0&&/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{textAlign:'center',color:'#4d6080',fontSize:13,cursor:'default'}},
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:28,marginBottom:8}},"🏦"),
+      /*#__PURE__*/React.createElement("div",null,"No accounts yet. Add your checking, savings, and credit card accounts to track bill coverage."),
+      unassigned.length>0&&/*#__PURE__*/React.createElement("div",{style:{marginTop:8,fontSize:12,color:'#c9a84c'}},unassigned.length+" bills without an assigned account")
+    ),
+    accounts.map(function(a,i){return/*#__PURE__*/React.createElement(AccountCard,{key:i,account:a});}),
+    unassigned.length>0&&/*#__PURE__*/React.createElement("div",{className:"bento-card",style:{cursor:'default',marginBottom:12,borderColor:'#3a2a00'}},
+      /*#__PURE__*/React.createElement("div",{style:{fontWeight:600,fontSize:13,color:'#c9a84c',marginBottom:8}},"⚠️ Unassigned ("+unassigned.length+")"),
+      /*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginBottom:10}},"These bills have no account assigned or use old Ahmed/Victoria/Shared labels. Click ✎ to reassign."),
+      unassigned.sort(function(a,b){return(a.dueDay||99)-(b.dueDay||99);}).map(function(b,i){return/*#__PURE__*/React.createElement(BillRow,{key:i,b:b});})
+    ),
+    modal&&/*#__PURE__*/React.createElement(AccountFormModal,{mode:modal.mode,account:modal.account||null,busy:busy,onClose:()=>setModal(null),onSave:saveAccount}),
+    editBill&&/*#__PURE__*/React.createElement(ReassignBillModal,{bill:editBill.bill,accounts:accounts,busy:busy,onClose:()=>setEditBill(null),onSave:function(newAccount){reassignBill(editBill.bill,newAccount);}})
+  );
+}
+
+function ContractsTab({apiUrl,apiToken}){const[contracts,setContracts]=React.useState([]);const[loading,setLoading]=React.useState(true);const[error,setError]=React.useState(null);const[showAdd,setShowAdd]=React.useState(false);const[editing,setEditing]=React.useState(null);const[busy,setBusy]=React.useState(false);const[actionId,setActionId]=React.useState(null);// for log-action modal
+const[actionType,setActionType]=React.useState(null);// 'Renewed' | 'Terminated'
+const[newEndDate,setNewEndDate]=React.useState('');function load(){setLoading(true);setError(null);fetch(apiUrl+'?action=get_contracts&token='+encodeURIComponent(apiToken)).then(function(r){return r.json();}).then(function(d){setContracts((d.contracts||[]).sort(function(a,b){var da=a.daysUntil===null||a.daysUntil===undefined?9999:a.daysUntil;var db=b.daysUntil===null||b.daysUntil===undefined?9999:b.daysUntil;return da-db;}));setLoading(false);}).catch(function(e){setError(e.message);setLoading(false);});}React.useEffect(function(){load();},[]);function save(fields){setBusy(true);var isEdit=!!fields.id;var params=new URLSearchParams(Object.assign({token:apiToken},fields));fetch(apiUrl+'?action='+(isEdit?'update_contract':'add_contract')+'&'+params.toString()).then(function(r){return r.json();}).then(function(){setBusy(false);setShowAdd(false);setEditing(null);load();}).catch(function(e){setBusy(false);alert('Save failed: '+e.message);});}function del(id){if(!confirm('Delete this contract?'))return;setBusy(true);fetch(apiUrl+'?action=delete_contract&token='+encodeURIComponent(apiToken)+'&id='+encodeURIComponent(id)).then(function(r){return r.json();}).then(function(){setBusy(false);load();}).catch(function(e){setBusy(false);alert('Delete failed: '+e.message);});}function logAction(id,action,newEnd){setBusy(true);var params='action=log_contract_action&token='+encodeURIComponent(apiToken)+'&id='+encodeURIComponent(id)+'&action='+encodeURIComponent(action)+(newEnd?'&newEndDate='+encodeURIComponent(newEnd):'');fetch(apiUrl+'?'+params).then(function(r){return r.json();}).then(function(){setBusy(false);setActionId(null);load();}).catch(function(e){setBusy(false);alert('Action failed: '+e.message);});}function alertBadge(status){if(status==='Critical')return{bg:'#fdecea',color:'#c62828',label:'🔴 Critical'};if(status==='Warning')return{bg:'#fff8e1',color:'#e65100',label:'🟡 Notice'};if(status==='Expired')return{bg:'#fce4ec',color:'#880e4f',label:'⚠ Expired'};return null;}var CATEGORIES=['Housing','Insurance','Auto','Services','Professional','Financial','Other'];var byCategory={};contracts.forEach(function(c){var cat=c.category||'Other';if(!byCategory[cat])byCategory[cat]=[];byCategory[cat].push(c);});if(loading)return React.createElement('div',{style:{padding:32,color:'#6b7fa8',fontSize:14}},'Loading contracts…');if(error)return React.createElement('div',{style:{padding:32,color:'#ef5350',fontSize:14}},'Error: '+error);var alertCount=contracts.filter(function(c){return c.alertStatus==='Critical'||c.alertStatus==='Warning'||c.alertStatus==='Expired';}).length;return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#4d6080'}},contracts.length," contract",contracts.length!==1?'s':'',alertCount>0&&/*#__PURE__*/React.createElement("span",{style:{marginLeft:8,background:'#fdecea',color:'#c62828',borderRadius:4,padding:'2px 8px',fontSize:12,fontWeight:700}},alertCount," need attention")),/*#__PURE__*/React.createElement("button",{className:"btn btn-small",onClick:function(){setEditing(null);setShowAdd(true);},disabled:busy},"+ Add Contract")),contracts.length===0&&/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"📋"),/*#__PURE__*/React.createElement("div",null,"No contracts yet. Add your first one.")),Object.keys(byCategory).sort().map(function(cat){return/*#__PURE__*/React.createElement("div",{key:cat,style:{marginBottom:24}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,fontWeight:700,color:'#0d1b3e',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:10}},cat),byCategory[cat].map(function(c){var badge=alertBadge(c.alertStatus);var expired=c.status!=='Active';return/*#__PURE__*/React.createElement("div",{key:c.id,className:"bento-card",style:{cursor:'default',marginBottom:10,opacity:expired?0.6:1}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:8}},/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:600,fontSize:14,color:'#c9a84c',marginBottom:3}},c.name,badge&&/*#__PURE__*/React.createElement("span",{style:{marginLeft:8,background:badge.bg,color:badge.color,fontSize:11,fontWeight:700,padding:'2px 7px',borderRadius:4}},badge.label),expired&&/*#__PURE__*/React.createElement("span",{style:{marginLeft:8,background:'#e8eaf6',color:'#5c6bc0',fontSize:11,padding:'2px 7px',borderRadius:4}},c.status)),c.counterparty&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8'}},c.counterparty),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:4}},c.endDate&&/*#__PURE__*/React.createElement("span",null,"Expires: ",/*#__PURE__*/React.createElement("strong",null,c.endDate),c.daysUntil!==null&&c.daysUntil>=0?' ('+c.daysUntil+'d)':c.daysUntil<0?' (expired)':''),c.autoRenews==='Yes'&&/*#__PURE__*/React.createElement("span",{style:{marginLeft:10,color:'#43a047'}},"↻ auto-renews"),c.autoRenews==='No'&&/*#__PURE__*/React.createElement("span",{style:{marginLeft:10,color:'#e65100'}},"✗ no auto-renewal"),c.monthlyCost?/*#__PURE__*/React.createElement("span",{style:{marginLeft:10}},"$",c.monthlyCost,"/mo"):null),c.notes&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:3,fontStyle:'italic'}},c.notes)),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,flexShrink:0}},c.docLink&&/*#__PURE__*/React.createElement("a",{href:c.docLink,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,color:'#4d6080',textDecoration:'none',border:'1px solid #2a3f6f',borderRadius:4,padding:'3px 8px'}},"📄 Doc"),c.status==='Active'&&/*#__PURE__*/React.createElement("button",{className:"btn btn-small",style:{fontSize:11},onClick:function(){setActionId(c.id);setActionType('Renewed');setNewEndDate('');},disabled:busy},"Log Renewal"),c.status==='Active'&&/*#__PURE__*/React.createElement("button",{className:"btn btn-small",style:{fontSize:11,background:'transparent',border:'1px solid #ef5350',color:'#ef5350'},onClick:function(){logAction(c.id,'Terminated','');},disabled:busy},"Terminate"),/*#__PURE__*/React.createElement("button",{className:"btn btn-small",style:{fontSize:11},onClick:function(){setEditing(c);setShowAdd(true);},disabled:busy},"Edit"),/*#__PURE__*/React.createElement("button",{className:"btn btn-small",style:{fontSize:11,background:'transparent',border:'1px solid #3d5fa0',color:'#8b9dc3'},onClick:function(){del(c.id);},disabled:busy},"Delete"))));}));}),showAdd&&/*#__PURE__*/React.createElement(ContractModal,{contract:editing,categories:CATEGORIES,busy:busy,onClose:function(){setShowAdd(false);setEditing(null);},onSave:save}),actionId&&actionType==='Renewed'&&/*#__PURE__*/React.createElement("div",{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}},/*#__PURE__*/React.createElement("div",{style:{background:'#0d1b3e',borderRadius:10,padding:28,width:360,border:'1px solid #2a3f6f'}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#c9a84c',marginBottom:16}},"Log Renewal"),/*#__PURE__*/React.createElement("label",{style:{fontSize:12,color:'#8b9dc3',display:'block',marginBottom:4}},"New End Date (leave blank to keep existing)"),/*#__PURE__*/React.createElement("input",{type:"date",value:newEndDate,onChange:function(ev){setNewEndDate(ev.target.value);},style:{width:'100%',padding:'6px 10px',borderRadius:5,border:'1px solid #2a3f6f',background:'#06112a',color:'#c9d9ff',marginBottom:16}}),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,justifyContent:'flex-end'}},/*#__PURE__*/React.createElement("button",{className:"btn btn-small",style:{background:'transparent',border:'1px solid #3d5fa0',color:'#8b9dc3'},onClick:function(){setActionId(null);}},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-small",onClick:function(){logAction(actionId,'Renewed',newEndDate);},disabled:busy},"Confirm Renewal")))));}
+
+function ContractModal({contract,categories,busy,onClose,onSave}){var isEdit=!!contract;const[form,setForm]=React.useState(contract?{id:contract.id,name:contract.name||'',category:contract.category||'',counterparty:contract.counterparty||'',startDate:contract.startDate||'',endDate:contract.endDate||'',autoRenews:contract.autoRenews||'Unknown',noticeDays:String(contract.noticeDays||30),monthlyCost:contract.monthlyCost!==null?String(contract.monthlyCost):'',status:contract.status||'Active',docLink:contract.docLink||'',notes:contract.notes||''}:{id:'',name:'',category:'',counterparty:'',startDate:'',endDate:'',autoRenews:'Unknown',noticeDays:'30',monthlyCost:'',status:'Active',docLink:'',notes:''});function field(label,key,type,opts){var inp;if(type==='select'){inp=React.createElement('select',{value:form[key],onChange:function(ev){setForm(Object.assign({},form,{[key]:ev.target.value}));},style:{width:'100%',padding:'6px 10px',borderRadius:5,border:'1px solid #2a3f6f',background:'#06112a',color:'#c9d9ff',fontSize:13}},(opts||[]).map(function(o){return React.createElement('option',{key:o,value:o},o);}));}else{inp=React.createElement('input',{type:type||'text',value:form[key],onChange:function(ev){setForm(Object.assign({},form,{[key]:ev.target.value}));},style:{width:'100%',padding:'6px 10px',borderRadius:5,border:'1px solid #2a3f6f',background:'#06112a',color:'#c9d9ff',fontSize:13}});}return/*#__PURE__*/React.createElement("div",{key:key,style:{marginBottom:12}},/*#__PURE__*/React.createElement("label",{style:{fontSize:11,color:'#8b9dc3',display:'block',marginBottom:3}},label),inp);}return/*#__PURE__*/React.createElement("div",{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}},/*#__PURE__*/React.createElement("div",{style:{background:'#0d1b3e',borderRadius:10,padding:28,width:480,maxHeight:'90vh',overflowY:'auto',border:'1px solid #2a3f6f'}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#c9a84c',marginBottom:20}},isEdit?'Edit Contract':'Add Contract'),field('Name *','name'),field('Category','category','select',categories),field('Counterparty (landlord, insurer, etc.)','counterparty'),/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}},field('Start Date','startDate','date'),field('End Date','endDate','date')),/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}},field('Auto-Renews','autoRenews','select',['Yes','No','Unknown']),field('Notice Period (days)','noticeDays','number'),field('Monthly Cost ($)','monthlyCost','number')),isEdit&&field('Status','status','select',['Active','Expired','Terminated','Renewed']),field('Document Link (Google Drive)','docLink'),field('Notes','notes'),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}},/*#__PURE__*/React.createElement("button",{className:"btn btn-small",style:{background:'transparent',border:'1px solid #3d5fa0',color:'#8b9dc3'},onClick:onClose},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-small",onClick:function(){if(!form.name.trim())return alert('Name is required');onSave(form);},disabled:busy},isEdit?'Save Changes':'Add Contract'))));}
+
+function FinancialGoalsTab({goals,goalsLoading,busy,onLoad,onAdd,onUpdate,onDelete,apiUrl,apiToken}){const[modal,setModal]=React.useState(null);// null | 'add' | goal-obj
+const[simGoal,setSimGoal]=React.useState(null);// goal being simulated
+const[projections,setProjections]=React.useState({});// Compute projections client-side for display
+React.useEffect(function(){if(!goals||goals.length===0)return;var now=new Date();var projs={};goals.forEach(function(g){var remaining=g.targetAmount-g.currentAmount;if(remaining<=0){projs[g.id]={achieved:true};return;}if(!g.monthlyContribution){projs[g.id]={noContribution:true};return;}var r=(g.apy||0)/100/12;var months;if(r>0){var lo=0,hi=1200,mid=0;for(var iter=0;iter<80;iter++){mid=(lo+hi)/2;var fv=g.currentAmount*Math.pow(1+r,mid)+g.monthlyContribution*(Math.pow(1+r,mid)-1)/r;if(fv<g.targetAmount)lo=mid;else hi=mid;}months=mid;}else{months=remaining/g.monthlyContribution;}var projDate=new Date(now.getTime()+months*30.4375*86400000);var targetDate=g.targetDate?new Date(g.targetDate+'T12:00:00'):null;var daysEarlyOrLate=targetDate?Math.ceil((targetDate-projDate)/86400000):null;projs[g.id]={projectedDate:projDate.toISOString().slice(0,10),monthsRemaining:Math.round(months*10)/10,onTrack:targetDate?projDate<=targetDate:true,daysEarlyOrLate:daysEarlyOrLate};});setProjections(projs);},[goals]);React.useEffect(function(){if(goals===null&&onLoad)onLoad();},[]);if(goalsLoading||goals===null)return/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading financial goals…");var active=(goals||[]).filter(function(g){return g.status==='Active';});var achieved=(goals||[]).filter(function(g){return g.status==='Achieved';});var other=(goals||[]).filter(function(g){return g.status!=='Active'&&g.status!=='Achieved';});var totalTarget=active.reduce(function(s,g){return s+g.targetAmount;},0);var totalCurrent=active.reduce(function(s,g){return s+g.currentAmount;},0);var totalMonthly=active.reduce(function(s,g){return s+(g.monthlyContribution||0);},0);return/*#__PURE__*/React.createElement("div",null,active.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:20}},[{label:'Active Goals',value:active.length},{label:'Total Saved',value:fmtMoney(totalCurrent)+' / '+fmtMoney(totalTarget)},{label:'Monthly Committed',value:fmtMoney(totalMonthly)+'/mo'}].map(function(s){return/*#__PURE__*/React.createElement("div",{key:s.label,style:{background:'#141826',border:'1px solid #2a3050',borderRadius:10,padding:'12px 16px'}},/*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#5c7080',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:4}},s.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:15,fontWeight:700,color:'#dde1f0'}},s.value));})),/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{fontSize:16,fontWeight:700,color:'#dde1f0'}},"🎯 Financial Goals"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",onClick:()=>setModal('add')},"+ Add Goal")),goals.length===0&&/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:10}},"🎯"),/*#__PURE__*/React.createElement("div",null,"No financial goals yet."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:6}},"Add goals like House Down Payment or Travel Fund, then simulate what-if scenarios."),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{marginTop:14},onClick:()=>apiGet(apiUrl,apiToken,{action:'seed_financial_goals'}).then(onLoad)},"Seed from Life Plan Doc")),active.map(function(g){return/*#__PURE__*/React.createElement(GoalCard,{key:g.id,goal:g,projection:projections[g.id],onEdit:setModal,onDelete:onDelete,onSimulate:setSimGoal,busy:busy});}),achieved.length>0&&/*#__PURE__*/React.createElement("div",{style:{marginTop:8}},/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4ade80',fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}},"✓ Achieved"),achieved.map(function(g){return/*#__PURE__*/React.createElement(GoalCard,{key:g.id,goal:g,projection:projections[g.id],onEdit:setModal,onDelete:onDelete,onSimulate:setSimGoal,busy:busy});})),other.map(function(g){return/*#__PURE__*/React.createElement(GoalCard,{key:g.id,goal:g,projection:projections[g.id],onEdit:setModal,onDelete:onDelete,onSimulate:setSimGoal,busy:busy});}),modal&&/*#__PURE__*/React.createElement(GoalFormModal,{goal:modal==='add'?null:modal,busy:busy,onClose:()=>setModal(null),onSave:async function(form){if(modal==='add')await onAdd(form);else await onUpdate(modal.id,form);setModal(null);}}),simGoal&&/*#__PURE__*/React.createElement(ScenarioSimulatorModal,{goal:simGoal,apiUrl:apiUrl,apiToken:apiToken,busy:busy,onClose:()=>setSimGoal(null)}));}
+
+function FinAccountsLiteTab({ apiUrl, apiToken }) {
+  const [bills, setBills] = React.useState(null);
+  React.useEffect(function() {
+    if (!apiUrl || !apiToken) return;
+    apiGet(apiUrl, apiToken, { action: 'bills' })
+      .then(function(d) { setBills(d || null); })
+      .catch(function() { setBills(null); });
+  }, [apiUrl, apiToken]);
+  return <AccountsTab apiUrl={apiUrl} apiToken={apiToken} bills={bills} split={getSplit()} />;
+}
+
+function FinContractsLiteTab({ apiUrl, apiToken }) {
+  return <ContractsTab apiUrl={apiUrl} apiToken={apiToken} />;
+}
+
+function FinGoalsLiteTab({ apiUrl, apiToken }) {
+  const [goals,        setGoals]        = React.useState(null);
+  const [goalsLoading, setGoalsLoading] = React.useState(false);
+  const [busy,         setBusy]         = React.useState(false);
+
+  function loadGoals() {
+    if (!apiUrl || !apiToken) return;
+    setGoalsLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'financial_goals' })
+      .then(function(d) { setGoals(d.goals || []); })
+      .catch(function() { setGoals([]); })
+      .finally(function() { setGoalsLoading(false); });
+  }
+
+  function handleAddGoal(form) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, Object.assign({ action: 'add_financial_goal' }, form))
+      .then(function() { loadGoals(); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleUpdateGoal(id, form) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, Object.assign({ action: 'update_financial_goal', id: id }, form))
+      .then(function() { loadGoals(); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleDeleteGoal(id) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, { action: 'delete_financial_goal', id: id })
+      .then(function() { setGoals(function(prev) { return (prev || []).filter(function(g) { return g.id !== id; }); }); })
+      .finally(function() { setBusy(false); });
+  }
+
+  return (
+    <FinancialGoalsTab
+      goals={goals}
+      goalsLoading={goalsLoading}
+      busy={busy}
+      onLoad={loadGoals}
+      onAdd={handleAddGoal}
+      onUpdate={handleUpdateGoal}
+      onDelete={handleDeleteGoal}
+      apiUrl={apiUrl}
+      apiToken={apiToken}
+    />
+  );
+}
+
+
 
 // ---- Travel Lite tab ---------------------------------------------------------
 
@@ -6389,11 +6714,14 @@ const TOP_TABS = [
 ];
 
 const FINANCE_TABS = [
-  { id: 'fin_summary', label: '💰 Summary'  },
-  { id: 'fin_budget',  label: '📊 Budget'   },
-  { id: 'fin_bills',   label: '🧾 Bills'    },
+  { id: 'fin_summary',  label: '💰 Summary'  },
+  { id: 'fin_budget',   label: '📊 Budget'   },
+  { id: 'fin_bills',    label: '🧾 Bills'    },
   { id: 'fin_cashflow', label: '💰 Cashflow' },
-  { id: 'tax',         label: '🧾 Tax'      },
+  { id: 'fin_accounts', label: '🏦 Accounts' },
+  { id: 'fin_contracts', label: '📋 Contracts' },
+  { id: 'fin_goals',    label: '🎯 Goals'    },
+  { id: 'tax',          label: '🧾 Tax'      },
 ];
 
 function App() {
@@ -6646,6 +6974,9 @@ function App() {
             {activeFinanceTab === 'fin_budget'  && <FinBudgetLiteTab  apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_bills'    && <FinBillsLiteTab    apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_cashflow' && <FinCashflowLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_accounts'  && <FinAccountsLiteTab  apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_contracts' && <FinContractsLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_goals'     && <FinGoalsLiteTab     apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'tax'         && <TaxTab            apiUrl={apiUrl} apiToken={apiToken} />}
           </div>
         )}
