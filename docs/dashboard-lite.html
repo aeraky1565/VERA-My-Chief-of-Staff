@@ -4122,20 +4122,24 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
 
 // ---- HomeFrontLiteTab -------------------------------------------------------
 
-function HomeFrontLiteTab({ apiUrl, apiToken }) {
-  const SUBTABS = [
+function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
+  const feat = features || {};
+  const ALL_SUBTABS = [
     { id:'steward',   label:'🏠 Steward'   },
     { id:'vehicles',  label:'🚗 Vehicles'  },
     { id:'chores',    label:'✅ Chores'    },
     { id:'recipes',   label:'🍽️ Recipes'   },
-    { id:'meal_plan', label:'📅 Meal Plan' },
-    { id:'takeouts',  label:'🥡 Takeouts'  },
-    { id:'pantry',    label:'🛒 Pantry'    },
+    { id:'meal_plan', label:'📅 Meal Plan', featureKey:'meal_planner' },
+    { id:'takeouts',  label:'🥡 Takeouts',  featureKey:'takeouts'     },
+    { id:'pantry',    label:'🛒 Pantry',    featureKey:'pantry'       },
     { id:'guests',    label:'👥 Guests'    },
     { id:'resell',             label:'💰 Resell'             },
     { id:'coupons',            label:'🎟️ Coupons'            },
     { id:'neighborhood_watch', label:'🏘 Watch'              },
   ];
+  const SUBTABS = ALL_SUBTABS.filter(function(t) {
+    return !t.featureKey || feat[t.featureKey] !== false;
+  });
 
   const [sub,             setSub]             = React.useState('steward');
   const [homeFront,       setHomeFront]       = React.useState(null);
@@ -4147,6 +4151,12 @@ function HomeFrontLiteTab({ apiUrl, apiToken }) {
   const [phLoading,       setPhLoading]       = React.useState(false);
   const [busy,            setBusy]            = React.useState(false);
   const [toast,           setToast]           = React.useState(null);
+
+  React.useEffect(function() {
+    if (SUBTABS.length > 0 && !SUBTABS.find(function(t) { return t.id === sub; })) {
+      setSub(SUBTABS[0].id);
+    }
+  }, [SUBTABS.map(function(t) { return t.id; }).join(',')]);
 
   function showToast(msg) {
     setToast(msg);
@@ -5990,6 +6000,7 @@ function App() {
   const [error,        setError]        = useState(null);
   const [addItemModal, setAddItemModal] = useState(false);
   const [toast,        setToast]        = useState(null);
+  const [status,       setStatus]       = useState(null);
   const toastTimer = useRef(null);
 
   function showToast(msg, isError) {
@@ -6009,8 +6020,22 @@ function App() {
     }
   }
 
+  async function loadStatus(url, token) {
+    if (!url || !token) return;
+    try {
+      const data = await apiGet(url, token, { action: 'status' });
+      setStatus(data);
+    } catch (err) {
+      // Feature flags default to enabled; a failed status fetch just
+      // means everything stays visible, so no error banner needed here.
+    }
+  }
+
   useEffect(() => {
-    if (apiUrl && apiToken) loadShopping(apiUrl, apiToken);
+    if (apiUrl && apiToken) {
+      loadShopping(apiUrl, apiToken);
+      loadStatus(apiUrl, apiToken);
+    }
   }, [apiUrl, apiToken]);
 
   async function handleToggle(tabId, itemIndex, currentlyDone) {
@@ -6188,7 +6213,7 @@ function App() {
         )}
 
         {activeTab === 'home_front' && (
-          <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+          <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} features={status && status.features} />
         )}
 
         {activeTab === 'household' && (
