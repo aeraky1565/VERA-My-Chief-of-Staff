@@ -221,6 +221,23 @@
     .loading-text { color: #6b7fa8; font-size: 13px; padding: 48px; text-align: center; }
     .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
     .count-badge { background: #13244d; border-radius: 10px; color: #6b7fa8; font-size: 12px; margin-left: auto; padding: 3px 10px; }
+    .chat-img-preview { position: relative; display: inline-flex; align-items: flex-start; margin-bottom: 8px; }
+    .chat-img-preview img { max-height: 80px; max-width: 120px; border-radius: 8px; border: 1px solid #1e3060; object-fit: cover; }
+    .chat-img-remove {
+      position: absolute; top: -6px; right: -6px; background: #e53935; color: #fff; border: none;
+      border-radius: 50%; width: 18px; height: 18px; font-size: 11px; cursor: pointer; line-height: 18px;
+      padding: 0; display: flex; align-items: center; justify-content: center;
+    }
+    .chat-attach, .chat-mic {
+      background: none; border: 1px solid #2a4070; border-radius: 10px; color: #8899cc; font-size: 18px;
+      padding: 0 12px; cursor: pointer; align-self: flex-end; height: 44px; transition: border-color .15s, color .15s;
+    }
+    .chat-attach:hover, .chat-mic:hover { border-color: #c9a84c; color: #c9a84c; }
+    .chat-attach:disabled, .chat-mic:disabled { opacity: .4; cursor: not-allowed; }
+    .chat-mic.listening { border-color: #ef5350; color: #ef5350; animation: mic-pulse 1s ease-in-out infinite; }
+    @keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .voice-status { font-size: 11px; color: #ef5350; margin-bottom: 4px; padding-left: 2px; letter-spacing: 0.03em; }
+    .chat-msg-img { display: block; max-width: 200px; max-height: 140px; border-radius: 8px; margin-bottom: 6px; object-fit: cover; border: 1px solid rgba(255,255,255,.1); }
   </style>
 </head>
 <body>
@@ -347,7 +364,11 @@ function ChatLiteView({ apiUrl, apiToken }) {
   });
   const [input,   setInput]   = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingImage, setPendingImage] = useState(null); // {base64, mimeType, preview} | null
+  const [listening, setListening] = useState(false);
   const bottomRef = useRef(null);
+  const fileRef = useRef(null);
+  const recogRef = useRef(null);
 
   useEffect(function() {
     if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -359,27 +380,71 @@ function ChatLiteView({ apiUrl, apiToken }) {
     } catch(e) {}
   }, [messages]);
 
-  async function send() {
-    const text = input.trim();
-    if (!text || loading) return;
+  async function sendWithText(text, imgSnap) {
+    if ((!text && !imgSnap) || loading) return;
     setInput('');
-    setMessages(function(prev) { return [...prev, { role: 'user', text: text }]; });
+    setPendingImage(null);
+    setMessages(function(prev) { return [...prev, { role: 'user', text: text, image: imgSnap ? imgSnap.preview : null }]; });
     setLoading(true);
     try {
-      const data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text, session: 'victoria_dashboard' });
-      setMessages(function(prev) { return [...prev, { role: 'vera', text: data.reply }]; });
+      var data;
+      if (imgSnap) {
+        data = await apiPost(apiUrl, apiToken, {
+          action: 'chat', message: text, session: 'victoria_dashboard',
+          imageBase64: imgSnap.base64, imageMimeType: imgSnap.mimeType,
+        });
+      } else {
+        data = await apiGet(apiUrl, apiToken, { action: 'chat', message: text, session: 'victoria_dashboard' });
+      }
+      var veraMsg = { role: 'vera', text: data.reply };
+      if (data.sources && data.sources.length > 0) veraMsg.sources = data.sources;
+      setMessages(function(prev) { return [...prev, veraMsg]; });
     } catch(e) {
       setMessages(function(prev) { return [...prev, { role: 'vera', text: '\u26a0 Error: ' + e.message }]; });
     }
     setLoading(false);
   }
 
+  function send() {
+    sendWithText(input.trim(), pendingImage);
+  }
+
   function handleKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
+  function startVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.'); return; }
+    if (listening) { recogRef.current && recogRef.current.stop(); setListening(false); return; }
+    const recog = new SR();
+    recog.continuous = false;
+    recog.interimResults = false;
+    recog.lang = 'en-US';
+    recog.onstart = function() { setListening(true); };
+    recog.onend = function() { setListening(false); };
+    recog.onresult = function(event) {
+      const transcript = event.results[0][0].transcript.trim();
+      setInput(transcript);
+      sendWithText(transcript, null);
+    };
+    recog.onerror = function(event) { console.error('VERA voice error:', event.error); setListening(false); };
+    recogRef.current = recog;
+    recog.start();
+  }
+
+  async function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    if (file.size > 10 * 1024 * 1024) { alert('Image too large (max 10 MB). Please choose a smaller image.'); return; }
+    const result = await resizeImage(file);
+    setPendingImage(result);
+  }
+
   return (
     <div className="chat-wrap">
+      <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
       <div className="chat-messages">
         {messages.length === 0 && (
           <div style={{ color: '#4d6080', fontSize: 14, textAlign: 'center', padding: '40px 20px' }}>
@@ -390,7 +455,21 @@ function ChatLiteView({ apiUrl, apiToken }) {
         {messages.map(function(m, i) {
           return (
             <div key={i} className={'chat-msg ' + m.role}>
-              {m.text}
+              {m.image && <img src={m.image} className="chat-msg-img" alt="attachment" />}
+              {m.text && <span>{m.text}</span>}
+              {m.sources && m.sources.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #1e2d42', fontSize: 12 }}>
+                  <div style={{ color: '#6b7fa8', fontWeight: 600, marginBottom: 5 }}>🌐 Web Sources</div>
+                  {m.sources.map(function(s, si) {
+                    return (
+                      <a key={si} href={s.link} target="_blank" rel="noopener noreferrer"
+                        style={{ display: 'block', color: '#5c9eff', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+                        {s.title || s.link}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -398,7 +477,15 @@ function ChatLiteView({ apiUrl, apiToken }) {
         <div ref={bottomRef} />
       </div>
       <div className="chat-input-area">
+        {pendingImage && (
+          <div className="chat-img-preview">
+            <img src={pendingImage.preview} alt="attachment" />
+            <button className="chat-img-remove" onClick={function() { setPendingImage(null); }} title="Remove image">×</button>
+          </div>
+        )}
+        {listening && <div className="voice-status">🔴 Listening…</div>}
         <div className="chat-input-row">
+          <button className="chat-attach" onClick={function() { fileRef.current.click(); }} disabled={loading || !apiUrl || !apiToken} title="Attach image">📎</button>
           <textarea
             className="chat-input"
             rows={2}
@@ -408,7 +495,8 @@ function ChatLiteView({ apiUrl, apiToken }) {
             onKeyDown={handleKey}
             disabled={loading || !apiUrl || !apiToken}
           />
-          <button className="chat-send" onClick={send} disabled={loading || !input.trim() || !apiUrl || !apiToken}>
+          <button className={'chat-mic' + (listening ? ' listening' : '')} onClick={startVoice} disabled={loading || !apiUrl || !apiToken} title={listening ? 'Stop listening' : 'Speak to VERA'}>🎤</button>
+          <button className="chat-send" onClick={send} disabled={(!input.trim() && !pendingImage) || loading || !apiUrl || !apiToken}>
             ↑
           </button>
         </div>
