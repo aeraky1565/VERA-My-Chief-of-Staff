@@ -186,7 +186,7 @@ function clearAutoRows_(sheet, tabDesc) {
  *   open_count          — total non-completed tasks
  *   overdue_count       — tasks past their due date
  *   due_within_7_days   — not yet overdue but due this week
- *   neglected_count     — tasks older than TASK_AGE_THRESHOLD
+ *   neglected_count     — due-dated tasks due soon (not yet overdue) + no-due-date tasks older than task_age_threshold_days
  */
 function buildTaskMetrics_() {
   try {

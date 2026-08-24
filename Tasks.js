@@ -30,6 +30,7 @@ function getOpenTasks() {
     today.setHours(0, 0, 0, 0);
 
     const DONE_STATUSES = ['done', 'complete', 'completed', 'cancelled', 'canceled'];
+    const neglectThreshold = parseInt(getConfigValues()['task_age_threshold_days'] || '7', 10) || 7;
 
     const tasks = [];
 
@@ -70,7 +71,14 @@ function getOpenTasks() {
       const isRecurring  = recurringStr !== '' && recurringStr !== 'no' && recurringStr !== 'false' && recurringStr !== '0';
 
       // ---- Neglected flag -------------------------------------------------
-      const isNeglected = ageInDays >= CONFIG.TASK_AGE_THRESHOLD;
+      // A due date makes creation-age meaningless (a task due next year isn't
+      // "neglected" for being 8 days old) — for a due-dated task, "neglected"
+      // instead means "due soon and not yet overdue." Only a task with no due
+      // date at all falls back to the creation-age threshold, since age is
+      // the only signal available for it.
+      const isNeglected = dueDate
+        ? (!isOverdue && daysUntilDue <= neglectThreshold)
+        : (ageInDays >= neglectThreshold);
 
       tasks.push({
         id:          String(id || '') || ('TASK-R' + (index + 2)), // fallback: row-based ID

@@ -13,7 +13,6 @@
 const CONFIG = {
   SHEET_ID: PropertiesService.getScriptProperties().getProperty('VERA_SHEET_ID') || '',
   CALENDAR_DAYS_AHEAD: 7,
-  TASK_AGE_THRESHOLD: 7,                 // Days before a task is considered neglected
   MAX_FLAGS: 8,
   MORNING_NUDGE_EMAIL: PropertiesService.getScriptProperties().getProperty('MORNING_NUDGE_EMAIL') || '',
   MORNING_NUDGE_HOUR: 7,
