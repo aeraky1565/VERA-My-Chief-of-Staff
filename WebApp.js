@@ -222,6 +222,7 @@ function doGet(e) {
       case 'update_card_reward':         return jsonOut_(webUpdateCardReward_(e));
       case 'delete_card_reward':         return jsonOut_(webDeleteCardReward_(e));
       case 'add_card_perk':              return jsonOut_(webAddCardPerk_(e));
+      case 'update_card_perk':           return jsonOut_(webUpdateCardPerk_(e));
       case 'delete_card_perk':           return jsonOut_(webDeleteCardPerk_(e));
       case 'toggle_card_perk':           return jsonOut_(webToggleCardPerk_(e));
       case 'clear_perk_review':          return jsonOut_(webClearPerkReview_(e));
@@ -6047,6 +6048,7 @@ function webGetCards_() {
       category:  String(r[5] || ''),
       lastUsed:  String(r[6] || ''),
       needsReview: String(r[7] || '').trim().toLowerCase() === 'yes',
+      autopay:     String(r[8] || '').trim().toLowerCase() === 'yes',
     };
   });
 
@@ -6211,11 +6213,12 @@ function webAddCardPerk_(e) {
   var cardName  = (p.cardName  || '').trim();
   var perk      = (p.perk      || '').trim();
   var frequency = (p.frequency || 'Monthly').trim();
+  var autopay   = (p.autopay   || '').trim().toLowerCase() === 'yes' ? 'Yes' : '';
   if (!cardName || !perk) throw new Error('cardName and perk are required');
   var id    = 'CP-' + Date.now();
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CARD_PERKS);
-  sheet.appendRow([id, cardName, perk, (p.amount || '').toString().trim(), frequency, (p.category || '').trim(), '']);
+  sheet.appendRow([id, cardName, perk, (p.amount || '').toString().trim(), frequency, (p.category || '').trim(), '', '', autopay]);
   return { ok: true, id: id };
 }
 
@@ -6260,10 +6263,32 @@ function webClearPerkReview_(e) {
   if (!id) throw new Error('id is required');
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CARD_PERKS);
-  var reviewCol = ensureCardPerkNeedsReviewColumn_(sheet);
+  var reviewCol = ensureCardPerkColumns_(sheet).reviewCol;
   var rows  = sheet.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) { sheet.getRange(i + 1, reviewCol).setValue(''); return { ok: true }; }
+  }
+  throw new Error('Card perk not found: ' + id);
+}
+
+function webUpdateCardPerk_(e) {
+  var p  = (e && e.parameter) ? e.parameter : {};
+  var id = (p.id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  var sheet = ss.getSheetByName(TABS.CARD_PERKS);
+  var cols  = ensureCardPerkColumns_(sheet);
+  var rows  = sheet.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) {
+      var rowNum = i + 1;
+      if (p.perk      !== undefined) sheet.getRange(rowNum, 3).setValue(p.perk.trim());
+      if (p.amount     !== undefined) sheet.getRange(rowNum, 4).setValue(p.amount.toString().trim());
+      if (p.frequency !== undefined) sheet.getRange(rowNum, 5).setValue(p.frequency.trim() || 'Monthly');
+      if (p.category  !== undefined) sheet.getRange(rowNum, 6).setValue(p.category.trim());
+      if (p.autopay   !== undefined) sheet.getRange(rowNum, cols.autopayCol).setValue(p.autopay.trim().toLowerCase() === 'yes' ? 'Yes' : '');
+      return { ok: true };
+    }
   }
   throw new Error('Card perk not found: ' + id);
 }

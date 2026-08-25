@@ -192,7 +192,7 @@ const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Fre
 const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes'];
 const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
-const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used', 'Needs Review'];
+const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used', 'Needs Review', 'Autopay'];
 const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
 const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
 const GIFT_PEOPLE_HEADERS        = ['Name'];
@@ -1981,21 +1981,28 @@ function cardPerkPeriodEnd_(freq, today, tz) {
 }
 
 /**
- * Ensures the Card Perks sheet has a "Needs Review" column, adding it if
- * missing. CARD_PERK_HEADERS grew after the live sheet was already seeded —
- * ensureSheet() only writes headers to a blank sheet, so an already-populated
- * sheet never picks up new header columns automatically. This self-heals it
- * on first run instead of requiring a manual migration step.
- * Returns the column's 1-based index.
+ * Ensures the Card Perks sheet has "Needs Review" and "Autopay" columns,
+ * adding whichever is missing. CARD_PERK_HEADERS grew after the live sheet
+ * was already seeded — ensureSheet() only writes headers to a blank sheet,
+ * so an already-populated sheet never picks up new header columns
+ * automatically. This self-heals it on first run instead of requiring a
+ * manual migration step.
+ * Returns { reviewCol, autopayCol } — each column's 1-based index.
  */
-function ensureCardPerkNeedsReviewColumn_(sheet) {
-  var lastCol = Math.max(sheet.getLastColumn(), 1);
-  var header  = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var idx     = header.indexOf('Needs Review');
-  if (idx !== -1) return idx + 1;
-  var newCol = lastCol + 1;
-  sheet.getRange(1, newCol).setValue('Needs Review');
-  return newCol;
+function ensureCardPerkColumns_(sheet) {
+  function ensureColumn(name) {
+    var lastCol = Math.max(sheet.getLastColumn(), 1);
+    var header  = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var idx     = header.indexOf(name);
+    if (idx !== -1) return idx + 1;
+    var newCol = lastCol + 1;
+    sheet.getRange(1, newCol).setValue(name);
+    return newCol;
+  }
+  return {
+    reviewCol:  ensureColumn('Needs Review'),
+    autopayCol: ensureColumn('Autopay'),
+  };
 }
 
 /**
@@ -2167,9 +2174,10 @@ function checkCardPerksExpiring_() {
       });
   }
 
-  var reviewCol = ensureCardPerkNeedsReviewColumn_(sheet);
+  var cols      = ensureCardPerkColumns_(sheet);
+  var reviewCol = cols.reviewCol;
   var numRows   = sheet.getLastRow() - 1;
-  var lastCol   = Math.max(CARD_PERK_HEADERS.length, reviewCol);
+  var lastCol   = Math.max(CARD_PERK_HEADERS.length, cols.reviewCol, cols.autopayCol);
   var data      = sheet.getRange(2, 1, numRows, lastCol).getValues();
 
   var tz    = Session.getScriptTimeZone();
@@ -2186,10 +2194,12 @@ function checkCardPerksExpiring_() {
     var freq        = String(row[4] || 'Monthly').trim();
     var lastUsed    = String(row[6] || '').trim();
     var needsReview = String(row[reviewCol - 1] || '').trim();
+    var isAutopay   = String(row[cols.autopayCol - 1] || '').trim().toLowerCase() === 'yes';
 
     if (!id || !cardName || !perkName) return;
     if (!activeCards[cardName]) return;   // card not found or marked inactive
     if (needsReview) return;              // paused pending review
+    if (isAutopay) return;                // on autopay — fully excluded from tracking
 
     var periodKey = cardPerkPeriodKey_(freq, today, tz);
     if (lastUsed === periodKey) return;   // already used this period
@@ -2247,8 +2257,15 @@ function checkCardPerksExpiring_() {
         try {
           if (!sharedCal) sharedCal = getPrimarySharedCalendar_();
           if (sharedCal) {
-            var evTitle = '⏰ ' + perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' expires today — ' + cardName;
-            sharedCal.createAllDayEvent(evTitle, periodEnd);
+            var evTitle    = '⏰ ' + perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' expires today — ' + cardName;
+            var dedupMark  = 'VERA-PERK:' + id + ':' + periodKey;
+            var dupExists  = sharedCal.getEventsForDay(periodEnd).some(function(ev) {
+              return (ev.getDescription() || '').indexOf(dedupMark) !== -1;
+            });
+            if (!dupExists) {
+              var perkEvent = sharedCal.createAllDayEvent(evTitle, periodEnd);
+              perkEvent.setDescription(dedupMark);
+            }
           }
         } catch (calErr) {
           Logger.log('checkCardPerksExpiring_: calendar error for ' + id + ' — ' + calErr.message);
@@ -2291,9 +2308,10 @@ function checkCardPerksActive_() {
       });
   }
 
-  var reviewCol = ensureCardPerkNeedsReviewColumn_(sheet);
+  var cols      = ensureCardPerkColumns_(sheet);
+  var reviewCol = cols.reviewCol;
   var numRows   = sheet.getLastRow() - 1;
-  var lastCol   = Math.max(CARD_PERK_HEADERS.length, reviewCol);
+  var lastCol   = Math.max(CARD_PERK_HEADERS.length, cols.reviewCol, cols.autopayCol);
   var data      = sheet.getRange(2, 1, numRows, lastCol).getValues();
   var tz        = Session.getScriptTimeZone();
   var monthKey  = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
@@ -2308,11 +2326,13 @@ function checkCardPerksActive_() {
     var amount      = row[3];
     var freq        = String(row[4] || 'Monthly').trim();
     var needsReview = String(row[reviewCol - 1] || '').trim();
+    var isAutopay   = String(row[cols.autopayCol - 1] || '').trim().toLowerCase() === 'yes';
 
     if (!id || !cardName || !perkName) return;
     var card = cardInfo[cardName];
     if (!card || !card.active) return; // inactive/unknown card — nothing to verify
     if (needsReview) return;           // already flagged, waiting on the user
+    if (isAutopay) return;             // on autopay — fully excluded from tracking
 
     var results;
     try {

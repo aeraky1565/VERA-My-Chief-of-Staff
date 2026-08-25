@@ -259,7 +259,7 @@ function makeUrl(base, token, params = {}) {
 }
 
 async function apiGet(apiUrl, token, params) {
-  const res = await fetch(makeUrl(apiUrl, token, params));
+  const res = await fetch(makeUrl(apiUrl, token, params), { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || 'API error');
   return json;
@@ -1147,13 +1147,29 @@ function CardModal({ mode, card, onSave, onClose, busy }) {
   );
 }
 
-function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onDeletePerk, onTogglePerk, onClearReview, busy }) {
+function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onEditPerk, onDeletePerk, onTogglePerk, onClearReview, busy }) {
   const cardRewards = rewards.filter(function(r) { return r.cardName === card.cardName; });
   const cardPerks   = perks.filter(function(p) { return p.cardName === card.cardName; });
   const [newReward, setNewReward] = React.useState({ category:'', rate:'', rateType:'x points', conditions:'' });
-  const [newPerk,   setNewPerk]   = React.useState({ perk:'', amount:'', frequency:'Monthly', category:'' });
+  const blankPerk = { perk:'', amount:'', frequency:'Monthly', category:'', autopay:false };
+  const [newPerk,   setNewPerk]   = React.useState(blankPerk);
+  const [editingPerkId, setEditingPerkId] = React.useState(null);
   const setRw = (k, v) => setNewReward(prev => Object.assign({}, prev, { [k]: v }));
   const setPk = (k, v) => setNewPerk(prev => Object.assign({}, prev, { [k]: v }));
+
+  function startEditPerk(pk) {
+    setEditingPerkId(pk.id);
+    setNewPerk({ perk: pk.perk, amount: pk.amount != null ? String(pk.amount) : '', frequency: pk.frequency, category: pk.category || '', autopay: !!pk.autopay });
+  }
+  function resetPerkForm() {
+    setEditingPerkId(null);
+    setNewPerk(blankPerk);
+  }
+  function submitPerkForm() {
+    if (editingPerkId) { onEditPerk(editingPerkId, newPerk); }
+    else { onAddPerk(card.cardName, newPerk); }
+    resetPerkForm();
+  }
 
   const now = new Date();
   const curMonth   = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
@@ -1249,16 +1265,25 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                   var used = isPerkUsed(pk);
                   return (
                     <div key={pk.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                      <button onClick={() => onTogglePerk(pk.id)} disabled={busy}
-                        style={{ width:18, height:18, borderRadius:4, border:'2px solid ' + (used ? '#22c55e' : '#374151'),
-                          background: used ? '#166534' : 'transparent', cursor:'pointer', flexShrink:0 }}>
-                        {used ? <span style={{ color:'#86efac', fontSize:11, lineHeight:'14px' }}>✓</span> : null}
-                      </button>
+                      {pk.autopay ? (
+                        <span title="On autopay — excluded from used/unused tracking"
+                          style={{ fontSize:10, fontWeight:700, color:'#93c5fd', background:'#1e3a5f', borderRadius:4, padding:'2px 6px', flexShrink:0 }}>
+                          🔁 Autopay
+                        </span>
+                      ) : (
+                        <button onClick={() => onTogglePerk(pk.id)} disabled={busy}
+                          style={{ width:18, height:18, borderRadius:4, border:'2px solid ' + (used ? '#22c55e' : '#374151'),
+                            background: used ? '#166534' : 'transparent', cursor:'pointer', flexShrink:0 }}>
+                          {used ? <span style={{ color:'#86efac', fontSize:11, lineHeight:'14px' }}>✓</span> : null}
+                        </button>
+                      )}
                       <span style={{ fontSize:13, color: used ? '#86efac' : '#dde1f0' }}>{pk.perk}</span>
                       {pk.amount && <span style={{ fontSize:11, color:'#a0a8c0' }}>${pk.amount}</span>}
-                      <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
-                        {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
-                      </span>
+                      {!pk.autopay && (
+                        <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
+                          {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
+                        </span>
+                      )}
                       {pk.needsReview && (
                         <span title="VERA couldn't confirm this benefit is still current — review the terms, then clear this flag."
                           style={{ background:'#78350f', color:'#fcd34d', fontSize:10, fontWeight:700, borderRadius:4, padding:'2px 6px', display:'flex', alignItems:'center', gap:4 }}>
@@ -1267,6 +1292,8 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                             style={{ background:'none', border:'none', color:'#fcd34d', cursor:'pointer', fontSize:11, padding:0, lineHeight:1 }}>×</button>
                         </span>
                       )}
+                      <button onClick={() => startEditPerk(pk)} disabled={busy} title="Edit"
+                        style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12, marginLeft:'auto' }}>✏️</button>
                       <button onClick={() => onDeletePerk(pk.id)} disabled={busy}
                         style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:14, marginLeft:'auto' }}>×</button>
                     </div>
@@ -1276,6 +1303,9 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
             );
           })}
           {cardPerks.length === 0 && <div style={{ fontSize:12, color:'#6b7280', marginBottom:10 }}>No perks tracked yet.</div>}
+          {editingPerkId && (
+            <div style={{ fontSize:11, color:'#93c5fd', marginBottom:6 }}>Editing perk — Save or Cancel below.</div>
+          )}
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', marginTop:8 }}>
             <input placeholder="Perk name" value={newPerk.perk} onChange={e => setPk('perk', e.target.value)}
               style={Object.assign({}, inputStyle, { flex:1, minWidth:120 })} />
@@ -1284,9 +1314,19 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
             <select value={newPerk.frequency} onChange={e => setPk('frequency', e.target.value)} style={inputStyle}>
               <option>Monthly</option><option>Quarterly</option><option>Annual</option>
             </select>
-            <button onClick={() => { onAddPerk(card.cardName, newPerk); setNewPerk({ perk:'', amount:'', frequency:'Monthly', category:'' }); }}
+            <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#a0a8c0', cursor:'pointer' }}>
+              <input type="checkbox" checked={newPerk.autopay} onChange={e => setPk('autopay', e.target.checked)} />
+              Autopay
+            </label>
+            <button onClick={submitPerkForm}
               disabled={busy || !newPerk.perk}
-              style={{ background:'#4f6ef7', color:'#fff', border:'none', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontSize:12 }}>＋ Add</button>
+              style={{ background:'#4f6ef7', color:'#fff', border:'none', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontSize:12 }}>
+              {editingPerkId ? '💾 Save' : '＋ Add'}
+            </button>
+            {editingPerkId && (
+              <button onClick={resetPerkForm} disabled={busy}
+                style={{ background:'none', border:'1px solid #2a2f45', color:'#a0a8c0', borderRadius:6, padding:'5px 12px', cursor:'pointer', fontSize:12 }}>Cancel</button>
+            )}
           </div>
         </div>
       </div>
@@ -1496,9 +1536,18 @@ function CardsTab({ apiUrl, apiToken }) {
   async function handleAddPerk(cardName, pk) {
     setBusy(true);
     try {
-      await apiGet(apiUrl, apiToken, { action: 'add_card_perk', cardName, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '' });
+      await apiGet(apiUrl, apiToken, { action: 'add_card_perk', cardName, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '', autopay: pk.autopay ? 'yes' : '' });
       await load();
     } catch (err) { setError('Add perk failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  async function handleEditPerk(id, pk) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_card_perk', id, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '', autopay: pk.autopay ? 'yes' : '' });
+      await load();
+    } catch (err) { setError('Edit perk failed: ' + err.message); }
     setBusy(false);
   }
 
@@ -1512,12 +1561,27 @@ function CardsTab({ apiUrl, apiToken }) {
   }
 
   async function handleTogglePerk(id) {
-    setBusy(true);
+    const now = new Date();
+    const curMonth   = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const curYear    = String(now.getFullYear());
+    const curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
+    let prevPerks = null;
+    // Optimistic update — flip locally right away so the checkbox responds
+    // instantly, then reconcile with the server in the background.
+    setPerks(function(prev) {
+      prevPerks = prev;
+      return prev.map(function(p) {
+        if (p.id !== id) return p;
+        const period = p.frequency === 'Annual' ? curYear : p.frequency === 'Quarterly' ? curQuarter : curMonth;
+        return Object.assign({}, p, { lastUsed: p.lastUsed === period ? '' : period });
+      });
+    });
     try {
       await apiGet(apiUrl, apiToken, { action: 'toggle_card_perk', id });
-      await load();
-    } catch (err) { setError('Toggle perk failed: ' + err.message); }
-    setBusy(false);
+    } catch (err) {
+      setError('Toggle perk failed: ' + err.message);
+      if (prevPerks) setPerks(prevPerks);
+    }
   }
 
   async function handleClearReview(id) {
@@ -1776,7 +1840,7 @@ function CardsTab({ apiUrl, apiToken }) {
         <CardDetailModal card={modal.data} rewards={rewards} perks={perks} busy={busy}
           onClose={() => setModal(null)}
           onAddReward={handleAddReward} onDeleteReward={handleDeleteReward}
-          onAddPerk={handleAddPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} onClearReview={handleClearReview} />
+          onAddPerk={handleAddPerk} onEditPerk={handleEditPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} onClearReview={handleClearReview} />
       )}
       {modal && modal.type === 'program' && (
         <LoyaltyModal mode={modal.data ? 'edit' : 'add'} program={modal.data} busy={busy}

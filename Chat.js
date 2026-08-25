@@ -575,8 +575,9 @@ function buildChatSystemPrompt_(context) {
       var cd = context.cardsData;
       if (!cd || !cd.cards || !cd.cards.length) return 'CREDIT CARDS: (none on file)\n\n';
       var now = new Date(); now.setHours(0,0,0,0);
-      var curMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-      var curYear  = String(now.getFullYear());
+      var curMonth   = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+      var curYear    = String(now.getFullYear());
+      var curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
       var activeCards = cd.cards.filter(function(c) { return c.active === 'Yes'; });
       // Group by owner
       var byOwner = {};
@@ -598,9 +599,9 @@ function buildChatSystemPrompt_(context) {
           var daysAgo  = lastUsed ? Math.round((now - new Date(lastUsed)) / 86400000) : null;
           if (daysAgo == null || daysAgo > 60) inactiveWarn.push(c.cardName + ' (' + owner + ')');
           // Unused perks this month
-          var cardPerks = (cd.perks || []).filter(function(p) { return p.cardName === c.cardName; });
+          var cardPerks = (cd.perks || []).filter(function(p) { return p.cardName === c.cardName && !p.autopay; });
           var unusedPerks = cardPerks.filter(function(p) {
-            var period = p.frequency === 'Annual' ? curYear : curMonth;
+            var period = p.frequency === 'Annual' ? curYear : p.frequency === 'Quarterly' ? curQuarter : curMonth;
             return p.lastUsed !== period;
           });
           var authLabel = c.authUser ? ' [+' + c.authUser + ' auth user]' : '';
