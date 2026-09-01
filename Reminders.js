@@ -284,7 +284,7 @@ function checkEveningMobility_(now, hour, cfg) {
 function checkMorningWellnessCheckin_(now, hour, cfg) {
   if (String(cfg['wellness_log_enabled'] || 'true').toLowerCase() === 'false') return;
 
-  var targetHour = parseInt(cfg['wellness_checkin_hour'] || '8', 10);
+  var targetHour = parseInt(cfg['wellness_checkin_hour'] || '6', 10);
   if (hour !== targetHour) return;
 
   var tz      = Session.getScriptTimeZone();

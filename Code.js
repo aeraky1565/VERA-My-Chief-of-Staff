@@ -306,7 +306,7 @@ function createSheetTabs(ss) {
     // Meal Planner (Issue #122)
     ['meal_planner_enabled', 'true'],     // set 'false' to hide Meal Plan subtab
     // Health–Performance Correlation (Feature 12)
-    ['wellness_checkin_hour', '8'],       // 24h hour for morning wellness check-in prompt
+    ['wellness_checkin_hour', '6'],       // 24h hour for morning wellness check-in prompt — must run before MORNING_NUDGE_HOUR (7) so Google Fit data is fresh when the morning email checks its staleness
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)

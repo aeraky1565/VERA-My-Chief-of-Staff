@@ -88,13 +88,13 @@ function fetchGoogleFitSleep_() {
     );
   } catch (e) {
     Logger.log('fetchGoogleFitSleep_: fetch error — ' + e.message);
-    recordApiHealth_('googlefit', false, e.message, 0);
+    recordApiHealth_('googlefit-sleep', false, e.message, 0);
     return null;
   }
 
   if (response.getResponseCode() !== 200) {
     Logger.log('fetchGoogleFitSleep_: non-200 response — ' + response.getContentText().substring(0, 200));
-    recordApiHealth_('googlefit', false,
+    recordApiHealth_('googlefit-sleep', false,
       String(response.getContentText() || '').substring(0, 200), response.getResponseCode());
     return null;
   }
@@ -103,7 +103,7 @@ function fetchGoogleFitSleep_() {
   try {
     body = JSON.parse(response.getContentText());
   } catch (e) {
-    recordApiHealth_('googlefit', false, 'parse error: ' + e.message, 200);
+    recordApiHealth_('googlefit-sleep', false, 'parse error: ' + e.message, 200);
     return null;
   }
 
@@ -125,7 +125,7 @@ function fetchGoogleFitSleep_() {
   // The API answered, so the source is healthy either way. An empty result
   // usually means the watch was not worn — that is real data, not an outage,
   // and must not mark Google Fit as degraded.
-  recordApiHealth_('googlefit', true, '', 200);
+  recordApiHealth_('googlefit-sleep', true, '', 200);
 
   if (totalMs === 0) {
     Logger.log('fetchGoogleFitSleep_: no sleep data returned for yesterday');
@@ -140,8 +140,11 @@ function fetchGoogleFitSleep_() {
 
 /**
  * Fetches yesterday's step count from Google Fit and logs it to WELLNESS_LOG.
- * Same window/auth/error-handling shape as fetchGoogleFitSleep_ — shares the
- * 'googlefit' ApiHealth source since both depend on the same Fitness API scope.
+ * Same window/auth/error-handling shape as fetchGoogleFitSleep_, but tracked
+ * under its own 'googlefit-steps' ApiHealth source — sleep and steps use
+ * different scopes/data types and can fail independently (e.g. steps needs
+ * fitness.activity.read, sleep needs fitness.sleep.read), so sharing one
+ * health entry would let one metric's failure mask the other's success.
  * Returns the step count as an integer, or null if no data.
  */
 function fetchGoogleFitSteps_() {
@@ -180,13 +183,13 @@ function fetchGoogleFitSteps_() {
     );
   } catch (e) {
     Logger.log('fetchGoogleFitSteps_: fetch error — ' + e.message);
-    recordApiHealth_('googlefit', false, e.message, 0);
+    recordApiHealth_('googlefit-steps', false, e.message, 0);
     return null;
   }
 
   if (response.getResponseCode() !== 200) {
     Logger.log('fetchGoogleFitSteps_: non-200 response — ' + response.getContentText().substring(0, 200));
-    recordApiHealth_('googlefit', false,
+    recordApiHealth_('googlefit-steps', false,
       String(response.getContentText() || '').substring(0, 200), response.getResponseCode());
     return null;
   }
@@ -195,7 +198,7 @@ function fetchGoogleFitSteps_() {
   try {
     body = JSON.parse(response.getContentText());
   } catch (e) {
-    recordApiHealth_('googlefit', false, 'parse error: ' + e.message, 200);
+    recordApiHealth_('googlefit-steps', false, 'parse error: ' + e.message, 200);
     return null;
   }
 
@@ -217,7 +220,7 @@ function fetchGoogleFitSteps_() {
 
   // The API answered, so the source is healthy either way — a 0-step day is
   // real data (e.g. watch not worn), not an outage.
-  recordApiHealth_('googlefit', true, '', 200);
+  recordApiHealth_('googlefit-steps', true, '', 200);
 
   if (totalSteps === 0) {
     Logger.log('fetchGoogleFitSteps_: no step data returned for yesterday');

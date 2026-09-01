@@ -28,7 +28,7 @@
 //
 //   // For call sites that can't use the wrapper (need the raw response, or
 //   // aren't fetches at all — e.g. external Sheet reads):
-//   recordApiHealth_('googlefit', false, 'no sleep data returned', 200);
+//   recordApiHealth_('googlefit-sleep', false, 'no sleep data returned', 200);
 // ============================================================
 
 var API_HEALTH_KEY_        = 'API_HEALTH_STATE';
