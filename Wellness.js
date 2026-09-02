@@ -170,10 +170,17 @@ function findGoogleFitStepDataSourceId_(token) {
     return null;
   }
 
-  var sources = (body.dataSource || []).filter(function(ds) {
+  var all = body.dataSource || [];
+  var sources = all.filter(function(ds) {
     return ds.dataType && ds.dataType.name === 'com.google.step_count.delta';
   });
-  if (!sources.length) return null;
+  if (!sources.length) {
+    var typeNames = all.map(function(ds) { return ds.dataType && ds.dataType.name; });
+    Logger.log('findGoogleFitStepDataSourceId_: account has ' + all.length +
+      ' total data source(s), none of type com.google.step_count.delta. ' +
+      'Types present: ' + JSON.stringify(typeNames));
+    return null;
+  }
 
   // Prefer the standard system-managed merge across every connected
   // source (exists for virtually any account with step data at all);
