@@ -163,7 +163,11 @@ function fetchGoogleFitSteps_() {
 
   var token = ScriptApp.getOAuthToken();
   var payload = {
-    aggregateBy: [{ dataTypeName: 'com.google.step_count.delta' }],
+    // Google Fit's aggregate endpoint 403s ("Cannot read data of type
+    // com.google.step_count.delta") if you request the raw data type
+    // directly — Google's own docs (Read the Daily Step Total) aggregate
+    // by the merged/derived data source instead.
+    aggregateBy: [{ dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps' }],
     bucketByTime: { durationMillis: 86400000 },
     startTimeMillis: startMs,
     endTimeMillis:   endMs,
