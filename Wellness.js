@@ -139,6 +139,54 @@ function fetchGoogleFitSleep_() {
 }
 
 /**
+ * Looks up which step_count.delta data source this Google Fit account
+ * actually has (varies per account/device — there is no one dataSourceId
+ * that works everywhere), preferring the standard merged-across-sources
+ * view over a single-device raw stream. Returns a dataStreamId string, or
+ * null if the account has no readable step_count.delta source at all.
+ */
+function findGoogleFitStepDataSourceId_(token) {
+  var response;
+  try {
+    response = UrlFetchApp.fetch(
+      'https://www.googleapis.com/fitness/v1/users/me/dataSources',
+      { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+  } catch (e) {
+    Logger.log('findGoogleFitStepDataSourceId_: fetch error — ' + e.message);
+    return null;
+  }
+  if (response.getResponseCode() !== 200) {
+    Logger.log('findGoogleFitStepDataSourceId_: non-200 response — ' +
+      response.getContentText().substring(0, 200));
+    return null;
+  }
+
+  var body;
+  try {
+    body = JSON.parse(response.getContentText());
+  } catch (e) {
+    Logger.log('findGoogleFitStepDataSourceId_: parse error — ' + e.message);
+    return null;
+  }
+
+  var sources = (body.dataSource || []).filter(function(ds) {
+    return ds.dataType && ds.dataType.name === 'com.google.step_count.delta';
+  });
+  if (!sources.length) return null;
+
+  // Prefer the standard system-managed merge across every connected
+  // source (exists for virtually any account with step data at all);
+  // fall back to any other derived (system-computed) source, then to
+  // whatever's left (a single raw device/app stream).
+  var merged = sources.find(function(ds) { return (ds.dataStreamId || '').indexOf('merge_step_deltas') !== -1; });
+  if (merged) return merged.dataStreamId;
+  var derived = sources.find(function(ds) { return (ds.dataStreamId || '').indexOf('derived:') === 0; });
+  if (derived) return derived.dataStreamId;
+  return sources[0].dataStreamId;
+}
+
+/**
  * Fetches yesterday's step count from Google Fit and logs it to WELLNESS_LOG.
  * Same window/auth/error-handling shape as fetchGoogleFitSleep_, but tracked
  * under its own 'googlefit-steps' ApiHealth source — sleep and steps use
@@ -162,12 +210,23 @@ function fetchGoogleFitSteps_() {
   var endMs   = todayMidnight.getTime();
 
   var token = ScriptApp.getOAuthToken();
+
+  // Google Fit's aggregate endpoint 403s ("Cannot read data of type
+  // com.google.step_count.delta") if you request the raw data type
+  // directly — it needs a specific dataSourceId instead. Which derived
+  // source actually exists varies per account (e.g. Google's own
+  // "estimated_steps" pedometer source only exists for accounts using
+  // Android's on-device step counting), so ask the account which
+  // step-count sources it actually has rather than hardcoding one.
+  var dataSourceId = findGoogleFitStepDataSourceId_(token);
+  if (!dataSourceId) {
+    Logger.log('fetchGoogleFitSteps_: no readable step_count.delta data source found for this account');
+    recordApiHealth_('googlefit-steps', false, 'no readable step_count.delta data source found', 200);
+    return null;
+  }
+
   var payload = {
-    // Google Fit's aggregate endpoint 403s ("Cannot read data of type
-    // com.google.step_count.delta") if you request the raw data type
-    // directly — Google's own docs (Read the Daily Step Total) aggregate
-    // by the merged/derived data source instead.
-    aggregateBy: [{ dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps' }],
+    aggregateBy: [{ dataSourceId: dataSourceId }],
     bucketByTime: { durationMillis: 86400000 },
     startTimeMillis: startMs,
     endTimeMillis:   endMs,
