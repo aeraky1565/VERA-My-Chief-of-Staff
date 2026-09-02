@@ -361,3 +361,21 @@ function resetApiHealth_() {
   _apiHealthCache_ = null;
   Logger.log('API health state cleared.');
 }
+
+/**
+ * Removes one source's entry from the health map, without touching any
+ * other source. Use when a source is retired for good (e.g. an integration
+ * removed from the code) and its last-recorded failure would otherwise sit
+ * in the degraded list forever, since nothing will ever call
+ * recordApiHealth_ for it again to clear it naturally.
+ */
+function clearApiHealthSource_(source) {
+  var state = getApiHealthState_();
+  if (!state[source]) {
+    Logger.log('clearApiHealthSource_: no entry for "' + source + '" — nothing to do.');
+    return;
+  }
+  delete state[source];
+  setApiHealthState_(state);
+  Logger.log('clearApiHealthSource_: removed "' + source + '" from API health state.');
+}

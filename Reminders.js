@@ -293,11 +293,13 @@ function checkMorningWellnessCheckin_(now, hour, cfg) {
 
   if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day
 
-  // Auto-log sleep hours + steps from Google Fit
+  // Auto-log sleep hours from Google Fit. Steps are no longer sourced here —
+  // Google Fit's step data has been retired for this account (Google cut off
+  // direct app-to-Fit-cloud connections in mid-2025); see Wellness.js history
+  // if a future on-device Health Connect bridge replaces this.
   var sleepHours = null;
   try { sleepHours = fetchGoogleFitSleep_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit sleep error — ' + e.message); }
   var steps = null;
-  try { steps = fetchGoogleFitSteps_(); } catch (e) { Logger.log('checkMorningWellnessCheckin_: Fit steps error — ' + e.message); }
 
   if (isSlackConfigured_()) {
     sendMorningWellnessSlack_(sleepHours, steps);
