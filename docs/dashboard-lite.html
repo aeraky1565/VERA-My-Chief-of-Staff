@@ -193,6 +193,11 @@
                   transition:border-color .15s, color .15s; white-space:nowrap; }
     .subtab-btn:hover  { border-color:#3d5fa0; color:#c9d9ff; }
     .subtab-btn.active { border-color:#c9a84c; color:#c9a84c; background:rgba(201,168,76,.08); }
+    @keyframes vera-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.35; }
+    }
+    .vera-inair { animation: vera-pulse 1.5s ease-in-out infinite; }
     .bento-card {
       background: #0d1b3e;
       border: 1px solid #1e3060;
@@ -7198,9 +7203,73 @@ const FINANCE_TABS = [
   { id: 'tax',          label: '🧾 Tax'      },
 ];
 
+// ---- Active travel card (ported verbatim from docs/app.js) ---------------
+// Shown on the Overview homepage while a trip is in progress, or when one
+// departs within 24h. Same behavior as the main dashboard: live flight
+// statuses (auto-refresh every 2 min + manual ↺), destination weather,
+// door-out/door-in times from the travel_* Config buffers, tonight's hotel,
+// and the collapsible “Useful to Know” flight-insights panel.
+function FlightStatusBadge({status}){if(!status)return null;var s=status.status||'scheduled';var delay=status.delay_min||0;var label,color,bg;if(s==='cancelled'){label='Cancelled';color='#ff6b6b';bg='#2a0a0a';}else if(s==='diverted'){label='Diverted';color='#ff9444';bg='#1a0f00';}else if(s==='landed'){label='Landed ✓';color='#4ac89a';bg='#0a1a14';}else if(delay>0){label='Delayed +'+delay+'min';color='#e8b44a';bg='#1a1200';}else if(s==='active'){label='On Time ✓';color='#4ac84a';bg='#0a1a0a';}else{label='Scheduled';color='#6b7fa8';bg='#1a2030';}
+// Issue #138: a status that stopped refreshing must never keep reading as
+// reassuring. Terminal states (landed/cancelled) cannot change, so they are
+// left alone; everything else loses its checkmark and green, keeps what it
+// last said for context, and states how old that is.
+var stale=status.freshness==='stale';var aging=status.freshness==='aging';var age=status.ageText||'';var terminal=(s==='landed'||s==='cancelled');
+if(stale&&!terminal){label=label.replace(' ✓','')+' · NOT LIVE'+(age?' ('+age+')':'');color='#e8b44a';bg='#241a00';}
+else if(aging&&!terminal){label=label.replace(' ✓','')+(age?' · '+age:'');color='#a89a72';bg='#1a1810';}
+var tip=stale&&!terminal?'Status is NOT live — last successful check was '+(age||'unknown')+' ago.'+(status.fetchError?' Reason: '+status.fetchError+'.':'')+' Confirm directly with the airline.':(age?'Last checked '+age+' ago':'');
+return/*#__PURE__*/React.createElement("span",{title:tip,style:{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,color:color,background:bg,letterSpacing:0.3,whiteSpace:'nowrap'}},label);}
+
+function ActiveTravelCard({trip,apiUrl,apiToken,onViewItinerary,travelConfig,departing}){var tripKey=trip.startDate+'|'+trip.label;var _dCard=new Date();var today=_dCard.getFullYear()+'-'+String(_dCard.getMonth()+1).padStart(2,'0')+'-'+String(_dCard.getDate()).padStart(2,'0');var _dCardTmrw=new Date(_dCard);_dCardTmrw.setDate(_dCardTmrw.getDate()+1);var tomorrowStr=_dCardTmrw.getFullYear()+'-'+String(_dCardTmrw.getMonth()+1).padStart(2,'0')+'-'+String(_dCardTmrw.getDate()).padStart(2,'0');// When banner fires "departing tomorrow", shift the display day to tomorrow so
+// flights, hotel and door-out time reflect the actual departure day.
+var displayDay=departing?tomorrowStr:today;const[items,setItems]=React.useState(null);const[flightStatuses,setFlightStatuses]=React.useState({});const[loadingItems,setLoadingItems]=React.useState(true);const[destWeather,setDestWeather]=React.useState(null);const[refreshingStatus,setRefreshingStatus]=React.useState(false);const[flightInsights,setFlightInsights]=React.useState(null);const[insightsOpen,setInsightsOpen]=React.useState(false);// Load itinerary on mount
+React.useEffect(function(){if(!apiUrl||!apiToken)return;setLoadingItems(true);apiGet(apiUrl,apiToken,{action:'itinerary',tripKey:tripKey,startDate:trip.startDate,endDate:trip.endDate}).then(function(r){if(r.ok&&r.items)setItems(r.items);}).catch(function(){}).finally(function(){setLoadingItems(false);});},[tripKey]);// eslint-disable-line react-hooks/exhaustive-deps
+// Load flight statuses + auto-refresh every 2 min.
+// On the first poll: if the cache is empty, automatically trigger a force-refresh
+// so the user sees status on page load without needing to click ↺.
+React.useEffect(function(){if(!apiUrl||!apiToken)return;var autoRefreshed=false;// seed the cache at most once per mount
+function fetchStatuses(){apiGet(apiUrl,apiToken,{action:'flight_statuses',tripKey:tripKey}).then(function(r){if(!r.ok)return;setFlightStatuses(r.statuses||{});// If the cache came back empty on the first poll, auto-seed it
+if(!autoRefreshed&&Object.keys(r.statuses||{}).length===0){autoRefreshed=true;setRefreshingStatus(true);apiGet(apiUrl,apiToken,{action:'force_flight_statuses',tripKey:tripKey}).then(function(fr){if(fr.ok)setFlightStatuses(fr.statuses||{});}).catch(function(){}).finally(function(){setRefreshingStatus(false);});}}).catch(function(){});}fetchStatuses();var timer=setInterval(fetchStatuses,120000);return function(){clearInterval(timer);};},[tripKey]);// eslint-disable-line react-hooks/exhaustive-deps
+// On-demand force-refresh: bypasses rate limiting, polls AviationStack immediately
+function forceRefreshStatuses(){if(refreshingStatus||!apiUrl||!apiToken)return;setRefreshingStatus(true);apiGet(apiUrl,apiToken,{action:'force_flight_statuses',tripKey:tripKey}).then(function(r){if(r.ok)setFlightStatuses(r.statuses||{});}).catch(function(){}).finally(function(){setRefreshingStatus(false);});}// Fetch destination weather once items are loaded.
+// Logic: show the city the user is currently in or heading to.
+//   - within24h of next flight → that flight's arrival city (at landing time)
+//   - otherwise, mid-trip     → last departed flight's arrival city (current weather)
+//   - before any flight       → first flight's arrival city (at landing time)
+React.useEffect(function(){if(!items||!apiUrl||!apiToken)return;var _dNow=new Date();var todayStr=_dNow.getFullYear()+'-'+String(_dNow.getMonth()+1).padStart(2,'0')+'-'+String(_dNow.getDate()).padStart(2,'0');var nowHour=_dNow.getHours();var _dTmrw=new Date(_dNow);_dTmrw.setDate(_dTmrw.getDate()+1);var tomorrowStr=_dTmrw.getFullYear()+'-'+String(_dTmrw.getMonth()+1).padStart(2,'0')+'-'+String(_dTmrw.getDate()).padStart(2,'0');// All trip flights sorted chronologically
+var allFlights=items.filter(function(i){return i.type==='flight'&&!i._synthetic;}).sort(function(a,b){return(a.date+(a.startTime||'')).localeCompare(b.date+(b.startTime||''));});if(!allFlights.length)return;// Extracts the ARRIVAL city/airport for a flight.
+// The location field sometimes only has the origin (e.g. "Washington IAD"),
+// so we also check the title for "to CITY" patterns.
+// Priority:
+//   1. location with 2+ IATA codes (e.g. "IAD → TPA") → last code
+//   2. title "to CITY" or "→ CITY" pattern            → city name string
+//   3. 3-letter code(s) in title                      → last code
+//   4. single code in location (origin, last resort)  → that code
+function getFlightDest(fl){var loc=fl.location||'';var ttl=fl.title||'';var locCodes=loc.match(/\b([A-Z]{3})\b/g)||[];if(locCodes.length>=2)return locCodes[locCodes.length-1];// "IAD → TPA" → TPA
+var m=ttl.match(/(?:\bto\b\s*|→\s*)([A-Za-z][^(,\n]*?)(?:\s*\(|\s*$)/i);if(m)return m[1].trim();// "Flight to Tampa" → Tampa
+var titleCodes=ttl.match(/\b([A-Z]{3})\b/g)||[];if(titleCodes.length>0)return titleCodes[titleCodes.length-1];if(locCodes.length>0)return locCodes[locCodes.length-1];// fallback: origin code
+return null;}function endHour(fl){return fl.endTime?parseInt(fl.endTime.split(':')[0],10):-1;}// Next upcoming flight (not yet departed)
+var nextFlight=null;for(var i=0;i<allFlights.length;i++){var fl=allFlights[i];if(fl.date>todayStr){nextFlight=fl;break;}if(fl.date===todayStr){var flHour=fl.startTime?parseInt(fl.startTime.split(':')[0],10):0;if(flHour>nowHour){nextFlight=fl;break;}}}// Last already-departed flight
+var lastDeparted=null;for(var j=allFlights.length-1;j>=0;j--){var fl2=allFlights[j];if(fl2.date<todayStr){lastDeparted=fl2;break;}if(fl2.date===todayStr){var flHour2=fl2.startTime?parseInt(fl2.startTime.split(':')[0],10):0;if(flHour2<=nowHour){lastDeparted=fl2;break;}}}var destAirport=null;var destHour=-1;var within24h=nextFlight&&(nextFlight.date===todayStr||nextFlight.date===tomorrowStr);if(within24h){// Heading somewhere within 24h — show arrival city at landing time
+destAirport=getFlightDest(nextFlight);destHour=endHour(nextFlight);}else if(lastDeparted){// Currently at the arrival city of the last flight — show current weather
+destAirport=getFlightDest(lastDeparted);destHour=-1;}else{// No flights departed yet — show first destination at arrival time
+destAirport=getFlightDest(allFlights[0]);destHour=endHour(allFlights[0]);}if(!destAirport)return;setDestWeather(null);apiGet(apiUrl,apiToken,{action:'dest_weather',location:destAirport,hour:String(destHour)}).then(function(r){if(r&&r.ok)setDestWeather(r);}).catch(function(){});},[items]);// eslint-disable-line react-hooks/exhaustive-deps
+// Fetch flight insights (Useful to Know) when a flight exists for the display day
+React.useEffect(function(){if(!apiUrl||!apiToken||!items)return;var _fl=(items||[]).filter(function(i){return i.type==='flight'&&!i._synthetic&&i.date<=displayDay;}).sort(function(a,b){return b.date.localeCompare(a.date)||(b.startTime||'').localeCompare(a.startTime||'');});if(!_fl.length){setFlightInsights(null);return;}var fl=_fl[0];var _m={};try{_m=JSON.parse(fl.metadata||'{}');}catch(e){}var _titleCodes=(fl.title||'').match(/\b([A-Z]{3})\b/g)||[];var _orig=_m.origin||((fl.location||'').match(/\b([A-Z]{3})\b/)||[])[0]||_titleCodes[0]||'';var _loc_codes=(fl.location||'').match(/\b([A-Z]{3})\b/g)||[];var _dest=_m.dest||(_loc_codes.length>1?_loc_codes[_loc_codes.length-1]:'')||(_titleCodes.length>1?_titleCodes[_titleCodes.length-1]:'');if(!_orig&&!_dest)return;apiGet(apiUrl,apiToken,{action:'get_flight_insights',origin:_orig,dest:_dest,depTime:fl.startTime||'',arrTime:fl.endTime||'',flightDate:fl.date||''}).then(function(r){if(r&&r.ok&&r.insights)setFlightInsights(r.insights);}).catch(function(){});},[items,displayDay]);// eslint-disable-line react-hooks/exhaustive-deps
+// ── Derived data ─────────────────────────────────────────────────────────
+var dayNum=departing?1:Math.floor((new Date(today)-new Date(trip.startDate))/86400000)+1;var totalDays=Math.floor((new Date(trip.endDate)-new Date(trip.startDate))/86400000)+1;var todayFlights=(items||[]).filter(function(i){return i.type==='flight'&&!i._synthetic&&i.date===displayDay;}).sort(function(a,b){return(a.startTime||'').localeCompare(b.startTime||'');});var tonightHotel=(items||[]).find(function(i){if(i.type!=='hotel'&&i.type!=='cruise'||i._synthetic)return false;var m={};try{m=JSON.parse(i.metadata||'{}');}catch(e){}var checkout=m.checkoutDate||'';return i.date<=displayDay&&(!checkout||checkout>displayDay);});var isDepartureDay=displayDay===trip.startDate;var isReturnDay=displayDay===trip.endDate;var cfg=travelConfig||{};// Extract first IATA code (3 uppercase letters) from a location string
+// e.g. "IAD → ANC" → ['IAD','ANC']
+function extractIata(location){var matches=(location||'').match(/\b([A-Z]{3})\b/g)||[];return matches;}// Buffer lookup: per-airport → general → hardcoded default
+function transitMin(airportCode){if(airportCode&&cfg['transit_buffer_'+airportCode]!=null)return cfg['transit_buffer_'+airportCode];return cfg['transit_buffer']!=null?cfg['transit_buffer']:120;}function customsMin(airportCode){if(airportCode&&cfg['customs_buffer_'+airportCode]!=null)return cfg['customs_buffer_'+airportCode];return cfg['customs_buffer']!=null?cfg['customs_buffer']:60;}// Time to navigate from airport entrance to gate (TSA, long terminals, etc.)
+// Config keys: travel_terminal_buffer, travel_terminal_buffer_IAD, etc.  Default: 0
+function terminalMin(airportCode){if(airportCode&&cfg['terminal_buffer_'+airportCode]!=null)return cfg['terminal_buffer_'+airportCode];return cfg['terminal_buffer']!=null?cfg['terminal_buffer']:0;}function addMinutes(timeStr,delta){if(!timeStr)return null;var parts=timeStr.split(':');var total=parseInt(parts[0],10)*60+parseInt(parts[1],10)+delta;total=(total%1440+1440)%1440;return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');}// Door-Out: departure airport = first IATA code in first flight's location
+var depCodes=todayFlights.length>0?extractIata(todayFlights[0].location):[];var depAirport=depCodes[0]||null;var totalDepartBuffer=transitMin(depAirport)+customsMin(depAirport)+terminalMin(depAirport);var doorOutTime=isDepartureDay&&todayFlights.length>0?addMinutes(todayFlights[0].startTime,-totalDepartBuffer):null;// Door-In: arrival airport = last IATA code in last flight's location
+var lastFl=todayFlights.length>0?todayFlights[todayFlights.length-1]:null;var arrCodes=lastFl?extractIata(lastFl.location):[];var arrAirport=arrCodes[arrCodes.length-1]||null;var doorInTime=isReturnDay&&lastFl?addMinutes(lastFl.endTime,customsMin(arrAirport)):null;// ── Render ────────────────────────────────────────────────────────────────
+var cardStyle={gridColumn:'1 / -1',background:'#181200',border:'1px solid #3a2e00',borderLeft:'4px solid #e8b44a',borderRadius:12,padding:'16px 20px',marginBottom:0};return/*#__PURE__*/React.createElement("div",{style:cardStyle},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#e8b44a'}},departing?'🧳 Departing Tomorrow':'✈️ Active Travel'," — ",trip.label),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:8}},destWeather&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:4,fontSize:12,color:'#e8b44a',background:'#2a1e00',borderRadius:12,padding:'2px 10px',border:'1px solid #4a3800'}},/*#__PURE__*/React.createElement("span",null,destWeather.emoji),/*#__PURE__*/React.createElement("span",{style:{fontWeight:700}},destWeather.temp,"°F"),/*#__PURE__*/React.createElement("span",{style:{color:'#a08040',fontWeight:400}},destWeather.city,destWeather.targetHour>=0?' ~'+(destWeather.targetHour%12||12)+(destWeather.targetHour<12?'am':'pm'):'')),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:600,color:'#e8b44a',background:'#2a1e00',borderRadius:20,padding:'2px 10px',border:'1px solid #4a3800'}},departing?'Tomorrow':`Day ${dayNum} of ${totalDays}`))),loadingItems?/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',fontStyle:'italic'}},"Loading travel status…"):/*#__PURE__*/React.createElement("div",{style:{display:'flex',flexDirection:'column',gap:8}},doorOutTime&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:8,background:'#1a1000',borderRadius:8,padding:'8px 12px',border:'1px solid #4a3000'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:18}},"🚪"),/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#8ab4f8',fontWeight:600,textTransform:'uppercase',letterSpacing:0.5}},"Leave by",depAirport?' ('+totalDepartBuffer+' min to '+depAirport+')':''),/*#__PURE__*/React.createElement("div",{style:{fontSize:16,fontWeight:700,color:'#ffaa44'}},doorOutTime)),/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginLeft:4}},"to make your flight on time")),todayFlights.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',flexDirection:'column',gap:6}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:2}},/*#__PURE__*/React.createElement("span",{style:{fontSize:10,fontWeight:700,color:'#4a5f80',letterSpacing:1,textTransform:'uppercase'}},departing?"Tomorrow's Flights":"Today's Flights"),/*#__PURE__*/React.createElement("button",{onClick:forceRefreshStatuses,disabled:refreshingStatus,style:{background:'none',border:'none',cursor:refreshingStatus?'default':'pointer',color:'#6b7fa8',fontSize:14,padding:'0 2px',lineHeight:1,opacity:refreshingStatus?0.4:0.8},title:"Refresh live flight status from AviationStack"},refreshingStatus?'⏳':'↺')),todayFlights.map(function(fl){var fs=flightStatuses[fl.id];var isInAir=fs&&fs.status==='active';var depTime=fs&&(fs.dep_estimated||fs.dep_scheduled);var showUpdatedTime=depTime&&fs.dep_estimated&&fs.dep_estimated!==fl.startTime;return/*#__PURE__*/React.createElement("div",{key:fl.id,style:{display:'flex',alignItems:'center',gap:10,background:'#0d1a2a',borderRadius:8,padding:'8px 12px'}},/*#__PURE__*/React.createElement("span",{className:isInAir?'vera-inair':'',style:{fontSize:16}},"✈️"),/*#__PURE__*/React.createElement("div",{style:{flex:1,minWidth:0}},/*#__PURE__*/React.createElement("div",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},fl.title),/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8'}},showUpdatedTime?/*#__PURE__*/React.createElement("span",null,/*#__PURE__*/React.createElement("span",{style:{textDecoration:'line-through'}},fl.startTime),/*#__PURE__*/React.createElement("span",{style:{color:'#e8b44a',marginLeft:4}},fs.dep_estimated),fl.endTime?' – '+fl.endTime:''):/*#__PURE__*/React.createElement("span",null,fl.startTime,fl.endTime?' – '+fl.endTime:''),fl.location?' · '+fl.location:'',fs&&fs.gate&&/*#__PURE__*/React.createElement("span",null," · ",/*#__PURE__*/React.createElement("span",{style:{color:'#8ab4f8',fontWeight:600}},"Gate ",fs.gate)),fs&&fs.terminal&&/*#__PURE__*/React.createElement("span",null," · ",/*#__PURE__*/React.createElement("span",{style:{color:'#8ab4f8'}},"Terminal ",fs.terminal)),!fs&&/*#__PURE__*/React.createElement("span",{style:{color:'#2e3d55',fontSize:10}}," · tap ↺ to load status"))),fs&&/*#__PURE__*/React.createElement(FlightStatusBadge,{status:fs}));})),flightInsights&&/*#__PURE__*/(function(){var _tzH=Math.abs(flightInsights.tz_offset_hours||0);var _recoverDays=Math.min(4,Math.round(_tzH/1.5));var _hasFlight=todayFlights.length>0;var _lastFlDate=null;(items||[]).filter(function(i){return i.type==='flight'&&!i._synthetic;}).forEach(function(i){if(!_lastFlDate||i.date>_lastFlDate)_lastFlDate=i.date;});var _daysSinceFlight=_lastFlDate?Math.round((new Date(displayDay+' 00:00')-new Date(_lastFlDate+' 00:00'))/86400000):999;var _showPanel=!departing&&(_hasFlight||(_daysSinceFlight>0&&_daysSinceFlight<=_recoverDays));if(!_showPanel)return null;var _isRecovery=!_hasFlight&&_daysSinceFlight>0;return/*#__PURE__*/React.createElement('div',{style:{background:'#1a1000',border:'1px solid #3a2e00',borderLeft:'3px solid #e8b44a',borderRadius:8,padding:'10px 12px',marginTop:4}},/*#__PURE__*/React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'},onClick:function(){setInsightsOpen(function(o){return!o;});}},/*#__PURE__*/React.createElement('span',{style:{fontSize:12,fontWeight:700,color:'#e8b44a',letterSpacing:0.5}},'🧠 Useful to Know'),/*#__PURE__*/React.createElement('span',{style:{fontSize:11,color:'#a08040'}},insightsOpen?'▲':'▼')),insightsOpen&&/*#__PURE__*/React.createElement('div',{style:{marginTop:8,display:'flex',flexDirection:'column',gap:4}},_isRecovery?/*#__PURE__*/React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:4}},/*#__PURE__*/React.createElement('div',{style:{fontSize:12,color:'#c8a040'}},'⏰ You\'re '+(flightInsights.tz_offset_label||'')+(flightInsights.dest_code?' ahead of home ('+flightInsights.origin_code+')':'')+' — body clock still adjusting'),/*#__PURE__*/React.createElement('div',{style:{fontSize:12,color:'#8ab4f8'}},'💤 Recovery day '+_daysSinceFlight+' of '+_recoverDays+' · '+(flightInsights.arrival_tip||flightInsights.sleep_tip||''))):/*#__PURE__*/React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:3}},(flightInsights.origin_code&&flightInsights.dest_code)?/*#__PURE__*/React.createElement('div',{style:{fontSize:12,color:'#c8a040'}},'⏰ '+flightInsights.origin_code+' → '+flightInsights.dest_code+'  '+(flightInsights.tz_offset_label||'')):null,flightInsights.distance_miles?/*#__PURE__*/React.createElement('div',{style:{fontSize:12,color:'#c8a040'}},'📏 ~'+Number(flightInsights.distance_miles).toLocaleString()+' miles'+(flightInsights.haul_category?' · '+flightInsights.haul_category:'')):null,(flightInsights.daynight_pct_day!=null)?/*#__PURE__*/React.createElement('div',{style:{fontSize:12,color:'#c8a040'}},(function(){var _f=Math.round((flightInsights.daynight_pct_day||0)/10);return '🌗 '+'█'.repeat(Math.max(0,_f))+'░'.repeat(Math.max(0,10-_f))+'  '+flightInsights.daynight_pct_day+'% daytime';}())):null,(flightInsights.dep_local&&flightInsights.arr_local)?/*#__PURE__*/React.createElement('div',{style:{fontSize:12,color:'#c8a040'}},'🛫 '+flightInsights.dep_local+' → '+flightInsights.arr_local):null,flightInsights.pre_trip_tip?/*#__PURE__*/React.createElement('div',{style:{fontSize:11,color:'#8ab4f8',fontStyle:'italic',marginTop:2}},'📅 '+flightInsights.pre_trip_tip):null,(flightInsights.arrival_tip||flightInsights.sleep_tip)?/*#__PURE__*/React.createElement('div',{style:{fontSize:11,color:'#8ab4f8',fontStyle:'italic',marginTop:1}},'💤 '+(flightInsights.arrival_tip||flightInsights.sleep_tip)):null)));}()),tonightHotel&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:10,background:'#0d1a2a',borderRadius:8,padding:'8px 12px'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:16}},"🏨"),/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#8ab4f8',fontWeight:600,textTransform:'uppercase',letterSpacing:0.5}},"Staying at"),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,fontWeight:600,color:'#dde1f0'}},tonightHotel.title))),todayFlights.length===0&&!tonightHotel&&!doorOutTime&&!doorInTime&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',fontStyle:'italic'}},"No itinerary items for ",departing?'tomorrow':'today',"."),doorInTime&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:8,background:'#0a1a10',borderRadius:8,padding:'8px 12px',border:'1px solid #1a4028'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:18}},"🏠"),/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4ac89a',fontWeight:600,textTransform:'uppercase',letterSpacing:0.5}},"Est. home by",arrAirport?' (+'+customsMin(arrAirport)+' min from '+arrAirport+')':''),/*#__PURE__*/React.createElement("div",{style:{fontSize:16,fontWeight:700,color:'#4ac89a'}},doorInTime)),/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginLeft:4}},"after customs & transit"))),/*#__PURE__*/React.createElement("div",{style:{marginTop:12,display:'flex',justifyContent:'flex-end'}},/*#__PURE__*/React.createElement("button",{onClick:function(){if(onViewItinerary)onViewItinerary(trip);},style:{background:'none',border:'none',color:'#8ab4f8',fontSize:12,fontWeight:600,cursor:'pointer',padding:0}},"View Full Itinerary →")));}
+
 // ---- Overview: FamilyWall-style homepage of module summary tiles --------
 
-function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
+function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
   // Each key resolves independently (no Promise.all) so tiles reveal their
   // stat as soon as their own fetch lands, instead of all waiting on the
   // slowest one. undefined = still loading; {} = loaded (possibly errored/empty).
@@ -7221,8 +7290,14 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
     });
   }, [apiUrl, apiToken]);
 
-  const todayDate = new Date().getDate();
-  const todayStr  = new Date().toISOString().slice(0, 10);
+  const _now = new Date();
+  const todayDate = _now.getDate();
+  // Local calendar date, not toISOString() — that returns UTC, which rolls to
+  // tomorrow during the evening in US timezones and would shift every day
+  // comparison below (trip in progress, coupon expiry, bill due day) by one.
+  const todayStr = _now.getFullYear() + '-' +
+    String(_now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(_now.getDate()).padStart(2, '0');
 
   const shoppingPending = (shopping || []).reduce(
     (sum, s) => sum + (s.items || []).filter(i => !i.done).length, 0
@@ -7262,6 +7337,16 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
 
   const pendingChores = data.chores
     ? (data.chores.chores || []).filter(c => c.Status !== 'Done').length : null;
+
+  // Active-travel detection, same rule as the main dashboard's HomeTab: a trip
+  // that's in progress today, else one departing within the next 24 hours.
+  const upcomingTravel = (data.pto && data.pto.ahmedStats && data.pto.ahmedStats.upcomingTravel) || [];
+  const activeTrip = upcomingTravel.find(t => todayStr >= t.startDate && todayStr <= t.endDate);
+  const imminentTrip = !activeTrip && upcomingTravel.find(t => {
+    const diffMs = new Date(t.startDate + 'T00:00:00').getTime() - Date.now();
+    return diffMs > 0 && diffMs <= 86400000;
+  });
+  const displayTrip = activeTrip || imminentTrip;
 
   const todaysEventsLoading = data.todaysEvents === undefined;
   const todaysEvents = data.todaysEvents ? (data.todaysEvents.events || []) : [];
@@ -7312,6 +7397,19 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
         <div style={{ fontSize: 20, fontWeight: 800, color: '#dde1f0' }}>{greeting}</div>
         <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
       </div>
+
+      {displayTrip && (
+        <div style={{ marginBottom: 20 }}>
+          <ActiveTravelCard
+            trip={displayTrip}
+            departing={!!imminentTrip}
+            apiUrl={apiUrl}
+            apiToken={apiToken}
+            travelConfig={status && status.travelConfig}
+            onViewItinerary={() => onNavigate('travel')}
+          />
+        </div>
+      )}
 
       {/* Lighter blue fill than the .bento-card tiles below (#0d1b3e) so the
           day's agenda reads as a header, not a tenth tile. The muted text
@@ -7564,6 +7662,7 @@ function App() {
             apiUrl={apiUrl}
             apiToken={apiToken}
             shopping={shopping}
+            status={status}
             onNavigate={setActiveTab}
           />
         )}
