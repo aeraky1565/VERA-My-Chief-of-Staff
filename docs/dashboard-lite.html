@@ -7212,6 +7212,7 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
     const actions = {
       cards: 'cards', coupons: 'get_coupons', rx: 'prescriptions',
       pto: 'pto', bills: 'bills', chores: 'get_chores',
+      todaysEvents: 'get_todays_events',
     };
     Object.keys(actions).forEach(key => {
       apiGet(apiUrl, apiToken, { action: actions[key] })
@@ -7262,6 +7263,10 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
   const pendingChores = data.chores
     ? (data.chores.chores || []).filter(c => c.Status !== 'Done').length : null;
 
+  const todaysEventsLoading = data.todaysEvents === undefined;
+  const todaysEvents = data.todaysEvents ? (data.todaysEvents.events || []) : [];
+  const todaysEventsCalendarFound = data.todaysEvents ? data.todaysEvents.calendarFound !== false : true;
+
   const hour = new Date().getHours();
   const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const dateLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -7307,6 +7312,32 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
         <div style={{ fontSize: 20, fontWeight: 800, color: '#dde1f0' }}>{greeting}</div>
         <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
       </div>
+
+      <div className="bento-card" style={{ cursor: 'default', marginBottom: 20 }}>
+        <div className="bento-card-title">📅 Today</div>
+        {todaysEventsLoading ? (
+          <div className="bento-card-sub" style={{ marginBottom: 0 }}>Loading…</div>
+        ) : !todaysEventsCalendarFound ? (
+          <div className="bento-card-sub" style={{ marginBottom: 0 }}>Couldn't find the Joint Chaos calendar</div>
+        ) : todaysEvents.length === 0 ? (
+          <div className="bento-card-sub" style={{ marginBottom: 0 }}>Nothing on the calendar today</div>
+        ) : (
+          <div className="bento-card-list">
+            {todaysEvents.map((ev, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 }}>
+                <span style={{ color: '#5c9eff', fontWeight: 600, minWidth: 72, flexShrink: 0 }}>
+                  {ev.allDay ? 'All day' : ev.startTime}
+                </span>
+                <span style={{ color: '#dde1f0' }}>
+                  {ev.title}
+                  {ev.location && <span style={{ color: '#6b7fa8' }}> · {ev.location}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',

@@ -305,6 +305,7 @@ function doGet(e) {
       case 'log_contract_action': return jsonOut_(webLogContractAction_(e));
       // House Guests (Issue #150)
       case 'get_guests':    return jsonOut_(webGetGuests_());
+      case 'get_todays_events': return jsonOut_(webGetTodaysEvents_());
       // Traveler Profiles / Visa Checker (Issue #123)
       case 'get_profiles':    return jsonOut_(webGetProfiles_());
       case 'save_profile':    return jsonOut_(webSaveProfile_(e));
@@ -1317,6 +1318,44 @@ function webGetGuests_() {
   } catch (e) {
     Logger.log('webGetGuests_ error: ' + e.message);
     return { ok: true, guests: [], error: e.message };
+  }
+}
+
+/**
+ * Returns today's events from the shared "Joint Chaos" calendar, for the
+ * dashboard Overview homepage's Today card.
+ */
+function webGetTodaysEvents_() {
+  try {
+    var tz = Session.getScriptTimeZone();
+
+    var targetCal = null;
+    CalendarApp.getAllCalendars().forEach(function(c) {
+      if (c.getName().toLowerCase().indexOf('joint chaos') !== -1) targetCal = c;
+    });
+    if (!targetCal) return { ok: true, events: [], calendarFound: false };
+
+    var today      = new Date();
+    var startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    var endOfDay   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+
+    var events = targetCal.getEvents(startOfDay, endOfDay).map(function(ev) {
+      var allDay = ev.isAllDayEvent();
+      return {
+        title:     (ev.getTitle()    || '(No title)').trim(),
+        location:  (ev.getLocation() || '').trim(),
+        allDay:    allDay,
+        startTime: allDay ? null : Utilities.formatDate(ev.getStartTime(), tz, 'h:mm a'),
+        endTime:   allDay ? null : Utilities.formatDate(ev.getEndTime(),   tz, 'h:mm a'),
+        _sortMs:   allDay ? -1 : ev.getStartTime().getTime(),
+      };
+    }).sort(function(a, b) { return a._sortMs - b._sortMs; })
+      .map(function(ev) { delete ev._sortMs; return ev; });
+
+    return { ok: true, events: events, calendarFound: true };
+  } catch (e) {
+    Logger.log('webGetTodaysEvents_ error: ' + e.message);
+    return { ok: true, events: [], error: e.message };
   }
 }
 
