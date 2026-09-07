@@ -7313,8 +7313,11 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
         <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
       </div>
 
-      <div className="bento-card" style={{ cursor: 'default', marginBottom: 20 }}>
-        <div className="bento-card-title">📅 Today</div>
+      <div className="bento-card" style={{
+        cursor: 'default', marginBottom: 20,
+        background: 'rgba(92,158,255,0.08)', border: '1px solid rgba(92,158,255,0.30)',
+      }}>
+        <div className="bento-card-title" style={{ color: '#8ab4f8' }}>📅 Today</div>
         {todaysEventsLoading ? (
           <div className="bento-card-sub" style={{ marginBottom: 0 }}>Loading…</div>
         ) : !todaysEventsCalendarFound ? (
