@@ -7175,6 +7175,7 @@ function FinBudgetLiteTab({ apiUrl, apiToken }) {
 // ---- App --------------------------------------------------------------------
 
 const TOP_TABS = [
+  { id: 'overview',      label: '🌅 Overview'      },
   { id: 'chat',          label: '💬 Chat'          },
   { id: 'household',     label: '🏠 Household'      },
   { id: 'shopping',      label: '🛒 Shopping'      },
@@ -7197,11 +7198,139 @@ const FINANCE_TABS = [
   { id: 'tax',          label: '🧾 Tax'      },
 ];
 
+// ---- Overview: FamilyWall-style homepage of module summary tiles --------
+
+function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
+  // Each key resolves independently (no Promise.all) so tiles reveal their
+  // stat as soon as their own fetch lands, instead of all waiting on the
+  // slowest one. undefined = still loading; {} = loaded (possibly errored/empty).
+  const [data, setData] = useState({});
+
+  useEffect(() => {
+    if (!apiUrl || !apiToken) return;
+    setData({});
+    const actions = {
+      cards: 'cards', coupons: 'get_coupons', rx: 'prescriptions',
+      pto: 'pto', bills: 'bills', chores: 'get_chores',
+    };
+    Object.keys(actions).forEach(key => {
+      apiGet(apiUrl, apiToken, { action: actions[key] })
+        .then(res => setData(prev => ({ ...prev, [key]: res || {} })))
+        .catch(() => setData(prev => ({ ...prev, [key]: {} })));
+    });
+  }, [apiUrl, apiToken]);
+
+  const todayDate = new Date().getDate();
+  const todayStr  = new Date().toISOString().slice(0, 10);
+
+  const shoppingPending = (shopping || []).reduce(
+    (sum, s) => sum + (s.items || []).filter(i => !i.done).length, 0
+  );
+
+  const activeCards = data.cards
+    ? (data.cards.cards || []).filter(c => c.active === 'Yes').length : null;
+
+  const couponsExpiringSoon = data.coupons
+    ? (data.coupons.coupons || []).filter(c => {
+        if (!c.expires) return false;
+        const days = Math.round((new Date(c.expires + 'T00:00:00') - new Date(todayStr + 'T00:00:00')) / 86400000);
+        return days >= 0 && days <= 3; // mirrors CouponsLiteTab's expiryInfo() "expiring soon" bucket
+      }).length
+    : null;
+
+  const activeRx = data.rx
+    ? (data.rx.prescriptions || []).filter(r => r.active === 'Yes').length : null;
+
+  const trips = data.pto ? (data.pto.ahmedStats && data.pto.ahmedStats.upcomingTravel) || [] : null;
+  const nextTrip = trips && trips.length
+    ? trips.slice().sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))[0]
+    : null;
+  const nextTripDays = nextTrip && nextTrip.startDate
+    ? Math.round((new Date(nextTrip.startDate + 'T12:00:00') - new Date(todayStr + 'T12:00:00')) / 86400000)
+    : null;
+
+  // Sheet-native bills due within 5 days, unpaid — mirrors BillTrackerView's
+  // dueDay branch. Calendar-only bills aren't merged in here (that merge is
+  // fairly involved — see BillTrackerView) to keep this homepage fetch light.
+  const billsDueSoon = data.bills
+    ? (data.bills.bills || []).filter(b => {
+        if (b.paid) return false;
+        return b.dueDay != null && (b.dueDay - todayDate) >= 0 && (b.dueDay - todayDate) <= 5;
+      }).length
+    : null;
+
+  const pendingChores = data.chores
+    ? (data.chores.chores || []).filter(c => c.Status !== 'Done').length : null;
+
+  const hour = new Date().getHours();
+  const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const dateLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  const TILES = [
+    { id: 'chat', icon: '💬', label: 'Chat', hasStat: false, sub: 'Ask VERA anything' },
+    { id: 'household', icon: '🏠', label: 'Household', hasStat: false, sub: 'Contacts & reference info' },
+    {
+      id: 'shopping', icon: '🛒', label: 'Shopping', hasStat: true, loading: false, stat: shoppingPending,
+      sub: shoppingPending === 0 ? 'Nothing pending' : plural(shoppingPending, 'item') + ' pending',
+    },
+    {
+      id: 'cards', icon: '💳', label: 'Cards', hasStat: true, loading: activeCards == null, stat: activeCards,
+      sub: activeCards == null ? '' : plural(activeCards, 'active card'),
+    },
+    {
+      id: 'coupons', icon: '🎟️', label: 'Coupons', hasStat: true, loading: couponsExpiringSoon == null, stat: couponsExpiringSoon,
+      sub: couponsExpiringSoon == null ? '' : couponsExpiringSoon === 0 ? 'None expiring soon' : plural(couponsExpiringSoon, 'coupon') + ' expiring soon',
+    },
+    {
+      id: 'prescriptions', icon: '💊', label: 'Prescriptions', hasStat: true, loading: activeRx == null, stat: activeRx,
+      sub: activeRx == null ? '' : plural(activeRx, 'active prescription'),
+    },
+    {
+      id: 'travel', icon: '✈️', label: 'Travel', hasStat: true, loading: trips == null, stat: trips ? trips.length : null,
+      sub: trips == null ? '' : !nextTrip ? 'No trips planned' : nextTripDays <= 0 ? 'Trip underway' : `Next trip in ${nextTripDays}d`,
+    },
+    {
+      id: 'finances', icon: '💰', label: 'Finances', hasStat: true, loading: billsDueSoon == null, stat: billsDueSoon,
+      sub: billsDueSoon == null ? '' : billsDueSoon === 0 ? 'Nothing due soon' : plural(billsDueSoon, 'bill') + ' due soon',
+    },
+    {
+      id: 'home_front', icon: '🏡', label: 'Home Front', hasStat: true, loading: pendingChores == null, stat: pendingChores,
+      sub: pendingChores == null ? '' : plural(pendingChores, 'chore') + ' pending',
+    },
+  ];
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: '#dde1f0' }}>{greeting}</div>
+        <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
+      </div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+        gap: 14,
+      }}>
+        {TILES.map(tile => (
+          <div key={tile.id} className="bento-card" onClick={() => onNavigate(tile.id)}>
+            <div className="bento-card-title">{tile.icon} {tile.label}</div>
+            {tile.hasStat && (
+              <div className="bento-card-main">{tile.loading ? '…' : tile.stat}</div>
+            )}
+            <div className="bento-card-sub">{tile.hasStat && tile.loading ? 'Loading…' : tile.sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [apiUrl,       setApiUrl]       = useState(() => stored('vera_url'));
   const [apiToken,     setApiToken]     = useState(() => stored('vera_token'));
   const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
-  const [activeTab,       setActiveTab]       = useState('chat');
+  const [activeTab,       setActiveTab]       = useState('overview');
   const [activeFinanceTab, setActiveFinanceTab] = useState('fin_summary');
   const [shopping,     setShopping]     = useState([]);
   const [busy,         setBusy]         = useState(false);
@@ -7390,6 +7519,15 @@ function App() {
             <span>{error}</span>
             <button className="error-dismiss" onClick={() => setError(null)}>✕</button>
           </div>
+        )}
+
+        {activeTab === 'overview' && (
+          <OverviewLiteTab
+            apiUrl={apiUrl}
+            apiToken={apiToken}
+            shopping={shopping}
+            onNavigate={setActiveTab}
+          />
         )}
 
         {activeTab === 'chat' && (
