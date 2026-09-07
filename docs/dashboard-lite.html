@@ -7313,27 +7313,31 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, onNavigate }) {
         <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
       </div>
 
+      {/* Lighter blue fill than the .bento-card tiles below (#0d1b3e) so the
+          day's agenda reads as a header, not a tenth tile. The muted text
+          colors are lifted to match — the defaults are tuned for the darker
+          tile background and go dim on this one. */}
       <div className="bento-card" style={{
         cursor: 'default', marginBottom: 20,
-        background: 'rgba(92,158,255,0.08)', border: '1px solid rgba(92,158,255,0.30)',
+        background: '#16315f', border: '1px solid #2f5ea8',
       }}>
-        <div className="bento-card-title" style={{ color: '#8ab4f8' }}>📅 Today</div>
+        <div className="bento-card-title" style={{ color: '#a8c5f5' }}>📅 Today</div>
         {todaysEventsLoading ? (
-          <div className="bento-card-sub" style={{ marginBottom: 0 }}>Loading…</div>
+          <div className="bento-card-sub" style={{ marginBottom: 0, color: '#9db0d0' }}>Loading…</div>
         ) : !todaysEventsCalendarFound ? (
-          <div className="bento-card-sub" style={{ marginBottom: 0 }}>Couldn't find the Joint Chaos calendar</div>
+          <div className="bento-card-sub" style={{ marginBottom: 0, color: '#9db0d0' }}>Couldn't find the Joint Chaos calendar</div>
         ) : todaysEvents.length === 0 ? (
-          <div className="bento-card-sub" style={{ marginBottom: 0 }}>Nothing on the calendar today</div>
+          <div className="bento-card-sub" style={{ marginBottom: 0, color: '#9db0d0' }}>Nothing on the calendar today</div>
         ) : (
           <div className="bento-card-list">
             {todaysEvents.map((ev, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13 }}>
-                <span style={{ color: '#5c9eff', fontWeight: 600, minWidth: 72, flexShrink: 0 }}>
+                <span style={{ color: '#9fc4ff', fontWeight: 600, minWidth: 72, flexShrink: 0 }}>
                   {ev.allDay ? 'All day' : ev.startTime}
                 </span>
-                <span style={{ color: '#dde1f0' }}>
+                <span style={{ color: '#f0f3fa' }}>
                   {ev.title}
-                  {ev.location && <span style={{ color: '#6b7fa8' }}> · {ev.location}</span>}
+                  {ev.location && <span style={{ color: '#9db0d0' }}> · {ev.location}</span>}
                 </span>
               </div>
             ))}
