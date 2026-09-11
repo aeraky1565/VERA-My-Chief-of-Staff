@@ -8,14 +8,51 @@
 //
 // Script Properties used:
 //   MAIL_COUNTER_PIECES        — integer string, running total of mail pieces
-//   MAIL_COUNTER_PACKAGES      — integer string, running total of packages
+//   MAIL_COUNTER_PACKAGES      — integer string, running total of packages that
+//                                actually arrived (see parsePackagesArrivingToday_)
 //   MAIL_COUNTER_LAST_SCAN     — ISO timestamp of newest email already processed
 //   MAIL_COUNTER_LAST_SCAN_RUN — ISO timestamp of when scan last ran
 //   MAIL_COUNTER_LAST_RESET    — ISO timestamp of last user reset
 // ============================================================
 
 /**
+ * Pulls the "arriving today" package count out of a USPS Daily Digest body.
+ *
+ * The digest's headline figure — "You have 1 mailpiece(s) and 2 inbound
+ * package(s) arriving soon" — counts every package USPS knows about, including
+ * ones the sender has only just printed a label for. Those keep reappearing in
+ * every digest until they actually turn up, so adding the headline number each
+ * day counts the same package over and over and the counter balloons.
+ *
+ * The body breaks packages into buckets, e.g.:
+ *
+ *   PACKAGES
+ *     Expected Today        1 item(s)   FROM: WACOAL AMERICA INC
+ *     Expected 1-2 Days     0 item(s)
+ *     Awaiting From Sender  1 item(s)   FROM: SHIPPO
+ *     Outbound              0 item(s)
+ *
+ * Only "Expected Today" is actually landing in the mailbox today, so that is
+ * the only bucket that should be added to the running total. (Above, the
+ * headline says 2 but only 1 is really arriving.)
+ *
+ * The MAIL section has its own "Expected Today" bucket, so this anchors to the
+ * PACKAGES heading first to avoid picking up the mailpiece count.
+ *
+ * @param {string} body  Digest body with HTML tags already stripped.
+ * @return {number} Packages arriving today; 0 if the section isn't present.
+ */
+function parsePackagesArrivingToday_(body) {
+  var idx = (body || '').search(/\bPACKAGES\b/i);
+  if (idx === -1) return 0;
+  var match = body.slice(idx).match(/Expected\s+Today\s+(\d+)\s+item/i);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
  * Scans Gmail for USPS Informed Delivery emails and increments counters.
+ * Both counters accumulate until the user hits "Got the mail!" — packages
+ * count only what arrives each day, not everything in transit.
  * Called by a 10am daily trigger installed by setupTriggers().
  */
 function scanUSPSMail_() {
@@ -56,10 +93,9 @@ function scanUSPSMail_() {
         mailDelta += pieces;
 
         // --- Parse packages ---
-        // "0 inbound package(s)"  ← actual USPS format
-        // "2 packages scheduled" / "1 package arriving"  ← legacy
-        var pkgMatch = body.match(/(\d+)\s+(?:inbound\s+)?package/i);
-        if (pkgMatch) pkgDelta += parseInt(pkgMatch[1], 10);
+        // Only the ones actually landing today; see parsePackagesArrivingToday_
+        // for why the headline "N inbound package(s)" figure can't be used.
+        pkgDelta += parsePackagesArrivingToday_(body);
 
         // Track newest processed message date
         if (msgDate > latestDate) latestDate = msgDate;
