@@ -3555,6 +3555,31 @@ function webDeleteHomeItem_(e) {
 // ---- Itinerary (Issue #63) --------------------------------------------------
 
 /**
+ * Whole-word keyword test for the itinerary classifier below.
+ *
+ * These lists were matched with indexOf, which reads a keyword anywhere
+ * inside a longer word: 'inn' fired on "Dinner"/"Winner"/"Beginning",
+ * 'depart' on "Department", 'bus' on "Business", 'rail' on "Trail", 'train'
+ * on "Training", and 'teams' on "Teamsters". The first few silently mistyped
+ * ordinary events as hotels, flights or transport; the 'teams' one was worse,
+ * since a false virtual-location match drops the event entirely.
+ *
+ * Boundaries are explicit non-alphanumerics rather than \b so that multi-word
+ * and punctuated keywords ("check-in", "car rental", "meet.google") behave.
+ * A keyword with no letters at all — the plane glyph — has no meaningful word
+ * boundary, so it falls back to a plain substring test.
+ *
+ * @param {string} text     - Already lower-cased haystack
+ * @param {string} keyword  - Keyword to look for
+ * @returns {boolean}
+ */
+function itinKeywordHit_(text, keyword) {
+  if (!/[a-z]/i.test(keyword)) return text.indexOf(keyword) !== -1;
+  var esc = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[^a-z0-9])' + esc + '([^a-z0-9]|$)', 'i').test(text);
+}
+
+/**
  * Decides whether a calendar event is travel-relevant for a trip itinerary.
  * @param {string} title     - Event title
  * @param {string} location  - Event location (may be empty string)
@@ -3582,7 +3607,7 @@ function isItineraryCalendarRelevant_(title, location, tripLabel) {
   // 1. Virtual/remote location → always exclude
   if (locationLower) {
     for (i = 0; i < VIRTUAL_LOCS.length; i++) {
-      if (locationLower.indexOf(VIRTUAL_LOCS[i]) !== -1) return { include: false };
+      if (itinKeywordHit_(locationLower, VIRTUAL_LOCS[i])) return { include: false };
     }
   }
 
@@ -3591,12 +3616,12 @@ function isItineraryCalendarRelevant_(title, location, tripLabel) {
 
   // 3. Generic flight keywords
   for (i = 0; i < FLIGHT_WORDS.length; i++) {
-    if (titleLower.indexOf(FLIGHT_WORDS[i]) !== -1) return { include: true, type: 'flight' };
+    if (itinKeywordHit_(titleLower, FLIGHT_WORDS[i])) return { include: true, type: 'flight' };
   }
 
   // 4. Hotel / lodging keywords
   for (i = 0; i < HOTEL_WORDS.length; i++) {
-    if (titleLower.indexOf(HOTEL_WORDS[i]) !== -1) return { include: true, type: 'hotel' };
+    if (itinKeywordHit_(titleLower, HOTEL_WORDS[i])) return { include: true, type: 'hotel' };
   }
 
   // 4a. Cruise stay prefix
@@ -3604,7 +3629,7 @@ function isItineraryCalendarRelevant_(title, location, tripLabel) {
 
   // 5. Transport keywords
   for (i = 0; i < TRANSPORT_WORDS.length; i++) {
-    if (titleLower.indexOf(TRANSPORT_WORDS[i]) !== -1) return { include: true, type: 'transport' };
+    if (itinKeywordHit_(titleLower, TRANSPORT_WORDS[i])) return { include: true, type: 'transport' };
   }
 
   // 6. Destination keyword extraction (words ≥3 chars not in stop list)

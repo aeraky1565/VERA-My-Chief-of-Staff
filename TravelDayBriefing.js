@@ -33,9 +33,13 @@
 function isVirtualMeetingLocation_(location) {
   var VIRTUAL_LOCS = ['zoom', 'google meet', 'teams', 'webex', 'skype',
                        'conference room', 'meet.google', 'whereby'];
-  var loc = location.toLowerCase();
+  var loc = String(location || '').toLowerCase();
   for (var i = 0; i < VIRTUAL_LOCS.length; i++) {
-    if (loc.indexOf(VIRTUAL_LOCS[i]) !== -1) return true;
+    // Whole-word, via the shared helper in WebApp.js — a substring test read
+    // 'teams' inside "Teamsters Hall" and dropped a real venue as a virtual
+    // meeting. A false positive here deletes the event outright, so this list
+    // matters more than the include-side ones.
+    if (itinKeywordHit_(loc, VIRTUAL_LOCS[i])) return true;
   }
   return false;
 }
