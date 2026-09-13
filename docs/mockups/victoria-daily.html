@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Gmail inverts black-on-white designs in dark mode and would wreck this
+     layout. These two hints plus an explicit bgcolor on every cell are the
+     best available defence, but this MUST be tested in real Gmail dark mode
+     before shipping — see issue #214. -->
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>The Daily V. — mockup</title>
+</head>
+<!--
+  MOCKUP ONLY — issue #214. All content below is invented sample data.
+
+  Written email-safe so it can be lifted straight into an Apps Script
+  builder later:
+    - tables + inline styles only (Gmail strips <style> blocks)
+    - Georgia / Times only (webfonts do not load in mail clients)
+    - single 600px column (real newspaper columns do not survive a phone)
+    - no emoji (it breaks the black-and-white conceit, and the conceit
+      is the joke)
+-->
+<body style="margin:0;padding:0;background-color:#e8e8e4;">
+
+<!-- outer canvas -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#e8e8e4" style="background-color:#e8e8e4;">
+<tr>
+<td align="center" style="padding:24px 12px;background-color:#e8e8e4;" bgcolor="#e8e8e4">
+
+  <!-- the paper -->
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #c9c9c9;">
+
+    <!-- ══ NAMEPLATE ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:26px 32px 0 32px;text-align:center;">
+        <div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;letter-spacing:3px;color:#8a8a8a;text-transform:uppercase;padding-bottom:10px;">
+          Published Daily For One Subscriber
+        </div>
+        <div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:44px;line-height:1.05;letter-spacing:6px;color:#111111;font-weight:bold;">
+          THE DAILY V.
+        </div>
+      </td>
+    </tr>
+
+    <!-- double rule -->
+    <tr><td style="padding:14px 32px 0 32px;" bgcolor="#ffffff"><div style="border-top:3px solid #111111;font-size:0;line-height:0;">&nbsp;</div></td></tr>
+    <tr><td style="padding:2px 32px 0 32px;" bgcolor="#ffffff"><div style="border-top:1px solid #111111;font-size:0;line-height:0;">&nbsp;</div></td></tr>
+
+    <!-- folio line -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:7px 32px 8px 32px;font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;color:#555555;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="left"  style="font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;color:#555555;letter-spacing:1px;" bgcolor="#ffffff">VOL.&nbsp;I &nbsp;&middot;&nbsp; NO.&nbsp;256</td>
+            <td align="right" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;color:#555555;letter-spacing:1px;" bgcolor="#ffffff">SUNDAY, SEPTEMBER 13, 2026</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr><td style="padding:0 32px;" bgcolor="#ffffff"><div style="border-top:1px solid #111111;font-size:0;line-height:0;">&nbsp;</div></td></tr>
+
+    <!-- ══ FORECAST EAR ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:16px 32px 0 32px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f4f1" style="background-color:#f4f4f1;border:1px solid #c9c9c9;">
+          <tr>
+            <td style="padding:11px 14px;font-family:Georgia,'Times New Roman',Times,serif;" bgcolor="#f4f4f1">
+              <div style="font-size:10px;letter-spacing:2.5px;color:#8a8a8a;text-transform:uppercase;padding-bottom:5px;">
+                Forecast &middot; Arlington, Virginia
+              </div>
+              <div style="font-size:15px;color:#111111;line-height:1.5;">
+                <strong>68&deg;</strong> at nine, rising to <strong>83&deg;</strong> by six.
+                Rain 0%. Air quality good. UV moderate.
+              </div>
+              <div style="font-size:12px;color:#555555;font-style:italic;padding-top:4px;">
+                Sunglasses advisable. Jacket not.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ══ LEAD ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:22px 32px 0 32px;font-family:Georgia,'Times New Roman',Times,serif;">
+        <div style="font-size:24px;line-height:1.25;color:#111111;font-weight:bold;letter-spacing:-0.2px;">
+          THREE MEETINGS SCHEDULED;<br>ONE ACTUALLY MATTERS
+        </div>
+        <div style="font-size:11px;letter-spacing:1.5px;color:#8a8a8a;text-transform:uppercase;padding:8px 0 12px 0;">
+          The day ahead
+        </div>
+        <div style="font-size:15px;line-height:1.62;color:#111111;">
+          <span style="float:left;font-size:44px;line-height:36px;padding:2px 7px 0 0;color:#111111;font-weight:bold;">T</span>he
+          2:00 with the Hartley account is the one to be awake for. The 10:30 is a
+          standing sync that has not produced a decision since April. The 4:15 was
+          added yesterday by someone who did not check your calendar first.
+        </div>
+      </td>
+    </tr>
+
+    <!-- ══ ON THE CALENDAR ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 32px 0 32px;">
+        <div style="border-top:1px solid #111111;padding-top:6px;font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;letter-spacing:2.5px;color:#111111;text-transform:uppercase;font-weight:bold;">
+          On The Calendar
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:10px 32px 0 32px;font-family:Georgia,'Times New Roman',Times,serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td width="78" valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:13px;color:#555555;padding:0 0 7px 0;white-space:nowrap;" bgcolor="#ffffff">10:30 AM</td>
+            <td valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:14px;color:#111111;padding:0 0 7px 0;line-height:1.45;" bgcolor="#ffffff">Weekly sync <span style="color:#8a8a8a;">&middot; Conference Room B</span></td>
+          </tr>
+          <tr>
+            <td width="78" valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:13px;color:#555555;padding:0 0 7px 0;white-space:nowrap;" bgcolor="#ffffff">2:00 PM</td>
+            <td valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:14px;color:#111111;padding:0 0 7px 0;line-height:1.45;" bgcolor="#ffffff"><strong>Hartley account review</strong></td>
+          </tr>
+          <tr>
+            <td width="78" valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:13px;color:#555555;padding:0 0 7px 0;white-space:nowrap;" bgcolor="#ffffff">4:15 PM</td>
+            <td valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:14px;color:#111111;padding:0 0 7px 0;line-height:1.45;" bgcolor="#ffffff">Quick chat <span style="color:#8a8a8a;">&middot; no agenda attached</span></td>
+          </tr>
+          <tr>
+            <td width="78" valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:13px;color:#555555;padding:0;white-space:nowrap;" bgcolor="#ffffff">7:30 PM</td>
+            <td valign="top" style="font-family:Georgia,'Times New Roman',Times,serif;font-size:14px;color:#111111;padding:0;line-height:1.45;" bgcolor="#ffffff">Dinner &mdash; Maria and Tom</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ══ AROUND TOWN ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:22px 32px 0 32px;">
+        <div style="border-top:1px solid #111111;padding-top:6px;font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;letter-spacing:2.5px;color:#111111;text-transform:uppercase;font-weight:bold;">
+          Around Town
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:10px 32px 0 32px;font-family:Georgia,'Times New Roman',Times,serif;font-size:14px;line-height:1.6;color:#111111;">
+        <div style="padding-bottom:8px;">
+          <strong>Farmers market returns, 9 to 1.</strong>
+          <span style="color:#555555;">Peaches are reportedly at their peak, which is the sort of claim made every week since June.</span>
+        </div>
+        <div style="padding-bottom:8px;">
+          <strong>HOA to repave the south lot Thursday.</strong>
+          <span style="color:#555555;">Residents advised to move vehicles by 7 a.m. or be relocated on their behalf.</span>
+        </div>
+        <div>
+          <strong>House guests arrive Friday.</strong>
+          <span style="color:#555555;">Two nights. The good towels have been notified.</span>
+        </div>
+      </td>
+    </tr>
+
+    <!-- ══ NOTICES ══ (straight-faced by design — the contrast is the joke) -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:22px 32px 0 32px;">
+        <div style="border-top:1px solid #111111;padding-top:6px;font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;letter-spacing:2.5px;color:#111111;text-transform:uppercase;font-weight:bold;">
+          Notices
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:10px 32px 0 32px;">
+        <!-- Urgent notice: the ONE accent in the whole paper, so it means
+             something when it shows up. Omit this block entirely when there
+             is nothing urgent. -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background-color:#ffffff;border-left:3px solid #bb0000;">
+          <tr>
+            <td style="padding:2px 0 2px 11px;font-family:Georgia,'Times New Roman',Times,serif;" bgcolor="#ffffff">
+              <div style="font-size:10px;letter-spacing:2px;color:#bb0000;text-transform:uppercase;font-weight:bold;padding-bottom:3px;">Stop Press</div>
+              <div style="font-size:14px;line-height:1.5;color:#111111;">Disney Bundle credit ($7) expires in 4 days &mdash; unused this month.</div>
+            </td>
+          </tr>
+        </table>
+        <div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:14px;line-height:1.6;color:#111111;padding-top:11px;">
+          Prescription refill due Tuesday.<br>
+          Costco Visa statement closes Thursday.
+        </div>
+      </td>
+    </tr>
+
+    <!-- ══ BY THE NUMBERS ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:22px 32px 0 32px;">
+        <div style="border-top:1px solid #111111;padding-top:6px;font-family:Georgia,'Times New Roman',Times,serif;font-size:11px;letter-spacing:2.5px;color:#111111;text-transform:uppercase;font-weight:bold;">
+          By The Numbers
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:10px 32px 0 32px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:Georgia,'Times New Roman',Times,serif;">
+          <tr>
+            <td style="font-size:14px;color:#111111;padding:3px 0;border-bottom:1px dotted #c9c9c9;" bgcolor="#ffffff">Vacation days remaining</td>
+            <td align="right" style="font-size:14px;color:#111111;padding:3px 0;border-bottom:1px dotted #c9c9c9;font-weight:bold;white-space:nowrap;" bgcolor="#ffffff">11</td>
+          </tr>
+          <tr>
+            <td style="font-size:14px;color:#111111;padding:3px 0;border-bottom:1px dotted #c9c9c9;" bgcolor="#ffffff">Mail awaiting collection</td>
+            <td align="right" style="font-size:14px;color:#111111;padding:3px 0;border-bottom:1px dotted #c9c9c9;font-weight:bold;white-space:nowrap;" bgcolor="#ffffff">4 pieces</td>
+          </tr>
+          <tr>
+            <td style="font-size:14px;color:#111111;padding:3px 0;border-bottom:1px dotted #c9c9c9;" bgcolor="#ffffff">Packages arriving today</td>
+            <td align="right" style="font-size:14px;color:#111111;padding:3px 0;border-bottom:1px dotted #c9c9c9;font-weight:bold;white-space:nowrap;" bgcolor="#ffffff">1</td>
+          </tr>
+          <tr>
+            <td style="font-size:14px;color:#555555;padding:3px 0;" bgcolor="#ffffff">Packages arriving soon, allegedly</td>
+            <td align="right" style="font-size:14px;color:#555555;padding:3px 0;font-weight:bold;white-space:nowrap;" bgcolor="#ffffff">3</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- ══ THE BACK PAGE ══ (the one joke, in its fixed slot) -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:24px 32px 0 32px;">
+        <div style="border-top:3px double #111111;padding-top:13px;font-family:Georgia,'Times New Roman',Times,serif;text-align:center;">
+          <div style="font-size:10px;letter-spacing:2.5px;color:#8a8a8a;text-transform:uppercase;padding-bottom:7px;">The Back Page</div>
+          <div style="font-size:17px;line-height:1.4;color:#111111;font-style:italic;">
+            &ldquo;Local woman has three meetings,<br>remains unbothered.&rdquo;
+          </div>
+        </div>
+      </td>
+    </tr>
+
+    <!-- ══ COLOPHON ══ -->
+    <tr>
+      <td bgcolor="#ffffff" style="background-color:#ffffff;padding:22px 32px 26px 32px;">
+        <div style="border-top:1px solid #c9c9c9;padding-top:10px;font-family:Georgia,'Times New Roman',Times,serif;font-size:10px;line-height:1.6;color:#8a8a8a;text-align:center;">
+          Compiled overnight by VERA. Circulation: one.<br>
+          Corrections may be filed with the management, who is asleep.
+        </div>
+      </td>
+    </tr>
+
+  </table>
+
+  <div style="font-family:Georgia,'Times New Roman',Times,serif;font-size:10px;color:#8a8a8a;padding-top:12px;text-align:center;">
+    Mockup &mdash; sample data only &mdash; issue #214
+  </div>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>
