@@ -4455,13 +4455,28 @@ function webGeneratePacking_(e) {
   }
 
   // Step 2 — Load itinerary items and build summary string
-  const ss       = getSpreadsheet();
-  const itinSheet = ss.getSheetByName(TABS.ITINERARY);
+  //
+  // Via webGetItinerary_ so this sees the same merged view the Travel tab shows:
+  // stored rows plus events pulled live from the trusted calendars. A trip
+  // planned entirely on the shared calendar writes nothing to the sheet, so a
+  // direct TABS.ITINERARY read saw no items, no destination, and asked for the
+  // weather somewhere that doesn't exist.
+  const ss = getSpreadsheet();
+  let itinData = [];
+  try {
+    const itin = webGetItinerary_(e) || {};
+    itinData = (itin.items || []).map(function(it) {
+      return [it.id, it.tripKey, it.type, it.title, it.date,
+              it.startTime, it.endTime, it.location, it.notes, it.metadata];
+    });
+  } catch (itinErr) {
+    Logger.log('webGeneratePacking_: itinerary load failed — ' + itinErr.message);
+  }
+
   let itinerarySummary = '';
   var activityTypes = {};  // e.g. { beach: true, dining: true, flight: true }
   var dressCodes    = [];  // dress codes collected from email-enriched metadata
-  if (itinSheet && itinSheet.getLastRow() >= 2) {
-    const itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+  if (itinData.length) {
     const lines = [];
     itinData.forEach(function(row) {
       if (String(row[1]).trim() !== tripKey) return;
@@ -4511,38 +4526,11 @@ function webGeneratePacking_(e) {
     traveler = metaResult.traveler || '';
   } catch(err) { /* graceful */ }
 
-  // Step 4 — Infer destination for weather
-  let destination = '';
-  if (!destination && itinSheet && itinSheet.getLastRow() >= 2) {
-    const itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-    // a. Flight metadata.dest
-    for (let i = 0; i < itinData.length; i++) {
-      const row = itinData[i];
-      if (String(row[1]).trim() !== tripKey) continue;
-      if (String(row[2]).trim() === 'flight' && row[9]) {
-        try {
-          const meta = JSON.parse(String(row[9]));
-          if (meta.dest) { destination = meta.dest; break; }
-        } catch(err) { /* skip */ }
-      }
-    }
-    // b. Hotel location
-    if (!destination) {
-      for (let i = 0; i < itinData.length; i++) {
-        const row = itinData[i];
-        if (String(row[1]).trim() !== tripKey) continue;
-        if (String(row[2]).trim() === 'hotel' && String(row[7]).trim()) {
-          destination = String(row[7]).trim(); break;
-        }
-      }
-    }
-  }
-  // c. Trip label (strip generic words)
-  if (!destination) {
-    destination = tripLabel
-      .replace(/\b(trip|adventure|vacation|holiday|weekend|getaway|tour|visit)\b/gi, '')
-      .trim();
-  }
+  // Step 4 — Infer destination for weather. The label guess is kept here (unlike
+  // in recommendations): a wrong guess just means getPackingWeather_ finds no
+  // forecast, which it already handles, and for labels that do name a place it's
+  // the only weather signal available.
+  const destination = inferTripDestination_(itinData, tripKey, tripLabel).value;
 
   // Step 4b — Derive season from startDate month
   var season = '';
@@ -4778,12 +4766,19 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     'Trip: ' + tripLabel + '\n' +
     'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
     'Context: ' + (context || 'General travel') + '\n' +
-    'Destination: ' + (destination || tripLabel) + '\n\n' +
+    // No fallback to tripLabel here. A label is a name, not a place — telling
+    // Claude to "search for top attractions in Vacation: First Anniversary Trip"
+    // is what produced a week of recommendations in France for a Caribbean cruise.
+    'Destination: ' + (destination || '(unknown — infer it from the planned itinerary below)') + '\n\n' +
     '=== PLANNED ITINERARY ===\n' + (itinerarySummary || '(No items planned yet)') + '\n\n' +
     '=== DAY-BY-DAY GAP ANALYSIS ===\n' + gapSummary + '\n\n' +
-    'Search the web for top attractions and dining in ' + (destination || tripLabel) + ' matching the trip context, ' +
+    (destination
+      ? 'Search the web for top attractions and dining in ' + destination + ' matching the trip context, '
+      : 'Search the web for top attractions and dining at the places named in the itinerary above, matching the trip context, ') +
     'then provide 8-15 targeted recommendations that fill the gaps above.\n\n' +
     'RULES:\n' +
+    '- Never recommend a place you cannot tie to the itinerary or the stated destination. ' +
+    'If neither names a location, return an empty array rather than guessing where this trip goes.\n' +
     '- Prioritize days marked "NO DINING" with a dining rec, and days marked "NO ACTIVITIES" with an activity rec.\n' +
     '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Work Trip → quick sights near hotel, good coffee; Family → family-friendly attractions.\n' +
     (function() {
@@ -4824,6 +4819,70 @@ function parseRecsResponse_(rawContent) {
     Logger.log('parseRecsResponse_ failed: ' + err.message + ' | raw: ' + (rawContent || '').substring(0, 200));
     return [];
   }
+}
+
+/**
+ * inferTripDestination_(itinData, tripKey, tripLabel)
+ * Works out where a trip actually goes, from strongest evidence to weakest.
+ * Returns { value, source } where source is 'flight' | 'hotel' | 'locations' |
+ * 'label' | '' — callers need it because a 'label' answer is a guess at a name,
+ * not a known place, and shouldn't be asserted as fact.
+ *
+ * itinData rows are in ITINERARY_HEADERS column order.
+ */
+function inferTripDestination_(itinData, tripKey, tripLabel) {
+  var rows = (itinData || []).filter(function(row) {
+    return String(row[1]).trim() === tripKey;
+  });
+
+  // a. Flight metadata.dest — the most explicit statement of destination there is.
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][2]).trim() !== 'flight' || !rows[i][9]) continue;
+    try {
+      var meta = JSON.parse(String(rows[i][9]));
+      if (meta.dest) return { value: String(meta.dest).trim(), source: 'flight' };
+    } catch (err) { /* unparseable metadata — keep looking */ }
+  }
+
+  // b. Where they're sleeping.
+  for (var j = 0; j < rows.length; j++) {
+    var btype = String(rows[j][2]).trim();
+    if (btype !== 'hotel' && btype !== 'cruise') continue;
+    var bloc = String(rows[j][7]).trim();
+    if (bloc) return { value: bloc, source: 'hotel' };
+  }
+
+  // c. Any real place the trip touches. A cruise booked entirely on the shared
+  // calendar has no flight metadata and no hotel row, but its port stops carry
+  // genuine locations — "Puerto Plata / St Thomas / Tortola" is far better
+  // grounding for a web search than anything derivable from the trip's name.
+  var seen  = {};
+  var places = [];
+  for (var k = 0; k < rows.length && places.length < 4; k++) {
+    var loc = String(rows[k][7]).trim();
+    if (!loc) continue;
+    if (isVirtualMeetingLocation_(loc)) continue;
+    var key = loc.toLowerCase();
+    if (seen[key]) continue;
+    seen[key] = true;
+    places.push(loc);
+  }
+  if (places.length) return { value: places.join(' / '), source: 'locations' };
+
+  // d. Last resort: the trip label, stripped down. Guarded, because the naive
+  // version turned "Vacation: First Anniversary Trip" into ": First Anniversary"
+  // and shipped that to Claude as a destination — which it then invented a
+  // country to match. Even cleaned up this is only a guess: "Alaska Cruise" is a
+  // place, "First Anniversary" is not, and nothing here can tell them apart —
+  // hence source: 'label', so callers can decide how much to trust it.
+  var label = String(tripLabel || '')
+    .replace(/^\s*(vacation|trip|work|business|personal|holiday)\s*:\s*/i, '')
+    .replace(/\b(trip|adventure|vacation|holiday|weekend|getaway|tour|visit)\b/gi, '')
+    .replace(/^[\s:;,\-–—]+/, '')
+    .replace(/[\s:;,\-–—]+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return label.length >= 3 ? { value: label, source: 'label' } : { value: '', source: '' };
 }
 
 /**
@@ -4955,27 +5014,43 @@ function webGenerateRecommendations_(e) {
     } catch(err) { /* ignore */ }
   }
 
-  // Load itinerary items
-  const ss        = getSpreadsheet();
-  const itinSheet = ss.getSheetByName(TABS.ITINERARY);
+  // Load itinerary items via webGetItinerary_ so this sees the SAME merged view
+  // the Travel tab shows: stored rows plus events pulled live from the trusted
+  // calendars.
+  //
+  // Reading TABS.ITINERARY directly saw nothing at all for a trip planned
+  // entirely on the calendar — nothing is written to the sheet for those. With
+  // no rows, there was no flight or hotel to infer a destination from, so the
+  // label fallback below mangled "Vacation: First Anniversary Trip" into
+  // ": First Anniversary" and Claude invented a destination to match it. The
+  // gap analysis was blind for the same reason, reporting every day as empty.
+  const ss = getSpreadsheet();
   let itinData = [];
-  let itinerarySummary = '';
-  if (itinSheet && itinSheet.getLastRow() >= 2) {
-    itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-    const lines = [];
-    itinData.forEach(function(row) {
-      if (String(row[1]).trim() !== tripKey) return;
-      const date  = String(row[4]).trim();
-      const type  = String(row[2]).trim();
-      const title = String(row[3]).trim();
-      const loc   = String(row[7]).trim();
-      let line = '• [' + type + '] ' + title;
-      if (date) line = date + ' ' + line;
-      if (loc)  line += ' @ ' + loc;
-      lines.push(line);
+  try {
+    const itin = webGetItinerary_(e) || {};
+    // Back into ITINERARY_HEADERS column order, so buildRecsGapSummary_ and the
+    // destination loops below keep working against one consistent shape.
+    itinData = (itin.items || []).map(function(it) {
+      return [it.id, it.tripKey, it.type, it.title, it.date,
+              it.startTime, it.endTime, it.location, it.notes, it.metadata];
     });
-    itinerarySummary = lines.join('\n');
+  } catch (itinErr) {
+    Logger.log('webGenerateRecommendations_: itinerary load failed — ' + itinErr.message);
   }
+
+  const lines = [];
+  itinData.forEach(function(row) {
+    if (String(row[1]).trim() !== tripKey) return;
+    const date  = String(row[4]).trim();
+    const type  = String(row[2]).trim();
+    const title = String(row[3]).trim();
+    const loc   = String(row[7]).trim();
+    let line = '• [' + type + '] ' + title;
+    if (date) line = date + ' ' + line;
+    if (loc)  line += ' @ ' + loc;
+    lines.push(line);
+  });
+  const itinerarySummary = lines.join('\n');
 
   // Gap analysis string
   const gapSummary = buildRecsGapSummary_(tripKey, startDate, endDate, itinData);
@@ -4984,30 +5059,13 @@ function webGenerateRecommendations_(e) {
   let context = '';
   try { context = (webGetTripMeta_(e) || {}).context || ''; } catch(err) { /* graceful */ }
 
-  // Infer destination (same logic as packing)
-  let destination = '';
-  for (let i = 0; i < itinData.length && !destination; i++) {
-    const row = itinData[i];
-    if (String(row[1]).trim() !== tripKey) continue;
-    if (String(row[2]).trim() === 'flight' && row[9]) {
-      try {
-        const meta = JSON.parse(String(row[9]));
-        if (meta.dest) { destination = meta.dest; break; }
-      } catch(err) { /* skip */ }
-    }
-  }
-  for (let i = 0; i < itinData.length && !destination; i++) {
-    const row = itinData[i];
-    if (String(row[1]).trim() !== tripKey) continue;
-    if (String(row[2]).trim() === 'hotel' && String(row[7]).trim()) {
-      destination = String(row[7]).trim();
-    }
-  }
-  if (!destination) {
-    destination = tripLabel
-      .replace(/\b(trip|adventure|vacation|holiday|weekend|getaway|tour|visit)\b/gi, '')
-      .trim();
-  }
+  // Infer destination (same helper as packing).
+  // A label-derived answer is deliberately discarded here: "First Anniversary"
+  // is a trip's name, not somewhere you can search for restaurants. Handing it
+  // over as a destination is what sent Claude looking for a country that fit.
+  // The label still reaches the prompt on its own "Trip:" line, as a name.
+  const destInfo    = inferTripDestination_(itinData, tripKey, tripLabel);
+  const destination = destInfo.source === 'label' ? '' : destInfo.value;
 
   // Build prompts
   const sysPrompt  = buildRecsSystemPrompt_();
