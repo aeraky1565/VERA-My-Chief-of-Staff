@@ -98,6 +98,14 @@ function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
           // alternative is a real trip plan silently never showing up. The
           // caller's title-based dedup still keeps this from ever doubling
           // up something already logged manually.
+          //
+          // Timed events only — same guard as the itinerary pull
+          // (WebApp.js). An all-day event with a location unrelated to the
+          // trip is awareness of someone else's plans, not a reservation:
+          // "Eraky Family in Germany" @ Düsseldorf would otherwise land in
+          // every morning briefing of a Caribbean cruise. Real all-day trip
+          // items carry their own keywords ("Stay: …") and never reach here.
+          if (ev.isAllDayEvent()) return;
           if (!location || isVirtualMeetingLocation_(location)) return;
           relevance = { include: true, type: 'calendar' };
         }

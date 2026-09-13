@@ -3837,6 +3837,16 @@ function webGetItinerary_(e) {
               // event with a real, non-virtual location is worth showing.
               // Worst case is one extra row, which is deletable; the
               // alternative is silently losing a planned excursion.
+              //
+              // Timed events only. The excursions this rescues are things you
+              // turn up to at a time; an all-day event with a location that
+              // matches nothing about the trip is background awareness of
+              // someone else's plans — "Eraky Family in Germany" @ Düsseldorf,
+              // running Oct 15 to Nov 30, was being filed as an item on a
+              // Caribbean cruise. Genuine all-day trip items announce
+              // themselves in the title ("Stay: …", "Cruise Stay: …") and are
+              // admitted above on their own keywords, well before this.
+              if (ev.isAllDayEvent()) return;
               if (!evLocation || isVirtualMeetingLocation_(evLocation)) return;
               relevance = { include: true, type: 'calendar' };
             }
