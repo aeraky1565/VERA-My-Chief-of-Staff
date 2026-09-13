@@ -1949,11 +1949,16 @@ function checkContracts_() {
  * whether a perk has already been marked used this period. Shared by
  * webToggleCardPerk_ (WebApp.js) and checkCardPerksExpiring_ below so both
  * always agree on period boundaries.
- * Annual='yyyy', Quarterly='yyyy-Q#', Monthly='yyyy-MM' (the default).
+ * Annual='yyyy', Semiannual='yyyy-H#', Quarterly='yyyy-Q#',
+ * Monthly='yyyy-MM' (the default).
  */
 function cardPerkPeriodKey_(freq, date, tz) {
   var year = Utilities.formatDate(date, tz, 'yyyy');
   if (freq === 'Annual') return year;
+  if (freq === 'Semiannual') {
+    var half = parseInt(Utilities.formatDate(date, tz, 'M'), 10); // 1-12
+    return year + '-H' + (half <= 6 ? 1 : 2);
+  }
   if (freq === 'Quarterly') {
     var month = parseInt(Utilities.formatDate(date, tz, 'M'), 10); // 1-12
     var q     = Math.floor((month - 1) / 3) + 1;
@@ -1965,15 +1970,16 @@ function cardPerkPeriodKey_(freq, date, tz) {
 /**
  * Last calendar day of the current period for a perk's Frequency — the date
  * its unused allotment resets and is lost (no rollover). Annual -> Dec 31.
- * Quarterly -> last day of the current calendar quarter. Monthly -> last
- * day of the current month.
+ * Semiannual -> Jun 30 or Dec 31. Quarterly -> last day of the current
+ * calendar quarter. Monthly -> last day of the current month.
  */
 function cardPerkPeriodEnd_(freq, today, tz) {
   var year  = parseInt(Utilities.formatDate(today, tz, 'yyyy'), 10);
   var month = parseInt(Utilities.formatDate(today, tz, 'M'), 10); // 1-12
   var endMonth;
-  if (freq === 'Annual')         endMonth = 12;
-  else if (freq === 'Quarterly') endMonth = Math.ceil(month / 3) * 3;
+  if (freq === 'Annual')          endMonth = 12;
+  else if (freq === 'Semiannual') endMonth = month <= 6 ? 6 : 12;
+  else if (freq === 'Quarterly')  endMonth = Math.ceil(month / 3) * 3;
   else                            endMonth = month; // Monthly (default)
   var d = new Date(year, endMonth, 0); // day 0 of the NEXT month = last day of endMonth
   d.setHours(0, 0, 0, 0);

@@ -1180,15 +1180,17 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
   const curMonth   = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
   const curYear    = String(now.getFullYear());
   const curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
+  const curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
 
   function isPerkUsed(perk) {
     if (!perk.lastUsed) return false;
     if (perk.frequency === 'Annual') return perk.lastUsed === curYear;
+    if (perk.frequency === 'Semiannual') return perk.lastUsed === curHalf;
     if (perk.frequency === 'Quarterly') return perk.lastUsed === curQuarter;
     return perk.lastUsed === curMonth;
   }
 
-  const perkGroups = ['Monthly', 'Quarterly', 'Annual'];
+  const perkGroups = ['Monthly', 'Quarterly', 'Semiannual', 'Annual'];
 
   const panelStyle = { background:'#161926', border:'1px solid #2a2f45', borderRadius:10, padding:16, marginBottom:16 };
   const inputStyle = { background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'5px 8px', fontSize:12 };
@@ -1286,7 +1288,7 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                       {pk.amount && <span style={{ fontSize:11, color:'#a0a8c0' }}>${pk.amount}</span>}
                       {!pk.autopay && (
                         <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
-                          {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
+                          {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Semiannual' ? 'this half' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
                         </span>
                       )}
                       {pk.needsReview && (
@@ -1317,7 +1319,7 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
             <input placeholder="$amt" value={newPerk.amount} onChange={e => setPk('amount', e.target.value)}
               style={Object.assign({}, inputStyle, { width:55 })} />
             <select value={newPerk.frequency} onChange={e => setPk('frequency', e.target.value)} style={inputStyle}>
-              <option>Monthly</option><option>Quarterly</option><option>Annual</option>
+              <option>Monthly</option><option>Quarterly</option><option>Semiannual</option><option>Annual</option>
             </select>
             <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#a0a8c0', cursor:'pointer' }}>
               <input type="checkbox" checked={newPerk.autopay} onChange={e => setPk('autopay', e.target.checked)} />
@@ -1570,6 +1572,7 @@ function CardsTab({ apiUrl, apiToken }) {
     const curMonth   = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     const curYear    = String(now.getFullYear());
     const curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
+  const curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
     let prevPerks = null;
     // Optimistic update — flip locally right away so the checkbox responds
     // instantly, then reconcile with the server in the background.
@@ -1577,7 +1580,7 @@ function CardsTab({ apiUrl, apiToken }) {
       prevPerks = prev;
       return prev.map(function(p) {
         if (p.id !== id) return p;
-        const period = p.frequency === 'Annual' ? curYear : p.frequency === 'Quarterly' ? curQuarter : curMonth;
+        const period = p.frequency === 'Annual' ? curYear : p.frequency === 'Semiannual' ? curHalf : p.frequency === 'Quarterly' ? curQuarter : curMonth;
         return Object.assign({}, p, { lastUsed: p.lastUsed === period ? '' : period });
       });
     });

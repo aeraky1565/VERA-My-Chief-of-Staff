@@ -578,6 +578,7 @@ function buildChatSystemPrompt_(context) {
       var curMonth   = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
       var curYear    = String(now.getFullYear());
       var curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
+      var curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
       var activeCards = cd.cards.filter(function(c) { return c.active === 'Yes'; });
       // Group by owner
       var byOwner = {};
@@ -601,7 +602,9 @@ function buildChatSystemPrompt_(context) {
           // Unused perks this month
           var cardPerks = (cd.perks || []).filter(function(p) { return p.cardName === c.cardName && !p.autopay; });
           var unusedPerks = cardPerks.filter(function(p) {
-            var period = p.frequency === 'Annual' ? curYear : p.frequency === 'Quarterly' ? curQuarter : curMonth;
+            var period = p.frequency === 'Annual' ? curYear
+                       : p.frequency === 'Semiannual' ? curHalf
+                       : p.frequency === 'Quarterly' ? curQuarter : curMonth;
             return p.lastUsed !== period;
           });
           var authLabel = c.authUser ? ' [+' + c.authUser + ' auth user]' : '';
