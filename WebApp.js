@@ -3799,7 +3799,22 @@ function webGetItinerary_(e) {
 
             // Smart filter: only keep travel-relevant events
             var relevance = isItineraryCalendarRelevant_(evTitle, evLocation, tripLabel);
-            if (!relevance.include) return;
+            if (!relevance.include) {
+              // isItineraryCalendarRelevant_ only keeps an event whose title
+              // carries a travel keyword, or whose location echoes a word from
+              // the trip label. A genuinely planned activity satisfies neither
+              // — "Stingray City & Swimming with the pigs" at "Swim With The
+              // Pigs" has nothing in common with "First Anniversary Trip" — so
+              // the itinerary ends up showing only flights and hotels.
+              //
+              // Same fallback the travel-day briefing already applies
+              // (TravelDayBriefing.js:87): inside a trip's date range, any
+              // event with a real, non-virtual location is worth showing.
+              // Worst case is one extra row, which is deletable; the
+              // alternative is silently losing a planned excursion.
+              if (!evLocation || isVirtualMeetingLocation_(evLocation)) return;
+              relevance = { include: true, type: 'calendar' };
+            }
 
             const evStart  = ev.getStartTime();
             // Use per-event timezones: departure city TZ for start, arrival city TZ for end.
