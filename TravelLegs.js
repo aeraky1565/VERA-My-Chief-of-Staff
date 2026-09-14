@@ -491,3 +491,89 @@ function testTravelLegsApi_() {
   }
   Logger.log('FAIL — status ' + r.status + '. ' + (r.errorMessage || ''));
 }
+
+/**
+ * diagnoseTravelLegs_()
+ *
+ * Run from the Apps Script editor and read the execution log. Makes no Distance
+ * Matrix calls and writes nothing — it walks the same path computeTravelLegs_
+ * takes and reports what each stage produced, so the first stage reporting zero
+ * is the fault.
+ *
+ * This exists because the pipeline went from itinerary to API call through six
+ * stages, any one of which can legitimately yield nothing, and reasoning about
+ * which one from the outside produced two confidently wrong answers in a row.
+ * The item dump at stage 3 prints the real shapes verbatim rather than what a
+ * test fixture assumed they were — that assumption was the actual bug both times.
+ */
+function diagnoseTravelLegs_() {
+  Logger.log('════ TravelLegs diagnosis ════');
+
+  var key = getTravelLegsApiKey_();
+  Logger.log('1. API key: ' + (key ? 'present (' + key.length + ' chars)' : '*** MISSING ***'));
+
+  var trips = getUpcomingTripsForLegs_();
+  Logger.log('2. Trips in scope: ' + trips.length);
+  trips.forEach(function(t) {
+    Logger.log('     ' + t.startDate + ' .. ' + t.endDate + '   ' + t.tripKey);
+  });
+  if (!trips.length) {
+    // Distinguish "found nothing" from "found things and filtered them all out".
+    try {
+      var raw = getUpcomingTravel_(readPTOConfig_()) || [];
+      Logger.log('   getUpcomingTravel_ returned ' + raw.length + ' before the 120-day filter:');
+      raw.forEach(function(t) {
+        Logger.log('     ' + t.startDate + ' | ' + t.label + '   (daysAway ' + t.daysAway +
+                   ', cal "' + t.calendarName + '")');
+      });
+    } catch (e) {
+      Logger.log('   getUpcomingTravel_ threw: ' + e.message);
+    }
+  }
+
+  trips.forEach(function(t) {
+    Logger.log('');
+    Logger.log('── ' + t.tripKey);
+    var items = [];
+    try {
+      var itin = webGetItinerary_(
+        { parameter: { tripKey: t.tripKey, startDate: t.startDate, endDate: t.endDate } },
+        { skipEventTz: true }
+      ) || {};
+      items = itin.items || [];
+    } catch (e) {
+      Logger.log('3. webGetItinerary_ THREW: ' + e.message);
+      return;
+    }
+    Logger.log('3. Items: ' + items.length);
+    items.forEach(function(it) {
+      var hasCheckout = String(it.metadata || '').indexOf('checkoutDate') !== -1;
+      Logger.log('     [' + (it.type || '?') + '] ' + (it.date || 'no-date') + ' ' +
+                 (it.startTime || '--:--') + (it.endTime ? '-' + it.endTime : '') +
+                 '  loc=' + (it.location ? '"' + String(it.location).split('\n')[0] + '"' : 'NONE') +
+                 (hasCheckout ? '  +checkoutDate' : '') +
+                 '   ' + String(it.title || '').substring(0, 40));
+    });
+
+    var expanded = expandStayTimes_(items);
+    Logger.log('4. After stay expansion: ' + expanded.length + ' (+' + (expanded.length - items.length) + ')');
+    expanded.forEach(function(it) {
+      if (!it._stay) return;
+      Logger.log('     ' + it._stay + ' ' + it.date + ' ' + it.startTime + '  ' +
+                 String(it.location || '').split('\n')[0]);
+    });
+
+    var cands = collectTravelLegCandidates_(items);
+    Logger.log('5. Candidate pairs: ' + cands.length);
+    cands.forEach(function(c) {
+      Logger.log('     ' + c.gapMins + 'm  ' + String(c.from).split('\n')[0] +
+                 '  ->  ' + String(c.to).split('\n')[0]);
+    });
+  });
+
+  var cache = loadTravelLegCache_();
+  Logger.log('');
+  Logger.log('6. Legs already cached: ' + Object.keys(cache).length +
+             '  (a cached pair is skipped, which is another way to reach 0 calls)');
+  Logger.log('════ end ════');
+}
