@@ -162,6 +162,7 @@ function doGet(e) {
       case 'delete_bucket_item':    return jsonOut_(webDeleteBucketItem_(e));
       case 'flight_statuses':       return jsonOut_(webGetFlightStatuses_(e));
       case 'force_flight_statuses': return jsonOut_(webForceFlightStatuses_(e));
+      case 'travel_legs':              return jsonOut_(webGetTravelLegs_(e));
       case 'recommendations':          return jsonOut_(webGetRecommendations_(e));
       case 'generate_recommendations': return jsonOut_(webGenerateRecommendations_(e));
       case 'update_recommendation':    return jsonOut_(webUpdateRecommendation_(e));

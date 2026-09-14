@@ -49,6 +49,7 @@ const TABS = {
   COUNTRIES:        'Countries',        // Countries visited tracker (Issue #74)
   BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
+  TRAVEL_LEGS:      'TravelLegs',      // Cached point-to-point travel times between itinerary stops
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
   GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
@@ -176,6 +177,11 @@ const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Trav
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
 const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes']; // Issue #187
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
+// Cache of point-to-point travel times, keyed on From|To|Mode — NOT on itinerary
+// item IDs, so an entry survives edits and is reused across trips forever.
+// Status records the verdict, including 'no_route' / 'not_found', so a pair that
+// can never work (two Caribbean islands, say) is asked about once and never again.
+const TRAVEL_LEGS_HEADERS       = ['From', 'To', 'Mode', 'Minutes', 'Distance', 'Status', 'Computed At'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const GYM_LOG_HEADERS          = ['ID', 'Event Title', 'Event Date', 'Attended', 'Logged At'];
@@ -341,6 +347,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.COUNTRIES,             COUNTRIES_HEADERS);
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
+  ensureSheet(ss, TABS.TRAVEL_LEGS,           TRAVEL_LEGS_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
   ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
@@ -718,6 +725,25 @@ function nightlyRun() {
     } catch (ptoErr) {
       Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
       stepFailures.push('writePTOSnapshot_: ' + ptoErr.message);
+    }
+
+    // Step 0c: Warm the travel-time cache for upcoming trips. Deliberately
+    // after the PTO snapshot, which has already paid for getUpcomingTravel_'s
+    // calendar scan (it is memoized per execution). Bounded by its own per-run
+    // call ceiling and skips any location pair already cached, so on a settled
+    // itinerary this makes zero API calls and costs nothing.
+    try {
+      var legStats = computeTravelLegs_();
+      if (legStats.calls > 0 || legStats.error) {
+        Logger.log('TravelLegs: ' + legStats.calls + ' call(s), ' + legStats.cached +
+                   ' cached' + (legStats.error ? ', error: ' + legStats.error : ''));
+      }
+      if (legStats.error && legStats.error !== 'no_api_key') {
+        stepFailures.push('computeTravelLegs_: ' + legStats.error);
+      }
+    } catch (legErr) {
+      Logger.log('computeTravelLegs_ error (non-fatal): ' + legErr.message);
+      stepFailures.push('computeTravelLegs_: ' + legErr.message);
     }
 
     // Step 1: Collect
