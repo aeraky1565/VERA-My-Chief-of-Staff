@@ -3596,6 +3596,12 @@ function isItineraryCalendarRelevant_(title, location, tripLabel) {
                          'transfer', 'car rental', 'rental car', 'lyft', 'uber', 'taxi'];
   var HOTEL_WORDS     = ['hotel', 'check-in', 'check in', 'check-out', 'check out',
                          'airbnb', 'vrbo', 'resort', 'inn', 'hostel', 'motel', 'lodge'];
+  var DINING_WORDS    = ['dinner', 'lunch', 'brunch', 'breakfast', 'dining', 'restaurant',
+                         'reservation', 'reservations', 'tasting', "chef's table"];
+  // 'embarkation' is a whole-word match, so it does not fire inside
+  // 'disembarkation' — both are listed, and both resolve to the same type.
+  var CRUISE_WORDS    = ['sea day', 'embarkation', 'disembarkation', 'port day',
+                         'shore excursion'];
   var VIRTUAL_LOCS    = ['zoom', 'google meet', 'teams', 'webex', 'skype',
                          'conference room', 'meet.google', 'whereby'];
   var STOP_WORDS      = { trip:1, travel:1, vacation:1, holiday:1, weekend:1, adventure:1,
@@ -3630,6 +3636,24 @@ function isItineraryCalendarRelevant_(title, location, tripLabel) {
   // 5. Transport keywords
   for (i = 0; i < TRANSPORT_WORDS.length; i++) {
     if (itinKeywordHit_(titleLower, TRANSPORT_WORDS[i])) return { include: true, type: 'transport' };
+  }
+
+  // 5a. Dining keywords. Deliberately after hotel and transport, so "Lodge
+  // reservation" stays a hotel and "Car rental reservation" stays transport —
+  // but before the location check below, which is the whole point: a restaurant
+  // booking often has no address to match on. Four dinners on the Caribbean
+  // cruise ("Dinner: Le Bistro", "Dinner: Hasuki", …) are onboard venues with
+  // an empty location, so nothing here recognised them and they were dropped.
+  for (i = 0; i < DINING_WORDS.length; i++) {
+    if (itinKeywordHit_(titleLower, DINING_WORDS[i])) return { include: true, type: 'dining' };
+  }
+
+  // 5b. Cruise day markers, same reasoning — a sea day or a disembarkation has
+  // nowhere to be. Without this, "Ship Embarkation Day @4PM" showed up only
+  // because someone happened to type "Port Miami" into it, while the matching
+  // disembarkation and both sea days silently vanished.
+  for (i = 0; i < CRUISE_WORDS.length; i++) {
+    if (itinKeywordHit_(titleLower, CRUISE_WORDS[i])) return { include: true, type: 'cruise' };
   }
 
   // 6. Destination keyword extraction (words ≥3 chars not in stop list)
@@ -3821,6 +3845,13 @@ function webGetItinerary_(e) {
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();
             const evLocation = (ev.getLocation() || '').trim();
+
+            // A recurring event is a standing habit, not a trip plan. The
+            // nightly Walk, Change Filter, birthdays — none of them belong on
+            // an itinerary, and the Walk alone would add a row to all ten days
+            // of the cruise. It was only being dropped by accident, for having
+            // no location; this makes it deliberate.
+            if (ev.isRecurringEvent()) return;
 
             // Smart filter: only keep travel-relevant events
             var relevance = isItineraryCalendarRelevant_(evTitle, evLocation, tripLabel);

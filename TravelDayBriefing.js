@@ -86,6 +86,11 @@ function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
         var title    = (ev.getTitle()    || '(No title)').trim();
         var location = (ev.getLocation() || '').trim();
 
+        // Standing habits aren't trip plans — same rule as the itinerary pull
+        // (WebApp.js). The nightly Walk is a routine, not something to brief
+        // on a travel day.
+        if (ev.isRecurringEvent()) return;
+
         var relevance = isItineraryCalendarRelevant_(title, location, tripLabel);
         if (!relevance.include) {
           // isItineraryCalendarRelevant_ requires the trip-label keyword to
