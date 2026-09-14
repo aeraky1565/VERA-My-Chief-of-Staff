@@ -5829,7 +5829,34 @@ function tripDateRange(startDate, endDate) {
 }
 
 // --- VERANoticesCard ---------------------------------------------------------
-function VERANoticesCard({ trip, itinerary, tripMeta }) {
+// Travel legs are keyed on the location pair, matching how they are cached
+// server-side, so the same normalisation has to be applied here.
+function legKeyLite_(a, b) {
+  return String(a||'').replace(/\s+/g,' ').trim().toLowerCase() + '|' +
+         String(b||'').replace(/\s+/g,' ').trim().toLowerCase();
+}
+function legMapLite_(legs) {
+  const m = {};
+  (legs || []).forEach(l => { m[legKeyLite_(l.from, l.to)] = l; });
+  return m;
+}
+function legBetweenLite_(map, a, b) {
+  const l = map[legKeyLite_(a && a.location, b && b.location)];
+  return (l && l.driveMins != null) ? l : null;
+}
+function minsToMinsLite_(t) {
+  const m = String(t||'').match(/(\d{1,2}):(\d{2})/);
+  return m ? (+m[1])*60 + (+m[2]) : 0;
+}
+// Free-flow times carry no traffic, so flag at 70% of the gap rather than 100% —
+// the margin absorbs traffic instead of saying you are fine until you are not.
+// Same threshold as the full dashboard.
+const LITE_TIGHT_RATIO = 0.7;
+// Lite is the condensed view. A "~3m drive" line on every pair is noise in
+// something meant to be skimmed, so only journeys worth planning around show.
+const LITE_MIN_SHOWN_DRIVE = 10;
+
+function VERANoticesCard({ trip, itinerary, tripMeta, legs }) {
   if (!itinerary || !itinerary.items || !trip.startDate || !trip.endDate) return null;
   const items = itinerary.items;
   const dates = tripDateRange(trip.startDate, trip.endDate);
@@ -5858,6 +5885,29 @@ function VERANoticesCard({ trip, itinerary, tripMeta }) {
       } catch(e) { return false; }
     });
     if (!has) notices.push({ icon:'🏨', date, msg:'No accommodation planned' });
+  }
+
+  // Tight connections: a leg that eats most of the gap is the same class of
+  // problem as a missing hotel — something to act on — so it belongs in this
+  // list rather than in a decorative panel of its own.
+  {
+    const lmap = legMapLite_(legs);
+    const byDay = {};
+    items.forEach(i => {
+      if (!i.date || !i.startTime) return;
+      (byDay[i.date] = byDay[i.date] || []).push(i);
+    });
+    Object.keys(byDay).forEach(d => {
+      const day = byDay[d].slice().sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+      for (let k = 0; k < day.length - 1; k++) {
+        const leg = legBetweenLite_(lmap, day[k], day[k+1]);
+        if (!leg) continue;
+        const gap = minsToMinsLite_(day[k+1].startTime) - minsToMinsLite_(day[k].endTime || day[k].startTime);
+        if (gap <= 0 || leg.driveMins <= gap * LITE_TIGHT_RATIO) continue;
+        notices.push({ icon:'⚠', date: d,
+          msg: '"' + day[k+1].title + '" is ~' + leg.driveMins + 'm away — only ' + gap + 'm after "' + day[k].title + '"' });
+      }
+    });
   }
   if (!notices.length) return null;
   return (
@@ -5932,7 +5982,7 @@ function UsefulToKnowCard({ insights }) {
 }
 
 // --- SummaryLitePanel --------------------------------------------------------
-function SummaryLitePanel({ trip, itinerary, travelerFilter }) {
+function SummaryLitePanel({ trip, itinerary, travelerFilter, legs }) {
   const allItems = itinerary?.items || [];
   const items = allItems.filter(item => {
     if (travelerFilter === 'Both') return true;
@@ -5952,6 +6002,7 @@ function SummaryLitePanel({ trip, itinerary, travelerFilter }) {
   Object.keys(byDate).forEach(d => { if (d !== '_undated' && !dates.includes(d)) dates.push(d); });
   dates.sort();
   if (byDate['_undated']) dates.push('_undated');
+  const lmap = legMapLite_(legs);
   if (!dates.length) return <div style={{color:'#4d6080',padding:'24px 0',textAlign:'center',fontSize:12}}>No date range</div>;
   return (
     <div style={{paddingTop:8}}>
@@ -5975,15 +6026,31 @@ function SummaryLitePanel({ trip, itinerary, travelerFilter }) {
                 could read "3 events scheduled" over "No events scheduled". */}
             {dayItems.length===0 ? (
               <div style={{fontSize:12,color:'#4d6080',fontStyle:'italic'}}>No events scheduled</div>
-            ) : dayItems.map(item => (
-              <div key={item.id} style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:12}}>
-                <span style={{color:item.startTime?'#4d6080':'#3a4a60',minWidth:42,fontSize:11,fontVariantNumeric:'tabular-nums'}}>
-                  {item.startTime || '·'}
-                </span>
-                <span>{ITIN_TYPE_ICON[item.type]||'📌'}</span>
-                <span style={{color:'#c8d4e8'}}>{item.title}</span>
-              </div>
-            ))}
+            ) : dayItems.map((item, ii) => {
+              // Journey from the PREVIOUS item to this one, drawn above it.
+              // Only when it is far enough to plan around — see LITE_MIN_SHOWN_DRIVE.
+              const prev = ii > 0 ? dayItems[ii-1] : null;
+              const leg  = prev ? legBetweenLite_(lmap, prev, item) : null;
+              const show = leg && leg.driveMins >= LITE_MIN_SHOWN_DRIVE;
+              return (
+                <React.Fragment key={item.id}>
+                  {show && (
+                    <div style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:11,color:'#3f5a6e'}}>
+                      <span style={{minWidth:42}} />
+                      <span>↓</span>
+                      <span>~{leg.driveMins}m drive{leg.walkMins != null && leg.walkMins <= 25 ? ' / ' + leg.walkMins + 'm walk' : ''}</span>
+                    </div>
+                  )}
+                  <div style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:12}}>
+                    <span style={{color:item.startTime?'#4d6080':'#3a4a60',minWidth:42,fontSize:11,fontVariantNumeric:'tabular-nums'}}>
+                      {item.startTime || '·'}
+                    </span>
+                    <span>{ITIN_TYPE_ICON[item.type]||'📌'}</span>
+                    <span style={{color:'#c8d4e8'}}>{item.title}</span>
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
         );
       })}
@@ -6423,6 +6490,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
   const [tripMetas, setTripMetas]       = useState({});
   const [packingData, setPackingData]   = useState({});
   const [flightInsights, setFlightInsights] = useState({});
+  const [travelLegs, setTravelLegs]     = useState({});
   const [tripTabs, setTripTabs]         = useState({});
   const [travelerFilters, setTravelerFilters] = useState({});
   const [expanded, setExpanded]     = useState(new Set());
@@ -6454,9 +6522,22 @@ function TravelLiteTab({ apiUrl, apiToken }) {
       const data = await apiGet(apiUrl, apiToken, { action:'itinerary', tripKey, startDate, endDate });
       setItineraries(prev => ({ ...prev, [tripKey]:data }));
       loadFlightInsights(tripKey, data.items || []);
+      loadTravelLegs(tripKey, startDate, endDate);
     } catch(e) {
       setItineraries(prev => ({ ...prev, [tripKey]:{ items:[] } }));
       setError('Could not load itinerary: ' + (e.message || 'API error'));
+    }
+  }
+
+  // Travel times are precomputed and cached server-side, so this is a sheet read.
+  // It only reaches the routing API for a pair never seen before, and then at
+  // most three. Failure sets [] — the feature has to degrade to invisible.
+  async function loadTravelLegs(tripKey, startDate, endDate) {
+    try {
+      const d = await apiGet(apiUrl, apiToken, { action:'travel_legs', tripKey, startDate, endDate });
+      setTravelLegs(prev => ({ ...prev, [tripKey]: d.legs || [] }));
+    } catch(e) {
+      setTravelLegs(prev => ({ ...prev, [tripKey]: [] }));
     }
   }
 
@@ -6931,10 +7012,10 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                       Loading itinerary…
                     </div>
                   ) : activeTab === 'summary' ? (
-                    <SummaryLitePanel trip={{...t,tripKey}} itinerary={filteredItin} travelerFilter={traveler} />
+                    <SummaryLitePanel trip={{...t,tripKey}} itinerary={filteredItin} travelerFilter={traveler} legs={travelLegs[tripKey]} />
                   ) : (
                     <>
-                      <VERANoticesCard trip={t} itinerary={tripData} tripMeta={meta} />
+                      <VERANoticesCard trip={t} itinerary={tripData} tripMeta={meta} legs={travelLegs[tripKey]} />
                       <UsefulToKnowCard insights={flightInsights[tripKey]} />
                       <ItineraryDayView
                         trip={{...t,tripKey}} itinerary={filteredItin} busy={busy}
