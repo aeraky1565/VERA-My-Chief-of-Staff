@@ -4704,12 +4704,38 @@ function webGeneratePacking_(e) {
  * GET recommendations — params: tripKey
  * Returns all recommendation rows for the given trip.
  */
+/**
+ * TripRecommendations gained an Address column after the tab already existed.
+ * ensureSheet only writes headers into a blank sheet, so it will never add one
+ * to a populated tab — without this, reading TRIP_RECS_HEADERS.length columns
+ * from a 12-column sheet throws, and every Discover read breaks.
+ *
+ * Idempotent: widens the sheet if needed, writes the missing header, and leaves
+ * existing rows alone (their Address cell simply reads as empty).
+ */
+function ensureTripRecsSchema_(sheet) {
+  if (!sheet) return sheet;
+  var need = TRIP_RECS_HEADERS.length;
+  if (sheet.getMaxColumns() < need) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  }
+  var header = sheet.getRange(1, 1, 1, need).getValues()[0];
+  for (var i = 0; i < need; i++) {
+    if (String(header[i]).trim() !== TRIP_RECS_HEADERS[i]) {
+      sheet.getRange(1, 1, 1, need).setValues([TRIP_RECS_HEADERS]);
+      sheet.getRange(1, 1, 1, need).setFontWeight('bold');
+      break;
+    }
+  }
+  return sheet;
+}
+
 function webGetRecommendations_(e) {
   const p       = (e && e.parameter) ? e.parameter : {};
   const tripKey = (p.tripKey || '').trim();
   if (!tripKey) throw new Error('tripKey is required');
   const ss = getSpreadsheet();
-  const sheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  const sheet = ensureTripRecsSchema_(ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS));
   if (!sheet) return { ok: true, recs: [] };
   if (sheet.getLastRow() < 2) return { ok: true, recs: [] };
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
@@ -4729,6 +4755,7 @@ function webGetRecommendations_(e) {
       status:      String(row[9]).trim() || 'pending',
       source:      String(row[10]).trim(),
       generatedAt: String(row[11]).trim(),
+      address:     String(row[12] || '').trim(),
     });
   });
   return { ok: true, recs: recs };
@@ -4767,7 +4794,7 @@ function webAcceptRecommendation_(e) {
   if (!recId || !tripKey) throw new Error('recId and tripKey are required');
 
   const ss       = getSpreadsheet();
-  const recSheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  const recSheet = ensureTripRecsSchema_(ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS));
   if (!recSheet || recSheet.getLastRow() < 2) throw new Error('Rec not found: ' + recId);
 
   const recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
@@ -4781,6 +4808,7 @@ function webAcceptRecommendation_(e) {
         title:       String(recData[i][4]).trim(),
         description: String(recData[i][5]).trim(),
         link:        String(recData[i][8]).trim(),
+        address:     String(recData[i][12] || '').trim(),
       };
       recRowNum = i + 2;
       break;
@@ -4796,8 +4824,11 @@ function webAcceptRecommendation_(e) {
   const newId   = 'ITIN-REC-' + dateKey;
   const metadata = rec.link ? JSON.stringify({ link: rec.link }) : '{}';
   const newRow  = itinSheet.getLastRow() + 1;
+  // The address lands in the location column, so an accepted pick is a usable
+  // map point and travel-time endpoint the moment it is added — previously this
+  // was hard-coded empty, which is why accepted restaurants had no location.
   itinSheet.getRange(newRow, 1, 1, ITINERARY_HEADERS.length).setValues([[
-    newId, tripKey, rec.type, rec.title, rec.date, '', '', '', rec.description, metadata,
+    newId, tripKey, rec.type, rec.title, rec.date, '', '', rec.address || '', rec.description, metadata,
   ]]);
 
   // Mark rec as 'added'
@@ -4860,8 +4891,12 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     '- Use real venue names and real details from your web search.\n\n' +
     'CRITICAL — RESPONSE FORMAT:\n' +
     'Return ONLY a raw JSON array. No markdown. No code fences. No explanation. Start with [ and end with ].\n' +
-    '[{"date":"YYYY-MM-DD","type":"dining","title":"Venue Name","description":"1-2 sentence description.","rationale":"Why this fills a gap.","priceRange":"$$","link":"https://..."},' +
-    '{"date":"YYYY-MM-DD","type":"museum","title":"Attraction Name","description":"Description.","rationale":"Rationale.","priceRange":"$","link":""}]\n\n' +
+    '[{"date":"YYYY-MM-DD","type":"dining","title":"Venue Name","address":"123 Example St, City, ST","description":"1-2 sentence description.","rationale":"Why this fills a gap.","priceRange":"$$","link":"https://..."},' +
+    '{"date":"YYYY-MM-DD","type":"museum","title":"Attraction Name","address":"","description":"Description.","rationale":"Rationale.","priceRange":"$","link":""}]\n\n' +
+    // The address is what makes an accepted pick a usable map point and lets
+    // VERA work out travel time to it. It was previously only ever mentioned
+    // inside the prose description, where it could not be read back as data.
+    '"address" must be the street address from your search when you have one, and an empty string when you do not. Never invent one.\n\n' +
     'Valid types: flight, train, hotel, reservation, dining, coffee, nightlife, winery, city_tour, museum, beach, mountain, camera, show, spa, skiing, snorkeling, theme_park, shopping, market, manual\n\n' +
     'Generate the recommendations now:'
   );
@@ -5192,7 +5227,7 @@ function webGenerateRecommendations_(e) {
   const recsData = parseRecsResponse_(rawText);
 
   // Clear existing AI recs for this trip
-  const recSheet = ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS);
+  const recSheet = ensureTripRecsSchema_(ss.getSheetByName(TABS.TRIP_RECOMMENDATIONS));
   if (!recSheet) throw new Error('TripRecommendations tab not found. Run setupVERA() to create it.');
   if (recSheet.getLastRow() >= 2) {
     const allRows = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
@@ -5238,6 +5273,7 @@ function webGenerateRecommendations_(e) {
       'pending',
       'ai',
       generatedAt,
+      rec.address     || '',
     ]);
   });
 

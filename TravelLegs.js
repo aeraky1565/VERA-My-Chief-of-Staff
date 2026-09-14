@@ -193,13 +193,73 @@ function appendTravelLegRows_(rows) {
 }
 
 /**
+ * Turns a multi-day stay into the two moments you actually travel to and from:
+ * a check-in on its first day and a check-out on its last.
+ *
+ * Hotel and cruise stays reach us as all-day calendar events, so they carry no
+ * startTime and were being skipped entirely — which meant the single most
+ * useful leg on any trip, airport to hotel, could never be computed. The
+ * frontend already solves this when it renders; this is the same rule applied
+ * server-side. Nothing is written back to the itinerary: these rows exist only
+ * for the duration of this calculation.
+ *
+ * Defaults mirror docs/app.js ("Resolve default hotel check-in / check-out
+ * times"): check in at 15:00, later if a flight lands after that; check out at
+ * 10:00, earlier if a flight or train leaves before it.
+ *
+ * @param {Array} items — itinerary items (webGetItinerary_ shape)
+ * @returns {Array} the same items plus synthesised check-in/check-out rows
+ */
+function expandStayTimes_(items) {
+  var STAY_TYPES = { hotel: 1, cruise: 1, arranged_stay: 1 };
+  var all = (items || []).slice();
+
+  // Latest flight arrival and earliest departure per day, to adjust against.
+  var latestArrival = {}, earliestDeparture = {};
+  all.forEach(function(it) {
+    if (!it.date) return;
+    if (it.type === 'flight' && it.endTime) {
+      if (!latestArrival[it.date] || it.endTime > latestArrival[it.date]) latestArrival[it.date] = it.endTime;
+    }
+    if ((it.type === 'flight' || it.type === 'train') && it.startTime) {
+      if (!earliestDeparture[it.date] || it.startTime < earliestDeparture[it.date]) earliestDeparture[it.date] = it.startTime;
+    }
+  });
+
+  var extra = [];
+  all.forEach(function(it) {
+    if (!STAY_TYPES[it.type] || it.startTime) return;   // not a stay, or already timed
+    if (!isUsableTravelLocation_(it.location)) return;
+
+    var meta = {};
+    try { meta = JSON.parse(it.metadata || '{}') || {}; } catch (e) { meta = {}; }
+    var checkoutDate = String(meta.checkoutDate || '').trim();
+    if (!checkoutDate || !it.date) return;   // single-day or unbounded: nothing to anchor
+
+    var ci = '15:00';
+    if (latestArrival[it.date] && latestArrival[it.date] > ci) ci = latestArrival[it.date];
+    extra.push({ date: it.date, startTime: ci, endTime: '', location: it.location,
+                 type: it.type, title: it.title, _stay: 'checkin' });
+
+    var co = '10:00';
+    if (earliestDeparture[checkoutDate] && earliestDeparture[checkoutDate] < co) co = earliestDeparture[checkoutDate];
+    extra.push({ date: checkoutDate, startTime: co, endTime: co, location: it.location,
+                 type: it.type, title: it.title, _stay: 'checkout' });
+  });
+
+  return all.concat(extra);
+}
+
+/**
  * Every consecutive pair of timed items, within a day, that is worth a lookup.
  * @param {Array} items — itinerary items (webGetItinerary_ shape)
  * @returns {Array} [{ from, to, gapMins }]
  */
 function collectTravelLegCandidates_(items) {
+  var expanded = expandStayTimes_(items);
+
   var byDay = {};
-  (items || []).forEach(function(it) {
+  expanded.forEach(function(it) {
     if (!it.date || !it.startTime) return;   // undated or all-day: no gap to reason about
     if (!byDay[it.date]) byDay[it.date] = [];
     byDay[it.date].push(it);

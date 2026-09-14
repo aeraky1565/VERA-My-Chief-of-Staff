@@ -176,7 +176,7 @@ const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller',
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
 const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes']; // Issue #187
-const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At'];
+const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address'];
 // Cache of point-to-point travel times, keyed on From|To|Mode — NOT on itinerary
 // item IDs, so an entry survives edits and is reused across trips forever.
 // Status records the verdict, including 'no_route' / 'not_found', so a pair that
