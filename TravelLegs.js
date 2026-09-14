@@ -102,8 +102,16 @@ function travelLegKey_(from, to, mode) {
  * Reads the whole cache into a map keyed by travelLegKey_.
  * @returns {Object} key → { minutes, distance, status }
  */
+function getTravelLegsSheet_() {
+  // Created on demand rather than assumed. setupVERA() is the only other place
+  // that makes this tab, and it is not re-run when a feature ships — so without
+  // this the cache silently wrote nothing, every dashboard load re-queried the
+  // same pairs, and the whole point of caching was lost.
+  return ensureSheet(getSpreadsheet(), TABS.TRAVEL_LEGS, TRAVEL_LEGS_HEADERS);
+}
+
 function loadTravelLegCache_() {
-  var sheet = getSpreadsheet().getSheetByName(TABS.TRAVEL_LEGS);
+  var sheet = getTravelLegsSheet_();
   var cache = {};
   if (!sheet || sheet.getLastRow() < 2) return cache;
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRAVEL_LEGS_HEADERS.length).getValues();
@@ -168,8 +176,8 @@ function fetchTravelLeg_(from, to, mode, apiKey) {
 
 function appendTravelLegRows_(rows) {
   if (!rows.length) return;
-  var sheet = getSpreadsheet().getSheetByName(TABS.TRAVEL_LEGS);
-  if (!sheet) return;
+  var sheet = getTravelLegsSheet_();
+  if (!sheet) throw new Error('TravelLegs tab could not be created');
   sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, TRAVEL_LEGS_HEADERS.length)
        .setValues(rows);
 }
