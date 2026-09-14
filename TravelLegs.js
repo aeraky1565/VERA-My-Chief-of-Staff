@@ -13,15 +13,22 @@
  * Usage is held down by four rules, in descending order of how much they save:
  *
  *   1. A cached pair is never re-fetched. Across all trips there are only a few
- *      dozen distinct pairs, so after the first run this job makes almost no
- *      calls at all. Opening the dashboard makes none — it reads the sheet.
- *   2. Only pairs whose gap is tight enough to matter are looked up. If you
- *      finish at 13:45 and the next thing is at 18:45, no API can tell you
- *      anything you don't already know.
- *   3. Failures are cached too. "No driving route between Tortola and Great
+ *      dozen distinct pairs, so in steady state nothing here calls out at all —
+ *      opening a trip whose pairs are known makes zero requests, however many
+ *      times the dashboard is refreshed.
+ *   2. Failures are cached too. "No driving route between Tortola and Great
  *      Stirrup Cay" is a permanent fact; without caching it, every cruise day
- *      would re-ask every single night forever.
- *   4. A hard ceiling per run, so a bug that loops cannot run up a bill.
+ *      would re-ask forever.
+ *   3. Walking is only fetched when driving came back short enough that walking
+ *      is plausibly a real choice.
+ *   4. Hard ceilings — a large one per nightly run, a small one per dashboard
+ *      read — so a bug that loops cannot run up a bill.
+ *
+ * Two things fill the cache. nightlyRun() warms every upcoming trip, and
+ * webGetTravelLegs_ fills in any pair it has never seen while serving a read.
+ * The second exists because plans arrive on the shared calendar at least as
+ * often as through this dashboard, so hooking the itinerary write actions would
+ * miss most of them; catching it at read time catches every source equally.
  *
  * Calls go through fetchTracked_ as the 'googlemaps' source, so failures surface
  * in the API Health panel and the [DOWN] alerts like any other integration.
@@ -47,9 +54,16 @@ var TRAVEL_LEG_MAX_GAP_MINS = 480;
 // first run against a brand new itinerary.
 var TRAVEL_LEG_MAX_CALLS_PER_RUN = 25;
 
-// Modes fetched. Walking is only requested when driving came back short enough
-// that walking is plausibly a real choice — see maybeFetchWalking_ below.
+// Walking is only requested when driving came back at or under this, i.e. when
+// walking is plausibly a real choice. Asking how long it takes to walk a
+// 40-minute drive bills for a number nobody will act on.
 var TRAVEL_LEG_WALK_THRESHOLD_MINS = 12;
+
+// Ceiling for the gap-filling done while serving a dashboard read. Small on
+// purpose: it keeps that request fast, and anything left over is picked up by
+// the nightly run anyway. Opening a trip whose pairs are all cached — the
+// normal case — makes no calls at all.
+var TRAVEL_LEG_MAX_LAZY_CALLS = 3;
 
 var DISTANCE_MATRIX_URL = 'https://maps.googleapis.com/maps/api/distancematrix/json';
 
@@ -320,8 +334,34 @@ function webGetTravelLegs_(e) {
   var cache = loadTravelLegCache_();
   var legs  = [];
   try {
-    var itin = webGetItinerary_(e, { skipEventTz: true }) || {};
-    collectTravelLegCandidates_(itin.items || []).forEach(function(c) {
+    var itin       = webGetItinerary_(e, { skipEventTz: true }) || {};
+    var candidates = collectTravelLegCandidates_(itin.items || []);
+
+    // Fill in pairs never seen before, right now, rather than making them wait
+    // for tonight's run. This is the only place that can catch every source:
+    // plans are added straight to the shared calendar at least as often as
+    // through this dashboard, so hooking the itinerary write actions would miss
+    // most of them.
+    //
+    // Absence, not failure. A cached ZERO_RESULTS row — two Caribbean islands
+    // with no road between them — is a permanent answer. Re-querying anything
+    // whose status isn't 'OK' would ask about every cruise day on every single
+    // load, which is exactly the cost model this cache exists to prevent.
+    var missing = candidates.filter(function(c) {
+      return !cache[travelLegKey_(c.from, c.to, 'driving')];
+    });
+    if (missing.length) {
+      // Computed from the cache already in hand, so when everything is cached
+      // — the overwhelmingly common case — this block costs nothing at all.
+      try {
+        var filled = computeTravelLegs_(TRAVEL_LEG_MAX_LAZY_CALLS, itin.items);
+        if (filled && filled.cached > 0) cache = loadTravelLegCache_();
+      } catch (fillErr) {
+        Logger.log('webGetTravelLegs_: lazy fill failed — ' + fillErr.message);
+      }
+    }
+
+    candidates.forEach(function(c) {
       var drive = cache[travelLegKey_(c.from, c.to, 'driving')];
       var walk  = cache[travelLegKey_(c.from, c.to, 'walking')];
       if (!drive || drive.status !== 'OK') return;   // unknown or no route — say nothing
