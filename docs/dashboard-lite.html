@@ -5939,35 +5939,46 @@ function SummaryLitePanel({ trip, itinerary, travelerFilter }) {
     try { const m=JSON.parse(item.metadata||'{}'); const tv=m.traveler||'Both'; return tv==='Both'||tv===travelerFilter; }
     catch(e) { return true; }
   });
-  const dates = (trip.startDate && trip.endDate) ? tripDateRange(trip.startDate, trip.endDate) : [];
   const byDate = {};
   items.forEach(item => {
     const d = item.date || '_undated';
     if (!byDate[d]) byDate[d] = [];
     byDate[d].push(item);
   });
+  const dates = (trip.startDate && trip.endDate) ? tripDateRange(trip.startDate, trip.endDate) : [];
+  // Same date assembly the Agenda tab does (ItineraryDayView): an item dated
+  // just outside the trip range, or with no date at all, still has to appear
+  // somewhere. Summary was rendering only the in-range days, so those vanished.
+  Object.keys(byDate).forEach(d => { if (d !== '_undated' && !dates.includes(d)) dates.push(d); });
+  dates.sort();
+  if (byDate['_undated']) dates.push('_undated');
   if (!dates.length) return <div style={{color:'#4d6080',padding:'24px 0',textAlign:'center',fontSize:12}}>No date range</div>;
   return (
     <div style={{paddingTop:8}}>
       {dates.map((date, idx) => {
+        // All-day items sort first — (a.startTime||'') makes them empty strings,
+        // which localeCompare orders ahead of any HH:mm. Same all-day-first
+        // convention as the full dashboard.
         const dayItems = (byDate[date]||[]).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
-        const timedItems = dayItems.filter(i=>i.startTime);
-        const label = new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
         return (
           <div key={date} style={{background:'#0a1628',border:'1px solid #1a2a40',
             borderRadius:8,padding:'9px 12px',marginBottom:7}}>
             <div style={{fontWeight:700,color:'#8ab4f8',fontSize:12,marginBottom:3}}>
-              Day {idx+1} — {label}
+              {fmtDayHeader(date, idx+1)}
             </div>
             <div style={{fontSize:11,color:'#4d6080',marginBottom:5}}>
               {dayItems.length} event{dayItems.length!==1?'s':''} scheduled
             </div>
-            {timedItems.length===0 ? (
+            {/* Every item, not just the timed ones. Filtering to i.startTime hid
+                hotel stays, cruise stays and sea days — all all-day calendar
+                events — while still counting them in the line above, so a day
+                could read "3 events scheduled" over "No events scheduled". */}
+            {dayItems.length===0 ? (
               <div style={{fontSize:12,color:'#4d6080',fontStyle:'italic'}}>No events scheduled</div>
-            ) : timedItems.map(item => (
+            ) : dayItems.map(item => (
               <div key={item.id} style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:12}}>
-                <span style={{color:'#4d6080',minWidth:42,fontSize:11,fontVariantNumeric:'tabular-nums'}}>
-                  {item.startTime}
+                <span style={{color:item.startTime?'#4d6080':'#3a4a60',minWidth:42,fontSize:11,fontVariantNumeric:'tabular-nums'}}>
+                  {item.startTime || '·'}
                 </span>
                 <span>{ITIN_TYPE_ICON[item.type]||'📌'}</span>
                 <span style={{color:'#c8d4e8'}}>{item.title}</span>
@@ -6164,7 +6175,12 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
         </div>
       )}
       {dates.map((date, idx) => {
-        const dayItems = byDate[date] || [];
+        // All-day first, then ascending by clock — same ordering the Summary
+        // tab and the full dashboard use, so a day reads identically in all
+        // three. This list was previously rendered in whatever order the
+        // backend happened to return.
+        const dayItems = (byDate[date] || []).slice()
+          .sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
         const dayNum = date === '_undated' ? '' : idx + 1;
         return (
           <div key={date} style={{marginBottom:12}}>
