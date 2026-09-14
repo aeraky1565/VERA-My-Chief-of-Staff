@@ -102,12 +102,22 @@ function travelLegKey_(from, to, mode) {
  * Reads the whole cache into a map keyed by travelLegKey_.
  * @returns {Object} key → { minutes, distance, status }
  */
+// Per-execution memo, same pattern as _upcomingTravelCache_ in PTO.js. Serving
+// one lazy-filling read resolves the sheet three times — the caller's cache
+// load, computeTravelLegs_'s own, and the re-read afterwards — plus once more to
+// append. ensureSheet does a getSheetByName and a getLastRow every time, and
+// none of that changes within a single execution.
+var _travelLegsSheet_ = null;
+
 function getTravelLegsSheet_() {
   // Created on demand rather than assumed. setupVERA() is the only other place
   // that makes this tab, and it is not re-run when a feature ships — so without
   // this the cache silently wrote nothing, every dashboard load re-queried the
   // same pairs, and the whole point of caching was lost.
-  return ensureSheet(getSpreadsheet(), TABS.TRAVEL_LEGS, TRAVEL_LEGS_HEADERS);
+  if (!_travelLegsSheet_) {
+    _travelLegsSheet_ = ensureSheet(getSpreadsheet(), TABS.TRAVEL_LEGS, TRAVEL_LEGS_HEADERS);
+  }
+  return _travelLegsSheet_;
 }
 
 function loadTravelLegCache_() {

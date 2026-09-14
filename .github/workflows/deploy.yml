@@ -47,8 +47,23 @@ jobs:
 
       - name: Deploy new version
         run: |
-          clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta \
-            --description "Auto-deploy $(git rev-parse --short HEAD)"
+          # Push has already succeeded by this point. If the deploy fails, head
+          # and /exec have silently diverged — the new code is in the project but
+          # the web app both dashboards call is still serving the old version.
+          # That is the fact worth surfacing, and a bare non-zero exit hides it.
+          set +e
+          OUT=$(clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta \
+            --description "Auto-deploy $(git rev-parse --short HEAD)" 2>&1)
+          CODE=$?
+          echo "$OUT"
+          if [ $CODE -ne 0 ]; then
+            echo "::error::Code was PUSHED to Apps Script but NOT deployed. /exec is still serving the previous version."
+            if echo "$OUT" | grep -q "limit of 200 versions"; then
+              echo "::error::Cause: the script is at the 200-version ceiling. Free up versions in the Apps Script editor, then re-run this workflow."
+              echo "::error::Meanwhile, functions run from the Apps Script EDITOR use the pushed head code, so manual runs already have this change."
+            fi
+            exit $CODE
+          fi
 
       - name: Notify Slack on failure
         if: failure()
