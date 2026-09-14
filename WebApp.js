@@ -3916,6 +3916,21 @@ function webGetItinerary_(e, opts) {
             var evMeta = { calendarName: cal.getName() };
             if (evTzInfo.startTz) evMeta.startTz = evTzInfo.startTz;
             if (evTzInfo.endTz && evTzInfo.endTz !== evTzInfo.startTz) evMeta.endTz = evTzInfo.endTz;
+            // A flight's `location` is where it LEAVES from. Nothing recorded where
+            // it lands, so anything reasoning about "where are you after this" —
+            // travel time to the next stop, destination inference — was reading the
+            // departure airport. Airline-mail events carry a regular description
+            // ("Washington IAD 8:40am (local time) - Miami MIA 11:33am (local
+            // time)"), so lift the IATA pair out of it. Same shape TravelDayBriefing
+            // already uses, and writing it as metadata.dest matches what manually
+            // added flights store.
+            if (relevance.type === 'flight') {
+              var flightCodes = ((ev.getDescription() || '') + ' ' + evTitle).match(/\b[A-Z]{3}\b/g) || [];
+              if (flightCodes.length >= 2 && flightCodes[0] !== flightCodes[1]) {
+                evMeta.origin = flightCodes[0];
+                evMeta.dest   = flightCodes[1];
+              }
+            }
             // For multi-day events (e.g. hotel stays spanning several nights), store the checkout
             // date in metadata so the frontend gap detector covers the full date range.
             if (ev.isAllDayEvent()) {

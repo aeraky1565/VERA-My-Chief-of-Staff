@@ -65,6 +65,14 @@ var TRAVEL_LEG_WALK_THRESHOLD_MINS = 12;
 // normal case — makes no calls at all.
 var TRAVEL_LEG_MAX_LAZY_CALLS = 3;
 
+// A same-day ground connection longer than this is not a drive, it is a
+// mis-paired location. Cached like anything else so it is never re-fetched, but
+// never surfaced. Belt-and-braces for a cache that is permanent by design: with
+// this in place, the "Front Porch Café is 933m away" line — the drive from
+// Dulles to Miami Beach — could not have reached the screen even while the
+// flight-origin bug was live.
+var TRAVEL_LEG_MAX_PLAUSIBLE_MINS = 360;
+
 var DISTANCE_MATRIX_URL = 'https://maps.googleapis.com/maps/api/distancematrix/json';
 
 /**
@@ -251,6 +259,36 @@ function expandStayTimes_(items) {
 }
 
 /**
+ * Where you physically are once an item is over — the point onward travel
+ * starts from.
+ *
+ * For everything except a flight that is just `location`. A flight's location is
+ * its DEPARTURE airport, so after landing you are somewhere else entirely, and
+ * using it makes the next leg measure from the wrong city.
+ *
+ * Returns null when the answer is genuinely unknown, and the caller must then
+ * skip the pair rather than fall back to `location`. Falling back is exactly the
+ * bug: a confidently wrong travel time is worse than none, especially in a cache
+ * that keeps its answers permanently. Driving TO a flight is unaffected — the
+ * departure airport is correct there, which is why only post-arrival legs broke.
+ *
+ * @returns {string|null}
+ */
+function departurePointOf_(item) {
+  if (!item || item.type !== 'flight') return item ? item.location : null;
+
+  var meta = {};
+  try { meta = JSON.parse(item.metadata || '{}') || {}; } catch (e) { meta = {}; }
+  if (meta.dest) return String(meta.dest).trim();
+
+  // Titles shaped "AA 102 – JFK → CDG" carry the pair directly.
+  var codes = String(item.title || '').match(/\b[A-Z]{3}\b/g) || [];
+  if (codes.length >= 2 && codes[0] !== codes[1]) return codes[1];
+
+  return null;
+}
+
+/**
  * Every consecutive pair of timed items, within a day, that is worth a lookup.
  * @param {Array} items — itinerary items (webGetItinerary_ shape)
  * @returns {Array} [{ from, to, gapMins }]
@@ -272,8 +310,16 @@ function collectTravelLegCandidates_(items) {
     });
     for (var i = 0; i < day.length - 1; i++) {
       var cur = day[i], next = day[i + 1];
-      if (!isUsableTravelLocation_(cur.location) || !isUsableTravelLocation_(next.location)) continue;
-      var from = normalizeTravelLocation_(cur.location);
+
+      // Leaving a flight, you are at the airport it LANDED at — not the one in
+      // its location field, which is where it departed. Measuring onward travel
+      // from the departure airport produced "Front Porch Café is 933m away",
+      // which is the drive from Dulles to Miami Beach.
+      var fromLoc = departurePointOf_(cur);
+      if (fromLoc === null) continue;   // flight whose arrival airport is unknown
+
+      if (!isUsableTravelLocation_(fromLoc) || !isUsableTravelLocation_(next.location)) continue;
+      var from = normalizeTravelLocation_(fromLoc);
       var to   = normalizeTravelLocation_(next.location);
       if (from.toLowerCase() === to.toLowerCase()) continue;   // same place: no travel
 
@@ -443,6 +489,11 @@ function webGetTravelLegs_(e) {
       var drive = cache[travelLegKey_(c.from, c.to, 'driving')];
       var walk  = cache[travelLegKey_(c.from, c.to, 'walking')];
       if (!drive || drive.status !== 'OK') return;   // unknown or no route — say nothing
+      if (drive.minutes != null && drive.minutes > TRAVEL_LEG_MAX_PLAUSIBLE_MINS) {
+        Logger.log('TravelLegs: suppressing implausible ' + drive.minutes + 'm leg — ' +
+                   c.from.split('\n')[0] + ' -> ' + c.to.split('\n')[0]);
+        return;
+      }
       legs.push({
         from:        c.from,
         to:          c.to,
