@@ -547,6 +547,16 @@ function buildTravelScheduleSection_(enrichedItems) {
     '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
     'letter-spacing:1.5px;text-transform:uppercase;">Today\'s Schedule</p>';
 
+  // Travel times between today's stops, read from the cache the nightly run
+  // already filled. A travel morning is exactly when the number matters and the
+  // dashboard is exactly what you are not looking at — reusing these here is
+  // the reason they are computed server-side rather than in the browser.
+  // Read-only and free: no routing call is ever made from an email.
+  var legCache = {};
+  try { legCache = loadTravelLegCache_(); }
+  catch (legErr) { Logger.log('TravelDayBriefing: leg cache unavailable — ' + legErr.message); }
+  var prevLegItem = null;
+
   enrichedItems.forEach(function(entry) {
     var row    = entry.row;
     var type   = String(row[2] || '').trim();
@@ -566,6 +576,33 @@ function buildTravelScheduleSection_(enrichedItems) {
     // per day would double the cost/latency for no benefit.
     var details        = entry.details;
     var displayAddress = entry.displayAddress;
+
+    // The briefing holds items as sheet rows; the leg helpers take the object
+    // shape webGetItinerary_ returns. Adapt rather than reimplement — a second
+    // implementation drifting from the first is what produced two wrong test
+    // fixtures earlier in this feature.
+    var legItem = { date: String(row[4] || '').trim(), type: type, title: title,
+                    startTime: startT, endTime: endT, location: loc,
+                    metadata: String(row[9] || '') };
+
+    if (prevLegItem && startT) {
+      // departurePointOf_ so a flight measures from where it LANDED, not from
+      // the departure airport sitting in its location field.
+      var fromLoc = departurePointOf_(prevLegItem);
+      if (fromLoc && isUsableTravelLocation_(fromLoc) && isUsableTravelLocation_(loc)) {
+        var lg = legCache[travelLegKey_(fromLoc, loc, 'driving')];
+        if (lg && lg.status === 'OK' && lg.minutes !== null &&
+            lg.minutes <= TRAVEL_LEG_MAX_PLAUSIBLE_MINS) {
+          var fromLabel = String(fromLoc).split('\n')[0].trim();
+          if (fromLabel.length > 34) fromLabel = fromLabel.substring(0, 33) + '\u2026';
+          html +=
+            '<div style="margin:0 0 6px 34px;font-size:12px;color:#8a8a8a;">' +
+            '\uD83D\uDE97 ~' + lg.minutes + 'm from ' + escapeHtml_(fromLabel) +
+            '</div>';
+        }
+      }
+    }
+    if (startT) prevLegItem = legItem;
 
     html +=
       '<div style="display:flex;align-items:flex-start;margin-bottom:22px;">' +

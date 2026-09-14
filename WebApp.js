@@ -4902,6 +4902,9 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
         'from the gap summary to factor in realistic city access time (e.g. DXB metro = 25 min, ORD traffic = 60+ min). ' +
         'Under these thresholds, do NOT suggest leaving the airport — suggest lounge, terminal dining, or nothing.\n';
     }()) +
+    '- Stay close to where they are based that day (shown as "based at ..." in the gap analysis). ' +
+    'Prefer venues within roughly 20 minutes; if you suggest something further, say so in the rationale ' +
+    'so they can judge whether the journey fits the gap.\n' +
     '- Include a mix of: dining, activities, coffee/morning spots, and hidden gems.\n' +
     '- Use real venue names and real details from your web search.\n\n' +
     'CRITICAL — RESPONSE FORMAT:\n' +
@@ -5035,6 +5038,33 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
     }
   });
 
+  // Where they are based each day — the stay covering that date. Without this
+  // Claude picks venues blind to distance and can suggest somewhere 40 minutes
+  // away for a 45-minute gap, which is the exact clash the tight-connection
+  // warning then reports after the pick has already been accepted. Giving it
+  // the base prevents the clash instead of reporting it.
+  var STAY_TYPES_GAP = { hotel: 1, cruise: 1, arranged_stay: 1 };
+  var baseByDate = {};
+  itinData.forEach(function(row) {
+    if (String(row[1]).trim() !== tripKey) return;
+    if (!STAY_TYPES_GAP[String(row[2]).trim()]) return;
+    var loc = String(row[7] || '').replace(/\s+/g, ' ').trim();
+    var from = String(row[4] || '').trim();
+    if (!loc || !from) return;
+    var until = from;
+    try {
+      var m = JSON.parse(String(row[9] || '{}')) || {};
+      if (m.checkoutDate) until = String(m.checkoutDate).trim();
+    } catch (e) { /* no checkout date — single night */ }
+    var cur = new Date(from + 'T12:00:00');
+    var lim = new Date(until + 'T12:00:00');
+    while (cur <= lim) {
+      var k = Utilities.formatDate(cur, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      if (!baseByDate[k]) baseByDate[k] = loc;
+      cur = new Date(cur.getTime() + 86400000);
+    }
+  });
+
   var tz    = Session.getScriptTimeZone();
   var lines = [];
   var d     = new Date(startDate + 'T12:00:00'); // noon to avoid DST edge cases
@@ -5098,6 +5128,8 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
     else if (!isLayover) notes.push('NO DINING');
     if (info.activity) notes.push('activity ✓');
     else if (!isLayover) notes.push('NO ACTIVITIES');
+
+    if (baseByDate[ds]) notes.push('based at ' + baseByDate[ds]);
 
     lines.push(dayName + ': ' + notes.join(', '));
     d = new Date(d.getTime() + 86400000);
