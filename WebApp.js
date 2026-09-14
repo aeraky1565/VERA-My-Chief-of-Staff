@@ -3742,11 +3742,19 @@ function dedupeItineraryCalendarItems_(calendarItems) {
  * within the trip date range.
  * Params: tripKey (required), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD)
  */
-function webGetItinerary_(e) {
+/**
+ * @param {Object} e     - request-like object carrying tripKey/startDate/endDate
+ * @param {Object} [opts] - { skipEventTz: true } to skip the per-event timezone
+ *   lookup (one extra Calendar API call per trusted calendar). Only the Travel
+ *   tab needs it, to show a flight's departure and arrival in their own local
+ *   times; callers that just read dates, types and locations should skip it.
+ */
+function webGetItinerary_(e, opts) {
   const p       = e.parameter || {};
   const tripKey = (p.tripKey   || '').trim();
   const start   = (p.startDate || '').trim();
   const end     = (p.endDate   || '').trim();
+  const skipEventTz = !!(opts && opts.skipEventTz);
   if (!tripKey) throw new Error('tripKey is required');
 
   const tz    = Session.getScriptTimeZone();
@@ -3803,16 +3811,29 @@ function webGetItinerary_(e) {
       itinGapNames.forEach(function(n) { itinTrustedSet[n] = true; });
       var itinUserEmail = Session.getEffectiveUser().getEmail();
 
-      function isItinTrustedCal_(cal) {
+      // Resolve the trusted calendars ONCE.
+      //
+      // This used to call CalendarApp.getAllCalendars() twice — once for the
+      // timezone pass, once for the event pass — and each pass then called
+      // getId() and getName() on every calendar to decide whether to keep it.
+      // Across 11 calendars that is ~44 Calendar round trips spent purely on
+      // deciding what to read, before a single event is fetched. Cheap enough
+      // when only the Travel tab called this; not cheap at all once the
+      // recommendation and packing generators started calling it too.
+      var itinTrustedCals = CalendarApp.getAllCalendars().filter(function(cal) {
         return cal.getId() === itinUserEmail || !!itinTrustedSet[cal.getName()];
-      }
+      });
 
       // Fetch per-event timezone via Calendar Advanced Service.
       // CalendarApp doesn't expose per-event timezone; Calendar.Events.list() does.
       // Keys stored as both resource id and iCalUID since ev.getId() returns iCalUID.
+      //
+      // Skippable: this is one extra API call per trusted calendar, and it only
+      // exists so the Travel tab can render a flight's departure and arrival in
+      // their own local times. Callers that just need dates, types and
+      // locations (the generators) pass skipEventTz and save the whole pass.
       var eventTzMap = {};  // eventId/iCalUID → { startTz, endTz }
-      CalendarApp.getAllCalendars().forEach(function(cal) {
-        if (!isItinTrustedCal_(cal)) return;
+      if (!skipEventTz) itinTrustedCals.forEach(function(cal) {
         try {
           var result = Calendar.Events.list(cal.getId(), {
             singleEvents: true,
@@ -3839,8 +3860,7 @@ function webGetItinerary_(e) {
       // and "AE&VV - Our Joint Chaos") can be deduped before it ever reaches the
       // frontend — see dedupeItineraryCalendarItems_.
       var calendarItems = [];
-      CalendarApp.getAllCalendars().forEach(function(cal) {
-        if (!isItinTrustedCal_(cal)) return;
+      itinTrustedCals.forEach(function(cal) {
         try {
           cal.getEvents(startDt, endDt).forEach(function(ev) {
             const evTitle    = (ev.getTitle()    || '(No title)').trim();
@@ -4505,7 +4525,7 @@ function webGeneratePacking_(e) {
   const ss = getSpreadsheet();
   let itinData = [];
   try {
-    const itin = webGetItinerary_(e) || {};
+    const itin = webGetItinerary_(e, { skipEventTz: true }) || {};
     itinData = (itin.items || []).map(function(it) {
       return [it.id, it.tripKey, it.type, it.title, it.date,
               it.startTime, it.endTime, it.location, it.notes, it.metadata];
@@ -4816,7 +4836,11 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     (destination
       ? 'Search the web for top attractions and dining in ' + destination + ' matching the trip context, '
       : 'Search the web for top attractions and dining at the places named in the itinerary above, matching the trip context, ') +
-    'then provide 8-15 targeted recommendations that fill the gaps above.\n\n' +
+    // 8-15 recs, each with a description and a rationale, is a lot of tokens to
+    // generate — and generated length, not the max_tokens ceiling, is what makes
+    // this call slow enough for the browser to give up waiting on it. 6-10 still
+    // covers a trip comfortably.
+    'then provide 6-10 targeted recommendations that fill the gaps above.\n\n' +
     'RULES:\n' +
     '- Never recommend a place you cannot tie to the itinerary or the stated destination. ' +
     'If neither names a location, return an empty array rather than guessing where this trip goes.\n' +
@@ -5068,7 +5092,7 @@ function webGenerateRecommendations_(e) {
   const ss = getSpreadsheet();
   let itinData = [];
   try {
-    const itin = webGetItinerary_(e) || {};
+    const itin = webGetItinerary_(e, { skipEventTz: true }) || {};
     // Back into ITINERARY_HEADERS column order, so buildRecsGapSummary_ and the
     // destination loops below keep working against one consistent shape.
     itinData = (itin.items || []).map(function(it) {
@@ -5184,7 +5208,12 @@ function webGenerateRecommendations_(e) {
   // Write new recs
   const tz          = Session.getScriptTimeZone();
   const dateKey     = Utilities.formatDate(new Date(), tz, 'yyyyMMdd');
-  const generatedAt = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  // Seconds included so the frontend can tell one run's batch from the next.
+  // When the browser's connection drops mid-generate it polls this tab to see
+  // whether the server finished anyway, and detects "finished" by the stamp
+  // changing — which minute-level precision couldn't distinguish for two runs
+  // started inside the same minute.
+  const generatedAt = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm:ss');
   let seq = 1;
   if (recSheet.getLastRow() >= 2) {
     recSheet.getRange(2, 1, recSheet.getLastRow() - 1, 1).getValues().forEach(function(r) {

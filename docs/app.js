@@ -5,9 +5,29 @@ function daysUntil(dateStr){var today=new Date();today.setHours(0,0,0,0);var tar
 // browser's "Failed to fetch") after a short delay. Does NOT retry a request
 // that reached the server and came back with a well-formed error — only a
 // dropped/never-answered connection, which is often transient.
-async function fetchWithRetry_(url,options){try{return await fetch(url,options);}catch(err){await new Promise(r=>setTimeout(r,800));return fetch(url,options);}}
-async function apiGet(apiUrl,token,params){const res=await fetchWithRetry_(makeUrl(apiUrl,token,params),{cache:'no-store'});const json=await res.json();if(!json.ok)throw new Error(json.error||'API error');return json;}// All write operations use GET to avoid CORS preflight from file:// origin
-async function apiAction(apiUrl,token,action,params){return apiGet(apiUrl,token,Object.assign({action},params));}// POST without Content-Type header → browser sends text/plain → simple CORS request (no preflight).
+// `noRetry` opts out. A retry is right for a cheap read, but wrong for a slow,
+// expensive generate: it silently starts the whole job a second time, doubling
+// both the wait and the API spend, and the second run wipes the first run's rows.
+async function fetchWithRetry_(url,options,noRetry){try{return await fetch(url,options);}catch(err){if(noRetry)throw err;await new Promise(r=>setTimeout(r,800));return fetch(url,options);}}
+async function apiGet(apiUrl,token,params,opts){const res=await fetchWithRetry_(makeUrl(apiUrl,token,params),{cache:'no-store'},opts&&opts.noRetry);const json=await res.json();if(!json.ok)throw new Error(json.error||'API error');return json;}// All write operations use GET to avoid CORS preflight from file:// origin
+async function apiAction(apiUrl,token,action,params){return apiGet(apiUrl,token,Object.assign({action},params));}
+// Recommendation generation can outlast the browser's patience — it is several
+// sequential Claude calls with web searches in between, and a dropped socket
+// surfaces as "Failed to fetch". But the server writes the picks to the sheet
+// BEFORE it responds, so a dropped connection does not mean lost work. Poll for
+// a batch stamped later than the one we started with, and adopt it if it lands.
+function latestRecStamp_(recs){return (recs||[]).filter(function(r){return r.source==='ai';}).map(function(r){return r.generatedAt||'';}).sort().pop()||'';}
+async function pollForNewRecs_(apiUrl,token,tripKey,prevStamp,attempts,onTick){
+  for(let i=0;i<attempts;i++){
+    await new Promise(r=>setTimeout(r,15000));
+    if(onTick)onTick(i+1,attempts);
+    try{
+      const data=await apiGet(apiUrl,token,{action:'recommendations',tripKey});
+      if(latestRecStamp_(data.recs)>prevStamp)return data.recs;
+    }catch(e){/* keep polling — the sheet read is cheap and may just be flaky */}
+  }
+  return null;
+}// POST without Content-Type header → browser sends text/plain → simple CORS request (no preflight).
 // Apps Script doPost parses the body with JSON.parse(e.postData.contents) regardless of content-type.
 async function apiPost(apiUrl,token,body){const url=new URL(apiUrl);url.searchParams.set('token',token);const res=await fetchWithRetry_(url.toString(),{method:'POST',body:JSON.stringify(body)});const json=await res.json();if(!json.ok)throw new Error(json.error||'API error');return json;}// Resize an image File to maxDim on its longest side and re-encode as JPEG @ 85% quality.
 // Keeps the upload comfortably under Claude's vision API size limits.
@@ -1143,7 +1163,30 @@ setPackingItems(function(prev){const entry=prev[tripKey];if(!entry||entry==='loa
 }}async function handleAddPackingItem(tripKey,person,category,item){if(!apiUrl||!apiToken)return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'add_packing_item',tripKey,person,category,item});await loadPacking(tripKey);}catch(err){setError('Could not add packing item: '+err.message);}setBusy(false);}async function handleDeletePackingItem(id,tripKey){// Optimistic remove
 setPackingItems(function(prev){const entry=prev[tripKey];if(!entry||entry==='loading')return prev;return Object.assign({},prev,{[tripKey]:Object.assign({},entry,{items:entry.items.filter(function(it){return it.id!==id;})})});});try{await apiGet(apiUrl,apiToken,{action:'delete_packing_item',id});}catch(err){setError('Could not delete packing item');loadPacking(tripKey);}}function handleGoToPacking(tripKey){// Force re-trigger even if same key by clearing first
 setPackingFocusTripKey(null);setTimeout(function(){setPackingFocusTripKey(tripKey);},0);}// ---- Recommendations handlers (Issue #73) -----------------------------------
-async function loadRecs(tripKey){if(!tripKey||!apiUrl||!apiToken)return;setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:'loading'});});try{const data=await apiGet(apiUrl,apiToken,{action:'recommendations',tripKey});setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:data.recs||[]});});}catch(err){setRecommendations(function(prev){const n=Object.assign({},prev);delete n[tripKey];return n;});}}async function handleGenerateRecs(tripKey,startDate,endDate){if(!apiUrl||!apiToken)return;setBusy(true);setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:'loading'});});try{const data=await apiGet(apiUrl,apiToken,{action:'generate_recommendations',tripKey,startDate,endDate});setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:data.recs||[]});});showToast('✨ Recommendations generated by VERA');}catch(err){setRecommendations(function(prev){const n=Object.assign({},prev);delete n[tripKey];return n;});setError('Generate failed: '+err.message);}setBusy(false);}async function handleAcceptRec(recId,tripKey){if(!apiUrl||!apiToken)return;setBusy(true);try{const data=await apiGet(apiUrl,apiToken,{action:'accept_recommendation',recId,tripKey});setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:data.recs||[]});});// Reload itinerary so the new item appears
+async function loadRecs(tripKey){if(!tripKey||!apiUrl||!apiToken)return;setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:'loading'});});try{const data=await apiGet(apiUrl,apiToken,{action:'recommendations',tripKey});setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:data.recs||[]});});}catch(err){setRecommendations(function(prev){const n=Object.assign({},prev);delete n[tripKey];return n;});}}async function handleGenerateRecs(tripKey,startDate,endDate){
+  if(!apiUrl||!apiToken)return;
+  setBusy(true);
+  setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:'loading'});});
+  // Note where the existing batch stands, so a batch stamped later than this is
+  // provably the run we are about to start rather than something already there.
+  let prevStamp='';
+  try{const before=await apiGet(apiUrl,apiToken,{action:'recommendations',tripKey});prevStamp=latestRecStamp_(before.recs);}catch(e){/* first run, or unreadable — an empty stamp still works */}
+  function finish(recs,msg){setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:recs||[]});});showToast(msg);}
+  try{
+    // noRetry: a silent second attempt would start the whole generation again.
+    const data=await apiGet(apiUrl,apiToken,{action:'generate_recommendations',tripKey,startDate,endDate},{noRetry:true});
+    finish(data.recs,'✨ Recommendations generated by VERA');
+  }catch(err){
+    // A network-level failure here means the browser stopped waiting, not that
+    // VERA stopped working — the picks are written to the sheet before the
+    // response is sent. Give the run a few more minutes and collect them.
+    setError('Still generating — VERA is slower than your connection\u2019s patience. Waiting for the picks…');
+    const recovered=await pollForNewRecs_(apiUrl,apiToken,tripKey,prevStamp,16);
+    if(recovered){setError('');finish(recovered,'✨ Recommendations generated by VERA');}
+    else{setRecommendations(function(prev){const n=Object.assign({},prev);delete n[tripKey];return n;});setError('Generate failed: '+err.message);}
+  }
+  setBusy(false);
+}async function handleAcceptRec(recId,tripKey){if(!apiUrl||!apiToken)return;setBusy(true);try{const data=await apiGet(apiUrl,apiToken,{action:'accept_recommendation',recId,tripKey});setRecommendations(function(prev){return Object.assign({},prev,{[tripKey]:data.recs||[]});});// Reload itinerary so the new item appears
 const trip=(pto&&pto.ahmedStats&&pto.ahmedStats.upcomingTravel||[]).find(function(t){return t.startDate+'|'+t.label===tripKey;});if(trip)loadItinerary(tripKey,trip.startDate,trip.endDate);showToast('✅ Added to your itinerary');}catch(err){setError('Could not add recommendation: '+err.message);}setBusy(false);}async function handleDismissRec(recId){if(!apiUrl||!apiToken)return;try{await apiGet(apiUrl,apiToken,{action:'update_recommendation',id:recId,status:'dismissed'});// Optimistic update — mark dismissed in local state
 setRecommendations(function(prev){const updated={};Object.keys(prev).forEach(function(tk){const recs=prev[tk];if(!Array.isArray(recs)){updated[tk]=recs;return;}updated[tk]=recs.map(function(r){return r.id===recId?Object.assign({},r,{status:'dismissed'}):r;});});return updated;});}catch(err){setError('Could not dismiss recommendation');}}// ---- End recommendations handlers -------------------------------------------
 function handleConnect(url,token){setApiUrl(url);setApiToken(token);setShowSettings(false);loadAll(url,token,filterActive);loadGoogleTasks(url,token);loadProjects(url,token);loadGoals(url,token);loadInterests(url,token);loadIdeas(url,token);loadShopping(url,token);loadPTO(url,token);}// ---- Render ----
