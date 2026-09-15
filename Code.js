@@ -290,6 +290,7 @@ function createSheetTabs(ss) {
     ['pto_rollover_days',      '0'],   // days carried over from prior year (Issue #49)
     ['pto_personal_hours',     '48'],  // annual personal time (hours)
     ['pto_buffer_days',        '3'],   // reserve days held back from planning
+    ['pto_accrual_day',        '16'],  // day of month the monthly vacation accrual posts (Jan-Oct)
     ['weather_location',       ''],    // city name for weather ticker, e.g. "Austin, TX"
     ['email_parser_enabled',       'false'], // set to 'true' to enable 30-min inbox scan (Issue #98)
     ['pretrip_briefing_enabled',   'true'],  // set to 'false' to disable pre-trip briefing flags (Issue #81)
@@ -3109,6 +3110,7 @@ function addPTOConfig() {
     ['pto_personal_hours',         '48'],   // annual personal time (hours)
     ['pto_rollover_days',          '0'],    // days carried over from prior year
     ['pto_buffer_days',            '3'],    // reserve days held back from planning
+    ['pto_accrual_day',            '16'],   // day of month the monthly vacation accrual posts (Jan-Oct)
     ['pto_year',                   String(new Date().getFullYear())],
     ['gap_calendars',              'Verizon Calendar'],
     ['milestone_keywords',         'Wedding,Graduation,Trip,Travel,Concert,Birthday'],

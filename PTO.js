@@ -17,6 +17,17 @@
 
 // ---- Config -----------------------------------------------------------------
 
+// Day of the month the monthly vacation accrual posts (Jan-Oct only).
+//
+// One constant rather than a literal at each use site: readPTOConfig_ and
+// computeAccrualCapStatus_ each applied their own fallback, so changing the
+// date in one place left the other disagreeing with it silently.
+//
+// A pto_accrual_day row in Config overrides this. That row is not seeded by
+// setupVERA, so on a sheet that has never had one added by hand, this value is
+// what actually governs.
+var PTO_DEFAULT_ACCRUAL_DAY_ = 16;
+
 /**
  * Reads all pto_* keys from the Config tab.
  * @returns {Object} structured config
@@ -47,9 +58,9 @@ function readPTOConfig_() {
     rolloverDays:      parseInt(raw['rollover_days']  || '0',  10),
     bufferDays:        parseInt(raw['buffer_days']    || '3',  10),
     // Day of month Verizon posts the monthly vacation accrual (Jan-Oct only).
-    // Not stated anywhere else in this codebase — defaults to the 15th ("mid
-    // month") per pto_accrual_day in Config; adjust there if the real date differs.
-    accrualDay:        parseInt(raw['accrual_day']    || '15', 10),
+    // Override per household with pto_accrual_day in Config; a row there wins
+    // over the default below.
+    accrualDay:        parseInt(raw['accrual_day'] || String(PTO_DEFAULT_ACCRUAL_DAY_), 10),
     gapCalendarsRaw:   raw['gap_calendars'] || 'Verizon Calendar,AE&VV - Our Joint Chaos',
     milestoneKeywords: (raw['milestone_keywords'] || 'Wedding,Graduation,Trip,Travel,Concert,Birthday')
                        .split(',').map(function(k) { return k.trim().toLowerCase(); }),
@@ -1241,7 +1252,7 @@ function computeAccrualCapStatus_(cfg, usedVacDays, events, today) {
   var currentBalanceHrs = (cfg.vacationDays + cfg.rolloverDays - usedVacDays) * 8;
 
   // ---- Next monthly accrual date (Jan-Oct only) ----------------------------
-  var accrualDay = cfg.accrualDay || 15;
+  var accrualDay = cfg.accrualDay || PTO_DEFAULT_ACCRUAL_DAY_;
   var y = today.getFullYear();
   var m = today.getMonth(); // 0-11
   var d = today.getDate();
