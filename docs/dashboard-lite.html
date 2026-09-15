@@ -7701,9 +7701,26 @@ function App() {
         <div className="header-actions">
           <button
             className="btn btn-refresh"
-            onClick={() => loadShopping(apiUrl, apiToken)}
-            disabled={!apiUrl || !apiToken}
-            title="Refresh list"
+            onClick={() => {
+              // Hard refresh, matching the full dashboard's header button.
+              //
+              // This used to call loadShopping() alone — a leftover from when
+              // this page was just the shopping list. It now has ~28 loaders,
+              // so the button was refreshing one panel out of 28 while looking
+              // like it refreshed everything.
+              //
+              // A plain reload() can still serve a stale cached bundle on
+              // mobile browsers (Safari especially), which is the case that
+              // matters most here since this is the phone view. Making the URL
+              // "new" with a cache-busting param forces a real network fetch.
+              // Credentials live in localStorage, so the reload keeps the
+              // connection; searchParams.set replaces rather than appends, so
+              // the param never accumulates.
+              const u = new URL(window.location.href);
+              u.searchParams.set('_r', Date.now());
+              window.location.href = u.toString();
+            }}
+            title="Hard refresh — reload the page and every panel, bypassing the cache"
           >
             ↺
           </button>
