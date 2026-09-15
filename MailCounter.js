@@ -56,6 +56,7 @@ function parsePackagesArrivingToday_(body) {
  * Called by a 10am daily trigger installed by setupTriggers().
  */
 function scanUSPSMail_() {
+  var _umStart = Date.now();
   try {
     var props   = PropertiesService.getScriptProperties();
     var lastScan = props.getProperty('MAIL_COUNTER_LAST_SCAN') || '2000-01-01T00:00:00.000Z';
@@ -114,8 +115,19 @@ function scanUSPSMail_() {
     });
 
     Logger.log('📬 Mail scan complete. +'  + mailDelta + ' pieces, +' + pkgDelta + ' packages. Totals: ' + (currentPieces + mailDelta) + ' / ' + (currentPkgs + pkgDelta));
+
+    // This scanner had no audit trail at all until now — a parser silently
+    // returning zero because USPS changed their email format was invisible.
+    recordFeedResult_('gmail:usps', mailDelta + pkgDelta);
+    veraLog_('scanUSPSMail', 'Email', 'Success',
+      '+' + mailDelta + ' piece(s), +' + pkgDelta + ' package(s) from ' +
+      threads.length + ' thread(s)', Date.now() - _umStart);
   } catch (err) {
     Logger.log('⚠ scanUSPSMail_ error: ' + err.message);
+    veraLog_('scanUSPSMail', 'Email', 'Failed', '', Date.now() - _umStart, err.message);
+  } finally {
+    try { recordHeartbeat_('scanUSPSMail_'); } catch (hbErr) {}
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 

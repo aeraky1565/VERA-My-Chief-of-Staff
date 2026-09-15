@@ -287,9 +287,9 @@ function sendPostTripNudgeEmail_(trip) {
     'Open Chat and say: "Let\'s debrief the ' + trip.tripLabel + ' trip."\n\n' +
     'A recap email will land in 48 hours with the full summary.\n\n— VERA';
 
-  MailApp.sendEmail(
+  sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain,
-    { name: 'VERA Travel', htmlBody: htmlBody });
+    { name: 'VERA Travel', htmlBody: htmlBody }, 'posttrip_nudge');
   props.setProperty(safeKey, new Date().toISOString());
   Logger.log('sendPostTripNudgeEmail_: sent for ' + trip.tripKey);
 }
@@ -490,9 +490,9 @@ function sendPostTripRecapEmail_(trip) {
   if (hasDebrief) plain.push('Memories saved to your log.', '');
   plain.push('— VERA');
 
-  MailApp.sendEmail(
+  sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
-    { name: 'VERA Travel', htmlBody: htmlBody });
+    { name: 'VERA Travel', htmlBody: htmlBody }, 'posttrip_recap');
   props.setProperty(safeKey, new Date().toISOString());
   Logger.log('sendPostTripRecapEmail_: sent for ' + trip.tripKey + (hasDebrief ? ' (with debrief)' : ' (itinerary-only)'));
 }

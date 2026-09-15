@@ -508,6 +508,12 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   } catch (err) {
     Logger.log('checkFlightStatuses_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('checkFlightStatuses', 'Travel', 'Failed', '', Date.now() - _fsStart, err.message);
+  } finally {
+    // Runs every 15 minutes and no-ops with no flights booked — which is most of
+    // the time. The heartbeat records that the trigger fired, not that it found
+    // anything, so an empty travel calendar never reads as a dead poller.
+    try { recordHeartbeat_('checkFlightStatuses_'); } catch (hbErr) {}
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 

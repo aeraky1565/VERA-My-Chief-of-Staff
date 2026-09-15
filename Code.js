@@ -102,6 +102,7 @@ const TABS = {
   WELLNESS_LOG:    'Wellness Log',    // Daily wellness inputs + Google Fit sleep (Feature 12)
   HOUSEHOLD_INFO:  'HouseholdInfo',   // Household cheat sheet — insurance, utilities, contacts, etc.
   BANK_ACCOUNTS:   'Bank Accounts',   // Bank/payment account tracker — metadata + min-balance for bills
+  SYSTEM_LOG:      'System Log',      // Persisted veraLog_ audit trail (previously Slack-only)
 };
 
 // ---- Notification Registry (Issue #188) ------------------------------------
@@ -137,6 +138,13 @@ const NOTIF_REGISTRY = [
   // System Logs (locked)
   { key: 'nightly_log',         label: 'Nightly Run Summary',   emoji: '📋', category: 'System Logs',          channel: 'vera-logs',          description: 'Nightly automation summary', locked: true },
   { key: 'error_alerts',        label: 'Error Alerts',          emoji: '⚠️',  category: 'System Logs',          channel: 'vera-logs',          description: 'System error notifications', locked: true },
+  // System Health — the watchdog's three delivery paths, each switchable on its
+  // own so the modal offers all three, any one, or none. fixedChannel means the
+  // destination is inherent to the path and not a dropdown, while the ON/OFF
+  // toggle still applies (unlike locked, which removes the toggle entirely).
+  { key: 'watchdog_flag',       label: 'Watchdog → Flag',       emoji: '🚩', category: 'System Health',        channel: 'flag',               description: 'Open a Flag when a job stops running or a feed goes quiet', locked: false, fixedChannel: true },
+  { key: 'watchdog_email',      label: 'Watchdog → Morning Email', emoji: '📧', category: 'System Health',     channel: 'email',              description: 'Add watchdog notices to the morning briefing', locked: false, fixedChannel: true },
+  { key: 'watchdog_slack',      label: 'Watchdog → Slack',      emoji: '💬', category: 'System Health',        channel: 'vera-logs',          description: 'Post watchdog notices to #vera-logs', locked: false, fixedChannel: true },
 ];
 
 function isNotifEnabled_(key) {
@@ -182,6 +190,7 @@ const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', '
 // Status records the verdict, including 'no_route' / 'not_found', so a pair that
 // can never work (two Caribbean islands, say) is asked about once and never again.
 const TRAVEL_LEGS_HEADERS       = ['From', 'To', 'Mode', 'Minutes', 'Distance', 'Status', 'Computed At'];
+const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const GYM_LOG_HEADERS          = ['ID', 'Event Title', 'Event Date', 'Attended', 'Logged At'];
@@ -316,6 +325,7 @@ function createSheetTabs(ss) {
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
+    ['system_log_retention_days', '45'],  // How long the System Log tab keeps entries before the nightly prune
   ];
 
   // Seed notif_*_enabled = TRUE for each registry entry if missing (Issue #188)
@@ -348,6 +358,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.TRAVEL_LEGS,           TRAVEL_LEGS_HEADERS);
+  ensureSheet(ss, TABS.SYSTEM_LOG,            SYSTEM_LOG_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
   ensureSheet(ss, TABS.GYM_LOG,              GYM_LOG_HEADERS);
@@ -809,6 +820,7 @@ function nightlyRun() {
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     try { writeWeeklySnapshot_(); }    catch (wsErr)  { Logger.log('writeWeeklySnapshot_ error (non-fatal): '    + wsErr.message);  stepFailures.push('writeWeeklySnapshot_: '    + wsErr.message);  }
     try { pruneMemoryLog_(); }         catch (pmErr)  { Logger.log('pruneMemoryLog_ error (non-fatal): '         + pmErr.message);  stepFailures.push('pruneMemoryLog_: '         + pmErr.message);  }
+    try { pruneSystemLog_(); }         catch (pslErr) { Logger.log('pruneSystemLog_ error (non-fatal): '         + pslErr.message); stepFailures.push('pruneSystemLog_: '         + pslErr.message); }
     try { sendWeeklyTrendReview_(); }  catch (wtrErr) { Logger.log('sendWeeklyTrendReview_ error (non-fatal): '  + wtrErr.message); stepFailures.push('sendWeeklyTrendReview_: '  + wtrErr.message); }
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
@@ -953,17 +965,27 @@ function nightlyRun() {
     Logger.log('VERA nightly run ERROR: ' + e.message + '\n' + e.stack);
     // Issue #158: Send failure alert to #vera-logs
     try { sendSlackLog_('\u274c Nightly run FAILED: ' + e.message + ' (' + (e.fileName || 'Code') + ':' + (e.lineNumber || '?') + ')'); } catch (se) {}
+    try { veraLog_('nightlyRun', 'Nightly', 'Failed', '', 0, e.message); } catch (le) {}
     try {
-      MailApp.sendEmail(
+      sendVeraEmail_(
         CONFIG.MORNING_NUDGE_EMAIL,
         'VERA Error — Nightly Run Failed',
         'VERA encountered an error during the nightly run.\n\n' +
         'Error: ' + e.message + '\n\n' +
-        'Stack:\n' + e.stack
+        'Stack:\n' + e.stack,
+        {},
+        'nightly_error'
       );
     } catch (mailErr) {
       Logger.log('Also failed to send error email: ' + mailErr.message);
     }
+  } finally {
+    // The trigger fired — that is what a heartbeat records, success or not.
+    // Whether the run went WELL is reported separately, above.
+    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}
+    // Flushed here rather than only on the happy path: a run that died is
+    // exactly the run whose log you want to read afterwards.
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 
@@ -2281,7 +2303,7 @@ function checkCardPerksExpiring_() {
             daysUntil:      daysUntil,
             reason:         reason,
           });
-          MailApp.sendEmail(recipients.join(','), subject, plainBody, { name: 'VERA', htmlBody: htmlBody });
+          sendVeraEmail_(recipients.join(','), subject, plainBody, { name: 'VERA', htmlBody: htmlBody }, 'card_perk_expiry');
         } catch (emailErr) {
           Logger.log('checkCardPerksExpiring_: email error for ' + id + ' — ' + emailErr.message);
         }
@@ -2725,11 +2747,28 @@ function morningNudge() {
     let stalenessPlainText  = '';
     try {
       const degradedList = getDegradedSources_();
-      if (degradedList.length > 0) {
+
+      // Watchdog notices ride in the same block rather than adding a second
+      // warning surface. "This data failed to refresh" and "this job stopped
+      // running" are the same sentence to a reader at 7am.
+      let watchdogLines = [];
+      try {
+        if (isNotifEnabled_('watchdog_email')) {
+          watchdogLines = runWatchdog_().lines;
+        } else {
+          runWatchdog_();   // still run it — the flag and Slack paths have their own toggles
+        }
+      } catch (wdErr) {
+        Logger.log('morningNudge: watchdog error — ' + wdErr.message);
+      }
+
+      if (degradedList.length > 0 || watchdogLines.length > 0) {
         const items = degradedList.map(function(d) {
           return '<li style="margin:0 0 3px;">' + d.source +
                  ' <span style="color:#999999;">(last good data: ' + d.staleForText + ')</span></li>';
-        }).join('');
+        }).concat(watchdogLines.map(function(l) {
+          return '<li style="margin:0 0 3px;">' + l + '</li>';
+        })).join('');
         stalenessNotice =
           '<div style="margin-top:24px;padding:12px 14px;background:#fff8e6;border-left:3px solid #e8b44a;border-radius:4px;">' +
           '<p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#8a6d1f;letter-spacing:0.5px;text-transform:uppercase;">⚠️ Some data is not live</p>' +
@@ -2738,7 +2777,9 @@ function morningNudge() {
         stalenessPlainText = '\nNOT LIVE — these sources failed to refresh:\n' +
           degradedList.map(function(d) {
             return '  - ' + d.source + ' (last good data: ' + d.staleForText + ')';
-          }).join('\n') + '\n';
+          }).concat(watchdogLines.map(function(l) {
+            return '  - ' + l;
+          })).join('\n') + '\n';
       }
     } catch (staleErr) {
       Logger.log('morningNudge: staleness notice error — ' + staleErr.message);
@@ -2954,16 +2995,25 @@ function morningNudge() {
 
     var morningCh = getNotifChannel_('morning_briefing');
     if (morningCh === 'email') {
-      MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions);
+      sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, subject, plainText, mailOptions, 'morning_briefing');
       Logger.log('Morning nudge sent (HTML email): ' + total + ' active flags.');
     } else {
       sendSlack_(morningCh, plainText);
       Logger.log('Morning nudge sent (Slack/' + morningCh + '): ' + total + ' active flags.');
     }
 
+    // Recorded after delivery and deliberately channel-agnostic: this answers
+    // "did the briefing actually go out", which the morningNudge heartbeat
+    // (which only says the trigger fired) cannot. Naming it per-channel would
+    // turn a Slack/email switch in the modal into a false alarm.
+    try { recordHeartbeat_('delivery:morning_briefing'); } catch (hbErr) {}
+
   } catch (e) {
     Logger.log('morningNudge ERROR: ' + e.message + '\n' + (e.stack || ''));
     try { sendSlackLog_('❌ *morningNudge* [Nightly] — Failed — ' + e.message); } catch (se) {}
+  } finally {
+    try { recordHeartbeat_('morningNudge'); } catch (hbErr) {}
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 

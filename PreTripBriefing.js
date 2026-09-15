@@ -700,9 +700,9 @@ function sendPreTripEmail_48h_(trip) {
   if (weatherText) plain.push('', 'WEATHER\n' + weatherText.substring(0, 300));
   plain.push('', '— VERA');
 
-  MailApp.sendEmail(
+  sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
-    { name: 'VERA Travel', htmlBody: htmlBody });
+    { name: 'VERA Travel', htmlBody: htmlBody }, 'pretrip_48h');
   props.setProperty(safeKey, new Date().toISOString());
   Logger.log('sendPreTripEmail_48h_: sent for ' + trip.tripKey);
 }
@@ -856,9 +856,9 @@ function sendPreTripEmail_NightBefore_(trip) {
   if (tip) plain.push('Tip: ' + tip, '');
   plain.push('— VERA');
 
-  MailApp.sendEmail(
+  sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
-    { name: 'VERA Travel', htmlBody: htmlBody });
+    { name: 'VERA Travel', htmlBody: htmlBody }, 'pretrip_night_before');
   props.setProperty(safeKey, new Date().toISOString());
   Logger.log('sendPreTripEmail_NightBefore_: sent for ' + trip.tripKey);
 }

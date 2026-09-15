@@ -24,6 +24,7 @@ var NEIGHBORHOOD_HOA_URL_KEY = 'NEIGHBORHOOD_HOA_URL';
  * Called by a weekly Monday 9am trigger installed by setupTriggers().
  */
 function scanHoaWebsite_() {
+  var _hoaStart = Date.now();
   try {
     var props  = PropertiesService.getScriptProperties();
     var hoaUrl = props.getProperty(NEIGHBORHOOD_HOA_URL_KEY);
@@ -136,8 +137,21 @@ function scanHoaWebsite_() {
     }
 
     Logger.log('🏘 HOA scan complete. ' + items.length + ' items found, ' + flags.length + ' flags written.');
+
+    // Like the USPS scanner, this had no audit trail: a page redesign that made
+    // the parser return zero items looked exactly like a quiet HOA.
+    recordFeedResult_('web:hoa', items.length);
+    veraLog_('scanHoaWebsite', 'Planning', 'Success',
+      items.length + ' item(s) found, ' + flags.length + ' flag(s) written',
+      Date.now() - _hoaStart);
   } catch (err) {
     Logger.log('⚠ scanHoaWebsite_ error: ' + err.message);
+    veraLog_('scanHoaWebsite', 'Planning', 'Failed', '', Date.now() - _hoaStart, err.message);
+  } finally {
+    // Recorded even when NEIGHBORHOOD_HOA_URL is unset and the function returns
+    // immediately — an unconfigured scanner is not a broken trigger.
+    try { recordHeartbeat_('scanHoaWebsite_'); } catch (hbErr) {}
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 

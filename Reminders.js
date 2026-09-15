@@ -67,6 +67,15 @@ function hourlyCheck() {
   } catch (e) {
     Logger.log('hourlyCheck error: ' + e.message + '\n' + e.stack);
     try { sendSlackLog_('❌ *hourlyCheck* [Reminders] — Failed — ' + e.message); } catch (se) {}
+  } finally {
+    // In finally, not at the end of the try: this function returns early when
+    // reminders_enabled is false, and a disabled feature is still a trigger that
+    // fired. Recording only on the long path would report working code as dead.
+    try { recordHeartbeat_('hourlyCheck'); } catch (hbErr) {}
+    // A second, independent place the watchdog runs from. If the nightly run is
+    // the thing that died, it cannot be the thing that notices.
+    try { runWatchdog_(); } catch (wdErr) { Logger.log('hourlyCheck: watchdog error — ' + wdErr.message); }
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 
@@ -839,7 +848,7 @@ function sendNudge_(ruleKey, subject, message, notifKey) {
   var ch = notifKey ? getNotifChannel_(notifKey) : (isSlackConfigured_() ? 'vera-notifications' : 'email');
   var channel, delivered;
   if (ch === 'email') {
-    MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: ' + subject, message, { name: 'VERA' });
+    sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: ' + subject, message, { name: 'VERA' }, notifKey || 'reminder');
     Logger.log('sendNudge_ [Email]: ' + ruleKey);
     channel = 'email';
     delivered = true;   // MailApp.sendEmail throws on failure rather than failing silently

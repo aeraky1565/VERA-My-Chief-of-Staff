@@ -49,6 +49,10 @@ function runEmailScan_() {
 
   if (!candidates.length) {
     Logger.log('EmailParser — no new candidates, exiting');
+    // Success, but nothing produced. Recording the distinction is the point:
+    // a broken Gmail query and a quiet inbox both land here, and until now they
+    // were written into the log with identical words.
+    recordFeedResult_('gmail:travel-parser', 0);
     veraLog_('runEmailScan', 'Email', 'Success', 'No new travel emails found (' + threads.length + ' threads checked)', Date.now() - _epStart);
     return;
   }
@@ -91,12 +95,19 @@ function runEmailScan_() {
   }
 
   Logger.log('EmailParser — scan complete');
+  recordFeedResult_('gmail:travel-parser', candidates.length);
   veraLog_('runEmailScan', 'Email', 'Success',
     candidates.length + ' candidate(s) classified from ' + threads.length + ' thread(s)',
     Date.now() - _epStart);
   } catch (err) {
     Logger.log('runEmailScan_ FATAL: ' + err.message + '\n' + (err.stack || ''));
     veraLog_('runEmailScan', 'Email', 'Failed', '', Date.now() - _epStart, err.message);
+  } finally {
+    // Recorded even on the disabled early-return above: email_parser_enabled
+    // defaults to false, and a switched-off feature is still a trigger that
+    // fired on schedule. Alarming on it would be alarming on correct behaviour.
+    try { recordHeartbeat_('runEmailScan_'); } catch (hbErr) {}
+    try { flushSystemLog_(); } catch (flErr) {}
   }
 }
 

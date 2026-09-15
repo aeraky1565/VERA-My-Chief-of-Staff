@@ -505,7 +505,7 @@ function sendMonthlyReviewEmail_(label, reviewText) {
 
   var reviewCh = getNotifChannel_('monthly_review');
   if (reviewCh === 'email') {
-    MailApp.sendEmail(to, '📅 ' + label + ' Life Review', reviewText, { name: 'VERA', htmlBody: htmlBody, inlineImages: inlineImages });
+    sendVeraEmail_(to, '📅 ' + label + ' Life Review', reviewText, { name: 'VERA', htmlBody: htmlBody, inlineImages: inlineImages }, 'monthly_review');
     Logger.log('sendMonthlyReviewEmail_: sent email to ' + to);
   } else {
     sendSlack_(reviewCh, '🌙 *' + label + ' Life Review*\n\n' + reviewText.substring(0, 3000));

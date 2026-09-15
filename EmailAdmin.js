@@ -156,6 +156,7 @@ function runEmailAdmin_() {
     props.setProperty(EMAIL_ADMIN_LAST_SCAN_KEY, now.toISOString());
     sendSlackLog_(':mailbox: Email Admin: no new emails to process');
     Logger.log('runEmailAdmin_: no candidates after filtering — done.');
+    recordFeedResult_('gmail:email-admin', 0);
     veraLog_('runEmailAdmin', 'Email', 'Success', 'No new emails to process', Date.now() - _eaStart);
     return;
   }
@@ -284,6 +285,7 @@ function runEmailAdmin_() {
 
   sendSlackNotification_(lines.join('\n'), null, 'Low');
   Logger.log('runEmailAdmin_: complete. ' + JSON.stringify(counts));
+  recordFeedResult_('gmail:email-admin', candidates.length);
   veraLog_('runEmailAdmin', 'Email', 'Success',
     candidates.length + ' email(s) classified — ' +
       counts.needs_reply + ' needs reply, ' + counts.follow_up + ' follow-up, ' +

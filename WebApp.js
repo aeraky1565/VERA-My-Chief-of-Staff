@@ -9638,7 +9638,7 @@ function webGetNotificationMap_() {
     return {
       key: n.key, label: n.label, emoji: n.emoji, category: n.category,
       channel: channelOverride || n.channel, description: n.description,
-      enabled: enabled, locked: n.locked
+      enabled: enabled, locked: n.locked, fixedChannel: !!n.fixedChannel
     };
   });
   return { ok: true, notifications: notifications };
@@ -9679,6 +9679,9 @@ function webSetNotifChannel_(e) {
   var entry = NOTIF_REGISTRY.find(function(r) { return r.key === key; });
   if (!entry) return { ok: false, error: 'unknown key' };
   if (entry.locked) return { ok: false, error: 'locked' };
+  // A fixed-channel entry's destination is inherent to what it does — a watchdog
+  // flag cannot be delivered to Slack — so only its ON/OFF toggle is settable.
+  if (entry.fixedChannel) return { ok: false, error: 'channel is fixed for this notification' };
   var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
   if (!sheet) return { ok: false, error: 'Config sheet not found' };
   var configKey = 'notif_' + key + '_channel';

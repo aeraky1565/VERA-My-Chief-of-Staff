@@ -222,8 +222,8 @@ function runWeekendPlanner_() {
   // plain-text fallback for clients that don't render HTML.
   var htmlBody = buildWeekendMemoHtml_(memo, weatherData, carryNote, curatedLocalEvents, radarDates,
                                         weekendCapacity, saturday, calendarLink);
-  MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekend Memo', description,
-                     { name: 'VERA', htmlBody: htmlBody });
+  sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekend Memo', description,
+                  { name: 'VERA', htmlBody: htmlBody }, 'weekend_memo');
   Logger.log('runWeekendPlanner_: HTML email sent (' + htmlBody.length + ' chars)');
 
   // 3. Short Slack ping — points at the email rather than duplicating it.

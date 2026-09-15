@@ -430,7 +430,7 @@ function sendWeeklyTrendReview_() {
     // Deliver
     var ch = getNotifChannel_('weekly_trend_review');
     if (ch === 'email') {
-      MailApp.sendEmail(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekly Trend Review — ' + dateStr, message, { name: 'VERA' });
+      sendVeraEmail_(CONFIG.MORNING_NUDGE_EMAIL, 'VERA: Weekly Trend Review — ' + dateStr, message, { name: 'VERA' }, 'weekly_trend_review');
       Logger.log('sendWeeklyTrendReview_: sent via email');
     } else {
       sendSlack_(ch, message);

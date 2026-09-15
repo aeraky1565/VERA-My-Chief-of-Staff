@@ -395,7 +395,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
 
   var travelCh = getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
-    MailApp.sendEmail(recipients.join(','), subject, plainText, { name: 'Travel Briefing', htmlBody: htmlBody });
+    sendVeraEmail_(recipients.join(','), subject, plainText, { name: 'Travel Briefing', htmlBody: htmlBody }, 'travel_day_briefing');
     Logger.log('TravelDayBriefing: sent email for "' + tripLabel + '" to ' + recipients.join(', '));
   } else {
     sendSlack_(travelCh, '✈️ *' + subject + '*\n\n' + plainText);
