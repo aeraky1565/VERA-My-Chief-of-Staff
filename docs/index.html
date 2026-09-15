@@ -605,11 +605,27 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
       background: rgba(0,0,0,0.75);
       bottom: 0; left: 0; right: 0; top: 0;
       display: flex;
-      align-items: center;
+      /* flex-start plus margin-block:auto on the child, NOT align-items:center.
+         A centred flex child taller than its container overflows equally off
+         both ends, and a scroll container cannot scroll above its own start
+         edge — so the top of a tall modal becomes permanently unreachable.
+         Auto margins centre it when there is room and top-align it when there
+         is not, which is the behaviour that actually works in both cases. */
+      align-items: flex-start;
       justify-content: center;
       position: fixed;
       z-index: 200;
+      /* The overlay was fixed with no overflow, so a modal taller than the
+         viewport had nowhere to scroll: its save button sat off-screen while
+         the page behind scrolled freely. */
+      overflow-y: auto;
+      overscroll-behavior: contain;      /* don't chain the scroll to the page behind */
+      -webkit-overflow-scrolling: touch;
+      /* Vertical only. .modal is max-width:95vw, and horizontal padding here
+         would push it past the viewport and add a sideways scrollbar. */
+      padding: 24px 0;
     }
+    .modal-overlay > * { margin-block: auto; }
     .modal {
       background: #0d1b3e;
       border: 1px solid #1e3060;
@@ -1245,6 +1261,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
 
       /* Modals — reduce inner padding */
       .modal { padding: 20px; border-radius: 10px; }
+      .modal-overlay { padding: 12px 0; }
 
       /* Chat bubbles — use more of the available width */
       .chat-msg { max-width: 90%; }
