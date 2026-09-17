@@ -436,6 +436,7 @@ function PTOMonthlyChart({stats}){
   var scale=Math.max.apply(null,totals.concat([1]));
 
   var remainingVac=(stats.remaining&&stats.remaining.vacationDays)||0;
+  var remainingPers=(stats.remaining&&stats.remaining.personalHours)||0;
   var monthsLeft=curMonth>=0&&curMonth<12?12-curMonth:0;
   function fmt(n){return String(Math.round(n*10)/10).replace(/\.0$/,'');}
 
@@ -473,14 +474,24 @@ function PTOMonthlyChart({stats}){
             segs.map(function(s,k){return React.createElement("span",{key:k,className:"pto-month-seg "+s.cls,style:{width:(s.v/scale*100)+'%'}});})),
           React.createElement("span",{className:"pto-month-val"},totals[i]>0?fmt(totals[i])+'d':'—'));
       }),
-      // A stated remainder, not a fabricated per-month allocation: VERA has no
-      // basis for deciding WHICH future month the unplaced days belong to.
+      // Stated remainders, not a fabricated per-month allocation: VERA has no
+      // basis for deciding WHICH future month the unplaced time belongs to.
+      // One line per pool, hued to match its card and its bar segments.
       React.createElement("div",{className:"pto-month-foot"},
         remainingVac>0&&monthsLeft>0
-          ? React.createElement("span",null,"🗓 ",React.createElement("strong",{style:{color:'#c9a84c'}},fmt(remainingVac)," day",remainingVac===1?'':'s'," still unplaced")," · ",monthsLeft," month",monthsLeft===1?'':'s'," left to place ",remainingVac===1?'it':'them')
+          ? React.createElement("span",{className:"foot-vac"},"🗓 ",React.createElement("strong",{style:{color:'#c9a84c'}},fmt(remainingVac)," day",remainingVac===1?'':'s'," still unplaced")," · ",monthsLeft," month",monthsLeft===1?'':'s'," left to place ",remainingVac===1?'it':'them')
           : remainingVac>0
-            ? React.createElement("span",null,fmt(remainingVac)," vacation day",remainingVac===1?'':'s'," went unused in ",year,".")
-            : React.createElement("span",null,"✓ Every vacation day is used or planned."))
+            ? React.createElement("span",{className:"foot-vac"},fmt(remainingVac)," vacation day",remainingVac===1?'':'s'," went unused in ",year,".")
+            : React.createElement("span",{className:"foot-vac"},"✓ Every vacation day is used or planned."),
+        // No "months left" clause here on purpose — the vacation line above
+        // already states the deadline, and repeating it reads as two separate
+        // ones. Hours rather than days, to agree with the Personal Time card
+        // directly above; the bars only convert to days for a shared scale.
+        remainingPers>0&&monthsLeft>0
+          ? React.createElement("span",{className:"foot-pers"},"☀️ ",React.createElement("strong",{style:{color:'#5c9eff'}},fmt(remainingPers)," hr",remainingPers===1?'':'s'," personal time")," still unplaced")
+          : remainingPers>0
+            ? React.createElement("span",{className:"foot-pers"},fmt(remainingPers)," hr",remainingPers===1?'':'s'," personal time went unused in ",year,".")
+            : React.createElement("span",{className:"foot-pers"},"✓ All personal time is used or planned."))
     ));
 }
 
