@@ -7,7 +7,8 @@
 // Counters accumulate until user resets via "Got the mail!" button.
 //
 // Script Properties used:
-//   MAIL_COUNTER_PIECES        — integer string, running total of mail pieces
+//   MAIL_COUNTER_PIECES        — integer string, running total of mailpieces that
+//                                actually arrived (see parseMailArrivingToday_)
 //   MAIL_COUNTER_PACKAGES      — integer string, running total of packages that
 //                                actually arrived (see parsePackagesArrivingToday_)
 //   MAIL_COUNTER_LAST_SCAN     — ISO timestamp of newest email already processed
@@ -50,9 +51,47 @@ function parsePackagesArrivingToday_(body) {
 }
 
 /**
+ * Pulls the "arriving today" mailpiece count out of a USPS Daily Digest body.
+ *
+ * Same problem as packages, one section higher. The headline — "You have 2
+ * mailpiece(s) and 0 inbound package(s) arriving soon" — counts mail arriving
+ * this WEEK. The MAIL section splits it:
+ *
+ *   MAIL  View Dashboard
+ *     Expected Today      1 item(s)
+ *     Expected This Week  1 item(s)
+ *
+ * The Sep 17 2026 digest is exactly that: headline 2, but only 1 landing in the
+ * mailbox that day. Reading the headline added 2 and the counter drifted up.
+ *
+ * Bounded to the text BEFORE the PACKAGES heading, which is not a nicety: on a
+ * zero-mail day the MAIL section has no "Expected Today" line at all (Sep 13
+ * 2026), so an unbounded search walks on and reads the PACKAGES bucket as if it
+ * were mail. Measured across four real digests, the MAIL bucket sits near index
+ * 14300 and the PACKAGES heading near 19500, and PACKAGES is always present —
+ * even with no packages, where it reads "No packages are available to display".
+ *
+ * Returns 0 when the bucket is absent rather than falling back to the headline:
+ * the fallback would reinstate the over-count on precisely the days it matters,
+ * and no bucket genuinely means no mail today. A USPS layout change would show
+ * up as a drought on the 'gmail:usps' feed rather than as silence.
+ *
+ * @param {string} body  Digest body with HTML tags already stripped.
+ * @return {number} Mailpieces arriving today; 0 if the bucket isn't present.
+ */
+function parseMailArrivingToday_(body) {
+  var text   = String(body || '');
+  var pkgIdx = text.search(/\bPACKAGES\b/i);
+  var region = pkgIdx === -1 ? text : text.slice(0, pkgIdx);
+  var match  = region.match(/Expected\s+Today\s+(\d+)\s+item/i);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
  * Scans Gmail for USPS Informed Delivery emails and increments counters.
- * Both counters accumulate until the user hits "Got the mail!" — packages
- * count only what arrives each day, not everything in transit.
+ * Both counters accumulate until the user hits "Got the mail!", and both count
+ * only what the digest says is arriving TODAY — not everything in transit or
+ * due later in the week.
  * Called by a 10am daily trigger installed by setupTriggers().
  */
 function scanUSPSMail_() {
@@ -82,16 +121,9 @@ function scanUSPSMail_() {
         Logger.log('📧 Processing email from ' + msgDate.toISOString() + ' | body preview: ' + body.replace(/\s+/g, ' ').substring(0, 300));
 
         // --- Parse mail pieces ---
-        // "3 mailpiece(s)"  ← actual USPS format
-        // "3 pieces of First-Class Mail" / "1 piece of mail" / "2 mail pieces"  ← legacy
-        var pieceMatch1 = body.match(/(\d+)\s+mailpiece/i);
-        var pieceMatch2 = body.match(/(\d+)\s+pieces?\s+of\s+(?:First-Class\s+)?[Mm]ail/);
-        var pieceMatch3 = body.match(/(\d+)\s+[Mm]ail\s+pieces?/);
-        var pieces = 0;
-        if      (pieceMatch1) pieces = parseInt(pieceMatch1[1], 10);
-        else if (pieceMatch2) pieces = parseInt(pieceMatch2[1], 10);
-        else if (pieceMatch3) pieces = parseInt(pieceMatch3[1], 10);
-        mailDelta += pieces;
+        // Only the ones actually landing today; see parseMailArrivingToday_ for
+        // why the headline "N mailpiece(s)" figure can't be used.
+        mailDelta += parseMailArrivingToday_(body);
 
         // --- Parse packages ---
         // Only the ones actually landing today; see parsePackagesArrivingToday_
