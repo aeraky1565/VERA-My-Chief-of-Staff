@@ -432,8 +432,18 @@ function PTOMonthlyChart({stats}){
   var curMonth=now.getFullYear()===year?now.getMonth():(now.getFullYear()>year?12:-1);
 
   // One shared scale so bar lengths are comparable between months.
+  //
+  // Rounded UP to a whole day, which the day gridlines require: a half-day of
+  // personal time alongside vacation in the same month gives a fractional
+  // busiest-month total, and ticks drawn against 5.5 would put the last one
+  // mid-day. It also means the busiest month no longer always spans the full
+  // track — previously a "full" bar carried no information at all.
   var totals=rows.map(function(r){return r.usedVac+r.plannedVac+(r.usedPersHrs+r.plannedPersHrs)/8;});
-  var scale=Math.max.apply(null,totals.concat([1]));
+  var scale=Math.max(1,Math.ceil(Math.max.apply(null,totals.concat([1]))));
+  // One line per day, unless that would comb the bar. Unreachable on a 23-day
+  // allowance, but the config can change.
+  var tickStep=scale>15?5:1;
+  var cellPct=100*tickStep/scale;
 
   var remainingVac=(stats.remaining&&stats.remaining.vacationDays)||0;
   var remainingPers=(stats.remaining&&stats.remaining.personalHours)||0;
@@ -453,7 +463,8 @@ function PTOMonthlyChart({stats}){
         legend('seg-vac-used','Vacation used'),
         legend('seg-vac-plan','Vacation planned'),
         legend('seg-pers-used','Personal used'),
-        legend('seg-pers-plan','Personal planned')),
+        legend('seg-pers-plan','Personal planned'),
+        React.createElement("span",{style:{color:'#4d6080'}},"each cell = ",tickStep===1?'1 day':tickStep+' days')),
       rows.map(function(r,i){
         var segs=[
           {v:r.usedVac,cls:'seg-vac-used'},
@@ -471,7 +482,10 @@ function PTOMonthlyChart({stats}){
         return React.createElement("div",{key:r.label,className:"pto-month-row"+(i===curMonth?' is-current':'')+(i>curMonth?' is-future':''),title:detail.join(' · ')||(r.label+': nothing booked')},
           React.createElement("span",{className:"pto-month-label"},r.label),
           React.createElement("span",{className:"pto-month-bar"},
-            segs.map(function(s,k){return React.createElement("span",{key:k,className:"pto-month-seg "+s.cls,style:{width:(s.v/scale*100)+'%'}});})),
+            segs.map(function(s,k){return React.createElement("span",{key:k,className:"pto-month-seg "+s.cls,style:{width:(s.v/scale*100)+'%'}});}),
+            // Last child, so it stacks above the fills without needing z-index.
+            // One gradient rather than a node per tick.
+            React.createElement("span",{className:"pto-month-grid",style:{backgroundImage:'repeating-linear-gradient(to right, transparent 0, transparent calc('+cellPct+'% - 1px), rgba(0,0,0,0.28) calc('+cellPct+'% - 1px), rgba(0,0,0,0.28) '+cellPct+'%)'}})),
           React.createElement("span",{className:"pto-month-val"},totals[i]>0?fmt(totals[i])+'d':'—'));
       }),
       // Stated remainders, not a fabricated per-month allocation: VERA has no
