@@ -212,6 +212,24 @@ const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Fre
 const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes', 'Credit Limit'];
 const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
+
+// Paying a hotel at check-in and prepaying it through a booking portal earn at
+// different rates, so the cheat sheet treats them as two categories. They sort
+// adjacently, since the panel orders categories alphabetically.
+const HOTELS_PREPAID_CATEGORY_     = 'Hotels (Prepaid)';
+const HOTELS_PAY_AT_CATEGORY_      = 'Hotels (Pay at Hotel)';
+
+// Every rate below already exists elsewhere in the seed under a broader
+// category — these rows restate the ones that apply when you hand the card over
+// at the desk. One row per card, so a card cannot take both top-two slots.
+const HOTELS_PAY_AT_REWARDS_ = [
+  ['IHG One Rewards Premier',            '10', 'x points',   'At IHG properties, paid at the hotel'],
+  ['Costco Anywhere Visa',               '3',  '% cashback', 'Paid at the hotel'],
+  ['Chase Sapphire Preferred (Ahmed)',   '2',  'x points',   'Paid at the hotel, not via Chase Travel℠'],
+  ['Chase Sapphire Preferred (Victoria)','2',  'x points',   'Paid at the hotel, not via Chase Travel℠'],
+  ['BILT Worldwide',                     '2',  'x points',   'Paid at the hotel'],
+  ['Capital One Venture',                '2',  'x miles',    'Paid at the hotel, not via Capital One Travel'],
+];
 const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used', 'Needs Review', 'Autopay'];
 const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Points', 'Cents Per Point', 'Best Use', 'Expiry', 'Notes'];
 const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
@@ -474,11 +492,11 @@ function populateCreditCardHub_() {
     ['CR-1',  'AMEX Gold',              'Dining',             '4',   'x points',   'Worldwide, up to $50k/yr then 1x'],
     ['CR-2',  'AMEX Gold',              'Groceries',          '4',   'x points',   'US supermarkets, up to $25k/yr then 1x'],
     ['CR-3',  'AMEX Gold',              'Travel',             '3',   'x points',   'Flights booked direct or via Amex Travel'],
-    ['CR-4',  'AMEX Gold',              'Hotels',             '2',   'x points',   'Prepaid hotels via Amex Travel'],
+    ['CR-4',  'AMEX Gold',              'Hotels (Prepaid)',   '2',   'x points',   'Prepaid hotels via Amex Travel'],
     ['CR-5',  'AMEX Gold',              'General Spend',      '1',   'x points',   ''],
     // AMEX Platinum
     ['CR-6',  'AMEX Platinum',          'Travel',             '5',   'x points',   'Flights booked direct or via Amex Travel, up to $500k/yr'],
-    ['CR-7',  'AMEX Platinum',          'Hotels',             '5',   'x points',   'Prepaid hotels via Amex Travel'],
+    ['CR-7',  'AMEX Platinum',          'Hotels (Prepaid)',   '5',   'x points',   'Prepaid hotels via Amex Travel'],
     ['CR-8',  'AMEX Platinum',          'General Spend',      '1',   'x points',   ''],
     // BILT Worldwide
     ['CR-9',  'BILT Worldwide',         'Rent',               '1',   'x points',   'No transaction fee on rent/mortgage payments'],
@@ -530,7 +548,9 @@ function populateCreditCardHub_() {
     ['CR-47', 'Chase Sapphire Preferred (Victoria)','Online Groceries',   '3', 'x points',   'Excl. Walmart, Target, wholesale clubs'],
     ['CR-48', 'Chase Sapphire Preferred (Victoria)','Travel',             '2', 'x points',   'All other travel'],
     ['CR-49', 'Chase Sapphire Preferred (Victoria)','General Spend',      '1', 'x points',   ''],
-  ];
+  ].concat(HOTELS_PAY_AT_REWARDS_.map(function(r, i) {
+    return ['CR-' + (50 + i), r[0], HOTELS_PAY_AT_CATEGORY_, r[1], r[2], r[3]];
+  }));
 
   rwSheet.getRange(2, 1, rewardRows.length, rewardRows[0].length).setValues(rewardRows);
 
@@ -3136,6 +3156,67 @@ function addPTOConfig() {
     }
   });
   Logger.log('✅ addPTOConfig: added ' + added + ' row(s) (skipped ' + (rows.length - added) + ' already present).');
+}
+
+/**
+ * Splits the cheat sheet's single "Hotels" category into "Hotels (Prepaid)" and
+ * "Hotels (Pay at Hotel)" on an existing sheet.
+ *
+ * The seed in setupVERA() only runs on a fresh install and there is no UI for
+ * editing a reward's category, so a sheet that already has data would otherwise
+ * never pick this up. Safe to re-run — renaming is a no-op the second time and
+ * a card that already has a pay-at-hotel row is skipped.
+ */
+function splitHotelRewardCategories() {
+  var ss = getSpreadsheet();
+  var sh = ss.getSheetByName(TABS.CARD_REWARDS);
+  if (!sh) { Logger.log('Card Rewards tab not found.'); return; }
+
+  var rows = sh.getDataRange().getValues();
+
+  // Only seed a card the user actually has, so the cheat sheet never advertises
+  // a card that is not in the wallet.
+  var cardSheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var ownedCards = {};
+  if (cardSheet) {
+    cardSheet.getDataRange().getValues().slice(1).forEach(function(r) {
+      var name = String(r[1] || '').trim();
+      if (name) ownedCards[name] = true;
+    });
+  }
+
+  // 1. Hotels → Hotels (Prepaid). Column C, so getRange column 3.
+  var renamed = 0;
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]).trim() === 'Hotels') {
+      sh.getRange(i + 1, 3).setValue(HOTELS_PREPAID_CATEGORY_);
+      renamed++;
+    }
+  }
+
+  // 2. Append the pay-at-hotel rows for cards that do not have one yet.
+  var alreadyHas = {};
+  for (var j = 1; j < rows.length; j++) {
+    if (String(rows[j][2]).trim() === HOTELS_PAY_AT_CATEGORY_) {
+      alreadyHas[String(rows[j][1]).trim()] = true;
+    }
+  }
+
+  var stamp = Date.now();
+  var added = 0, skipped = 0, missing = 0;
+  HOTELS_PAY_AT_REWARDS_.forEach(function(r, idx) {
+    var cardName = r[0];
+    if (alreadyHas[cardName])              { skipped++; return; }
+    if (cardSheet && !ownedCards[cardName]) { missing++; return; }
+    // + idx because six appends can land inside the same millisecond, and
+    // webAddCardReward_ derives its IDs from Date.now() the same way.
+    sh.appendRow(['CR-' + (stamp + idx), cardName, HOTELS_PAY_AT_CATEGORY_, r[1], r[2], r[3]]);
+    added++;
+  });
+
+  Logger.log('✅ splitHotelRewardCategories: renamed ' + renamed + ' row(s) to "' +
+             HOTELS_PREPAID_CATEGORY_ + '", added ' + added + ' pay-at-hotel row(s) (' +
+             skipped + ' already present, ' + missing + ' card(s) not in the wallet).');
 }
 
 /**
