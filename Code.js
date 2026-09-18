@@ -204,7 +204,12 @@ const CAREER_DEVELOPMENT_HEADERS = ['ID', 'Item', 'Type', 'Status', 'Target Date
 const CAREER_WIN_HEADERS         = ['ID', 'Date', 'Win', 'Impact', 'Category', 'Notes'];
 const CAREER_NETWORK_HEADERS     = ['ID', 'Name', 'Role', 'Company', 'Relationship', 'Last Contact', 'Notes'];
 const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Frequency', 'Doctor', 'Pharmacy', 'Rx Number', 'Last Filled', 'Refill Date', 'Days Supply', 'Active', 'Notes'];
-const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes'];
+// Credit Limit is APPENDED rather than slotted in after Annual Fee, where the
+// card tracker displays it. Column positions are hard-coded in three places in
+// WebApp.js (the r[] read, the appendRow array, and colMap), so inserting mid
+// sheet would shift seven columns in all three and need every existing row
+// rewritten. Storage order and display order do not have to agree.
+const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes', 'Credit Limit'];
 const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
 const CARD_PERK_HEADERS          = ['ID', 'Card Name', 'Perk', 'Amount', 'Frequency', 'Category', 'Last Used', 'Needs Review', 'Autopay'];
@@ -439,7 +444,8 @@ function populateCreditCardHub_() {
   }
 
   // ── CREDIT CARDS ──────────────────────────────────────────────
-  // Columns: ID | Card Name | Issuer | Last 4 | Annual Fee | Due Day | Last Used | Owner | Auth User | Active | Statement Credit | Notes
+  // Columns: ID | Card Name | Issuer | Last 4 | Annual Fee | Due Day | Last Used | Owner | Auth User | Active | Statement Credit | Notes | Credit Limit
+  // Seed rows stop at Notes; Credit Limit is filled in from the dashboard.
   var cardRows = [
     //         ID      Card Name                Issuer               Last4  Fee  Due  LastUsed  Owner       AuthUser    Active  Statement Credit                                                                                          Notes
     ['CC-1', 'AMEX Gold',              'American Express', '', 325, '', '', 'Ahmed',    'Victoria', 'Yes', '$10 Dining/m \u00b7 $10 Uber Cash/m \u00b7 $7 Dunkin/m \u00b7 $100 Resy/yr',                                             ''],

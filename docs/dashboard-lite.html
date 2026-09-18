@@ -1103,7 +1103,7 @@ const CARD_CATEGORY_ICONS = {
 };
 
 function CardModal({ mode, card, onSave, onClose, busy }) {
-  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', dueDay:'', lastUsed:'', owner:'Ahmed', authUser:'', active:'Yes', statementCredit:'', notes:'' };
+  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', creditLimit:'', dueDay:'', lastUsed:'', owner:'Ahmed', authUser:'', active:'Yes', statementCredit:'', notes:'' };
   const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, card) : blank);
   const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
   const inp = (k, label, type) => (
@@ -1122,6 +1122,7 @@ function CardModal({ mode, card, onSave, onClose, busy }) {
           {inp('issuer', 'Issuer')}
           {inp('last4', 'Last 4 Digits')}
           {inp('annualFee', 'Annual Fee ($)')}
+          {inp('creditLimit', 'Credit Limit ($)')}
           {inp('dueDay', 'Due Day (1–31)')}
           <div>
             <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Primary Owner</label>
@@ -1231,6 +1232,11 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
           {card.annualFee != null && (
             <span style={{ fontSize:12, color:'#a0a8c0' }}>
               <span style={{ color:'#6b7280' }}>Annual Fee: </span>{card.annualFee === 0 ? 'None' : '$' + card.annualFee}
+            </span>
+          )}
+          {card.creditLimit != null && card.creditLimit !== '' && (
+            <span style={{ fontSize:12, color:'#a0a8c0' }}>
+              <span style={{ color:'#6b7280' }}>Credit Limit: </span>{'$' + Number(card.creditLimit).toLocaleString()}
             </span>
           )}
         </div>
@@ -1735,9 +1741,10 @@ function CardsTab({ apiUrl, apiToken }) {
             {panelHead('📋 Your Card Tracker', [pillBtn('＋ Add Card', () => setModal({ type:'card', data:null }), '#22c55e')])}
             {visibleCards.length === 0
               ? <div style={{ color:'#6b7280', fontSize:13, textAlign:'center', padding:'12px 0' }}>No cards yet. Click ＋ Add Card to get started.</div>
-              : <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+              : <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }} title="Scroll sideways for the remaining columns">
+                <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
                   <thead>
-                    <tr>{['Card','Owner','Annual Fee','Due','Statement Credit','Status'].map(h => (
+                    <tr>{['Card','Owner','Annual Fee','Credit Limit','Due','Statement Credit','Status'].map(h => (
                       <th key={h} style={{ textAlign:'left', color:'#6b7280', padding:'4px 8px 8px 0', borderBottom:'1px solid #1f4033', whiteSpace:'nowrap' }}>{h}</th>
                     ))}</tr>
                   </thead>
@@ -1762,6 +1769,8 @@ function CardsTab({ apiUrl, apiToken }) {
                             </div>
                           </td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.annualFee != null && c.annualFee !== '' ? '$' + c.annualFee : '—'}</td>
+                          {/* Thousands-separated: a limit is a 4- or 5-figure number, so $15,000 not $15000. */}
+                          <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0', whiteSpace:'nowrap' }}>{c.creditLimit != null && c.creditLimit !== '' ? '$' + Number(c.creditLimit).toLocaleString() : '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.dueDay ? c.dueDay + 'th' : '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0', fontSize:11 }}>{c.statementCredit || '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0' }}>
@@ -1781,6 +1790,7 @@ function CardsTab({ apiUrl, apiToken }) {
                     })}
                   </tbody>
                 </table>
+                </div>
             }
           </div>
 

@@ -6301,6 +6301,10 @@ function webGetCards_() {
       active:          String(r[9]  || 'Yes'),
       statementCredit: String(r[10] || ''),
       notes:           String(r[11] || ''),
+      // Guards undefined as well as '': on a sheet that predates the Credit
+      // Limit header, readSheet reads getLastColumn() columns and r[12] comes
+      // back undefined. The `!== ''` shape used above would make that NaN.
+      creditLimit:     (r[12] == null || r[12] === '') ? null : Number(r[12]),
     };
   });
   // Sort: active first → owner order → name alpha
@@ -6382,7 +6386,7 @@ function webAddCard_(e) {
   if (!cardName) throw new Error('cardName is required');
   var id = 'CC-' + Date.now();
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var sheet = ensureCreditCardSchema_(ss.getSheetByName(TABS.CREDIT_CARDS));
   sheet.appendRow([
     id,
     cardName,
@@ -6396,8 +6400,39 @@ function webAddCard_(e) {
     (p.active          || 'Yes').trim(),
     (p.statementCredit || '').trim(),
     (p.notes           || '').trim(),
+    (p.creditLimit     || '').toString().trim(),
   ]);
   return { ok: true, id: id };
+}
+
+/**
+ * CREDIT_CARDS gained a Credit Limit column after the tab already existed.
+ * ensureSheet only writes headers into a blank sheet, so it will never add one
+ * to a populated tab — and without the header the column can never be written,
+ * because webUpdateCard_ addresses it by number.
+ *
+ * Reads survive without this (readSheet uses getLastColumn, so r[12] just comes
+ * back undefined and the guard turns it into null) — this is what makes the
+ * column writable and visible, not a crash fix.
+ *
+ * Idempotent: widens the sheet if needed, writes the missing header, and leaves
+ * existing rows alone (their Credit Limit cell simply reads as empty).
+ */
+function ensureCreditCardSchema_(sheet) {
+  if (!sheet) return sheet;
+  var need = CREDIT_CARD_HEADERS.length;
+  if (sheet.getMaxColumns() < need) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  }
+  var header = sheet.getRange(1, 1, 1, need).getValues()[0];
+  for (var i = 0; i < need; i++) {
+    if (String(header[i]).trim() !== CREDIT_CARD_HEADERS[i]) {
+      sheet.getRange(1, 1, 1, need).setValues([CREDIT_CARD_HEADERS]);
+      sheet.getRange(1, 1, 1, need).setFontWeight('bold');
+      break;
+    }
+  }
+  return sheet;
 }
 
 function webUpdateCard_(e) {
@@ -6405,9 +6440,9 @@ function webUpdateCard_(e) {
   var id = (p.id || '').trim();
   if (!id) throw new Error('id is required');
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var sheet = ensureCreditCardSchema_(ss.getSheetByName(TABS.CREDIT_CARDS));
   var rows  = sheet.getDataRange().getValues();
-  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12 };
+  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12, creditLimit:13 };
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       for (var key in colMap) {
