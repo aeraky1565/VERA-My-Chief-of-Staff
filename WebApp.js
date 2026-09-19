@@ -42,9 +42,40 @@ function isAuthorized_(e) {
 
 // ---- Response helpers ------------------------------------------------------
 
+/**
+ * Converts every Date in a response to "yyyy-MM-dd" before it is serialised.
+ *
+ * Google Sheets hands back real Date objects for anything that looks like a
+ * date, and most endpoints copy cells straight into their response objects. Any
+ * that reached JSON.stringify came out as "2026-09-19T04:00:00.000Z" and landed
+ * on screen that way — Important Dates, Household and others.
+ *
+ * Fixing it here rather than in each endpoint catches the ones nobody has
+ * noticed yet, and keeps new endpoints from reintroducing it. The wire format
+ * stays "yyyy-MM-dd": unambiguous, sortable as text, and still parseable by
+ * `new Date(...)` for the client code that does arithmetic on it. Turning it
+ * into a display format here would break that; display is the browser's job.
+ */
+function normalizeDatesForJson_(value, depth) {
+  depth = depth || 0;
+  if (depth > 12) return value;                       // guard against cycles
+  if (value instanceof Date) return formatDateVal_(value);
+  if (Array.isArray(value)) {
+    return value.map(function(v) { return normalizeDatesForJson_(v, depth + 1); });
+  }
+  if (value && typeof value === 'object') {
+    var out = {};
+    Object.keys(value).forEach(function(k) {
+      out[k] = normalizeDatesForJson_(value[k], depth + 1);
+    });
+    return out;
+  }
+  return value;
+}
+
 function jsonOut_(data) {
   return ContentService
-    .createTextOutput(JSON.stringify(data))
+    .createTextOutput(JSON.stringify(normalizeDatesForJson_(data)))
     .setMimeType(ContentService.MimeType.JSON);
 }
 

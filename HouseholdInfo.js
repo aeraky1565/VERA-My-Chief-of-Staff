@@ -23,8 +23,11 @@ function getHouseholdInfoData_() {
     const section     = String(row[0] || '').trim();
     const subsection  = String(row[1] || '').trim();
     const label       = String(row[2] || '').trim();
-    const value       = String(row[3] || '').trim();
-    const notes       = String(row[4] || '').trim();
+    // A value cell holding a real date (a policy renewal, an expiry) would
+    // otherwise stringify to "Fri Sep 19 2026 00:00:00 GMT-0400 (…)". String()
+    // runs before jsonOut_ normalises, so it has to be caught here.
+    const value       = formatDateVal_(row[3]).trim();
+    const notes       = formatDateVal_(row[4]).trim();
     const lastUpdated = row[5] ? formatDateVal_(row[5]) : '';
 
     if (!section || !label || !value) return;

@@ -1091,6 +1091,30 @@ function daysSince(dateStr) {
   return Math.round((today - d) / 86400000);
 }
 
+// Dates arrive from the sheet as "yyyy-MM-dd" (what VERA writes and what
+// jsonOut_ normalises Date cells to), "MM-DD" for a year-agnostic Important
+// Date, or occasionally a raw ISO timestamp from a String() that ran before
+// jsonOut_ saw it. All of them come out as "Sep 20, 2026"; anything that is not
+// a date is returned untouched.
+const MONTH_ABBR_ = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fmtDate(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  // Read yyyy-MM-dd straight from the string — building a Date from it would
+  // shift the day by one for any viewer east of UTC.
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return MONTH_ABBR_[parseInt(m[2], 10) - 1] + ' ' + parseInt(m[3], 10) + ', ' + m[1];
+  const md = s.match(/^(\d{2})-(\d{2})$/);
+  if (md && parseInt(md[1], 10) >= 1 && parseInt(md[1], 10) <= 12)
+    return MONTH_ABBR_[parseInt(md[1], 10) - 1] + ' ' + parseInt(md[2], 10);
+  if (/\d{4}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return MONTH_ABBR_[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+  return s;
+}
+
 function fmtPts(n) {
   if (n == null || n === '') return '0';
   return Number(n).toLocaleString();
@@ -1818,7 +1842,7 @@ function CardsTab({ apiUrl, apiToken }) {
                         <tr key={pg.id}>
                           <td style={{ padding:'5px 8px 5px 0', color:'#f0c060', fontWeight:600 }}>
                             {pg.program}
-                            {ds90 != null && ds90 <= 90 && <span style={{ color:'#f59e0b', fontSize:11, marginLeft:4 }}>⚠ expires {pg.expiry}</span>}
+                            {ds90 != null && ds90 <= 90 && <span style={{ color:'#f59e0b', fontSize:11, marginLeft:4 }}>⚠ expires {fmtDate(pg.expiry)}</span>}
                           </td>
                           <td style={{ padding:'5px 8px 5px 0', color:'#dde1f0' }}>{fmtPts(pg.totalPoints)}</td>
                           <td style={{ padding:'5px 8px 5px 0', color:'#22c55e' }}>${estVal.toLocaleString()}</td>
@@ -2790,9 +2814,9 @@ function HomestewardView({ items, loading, busy, onRecordService, onAdd, onDelet
                     >✕</button>
                   </div>
                   <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
-                    {item.warrantyExpiry && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🛡️ Warranty: {item.warrantyExpiry}</span>}
-                    {item.lastService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🔧 Last: {item.lastService}</span>}
-                    {item.nextService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>📅 Next: {item.nextService}</span>}
+                    {item.warrantyExpiry && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🛡️ Warranty: {fmtDate(item.warrantyExpiry)}</span>}
+                    {item.lastService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🔧 Last: {fmtDate(item.lastService)}</span>}
+                    {item.nextService   && <span style={{ fontSize: 11, color: '#6b7fa8' }}>📅 Next: {fmtDate(item.nextService)}</span>}
                     {item.intervalMonths && <span style={{ fontSize: 11, color: '#6b7fa8' }}>↻ Every {item.intervalMonths}mo</span>}
                   </div>
                   {item.notes && <div style={{ fontSize: 11, color: '#4d6080', marginTop: 2 }}>{item.notes}</div>}
@@ -5120,7 +5144,7 @@ function HouseholdLiteTab({ apiUrl, apiToken }) {
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <span style={{ fontSize:15, fontWeight:700, color:'#dde1f0' }}>{section.section}</span>
                   {section.lastUpdated && (
-                    <span style={{ fontSize:11, color:'#4a5a7a' }}>Updated {section.lastUpdated}</span>
+                    <span style={{ fontSize:11, color:'#4a5a7a' }}>Updated {fmtDate(section.lastUpdated)}</span>
                   )}
                 </div>
                 <span style={{ color:'#4a5a7a', fontSize:12 }}>{isOpen ? '▲' : '▼'}</span>
@@ -5842,14 +5866,6 @@ const ITIN_TZ_OPTIONS = [
   {value:'Asia/Singapore',label:'SGT — Singapore / KL'},
   {value:'Australia/Sydney',label:'AEST — Sydney / Melbourne'},
 ];
-
-function fmtDate(dateStr) {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr + 'T12:00:00');
-    return d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
-  } catch(e) { return dateStr; }
-}
 
 function DaysAwayChip({ daysAway }) {
   const n = daysAway;
@@ -7056,7 +7072,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                 background:isOpen?'#131e2e':'#0d1117',cursor:'pointer',userSelect:'none',transition:'background .15s'}}>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:15,color:'#dde1f0'}}>{t.label}</div>
-                <div style={{fontSize:12,color:'#6b7fa8',marginTop:2}}>{t.startDate} – {t.endDate}</div>
+                <div style={{fontSize:12,color:'#6b7fa8',marginTop:2}}>{fmtDate(t.startDate)} – {fmtDate(t.endDate)}</div>
               </div>
               <DaysAwayChip daysAway={t.daysAway} />
               <div style={{fontSize:16,color:'#8ab4f8',lineHeight:1,
