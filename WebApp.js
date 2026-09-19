@@ -6805,16 +6805,58 @@ function webDeleteGiftIdea_(e) {
 // Important Dates (Issue #80)
 // ============================================================
 
+/**
+ * Widens a populated Important Dates tab to the current header set.
+ *
+ * ensureSheet only writes headers into a *blank* sheet, so an existing tab would
+ * never gain the calendar columns. Load-bearing beyond those columns:
+ * PatternRecognition.js reads getRange(2, 1, n, IMPORTANT_DATES_HEADERS.length),
+ * which would overrun a narrower sheet.
+ */
+function ensureImportantDatesSchema_(sheet) {
+  if (!sheet) return sheet;
+  var need = IMPORTANT_DATES_HEADERS.length;
+  if (sheet.getMaxColumns() < need) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  }
+  var header = sheet.getRange(1, 1, 1, need).getValues()[0];
+  for (var i = 0; i < need; i++) {
+    if (String(header[i]).trim() !== IMPORTANT_DATES_HEADERS[i]) {
+      sheet.getRange(1, 1, 1, need).setValues([IMPORTANT_DATES_HEADERS]);
+      sheet.getRange(1, 1, 1, need).setFontWeight('bold');
+      break;
+    }
+  }
+  return sheet;
+}
+
 function webGetImportantDates_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  var sheet = ensureImportantDatesSchema_(ss.getSheetByName(TABS.IMPORTANT_DATES));
   var dates = [];
   if (sheet && sheet.getLastRow() >= 2) {
     var rows = sheet.getDataRange().getValues();
     var hdrs = rows[0];
+    // Resolved here, not in the browser: the Date column now accepts rules, and
+    // a second rule parser in client JS would be guaranteed to drift from this
+    // one. The dashboard reads nextDate/daysUntil rather than parsing Date.
+    var ruleRows = ruleRowsFromSheetValues_(rows);
+    var today    = new Date();
+    today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    var tz = Session.getScriptTimeZone();
+
     rows.slice(1).forEach(function(r) {
       if (!r[0]) return;
-      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; }); dates.push(obj);
+      var obj = {}; hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      try {
+        var occ = nextOccurrence_(r[1], today, ruleRows);
+        obj.nextDate  = occ ? Utilities.formatDate(occ, tz, 'yyyy-MM-dd') : null;
+        obj.daysUntil = occ ? Math.round((occ.getTime() - today.getTime()) / 86400000) : null;
+      } catch (err) {
+        obj.nextDate = null; obj.daysUntil = null;
+      }
+      obj.isRule = !!parseDateRule_(r[1]);
+      dates.push(obj);
     });
   }
   return { ok: true, dates: dates };
@@ -6828,13 +6870,16 @@ function webAddImportantDate_(e) {
   var recurring = (p.recurring || 'Yes').trim();
   var leadTime  = parseInt(p.leadTime || '30', 10);
   var notes     = (p.notes     || '').trim();
+  var addToCal  = (p.addToCalendar || '').trim();
+  var calLead   = (p.calendarLeadDays || '').toString().trim();
   if (!label || !date) return { ok: false, error: 'label and date required' };
   var id = 'id_' + Date.now();
   var ss = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  ss.getSheetByName(TABS.IMPORTANT_DATES)
-    .appendRow([id, date, label, person, recurring, leadTime, notes, '']);
+  ensureImportantDatesSchema_(ss.getSheetByName(TABS.IMPORTANT_DATES))
+    .appendRow([id, date, label, person, recurring, leadTime, notes, '', addToCal, calLead, '']);
   return { ok: true, entry: { ID: id, Date: date, Label: label, Person: person,
-                               Recurring: recurring, 'Lead Time Days': leadTime, Notes: notes, 'Last Actioned Year': '' } };
+                               Recurring: recurring, 'Lead Time Days': leadTime, Notes: notes, 'Last Actioned Year': '',
+                               'Add to Calendar': addToCal, 'Calendar Lead Days': calLead, 'Last Calendar Year': '' } };
 }
 
 function webUpdateImportantDate_(e) {
@@ -6842,7 +6887,7 @@ function webUpdateImportantDate_(e) {
   var id    = (p.id || '').trim();
   if (!id) return { ok: false, error: 'id required' };
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  var sheet = ensureImportantDatesSchema_(ss.getSheetByName(TABS.IMPORTANT_DATES));
   var rows  = sheet.getDataRange().getValues();
   var hdrs  = rows[0];
   var idIdx = hdrs.indexOf('ID');
@@ -6857,6 +6902,17 @@ function webUpdateImportantDate_(e) {
       'Lead Time Days': p.leadTime !== undefined ? parseInt(p.leadTime, 10) : rows[i][hdrs.indexOf('Lead Time Days')],
       'Notes':          (p.notes     !== undefined ? p.notes     : String(rows[i][hdrs.indexOf('Notes')])).trim(),
     };
+    // Changing when or whether an occasion lands on a calendar must clear the
+    // stamp, or the edit would not take effect until next year.
+    if (p.addToCalendar !== undefined || p.date !== undefined) {
+      fields['Add to Calendar'] = (p.addToCalendar !== undefined
+        ? p.addToCalendar
+        : String(rows[i][hdrs.indexOf('Add to Calendar')] || '')).trim();
+      fields['Last Calendar Year'] = '';
+    }
+    if (p.calendarLeadDays !== undefined) {
+      fields['Calendar Lead Days'] = String(p.calendarLeadDays).trim();
+    }
     hdrs.forEach(function(h, ci) {
       if (fields[h] !== undefined) sheet.getRange(rowNum, ci + 1).setValue(fields[h]);
     });

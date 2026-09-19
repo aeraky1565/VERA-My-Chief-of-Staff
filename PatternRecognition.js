@@ -205,20 +205,17 @@ function buildCrossDomainSnapshot_() {
       ideasSheet.getRange(2, 1, ideasSheet.getLastRow() - 1, GIFT_IDEAS_HEADERS.length).getValues()
         .forEach(function(r) { if (r[1]) giftPeople[String(r[1]).toLowerCase()] = true; });
 
-      var thisYear    = today.getFullYear();
       var twentyOneDaysOut = new Date(today); twentyOneDaysOut.setDate(twentyOneDaysOut.getDate() + 21);
-      datesSheet.getRange(2, 1, datesSheet.getLastRow() - 1, IMPORTANT_DATES_HEADERS.length).getValues()
+      var dateRows = datesSheet.getRange(2, 1, datesSheet.getLastRow() - 1, IMPORTANT_DATES_HEADERS.length).getValues();
+      // Shaped for the shared resolver so rule rows ("3rd sun of sep") reach gift
+      // deadlines too. The old inline parse produced Invalid Date for those and
+      // dropped them silently.
+      var ruleRows = ruleRowsFromSheetValues_([[]].concat(dateRows));
+      dateRows
         .forEach(function(r) {
-          var dateStr = String(r[1] || '').trim(); // MM-DD or full date
-          if (!dateStr) return;
-          // Parse MM-DD recurring dates by prepending this year
-          var parsed = dateStr.length <= 5 ? new Date(thisYear + '-' + dateStr) : new Date(dateStr);
-          if (isNaN(parsed.getTime())) return;
-          parsed.setHours(0, 0, 0, 0);
-          // If already passed this year for a recurring date, check next year
-          if (parsed < today && String(r[4] || '').toLowerCase() === 'yes') {
-            parsed.setFullYear(thisYear + 1);
-          }
+          if (!String(r[1] || '').trim() && !(r[1] instanceof Date)) return;
+          var parsed = nextOccurrence_(r[1], today, ruleRows);
+          if (!parsed) return;
           var daysAway = Math.round((parsed.getTime() - today.getTime()) / 86400000);
           if (daysAway < 0 || daysAway > 21) return;
           var person = String(r[3] || '').trim();

@@ -24,6 +24,232 @@ function toMmDd_(val) {
   return s;           // already MM-DD or empty
 }
 
+// ─── RULE ENGINE ──────────────────────────────────────────────────────────────
+//
+// Some dates that matter cannot be written as a calendar recurrence. National
+// Wife Day is the third Sunday of September; Google Calendar can say "every
+// September 20th" or "every third Sunday", but not both at once. The Date column
+// therefore also accepts a rule, resolved fresh each year:
+//
+//   3rd sun of sep            Nth weekday of a named month, annually
+//   last mon of may           last weekday of a named month, annually
+//   1st fri of every month    Nth weekday, every month
+//   thanksgiving -6d          N days from another row (by Label) or from `easter`
+//
+// Parsing is case- and whitespace-insensitive. Fixed MM-DD / YYYY-MM-DD values
+// are untouched and keep resolving exactly as they always have.
+
+var WEEKDAY_NAMES_ = {
+  sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2,
+  wed: 3, weds: 3, wednesday: 3, thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5, sat: 6, saturday: 6,
+};
+
+var MONTH_NAMES_ = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10,
+  dec: 11, december: 11,
+};
+
+var ORDINAL_WORDS_ = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5 };
+
+/**
+ * Parses a Date-column value into a rule descriptor, or null when it is not a
+ * rule (fixed dates, blanks and anything unrecognised all return null, so the
+ * caller keeps its existing behaviour).
+ *
+ * @returns {{kind:'nth', n:number|'last', weekday:number, month:number|'every'}
+ *          |{kind:'offset', ref:string, days:number}
+ *          |null}
+ */
+function parseDateRule_(raw) {
+  if (raw instanceof Date) return null;            // Sheets-coerced fixed date
+  var s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  if (/^\d{2}-\d{2}$/.test(s) || /^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+
+  s = s.replace(/\s+/g, ' ');
+
+  // <ordinal> <weekday> of <month|every month>
+  var m = s.match(/^(\d+)(?:st|nd|rd|th)?\s+([a-z]+)\s+of\s+(?:the\s+)?([a-z]+)(?:\s+month)?$/);
+  var n = null;
+  if (m) {
+    n = parseInt(m[1], 10);
+  } else {
+    m = s.match(/^(first|second|third|fourth|fifth|last)\s+([a-z]+)\s+of\s+(?:the\s+)?([a-z]+)(?:\s+month)?$/);
+    if (m) n = (m[1] === 'last') ? 'last' : ORDINAL_WORDS_[m[1]];
+  }
+  if (m && n !== null) {
+    var weekday = WEEKDAY_NAMES_[m[2]];
+    if (weekday === undefined) return null;
+    var monthWord = m[3];
+    var month = (monthWord === 'every') ? 'every' : MONTH_NAMES_[monthWord];
+    if (month === undefined) return null;
+    if (n !== 'last' && (n < 1 || n > 5)) return null;
+    return { kind: 'nth', n: n, weekday: weekday, month: month };
+  }
+
+  // <ref> <+|-><N><d|days>   e.g. "thanksgiving -6d", "easter + 50 days"
+  m = s.match(/^(.+?)\s*([+-])\s*(\d+)\s*(?:d|days?)$/);
+  if (m) {
+    var ref = m[1].trim();
+    if (!ref) return null;
+    var days = parseInt(m[3], 10) * (m[2] === '-' ? -1 : 1);
+    return { kind: 'offset', ref: ref, days: days };
+  }
+
+  return null;
+}
+
+/**
+ * The Nth (or last) given weekday of a specific month.
+ *
+ * Returns null when that occurrence does not exist — there is no 5th Friday in
+ * most months. Rolling forward into the next month instead would silently put
+ * the event on a wrong date, which is worse than not placing it at all.
+ */
+function nthWeekdayOfMonth_(year, month, n, weekday) {
+  if (n === 'last') {
+    var last = new Date(year, month + 1, 0);        // last day of `month`
+    var back = (last.getDay() - weekday + 7) % 7;
+    return new Date(year, month, last.getDate() - back);
+  }
+  var first   = new Date(year, month, 1);
+  var forward = (weekday - first.getDay() + 7) % 7;
+  var day     = 1 + forward + (n - 1) * 7;
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+  if (day > daysInMonth) return null;               // e.g. no 5th Friday
+  return new Date(year, month, day);
+}
+
+/**
+ * Easter Sunday (Gregorian computus). The one widely-used date that no
+ * weekday rule can express, so it is available as a built-in offset anchor.
+ */
+function easterSunday_(year) {
+  var a = year % 19,
+      b = Math.floor(year / 100),
+      c = year % 100,
+      d = Math.floor(b / 4),
+      e = b % 4,
+      f = Math.floor((b + 8) / 25),
+      g = Math.floor((b - f + 1) / 3),
+      h = (19 * a + b - d - g + 15) % 30,
+      i = Math.floor(c / 4),
+      k = c % 4,
+      l = (32 + 2 * e + 2 * i - h - k) % 7,
+      m2 = Math.floor((a + 11 * h + 22 * l) / 451),
+      month = Math.floor((h + l - 7 * m2 + 114) / 31) - 1,
+      day = ((h + l - 7 * m2 + 114) % 31) + 1;
+  return new Date(year, month, day);
+}
+
+/**
+ * Resolves any Date-column value to its occurrence in a specific year.
+ * Handles fixed values as well as rules, so callers need only one entry point.
+ *
+ * @param {*}      raw    the Date cell
+ * @param {number} year
+ * @param {Array}  rows   sibling rows, for resolving offset references by Label
+ * @param {Object} seen   internal — visited Labels, for cycle detection
+ * @returns {Date|null}
+ */
+function occurrenceInYear_(raw, year, rows, seen) {
+  seen = seen || {};
+
+  // Fixed values first — unchanged behaviour.
+  if (raw instanceof Date) return new Date(year, raw.getMonth(), raw.getDate());
+  var s = String(raw || '').trim();
+  var fixed = s.match(/^(\d{2})-(\d{2})$/);
+  if (fixed) return new Date(year, parseInt(fixed[1], 10) - 1, parseInt(fixed[2], 10));
+  var full = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (full) return new Date(parseInt(full[1], 10), parseInt(full[2], 10) - 1, parseInt(full[3], 10));
+
+  var rule = parseDateRule_(s);
+  if (!rule) return null;
+
+  if (rule.kind === 'nth') {
+    if (rule.month === 'every') return null;        // month-stepping only; see nextOccurrence_
+    return nthWeekdayOfMonth_(year, rule.month, rule.n, rule.weekday);
+  }
+
+  // offset
+  if (rule.ref === 'easter') {
+    var eas = easterSunday_(year);
+    eas.setDate(eas.getDate() + rule.days);
+    return eas;
+  }
+  if (Object.keys(seen).length >= 5) {
+    Logger.log('ImportantDates: offset chain too deep at "' + rule.ref + '" — skipping');
+    return null;
+  }
+  if (seen[rule.ref]) {
+    Logger.log('ImportantDates: circular offset reference at "' + rule.ref + '" — skipping');
+    return null;
+  }
+  var target = null;
+  (rows || []).forEach(function(r) {
+    if (target) return;
+    if (String(r.label || '').trim().toLowerCase() === rule.ref) target = r;
+  });
+  if (!target) {
+    Logger.log('ImportantDates: offset references unknown date "' + rule.ref + '" — skipping');
+    return null;
+  }
+  var nextSeen = Object.assign({}, seen);
+  nextSeen[rule.ref] = true;
+  var anchor = occurrenceInYear_(target.date, year, rows, nextSeen);
+  if (!anchor) return null;
+  var out = new Date(anchor.getTime());
+  out.setDate(out.getDate() + rule.days);
+  return out;
+}
+
+/**
+ * The next occurrence of a Date-column value on or after `from`.
+ *
+ * Tries this year then next, which is what keeps offsets correct across a year
+ * boundary — the anchor and the offset date can legitimately fall in different
+ * years. "of every month" rules step months instead.
+ *
+ * @returns {Date|null}
+ */
+function nextOccurrence_(raw, from, rows) {
+  var base = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  var rule = parseDateRule_(raw);
+
+  if (rule && rule.kind === 'nth' && rule.month === 'every') {
+    for (var step = 0; step <= 13; step++) {
+      var probe = new Date(base.getFullYear(), base.getMonth() + step, 1);
+      var hit   = nthWeekdayOfMonth_(probe.getFullYear(), probe.getMonth(), rule.n, rule.weekday);
+      if (hit && hit >= base) return hit;
+    }
+    return null;
+  }
+
+  // A YYYY-MM-DD value names one specific day; it never rolls to another year.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(raw || '').trim())) {
+    return occurrenceInYear_(raw, base.getFullYear(), rows);
+  }
+
+  for (var y = 0; y <= 1; y++) {
+    var occ = occurrenceInYear_(raw, base.getFullYear() + y, rows);
+    if (occ && occ >= base) return occ;
+  }
+  return null;
+}
+
+/**
+ * Shapes the Important Dates sheet rows into the {label, date} form the offset
+ * resolver expects. Kept next to the engine so callers cannot get it wrong.
+ */
+function ruleRowsFromSheetValues_(allRows) {
+  return (allRows || []).slice(1).map(function(r) {
+    return { id: String(r[0] || '').trim(), date: r[1], label: String(r[2] || '').trim() };
+  }).filter(function(r) { return r.id; });
+}
+
 function syncCalendarBirthdaysToImportantDates_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
@@ -168,6 +394,168 @@ function syncCalendarBirthdaysToImportantDates_() {
   Logger.log('ImportantDates: sync complete — ' + added + ' entry/entries added.');
 }
 
+// ─── CALENDAR PLACEMENT ───────────────────────────────────────────────────────
+
+/**
+ * Normalises an event title for comparison: lowercased, emoji and punctuation
+ * stripped, whitespace collapsed. "💝 National Wife Day" and "national wife day"
+ * are the same occasion, and the point of the check is to recognise one you
+ * already put on a calendar yourself.
+ */
+function normaliseEventTitle_(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/[ -㌀\ud83c-􏰀-\udfff]/g, ' ') // emoji & symbols
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Places upcoming rule-based (and fixed) occasions on a calendar.
+ *
+ * Runs nightly from nightlyRun() with a 60-day horizon rather than on a monthly
+ * schedule: a missed night simply catches up the next night. Only rows with
+ * "Add to Calendar" set are considered, so existing rows keep their current
+ * flags-only behaviour.
+ *
+ * Three dedup gates, cheapest first:
+ *   1. Last Calendar Year already stamped for this occurrence → skip, no reads.
+ *      This also means deleting an event VERA placed does not resurrect it —
+ *      deleting is a decision, and re-creating nightly would fight the user.
+ *   2. Already on any calendar VERA can read → stamp the year and skip.
+ *   3. Otherwise create it, with a marker in the description, and stamp.
+ */
+function syncImportantDatesToCalendar_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.IMPORTANT_DATES);
+  if (!sheet || sheet.getLastRow() < 2) {
+    Logger.log('ImportantDates: no rows to place on a calendar.');
+    return;
+  }
+
+  var allRows = sheet.getDataRange().getValues();
+  var hdrs    = allRows[0];
+  var col     = {};
+  hdrs.forEach(function(h, i) { col[String(h).trim()] = i; });
+
+  if (col['Add to Calendar'] === undefined) {
+    Logger.log('ImportantDates: "Add to Calendar" column missing — run ensureImportantDatesSchema_().');
+    return;
+  }
+
+  var cfg          = getConfigValues();
+  var defaultLead  = parseInt(cfg['dates_calendar_lead_days'] || '60', 10) || 60;
+  var ruleRows     = ruleRowsFromSheetValues_(allRows);
+  var today        = new Date();
+  today = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // ── Pass 1: work out what wants placing, without touching any calendar ────
+  var wanted = [];
+  allRows.slice(1).forEach(function(r, idx) {
+    var id = String(r[0] || '').trim();
+    if (!id) return;
+
+    var addTo = String(r[col['Add to Calendar']] || '').trim();
+    if (!addTo || addTo.toLowerCase() === 'no') return;
+
+    var label = String(r[col['Label']] || '').trim();
+    if (!label) return;
+
+    var occ = nextOccurrence_(r[col['Date']], today, ruleRows);
+    if (!occ) return;  // unparseable or a non-existent Nth weekday — already logged
+
+    var daysUntil = Math.round((occ.getTime() - today.getTime()) / 86400000);
+    var lead      = parseInt(r[col['Calendar Lead Days']], 10) || defaultLead;
+    if (daysUntil < 0 || daysUntil > lead) return;
+
+    var occYear = occ.getFullYear();
+    if (String(r[col['Last Calendar Year']] || '').trim() === String(occYear)) return; // gate 1
+
+    wanted.push({
+      rowNum: idx + 2,
+      id:     id,
+      label:  label,
+      date:   occ,
+      year:   occYear,
+      calName: (addTo.toLowerCase() === 'yes') ? null : addTo,
+      notes:  String(r[col['Notes']] || '').trim(),
+    });
+  });
+
+  if (!wanted.length) {
+    Logger.log('ImportantDates: nothing due for calendar placement.');
+    return;
+  }
+
+  // ── Pass 2: one calendar read per (calendar, distinct day) ────────────────
+  var skipList = (cfg['skip_calendars'] || '').split(',')
+    .map(function(s) { return s.trim().toLowerCase(); })
+    .filter(function(s) { return s; });
+
+  var readCals = CalendarApp.getAllCalendars().filter(function(c) {
+    return skipList.indexOf(c.getName().toLowerCase()) === -1;
+  });
+
+  var dayKey  = function(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd'); };
+  var seenDay = {};   // yyyy-MM-dd -> { titles: {normalised:true}, markers: {mark:true} }
+  wanted.forEach(function(w) {
+    var k = dayKey(w.date);
+    if (seenDay[k]) return;
+    var titles = {}, markers = {};
+    readCals.forEach(function(c) {
+      try {
+        c.getEventsForDay(w.date).forEach(function(ev) {
+          titles[normaliseEventTitle_(ev.getTitle())] = true;
+          var desc = ev.getDescription() || '';
+          var m = desc.match(/VERA-DATE:[^\s]+/g);
+          if (m) m.forEach(function(mk) { markers[mk] = true; });
+        });
+      } catch (e) {
+        Logger.log('ImportantDates: could not read "' + c.getName() + '" for ' + k + ': ' + e.message);
+      }
+    });
+    seenDay[k] = { titles: titles, markers: markers };
+  });
+
+  // ── Pass 3: create what is genuinely missing ──────────────────────────────
+  var sharedCal = null;
+  var created = 0, alreadyThere = 0, failed = 0;
+
+  wanted.forEach(function(w) {
+    var day = seenDay[dayKey(w.date)];
+    var marker = 'VERA-DATE:' + w.id + ':' + w.year;
+
+    if (day.markers[marker] || day.titles[normaliseEventTitle_(w.label)]) {   // gate 2
+      sheet.getRange(w.rowNum, col['Last Calendar Year'] + 1).setValue(String(w.year));
+      alreadyThere++;
+      return;
+    }
+
+    try {                                                                      // gate 3
+      var cal = w.calName ? getCalendarByName_(w.calName)
+                          : (sharedCal || (sharedCal = getPrimarySharedCalendar_()));
+      if (!cal) {
+        Logger.log('ImportantDates: no calendar available for "' + w.label + '" — skipping.');
+        failed++;
+        return;
+      }
+      var ev = cal.createAllDayEvent(w.label, w.date);
+      ev.setDescription(w.notes ? (w.notes + '\n\n' + marker) : marker);
+      sheet.getRange(w.rowNum, col['Last Calendar Year'] + 1).setValue(String(w.year));
+      day.titles[normaliseEventTitle_(w.label)] = true;  // a same-day duplicate row won't re-add
+      created++;
+      Logger.log('ImportantDates: placed "' + w.label + '" on ' + dayKey(w.date));
+    } catch (e) {
+      Logger.log('ImportantDates: failed to place "' + w.label + '": ' + e.message);
+      failed++;
+    }
+  });
+
+  Logger.log('ImportantDates: calendar sync — ' + created + ' placed, ' +
+             alreadyThere + ' already present, ' + failed + ' failed.');
+}
+
 // ─── FLAG ENGINE ──────────────────────────────────────────────────────────────
 
 /**
@@ -202,6 +590,7 @@ function checkImportantDates_() {
     var colMap   = {};
     hdrs.forEach(function(h, i) { colMap[h] = i + 1; }); // 1-based for getRange
 
+    var ruleRows = ruleRowsFromSheetValues_(allRows);
     var now      = new Date();
     var thisYear = now.getFullYear();
     var flags    = [];
@@ -220,24 +609,12 @@ function checkImportantDates_() {
       if (!dateRaw || !label) return;
 
       // ── Compute next occurrence date ──────────────────────────────────
-      var targetDate = null;
-      var isOneTime  = false;
-
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-        // Explicit year — treat as one-time unless Recurring=Yes
-        targetDate = new Date(dateRaw + 'T00:00:00');
-        isOneTime  = !recurring;
-      } else if (/^\d{2}-\d{2}$/.test(dateRaw)) {
-        // MM-DD — recurring year-agnostic
-        var mm = parseInt(dateRaw.split('-')[0], 10);
-        var dd = parseInt(dateRaw.split('-')[1], 10);
-        targetDate = new Date(thisYear, mm - 1, dd, 0, 0, 0);
-        if (targetDate < now) {
-          // Already passed this year — roll to next year
-          targetDate = new Date(thisYear + 1, mm - 1, dd, 0, 0, 0);
-        }
-      } else {
-        Logger.log('ImportantDates: unrecognised date "' + dateRaw + '" for ' + id + ' — skipping');
+      // One entry point for fixed values and rules alike, so the vocabulary
+      // stays identical here, in the calendar sync and on the dashboard.
+      var isOneTime  = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) && !recurring;
+      var targetDate = nextOccurrence_(row[1], now, ruleRows);
+      if (!targetDate) {
+        Logger.log('ImportantDates: unresolvable date "' + dateRaw + '" for ' + id + ' — skipping');
         return;
       }
 

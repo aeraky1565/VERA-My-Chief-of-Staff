@@ -235,7 +235,11 @@ const LOYALTY_PROGRAM_HEADERS    = ['ID', 'Program', 'Linked Card', 'Total Point
 const REWARDS_GOAL_HEADERS       = ['ID', 'Goal', 'Target Program', 'Target Points', 'Current Points', 'Notes'];
 const GIFT_PEOPLE_HEADERS        = ['Name'];
 const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
-const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year'];
+// Date accepts a fixed value (MM-DD, YYYY-MM-DD) or a rule that no calendar
+// recurrence can express — "3rd sun of sep", "last mon of may", "thanksgiving
+// -6d". See the rule engine at the top of ImportantDates.js.
+// The last three columns are opt-in: blank means flags only, as before.
+const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year', 'Add to Calendar', 'Calendar Lead Days', 'Last Calendar Year'];
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date'];
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
@@ -305,6 +309,7 @@ function createSheetTabs(ss) {
     ['finance_review_day',     '1'],
     ['active_sources',         'Calendar,Tasks,Summaries'],
     ['skip_calendars',         'Holidays in United States'],
+    ['dates_calendar_lead_days', '60'],  // how far ahead VERA places an Important Date on a calendar
     // Add rows like: calendar_label:Eraky Family | family (shared, not Ahmed's direct obligations)
     // Add rows like: calendar_label:Ahmed         | personal
     // Add rows like: calendar_label:Victoria       | household partner
@@ -835,6 +840,15 @@ function nightlyRun() {
     catch (idErr) {
       Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message);
       stepFailures.push('syncCalendarBirthdays_: ' + idErr.message);
+    }
+
+    // Step 0a-i: Place upcoming Important Dates on a calendar. Nightly with a
+    // 60-day horizon rather than a monthly trigger, so a missed night catches
+    // up the next night. Only rows with "Add to Calendar" set are touched.
+    try { syncImportantDatesToCalendar_(); }
+    catch (icErr) {
+      Logger.log('syncImportantDatesToCalendar_ error (non-fatal): ' + icErr.message);
+      stepFailures.push('syncImportantDatesToCalendar_: ' + icErr.message);
     }
 
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
