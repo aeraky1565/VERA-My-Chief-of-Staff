@@ -847,6 +847,11 @@ function buildChatSystemPrompt_(context) {
     'ACTION:suggest_meals_week        — suggest and populate a full week of dinners (current week)\n' +
     'ACTION:set_meal|{day}|{meal_name}|{type}  — set a specific dinner (day=Mon/Tue/.../Sun, type=Home Cooked/Takeout/Eating Out/Leftovers)\n' +
     'ACTION:add_home_item|{item_name}|{category}|{warranty_expiry_YYYY-MM-DD}|{interval_months}|{notes}\n' +
+    '  \u2014 Tracks ANYTHING with a warranty or a service interval, not only household things:\n' +
+    '     an appliance, a watch, a laptop, a mattress, a bike. Category is free text.\n' +
+    '  \u2014 Set warranty_expiry when a warranty or guarantee ends; VERA then reminds at 60, 14 and 1 days.\n' +
+    '     A month-and-year only ("September 2027") \u2014 use the LAST day of that month, e.g. 2027-09-30.\n' +
+    '  \u2014 Set interval_months for something serviced on a cycle; leave it blank for a warranty-only item.\n' +
     'ACTION:record_home_service|{row_number_or_item_name}\n' +
     'ACTION:add_shopping_item|{store_name}|{item_text}\n' +
     'ACTION:add_goal|{title}|{category}|{description}\n' +
@@ -953,7 +958,9 @@ function buildChatSystemPrompt_(context) {
     '- For mark_bill_paid: pass the row number from BILLS above (e.g., "2" for [row:2]). This toggles: paid→unpaid, unpaid→paid.\n' +
     '- For add_recipe: ingredients must be semicolon-separated (e.g., "Pasta 400g; Beef 500g; Tomatoes 2 cans"). Use empty string for unknown fields.\n' +
     '- For delete_recipe: use the row number from RECIPES above. Always confirm the recipe name with Ahmed before deleting.\n' +
-    '- For add_home_item: use empty string for warranty_expiry and interval_months if not provided.\n' +
+    '- For add_home_item: use empty string for warranty_expiry and interval_months if not provided. When Ahmed\n' +
+    '  mentions a warranty, guarantee or "covered until" date on any object, record it with add_home_item rather\n' +
+    '  than only replying \u2014 an unrecorded warranty is one nobody is reminded about.\n' +
     '- For record_home_service: pass the row number from HOME ITEMS above, OR the item name. Sets Last Service=today, computes Next Service, creates a GCal reminder.\n' +
     '- For add_shopping_item: store_name must partially match one of the SHOPPING STORES listed above.\n' +
     '- For update_goal: valid fields are "status" (To Do/In Progress/Done/Paused), "title", "category", "progress", "notes". Use goal ID from YEARLY GOALS above.\n' +

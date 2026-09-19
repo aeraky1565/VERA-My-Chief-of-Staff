@@ -924,6 +924,7 @@ function nightlyRun() {
 
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
+    try { checkWarrantiesExpiring_(); } catch (wErr) { Logger.log('checkWarrantiesExpiring_ error (non-fatal): ' + wErr.message); stepFailures.push('checkWarrantiesExpiring_: ' + wErr.message); }
 
     // Step 0m-ii: Card perk expiry reminders — flag/email/calendar 2 weeks before a perk period resets unused (Issue #187)
     try { checkCardPerksExpiring_(); } catch (cpeErr) { Logger.log('checkCardPerksExpiring_ error (non-fatal): ' + cpeErr.message); stepFailures.push('checkCardPerksExpiring_: ' + cpeErr.message); }
@@ -1565,6 +1566,25 @@ function buildMorningIntelligence_() {
         maintRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
           escapeHtml_(item) + '</strong> <span style="color:' + textColor + ';font-size:13px;">— ' + statusStr + '</span></p>');
       });
+
+      // Warranties inside 60 days. The column has always been here and the
+      // dashboard has always badged it; this is the first thing that tells you.
+      homeData.forEach(function(r) {
+        var wItem = String(r[0] || '').trim();
+        if (!wItem || !r[3]) return;
+        var wDays = null;
+        try {
+          var wExp = new Date(r[3]);
+          if (!isNaN(wExp.getTime())) { wExp.setHours(0, 0, 0, 0); wDays = Math.round((wExp - today) / 86400000); }
+        } catch (e3) {}
+        if (wDays === null || wDays < 0 || wDays > 60) return;
+        var wStatus = wDays === 0 ? 'warranty ends TODAY'
+                    : wDays === 1 ? 'warranty ends tomorrow'
+                    : 'warranty ends in ' + wDays + ' days';
+        maintRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• 🛡️ <strong>' +
+          escapeHtml_(wItem) + '</strong> <span style="color:' +
+          (wDays <= 14 ? '#c62828' : '#777777') + ';font-size:13px;">— ' + wStatus + '</span></p>');
+      });
     }
   } catch (e) { Logger.log('buildMorningIntelligence_: home — ' + e.message); }
 
@@ -1951,6 +1971,151 @@ function checkTaxDocuments_() {
  *
  * Uses flag key `contract_expiry_<id>` to prevent duplicate flags.
  */
+/**
+ * Warranty expiry flags for Home Items (Issue #187).
+ *
+ * The Warranty Expiry column has existed since the tab did, and the dashboard
+ * has always drawn a badge from it — but nothing ever reminded on it. The
+ * morning email and checkHomeServiceDue_ both read only Next Service, so a
+ * warranty could lapse with VERA holding the date the whole time.
+ *
+ * A warranty is not a service task. The actionable moment is "use it before you
+ * lose it", which is earlier than the date itself, so this escalates across
+ * three tiers rather than firing once:
+ *
+ *   60 days — enough time to book an appointment or ship something
+ *   14 days — act now
+ *    1 day  — last call
+ *
+ * Flag rows are upserted directly rather than written through writeFlags.
+ * writeFlags dedups on keysAreSimilar_, which strips standalone numbers — so
+ * "..._60d", "..._14d" and "..._1d" all normalise to the same token set and
+ * only the first tier would ever appear. That is the same trap the Watchdog
+ * flags had to avoid; syncWatchdogFlags_ is the pattern this follows.
+ */
+var WARRANTY_FLAG_PREFIX_ = 'warranty_expiry_';
+var WARRANTY_FLAG_SOURCE_ = 'Warranties';
+var WARRANTY_TIERS_ = [
+  { days: 1,  urgency: 'High',   lead: 'expires tomorrow' },
+  { days: 14, urgency: 'High',   lead: 'expires in {n} days' },
+  { days: 60, urgency: 'Medium', lead: 'expires in {n} days' },
+];
+
+function checkWarrantiesExpiring_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.HOME_ITEMS);
+  var flagSheet = ss.getSheetByName(TABS.FLAGS);
+  if (!sheet || sheet.getLastRow() < 2 || !flagSheet) return;
+
+  var tz      = Session.getScriptTimeZone();
+  var today   = new Date(); today.setHours(0, 0, 0, 0);
+  var dateStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var cfg     = getConfigValues();
+
+  var suppressed = [];
+  try { suppressed = getSuppressedKeyPatterns_(); } catch (e) {}
+
+  // HOME_ITEM_HEADERS: Item | Category | Purchase Date | Warranty Expiry |
+  //                    Last Service | Next Service | Interval (mo) | Notes
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
+
+  var wanted = {};
+  rows.forEach(function(r) {
+    var item = String(r[0] || '').trim();
+    if (!item || !r[3]) return;
+
+    var expiry = new Date(r[3]);
+    if (isNaN(expiry.getTime())) return;
+    expiry.setHours(0, 0, 0, 0);
+
+    var daysUntil = Math.round((expiry - today) / 86400000);
+    if (daysUntil < 0) return;   // already lapsed — the badge says so; nagging does not help
+
+    var tier = null;
+    for (var i = 0; i < WARRANTY_TIERS_.length; i++) {
+      if (daysUntil <= WARRANTY_TIERS_[i].days) { tier = WARRANTY_TIERS_[i]; break; }
+    }
+    if (!tier) return;
+
+    var slug = item.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    if (suppressed.indexOf(WARRANTY_FLAG_PREFIX_ + slug) !== -1) return;
+    if (suppressed.indexOf('warranty_expiry') !== -1) return;
+
+    var category = String(r[1] || '').trim();
+    var notes    = String(r[7] || '').trim();
+    var when     = tier.lead.replace('{n}', String(daysUntil));
+
+    // Keyed on the item alone, not the tier: one flag per item that sharpens as
+    // the date approaches, rather than three competing rows for one warranty.
+    wanted[WARRANTY_FLAG_PREFIX_ + slug] = {
+      flag:    '🛡️ Warranty on ' + item + ' ' + when,
+      reason:  'Cover ends ' + Utilities.formatDate(expiry, tz, 'MMM d, yyyy') +
+               (category ? ' · ' + category : '') +
+               '. If anything needs looking at, claim it before then' +
+               (notes ? ' — ' + notes : '') + '.',
+      urgency: tier.urgency,
+    };
+  });
+
+  upsertKeyedFlags_(flagSheet, WARRANTY_FLAG_PREFIX_, WARRANTY_FLAG_SOURCE_, wanted, dateStr);
+}
+
+/**
+ * Upserts a set of flags that share a key prefix: opens what is missing, keeps
+ * wording current, reopens one that recurs after being resolved, and closes any
+ * that no longer apply. Extracted from syncWatchdogFlags_ so the warranty engine
+ * and the watchdog cannot drift apart.
+ */
+function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
+  var lastRow = sheet.getLastRow();
+  var rows    = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, FLAG_HEADERS.length).getValues() : [];
+
+  var seen = {};
+  for (var i = 0; i < rows.length; i++) {
+    var key = String(rows[i][9] || '').trim();
+    if (key.indexOf(prefix) !== 0) continue;
+
+    var rowNum   = i + 2;
+    var resolved = String(rows[i][8] || '').trim().toLowerCase() === 'yes';
+
+    if (wanted[key]) {
+      seen[key] = true;
+      if (resolved) {
+        sheet.getRange(rowNum, 9).setValue('No');
+        sheet.getRange(rowNum, 7).setValue('No');
+        sheet.getRange(rowNum, 2).setValue(dateStr);
+        sheet.getRange(rowNum, 11).setValue('');
+      }
+      // Only write when the wording actually moved on — this runs nightly, and
+      // an unchanged rewrite costs a write and resets nothing useful.
+      if (String(rows[i][3]) !== wanted[key].flag)    sheet.getRange(rowNum, 4).setValue(wanted[key].flag);
+      if (String(rows[i][4]) !== wanted[key].reason)  sheet.getRange(rowNum, 5).setValue(wanted[key].reason);
+      if (String(rows[i][5]) !== wanted[key].urgency) sheet.getRange(rowNum, 6).setValue(wanted[key].urgency);
+    } else if (!resolved) {
+      sheet.getRange(rowNum, 9).setValue('Yes');
+    }
+  }
+
+  var appended = 0;
+  Object.keys(wanted).forEach(function(key) {
+    if (seen[key]) return;
+    var rand2 = String(Math.floor(Math.random() * 90) + 10);
+    sheet.appendRow([
+      'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
+      dateStr, source,
+      wanted[key].flag, wanted[key].reason, wanted[key].urgency,
+      'No', '', 'No', key, '',
+    ]);
+    appended++;
+  });
+
+  if (appended > 0) {
+    try { colorCodeFlags(sheet); } catch (e) {}
+    Logger.log('upsertKeyedFlags_: opened ' + appended + ' ' + source + ' flag(s)');
+  }
+  return appended;
+}
+
 function checkContracts_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.CONTRACTS);
