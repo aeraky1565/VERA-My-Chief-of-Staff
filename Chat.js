@@ -551,6 +551,21 @@ function buildChatSystemPrompt_(context) {
     'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
     'CAREER PROFILE:\n' + careerLines + '\n\n' +
     (function() {
+      var idList = context.importantDates || [];
+      if (!idList.length) return 'IMPORTANT DATES: (none on file)\n\n';
+      var lines = 'IMPORTANT DATES (next 12 months, already on file \u2014 do not re-add these):\n';
+      idList.slice(0, 40).forEach(function(d) {
+        var raw = String(d.Date || '');
+        lines += '  ' + String(d.Label || '') +
+          (d.Person ? ' (' + d.Person + ')' : '') +
+          ' \u2014 in ' + d.daysUntil + 'd' +
+          (raw ? ' [' + raw + ']' : '') +
+          (String(d['Add to Calendar'] || '').trim() &&
+           String(d['Add to Calendar']).toLowerCase() !== 'no' ? ' \u2014 on the calendar' : '') + '\n';
+      });
+      return lines + '\n';
+    })() +
+    (function() {
       var rxList = context.prescriptions || [];
       var active = rxList.filter(function(r) { return r.active === 'Yes'; });
       if (!active.length) return 'PRESCRIPTIONS: (none on file)\n\n';
@@ -898,6 +913,22 @@ function buildChatSystemPrompt_(context) {
     'ACTION:add_health_appointment|{type}|{person}|{intervalMonths}|{lastAppointment YYYY-MM-DD or blank}|{notes}  \u2014 starts tracking a new appointment by creating a DR: calendar event\n' +
     'ACTION:query_health_due|{appointmentType}  \u2014 look up when a health appointment is next due based on calendar history (read-only, result returned to you)\n' +
     // Credit Card Hub (Issues #115 + #117)
+    // Important Dates
+    'ACTION:add_important_date|{label}|{date or rule}|{person or blank}|{yes to also put it on the shared calendar}|{notes or blank}\n' +
+    '  \u2014 {date or rule} is ONE of:\n' +
+    '      MM-DD              a fixed day every year, e.g. 04-14\n' +
+    '      YYYY-MM-DD         one specific day, e.g. 2027-06-08\n' +
+    '      {nth} {wd} of {mon}   a floating day, e.g. 3rd sun of sep | last mon of may | 2nd tue of nov\n' +
+    '                            nth = 1st/2nd/3rd/4th/5th/last, wd = sun..sat, mon = jan..dec\n' +
+    '      {nth} {wd} of every month   e.g. 1st fri of every month\n' +
+    '      {label} {+|-}{N}d  counted from another Important Date, or from easter,\n' +
+    '                            e.g. thanksgiving -6d | easter +50d\n' +
+    '  \u2014 Use a RULE whenever the date floats rather than falling on a fixed number.\n' +
+    '     "third Sunday of September" is 3rd sun of sep, NOT 09-21. Getting this wrong\n' +
+    '     means the date silently drifts a year later.\n' +
+    '  \u2014 Pass yes in the 4th slot when it should appear on the shared calendar; VERA adds it\n' +
+    '     ~60 days ahead and skips it if it is already on a calendar.\n' +
+    '  \u2014 Re-using an existing label updates that date rather than adding a second row.\n' +
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
     // Reference documents
@@ -1302,6 +1333,13 @@ function buildChatContext_() {
     prescriptions = (pRes && pRes.prescriptions) || [];
   } catch(e) { Logger.log('Chat context: prescriptions — ' + e.message); }
 
+  // Important Dates — so chat can answer "when is X", and avoid re-adding
+  // something already on file. Resolved dates, so rule rows read as real days.
+  var importantDates = [];
+  try {
+    importantDates = getUpcomingImportantDates_(365) || [];
+  } catch(e) { Logger.log('Chat context: important dates — ' + e.message); }
+
   // Credit Card Hub (Issues #115 + #117)
   var cardsData = null;
   try {
@@ -1360,6 +1398,7 @@ function buildChatContext_() {
     pantryDue:       pantryDue,
     career:          career,
     prescriptions:   prescriptions,
+    importantDates:  importantDates,
     cardsData:       cardsData,
     upcomingGuests:  upcomingGuests,
     contracts:       contracts,
@@ -2247,6 +2286,55 @@ function executeActions_(rawText) {
         if (rxMed) {
           webAddPrescription_({ parameter: { person: rxPerson, medication: rxMed, dosage: rxDose, frequency: rxFreq, refillDate: rxRefill, notes: rxNotes, active: 'Yes' } });
           executed.push('add_prescription (' + rxPerson + ': ' + rxMed + ')');
+        }
+      }
+
+      else if (type === 'add_important_date') {
+        var idLabel  = (args[0] || '').trim();
+        var idWhen   = (args[1] || '').trim();
+        var idPerson = (args[2] || '').trim();
+        var idCal    = (args[3] || '').trim().toLowerCase();
+        var idNotes  = (args[4] || '').trim();
+
+        if (!idLabel || !idWhen) {
+          errors.push('add_important_date: a label and a date are both required');
+        } else if (!parseDateRule_(idWhen) &&
+                   !/^\d{2}-\d{2}$/.test(idWhen) &&
+                   !/^\d{4}-\d{2}-\d{2}$/.test(idWhen)) {
+          // Refuse rather than write a row that resolves to nothing. A dead row
+          // looks saved in the dashboard but never fires and never lands on a
+          // calendar, which is the worst of both.
+          errors.push('add_important_date: "' + idWhen + '" is not a date or a rule I can resolve ' +
+                      '(use MM-DD, YYYY-MM-DD, "3rd sun of sep", "last mon of may", or "<label> -6d")');
+        } else {
+          var idOn = (idCal === 'yes' || idCal === 'true' || idCal === 'calendar') ? 'Yes' : '';
+          // Same label already on file → update it instead of leaving two rows
+          // that disagree. Saying it twice should not create a duplicate.
+          var idExisting = null;
+          try {
+            var idAll = webGetImportantDates_();
+            (idAll && idAll.dates || []).forEach(function(d) {
+              if (!idExisting && String(d.Label || '').trim().toLowerCase() === idLabel.toLowerCase()) idExisting = d;
+            });
+          } catch (idLookupErr) { /* fall through to add */ }
+
+          if (idExisting) {
+            webUpdateImportantDate_({ parameter: {
+              id: idExisting.ID, label: idLabel, date: idWhen,
+              person: idPerson || String(idExisting.Person || ''),
+              notes:  idNotes  || String(idExisting.Notes  || ''),
+              addToCalendar: idOn,
+            }});
+            executed.push('add_important_date (updated "' + idLabel + '" → ' + idWhen +
+                          (idOn ? ', on the calendar' : '') + ')');
+          } else {
+            webAddImportantDate_({ parameter: {
+              label: idLabel, date: idWhen, person: idPerson,
+              notes: idNotes, addToCalendar: idOn,
+            }});
+            executed.push('add_important_date ("' + idLabel + '" → ' + idWhen +
+                          (idOn ? ', on the calendar' : '') + ')');
+          }
         }
       }
 

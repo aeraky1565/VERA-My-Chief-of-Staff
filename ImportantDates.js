@@ -757,6 +757,7 @@ function getUpcomingImportantDates_(daysAhead) {
 
   var allRows  = sheet.getDataRange().getValues();
   var hdrs     = allRows[0];
+  var ruleRows = ruleRowsFromSheetValues_(allRows);
   var now      = new Date();
   var thisYear = now.getFullYear();
   var results  = [];
@@ -773,20 +774,12 @@ function getUpcomingImportantDates_(daysAhead) {
     var lastActioned = String(row[7] || '').trim();
     if (!dateRaw || !label) return;
 
-    var targetDate = null;
-    var isOneTime  = false;
-
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
-      targetDate = new Date(dateRaw + 'T00:00:00');
-      isOneTime  = !recurring;
-    } else if (/^\d{2}-\d{2}$/.test(dateRaw)) {
-      var mm = parseInt(dateRaw.split('-')[0], 10);
-      var dd = parseInt(dateRaw.split('-')[1], 10);
-      targetDate = new Date(thisYear, mm - 1, dd, 0, 0, 0);
-      if (targetDate < now) targetDate = new Date(thisYear + 1, mm - 1, dd, 0, 0, 0);
-    } else {
-      return;
-    }
+    // Same resolver as the flag engine and the calendar sync — this used to
+    // carry its own copy, whose else-branch dropped rule rows on the floor, so
+    // they never reached the weekend memo's ON YOUR RADAR.
+    var isOneTime  = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) && !recurring;
+    var targetDate = nextOccurrence_(row[1], now, ruleRows);
+    if (!targetDate) return;
 
     var daysUntil = Math.round((targetDate.getTime() - now.getTime()) / 86400000);
     if (daysUntil < 0 || daysUntil > daysAhead) return;
