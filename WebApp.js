@@ -3536,8 +3536,12 @@ function webAddHomeItem_(e) {
     (p.category       || '').trim(),
     (p.purchaseDate   || '').trim(),
     (p.warrantyExpiry || '').trim(),
-    '',   // Last Service
-    '',   // Next Service
+    // Accepted rather than forced blank: an appliance last serviced in January
+    // could otherwise only be entered as though it never had been, and its next
+    // service would stay empty until a Record Service click scheduled it from
+    // today instead of from the real date.
+    (p.lastService    || '').trim(),
+    (p.nextService    || '').trim(),
     p.intervalMonths !== undefined ? (Number(p.intervalMonths) || '') : '',
     (p.notes || '').trim(),
   ]]);
@@ -3545,12 +3549,26 @@ function webAddHomeItem_(e) {
 }
 
 function webDeleteHomeItem_(e) {
-  const rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
+  const p      = (e && e.parameter) ? e.parameter : {};
+  const rowNum = parseInt(p.row || '0', 10);
   if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + rowNum);
   const sheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
   if (!sheet) throw new Error('Home Items tab not found');
+  if (rowNum > sheet.getLastRow()) throw new Error('Row ' + rowNum + ' no longer exists');
+
+  // Deleting by row number alone is only safe while the caller's list matches
+  // the sheet. It often does not — another tab open, or a row added from chat
+  // since this page loaded — and the failure is silent: the wrong item goes.
+  // The caller sends the name it believes is there, and a mismatch aborts.
+  const expected = (p.item || '').trim();
+  const actual   = String(sheet.getRange(rowNum, 1).getValue() || '').trim();
+  if (expected && expected.toLowerCase() !== actual.toLowerCase()) {
+    throw new Error('Row ' + rowNum + ' holds "' + actual + '", not "' + expected +
+                    '" — the list is out of date. Refresh and try again.');
+  }
+
   sheet.deleteRow(rowNum);
-  return { ok: true, row: rowNum, action: 'deleted' };
+  return { ok: true, row: rowNum, item: actual, action: 'deleted' };
 }
 
 // ---- Itinerary (Issue #63) --------------------------------------------------

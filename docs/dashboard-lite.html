@@ -2638,20 +2638,82 @@ function PurchaseHistoryTab({ items }) {
   );
 }
 
-function HomestewardView({ items, loading, busy, onRecordService }) {
-  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading home items…</div>;
+const BLANK_HOME_ITEM = { item:'', category:'', purchaseDate:'', warrantyExpiry:'', lastService:'', nextService:'', intervalMonths:'', notes:'' };
+
+function HomestewardView({ items, loading, busy, onRecordService, onAdd, onDelete }) {
+  // Hooks run before any early return; this component previously had none.
+  const [showAdd, setShowAdd] = React.useState(false);
+  const [form, setForm]       = React.useState(BLANK_HOME_ITEM);
+  const setF = (k, v) => setForm(p => Object.assign({}, p, { [k]: v }));
+  const openAdd = () => { setForm(BLANK_HOME_ITEM); setShowAdd(true); };
+  const submitAdd = () => { if (!form.item.trim() || busy) return; onAdd(form); setShowAdd(false); };
+  const inpStyle = { width:'100%', boxSizing:'border-box', fontSize:13, background:'#060e24', border:'1px solid #1e3060', borderRadius:6, padding:'6px 9px', color:'#dde1f0' };
+  const lblStyle = { fontSize:11, color:'#6b7fa8', marginBottom:3 };
+  const addBtn = (
+    <button className="add-item-btn" onClick={openAdd} disabled={busy}
+      style={{ fontSize:12, background:'#1a3a6e', color:'#a0c0ff', border:'none', borderRadius:6, padding:'6px 14px', cursor:'pointer' }}>＋ Add item</button>
+  );
+  const addModal = showAdd && (
+    <div className="add-item-modal" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }} onClick={() => setShowAdd(false)}>
+      <div style={{ background:'#0d1b3e', border:'1px solid #1e3a6e', borderRadius:10, padding:22, width:360, maxWidth:'92vw', maxHeight:'88vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0', marginBottom:4 }}>Add an item</div>
+        <div style={{ fontSize:11, color:'#4d6080', marginBottom:16 }}>Only the name is required. Fill the warranty date, the service interval, or both.</div>
+        {[{k:'item',l:'Item *',ph:'e.g. Watch battery'},{k:'category',l:'Category',ph:'e.g. Personal'}].map(f => (
+          <div key={f.k} style={{ marginBottom:11 }}>
+            <div style={lblStyle}>{f.l}</div>
+            <input type="text" className={'hi-' + f.k} placeholder={f.ph} value={form[f.k]} onChange={e => setF(f.k, e.target.value)} style={inpStyle} />
+          </div>
+        ))}
+        <div style={{ display:'flex', gap:10, marginBottom:11 }}>
+          {[{k:'purchaseDate',l:'Purchased'},{k:'warrantyExpiry',l:'Warranty ends'}].map(f => (
+            <div key={f.k} style={{ flex:1 }}>
+              <div style={lblStyle}>{f.l}</div>
+              <input type="date" className={'hi-' + f.k} value={form[f.k]} onChange={e => setF(f.k, e.target.value)} style={inpStyle} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:10, marginBottom:11 }}>
+          {[{k:'lastService',l:'Last serviced'},{k:'nextService',l:'Next service due'}].map(f => (
+            <div key={f.k} style={{ flex:1 }}>
+              <div style={lblStyle}>{f.l}</div>
+              <input type="date" className={'hi-' + f.k} value={form[f.k]} onChange={e => setF(f.k, e.target.value)} style={inpStyle} />
+            </div>
+          ))}
+        </div>
+        <div style={{ marginBottom:11 }}>
+          <div style={lblStyle}>Service interval (months)</div>
+          <input type="number" min="0" className="hi-intervalMonths" placeholder="e.g. 12" value={form.intervalMonths} onChange={e => setF('intervalMonths', e.target.value)}
+            style={{ width:90, fontSize:13, background:'#060e24', border:'1px solid #1e3060', borderRadius:6, padding:'6px 9px', color:'#dde1f0' }} />
+        </div>
+        <div style={{ marginBottom:18 }}>
+          <div style={lblStyle}>Notes</div>
+          <input type="text" className="hi-notes" placeholder="Receipt location, model number…" value={form.notes} onChange={e => setF('notes', e.target.value)} style={inpStyle} />
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="hi-save" onClick={submitAdd} disabled={!form.item.trim() || busy}
+            style={{ flex:1, fontSize:13, background:'#1a3a6e', color:'#a0c0ff', border:'none', borderRadius:6, padding:'8px', cursor:'pointer' }}>{busy ? 'Saving…' : 'Add'}</button>
+          <button onClick={() => setShowAdd(false)}
+            style={{ fontSize:13, background:'transparent', color:'#6b7fa8', border:'1px solid #2a3a5e', borderRadius:6, padding:'8px 16px', cursor:'pointer' }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+  if (loading) return <div style={{ fontSize: 13, color: '#6b7fa8', padding: 16 }}>Loading warranties & service…</div>;
   if (!items || !items.length) return (
     <div className="empty-state" style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 32, marginBottom: 12 }}>🏠</div>
-      <div style={{ color: '#dde1f0', marginBottom: 6 }}>No home items yet</div>
-      <div style={{ fontSize: 12, color: '#4d6080' }}>Add rows to the Home Items tab in your Life OS sheet.</div>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>🛡️</div>
+      <div style={{ color: '#dde1f0', marginBottom: 6 }}>Nothing tracked yet</div>
+      <div style={{ fontSize: 12, color: '#4d6080', marginBottom: 14 }}>Anything with a warranty or a service interval — an appliance, a watch, a laptop.</div>
+      {addBtn}
+      {addModal}
     </div>
   );
 
   function warrantyBadge(days) {
     if (days === null || days === undefined) return null;
     if (days < 0)  return { label: '🔴 Expired',       color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
-    if (days <= 30) return { label: `🟡 Expires in ${days}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
+    if (days <= 14) return { label: `🔴 Expires in ${days}d`, color: '#ef5350', bg: 'rgba(239,83,80,.12)' };
+    if (days <= 60) return { label: `🟡 Expires in ${days}d`, color: '#f5a623', bg: 'rgba(245,166,35,.12)' };
     return { label: '🟢 Valid',           color: '#66bb6a', bg: 'rgba(102,187,106,.12)' };
   }
   function serviceBadge(days) {
@@ -2676,9 +2738,17 @@ function HomestewardView({ items, loading, busy, onRecordService }) {
 
   const overdueCount = items.filter(i => i.serviceDays !== null && i.serviceDays < 0).length;
   const dueSoonCount = items.filter(i => i.serviceDays !== null && i.serviceDays >= 0 && i.serviceDays <= 14).length;
+  const warrantySoon = items.filter(i => i.warrantyDays !== null && i.warrantyDays !== undefined && i.warrantyDays >= 0 && i.warrantyDays <= 60);
 
   return (
     <div>
+      {addModal}
+      <div style={{ marginBottom: 14 }}>{addBtn}</div>
+      {warrantySoon.length > 0 && (
+        <div className="warranty-banner" style={{ background: 'rgba(245,166,35,.1)', border: '1px solid rgba(245,166,35,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#f5a623' }}>
+          🛡️ {warrantySoon.length} warrant{warrantySoon.length > 1 ? 'ies' : 'y'} ending within 60 days — {warrantySoon.map(i => i.item).join(', ')}
+        </div>
+      )}
       {overdueCount > 0 && (
         <div style={{ background: 'rgba(239,83,80,.1)', border: '1px solid rgba(239,83,80,.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#ef5350' }}>
           🔴 {overdueCount} item{overdueCount > 1 ? 's' : ''} overdue for service
@@ -2714,6 +2784,10 @@ function HomestewardView({ items, loading, busy, onRecordService }) {
                       disabled={busy || !item.intervalMonths}
                       title={item.intervalMonths ? 'Record service & schedule next' : 'Set Interval (mo) to enable scheduling'}
                     >✓ Record Service</button>
+                    <button className="hi-delete" disabled={busy} title="Delete"
+                      onClick={() => { if (window.confirm('Delete "' + item.item + '"?')) onDelete(item.row, item.item); }}
+                      style={{ fontSize: 13, color: '#6b3a3a', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', opacity: 0.7 }}
+                    >✕</button>
                   </div>
                   <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
                     {item.warrantyExpiry && <span style={{ fontSize: 11, color: '#6b7fa8' }}>🛡️ Warranty: {item.warrantyExpiry}</span>}
@@ -4473,7 +4547,7 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
 function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
   const feat = features || {};
   const ALL_SUBTABS = [
-    { id:'steward',   label:'🏠 Steward'   },
+    { id:'steward',   label:'🛡️ Warranties & Service' },
     { id:'vehicles',  label:'🚗 Vehicles'  },
     { id:'chores',    label:'✅ Chores'    },
     { id:'chores_for_others', label:'🧒 For Others' },
@@ -4574,6 +4648,22 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
       loadPurchaseHistory();
     }
   }, [sub]);
+
+  function handleAddHomeItem(form) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, Object.assign({ action: 'add_home_item' }, form))
+      .then(function() { loadHomeFront(); showToast('Item added'); })
+      .catch(function(e) { showToast('Error: ' + e.message); })
+      .finally(function() { setBusy(false); });
+  }
+
+  function handleDeleteHomeItem(row, item) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, { action: 'delete_home_item', row: row, item: item })
+      .then(function() { loadHomeFront(); showToast('Item deleted'); })
+      .catch(function(e) { showToast('Error: ' + e.message); })
+      .finally(function() { setBusy(false); });
+  }
 
   function handleRecordService(row) {
     setBusy(true);
@@ -4725,6 +4815,8 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
           loading={homeFront === null}
           busy={busy}
           onRecordService={handleRecordService}
+          onAdd={handleAddHomeItem}
+          onDelete={handleDeleteHomeItem}
         />
       )}
 
