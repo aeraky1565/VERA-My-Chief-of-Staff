@@ -208,3 +208,224 @@ function collapseOptionGroups_(items) {
     return !meta.optionGroup || meta.isRepresentative === true;
   });
 }
+
+// ─── PHASE 2 — closing an open decision ──────────────────────────────────────
+//
+// An OPEN decision is the absence of a row in Trip Decisions. Rows appear only
+// when you act, so decide-by stays derived, nothing is written on a read path,
+// and a hold you delete from the calendar simply stops being a decision.
+
+/** Types whose option usually has to be booked, so the clock starts earlier. */
+var DECIDE_BY_TICKETED_ = ['show', 'city_tour', 'theme_park', 'museum', 'spa',
+                           'skiing', 'snorkeling', 'winery'];
+var DECIDE_BY_DINING_   = ['reservation', 'dining', 'nightlife', 'coffee'];
+
+/** Days of lead time one option's type asks for. */
+function decideByLeadDays_(type) {
+  var t = String(type || '').toLowerCase();
+  if (DECIDE_BY_TICKETED_.indexOf(t) !== -1) return 3;
+  if (DECIDE_BY_DINING_.indexOf(t)   !== -1) return 2;
+  return 1;
+}
+
+function tdAddDays_(yyyymmdd, delta) {
+  var p = String(yyyymmdd).split('-');
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  d.setDate(d.getDate() + delta);
+  return d.getFullYear() + '-' +
+         String(d.getMonth() + 1).padStart(2, '0') + '-' +
+         String(d.getDate()).padStart(2, '0');
+}
+
+/**
+ * When a group has to be decided by.
+ *
+ * A mixed group takes the EARLIEST of its members' deadlines — the museum in a
+ * museum-or-beach group is the thing needing a booking, so it sets the clock.
+ * Clamped to [today, slotDate]: never in the past, never after the slot itself.
+ */
+function decideByFor_(members, todayStr) {
+  if (!members || !members.length) return '';
+  var slotDate = members[0].date;
+  var earliest = null;
+  members.forEach(function(m) {
+    var d = tdAddDays_(slotDate, -decideByLeadDays_(m.type));
+    if (earliest === null || d < earliest) earliest = d;
+  });
+  if (todayStr && earliest < todayStr) earliest = todayStr;
+  if (earliest > slotDate) earliest = slotDate;
+  return earliest;
+}
+
+/** Reads the resolutions for one trip, keyed by group. */
+function loadTripDecisions_(tripKey) {
+  var out = {};
+  try {
+    var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_DECISIONS);
+    if (!sheet || sheet.getLastRow() < 2) return out;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_DECISION_HEADERS.length).getValues();
+    rows.forEach(function(r) {
+      if (!String(r[0] || '').trim()) return;
+      if (String(r[1] || '').trim() !== tripKey) return;
+      out[String(r[2] || '').trim()] = {
+        id:           String(r[0]).trim(),
+        status:       String(r[4] || '').trim().toLowerCase(),
+        chosenItemId: String(r[5] || '').trim(),
+        snoozedUntil: formatDateVal_(r[6]).trim(),
+      };
+    });
+  } catch (e) {
+    Logger.log('loadTripDecisions_: ' + e.message);
+  }
+  return out;
+}
+
+/**
+ * Stamps each grouped item with its decide-by and whatever resolution exists.
+ *
+ * The consequential line is the representative flip: every consumer collapses on
+ * isRepresentative, so moving it to the chosen option makes gap detection,
+ * travel-leg pairing and the notices all start reasoning about the plan you
+ * actually picked — without a change to any of them.
+ *
+ * Mutates and returns `items`.
+ */
+function applyTripDecisions_(items, tripKey, todayStr) {
+  if (!items || !items.length) return items;
+  var resolutions = loadTripDecisions_(tripKey);
+
+  var byGroup = {};
+  items.forEach(function(it) {
+    var meta = tdReadMeta_(it);
+    if (!meta.optionGroup) return;
+    (byGroup[meta.optionGroup] = byGroup[meta.optionGroup] || []).push(it);
+  });
+
+  Object.keys(byGroup).forEach(function(groupKey) {
+    var members = byGroup[groupKey];
+    var res     = resolutions[groupKey] || null;
+    var decideBy = decideByFor_(members, todayStr);
+
+    var status = 'open';
+    if (res) {
+      if (res.status === 'decided' && res.chosenItemId) status = 'decided';
+      else if (res.status === 'dropped') status = 'dropped';
+      else if (res.status === 'snoozed') status = 'snoozed';
+    }
+
+    members.forEach(function(it) {
+      var meta = tdReadMeta_(it);
+      meta.decideBy       = decideBy;
+      meta.decisionStatus = status;
+      if (status === 'snoozed' && res) meta.snoozedUntil = res.snoozedUntil;
+
+      if (status === 'decided') {
+        var isChosen = (String(it.id) === res.chosenItemId);
+        meta.chosen           = isChosen;
+        meta.dismissed        = !isChosen;
+        meta.isRepresentative = isChosen;      // the flip
+        if (isChosen) meta.tentative = false;  // it is a plan now, so it renders solid
+      } else {
+        delete meta.chosen;
+        delete meta.dismissed;
+      }
+      tdWriteMeta_(it, meta);
+    });
+
+    // A resolution naming an option that no longer exists (the hold was deleted
+    // from the calendar) would otherwise leave a group with no representative
+    // and quietly drop the slot from every consumer.
+    if (status === 'decided' && !members.some(function(m) { return tdReadMeta_(m).isRepresentative; })) {
+      var meta0 = tdReadMeta_(members[0]);
+      meta0.isRepresentative = true;
+      meta0.decisionStatus   = 'open';
+      tdWriteMeta_(members[0], meta0);
+      Logger.log('applyTripDecisions_: chosen item missing for ' + groupKey + ' — reopened');
+    }
+  });
+
+  return items;
+}
+
+/**
+ * Nightly: one flag per open decision, sharpening as its deadline approaches.
+ *
+ * Upserted rather than written through writeFlags — writeFlags dedups via
+ * keysAreSimilar_, which strips standalone numbers, so a tiered key would
+ * collapse to one flag and the escalation would silently never escalate. Same
+ * trap the warranty tiers had to route around.
+ */
+function checkTripDecisions_() {
+  var ss        = getSpreadsheet();
+  var flagSheet = ss.getSheetByName(TABS.FLAGS);
+  if (!flagSheet) return;
+
+  var tz       = Session.getScriptTimeZone();
+  var now      = new Date();
+  var todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  var dateStr  = todayStr;
+
+  var trips = [];
+  try { trips = getUpcomingTravel_(readPTOConfig_()) || []; }
+  catch (e) { Logger.log('checkTripDecisions_: no upcoming travel — ' + e.message); return; }
+
+  var wanted = {};
+  trips.forEach(function(trip) {
+    var daysAway = trip.daysAway;
+    if (daysAway === undefined && trip.startDate) {
+      daysAway = Math.round((new Date(trip.startDate + 'T00:00:00') - now) / 86400000);
+    }
+    if (daysAway === null || daysAway === undefined || daysAway > 21) return;
+
+    var tripKey = trip.startDate + '|' + trip.label;
+    var itin;
+    try {
+      itin = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: trip.startDate, endDate: trip.endDate } },
+                              { skipEventTz: true });
+    } catch (ie) {
+      Logger.log('checkTripDecisions_: itinerary failed for ' + tripKey + ' — ' + ie.message);
+      return;
+    }
+
+    var byGroup = {};
+    (itin.items || []).forEach(function(it) {
+      var meta = tdReadMeta_(it);
+      if (!meta.optionGroup) return;
+      (byGroup[meta.optionGroup] = byGroup[meta.optionGroup] || []).push({ item: it, meta: meta });
+    });
+
+    Object.keys(byGroup).forEach(function(groupKey) {
+      var members = byGroup[groupKey];
+      var meta    = members[0].meta;
+      if (meta.decisionStatus !== 'open') return;                       // decided or dropped
+      if (meta.snoozedUntil && meta.snoozedUntil > todayStr) return;    // deliberately quiet
+
+      var slotDate = members[0].item.date;
+      var decideBy = meta.decideBy || slotDate;
+      var daysToDecide = Math.round((new Date(decideBy + 'T00:00:00') - new Date(todayStr + 'T00:00:00')) / 86400000);
+      if (daysToDecide > 3) return;                                     // not yet worth saying
+
+      var urgency = daysToDecide > 0 ? 'Medium' : 'High';
+      var when    = daysToDecide > 1  ? 'in ' + daysToDecide + ' days'
+                  : daysToDecide === 1 ? 'tomorrow'
+                  : daysToDecide === 0 ? 'today'
+                  : Math.abs(daysToDecide) + ' day' + (daysToDecide === -1 ? '' : 's') + ' ago';
+      var slotLabel = Utilities.formatDate(new Date(slotDate + 'T12:00:00'), tz, 'EEE MMM d');
+      var titles = members.map(function(m) { return m.item.title; }).join(' · ');
+
+      var slug = (tripKey + '_' + groupKey).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      wanted['trip_decision_' + slug] = {
+        flag:    '🤔 ' + members.length + ' option' + (members.length === 1 ? '' : 's') +
+                 ' still open for ' + slotLabel + ' — ' + trip.label,
+        reason:  titles + '. Decide ' + when +
+                 (daysToDecide < 0 ? ' (past the point where booking gets easy)' : '') +
+                 '. Confirm one from the trip itinerary, or say "confirm the ' +
+                 String(members[0].item.title).split(' ').slice(0, 3).join(' ') + ' one".',
+        urgency: urgency,
+      };
+    });
+  });
+
+  upsertKeyedFlags_(flagSheet, 'trip_decision_', 'Trip Decisions', wanted, dateStr);
+  Logger.log('checkTripDecisions_: ' + Object.keys(wanted).length + ' open decision(s) flagged.');
+}

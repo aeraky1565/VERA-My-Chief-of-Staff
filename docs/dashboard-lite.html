@@ -5891,6 +5891,20 @@ function itinMeta(item) {
 const isTentativeItem = item => itinMeta(item).tentative === true;
 const optionGroupOf   = item => itinMeta(item).optionGroup || '';
 const optionCountOf   = item => itinMeta(item).optionCount || 0;
+const decisionStatusOf = item => itinMeta(item).decisionStatus || '';
+const decideByOf       = item => itinMeta(item).decideBy || '';
+const isDecidedItem    = item => decisionStatusOf(item) === 'decided';
+// Past its decide-by and still open — the chip turns amber rather than nagging.
+// <=, not <: the server clamps decide-by to [today, slotDate], so a deadline
+// that has already slipped arrives here as today. With < the amber state could
+// never be reached.
+function isOverdueDecision(item) {
+  const d = decideByOf(item);
+  if (!d || decisionStatusOf(item) !== 'open') return false;
+  const t = new Date();
+  const today = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0') + '-' + String(t.getDate()).padStart(2,'0');
+  return d <= today;
+}
 
 // One occupied slot per decision — three competing holds must not read as a
 // packed afternoon, or the free time they are holding open disappears.
@@ -5916,7 +5930,7 @@ const itinHoldStyle = item => isTentativeItem(item)
   ? { backgroundImage: 'repeating-linear-gradient(45deg, rgba(122,131,150,0.16) 0 4px, transparent 4px 8px)' }
   : {};
 
-function ItinItemRow({ item, onEdit, onDelete }) {
+function ItinItemRow({ item, onEdit, onDelete, onDecide, onReopen }) {
   const icon = ITIN_TYPE_ICON[item.type] || '📝';
   let meta = {};
   try { meta = item.metadata ? JSON.parse(item.metadata) : {}; } catch(e) {}
@@ -5928,13 +5942,22 @@ function ItinItemRow({ item, onEdit, onDelete }) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:600,fontSize:13,color:'#dde1f0',whiteSpace:'pre-wrap'}}>
           {item.title}
-          {isTentativeItem(item) && (
-            <span className="itin-hold-chip" style={{marginLeft:8,fontSize:10,fontWeight:600,letterSpacing:'0.04em',
-              textTransform:'uppercase',color:'#a89060',background:'rgba(168,144,96,0.14)',
-              border:'1px solid rgba(168,144,96,0.35)',borderRadius:3,padding:'1px 6px',whiteSpace:'nowrap'}}>
-              {optionCountOf(item) > 1 ? optionCountOf(item) + ' options' : 'tentative'}
-            </span>
-          )}
+          {isTentativeItem(item) && (() => {
+            const overdue = isOverdueDecision(item);
+            const st = decisionStatusOf(item);
+            const label = st === 'snoozed' ? 'snoozed'
+                        : overdue ? 'decide now'
+                        : optionCountOf(item) > 1 ? optionCountOf(item) + ' options' : 'tentative';
+            const c = overdue ? {fg:'#d08a3a',bg:'rgba(208,138,58,0.16)',br:'rgba(208,138,58,0.45)'}
+                              : {fg:'#a89060',bg:'rgba(168,144,96,0.14)',br:'rgba(168,144,96,0.35)'};
+            return (
+              <span className="itin-hold-chip" style={{marginLeft:8,fontSize:10,fontWeight:600,letterSpacing:'0.04em',
+                textTransform:'uppercase',color:c.fg,background:c.bg,
+                border:'1px solid ' + c.br,borderRadius:3,padding:'1px 6px',whiteSpace:'nowrap'}}>
+                {label}
+              </span>
+            );
+          })()}
           {meta.traveler && meta.traveler !== 'Both' && (
             <span style={{marginLeft:6,fontSize:10,padding:'1px 6px',borderRadius:8,
               background: meta.traveler==='Ahmed' ? '#0d2040' : '#1a0d30',
@@ -5946,24 +5969,45 @@ function ItinItemRow({ item, onEdit, onDelete }) {
         {time && <div style={{fontSize:11,color:'#8ab4f8',marginTop:2}}>{time}</div>}
         {item.location && <div style={{fontSize:11,color:'#6b7fa8',marginTop:1}}>📍 {item.location}</div>}
         {item.notes && <div style={{fontSize:11,color:'#5f6a80',marginTop:1,fontStyle:'italic'}}>{item.notes}</div>}
-        {item._options && item._options.length > 1 && (
-          <details className="itin-hold-options" style={{marginTop:5}}>
-            <summary style={{fontSize:11,color:'#6b7fa8',cursor:'pointer',listStyle:'none'}}>
-              Still deciding — {item._options.length} options
-            </summary>
-            <div style={{marginTop:5,paddingLeft:10,borderLeft:'2px solid rgba(168,144,96,0.35)'}}>
-              {item._options.map(o => (
-                <div key={o.id} style={{display:'flex',gap:8,padding:'3px 0',fontSize:12,color:'#8a9abf'}}>
-                  <span style={{color:'#4d6080',minWidth:38,fontVariantNumeric:'tabular-nums'}}>{o.startTime || '·'}</span>
-                  <span style={{flex:1,minWidth:0}}>
-                    {o.title}{o.location && <span style={{color:'#4d6080'}}> · {o.location}</span>}
-                  </span>
-                </div>
-              ))}
-              <div style={{fontSize:10,color:'#4d6080',marginTop:5,fontStyle:'italic'}}>Confirm one from the calendar for now.</div>
-            </div>
-          </details>
-        )}
+        {item._options && item._options.length > 1 && (() => {
+          const decided  = isDecidedItem(item);
+          const chosenId = decided ? (item._options.find(o => itinMeta(o).chosen) || {}).id : null;
+          const by       = decideByOf(item);
+          const summary  = decided
+            ? `Decided — ${item._options.length} options considered`
+            : `Still deciding — ${item._options.length} options${by ? ' · decide by ' + fmtDate(by) + (isOverdueDecision(item) ? ' · overdue' : '') : ''}`;
+          return (
+            <details className="itin-hold-options" style={{marginTop:5}}>
+              <summary style={{fontSize:11,color:isOverdueDecision(item)?'#d08a3a':'#6b7fa8',cursor:'pointer',listStyle:'none'}}>
+                {summary}
+              </summary>
+              <div style={{marginTop:5,paddingLeft:10,borderLeft:'2px solid rgba(168,144,96,0.35)'}}>
+                {item._options.map(o => {
+                  const isChosen = decided && String(o.id) === String(chosenId);
+                  return (
+                    <div key={o.id} style={{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0',fontSize:12,color:'#8a9abf'}}>
+                      <span style={{color:'#4d6080',minWidth:38,fontVariantNumeric:'tabular-nums'}}>{o.startTime || '·'}</span>
+                      <span style={{flex:1,minWidth:0,textDecoration:decided&&!isChosen?'line-through':'none',opacity:decided&&!isChosen?0.55:1}}>
+                        {isChosen && <span style={{color:'#66bb6a',marginRight:5}}>✓</span>}
+                        {o.title}{o.location && <span style={{color:'#4d6080'}}> · {o.location}</span>}
+                      </span>
+                      {!decided && onDecide && (
+                        <button className="itin-confirm-btn" onClick={() => onDecide(o)}
+                          style={{fontSize:10,padding:'2px 8px',borderRadius:10,border:'1px solid #2a4070',
+                            background:'none',color:'#8899cc',cursor:'pointer',whiteSpace:'nowrap'}}>Confirm</button>
+                      )}
+                    </div>
+                  );
+                })}
+                {decided && onReopen && (
+                  <button className="itin-undo-btn" onClick={() => onReopen(item)}
+                    style={{marginTop:6,fontSize:10,padding:'2px 8px',borderRadius:10,border:'1px solid #2a3a5e',
+                      background:'none',color:'#6b7fa8',cursor:'pointer'}}>Undo — reopen this decision</button>
+                )}
+              </div>
+            </details>
+          );
+        })()}
         {item.type==='flight' && meta.airline && (
           <div style={{fontSize:11,color:'#5c9eff',marginTop:2}}>
             {meta.airline} {meta.flightNum} · {meta.origin} → {meta.dest}
@@ -6402,7 +6446,7 @@ function PackingLitePanel({ tripKey, packingData, apiUrl, apiToken, onReload }) 
 }
 
 // --- ItineraryDayView --------------------------------------------------------
-function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
+function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDecide, onReopen }) {
   const items = itinerary?.items || [];
   const byDate = {};
   items.forEach(item => {
@@ -6462,7 +6506,9 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
               groupItineraryOptions(dayItems).map(item => (
                 <ItinItemRow key={item.id} item={item}
                   onEdit={() => onEdit(item)}
-                  onDelete={() => onDelete(item.id)} />
+                  onDelete={() => onDelete(item.id)}
+                  onDecide={onDecide}
+                  onReopen={onReopen} />
               ))
             )}
           </div>
@@ -6826,6 +6872,33 @@ function TravelLiteTab({ apiUrl, apiToken }) {
       setModal(null);
       await refreshItin(params.tripKey);
     } catch(e) { setError(e.message || 'Could not save item'); }
+    setBusy(false);
+  }
+
+  // Confirming records the choice; the losing holds stay on the calendar. VERA
+  // does not tidy someone's calendar as a side effect of a decision — which is
+  // also what makes this trivially undoable.
+  async function handleDecideTripOption(tripKey, option) {
+    const g = itinMeta(option).optionGroup;
+    if (!g) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action:'decide_trip_option', tripKey, groupKey: g, itemId: option.id });
+      showToast('Confirmed');
+      await refreshItin(tripKey);
+    } catch (e) { setError(e.message || 'Could not confirm'); }
+    setBusy(false);
+  }
+
+  async function handleReopenTripDecision(tripKey, rep) {
+    const g = itinMeta(rep).optionGroup;
+    if (!g) return;
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action:'reopen_trip_decision', tripKey, groupKey: g });
+      showToast('Reopened');
+      await refreshItin(tripKey);
+    } catch (e) { setError(e.message || 'Could not reopen'); }
     setBusy(false);
   }
 
@@ -7222,6 +7295,8 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                         onAdd={()=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
                         onEdit={item=>setModal({mode:'edit',item,tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
                         onDelete={id=>handleDelete(id,tripKey)}
+                        onDecide={opt=>handleDecideTripOption(tripKey,opt)}
+                        onReopen={rep=>handleReopenTripDecision(tripKey,rep)}
                       />
                     </>
                   )}

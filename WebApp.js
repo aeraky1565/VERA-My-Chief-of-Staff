@@ -176,6 +176,9 @@ function doGet(e) {
       case 'itinerary':             return jsonOut_(webGetItinerary_(e));
       case 'add_itinerary_item':    return jsonOut_(webAddItineraryItem_(e));
       case 'update_itinerary_item': return jsonOut_(webUpdateItineraryItem_(e));
+      case 'decide_trip_option':    return jsonOut_(webDecideTripOption_(e));
+      case 'snooze_trip_decision':  return jsonOut_(webSnoozeTripDecision_(e));
+      case 'reopen_trip_decision':  return jsonOut_(webReopenTripDecision_(e));
       case 'delete_itinerary_item': return jsonOut_(webDeleteItineraryItem_(e));
       case 'get_trip_meta':         return jsonOut_(webGetTripMeta_(e));
       case 'set_trip_meta':         return jsonOut_(webSetTripMeta_(e));
@@ -4048,10 +4051,127 @@ function webGetItinerary_(e, opts) {
   // the MERGED list so a hold typed into the dashboard groups with one held on
   // the calendar, and once — every consumer then collapses with a filter rather
   // than its own copy of this logic.
-  try { annotateOptionGroups_(items); }
+  try {
+    annotateOptionGroups_(items);
+    applyTripDecisions_(items, tripKey, Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+  }
   catch (odErr) { Logger.log('Itinerary: option grouping failed — ' + odErr.message); }
 
   return { ok: true, tripKey: tripKey, items: items };
+}
+
+/**
+ * Widens a populated Trip Decisions tab to the current header set.
+ * ensureSheet only writes headers into a blank sheet.
+ */
+function ensureTripDecisionsSchema_(sheet) {
+  if (!sheet) return sheet;
+  var need = TRIP_DECISION_HEADERS.length;
+  if (sheet.getMaxColumns() < need) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  }
+  var header = sheet.getRange(1, 1, 1, need).getValues()[0];
+  for (var i = 0; i < need; i++) {
+    if (String(header[i]).trim() !== TRIP_DECISION_HEADERS[i]) {
+      sheet.getRange(1, 1, 1, need).setValues([TRIP_DECISION_HEADERS]);
+      sheet.getRange(1, 1, 1, need).setFontWeight('bold');
+      break;
+    }
+  }
+  return sheet;
+}
+
+/** Finds the row holding this trip's resolution for a group, or -1. */
+function tdFindDecisionRow_(sheet, tripKey, groupKey) {
+  if (!sheet || sheet.getLastRow() < 2) return -1;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_DECISION_HEADERS.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][1] || '').trim() === tripKey &&
+        String(rows[i][2] || '').trim() === groupKey) return i + 2;
+  }
+  return -1;
+}
+
+function tdDecisionSheet_() {
+  return ensureTripDecisionsSchema_(getSpreadsheet().getSheetByName(TABS.TRIP_DECISIONS));
+}
+
+/** Upserts one resolution row — confirming twice updates rather than duplicates. */
+function tdWriteDecision_(tripKey, groupKey, slotDate, status, chosenItemId, snoozedUntil) {
+  var sheet = tdDecisionSheet_();
+  if (!sheet) throw new Error('Trip Decisions tab not found');
+  var tz  = Session.getScriptTimeZone();
+  var now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var rowNum = tdFindDecisionRow_(sheet, tripKey, groupKey);
+  var values = [
+    rowNum === -1 ? 'TD-' + Date.now() : String(sheet.getRange(rowNum, 1).getValue() || 'TD-' + Date.now()),
+    tripKey, groupKey, slotDate || '', status, chosenItemId || '', snoozedUntil || '', now, '',
+  ];
+  if (rowNum === -1) sheet.appendRow(values);
+  else sheet.getRange(rowNum, 1, 1, TRIP_DECISION_HEADERS.length).setValues([values]);
+  return { ok: true, tripKey: tripKey, groupKey: groupKey, status: status };
+}
+
+/**
+ * Confirms one option. The losing holds stay on the calendar — VERA records the
+ * decision, it does not tidy up someone's calendar as a side effect, which also
+ * makes this trivially reversible.
+ */
+function webDecideTripOption_(e) {
+  var p        = (e && e.parameter) ? e.parameter : {};
+  var tripKey  = (p.tripKey  || '').trim();
+  var groupKey = (p.groupKey || '').trim();
+  var itemId   = (p.itemId   || '').trim();
+  if (!tripKey || !groupKey || !itemId) throw new Error('tripKey, groupKey and itemId are required');
+
+  // The dashboard's list can be minutes old. Confirming an option that is not
+  // in that group any more would record a decision about nothing, so verify
+  // against a fresh read first — the same guard webDeleteHomeItem_ carries.
+  var parts = tripKey.split('|');
+  var itin  = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: p.startDate || '', endDate: p.endDate || '' } },
+                               { skipEventTz: true });
+  var members = (itin.items || []).filter(function(it) {
+    var m = {}; try { m = JSON.parse(it.metadata || '{}'); } catch (err) {}
+    return m.optionGroup === groupKey;
+  });
+  if (!members.length) throw new Error('No open decision found for ' + groupKey + ' — the list may be out of date. Refresh and try again.');
+  var chosen = members.filter(function(it) { return String(it.id) === itemId; })[0];
+  if (!chosen) {
+    throw new Error('"' + itemId + '" is not one of the options for ' + groupKey +
+                    ' (' + members.map(function(m) { return m.id; }).join(', ') + ')');
+  }
+
+  return tdWriteDecision_(tripKey, groupKey, chosen.date, 'Decided', itemId, '');
+}
+
+/** Quiet for N days without closing the decision. */
+function webSnoozeTripDecision_(e) {
+  var p        = (e && e.parameter) ? e.parameter : {};
+  var tripKey  = (p.tripKey  || '').trim();
+  var groupKey = (p.groupKey || '').trim();
+  var days     = parseInt(p.days || '3', 10) || 3;
+  if (!tripKey || !groupKey) throw new Error('tripKey and groupKey are required');
+  var tz   = Session.getScriptTimeZone();
+  var until = new Date();
+  until.setDate(until.getDate() + days);
+  var untilStr = Utilities.formatDate(until, tz, 'yyyy-MM-dd');
+  var slotDate = (groupKey.split('|')[0] || '').trim();
+  // Snoozing past the slot itself is meaningless — clamp to the day before.
+  if (slotDate && untilStr > slotDate) untilStr = slotDate;
+  return tdWriteDecision_(tripKey, groupKey, slotDate, 'Snoozed', '', untilStr);
+}
+
+/** Undo: an open decision is the absence of a row, so reopening deletes it. */
+function webReopenTripDecision_(e) {
+  var p        = (e && e.parameter) ? e.parameter : {};
+  var tripKey  = (p.tripKey  || '').trim();
+  var groupKey = (p.groupKey || '').trim();
+  if (!tripKey || !groupKey) throw new Error('tripKey and groupKey are required');
+  var sheet  = tdDecisionSheet_();
+  var rowNum = tdFindDecisionRow_(sheet, tripKey, groupKey);
+  if (rowNum === -1) return { ok: true, action: 'already open' };
+  sheet.deleteRow(rowNum);
+  return { ok: true, action: 'reopened', tripKey: tripKey, groupKey: groupKey };
 }
 
 function webAddItineraryItem_(e) {

@@ -50,6 +50,7 @@ const TABS = {
   BUCKET_LIST:      'Bucket List',      // Travel bucket list (wishlist of destinations)
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
   TRAVEL_LEGS:      'TravelLegs',      // Cached point-to-point travel times between itinerary stops
+  TRIP_DECISIONS:   'Trip Decisions',  // Resolutions for tentative holds competing for one slot (Issue #187)
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
   GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
@@ -190,6 +191,12 @@ const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', '
 // Status records the verdict, including 'no_route' / 'not_found', so a pair that
 // can never work (two Caribbean islands, say) is asked about once and never again.
 const TRAVEL_LEGS_HEADERS       = ['From', 'To', 'Mode', 'Minutes', 'Distance', 'Status', 'Computed At'];
+// Resolutions only — an OPEN decision is the absence of a row, derived fresh
+// from the calendar on every read the same way the groups themselves are. That
+// keeps decide-by deterministic rather than stored-and-stale, avoids writing on
+// a GET path, and means a hold deleted from the calendar stops being a decision
+// instead of leaving an orphan row. Status is Decided / Snoozed / Dropped.
+const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', 'Status', 'Chosen Item ID', 'Snoozed Until', 'Decided At', 'Notes'];
 const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
@@ -387,6 +394,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.BUCKET_LIST,           BUCKET_LIST_HEADERS);
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.TRAVEL_LEGS,           TRAVEL_LEGS_HEADERS);
+  ensureSheet(ss, TABS.TRIP_DECISIONS,        TRIP_DECISION_HEADERS);
   ensureSheet(ss, TABS.SYSTEM_LOG,            SYSTEM_LOG_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);
@@ -925,6 +933,7 @@ function nightlyRun() {
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
     try { checkWarrantiesExpiring_(); } catch (wErr) { Logger.log('checkWarrantiesExpiring_ error (non-fatal): ' + wErr.message); stepFailures.push('checkWarrantiesExpiring_: ' + wErr.message); }
+    try { checkTripDecisions_(); } catch (tdErr) { Logger.log('checkTripDecisions_ error (non-fatal): ' + tdErr.message); stepFailures.push('checkTripDecisions_: ' + tdErr.message); }
 
     // Step 0m-ii: Card perk expiry reminders — flag/email/calendar 2 weeks before a perk period resets unused (Issue #187)
     try { checkCardPerksExpiring_(); } catch (cpeErr) { Logger.log('checkCardPerksExpiring_ error (non-fatal): ' + cpeErr.message); stepFailures.push('checkCardPerksExpiring_: ' + cpeErr.message); }

@@ -551,6 +551,17 @@ function buildChatSystemPrompt_(context) {
     'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
     'CAREER PROFILE:\n' + careerLines + '\n\n' +
     (function() {
+      var od = context.openDecisions || [];
+      if (!od.length) return '';
+      var lines = 'OPEN TRIP DECISIONS (tentative holds competing for one slot \u2014 confirm with decide_trip_option):\n';
+      od.forEach(function(d) {
+        lines += '  [' + d.tripLabel + '] groupKey=' + d.groupKey + ' \u2014 ' + d.date +
+                 (d.decideBy ? ', decide by ' + d.decideBy : '') + '\n';
+        d.options.forEach(function(o) { lines += '      \u2022 ' + o + '\n'; });
+      });
+      return lines + '\n';
+    })() +
+    (function() {
       var idList = context.importantDates || [];
       if (!idList.length) return 'IMPORTANT DATES: (none on file)\n\n';
       var lines = 'IMPORTANT DATES (next 12 months, already on file \u2014 do not re-add these):\n';
@@ -869,6 +880,14 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_itinerary_item|{id}|{field}|{value}  \u2014 fields: title, date, startTime, endTime, location, notes\n' +
     'ACTION:delete_itinerary_item|{id}\n' +
     'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +
+    // Tentative holds (Issue #187)
+    'ACTION:decide_trip_option|{tripKey}|{groupKey}|{option title, or a distinctive word from it}\n' +
+    '  \u2014 confirms ONE option for a slot where Ahmed is holding several. groupKey and the option\n' +
+    '     titles both come from the OPEN TRIP DECISIONS context block above; match the option loosely,\n' +
+    '     so "confirm the beach one" resolves against the titles listed there.\n' +
+    '  \u2014 The other holds stay on his calendar. VERA records the decision, it does not delete events.\n' +
+    'ACTION:snooze_trip_decision|{tripKey}|{groupKey}|{days}  \u2014 stay quiet about this decision for N days\n' +
+    '     without closing it. Use when Ahmed says he wants to wait and see (weather, someone else confirming).\n' +
     // Travel — Packing
     'ACTION:add_packing_item|{tripKey}|{person}|{category}|{item}  \u2014 person: ahmed / victoria / shared\n' +
     'ACTION:check_packing_item|{id}|{true or false}  \u2014 mark a packing item as packed or unpacked\n' +
@@ -1347,6 +1366,33 @@ function buildChatContext_() {
     importantDates = getUpcomingImportantDates_(365) || [];
   } catch(e) { Logger.log('Chat context: important dates — ' + e.message); }
 
+  // Open trip decisions — chat cannot confirm an option it cannot see, and
+  // "what's still open for Miami?" is the question this makes answerable.
+  var openDecisions = [];
+  try {
+    (getUpcomingTravel_(readPTOConfig_()) || []).forEach(function(trip) {
+      var daysAway = trip.daysAway;
+      if (daysAway === null || daysAway === undefined || daysAway > 21) return;
+      var tripKey = trip.startDate + '|' + trip.label;
+      var itin = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: trip.startDate, endDate: trip.endDate } },
+                                  { skipEventTz: true });
+      var byGroup = {};
+      (itin.items || []).forEach(function(it) {
+        var m = {}; try { m = JSON.parse(it.metadata || '{}') || {}; } catch (err) {}
+        if (!m.optionGroup || m.decisionStatus !== 'open') return;
+        (byGroup[m.optionGroup] = byGroup[m.optionGroup] || []).push({ it: it, m: m });
+      });
+      Object.keys(byGroup).forEach(function(g) {
+        var ms = byGroup[g];
+        openDecisions.push({
+          tripKey: tripKey, tripLabel: trip.label, groupKey: g,
+          date: ms[0].it.date, decideBy: ms[0].m.decideBy || '',
+          options: ms.map(function(x) { return (x.it.startTime ? x.it.startTime + ' ' : '') + x.it.title; }),
+        });
+      });
+    });
+  } catch(e) { Logger.log('Chat context: open decisions — ' + e.message); }
+
   // Credit Card Hub (Issues #115 + #117)
   var cardsData = null;
   try {
@@ -1406,6 +1452,7 @@ function buildChatContext_() {
     career:          career,
     prescriptions:   prescriptions,
     importantDates:  importantDates,
+    openDecisions:   openDecisions,
     cardsData:       cardsData,
     upcomingGuests:  upcomingGuests,
     contracts:       contracts,
@@ -2293,6 +2340,59 @@ function executeActions_(rawText) {
         if (rxMed) {
           webAddPrescription_({ parameter: { person: rxPerson, medication: rxMed, dosage: rxDose, frequency: rxFreq, refillDate: rxRefill, notes: rxNotes, active: 'Yes' } });
           executed.push('add_prescription (' + rxPerson + ': ' + rxMed + ')');
+        }
+      }
+
+      else if (type === 'decide_trip_option') {
+        var dtTrip  = (args[0] || '').trim();
+        var dtGroup = (args[1] || '').trim();
+        var dtPick  = (args[2] || '').trim();
+        // TripKey is "YYYY-MM-DD|Label", so the generic pipe split breaks it.
+        var dtA = tripKeyArgs_();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(args[0] || '')) {
+          dtTrip = dtA.tripKey; dtGroup = (dtA.rest[0] || '').trim(); dtPick = (dtA.rest[1] || '').trim();
+        }
+        if (!dtTrip || !dtGroup || !dtPick) {
+          errors.push('decide_trip_option: tripKey, groupKey and an option are all required');
+        } else {
+          // Claude names the option loosely ("the beach one"), so resolve it
+          // against the group's real members rather than trusting an item id.
+          var dtItin = webGetItinerary_({ parameter: { tripKey: dtTrip } }, { skipEventTz: true });
+          var dtMembers = (dtItin.items || []).filter(function(it) {
+            var m = {}; try { m = JSON.parse(it.metadata || '{}') || {}; } catch (e2) {}
+            return m.optionGroup === dtGroup;
+          });
+          var needle = dtPick.toLowerCase();
+          var dtMatch = dtMembers.filter(function(it) { return String(it.id) === dtPick; })[0] ||
+                        dtMembers.filter(function(it) { return String(it.title || '').toLowerCase().indexOf(needle) !== -1; })[0] ||
+                        dtMembers.filter(function(it) {
+                          return needle.split(/\s+/).some(function(w) {
+                            return w.length > 3 && String(it.title || '').toLowerCase().indexOf(w) !== -1;
+                          });
+                        })[0];
+          if (!dtMembers.length) {
+            errors.push('decide_trip_option: no open decision found for ' + dtGroup);
+          } else if (!dtMatch) {
+            errors.push('decide_trip_option: "' + dtPick + '" matches none of ' +
+                        dtMembers.map(function(m) { return '"' + m.title + '"'; }).join(', '));
+          } else {
+            webDecideTripOption_({ parameter: { tripKey: dtTrip, groupKey: dtGroup, itemId: dtMatch.id } });
+            executed.push('decide_trip_option (' + dtMatch.title + ')');
+          }
+        }
+      }
+
+      else if (type === 'snooze_trip_decision') {
+        var szA = tripKeyArgs_();
+        var szTrip  = /^\d{4}-\d{2}-\d{2}$/.test(args[0] || '') ? szA.tripKey : (args[0] || '').trim();
+        var szRest  = /^\d{4}-\d{2}-\d{2}$/.test(args[0] || '') ? szA.rest : args.slice(1);
+        var szGroup = (szRest[0] || '').trim();
+        var szDays  = parseInt(szRest[1] || '3', 10) || 3;
+        if (!szTrip || !szGroup) {
+          errors.push('snooze_trip_decision: tripKey and groupKey are required');
+        } else {
+          webSnoozeTripDecision_({ parameter: { tripKey: szTrip, groupKey: szGroup, days: String(szDays) } });
+          executed.push('snooze_trip_decision (' + szDays + 'd)');
         }
       }
 
