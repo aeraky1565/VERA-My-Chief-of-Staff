@@ -3246,29 +3246,71 @@ function morningNudge() {
  *   - Clear the old [AUTO] rows from the Summaries tab (which now holds external data)
  */
 /**
- * sortTabsAlphabetically — run once from the Apps Script editor.
- * Moves Config → position 0, Flags → position 1, then sorts all remaining
- * tabs alphabetically (case-insensitive) in positions 2+.
+ * sortTabsAlphabetically — run from the Apps Script editor.
+ * Config first, Flags second, everything else alphabetical (case-insensitive).
+ *
+ * Safe to re-run, and safe to re-run after a timeout: tabs already in the right
+ * place are skipped, so a second run picks up where the first stopped rather
+ * than starting over. On a book with ~78 tabs that matters — see below.
+ *
+ * Three things the original got wrong, all of which surfaced as a throw on the
+ * moveActiveSheet call:
+ *
+ *   1. It concatenated ['Config','Flags'] without checking they existed. With
+ *      either one missing the ordered list was LONGER than the sheet list, and
+ *      while the `if (sheet)` guard skipped the absent tab it did not decrement
+ *      the index — so every later tab was asked to move one position too far
+ *      and the last asked for position N+1, which is out of bounds.
+ *
+ *   2. It moved every tab unconditionally: two slow round trips each, ~156 of
+ *      them, with every moveActiveSheet forcing a flush. That is enough to risk
+ *      the six-minute execution cap, and because nothing was skipped a re-run
+ *      repeated the identical work and failed in the identical place.
+ *
+ *   3. It could not survive a hidden tab. setActiveSheet cannot activate one,
+ *      and nothing in VERA hides a sheet — so any hidden tab was hidden by hand
+ *      and the function had no reason to expect it.
  */
 function sortTabsAlphabetically() {
-  var ss = getSpreadsheet();
+  var ss     = getSpreadsheet();
   var sheets = ss.getSheets();
+  var names  = sheets.map(function(s) { return s.getName(); });
 
-  // Separate pinned tabs from the rest
-  var pinned = ['Config', 'Flags'];
-  var rest = sheets
-    .map(function(s) { return s.getName(); })
+  // Only pin what actually exists, or `ordered` outgrows the book and the last
+  // move runs off the end.
+  var pinned = ['Config', 'Flags'].filter(function(n) { return names.indexOf(n) !== -1; });
+  var rest   = names
     .filter(function(n) { return pinned.indexOf(n) === -1; })
     .sort(function(a, b) { return a.toLowerCase().localeCompare(b.toLowerCase()); });
 
-  var ordered = pinned.concat(rest);
+  var ordered = pinned.concat(rest);   // now exactly names.length, always
+
+  var moved = 0, skipped = 0, hidden = [];
 
   ordered.forEach(function(name, idx) {
     var sheet = ss.getSheetByName(name);
-    if (sheet) ss.setActiveSheet(sheet), ss.moveActiveSheet(idx + 1);
+    if (!sheet) return;
+
+    if (sheet.isSheetHidden()) { hidden.push(name); return; }
+
+    // The whole point: leave a tab alone if it is already where it belongs.
+    // This is what makes an interrupted run resumable instead of a repeat.
+    if (sheet.getIndex() === idx + 1) { skipped++; return; }
+
+    // Defensive — nothing above can produce an out-of-range position any more,
+    // but a future edit to the ordering could, and it would fail here again.
+    var pos = Math.min(Math.max(idx + 1, 1), sheets.length);
+
+    ss.setActiveSheet(sheet);
+    ss.moveActiveSheet(pos);
+    moved++;
   });
 
-  Logger.log('Tabs sorted. Order: ' + ordered.join(', '));
+  Logger.log('Tabs sorted — ' + moved + ' moved, ' + skipped + ' already in place' +
+             (hidden.length ? ', ' + hidden.length + ' hidden and left alone (' +
+                              hidden.join(', ') + ')' : '') + '.');
+  if (moved > 0) Logger.log('Run it again to confirm it settles at 0 moved.');
+  return { moved: moved, skipped: skipped, hidden: hidden };
 }
 
 function addMetricsTab() {
