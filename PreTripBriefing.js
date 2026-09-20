@@ -481,11 +481,16 @@ function sendPreTripEmail_48h_(trip) {
 
   var destination = inferTripDestination_(rows, trip.tripKey, trip.tripLabel).value;
 
+  // The trip's dates are needed by the weather lookup AND by the open-decisions
+  // section below, so they are computed once out here rather than inside the
+  // weather try — where a throw would have left them undefined for the second
+  // caller while looking like it only cost the weather.
+  var startStr = Utilities.formatDate(trip.departureDate, tz, 'yyyy-MM-dd');
+  var endStr   = Utilities.formatDate(trip.endDate,       tz, 'yyyy-MM-dd');
+
   var weatherText = '';
   try {
-    var startStr = Utilities.formatDate(trip.departureDate, tz, 'yyyy-MM-dd');
-    var endStr   = Utilities.formatDate(trip.endDate,       tz, 'yyyy-MM-dd');
-    weatherText  = getPackingWeather_(destination, startStr, endStr) || '';
+    weatherText = getPackingWeather_(destination, startStr, endStr) || '';
   } catch (e_) {}
 
   var packStatus = getPackingStatusForBriefing_(trip.tripKey);
