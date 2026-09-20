@@ -303,6 +303,12 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
     return at < bt ? -1 : at > bt ? 1 : 0;
   });
 
+  // Competing holds occupy ONE slot, here as everywhere else. This briefing
+  // reads raw Itinerary rows and never went through webGetItinerary_, so it was
+  // still showing three options for one afternoon as three separate plans.
+  sortedItems = collapseItineraryRows_(sortedItems, tripKey,
+                                       Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+
   // ── Modular sections pipeline ──────────────────────────────────────────────
   // To add a new section, implement buildXxxSection_(data) → HTML string,
   // then push { id: 'xxx', builder: buildXxxSection_, data: payload } here.
@@ -376,10 +382,19 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var directionsUrl    = buildTravelDirectionsUrl_(enrichedItems);
   var staticMapsApiKey = PropertiesService.getScriptProperties().getProperty('GOOGLE_STATIC_MAPS_API_KEY') || '';
 
+  // Anything still held two ways for TODAY. Builds to '' when there is nothing
+  // open, and the assembler drops an empty section.
+  var openDecisions = [];
+  try {
+    var _todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    openDecisions = openDecisionsForTrip_(tripKey, _todayStr, _todayStr, _todayStr);
+  } catch (dErr) { Logger.log('TravelDay: decisions lookup failed — ' + dErr.message); }
+
   var sections = [
     { id: 'narrative',       builder: buildTravelNarrativeSection_,      data: narrativeData },
     { id: 'flight_insights', builder: buildTravelFlightInsightsSection_,  data: insights },
     { id: 'lounge_access',   builder: buildTravelLoungeSection_,          data: loungeData },
+    { id: 'open_decisions',  builder: buildOpenDecisionsSection_,         data: openDecisions },
     // Future: { id: 'weather',       builder: buildTravelWeatherSection_,      data: null },
     // Future: { id: 'flight_status', builder: buildTravelFlightStatusSection_, data: null },
     { id: 'schedule',          builder: buildTravelScheduleSection_,      data: enrichedItems },

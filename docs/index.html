@@ -1503,6 +1503,11 @@ function groupItineraryOptions(items){if(!items||!items.length)return items||[];
 var byGroup={};items.forEach(function(it){var g=optionGroupOf(it);if(g){(byGroup[g]=byGroup[g]||[]).push(it);}});
 return items.filter(function(it){var m=itinMeta(it);return !m.optionGroup||m.isRepresentative===true;})
 .map(function(it){var g=optionGroupOf(it);return g&&byGroup[g]&&byGroup[g].length>1?Object.assign({},it,{_options:byGroup[g]}):it;});}
+// The server's recommendation, where it had one. The client never decides
+// which option is suggested — it reads a flag, exactly as it does for
+// isRepresentative, so there is no second copy of the reasoning to drift.
+function recommendedIdOf(item){return itinMeta(item).recommendedId||'';}
+function recommendBecauseOf(item){return itinMeta(item).recommendBecause||'';}
 function itinHoldStyle(item){return isTentativeItem(item)?{backgroundImage:'repeating-linear-gradient(45deg, rgba(122,131,150,0.16) 0 4px, transparent 4px 8px)'}:{};}
 function itinOptionsChip(item){if(!isTentativeItem(item))return null;var n=optionCountOf(item);
 var st=decisionStatusOf(item);var overdue=isOverdueDecision(item);
@@ -1515,17 +1520,21 @@ var decided=isDecidedItem(item);var chosenId=decided?(opts.filter(function(o){re
 var by=decideByOf(item);var byLabel=by?fmtDate(by):'';var late=isOverdueDecision(item);
 var summary=decided?'Decided — '+opts.length+' options considered'
   :'Still deciding — '+opts.length+' options'+(byLabel?' · decide by '+byLabel+(late?' · overdue':''):'');
+var recId=decided?'':recommendedIdOf(item);var recWhy=decided?'':recommendBecauseOf(item);
 return/*#__PURE__*/React.createElement('details',{className:'itin-hold-options',style:{marginTop:5}},
 /*#__PURE__*/React.createElement('summary',{style:{fontSize:11,color:isOverdueDecision(item)?'#d08a3a':'#6b7fa8',cursor:'pointer',listStyle:'none'}},summary),
 /*#__PURE__*/React.createElement('div',{style:{marginTop:5,paddingLeft:10,borderLeft:'2px solid rgba(168,144,96,0.35)'}},
 opts.map(function(o){var isChosen=decided&&String(o.id)===String(chosenId);
+var isSuggested=!decided&&recId&&String(o.id)===String(recId);
 return/*#__PURE__*/React.createElement('div',{key:o.id,style:{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0',fontSize:12,color:'#8a9abf'}},
 /*#__PURE__*/React.createElement('span',{style:{color:'#4d6080',minWidth:38,fontVariantNumeric:'tabular-nums'}},o.startTime||'·'),
 /*#__PURE__*/React.createElement('span',{style:{flex:1,minWidth:0,textDecoration:decided&&!isChosen?'line-through':'none',opacity:decided&&!isChosen?0.55:1}},
 isChosen&&/*#__PURE__*/React.createElement('span',{style:{color:'#66bb6a',marginRight:5}},'✓'),
-o.title,o.location&&/*#__PURE__*/React.createElement('span',{style:{color:'#4d6080'}},' · ',o.location)),
+o.title,o.location&&/*#__PURE__*/React.createElement('span',{style:{color:'#4d6080'}},' · ',o.location),
+isSuggested&&/*#__PURE__*/React.createElement('span',{className:'itin-suggested-chip',style:{marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:'0.05em',textTransform:'uppercase',color:'#7fb3d5',background:'rgba(127,179,213,0.14)',border:'1px solid rgba(127,179,213,0.4)',borderRadius:3,padding:'1px 5px',whiteSpace:'nowrap'}},'★ suggested')),
 !decided&&onDecide&&/*#__PURE__*/React.createElement('button',{className:'itin-confirm-btn',onClick:function(){onDecide(o);},
 style:{fontSize:10,padding:'2px 8px',borderRadius:10,border:'1px solid #2a4070',background:'none',color:'#8899cc',cursor:'pointer',whiteSpace:'nowrap'}},'Confirm'));}),
+recId&&recWhy&&/*#__PURE__*/React.createElement('div',{className:'itin-suggested-why',style:{marginTop:5,fontSize:11,color:'#7fb3d5',opacity:0.9}},'★ ',recWhy),
 decided&&onReopen&&/*#__PURE__*/React.createElement('button',{className:'itin-undo-btn',onClick:function(){onReopen(item);},
 style:{marginTop:6,fontSize:10,padding:'2px 8px',borderRadius:10,border:'1px solid #2a3a5e',background:'none',color:'#6b7fa8',cursor:'pointer'}},'Undo — reopen this decision')));}
 function collapseOptionGroups(items){if(!items||!items.length)return items||[];return items.filter(function(it){var m=itinMeta(it);return !m.optionGroup||m.isRepresentative===true;});}

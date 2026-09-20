@@ -190,7 +190,11 @@ function buildPreTripBriefingFlag_(trip) {
   });
 
   // ── Step A: Destination inference ─────────────────────────────────────────
-  var destination = inferTripDestination_(rows, trip.tripLabel);
+  // The canonical resolver lives in WebApp.js. This file used to declare its
+  // own two-arg version of the same name; in Apps Script's single global scope
+  // only one of the two ever existed at runtime, so one set of callers was
+  // always getting the other's signature.
+  var destination = inferTripDestination_(rows, trip.tripKey, trip.tripLabel).value;
 
   // ── Step B: Weather ───────────────────────────────────────────────────────
   var weatherText = '';
@@ -346,38 +350,15 @@ function buildPreTripBriefingFlag_(trip) {
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 /**
- * inferTripDestination_(rows, tripLabel)
- * Infers the primary destination for weather lookup:
- *   1. First flight row with metadata.dest
- *   2. First hotel row's Location column
- *   3. tripLabel with generic travel words stripped
- *
- * @param  {Array}  rows       Raw Itinerary sheet rows for this trip
- * @param  {string} tripLabel  Human-readable trip name
- * @returns {string}
+ * Destination inference lives in WebApp.js as inferTripDestination_(itinData,
+ * tripKey, tripLabel) → { value, source }. A near-identical two-arg version
+ * used to sit here, which does not work: Apps Script loads every root file into
+ * one global scope and function declarations hoist, so the two silently
+ * resolved to whichever loaded last. Whichever won, the other file's callers
+ * were passing the wrong arguments and reading the wrong return type — here,
+ * that meant an object where a string was expected, and a destination lookup
+ * that could only ever fail. Callers now use the canonical one directly.
  */
-function inferTripDestination_(rows, tripLabel) {
-  // a. Flight metadata.dest
-  for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][2] || '').trim().toLowerCase() === 'flight' && rows[i][9]) {
-      try {
-        var meta = JSON.parse(String(rows[i][9]));
-        if (meta.dest) return meta.dest;
-      } catch(e_) {}
-    }
-  }
-  // b. Hotel location column
-  for (var j = 0; j < rows.length; j++) {
-    if (String(rows[j][2] || '').trim().toLowerCase() === 'hotel') {
-      var loc = String(rows[j][7] || '').trim();
-      if (loc) return loc;
-    }
-  }
-  // c. Trip label stripped of generic words
-  return tripLabel
-    .replace(/\b(trip|adventure|vacation|holiday|weekend|getaway|tour|visit)\b/gi, '')
-    .trim();
-}
 
 /**
  * getPackingStatusForBriefing_(tripKey)
@@ -491,7 +472,14 @@ function sendPreTripEmail_48h_(trip) {
     return ak < bk ? -1 : ak > bk ? 1 : 0;
   });
 
-  var destination = inferTripDestination_(rows, trip.tripLabel);
+  // One slot per decision. Without this the glance lists all three competing
+  // holds as separate bullets on the same day — the packed afternoon that does
+  // not exist. The options are not lost: the new Still To Decide section reads
+  // them back through openDecisionsForTrip_.
+  rows = collapseItineraryRows_(rows, trip.tripKey,
+                                Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+
+  var destination = inferTripDestination_(rows, trip.tripKey, trip.tripLabel).value;
 
   var weatherText = '';
   try {
@@ -669,12 +657,22 @@ function sendPreTripEmail_48h_(trip) {
       escapeHtml_(weatherText.substring(0, 400)) + '</p>'
     : '';
 
+  // Anything still held two ways, across the whole trip. Empty string when
+  // there is nothing open, and the assembler then drops the section entirely.
+  var openDecisions = [];
+  var decisionsHtml = '';
+  try {
+    openDecisions = openDecisionsForTrip_(trip.tripKey, startStr, endStr);
+    decisionsHtml = buildOpenDecisionsSection_(openDecisions);
+  } catch (dErr) { Logger.log('PreTrip 48h: decisions section failed — ' + dErr.message); }
+
   var sections = [
-    { id: 'opener',  data: taglineOpenerHtml },
-    { id: 'glance',  data: glanceHtml },
-    { id: 'flights', data: flightsHtml },
-    { id: 'packing', data: packingHtml },
-    { id: 'weather', data: weatherHtml },
+    { id: 'opener',    data: taglineOpenerHtml },
+    { id: 'glance',    data: glanceHtml },
+    { id: 'flights',   data: flightsHtml },
+    { id: 'packing',   data: packingHtml },
+    { id: 'decisions', data: decisionsHtml },
+    { id: 'weather',   data: weatherHtml },
   ];
 
   var htmlBody = buildPreTripEmailHtml_(
@@ -697,6 +695,7 @@ function sendPreTripEmail_48h_(trip) {
       plain.push((stime ? stime + ' ' : '') + title + (date ? ' (' + date + ')' : ''));
     });
   }
+  if (openDecisions.length) plain.push('', buildOpenDecisionsPlain_(openDecisions));
   if (weatherText) plain.push('', 'WEATHER\n' + weatherText.substring(0, 300));
   plain.push('', '— VERA');
 
@@ -824,11 +823,24 @@ function sendPreTripEmail_NightBefore_(trip) {
       '<strong>Tip:</strong> ' + escapeHtml_(tip) + '</div>'
     : '';
 
+  // Tomorrow's only — the night before is not the moment to reopen a decision
+  // about Thursday.
+  var openDecisions = [];
+  var decisionsHtml = '';
+  try {
+    var tzNB     = Session.getScriptTimeZone();
+    var depStr   = Utilities.formatDate(trip.departureDate, tzNB, 'yyyy-MM-dd');
+    var endStrNB = Utilities.formatDate(trip.endDate,       tzNB, 'yyyy-MM-dd');
+    openDecisions = openDecisionsForTrip_(trip.tripKey, depStr, endStrNB, depStr);
+    decisionsHtml = buildOpenDecisionsSection_(openDecisions);
+  } catch (dErr) { Logger.log('PreTrip night-before: decisions section failed — ' + dErr.message); }
+
   var sections = [
-    { id: 'note',     data: noteHtml },
-    { id: 'sequence', data: sequenceHtml },
-    { id: 'packing',  data: openPackingHtml },
-    { id: 'tip',      data: tipHtml },
+    { id: 'note',      data: noteHtml },
+    { id: 'sequence',  data: sequenceHtml },
+    { id: 'decisions', data: decisionsHtml },
+    { id: 'packing',   data: openPackingHtml },
+    { id: 'tip',       data: tipHtml },
   ];
 
   var htmlBody = buildPreTripEmailHtml_(
@@ -850,6 +862,7 @@ function sendPreTripEmail_NightBefore_(trip) {
     });
     plain.push('');
   }
+  if (openDecisions.length) plain.push(buildOpenDecisionsPlain_(openDecisions), '');
   if (openItems.length) {
     plain.push('STILL TO PACK', openItems.map(function(i) { return '• ' + i; }).join('\n'), '');
   }

@@ -4057,7 +4057,64 @@ function webGetItinerary_(e, opts) {
   }
   catch (odErr) { Logger.log('Itinerary: option grouping failed — ' + odErr.message); }
 
+  // 5. Recommend, where the facts are decisive enough to be worth saying.
+  //
+  // Guarded on there being an OPEN group first: this runs on every dashboard
+  // load, and a geocode plus a forecast fetch for a trip with nothing left to
+  // decide is two HTTP round trips spent to reach the same silence.
+  try {
+    var hasOpen = items.some(function(it) {
+      var m = tdReadMeta_(it);
+      return m.optionGroup && (!m.decisionStatus || m.decisionStatus === 'open');
+    });
+    if (hasOpen) {
+      applyTripRecommendations_(items, {
+        forecast:    tdForecastForItems_(items, tripKey, start, end),
+        tripContext: tdTripContextFor_(tripKey),
+      });
+    }
+  }
+  catch (recErr) { Logger.log('Itinerary: recommendation failed — ' + recErr.message); }
+
   return { ok: true, tripKey: tripKey, items: items };
+}
+
+/**
+ * The trip's stored context, or ''. Reads TripMeta through the same endpoint
+ * the dashboard uses rather than re-reading the tab, so there is one definition
+ * of where context lives.
+ */
+function tdTripContextFor_(tripKey) {
+  try { return String(webGetTripMeta_({ parameter: { tripKey: tripKey } }).context || ''); }
+  catch (e) { return ''; }
+}
+
+/**
+ * Destination forecast for an itinerary, or null.
+ *
+ * Resolves the destination with the canonical inferTripDestination_ by adapting
+ * the item objects back to the raw row shape it reads — an adapter, not a
+ * second copy of the inference, which is the mistake that left two versions of
+ * that function in the project in the first place.
+ */
+function tdForecastForItems_(items, tripKey, startDate, endDate) {
+  try {
+    var rows = items.map(function(it) {
+      var r = [];
+      r[1] = tripKey;
+      r[2] = String(it.type || '');
+      r[7] = String(it.location || '');
+      r[9] = typeof it.metadata === 'string' ? it.metadata : JSON.stringify(it.metadata || {});
+      return r;
+    });
+    var label = String(tripKey).split('|')[1] || '';
+    var dest  = inferTripDestination_(rows, tripKey, label);
+    if (!dest || !dest.value) return null;
+    return tripDailyForecast_(dest.value, startDate, endDate);
+  } catch (e) {
+    Logger.log('tdForecastForItems_: ' + e.message);
+    return null;
+  }
 }
 
 /**
@@ -4097,7 +4154,7 @@ function tdDecisionSheet_() {
 }
 
 /** Upserts one resolution row — confirming twice updates rather than duplicates. */
-function tdWriteDecision_(tripKey, groupKey, slotDate, status, chosenItemId, snoozedUntil) {
+function tdWriteDecision_(tripKey, groupKey, slotDate, status, chosenItemId, snoozedUntil, notes) {
   var sheet = tdDecisionSheet_();
   if (!sheet) throw new Error('Trip Decisions tab not found');
   var tz  = Session.getScriptTimeZone();
@@ -4105,7 +4162,8 @@ function tdWriteDecision_(tripKey, groupKey, slotDate, status, chosenItemId, sno
   var rowNum = tdFindDecisionRow_(sheet, tripKey, groupKey);
   var values = [
     rowNum === -1 ? 'TD-' + Date.now() : String(sheet.getRange(rowNum, 1).getValue() || 'TD-' + Date.now()),
-    tripKey, groupKey, slotDate || '', status, chosenItemId || '', snoozedUntil || '', now, '',
+    tripKey, groupKey, slotDate || '', status, chosenItemId || '', snoozedUntil || '', now,
+    notes || '',
   ];
   if (rowNum === -1) sheet.appendRow(values);
   else sheet.getRange(rowNum, 1, 1, TRIP_DECISION_HEADERS.length).setValues([values]);
@@ -4141,7 +4199,23 @@ function webDecideTripOption_(e) {
                     ' (' + members.map(function(m) { return m.id; }).join(', ') + ')');
   }
 
-  return tdWriteDecision_(tripKey, groupKey, chosen.date, 'Decided', itemId, '');
+  // Record what the weather looked like when this was chosen. That stored
+  // premise is the whole weather dependency: checkTripDecisionPremises_ has
+  // nothing to compare against without it, and asking the forecast tomorrow
+  // what it said today is not a thing the API can answer.
+  var premise = '';
+  try {
+    var wx = weatherVerdictFor_(tdForecastDayFor_(
+      tdForecastForItems_(itin.items || [], tripKey, chosen.date, chosen.date), chosen.date));
+    if (wx) {
+      premise = JSON.stringify({
+        wx: wx,
+        asOf: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      });
+    }
+  } catch (wErr) { Logger.log('webDecideTripOption_: premise unavailable — ' + wErr.message); }
+
+  return tdWriteDecision_(tripKey, groupKey, chosen.date, 'Decided', itemId, '', premise);
 }
 
 /** Quiet for N days without closing the decision. */

@@ -934,6 +934,7 @@ function nightlyRun() {
     try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
     try { checkWarrantiesExpiring_(); } catch (wErr) { Logger.log('checkWarrantiesExpiring_ error (non-fatal): ' + wErr.message); stepFailures.push('checkWarrantiesExpiring_: ' + wErr.message); }
     try { checkTripDecisions_(); } catch (tdErr) { Logger.log('checkTripDecisions_ error (non-fatal): ' + tdErr.message); stepFailures.push('checkTripDecisions_: ' + tdErr.message); }
+    try { checkTripDecisionPremises_(); } catch (tpErr) { Logger.log('checkTripDecisionPremises_ error (non-fatal): ' + tpErr.message); stepFailures.push('checkTripDecisionPremises_: ' + tpErr.message); }
 
     // Step 0m-ii: Card perk expiry reminders — flag/email/calendar 2 weeks before a perk period resets unused (Issue #187)
     try { checkCardPerksExpiring_(); } catch (cpeErr) { Logger.log('checkCardPerksExpiring_ error (non-fatal): ' + cpeErr.message); stepFailures.push('checkCardPerksExpiring_: ' + cpeErr.message); }

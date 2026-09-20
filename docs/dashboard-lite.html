@@ -5898,6 +5898,12 @@ const isDecidedItem    = item => decisionStatusOf(item) === 'decided';
 // <=, not <: the server clamps decide-by to [today, slotDate], so a deadline
 // that has already slipped arrives here as today. With < the amber state could
 // never be reached.
+// The server's recommendation, where it had one. The client reads a flag and
+// never works out which option is suggested — same discipline as
+// isRepresentative, so there is no second copy of the reasoning to drift.
+function recommendedIdOf(item)   { return itinMeta(item).recommendedId   || ''; }
+function recommendBecauseOf(item){ return itinMeta(item).recommendBecause || ''; }
+
 function isOverdueDecision(item) {
   const d = decideByOf(item);
   if (!d || decisionStatusOf(item) !== 'open') return false;
@@ -5976,6 +5982,8 @@ function ItinItemRow({ item, onEdit, onDelete, onDecide, onReopen }) {
           const summary  = decided
             ? `Decided — ${item._options.length} options considered`
             : `Still deciding — ${item._options.length} options${by ? ' · decide by ' + fmtDate(by) + (isOverdueDecision(item) ? ' · overdue' : '') : ''}`;
+          const recId    = decided ? '' : recommendedIdOf(item);
+          const recWhy   = decided ? '' : recommendBecauseOf(item);
           return (
             <details className="itin-hold-options" style={{marginTop:5}}>
               <summary style={{fontSize:11,color:isOverdueDecision(item)?'#d08a3a':'#6b7fa8',cursor:'pointer',listStyle:'none'}}>
@@ -5984,12 +5992,20 @@ function ItinItemRow({ item, onEdit, onDelete, onDecide, onReopen }) {
               <div style={{marginTop:5,paddingLeft:10,borderLeft:'2px solid rgba(168,144,96,0.35)'}}>
                 {item._options.map(o => {
                   const isChosen = decided && String(o.id) === String(chosenId);
+                  const isSuggested = !decided && recId && String(o.id) === String(recId);
                   return (
                     <div key={o.id} style={{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0',fontSize:12,color:'#8a9abf'}}>
                       <span style={{color:'#4d6080',minWidth:38,fontVariantNumeric:'tabular-nums'}}>{o.startTime || '·'}</span>
                       <span style={{flex:1,minWidth:0,textDecoration:decided&&!isChosen?'line-through':'none',opacity:decided&&!isChosen?0.55:1}}>
                         {isChosen && <span style={{color:'#66bb6a',marginRight:5}}>✓</span>}
                         {o.title}{o.location && <span style={{color:'#4d6080'}}> · {o.location}</span>}
+                        {isSuggested && (
+                          <span className="itin-suggested-chip"
+                            style={{marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:'0.05em',
+                              textTransform:'uppercase',color:'#7fb3d5',background:'rgba(127,179,213,0.14)',
+                              border:'1px solid rgba(127,179,213,0.4)',borderRadius:3,padding:'1px 5px',
+                              whiteSpace:'nowrap'}}>★ suggested</span>
+                        )}
                       </span>
                       {!decided && onDecide && (
                         <button className="itin-confirm-btn" onClick={() => onDecide(o)}
@@ -5999,6 +6015,11 @@ function ItinItemRow({ item, onEdit, onDelete, onDecide, onReopen }) {
                     </div>
                   );
                 })}
+                {recId && recWhy && (
+                  <div className="itin-suggested-why" style={{marginTop:5,fontSize:11,color:'#7fb3d5',opacity:0.9}}>
+                    ★ {recWhy}
+                  </div>
+                )}
                 {decided && onReopen && (
                   <button className="itin-undo-btn" onClick={() => onReopen(item)}
                     style={{marginTop:6,fontSize:10,padding:'2px 8px',borderRadius:10,border:'1px solid #2a3a5e',
