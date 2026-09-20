@@ -294,7 +294,11 @@ function departurePointOf_(item) {
  * @returns {Array} [{ from, to, gapMins }]
  */
 function collectTravelLegCandidates_(items) {
-  var expanded = expandStayTimes_(items);
+  // One occupied slot per decision. Three competing holds for the same
+  // afternoon would otherwise produce legs between places you will visit at
+  // most one of — wrong pairs, and billed Distance Matrix calls for them.
+  // Applied here rather than at the call sites so a new caller cannot forget.
+  var expanded = expandStayTimes_(collapseOptionGroups_(items));
 
   var byDay = {};
   expanded.forEach(function(it) {

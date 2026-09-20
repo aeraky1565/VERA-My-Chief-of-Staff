@@ -3963,6 +3963,24 @@ function webGetItinerary_(e, opts) {
             const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), evEndTz, 'HH:mm');
             // Build metadata: always include calendarName; include startTz/endTz when available
             var evMeta = { calendarName: cal.getName() };
+            // Tentative signals only a live CalendarEvent can give. Google
+            // Calendar does NOT expose "tentative" as a status for events you
+            // own — only Busy/Free and guest RSVP — so a text marker in the
+            // title is the primary path (handled in annotateOptionGroups_) and
+            // these two are the bonus. Don't go looking for an event.status API.
+            try {
+              // A soft hold is usually held as "Free" rather than "Busy".
+              if (!ev.isAllDayEvent() && ev.getTransparency &&
+                  ev.getTransparency() === CalendarApp.EventTransparency.TRANSPARENT) {
+                evMeta.tentative = true;
+              }
+            } catch (trErr) { /* older runtimes: fall back to the text marker */ }
+            try {
+              var myGuest = ev.getGuestByEmail(itinUserEmail);
+              if (myGuest && myGuest.getGuestStatus() === CalendarApp.GuestStatus.MAYBE) {
+                evMeta.tentative = true;
+              }
+            } catch (gsErr) { /* not a guest on this event */ }
             if (evTzInfo.startTz) evMeta.startTz = evTzInfo.startTz;
             if (evTzInfo.endTz && evTzInfo.endTz !== evTzInfo.startTz) evMeta.endTz = evTzInfo.endTz;
             // A flight's `location` is where it LEAVES from. Nothing recorded where
@@ -4025,6 +4043,13 @@ function webGetItinerary_(e, opts) {
     const bk = b.date + '|' + (b.startTime || '00:00');
     return ak < bk ? -1 : ak > bk ? 1 : 0;
   });
+
+  // 4. Recognise holds and group the ones competing for the same slot. Runs over
+  // the MERGED list so a hold typed into the dashboard groups with one held on
+  // the calendar, and once — every consumer then collapses with a filter rather
+  // than its own copy of this logic.
+  try { annotateOptionGroups_(items); }
+  catch (odErr) { Logger.log('Itinerary: option grouping failed — ' + odErr.message); }
 
   return { ok: true, tripKey: tripKey, items: items };
 }

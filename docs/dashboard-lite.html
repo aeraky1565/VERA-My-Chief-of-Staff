@@ -5879,6 +5879,43 @@ function DaysAwayChip({ daysAway }) {
   );
 }
 
+// ── Tentative holds ─────────────────────────────────────────────────────────
+// The server decides which items are holds and which compete for the same slot
+// (annotateOptionGroups_ in TripDecisions.js) and marks exactly one per group as
+// the representative. Collapsing here is a filter over that flag, not a second
+// copy of the grouping logic — two implementations would drift.
+function itinMeta(item) {
+  if (!item) return {};
+  try { return JSON.parse(item.metadata || '{}') || {}; } catch (e) { return {}; }
+}
+const isTentativeItem = item => itinMeta(item).tentative === true;
+const optionGroupOf   = item => itinMeta(item).optionGroup || '';
+const optionCountOf   = item => itinMeta(item).optionCount || 0;
+
+// One occupied slot per decision — three competing holds must not read as a
+// packed afternoon, or the free time they are holding open disappears.
+function collapseOptionGroups(items) {
+  if (!items || !items.length) return items || [];
+  return items.filter(it => { const m = itinMeta(it); return !m.optionGroup || m.isRepresentative === true; });
+}
+
+// One row per group, carrying the others for the disclosure.
+function groupItineraryOptions(items) {
+  if (!items || !items.length) return items || [];
+  const byGroup = {};
+  items.forEach(it => { const g = optionGroupOf(it); if (g) (byGroup[g] = byGroup[g] || []).push(it); });
+  return collapseOptionGroups(items).map(it => {
+    const g = optionGroupOf(it);
+    return (g && byGroup[g] && byGroup[g].length > 1) ? Object.assign({}, it, { _options: byGroup[g] }) : it;
+  });
+}
+
+// The 45° hatch already means "planned, not yet taken" on the PTO chart, so the
+// vocabulary stays one rule: solid is settled, hatched is open.
+const itinHoldStyle = item => isTentativeItem(item)
+  ? { backgroundImage: 'repeating-linear-gradient(45deg, rgba(122,131,150,0.16) 0 4px, transparent 4px 8px)' }
+  : {};
+
 function ItinItemRow({ item, onEdit, onDelete }) {
   const icon = ITIN_TYPE_ICON[item.type] || '📝';
   let meta = {};
@@ -5886,11 +5923,18 @@ function ItinItemRow({ item, onEdit, onDelete }) {
   const time = item.startTime ? (item.endTime ? `${item.startTime}–${item.endTime}` : item.startTime) : null;
   return (
     <div style={{display:'flex',alignItems:'flex-start',gap:10,padding:'9px 8px',
-      borderBottom:'1px solid #1a2435'}}>
+      borderBottom:'1px solid #1a2435', ...itinHoldStyle(item)}}>
       <span style={{fontSize:18,minWidth:24,textAlign:'center',paddingTop:1}}>{icon}</span>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontWeight:600,fontSize:13,color:'#dde1f0',whiteSpace:'pre-wrap'}}>
           {item.title}
+          {isTentativeItem(item) && (
+            <span className="itin-hold-chip" style={{marginLeft:8,fontSize:10,fontWeight:600,letterSpacing:'0.04em',
+              textTransform:'uppercase',color:'#a89060',background:'rgba(168,144,96,0.14)',
+              border:'1px solid rgba(168,144,96,0.35)',borderRadius:3,padding:'1px 6px',whiteSpace:'nowrap'}}>
+              {optionCountOf(item) > 1 ? optionCountOf(item) + ' options' : 'tentative'}
+            </span>
+          )}
           {meta.traveler && meta.traveler !== 'Both' && (
             <span style={{marginLeft:6,fontSize:10,padding:'1px 6px',borderRadius:8,
               background: meta.traveler==='Ahmed' ? '#0d2040' : '#1a0d30',
@@ -5902,6 +5946,24 @@ function ItinItemRow({ item, onEdit, onDelete }) {
         {time && <div style={{fontSize:11,color:'#8ab4f8',marginTop:2}}>{time}</div>}
         {item.location && <div style={{fontSize:11,color:'#6b7fa8',marginTop:1}}>📍 {item.location}</div>}
         {item.notes && <div style={{fontSize:11,color:'#5f6a80',marginTop:1,fontStyle:'italic'}}>{item.notes}</div>}
+        {item._options && item._options.length > 1 && (
+          <details className="itin-hold-options" style={{marginTop:5}}>
+            <summary style={{fontSize:11,color:'#6b7fa8',cursor:'pointer',listStyle:'none'}}>
+              Still deciding — {item._options.length} options
+            </summary>
+            <div style={{marginTop:5,paddingLeft:10,borderLeft:'2px solid rgba(168,144,96,0.35)'}}>
+              {item._options.map(o => (
+                <div key={o.id} style={{display:'flex',gap:8,padding:'3px 0',fontSize:12,color:'#8a9abf'}}>
+                  <span style={{color:'#4d6080',minWidth:38,fontVariantNumeric:'tabular-nums'}}>{o.startTime || '·'}</span>
+                  <span style={{flex:1,minWidth:0}}>
+                    {o.title}{o.location && <span style={{color:'#4d6080'}}> · {o.location}</span>}
+                  </span>
+                </div>
+              ))}
+              <div style={{fontSize:10,color:'#4d6080',marginTop:5,fontStyle:'italic'}}>Confirm one from the calendar for now.</div>
+            </div>
+          </details>
+        )}
         {item.type==='flight' && meta.airline && (
           <div style={{fontSize:11,color:'#5c9eff',marginTop:2}}>
             {meta.airline} {meta.flightNum} · {meta.origin} → {meta.dest}
@@ -5994,7 +6056,9 @@ const LITE_MIN_SHOWN_DRIVE = 10;
 
 function VERANoticesCard({ trip, itinerary, tripMeta, legs }) {
   if (!itinerary || !itinerary.items || !trip.startDate || !trip.endDate) return null;
-  const items = itinerary.items;
+  // Collapsed, or three competing holds make a day look full and suppress the
+  // very notices ("no accommodation planned") this card exists to raise.
+  const items = collapseOptionGroups(itinerary.items);
   const dates = tripDateRange(trip.startDate, trip.endDate);
   if (dates.length < 2) return null;
   const notices = [];
@@ -6395,7 +6459,7 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete }) {
               <div style={{textAlign:'center',color:'#4d6080',padding:'10px 0',
                 fontSize:12,fontStyle:'italic'}}>No events scheduled</div>
             ) : (
-              dayItems.map(item => (
+              groupItineraryOptions(dayItems).map(item => (
                 <ItinItemRow key={item.id} item={item}
                   onEdit={() => onEdit(item)}
                   onDelete={() => onDelete(item.id)} />
