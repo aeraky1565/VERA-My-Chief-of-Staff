@@ -4149,8 +4149,21 @@ function tdFindDecisionRow_(sheet, tripKey, groupKey) {
   return -1;
 }
 
+/**
+ * The Trip Decisions tab, created on demand rather than assumed.
+ *
+ * createSheetTabs() is the only other place that makes this tab, and it runs
+ * from setupVERA() — which nobody re-runs when a feature ships. So on every
+ * sheet that existed before this feature the tab was simply absent, and the
+ * first Confirm anyone pressed threw "Trip Decisions tab not found". Same trap,
+ * and the same fix, as getTravelLegsSheet_ (TravelLegs.js:120).
+ *
+ * ensureSheet creates it with headers; ensureTripDecisionsSchema_ then widens a
+ * tab that already existed from an older, shorter header set.
+ */
 function tdDecisionSheet_() {
-  return ensureTripDecisionsSchema_(getSpreadsheet().getSheetByName(TABS.TRIP_DECISIONS));
+  return ensureTripDecisionsSchema_(
+    ensureSheet(getSpreadsheet(), TABS.TRIP_DECISIONS, TRIP_DECISION_HEADERS));
 }
 
 /** Upserts one resolution row — confirming twice updates rather than duplicates. */
