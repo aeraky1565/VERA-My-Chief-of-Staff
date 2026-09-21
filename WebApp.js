@@ -3757,6 +3757,14 @@ function findItineraryRow_(id) {
  *   2. Tie → the non-personal ("shared") calendar's copy wins.
  *   3. Still tied → whichever was encountered first (stable, deterministic).
  *
+ * Tentative-ness is settled SEPARATELY from that, by consensus: if any copy of
+ * the event is not a hold, the survivor is not a hold. Description length is a
+ * measure of which copy is most useful to read, and has nothing to do with how
+ * decided the plan is — so letting the winner carry its own tentative flag made
+ * "is my flight confirmed" depend on which calendar happened to have the
+ * wordiest description. One copy marked as a hold could outvote two that were
+ * not, and the answer would flip when someone edited a description.
+ *
  * @param {Array} calendarItems
  * @returns {Array} deduped items, `_descLength`/`_isPersonal` removed
  */
@@ -3783,6 +3791,22 @@ function dedupeItineraryCalendarItems_(calendarItems) {
         winner = candidate;
       }
     }
+    // Consensus on tentative-ness, independent of which copy won above.
+    var anyConfirmed = group.some(function(it) {
+      var m = {};
+      try { m = JSON.parse(it.metadata || '{}'); } catch (e) {}
+      return m.tentative !== true;
+    });
+    if (anyConfirmed) {
+      try {
+        var wm = JSON.parse(winner.metadata || '{}');
+        if (wm.tentative === true) {
+          delete wm.tentative;
+          winner.metadata = JSON.stringify(wm);
+        }
+      } catch (e) { /* unparseable metadata — leave it alone */ }
+    }
+
     delete winner._descLength;
     delete winner._isPersonal;
     result.push(winner);
@@ -3966,24 +3990,35 @@ function webGetItinerary_(e, opts) {
             const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), evEndTz, 'HH:mm');
             // Build metadata: always include calendarName; include startTz/endTz when available
             var evMeta = { calendarName: cal.getName() };
-            // Tentative signals only a live CalendarEvent can give. Google
-            // Calendar does NOT expose "tentative" as a status for events you
-            // own — only Busy/Free and guest RSVP — so a text marker in the
-            // title is the primary path (handled in annotateOptionGroups_) and
-            // these two are the bonus. Don't go looking for an event.status API.
-            try {
-              // A soft hold is usually held as "Free" rather than "Busy".
-              if (!ev.isAllDayEvent() && ev.getTransparency &&
-                  ev.getTransparency() === CalendarApp.EventTransparency.TRANSPARENT) {
-                evMeta.tentative = true;
-              }
-            } catch (trErr) { /* older runtimes: fall back to the text marker */ }
-            try {
-              var myGuest = ev.getGuestByEmail(itinUserEmail);
-              if (myGuest && myGuest.getGuestStatus() === CalendarApp.GuestStatus.MAYBE) {
-                evMeta.tentative = true;
-              }
-            } catch (gsErr) { /* not a guest on this event */ }
+
+            // A hold is something you SAID was a hold. Google Calendar has no
+            // tentative status for an event you own, so the text marker in the
+            // title is the path that matters — "Tentative dinner w friends"
+            // — and it is handled in annotateOptionGroups_.
+            //
+            // Busy/Free used to be read as a second signal here, on the theory
+            // that a soft hold is usually held as "Free". That is true one way
+            // round and badly false the other: plenty of CONFIRMED events are
+            // Free. A booked flight marked Free so it does not block the work
+            // calendar is the single most common case, and it was being drawn
+            // as a hold. Free/Busy answers "should this block my availability",
+            // which is not the same question as "have I decided this", and
+            // guessing intent from it produced a confident wrong answer.
+            //
+            // An explicit "Maybe" RSVP is kept, because that one IS a statement
+            // of undecidedness rather than an inference from a hygiene setting.
+            // Not for transport or lodging though: nobody holds two alternative
+            // flights without saying so in the title, and if they do the text
+            // path catches it.
+            var NEVER_INFERRED_TENTATIVE_ = ['flight', 'hotel', 'cruise', 'train'];
+            if (NEVER_INFERRED_TENTATIVE_.indexOf(relevance.type) === -1) {
+              try {
+                var myGuest = ev.getGuestByEmail(itinUserEmail);
+                if (myGuest && myGuest.getGuestStatus() === CalendarApp.GuestStatus.MAYBE) {
+                  evMeta.tentative = true;
+                }
+              } catch (gsErr) { /* not a guest on this event */ }
+            }
             if (evTzInfo.startTz) evMeta.startTz = evTzInfo.startTz;
             if (evTzInfo.endTz && evTzInfo.endTz !== evTzInfo.startTz) evMeta.endTz = evTzInfo.endTz;
             // A flight's `location` is where it LEAVES from. Nothing recorded where
