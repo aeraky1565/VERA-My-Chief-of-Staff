@@ -993,7 +993,6 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `docs/app.js` | **The dashboard source — edit this.** React app in `React.createElement` form (no JSX) |
 | `docs/index.html` | Self-contained page GitHub Pages serves: CSS + inlined React bundle + a copy of `app.js`. **Generated — do not hand-edit** |
 | `docs/build.js` | Regenerates `index.html` from `app.js`. `--check` verifies they match |
-| `docs/_app.js` | **Legacy, unused.** Leftover Babel output from the pre-`ada15e2` build. Nothing generates or loads it |
 | `docs/.nojekyll` | Tells GitHub Pages to serve all files, including ones starting with `_` |
 | `babel.config.json` | **Legacy, unused.** The dashboard no longer uses Babel or JSX |
 | `push.ps1` | One-command deploy: builds dashboard → pushes to Apps Script → redeploys web app → commits to GitHub |
