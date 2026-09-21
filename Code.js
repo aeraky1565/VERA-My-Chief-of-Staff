@@ -859,6 +859,20 @@ function nightlyRun() {
       stepFailures.push('syncImportantDatesToCalendar_: ' + icErr.message);
     }
 
+    // Step 0a-ib: ...and flag the ones coming up. Half this feature ran and half
+    // did not: dates reached the calendar above, but the flag engine was only
+    // reachable from testCheckImportantDates(), a manual editor helper, so it
+    // had never run on a schedule. A date appeared on the calendar and VERA
+    // never mentioned it approaching.
+    //
+    // After the sync, not before, so a date newly placed on the calendar is also
+    // considered for a flag on the same run.
+    try { checkImportantDates_(); }
+    catch (idErr) {
+      Logger.log('checkImportantDates_ error (non-fatal): ' + idErr.message);
+      stepFailures.push('checkImportantDates_: ' + idErr.message);
+    }
+
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
     try { resetChoresByCadence_(); }
     catch (chErr) {
