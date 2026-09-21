@@ -287,17 +287,17 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     var meta = {};
     try { meta = JSON.parse(String(row[9] || '{}') || '{}'); } catch(e) { meta = {}; }
 
-    var flightNum = (meta.flightNum || '').trim();
-
-    // Fallback: extract flight number from the item title for calendar-imported flights
-    // that have no flightNum in metadata (e.g. "Flight to Tampa (UA 1140)" → "UA1140")
-    if (!flightNum) {
-      var title = String(row[3] || '');
-      var fm = title.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
-      if (fm) {
-        flightNum = fm[1] + fm[2];
-        Logger.log('FlightStatus: extracted flight number "' + flightNum + '" from title "' + title + '"');
-      }
+    // flightKeyFor_ (WebApp.js) prefers metadata.flightNum and falls back to
+    // reading the number out of the title, which is what calendar-imported
+    // flights need ("Flight to Tampa (UA 1140)" → "UA1140"). That logic used to
+    // live here; it moved when the itinerary dedupe needed the same key, and one
+    // global scope means this is the same function rather than a second copy.
+    var flightNum = flightKeyFor_({
+      type: 'flight', title: String(row[3] || ''), metadata: String(row[9] || ''),
+    });
+    if (flightNum && !(meta.flightNum || '').trim()) {
+      Logger.log('FlightStatus: extracted flight number "' + flightNum +
+                 '" from title "' + String(row[3] || '') + '"');
     }
 
     if (!flightNum || !date) {
@@ -418,13 +418,14 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
           continue;
         }
 
-        // Extract flight number (general regex covers airlines beyond the IATA short-list)
-        var fm2 = evTitle.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
-        if (!fm2) {
+        // flightKeyFor_ (WebApp.js) — one extractor, shared, so the itinerary
+        // dedupe and flight-status lookup can never disagree about what flight
+        // a title names.
+        var calFlightNum = flightKeyFor_({ type: 'flight', title: evTitle });
+        if (!calFlightNum) {
           Logger.log('FlightStatus Phase2: skip "' + evTitle + '" → classified as flight but no IATA code+number found in title');
           continue;
         }
-        var calFlightNum = fm2[1] + fm2[2];
 
         // Compute CAL-xxx ID using the IDENTICAL formula used in webGetItinerary_()
         var calId  = 'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16);
@@ -643,11 +644,9 @@ function checkStaleFlightStatus_(withinHours) {
         var meta = {};
         try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch (e) { meta = {}; }
 
-        var flightNum = (meta.flightNum || '').trim();
-        if (!flightNum) {
-          var fm = String(rows[i][3] || '').match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
-          if (fm) flightNum = fm[1] + fm[2];
-        }
+        var flightNum = flightKeyFor_({
+          type: 'flight', title: String(rows[i][3] || ''), metadata: String(rows[i][9] || ''),
+        });
         if (!flightNum) continue;
 
         evaluate(flightNum, date,
@@ -744,8 +743,7 @@ function debugFlightStatusScan() {
       var loc     = (ev.getLocation() || '').trim();
       var startFmt = Utilities.formatDate(ev.getStartTime(), tz, 'MM/dd HH:mm');
       var relevance = isItineraryCalendarRelevant_(title, loc, '');
-      var fm        = title.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
-      var flightNum = fm ? fm[1] + fm[2] : '(none)';
+      var flightNum = flightKeyFor_({ type: 'flight', title: title }) || '(none)';
       Logger.log('    ' + startFmt + ' | "' + title + '"'
         + ' | flight=' + (relevance.include && relevance.type === 'flight')
         + ' | iata=' + flightNum
@@ -786,9 +784,8 @@ function debugFlightStatusScan() {
       var loc2   = (ev2.getLocation() || '').trim();
       var rel2   = isItineraryCalendarRelevant_(title2, loc2, '');
       if (!rel2.include || rel2.type !== 'flight') continue;
-      var fm3 = title2.match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
-      if (!fm3) continue;
-      var testFlight = fm3[1] + fm3[2];
+      var testFlight = flightKeyFor_({ type: 'flight', title: title2 });
+      if (!testFlight) continue;
       var testDate   = Utilities.formatDate(ev2.getStartTime(), tz, 'yyyy-MM-dd');
       Logger.log('Calling AviationStack for ' + testFlight + ' on ' + testDate + '...');
       var apiResult = fetchFlightStatus_(testFlight, testDate);

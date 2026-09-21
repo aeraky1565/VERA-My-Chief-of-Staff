@@ -3738,6 +3738,96 @@ function findItineraryRow_(id) {
 }
 
 /**
+ * A flight's natural identity: airline code + number, e.g. 'UA1370'.
+ *
+ * The title is not an identity. The same flight reaches VERA under at least two
+ * spellings — the row VERA builds ("Flight UA1370 TPA to IAD") and the event
+ * Google auto-creates from the airline's email ("Flight to Washington
+ * (UA 1370)") — with different locations to match. Anything keyed on the title
+ * sees two unrelated events and shows both.
+ *
+ * Prefers metadata.flightNum, which the dashboard's add-flight form writes, and
+ * falls back to reading it out of the title. The fallback regex is the one
+ * FlightStatus.js already used for the same job on the same kind of title;
+ * lifted here so there is one copy rather than a second that can drift.
+ *
+ * @returns {string} 'UA1370', or '' when this is not a flight or carries no number
+ */
+function flightKeyFor_(item) {
+  if (!item) return '';
+  if (String(item.type || '').toLowerCase() !== 'flight') return '';
+
+  var meta = {};
+  var raw  = item.metadata;
+  if (raw && typeof raw === 'object') meta = raw;
+  else if (raw) { try { meta = JSON.parse(String(raw)) || {}; } catch (e) { meta = {}; } }
+
+  var num = String(meta.flightNum || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (num) {
+    // Stored as "1370" with the airline in its own field, or already "UA1370".
+    if (/^\d{1,4}$/.test(num)) {
+      var air = String(meta.airline || '').trim().toUpperCase().replace(/[^A-Z]/g, '').substring(0, 2);
+      return air ? air + num : '';
+    }
+    if (/^[A-Z]{2}\d{1,4}$/.test(num)) return num;
+  }
+
+  var fm = String(item.title || '').match(/\b([A-Z]{2})\s*(\d{1,4})\b/);
+  return fm ? fm[1] + fm[2] : '';
+}
+
+/**
+ * Drops calendar items that describe a flight a stored row already covers.
+ *
+ * Pure (arrays in, array out) so it is testable without CalendarApp or a Sheet,
+ * same as dedupeItineraryCalendarItems_.
+ *
+ * Only flights, and only where both sides yield a flight number. There is no
+ * equivalent natural key for a hotel or a dinner, and matching those on date and
+ * type would risk merging two genuinely different bookings — which is a worse
+ * failure than showing both.
+ *
+ * Dropping a duplicate must not lose a fact, so anything the calendar copy knew
+ * and the row did not (origin/dest, lifted from the airline's description) is
+ * carried over first. Same principle as the tentative-consensus merge below.
+ *
+ * @param {Array} calendarItems  already deduped among themselves
+ * @param {Array} storedItems    items read from the Itinerary sheet
+ * @returns {Array} the calendar items that survive
+ */
+function suppressCalendarDuplicatesOfRows_(calendarItems, storedItems) {
+  if (!calendarItems || !calendarItems.length) return calendarItems || [];
+
+  var byFlight = {};
+  (storedItems || []).forEach(function(row) {
+    var k = flightKeyFor_(row);
+    if (k) byFlight[row.date + '|' + k] = row;
+  });
+  if (!Object.keys(byFlight).length) return calendarItems;
+
+  return calendarItems.filter(function(it) {
+    var k = flightKeyFor_(it);
+    if (!k) return true;
+    var row = byFlight[it.date + '|' + k];
+    if (!row) return true;
+
+    try {
+      var rowMeta = JSON.parse(row.metadata || '{}') || {};
+      var calMeta = JSON.parse(it.metadata  || '{}') || {};
+      var gained = false;
+      ['origin', 'dest'].forEach(function(f) {
+        if (!rowMeta[f] && calMeta[f]) { rowMeta[f] = calMeta[f]; gained = true; }
+      });
+      if (gained) row.metadata = JSON.stringify(rowMeta);
+    } catch (e) { /* unparseable on either side — drop the duplicate anyway */ }
+
+    Logger.log('Itinerary: calendar copy of flight ' + k + ' on ' + it.date +
+               ' suppressed — already a stored row');
+    return false;
+  });
+}
+
+/**
  * Collapses duplicate calendar-sourced itinerary items — the same real-world
  * event (e.g. a flight) added to more than one trusted calendar produces one
  * item per calendar upstream; this merges each such group down to one.
@@ -3772,8 +3862,15 @@ function dedupeItineraryCalendarItems_(calendarItems) {
   var groups = {};
   var order  = [];
   (calendarItems || []).forEach(function(it) {
-    var key = it.date + '|' + it.startTime + '|' + it.endTime + '|' +
-              String(it.title || '').trim().toLowerCase();
+    // A flight groups on its number rather than its title, because the same
+    // flight arrives titled two different ways. Times are left out too: you do
+    // not fly one flight number twice in a day, and ignoring them means a
+    // schedule change on one copy cannot resurrect the duplicate.
+    var flight = flightKeyFor_(it);
+    var key = flight
+      ? it.date + '|flight|' + flight
+      : it.date + '|' + it.startTime + '|' + it.endTime + '|' +
+        String(it.title || '').trim().toLowerCase();
     if (!groups[key]) { groups[key] = []; order.push(key); }
     groups[key].push(it);
   });
@@ -4069,7 +4166,18 @@ function webGetItinerary_(e, opts) {
           });
         } catch (calErr) { /* skip inaccessible calendar */ }
       });
-      items.push.apply(items, dedupeItineraryCalendarItems_(calendarItems));
+      // Calendar items were deduped among THEMSELVES above; nothing until now
+      // asked whether a sheet row already describes the same real-world event.
+      // It frequently does — VERA writes a flight row, and Google separately
+      // auto-creates an event from the airline's email — and the two are titled
+      // differently, so the day showed the flight twice.
+      //
+      // The sheet row wins: it is the copy that can be edited and deleted from
+      // the dashboard, the one EmailParser enriches, and the only one with a
+      // stable id. Same precedent as TravelDayBriefing.js:242, which skips a
+      // calendar event already logged manually.
+      items.push.apply(items, suppressCalendarDuplicatesOfRows_(
+        dedupeItineraryCalendarItems_(calendarItems), items));
     } catch (calEx) {
       Logger.log('Itinerary: calendar pull failed — ' + calEx.message);
     }
