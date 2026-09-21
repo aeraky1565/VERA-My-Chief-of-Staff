@@ -828,21 +828,44 @@ function sendPreTripEmail_NightBefore_(trip) {
       '<strong>Tip:</strong> ' + escapeHtml_(tip) + '</div>'
     : '';
 
+  // The trip's dates, needed by both the decisions lookup and the weather below.
+  var tzNB     = Session.getScriptTimeZone();
+  var depStr   = Utilities.formatDate(trip.departureDate, tzNB, 'yyyy-MM-dd');
+  var endStrNB = Utilities.formatDate(trip.endDate,       tzNB, 'yyyy-MM-dd');
+
   // Tomorrow's only — the night before is not the moment to reopen a decision
   // about Thursday.
   var openDecisions = [];
   var decisionsHtml = '';
   try {
-    var tzNB     = Session.getScriptTimeZone();
-    var depStr   = Utilities.formatDate(trip.departureDate, tzNB, 'yyyy-MM-dd');
-    var endStrNB = Utilities.formatDate(trip.endDate,       tzNB, 'yyyy-MM-dd');
     openDecisions = openDecisionsForTrip_(trip.tripKey, depStr, endStrNB, depStr);
     decisionsHtml = buildOpenDecisionsSection_(openDecisions);
   } catch (dErr) { Logger.log('PreTrip night-before: decisions section failed — ' + dErr.message); }
 
+  // Weather for the DEPARTURE DAY only, not the trip range.
+  //
+  // The 48h brief already sent the range, and it reads as packing advice —
+  // "69-88F across the trip, hot, pack light". Repeating that twelve hours
+  // later, when the bag is mostly packed, spends a section to say nothing new.
+  // Asking for one day answers the question the night before actually raises:
+  // what am I walking into tomorrow.
+  var nbWeatherText = '';
+  try {
+    var nbDest = inferTripDestination_(rows, trip.tripKey, trip.tripLabel).value;
+    if (nbDest) nbWeatherText = getPackingWeather_(nbDest, depStr, depStr) || '';
+  } catch (wErr) { Logger.log('PreTrip night-before: weather failed — ' + wErr.message); }
+
+  var nbWeatherHtml = nbWeatherText
+    ? '<p style="margin:0 0 12px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+      'letter-spacing:1.5px;text-transform:uppercase;">🌤 Tomorrow at Destination</p>' +
+      '<p style="margin:0;font-size:13px;color:#555;line-height:1.6;">' +
+      escapeHtml_(nbWeatherText.substring(0, 400)) + '</p>'
+    : '';
+
   var sections = [
     { id: 'note',      data: noteHtml },
     { id: 'sequence',  data: sequenceHtml },
+    { id: 'weather',   data: nbWeatherHtml },
     { id: 'decisions', data: decisionsHtml },
     { id: 'packing',   data: openPackingHtml },
     { id: 'tip',       data: tipHtml },
@@ -867,6 +890,7 @@ function sendPreTripEmail_NightBefore_(trip) {
     });
     plain.push('');
   }
+  if (nbWeatherText) plain.push('TOMORROW AT DESTINATION\n' + nbWeatherText.substring(0, 300), '');
   if (openDecisions.length) plain.push(buildOpenDecisionsPlain_(openDecisions), '');
   if (openItems.length) {
     plain.push('STILL TO PACK', openItems.map(function(i) { return '• ' + i; }).join('\n'), '');
