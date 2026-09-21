@@ -4,10 +4,15 @@
 // ============================================================
 //
 // Projects live in the "Projects" tab of the Life OS sheet.
-// Schema: Project ID | Project Name | Task | Status | Priority | Due Date | Notes
+// Schema: Project ID | Project Name | Task | Status | Priority | Due Date | Notes | Owner
 //
 // Projects are created via VERA chat (ACTION:create_project|...) and
 // viewed/completed in the dashboard Projects tab.
+//
+// Owner is a PROJECT-level attribute stored redundantly on every row of the
+// project (exactly as Project Name already is). A blank cell reads as 'Shared',
+// so every project that pre-dates the column is shared by default and nothing
+// has to be backfilled.
 // ============================================================
 
 // ---- Column indices (0-based, matching PROJECT_HEADERS) --------------------
@@ -19,7 +24,53 @@ var PROJ_COL = {
   PRIORITY: 4,
   DUE:      5,
   NOTES:    6,
+  OWNER:    7,
 };
+
+var PROJECT_OWNERS_ = ['Shared', 'Ahmed', 'Victoria'];
+
+/**
+ * Coerces anything to a valid owner. Blank, unknown, or garbage → 'Shared'.
+ * @param {*} v
+ * @returns {string} One of PROJECT_OWNERS_
+ */
+function normalizeProjectOwner_(v) {
+  var s = String(v == null ? '' : v).trim().toLowerCase();
+  for (var i = 0; i < PROJECT_OWNERS_.length; i++) {
+    if (PROJECT_OWNERS_[i].toLowerCase() === s) return PROJECT_OWNERS_[i];
+  }
+  return 'Shared';
+}
+
+/**
+ * Widens an existing Projects tab to match PROJECT_HEADERS.
+ *
+ * ensureSheet() only writes headers into a BLANK sheet, so a tab created before
+ * the Owner column would never gain it — and every read here takes a range
+ * PROJECT_HEADERS.length wide, which throws outright once the constant is wider
+ * than the sheet. Call this before any such range.
+ *
+ * Same shape as ensureImportantDatesSchema_ (WebApp.js).
+ *
+ * @param {Sheet} sheet
+ * @returns {Sheet} the same sheet, for chaining
+ */
+function ensureProjectsSchema_(sheet) {
+  if (!sheet) return sheet;
+  var need = PROJECT_HEADERS.length;
+  if (sheet.getMaxColumns() < need) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+  }
+  var header = sheet.getRange(1, 1, 1, need).getValues()[0];
+  for (var i = 0; i < need; i++) {
+    if (String(header[i]).trim() !== PROJECT_HEADERS[i]) {
+      sheet.getRange(1, 1, 1, need).setValues([PROJECT_HEADERS]);
+      sheet.getRange(1, 1, 1, need).setFontWeight('bold');
+      break;
+    }
+  }
+  return sheet;
+}
 
 // ---- Create a new project --------------------------------------------------
 
@@ -31,12 +82,18 @@ var PROJ_COL = {
  * @param {string[]} taskLines    - Array of task strings from Claude, format:
  *                                  "Task description" or "Task description|priority"
  *                                  where priority is High/Medium/Low (optional)
+ * @param {string}   [owner]      - 'Ahmed' | 'Victoria' | 'Shared'. Anything else,
+ *                                  including nothing, means 'Shared' — which is why
+ *                                  chat-created projects are shared by default.
  * @returns {{ projectId: string, count: number }}
  */
-function createProject_(projectName, taskLines) {
+function createProject_(projectName, taskLines, owner) {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PROJECTS);
   if (!sheet) throw new Error('Projects tab not found. Run addProjectsTab() first.');
+  ensureProjectsSchema_(sheet);
+
+  var ownerVal = normalizeProjectOwner_(owner);
 
   var today   = new Date();
   var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
@@ -62,7 +119,7 @@ function createProject_(projectName, taskLines) {
       var taskText = parts[0].trim();
       var priority = parts[1] ? parts[1].trim() : 'Medium';
       if (['High', 'Medium', 'Low'].indexOf(priority) === -1) priority = 'Medium';
-      return [projectId, projectName, taskText, 'Pending', priority, '', ''];
+      return [projectId, projectName, taskText, 'Pending', priority, '', '', ownerVal];
     });
 
   if (rows.length === 0) {
@@ -90,6 +147,7 @@ function createProject_(projectName, taskLines) {
  *   [{
  *     projectId: 'PROJ-20260308-01',
  *     projectName: 'Europe Trip',
+ *     owner: 'Shared',
  *     tasks: [{
  *       task: 'Book flights', status: 'Pending', priority: 'High',
  *       dueDate: '', notes: '', rowNum: 2
@@ -100,6 +158,7 @@ function getProjects_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PROJECTS);
   if (!sheet || sheet.getLastRow() < 2) return [];
+  ensureProjectsSchema_(sheet);
 
   var numRows = sheet.getLastRow() - 1;
   var data    = sheet.getRange(2, 1, numRows, PROJECT_HEADERS.length).getValues();
@@ -115,9 +174,17 @@ function getProjects_() {
       projectMap[projectId] = {
         projectId:   projectId,
         projectName: String(row[PROJ_COL.NAME] || '').trim(),
+        owner:       'Shared',
         tasks:       [],
       };
       order.push(projectId);
+    }
+
+    // First row of the group that actually names an owner wins. A project
+    // whose rows are all blank stays 'Shared'.
+    if (projectMap[projectId].owner === 'Shared' &&
+        String(row[PROJ_COL.OWNER] || '').trim()) {
+      projectMap[projectId].owner = normalizeProjectOwner_(row[PROJ_COL.OWNER]);
     }
 
     var dueRaw = row[PROJ_COL.DUE];

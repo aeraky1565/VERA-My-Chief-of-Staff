@@ -171,6 +171,7 @@ function writeWeeklySnapshot_() {
     // ── Projects ──────────────────────────────────────────────────────────────
     var projSheet = ss.getSheetByName(TABS.PROJECTS);
     if (projSheet && projSheet.getLastRow() >= 2) {
+      ensureProjectsSchema_(projSheet); // the range below is PROJECT_HEADERS wide
       var projKeys = {};
       projSheet.getRange(2, 1, projSheet.getLastRow() - 1, PROJECT_HEADERS.length).getValues()
         .forEach(function(r) {

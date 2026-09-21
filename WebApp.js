@@ -118,6 +118,7 @@ function doGet(e) {
       case 'update_project_task':   return jsonOut_(webUpdateProjectTask_(e));
       case 'delete_project_task':   return jsonOut_(webDeleteProjectTask_(e));
       case 'close_project':         return jsonOut_(webCloseProject_(e));
+      case 'set_project_owner':     return jsonOut_(webSetProjectOwner_(e));
       case 'goals':        return jsonOut_(webGetGoals_());
       case 'add_goal':    return jsonOut_(webAddGoal_(e));
       case 'update_goal': return jsonOut_(webUpdateGoal_(e));
@@ -1179,19 +1180,29 @@ function webAddProjectTask_(e) {
 
   var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
   if (!sheet) throw new Error('Projects tab not found');
+  ensureProjectsSchema_(sheet);
 
-  // Look up project name from existing rows
+  // Look up project name AND owner from existing rows — a task added to one of
+  // Victoria's projects has to inherit Victoria, or it would silently land as
+  // Shared and the project would read as Shared from then on.
   var projectName = '';
+  var projectOwner = '';
   if (sheet.getLastRow() >= 2) {
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROJECT_HEADERS.length).getValues();
     for (var i = 0; i < data.length; i++) {
-      if (String(data[i][0]) === projectId) { projectName = data[i][1]; break; }
+      if (String(data[i][PROJ_COL.ID]) !== projectId) continue;
+      if (!projectName) projectName = data[i][PROJ_COL.NAME];
+      if (!projectOwner && String(data[i][PROJ_COL.OWNER] || '').trim()) {
+        projectOwner = String(data[i][PROJ_COL.OWNER]).trim();
+      }
+      if (projectName && projectOwner) break;
     }
   }
   if (!projectName) throw new Error('Project not found: ' + projectId);
 
-  // PROJECT_HEADERS: Project ID | Project Name | Task | Status | Priority | Due Date | Notes
-  var row = [projectId, projectName, taskText, 'Pending', priority, dueDate, notes];
+  // PROJECT_HEADERS: Project ID | Project Name | Task | Status | Priority | Due Date | Notes | Owner
+  var row = [projectId, projectName, taskText, 'Pending', priority, dueDate, notes,
+             normalizeProjectOwner_(projectOwner)];
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, PROJECT_HEADERS.length).setValues([row]);
   return { ok: true, projectId: projectId, action: 'created' };
 }
@@ -1226,10 +1237,38 @@ function webDeleteProjectTask_(e) {
 function webCreateProject_(e) {
   var name  = ((e.parameter && e.parameter.name)  || '').trim();
   var tasks = ((e.parameter && e.parameter.tasks) || '').trim();
+  var owner =  (e.parameter && e.parameter.owner) || '';
   if (!name)  throw new Error('Project name is required');
   if (!tasks) throw new Error('At least one task is required');
   var taskLines = tasks.split('\n').map(function(t) { return t.trim(); }).filter(Boolean);
-  return createProject_(name, taskLines);
+  return createProject_(name, taskLines, owner);
+}
+
+/**
+ * Sets the owner on EVERY row of one project.
+ *
+ * Owner is a project-level attribute stored per row, so a partial write would
+ * leave the project's owner depending on which row happened to be read first.
+ */
+function webSetProjectOwner_(e) {
+  var projectId = ((e.parameter && e.parameter.projectId) || '').trim();
+  var owner     = normalizeProjectOwner_((e.parameter && e.parameter.owner) || '');
+  if (!projectId) throw new Error('projectId is required');
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('Projects tab not found or empty');
+  ensureProjectsSchema_(sheet);
+
+  var ids     = sheet.getRange(2, PROJ_COL.ID + 1, sheet.getLastRow() - 1, 1).getValues();
+  var updated = 0;
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]).trim() !== projectId) continue;
+    sheet.getRange(i + 2, PROJ_COL.OWNER + 1).setValue(owner);
+    updated++;
+  }
+  if (!updated) throw new Error('Project not found: ' + projectId);
+
+  return { ok: true, projectId: projectId, owner: owner, rowsUpdated: updated };
 }
 
 function webCloseProject_(e) {

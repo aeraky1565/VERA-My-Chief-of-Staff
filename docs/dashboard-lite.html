@@ -7573,12 +7573,162 @@ function FinBudgetLiteTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- ProjectsLiteTab --------------------------------------------------------
+//
+// Victoria's projects view (issue 199). Scoped to the projects she has a stake
+// in — Shared or hers — the same way the trip agenda filters items on
+// metadata.traveler: the server stores the owner, the client filters on it.
+//
+// A blank owner reads as Shared, which is what every project created before the
+// Owner column existed looks like, so nothing had to be backfilled.
+//
+// Deliberately read-focused: the only control is the task checkbox. Adding,
+// editing, deleting and creating projects stay in the full dashboard.
+//
+// This is a VIEW scope, not a security boundary — this page holds the same API
+// token as the full dashboard.
+
+const LITE_PRIORITY_COLORS = { High:'#e53935', Medium:'#f9a825', Low:'#43a047' };
+
+function ProjectsLiteTab({ apiUrl, apiToken }) {
+  const [projects,   setProjects]   = React.useState([]);
+  const [loading,    setLoading]    = React.useState(false);
+  const [busy,       setBusy]       = React.useState(false);
+  const [showClosed, setShowClosed] = React.useState(false);
+  const [toast,      setToast]      = React.useState(null);
+
+  function load() {
+    if (!apiUrl || !apiToken) return;
+    setLoading(true);
+    apiGet(apiUrl, apiToken, { action: 'projects' })
+      .then(d => setProjects(d.projects || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  React.useEffect(() => { load(); }, [apiUrl, apiToken]);
+
+  function showToast(msg) { setToast(msg); setTimeout(() => setToast(null), 3000); }
+
+  async function handleComplete(rowNum) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'complete_project_task', row: rowNum });
+      showToast('✓ Task marked done');
+      load();
+    } catch (err) { showToast('Could not update: ' + err.message); }
+    setBusy(false);
+  }
+
+  const mine = projects.filter(p => {
+    const o = p.owner || 'Shared';
+    return o === 'Shared' || o === 'Victoria';
+  });
+  const active = mine.filter(p => p.tasks.some(t => t.status !== 'Done'));
+  const closed = mine.filter(p => p.tasks.length > 0 && p.tasks.every(t => t.status === 'Done'));
+
+  if (loading && !projects.length) {
+    return <div style={{color:'#6b7fa8',padding:'40px 0',textAlign:'center'}}>Loading projects…</div>;
+  }
+
+  if (!active.length && !closed.length) {
+    return (
+      <div style={{textAlign:'center',padding:'60px 20px'}}>
+        <div style={{fontSize:40,marginBottom:12}}>🏗️</div>
+        <div style={{color:'#6b7fa8',fontSize:14}}>No shared projects right now.</div>
+        <div style={{color:'#4d6080',fontSize:12,marginTop:8}}>Projects marked Shared or Victoria show up here.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {active.map(p => {
+        const done  = p.tasks.filter(t => t.status === 'Done').length;
+        const total = p.tasks.length;
+        const pct   = total > 0 ? Math.round(done / total * 100) : 0;
+        const owner = p.owner || 'Shared';
+        const isV   = owner === 'Victoria';
+        return (
+          <div key={p.projectId} data-project-id={p.projectId}
+            style={{marginBottom:14,border:'1px solid #1e3060',borderRadius:10,background:'#0d1b3e',padding:'14px 16px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+              <div style={{flex:1,fontWeight:700,fontSize:15,color:'#dde1f0'}}>{p.projectName}</div>
+              <span data-owner-badge={owner} style={{fontSize:11,fontWeight:700,borderRadius:20,padding:'2px 9px',
+                color: isV ? '#c97ef2' : '#2bb5a0',
+                background: isV ? 'rgba(201,126,242,0.15)' : 'rgba(43,181,160,0.15)'}}>{owner}</span>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {p.tasks.map((t, i) => {
+                const isDone = t.status === 'Done';
+                return (
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 12px',borderRadius:8,
+                    background:isDone?'rgba(67,160,71,0.05)':'#07122b',
+                    border:'1px solid ' + (isDone?'rgba(67,160,71,0.15)':'#1e3060')}}>
+                    <input type="checkbox" checked={isDone} disabled={isDone || busy}
+                      onChange={() => !isDone && handleComplete(t.rowNum)}
+                      style={{accentColor:'#43a047',width:16,height:16,cursor:isDone?'default':'pointer',flexShrink:0}} />
+                    <span style={{flex:1,fontSize:14,color:isDone?'#4a5a7a':'#dde1f0',
+                      textDecoration:isDone?'line-through':'none'}}>{t.task}</span>
+                    {t.priority && !isDone && (
+                      <span style={{fontSize:11,fontWeight:700,color:LITE_PRIORITY_COLORS[t.priority]||'#8a9abf'}}>{t.priority}</span>
+                    )}
+                    {t.dueDate && !isDone && <span style={{fontSize:11,color:'#6b7fa8'}}>{t.dueDate}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:12,color:'#6b7fa8',margin:'14px 0 6px'}}>
+              <span>{done} of {total} tasks complete</span><span>{pct}%</span>
+            </div>
+            <div style={{height:4,background:'#1e3060',borderRadius:2}}>
+              <div style={{height:'100%',width:pct+'%',background:pct===100?'#43a047':'#c9a84c',
+                borderRadius:2,transition:'width .3s'}} />
+            </div>
+          </div>
+        );
+      })}
+
+      {closed.length > 0 && (
+        <div style={{marginTop:24}}>
+          <button onClick={() => setShowClosed(v => !v)}
+            style={{background:'none',border:'none',cursor:'pointer',color:'#6b7fa8',fontSize:12,
+              fontWeight:600,display:'flex',alignItems:'center',gap:6,padding:0}}>
+            <span style={{fontSize:10}}>{showClosed ? '▼' : '▶'}</span>
+            Closed Projects ({closed.length})
+          </button>
+          {showClosed && (
+            <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:8}}>
+              {closed.map(p => (
+                <div key={p.projectId} data-project-id={p.projectId}
+                  style={{padding:'10px 16px',borderRadius:8,background:'rgba(67,160,71,0.05)',
+                    border:'1px solid rgba(67,160,71,0.15)',display:'flex',alignItems:'center',
+                    justifyContent:'space-between'}}>
+                  <span style={{fontSize:13,color:'#4a5a7a',textDecoration:'line-through'}}>{p.projectName}</span>
+                  <span style={{fontSize:11,color:'#43a047',fontWeight:700}}>✓ {p.tasks.length} tasks complete</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {toast && (
+        <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#0d1b3e',
+          border:'1px solid #c9a84c',borderRadius:10,padding:'12px 20px',color:'#e8eaf6',fontSize:14,zIndex:9999}}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 const TOP_TABS = [
   { id: 'overview',      label: '🌅 Overview'      },
   { id: 'chat',          label: '💬 Chat'          },
   { id: 'household',     label: '🏠 Household'      },
+  { id: 'projects',      label: '🏗️ Projects'      },
   { id: 'shopping',      label: '🛒 Shopping'      },
   { id: 'cards',         label: '💳 Cards'          },
   { id: 'coupons',       label: '🎟️ Coupons'        },
@@ -8114,6 +8264,10 @@ function App() {
 
         {activeTab === 'household' && (
           <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'projects' && (
+          <ProjectsLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
         {activeTab === 'travel' && (
