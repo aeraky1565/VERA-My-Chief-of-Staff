@@ -319,7 +319,11 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var insights = buildTravelFlightInsightsData_(sortedItems, homeCity);
 
   var toneMode      = getTripToneMode_(tripKey);
-  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode);
+  // The trip briefing shapes the narrative, not the per-item detail lookups —
+  // "why we are going" changes how the day should be told, and changes nothing
+  // about a venue's address or phone number.
+  var tripBriefing  = tripBriefingFor_(tripKey);
+  var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, tripBriefing);
 
   // Lounge access — extract departure/layover airports from flight rows
   var travelAirports = (function() {
@@ -1682,7 +1686,7 @@ function getTripToneMode_(tripKey) {
 }
 
 /**
- * buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode)
+ * buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, briefing)
  *
  * Calls Claude to generate a tagline, narrative, and tip for the travel day.
  * Returns { tagline, narrative, tip } or null on error/empty.
@@ -1693,7 +1697,7 @@ function getTripToneMode_(tripKey) {
  * @param {string}      toneMode     — 'professional' (default) or 'personal'
  * @returns {{ tagline, narrative, tip }|null}
  */
-function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode) {
+function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, briefing) {
   try {
     if (!sortedItems || sortedItems.length === 0) return null;
 
@@ -1736,6 +1740,9 @@ function buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode
 
     var prompt =
       'You are VERA, Ahmed\'s Chief of Staff. It\'s travel day to ' + tripLabel + '.\n\n' +
+      // Omitted entirely when unset — an empty line is something to reason about.
+      (briefing ? 'What this trip is actually for: ' + briefing + '\n' +
+                  'Let that shape the tagline and narrative.\n\n' : '') +
       'Itinerary:\n' + itemLines + '\n' +
       (flightContext ? '\nFlight context: ' + flightContext + '\n' : '') +
       '\nTone mode: ' + tone + '\n- ' + toneDesc + '\n\n' +

@@ -7241,6 +7241,17 @@ function TravelLiteTab({ apiUrl, apiToken }) {
             {isOpen && (
               <div style={{background:'#0d1117',borderTop:'1px solid #2a3a50'}}>
 
+                {/* What this trip is for. Read-only here — it is edited in the
+                    full dashboard, like everything else on this page. */}
+                {meta?.notes && (
+                  <div data-trip-briefing style={{padding:'10px 16px 0',fontSize:12,color:'#8a9abf',
+                    lineHeight:1.55}}>
+                    <span style={{paddingLeft:10,borderLeft:'2px solid #2a3a50',display:'inline-block'}}>
+                      {meta.notes}
+                    </span>
+                  </div>
+                )}
+
                 {/* Context tag + travel mode + traveler selector */}
                 <div style={{padding:'10px 16px 0',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                   {meta?.context && (

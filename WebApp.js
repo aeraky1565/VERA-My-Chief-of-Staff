@@ -203,6 +203,7 @@ function doGet(e) {
       case 'travel_legs':              return jsonOut_(webGetTravelLegs_(e));
       case 'recommendations':          return jsonOut_(webGetRecommendations_(e));
       case 'generate_recommendations': return jsonOut_(webGenerateRecommendations_(e));
+      case 'set_trip_briefing':        return jsonOut_(webSetTripBriefing_(e));
       case 'update_recommendation':    return jsonOut_(webUpdateRecommendation_(e));
       case 'accept_recommendation':    return jsonOut_(webAcceptRecommendation_(e));
       case 'chat':                     return jsonOut_(webProcessChat_(e));
@@ -4858,9 +4859,17 @@ function webSetTripMeta_(e) {
     for (let i = 0; i < ids.length; i++) {
       if (String(ids[i][0]).trim() === tripKey) {
         const rowNum = i + 2;
-        sheet.getRange(rowNum, 2).setValue((p.context      || '').trim());
-        sheet.getRange(rowNum, 3).setValue((p.notes        || '').trim());
-        sheet.getRange(rowNum, 5).setValue((p.traveler     || '').trim());
+        // Guarded the way outboundMode/returnMode below already are. These three
+        // used to be written unconditionally, so a caller that sent only
+        // { tripKey, notes } silently wiped the trip's context label AND its
+        // traveller — which is why every dashboard save round-trips all three.
+        //
+        // An explicit '' still clears the field, because '' is defined. Only an
+        // OMITTED field is preserved, which is the distinction a partial writer
+        // like setTripBriefing_ depends on.
+        if (p.context  !== undefined) sheet.getRange(rowNum, 2).setValue((p.context  || '').trim());
+        if (p.notes    !== undefined) sheet.getRange(rowNum, 3).setValue((p.notes    || '').trim());
+        if (p.traveler !== undefined) sheet.getRange(rowNum, 5).setValue((p.traveler || '').trim());
         if (p.outboundMode !== undefined) sheet.getRange(rowNum, 8).setValue((p.outboundMode || '').trim());
         if (p.returnMode   !== undefined) sheet.getRange(rowNum, 9).setValue((p.returnMode   || '').trim());
         const dc = sheet.getRange(rowNum, 4);
@@ -4888,6 +4897,78 @@ function webSetTripMeta_(e) {
     '',   // Luggage JSON
   ]]);
   return { ok: true };
+}
+
+/**
+ * Writes ONLY the trip briefing (TripMeta column 3, stored as "Notes").
+ *
+ * THE COLUMN IS CALLED NOTES, THE FEATURE IS CALLED THE BRIEFING. The sheet
+ * column and the wire field keep their original name because set_trip_meta's
+ * contract and both dashboards already speak it; renaming would be churn for no
+ * behaviour. Everywhere a person reads it — the UI, the prompts — it is the
+ * trip briefing: free text saying what the trip is actually for.
+ *
+ * Deliberately not routed through webSetTripMeta_. Even with that function's
+ * fields now guarded, a partial writer that touches one cell is the honest tool
+ * for a one-field update, and it cannot be broken by a future change there.
+ *
+ * @param {string} tripKey
+ * @param {string} text
+ */
+function setTripBriefing_(tripKey, text) {
+  var key = String(tripKey || '').trim();
+  if (!key) throw new Error('tripKey is required');
+
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.TRIP_META);
+  if (!sheet) throw new Error('TripMeta tab not found. Run setupVERA() to create it.');
+
+  var briefing = String(text == null ? '' : text).trim();
+  var tz       = Session.getScriptTimeZone();
+  var today    = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+
+  if (sheet.getLastRow() >= 2) {
+    var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() !== key) continue;
+      var rowNum = i + 2;
+      sheet.getRange(rowNum, 3).setValue(briefing);
+      var dc = sheet.getRange(rowNum, 4);
+      dc.setNumberFormat('@');
+      dc.setValue(today);
+      return { ok: true, tripKey: key, briefing: briefing, action: 'updated' };
+    }
+  }
+
+  // No row yet — create one carrying only the briefing, leaving every other
+  // field at its default rather than inventing a label or a traveller.
+  var newRow   = sheet.getLastRow() + 1;
+  var dateCell = sheet.getRange(newRow, 4);
+  dateCell.setNumberFormat('@');
+  sheet.getRange(newRow, 1, 1, TRIP_META_HEADERS.length).setValues([[
+    key, '', briefing, today, '', '', 2, '', '', '',
+  ]]);
+  return { ok: true, tripKey: key, briefing: briefing, action: 'created' };
+}
+
+/** GET set_trip_briefing — params: tripKey, briefing */
+function webSetTripBriefing_(e) {
+  var p = (e && e.parameter) ? e.parameter : (e || {});
+  return setTripBriefing_(p.tripKey, p.briefing);
+}
+
+/**
+ * Reads one trip's briefing. Server-side callers (the emails) have no `e`, so
+ * they synthesise the parameter shape webGetTripMeta_ expects — the same thing
+ * webGeneratePacking_ already does.
+ */
+function tripBriefingFor_(tripKey) {
+  try {
+    return String((webGetTripMeta_({ parameter: { tripKey: tripKey } }) || {}).notes || '').trim();
+  } catch (e) {
+    Logger.log('tripBriefingFor_: ' + e.message);
+    return '';
+  }
 }
 
 /**
@@ -5152,11 +5233,15 @@ function getPackingWeather_(destination, startDate, endDate) {
 function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
                               context, traveler, destination, season,
                               itinerarySummary, weatherSummary,
-                              activityTypes, dressCodes, freeDays) {
+                              activityTypes, dressCodes, freeDays, briefing) {
   var travelersLine = traveler
     ? 'Travelers: ' + traveler
     : 'Travelers: Ahmed and Victoria';
   var contextLine = 'Trip Context: ' + (context || 'General travel');
+  // Blank means no line at all, not an empty one. A label says the category; the
+  // briefing says things no category can — a new baby in the house implies a
+  // gift and something decent for photographs.
+  var briefingLine = briefing ? 'What this trip is actually for: ' + briefing : '';
   var weatherLine = weatherSummary
     ? 'Weather: ' + weatherSummary
     : 'Weather: Unknown \u2014 pack for general conditions';
@@ -5207,6 +5292,7 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
     datesLine + '\n' +
     travelersLine + '\n' +
     contextLine + '\n' +
+    (briefingLine ? briefingLine + '\n' : '') +
     weatherLine + '\n\n' +
     (itinerarySummary ? '=== ITINERARY ===\n' + itinerarySummary + '\n\n' : '') +
     'Generate a practical packing list split across "ahmed", "victoria", and "shared"\n' +
@@ -5340,13 +5426,15 @@ function webGeneratePacking_(e) {
     var freeDays = 0;
   }
 
-  // Step 3 — Load trip context and traveler
-  let context  = '';
-  var traveler = '';
+  // Step 3 — Load trip context, traveler and briefing
+  let context   = '';
+  var traveler  = '';
+  var briefing  = '';
   try {
     const metaResult = webGetTripMeta_(e);
     context  = metaResult.context  || '';
     traveler = metaResult.traveler || '';
+    briefing = String(metaResult.notes || '').trim();
   } catch(err) { /* graceful */ }
 
   // Step 4 — Infer destination for weather. The label guess is kept here (unlike
@@ -5373,7 +5461,7 @@ function webGeneratePacking_(e) {
     tripLabel, startDate, endDate, durationNights,
     context, traveler, destination, season,
     itinerarySummary, weatherSummary,
-    activityTypes, dressCodes, freeDays
+    activityTypes, dressCodes, freeDays, briefing
   );
 
   // Step 7 — Call Claude
@@ -5615,11 +5703,16 @@ function buildRecsSystemPrompt_() {
 /**
  * Builds the user message for trip recommendations.
  */
-function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary) {
+function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing) {
   return (
     'Trip: ' + tripLabel + '\n' +
     'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
     'Context: ' + (context || 'General travel') + '\n' +
+    // The briefing goes here, directly under the label, so the narrative frames
+    // everything below it rather than arriving after the itinerary. Omitted
+    // entirely when blank — an empty "Briefing:" line is something for Claude to
+    // reason about, and there is nothing to reason about.
+    (briefing ? 'What this trip is actually for: ' + briefing + '\n' : '') +
     // No fallback to tripLabel here. A label is a name, not a place — telling
     // Claude to "search for top attractions in Vacation: First Anniversary Trip"
     // is what produced a week of recommendations in France for a Caribbean cruise.
@@ -5639,6 +5732,14 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     'If neither names a location, return an empty array rather than guessing where this trip goes.\n' +
     '- Prioritize days marked "NO DINING" with a dining rec, and days marked "NO ACTIVITIES" with an activity rec.\n' +
     '- Match context: Romantic/Anniversary/Honeymoon → spas, candlelit dinners, scenic spots; Work Trip → quick sights near hotel, good coffee; Family → family-friendly attractions.\n' +
+    // A label is a category picked from a menu; the briefing is a sentence
+    // someone wrote about this specific trip. When they disagree, the sentence
+    // is the better evidence — "Family Trip" plus "everyone is exhausted, we
+    // want quiet" should not produce a theme park.
+    (briefing
+      ? '- The trip context label above is a category; "What this trip is actually for" is the specific truth. ' +
+        'Where they conflict, follow the latter, and let it shape tone, pace and what counts as a good suggestion.\n'
+      : '') +
     (function() {
       var lCfg    = getConfigValues();
       var domMinH = parseInt(lCfg['layover_domestic_min_hours'] || '5', 10);
@@ -5951,7 +6052,13 @@ function webGenerateRecommendations_(e) {
 
   // Trip context
   let context = '';
-  try { context = (webGetTripMeta_(e) || {}).context || ''; } catch(err) { /* graceful */ }
+  let briefing = '';
+  // One read for both — the label and the narrative come from the same row.
+  try {
+    const rMeta = webGetTripMeta_(e) || {};
+    context  = rMeta.context || '';
+    briefing = String(rMeta.notes || '').trim();
+  } catch(err) { /* graceful */ }
 
   // Infer destination (same helper as packing).
   // A label-derived answer is deliberately discarded here: "First Anniversary"
@@ -5963,7 +6070,7 @@ function webGenerateRecommendations_(e) {
 
   // Build prompts
   const sysPrompt  = buildRecsSystemPrompt_();
-  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary);
+  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing);
   const apiKey     = getApiKey();
   const tools      = getSearchTools_(); // from Chat.js — empty if no VERA_SEARCH_API_KEY
 

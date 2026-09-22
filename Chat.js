@@ -880,6 +880,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_itinerary_item|{id}|{field}|{value}  \u2014 fields: title, date, startTime, endTime, location, notes\n' +
     'ACTION:delete_itinerary_item|{id}\n' +
     'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +
+    'ACTION:set_trip_briefing|{tripKey}|{briefing}  \u2014 free text: what the trip is actually FOR\n' +
     // Tentative holds (Issue #187)
     'ACTION:decide_trip_option|{tripKey}|{groupKey}|{option title, or a distinctive word from it}\n' +
     '  \u2014 confirms ONE option for a slot where Ahmed is holding several. groupKey and the option\n' +
@@ -997,6 +998,7 @@ function buildChatSystemPrompt_(context) {
     '- For add_itinerary_item: use the TripKey exactly as shown in UPCOMING TRIPS (e.g., "2026-06-19|Alaska Cruise"). Date must be YYYY-MM-DD. Use blank for optional time/location/notes.\n' +
     '- For update_itinerary_item / delete_itinerary_item: use the item ID (e.g., ITIN-20260101-01) shown in UPCOMING TRIPS above.\n' +
     '- For set_trip_context: use the TripKey exactly as shown. Context should describe the trip sentiment (Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends, Visiting Family, Solo Adventure, Girls Trip, Group Trip, etc.).\n' +
+    '- For set_trip_briefing: the briefing is a SENTENCE, not a label \u2014 why the trip is happening and what matters about it ("visiting Sarah and Tom for the new baby; quiet and low-key, we want to be useful"). Whenever Ahmed explains the reason for a trip, record it with set_trip_briefing rather than only replying: it steers the discoveries, the packing list and the pre-trip emails. set_trip_context stays the short category label; the two are separate and both are kept.\n' +
     '- For add_packing_item: person must be "ahmed", "victoria", or "shared". Use the TripKey exactly as shown.\n' +
     '- For check_packing_item / delete_packing_item: use the item ID (e.g., PACK-20260101-01) shown in UPCOMING TRIPS above.\n' +
     '- For generate_packing_list: triggers an AI-powered packing list generation (may take 15\u201330s). Use trip startDate/endDate from UPCOMING TRIPS. Warn Ahmed it may take a moment.\n' +
@@ -1997,8 +1999,19 @@ function executeActions_(rawText) {
       }
       else if (type === 'set_trip_context') {
         var stcTK = tripKeyArgs_();
-        webSetTripMeta_(makeFakeEvent_({ tripKey: stcTK.tripKey, context: stcTK.rest[0] || '', notes: '' }));
+        // No `notes` key at all. It used to send '' here, which cleared the
+        // trip's briefing as a side effect of setting its label — harmless
+        // while nothing wrote briefings, and destructive the moment they exist.
+        // webSetTripMeta_ now preserves what it is not given.
+        webSetTripMeta_(makeFakeEvent_({ tripKey: stcTK.tripKey, context: stcTK.rest[0] || '' }));
         executed.push('set_trip_context (' + stcTK.tripKey + ' \u2192 ' + (stcTK.rest[0] || '') + ')');
+      }
+      else if (type === 'set_trip_briefing') {
+        var stbTK = tripKeyArgs_();
+        // Re-join on '|' — the briefing is a sentence, and a sentence may well
+        // contain the delimiter. Everything after the trip key is the briefing.
+        setTripBriefing_(stbTK.tripKey, stbTK.rest.join('|').trim());
+        executed.push('set_trip_briefing (' + stbTK.tripKey + ')');
       }
 
       // ---- Packing ----------------------------------------------------------

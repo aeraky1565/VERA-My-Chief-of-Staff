@@ -176,7 +176,7 @@ VERA's chat system supports the following action categories, each backed by a li
 | **Goals** | add_goal, update_goal (status/title/category/progress/notes), delete_goal |
 | **Ideas** | add_idea, add_thought (raw capture), shelve_thought (categorise), update_idea, promote_idea (→ task), archive_idea |
 | **Interests** | log_interest (auto-capture from conversation), add_interest (explicit), delete_interest |
-| **Travel — Itinerary** | add_itinerary_item (flight/train/cruise/ferry/hotel/dining/museum/beach/show/spa/skiing/snorkeling/theme_park/shopping/market/manual), update_itinerary_item, delete_itinerary_item, set_trip_context |
+| **Travel — Itinerary** | add_itinerary_item (flight/train/cruise/ferry/hotel/dining/museum/beach/show/spa/skiing/snorkeling/theme_park/shopping/market/manual), update_itinerary_item, delete_itinerary_item, set_trip_context, set_trip_briefing |
 | **Travel — Packing** | add_packing_item (ahmed/victoria/shared), check_packing_item, delete_packing_item, generate_packing_list (AI-generated from itinerary + weather) |
 | **Countries & Bucket List** | add_country, delete_country, add_bucket_item, update_bucket_item (visited/stars), delete_bucket_item |
 | **Takeouts** | add_takeout_restaurant, add_takeout_item, delete_takeout_restaurant, delete_takeout_item |
@@ -580,7 +580,17 @@ Every tab is created automatically by `setupVERA()` → `createSheetTabs()`. Hea
 | Home Items | `HOME_ITEMS` | Warranties + service log | User + chat managed |
 | Ideas | `IDEAS` | Braindump repo + Thought Inbox | User + chat managed |
 | Itinerary | `ITINERARY` | Trip itinerary items | User + chat + email parser managed |
-| TripMeta | `TRIP_META` | Trip context and sentiment notes | User + chat managed |
+| TripMeta | `TRIP_META` | Per-trip `Context` (a short label — Anniversary Trip, Work Trip — picked from a menu or typed) and `Notes`, which holds the **trip briefing**: free text saying what the trip is actually for. The column keeps its original name; everywhere a person reads it, it is the briefing | User + chat managed |
+
+
+**Trip briefing.** Each trip carries two separate pieces of context. The
+`Context` label is a category and drives category-shaped prompt rules
+("Anniversary → spas, candlelit dinners"). The **briefing** is a sentence about
+this particular trip — *"visiting Sarah and Tom for the new baby; quiet and
+low-key, we want to be useful"* — and it feeds the discovery engine, the packing
+list, both pre-trip emails and the travel-day narrative. Where the two conflict,
+the generators are told the briefing wins. Set it in the Travel tab or from chat
+with `set_trip_briefing`; `dashboard-lite` shows it read-only.
 | PackingItems | `PACKING_ITEMS` | Per-trip packing list | User + chat + AI managed |
 | Countries | `COUNTRIES` | Countries visited (Ahmed + Victoria) | User + chat managed |
 | Bucket List | `BUCKET_LIST` | Travel dream destinations | User + chat managed |

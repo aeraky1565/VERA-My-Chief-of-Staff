@@ -671,8 +671,24 @@ function sendPreTripEmail_48h_(trip) {
     decisionsHtml = buildOpenDecisionsSection_(openDecisions);
   } catch (dErr) { Logger.log('PreTrip 48h: decisions section failed — ' + dErr.message); }
 
+  // What this trip is actually for. Read through the shared helper so the email
+  // and the generators cannot disagree about where the briefing lives. Empty
+  // string when unset, which buildPreTripEmailHtml_ drops silently.
+  var briefingHtml = '';
+  try {
+    var briefText = tripBriefingFor_(trip.tripKey);
+    if (briefText) {
+      briefingHtml =
+        '<p style="margin:0 0 6px;font-size:11px;color:#8a7a3a;font-weight:700;' +
+        'letter-spacing:1.5px;text-transform:uppercase;">\u{1F9ED} Why this trip</p>' +
+        '<p style="margin:0;font-size:13px;color:#555;line-height:1.6;">' +
+        escapeHtml_(briefText.substring(0, 500)) + '</p>';
+    }
+  } catch (bErr) { Logger.log('PreTrip: briefing section failed \u2014 ' + bErr.message); }
+
   var sections = [
     { id: 'opener',    data: taglineOpenerHtml },
+    { id: 'briefing',  data: briefingHtml },
     { id: 'glance',    data: glanceHtml },
     { id: 'flights',   data: flightsHtml },
     { id: 'packing',   data: packingHtml },
@@ -862,8 +878,24 @@ function sendPreTripEmail_NightBefore_(trip) {
       escapeHtml_(nbWeatherText.substring(0, 400)) + '</p>'
     : '';
 
+  // What this trip is actually for. Read through the shared helper so the email
+  // and the generators cannot disagree about where the briefing lives. Empty
+  // string when unset, which buildPreTripEmailHtml_ drops silently.
+  var briefingHtml = '';
+  try {
+    var briefText = tripBriefingFor_(trip.tripKey);
+    if (briefText) {
+      briefingHtml =
+        '<p style="margin:0 0 6px;font-size:11px;color:#8a7a3a;font-weight:700;' +
+        'letter-spacing:1.5px;text-transform:uppercase;">\u{1F9ED} Why this trip</p>' +
+        '<p style="margin:0;font-size:13px;color:#555;line-height:1.6;">' +
+        escapeHtml_(briefText.substring(0, 500)) + '</p>';
+    }
+  } catch (bErr) { Logger.log('PreTrip: briefing section failed \u2014 ' + bErr.message); }
+
   var sections = [
     { id: 'note',      data: noteHtml },
+    { id: 'briefing',  data: briefingHtml },
     { id: 'sequence',  data: sequenceHtml },
     { id: 'weather',   data: nbWeatherHtml },
     { id: 'decisions', data: decisionsHtml },
