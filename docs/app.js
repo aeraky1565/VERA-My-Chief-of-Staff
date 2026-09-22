@@ -51,7 +51,125 @@ function StatusBar({status,loading}){if(!status)return null;return/*#__PURE__*/R
 function FlagCard({flag,onAction,busy}){const uc=urgencyClass(flag.urgency);const isDone=flag.acknowledged||flag.resolved;return/*#__PURE__*/React.createElement("div",{className:`flag-card ${uc} ${isDone?'done':''}`},/*#__PURE__*/React.createElement("div",{className:"flag-meta"},/*#__PURE__*/React.createElement("span",{className:`urgency-badge ${uc}`},flag.urgency),/*#__PURE__*/React.createElement("span",{className:"source-badge"},flag.source),flag.snoozedUntil&&/*#__PURE__*/React.createElement("span",{className:"snoozed-label"},"💤 until ",flag.snoozedUntil),flag.acknowledged&&/*#__PURE__*/React.createElement("span",{className:"snoozed-label",style:{background:'#1e3878',color:'#c9d9ff'}},"✓ ack"),flag.resolved&&/*#__PURE__*/React.createElement("span",{className:"snoozed-label",style:{background:'#0f3020',color:'#69f0ae'}},"✓ resolved"),/*#__PURE__*/React.createElement("span",{className:"flag-date"},fmtDate(flag.date))),/*#__PURE__*/React.createElement("div",{className:"flag-title"},flag.flag),/*#__PURE__*/React.createElement("div",{className:"flag-reason"},flag.reason),!isDone&&/*#__PURE__*/React.createElement("div",{className:"flag-actions"},/*#__PURE__*/React.createElement("button",{className:"btn btn-ack",disabled:busy,onClick:()=>onAction('acknowledge',flag.id)},"✓ Acknowledge"),/*#__PURE__*/React.createElement("button",{className:"btn btn-snooze",disabled:busy,onClick:()=>onAction('snooze',flag.id,2)},"💤 Snooze 2d"),/*#__PURE__*/React.createElement("button",{className:"btn btn-resolve",disabled:busy,onClick:()=>onAction('resolve',flag.id)},"✅ Resolve")));}// ---- Task form modal (add + edit) -------------------------------------------
 const RECURRING_PRESETS=['','Daily','Weekly','Every Sunday','Every Monday','Every Tuesday','Every Wednesday','Every Thursday','Every Friday','Every Saturday','Bi-Weekly','Monthly','Quarterly','Semi-Annual','Yearly'];function TaskFormModal({task,onSave,onClose,busy}){const isEdit=!!task;const[taskText,setTaskText]=useState(isEdit?task.task:'');const[dueDate,setDueDate]=useState(isEdit?task.dueDate:'');const[notes,setNotes]=useState(isEdit?task.notes:'');const[recurring,setRecurring]=useState(isEdit?task.recurring||'':'');const[customRec,setCustomRec]=useState(isEdit&&task.recurring&&RECURRING_PRESETS.indexOf(task.recurring)===-1?task.recurring:'');// The effective recurring value: custom text overrides preset
 const effectiveRecurring=customRec.trim()||recurring;function save(){if(!taskText.trim())return;onSave({id:task?.id,task:taskText.trim(),dueDate,notes,recurring:effectiveRecurring});}function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();save();}if(e.key==='Escape')onClose();}return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:e=>e.target===e.currentTarget&&onClose()},/*#__PURE__*/React.createElement("div",{className:"modal"},/*#__PURE__*/React.createElement("h2",null,isEdit?'✏️ Edit Task':'+ New Task'),/*#__PURE__*/React.createElement("p",null,isEdit?'Update the task details below.':'Add a new task to your list.'),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Task"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:taskText,onChange:e=>setTaskText(e.target.value),onKeyDown:handleKey,placeholder:"What needs to be done?",autoFocus:true})),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Due Date"),/*#__PURE__*/React.createElement("input",{className:"form-input",type:"date",value:dueDate,onChange:e=>setDueDate(e.target.value)})),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Recurring"),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8}},/*#__PURE__*/React.createElement("select",{className:"form-input",value:customRec?'custom':recurring,onChange:e=>{if(e.target.value==='custom'){setCustomRec(recurring||'');setRecurring('');}else{setRecurring(e.target.value);setCustomRec('');}},style:{flex:'0 0 160px'}},/*#__PURE__*/React.createElement("option",{value:""},"One-time"),RECURRING_PRESETS.filter(Boolean).map(p=>/*#__PURE__*/React.createElement("option",{key:p,value:p},p)),/*#__PURE__*/React.createElement("option",{value:"custom"},"Custom…")),customRec!==''&&/*#__PURE__*/React.createElement("input",{className:"form-input",value:customRec,onChange:e=>setCustomRec(e.target.value),placeholder:"e.g. Every 6 weeks",style:{flex:1}})),effectiveRecurring&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#8ab4f8',marginTop:4}},"🔁 Will auto-regenerate as \"",effectiveRecurring,"\" after completion")),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Notes"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:notes,onChange:e=>setNotes(e.target.value),onKeyDown:handleKey,placeholder:"Optional notes…"})),/*#__PURE__*/React.createElement("div",{className:"modal-actions"},/*#__PURE__*/React.createElement("button",{className:"btn btn-ghost",onClick:onClose},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",onClick:save,disabled:busy||!taskText.trim()},isEdit?'Save Changes':'Add Task'))));}// ---- Project task form modal (add + edit) -----------------------------------
-function ProjectTaskModal({mode,task,onSave,onClose,busy}){const isEdit=mode==='edit';const[taskText,setTaskText]=useState(isEdit?task?.task||'':'');const[priority,setPriority]=useState(isEdit?task?.priority||'Medium':'Medium');const[dueDate,setDueDate]=useState(isEdit?task?.dueDate||'':'');const[notes,setNotes]=useState(isEdit?task?.notes||'':'');function save(){if(!taskText.trim())return;onSave({task:taskText.trim(),priority,dueDate,notes});}function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();save();}if(e.key==='Escape')onClose();}return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:e=>e.target===e.currentTarget&&onClose()},/*#__PURE__*/React.createElement("div",{className:"modal"},/*#__PURE__*/React.createElement("h2",null,isEdit?'✏️ Edit Task':'+ New Task'),/*#__PURE__*/React.createElement("p",null,isEdit?'Update this project task.':'Add a task to this project.'),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Task"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:taskText,onChange:e=>setTaskText(e.target.value),onKeyDown:handleKey,placeholder:"What needs to be done?",autoFocus:true})),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Priority"),/*#__PURE__*/React.createElement("select",{className:"form-input",value:priority,onChange:e=>setPriority(e.target.value),style:{appearance:'auto'}},/*#__PURE__*/React.createElement("option",{value:"High"},"High"),/*#__PURE__*/React.createElement("option",{value:"Medium"},"Medium"),/*#__PURE__*/React.createElement("option",{value:"Low"},"Low"))),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Due Date"),/*#__PURE__*/React.createElement("input",{className:"form-input",type:"date",value:dueDate,onChange:e=>setDueDate(e.target.value)})),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Notes"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:notes,onChange:e=>setNotes(e.target.value),onKeyDown:handleKey,placeholder:"Optional notes…"})),/*#__PURE__*/React.createElement("div",{className:"modal-actions"},/*#__PURE__*/React.createElement("button",{className:"btn btn-ghost",onClick:onClose},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",onClick:save,disabled:busy||!taskText.trim()},isEdit?'Save Changes':'Add Task'))));}// ---- Task card --------------------------------------------------------------
+function ProjectTaskModal({
+  mode,
+  task,
+  onSave,
+  onClose,
+  busy
+}) {
+  const isEdit = mode === 'edit';
+  const [taskText, setTaskText] = React.useState(isEdit ? task && task.task || '' : '');
+  const [priority, setPriority] = React.useState(isEdit ? task && task.priority || 'Medium' : 'Medium');
+  const [dueDate, setDueDate] = React.useState(isEdit ? task && task.dueDate || '' : '');
+  const [notes, setNotes] = React.useState(isEdit ? task && task.notes || '' : '');
+  const [phase, setPhase] = React.useState(isEdit ? task && task.phase || '' : '');
+  const [status, setStatus] = React.useState(isEdit ? task && task.status || 'Pending' : 'Pending');
+  function save() {
+    if (!taskText.trim()) return;
+    onSave({
+      task: taskText.trim(),
+      priority,
+      dueDate,
+      notes,
+      phase,
+      status
+    });
+  }
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      save();
+    }
+    if (e.key === 'Escape') onClose();
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "modal-overlay",
+    onClick: e => e.target === e.currentTarget && onClose()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "modal"
+  }, /*#__PURE__*/React.createElement("h2", null, isEdit ? '✏️ Edit Task' : '+ New Task'), /*#__PURE__*/React.createElement("p", null, isEdit ? 'Update this project task.' : 'Add a task to this project.'), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Task"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    value: taskText,
+    onChange: e => setTaskText(e.target.value),
+    onKeyDown: handleKey,
+    placeholder: "What needs to be done?",
+    autoFocus: true
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Priority"), /*#__PURE__*/React.createElement("select", {
+    className: "form-input",
+    value: priority,
+    onChange: e => setPriority(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", null, "High"), /*#__PURE__*/React.createElement("option", null, "Medium"), /*#__PURE__*/React.createElement("option", null, "Low"))), isEdit && /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Status"), /*#__PURE__*/React.createElement("select", {
+    className: "form-input",
+    "data-task-status": true,
+    value: status,
+    onChange: e => setStatus(e.target.value)
+  }, PROJECT_TASK_STATUSES.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s,
+    value: s
+  }, s)))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Phase ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#6b7fa8',
+      fontWeight: 400
+    }
+  }, "(groups tasks into sections — leave blank for none)")), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    "data-task-phase": true,
+    value: phase,
+    onChange: e => setPhase(e.target.value),
+    placeholder: "e.g. Logistics"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Due date"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "date",
+    value: dueDate,
+    onChange: e => setDueDate(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Notes ", status === 'Blocked' && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#c97ef2',
+      fontWeight: 400
+    }
+  }, "— say what it is waiting on")), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    value: notes,
+    onChange: e => setNotes(e.target.value),
+    onKeyDown: handleKey,
+    placeholder: "Optional"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "modal-actions"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: onClose,
+    disabled: busy
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    onClick: save,
+    disabled: busy || !taskText.trim()
+  }, isEdit ? 'Save' : 'Add Task'))));
+}// ---- Task card --------------------------------------------------------------
 function formatDueLabel(d){if(d===0)return'Due today';if(d===1)return'Due tomorrow';if(d<=15)return`Due in ${d}d`;if(d<=56)return`Due in ${Math.round(d/7)}w`;if(d<=548)return`Due in ${Math.round(d/30.44)}mo`;return`Due in ${Math.round(d/365.25)}y`;}
 function TaskCard({task,onComplete,onEdit,completing}){const ageClass=task.isOverdue?'overdue':task.isNeglected?'neglected':'';const ageLabel=task.isOverdue?`${Math.abs(task.daysUntilDue)}d late`:task.dueDate?formatDueLabel(task.daysUntilDue):task.ageInDays!=null?`${task.ageInDays}d old`:'';return/*#__PURE__*/React.createElement("div",{className:`task-card${completing?' completing':''}`},/*#__PURE__*/React.createElement("button",{className:`task-check${completing?' completing':''}`,disabled:completing||!task.id,onClick:()=>onComplete&&onComplete(task.id),title:"Mark as done"},completing?'✓':''),/*#__PURE__*/React.createElement("div",{className:`task-age ${ageClass}`},ageLabel),/*#__PURE__*/React.createElement("div",{className:"task-info",style:completing?{textDecoration:'line-through',color:'#4d6080'}:{}},/*#__PURE__*/React.createElement("div",{className:"task-title"},task.source==='google'&&/*#__PURE__*/React.createElement("span",{title:"Google Task",style:{marginRight:7,fontSize:10,padding:'1px 6px',borderRadius:8,background:'#1a3a2e',color:'#4ade80',border:'1px solid #4ade80',fontWeight:700,verticalAlign:'middle',whiteSpace:'nowrap'}},"G"),task.task,task.recurring&&/*#__PURE__*/React.createElement("span",{title:`Recurring: ${task.recurring}`,style:{marginLeft:8,fontSize:11,padding:'1px 7px',borderRadius:10,background:'#1a3050',color:'#8ab4f8',border:'1px solid #8ab4f8',fontWeight:600,verticalAlign:'middle',whiteSpace:'nowrap'}},"🔁 ",task.recurring)),/*#__PURE__*/React.createElement("div",{className:"task-meta"},task.status&&/*#__PURE__*/React.createElement("span",{style:{marginRight:12}},"Status: ",task.status),task.dueDate&&/*#__PURE__*/React.createElement("span",{className:task.isOverdue?'task-due':''},"Due: ",fmtDate(task.dueDate)),task.notes&&/*#__PURE__*/React.createElement("span",{style:{marginLeft:12,color:'#4d6080'}},task.notes))),!completing&&task.source!=='google'&&/*#__PURE__*/React.createElement("button",{className:"btn-edit",onClick:()=>onEdit&&onEdit(task),title:"Edit task"},"✏️"));}// ---- DaysAway helper — renders countdown or green "Active" pill for negative values ----
 function DaysAway({n,format}){if(n<0)return/*#__PURE__*/React.createElement("span",{style:{background:'#0d2a1a',color:'#4ade80',border:'1px solid #2d6a4f',borderRadius:10,padding:'1px 8px',fontSize:11,fontWeight:700,whiteSpace:'nowrap'}},"● Active");if(n===0)return format==='in'?'Today':'Today!';if(n===1)return'Tomorrow';if(format==='compact')return`${n}d`;if(format==='compact-away')return`${n}d away`;if(format==='in')return`in ${n} days`;if(format==='plain')return`${n} days`;return`${n} days away`;}// ---- Summaries table --------------------------------------------------------
@@ -414,8 +532,923 @@ function ShoppingTab({stores,onToggle,onAddItem,onDelete,onEdit,busy,onLogRun}){
 const[editText,setEditText]=React.useState('');const[logRunModal,setLogRunModal]=React.useState(false);React.useEffect(()=>{if(stores.length>0){setActiveStore(prev=>stores.find(s=>s.tabId===prev)?prev:stores[0].tabId);}else{setActiveStore(null);}},[stores]);if(!stores.length){return/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🛒"),/*#__PURE__*/React.createElement("div",null,"No shopping list connected."),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',marginTop:8}},"Set ",/*#__PURE__*/React.createElement("code",{style:{background:'#13244d',padding:'1px 6px',borderRadius:4}},"SHOPPING_LIST_DOC_ID")," in Script Properties to connect your Google Doc."));}const current=stores.find(s=>s.tabId===activeStore);const checkedItems=current?current.items.filter(i=>i.done).map(i=>i.text):[];return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:2,flexWrap:'wrap',alignItems:'center',borderBottom:'1px solid #1e3060',marginBottom:20}},stores.map(s=>{const pending=s.items.filter(i=>!i.done).length;const isActive=s.tabId===activeStore;return/*#__PURE__*/React.createElement("button",{key:s.tabId,onClick:()=>setActiveStore(s.tabId),style:{background:isActive?'#0d1b3e':'none',border:'none',cursor:'pointer',padding:'9px 16px',fontSize:13,fontWeight:600,color:isActive?'#c9a84c':'#8a9abf',borderBottom:isActive?'2px solid #c9a84c':'2px solid transparent',marginBottom:-1,display:'flex',alignItems:'center',gap:7,borderRadius:'4px 4px 0 0'}},s.storeName,/*#__PURE__*/React.createElement("span",{style:{background:pending===0?'rgba(67,160,71,0.2)':'rgba(201,168,76,0.15)',color:pending===0?'#43a047':'#c9a84c',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}},pending===0?'✓':pending));}),/*#__PURE__*/React.createElement(React.Fragment,null,checkedItems.length>0&&/*#__PURE__*/React.createElement("button",{style:{background:'none',border:'1px solid #c9a84c',borderRadius:6,color:'#c9a84c',fontSize:12,fontWeight:600,padding:'5px 12px',cursor:busy?'wait':'pointer',marginLeft:4,marginBottom:4,flexShrink:0},disabled:busy,onClick:()=>setLogRunModal(true)},"📦 Log Shopping Run (",checkedItems.length,")"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12,marginLeft:checkedItems.length>0?4:'auto',marginBottom:4,flexShrink:0},disabled:busy,onClick:()=>onAddItem&&onAddItem(activeStore)},"+ Add Item"))),current&&(current.items.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state",style:{padding:32}},"This store has no items listed."):/*#__PURE__*/React.createElement("div",{style:{display:'flex',flexDirection:'column',gap:6}},[...current.items].sort((a,b)=>a.done-b.done).map((item,i)=>{const isEditing=editingIndex!==null&&editingIndex.tabId===current.tabId&&editingIndex.index===item.index;const isVERA=item.text.startsWith('🤖');return/*#__PURE__*/React.createElement("div",{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'11px 16px',borderRadius:8,background:item.done?'rgba(67,160,71,0.05)':'#0d1b3e',border:'1px solid '+(item.done?'rgba(67,160,71,0.15)':'#1e3060'),opacity:isVERA&&!item.done?0.82:1,transition:'background 0.15s'}},/*#__PURE__*/React.createElement("input",{type:"checkbox",checked:item.done,readOnly:true,onClick:e=>{e.stopPropagation();if(!busy&&!isEditing)onToggle(current.tabId,item.index,item.done);},style:{accentColor:'#43a047',width:16,height:16,flexShrink:0,cursor:isEditing?'default':'pointer'}}),isEditing?/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("input",{autoFocus:true,value:editText,onChange:e=>setEditText(e.target.value),onKeyDown:e=>{if(e.key==='Enter'){e.preventDefault();if(editText.trim()){onEdit(current.tabId,item.index,editText);setEditingIndex(null);}}if(e.key==='Escape')setEditingIndex(null);},style:{flex:1,background:'#13244d',border:'1px solid #c9a84c',borderRadius:4,color:'#e8eaed',padding:'4px 8px',fontSize:14}}),/*#__PURE__*/React.createElement("button",{onClick:()=>{if(editText.trim()){onEdit(current.tabId,item.index,editText);setEditingIndex(null);}},disabled:!editText.trim(),style:{background:'#c9a84c',border:'none',borderRadius:4,color:'#0d1b3e',fontWeight:700,fontSize:12,padding:'4px 10px',cursor:editText.trim()?'pointer':'default'}},"Save"),/*#__PURE__*/React.createElement("button",{onClick:()=>setEditingIndex(null),style:{background:'none',border:'1px solid #2a3a60',borderRadius:4,color:'#8a9abf',fontSize:12,padding:'4px 10px',cursor:'pointer'}},"Cancel")):/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("span",{style:{flex:1,fontSize:14,color:item.done?'#4a5a7a':'#dde1f0',textDecoration:item.done?'line-through':'none',cursor:busy?'wait':'pointer'},onClick:()=>!busy&&onToggle(current.tabId,item.index,item.done)},item.text),isVERA&&!item.done&&/*#__PURE__*/React.createElement("span",{style:{fontSize:9,fontWeight:700,color:'#c9a84c',background:'rgba(201,168,76,0.12)',border:'1px solid rgba(201,168,76,0.3)',borderRadius:20,padding:'1px 6px',flexShrink:0,letterSpacing:'0.5px'}},"VERA"),/*#__PURE__*/React.createElement("button",{title:"Edit",onClick:e=>{e.stopPropagation();setEditingIndex({tabId:current.tabId,index:item.index});setEditText(item.text);},style:{background:'none',border:'none',cursor:'pointer',color:'#5f6a8a',fontSize:13,padding:'0 4px',flexShrink:0}},"✎"),/*#__PURE__*/React.createElement("button",{title:"Delete",onClick:e=>{e.stopPropagation();onDelete&&onDelete(current.tabId,item.index);},style:{background:'none',border:'none',cursor:'pointer',color:'#5f6a8a',fontSize:13,padding:'0 4px',flexShrink:0}},"✕")));}))),logRunModal&&current&&/*#__PURE__*/React.createElement(LogRunModal,{store:current.storeName,checkedItems:checkedItems,busy:busy,onClose:()=>setLogRunModal(false),onConfirm:selectedItems=>{setLogRunModal(false);onLogRun&&onLogRun(current.tabId,selectedItems);}}));}// ---- Add shopping item modal ------------------------------------------------
 function AddItemModal({stores,onSave,onClose,busy,initialStore}){const[selectedStore,setSelectedStore]=React.useState(initialStore||stores[0]?.tabId||'');const[text,setText]=React.useState('');function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(text.trim()&&selectedStore)onSave(selectedStore,text.trim());}if(e.key==='Escape')onClose();}return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:e=>e.target===e.currentTarget&&onClose()},/*#__PURE__*/React.createElement("div",{className:"modal"},/*#__PURE__*/React.createElement("h2",null,"+ Add Shopping Item"),/*#__PURE__*/React.createElement("p",null,"Choose a store and type the item to add."),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Store"),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,flexWrap:'wrap'}},stores.map(s=>/*#__PURE__*/React.createElement("button",{key:s.tabId,onClick:()=>setSelectedStore(s.tabId),style:{padding:'6px 14px',borderRadius:6,fontSize:13,fontWeight:600,cursor:'pointer',border:'none',background:selectedStore===s.tabId?'#c9a84c':'#13244d',color:selectedStore===s.tabId?'#0d1b3e':'#8a9abf'}},s.storeName)))),/*#__PURE__*/React.createElement("div",{className:"form-group"},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Item"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:text,onChange:e=>setText(e.target.value),onKeyDown:handleKey,placeholder:"Item name…",autoFocus:true})),/*#__PURE__*/React.createElement("div",{className:"modal-actions"},/*#__PURE__*/React.createElement("button",{className:"btn btn-ghost",onClick:onClose},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",onClick:()=>text.trim()&&selectedStore&&onSave(selectedStore,text.trim()),disabled:busy||!text.trim()||!selectedStore},"Add Item"))));}// ---- Yearly Goals Kanban tab ------------------------------------------------
 const GOAL_STATUSES=['Resolutions','To Do','Doing','Parked','Done'];const GOAL_COL_COLORS={'Resolutions':'#7c5cbf','To Do':'#1565c0','Doing':'#c9a84c','Parked':'#4d6080','Done':'#43a047'};function GoalsTab({goals,dragGoalId,dragOverCol,onDragStart,onDragOver,onDrop,onAddGoal,onEditGoal,onDeleteGoal,busy}){return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{marginBottom:14,color:'#8ab4f8',fontSize:13}},"Drag goal cards between columns to update their status."),/*#__PURE__*/React.createElement("div",{className:"kanban-board"},GOAL_STATUSES.map(col=>{const colGoals=goals.filter(g=>g.status===col);const isOver=dragOverCol===col;return/*#__PURE__*/React.createElement("div",{key:col,className:`kanban-col${isOver?' drag-over':''}`,onDragOver:e=>{e.preventDefault();onDragOver(col);},onDrop:e=>{e.preventDefault();onDrop(col);},onDragLeave:()=>{if(dragOverCol===col)onDragOver(null);}},/*#__PURE__*/React.createElement("div",{className:"kanban-col-header"},/*#__PURE__*/React.createElement("span",{className:"kanban-col-title",style:{color:GOAL_COL_COLORS[col]}},col),/*#__PURE__*/React.createElement("span",{className:"kanban-col-count"},colGoals.length)),colGoals.map(goal=>/*#__PURE__*/React.createElement("div",{key:goal.id,className:`goal-card${dragGoalId===goal.id?' dragging':''}`,draggable:true,onDragStart:()=>onDragStart(goal.id),onDragEnd:()=>{onDragStart(null);onDragOver(null);}},/*#__PURE__*/React.createElement("div",{className:"goal-card-title"},goal.title),/*#__PURE__*/React.createElement("div",{className:"goal-card-meta"},goal.category&&/*#__PURE__*/React.createElement("span",{className:"goal-cat-pill"},goal.category),/*#__PURE__*/React.createElement("span",{className:"goal-year-badge"},goal.year)),goal.progress>0&&/*#__PURE__*/React.createElement("div",{className:"goal-progress-bar"},/*#__PURE__*/React.createElement("div",{className:"goal-progress-fill",style:{width:goal.progress+'%'}})),/*#__PURE__*/React.createElement("div",{className:"goal-card-actions"},/*#__PURE__*/React.createElement("button",{className:"btn-edit",title:"Edit",disabled:busy,onClick:()=>onEditGoal(goal)},"✏️"),/*#__PURE__*/React.createElement("button",{className:"btn-edit",title:"Delete",disabled:busy,onClick:()=>onDeleteGoal(goal.id),style:{color:'#e53935'}},"🗑")))),/*#__PURE__*/React.createElement("button",{className:"kanban-add-btn",onClick:()=>onAddGoal(col)},"+ Add goal"));})));}function GoalModal({mode,goal,defaultStatus,onSave,onClose,busy}){const[title,setTitle]=React.useState(goal?.title||'');const[description,setDescription]=React.useState(goal?.description||'');const[status,setStatus]=React.useState(goal?.status||defaultStatus||'To Do');const[category,setCategory]=React.useState(goal?.category||'');const[year,setYear]=React.useState(goal?.year||new Date().getFullYear());const[progress,setProgress]=React.useState(goal?.progress??0);const[notes,setNotes]=React.useState(goal?.notes||'');return/*#__PURE__*/React.createElement("div",{className:"modal-overlay",onClick:e=>e.target===e.currentTarget&&onClose()},/*#__PURE__*/React.createElement("div",{className:"modal",style:{maxWidth:420}},/*#__PURE__*/React.createElement("h2",null,mode==='edit'?'Edit Goal':'Add Goal'),/*#__PURE__*/React.createElement("label",{className:"form-label"},"Title *"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:title,onChange:e=>setTitle(e.target.value),placeholder:"Goal title",autoFocus:true}),/*#__PURE__*/React.createElement("label",{className:"form-label"},"Description"),/*#__PURE__*/React.createElement("textarea",{className:"form-input",rows:2,value:description,onChange:e=>setDescription(e.target.value),placeholder:"Optional detail",style:{resize:'vertical'}}),/*#__PURE__*/React.createElement("label",{className:"form-label"},"Status"),/*#__PURE__*/React.createElement("select",{className:"form-input",value:status,onChange:e=>setStatus(e.target.value)},GOAL_STATUSES.map(s=>/*#__PURE__*/React.createElement("option",{key:s,value:s},s))),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:10}},/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Category"),/*#__PURE__*/React.createElement("input",{className:"form-input",value:category,onChange:e=>setCategory(e.target.value),placeholder:"e.g. Health"})),/*#__PURE__*/React.createElement("div",{style:{width:80}},/*#__PURE__*/React.createElement("label",{className:"form-label"},"Year"),/*#__PURE__*/React.createElement("input",{className:"form-input",type:"number",value:year,onChange:e=>setYear(e.target.value)}))),mode==='edit'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("label",{className:"form-label"},"Progress (",progress,"%)"),/*#__PURE__*/React.createElement("input",{type:"range",min:"0",max:"100",value:progress,onChange:e=>setProgress(Number(e.target.value)),style:{width:'100%',accentColor:'#c9a84c',marginBottom:12}})),/*#__PURE__*/React.createElement("label",{className:"form-label"},"Notes"),/*#__PURE__*/React.createElement("textarea",{className:"form-input",rows:2,value:notes,onChange:e=>setNotes(e.target.value),placeholder:"Optional notes",style:{resize:'vertical'}}),/*#__PURE__*/React.createElement("div",{className:"modal-actions"},/*#__PURE__*/React.createElement("button",{className:"btn",onClick:onClose},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",disabled:!title.trim()||busy,onClick:()=>onSave({title,description,status,category,year,progress,notes})},mode==='edit'?'Save Changes':'Add Goal'))));}// ---- Projects tab -----------------------------------------------------------
-const PRIORITY_COLORS={High:'#e53935',Medium:'#f9a825',Low:'#43a047'};const PROJECT_OWNERS=['Shared','Ahmed','Victoria'];const OWNER_COLORS={Shared:'#2bb5a0',Ahmed:'#5c9eff',Victoria:'#c97ef2'};function NewProjectModal({onSave,onClose,busy}){const[name,setName]=React.useState('');const[tasks,setTasks]=React.useState('');function handleSave(){if(!name.trim()||!tasks.trim())return;onSave({name:name.trim(),tasks:tasks.trim()});}return/*#__PURE__*/React.createElement("div",{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}},/*#__PURE__*/React.createElement("div",{style:{background:'#0d1b3e',border:'1px solid #1e3060',borderRadius:12,padding:28,width:440,maxWidth:'95vw'}},/*#__PURE__*/React.createElement("div",{style:{fontSize:16,fontWeight:700,color:'#dde1f0',marginBottom:20}},"New Project"),/*#__PURE__*/React.createElement("label",{style:{fontSize:12,color:'#8a9abf',display:'block',marginBottom:6}},"Project Name"),/*#__PURE__*/React.createElement("input",{autoFocus:true,value:name,onChange:e=>setName(e.target.value),placeholder:"e.g. Europe Trip Planning",style:{width:'100%',background:'#07122b',border:'1px solid #1e3060',borderRadius:6,padding:'8px 12px',color:'#dde1f0',fontSize:14,boxSizing:'border-box',marginBottom:16}}),/*#__PURE__*/React.createElement("label",{style:{fontSize:12,color:'#8a9abf',display:'block',marginBottom:6}},"Tasks ",/*#__PURE__*/React.createElement("span",{style:{color:'#6b7fa8'}},"(one per line — optionally append |High or |Low)")),/*#__PURE__*/React.createElement("textarea",{value:tasks,onChange:e=>setTasks(e.target.value),placeholder:"Book flights|High\nFind hotel\nGet travel insurance|Medium",rows:6,style:{width:'100%',background:'#07122b',border:'1px solid #1e3060',borderRadius:6,padding:'8px 12px',color:'#dde1f0',fontSize:13,boxSizing:'border-box',resize:'vertical',fontFamily:'inherit'}}),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}},/*#__PURE__*/React.createElement("button",{className:"btn",onClick:onClose,disabled:busy},"Cancel"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",onClick:handleSave,disabled:busy||!name.trim()||!tasks.trim()},"Create Project"))));}function ProjectsTab({projects,onCompleteTask,onAddTask,onEditTask,onDeleteTask,onCreateProject,onCloseProject,onSetOwner,busy}){const[activeProject,setActiveProject]=React.useState(null);const[showClosed,setShowClosed]=React.useState(false);const[ownerFilter,setOwnerFilter]=React.useState('All');const visible=projects.filter(p=>ownerFilter==='All'||(p.owner||'Shared')===ownerFilter);const activeProjects=visible.filter(p=>p.tasks.some(t=>t.status!=='Done'));const closedProjects=visible.filter(p=>p.tasks.length>0&&p.tasks.every(t=>t.status==='Done'));// Auto-select first active project when list loads or changes
-React.useEffect(()=>{if(activeProjects.length>0){setActiveProject(prev=>activeProjects.find(p=>p.projectId===prev)?prev:activeProjects[0].projectId);}else{setActiveProject(null);}},[projects,ownerFilter]);if(!projects.length){return/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🏗️"),/*#__PURE__*/React.createElement("div",null,"No projects yet."),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',marginTop:8}},"Click ",/*#__PURE__*/React.createElement("strong",{style:{color:'#c9a84c'}},"+ New Project")," above or ask VERA in the Chat tab."),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{marginTop:16},onClick:onCreateProject,disabled:busy},"+ New Project"));}const current=projects.find(p=>p.projectId===activeProject);return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"proj-owner-filter",style:{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap',alignItems:'center'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',marginRight:2}},"Owner"),['All'].concat(PROJECT_OWNERS).map(o=>{const on=ownerFilter===o;const c=OWNER_COLORS[o]||'#8a9abf';return/*#__PURE__*/React.createElement("button",{key:o,"data-owner-filter":o,onClick:()=>setOwnerFilter(o),style:{background:on?c+'26':'none',border:'1px solid '+(on?c:'#1e3060'),color:on?c:'#8a9abf',borderRadius:20,padding:'3px 11px',fontSize:11,fontWeight:700,cursor:'pointer'}},o);})),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'flex-end',gap:8,marginBottom:0}},/*#__PURE__*/React.createElement("div",{style:{flex:1,display:'flex',gap:2,flexWrap:'wrap',borderBottom:'1px solid #1e3060'}},activeProjects.map(p=>{const pending=p.tasks.filter(t=>t.status!=='Done').length;const isActive=p.projectId===activeProject;return/*#__PURE__*/React.createElement("button",{key:p.projectId,onClick:()=>setActiveProject(p.projectId),style:{background:isActive?'#0d1b3e':'none',border:'none',cursor:'pointer',padding:'9px 16px',fontSize:13,fontWeight:600,color:isActive?'#c9a84c':'#8a9abf',borderBottom:isActive?'2px solid #c9a84c':'2px solid transparent',marginBottom:-1,display:'flex',alignItems:'center',gap:7,borderRadius:'4px 4px 0 0'}},/*#__PURE__*/React.createElement("span",{"data-owner-dot":p.owner||'Shared',title:"Owner: "+(p.owner||'Shared'),style:{width:7,height:7,borderRadius:'50%',flexShrink:0,background:OWNER_COLORS[p.owner||'Shared']||'#8a9abf'}}),p.projectName,/*#__PURE__*/React.createElement("span",{style:{background:'rgba(201,168,76,0.15)',color:'#c9a84c',borderRadius:20,padding:'1px 7px',fontSize:11,fontWeight:700}},pending));})),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12,marginBottom:1,flexShrink:0},onClick:onCreateProject,disabled:busy},"+ New Project")),/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}}),visible.length===0&&/*#__PURE__*/React.createElement("div",{className:"proj-owner-empty",style:{textAlign:'center',padding:'40px 0',color:'#6b7fa8'}},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🗂"),/*#__PURE__*/React.createElement("div",{style:{fontSize:14,color:'#dde1f0'}},"No ",ownerFilter," projects."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,marginTop:6}},"Switch the owner filter to All to see the other ",projects.length," project",projects.length===1?'':'s',".")),!current&&activeProjects.length===0&&closedProjects.length>0&&/*#__PURE__*/React.createElement("div",{style:{textAlign:'center',padding:'40px 0',color:'#6b7fa8'}},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",{style:{fontSize:15,color:'#dde1f0'}},"All projects complete!"),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,marginTop:6}},"Start a new one with the button above.")),current&&/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}},/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#6b7fa8'}},current.tasks.filter(t=>t.status!=='Done').length," pending · ",current.tasks.length," total"),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:10}},/*#__PURE__*/React.createElement("div",{className:"proj-owner-picker",style:{display:'inline-flex',border:'1px solid #1e3060',borderRadius:20,overflow:'hidden'}},PROJECT_OWNERS.map((o,oi)=>{const on=(current.owner||'Shared')===o;const c=OWNER_COLORS[o];return/*#__PURE__*/React.createElement("button",{key:o,"data-set-owner":o,disabled:busy||on,title:on?"Owner: "+o:"Set owner to "+o,onClick:()=>onSetOwner&&onSetOwner(current.projectId,o),style:{background:on?c+'26':'none',border:'none',borderRight:oi<PROJECT_OWNERS.length-1?'1px solid #1e3060':'none',color:on?c:'#8a9abf',padding:'4px 12px',fontSize:11,fontWeight:700,cursor:on?'default':'pointer'}},o);})),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},disabled:busy,onClick:()=>onAddTask&&onAddTask(current)},"+ Add Task"))),/*#__PURE__*/React.createElement("div",{style:{display:'flex',flexDirection:'column',gap:6}},current.tasks.map((t,i)=>{const done=t.status==='Done';return/*#__PURE__*/React.createElement("div",{key:i,style:{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:8,background:done?'rgba(67,160,71,0.05)':'#0d1b3e',border:'1px solid '+(done?'rgba(67,160,71,0.15)':'#1e3060')}},/*#__PURE__*/React.createElement("input",{type:"checkbox",checked:done,disabled:done||busy,onChange:()=>!done&&onCompleteTask(t.rowNum),style:{accentColor:'#43a047',width:16,height:16,cursor:done?'default':'pointer',flexShrink:0}}),/*#__PURE__*/React.createElement("span",{style:{flex:1,fontSize:14,color:done?'#4a5a7a':'#dde1f0',textDecoration:done?'line-through':'none'}},t.task),t.priority&&!done&&/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:700,color:PRIORITY_COLORS[t.priority]||'#8a9abf'}},t.priority),t.dueDate&&!done&&/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8'}},fmtDate(t.dueDate)),!done&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("button",{className:"btn-edit",disabled:busy,onClick:()=>onEditTask&&onEditTask(t),title:"Edit task",style:{fontSize:13}},"✏️"),/*#__PURE__*/React.createElement("button",{className:"btn-edit",disabled:busy,onClick:()=>onDeleteTask&&onDeleteTask(t.rowNum),title:"Delete task",style:{fontSize:13,opacity:0.7}},"🗑️")));})),(()=>{const total=current.tasks.length;const done=current.tasks.filter(t=>t.status==='Done').length;const pct=total>0?Math.round(done/total*100):0;return/*#__PURE__*/React.createElement("div",{style:{marginTop:20}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',fontSize:12,color:'#6b7fa8',marginBottom:6}},/*#__PURE__*/React.createElement("span",null,done," of ",total," tasks complete"),/*#__PURE__*/React.createElement("span",null,pct,"%")),/*#__PURE__*/React.createElement("div",{style:{height:4,background:'#1e3060',borderRadius:2}},/*#__PURE__*/React.createElement("div",{style:{height:'100%',width:pct+'%',background:pct===100?'#43a047':'#c9a84c',borderRadius:2,transition:'width 0.3s'}})));})()),closedProjects.length>0&&/*#__PURE__*/React.createElement("div",{style:{marginTop:32}},/*#__PURE__*/React.createElement("button",{onClick:()=>setShowClosed(v=>!v),style:{background:'none',border:'none',cursor:'pointer',color:'#6b7fa8',fontSize:12,fontWeight:600,display:'flex',alignItems:'center',gap:6,padding:0}},/*#__PURE__*/React.createElement("span",{style:{fontSize:10}},showClosed?'▼':'▶'),"Closed Projects (",closedProjects.length,")"),showClosed&&/*#__PURE__*/React.createElement("div",{style:{marginTop:12,display:'flex',flexDirection:'column',gap:8}},closedProjects.map(p=>/*#__PURE__*/React.createElement("div",{key:p.projectId,style:{padding:'10px 16px',borderRadius:8,background:'rgba(67,160,71,0.05)',border:'1px solid rgba(67,160,71,0.15)',display:'flex',alignItems:'center',justifyContent:'space-between'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,color:'#4a5a7a',textDecoration:'line-through'}},p.projectName),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#43a047',fontWeight:700}},"✓ ",p.tasks.length," tasks complete"))))));}// ---- PTO tab ----------------------------------------------------------------
+const PRIORITY_COLORS = {
+  High: '#e53935',
+  Medium: '#f9a825',
+  Low: '#43a047'
+};
+const PROJECT_OWNERS = ['Shared', 'Ahmed', 'Victoria'];
+const OWNER_COLORS = {
+  Shared: '#2bb5a0',
+  Ahmed: '#5c9eff',
+  Victoria: '#c97ef2'
+};
+const PROJECT_TASK_STATUSES = ['Pending', 'In Progress', 'Blocked', 'Done'];
+
+// The verdict is computed server-side in Projects.js so both dashboards and the
+// nightly check cannot drift. This map is presentation only — it never decides
+// which state a project is in.
+const HEALTH_META = {
+  overdue: {
+    label: 'Overdue',
+    color: '#e53935'
+  },
+  at_risk: {
+    label: 'At risk',
+    color: '#f9a825'
+  },
+  stalled: {
+    label: 'Stalled',
+    color: '#ef6c00'
+  },
+  blocked: {
+    label: 'Blocked',
+    color: '#c97ef2'
+  },
+  on_track: {
+    label: 'On track',
+    color: '#43a047'
+  },
+  done: {
+    label: 'Complete',
+    color: '#43a047'
+  }
+};
+const TASK_STATUS_COLORS = {
+  'Pending': '#8a9abf',
+  'In Progress': '#5c9eff',
+  'Blocked': '#c97ef2',
+  'Done': '#43a047'
+};
+function healthMetaOf(p) {
+  return HEALTH_META[p && p.health] || HEALTH_META.on_track;
+}
+
+// Consecutive runs of the same phase. Runs rather than a group-by so that
+// ordering and grouping never fight: a drag can only reorder within a run.
+function groupTasksByPhase(tasks) {
+  const groups = [];
+  tasks.forEach(t => {
+    const ph = t.phase || '';
+    const last = groups[groups.length - 1];
+    if (last && last.phase === ph) last.tasks.push(t);else groups.push({
+      phase: ph,
+      tasks: [t]
+    });
+  });
+  return groups;
+}
+function NewProjectModal({
+  onSave,
+  onClose,
+  busy
+}) {
+  const [name, setName] = React.useState('');
+  const [tasks, setTasks] = React.useState('');
+  const [target, setTarget] = React.useState('');
+  const [owner, setOwner] = React.useState('Shared');
+  function handleSave() {
+    if (!name.trim() || !tasks.trim()) return;
+    onSave({
+      name: name.trim(),
+      tasks: tasks.trim(),
+      targetDate: target,
+      owner
+    });
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#0d1b3e',
+      border: '1px solid #1e3060',
+      borderRadius: 12,
+      padding: 28,
+      width: 440,
+      maxWidth: '95vw'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 700,
+      color: '#dde1f0',
+      marginBottom: 20
+    }
+  }, "New Project"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      display: 'block',
+      marginBottom: 6
+    }
+  }, "Project Name"), /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: name,
+    onChange: e => setName(e.target.value),
+    placeholder: "e.g. Europe Trip Planning",
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '8px 12px',
+      color: '#dde1f0',
+      fontSize: 14,
+      boxSizing: 'border-box',
+      marginBottom: 16
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 12,
+      marginBottom: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      display: 'block',
+      marginBottom: 6
+    }
+  }, "Owner"), /*#__PURE__*/React.createElement("select", {
+    value: owner,
+    onChange: e => setOwner(e.target.value),
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '8px 12px',
+      color: '#dde1f0',
+      fontSize: 13,
+      boxSizing: 'border-box'
+    }
+  }, PROJECT_OWNERS.map(o => /*#__PURE__*/React.createElement("option", {
+    key: o,
+    value: o
+  }, o)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      display: 'block',
+      marginBottom: 6
+    }
+  }, "Target date ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#6b7fa8'
+    }
+  }, "(optional)")), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: target,
+    onChange: e => setTarget(e.target.value),
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '7px 10px',
+      color: '#dde1f0',
+      fontSize: 13,
+      boxSizing: 'border-box'
+    }
+  }))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      display: 'block',
+      marginBottom: 6
+    }
+  }, "Tasks ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#6b7fa8'
+    }
+  }, "(one per line — optionally append |High or |Low, then |Phase)")), /*#__PURE__*/React.createElement("textarea", {
+    value: tasks,
+    onChange: e => setTasks(e.target.value),
+    rows: 6,
+    placeholder: "Book flights|High|Logistics\nFind hotel||Logistics\nGet travel insurance|Medium|Admin",
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '8px 12px',
+      color: '#dde1f0',
+      fontSize: 13,
+      boxSizing: 'border-box',
+      resize: 'vertical',
+      fontFamily: 'inherit'
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'flex-end',
+      marginTop: 20
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: onClose,
+    disabled: busy
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    onClick: handleSave,
+    disabled: busy || !name.trim() || !tasks.trim()
+  }, "Create Project"))));
+}
+
+function ProjectsTab({
+  projects,
+  onCompleteTask,
+  onAddTask,
+  onEditTask,
+  onDeleteTask,
+  onCreateProject,
+  onCloseProject,
+  onSetOwner,
+  onSetTarget,
+  onReorder,
+  busy
+}) {
+  const [activeProject, setActiveProject] = React.useState(null);
+  const [showClosed, setShowClosed] = React.useState(false);
+  const [showDone, setShowDone] = React.useState(false);
+  const [ownerFilter, setOwnerFilter] = React.useState('All');
+  const [dragRow, setDragRow] = React.useState(null);
+  const [overRow, setOverRow] = React.useState(null);
+  const visible = projects.filter(p => ownerFilter === 'All' || (p.owner || 'Shared') === ownerFilter);
+  const activeProjects = visible.filter(p => p.tasks.some(t => t.status !== 'Done'));
+  const closedProjects = visible.filter(p => p.tasks.length > 0 && p.tasks.every(t => t.status === 'Done'));
+  React.useEffect(() => {
+    if (activeProjects.length > 0) {
+      setActiveProject(prev => activeProjects.find(p => p.projectId === prev) ? prev : activeProjects[0].projectId);
+    } else {
+      setActiveProject(null);
+    }
+  }, [projects, ownerFilter]);
+  if (!projects.length) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "empty-state"
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 32,
+        marginBottom: 12
+      }
+    }, "🏗️"), /*#__PURE__*/React.createElement("div", null, "No projects yet."), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 13,
+        color: '#6b7fa8',
+        marginTop: 8
+      }
+    }, "Click ", /*#__PURE__*/React.createElement("strong", {
+      style: {
+        color: '#c9a84c'
+      }
+    }, "+ New Project"), " above or ask VERA in the Chat tab."), /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-primary",
+      style: {
+        marginTop: 16
+      },
+      onClick: onCreateProject,
+      disabled: busy
+    }, "+ New Project"));
+  }
+  const current = projects.find(p => p.projectId === activeProject);
+  const pendingTasks = current ? current.tasks.filter(t => t.status !== 'Done') : [];
+  const doneTasks = current ? current.tasks.filter(t => t.status === 'Done') : [];
+  const phaseGroups = groupTasksByPhase(pendingTasks);
+  function endDrag() {
+    setDragRow(null);
+    setOverRow(null);
+  }
+  function handleDrop(targetRow) {
+    if (dragRow === null || targetRow === dragRow || !current) return endDrag();
+    const list = current.tasks.slice();
+    const from = list.findIndex(t => t.rowNum === dragRow);
+    const to = list.findIndex(t => t.rowNum === targetRow);
+    if (from < 0 || to < 0) return endDrag();
+    // Reorder only WITHIN a phase. Letting a drag cross phases would make
+    // ordering and grouping fight — the phase is changed in the task modal.
+    if ((list[from].phase || '') !== (list[to].phase || '')) return endDrag();
+    const moved = list.splice(from, 1)[0];
+    list.splice(to, 0, moved);
+    if (onReorder) onReorder(current.projectId, list.map(t => t.rowNum));
+    endDrag();
+  }
+  function taskRow(t) {
+    const dragging = dragRow === t.rowNum;
+    const over = overRow === t.rowNum && dragRow !== null && dragRow !== t.rowNum;
+    return /*#__PURE__*/React.createElement("div", {
+      key: t.rowNum,
+      "data-task-row": t.rowNum,
+      draggable: !busy,
+      onDragStart: () => setDragRow(t.rowNum),
+      onDragOver: e => {
+        e.preventDefault();
+        setOverRow(t.rowNum);
+      },
+      onDrop: e => {
+        e.preventDefault();
+        handleDrop(t.rowNum);
+      },
+      onDragEnd: endDrag,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 14px',
+        borderRadius: 8,
+        background: '#0d1b3e',
+        border: '1px solid ' + (over ? '#c9a84c' : '#1e3060'),
+        opacity: dragging ? 0.4 : 1,
+        cursor: busy ? 'default' : 'grab'
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: false,
+      disabled: busy,
+      onChange: () => onCompleteTask(t.rowNum),
+      style: {
+        accentColor: '#43a047',
+        width: 16,
+        height: 16,
+        cursor: 'pointer',
+        flexShrink: 0
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 14,
+        color: '#dde1f0'
+      }
+    }, t.task), t.notes && /*#__PURE__*/React.createElement("div", {
+      "data-task-notes": true,
+      style: {
+        fontSize: 12,
+        color: '#6b7fa8',
+        marginTop: 3
+      }
+    }, t.notes)), t.status !== 'Pending' && /*#__PURE__*/React.createElement("span", {
+      "data-task-status-pill": t.status,
+      style: {
+        fontSize: 10,
+        fontWeight: 700,
+        borderRadius: 20,
+        padding: '2px 8px',
+        color: TASK_STATUS_COLORS[t.status],
+        background: TASK_STATUS_COLORS[t.status] + '22',
+        whiteSpace: 'nowrap'
+      }
+    }, t.status), t.priority && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: PRIORITY_COLORS[t.priority] || '#8a9abf'
+      }
+    }, t.priority), t.dueDate && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: t.isOverdue ? '#e53935' : '#6b7fa8',
+        whiteSpace: 'nowrap'
+      }
+    }, fmtDate(t.dueDate)), /*#__PURE__*/React.createElement("button", {
+      className: "btn-edit",
+      disabled: busy,
+      onClick: () => onEditTask && onEditTask(t),
+      title: "Edit task",
+      style: {
+        fontSize: 13
+      }
+    }, "✏️"), /*#__PURE__*/React.createElement("button", {
+      className: "btn-edit",
+      disabled: busy,
+      onClick: () => onDeleteTask && onDeleteTask(t.rowNum),
+      title: "Delete task",
+      style: {
+        fontSize: 13,
+        opacity: 0.7
+      }
+    }, "🗑️"));
+  }
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "proj-owner-filter",
+    style: {
+      display: 'flex',
+      gap: 6,
+      marginBottom: 12,
+      flexWrap: 'wrap',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: '#6b7fa8',
+      marginRight: 2
+    }
+  }, "Owner"), ['All'].concat(PROJECT_OWNERS).map(o => {
+    const on = ownerFilter === o;
+    const c = OWNER_COLORS[o] || '#8a9abf';
+    return /*#__PURE__*/React.createElement("button", {
+      key: o,
+      "data-owner-filter": o,
+      onClick: () => setOwnerFilter(o),
+      style: {
+        background: on ? c + '26' : 'none',
+        border: '1px solid ' + (on ? c : '#1e3060'),
+        color: on ? c : '#8a9abf',
+        borderRadius: 20,
+        padding: '3px 11px',
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: 'pointer'
+      }
+    }, o);
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-end',
+      gap: 8,
+      marginBottom: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      display: 'flex',
+      gap: 2,
+      flexWrap: 'wrap',
+      borderBottom: '1px solid #1e3060'
+    }
+  }, activeProjects.map(p => {
+    const pending = p.tasks.filter(t => t.status !== 'Done').length;
+    const isActive = p.projectId === activeProject;
+    const hm = healthMetaOf(p);
+    return /*#__PURE__*/React.createElement("button", {
+      key: p.projectId,
+      onClick: () => setActiveProject(p.projectId),
+      style: {
+        background: isActive ? '#0d1b3e' : 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '9px 16px',
+        fontSize: 13,
+        fontWeight: 600,
+        color: isActive ? '#c9a84c' : '#8a9abf',
+        borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
+        marginBottom: -1,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 7,
+        borderRadius: '4px 4px 0 0'
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      "data-owner-dot": p.owner || 'Shared',
+      title: 'Owner: ' + (p.owner || 'Shared'),
+      style: {
+        width: 7,
+        height: 7,
+        borderRadius: '50%',
+        flexShrink: 0,
+        background: OWNER_COLORS[p.owner || 'Shared'] || '#8a9abf'
+      }
+    }), /*#__PURE__*/React.createElement("span", {
+      "data-health-dot": p.health || 'on_track',
+      title: p.healthReason || hm.label,
+      style: {
+        width: 7,
+        height: 7,
+        borderRadius: '50%',
+        flexShrink: 0,
+        background: hm.color
+      }
+    }), p.projectName, /*#__PURE__*/React.createElement("span", {
+      style: {
+        background: 'rgba(201,168,76,0.15)',
+        color: '#c9a84c',
+        borderRadius: 20,
+        padding: '1px 7px',
+        fontSize: 11,
+        fontWeight: 700
+      }
+    }, pending));
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    style: {
+      fontSize: 12,
+      marginBottom: 1,
+      flexShrink: 0
+    },
+    onClick: onCreateProject,
+    disabled: busy
+  }, "+ New Project")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 20
+    }
+  }), visible.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "proj-owner-empty",
+    style: {
+      textAlign: 'center',
+      padding: '40px 0',
+      color: '#6b7fa8'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 32,
+      marginBottom: 12
+    }
+  }, "🗂"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      color: '#dde1f0'
+    }
+  }, "No ", ownerFilter, " projects."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "Switch the owner filter to All to see the other ", projects.length, " project", projects.length === 1 ? '' : 's', ".")), !current && activeProjects.length === 0 && closedProjects.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: 'center',
+      padding: '40px 0',
+      color: '#6b7fa8'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 32,
+      marginBottom: 12
+    }
+  }, "🎉"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      color: '#dde1f0'
+    }
+  }, "All projects complete!"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      marginTop: 6
+    }
+  }, "Start a new one with the button above.")), current && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap',
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    "data-health-chip": current.health || 'on_track',
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      borderRadius: 20,
+      padding: '3px 10px',
+      whiteSpace: 'nowrap',
+      color: healthMetaOf(current).color,
+      background: healthMetaOf(current).color + '22'
+    }
+  }, healthMetaOf(current).label), /*#__PURE__*/React.createElement("span", {
+    "data-health-reason": true,
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      flex: 1,
+      minWidth: 120
+    }
+  }, current.healthReason || ''), /*#__PURE__*/React.createElement("div", {
+    className: "proj-owner-picker",
+    style: {
+      display: 'inline-flex',
+      border: '1px solid #1e3060',
+      borderRadius: 20,
+      overflow: 'hidden'
+    }
+  }, PROJECT_OWNERS.map((o, oi) => {
+    const on = (current.owner || 'Shared') === o;
+    const c = OWNER_COLORS[o];
+    return /*#__PURE__*/React.createElement("button", {
+      key: o,
+      "data-set-owner": o,
+      disabled: busy || on,
+      title: on ? 'Owner: ' + o : 'Set owner to ' + o,
+      onClick: () => onSetOwner && onSetOwner(current.projectId, o),
+      style: {
+        background: on ? c + '26' : 'none',
+        border: 'none',
+        borderRight: oi < PROJECT_OWNERS.length - 1 ? '1px solid #1e3060' : 'none',
+        color: on ? c : '#8a9abf',
+        padding: '4px 12px',
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: on ? 'default' : 'pointer'
+      }
+    }, o);
+  })), /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 11,
+      color: '#6b7fa8',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6
+    }
+  }, "Target", /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    "data-project-target": true,
+    value: current.targetDate || '',
+    disabled: busy,
+    onChange: e => onSetTarget && onSetTarget(current.projectId, e.target.value),
+    style: {
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '3px 8px',
+      color: '#dde1f0',
+      fontSize: 11
+    }
+  }))), current.nextTask ? /*#__PURE__*/React.createElement("div", {
+    "data-next-up": current.nextTask.rowNum,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      padding: '12px 16px',
+      borderRadius: 10,
+      marginBottom: 16,
+      background: 'rgba(201,168,76,0.08)',
+      border: '1px solid rgba(201,168,76,0.35)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: '#c9a84c',
+      letterSpacing: '0.08em',
+      marginBottom: 4
+    }
+  }, "NEXT UP"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      color: '#dde1f0'
+    }
+  }, current.nextTask.task), current.nextTask.notes && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      marginTop: 3
+    }
+  }, current.nextTask.notes)), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    style: {
+      fontSize: 12,
+      flexShrink: 0
+    },
+    disabled: busy,
+    onClick: () => onCompleteTask(current.nextTask.rowNum)
+  }, "Mark done")) : pendingTasks.length > 0 && /*#__PURE__*/React.createElement("div", {
+    "data-next-up-blocked": true,
+    style: {
+      padding: '12px 16px',
+      borderRadius: 10,
+      marginBottom: 16,
+      background: 'rgba(201,126,242,0.08)',
+      border: '1px solid rgba(201,126,242,0.35)'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: '#c97ef2',
+      letterSpacing: '0.08em',
+      marginBottom: 4
+    }
+  }, "NOTHING TO PICK UP"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: '#dde1f0'
+    }
+  }, "Every remaining task is blocked: ", pendingTasks.map(t => t.task).join(', '))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+      gap: 10,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: '#6b7fa8'
+    }
+  }, pendingTasks.length, " pending · ", current.total, " total"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    "data-close-project": true,
+    style: {
+      fontSize: 12
+    },
+    disabled: busy,
+    onClick: () => onCloseProject && onCloseProject(current)
+  }, "Close project"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    style: {
+      fontSize: 12
+    },
+    disabled: busy,
+    onClick: () => onAddTask && onAddTask(current)
+  }, "+ Add Task"))), phaseGroups.map((g, gi) => /*#__PURE__*/React.createElement("div", {
+    key: g.phase + '|' + gi,
+    style: {
+      marginBottom: g.phase ? 14 : 0
+    }
+  }, g.phase && /*#__PURE__*/React.createElement("div", {
+    "data-phase-header": g.phase,
+    style: {
+      fontSize: 10,
+      fontWeight: 700,
+      color: '#6b7fa8',
+      letterSpacing: '0.08em',
+      textTransform: 'uppercase',
+      margin: '10px 0 6px'
+    }
+  }, g.phase), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6
+    }
+  }, g.tasks.map(taskRow)))), doneTasks.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    "data-toggle-done": true,
+    onClick: () => setShowDone(v => !v),
+    style: {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: '#6b7fa8',
+      fontSize: 12,
+      fontWeight: 600,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10
+    }
+  }, showDone ? '▼' : '▶'), doneTasks.length, " done"), showDone && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6
+    }
+  }, doneTasks.map(t => /*#__PURE__*/React.createElement("div", {
+    key: t.rowNum,
+    "data-done-row": t.rowNum,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+      padding: '8px 14px',
+      borderRadius: 8,
+      background: 'rgba(67,160,71,0.05)',
+      border: '1px solid rgba(67,160,71,0.15)'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: true,
+    disabled: true,
+    style: {
+      accentColor: '#43a047',
+      width: 16,
+      height: 16,
+      flexShrink: 0
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1,
+      fontSize: 13,
+      color: '#4a5a7a',
+      textDecoration: 'line-through'
+    }
+  }, t.task), t.completedOn && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: '#4a5a7a'
+    }
+  }, fmtDate(t.completedOn)))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      fontSize: 12,
+      color: '#6b7fa8',
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", null, current.done, " of ", current.total, " tasks complete"), /*#__PURE__*/React.createElement("span", null, current.pct, "%")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 4,
+      background: '#1e3060',
+      borderRadius: 2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: '100%',
+      width: current.pct + '%',
+      background: current.pct === 100 ? '#43a047' : '#c9a84c',
+      borderRadius: 2,
+      transition: 'width 0.3s'
+    }
+  })))), closedProjects.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 32
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowClosed(v => !v),
+    style: {
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      color: '#6b7fa8',
+      fontSize: 12,
+      fontWeight: 600,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 10
+    }
+  }, showClosed ? '▼' : '▶'), "Closed Projects (", closedProjects.length, ")"), showClosed && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8
+    }
+  }, closedProjects.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.projectId,
+    style: {
+      padding: '10px 16px',
+      borderRadius: 8,
+      background: 'rgba(67,160,71,0.05)',
+      border: '1px solid rgba(67,160,71,0.15)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between'
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: '#4a5a7a',
+      textDecoration: 'line-through'
+    }
+  }, p.projectName), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: '#43a047',
+      fontWeight: 700
+    }
+  }, "✓ ", p.tasks.length, " tasks complete"))))));
+}// ---- PTO tab ----------------------------------------------------------------
 // ---- PTOPersonView (single person's PTO content) ----------------------------
 // ---- PTO monthly breakdown --------------------------------------------------
 
@@ -1451,7 +2484,7 @@ setShopping(prev=>prev.map(store=>store.tabId!==tabId?store:{...store,items:stor
 setShopping(prev=>prev.map(store=>store.tabId!==tabId?store:{...store,items:store.items.filter(item=>item.index!==itemIndex)}));try{await apiAction(apiUrl,apiToken,'shopping_delete',{tabId,index:itemIndex});}catch(err){setError('Could not delete item: '+err.message);await loadShopping(apiUrl,apiToken);// revert
 }}async function handleUpdateShoppingItem(tabId,itemIndex,newText){// Optimistic update
 setShopping(prev=>prev.map(store=>store.tabId!==tabId?store:{...store,items:store.items.map(item=>item.index!==itemIndex?item:{...item,text:newText})}));try{await apiAction(apiUrl,apiToken,'shopping_update',{tabId,index:itemIndex,text:newText});}catch(err){setError('Could not update item: '+err.message);await loadShopping(apiUrl,apiToken);// revert
-}}async function handleSaveTask({id,task,dueDate,notes,recurring}){setBusy(true);try{if(id){await apiAction(apiUrl,apiToken,'update_task',{id,task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast('✓ Task updated');}else{await apiAction(apiUrl,apiToken,'add_task',{task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast(recurring?`✓ Recurring task added (${recurring})`:'✓ Task added');}setTaskModal(null);await loadAll(apiUrl,apiToken,filterActive);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleSetProjectOwner(projectId,owner){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_owner',projectId,owner});showToast('✓ Owner set to '+owner);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set owner: '+err.message);}setBusy(false);}async function handleCompleteProjectTask(rowNum){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'complete_project_task',row:rowNum});showToast('✓ Task marked done');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not complete task: '+err.message);}setBusy(false);}async function handleSaveProjectTask({task,priority,dueDate,notes}){setBusy(true);try{if(projectTaskModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_project_task',row:projectTaskModal.task.rowNum,task,priority,dueDate:dueDate||'',notes:notes||''});showToast('✓ Task updated');}else{await apiGet(apiUrl,apiToken,{action:'add_project_task',projectId:projectTaskModal.project.projectId,task,priority,dueDate:dueDate||'',notes:notes||''});showToast('✓ Task added');}setProjectTaskModal(null);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleDeleteProjectTask(rowNum){if(!window.confirm('Delete this task? This cannot be undone.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'delete_project_task',row:rowNum});showToast('✓ Task deleted');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not delete task: '+err.message);}setBusy(false);}async function handleCreateProject({name,tasks}){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'create_project',name,tasks});showToast('✓ Project created');setNewProjectModal(false);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not create project: '+err.message);}setBusy(false);}async function handleSaveGoal({title,description,status,category,year,progress,notes}){if(!title.trim())return;setBusy(true);try{if(goalModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_goal',id:goalModal.goal.id,title,description,status,category,year,progress,notes});showToast('✓ Goal updated');}else{await apiGet(apiUrl,apiToken,{action:'add_goal',title,description,status,category,year,notes});showToast('✓ Goal added');}setGoalModal(null);loadGoals(apiUrl,apiToken);}catch(err){setError('Could not save goal: '+err.message);}setBusy(false);}async function handleSaveInterest({person,interest,category,notes}){if(!interest.trim())return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'interests_add',person,interest,category,notes});showToast('💛 Interest logged');setInterestModal(false);loadInterests(apiUrl,apiToken);}catch(err){setError('Could not log interest: '+err.message);}setBusy(false);}async function handleDeleteInterest(id){if(!window.confirm('Archive this interest?'))return;// Optimistic remove
+}}async function handleSaveTask({id,task,dueDate,notes,recurring}){setBusy(true);try{if(id){await apiAction(apiUrl,apiToken,'update_task',{id,task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast('✓ Task updated');}else{await apiAction(apiUrl,apiToken,'add_task',{task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast(recurring?`✓ Recurring task added (${recurring})`:'✓ Task added');}setTaskModal(null);await loadAll(apiUrl,apiToken,filterActive);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleSetProjectOwner(projectId,owner){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_owner',projectId,owner});showToast('✓ Owner set to '+owner);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set owner: '+err.message);}setBusy(false);}async function handleCompleteProjectTask(rowNum){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'complete_project_task',row:rowNum});showToast('✓ Task marked done');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not complete task: '+err.message);}setBusy(false);}async function handleSaveProjectTask({task,priority,dueDate,notes,phase,status}){setBusy(true);try{if(projectTaskModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_project_task',row:projectTaskModal.task.rowNum,task,priority,dueDate:dueDate||'',notes:notes||'',phase:phase||'',status:status||'Pending'});showToast('✓ Task updated');}else{await apiGet(apiUrl,apiToken,{action:'add_project_task',projectId:projectTaskModal.project.projectId,task,priority,dueDate:dueDate||'',notes:notes||'',phase:phase||''});showToast('✓ Task added');}setProjectTaskModal(null);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleDeleteProjectTask(rowNum){if(!window.confirm('Delete this task? This cannot be undone.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'delete_project_task',row:rowNum});showToast('✓ Task deleted');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not delete task: '+err.message);}setBusy(false);}async function handleSetProjectTarget(projectId,targetDate){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_target',projectId,targetDate});showToast(targetDate?'✓ Target set to '+targetDate:'✓ Target cleared');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set target date: '+err.message);}setBusy(false);}async function handleReorderProjectTasks(projectId,rowOrder){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'reorder_project_tasks',projectId,rowOrder:rowOrder.join(',')});loadProjects(apiUrl,apiToken);}catch(err){setError('Could not reorder tasks: '+err.message);}setBusy(false);}async function handleCloseProject(project){if(!window.confirm('Close "'+project.projectName+'"? Every remaining task is marked done.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'close_project',projectId:project.projectId});showToast('✓ Project closed');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not close project: '+err.message);}setBusy(false);}async function handleCreateProject({name,tasks,targetDate,owner}){setBusy(true);try{const r=await apiGet(apiUrl,apiToken,{action:'create_project',name,tasks,owner:owner||'Shared'});if(targetDate&&r&&r.projectId){await apiGet(apiUrl,apiToken,{action:'set_project_target',projectId:r.projectId,targetDate});}showToast('✓ Project created');setNewProjectModal(false);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not create project: '+err.message);}setBusy(false);}async function handleSaveGoal({title,description,status,category,year,progress,notes}){if(!title.trim())return;setBusy(true);try{if(goalModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_goal',id:goalModal.goal.id,title,description,status,category,year,progress,notes});showToast('✓ Goal updated');}else{await apiGet(apiUrl,apiToken,{action:'add_goal',title,description,status,category,year,notes});showToast('✓ Goal added');}setGoalModal(null);loadGoals(apiUrl,apiToken);}catch(err){setError('Could not save goal: '+err.message);}setBusy(false);}async function handleSaveInterest({person,interest,category,notes}){if(!interest.trim())return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'interests_add',person,interest,category,notes});showToast('💛 Interest logged');setInterestModal(false);loadInterests(apiUrl,apiToken);}catch(err){setError('Could not log interest: '+err.message);}setBusy(false);}async function handleDeleteInterest(id){if(!window.confirm('Archive this interest?'))return;// Optimistic remove
 setInterests(prev=>prev.filter(i=>i.id!==id));try{await apiGet(apiUrl,apiToken,{action:'interests_delete',id});showToast('✓ Interest archived');}catch(err){setError('Could not archive interest: '+err.message);loadInterests(apiUrl,apiToken);// revert
 }}async function handleAddIdea({idea,category,tags,notes}){if(!idea.trim())return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'add_idea',idea,category,tags,notes});showToast('💡 Idea parked');loadIdeas(apiUrl,apiToken);}catch(err){setError('Could not save idea: '+err.message);}setBusy(false);}async function handlePromoteIdea(id,ideaText){if(!window.confirm(`Promote "${ideaText}" to a task?`))return;setBusy(true);// Optimistic update
 setIdeas(prev=>prev.map(i=>i.id===id?{...i,status:'Promoted'}:i));try{const res=await apiGet(apiUrl,apiToken,{action:'promote_idea',id});showToast('✅ Promoted to task: '+res.taskId);loadIdeas(apiUrl,apiToken);}catch(err){setError('Could not promote idea: '+err.message);loadIdeas(apiUrl,apiToken);// revert
@@ -1502,4 +2535,4 @@ const isConfigured=apiUrl&&apiToken;return/*#__PURE__*/React.createElement(React
 // browsers (Safari especially). Force a real network fetch by making
 // this a "new" URL via a cache-busting query param.
 const u=new URL(window.location.href);u.searchParams.set('_r',Date.now());window.location.href=u.toString();}},loading?'⟳ Loading…':'⟳ Refresh'),isConfigured&&/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setNotifSettingsOpen(true),title:"Notification settings",style:{marginRight:4}},"🔔"),/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setShowSettings(true),title:"Settings"},"⚙"))),taskModal&&/*#__PURE__*/React.createElement(TaskFormModal,{task:taskModal.task||null,onSave:handleSaveTask,onClose:()=>setTaskModal(null),busy:busy}),newProjectModal&&/*#__PURE__*/React.createElement(NewProjectModal,{onSave:handleCreateProject,onClose:()=>setNewProjectModal(false),busy:busy}),projectTaskModal&&/*#__PURE__*/React.createElement(ProjectTaskModal,{mode:projectTaskModal.mode,task:projectTaskModal.task||null,onSave:handleSaveProjectTask,onClose:()=>setProjectTaskModal(null),busy:busy}),addItemModal&&shopping.length>0&&/*#__PURE__*/React.createElement(AddItemModal,{stores:shopping,onSave:handleAddShoppingItem,onClose:()=>setAddItemModal(false),busy:busy,initialStore:addItemInitialStore}),showSettings&&/*#__PURE__*/React.createElement(SettingsModal,{initial:{url:apiUrl,token:apiToken,mapsKey:stored('vera_maps_key')},onSave:handleConnect,onClose:isConfigured?()=>setShowSettings(false):null}),!isConfigured&&!showSettings&&/*#__PURE__*/React.createElement("div",{className:"main"},/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:40,marginBottom:16}},"🔌"),/*#__PURE__*/React.createElement("div",{style:{fontSize:16,color:'#dde1f0',marginBottom:8}},"Not connected"),/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}},"Click the ⚙ icon to add your API URL and token"))),isConfigured&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement(StatusBar,{status:status,loading:loading}),/*#__PURE__*/React.createElement("div",{className:"tabs"},['home','chat','flags','tasks','projects','shopping','home_front','people','pto','travel','finances','health','career','growth','explore'].map(tab=>/*#__PURE__*/React.createElement("button",{key:tab,className:`tab-btn ${activeTab===tab?'active':''}`,onClick:()=>{setActiveTab(tab);if(tab==='home')loadMailCounter();if(tab==='tasks')loadGoogleTasks(apiUrl,apiToken);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='explore'){loadInterests(apiUrl,apiToken);loadIdeas(apiUrl,apiToken);loadResources(apiUrl,apiToken);loadWishList(apiUrl,apiToken);loadExperiments(apiUrl,apiToken);}if(tab==='growth'){loadGoals(apiUrl,apiToken);loadGrowth(apiUrl,apiToken);}if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='home_front'){loadHomeFront(apiUrl,apiToken);loadPurchaseHistory(apiUrl,apiToken);loadChores(apiUrl,apiToken);loadChoresForOthers(apiUrl,apiToken);loadVehicles(apiUrl,apiToken);loadCoupons(apiUrl,apiToken);}if(tab==='people'){loadGiftData(apiUrl,apiToken);loadDatesData(apiUrl,apiToken);loadWishListsData(apiUrl,apiToken);}if(tab==='career')loadCareer(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel'){loadPTO(apiUrl,apiToken);loadProfiles(apiUrl,apiToken);}// upcomingTravel lives in PTO stats
-if(tab==='finances'){loadBudget(apiUrl,apiToken);loadBills(apiUrl,apiToken);loadCalendarBills(apiUrl,apiToken);loadTxList(apiUrl,apiToken);loadFinancialGoals();}}},tab==='home'?`🏠 Home`:'',tab==='chat'?`💬 Chat`:'',tab==='flags'?`🚩 Flags${status?` (${status.activeFlags})`:''}`:'',tab==='tasks'?`✅ Tasks${tasks.length?` (${tasks.length})`:''}`:'',tab==='projects'?`🏗️ Projects${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length?` (${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length})`:''}`:'',tab==='shopping'?`🛒 Shopping`:'',tab==='home_front'?`🏡 Home Front`:'',tab==='people'?`👥 People`:'',tab==='pto'?`🌴 PTO Planner`:'',tab==='travel'?`✈️ Travel`:'',tab==='finances'?`💰 Finances`:'',tab==='explore'?`🔭 Explore`:'',tab==='health'?`🏥 Health`:'',tab==='growth'?`🌱 Growth`:'',tab==='career'?`💼 Career`:''))),/*#__PURE__*/React.createElement("div",{className:"main"},error&&/*#__PURE__*/React.createElement("div",{className:"error-banner"},"⚠️ ",error),activeTab==='flags'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:`filter-toggle ${filterActive?'on':''}`,onClick:()=>setFilterActive(v=>!v)},filterActive?'● Active only':'○ All flags'),/*#__PURE__*/React.createElement("span",{className:"count-badge"},flags.length," shown")),loading&&flags.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading flags…"):flags.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",null,"No ",filterActive?'active ':'',"flags — you're all clear!")):flags.map(flag=>/*#__PURE__*/React.createElement(FlagCard,{key:flag.id,flag:flag,onAction:handleAction,busy:busy}))),activeTab==='tasks'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:()=>setTaskModal({mode:'add'})},"+ Add Task"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},tasks.length+googleTasks.length," open")),loading&&tasks.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading tasks…"):tasks.length===0&&googleTasks.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},"No open tasks found."):(()=>{const TASK_GROUPS=[{key:'overdue',label:'🔴 Overdue / Late'},{key:'today',label:'📌 Today'},{key:'tomorrow',label:'➡️ Tomorrow'},{key:'next_3_days',label:'📅 Next 3 Days'},{key:'next_week',label:'📆 Next Week'},{key:'next_month',label:'🗓 Next Month'},{key:'upcoming',label:'🔭 Upcoming'},{key:'no_date',label:'— No Due Date'}];function getTaskGroup(task){let days=task.daysUntilDue;if(days==null&&task.dueDate){const tod=new Date();tod.setHours(0,0,0,0);days=Math.floor((new Date(task.dueDate+'T00:00:00')-tod)/86400000);}if(days==null)return'no_date';if(days<0)return'overdue';if(days===0)return'today';if(days===1)return'tomorrow';if(days<=4)return'next_3_days';if(days<=7)return'next_week';if(days<=30)return'next_month';return'upcoming';}const veraTasksMapped=tasks.map(t=>({...t,_source:'vera'}));const gTasksMapped=googleTasks.map(t=>({...t,_source:'google'}));const merged=veraTasksMapped.concat(gTasksMapped).sort((a,b)=>{if(a.dueDate&&b.dueDate)return a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0;if(a.dueDate&&!b.dueDate)return-1;if(!a.dueDate&&b.dueDate)return 1;return 0;});const buckets={};TASK_GROUPS.forEach(g=>{buckets[g.key]=[];});merged.forEach(task=>{buckets[getTaskGroup(task)].push(task);});return TASK_GROUPS.map(group=>{const items=buckets[group.key];if(!items.length)return null;const isOpen=!!taskGroupsExpanded[group.key];return/*#__PURE__*/React.createElement("div",{key:group.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'8px 14px',background:'#0e1e3a',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',userSelect:'none',marginBottom:isOpen?6:0},onClick:()=>setTaskGroupsExpanded(prev=>({...prev,[group.key]:!prev[group.key]}))},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",group.label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',background:'#0a1628',padding:'2px 8px',borderRadius:10,border:'1px solid #1e3060'}},items.length)),isOpen&&items.map((task,i)=>/*#__PURE__*/React.createElement(TaskCard,{key:(task._source==='google'?'g-':'')+(task.id||i),task:task,onComplete:task._source==='google'?handleCompleteGoogleTask:handleComplete,onEdit:task._source==='google'?null:t=>setTaskModal({mode:'edit',task:t}),completing:!!completingIds[task.id]})));});})(),googleTasksError&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#f87171',marginTop:8}},"Google Tasks unavailable: ",googleTasksError)),activeTab==='home'&&/*#__PURE__*/React.createElement(HomeTab,{flags:flags,tasks:tasks,projects:projects,shopping:shopping,pto:pto,milestones:milestones,summaries:summaries,status:status,pacingStatus:pacingStatus,apiUrl:apiUrl,apiToken:apiToken,onNavigate:tab=>{setActiveTab(tab);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel')loadPTO(apiUrl,apiToken);},onViewItinerary:function(trip){if(trip)setTravelFocusTripKey(trip.startDate+'|'+trip.label);setActiveTab('travel');loadPTO(apiUrl,apiToken);},mailCounter:mailCounter,mailCounterBusy:mailCounterBusy,onResetMailCounter:handleResetMailCounter}),activeTab==='chat'&&/*#__PURE__*/React.createElement(ChatPanel,{apiUrl:apiUrl,apiToken:apiToken,messages:chatMessages,setMessages:setChatMessages,input:chatInput,setInput:setChatInput}),activeTab==='projects'&&(tabLoading.projects?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading projects…"):/*#__PURE__*/React.createElement(ProjectsTab,{projects:projects,onCompleteTask:handleCompleteProjectTask,onSetOwner:handleSetProjectOwner,onAddTask:p=>setProjectTaskModal({mode:'add',project:p}),onEditTask:t=>setProjectTaskModal({mode:'edit',task:t}),onDeleteTask:handleDeleteProjectTask,onCreateProject:()=>setNewProjectModal(true),busy:busy})),activeTab==='explore'&&/*#__PURE__*/React.createElement(ExploreTab,{interests:interests,interestsLoading:!!tabLoading.interests,onDeleteInterest:handleDeleteInterest,onAddInterest:()=>setInterestModal(true),ideas:ideas,ideasLoading:!!tabLoading.ideas,onAddIdea:handleAddIdea,onPromoteIdea:handlePromoteIdea,onArchiveIdea:handleArchiveIdea,onShelveIdea:handleShelveThought,resources:resources,resourcesLoading:!!tabLoading.resources,onAddResource:handleAddResource,onUpdateResource:handleUpdateResource,onDeleteResource:handleDeleteResource,experiments:experiments,experimentsLoading:!!tabLoading.experiments,onAddExperiment:handleAddExperiment,onUpdateExperiment:handleUpdateExperiment,onDeleteExperiment:handleDeleteExperiment,onAddExperimentCheckin:handleAddExperimentCheckin,wishList:wishList,wishListLoading:!!tabLoading.wishList,onAddWishItem:handleAddWishItem,onUpdateWishItem:handleUpdateWishItem,onMarkWishPurchased:handleMarkWishPurchased,onDeleteWishItem:handleDeleteWishItem,busy:busy,features:status&&status.features,apiUrl:apiUrl,apiToken:apiToken}),activeTab==='shopping'&&(tabLoading.shopping?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading shopping lists…"):/*#__PURE__*/React.createElement(ShoppingTab,{stores:shopping,onToggle:handleToggleShopping,onAddItem:storeId=>{setAddItemInitialStore(storeId||'');setAddItemModal(true);},onDelete:handleDeleteShoppingItem,onEdit:handleUpdateShoppingItem,busy:busy,onLogRun:handleLogRun})),activeTab==='home_front'&&/*#__PURE__*/React.createElement(HomeFrontTab,{homeFront:homeFront,loading:!!tabLoading.home_front,busy:busy,onRecordService:handleRecordService,onAddHomeItem:handleAddHomeItem,onDeleteHomeItem:handleDeleteHomeItem,onRecipeToShopping:handleRecipeToShopping,purchaseHistory:purchaseHistory,onAddTakeoutRestaurant:handleAddTakeoutRestaurant,onDeleteTakeoutRestaurant:handleDeleteTakeoutRestaurant,onAddTakeoutItem:handleAddTakeoutItem,onDeleteTakeoutItem:handleDeleteTakeoutItem,chores:chores,choresLoading:choresLoading,onToggleChore:handleToggleChore,onAddChore:handleAddChore,onDeleteChore:handleDeleteChore,onUpdateChoreCadence:handleUpdateChoreCadence,choresForOthers:choresForOthers,choresForOthersLoading:choresForOthersLoading,onAddChoreForOthers:handleAddChoreForOthers,onCompleteChoreForOthers:handleCompleteChoreForOthers,onEditChoreForOthers:handleEditChoreForOthers,onDeleteChoreForOthers:handleDeleteChoreForOthers,vehicles:vehicles,vehiclesLoading:vehiclesLoading,onVehicleOilChange:handleVehicleOilChange,onVehicleService:handleVehicleService,onVehicleMileage:handleVehicleMileage,onAddVehicle:handleAddVehicle,onDeleteVehicle:handleDeleteVehicle,onVehicleTireChange:handleVehicleTireChange,onVehicleEmissionInspect:handleVehicleEmissionInspect,onVehicleSafetyInspect:handleVehicleSafetyInspect,coupons:coupons,couponsLoading:couponsLoading,onExtractCoupon:handleExtractCoupon,onSaveCoupon:handleSaveCoupon,onDeleteCoupon:handleDeleteCoupon,onMarkCouponUsed:handleMarkCouponUsed,apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='people'&&/*#__PURE__*/React.createElement(PeopleTab,{giftData:giftData,giftLoading:giftLoading,busy:busy,onAddGiftPerson:handleAddGiftPerson,onDeleteGiftPerson:handleDeleteGiftPerson,onAddGiftIdea:handleAddGiftIdea,onDeleteGiftIdea:handleDeleteGiftIdea,datesData:datesData,datesLoading:datesLoading,onAddImportantDate:handleAddImportantDate,onUpdateImportantDate:handleUpdateImportantDate,onDeleteImportantDate:handleDeleteImportantDate,onPreviewCalendarBirthdays:handlePreviewCalendarBirthdays,onImportCalendarBirthdays:handleImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading,wishListsData:wishListsData,wishListsLoading:wishListsLoading,onRefreshWishLists:()=>loadWishListsData(apiUrl,apiToken),features:status&&status.features}),activeTab==='pto'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading PTO data…"):/*#__PURE__*/React.createElement(PTOTab,{ahmedStats:pto&&pto.ahmedStats,victoriaStats:pto&&pto.victoriaStats,onTriggerBuffer:handleTriggerBuffer,onTriggerVictoriaBuffer:handleTriggerVictoriaBuffer,busy:busy,loadError:ptoError,onReload:()=>loadPTO(apiUrl,apiToken)})),activeTab==='travel'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading travel data…"):/*#__PURE__*/React.createElement(TravelTab,{pto:pto,itineraries:itineraries,packingItems:packingItems,tripMeta:tripMeta,packingFocusTripKey:packingFocusTripKey,itineraryFocusTripKey:travelFocusTripKey,countries:countries,countriesLoaded:countriesLoaded,busy:busy,onSelectTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onExpandTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onAddItinItem:function(tripKey,sd,ed){setItinItemModal({mode:'add',tripKey,tripStartDate:sd,tripEndDate:ed});},onEditItinItem:function(item,tripKey,sd,ed){setItinItemModal({mode:'edit',item,tripKey,tripStartDate:sd,tripEndDate:ed});},onDeleteItinItem:handleDeleteItineraryItem,onSetTripMeta:handleSetTripMeta,onLoadTripMeta:loadTripMeta,onLoadPacking:loadPacking,onGeneratePacking:handleGeneratePacking,onTogglePackingItem:handleTogglePackingItem,onAddPackingItem:handleAddPackingItem,onDeletePackingItem:handleDeletePackingItem,onGoToPacking:handleGoToPacking,onLoadCountries:loadCountries,onAddCountry:handleAddCountry,onDeleteCountry:handleDeleteCountry,bucketList:bucketList,onLoadBucketList:loadBucketList,onAddBucketItem:handleAddBucketItem,onMarkBucketVisited:handleMarkBucketVisited,onDeleteBucketItem:handleDeleteBucketItem,onAddBucketActivity:handleAddBucketActivity,onToggleBucketActivity:handleToggleBucketActivity,onDeleteBucketActivity:handleDeleteBucketActivity,recommendations:recommendations,onLoadRecs:loadRecs,onGenerateRecs:handleGenerateRecs,onAcceptRec:handleAcceptRec,onDismissRec:handleDismissRec,profiles:profiles,profilesLoading:profilesLoading,onSaveProfile:handleSaveProfile,onDeleteProfile:handleDeleteProfile,apiUrl:apiUrl,apiToken:apiToken})),activeTab==='finances'&&/*#__PURE__*/React.createElement(FinancesTab,{summaries:summaries,budget:budget,budgetLoading:!!tabLoading.finances,bills:bills,billsLoading:!!tabLoading.bills,onBillToggle:handleBillToggle,calBills:calBills,onCalBillToggle:handleCalendarBillToggle,onAddBill:handleAddBill,onSyncTransactions:handleSyncBillsFromTransactions,txList:txList,apiUrl:apiUrl,apiToken:apiToken,busy:busy,financialGoals:financialGoals,goalsLoading:goalsLoading,onLoadGoals:loadFinancialGoals,onAddGoal:handleAddGoal,onUpdateGoal:handleUpdateGoal,onDeleteGoal:handleDeleteGoal}),activeTab==='health'&&/*#__PURE__*/React.createElement(HealthTab,{apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='growth'&&/*#__PURE__*/React.createElement(GrowthTab,{milestones:milestones,flags:flags,tasks:tasks,onAction:handleAction,goals:goals,goalsLoading:!!tabLoading.goals,dragGoalId:dragGoalId,dragOverCol:dragOverCol,onDragStart:id=>setDragGoalId(id),onDragOver:col=>setDragOverCol(col),onDrop:async newStatus=>{if(!dragGoalId||!newStatus){setDragGoalId(null);setDragOverCol(null);return;}const id=dragGoalId;setDragGoalId(null);setDragOverCol(null);setGoals(prev=>prev.map(g=>g.id===id?{...g,status:newStatus}:g));try{await apiGet(apiUrl,apiToken,{action:'update_goal',id,status:newStatus});}catch(err){setError('Failed to move goal: '+err.message);loadGoals(apiUrl,apiToken);}},onAddGoal:status=>setGoalModal({mode:'add',status:status||'To Do'}),onEditGoal:g=>setGoalModal({mode:'edit',goal:g}),onDeleteGoal:async id=>{if(!window.confirm('Delete this goal?'))return;setGoals(prev=>prev.filter(g=>g.id!==id));try{await apiGet(apiUrl,apiToken,{action:'delete_goal',id});}catch(err){setError('Failed to delete goal: '+err.message);loadGoals(apiUrl,apiToken);}},growthData:growthData,growthLoading:!!tabLoading.growth,onAddBook:handleAddBook,onUpdateBook:handleUpdateBook,onDeleteBook:handleDeleteBook,onAddCourse:handleAddCourse,onUpdateCourse:handleUpdateCourse,onDeleteCourse:handleDeleteCourse,onAddSkill:handleAddSkill,onUpdateSkill:handleUpdateSkill,onRecordSkillPractice:handleRecordSkillPractice,onDeleteSkill:handleDeleteSkill,busy:busy}),activeTab==='career'&&/*#__PURE__*/React.createElement(CareerTab,{career:career,loading:!!tabLoading.career,busy:busy,onUpdatePosition:handleUpdateCareerPosition,onAddGoal:handleAddCareerGoal,onUpdateGoal:handleUpdateCareerGoal,onDeleteGoal:handleDeleteCareerGoal,onUpdateGoalFull:handleUpdateCareerGoalFull,onAddProgression:handleAddCareerProgression,onDeleteProgression:handleDeleteCareerProgression,onUpdateProgression:handleUpdateCareerProgression,onAddDevelopment:handleAddCareerDevelopment,onUpdateDevelopment:handleUpdateCareerDevelopment,onDeleteDevelopment:handleDeleteCareerDevelopment,onUpdateDevelopmentFull:handleUpdateCareerDevelopmentFull,onAddWin:handleAddCareerWin,onDeleteWin:handleDeleteCareerWin,onUpdateWin:handleUpdateCareerWin,onAddNetwork:handleAddCareerNetwork,onUpdateNetwork:handleUpdateCareerNetwork,onDeleteNetwork:handleDeleteCareerNetwork,onUpdateNetworkFull:handleUpdateCareerNetworkFull}))),goalModal&&/*#__PURE__*/React.createElement(GoalModal,{mode:goalModal.mode,goal:goalModal.goal,defaultStatus:goalModal.status,onSave:handleSaveGoal,onClose:()=>setGoalModal(null),busy:busy}),interestModal&&/*#__PURE__*/React.createElement(AddInterestModal,{onSave:handleSaveInterest,onClose:()=>setInterestModal(false),busy:busy}),itinItemModal&&/*#__PURE__*/React.createElement(AddItineraryItemModal,{mode:itinItemModal.mode,item:itinItemModal.item,tripKey:itinItemModal.tripKey,onSave:itinItemModal.mode==='edit'?handleUpdateItineraryItem:handleAddItineraryItem,onClose:()=>setItinItemModal(null),busy:busy}),notifSettingsOpen&&/*#__PURE__*/React.createElement(NotifSettingsModal,{apiUrl:apiUrl,apiToken:apiToken,onClose:()=>setNotifSettingsOpen(false)}),toast&&/*#__PURE__*/React.createElement("div",{className:`toast${toast.isError?' error':''}`},toast.msg));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));
+if(tab==='finances'){loadBudget(apiUrl,apiToken);loadBills(apiUrl,apiToken);loadCalendarBills(apiUrl,apiToken);loadTxList(apiUrl,apiToken);loadFinancialGoals();}}},tab==='home'?`🏠 Home`:'',tab==='chat'?`💬 Chat`:'',tab==='flags'?`🚩 Flags${status?` (${status.activeFlags})`:''}`:'',tab==='tasks'?`✅ Tasks${tasks.length?` (${tasks.length})`:''}`:'',tab==='projects'?`🏗️ Projects${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length?` (${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length})`:''}`:'',tab==='shopping'?`🛒 Shopping`:'',tab==='home_front'?`🏡 Home Front`:'',tab==='people'?`👥 People`:'',tab==='pto'?`🌴 PTO Planner`:'',tab==='travel'?`✈️ Travel`:'',tab==='finances'?`💰 Finances`:'',tab==='explore'?`🔭 Explore`:'',tab==='health'?`🏥 Health`:'',tab==='growth'?`🌱 Growth`:'',tab==='career'?`💼 Career`:''))),/*#__PURE__*/React.createElement("div",{className:"main"},error&&/*#__PURE__*/React.createElement("div",{className:"error-banner"},"⚠️ ",error),activeTab==='flags'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:`filter-toggle ${filterActive?'on':''}`,onClick:()=>setFilterActive(v=>!v)},filterActive?'● Active only':'○ All flags'),/*#__PURE__*/React.createElement("span",{className:"count-badge"},flags.length," shown")),loading&&flags.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading flags…"):flags.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",null,"No ",filterActive?'active ':'',"flags — you're all clear!")):flags.map(flag=>/*#__PURE__*/React.createElement(FlagCard,{key:flag.id,flag:flag,onAction:handleAction,busy:busy}))),activeTab==='tasks'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:()=>setTaskModal({mode:'add'})},"+ Add Task"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},tasks.length+googleTasks.length," open")),loading&&tasks.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading tasks…"):tasks.length===0&&googleTasks.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},"No open tasks found."):(()=>{const TASK_GROUPS=[{key:'overdue',label:'🔴 Overdue / Late'},{key:'today',label:'📌 Today'},{key:'tomorrow',label:'➡️ Tomorrow'},{key:'next_3_days',label:'📅 Next 3 Days'},{key:'next_week',label:'📆 Next Week'},{key:'next_month',label:'🗓 Next Month'},{key:'upcoming',label:'🔭 Upcoming'},{key:'no_date',label:'— No Due Date'}];function getTaskGroup(task){let days=task.daysUntilDue;if(days==null&&task.dueDate){const tod=new Date();tod.setHours(0,0,0,0);days=Math.floor((new Date(task.dueDate+'T00:00:00')-tod)/86400000);}if(days==null)return'no_date';if(days<0)return'overdue';if(days===0)return'today';if(days===1)return'tomorrow';if(days<=4)return'next_3_days';if(days<=7)return'next_week';if(days<=30)return'next_month';return'upcoming';}const veraTasksMapped=tasks.map(t=>({...t,_source:'vera'}));const gTasksMapped=googleTasks.map(t=>({...t,_source:'google'}));const merged=veraTasksMapped.concat(gTasksMapped).sort((a,b)=>{if(a.dueDate&&b.dueDate)return a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0;if(a.dueDate&&!b.dueDate)return-1;if(!a.dueDate&&b.dueDate)return 1;return 0;});const buckets={};TASK_GROUPS.forEach(g=>{buckets[g.key]=[];});merged.forEach(task=>{buckets[getTaskGroup(task)].push(task);});return TASK_GROUPS.map(group=>{const items=buckets[group.key];if(!items.length)return null;const isOpen=!!taskGroupsExpanded[group.key];return/*#__PURE__*/React.createElement("div",{key:group.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'8px 14px',background:'#0e1e3a',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',userSelect:'none',marginBottom:isOpen?6:0},onClick:()=>setTaskGroupsExpanded(prev=>({...prev,[group.key]:!prev[group.key]}))},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",group.label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',background:'#0a1628',padding:'2px 8px',borderRadius:10,border:'1px solid #1e3060'}},items.length)),isOpen&&items.map((task,i)=>/*#__PURE__*/React.createElement(TaskCard,{key:(task._source==='google'?'g-':'')+(task.id||i),task:task,onComplete:task._source==='google'?handleCompleteGoogleTask:handleComplete,onEdit:task._source==='google'?null:t=>setTaskModal({mode:'edit',task:t}),completing:!!completingIds[task.id]})));});})(),googleTasksError&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#f87171',marginTop:8}},"Google Tasks unavailable: ",googleTasksError)),activeTab==='home'&&/*#__PURE__*/React.createElement(HomeTab,{flags:flags,tasks:tasks,projects:projects,shopping:shopping,pto:pto,milestones:milestones,summaries:summaries,status:status,pacingStatus:pacingStatus,apiUrl:apiUrl,apiToken:apiToken,onNavigate:tab=>{setActiveTab(tab);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel')loadPTO(apiUrl,apiToken);},onViewItinerary:function(trip){if(trip)setTravelFocusTripKey(trip.startDate+'|'+trip.label);setActiveTab('travel');loadPTO(apiUrl,apiToken);},mailCounter:mailCounter,mailCounterBusy:mailCounterBusy,onResetMailCounter:handleResetMailCounter}),activeTab==='chat'&&/*#__PURE__*/React.createElement(ChatPanel,{apiUrl:apiUrl,apiToken:apiToken,messages:chatMessages,setMessages:setChatMessages,input:chatInput,setInput:setChatInput}),activeTab==='projects'&&(tabLoading.projects?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading projects…"):/*#__PURE__*/React.createElement(ProjectsTab,{projects:projects,onCompleteTask:handleCompleteProjectTask,onSetOwner:handleSetProjectOwner,onSetTarget:handleSetProjectTarget,onReorder:handleReorderProjectTasks,onCloseProject:handleCloseProject,onAddTask:p=>setProjectTaskModal({mode:'add',project:p}),onEditTask:t=>setProjectTaskModal({mode:'edit',task:t}),onDeleteTask:handleDeleteProjectTask,onCreateProject:()=>setNewProjectModal(true),busy:busy})),activeTab==='explore'&&/*#__PURE__*/React.createElement(ExploreTab,{interests:interests,interestsLoading:!!tabLoading.interests,onDeleteInterest:handleDeleteInterest,onAddInterest:()=>setInterestModal(true),ideas:ideas,ideasLoading:!!tabLoading.ideas,onAddIdea:handleAddIdea,onPromoteIdea:handlePromoteIdea,onArchiveIdea:handleArchiveIdea,onShelveIdea:handleShelveThought,resources:resources,resourcesLoading:!!tabLoading.resources,onAddResource:handleAddResource,onUpdateResource:handleUpdateResource,onDeleteResource:handleDeleteResource,experiments:experiments,experimentsLoading:!!tabLoading.experiments,onAddExperiment:handleAddExperiment,onUpdateExperiment:handleUpdateExperiment,onDeleteExperiment:handleDeleteExperiment,onAddExperimentCheckin:handleAddExperimentCheckin,wishList:wishList,wishListLoading:!!tabLoading.wishList,onAddWishItem:handleAddWishItem,onUpdateWishItem:handleUpdateWishItem,onMarkWishPurchased:handleMarkWishPurchased,onDeleteWishItem:handleDeleteWishItem,busy:busy,features:status&&status.features,apiUrl:apiUrl,apiToken:apiToken}),activeTab==='shopping'&&(tabLoading.shopping?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading shopping lists…"):/*#__PURE__*/React.createElement(ShoppingTab,{stores:shopping,onToggle:handleToggleShopping,onAddItem:storeId=>{setAddItemInitialStore(storeId||'');setAddItemModal(true);},onDelete:handleDeleteShoppingItem,onEdit:handleUpdateShoppingItem,busy:busy,onLogRun:handleLogRun})),activeTab==='home_front'&&/*#__PURE__*/React.createElement(HomeFrontTab,{homeFront:homeFront,loading:!!tabLoading.home_front,busy:busy,onRecordService:handleRecordService,onAddHomeItem:handleAddHomeItem,onDeleteHomeItem:handleDeleteHomeItem,onRecipeToShopping:handleRecipeToShopping,purchaseHistory:purchaseHistory,onAddTakeoutRestaurant:handleAddTakeoutRestaurant,onDeleteTakeoutRestaurant:handleDeleteTakeoutRestaurant,onAddTakeoutItem:handleAddTakeoutItem,onDeleteTakeoutItem:handleDeleteTakeoutItem,chores:chores,choresLoading:choresLoading,onToggleChore:handleToggleChore,onAddChore:handleAddChore,onDeleteChore:handleDeleteChore,onUpdateChoreCadence:handleUpdateChoreCadence,choresForOthers:choresForOthers,choresForOthersLoading:choresForOthersLoading,onAddChoreForOthers:handleAddChoreForOthers,onCompleteChoreForOthers:handleCompleteChoreForOthers,onEditChoreForOthers:handleEditChoreForOthers,onDeleteChoreForOthers:handleDeleteChoreForOthers,vehicles:vehicles,vehiclesLoading:vehiclesLoading,onVehicleOilChange:handleVehicleOilChange,onVehicleService:handleVehicleService,onVehicleMileage:handleVehicleMileage,onAddVehicle:handleAddVehicle,onDeleteVehicle:handleDeleteVehicle,onVehicleTireChange:handleVehicleTireChange,onVehicleEmissionInspect:handleVehicleEmissionInspect,onVehicleSafetyInspect:handleVehicleSafetyInspect,coupons:coupons,couponsLoading:couponsLoading,onExtractCoupon:handleExtractCoupon,onSaveCoupon:handleSaveCoupon,onDeleteCoupon:handleDeleteCoupon,onMarkCouponUsed:handleMarkCouponUsed,apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='people'&&/*#__PURE__*/React.createElement(PeopleTab,{giftData:giftData,giftLoading:giftLoading,busy:busy,onAddGiftPerson:handleAddGiftPerson,onDeleteGiftPerson:handleDeleteGiftPerson,onAddGiftIdea:handleAddGiftIdea,onDeleteGiftIdea:handleDeleteGiftIdea,datesData:datesData,datesLoading:datesLoading,onAddImportantDate:handleAddImportantDate,onUpdateImportantDate:handleUpdateImportantDate,onDeleteImportantDate:handleDeleteImportantDate,onPreviewCalendarBirthdays:handlePreviewCalendarBirthdays,onImportCalendarBirthdays:handleImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading,wishListsData:wishListsData,wishListsLoading:wishListsLoading,onRefreshWishLists:()=>loadWishListsData(apiUrl,apiToken),features:status&&status.features}),activeTab==='pto'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading PTO data…"):/*#__PURE__*/React.createElement(PTOTab,{ahmedStats:pto&&pto.ahmedStats,victoriaStats:pto&&pto.victoriaStats,onTriggerBuffer:handleTriggerBuffer,onTriggerVictoriaBuffer:handleTriggerVictoriaBuffer,busy:busy,loadError:ptoError,onReload:()=>loadPTO(apiUrl,apiToken)})),activeTab==='travel'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading travel data…"):/*#__PURE__*/React.createElement(TravelTab,{pto:pto,itineraries:itineraries,packingItems:packingItems,tripMeta:tripMeta,packingFocusTripKey:packingFocusTripKey,itineraryFocusTripKey:travelFocusTripKey,countries:countries,countriesLoaded:countriesLoaded,busy:busy,onSelectTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onExpandTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onAddItinItem:function(tripKey,sd,ed){setItinItemModal({mode:'add',tripKey,tripStartDate:sd,tripEndDate:ed});},onEditItinItem:function(item,tripKey,sd,ed){setItinItemModal({mode:'edit',item,tripKey,tripStartDate:sd,tripEndDate:ed});},onDeleteItinItem:handleDeleteItineraryItem,onSetTripMeta:handleSetTripMeta,onLoadTripMeta:loadTripMeta,onLoadPacking:loadPacking,onGeneratePacking:handleGeneratePacking,onTogglePackingItem:handleTogglePackingItem,onAddPackingItem:handleAddPackingItem,onDeletePackingItem:handleDeletePackingItem,onGoToPacking:handleGoToPacking,onLoadCountries:loadCountries,onAddCountry:handleAddCountry,onDeleteCountry:handleDeleteCountry,bucketList:bucketList,onLoadBucketList:loadBucketList,onAddBucketItem:handleAddBucketItem,onMarkBucketVisited:handleMarkBucketVisited,onDeleteBucketItem:handleDeleteBucketItem,onAddBucketActivity:handleAddBucketActivity,onToggleBucketActivity:handleToggleBucketActivity,onDeleteBucketActivity:handleDeleteBucketActivity,recommendations:recommendations,onLoadRecs:loadRecs,onGenerateRecs:handleGenerateRecs,onAcceptRec:handleAcceptRec,onDismissRec:handleDismissRec,profiles:profiles,profilesLoading:profilesLoading,onSaveProfile:handleSaveProfile,onDeleteProfile:handleDeleteProfile,apiUrl:apiUrl,apiToken:apiToken})),activeTab==='finances'&&/*#__PURE__*/React.createElement(FinancesTab,{summaries:summaries,budget:budget,budgetLoading:!!tabLoading.finances,bills:bills,billsLoading:!!tabLoading.bills,onBillToggle:handleBillToggle,calBills:calBills,onCalBillToggle:handleCalendarBillToggle,onAddBill:handleAddBill,onSyncTransactions:handleSyncBillsFromTransactions,txList:txList,apiUrl:apiUrl,apiToken:apiToken,busy:busy,financialGoals:financialGoals,goalsLoading:goalsLoading,onLoadGoals:loadFinancialGoals,onAddGoal:handleAddGoal,onUpdateGoal:handleUpdateGoal,onDeleteGoal:handleDeleteGoal}),activeTab==='health'&&/*#__PURE__*/React.createElement(HealthTab,{apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='growth'&&/*#__PURE__*/React.createElement(GrowthTab,{milestones:milestones,flags:flags,tasks:tasks,onAction:handleAction,goals:goals,goalsLoading:!!tabLoading.goals,dragGoalId:dragGoalId,dragOverCol:dragOverCol,onDragStart:id=>setDragGoalId(id),onDragOver:col=>setDragOverCol(col),onDrop:async newStatus=>{if(!dragGoalId||!newStatus){setDragGoalId(null);setDragOverCol(null);return;}const id=dragGoalId;setDragGoalId(null);setDragOverCol(null);setGoals(prev=>prev.map(g=>g.id===id?{...g,status:newStatus}:g));try{await apiGet(apiUrl,apiToken,{action:'update_goal',id,status:newStatus});}catch(err){setError('Failed to move goal: '+err.message);loadGoals(apiUrl,apiToken);}},onAddGoal:status=>setGoalModal({mode:'add',status:status||'To Do'}),onEditGoal:g=>setGoalModal({mode:'edit',goal:g}),onDeleteGoal:async id=>{if(!window.confirm('Delete this goal?'))return;setGoals(prev=>prev.filter(g=>g.id!==id));try{await apiGet(apiUrl,apiToken,{action:'delete_goal',id});}catch(err){setError('Failed to delete goal: '+err.message);loadGoals(apiUrl,apiToken);}},growthData:growthData,growthLoading:!!tabLoading.growth,onAddBook:handleAddBook,onUpdateBook:handleUpdateBook,onDeleteBook:handleDeleteBook,onAddCourse:handleAddCourse,onUpdateCourse:handleUpdateCourse,onDeleteCourse:handleDeleteCourse,onAddSkill:handleAddSkill,onUpdateSkill:handleUpdateSkill,onRecordSkillPractice:handleRecordSkillPractice,onDeleteSkill:handleDeleteSkill,busy:busy}),activeTab==='career'&&/*#__PURE__*/React.createElement(CareerTab,{career:career,loading:!!tabLoading.career,busy:busy,onUpdatePosition:handleUpdateCareerPosition,onAddGoal:handleAddCareerGoal,onUpdateGoal:handleUpdateCareerGoal,onDeleteGoal:handleDeleteCareerGoal,onUpdateGoalFull:handleUpdateCareerGoalFull,onAddProgression:handleAddCareerProgression,onDeleteProgression:handleDeleteCareerProgression,onUpdateProgression:handleUpdateCareerProgression,onAddDevelopment:handleAddCareerDevelopment,onUpdateDevelopment:handleUpdateCareerDevelopment,onDeleteDevelopment:handleDeleteCareerDevelopment,onUpdateDevelopmentFull:handleUpdateCareerDevelopmentFull,onAddWin:handleAddCareerWin,onDeleteWin:handleDeleteCareerWin,onUpdateWin:handleUpdateCareerWin,onAddNetwork:handleAddCareerNetwork,onUpdateNetwork:handleUpdateCareerNetwork,onDeleteNetwork:handleDeleteCareerNetwork,onUpdateNetworkFull:handleUpdateCareerNetworkFull}))),goalModal&&/*#__PURE__*/React.createElement(GoalModal,{mode:goalModal.mode,goal:goalModal.goal,defaultStatus:goalModal.status,onSave:handleSaveGoal,onClose:()=>setGoalModal(null),busy:busy}),interestModal&&/*#__PURE__*/React.createElement(AddInterestModal,{onSave:handleSaveInterest,onClose:()=>setInterestModal(false),busy:busy}),itinItemModal&&/*#__PURE__*/React.createElement(AddItineraryItemModal,{mode:itinItemModal.mode,item:itinItemModal.item,tripKey:itinItemModal.tripKey,onSave:itinItemModal.mode==='edit'?handleUpdateItineraryItem:handleAddItineraryItem,onClose:()=>setItinItemModal(null),busy:busy}),notifSettingsOpen&&/*#__PURE__*/React.createElement(NotifSettingsModal,{apiUrl:apiUrl,apiToken:apiToken,onClose:()=>setNotifSettingsOpen(false)}),toast&&/*#__PURE__*/React.createElement("div",{className:`toast${toast.isError?' error':''}`},toast.msg));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));

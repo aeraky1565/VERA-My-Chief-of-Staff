@@ -161,7 +161,7 @@ function getNotifChannel_(key) {
 }
 // ---- Column Headers --------------------------------------------------------
 const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
-const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes', 'Owner'];
+const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes', 'Owner', 'Completed On', 'Target Date', 'Phase', 'Sequence'];
 const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
 const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
 const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab

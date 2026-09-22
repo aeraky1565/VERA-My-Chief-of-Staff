@@ -7590,6 +7590,19 @@ function FinBudgetLiteTab({ apiUrl, apiToken }) {
 
 const LITE_PRIORITY_COLORS = { High:'#e53935', Medium:'#f9a825', Low:'#43a047' };
 
+// The verdict itself is computed server-side in Projects.js, so this page and
+// the full dashboard cannot disagree about which projects are in trouble. This
+// map is presentation only — it never decides a state.
+const LITE_HEALTH_META = {
+  overdue:  { label:'Overdue',  color:'#e53935' },
+  at_risk:  { label:'At risk',  color:'#f9a825' },
+  stalled:  { label:'Stalled',  color:'#ef6c00' },
+  blocked:  { label:'Blocked',  color:'#c97ef2' },
+  on_track: { label:'On track', color:'#43a047' },
+  done:     { label:'Complete', color:'#43a047' },
+};
+const LITE_TASK_STATUS_COLORS = { 'Pending':'#8a9abf', 'In Progress':'#5c9eff', 'Blocked':'#c97ef2', 'Done':'#43a047' };
+
 function ProjectsLiteTab({ apiUrl, apiToken }) {
   const [projects,   setProjects]   = React.useState([]);
   const [loading,    setLoading]    = React.useState(false);
@@ -7648,15 +7661,44 @@ function ProjectsLiteTab({ apiUrl, apiToken }) {
         const pct   = total > 0 ? Math.round(done / total * 100) : 0;
         const owner = p.owner || 'Shared';
         const isV   = owner === 'Victoria';
+        const hm    = LITE_HEALTH_META[p.health] || LITE_HEALTH_META.on_track;
         return (
           <div key={p.projectId} data-project-id={p.projectId}
             style={{marginBottom:14,border:'1px solid #1e3060',borderRadius:10,background:'#0d1b3e',padding:'14px 16px'}}>
-            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-              <div style={{flex:1,fontWeight:700,fontSize:15,color:'#dde1f0'}}>{p.projectName}</div>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+              <div style={{flex:1,fontWeight:700,fontSize:15,color:'#dde1f0',minWidth:120}}>{p.projectName}</div>
+              <span data-health-chip={p.health || 'on_track'} style={{fontSize:10,fontWeight:700,borderRadius:20,
+                padding:'2px 9px',color:hm.color,background:hm.color+'22',whiteSpace:'nowrap'}}>{hm.label}</span>
               <span data-owner-badge={owner} style={{fontSize:11,fontWeight:700,borderRadius:20,padding:'2px 9px',
                 color: isV ? '#c97ef2' : '#2bb5a0',
                 background: isV ? 'rgba(201,126,242,0.15)' : 'rgba(43,181,160,0.15)'}}>{owner}</span>
             </div>
+            {p.healthReason && (
+              <div data-health-reason style={{fontSize:12,color:'#8a9abf',marginBottom:10}}>{p.healthReason}</div>
+            )}
+
+            {/* Next up — the one thing to pick up, so a long list has an entry point */}
+            {p.nextTask && (
+              <div data-next-up={p.nextTask.rowNum}
+                style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:8,marginBottom:10,
+                  background:'rgba(201,168,76,0.08)',border:'1px solid rgba(201,168,76,0.35)'}}>
+                <input type="checkbox" checked={false} disabled={busy}
+                  onChange={() => handleComplete(p.nextTask.rowNum)}
+                  style={{accentColor:'#43a047',width:16,height:16,cursor:'pointer',flexShrink:0}} />
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:10,fontWeight:700,color:'#c9a84c',letterSpacing:'0.08em',marginBottom:3}}>NEXT UP</div>
+                  <div style={{fontSize:14,color:'#dde1f0'}}>{p.nextTask.task}</div>
+                </div>
+              </div>
+            )}
+            {!p.nextTask && p.pending > 0 && (
+              <div data-next-up-blocked style={{padding:'10px 12px',borderRadius:8,marginBottom:10,
+                background:'rgba(201,126,242,0.08)',border:'1px solid rgba(201,126,242,0.35)',
+                fontSize:12,color:'#dde1f0'}}>
+                Everything left on this project is blocked.
+              </div>
+            )}
+
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
               {p.tasks.map((t, i) => {
                 const isDone = t.status === 'Done';
@@ -7667,12 +7709,24 @@ function ProjectsLiteTab({ apiUrl, apiToken }) {
                     <input type="checkbox" checked={isDone} disabled={isDone || busy}
                       onChange={() => !isDone && handleComplete(t.rowNum)}
                       style={{accentColor:'#43a047',width:16,height:16,cursor:isDone?'default':'pointer',flexShrink:0}} />
-                    <span style={{flex:1,fontSize:14,color:isDone?'#4a5a7a':'#dde1f0',
-                      textDecoration:isDone?'line-through':'none'}}>{t.task}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,color:isDone?'#4a5a7a':'#dde1f0',
+                        textDecoration:isDone?'line-through':'none'}}>{t.task}</div>
+                      {t.notes && !isDone && (
+                        <div data-task-notes style={{fontSize:12,color:'#6b7fa8',marginTop:3}}>{t.notes}</div>
+                      )}
+                    </div>
+                    {t.status !== 'Pending' && !isDone && (
+                      <span data-task-status-pill={t.status} style={{fontSize:10,fontWeight:700,borderRadius:20,
+                        padding:'2px 8px',whiteSpace:'nowrap',color:LITE_TASK_STATUS_COLORS[t.status],
+                        background:LITE_TASK_STATUS_COLORS[t.status]+'22'}}>{t.status}</span>
+                    )}
                     {t.priority && !isDone && (
                       <span style={{fontSize:11,fontWeight:700,color:LITE_PRIORITY_COLORS[t.priority]||'#8a9abf'}}>{t.priority}</span>
                     )}
-                    {t.dueDate && !isDone && <span style={{fontSize:11,color:'#6b7fa8'}}>{t.dueDate}</span>}
+                    {t.dueDate && !isDone && (
+                      <span style={{fontSize:11,color:t.isOverdue?'#e53935':'#6b7fa8'}}>{t.dueDate}</span>
+                    )}
                   </div>
                 );
               })}

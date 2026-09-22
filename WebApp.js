@@ -119,6 +119,8 @@ function doGet(e) {
       case 'delete_project_task':   return jsonOut_(webDeleteProjectTask_(e));
       case 'close_project':         return jsonOut_(webCloseProject_(e));
       case 'set_project_owner':     return jsonOut_(webSetProjectOwner_(e));
+      case 'set_project_target':    return jsonOut_(webSetProjectTarget_(e));
+      case 'reorder_project_tasks': return jsonOut_(webReorderProjectTasks_(e));
       case 'goals':        return jsonOut_(webGetGoals_());
       case 'add_goal':    return jsonOut_(webAddGoal_(e));
       case 'update_goal': return jsonOut_(webUpdateGoal_(e));
@@ -1175,6 +1177,7 @@ function webAddProjectTask_(e) {
   var priority  = ((e.parameter && e.parameter.priority)  || 'Medium').trim();
   var dueDate   =  (e.parameter && e.parameter.dueDate)   || '';
   var notes     =  (e.parameter && e.parameter.notes)     || '';
+  var phase     = ((e.parameter && e.parameter.phase)     || '').trim();
   if (!projectId) throw new Error('projectId is required');
   if (!taskText)  throw new Error('Task text is required');
 
@@ -1182,11 +1185,14 @@ function webAddProjectTask_(e) {
   if (!sheet) throw new Error('Projects tab not found');
   ensureProjectsSchema_(sheet);
 
-  // Look up project name AND owner from existing rows — a task added to one of
-  // Victoria's projects has to inherit Victoria, or it would silently land as
-  // Shared and the project would read as Shared from then on.
-  var projectName = '';
-  var projectOwner = '';
+  // Inherit the PROJECT-LEVEL fields from the existing rows. A task added to
+  // one of Victoria's projects has to inherit Victoria, or it would land as
+  // Shared and the whole project would read as Shared from then on; the target
+  // date is stored per row for the same reason and inherits the same way.
+  var projectName   = '';
+  var projectOwner  = '';
+  var projectTarget = '';
+  var maxSeq        = 0;
   if (sheet.getLastRow() >= 2) {
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROJECT_HEADERS.length).getValues();
     for (var i = 0; i < data.length; i++) {
@@ -1195,14 +1201,24 @@ function webAddProjectTask_(e) {
       if (!projectOwner && String(data[i][PROJ_COL.OWNER] || '').trim()) {
         projectOwner = String(data[i][PROJ_COL.OWNER]).trim();
       }
-      if (projectName && projectOwner) break;
+      if (!projectTarget && String(data[i][PROJ_COL.TARGET_DATE] || '').trim()) {
+        projectTarget = data[i][PROJ_COL.TARGET_DATE];
+      }
+      var s = parseInt(data[i][PROJ_COL.SEQUENCE], 10);
+      if (!isNaN(s) && s > maxSeq) maxSeq = s;
     }
   }
   if (!projectName) throw new Error('Project not found: ' + projectId);
 
-  // PROJECT_HEADERS: Project ID | Project Name | Task | Status | Priority | Due Date | Notes | Owner
+  // Sequence only if the project already uses it. Writing one onto a project
+  // whose other rows are blank would make it the sole sequenced row and jump it
+  // to the top, which is the opposite of where a newly added task belongs.
+  var seq = maxSeq > 0 ? maxSeq + 1 : '';
+
+  // PROJECT_HEADERS: ID | Name | Task | Status | Priority | Due | Notes | Owner
+  //                  | Completed On | Target Date | Phase | Sequence
   var row = [projectId, projectName, taskText, 'Pending', priority, dueDate, notes,
-             normalizeProjectOwner_(projectOwner)];
+             normalizeProjectOwner_(projectOwner), '', projectTarget, phase, seq];
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, PROJECT_HEADERS.length).setValues([row]);
   return { ok: true, projectId: projectId, action: 'created' };
 }
@@ -1214,13 +1230,21 @@ function webUpdateProjectTask_(e) {
   var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
   if (!sheet) throw new Error('Projects tab not found');
 
+  ensureProjectsSchema_(sheet);
+
   // PROJ_COL is 0-indexed; sheet columns are 1-indexed (PROJ_COL.X + 1)
   if (e.parameter.task     != null) sheet.getRange(rowNum, PROJ_COL.TASK     + 1).setValue(e.parameter.task);
   if (e.parameter.priority != null) sheet.getRange(rowNum, PROJ_COL.PRIORITY + 1).setValue(e.parameter.priority);
   if (e.parameter.dueDate  != null) sheet.getRange(rowNum, PROJ_COL.DUE      + 1).setValue(e.parameter.dueDate);
   if (e.parameter.notes    != null) sheet.getRange(rowNum, PROJ_COL.NOTES    + 1).setValue(e.parameter.notes);
+  if (e.parameter.phase    != null) sheet.getRange(rowNum, PROJ_COL.PHASE    + 1).setValue(e.parameter.phase);
 
-  return { ok: true, rowNum: rowNum, action: 'updated' };
+  // Status goes through the shared writer, never a direct setValue, so the
+  // Completed On stamp cannot drift from the status it describes.
+  var statusOut = null;
+  if (e.parameter.status != null) statusOut = setProjectTaskStatus_(sheet, rowNum, e.parameter.status);
+
+  return { ok: true, rowNum: rowNum, action: 'updated', status: statusOut };
 }
 
 function webDeleteProjectTask_(e) {
@@ -1255,20 +1279,44 @@ function webSetProjectOwner_(e) {
   var owner     = normalizeProjectOwner_((e.parameter && e.parameter.owner) || '');
   if (!projectId) throw new Error('projectId is required');
 
-  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
-  if (!sheet || sheet.getLastRow() < 2) throw new Error('Projects tab not found or empty');
-  ensureProjectsSchema_(sheet);
+  var res = setProjectFields_(projectId, { OWNER: owner });
+  res.owner = owner;
+  return res;
+}
 
-  var ids     = sheet.getRange(2, PROJ_COL.ID + 1, sheet.getLastRow() - 1, 1).getValues();
-  var updated = 0;
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]).trim() !== projectId) continue;
-    sheet.getRange(i + 2, PROJ_COL.OWNER + 1).setValue(owner);
-    updated++;
-  }
-  if (!updated) throw new Error('Project not found: ' + projectId);
+/**
+ * Sets the target date on EVERY row of one project. Same project-level rule as
+ * the owner, so both go through the same writer.
+ *
+ * A blank targetDate clears it, which is the only way to say "no deadline
+ * after all" — so it is a valid value, not a missing one.
+ */
+function webSetProjectTarget_(e) {
+  var projectId  = ((e.parameter && e.parameter.projectId)  || '').trim();
+  var targetDate = ((e.parameter && e.parameter.targetDate) || '').trim();
+  if (!projectId) throw new Error('projectId is required');
 
-  return { ok: true, projectId: projectId, owner: owner, rowsUpdated: updated };
+  var res = setProjectFields_(projectId, { TARGET_DATE: targetDate });
+  res.targetDate = targetDate;
+  return res;
+}
+
+/**
+ * Reorders one project's tasks. rowOrder is a comma-separated list of the
+ * project's rowNums in the order wanted.
+ */
+function webReorderProjectTasks_(e) {
+  var projectId = ((e.parameter && e.parameter.projectId) || '').trim();
+  var rowsRaw   = ((e.parameter && e.parameter.rowOrder)  || '').trim();
+  if (!projectId) throw new Error('projectId is required');
+  if (!rowsRaw)   throw new Error('rowOrder is required');
+
+  var rowOrder = rowsRaw.split(',')
+    .map(function(r) { return parseInt(r.trim(), 10); })
+    .filter(function(r) { return !isNaN(r); });
+  if (!rowOrder.length) throw new Error('rowOrder had no usable row numbers: ' + rowsRaw);
+
+  return reorderProjectTasks_(projectId, rowOrder);
 }
 
 function webCloseProject_(e) {
@@ -1277,13 +1325,17 @@ function webCloseProject_(e) {
 
   var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
   if (!sheet || sheet.getLastRow() < 2) throw new Error('Projects tab not found or empty');
+  ensureProjectsSchema_(sheet);
 
   var numRows = sheet.getLastRow() - 1;
   var data    = sheet.getRange(2, 1, numRows, 4).getValues(); // ID, Name, Task, Status
   var updated = 0;
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === projectId && String(data[i][3]).trim() !== 'Done') {
-      sheet.getRange(i + 2, 4).setValue('Done');
+      // Through the shared writer, not a direct setValue — otherwise closing a
+      // project marks every task Done with no Completed On, and the project
+      // reads as having had no activity on the day it was finished.
+      setProjectTaskStatus_(sheet, i + 2, 'Done');
       updated++;
     }
   }
