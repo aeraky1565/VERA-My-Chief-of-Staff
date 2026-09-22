@@ -7676,6 +7676,12 @@ function ProjectsLiteTab({ apiUrl, apiToken }) {
             {p.healthReason && (
               <div data-health-reason style={{fontSize:12,color:'#8a9abf',marginBottom:10}}>{p.healthReason}</div>
             )}
+            {/* What the project is for. Read-only here — drafting and editing
+                stay in the full dashboard, as with everything else on this tab. */}
+            {p.context && (
+              <div data-project-context style={{fontSize:12,color:'#6b7fa8',lineHeight:1.5,
+                marginBottom:10,paddingLeft:10,borderLeft:'2px solid #1e3060'}}>{p.context}</div>
+            )}
 
             {/* Next up — the one thing to pick up, so a long list has an entry point */}
             {p.nextTask && (

@@ -89,7 +89,7 @@ The React dashboard groups functionality into tabs and sub-tabs. All data is fet
 | **Overview** | Status bar | Flag counts (High/Med/Low), last run date, weather ticker, pacing mode indicator |
 | **Tasks** | VERA Tasks | Create, complete, delete, update open tasks; recurring task support |
 | **Tasks** | Google Tasks | Read Google Tasks via Advanced Tasks API; complete individual tasks |
-| **Tasks** | Projects | Multi-step projects with Claude-generated subtasks; a health verdict per project (on track / at risk / stalled / blocked / overdue); a "next up" task; phase sections; drag-to-reorder; per-task status (Pending / In Progress / Blocked / Done); owner toggle (Ahmed / Victoria / Shared) with an owner filter |
+| **Tasks** | Projects | Multi-step projects. Describe what a project is **for** and VERA drafts the whole checklist — asking 2–4 clarifying questions first when the context is thin, then returning a phased plan you edit before anything is saved. Plus a health verdict per project (on track / at risk / stalled / blocked / overdue), a "next up" task, phase sections, drag-to-reorder, per-task status (Pending / In Progress / Blocked / Done), and an owner toggle with filter |
 | **Chat** | Chat (Ahmed) | Full conversational interface — all 40+ actions available; web search tool |
 | **Chat** | Chat Lite (Victoria) | Simplified read-friendly view; same backend |
 | **Chat** | Slack (#vera-chat) | Bidirectional Slack chat routed through the same chat backend |
@@ -147,7 +147,7 @@ VERA's chat backend (`Chat.js`) is a single Claude-powered conversational engine
 Full-access chat. All 40+ actions are available. Receives the complete context bundle: flags, tasks, Google Tasks, calendar, summaries, PTO, goals, bills, recipes, home items, travel, interests, career, credit cards, prescriptions, contracts, countries, bucket list, and VERA NOTICES (proactive time-sensitive highlights). Capacity mode is injected into the system prompt so VERA adjusts verbosity based on how busy the day is.
 
 **Dashboard — Lite (Victoria)**
-Same backend and session as the main dashboard, surfaced in a simpler read-focused layout. Victoria can ask questions and trigger actions; VERA's responses adapt based on who is asking. Its Projects tab is scoped to projects owned by `Shared` or `Victoria` and shows the same health chip, next-up task and notes as the full dashboard, but offers only the task checkbox — adding, editing, reordering and creating projects stay in the full dashboard. This is a view scope, not a security boundary: both pages carry the same API token.
+Same backend and session as the main dashboard, surfaced in a simpler read-focused layout. Victoria can ask questions and trigger actions; VERA's responses adapt based on who is asking. Its Projects tab is scoped to projects owned by `Shared` or `Victoria` and shows the same health chip, next-up task, context and notes as the full dashboard, but offers only the task checkbox — adding, editing, reordering, drafting and creating projects stay in the full dashboard. This is a view scope, not a security boundary: both pages carry the same API token.
 
 **Slack — #vera-chat** (`source: slack`)
 Inbound messages from Slack are received via the Events API POST to `doPost()`, queued in CacheService, and processed asynchronously to beat Slack's 3-second acknowledgement deadline. Outbound responses are sent via `chat.postMessage`. User identity is resolved via `SLACK_AHMED_USER_ID` / `SLACK_VICTORIA_USER_ID` Script Properties.
@@ -166,7 +166,7 @@ VERA's chat system supports the following action categories, each backed by a li
 |----------|---------|
 | **Tasks** | complete_task, delete_task, update_task (rename/due date/status/recurring/notes), create_task |
 | **Flags** | acknowledge_flag, snooze_flag, resolve_flag |
-| **Projects** | create_project (with Claude-generated exhaustive subtask list, each task optionally `Task|Priority|Phase`), add_project_task, complete_project_task, delete_project_task, set_project_owner, set_project_target, reorder_project_tasks, close_project |
+| **Projects** | create_project (with Claude-generated exhaustive subtask list, each task optionally `Task|Priority|Phase`), draft_project_tasks, append_project_tasks, add_project_task, complete_project_task, delete_project_task, set_project_owner, set_project_target, set_project_context, reorder_project_tasks, close_project |
 | **Calendar** | create_calendar_event (creates in Google Calendar), add_gym_sessions (schedules workout blocks on travel days) |
 | **Bills** | add_bill, mark_bill_paid (toggle), delete_bill |
 | **Recipes** | add_recipe, delete_recipe, recipe_to_shopping |
@@ -566,7 +566,7 @@ Every tab is created automatically by `setupVERA()` → `createSheetTabs()`. Hea
 | Metrics | `METRICS` | VERA health counts (tasks/calendar/flags) | Written nightly by `writeSummarySnapshot()` |
 | Summaries | `SUMMARIES` | External life data feed (Finance, Fitness, etc.) | `[AUTO]` rows written nightly; manual rows preserved |
 | Config | `CONFIG` | Key/value configuration pairs | User-managed |
-| Projects | `PROJECTS` | Multi-step projects with subtasks. Project-level `Owner` (Ahmed / Victoria / Shared, blank = Shared) and `Target Date` are written on every row of the project; per-task `Completed On`, `Phase` and `Sequence`. Rows are never moved — order is the `Sequence` field, because `rowNum` is a task's identity | User + chat managed |
+| Projects | `PROJECTS` | Multi-step projects with subtasks. Project-level `Owner` (Ahmed / Victoria / Shared, blank = Shared), `Target Date` and `Context` are written on every row of the project; per-task `Completed On`, `Phase` and `Sequence`. Rows are never moved — order is the `Sequence` field, because `rowNum` is a task's identity | User + chat managed |
 | Goals | `GOALS` | Yearly goals Kanban | User + chat managed |
 | PTO | `PTO` | PTO balance snapshot | Written nightly by `writePTOSnapshot_()` |
 | PTO Memory | `PTO_MEMORY` | Declined PTO suggestion blacklist | Auto-managed by PTO module |
@@ -964,7 +964,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `FinancialGoals.js` | Financial goals CRUD + what-if scenario simulator |
 | `PTO.js` | PTO calendar parsing, stats computation, suggestion engine |
 | `Goals.js` | Goals CRUD; `getGoals_()` |
-| `Projects.js` | Projects CRUD; the derived model and health verdict (`decorateProject_`, `projectHealth_`); `setProjectTaskStatus_()` keeps `Completed On` in lockstep with status; `setProjectFields_()`/`reorderProjectTasks_()`; `getProjectsSummaryForContext_()`; `ensureProjectsSchema_()` widens an existing tab to the current `PROJECT_HEADERS` |
+| `Projects.js` | Projects CRUD; the derived model and health verdict (`decorateProject_`, `projectHealth_`); `setProjectTaskStatus_()` keeps `Completed On` in lockstep with status; `setProjectFields_()`/`reorderProjectTasks_()`; `PROJECT_PLAN_GUIDANCE_` — the single copy of how VERA plans a project, shared by the chat prompt and the drafting endpoint; `getProjectsSummaryForContext_()`; `ensureProjectsSchema_()` widens an existing tab to the current `PROJECT_HEADERS` |
 | `PatternRecognition.js` | Cross-domain pattern recognition — 7 compound patterns |
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Vacation mode, pacing mode, miss-rate checker, capacity mode |

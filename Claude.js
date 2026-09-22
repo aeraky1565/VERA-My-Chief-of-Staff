@@ -302,6 +302,13 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
           });
           var noDueDates = pending.every(function(t) { return !t.dueDate; });
           var line = '- ' + p.projectName + ' (' + pending.length + ' pending task(s))';
+          // What the project is FOR. Without it this section says how much work
+          // is left but never what the work is in aid of, which is most of what
+          // makes a useful answer about a project.
+          if (p.context) {
+            var c = String(p.context).replace(/\s+/g, ' ').trim();
+            line += '\n    purpose: ' + (c.length > 200 ? c.slice(0, 197) + '…' : c);
+          }
           if (hasOverdue)  line += ' ⚠ HAS OVERDUE TASKS';
           if (noDueDates && pending.length >= 2) line += ' [no due dates — may be abandoned]';
           return line;

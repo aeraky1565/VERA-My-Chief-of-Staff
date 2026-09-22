@@ -120,6 +120,7 @@ function doGet(e) {
       case 'close_project':         return jsonOut_(webCloseProject_(e));
       case 'set_project_owner':     return jsonOut_(webSetProjectOwner_(e));
       case 'set_project_target':    return jsonOut_(webSetProjectTarget_(e));
+      case 'set_project_context':   return jsonOut_(webSetProjectContext_(e));
       case 'reorder_project_tasks': return jsonOut_(webReorderProjectTasks_(e));
       case 'goals':        return jsonOut_(webGetGoals_());
       case 'add_goal':    return jsonOut_(webAddGoal_(e));
@@ -520,6 +521,15 @@ function doPost(e) {
   try {
     switch (action) {
       case 'chat':                       return jsonOut_(webProcessChat_(body));
+
+      // Projects — POST because the context is free-form prose, which a query
+      // string mangles. These handlers read `e.parameter` when present and the
+      // body otherwise, so the GET routes keep working unchanged.
+      case 'draft_project_tasks':        return jsonOut_(webDraftProjectTasks_(body));
+      case 'create_project':             return jsonOut_(webCreateProject_(body));
+      case 'append_project_tasks':       return jsonOut_(webAppendProjectTasks_(body));
+      case 'set_project_context':        return jsonOut_(webSetProjectContext_(body));
+
       case 'acknowledge':                return jsonOut_(webAcknowledge_(body.id));
       case 'snooze':                     return jsonOut_(webSnooze_(body.id, body.days));
       case 'resolve':                    return jsonOut_(webResolve_(body.id));
@@ -1189,10 +1199,11 @@ function webAddProjectTask_(e) {
   // one of Victoria's projects has to inherit Victoria, or it would land as
   // Shared and the whole project would read as Shared from then on; the target
   // date is stored per row for the same reason and inherits the same way.
-  var projectName   = '';
-  var projectOwner  = '';
-  var projectTarget = '';
-  var maxSeq        = 0;
+  var projectName    = '';
+  var projectOwner   = '';
+  var projectTarget  = '';
+  var projectContext = '';
+  var maxSeq         = 0;
   if (sheet.getLastRow() >= 2) {
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROJECT_HEADERS.length).getValues();
     for (var i = 0; i < data.length; i++) {
@@ -1203,6 +1214,9 @@ function webAddProjectTask_(e) {
       }
       if (!projectTarget && String(data[i][PROJ_COL.TARGET_DATE] || '').trim()) {
         projectTarget = data[i][PROJ_COL.TARGET_DATE];
+      }
+      if (!projectContext && String(data[i][PROJ_COL.CONTEXT] || '').trim()) {
+        projectContext = data[i][PROJ_COL.CONTEXT];
       }
       var s = parseInt(data[i][PROJ_COL.SEQUENCE], 10);
       if (!isNaN(s) && s > maxSeq) maxSeq = s;
@@ -1216,9 +1230,9 @@ function webAddProjectTask_(e) {
   var seq = maxSeq > 0 ? maxSeq + 1 : '';
 
   // PROJECT_HEADERS: ID | Name | Task | Status | Priority | Due | Notes | Owner
-  //                  | Completed On | Target Date | Phase | Sequence
+  //                  | Completed On | Target Date | Phase | Sequence | Context
   var row = [projectId, projectName, taskText, 'Pending', priority, dueDate, notes,
-             normalizeProjectOwner_(projectOwner), '', projectTarget, phase, seq];
+             normalizeProjectOwner_(projectOwner), '', projectTarget, phase, seq, projectContext];
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, PROJECT_HEADERS.length).setValues([row]);
   return { ok: true, projectId: projectId, action: 'created' };
 }
@@ -1258,14 +1272,231 @@ function webDeleteProjectTask_(e) {
   return { ok: true, rowNum: rowNum, action: 'deleted' };
 }
 
+/**
+ * Creates a project. Reachable by GET (?action=create_project&…) and by POST,
+ * which is how the dashboard sends it now — a context paragraph in a query
+ * string is fragile, so `p` is read from whichever the caller used.
+ */
 function webCreateProject_(e) {
-  var name  = ((e.parameter && e.parameter.name)  || '').trim();
-  var tasks = ((e.parameter && e.parameter.tasks) || '').trim();
-  var owner =  (e.parameter && e.parameter.owner) || '';
+  var p       = (e && e.parameter) ? e.parameter : (e || {});
+  var name    = String(p.name    || '').trim();
+  var tasks   = String(p.tasks   || '').trim();
+  var owner   = p.owner   || '';
+  var context = p.context || '';
   if (!name)  throw new Error('Project name is required');
   if (!tasks) throw new Error('At least one task is required');
   var taskLines = tasks.split('\n').map(function(t) { return t.trim(); }).filter(Boolean);
-  return createProject_(name, taskLines, owner);
+
+  var res = createProject_(name, taskLines, owner, context);
+
+  // Target date is project-level and written to every row, so it goes through
+  // the same writer the owner does rather than a second create path.
+  var targetDate = String(p.targetDate || '').trim();
+  if (targetDate && res && res.projectId && res.count > 0) {
+    try { setProjectFields_(res.projectId, { TARGET_DATE: targetDate }); }
+    catch (tdErr) { Logger.log('webCreateProject_: target date — ' + tdErr.message); }
+  }
+  return res;
+}
+
+/**
+ * Drafts a task list from a project's free-text context. WRITES NOTHING.
+ *
+ * The whole review-and-regenerate step depends on that: the draft comes back,
+ * you edit it, and only create_project / append_project_tasks touch the sheet.
+ * Regenerating is just calling this again with an amended context.
+ *
+ * Returns one of two shapes:
+ *   { ok:true, mode:'questions', questions:[…] }
+ *   { ok:true, mode:'tasks', assumptions:'…', tasks:[{task,priority,phase}, …] }
+ *
+ * Whether to ask is Claude's call, not a length heuristic here — a 20-word
+ * context can be rich and a 200-word one vague.
+ *
+ * POST only in practice: the context is prose.
+ */
+function webDraftProjectTasks_(e) {
+  var p       = (e && e.parameter) ? e.parameter : (e || {});
+  var name    = String(p.name    || '').trim();
+  var context = String(p.context || '').trim();
+  var target  = String(p.targetDate || '').trim();
+  var round   = parseInt(p.round, 10) || 1;
+  var answers = p.answers;
+  if (typeof answers === 'string') { try { answers = JSON.parse(answers); } catch (ae) { answers = null; } }
+
+  var existing = p.existingTasks;
+  if (typeof existing === 'string') { try { existing = JSON.parse(existing); } catch (ee) { existing = null; } }
+
+  if (!name && !context) throw new Error('A project name or some context is required');
+
+  // ---- Prompt -------------------------------------------------------------
+  var lines = [
+    'You are VERA, a personal chief of staff AI, planning a project for Ahmed.',
+    '',
+    'PROJECT: ' + (name || '(unnamed)'),
+    'WHAT IT IS FOR: ' + (context || '(nothing given)'),
+  ];
+  if (target) lines.push('TARGET DATE: ' + target);
+
+  if (answers && typeof answers === 'object') {
+    lines.push('', 'ANSWERS TO YOUR QUESTIONS:');
+    Object.keys(answers).forEach(function(q) {
+      lines.push('- ' + q + ' → ' + String(answers[q] || '(no answer)'));
+    });
+  }
+
+  if (Array.isArray(existing) && existing.length) {
+    lines.push('', 'TASKS ALREADY ON THIS PROJECT — do NOT repeat these, propose only what is missing:');
+    existing.forEach(function(t) {
+      lines.push('- ' + String((t && t.task) || t));
+    });
+  }
+
+  lines.push('', PROJECT_PLAN_GUIDANCE_, '');
+
+  if (round >= 2) {
+    // One question round only. An endpoint that can bounce questions back
+    // forever is worse than one that gives up once and says so.
+    lines.push('You have ALREADY asked your clarifying questions and they are answered above.',
+               'Do NOT ask anything further. Return the task list.');
+  } else {
+    lines.push('If the context above is too thin to plan from, respond INSTEAD with 2-4 short,',
+               'targeted clarifying questions about scope, timeline and constraints:',
+               '  {"mode":"questions","questions":["…","…"]}',
+               'Only ask when it would genuinely change the plan.');
+  }
+
+  lines.push('',
+    'Otherwise respond with the plan:',
+    '  {"mode":"tasks","assumptions":"one short sentence naming what you assumed",',
+    '   "tasks":[{"task":"…","priority":"High|Medium|Low","phase":"…"}]}',
+    '',
+    'Return ONLY the JSON object, no markdown fence, no commentary.');
+
+  // ---- Call ---------------------------------------------------------------
+  // Its own request rather than callClaudeJson_, whose max_tokens is 1024:
+  // thirty tasks carrying priority and phase do not reliably fit in that.
+  var parsed;
+  try {
+    var response = fetchTracked_('anthropic', CLAUDE_API_URL, {
+      method:  'post',
+      headers: {
+        'Content-Type':      'application/json',
+        'x-api-key':         getApiKey(),
+        'anthropic-version': '2023-06-01',
+      },
+      payload: JSON.stringify({
+        model:      CLAUDE_MODEL,
+        max_tokens: 3000,
+        messages:   [{ role: 'user', content: lines.join('\n') }],
+      }),
+      muteHttpExceptions: true,
+    });
+    if (response.getResponseCode() !== 200) {
+      Logger.log('webDraftProjectTasks_ HTTP ' + response.getResponseCode());
+      return { ok: false, error: 'VERA could not reach Claude (HTTP ' + response.getResponseCode() + ').' };
+    }
+    var raw = (((JSON.parse(response.getContentText()).content || [])[0]) || {}).text || '';
+    var cleaned = raw.trim()
+      .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+    var a = cleaned.indexOf('{'), b = cleaned.lastIndexOf('}');
+    if (a === -1 || b === -1) throw new Error('no JSON object in the reply');
+    parsed = JSON.parse(cleaned.substring(a, b + 1));
+  } catch (err) {
+    // Fail closed. A half-parsed list written to the sheet is worse than none.
+    Logger.log('webDraftProjectTasks_ parse error: ' + err.message);
+    return { ok: false, error: 'VERA sent back something unreadable. Try again.' };
+  }
+
+  // ---- Shape the answer ---------------------------------------------------
+  var tasks = Array.isArray(parsed.tasks) ? parsed.tasks.map(function(t) {
+    var pri = String((t && t.priority) || 'Medium').trim();
+    if (['High', 'Medium', 'Low'].indexOf(pri) === -1) pri = 'Medium';
+    return { task:  String((t && t.task) || '').trim(),
+             priority: pri,
+             phase: String((t && t.phase) || '').trim() };
+  }).filter(function(t) { return t.task; }) : [];
+
+  var questions = Array.isArray(parsed.questions)
+    ? parsed.questions.map(function(q) { return String(q || '').trim(); }).filter(Boolean)
+    : [];
+
+  if (tasks.length) {
+    return { ok: true, mode: 'tasks', tasks: tasks,
+             assumptions: String(parsed.assumptions || '').trim() };
+  }
+  if (questions.length && round < 2) {
+    return { ok: true, mode: 'questions', questions: questions.slice(0, 4) };
+  }
+  // Round 2 with no tasks: say so once rather than asking again.
+  return { ok: false,
+           error: 'VERA could not draft a task list from that. Try adding a little more detail.' };
+}
+
+/** Sets the free-text context on EVERY row of one project. */
+function webSetProjectContext_(e) {
+  var p         = (e && e.parameter) ? e.parameter : (e || {});
+  var projectId = String(p.projectId || '').trim();
+  var context   = String(p.context   || '').trim();
+  if (!projectId) throw new Error('projectId is required');
+
+  var res = setProjectFields_(projectId, { CONTEXT: context });
+  res.context = context;
+  return res;
+}
+
+/**
+ * Appends already-drafted tasks to an existing project.
+ *
+ * Never replaces what is there. Sequence continues from the project's current
+ * max, and the project-level fields are inherited exactly as webAddProjectTask_
+ * inherits them, so an appended task cannot blank the project's owner, target
+ * or context.
+ */
+function webAppendProjectTasks_(e) {
+  var p         = (e && e.parameter) ? e.parameter : (e || {});
+  var projectId = String(p.projectId || '').trim();
+  var tasks     = p.tasks;
+  if (!projectId) throw new Error('projectId is required');
+  if (typeof tasks === 'string') { try { tasks = JSON.parse(tasks); } catch (pe) { tasks = null; } }
+  if (!Array.isArray(tasks) || !tasks.length) throw new Error('tasks must be a non-empty array');
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.PROJECTS);
+  if (!sheet) throw new Error('Projects tab not found');
+  ensureProjectsSchema_(sheet);
+
+  var name = '', owner = '', target = '', context = '', maxSeq = 0, found = false;
+  if (sheet.getLastRow() >= 2) {
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PROJECT_HEADERS.length).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][PROJ_COL.ID]).trim() !== projectId) continue;
+      found = true;
+      if (!name)    name    = data[i][PROJ_COL.NAME];
+      if (!owner   && String(data[i][PROJ_COL.OWNER]       || '').trim()) owner   = String(data[i][PROJ_COL.OWNER]).trim();
+      if (!target  && String(data[i][PROJ_COL.TARGET_DATE] || '').trim()) target  = data[i][PROJ_COL.TARGET_DATE];
+      if (!context && String(data[i][PROJ_COL.CONTEXT]     || '').trim()) context = data[i][PROJ_COL.CONTEXT];
+      var s = parseInt(data[i][PROJ_COL.SEQUENCE], 10);
+      if (!isNaN(s) && s > maxSeq) maxSeq = s;
+    }
+  }
+  if (!found) throw new Error('Project not found: ' + projectId);
+
+  var rows = tasks.map(function(t, idx) {
+    var text = String((t && t.task) || '').trim();
+    if (!text) return null;
+    var pri = String((t && t.priority) || 'Medium').trim();
+    if (['High', 'Medium', 'Low'].indexOf(pri) === -1) pri = 'Medium';
+    // Sequence only if the project already uses it, for the same reason
+    // webAddProjectTask_ holds back: a lone sequenced row jumps to the top.
+    var seq = maxSeq > 0 ? maxSeq + idx + 1 : '';
+    return [projectId, name, text, 'Pending', pri, '', String((t && t.notes) || '').trim(),
+            normalizeProjectOwner_(owner), '', target, String((t && t.phase) || '').trim(), seq, context];
+  }).filter(Boolean);
+
+  if (!rows.length) throw new Error('No usable tasks in the list');
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, PROJECT_HEADERS.length).setValues(rows);
+  return { ok: true, projectId: projectId, added: rows.length };
 }
 
 /**

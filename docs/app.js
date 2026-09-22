@@ -598,24 +598,185 @@ function groupTasksByPhase(tasks) {
   });
   return groups;
 }
+
+// A drafted task list, editable before anything touches the sheet. Shared by
+// the create flow and by "suggest more tasks" on an existing project.
+function DraftReviewList({
+  tasks,
+  assumptions,
+  onChange,
+  busy
+}) {
+  function edit(i, field, value) {
+    const next = tasks.slice();
+    next[i] = Object.assign({}, next[i], {
+      [field]: value
+    });
+    onChange(next);
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    "data-draft-review": true
+  }, assumptions && /*#__PURE__*/React.createElement("div", {
+    "data-draft-assumptions": true,
+    style: {
+      fontSize: 12,
+      color: '#c9a84c',
+      background: 'rgba(201,168,76,0.08)',
+      border: '1px solid rgba(201,168,76,0.3)',
+      borderRadius: 8,
+      padding: '8px 12px',
+      marginBottom: 12
+    }
+  }, "VERA assumed: ", assumptions), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: '#6b7fa8',
+      marginBottom: 8
+    }
+  }, tasks.length, " task", tasks.length === 1 ? '' : 's', " — edit or remove anything before saving. Nothing is written yet."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6,
+      maxHeight: 320,
+      overflowY: 'auto'
+    }
+  }, tasks.map((t, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    "data-draft-row": i,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '7px 10px',
+      borderRadius: 8,
+      background: '#07122b',
+      border: '1px solid #1e3060'
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: t.task,
+    disabled: busy,
+    onChange: e => edit(i, 'task', e.target.value),
+    style: {
+      flex: 1,
+      minWidth: 0,
+      background: 'none',
+      border: 'none',
+      color: '#dde1f0',
+      fontSize: 13,
+      outline: 'none'
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    value: t.phase || '',
+    disabled: busy,
+    onChange: e => edit(i, 'phase', e.target.value),
+    placeholder: "phase",
+    "data-draft-phase": i,
+    style: {
+      width: 88,
+      background: '#0d1b3e',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      color: '#8a9abf',
+      fontSize: 11,
+      padding: '3px 7px'
+    }
+  }), /*#__PURE__*/React.createElement("select", {
+    value: t.priority || 'Medium',
+    disabled: busy,
+    onChange: e => edit(i, 'priority', e.target.value),
+    style: {
+      background: '#0d1b3e',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      color: PRIORITY_COLORS[t.priority] || '#8a9abf',
+      fontSize: 11,
+      padding: '3px 5px'
+    }
+  }, /*#__PURE__*/React.createElement("option", null, "High"), /*#__PURE__*/React.createElement("option", null, "Medium"), /*#__PURE__*/React.createElement("option", null, "Low")), /*#__PURE__*/React.createElement("button", {
+    className: "btn-edit",
+    "data-draft-delete": i,
+    disabled: busy,
+    onClick: () => onChange(tasks.filter((_, j) => j !== i)),
+    title: "Remove from the draft",
+    style: {
+      fontSize: 12,
+      opacity: 0.7
+    }
+  }, "🗑️")))));
+}
 function NewProjectModal({
   onSave,
   onClose,
+  onDraft,
   busy
 }) {
+  const [step, setStep] = React.useState('describe'); // describe | questions | review
+  const [manual, setManual] = React.useState(false);
   const [name, setName] = React.useState('');
   const [tasks, setTasks] = React.useState('');
   const [target, setTarget] = React.useState('');
   const [owner, setOwner] = React.useState('Shared');
-  function handleSave() {
+  const [context, setContext] = React.useState('');
+  const [questions, setQuestions] = React.useState([]);
+  const [answers, setAnswers] = React.useState({});
+  const [draft, setDraft] = React.useState([]);
+  const [assumptions, setAssumptions] = React.useState('');
+  const [drafting, setDrafting] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  async function runDraft(round) {
+    if (!onDraft) return;
+    setDrafting(true);
+    setErr('');
+    try {
+      const r = await onDraft({
+        name: name.trim(),
+        context: context.trim(),
+        targetDate: target,
+        owner,
+        round,
+        answers: round >= 2 ? answers : undefined
+      });
+      if (!r || r.ok === false) {
+        setErr(r && r.error || 'VERA could not draft that.');
+      } else if (r.mode === 'questions') {
+        setQuestions(r.questions || []);
+        setAnswers({});
+        setStep('questions');
+      } else {
+        setDraft(r.tasks || []);
+        setAssumptions(r.assumptions || '');
+        setStep('review');
+      }
+    } catch (e) {
+      setErr(e.message);
+    }
+    setDrafting(false);
+  }
+
+  // The server contract is unchanged: one "Task|Priority|Phase" line per task.
+  function saveDrafted() {
+    const lines = draft.filter(t => t.task && t.task.trim()).map(t => [t.task.trim(), t.priority || 'Medium', t.phase || ''].join('|')).join('\n');
+    if (!lines) return;
+    onSave({
+      name: name.trim(),
+      tasks: lines,
+      targetDate: target,
+      owner,
+      context: context.trim()
+    });
+  }
+  function saveManual() {
     if (!name.trim() || !tasks.trim()) return;
     onSave({
       name: name.trim(),
       tasks: tasks.trim(),
       targetDate: target,
-      owner
+      owner,
+      context: context.trim()
     });
   }
+  const canDraft = !!(name.trim() || context.trim());
   return /*#__PURE__*/React.createElement("div", {
     style: {
       position: 'fixed',
@@ -632,8 +793,10 @@ function NewProjectModal({
       border: '1px solid #1e3060',
       borderRadius: 12,
       padding: 28,
-      width: 440,
-      maxWidth: '95vw'
+      width: 560,
+      maxWidth: '95vw',
+      maxHeight: '92vh',
+      overflowY: 'auto'
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -642,7 +805,7 @@ function NewProjectModal({
       color: '#dde1f0',
       marginBottom: 20
     }
-  }, "New Project"), /*#__PURE__*/React.createElement("label", {
+  }, step === 'review' ? 'Review the plan' : step === 'questions' ? 'A couple of questions' : 'New Project'), step === 'describe' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
     style: {
       fontSize: 12,
       color: '#8a9abf',
@@ -734,6 +897,64 @@ function NewProjectModal({
       display: 'block',
       marginBottom: 6
     }
+  }, "What is it for? ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: '#6b7fa8'
+    }
+  }, "— the more you say, the better the plan")), /*#__PURE__*/React.createElement("textarea", {
+    "data-project-context": true,
+    value: context,
+    onChange: e => setContext(e.target.value),
+    rows: 4,
+    placeholder: "e.g. A three-week road trip across Europe with Victoria in September — driving, no flights between cities, ending in Rome.",
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '8px 12px',
+      color: '#dde1f0',
+      fontSize: 13,
+      boxSizing: 'border-box',
+      resize: 'vertical',
+      fontFamily: 'inherit',
+      marginBottom: 16
+    }
+  }), err && /*#__PURE__*/React.createElement("div", {
+    "data-draft-error": true,
+    style: {
+      fontSize: 12,
+      color: '#e53935',
+      marginBottom: 12
+    }
+  }, err), !manual && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'flex-end',
+      alignItems: 'center'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: onClose,
+    disabled: busy || drafting
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    "data-write-myself": true,
+    onClick: () => setManual(true),
+    disabled: busy || drafting
+  }, "I'll write them myself"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    "data-draft-with-vera": true,
+    onClick: () => runDraft(1),
+    disabled: busy || drafting || !canDraft
+  }, drafting ? 'VERA is planning… (15–30s)' : '✨ Draft tasks with VERA')), manual && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: '#8a9abf',
+      display: 'block',
+      marginBottom: 6
+    }
   }, "Tasks ", /*#__PURE__*/React.createElement("span", {
     style: {
       color: '#6b7fa8'
@@ -768,9 +989,227 @@ function NewProjectModal({
     disabled: busy
   }, "Cancel"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
-    onClick: handleSave,
+    onClick: saveManual,
     disabled: busy || !name.trim() || !tasks.trim()
-  }, "Create Project"))));
+  }, "Create Project")))), step === 'questions' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: '#8a9abf',
+      marginBottom: 16
+    }
+  }, "A little more and VERA can plan this properly."), questions.map((q, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      fontSize: 12,
+      color: '#dde1f0',
+      display: 'block',
+      marginBottom: 6
+    }
+  }, q), /*#__PURE__*/React.createElement("input", {
+    "data-draft-answer": i,
+    value: answers[q] || '',
+    autoFocus: i === 0,
+    onChange: e => setAnswers(Object.assign({}, answers, {
+      [q]: e.target.value
+    })),
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '7px 11px',
+      color: '#dde1f0',
+      fontSize: 13,
+      boxSizing: 'border-box'
+    }
+  }))), err && /*#__PURE__*/React.createElement("div", {
+    "data-draft-error": true,
+    style: {
+      fontSize: 12,
+      color: '#e53935',
+      marginBottom: 12
+    }
+  }, err), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'flex-end',
+      marginTop: 20
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => setStep('describe'),
+    disabled: busy || drafting
+  }, "Back"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    "data-draft-generate": true,
+    onClick: () => runDraft(2),
+    disabled: busy || drafting
+  }, drafting ? 'VERA is planning…' : 'Generate the plan'))), step === 'review' && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(DraftReviewList, {
+    tasks: draft,
+    assumptions: assumptions,
+    onChange: setDraft,
+    busy: busy || drafting
+  }), err && /*#__PURE__*/React.createElement("div", {
+    "data-draft-error": true,
+    style: {
+      fontSize: 12,
+      color: '#e53935',
+      marginTop: 12
+    }
+  }, err), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'flex-end',
+      marginTop: 20,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => setStep('describe'),
+    disabled: busy || drafting
+  }, "Edit the brief"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    "data-draft-regenerate": true,
+    onClick: () => runDraft(2),
+    disabled: busy || drafting
+  }, drafting ? 'VERA is planning…' : 'Regenerate'), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    "data-draft-create": true,
+    onClick: saveDrafted,
+    disabled: busy || drafting || !draft.length
+  }, "Create project (", draft.length, ")")))));
+}
+
+// "Suggest more tasks" on a project that already exists. Same drafting call,
+// with the existing tasks passed so VERA proposes only what is missing, and it
+// APPENDS — it never replaces what is already there.
+function SuggestTasksModal({
+  project,
+  onDraft,
+  onAppend,
+  onClose,
+  busy
+}) {
+  const [draft, setDraft] = React.useState([]);
+  const [assumptions, setAssumptions] = React.useState('');
+  const [drafting, setDrafting] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const [started, setStarted] = React.useState(false);
+  async function run() {
+    setDrafting(true);
+    setErr('');
+    setStarted(true);
+    try {
+      const r = await onDraft({
+        name: project.projectName,
+        context: project.context || '',
+        targetDate: project.targetDate || '',
+        owner: project.owner || 'Shared',
+        round: 2,
+        existingTasks: project.tasks.map(t => ({
+          task: t.task
+        }))
+      });
+      if (!r || r.ok === false) setErr(r && r.error || 'VERA could not suggest anything.');else {
+        setDraft(r.tasks || []);
+        setAssumptions(r.assumptions || '');
+      }
+    } catch (e) {
+      setErr(e.message);
+    }
+    setDrafting(false);
+  }
+  React.useEffect(() => {
+    run();
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#0d1b3e',
+      border: '1px solid #1e3060',
+      borderRadius: 12,
+      padding: 28,
+      width: 560,
+      maxWidth: '95vw',
+      maxHeight: '92vh',
+      overflowY: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 16,
+      fontWeight: 700,
+      color: '#dde1f0',
+      marginBottom: 6
+    }
+  }, "More tasks for ", project.projectName), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: '#6b7fa8',
+      marginBottom: 18
+    }
+  }, project.context ? 'Based on this project’s context and what is already on it.' : 'This project has no context yet — add one for a better suggestion.'), drafting && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#8a9abf',
+      fontSize: 13,
+      padding: '30px 0',
+      textAlign: 'center'
+    }
+  }, "VERA is thinking… (15–30s)"), !drafting && started && draft.length > 0 && /*#__PURE__*/React.createElement(DraftReviewList, {
+    tasks: draft,
+    assumptions: assumptions,
+    onChange: setDraft,
+    busy: busy
+  }), !drafting && started && !draft.length && !err && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#8a9abf',
+      fontSize: 13,
+      padding: '20px 0',
+      textAlign: 'center'
+    }
+  }, "Nothing to add — VERA thinks this is covered."), err && /*#__PURE__*/React.createElement("div", {
+    "data-draft-error": true,
+    style: {
+      fontSize: 12,
+      color: '#e53935',
+      marginTop: 12
+    }
+  }, err), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 10,
+      justifyContent: 'flex-end',
+      marginTop: 20
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: onClose,
+    disabled: busy || drafting
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    "data-suggest-again": true,
+    onClick: run,
+    disabled: busy || drafting
+  }, "Try again"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    "data-suggest-append": true,
+    disabled: busy || drafting || !draft.length,
+    onClick: () => onAppend(project.projectId, draft.filter(t => t.task && t.task.trim()))
+  }, "Add ", draft.length, " task", draft.length === 1 ? '' : 's'))));
 }
 
 function ProjectsTab({
@@ -783,7 +1222,9 @@ function ProjectsTab({
   onCloseProject,
   onSetOwner,
   onSetTarget,
+  onSetContext,
   onReorder,
+  onSuggestTasks,
   busy
 }) {
   const [activeProject, setActiveProject] = React.useState(null);
@@ -792,6 +1233,7 @@ function ProjectsTab({
   const [ownerFilter, setOwnerFilter] = React.useState('All');
   const [dragRow, setDragRow] = React.useState(null);
   const [overRow, setOverRow] = React.useState(null);
+  const [editingContext, setEditingContext] = React.useState(null);
   const visible = projects.filter(p => ownerFilter === 'All' || (p.owner || 'Shared') === ownerFilter);
   const activeProjects = visible.filter(p => p.tasks.some(t => t.status !== 'Done'));
   const closedProjects = visible.filter(p => p.tasks.length > 0 && p.tasks.every(t => t.status === 'Done'));
@@ -1183,7 +1625,79 @@ function ProjectsTab({
       color: '#dde1f0',
       fontSize: 11
     }
-  }))), current.nextTask ? /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 14
+    }
+  }, editingContext === null ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    "data-project-context": true,
+    style: {
+      flex: 1,
+      fontSize: 12,
+      color: current.context ? '#8a9abf' : '#4d6080',
+      fontStyle: current.context ? 'normal' : 'italic',
+      lineHeight: 1.5
+    }
+  }, current.context || 'No context yet — add one so VERA can plan and reason about this project.'), /*#__PURE__*/React.createElement("button", {
+    className: "btn-edit",
+    "data-edit-context": true,
+    disabled: busy,
+    onClick: () => setEditingContext(current.context || ''),
+    title: "Edit context",
+    style: {
+      fontSize: 12,
+      flexShrink: 0
+    }
+  }, "✏️")) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("textarea", {
+    "data-context-input": true,
+    value: editingContext,
+    rows: 3,
+    autoFocus: true,
+    onChange: e => setEditingContext(e.target.value),
+    style: {
+      width: '100%',
+      background: '#07122b',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '8px 12px',
+      color: '#dde1f0',
+      fontSize: 13,
+      boxSizing: 'border-box',
+      resize: 'vertical',
+      fontFamily: 'inherit'
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'flex-end',
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    style: {
+      fontSize: 11
+    },
+    disabled: busy,
+    onClick: () => setEditingContext(null)
+  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+    className: "btn btn-primary",
+    "data-save-context": true,
+    style: {
+      fontSize: 11
+    },
+    disabled: busy,
+    onClick: () => {
+      if (onSetContext) onSetContext(current.projectId, editingContext);
+      setEditingContext(null);
+    }
+  }, "Save")))), current.nextTask ? /*#__PURE__*/React.createElement("div", {
     "data-next-up": current.nextTask.rowNum,
     style: {
       display: 'flex',
@@ -1278,6 +1792,14 @@ function ProjectsTab({
     disabled: busy,
     onClick: () => onCloseProject && onCloseProject(current)
   }, "Close project"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    "data-suggest-tasks": true,
+    style: {
+      fontSize: 12
+    },
+    disabled: busy,
+    onClick: () => onSuggestTasks && onSuggestTasks(current)
+  }, "✨ Suggest more tasks"), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-primary",
     style: {
       fontSize: 12
@@ -2423,7 +2945,7 @@ const[recommendations,setRecommendations]=useState({});// { [tripKey]: 'loading'
 const CHAT_STORAGE_KEY='vera_chat_messages';const[chatMessages,setChatMessages]=useState(function(){try{const saved=localStorage.getItem(CHAT_STORAGE_KEY);if(saved){const parsed=JSON.parse(saved);if(parsed.length)return parsed;}}catch(e){}return[{role:'vera',text:VERA_CHAT_WELCOME}];});useEffect(function(){try{// Strip image previews (base64) — large and not needed for persistence. Cap at 100 messages.
 const toSave=chatMessages.slice(-100).map(function(m){return{role:m.role,text:m.text};});localStorage.setItem(CHAT_STORAGE_KEY,JSON.stringify(toSave));}catch(e){}},[chatMessages]);const[chatInput,setChatInput]=useState('');const[addItemModal,setAddItemModal]=useState(false);const[addItemInitialStore,setAddItemInitialStore]=useState('');const[toast,setToast]=useState(null);const[completingIds,setCompletingIds]=useState({});const[googleTasks,setGoogleTasks]=useState([]);const[googleTasksError,setGoogleTasksError]=useState(null);const[taskModal,setTaskModal]=useState(null);// null | { mode:'add' } | { mode:'edit', task }
 const[projectTaskModal,setProjectTaskModal]=useState(null);// null | { mode:'add', project } | { mode:'edit', task }
-const[newProjectModal,setNewProjectModal]=useState(false);const[goalModal,setGoalModal]=useState(null);// null | { mode:'add', status? } | { mode:'edit', goal }
+const[newProjectModal,setNewProjectModal]=useState(false);const[suggestModal,setSuggestModal]=useState(null);const[goalModal,setGoalModal]=useState(null);// null | { mode:'add', status? } | { mode:'edit', goal }
 const[interestModal,setInterestModal]=useState(false);const[notifSettingsOpen,setNotifSettingsOpen]=useState(false);// true = show AddInterestModal
 const[dragGoalId,setDragGoalId]=useState(null);const[dragOverCol,setDragOverCol]=useState(null);const toastTimer=useRef(null);// Accumulates confirmed paid states so loadBills never reverts a previously-toggled bill,
 // even when SpreadsheetApp.flush() hasn't been deployed and the sheet read is stale.
@@ -2484,7 +3006,7 @@ setShopping(prev=>prev.map(store=>store.tabId!==tabId?store:{...store,items:stor
 setShopping(prev=>prev.map(store=>store.tabId!==tabId?store:{...store,items:store.items.filter(item=>item.index!==itemIndex)}));try{await apiAction(apiUrl,apiToken,'shopping_delete',{tabId,index:itemIndex});}catch(err){setError('Could not delete item: '+err.message);await loadShopping(apiUrl,apiToken);// revert
 }}async function handleUpdateShoppingItem(tabId,itemIndex,newText){// Optimistic update
 setShopping(prev=>prev.map(store=>store.tabId!==tabId?store:{...store,items:store.items.map(item=>item.index!==itemIndex?item:{...item,text:newText})}));try{await apiAction(apiUrl,apiToken,'shopping_update',{tabId,index:itemIndex,text:newText});}catch(err){setError('Could not update item: '+err.message);await loadShopping(apiUrl,apiToken);// revert
-}}async function handleSaveTask({id,task,dueDate,notes,recurring}){setBusy(true);try{if(id){await apiAction(apiUrl,apiToken,'update_task',{id,task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast('✓ Task updated');}else{await apiAction(apiUrl,apiToken,'add_task',{task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast(recurring?`✓ Recurring task added (${recurring})`:'✓ Task added');}setTaskModal(null);await loadAll(apiUrl,apiToken,filterActive);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleSetProjectOwner(projectId,owner){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_owner',projectId,owner});showToast('✓ Owner set to '+owner);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set owner: '+err.message);}setBusy(false);}async function handleCompleteProjectTask(rowNum){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'complete_project_task',row:rowNum});showToast('✓ Task marked done');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not complete task: '+err.message);}setBusy(false);}async function handleSaveProjectTask({task,priority,dueDate,notes,phase,status}){setBusy(true);try{if(projectTaskModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_project_task',row:projectTaskModal.task.rowNum,task,priority,dueDate:dueDate||'',notes:notes||'',phase:phase||'',status:status||'Pending'});showToast('✓ Task updated');}else{await apiGet(apiUrl,apiToken,{action:'add_project_task',projectId:projectTaskModal.project.projectId,task,priority,dueDate:dueDate||'',notes:notes||'',phase:phase||''});showToast('✓ Task added');}setProjectTaskModal(null);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleDeleteProjectTask(rowNum){if(!window.confirm('Delete this task? This cannot be undone.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'delete_project_task',row:rowNum});showToast('✓ Task deleted');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not delete task: '+err.message);}setBusy(false);}async function handleSetProjectTarget(projectId,targetDate){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_target',projectId,targetDate});showToast(targetDate?'✓ Target set to '+targetDate:'✓ Target cleared');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set target date: '+err.message);}setBusy(false);}async function handleReorderProjectTasks(projectId,rowOrder){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'reorder_project_tasks',projectId,rowOrder:rowOrder.join(',')});loadProjects(apiUrl,apiToken);}catch(err){setError('Could not reorder tasks: '+err.message);}setBusy(false);}async function handleCloseProject(project){if(!window.confirm('Close "'+project.projectName+'"? Every remaining task is marked done.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'close_project',projectId:project.projectId});showToast('✓ Project closed');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not close project: '+err.message);}setBusy(false);}async function handleCreateProject({name,tasks,targetDate,owner}){setBusy(true);try{const r=await apiGet(apiUrl,apiToken,{action:'create_project',name,tasks,owner:owner||'Shared'});if(targetDate&&r&&r.projectId){await apiGet(apiUrl,apiToken,{action:'set_project_target',projectId:r.projectId,targetDate});}showToast('✓ Project created');setNewProjectModal(false);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not create project: '+err.message);}setBusy(false);}async function handleSaveGoal({title,description,status,category,year,progress,notes}){if(!title.trim())return;setBusy(true);try{if(goalModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_goal',id:goalModal.goal.id,title,description,status,category,year,progress,notes});showToast('✓ Goal updated');}else{await apiGet(apiUrl,apiToken,{action:'add_goal',title,description,status,category,year,notes});showToast('✓ Goal added');}setGoalModal(null);loadGoals(apiUrl,apiToken);}catch(err){setError('Could not save goal: '+err.message);}setBusy(false);}async function handleSaveInterest({person,interest,category,notes}){if(!interest.trim())return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'interests_add',person,interest,category,notes});showToast('💛 Interest logged');setInterestModal(false);loadInterests(apiUrl,apiToken);}catch(err){setError('Could not log interest: '+err.message);}setBusy(false);}async function handleDeleteInterest(id){if(!window.confirm('Archive this interest?'))return;// Optimistic remove
+}}async function handleSaveTask({id,task,dueDate,notes,recurring}){setBusy(true);try{if(id){await apiAction(apiUrl,apiToken,'update_task',{id,task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast('✓ Task updated');}else{await apiAction(apiUrl,apiToken,'add_task',{task,dueDate:dueDate||'',notes:notes||'',recurring:recurring||''});showToast(recurring?`✓ Recurring task added (${recurring})`:'✓ Task added');}setTaskModal(null);await loadAll(apiUrl,apiToken,filterActive);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleSetProjectOwner(projectId,owner){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_owner',projectId,owner});showToast('✓ Owner set to '+owner);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set owner: '+err.message);}setBusy(false);}async function handleCompleteProjectTask(rowNum){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'complete_project_task',row:rowNum});showToast('✓ Task marked done');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not complete task: '+err.message);}setBusy(false);}async function handleSaveProjectTask({task,priority,dueDate,notes,phase,status}){setBusy(true);try{if(projectTaskModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_project_task',row:projectTaskModal.task.rowNum,task,priority,dueDate:dueDate||'',notes:notes||'',phase:phase||'',status:status||'Pending'});showToast('✓ Task updated');}else{await apiGet(apiUrl,apiToken,{action:'add_project_task',projectId:projectTaskModal.project.projectId,task,priority,dueDate:dueDate||'',notes:notes||'',phase:phase||''});showToast('✓ Task added');}setProjectTaskModal(null);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not save task: '+err.message);}setBusy(false);}async function handleDeleteProjectTask(rowNum){if(!window.confirm('Delete this task? This cannot be undone.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'delete_project_task',row:rowNum});showToast('✓ Task deleted');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not delete task: '+err.message);}setBusy(false);}async function handleSetProjectTarget(projectId,targetDate){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'set_project_target',projectId,targetDate});showToast(targetDate?'✓ Target set to '+targetDate:'✓ Target cleared');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not set target date: '+err.message);}setBusy(false);}async function handleReorderProjectTasks(projectId,rowOrder){setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'reorder_project_tasks',projectId,rowOrder:rowOrder.join(',')});loadProjects(apiUrl,apiToken);}catch(err){setError('Could not reorder tasks: '+err.message);}setBusy(false);}async function handleCloseProject(project){if(!window.confirm('Close "'+project.projectName+'"? Every remaining task is marked done.'))return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'close_project',projectId:project.projectId});showToast('✓ Project closed');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not close project: '+err.message);}setBusy(false);}async function handleDraftProjectTasks(payload){return await apiPost(apiUrl,apiToken,Object.assign({action:'draft_project_tasks'},payload));}async function handleSetProjectContext(projectId,context){setBusy(true);try{await apiPost(apiUrl,apiToken,{action:'set_project_context',projectId,context});showToast('✓ Context saved');loadProjects(apiUrl,apiToken);}catch(err){setError('Could not save context: '+err.message);}setBusy(false);}async function handleAppendProjectTasks(projectId,tasks){setBusy(true);try{const r=await apiPost(apiUrl,apiToken,{action:'append_project_tasks',projectId,tasks});showToast('✓ Added '+(r&&r.added||tasks.length)+' tasks');setSuggestModal(null);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not add tasks: '+err.message);}setBusy(false);}async function handleCreateProject({name,tasks,targetDate,owner,context}){setBusy(true);try{await apiPost(apiUrl,apiToken,{action:'create_project',name,tasks,owner:owner||'Shared',context:context||'',targetDate:targetDate||''});showToast('✓ Project created');setNewProjectModal(false);loadProjects(apiUrl,apiToken);}catch(err){setError('Could not create project: '+err.message);}setBusy(false);}async function handleSaveGoal({title,description,status,category,year,progress,notes}){if(!title.trim())return;setBusy(true);try{if(goalModal.mode==='edit'){await apiGet(apiUrl,apiToken,{action:'update_goal',id:goalModal.goal.id,title,description,status,category,year,progress,notes});showToast('✓ Goal updated');}else{await apiGet(apiUrl,apiToken,{action:'add_goal',title,description,status,category,year,notes});showToast('✓ Goal added');}setGoalModal(null);loadGoals(apiUrl,apiToken);}catch(err){setError('Could not save goal: '+err.message);}setBusy(false);}async function handleSaveInterest({person,interest,category,notes}){if(!interest.trim())return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'interests_add',person,interest,category,notes});showToast('💛 Interest logged');setInterestModal(false);loadInterests(apiUrl,apiToken);}catch(err){setError('Could not log interest: '+err.message);}setBusy(false);}async function handleDeleteInterest(id){if(!window.confirm('Archive this interest?'))return;// Optimistic remove
 setInterests(prev=>prev.filter(i=>i.id!==id));try{await apiGet(apiUrl,apiToken,{action:'interests_delete',id});showToast('✓ Interest archived');}catch(err){setError('Could not archive interest: '+err.message);loadInterests(apiUrl,apiToken);// revert
 }}async function handleAddIdea({idea,category,tags,notes}){if(!idea.trim())return;setBusy(true);try{await apiGet(apiUrl,apiToken,{action:'add_idea',idea,category,tags,notes});showToast('💡 Idea parked');loadIdeas(apiUrl,apiToken);}catch(err){setError('Could not save idea: '+err.message);}setBusy(false);}async function handlePromoteIdea(id,ideaText){if(!window.confirm(`Promote "${ideaText}" to a task?`))return;setBusy(true);// Optimistic update
 setIdeas(prev=>prev.map(i=>i.id===id?{...i,status:'Promoted'}:i));try{const res=await apiGet(apiUrl,apiToken,{action:'promote_idea',id});showToast('✅ Promoted to task: '+res.taskId);loadIdeas(apiUrl,apiToken);}catch(err){setError('Could not promote idea: '+err.message);loadIdeas(apiUrl,apiToken);// revert
@@ -2534,5 +3056,5 @@ function handleConnect(url,token){setApiUrl(url);setApiToken(token);setShowSetti
 const isConfigured=apiUrl&&apiToken;return/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"header"},/*#__PURE__*/React.createElement("div",{className:"logo"},/*#__PURE__*/React.createElement("span",{className:"logo-name"},"VERA"),/*#__PURE__*/React.createElement("span",{className:"logo-sub"},"Chief of Staff")),/*#__PURE__*/React.createElement("div",{className:"header-actions"},lastUpdated&&/*#__PURE__*/React.createElement("span",{className:"last-updated"},"Updated ",timeAgo(lastUpdated)),isConfigured&&/*#__PURE__*/React.createElement("button",{className:"btn btn-refresh",style:{fontSize:12,padding:'5px 14px'},disabled:loading,onClick:()=>{// A plain reload() can still serve a stale cached bundle on mobile
 // browsers (Safari especially). Force a real network fetch by making
 // this a "new" URL via a cache-busting query param.
-const u=new URL(window.location.href);u.searchParams.set('_r',Date.now());window.location.href=u.toString();}},loading?'⟳ Loading…':'⟳ Refresh'),isConfigured&&/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setNotifSettingsOpen(true),title:"Notification settings",style:{marginRight:4}},"🔔"),/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setShowSettings(true),title:"Settings"},"⚙"))),taskModal&&/*#__PURE__*/React.createElement(TaskFormModal,{task:taskModal.task||null,onSave:handleSaveTask,onClose:()=>setTaskModal(null),busy:busy}),newProjectModal&&/*#__PURE__*/React.createElement(NewProjectModal,{onSave:handleCreateProject,onClose:()=>setNewProjectModal(false),busy:busy}),projectTaskModal&&/*#__PURE__*/React.createElement(ProjectTaskModal,{mode:projectTaskModal.mode,task:projectTaskModal.task||null,onSave:handleSaveProjectTask,onClose:()=>setProjectTaskModal(null),busy:busy}),addItemModal&&shopping.length>0&&/*#__PURE__*/React.createElement(AddItemModal,{stores:shopping,onSave:handleAddShoppingItem,onClose:()=>setAddItemModal(false),busy:busy,initialStore:addItemInitialStore}),showSettings&&/*#__PURE__*/React.createElement(SettingsModal,{initial:{url:apiUrl,token:apiToken,mapsKey:stored('vera_maps_key')},onSave:handleConnect,onClose:isConfigured?()=>setShowSettings(false):null}),!isConfigured&&!showSettings&&/*#__PURE__*/React.createElement("div",{className:"main"},/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:40,marginBottom:16}},"🔌"),/*#__PURE__*/React.createElement("div",{style:{fontSize:16,color:'#dde1f0',marginBottom:8}},"Not connected"),/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}},"Click the ⚙ icon to add your API URL and token"))),isConfigured&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement(StatusBar,{status:status,loading:loading}),/*#__PURE__*/React.createElement("div",{className:"tabs"},['home','chat','flags','tasks','projects','shopping','home_front','people','pto','travel','finances','health','career','growth','explore'].map(tab=>/*#__PURE__*/React.createElement("button",{key:tab,className:`tab-btn ${activeTab===tab?'active':''}`,onClick:()=>{setActiveTab(tab);if(tab==='home')loadMailCounter();if(tab==='tasks')loadGoogleTasks(apiUrl,apiToken);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='explore'){loadInterests(apiUrl,apiToken);loadIdeas(apiUrl,apiToken);loadResources(apiUrl,apiToken);loadWishList(apiUrl,apiToken);loadExperiments(apiUrl,apiToken);}if(tab==='growth'){loadGoals(apiUrl,apiToken);loadGrowth(apiUrl,apiToken);}if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='home_front'){loadHomeFront(apiUrl,apiToken);loadPurchaseHistory(apiUrl,apiToken);loadChores(apiUrl,apiToken);loadChoresForOthers(apiUrl,apiToken);loadVehicles(apiUrl,apiToken);loadCoupons(apiUrl,apiToken);}if(tab==='people'){loadGiftData(apiUrl,apiToken);loadDatesData(apiUrl,apiToken);loadWishListsData(apiUrl,apiToken);}if(tab==='career')loadCareer(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel'){loadPTO(apiUrl,apiToken);loadProfiles(apiUrl,apiToken);}// upcomingTravel lives in PTO stats
-if(tab==='finances'){loadBudget(apiUrl,apiToken);loadBills(apiUrl,apiToken);loadCalendarBills(apiUrl,apiToken);loadTxList(apiUrl,apiToken);loadFinancialGoals();}}},tab==='home'?`🏠 Home`:'',tab==='chat'?`💬 Chat`:'',tab==='flags'?`🚩 Flags${status?` (${status.activeFlags})`:''}`:'',tab==='tasks'?`✅ Tasks${tasks.length?` (${tasks.length})`:''}`:'',tab==='projects'?`🏗️ Projects${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length?` (${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length})`:''}`:'',tab==='shopping'?`🛒 Shopping`:'',tab==='home_front'?`🏡 Home Front`:'',tab==='people'?`👥 People`:'',tab==='pto'?`🌴 PTO Planner`:'',tab==='travel'?`✈️ Travel`:'',tab==='finances'?`💰 Finances`:'',tab==='explore'?`🔭 Explore`:'',tab==='health'?`🏥 Health`:'',tab==='growth'?`🌱 Growth`:'',tab==='career'?`💼 Career`:''))),/*#__PURE__*/React.createElement("div",{className:"main"},error&&/*#__PURE__*/React.createElement("div",{className:"error-banner"},"⚠️ ",error),activeTab==='flags'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:`filter-toggle ${filterActive?'on':''}`,onClick:()=>setFilterActive(v=>!v)},filterActive?'● Active only':'○ All flags'),/*#__PURE__*/React.createElement("span",{className:"count-badge"},flags.length," shown")),loading&&flags.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading flags…"):flags.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",null,"No ",filterActive?'active ':'',"flags — you're all clear!")):flags.map(flag=>/*#__PURE__*/React.createElement(FlagCard,{key:flag.id,flag:flag,onAction:handleAction,busy:busy}))),activeTab==='tasks'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:()=>setTaskModal({mode:'add'})},"+ Add Task"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},tasks.length+googleTasks.length," open")),loading&&tasks.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading tasks…"):tasks.length===0&&googleTasks.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},"No open tasks found."):(()=>{const TASK_GROUPS=[{key:'overdue',label:'🔴 Overdue / Late'},{key:'today',label:'📌 Today'},{key:'tomorrow',label:'➡️ Tomorrow'},{key:'next_3_days',label:'📅 Next 3 Days'},{key:'next_week',label:'📆 Next Week'},{key:'next_month',label:'🗓 Next Month'},{key:'upcoming',label:'🔭 Upcoming'},{key:'no_date',label:'— No Due Date'}];function getTaskGroup(task){let days=task.daysUntilDue;if(days==null&&task.dueDate){const tod=new Date();tod.setHours(0,0,0,0);days=Math.floor((new Date(task.dueDate+'T00:00:00')-tod)/86400000);}if(days==null)return'no_date';if(days<0)return'overdue';if(days===0)return'today';if(days===1)return'tomorrow';if(days<=4)return'next_3_days';if(days<=7)return'next_week';if(days<=30)return'next_month';return'upcoming';}const veraTasksMapped=tasks.map(t=>({...t,_source:'vera'}));const gTasksMapped=googleTasks.map(t=>({...t,_source:'google'}));const merged=veraTasksMapped.concat(gTasksMapped).sort((a,b)=>{if(a.dueDate&&b.dueDate)return a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0;if(a.dueDate&&!b.dueDate)return-1;if(!a.dueDate&&b.dueDate)return 1;return 0;});const buckets={};TASK_GROUPS.forEach(g=>{buckets[g.key]=[];});merged.forEach(task=>{buckets[getTaskGroup(task)].push(task);});return TASK_GROUPS.map(group=>{const items=buckets[group.key];if(!items.length)return null;const isOpen=!!taskGroupsExpanded[group.key];return/*#__PURE__*/React.createElement("div",{key:group.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'8px 14px',background:'#0e1e3a',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',userSelect:'none',marginBottom:isOpen?6:0},onClick:()=>setTaskGroupsExpanded(prev=>({...prev,[group.key]:!prev[group.key]}))},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",group.label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',background:'#0a1628',padding:'2px 8px',borderRadius:10,border:'1px solid #1e3060'}},items.length)),isOpen&&items.map((task,i)=>/*#__PURE__*/React.createElement(TaskCard,{key:(task._source==='google'?'g-':'')+(task.id||i),task:task,onComplete:task._source==='google'?handleCompleteGoogleTask:handleComplete,onEdit:task._source==='google'?null:t=>setTaskModal({mode:'edit',task:t}),completing:!!completingIds[task.id]})));});})(),googleTasksError&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#f87171',marginTop:8}},"Google Tasks unavailable: ",googleTasksError)),activeTab==='home'&&/*#__PURE__*/React.createElement(HomeTab,{flags:flags,tasks:tasks,projects:projects,shopping:shopping,pto:pto,milestones:milestones,summaries:summaries,status:status,pacingStatus:pacingStatus,apiUrl:apiUrl,apiToken:apiToken,onNavigate:tab=>{setActiveTab(tab);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel')loadPTO(apiUrl,apiToken);},onViewItinerary:function(trip){if(trip)setTravelFocusTripKey(trip.startDate+'|'+trip.label);setActiveTab('travel');loadPTO(apiUrl,apiToken);},mailCounter:mailCounter,mailCounterBusy:mailCounterBusy,onResetMailCounter:handleResetMailCounter}),activeTab==='chat'&&/*#__PURE__*/React.createElement(ChatPanel,{apiUrl:apiUrl,apiToken:apiToken,messages:chatMessages,setMessages:setChatMessages,input:chatInput,setInput:setChatInput}),activeTab==='projects'&&(tabLoading.projects?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading projects…"):/*#__PURE__*/React.createElement(ProjectsTab,{projects:projects,onCompleteTask:handleCompleteProjectTask,onSetOwner:handleSetProjectOwner,onSetTarget:handleSetProjectTarget,onReorder:handleReorderProjectTasks,onCloseProject:handleCloseProject,onAddTask:p=>setProjectTaskModal({mode:'add',project:p}),onEditTask:t=>setProjectTaskModal({mode:'edit',task:t}),onDeleteTask:handleDeleteProjectTask,onCreateProject:()=>setNewProjectModal(true),busy:busy})),activeTab==='explore'&&/*#__PURE__*/React.createElement(ExploreTab,{interests:interests,interestsLoading:!!tabLoading.interests,onDeleteInterest:handleDeleteInterest,onAddInterest:()=>setInterestModal(true),ideas:ideas,ideasLoading:!!tabLoading.ideas,onAddIdea:handleAddIdea,onPromoteIdea:handlePromoteIdea,onArchiveIdea:handleArchiveIdea,onShelveIdea:handleShelveThought,resources:resources,resourcesLoading:!!tabLoading.resources,onAddResource:handleAddResource,onUpdateResource:handleUpdateResource,onDeleteResource:handleDeleteResource,experiments:experiments,experimentsLoading:!!tabLoading.experiments,onAddExperiment:handleAddExperiment,onUpdateExperiment:handleUpdateExperiment,onDeleteExperiment:handleDeleteExperiment,onAddExperimentCheckin:handleAddExperimentCheckin,wishList:wishList,wishListLoading:!!tabLoading.wishList,onAddWishItem:handleAddWishItem,onUpdateWishItem:handleUpdateWishItem,onMarkWishPurchased:handleMarkWishPurchased,onDeleteWishItem:handleDeleteWishItem,busy:busy,features:status&&status.features,apiUrl:apiUrl,apiToken:apiToken}),activeTab==='shopping'&&(tabLoading.shopping?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading shopping lists…"):/*#__PURE__*/React.createElement(ShoppingTab,{stores:shopping,onToggle:handleToggleShopping,onAddItem:storeId=>{setAddItemInitialStore(storeId||'');setAddItemModal(true);},onDelete:handleDeleteShoppingItem,onEdit:handleUpdateShoppingItem,busy:busy,onLogRun:handleLogRun})),activeTab==='home_front'&&/*#__PURE__*/React.createElement(HomeFrontTab,{homeFront:homeFront,loading:!!tabLoading.home_front,busy:busy,onRecordService:handleRecordService,onAddHomeItem:handleAddHomeItem,onDeleteHomeItem:handleDeleteHomeItem,onRecipeToShopping:handleRecipeToShopping,purchaseHistory:purchaseHistory,onAddTakeoutRestaurant:handleAddTakeoutRestaurant,onDeleteTakeoutRestaurant:handleDeleteTakeoutRestaurant,onAddTakeoutItem:handleAddTakeoutItem,onDeleteTakeoutItem:handleDeleteTakeoutItem,chores:chores,choresLoading:choresLoading,onToggleChore:handleToggleChore,onAddChore:handleAddChore,onDeleteChore:handleDeleteChore,onUpdateChoreCadence:handleUpdateChoreCadence,choresForOthers:choresForOthers,choresForOthersLoading:choresForOthersLoading,onAddChoreForOthers:handleAddChoreForOthers,onCompleteChoreForOthers:handleCompleteChoreForOthers,onEditChoreForOthers:handleEditChoreForOthers,onDeleteChoreForOthers:handleDeleteChoreForOthers,vehicles:vehicles,vehiclesLoading:vehiclesLoading,onVehicleOilChange:handleVehicleOilChange,onVehicleService:handleVehicleService,onVehicleMileage:handleVehicleMileage,onAddVehicle:handleAddVehicle,onDeleteVehicle:handleDeleteVehicle,onVehicleTireChange:handleVehicleTireChange,onVehicleEmissionInspect:handleVehicleEmissionInspect,onVehicleSafetyInspect:handleVehicleSafetyInspect,coupons:coupons,couponsLoading:couponsLoading,onExtractCoupon:handleExtractCoupon,onSaveCoupon:handleSaveCoupon,onDeleteCoupon:handleDeleteCoupon,onMarkCouponUsed:handleMarkCouponUsed,apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='people'&&/*#__PURE__*/React.createElement(PeopleTab,{giftData:giftData,giftLoading:giftLoading,busy:busy,onAddGiftPerson:handleAddGiftPerson,onDeleteGiftPerson:handleDeleteGiftPerson,onAddGiftIdea:handleAddGiftIdea,onDeleteGiftIdea:handleDeleteGiftIdea,datesData:datesData,datesLoading:datesLoading,onAddImportantDate:handleAddImportantDate,onUpdateImportantDate:handleUpdateImportantDate,onDeleteImportantDate:handleDeleteImportantDate,onPreviewCalendarBirthdays:handlePreviewCalendarBirthdays,onImportCalendarBirthdays:handleImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading,wishListsData:wishListsData,wishListsLoading:wishListsLoading,onRefreshWishLists:()=>loadWishListsData(apiUrl,apiToken),features:status&&status.features}),activeTab==='pto'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading PTO data…"):/*#__PURE__*/React.createElement(PTOTab,{ahmedStats:pto&&pto.ahmedStats,victoriaStats:pto&&pto.victoriaStats,onTriggerBuffer:handleTriggerBuffer,onTriggerVictoriaBuffer:handleTriggerVictoriaBuffer,busy:busy,loadError:ptoError,onReload:()=>loadPTO(apiUrl,apiToken)})),activeTab==='travel'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading travel data…"):/*#__PURE__*/React.createElement(TravelTab,{pto:pto,itineraries:itineraries,packingItems:packingItems,tripMeta:tripMeta,packingFocusTripKey:packingFocusTripKey,itineraryFocusTripKey:travelFocusTripKey,countries:countries,countriesLoaded:countriesLoaded,busy:busy,onSelectTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onExpandTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onAddItinItem:function(tripKey,sd,ed){setItinItemModal({mode:'add',tripKey,tripStartDate:sd,tripEndDate:ed});},onEditItinItem:function(item,tripKey,sd,ed){setItinItemModal({mode:'edit',item,tripKey,tripStartDate:sd,tripEndDate:ed});},onDeleteItinItem:handleDeleteItineraryItem,onSetTripMeta:handleSetTripMeta,onLoadTripMeta:loadTripMeta,onLoadPacking:loadPacking,onGeneratePacking:handleGeneratePacking,onTogglePackingItem:handleTogglePackingItem,onAddPackingItem:handleAddPackingItem,onDeletePackingItem:handleDeletePackingItem,onGoToPacking:handleGoToPacking,onLoadCountries:loadCountries,onAddCountry:handleAddCountry,onDeleteCountry:handleDeleteCountry,bucketList:bucketList,onLoadBucketList:loadBucketList,onAddBucketItem:handleAddBucketItem,onMarkBucketVisited:handleMarkBucketVisited,onDeleteBucketItem:handleDeleteBucketItem,onAddBucketActivity:handleAddBucketActivity,onToggleBucketActivity:handleToggleBucketActivity,onDeleteBucketActivity:handleDeleteBucketActivity,recommendations:recommendations,onLoadRecs:loadRecs,onGenerateRecs:handleGenerateRecs,onAcceptRec:handleAcceptRec,onDismissRec:handleDismissRec,profiles:profiles,profilesLoading:profilesLoading,onSaveProfile:handleSaveProfile,onDeleteProfile:handleDeleteProfile,apiUrl:apiUrl,apiToken:apiToken})),activeTab==='finances'&&/*#__PURE__*/React.createElement(FinancesTab,{summaries:summaries,budget:budget,budgetLoading:!!tabLoading.finances,bills:bills,billsLoading:!!tabLoading.bills,onBillToggle:handleBillToggle,calBills:calBills,onCalBillToggle:handleCalendarBillToggle,onAddBill:handleAddBill,onSyncTransactions:handleSyncBillsFromTransactions,txList:txList,apiUrl:apiUrl,apiToken:apiToken,busy:busy,financialGoals:financialGoals,goalsLoading:goalsLoading,onLoadGoals:loadFinancialGoals,onAddGoal:handleAddGoal,onUpdateGoal:handleUpdateGoal,onDeleteGoal:handleDeleteGoal}),activeTab==='health'&&/*#__PURE__*/React.createElement(HealthTab,{apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='growth'&&/*#__PURE__*/React.createElement(GrowthTab,{milestones:milestones,flags:flags,tasks:tasks,onAction:handleAction,goals:goals,goalsLoading:!!tabLoading.goals,dragGoalId:dragGoalId,dragOverCol:dragOverCol,onDragStart:id=>setDragGoalId(id),onDragOver:col=>setDragOverCol(col),onDrop:async newStatus=>{if(!dragGoalId||!newStatus){setDragGoalId(null);setDragOverCol(null);return;}const id=dragGoalId;setDragGoalId(null);setDragOverCol(null);setGoals(prev=>prev.map(g=>g.id===id?{...g,status:newStatus}:g));try{await apiGet(apiUrl,apiToken,{action:'update_goal',id,status:newStatus});}catch(err){setError('Failed to move goal: '+err.message);loadGoals(apiUrl,apiToken);}},onAddGoal:status=>setGoalModal({mode:'add',status:status||'To Do'}),onEditGoal:g=>setGoalModal({mode:'edit',goal:g}),onDeleteGoal:async id=>{if(!window.confirm('Delete this goal?'))return;setGoals(prev=>prev.filter(g=>g.id!==id));try{await apiGet(apiUrl,apiToken,{action:'delete_goal',id});}catch(err){setError('Failed to delete goal: '+err.message);loadGoals(apiUrl,apiToken);}},growthData:growthData,growthLoading:!!tabLoading.growth,onAddBook:handleAddBook,onUpdateBook:handleUpdateBook,onDeleteBook:handleDeleteBook,onAddCourse:handleAddCourse,onUpdateCourse:handleUpdateCourse,onDeleteCourse:handleDeleteCourse,onAddSkill:handleAddSkill,onUpdateSkill:handleUpdateSkill,onRecordSkillPractice:handleRecordSkillPractice,onDeleteSkill:handleDeleteSkill,busy:busy}),activeTab==='career'&&/*#__PURE__*/React.createElement(CareerTab,{career:career,loading:!!tabLoading.career,busy:busy,onUpdatePosition:handleUpdateCareerPosition,onAddGoal:handleAddCareerGoal,onUpdateGoal:handleUpdateCareerGoal,onDeleteGoal:handleDeleteCareerGoal,onUpdateGoalFull:handleUpdateCareerGoalFull,onAddProgression:handleAddCareerProgression,onDeleteProgression:handleDeleteCareerProgression,onUpdateProgression:handleUpdateCareerProgression,onAddDevelopment:handleAddCareerDevelopment,onUpdateDevelopment:handleUpdateCareerDevelopment,onDeleteDevelopment:handleDeleteCareerDevelopment,onUpdateDevelopmentFull:handleUpdateCareerDevelopmentFull,onAddWin:handleAddCareerWin,onDeleteWin:handleDeleteCareerWin,onUpdateWin:handleUpdateCareerWin,onAddNetwork:handleAddCareerNetwork,onUpdateNetwork:handleUpdateCareerNetwork,onDeleteNetwork:handleDeleteCareerNetwork,onUpdateNetworkFull:handleUpdateCareerNetworkFull}))),goalModal&&/*#__PURE__*/React.createElement(GoalModal,{mode:goalModal.mode,goal:goalModal.goal,defaultStatus:goalModal.status,onSave:handleSaveGoal,onClose:()=>setGoalModal(null),busy:busy}),interestModal&&/*#__PURE__*/React.createElement(AddInterestModal,{onSave:handleSaveInterest,onClose:()=>setInterestModal(false),busy:busy}),itinItemModal&&/*#__PURE__*/React.createElement(AddItineraryItemModal,{mode:itinItemModal.mode,item:itinItemModal.item,tripKey:itinItemModal.tripKey,onSave:itinItemModal.mode==='edit'?handleUpdateItineraryItem:handleAddItineraryItem,onClose:()=>setItinItemModal(null),busy:busy}),notifSettingsOpen&&/*#__PURE__*/React.createElement(NotifSettingsModal,{apiUrl:apiUrl,apiToken:apiToken,onClose:()=>setNotifSettingsOpen(false)}),toast&&/*#__PURE__*/React.createElement("div",{className:`toast${toast.isError?' error':''}`},toast.msg));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));
+const u=new URL(window.location.href);u.searchParams.set('_r',Date.now());window.location.href=u.toString();}},loading?'⟳ Loading…':'⟳ Refresh'),isConfigured&&/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setNotifSettingsOpen(true),title:"Notification settings",style:{marginRight:4}},"🔔"),/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setShowSettings(true),title:"Settings"},"⚙"))),taskModal&&/*#__PURE__*/React.createElement(TaskFormModal,{task:taskModal.task||null,onSave:handleSaveTask,onClose:()=>setTaskModal(null),busy:busy}),suggestModal&&/*#__PURE__*/React.createElement(SuggestTasksModal,{project:suggestModal,onDraft:handleDraftProjectTasks,onAppend:handleAppendProjectTasks,onClose:()=>setSuggestModal(null),busy:busy}),newProjectModal&&/*#__PURE__*/React.createElement(NewProjectModal,{onSave:handleCreateProject,onDraft:handleDraftProjectTasks,onClose:()=>setNewProjectModal(false),busy:busy}),projectTaskModal&&/*#__PURE__*/React.createElement(ProjectTaskModal,{mode:projectTaskModal.mode,task:projectTaskModal.task||null,onSave:handleSaveProjectTask,onClose:()=>setProjectTaskModal(null),busy:busy}),addItemModal&&shopping.length>0&&/*#__PURE__*/React.createElement(AddItemModal,{stores:shopping,onSave:handleAddShoppingItem,onClose:()=>setAddItemModal(false),busy:busy,initialStore:addItemInitialStore}),showSettings&&/*#__PURE__*/React.createElement(SettingsModal,{initial:{url:apiUrl,token:apiToken,mapsKey:stored('vera_maps_key')},onSave:handleConnect,onClose:isConfigured?()=>setShowSettings(false):null}),!isConfigured&&!showSettings&&/*#__PURE__*/React.createElement("div",{className:"main"},/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:40,marginBottom:16}},"🔌"),/*#__PURE__*/React.createElement("div",{style:{fontSize:16,color:'#dde1f0',marginBottom:8}},"Not connected"),/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}},"Click the ⚙ icon to add your API URL and token"))),isConfigured&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement(StatusBar,{status:status,loading:loading}),/*#__PURE__*/React.createElement("div",{className:"tabs"},['home','chat','flags','tasks','projects','shopping','home_front','people','pto','travel','finances','health','career','growth','explore'].map(tab=>/*#__PURE__*/React.createElement("button",{key:tab,className:`tab-btn ${activeTab===tab?'active':''}`,onClick:()=>{setActiveTab(tab);if(tab==='home')loadMailCounter();if(tab==='tasks')loadGoogleTasks(apiUrl,apiToken);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='explore'){loadInterests(apiUrl,apiToken);loadIdeas(apiUrl,apiToken);loadResources(apiUrl,apiToken);loadWishList(apiUrl,apiToken);loadExperiments(apiUrl,apiToken);}if(tab==='growth'){loadGoals(apiUrl,apiToken);loadGrowth(apiUrl,apiToken);}if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='home_front'){loadHomeFront(apiUrl,apiToken);loadPurchaseHistory(apiUrl,apiToken);loadChores(apiUrl,apiToken);loadChoresForOthers(apiUrl,apiToken);loadVehicles(apiUrl,apiToken);loadCoupons(apiUrl,apiToken);}if(tab==='people'){loadGiftData(apiUrl,apiToken);loadDatesData(apiUrl,apiToken);loadWishListsData(apiUrl,apiToken);}if(tab==='career')loadCareer(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel'){loadPTO(apiUrl,apiToken);loadProfiles(apiUrl,apiToken);}// upcomingTravel lives in PTO stats
+if(tab==='finances'){loadBudget(apiUrl,apiToken);loadBills(apiUrl,apiToken);loadCalendarBills(apiUrl,apiToken);loadTxList(apiUrl,apiToken);loadFinancialGoals();}}},tab==='home'?`🏠 Home`:'',tab==='chat'?`💬 Chat`:'',tab==='flags'?`🚩 Flags${status?` (${status.activeFlags})`:''}`:'',tab==='tasks'?`✅ Tasks${tasks.length?` (${tasks.length})`:''}`:'',tab==='projects'?`🏗️ Projects${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length?` (${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length})`:''}`:'',tab==='shopping'?`🛒 Shopping`:'',tab==='home_front'?`🏡 Home Front`:'',tab==='people'?`👥 People`:'',tab==='pto'?`🌴 PTO Planner`:'',tab==='travel'?`✈️ Travel`:'',tab==='finances'?`💰 Finances`:'',tab==='explore'?`🔭 Explore`:'',tab==='health'?`🏥 Health`:'',tab==='growth'?`🌱 Growth`:'',tab==='career'?`💼 Career`:''))),/*#__PURE__*/React.createElement("div",{className:"main"},error&&/*#__PURE__*/React.createElement("div",{className:"error-banner"},"⚠️ ",error),activeTab==='flags'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:`filter-toggle ${filterActive?'on':''}`,onClick:()=>setFilterActive(v=>!v)},filterActive?'● Active only':'○ All flags'),/*#__PURE__*/React.createElement("span",{className:"count-badge"},flags.length," shown")),loading&&flags.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading flags…"):flags.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",null,"No ",filterActive?'active ':'',"flags — you're all clear!")):flags.map(flag=>/*#__PURE__*/React.createElement(FlagCard,{key:flag.id,flag:flag,onAction:handleAction,busy:busy}))),activeTab==='tasks'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:()=>setTaskModal({mode:'add'})},"+ Add Task"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},tasks.length+googleTasks.length," open")),loading&&tasks.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading tasks…"):tasks.length===0&&googleTasks.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},"No open tasks found."):(()=>{const TASK_GROUPS=[{key:'overdue',label:'🔴 Overdue / Late'},{key:'today',label:'📌 Today'},{key:'tomorrow',label:'➡️ Tomorrow'},{key:'next_3_days',label:'📅 Next 3 Days'},{key:'next_week',label:'📆 Next Week'},{key:'next_month',label:'🗓 Next Month'},{key:'upcoming',label:'🔭 Upcoming'},{key:'no_date',label:'— No Due Date'}];function getTaskGroup(task){let days=task.daysUntilDue;if(days==null&&task.dueDate){const tod=new Date();tod.setHours(0,0,0,0);days=Math.floor((new Date(task.dueDate+'T00:00:00')-tod)/86400000);}if(days==null)return'no_date';if(days<0)return'overdue';if(days===0)return'today';if(days===1)return'tomorrow';if(days<=4)return'next_3_days';if(days<=7)return'next_week';if(days<=30)return'next_month';return'upcoming';}const veraTasksMapped=tasks.map(t=>({...t,_source:'vera'}));const gTasksMapped=googleTasks.map(t=>({...t,_source:'google'}));const merged=veraTasksMapped.concat(gTasksMapped).sort((a,b)=>{if(a.dueDate&&b.dueDate)return a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0;if(a.dueDate&&!b.dueDate)return-1;if(!a.dueDate&&b.dueDate)return 1;return 0;});const buckets={};TASK_GROUPS.forEach(g=>{buckets[g.key]=[];});merged.forEach(task=>{buckets[getTaskGroup(task)].push(task);});return TASK_GROUPS.map(group=>{const items=buckets[group.key];if(!items.length)return null;const isOpen=!!taskGroupsExpanded[group.key];return/*#__PURE__*/React.createElement("div",{key:group.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'8px 14px',background:'#0e1e3a',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',userSelect:'none',marginBottom:isOpen?6:0},onClick:()=>setTaskGroupsExpanded(prev=>({...prev,[group.key]:!prev[group.key]}))},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",group.label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',background:'#0a1628',padding:'2px 8px',borderRadius:10,border:'1px solid #1e3060'}},items.length)),isOpen&&items.map((task,i)=>/*#__PURE__*/React.createElement(TaskCard,{key:(task._source==='google'?'g-':'')+(task.id||i),task:task,onComplete:task._source==='google'?handleCompleteGoogleTask:handleComplete,onEdit:task._source==='google'?null:t=>setTaskModal({mode:'edit',task:t}),completing:!!completingIds[task.id]})));});})(),googleTasksError&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#f87171',marginTop:8}},"Google Tasks unavailable: ",googleTasksError)),activeTab==='home'&&/*#__PURE__*/React.createElement(HomeTab,{flags:flags,tasks:tasks,projects:projects,shopping:shopping,pto:pto,milestones:milestones,summaries:summaries,status:status,pacingStatus:pacingStatus,apiUrl:apiUrl,apiToken:apiToken,onNavigate:tab=>{setActiveTab(tab);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel')loadPTO(apiUrl,apiToken);},onViewItinerary:function(trip){if(trip)setTravelFocusTripKey(trip.startDate+'|'+trip.label);setActiveTab('travel');loadPTO(apiUrl,apiToken);},mailCounter:mailCounter,mailCounterBusy:mailCounterBusy,onResetMailCounter:handleResetMailCounter}),activeTab==='chat'&&/*#__PURE__*/React.createElement(ChatPanel,{apiUrl:apiUrl,apiToken:apiToken,messages:chatMessages,setMessages:setChatMessages,input:chatInput,setInput:setChatInput}),activeTab==='projects'&&(tabLoading.projects?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading projects…"):/*#__PURE__*/React.createElement(ProjectsTab,{projects:projects,onCompleteTask:handleCompleteProjectTask,onSetOwner:handleSetProjectOwner,onSetTarget:handleSetProjectTarget,onSetContext:handleSetProjectContext,onSuggestTasks:p=>setSuggestModal(p),onReorder:handleReorderProjectTasks,onCloseProject:handleCloseProject,onAddTask:p=>setProjectTaskModal({mode:'add',project:p}),onEditTask:t=>setProjectTaskModal({mode:'edit',task:t}),onDeleteTask:handleDeleteProjectTask,onCreateProject:()=>setNewProjectModal(true),busy:busy})),activeTab==='explore'&&/*#__PURE__*/React.createElement(ExploreTab,{interests:interests,interestsLoading:!!tabLoading.interests,onDeleteInterest:handleDeleteInterest,onAddInterest:()=>setInterestModal(true),ideas:ideas,ideasLoading:!!tabLoading.ideas,onAddIdea:handleAddIdea,onPromoteIdea:handlePromoteIdea,onArchiveIdea:handleArchiveIdea,onShelveIdea:handleShelveThought,resources:resources,resourcesLoading:!!tabLoading.resources,onAddResource:handleAddResource,onUpdateResource:handleUpdateResource,onDeleteResource:handleDeleteResource,experiments:experiments,experimentsLoading:!!tabLoading.experiments,onAddExperiment:handleAddExperiment,onUpdateExperiment:handleUpdateExperiment,onDeleteExperiment:handleDeleteExperiment,onAddExperimentCheckin:handleAddExperimentCheckin,wishList:wishList,wishListLoading:!!tabLoading.wishList,onAddWishItem:handleAddWishItem,onUpdateWishItem:handleUpdateWishItem,onMarkWishPurchased:handleMarkWishPurchased,onDeleteWishItem:handleDeleteWishItem,busy:busy,features:status&&status.features,apiUrl:apiUrl,apiToken:apiToken}),activeTab==='shopping'&&(tabLoading.shopping?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading shopping lists…"):/*#__PURE__*/React.createElement(ShoppingTab,{stores:shopping,onToggle:handleToggleShopping,onAddItem:storeId=>{setAddItemInitialStore(storeId||'');setAddItemModal(true);},onDelete:handleDeleteShoppingItem,onEdit:handleUpdateShoppingItem,busy:busy,onLogRun:handleLogRun})),activeTab==='home_front'&&/*#__PURE__*/React.createElement(HomeFrontTab,{homeFront:homeFront,loading:!!tabLoading.home_front,busy:busy,onRecordService:handleRecordService,onAddHomeItem:handleAddHomeItem,onDeleteHomeItem:handleDeleteHomeItem,onRecipeToShopping:handleRecipeToShopping,purchaseHistory:purchaseHistory,onAddTakeoutRestaurant:handleAddTakeoutRestaurant,onDeleteTakeoutRestaurant:handleDeleteTakeoutRestaurant,onAddTakeoutItem:handleAddTakeoutItem,onDeleteTakeoutItem:handleDeleteTakeoutItem,chores:chores,choresLoading:choresLoading,onToggleChore:handleToggleChore,onAddChore:handleAddChore,onDeleteChore:handleDeleteChore,onUpdateChoreCadence:handleUpdateChoreCadence,choresForOthers:choresForOthers,choresForOthersLoading:choresForOthersLoading,onAddChoreForOthers:handleAddChoreForOthers,onCompleteChoreForOthers:handleCompleteChoreForOthers,onEditChoreForOthers:handleEditChoreForOthers,onDeleteChoreForOthers:handleDeleteChoreForOthers,vehicles:vehicles,vehiclesLoading:vehiclesLoading,onVehicleOilChange:handleVehicleOilChange,onVehicleService:handleVehicleService,onVehicleMileage:handleVehicleMileage,onAddVehicle:handleAddVehicle,onDeleteVehicle:handleDeleteVehicle,onVehicleTireChange:handleVehicleTireChange,onVehicleEmissionInspect:handleVehicleEmissionInspect,onVehicleSafetyInspect:handleVehicleSafetyInspect,coupons:coupons,couponsLoading:couponsLoading,onExtractCoupon:handleExtractCoupon,onSaveCoupon:handleSaveCoupon,onDeleteCoupon:handleDeleteCoupon,onMarkCouponUsed:handleMarkCouponUsed,apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='people'&&/*#__PURE__*/React.createElement(PeopleTab,{giftData:giftData,giftLoading:giftLoading,busy:busy,onAddGiftPerson:handleAddGiftPerson,onDeleteGiftPerson:handleDeleteGiftPerson,onAddGiftIdea:handleAddGiftIdea,onDeleteGiftIdea:handleDeleteGiftIdea,datesData:datesData,datesLoading:datesLoading,onAddImportantDate:handleAddImportantDate,onUpdateImportantDate:handleUpdateImportantDate,onDeleteImportantDate:handleDeleteImportantDate,onPreviewCalendarBirthdays:handlePreviewCalendarBirthdays,onImportCalendarBirthdays:handleImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading,wishListsData:wishListsData,wishListsLoading:wishListsLoading,onRefreshWishLists:()=>loadWishListsData(apiUrl,apiToken),features:status&&status.features}),activeTab==='pto'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading PTO data…"):/*#__PURE__*/React.createElement(PTOTab,{ahmedStats:pto&&pto.ahmedStats,victoriaStats:pto&&pto.victoriaStats,onTriggerBuffer:handleTriggerBuffer,onTriggerVictoriaBuffer:handleTriggerVictoriaBuffer,busy:busy,loadError:ptoError,onReload:()=>loadPTO(apiUrl,apiToken)})),activeTab==='travel'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading travel data…"):/*#__PURE__*/React.createElement(TravelTab,{pto:pto,itineraries:itineraries,packingItems:packingItems,tripMeta:tripMeta,packingFocusTripKey:packingFocusTripKey,itineraryFocusTripKey:travelFocusTripKey,countries:countries,countriesLoaded:countriesLoaded,busy:busy,onSelectTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onExpandTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onAddItinItem:function(tripKey,sd,ed){setItinItemModal({mode:'add',tripKey,tripStartDate:sd,tripEndDate:ed});},onEditItinItem:function(item,tripKey,sd,ed){setItinItemModal({mode:'edit',item,tripKey,tripStartDate:sd,tripEndDate:ed});},onDeleteItinItem:handleDeleteItineraryItem,onSetTripMeta:handleSetTripMeta,onLoadTripMeta:loadTripMeta,onLoadPacking:loadPacking,onGeneratePacking:handleGeneratePacking,onTogglePackingItem:handleTogglePackingItem,onAddPackingItem:handleAddPackingItem,onDeletePackingItem:handleDeletePackingItem,onGoToPacking:handleGoToPacking,onLoadCountries:loadCountries,onAddCountry:handleAddCountry,onDeleteCountry:handleDeleteCountry,bucketList:bucketList,onLoadBucketList:loadBucketList,onAddBucketItem:handleAddBucketItem,onMarkBucketVisited:handleMarkBucketVisited,onDeleteBucketItem:handleDeleteBucketItem,onAddBucketActivity:handleAddBucketActivity,onToggleBucketActivity:handleToggleBucketActivity,onDeleteBucketActivity:handleDeleteBucketActivity,recommendations:recommendations,onLoadRecs:loadRecs,onGenerateRecs:handleGenerateRecs,onAcceptRec:handleAcceptRec,onDismissRec:handleDismissRec,profiles:profiles,profilesLoading:profilesLoading,onSaveProfile:handleSaveProfile,onDeleteProfile:handleDeleteProfile,apiUrl:apiUrl,apiToken:apiToken})),activeTab==='finances'&&/*#__PURE__*/React.createElement(FinancesTab,{summaries:summaries,budget:budget,budgetLoading:!!tabLoading.finances,bills:bills,billsLoading:!!tabLoading.bills,onBillToggle:handleBillToggle,calBills:calBills,onCalBillToggle:handleCalendarBillToggle,onAddBill:handleAddBill,onSyncTransactions:handleSyncBillsFromTransactions,txList:txList,apiUrl:apiUrl,apiToken:apiToken,busy:busy,financialGoals:financialGoals,goalsLoading:goalsLoading,onLoadGoals:loadFinancialGoals,onAddGoal:handleAddGoal,onUpdateGoal:handleUpdateGoal,onDeleteGoal:handleDeleteGoal}),activeTab==='health'&&/*#__PURE__*/React.createElement(HealthTab,{apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='growth'&&/*#__PURE__*/React.createElement(GrowthTab,{milestones:milestones,flags:flags,tasks:tasks,onAction:handleAction,goals:goals,goalsLoading:!!tabLoading.goals,dragGoalId:dragGoalId,dragOverCol:dragOverCol,onDragStart:id=>setDragGoalId(id),onDragOver:col=>setDragOverCol(col),onDrop:async newStatus=>{if(!dragGoalId||!newStatus){setDragGoalId(null);setDragOverCol(null);return;}const id=dragGoalId;setDragGoalId(null);setDragOverCol(null);setGoals(prev=>prev.map(g=>g.id===id?{...g,status:newStatus}:g));try{await apiGet(apiUrl,apiToken,{action:'update_goal',id,status:newStatus});}catch(err){setError('Failed to move goal: '+err.message);loadGoals(apiUrl,apiToken);}},onAddGoal:status=>setGoalModal({mode:'add',status:status||'To Do'}),onEditGoal:g=>setGoalModal({mode:'edit',goal:g}),onDeleteGoal:async id=>{if(!window.confirm('Delete this goal?'))return;setGoals(prev=>prev.filter(g=>g.id!==id));try{await apiGet(apiUrl,apiToken,{action:'delete_goal',id});}catch(err){setError('Failed to delete goal: '+err.message);loadGoals(apiUrl,apiToken);}},growthData:growthData,growthLoading:!!tabLoading.growth,onAddBook:handleAddBook,onUpdateBook:handleUpdateBook,onDeleteBook:handleDeleteBook,onAddCourse:handleAddCourse,onUpdateCourse:handleUpdateCourse,onDeleteCourse:handleDeleteCourse,onAddSkill:handleAddSkill,onUpdateSkill:handleUpdateSkill,onRecordSkillPractice:handleRecordSkillPractice,onDeleteSkill:handleDeleteSkill,busy:busy}),activeTab==='career'&&/*#__PURE__*/React.createElement(CareerTab,{career:career,loading:!!tabLoading.career,busy:busy,onUpdatePosition:handleUpdateCareerPosition,onAddGoal:handleAddCareerGoal,onUpdateGoal:handleUpdateCareerGoal,onDeleteGoal:handleDeleteCareerGoal,onUpdateGoalFull:handleUpdateCareerGoalFull,onAddProgression:handleAddCareerProgression,onDeleteProgression:handleDeleteCareerProgression,onUpdateProgression:handleUpdateCareerProgression,onAddDevelopment:handleAddCareerDevelopment,onUpdateDevelopment:handleUpdateCareerDevelopment,onDeleteDevelopment:handleDeleteCareerDevelopment,onUpdateDevelopmentFull:handleUpdateCareerDevelopmentFull,onAddWin:handleAddCareerWin,onDeleteWin:handleDeleteCareerWin,onUpdateWin:handleUpdateCareerWin,onAddNetwork:handleAddCareerNetwork,onUpdateNetwork:handleUpdateCareerNetwork,onDeleteNetwork:handleDeleteCareerNetwork,onUpdateNetworkFull:handleUpdateCareerNetworkFull}))),goalModal&&/*#__PURE__*/React.createElement(GoalModal,{mode:goalModal.mode,goal:goalModal.goal,defaultStatus:goalModal.status,onSave:handleSaveGoal,onClose:()=>setGoalModal(null),busy:busy}),interestModal&&/*#__PURE__*/React.createElement(AddInterestModal,{onSave:handleSaveInterest,onClose:()=>setInterestModal(false),busy:busy}),itinItemModal&&/*#__PURE__*/React.createElement(AddItineraryItemModal,{mode:itinItemModal.mode,item:itinItemModal.item,tripKey:itinItemModal.tripKey,onSave:itinItemModal.mode==='edit'?handleUpdateItineraryItem:handleAddItineraryItem,onClose:()=>setItinItemModal(null),busy:busy}),notifSettingsOpen&&/*#__PURE__*/React.createElement(NotifSettingsModal,{apiUrl:apiUrl,apiToken:apiToken,onClose:()=>setNotifSettingsOpen(false)}),toast&&/*#__PURE__*/React.createElement("div",{className:`toast${toast.isError?' error':''}`},toast.msg));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));

@@ -5,15 +5,15 @@
 //
 // Projects live in the "Projects" tab of the Life OS sheet.
 // Schema: Project ID | Project Name | Task | Status | Priority | Due Date |
-//         Notes | Owner | Completed On | Target Date | Phase | Sequence
+//         Notes | Owner | Completed On | Target Date | Phase | Sequence | Context
 //
 // Projects are created via VERA chat (ACTION:create_project|...) and
 // viewed/completed in the dashboard Projects tab.
 //
 // PROJECT-LEVEL vs TASK-LEVEL
-// Owner and Target Date belong to the project and are stored redundantly on
-// every row (exactly as Project Name already is); both read as the first
-// non-blank cell in the group. Everything else is per task.
+// Owner, Target Date and Context belong to the project and are stored
+// redundantly on every row (exactly as Project Name already is); each reads as
+// the first non-blank cell in the group. Everything else is per task.
 //
 // A blank cell always means the pre-column default — 'Shared' for Owner, no
 // target for Target Date, ungrouped for Phase, sheet order for Sequence — so
@@ -39,6 +39,7 @@ var PROJ_COL = {
   TARGET_DATE:  9,
   PHASE:        10,
   SEQUENCE:     11,
+  CONTEXT:      12,
 };
 
 var PROJECT_OWNERS_ = ['Shared', 'Ahmed', 'Victoria'];
@@ -55,6 +56,25 @@ var PROJECT_STATUSES_ = ['Pending', 'In Progress', 'Blocked', 'Done'];
 /** Defaults for the two Config keys this module reads. */
 var PROJECT_STALL_DAYS_DEFAULT_   = 14;
 var PROJECT_AT_RISK_DAYS_DEFAULT_ = 7;
+
+/**
+ * How VERA plans a project — the shared half of the instruction.
+ *
+ * Two callers need this: the chat system prompt (Chat.js) and the dashboard's
+ * drafting endpoint (webDraftProjectTasks_). Each adds its own OUTPUT FORMAT —
+ * chat emits an ACTION line, the endpoint emits JSON — but the judgement about
+ * what makes a good plan must be one text, or the two paths quietly drift into
+ * giving different answers to the same question.
+ */
+var PROJECT_PLAN_GUIDANCE_ =
+  'Generate a comprehensive, exhaustive checklist — the goal is that Ahmed misses nothing. ' +
+  'Think through every phase: planning, logistics, dependencies, admin/paperwork, communications, ' +
+  'day-of execution, and follow-up. Explicitly include steps people commonly overlook. ' +
+  'Aim for 20–30 tasks for complex projects. Order tasks chronologically. ' +
+  'Assign priorities naturally (High for time-sensitive or blocking steps, Low for nice-to-haves). ' +
+  'Group tasks into phases — Planning, Logistics, Admin, Communications, Day-of, Follow-up, or ' +
+  'whatever fits the project — so a 25-task list reads as sections rather than one wall. ' +
+  'Use the SAME phase name for every task in a phase, and keep tasks of one phase together.';
 
 /**
  * Coerces anything to a valid owner. Blank, unknown, or garbage → 'Shared'.
@@ -163,15 +183,18 @@ function ensureProjectsSchema_(sheet) {
  * @param {string}   [owner]      - 'Ahmed' | 'Victoria' | 'Shared'. Anything else,
  *                                  including nothing, means 'Shared' — which is why
  *                                  chat-created projects are shared by default.
+ * @param {string}   [context]    - free-text description of what the project is for.
+ *                                  Project-level, written to every row.
  * @returns {{ projectId: string, count: number }}
  */
-function createProject_(projectName, taskLines, owner) {
+function createProject_(projectName, taskLines, owner, context) {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.PROJECTS);
   if (!sheet) throw new Error('Projects tab not found. Run addProjectsTab() first.');
   ensureProjectsSchema_(sheet);
 
-  var ownerVal = normalizeProjectOwner_(owner);
+  var ownerVal   = normalizeProjectOwner_(owner);
+  var contextVal = String(context == null ? '' : context).trim();
 
   var today   = new Date();
   var dateStr = Utilities.formatDate(today, Session.getScriptTimeZone(), 'yyyyMMdd');
@@ -201,7 +224,7 @@ function createProject_(projectName, taskLines, owner) {
       // Sequence is written from the start so a project created today never
       // depends on the row-order fallback.
       return [projectId, projectName, taskText, 'Pending', priority, '', '', ownerVal,
-              '', '', phase, i + 1];
+              '', '', phase, i + 1, contextVal];
     });
 
   if (rows.length === 0) {
@@ -290,7 +313,8 @@ function projectHealth_(p, stallDays, atRiskDays) {
  * @returns {Array} Array of project objects:
  *   [{
  *     projectId: 'PROJ-20260308-01', projectName: 'Europe Trip',
- *     owner: 'Shared', targetDate: '2026-11-01', createdOn: '2026-03-08',
+ *     owner: 'Shared', targetDate: '2026-11-01', context: 'Road trip across Europe…',
+ *     createdOn: '2026-03-08',
  *     total: 8, done: 3, pending: 5, pct: 38,
  *     overdueCount: 1, blockedCount: 0,
  *     lastActivity: '2026-03-20', daysSinceActivity: 4, daysUntilTarget: 12,
@@ -323,6 +347,7 @@ function getProjects_() {
         projectName: String(row[PROJ_COL.NAME] || '').trim(),
         owner:       'Shared',
         targetDate:  '',
+        context:     '',
         tasks:       [],
       };
       order.push(projectId);
@@ -335,6 +360,7 @@ function getProjects_() {
       proj.owner = normalizeProjectOwner_(row[PROJ_COL.OWNER]);
     }
     if (!proj.targetDate) proj.targetDate = projDateStr_(row[PROJ_COL.TARGET_DATE]);
+    if (!proj.context)    proj.context    = String(row[PROJ_COL.CONTEXT] || '').trim();
 
     var dueStr = projDateStr_(row[PROJ_COL.DUE]);
     var seqRaw = parseInt(row[PROJ_COL.SEQUENCE], 10);
@@ -587,7 +613,14 @@ function getProjectsSummaryForContext_() {
 
     var parts = active.map(function(p) {
       var pending = p.tasks.filter(function(t) { return t.status !== 'Done'; }).length;
-      return p.projectName + ' (' + pending + ' task' + (pending === 1 ? '' : 's') + ' pending)';
+      var line = p.projectName + ' (' + pending + ' task' + (pending === 1 ? '' : 's') + ' pending';
+      // What the project is FOR — the thing this summary could never say before.
+      // Truncated, because the system prompt has many sections competing for room.
+      if (p.context) {
+        var c = p.context.replace(/\s+/g, ' ').trim();
+        line += ' — ' + (c.length > 120 ? c.slice(0, 117) + '…' : c);
+      }
+      return line + ')';
     });
 
     return 'Active projects (' + active.length + '): ' + parts.join(', ');
