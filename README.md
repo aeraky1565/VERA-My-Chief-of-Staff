@@ -239,9 +239,18 @@ Runs every hour via the `hourlyCheck` trigger. Evaluates a set of rule-based nud
 
 ### Weekend Planner (`WeekendPlanner.js`)
 
-Fires every Monday at ~8am (configurable via `weekend_planner_hour`). Generates a "Weekend Decision Memo" delivered via Slack/email and as an all-day Google Calendar event on the upcoming Saturday. The memo presents three archetypes: THE EXTENSION (goal-anchored activity), THE CONTRAST (rest/recharge, weighted higher when the intensity signal is high), and THE PROTOTYPE (new experience not already in the Interest Ledger). Draws on goals, the Shared Interest Ledger, PTO balance, and open calendar windows.
+Fires every **Wednesday** at ~8am (`Reminders.js` gates on `day === 3`; the hour is configurable via `weekend_planner_hour`). Generates a "Weekend Decision Memo" delivered via Slack/email and as an all-day Google Calendar event on the upcoming Saturday. The memo presents three archetypes: THE EXTENSION (goal-anchored activity), THE CONTRAST (rest/recharge, weighted higher when the intensity signal is high), and THE PROTOTYPE (new experience not already in the Interest Ledger). Draws on goals, the Shared Interest Ledger, PTO balance, and open calendar windows.
 
 **Travel awareness.** The memo works out where Ahmed will be on *each* weekend day (`weekendTripFor_` / `getWeekendLocationPlan_`) rather than only asking whether he is away today. The destination is resolved with `inferTripDestination_` and must geocode before it is used; weather is then fetched per distinct city — one call for an ordinary weekend, two for a split one — and the event search runs against the place he will actually be. **Every weather line names its city**, at home as well as away, so a temperature is never ambiguous. If he is away but the destination cannot be resolved, the memo says so and shows no weather and no suggestions rather than falling back to home data for a weekend spent elsewhere.
+
+**Running it on demand.** `testWeekendMemo()` generates this weekend's memo and
+prints the prompt and finished text to the execution log without sending
+anything — no email, no Slack ping, no calendar event, no cooldown entry, and
+crucially no planner-history write (that is the anti-repeat record; writing it
+would make the next real memo avoid suggestions it never made). It ignores the
+~6.25-day cooldown, which is the point, and costs one Claude call per run.
+`runWeekendPlanner_` itself is underscore-private and so hidden from the Apps
+Script Run menu — this is its handle, as `testExplorer()` is for `runExplorer_()`.
 
 A trip covering the weekend is classified `away` *before* the pre-departure check. That ordering matters: a trip starting on Saturday used to match `pre_major_trip` (`daysAway <= 4`) and instruct Claude to suggest something "short, local, and low-energy" — local to a home he would not be in. `pre_major_trip` now fires only for a trip starting after the weekend ends, which is the case it was written for.
 
@@ -336,7 +345,7 @@ The Finance tab in the dashboard shows: net income vs. spend (from the Simple As
 |----------|----------|---------|
 | `nightlyRun` | Daily at 11 PM | Main intelligence pipeline — all 17+ steps |
 | `morningNudge` | Daily at 7 AM | Morning briefing email with flags, tasks, and calendar summary |
-| `hourlyCheck` | Every 1 hour | Anticipator reminder rules + Weekend Planner (Monday 8am) |
+| `hourlyCheck` | Every 1 hour | Anticipator reminder rules + Weekend Planner (Wednesday 8am) |
 | `checkFlightStatuses_` | Every 15 minutes | Real-time flight status polling via AviationStack for flights within 24h |
 | `runEmailScan_` | Every 30 minutes | Travel email inbox scan (gated by `email_parser_enabled=true` in Config) |
 
@@ -687,7 +696,7 @@ Add these rows to the `Config` tab (`Setting` | `Value`). All keys are read via 
 | `mobility_reminder_hour` | `20` | Reminders | 24h hour for evening mobility nudge |
 | `weekend_planner_enabled` | `true` | WeekendPlanner | Master switch for Weekend Planner |
 | `weekend_planner_lookahead_days` | `21` | WeekendPlanner | Days to scan for clear windows |
-| `weekend_planner_hour` | `8` | WeekendPlanner | Monday hour to fire Weekend Planner |
+| `weekend_planner_hour` | `8` | WeekendPlanner | Hour on Wednesday to fire Weekend Planner |
 | `weekend_planner_home_city` | `Austin, TX` | WeekendPlanner | Base city for driving-radius framing |
 | `pattern_max_flags` | `2` | PatternRecognition | Max new flags per nightly pattern recognition run |
 | `pattern_dedup_days` | `7` | PatternRecognition | Days before same pattern key can re-fire |
@@ -983,7 +992,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `SignalLearning.js` | Flag engagement tracking, noise suppression, score engine |
 | `Pacing.js` | Vacation mode, pacing mode, miss-rate checker, capacity mode |
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
-| `WeekendPlanner.js` | Weekend Decision Memo — Monday 8am delivery |
+| `WeekendPlanner.js` | Weekend Decision Memo — Wednesday 8am delivery; `testWeekendMemo()` dry-runs it on demand |
 | `PreTripBriefing.js` | 48-hour pre-trip briefing flag generation |
 | `PostTripCapture.js` | Post-trip debrief prompt trigger |
 | `TravelDayBriefing.js` | Day-of travel briefing |

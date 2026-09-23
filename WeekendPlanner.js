@@ -73,10 +73,15 @@ function filterToNarrativeCalendars_(events, cfg) {
  *   - Telegram push / email (sendNudge_)
  *   - All-day Google Calendar event on the upcoming Saturday
  */
-function runWeekendPlanner_() {
+function runWeekendPlanner_(opts) {
   var _wpStart = Date.now();
+  // dryRun exercises the SAME path the scheduled send takes — gathering,
+  // prompt, Claude, assembly — and suppresses only the side effects. A separate
+  // "build the memo" function would be easier to write and worth nothing: it
+  // would drift from the code that actually runs on a Wednesday.
+  var dryRun = !!(opts && opts.dryRun);
   try {
-  Logger.log('runWeekendPlanner_: starting');
+  Logger.log('runWeekendPlanner_: starting' + (dryRun ? ' (DRY RUN — nothing will be sent)' : ''));
 
   var cfg = getConfigValues();
 
@@ -87,8 +92,10 @@ function runWeekendPlanner_() {
     return;
   }
 
-  // Weekly cooldown — ~6.25 days (9000 min) prevents double-send
-  if (wasRecentlySent_('weekend_planner', 9000)) {
+  // Weekly cooldown — ~6.25 days (9000 min) prevents double-send.
+  // A dry run ignores it: being able to look at this week's memo again is the
+  // entire reason the dry run exists.
+  if (!dryRun && wasRecentlySent_('weekend_planner', 9000)) {
     Logger.log('runWeekendPlanner_: already sent recently, skipping');
     veraLog_('runWeekendPlanner', 'Planning', 'Skipped', 'Already sent recently (cooldown)', Date.now() - _wpStart);
     return;
@@ -233,18 +240,38 @@ function runWeekendPlanner_() {
 
   // Save history immediately after Claude generates the memo, before any delivery
   // steps that could throw — ensures anti-repeat context is always recorded.
-  writePlannerHistory_(memo, activities);
+  //
+  // NOT on a dry run. This is the anti-repeat record: writing it would make the
+  // real Wednesday memo avoid suggestions it never actually made. A dry run
+  // with a lasting consequence is not a dry run.
+  if (!dryRun) writePlannerHistory_(memo, activities);
 
   // ---- Assemble full calendar description ------------------------------------
   // description keeps the full plain-text content — it's the record on the
   // calendar event and the email's plain-text fallback part.
   var description = assembleWeekendMemoText_(memo, weatherData, carryNote, curatedLocalEvents, radarDates);
 
-  // ---- Deliver ---------------------------------------------------------------
-  // 1. Calendar event first — its htmlLink is what the email links back to.
   var saturday = (windows.length > 0 && windows[0].weekendStart)
     ? parseDateStr_(windows[0].weekendStart)
     : computeNextSaturday_(today);
+
+  // ---- Dry run: show the work, deliver nothing -------------------------------
+  if (dryRun) {
+    Logger.log('===== DRY RUN — PROMPT SENT TO CLAUDE =====\n' + prompt);
+    Logger.log('===== DRY RUN — ASSEMBLED MEMO =====\n' + description);
+    Logger.log('===== DRY RUN — NOT SENT =====');
+    Logger.log('  no calendar event on ' +
+               Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+    Logger.log('  no email to ' + CONFIG.MORNING_NUDGE_EMAIL);
+    Logger.log('  no Slack ping, no cooldown entry, no planner history');
+    veraLog_('runWeekendPlanner', 'Planning', 'Dry run',
+      windows.length + ' weekend window(s), memo generated (' + memo.length + ' chars), nothing delivered',
+      Date.now() - _wpStart);
+    return;
+  }
+
+  // ---- Deliver ---------------------------------------------------------------
+  // 1. Calendar event first — its htmlLink is what the email links back to.
   var calendarLink = createWeekendMemoEvent_(saturday, description);
   Logger.log('runWeekendPlanner_: calendar event created on ' +
              Utilities.formatDate(saturday, Session.getScriptTimeZone(), 'yyyy-MM-dd') +
@@ -2232,4 +2259,26 @@ function testWeekendPlannerPrompt() {
   });
   Logger.log('PROMPT (' + prompt.length + ' chars):\n' + prompt);
   Logger.log('=== testWeekendPlannerPrompt: END ===');
+}
+
+/**
+ * Manually generate this weekend's memo WITHOUT sending it.
+ *
+ * Run this from the Apps Script editor and read the execution log. It exercises
+ * the real pipeline — calendar, trips, the location plan, weather, the web
+ * search and one Claude call — then prints the prompt and the finished memo and
+ * stops. Nothing is emailed, no calendar event is created, no Slack ping is
+ * sent, the cooldown is neither checked nor written, and the anti-repeat
+ * planner history is left alone.
+ *
+ * runWeekendPlanner_ itself ends in an underscore, which keeps it out of the
+ * editor's Run menu; this is the handle for it, the way testExplorer() is for
+ * runExplorer_().
+ *
+ * Costs one Claude call per run.
+ */
+function testWeekendMemo() {
+  Logger.log('=== testWeekendMemo (dry run) ===');
+  runWeekendPlanner_({ dryRun: true });
+  Logger.log('=== testWeekendMemo: END — nothing was sent ===');
 }
