@@ -20,7 +20,7 @@
 //   weekend_planner_enabled       — true/false master switch (default true)
 //   weekend_planner_lookahead_days — days to scan for clear windows (default 21)
 //   weekend_planner_hour          — 24h hour to fire on Monday (default 8)
-//   weekend_planner_home_city     — base city for driving-radius framing (default "Austin, TX")
+//   weekend_planner_home_city     — base city for weather, local events and driving-radius framing. No default: blank means nothing geocodes.
 //   weekend_planner_narrative_calendars — comma-separated calendar names allowed
 //     to shape the memo's prose/events list (default "Ahmed ElEraky,aaeleraky@gmail.com,
 //     AE&VV - Our Joint Chaos"). Other calendars are still used for scheduling
@@ -67,7 +67,11 @@ function filterToNarrativeCalendars_(events, cfg) {
 
 /**
  * Runs the Weekend Planner. Called from hourlyCheck() in Reminders.js
- * when day===1 (Monday) && hour===weekend_planner_hour (default 8).
+ * when day===3 (WEDNESDAY) && hour===weekend_planner_hour (default 8).
+ *
+ * Wednesday is not arbitrary: OpenWeather's free forecast reaches ~5 days, so a
+ * Wednesday run covers both Saturday and Sunday. A Monday run would put Sunday
+ * outside the window and silently lose half the weather.
  *
  * Generates a Weekend Decision Memo via Claude and delivers it via:
  *   - Telegram push / email (sendNudge_)
@@ -141,6 +145,10 @@ function runWeekendPlanner_(opts) {
   // the home city unconditionally, so a weekend spent in Tampa still came back
   // with Virginia weather and Virginia events.
   var homeCity = String(cfg['weekend_planner_home_city'] || '').trim();
+  if (!homeCity) {
+    Logger.log('runWeekendPlanner_: WARNING — weekend_planner_home_city is blank in Config. ' +
+               'Nothing can be geocoded, so there will be no weather and no local events.');
+  }
   var wpSat    = computeNextSaturday_(today);
   var wpSun    = new Date(wpSat.getTime() + 86400000);
 
@@ -160,7 +168,8 @@ function runWeekendPlanner_(opts) {
                                              homeCity, wpApiKey);
   Logger.log('runWeekendPlanner_: locationPlan — ' +
              (describeWeekendLocation_(locationPlan) || 'home all weekend') +
-             (locationPlan.unknownDestination ? ' [destination unknown]' : ''));
+             (locationPlan.unknownDestination ? ' — destination unknown, weather falls back to home' : '') +
+             (locationPlan.homeUnknown ? ' — home city "' + homeCity + '" did not geocode' : ''));
 
   // ---- Fetch contextual sections (weather, events, continuity) ---------------
   var weatherData          = getWeekendWeather_(locationPlan);
@@ -177,7 +186,11 @@ function runWeekendPlanner_(opts) {
   var carryNote            = getCarryForwardNote_();
   var radarDates           = getRadarDatesForWeekendMemo_(14);
 
-  Logger.log('runWeekendPlanner_: weatherData=' + (weatherData ? 'ok' : 'null') +
+  Logger.log('runWeekendPlanner_: weatherData=' +
+             (weatherData
+                ? 'ok (sat ' + ((weatherData.sat && weatherData.sat.basis) || 'none') +
+                  ', sun ' + ((weatherData.sun && weatherData.sun.basis) || 'none') + ')'
+                : 'null — reason logged above') +
              ', localEventCandidates=' + localEventCandidates.length +
              ', carryNote=' + (carryNote ? 'yes' : 'none') +
              ', radarDates=' + radarDates.length);
@@ -699,10 +712,10 @@ function buildWeekendPlannerPrompt_(ctx) {
       );
 
       // Paragraph 2 — task — conditional on capacity
-      if (capType === 'traveling' || capType === 'busy' || capType === 'pre_major_trip') {
+      if (capType === 'away' || capType === 'traveling' || capType === 'busy' || capType === 'pre_major_trip') {
         lines.push(
           'PARAGRAPH 2 — TASK: OMIT.',
-          'Do not include a productivity suggestion. Weekend capacity does not support it.',
+          'Do not include a productivity suggestion; the weekend does not have room for one.',
           ''
         );
       } else {
@@ -716,7 +729,19 @@ function buildWeekendPlannerPrompt_(ctx) {
 
       // Paragraph 3 — outing — shaped by capacity type
       lines.push('PARAGRAPH 3 — WHAT TO DO (always present, always last):');
-      if (capType === 'traveling') {
+      if (capType === 'away') {
+        // Without this branch 'away' fell through to the generic home case
+        // below and asked for somewhere "20–40 min away" — near a home he will
+        // not be in. Claude, handed a WEEKEND STATE: AWAY header and home-shaped
+        // instructions, wrote about the contradiction instead of the weekend.
+        lines.push(
+          'One specific suggestion where he will actually be' +
+            (cap.where ? ' (' + cap.where + ')' : '') + '.',
+          'Do NOT suggest anything at or near home — he will not be there to do it.',
+          'If the destination is not known, do not invent one: keep to what is already on the ' +
+            'calendar and to how the weekend should feel. A shorter memo is correct here.'
+        );
+      } else if (capType === 'traveling') {
         lines.push(
           'One specific suggestion at or near the current destination (' + (tCtx.currentTrip ? tCtx.currentTrip.label : 'destination') + ').',
           'Do NOT suggest anything at home or requiring travel back. Reference the actual destination — its neighborhoods, culture, food, or geography.',
@@ -752,6 +777,13 @@ function buildWeekendPlannerPrompt_(ctx) {
         '',
         'VOICE: warm, direct, specific. Trusted advisor who knows Ahmed well — not a corporate brief, not a travel blog. Short sentences. No padding.',
         '',
+        'NEVER DESCRIBE THE MEMO ITSELF. Do not mention sections, what will or will not be ' +
+        'shown, data that was unavailable, or anything that "could not be determined". The ' +
+        'instructions above are for you, not for him — never repeat them, and never explain ' +
+        'why something is missing. If a fact genuinely shapes his weekend (he is away, so ' +
+        'there is nothing local worth flagging), state it as a plain fact in the flow of the ' +
+        'prose. Write only about the weekend.',
+        '',
         'TARGET LENGTH: 150–250 words. Longer only if the specificity earns it.',
         '',
         'LOCAL EVENTS CURATION: Look at RAW LOCAL SEARCH RESULTS above (if present) and pick out at ' +
@@ -776,7 +808,14 @@ function buildWeekendPlannerPrompt_(ctx) {
   // ---- Assemble --------------------------------------------------------------
   var sections = [
     'You are VERA, a personal chief-of-staff operating in Weekend Planner mode.',
-    'Today is ' + todayStr + '. Ahmed lives in ' + (getConfigValues()['weekend_planner_home_city'] || 'Austin, TX') + '.',
+    // No 'Austin, TX' default. The same config key is read empty-means-empty at
+    // the top of runWeekendPlanner_, so defaulting here told Claude he lives in
+    // a city that nothing was ever geocoded against — a confident wrong answer
+    // instead of a missing one.
+    'Today is ' + todayStr + '.' +
+      (String(getConfigValues()['weekend_planner_home_city'] || '').trim()
+        ? ' Ahmed lives in ' + String(getConfigValues()['weekend_planner_home_city']).trim() + '.'
+        : ''),
     '',
     '=== CLEAR WEEKEND WINDOWS (next 21 days) ===',
     windowsSection,
@@ -827,9 +866,21 @@ function buildWeekendPlannerPrompt_(ctx) {
     if (wLines.length > 0) {
       sections.push('');
       sections.push('=== THIS WEEKEND\'S WEATHER ===');
-      if (ctx.locationPlan && ctx.locationPlan.anyAway) {
-        sections.push('(Ahmed is away this weekend — ' + describeWeekendLocation_(ctx.locationPlan) +
-                      '. The figures below are for where he will be, not for home.)');
+      // Whether these figures describe where he will be depends on the basis.
+      // The old unconditional "the figures below are for where he will be"
+      // became a lie the moment weather fell back to home, and it is exactly
+      // the sentence Claude trusts most.
+      var wd       = ctx.weatherData;
+      var fellBack = (wd.sat && wd.sat.basis === 'home-fallback') ||
+                     (wd.sun && wd.sun.basis === 'home-fallback');
+      if (fellBack) {
+        sections.push('DATA NOTE: at least one figure above is for HOME, not for where he will be. ' +
+                      'He is away but the destination is not in the itinerary. State this plainly in ' +
+                      'your own words if you mention the weather at all — one sentence, in the flow of ' +
+                      'the memo. Never as a bracket, a caveat, or a note about missing data.');
+      } else if (ctx.locationPlan && ctx.locationPlan.anyAway) {
+        sections.push('DATA NOTE: these figures are for where he will actually be (' +
+                      describeWeekendLocation_(ctx.locationPlan) + '), not for home.');
       }
       sections.push(wLines.join('\n'));
       if (ctx.weatherData.sun && ctx.weatherData.sun.stormNote) {
@@ -1211,15 +1262,19 @@ function classifyWeekend_(weekendCal, travelCtx, locationPlan) {
     result.awayLabel = (locationPlan.sat.tripLabel || locationPlan.sun.tripLabel || null);
     result.where     = describeWeekendLocation_(locationPlan);
 
+    // Both notes are written as INSTRUCTIONS, not as finished sentences about
+    // Ahmed. The previous wording ("the destination could not be determined")
+    // was prose in the third person sitting inside a prompt, and Claude lifted
+    // it straight into the memo — system register in the middle of a warm note.
     if (locationPlan.unknownDestination) {
-      result.note = 'Ahmed is away this weekend (' + result.awayLabel + ') but the destination ' +
-        'could not be determined. Do NOT suggest anything near home — he will not be there. ' +
-        'Do not invent a destination either: acknowledge the trip and keep the memo to what is ' +
-        'already on the calendar.';
+      result.note = 'STATE: away' + (result.awayLabel ? ' (' + result.awayLabel + ')' : '') +
+        '; destination not in the itinerary. Suggest nothing at or near home. Invent no ' +
+        'destination. Keep to what is already on the calendar and to how the weekend should ' +
+        'feel. Any weather figures you are given are home\'s, not his — treat them as ' +
+        'background, never as a reason to suggest anything.';
     } else {
-      result.note = 'Ahmed is away this weekend — ' + result.where + '. Every suggestion must be ' +
-        'grounded in where he actually is on the day in question. Nothing near home: he will not ' +
-        'be there to do it.';
+      result.note = 'STATE: away — ' + result.where + '. Ground every suggestion in where he ' +
+        'actually is on the day in question. Nothing near home: he will not be there to do it.';
     }
     return result;
   }
@@ -1460,6 +1515,22 @@ function weekendTripFor_(trips, dateStr) {
 }
 
 /**
+ * The first place in a string that names several. "Puerto Plata / St Thomas /
+ * Tortola" is a true statement about a cruise and a useless map query, so when
+ * the whole string fails to geocode the first leg is tried instead.
+ *
+ * Deliberately does NOT split on a comma: "Fairfax, VA" and "Austin, TX" are
+ * single places, and geocodeLocation_ specifically depends on the "City, ST"
+ * form — it appends ",US" to it. Splitting there would break home weather.
+ *
+ * " and " is safe only because this is a RETRY: "Trinidad and Tobago" geocodes
+ * on the first attempt, so the split never runs on it.
+ */
+function firstLocationSegment_(s) {
+  return String(s || '').split(/\s*(?:\/|→|->|\||;|\band\b)\s*/i)[0].trim();
+}
+
+/**
  * Works out, for each weekend day, where he will be and whether a real place
  * can be put on a map.
  *
@@ -1471,12 +1542,17 @@ function weekendTripFor_(trips, dateStr) {
  * that geocoding must succeed and the city is named everywhere it is used, so a
  * wrong guess is visible rather than quietly misleading.
  *
- * A day that is away but has no geocodable destination gets NO weather and NO
- * event search — showing home data for a weekend spent elsewhere is the
- * behaviour being removed, and silence with an explanation beats confident
- * wrongness.
+ * A day that is away with no geocodable destination still reports city:'' here
+ * — that is what makes the event search refuse to run. WEATHER, however, falls
+ * back to home and says so; see getWeekendWeather_. The asymmetry is deliberate:
+ * weather is a fact about a place, an outing is a suggestion, and a suggestion
+ * near a home he will not be in is the bug this whole path exists to prevent.
  *
- * @returns {{sat:Object, sun:Object, anyAway:boolean, unknownDestination:boolean}}
+ * `home` is carried so that fallback is possible at all, and is resolved lazily
+ * — a weekend fully away with a known destination never asks for it.
+ *
+ * @returns {{sat:Object, sun:Object, anyAway:boolean, unknownDestination:boolean,
+ *            home:?{city:string,coords:?Object,geocoded:boolean}, homeUnknown:boolean}}
  */
 function getWeekendLocationPlan_(travelCtx, itinRows, sat, sun, homeCity, apiKey) {
   var tz = Session.getScriptTimeZone();
@@ -1496,6 +1572,28 @@ function getWeekendLocationPlan_(travelCtx, itinRows, sat, sun, homeCity, apiKey
     return geoCache[key];
   }
 
+  /**
+   * Two attempts, never more: the string as given, then its first segment —
+   * and the second only when a separator is actually present. A one-city
+   * destination costs exactly what it did before.
+   *
+   * Returns the city that ACTUALLY geocoded, so the memo names a place that
+   * exists rather than the multi-city join nobody can put on a map.
+   */
+  function geocodeBest(city) {
+    var coords = geocode(city);
+    if (coords) return { city: city, coords: coords };
+    var first = firstLocationSegment_(city);
+    if (first && first !== city) {
+      coords = geocode(first);
+      if (coords) {
+        Logger.log('getWeekendLocationPlan_: "' + city + '" did not geocode; using first segment "' + first + '"');
+        return { city: first, coords: coords };
+      }
+    }
+    return { city: '', coords: null };
+  }
+
   function dayFor(dateStr) {
     var trip = weekendTripFor_(trips, dateStr);
     if (!trip) {
@@ -1509,22 +1607,44 @@ function getWeekendLocationPlan_(travelCtx, itinRows, sat, sun, homeCity, apiKey
     try { inferred = inferTripDestination_(itinRows || [], tripKey, trip.label) || inferred; }
     catch (e) { Logger.log('getWeekendLocationPlan_: inferTripDestination_ — ' + e.message); }
 
-    var city   = String(inferred.value || '').trim();
-    var coords = city ? geocode(city) : null;
+    var city = String(inferred.value || '').trim();
+    var hit  = city ? geocodeBest(city) : { city: '', coords: null };
+    // source stays as inferred: the EVIDENCE is still the itinerary, only the
+    // map query was narrowed.
     return { date: dateStr, away: true, tripLabel: trip.label,
-             city: coords ? city : '', source: coords ? (inferred.source || 'label') : 'unknown',
-             coords: coords, geocoded: !!coords };
+             city: hit.city, source: hit.coords ? (inferred.source || 'label') : 'unknown',
+             coords: hit.coords, geocoded: !!hit.coords };
   }
 
   var satDay = dayFor(satStr);
   var sunDay = dayFor(sunStr);
 
+  // Home, carried so weather can fall back to it — resolved from whichever day
+  // is already at home, since that geocode has happened and geoCache memoizes
+  // it anyway. Only looked up separately when BOTH days are away and at least
+  // one of them could not be placed, which is the one path that previously
+  // produced no weather at all. null means it was never needed.
+  var homeInfo = null;
+  if (!satDay.away) {
+    homeInfo = { city: satDay.city, coords: satDay.coords, geocoded: satDay.geocoded };
+  } else if (!sunDay.away) {
+    homeInfo = { city: sunDay.city, coords: sunDay.coords, geocoded: sunDay.geocoded };
+  } else if (!satDay.geocoded || !sunDay.geocoded) {
+    var hc = geocode(homeCity);
+    homeInfo = { city: homeCity || '', coords: hc, geocoded: !!hc };
+  }
+
   return {
     sat: satDay,
     sun: sunDay,
     anyAway: satDay.away || sunDay.away,
-    // Away, but nowhere we can name — the memo says so and shows nothing.
+    // Away, but nowhere we can name. Weather falls back to home and says so;
+    // the event search still refuses to run.
     unknownDestination: (satDay.away && !satDay.geocoded) || (sunDay.away && !sunDay.geocoded),
+    home: homeInfo,
+    // The separate signal for a HOME day that could not be placed — invisible
+    // before, because unknownDestination only ever inspects away days.
+    homeUnknown: !!(homeInfo && !homeInfo.geocoded),
   };
 }
 
@@ -1560,16 +1680,35 @@ function describeWeekendLocation_(plan) {
 
 /**
  * Fetches OWM 5-day forecast and extracts Saturday + Sunday data.
- * Returns { sat: {temp, feelsLike, condition, note}, sun: {temp, feelsLike, condition, stormNote} }
- * or null if no API key / fetch fails.
+ *
+ * Each day resolves to one of three bases:
+ *   'destination'   — away, and the place could be put on a map
+ *   'home'          — at home
+ *   'home-fallback' — away, but nowhere nameable, so these are HOME's numbers
+ *
+ * A fallback is not a silent substitution: `city` always names the place the
+ * numbers actually describe, and both renderers are required to print the
+ * explanatory sentence alongside them. Numbers without that sentence would be
+ * indistinguishable from the original bug — Virginia weather for a weekend in
+ * Tampa.
+ *
+ * Returns null only when there is genuinely nothing to show, and every such
+ * exit logs its own reason via bail().
  *
  * @param {Object} locationPlan - from getWeekendLocationPlan_()
- * @returns {{sat, sun}|null} each day carrying the city it describes
+ * @returns {{sat, sun}|null} each day carrying {city, away, basis, tripLabel}
  */
 function getWeekendWeather_(locationPlan) {
+  // One greppable prefix for every way this can come back empty. Before this,
+  // five different failures all surfaced as the same "weatherData=null".
+  function bail(why) {
+    Logger.log('getWeekendWeather_: no weather — ' + why);
+    return null;
+  }
   try {
     var apiKey = PropertiesService.getScriptProperties().getProperty('WEATHER_API_KEY');
-    if (!apiKey || !locationPlan) return null;
+    if (!apiKey)       return bail('WEATHER_API_KEY script property is not set');
+    if (!locationPlan) return bail('no location plan was built');
 
     var tz  = Session.getScriptTimeZone();
     var sat = computeNextSaturday_(new Date());
@@ -1577,19 +1716,27 @@ function getWeekendWeather_(locationPlan) {
     var satStr = Utilities.formatDate(sat, tz, 'yyyy-MM-dd');
     var sunStr = Utilities.formatDate(sun, tz, 'yyyy-MM-dd');
 
-    // One forecast per DISTINCT city. A normal weekend is one place and makes
-    // exactly one call, as before; a split weekend (away Saturday, home Sunday)
-    // makes two, which is the only way the numbers can be true for both days.
-    //
-    // A day that is away with no geocodable destination gets nothing — showing
-    // home weather for a weekend spent elsewhere is the bug being fixed.
-    var byCity = {};
-    function forecastFor(day) {
-      if (!day || !day.geocoded || !day.coords) return null;
-      var key = String(day.city).toLowerCase();
-      if (byCity.hasOwnProperty(key)) return byCity[key];
+    var home = locationPlan.home || null;
+
+    // Which place's numbers a day gets, and on what basis. An away day that
+    // could not be placed falls back to home rather than showing nothing.
+    function basisFor(day) {
+      if (!day) return null;
+      if (day.geocoded && day.coords)          return { place: day,  basis: day.away ? 'destination' : 'home' };
+      if (home && home.geocoded && home.coords) return { place: home, basis: day.away ? 'home-fallback' : 'home' };
+      return null;
+    }
+
+    // One forecast per DISTINCT place, keyed on COORDINATES rather than city
+    // name: an unresolved day has city '', so two of them would collide on the
+    // same key and silently share one forecast.
+    var byCoords = {};
+    function forecastFor(place) {
+      if (!place || !place.coords) return null;
+      var key = place.coords.lat + ',' + place.coords.lon;
+      if (byCoords.hasOwnProperty(key)) return byCoords[key];
       var url = 'https://api.openweathermap.org/data/2.5/forecast?' +
-                'lat=' + day.coords.lat + '&lon=' + day.coords.lon +
+                'lat=' + place.coords.lat + '&lon=' + place.coords.lon +
                 '&appid=' + encodeURIComponent(apiKey) +
                 '&units=imperial&cnt=40';
       var r = fetchWithHealth_('openweathermap', url);
@@ -1600,13 +1747,24 @@ function getWeekendWeather_(locationPlan) {
           if (d && d.list && d.list.length) parsed = d;
         } catch (pe) { Logger.log('getWeekendWeather_: parse — ' + pe.message); }
       }
-      byCity[key] = parsed;
+      byCoords[key] = parsed;
       return parsed;
     }
 
-    var satData = forecastFor(locationPlan.sat);
-    var sunData = forecastFor(locationPlan.sun);
-    if (!satData && !sunData) return null;
+    var satRes = basisFor(locationPlan.sat);
+    var sunRes = basisFor(locationPlan.sun);
+    if (!satRes && !sunRes) {
+      return bail('no geocodable place for either day — home ' +
+                  (home ? 'did not geocode' : 'was not carried on the plan'));
+    }
+
+    var satData = satRes ? forecastFor(satRes.place) : null;
+    var sunData = sunRes ? forecastFor(sunRes.place) : null;
+    if (!satData && !sunData) {
+      return bail('forecast fetch or parse failed for both days (sat=' +
+                  ((satRes && satRes.place.city) || 'n/a') + ', sun=' +
+                  ((sunRes && sunRes.place.city) || 'n/a') + ')');
+    }
 
     function entriesFor(data, dayStr) {
       if (!data) return [];
@@ -1619,7 +1777,14 @@ function getWeekendWeather_(locationPlan) {
     var satEntries = entriesFor(satData, satStr);
     var sunEntries = entriesFor(sunData, sunStr);
 
-    if (satEntries.length === 0 && sunEntries.length === 0) return null;
+    if (satEntries.length === 0 && sunEntries.length === 0) {
+      // The 5-day horizon. cnt=40 × 3h reaches ~120h, so a run on a Sunday or
+      // Monday asks for a Saturday 6–7 days out and gets a forecast that simply
+      // does not cover it. Silent until now, and indistinguishable from a dead
+      // API key.
+      return bail('the forecast held no entries for ' + satStr + ' or ' + sunStr +
+                  ' — the weekend is probably outside the 5-day window');
+    }
 
     function closestToHour(entries, targetHour) {
       if (!entries || entries.length === 0) return null;
@@ -1652,8 +1817,12 @@ function getWeekendWeather_(locationPlan) {
           var eveRain = Math.round((satEvening.pop || 0) * 100);
           if (eveRain < 20) satNote = satNote ? satNote + ' · Evening clears' : 'Evening clears';
         }
+        // city is the place these numbers DESCRIBE — home on a fallback, never
+        // '' and never the trip label.
         result.sat = { temp: satTemp, feelsLike: satFeels, condition: satCond, note: satNote,
-                       city: locationPlan.sat.city || '', away: !!locationPlan.sat.away };
+                       city: (satRes && satRes.place.city) || '', away: !!locationPlan.sat.away,
+                       basis: satRes ? satRes.basis : 'home',
+                       tripLabel: locationPlan.sat.tripLabel || '' };
       }
     }
 
@@ -1671,14 +1840,21 @@ function getWeekendWeather_(locationPlan) {
           else if (aftRain >= 20) sunStorm = 'Possible afternoon showers';
         }
         result.sun = { temp: sunTemp, feelsLike: sunFeels, condition: sunCond, stormNote: sunStorm,
-                       city: locationPlan.sun.city || '', away: !!locationPlan.sun.away };
+                       city: (sunRes && sunRes.place.city) || '', away: !!locationPlan.sun.away,
+                       basis: sunRes ? sunRes.basis : 'home',
+                       tripLabel: locationPlan.sun.tripLabel || '' };
       }
     }
 
-    return (result.sat || result.sun) ? result : null;
+    if (!result.sat && !result.sun) {
+      return bail('forecast entries were present but held no usable midday reading');
+    }
+    Logger.log('getWeekendWeather_: sat=' +
+               (result.sat ? result.sat.city + '/' + result.sat.basis : 'none') + ', sun=' +
+               (result.sun ? result.sun.city + '/' + result.sun.basis : 'none'));
+    return result;
   } catch (e) {
-    Logger.log('getWeekendWeather_ error: ' + e.message);
-    return null;
+    return bail('threw: ' + e.message);
   }
 }
 
@@ -1829,6 +2005,39 @@ function getRadarDatesForWeekendMemo_(daysAhead) {
  * @param {{sat, sun}|null} weatherData
  * @returns {string}
  */
+/**
+ * The sentence that has to accompany home-fallback numbers.
+ *
+ * THIS IS NOT DECORATION. A fallback cell reading "SATURDAY · FAIRFAX, VA ·
+ * 61°F" on a weekend spent elsewhere is pixel-identical to the bug that started
+ * all this — Virginia weather for a weekend in Tampa. The numbers are only
+ * honest while this sentence is next to them, so both renderers call it and a
+ * test asserts neither ships the numbers without it.
+ *
+ * Written as plain prose in the second person: it lands in a warm personal
+ * email, not a log. No brackets, no "note:", no "unavailable".
+ *
+ * @returns {string} '' when no day fell back
+ */
+function weatherFallbackSentence_(weatherData) {
+  if (!weatherData) return '';
+  var s = weatherData.sat, u = weatherData.sun;
+  var satBack = !!(s && s.basis === 'home-fallback');
+  var sunBack = !!(u && u.basis === 'home-fallback');
+  if (!satBack && !sunBack) return '';
+
+  var label = (satBack && s.tripLabel) || (sunBack && u.tripLabel) || '';
+  var trip  = label ? ' for ' + label : '';
+
+  if (satBack && sunBack) {
+    return 'You’re away' + trip + ' this weekend and I couldn’t work out where, ' +
+           'so these are home’s numbers.';
+  }
+  var day = satBack ? 'Saturday' : 'Sunday';
+  return day + '’s figures are for home — you’re away' + trip +
+         ' and I couldn’t work out where.';
+}
+
 function formatWeatherBlock_(weatherData) {
   if (!weatherData) return '';
   var lines = [];
@@ -1851,6 +2060,9 @@ function formatWeatherBlock_(weatherData) {
     if (u.stormNote) ul += ' · ' + u.stormNote;
     lines.push(ul);
   }
+  if (!lines.length) return '';
+  var caveat = weatherFallbackSentence_(weatherData);
+  if (caveat) lines.push(caveat);
   return lines.join('\n');
 }
 
@@ -1980,6 +2192,11 @@ function escapeHtmlWknd_(s) {
 function capacityBadgeLabel_(weekendCapacity) {
   if (!weekendCapacity) return '';
   switch (weekendCapacity.type) {
+    // 'away' is a weekend a trip COVERS; 'traveling' is one already under way.
+    // Both are worth a badge — omitting 'away' left a travel weekend looking
+    // like any other.
+    case 'away':
+      return weekendCapacity.awayLabel ? 'Away — ' + weekendCapacity.awayLabel : 'Away';
     case 'traveling':      return 'Traveling';
     case 'pre_major_trip':
       return 'Trip in ' + weekendCapacity.preTripDaysAway +
@@ -2024,12 +2241,20 @@ function htmlWeatherBlock_(weatherData) {
     return '<td width="50%" style="padding:12px 16px;">' + lines + '</td>';
   }
 
+  // The fallback sentence ships INSIDE the same cell as the numbers, so there
+  // is no layout in which one appears without the other.
+  var caveat = weatherFallbackSentence_(weatherData);
+  var caveatHtml = caveat
+    ? '<div style="font-size:11px;color:' + c.inkSoft + ';margin-top:8px;font-style:italic;">' +
+      escapeHtmlWknd_(caveat) + '</div>'
+    : '';
+
   return '<tr><td style="padding:20px 24px 0;">' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="background:' + c.badgeBg + ';border-radius:3px;"><tr>' +
     dayCell('Saturday', weatherData.sat) +
     '<td width="1" style="background:' + c.rule + ';"></td>' +
     dayCell('Sunday', weatherData.sun) +
-    '</tr></table></td></tr>';
+    '</tr></table>' + caveatHtml + '</td></tr>';
 }
 
 /** @param {string|null} carryNote @returns {string} '' or a full <tr> row */
