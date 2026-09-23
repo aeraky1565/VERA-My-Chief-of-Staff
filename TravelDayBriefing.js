@@ -156,8 +156,11 @@ function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
  * Safe no-op if no travel today.
  * Respects config key: travel_day_briefing_enabled (default: true)
  */
-function checkAndSendTravelDayBriefings_() {
+function checkAndSendTravelDayBriefings_(opts) {
   var _tdbStart = Date.now();
+  // opts.dateOverride ('yyyy-MM-dd') lets TestBench.js preview a briefing for a
+  // day other than today. The scheduled call passes nothing and is unaffected.
+  var _tdbDateOverride = (opts && opts.dateOverride) ? String(opts.dateOverride).trim() : '';
   try {
   var cfg = getConfigValues();
   if ((cfg['travel_day_briefing_enabled'] || 'true') === 'false') {
@@ -169,7 +172,8 @@ function checkAndSendTravelDayBriefings_() {
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.ITINERARY);
   var tz    = Session.getScriptTimeZone();
-  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var today = _tdbDateOverride || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  if (_tdbDateOverride) Logger.log('TravelDayBriefing: DATE OVERRIDE — treating ' + today + ' as today');
 
   // tripMap: tripKey → rows for today (may be empty array for active trips with no items today)
   var tripMap    = {};

@@ -15,21 +15,22 @@ VERA runs silently in the background of your life. Every night at 11 PM it reads
 5. [Intelligence & Proactive Features](#intelligence--proactive-features)
 6. [Nightly Pipeline](#nightly-pipeline)
 7. [Triggers](#triggers)
-8. [Flag System](#flag-system)
-9. [Travel Module](#travel-module)
-10. [Finance Module](#finance-module)
-11. [Health & Wellness Module](#health--wellness-module)
-12. [People & Relationships Module](#people--relationships-module)
-13. [Career Module](#career-module)
-14. [Home Front Module](#home-front-module)
-15. [Slack Integration](#slack-integration)
-16. [Data Model — Sheet Tabs](#data-model--sheet-tabs)
-17. [Config Tab Reference](#config-tab-reference)
-18. [Script Properties Reference](#script-properties-reference)
-19. [Calendar Event Prefixes](#calendar-event-prefixes)
-20. [Dashboard API Reference](#dashboard-api-reference)
-21. [File Structure](#file-structure)
-22. [Setup & Deployment](#setup--deployment)
+8. [Running Things by Hand (`TestBench.js`)](#running-things-by-hand-testbenchjs)
+9. [Flag System](#flag-system)
+10. [Travel Module](#travel-module)
+11. [Finance Module](#finance-module)
+12. [Health & Wellness Module](#health--wellness-module)
+13. [People & Relationships Module](#people--relationships-module)
+14. [Career Module](#career-module)
+15. [Home Front Module](#home-front-module)
+16. [Slack Integration](#slack-integration)
+17. [Data Model — Sheet Tabs](#data-model--sheet-tabs)
+18. [Config Tab Reference](#config-tab-reference)
+19. [Script Properties Reference](#script-properties-reference)
+20. [Calendar Event Prefixes](#calendar-event-prefixes)
+21. [Dashboard API Reference](#dashboard-api-reference)
+22. [File Structure](#file-structure)
+23. [Setup & Deployment](#setup--deployment)
 
 ---
 
@@ -352,6 +353,54 @@ The Finance tab in the dashboard shows: net income vs. spend (from the Simple As
 All triggers are installed by `setupTriggers()`. The function is safe to call multiple times — it deletes existing VERA triggers before recreating them to prevent duplicates.
 
 > **Warning:** `runEmailScan_` can generate up to 144 Claude API calls per day when enabled. Only enable it when actively processing a travel email backlog. Disable when done.
+
+---
+
+## Running Things by Hand (`TestBench.js`)
+
+Everything above runs on a schedule. **`TestBench.js` is the index for running
+any of it now**, from the Apps Script editor. Open the file, scan the sections,
+pick a `tb*` function from the Run dropdown, read the Execution log.
+
+It exists because the Run menu lists 200+ functions, so it is a haystack rather
+than a menu. Most entries are one-line callouts — the implementations stay in
+the files they belong to, and nothing is reimplemented here.
+
+| Section | Entries |
+|---------|---------|
+| 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
+| 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
+| 3. Travel | `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
+| 4. Data & trackers | `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
+
+### Knobs
+
+**Apps Script cannot pass arguments from the Run menu.** Anything that needs a
+date, a window or a trip is therefore a constant at the top of the file — edit
+it, save, then run.
+
+| Knob | Effect |
+|------|--------|
+| `TB_DATE` | `'yyyy-MM-dd'` — the travel-day briefing treats this as today, so you can preview a trip day that is not today. Blank = the real today. |
+| `TB_PRETRIP_HOURS` | Widens the pre-trip departure window, in hours, to reach a trip further out than the configured 48. `0` = use `pretrip_briefing_hours`. |
+| `TB_TRIP_LABEL` | Which trip `tbGeneratePacking` / `tbGenerateDiscoveries` target. Blank = the next upcoming one. |
+
+### These send for real
+
+With two exceptions, the entries do the real thing: real emails, real Slack
+pings, real calendar events.
+
+Where a once-per-trip or once-per-week guard would otherwise make a second run
+silently do nothing, the wrapper **clears that guard first and says so in the
+log** — `tbWeekendMemoSend` clears the 6.25-day cooldown row, and
+`tbPreTripBriefing` / `tbPostTripCapture` delete the matching Flags rows,
+because `writeFlags()` fingerprints against every flag ever written. A test that
+quietly no-ops is worse than no test.
+
+The two exceptions are **`tbWeekendMemoDryRun`**, which builds the whole memo,
+logs the prompt and the finished text, and sends nothing — it would otherwise
+write anti-repeat history that skews the next real memo — and **`tbProjects`**,
+which writes a throwaway test project whose rows you should delete afterwards.
 
 ---
 
@@ -1014,6 +1063,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Growth.js` | Books, courses, skills CRUD |
 | `Experiments.js` | Experiment tracker + check-in log CRUD |
 | `Contracts.js` | Contract CRUD + expiry flagging (`checkContracts_()`) |
+| `TestBench.js` | **The index of manual test entry points.** One `tb*` callout per user-facing feature, grouped into four sections, with knobs at the top because the Run menu cannot pass arguments. Clears the relevant dedup guard before anything that would otherwise silently no-op |
 | `appsscript.json` | OAuth scopes: Sheets, Calendar, UrlFetch, Mail, Drive, Tasks, Triggers, External requests |
 | `docs/app.js` | **The dashboard source — edit this.** React app in `React.createElement` form (no JSX) |
 | `docs/index.html` | Self-contained page GitHub Pages serves: CSS + inlined React bundle + a copy of `app.js`. **Generated — do not hand-edit** |

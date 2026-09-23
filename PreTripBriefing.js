@@ -15,15 +15,20 @@
  * Deduplication is handled by writeFlags() key fingerprinting — one
  * briefing per trip, fires once and never again.
  */
-function checkPreTripBriefings_() {
+function checkPreTripBriefings_(opts) {
   var _ptbStart = Date.now();
   var cfg = getConfigValues();
+  // opts.hoursOverride widens the departure window so TestBench.js can preview
+  // a brief for a trip that is further out than the configured 48h. The
+  // scheduled call passes nothing.
+  var _ptbHoursOverride = parseInt((opts && opts.hoursOverride) || 0, 10) || 0;
   if ((cfg['pretrip_briefing_enabled'] || 'true') === 'false') {
     Logger.log('PreTripBriefing: disabled via config');
     veraLog_('checkPreTripBriefings', 'Travel', 'Skipped', 'pretrip_briefing_enabled is false', Date.now() - _ptbStart);
     return;
   }
-  var hoursWindow = parseInt(cfg['pretrip_briefing_hours'] || '48', 10) || 48;
+  var hoursWindow = _ptbHoursOverride || parseInt(cfg['pretrip_briefing_hours'] || '48', 10) || 48;
+  if (_ptbHoursOverride) Logger.log('PreTripBriefing: WINDOW OVERRIDE — ' + hoursWindow + 'h');
 
   var trips = getUpcomingTripsForBriefing_(hoursWindow);
   if (!trips.length) {
