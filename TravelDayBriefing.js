@@ -161,6 +161,9 @@ function checkAndSendTravelDayBriefings_(opts) {
   // opts.dateOverride ('yyyy-MM-dd') lets TestBench.js preview a briefing for a
   // day other than today. The scheduled call passes nothing and is unaffected.
   var _tdbDateOverride = (opts && opts.dateOverride) ? String(opts.dateOverride).trim() : '';
+  // opts.force re-sends even if today's briefing already went out. Only
+  // TestBench passes it; the scheduled call never does.
+  var _tdbForce = !!(opts && opts.force);
   try {
   var cfg = getConfigValues();
   if ((cfg['travel_day_briefing_enabled'] || 'true') === 'false') {
@@ -261,9 +264,46 @@ function checkAndSendTravelDayBriefings_(opts) {
 
   Logger.log('TravelDayBriefing: ' + tripKeys.length + ' trip(s) today — sending briefings');
   var sent = 0;
+  // Guard against sending the same day's briefing twice.
+  //
+  // There was no send guard here at all — unlike the pre-trip path, which has
+  // one. That is how a trip whose start date moved produced TWO identical
+  // emails: the sheet rows still carried the old startDate|label key while the
+  // calendar produced a new one, both resolved to the same events, and this loop
+  // sent one email per key.
+  //
+  // Deliberately keyed on the DAY and the trip LABEL, not the trip key: the
+  // label is the part that does not change when a date is edited, so two keys
+  // for one trip collapse to one latch. Two genuinely different trips on the
+  // same day still have different labels.
+  var _tdbProps = PropertiesService.getScriptProperties();
+  var _tdbSeen  = {};   // labels briefed in THIS run
   tripKeys.forEach(function(tripKey) {
     try {
+      var _lbl  = String(tripKey.split('|').slice(1).join('|') || tripKey);
+      var _sKey = 'TDB_SENT_' + today.replace(/-/g, '') + '_' +
+                  _lbl.toUpperCase().replace(/[^A-Z0-9]/g, '_').substring(0, 60);
+
+      // Two guards, and they do different jobs.
+      //
+      // The in-run one collapses a trip that appears under two keys, and it is
+      // NOT bypassable: forcing a re-send should re-send the briefing, not
+      // reproduce the duplicate that started all this.
+      if (_tdbSeen[_sKey]) {
+        Logger.log('TravelDayBriefing: "' + _lbl + '" already briefed this run — skipping ' +
+                   tripKey + ' (same trip, second key)');
+        return;
+      }
+      // The persisted one stops a second scheduled run the same day. TestBench
+      // passes force to get past it, because a manual run that silently does
+      // nothing looks exactly like "no trip today" and tells you nothing.
+      if (!_tdbForce && _tdbProps.getProperty(_sKey)) {
+        Logger.log('TravelDayBriefing: already sent today for "' + _lbl + '" — skipping ' + tripKey);
+        return;
+      }
+      _tdbSeen[_sKey] = true;
       sendTravelDayBriefing_(tripKey, tripMap[tripKey]);
+      _tdbProps.setProperty(_sKey, new Date().toISOString());
       sent++;
     } catch (err) {
       Logger.log('TravelDayBriefing: error for ' + tripKey + ' — ' + err.message);
@@ -776,12 +816,45 @@ function buildTravelDirectionsUrl_(enrichedItems) {
  * @param {string} apiKey — GOOGLE_STATIC_MAPS_API_KEY script property
  * @returns {string|null} Static Maps image URL, or null if fewer than 2 usable stops or no key
  */
+/**
+ * The marker strings this map will actually use, in order.
+ *
+ * Static Maps geocodes each marker server-side and returns HTTP 400 for the
+ * WHOLE image if any one of them fails — so an un-geocodable stop does not lose
+ * its own pin, it loses the entire map. That is how a route string like
+ * "IAD → MCO" (which webGetItinerary_ synthesises as a flight row's Location)
+ * blanks the image.
+ *
+ * So the same screening the Distance Matrix path already applies
+ * (isUsableTravelLocation_ / normalizeTravelLocation_, TravelLegs.js) is applied
+ * here too, plus a rejection of route-shaped strings, which name two places and
+ * are therefore not a place.
+ *
+ * Shared with diagnoseTravelDayMap_ so the diagnostic can never disagree with
+ * the email about which stops were used.
+ *
+ * @returns {Array<string>} usable, normalised marker strings, capped at 10
+ */
+function travelMapMarkers_(enrichedItems) {
+  var out = [];
+  (enrichedItems || []).forEach(function(e) {
+    var raw = e && e.displayAddress;
+    if (!raw) return;
+    var loc = (typeof normalizeTravelLocation_ === 'function')
+      ? normalizeTravelLocation_(raw)
+      : String(raw).replace(/\s+/g, ' ').trim();
+    if (typeof isUsableTravelLocation_ === 'function' && !isUsableTravelLocation_(loc)) return;
+    // A route, not a place. Two endpoints joined by an arrow/dash geocode to
+    // nothing and take the whole image down with them.
+    if (/\s(?:→|->|—|--)\s/.test(loc)) return;
+    if (out.indexOf(loc) === -1) out.push(loc);   // one pin per distinct place
+  });
+  return out.slice(0, 10);
+}
+
 function buildTravelStaticMapUrl_(enrichedItems, apiKey) {
   if (!apiKey) return null;
-  var stops = (enrichedItems || [])
-    .map(function(e) { return e.displayAddress; })
-    .filter(function(a) { return !!a; })
-    .slice(0, 10);
+  var stops = travelMapMarkers_(enrichedItems);
   if (stops.length < 2) return null;
 
   var markers = stops.map(function(addr) {
@@ -818,7 +891,10 @@ function buildTravelMapSection_(data) {
 
   if (!apiKey) return '';
 
-  var usableStops = items.filter(function(e) { return !!(e && e.displayAddress); }).length;
+  // Counted with the SAME screening buildTravelStaticMapUrl_ applies. Counting
+  // raw displayAddress here meant the section could promise a map and then emit
+  // nothing, because the URL builder rejected stops this count had accepted.
+  var usableStops = travelMapMarkers_(items).length;
   if (usableStops < 2 || !directionsUrl) {
     return (
       '<p style="margin:24px 0 16px;font-size:11px;font-weight:700;color:#1565c0;' +
@@ -1852,4 +1928,142 @@ function testSendTravelDayBriefing() {
   Logger.log('=== testSendTravelDayBriefing ===');
   checkAndSendTravelDayBriefings_();
   Logger.log('=== done — check your inbox ===');
+}
+
+/**
+ * diagnoseTravelDayMap_(dateStr)
+ *
+ * Why this exists: the static map is the only outbound Google call in this
+ * codebase that is never made server-side. The URL is concatenated into an
+ * <img src> and fetched by GMAIL'S IMAGE PROXY when the mail is opened — so a
+ * rejection happens on Google's infrastructure, the error body is never
+ * rendered, and the reader sees an empty box with no clue. It is also invisible
+ * to API health, because health entries only exist for services this script
+ * actually fetches.
+ *
+ * Worse, the one existing check is misleading: testTravelLegsApi_ verifies
+ * DISTANCE MATRIX, which is a separately-enabled API. The key can pass that and
+ * still be rejected for Maps Static, and the property is even named
+ * GOOGLE_STATIC_MAPS_API_KEY.
+ *
+ * So this fetches the real URL and prints what Google actually says. Read-only:
+ * sends no mail, writes no sheet.
+ *
+ * @param {string} [dateStr] — 'yyyy-MM-dd'; defaults to today
+ */
+function diagnoseTravelDayMap_(dateStr) {
+  var tz    = Session.getScriptTimeZone();
+  var today = String(dateStr || '').trim() ||
+              Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  Logger.log('=== Travel-day map diagnostic — ' + today + ' ===');
+
+  // ---- 1. the key ---------------------------------------------------------
+  var apiKey = PropertiesService.getScriptProperties()
+                 .getProperty('GOOGLE_STATIC_MAPS_API_KEY') || '';
+  if (!apiKey) {
+    Logger.log('STOP — GOOGLE_STATIC_MAPS_API_KEY is not set.');
+    Logger.log('  With no key the whole "Today\'s Route" block is hidden, so if you');
+    Logger.log('  SAW a heading and caption in the email, the key was set when it sent.');
+    Logger.log('  Set it in Project Settings -> Script Properties.');
+    return;
+  }
+  Logger.log('Key: present, ' + apiKey.length + ' chars, starts "' + apiKey.substring(0, 4) + '…"');
+
+  // ---- 2. the markers, exactly as the email would build them --------------
+  var rows = [];
+  try {
+    var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (sheet && sheet.getLastRow() >= 2) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length)
+        .getValues().forEach(function(row) {
+          var d = row[4];
+          var ds = (d instanceof Date) ? Utilities.formatDate(d, tz, 'yyyy-MM-dd')
+                                       : String(d || '').trim();
+          if (ds === today) rows.push(row);
+        });
+    }
+  } catch (e) {
+    Logger.log('Itinerary read failed: ' + e.message);
+  }
+  Logger.log(rows.length + ' itinerary row(s) dated ' + today);
+  if (!rows.length) {
+    Logger.log('STOP — nothing to map. Set TB_DATE to a real travel day and re-run.');
+    return;
+  }
+
+  var enriched = enrichTravelItems_(rows);
+  Logger.log('Addresses as the map would see them (JSON-quoted so arrows and');
+  Logger.log('newlines are visible):');
+  enriched.forEach(function(e, i) {
+    Logger.log('  [' + i + '] ' + JSON.stringify(e.displayAddress || ''));
+  });
+
+  var markers = travelMapMarkers_(enriched);
+  Logger.log('After screening, ' + markers.length + ' usable marker(s):');
+  markers.forEach(function(m, i) { Logger.log('  [' + i + '] ' + JSON.stringify(m)); });
+  var dropped = enriched.length - markers.length;
+  if (dropped > 0) Logger.log('  (' + dropped + ' dropped as unusable, duplicate, or route-shaped)');
+  if (markers.length < 2) {
+    Logger.log('STOP — fewer than 2 usable stops, so no map is built at all.');
+    Logger.log('  The email shows the "not enough stops" note instead.');
+    return;
+  }
+
+  // ---- 3. the one thing nothing else does: actually fetch it --------------
+  var url = buildTravelStaticMapUrl_(enriched, apiKey);
+  Logger.log('URL length: ' + url.length + ' chars (limit is 8192)');
+  var resp = null;
+  try {
+    resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  } catch (fe) {
+    Logger.log('FAIL — the request threw: ' + fe.message);
+    return;
+  }
+  var code = resp.getResponseCode();
+  var ctype = '';
+  try { ctype = String(resp.getHeaders()['Content-Type'] || resp.getHeaders()['content-type'] || ''); } catch (he) {}
+  var body = '';
+  try { body = String(resp.getContentText() || '').substring(0, 400); } catch (be) { body = '(binary)'; }
+
+  Logger.log('HTTP ' + code + '   Content-Type: ' + ctype);
+
+  if (code === 200 && ctype.indexOf('image') === 0) {
+    Logger.log('PASS — Google returned a real image. The key, the API and every');
+    Logger.log('  marker are fine, so a blank box in the mail is client-side:');
+    Logger.log('  images blocked in your mail app, or Gmail caching an earlier failure.');
+    return;
+  }
+
+  Logger.log('Google said: ' + body);
+  var b = body.toLowerCase();
+  if (code === 403 && b.indexOf('not authorized to use this api') !== -1) {
+    Logger.log('DIAGNOSIS — the Maps Static API is NOT ENABLED on the Cloud project.');
+    Logger.log('  It is separate from Distance Matrix, which is the only thing');
+    Logger.log('  testTravelLegsApi_ checks — so that passing told you nothing here.');
+    Logger.log('  Fix: Cloud Console -> APIs & Services -> enable "Maps Static API".');
+  } else if (b.indexOf('referer') !== -1 || b.indexOf('referrer') !== -1 || b.indexOf('ip address') !== -1) {
+    Logger.log('DIAGNOSIS — the key is RESTRICTED in a way that excludes this call.');
+    Logger.log('  Gmail fetches the image through its own proxy, which sends no');
+    Logger.log('  referrer and an IP you cannot allowlist. A referrer-restricted');
+    Logger.log('  key can never work in email. Use a separate key restricted by');
+    Logger.log('  API only, not by referrer or IP.');
+  } else if (b.indexOf('billing') !== -1 || code === 402) {
+    Logger.log('DIAGNOSIS — BILLING is not enabled on the Cloud project.');
+  } else if (b.indexOf('signature') !== -1 || b.indexOf('must be signed') !== -1) {
+    Logger.log('DIAGNOSIS — this project requires URL SIGNING for Maps Static.');
+  } else if (code === 400) {
+    Logger.log('DIAGNOSIS — a marker failed to geocode, which fails the WHOLE image.');
+    Logger.log('  Bisecting to find which one…');
+    markers.forEach(function(m, i) {
+      var one = 'https://maps.googleapis.com/maps/api/staticmap?size=200x200&markers=' +
+                encodeURIComponent(m) + '&key=' + apiKey;
+      var r = null;
+      try { r = UrlFetchApp.fetch(one, { muteHttpExceptions: true }); } catch (e2) {}
+      var ok = r && r.getResponseCode() === 200;
+      Logger.log('    ' + (ok ? 'ok  ' : 'FAIL') + ' [' + i + '] ' + JSON.stringify(m));
+    });
+    Logger.log('  Fix the FAIL rows\' Location in the Travel tab, or leave them blank.');
+  } else {
+    Logger.log('DIAGNOSIS — unrecognised failure. The body above is Google\'s own text.');
+  }
 }

@@ -16,6 +16,42 @@
  * for each prompting a Chat debrief. Dedup via writeFlags() key fingerprint
  * ensures exactly one flag per trip, never re-fires.
  */
+/**
+ * A trip's length in nights, or null when it genuinely cannot be determined.
+ *
+ * This used to be Math.max(1, Math.round(ms / 86400000)) at four separate sites.
+ * The floor was the bug: when departureDate and endDate are the SAME day — which
+ * happens whenever the itinerary holds no row later than the trip key's own date
+ * — the difference is 0, and the floor turned "I have no end date" into a
+ * confident "1-night". A trip that had not even finished was announced as a
+ * one-night trip that had just wrapped up.
+ *
+ * Returning null lets each caller say nothing about duration rather than state
+ * a number it does not have.
+ *
+ * @returns {number|null}
+ */
+function tripDurationNights_(trip) {
+  if (!trip || !trip.endDate || !trip.departureDate) return null;
+  var ms = trip.endDate.getTime() - trip.departureDate.getTime();
+  if (!isFinite(ms) || ms <= 0) return null;
+  var n = Math.round(ms / 86400000);
+  return n > 0 ? n : null;
+}
+
+/** "3-night " for prose, or "" when the duration is unknown. Note the trailing space. */
+function tripDurationPrefix_(trip) {
+  var n = tripDurationNights_(trip);
+  return n === null ? '' : n + '-night ';
+}
+
+/** "3 nights" / "1 night", or "length unknown". */
+function tripDurationLabel_(trip) {
+  var n = tripDurationNights_(trip);
+  if (n === null) return 'length unknown';
+  return n + (n === 1 ? ' night' : ' nights');
+}
+
 function checkPostTripCapture_() {
   var cfg = getConfigValues();
   if ((cfg['posttrip_capture_enabled'] || 'true') === 'false') {
@@ -48,13 +84,12 @@ function checkPostTripCapture_() {
     // Memory Log — record each completed trip
     trips.forEach(function(trip) {
       try {
-        var durationMs     = trip.endDate.getTime() - trip.departureDate.getTime();
-        var durationNights = Math.max(1, Math.round(durationMs / 86400000));
+        var durationLabel  = tripDurationLabel_(trip);
         appendMemoryEvent_(
           MEMORY_TYPE.TRIP_COMPLETED,
           'Ahmed',
           'Trip completed: ' + trip.tripLabel,
-          durationNights + ' night(s) · ended ' + Utilities.formatDate(trip.endDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+          durationLabel + ' · ended ' + Utilities.formatDate(trip.endDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
           trip.tripKey
         );
       } catch (mErr) { Logger.log('Memory: trip completed hook (non-fatal) — ' + mErr.message); }
@@ -157,12 +192,8 @@ function buildPostTripFlag_(trip) {
   var daysN     = Math.round(trip.daysAgo);
   var daysLabel = daysN === 1 ? 'yesterday' : daysN + ' days ago';
 
-  // Trip duration in nights
-  var durationMs    = trip.endDate.getTime() - trip.departureDate.getTime();
-  var durationNights = Math.max(1, Math.round(durationMs / 86400000));
-
   var reason =
-    'Your ' + durationNights + '-night ' + trip.tripLabel + ' ended ' + daysLabel + '.\n\n' +
+    'Your ' + tripDurationPrefix_(trip) + trip.tripLabel + ' ended ' + daysLabel + '.\n\n' +
     'A quick debrief in Chat will log the highlights for future reference:\n' +
     'restaurants worth returning to, best experiences, anything you\u2019d skip,\n' +
     'what Victoria loved, and whether you\u2019d go back.\n\n' +
@@ -255,15 +286,13 @@ function sendPostTripNudgeEmail_(trip) {
   }
 
   var tz            = Session.getScriptTimeZone();
-  var durationMs    = trip.endDate.getTime() - trip.departureDate.getTime();
-  var durationNights = Math.max(1, Math.round(durationMs / 86400000));
   var BLUE          = '#1565c0';
 
   var subject = '🧳 ' + trip.tripLabel + ' — Capture the Memories';
 
   var bodyHtml =
     '<p style="margin:0 0 14px;font-size:14px;color:#333;line-height:1.65;">' +
-    'Your ' + durationNights + '-night ' + escapeHtml_(trip.tripLabel) + ' just wrapped up — ' +
+    'Your ' + tripDurationPrefix_(trip) + escapeHtml_(trip.tripLabel) + ' just wrapped up — ' +
     'before the details fade, it\'s worth capturing the highlights.' +
     '</p>' +
     '<p style="margin:0 0 20px;font-size:14px;color:#333;line-height:1.65;">' +
@@ -309,8 +338,7 @@ function sendPostTripRecapEmail_(trip) {
   }
 
   var tz            = Session.getScriptTimeZone();
-  var durationMs    = trip.endDate.getTime() - trip.departureDate.getTime();
-  var durationNights = Math.max(1, Math.round(durationMs / 86400000));
+  var durationLabel = tripDurationLabel_(trip);
   var toneMode      = getTripToneMode_(trip.tripKey);
   var BLUE          = '#1565c0';
 
@@ -359,7 +387,7 @@ function sendPostTripRecapEmail_(trip) {
   var claudePrompt;
   if (hasDebrief && highlightLines.length) {
     claudePrompt =
-      'You are VERA, Ahmed\'s Chief of Staff. Ahmed returned from ' + trip.tripLabel + ' (' + durationNights + ' nights).\n\n' +
+      'You are VERA, Ahmed\'s Chief of Staff. Ahmed returned from ' + trip.tripLabel + ' (' + durationLabel + ').\n\n' +
       'Itinerary:\n' + itinSummary + '\n\n' +
       'Debrief highlights:\n' + highlightLines.join('\n') + '\n\n' +
       'Tone mode: ' + toneMode + '\n' +
@@ -372,7 +400,7 @@ function sendPostTripRecapEmail_(trip) {
       '}';
   } else {
     claudePrompt =
-      'You are VERA, Ahmed\'s Chief of Staff. Ahmed returned from ' + trip.tripLabel + ' (' + durationNights + ' nights).\n\n' +
+      'You are VERA, Ahmed\'s Chief of Staff. Ahmed returned from ' + trip.tripLabel + ' (' + durationLabel + ').\n\n' +
       'Itinerary:\n' + itinSummary + '\n\n' +
       'Ahmed did not complete a Chat debrief within 48 hours. Assume all itinerary items were completed as planned. Write the recap from the itinerary alone.\n\n' +
       'Tone mode: ' + toneMode + '\n' +
@@ -468,12 +496,12 @@ function sendPostTripRecapEmail_(trip) {
   var depLabel = Utilities.formatDate(trip.departureDate, tz, 'MMM d');
   var endLbl   = Utilities.formatDate(trip.endDate,       tz, 'MMM d, yyyy');
   var htmlBody = buildPreTripEmailHtml_(
-    'Trip Recap', trip.tripLabel, depLabel + ' – ' + endLbl + ' · ' + durationNights + ' nights', sections);
+    'Trip Recap', trip.tripLabel, depLabel + ' – ' + endLbl + ' · ' + durationLabel, sections);
 
   // Plain text
   var plain = [
     trip.tripLabel.toUpperCase() + ' — TRIP RECAP',
-    depLabel + ' – ' + endLbl + ' (' + durationNights + ' nights)',
+    depLabel + ' – ' + endLbl + ' (' + durationLabel + ')',
     '',
   ];
   if (tagline)   plain.push('~~ ' + tagline + ' ~~', '');

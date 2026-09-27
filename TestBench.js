@@ -194,7 +194,20 @@ function tbTravelDayBriefing() {
   tbBanner_('Travel-day briefing');
   if (TB_DATE) Logger.log('Date override: ' + TB_DATE);
   else Logger.log('No TB_DATE set — using today. Fires only if a trip has itinerary rows dated today.');
-  checkAndSendTravelDayBriefings_({ dateOverride: TB_DATE });
+  // force: the day's send is latched now, so without this a second run would
+  // silently do nothing and look exactly like "no trip today".
+  Logger.log('Forcing a re-send past the once-per-day guard.');
+  checkAndSendTravelDayBriefings_({ dateOverride: TB_DATE, force: true });
+}
+
+/**
+ * Why the travel-day map is blank. Fetches the static-map URL server-side and
+ * prints what Google actually says — the one Google call this codebase otherwise
+ * never makes itself. Sends nothing, writes nothing. Honours TB_DATE.
+ */
+function tbTravelDayMap() {
+  tbBanner_('Travel-day map diagnostic');
+  diagnoseTravelDayMap_(TB_DATE);
 }
 
 /** Post-trip debrief prompt. Clears the flag so it can fire again. */
