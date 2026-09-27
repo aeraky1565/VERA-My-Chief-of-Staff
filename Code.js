@@ -51,6 +51,7 @@ const TABS = {
   TRIP_RECOMMENDATIONS: 'TripRecommendations', // AI-generated trip activity/dining recommendations (Issue #73)
   TRAVEL_LEGS:      'TravelLegs',      // Cached point-to-point travel times between itinerary stops
   TRIP_DECISIONS:   'Trip Decisions',  // Resolutions for tentative holds competing for one slot (Issue #187)
+  TRIPS:            'Trips',            // Trip registry — immutable Trip ID per trip
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
   GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
@@ -197,6 +198,18 @@ const TRAVEL_LEGS_HEADERS       = ['From', 'To', 'Mode', 'Minutes', 'Distance', 
 // a GET path, and means a hold deleted from the calendar stops being a decision
 // instead of leaving an orphan row. Status is Decided / Snoozed / Dropped.
 const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', 'Status', 'Chosen Item ID', 'Snoozed Until', 'Decided At', 'Notes'];
+
+// The trip registry. Trip identity used to be the string startDate + '|' + label,
+// frozen into eight tabs at write time — so moving a trip's start date gave it two
+// identities and nothing could reconcile them. Trip ID is minted once and never
+// changes; Label/Start/End track the current truth and are free to move.
+//
+// Calendar Event IDs is a SET (semicolon-joined): a cruise is assembled from a
+// Board/Disembark pair, and the same trip shared to a second calendar keeps its
+// iCalUID. Aliases holds every legacy key this trip has answered to, so a lagging
+// client or an un-migrated row still resolves. Status carries 'merged:<TRIP-...>'
+// forwarding, so anything still holding a losing id resolves instead of vanishing.
+const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status'];
 const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
@@ -395,6 +408,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.TRIP_RECOMMENDATIONS,  TRIP_RECS_HEADERS);
   ensureSheet(ss, TABS.TRAVEL_LEGS,           TRAVEL_LEGS_HEADERS);
   ensureSheet(ss, TABS.TRIP_DECISIONS,        TRIP_DECISION_HEADERS);
+  ensureSheet(ss, TABS.TRIPS,          TRIPS_HEADERS);
   ensureSheet(ss, TABS.SYSTEM_LOG,            SYSTEM_LOG_HEADERS);
   ensureSheet(ss, TABS.PROCESSED_EMAILS,      PROCESSED_EMAILS_HEADERS);
   ensureSheet(ss, TABS.MORNING_ROUTINE,       MORNING_ROUTINE_HEADERS);

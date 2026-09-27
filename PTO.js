@@ -628,10 +628,17 @@ function detectCruises_(rawEvents, tz, today) {
     var startStr = Utilities.formatDate(startD,  tz, 'yyyy-MM-dd');
     var endStr   = Utilities.formatDate(endIncl, tz, 'yyyy-MM-dd');
 
+    // The event id is carried so the trip registry can key a cruise on the
+    // events it is built from. A cruise is SYNTHETIC — two events become one
+    // trip — so without this there is no event to point at and the id would
+    // have to be re-derived from the label every time.
+    var evId = '';
+    try { evId = ev.isRecurringEvent() ? '' : String(ev.getId() || ''); } catch (idErr) { evId = ''; }
+
     if (isBoardingEvent_(title)) {
-      boardings.push({ title: title, start: startD, startStr: startStr, endStr: endStr, dur: dur });
+      boardings.push({ title: title, start: startD, startStr: startStr, endStr: endStr, dur: dur, id: evId });
     } else if (isDisembarkEvent_(title)) {
-      disembarkings.push({ title: title, start: startD, startStr: startStr, endStr: endStr, dur: dur });
+      disembarkings.push({ title: title, start: startD, startStr: startStr, endStr: endStr, dur: dur, id: evId });
     }
   });
 
@@ -681,6 +688,9 @@ function detectCruises_(rawEvents, tz, today) {
       daysAway:     daysAway,
       calendarName: '',
       isCruise:     true,
+      // Both legs. Either one matching keeps the trip's id, so deleting the
+      // Disembark event does not mint a second trip.
+      eventIds:     [b.id, matchD ? matchD.id : ''].filter(function(x) { return !!x; }),
     });
 
     spans.push({ startStr: b.startStr, endStr: cruiseEndStr });
@@ -884,6 +894,16 @@ function getUpcomingTravel_(cfg) {
         daysAway:     daysAway,
         calendarName: calName,
       };
+      // The calendar event this trip came from. Stable across date and title
+      // edits, and the same event shared to a second calendar keeps one
+      // iCalUID — so this is how a trip keeps its registry id when its dates
+      // move. Blank for a recurring event, whose instance ids encode the start
+      // time and would therefore change on exactly the edit we must survive.
+      try {
+        tripEntry.eventIds = ev.isRecurringEvent() ? [] : [String(ev.getId() || '')];
+      } catch (idErr) {
+        tripEntry.eventIds = [];
+      }
       if (isExtFam) tripEntry.isExtendedFamily = true;
       travel.push(tripEntry);
     }
@@ -896,12 +916,40 @@ function getUpcomingTravel_(cfg) {
   // adjacent to or contained within a longer trip on the same calendar period.
   travel = filterSubEvents_(travel);
 
+  // Attach the immutable trip id BEFORE caching.
+  //
+  // This is the only place it can go. Resolving at each read site instead would
+  // spread trip identity across sixteen call sites, which is exactly how the
+  // startDate|label mess arose. And it has to precede the cache write, or a
+  // cache hit would hand back trips with no id for the next ten minutes.
+  //
+  // The matcher is idempotent, so a cache miss re-resolves every trip to the id
+  // it already has rather than minting a second one — the assertion the
+  // registry tests exist to prove.
+  try {
+    travel = attachTripIds_(travel);
+  } catch (tripIdErr) {
+    // Never let identity bookkeeping take down travel itself. A trip with no id
+    // still briefs, packs and flags; a thrown getUpcomingTravel_ breaks eleven
+    // callers at once.
+    Logger.log('getUpcomingTravel_: attachTripIds_ failed (non-fatal) — ' + tripIdErr.message);
+  }
+
   // Store the untouched array in the cache and hand the caller a copy — same
   // reasoning as the cache-hit branch above: this call's array must never be
   // the same object a caller could mutate.
   _upcomingTravelCache_ = { key: cacheKey, result: travel };
   try {
-    CacheService.getScriptCache().put(scriptCacheKey, JSON.stringify(travel), 600);
+    // Only cache a fully-resolved array. A blank id cached here is a blank id
+    // for the next ten minutes, including for whatever nightlyRun does next.
+    var allResolved = travel.every(function(t) { return !!t.tripId; });
+    if (allResolved) {
+      CacheService.getScriptCache().put(scriptCacheKey, JSON.stringify(travel), 600);
+    } else {
+      Logger.log('getUpcomingTravel_: not caching — ' +
+                 travel.filter(function(t) { return !t.tripId; }).length +
+                 ' trip(s) have no id yet');
+    }
   } catch (e_) {}
   return travel.slice();
 }
@@ -923,6 +971,35 @@ function getUpcomingTravel_(cfg) {
  * @param {Array} trips - Sorted array of trip objects from getUpcomingTravel_()
  * @returns {Array} Filtered array with sub-events removed
  */
+/**
+ * Whether two yyyy-MM-dd ranges are close enough to be the same thing.
+ *
+ * Hoisted out of filterSubEvents_ so the trip registry's matcher and the
+ * sub-event filter share ONE implementation of this arithmetic rather than two
+ * copies that could drift. They pass different tolerances and mean different
+ * things by "close": 1 day here (a hotel checking out the day a trip starts),
+ * 14 in the registry (a rebooked flight moving a trip).
+ *
+ * @returns {boolean}
+ */
+function tripRangesNearby_(a, b, toleranceDays) {
+  function parse(s) {
+    var q = String(s || '').split('-');
+    if (q.length < 3) return null;
+    var d = new Date(parseInt(q[0], 10), parseInt(q[1], 10) - 1, parseInt(q[2], 10));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  var tol    = (typeof toleranceDays === 'number') ? toleranceDays : 1;
+  var aStart = parse(a && a.startDate), aEnd = parse((a && a.endDate) || (a && a.startDate));
+  var bStart = parse(b && b.startDate), bEnd = parse((b && b.endDate) || (b && b.startDate));
+  if (!aStart || !bStart) return false;
+  if (!aEnd) aEnd = aStart;
+  if (!bEnd) bEnd = bStart;
+  var gapAB = Math.round((bStart - aEnd) / 86400000);   // negative = overlap
+  var gapBA = Math.round((aStart - bEnd) / 86400000);
+  return gapAB <= tol && gapBA <= tol;
+}
+
 function filterSubEvents_(trips) {
   if (trips.length <= 1) return trips;
 
@@ -937,19 +1014,10 @@ function filterSubEvents_(trips) {
     return Math.round((parseDateStr(t.endDate) - parseDateStr(t.startDate)) / 86400000) + 1;
   }
 
-  // Returns true if two trips overlap or are separated by ≤ 1 day
-  // (handles hotel check-out day N immediately before trip start day N+1)
-  function isNearby(a, b) {
-    var aEnd   = parseDateStr(a.endDate);
-    var bStart = parseDateStr(b.startDate);
-    var bEnd   = parseDateStr(b.endDate);
-    var aStart = parseDateStr(a.startDate);
-    // Gap from a's end to b's start (negative = overlap; 0 = back-to-back; 1 = 1-day gap)
-    var gapAB = Math.round((bStart - aEnd) / 86400000);
-    // Gap from b's end to a's start (negative = overlap)
-    var gapBA = Math.round((aStart - bEnd) / 86400000);
-    return gapAB <= 1 && gapBA <= 1;
-  }
+  // Overlapping, or separated by <= 1 day — which handles a hotel checking out
+  // on day N immediately before a trip starting on day N+1. Shared with the trip
+  // registry's matcher via tripRangesNearby_.
+  function isNearby(a, b) { return tripRangesNearby_(a, b, 1); }
 
   // Sort by duration descending so longer "parent" trips are evaluated first
   var sorted = trips.slice().sort(function(a, b) {

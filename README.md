@@ -261,6 +261,67 @@ Script Run menu — this is its handle, as `testExplorer()` is for `runExplorer_
 
 A trip covering the weekend is classified `away` *before* the pre-departure check. That ordering matters: a trip starting on Saturday used to match `pre_major_trip` (`daysAway <= 4`) and instruct Claude to suggest something "short, local, and low-energy" — local to a home he would not be in. `pre_major_trip` now fires only for a trip starting after the weekend ends, which is the case it was written for.
 
+### Trip Identity (`Trips.js`)
+
+Every trip has an immutable **Trip ID** — `TRIP-9F3A7C21B0D4` — minted once and
+never changed. Label, start and end dates track the current truth and are free
+to move underneath it.
+
+**Why it exists.** Trip identity used to be the string `startDate + '|' + label`,
+computed fresh at sixteen call sites and frozen into eight tabs at write time.
+Nothing could rewrite it: `webUpdateItineraryItem_` edits columns 3–10 and has no
+branch for the key column at all. So when a cancelled flight moved a trip's start
+date, the trip acquired **two identities** — the old key on every row already
+written, the new one from the calendar. That produced two travel-day emails (one
+per key), a pre-trip briefing that re-sent because its latch is keyed on the same
+string, and a post-trip email that fired early because the new key owned only a
+sliver of the itinerary.
+
+**The registry** is the `Trips` tab: `Trip ID | Label | Start Date | End Date |
+Calendar Event IDs | Aliases | Created | Last Seen | Status`. Event IDs is a
+**set** — a cruise is assembled from a Board/Disembark pair, and the same trip
+shared to a second calendar keeps one iCalUID. `Aliases` holds every legacy key
+the trip has answered to. `Status` carries `merged:<TRIP-…>` forwarding, so a
+losing ID still held by a chat transcript or an open tab resolves rather than
+vanishing.
+
+**Matching, first match wins:**
+
+| | Survives | Fails when |
+|---|---|---|
+| 1. Calendar event ID | date edits, title edits, cross-calendar sharing | the event was deleted and recreated |
+| 2. Alias | rows and clients predating the ID | a key never seen before |
+| 3. Label + dates within **14 days** | a delete-and-recreate, a rebooked flight | the trip was renamed *and* moved at once |
+
+Branch 3 is why the tolerance is generous rather than exact: reacting to a
+cancellation often means deleting the calendar entry and making a new one, which
+mints a new iCalUID, and only proximity saves the ID then.
+
+**It never guesses.** Two matching records produce no new ID — it takes the
+nearest range, breaks ties on the oldest `Created` so the answer is deterministic
+across the 600-second trip cache, logs it, and raises a low-urgency flag. Minting
+when unsure is precisely the failure being fixed.
+
+**Where IDs are minted.** In `getUpcomingTravel_`, after `filterSubEvents_` and
+**before** the cache write — a cache hit must never serve trips with no ID. The
+matcher is idempotent, so a cache miss re-resolves every trip to the ID it
+already has. A `LockService` lock stops two concurrent cold loads both minting;
+on lock failure it resolves read-only and leaves the ID blank, because a briefing
+with no ID is recoverable and two IDs for one trip is not.
+
+**Repairing a trip that already split.** `repairOrphanTripKeysDryRun()` from the
+editor lists every trip key across all eight tabs that resolves to no live trip,
+with per-tab row counts and the trip it would merge into. It changes nothing
+until you hand it a mapping you have read:
+
+```js
+repairOrphanTripKeys_({ dryRun: false, merges: { '2026-09-19|Florida Trip': 'TRIP-9F3A7C21B0D4' } });
+```
+
+It writes the alias first, so a half-failed run has already mapped the orphan and
+nothing re-mints. It **refuses** a merge where both halves have a different
+TripMeta Context or Notes, printing both so you choose.
+
 ### Pre-trip & Post-trip Pipeline (`PreTripBriefing.js`, `PostTripCapture.js`)
 
 **Pre-trip briefing:** nightly Step 0f checks for trips departing within the configured window (default 48 hours). For each qualifying trip it assembles a structured High-urgency flag containing weather at the destination, flight status, itinerary overview, confirmation numbers, cancellation deadlines, and packing completion status. Fires exactly once per trip via the flag deduplication system.
@@ -1092,6 +1153,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Reminders.js` | Anticipator rule engine + Explorer daily discovery bulletin; `hourlyCheck()` |
 | `WeekendPlanner.js` | Weekend Decision Memo — Wednesday 8am delivery; `testWeekendMemo()` dry-runs it on demand |
 | `PreTripBriefing.js` | 48-hour pre-trip briefing flag generation |
+| `Trips.js` | **Trip identity.** The `Trips` registry — an immutable `TRIP-xxxxxxxxxxxx` per trip; `resolveTripId_` matches on calendar event ID, then alias, then label + date proximity, and never guesses between two candidates; `repairOrphanTripKeys_` merges trips that split before it existed |
 | `PostTripCapture.js` | Post-trip debrief prompt trigger |
 | `TravelDayBriefing.js` | Day-of travel briefing |
 | `FlightStatus.js` | Real-time flight status polling via AviationStack |
