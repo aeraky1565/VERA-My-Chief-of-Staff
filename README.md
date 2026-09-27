@@ -480,7 +480,7 @@ the files they belong to, and nothing is reimplemented here.
 |---------|---------|
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
-| 3. Travel | `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
+| 3. Travel | `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
 | 4. Data & trackers | `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs
@@ -494,6 +494,7 @@ it, save, then run.
 | `TB_DATE` | `'yyyy-MM-dd'` — the travel-day briefing treats this as today, so you can preview a trip day that is not today. Blank = the real today. |
 | `TB_PRETRIP_HOURS` | Widens the pre-trip departure window, in hours, to reach a trip further out than the configured 48. `0` = use `pretrip_briefing_hours`. |
 | `TB_TRIP_LABEL` | Which trip `tbGeneratePacking` / `tbGenerateDiscoveries` target. Blank = the next upcoming one. |
+| `TB_AIRPORTS` | `'TPA,IAD'` — airports for `tbLoungeAccess`, first treated as the departure. Set it to check lounge matching on a day with no trip; blank = scan the itinerary. |
 
 ### These send for real
 
@@ -602,6 +603,53 @@ recovery card shows an explicit *"timezone shift unknown"* state — previously 
 `|| 0` coercion set its recovery window to zero days and the panel silently
 disappeared on every day after a flight. A known departure time also survives an
 unknown arrival: the times row is an OR, not an AND, and names the missing half.
+
+### Lounge Access — five gates, and why it was silently empty
+
+The travel-day email's `LOUNGE ACCESS` section **never rendered, on any email ever
+sent.** An orphaned paragraph of `buildTravelDayPlainText_` had been spliced into
+`getLoungePerkPrograms_`'s body, referencing `narrativeData` and `lines` — neither
+in scope. Every call threw `ReferenceError`, the function's own catch returned
+`[]`, and the section vanished. Nothing logged.
+
+That was gate 1 of five. Each one now names itself in the execution log:
+
+| Gate | Requires |
+|---|---|
+| 1 | `getLoungePerkPrograms_` returns without throwing |
+| 2 | a `Card Perks` row whose **Perk** text names a lounge program |
+| 3 | an IATA code from `metadata.origin`/`dest`, or a bare 3-letter code in **Location** |
+| 4 | Claude names a lounge it is confident about |
+| 5 | the reply fits the token budget and parses |
+
+**Gate 2 is the one to check first.** `populateCreditCardHub_` seeds exactly one
+matching perk (`CP-15, AMEX Platinum, Priority Pass`) and **aborts entirely if the
+Credit Cards tab already has a data row**, so a sheet whose cards were entered by
+hand never got it. This is a sheet fix, not a code fix.
+
+**Programs recognised** — one ordered table, so matching and labelling cannot
+disagree: Centurion Lounge · Priority Pass · Capital One Lounge · Delta Sky Club ·
+United Club · Admirals Club · Escape Lounge · Plaza Premium · Global Lounge
+Collection. Anything else containing "lounge" or "airport club" keeps its own perk
+name rather than being dropped. A perk naming two programs yields **both** — the
+old first-match cascade reported one. Airline clubs were previously invisible:
+`Delta Sky Club` contains no "lounge" substring, so a row for it was discarded in
+silence.
+
+**It never shows an empty section.** When gates 1–3 pass but no lounge can be
+named, the email lists the programs actually held plus today's airports and says
+to check the program's app. An empty section is indistinguishable from the bug
+above, which is precisely why it went unnoticed for so long.
+
+**Lounge details are not measured.** Unlike the flight times, there is no lounge
+database here — names, terminals, hours and guest fees are recalled, not looked
+up. Both renderers carry one caveat line saying so.
+
+**`tbLoungeAccess()`** walks the gates in order and stops at the first failure,
+printing every `Card Perks` row with its matched program or why it missed, the
+airports found and the row each came from, and Claude's raw reply before parsing
+— the only way to tell gate 4 from gate 5. Set `TB_AIRPORTS = 'TPA,IAD'` to run it
+on a day with no trip.
 
 ### Flight Status Monitor
 

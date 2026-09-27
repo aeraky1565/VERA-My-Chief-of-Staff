@@ -462,11 +462,21 @@ function createItineraryRowFromEmail_(basic, rich, messageId) {
  * Calls Claude with a prompt expecting a JSON object or array response.
  * Returns parsed JSON or `fallback` on any error.
  */
-function callClaudeJson_(prompt, fallback) {
+/**
+ * @param {string} prompt
+ * @param {*}      fallback — returned on any error, non-200, or unparseable reply
+ * @param {{maxTokens?: number}} [opts] — OPTIONAL. Omitted keeps the 1024 this
+ *        function has always sent, so none of its other callers change behaviour.
+ *        Raise it only where the expected JSON is genuinely large: a reply cut off
+ *        at the limit fails JSON.parse below and comes back as `fallback`, which
+ *        looks exactly like the model having nothing to say.
+ */
+function callClaudeJson_(prompt, fallback, opts) {
   try {
+    var maxTokens = (opts && Number(opts.maxTokens) > 0) ? Math.floor(Number(opts.maxTokens)) : 1024;
     const requestBody = {
       model:      CLAUDE_MODEL,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       messages:   [{ role: 'user', content: prompt }],
     };
     const response = fetchTracked_('anthropic', CLAUDE_API_URL, {

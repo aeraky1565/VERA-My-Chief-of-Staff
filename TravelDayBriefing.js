@@ -325,26 +325,31 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   var tripBriefing  = tripBriefingFor_(tripKey);
   var narrativeData = buildTravelDayNarrativeData_(sortedItems, tripLabel, insights, toneMode, tripBriefing);
 
-  // Lounge access — extract departure/layover airports from flight rows
-  var travelAirports = (function() {
-    var flightRows = sortedItems.filter(function(r) { return String(r[2]||'').trim().toLowerCase() === 'flight'; });
-    var airports = [];
-    var seen = {};
-    flightRows.forEach(function(r, i) {
-      var meta = {};
-      try { meta = JSON.parse(String(r[9]||'{}')); } catch(e) {}
-      var orig = (meta.origin || '').trim().toUpperCase() || (String(r[7]||'').match(/\b([A-Z]{3})\b/)||[])[1] || '';
-      var dest = (meta.dest   || '').trim().toUpperCase() || (String(r[7]||'').match(/\b([A-Z]{3})\b/g)||[]).slice(-1)[0] || '';
-      if (orig && !seen[orig]) { seen[orig] = true; airports.push({ code: orig, role: i === 0 ? 'departure' : 'layover' }); }
-      // dest is a layover only if there's another flight after this one; otherwise it's the arrival (omitted)
-      if (dest && !seen[dest] && i < flightRows.length - 1) { seen[dest] = true; airports.push({ code: dest, role: 'layover' }); }
-    });
-    return airports;
-  })();
-  var loungePerks = getLoungePerkPrograms_();
-  var loungeData  = { lounges: [], tip: '' };
-  if (loungePerks.length > 0 && travelAirports.length > 0) {
-    try { loungeData = buildTravelLoungeData_(travelAirports, loungePerks); } catch (lErr) { Logger.log('lounge data error: ' + lErr.message); }
+  // Lounge access. Five things have to line up, and until now NONE of them said
+  // so in the log — which is how this section stayed silently empty on every
+  // travel-day email ever sent. Each gate below names itself when it stops.
+  var travelAirports = travelDayAirports_(sortedItems);
+  var loungePerks    = getLoungePerkPrograms_();
+  var loungeData     = emptyLoungeData_();
+  Logger.log('LOUNGE: ' + loungePerks.length + ' matching perk(s) [' +
+             loungePerks.map(function(p) { return p.program + '/' + p.card; }).join(', ') +
+             '], ' + travelAirports.length + ' airport(s) [' +
+             travelAirports.map(function(a) { return a.code + ':' + a.role; }).join(', ') + ']');
+  if (!loungePerks.length) {
+    Logger.log('LOUNGE: gate 2 — no Card Perks row matches a lounge program. ' +
+               'Run tbLoungeAccess() to see every row and why it did not match.');
+  } else if (!travelAirports.length) {
+    Logger.log('LOUNGE: gate 3 — no IATA code on any flight row today, so there is ' +
+               'no airport to look up. Needs metadata.origin/dest or a bare code in Location.');
+  } else {
+    try {
+      loungeData = buildTravelLoungeData_(travelAirports, loungePerks);
+    } catch (lErr) {
+      Logger.log('LOUNGE: buildTravelLoungeData_ threw — ' + lErr.message);
+      // Keep the programs so the section still renders the fallback rather than
+      // vanishing: access the user genuinely holds is worth saying either way.
+      loungeData = emptyLoungeData_(loungePerks, travelAirports);
+    }
   }
 
   // Tomorrow flight preview + return-day detection — single sheet read for both
@@ -1118,20 +1123,41 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrati
   }
 
   // \u2500\u2500 Lounge Access block \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-  if (loungeData && loungeData.lounges && loungeData.lounges.length) {
-    lines.push('LOUNGE ACCESS');
-    lines.push('-------------');
-    loungeData.lounges.forEach(function(lounge) {
-      var name = lounge.lounge_name || 'Airport Lounge';
-      var role = lounge.role ? ' (' + lounge.role + ')' : '';
-      lines.push(name + role);
-      if (lounge.airport_code) lines.push('  ' + lounge.airport_code + (lounge.terminal ? ' \u00B7 Terminal ' + lounge.terminal : ''));
-      if (lounge.hours)        lines.push('  Hours: ' + lounge.hours);
-      if (lounge.card)         lines.push('  Access: ' + lounge.card + (lounge.program ? ' \u00B7 ' + lounge.program : ''));
-      if (lounge.guest_limit)  lines.push('  Guests: ' + lounge.guest_limit);
-    });
-    if (loungeData.tip) lines.push('\uD83D\uDCA1 ' + loungeData.tip);
-    lines.push('');
+  // Rows first, heading only if any survived \u2014 and the SAME gate the HTML renderer
+  // uses. The flight-times work found these two disagreeing about the timezone row,
+  // so the two sections of one email contradicted each other; not repeating that.
+  if (loungeData) {
+    var lng = [];
+    if (loungeData.lounges && loungeData.lounges.length) {
+      loungeData.lounges.forEach(function(lounge) {
+        var name = lounge.lounge_name || 'Airport Lounge';
+        var role = lounge.role ? ' (' + lounge.role + ')' : '';
+        lng.push(name + role);
+        if (lounge.airport_code) lng.push('  ' + lounge.airport_code + (lounge.terminal ? ' \u00B7 Terminal ' + lounge.terminal : ''));
+        if (lounge.hours)        lng.push('  Hours: ' + lounge.hours);
+        if (lounge.card)         lng.push('  Access: ' + lounge.card + (lounge.program ? ' \u00B7 ' + lounge.program : ''));
+        if (lounge.guest_limit)  lng.push('  Guests: ' + lounge.guest_limit);
+      });
+      if (loungeData.tip) lng.push('\uD83D\uDCA1 ' + loungeData.tip);
+    } else if (loungeData.programs && loungeData.programs.length) {
+      // Same fallback the HTML side shows: access held, lounge unnamed.
+      loungeData.programs.forEach(function(p) {
+        lng.push(p.program + (p.card ? ' (' + p.card + ')' : ''));
+      });
+      var apts = (loungeData.airports || []).map(function(a) {
+        return a.code + (a.role ? ' (' + a.role + ')' : '');
+      }).join(', ');
+      if (apts) lng.push('Today: ' + apts);
+      lng.push('No specific lounge could be confirmed for ' + (apts ? 'these airports' : 'today') +
+               ' \u2014 check the program\u2019s app for the current list.');
+    }
+    if (lng.length) {
+      lines.push('LOUNGE ACCESS');
+      lines.push('-------------');
+      lng.forEach(function(l) { lines.push(l); });
+      lines.push(LOUNGE_CAVEAT_);
+      lines.push('');
+    }
   }
 
   lines.push("TODAY'S SCHEDULE");
@@ -1610,6 +1636,120 @@ function buildTravelFlightInsightsSection_(insights) {
 // ---------------------------------------------------------------------------
 
 /**
+ * The airports worth looking up a lounge at, from today's flight rows.
+ *
+ * Departures and layovers only. The FINAL flight's destination is deliberately
+ * omitted — a lounge you reach after landing is not useful, and this is the one
+ * subtlety here worth preserving exactly.
+ *
+ * Lifted out of an inline IIFE in sendTravelDayBriefing_ so diagnoseLoungeAccess_
+ * can call the same code rather than a copy of it that drifts. Behaviour is
+ * unchanged.
+ *
+ * @param {Array} sortedItems — today's 10-column Itinerary rows, time-sorted
+ * @returns {Array} [{ code: 'TPA', role: 'departure'|'layover' }, ...]
+ */
+function travelDayAirports_(sortedItems) {
+  var flightRows = (sortedItems || []).filter(function(r) {
+    return String(r[2] || '').trim().toLowerCase() === 'flight';
+  });
+  var airports = [];
+  var seen = {};
+  flightRows.forEach(function(r, i) {
+    var meta = {};
+    try { meta = JSON.parse(String(r[9] || '{}')); } catch (e) {}
+    var orig = (meta.origin || '').trim().toUpperCase() || (String(r[7]||'').match(/\b([A-Z]{3})\b/)||[])[1] || '';
+    var dest = (meta.dest   || '').trim().toUpperCase() || (String(r[7]||'').match(/\b([A-Z]{3})\b/g)||[]).slice(-1)[0] || '';
+    if (orig && !seen[orig]) { seen[orig] = true; airports.push({ code: orig, role: i === 0 ? 'departure' : 'layover' }); }
+    // dest is a layover only if there's another flight after this one; otherwise it's the arrival (omitted)
+    if (dest && !seen[dest] && i < flightRows.length - 1) { seen[dest] = true; airports.push({ code: dest, role: 'layover' }); }
+  });
+  return airports;
+}
+
+/**
+ * The shape both renderers read, with nothing resolved.
+ *
+ * `resolved: false` plus a non-empty `programs` is the difference between "no
+ * lounge here" and "we could not name the lounge" — the renderers show the
+ * programs held in the second case rather than hiding the section, because an
+ * empty section is indistinguishable from the bug that hid this one for so long.
+ */
+function emptyLoungeData_(programs, airports) {
+  return {
+    lounges:  [],
+    tip:      '',
+    programs: programs || [],
+    airports: airports || [],
+    resolved: false,
+  };
+}
+
+/**
+ * Lounge programs, keyed by what a Card Perks row might actually say.
+ *
+ * One ordered table, so matching and labelling cannot disagree. The old code had
+ * a keyword array and a SEPARATE normalize cascade, and the two drifted: the
+ * array's 'capital one lounge' entry was dead (anything containing it already
+ * matched the earlier 'lounge'), while the cascade tested the looser 'capital
+ * one' — so any lounge perk mentioning Capital One anywhere was relabelled
+ * "Capital One Lounge".
+ *
+ * Airline clubs are here because they were missing entirely. "Delta Sky Club",
+ * "Admirals Club" and "United Club" contain no 'lounge' substring, so a row for
+ * any of them was dropped in silence.
+ *
+ * Most specific first — 'capital one' has to be tested before the bare 'lounge'
+ * fallback, or the fallback claims the row.
+ */
+var LOUNGE_PROGRAM_PATTERNS_ = [
+  { program: 'Centurion Lounge',         any: ['centurion'] },
+  { program: 'Priority Pass',            any: ['priority pass', 'prioritypass'] },
+  { program: 'Capital One Lounge',       any: ['capital one'], requiresLoungeWord: true },
+  { program: 'Delta Sky Club',           any: ['sky club', 'skyclub'] },
+  { program: 'United Club',              any: ['united club'] },
+  { program: 'Admirals Club',            any: ['admirals club', "admiral's club"] },
+  { program: 'Escape Lounge',            any: ['escape lounge'] },
+  { program: 'Plaza Premium Lounge',     any: ['plaza premium'] },
+  { program: 'Global Lounge Collection', any: ['global lounge'] },
+];
+
+/** A perk that mentions a lounge at all, for the catch-all branch. */
+var LOUNGE_GENERIC_WORDS_ = ['lounge', 'airport club'];
+
+/**
+ * Every lounge program a single perk string names — plural on purpose.
+ *
+ * The old cascade stopped at the first hit, so "Priority Pass + Centurion Lounge
+ * access" resolved to Centurion only and the Priority Pass half of the perk went
+ * unmentioned.
+ *
+ * @param {string} perkName — the raw Perk cell
+ * @returns {Array<string>} canonical program names, possibly empty
+ */
+function loungeProgramsForPerk_(perkName) {
+  var raw   = String(perkName || '').trim();
+  var lower = raw.toLowerCase();
+  if (!raw) return [];
+
+  var hasLoungeWord = LOUNGE_GENERIC_WORDS_.some(function(w) {
+    return lower.indexOf(w) !== -1;
+  });
+
+  var found = [];
+  LOUNGE_PROGRAM_PATTERNS_.forEach(function(entry) {
+    if (entry.requiresLoungeWord && !hasLoungeWord) return;
+    var hit = entry.any.some(function(kw) { return lower.indexOf(kw) !== -1; });
+    if (hit && found.indexOf(entry.program) === -1) found.push(entry.program);
+  });
+
+  // A lounge perk from a program not in the table keeps its own name — better a
+  // raw label than dropping access the user really has.
+  if (!found.length && hasLoungeWord) found.push(raw);
+  return found;
+}
+
+/**
  * getLoungePerkPrograms_()
  *
  * Reads TABS.CARD_PERKS and TABS.CREDIT_CARDS.
@@ -1641,7 +1781,6 @@ function getLoungePerkPrograms_() {
     if (!cpSheet || cpSheet.getLastRow() < 2) return [];
 
     var cpData = cpSheet.getRange(2, 1, cpSheet.getLastRow() - 1, 7).getValues();
-    var loungeKeywords = ['lounge', 'priority pass', 'centurion', 'capital one lounge'];
 
     // NOTE: a stray copy of buildTravelDayPlainText_'s tagline/narrative block
     // used to sit here, referencing `narrativeData` and `lines` — neither of
@@ -1663,30 +1802,15 @@ function getLoungePerkPrograms_() {
                      !!activeCards[cardName.toLowerCase()];
       if (!isActive) return;
 
-      var perkLower = perkName.toLowerCase();
-      var matchedProgram = null;
-      loungeKeywords.forEach(function(kw) {
-        if (!matchedProgram && perkLower.indexOf(kw) !== -1) {
-          // Normalize program name
-          if (perkLower.indexOf('centurion') !== -1) {
-            matchedProgram = 'Centurion Lounge';
-          } else if (perkLower.indexOf('priority pass') !== -1) {
-            matchedProgram = 'Priority Pass';
-          } else if (perkLower.indexOf('capital one') !== -1) {
-            matchedProgram = 'Capital One Lounge';
-          } else {
-            matchedProgram = perkName; // use raw perk name as program label
-          }
+      // Plural: one perk can name two programs, and the old first-match cascade
+      // reported only one of them.
+      loungeProgramsForPerk_(perkName).forEach(function(program) {
+        var key = program + '|' + cardName;
+        if (!seen[key]) {
+          seen[key] = true;
+          results.push({ program: program, card: cardName });
         }
       });
-
-      if (!matchedProgram) return;
-
-      var key = matchedProgram + '|' + cardName;
-      if (!seen[key]) {
-        seen[key] = true;
-        results.push({ program: matchedProgram, card: cardName });
-      }
     });
 
     return results;
@@ -1749,10 +1873,31 @@ function buildTravelLoungeData_(airports, loungePerks) {
     '  "tip": "One sentence tip — compare lounge options at the same airport if applicable, otherwise general advice. Empty string if nothing useful."\n' +
     '}';
 
-  var result = callClaudeJson_(prompt, null);
-  if (!result || typeof result !== 'object') return { lounges: [], tip: '' };
+  // A bigger budget than callClaudeJson_'s 1024 default. Eleven fields per lounge
+  // across several airports can outrun it, and a truncated reply fails JSON.parse
+  // inside callClaudeJson_, returns the fallback, and is indistinguishable from
+  // "no lounges found" — gate 5 wearing gate 4's clothes.
+  var result = callClaudeJson_(prompt, null, { maxTokens: 3000 });
+  if (!result || typeof result !== 'object') {
+    Logger.log('LOUNGE: gate 5 — no parseable reply from Claude (empty, error, or a ' +
+               'reply too long for the token budget). Falling back to programs held.');
+    return emptyLoungeData_(loungePerks, airports);
+  }
   if (!Array.isArray(result.lounges)) result.lounges = [];
   if (typeof result.tip !== 'string') result.tip = '';
+
+  // Always carried, so the renderers can show the programs held even when the
+  // model named nothing.
+  result.programs = loungePerks;
+  result.airports = airports;
+  result.resolved = result.lounges.length > 0;
+
+  if (!result.resolved) {
+    Logger.log('LOUNGE: gate 4 — Claude replied but named no lounge it was confident ' +
+               'about for [' + airportList + ']. Falling back to programs held.');
+  } else {
+    Logger.log('LOUNGE: ' + result.lounges.length + ' lounge(s) named.');
+  }
   return result;
 }
 
@@ -1768,16 +1913,26 @@ function buildTravelLoungeData_(airports, loungePerks) {
  * @returns {string} HTML string or ''
  */
 function buildTravelLoungeSection_(data) {
-  if (!data || !data.lounges || !data.lounges.length) return '';
+  if (!data) return '';
 
   var BLUE  = '#1565c0';
   var DARK  = '#111111';
   var GREY  = '#555555';
   var LGREY = '#888888';
 
-  var html =
+  var heading =
     '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
     'letter-spacing:1.5px;text-transform:uppercase;">🛋️ Lounge Access</p>';
+
+  // Nothing named, but access genuinely held: say so rather than vanishing. An
+  // empty section reads identically to the bug that hid this one for months, and
+  // "you have Priority Pass, check the app" is worth more than silence.
+  if (!data.lounges || !data.lounges.length) {
+    if (!data.programs || !data.programs.length) return '';
+    return heading + loungeFallbackHtml_(data, { GREY: GREY, LGREY: LGREY });
+  }
+
+  var html = heading;
 
   data.lounges.forEach(function(lounge, i) {
     var airportLabel = lounge.airport_code
@@ -1826,7 +1981,48 @@ function buildTravelLoungeSection_(data) {
       '💡 ' + escapeHtml_(data.tip) + '</p>';
   }
 
+  // Unlike the flight times, none of this is measured — there is no lounge
+  // database here, so names, terminals, hours and guest fees are all recalled
+  // rather than looked up. Say so once, plainly, instead of presenting them as fact.
+  html +=
+    '<p style="margin:10px 0 0;font-size:11px;color:' + LGREY + ';">' +
+    LOUNGE_CAVEAT_ + '</p>';
+
   return html;
+}
+
+/** Said once in each renderer, so the two cannot drift apart. */
+var LOUNGE_CAVEAT_ = 'Lounge details are from memory, not a live feed — confirm hours ' +
+                     'and guest policy in the program’s app before you count on them.';
+
+/**
+ * The "you have access, we just cannot name the lounge" state.
+ *
+ * Reached when Claude declines to name a lounge (gate 4) or its reply could not be
+ * parsed (gate 5). Prints what IS known for certain — the programs the Card Perks
+ * tab says are held, and today's airports — and nothing that isn't.
+ */
+function loungeFallbackHtml_(data, colors) {
+  var GREY  = colors.GREY;
+  var LGREY = colors.LGREY;
+
+  var programs = (data.programs || []).map(function(p) {
+    return escapeHtml_(p.program) + (p.card ? ' <span style="color:' + LGREY + ';">(' +
+                                     escapeHtml_(p.card) + ')</span>' : '');
+  }).join('<br>');
+
+  var airports = (data.airports || []).map(function(a) {
+    return escapeHtml_(a.code) + (a.role ? ' (' + escapeHtml_(a.role) + ')' : '');
+  }).join(', ');
+
+  return '<p style="margin:0 0 6px;font-size:13px;color:' + GREY + ';">' + programs + '</p>' +
+    (airports
+      ? '<p style="margin:0 0 6px;font-size:12px;color:' + LGREY + ';">Today: ' + airports + '</p>'
+      : '') +
+    '<p style="margin:0;font-size:12px;color:' + LGREY + ';">' +
+    'No specific lounge could be confirmed for ' +
+    (airports ? 'these airports' : 'today') +
+    ' — check the program’s app for the current list.</p>';
 }
 
 // ---------------------------------------------------------------------------
@@ -2219,5 +2415,200 @@ function diagnoseTravelDayMap_(dateStr) {
     Logger.log('  Fix the FAIL rows\' Location in the Travel tab, or leave them blank.');
   } else {
     Logger.log('DIAGNOSIS — unrecognised failure. The body above is Google\'s own text.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Why LOUNGE ACCESS is empty.
+ *
+ * Five things have to line up, and until the logging added alongside this, a
+ * skipped section left no trace at all — which is how the orphaned-paragraph bug
+ * that made getLoungePerkPrograms_ throw survived on every travel-day email ever
+ * sent. This walks the gates in order and stops at the first that fails.
+ *
+ * Sends nothing, writes nothing. The Claude call in gate 4 is the only outbound
+ * request, and only if gates 1-3 pass.
+ *
+ * @param {string} [dateStr]         — 'yyyy-MM-dd'; blank = today
+ * @param {string} [airportsOverride]— 'TPA,IAD' to test WITHOUT a trip on the
+ *        calendar. Skips gate 3's itinerary scan, so lounge matching can be
+ *        checked on any day rather than only on a travel day.
+ */
+function diagnoseLoungeAccess_(dateStr, airportsOverride) {
+  var tz    = Session.getScriptTimeZone();
+  var today = String(dateStr || '').trim() ||
+              Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  Logger.log('=== Lounge access diagnostic — ' + today + ' ===');
+
+  // ---- gate 1 + 2: the perks ----------------------------------------------
+  var ss = getSpreadsheet();
+
+  var ccSheet = ss.getSheetByName(TABS.CREDIT_CARDS);
+  var activeNames = [], inactiveNames = [];
+  if (ccSheet && ccSheet.getLastRow() >= 2) {
+    ccSheet.getRange(2, 1, ccSheet.getLastRow() - 1, 10).getValues().forEach(function(row) {
+      var name   = String(row[1] || '').trim();
+      var active = String(row[9] || '').trim().toLowerCase();
+      if (!name) return;
+      if (active !== 'false' && active !== 'no' && active !== '0') activeNames.push(name);
+      else inactiveNames.push(name + ' [Active="' + active + '"]');
+    });
+  }
+  Logger.log('Credit Cards: ' + activeNames.length + ' active — ' + (activeNames.join(', ') || '(none)'));
+  if (inactiveNames.length) Logger.log('  excluded as inactive: ' + inactiveNames.join(', '));
+  if (!activeNames.length) {
+    Logger.log('  NOTE: with no active cards the active filter is skipped entirely, so ' +
+               'every perk row counts. That is deliberate, not a bug.');
+  }
+
+  var cpSheet = ss.getSheetByName(TABS.CARD_PERKS);
+  if (!cpSheet || cpSheet.getLastRow() < 2) {
+    Logger.log('STOP — gate 2. The Card Perks tab is missing or has only a header row.');
+    Logger.log('  Nothing can match. Add a perk row for whatever lounge access you hold.');
+    return;
+  }
+  Logger.log('');
+  Logger.log('Card Perks — every row, and what it matched:');
+  var activeLookup = {};
+  activeNames.forEach(function(n) { activeLookup[n.toLowerCase()] = true; });
+  cpSheet.getRange(2, 1, cpSheet.getLastRow() - 1, 7).getValues().forEach(function(row, i) {
+    var cardName = String(row[1] || '').trim();
+    var perkName = String(row[2] || '').trim();
+    if (!cardName && !perkName) return;
+    var progs = loungeProgramsForPerk_(perkName);
+    var isActive = !activeNames.length || !!activeLookup[cardName.toLowerCase()];
+    var verdict = !progs.length     ? 'no lounge keyword'
+                : !isActive         ? 'MATCHED (' + progs.join(' + ') + ') but card is inactive'
+                :                     'MATCH -> ' + progs.join(' + ');
+    Logger.log('  row ' + (i + 2) + '  ' + cardName + ' | ' + perkName + '  =>  ' + verdict);
+  });
+
+  var loungePerks = getLoungePerkPrograms_();
+  Logger.log('');
+  Logger.log('getLoungePerkPrograms_ returned ' + loungePerks.length + ': ' +
+             (loungePerks.map(function(p) { return p.program + ' (' + p.card + ')'; }).join(', ') || '(none)'));
+  if (!loungePerks.length) {
+    Logger.log('STOP — gate 2. No perk row names a lounge program, so no lookup happens');
+    Logger.log('  and the section is correctly empty. This is a SHEET fix, not a code fix:');
+    Logger.log('  add a Card Perks row whose Perk text names the program, e.g.');
+    Logger.log('    "Priority Pass (airport lounge access)" / "Centurion Lounge access"');
+    Logger.log('    "Delta Sky Club membership" / "Capital One Lounge access"');
+    Logger.log('  Recognised: ' + LOUNGE_PROGRAM_PATTERNS_.map(function(e) { return e.program; }).join(', ') +
+               ', or anything containing "lounge".');
+    return;
+  }
+
+  // ---- gate 3: the airports ----------------------------------------------
+  var airports = [];
+  if (String(airportsOverride || '').trim()) {
+    airports = String(airportsOverride).split(/[,\s]+/)
+      .map(function(c) { return c.trim().toUpperCase(); })
+      .filter(function(c) { return /^[A-Z]{3}$/.test(c); })
+      .map(function(c, i) { return { code: c, role: i === 0 ? 'departure' : 'layover' }; });
+    Logger.log('');
+    Logger.log('Airports: OVERRIDDEN to [' +
+               airports.map(function(a) { return a.code + ':' + a.role; }).join(', ') +
+               '] — the itinerary scan was skipped, so gate 3 is untested here.');
+  } else {
+    var rows = [];
+    try {
+      var itSheet = ss.getSheetByName(TABS.ITINERARY);
+      if (itSheet && itSheet.getLastRow() >= 2) {
+        itSheet.getRange(2, 1, itSheet.getLastRow() - 1, ITINERARY_HEADERS.length)
+          .getValues().forEach(function(row) {
+            var d = row[4];
+            var ds = (d instanceof Date) ? Utilities.formatDate(d, tz, 'yyyy-MM-dd')
+                                         : String(d || '').trim();
+            if (ds === today) rows.push(row);
+          });
+      }
+    } catch (e) {
+      Logger.log('Itinerary read failed: ' + e.message);
+    }
+    var flightRows = rows.filter(function(r) {
+      return String(r[2] || '').trim().toLowerCase() === 'flight';
+    });
+    Logger.log('');
+    Logger.log(rows.length + ' itinerary row(s) dated ' + today + ', ' +
+               flightRows.length + ' of them flights.');
+    flightRows.forEach(function(r, i) {
+      var meta = {};
+      try { meta = JSON.parse(String(r[9] || '{}')); } catch (e) {}
+      Logger.log('  flight ' + i + '  "' + String(r[3] || '') + '"' +
+                 '  Location=' + JSON.stringify(String(r[7] || '')) +
+                 '  meta.origin=' + (meta.origin || '(none)') +
+                 '  meta.dest='   + (meta.dest   || '(none)'));
+    });
+    // The same function the email uses, not a copy of it.
+    airports = travelDayAirports_(rows);
+    Logger.log('travelDayAirports_ returned [' +
+               airports.map(function(a) { return a.code + ':' + a.role; }).join(', ') + ']');
+    Logger.log('  (the LAST flight\'s destination is omitted on purpose — a lounge you');
+    Logger.log('   reach after landing is no use to you.)');
+  }
+
+  if (!airports.length) {
+    Logger.log('STOP — gate 3. No IATA code could be found, so there is no airport to');
+    Logger.log('  look up and the section is empty. Either the flight rows carry no');
+    Logger.log('  origin/dest metadata and no bare 3-letter code in Location, or there');
+    Logger.log('  are no flights today.');
+    Logger.log('  To test the rest of the chain anyway, set TB_AIRPORTS = \'TPA,IAD\' and re-run.');
+    return;
+  }
+
+  // ---- gates 4 + 5: the model -------------------------------------------
+  Logger.log('');
+  Logger.log('Gates 1-3 pass. Calling Claude for [' +
+             airports.map(function(a) { return a.code; }).join(', ') + '] with [' +
+             loungePerks.map(function(p) { return p.program; }).join(', ') + '].');
+  var data = null;
+  try {
+    data = buildTravelLoungeData_(airports, loungePerks);
+  } catch (e) {
+    Logger.log('buildTravelLoungeData_ threw — ' + e.message);
+    Logger.log('DIAGNOSIS — a hard error in the lookup. The email would show the');
+    Logger.log('  programs-held fallback rather than nothing.');
+    return;
+  }
+
+  Logger.log('');
+  Logger.log('Result: resolved=' + !!data.resolved + ', ' +
+             (data.lounges || []).length + ' lounge(s), ' +
+             (data.programs || []).length + ' program(s) carried.');
+  (data.lounges || []).forEach(function(l, i) {
+    Logger.log('  [' + i + '] ' + (l.lounge_name || '(unnamed)') + ' @ ' + (l.airport_code || '?') +
+               '  program=' + (l.program || '?') + '  terminal=' + (l.terminal || '-') +
+               '  hours=' + (l.hours || '-'));
+  });
+  if (data.tip) Logger.log('  tip: ' + data.tip);
+
+  // ---- what the email would actually render ------------------------------
+  Logger.log('');
+  var html = buildTravelLoungeSection_(data);
+  Logger.log('HTML section: ' + (html ? html.length + ' chars' : 'EMPTY (no section at all)'));
+  var plain = buildTravelDayPlainText_('Diagnostic', today, [], null, null, data, '');
+  var block = /LOUNGE ACCESS\n-+\n([\s\S]*?)\n\n/.exec(plain);
+  Logger.log('Plain text section:');
+  if (block) {
+    block[1].split('\n').forEach(function(l) { Logger.log('  | ' + l); });
+  } else {
+    Logger.log('  (no LOUNGE ACCESS block — the two renderers must agree; if HTML is');
+    Logger.log('   non-empty and this is missing, that is a bug worth reporting.)');
+  }
+
+  Logger.log('');
+  if (data.resolved) {
+    Logger.log('DIAGNOSIS — working. Real lounges named and both renderers produced a section.');
+  } else if ((data.programs || []).length) {
+    Logger.log('DIAGNOSIS — gates 1-3 pass; Claude named no lounge it was confident about');
+    Logger.log('  (gate 4) or its reply did not parse (gate 5 — see the log line above for');
+    Logger.log('  which). The email shows the programs-held fallback, so the section is not');
+    Logger.log('  empty. If you know there IS a lounge at these airports, the prompt\'s');
+    Logger.log('  "do not guess" instruction is being read too strictly.');
+  } else {
+    Logger.log('DIAGNOSIS — no programs carried through, which should not happen once gate 2');
+    Logger.log('  passed. Worth reporting.');
   }
 }

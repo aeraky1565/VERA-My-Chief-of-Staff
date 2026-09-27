@@ -53,6 +53,16 @@ var TB_PRETRIP_HOURS = 0;
  */
 var TB_TRIP_LABEL = '';
 
+/**
+ * Airports for tbLoungeAccess(), e.g. 'TPA,IAD'. First one is treated as the
+ * departure, the rest as layovers.
+ *
+ * Set it to check lounge matching on a day with no trip on the calendar — the
+ * diagnostic otherwise has no airport to look up and stops at gate 3. Blank =
+ * scan the itinerary for TB_DATE (or today).
+ */
+var TB_AIRPORTS = '';
+
 
 // ============================================================
 // 1. HEALTH & CONNECTIONS — is anything broken?
@@ -208,6 +218,21 @@ function tbTravelDayBriefing() {
 function tbTravelDayMap() {
   tbBanner_('Travel-day map diagnostic');
   diagnoseTravelDayMap_(TB_DATE);
+}
+
+/**
+ * Why LOUNGE ACCESS is empty. Walks the five gates in order and stops at the
+ * first that fails, printing every Card Perks row and whether it matched.
+ *
+ * Set TB_AIRPORTS (e.g. 'TPA,IAD') to run this on a day with no trip — without
+ * it the diagnostic stops at gate 3 for want of an airport. Sends nothing.
+ */
+function tbLoungeAccess() {
+  tbBanner_('Lounge access diagnostic');
+  if (TB_AIRPORTS) Logger.log('Airport override: ' + TB_AIRPORTS);
+  else Logger.log('No TB_AIRPORTS set — scanning the itinerary. Set it to e.g. ' +
+                  '\'TPA,IAD\' to test without a trip today.');
+  diagnoseLoungeAccess_(TB_DATE, TB_AIRPORTS);
 }
 
 /** Post-trip debrief prompt. Clears the flag so it can fire again. */
