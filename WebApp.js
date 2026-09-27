@@ -265,6 +265,7 @@ function doGet(e) {
       case 'update_card_perk':           return jsonOut_(webUpdateCardPerk_(e));
       case 'delete_card_perk':           return jsonOut_(webDeleteCardPerk_(e));
       case 'toggle_card_perk':           return jsonOut_(webToggleCardPerk_(e));
+      case 'mark_card_perk_used':        return jsonOut_(webMarkCardPerkUsed_(e));
       case 'clear_perk_review':          return jsonOut_(webClearPerkReview_(e));
       case 'add_loyalty_program':        return jsonOut_(webAddLoyaltyProgram_(e));
       case 'update_loyalty_program':     return jsonOut_(webUpdateLoyaltyProgram_(e));
@@ -7414,26 +7415,191 @@ function webDeleteCardPerk_(e) {
   throw new Error('Card perk not found: ' + id);
 }
 
-function webToggleCardPerk_(e) {
-  var p  = (e && e.parameter) ? e.parameter : {};
-  var id = (p.id || '').trim();
+/**
+ * Resolves one Card Perks row by ID and works out everything both writers need:
+ * the row, which column 'Last Used' is, the current period key, and when that
+ * period ends.
+ *
+ * webToggleCardPerk_ and webMarkCardPerkUsed_ both go through this so they can
+ * never disagree about which column they stamp or which key they stamp it with.
+ * The toggle used to hardcode index 6 on the read and column 7 on the write, in
+ * two separate expressions — a second copy of that is how they would drift.
+ *
+ * Reads the header row rather than calling ensureCardPerkColumns_ (Code.js) on
+ * purpose: that function WRITES missing headers, and the dashboard checkbox must
+ * not gain a header-writing side effect it does not have today. A missing
+ * Autopay or Needs Review column simply reads as absent.
+ *
+ * @returns {Object} sheet, rowNum, lastUsedCol, id, cardName, perkName, amount,
+ *                   freq, lastUsed, period, periodEnd, periodEndIso,
+ *                   periodEndLabel, daysLeft, autopay, needsReview
+ * @throws if id is blank or no row matches — matching the sibling handlers.
+ */
+function resolveCardPerkRow_(id) {
+  id = String(id || '').trim();
   if (!id) throw new Error('id is required');
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CARD_PERKS);
-  var rows  = sheet.getDataRange().getValues();
-  var tz    = Session.getScriptTimeZone();
-  var now   = new Date();
+  if (!sheet) throw new Error('Card Perks tab not found');
+  var rows = sheet.getDataRange().getValues();
+  var hdr  = rows.length ? rows[0].map(function(h) { return String(h || '').trim(); }) : [];
+  function colOf(name, fallback) {
+    var i = hdr.indexOf(name);
+    return i === -1 ? fallback : i + 1;
+  }
+  var lastUsedCol = colOf('Last Used',   7);
+  var reviewCol   = colOf('Needs Review', 0);
+  var autopayCol  = colOf('Autopay',      0);
+
+  var tz  = Session.getScriptTimeZone();
+  var now = new Date();
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][0] === id) {
-      var freq       = String(rows[i][4] || 'Monthly');
-      var currentPeriod = cardPerkPeriodKey_(freq, now, tz);
-      var lastUsed   = String(rows[i][6] || '').trim();
-      var newUsed    = (lastUsed === currentPeriod) ? '' : currentPeriod;
-      sheet.getRange(i + 1, 7).setValue(newUsed);
-      return { ok: true, used: newUsed !== '', period: currentPeriod };
-    }
+    if (String(rows[i][0]).trim() !== id) continue;
+    var row  = rows[i];
+    var freq = String(row[4] || 'Monthly').trim() || 'Monthly';
+    var periodEnd = cardPerkPeriodEnd_(freq, now, tz);
+    var amountRaw = row[3];
+    var amountNum = (amountRaw === '' || amountRaw === null || amountRaw === undefined)
+                      ? null : Number(amountRaw);
+    return {
+      sheet:          sheet,
+      rowNum:         i + 1,
+      lastUsedCol:    lastUsedCol,
+      id:             id,
+      cardName:       String(row[1] || '').trim(),
+      perkName:       String(row[2] || '').trim(),
+      // Amount can be NaN when the cell holds "$15" rather than 15 — callers
+      // must only render it when finite.
+      amount:         (amountNum !== null && isFinite(amountNum)) ? amountNum : null,
+      freq:           freq,
+      lastUsed:       String(row[lastUsedCol - 1] || '').trim(),
+      period:         cardPerkPeriodKey_(freq, now, tz),
+      periodEnd:      periodEnd,
+      periodEndIso:   Utilities.formatDate(periodEnd, tz, 'yyyy-MM-dd'),
+      periodEndLabel: Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy'),
+      daysLeft:       Math.round((periodEnd - now) / 86400000),
+      autopay:        autopayCol ? String(row[autopayCol - 1] || '').trim().toLowerCase() === 'yes' : false,
+      needsReview:    reviewCol  ? String(row[reviewCol  - 1] || '').trim() !== '' : false,
+    };
   }
   throw new Error('Card perk not found: ' + id);
+}
+
+/**
+ * Toggles a perk's used state for the current period. Behaviour is unchanged —
+ * this is what the dashboard checkbox calls, and a second click must still clear
+ * the stamp so a mis-click can be undone.
+ *
+ * Deliberately still toggles an Autopay perk: that is a manual override on a row
+ * the user is looking at. Chat refuses instead (see webMarkCardPerkUsed_), and
+ * that asymmetry is pinned by a test.
+ */
+function webToggleCardPerk_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var r = resolveCardPerkRow_((p.id || '').trim());
+  var newUsed = (r.lastUsed === r.period) ? '' : r.period;
+  r.sheet.getRange(r.rowNum, r.lastUsedCol).setValue(newUsed);
+  return { ok: true, used: newUsed !== '', period: r.period };
+}
+
+/**
+ * GET action=mark_card_perk_used&id=<perk id>
+ *
+ * SETS Last Used to the current period key and never clears it, so calling it
+ * twice in one period is a no-op — unlike webToggleCardPerk_, whose second call
+ * would UNMARK. This is the write Chat uses: "I used the Uber credit" must never
+ * undo itself, and a repeated or retried request must be harmless.
+ *
+ * Refuses Autopay perks. They are excluded from perk tracking entirely, so
+ * stamping one writes a cell nothing ever reads.
+ */
+function webMarkCardPerkUsed_(e) {
+  var p = (e && e.parameter) ? e.parameter : {};
+  var r = resolveCardPerkRow_((p.id || '').trim());
+
+  var out = {
+    ok:             true,
+    marked:         false,
+    alreadyMarked:  false,
+    reason:         '',
+    id:             r.id,
+    perk:           r.perkName,
+    cardName:       r.cardName,
+    amount:         r.amount,
+    frequency:      r.freq,
+    period:         r.period,
+    periodEndIso:   r.periodEndIso,
+    periodEndLabel: r.periodEndLabel,
+    daysLeft:       r.daysLeft,
+    needsReview:    r.needsReview,
+  };
+
+  if (r.autopay) {
+    out.reason = 'autopay';
+    return out;
+  }
+  if (r.lastUsed === r.period) {
+    // Already stamped for this period. Write nothing at all — the point of an
+    // idempotent setter is that the second call touches no cells.
+    out.alreadyMarked = true;
+    out.marked        = true;
+    return out;
+  }
+
+  r.sheet.getRange(r.rowNum, r.lastUsedCol).setValue(r.period);
+  out.marked = true;
+
+  // The nightly pass stops re-flagging once the stamp matches, but the flag it
+  // already raised would sit on the dashboard until resolved by hand. Non-fatal:
+  // a perk that was marked used but still shows a flag is a much smaller problem
+  // than a mark that failed because of flag bookkeeping.
+  try {
+    out.flagsResolved = resolveCardPerkFlag_(r.id, r.period);
+  } catch (fe) {
+    Logger.log('webMarkCardPerkUsed_: could not resolve the expiry flag — ' + fe.message);
+  }
+  return out;
+}
+
+/**
+ * Resolves any open expiry flag for this perk and period.
+ *
+ * checkCardPerksExpiring_ writes key 'perk_expiry_<id>_<periodKey>' and
+ * writeFlags fingerprints against every flag ever written, so nothing re-raises
+ * it — but nothing cleared it either, and the High-urgency row stayed visible
+ * after the perk was redeemed.
+ *
+ * Called from webMarkCardPerkUsed_ only, never from the toggle: resolving on a
+ * toggle would mean un-marking a perk silently leaves its flag resolved.
+ *
+ * @returns {number} rows marked resolved
+ */
+function resolveCardPerkFlag_(perkId, periodKey) {
+  var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.FLAGS);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var wantKey     = ('perk_expiry_' + perkId + '_' + periodKey).toLowerCase();
+  var keyCol      = FLAG_HEADERS.indexOf('Key') + 1;
+  var resolvedCol = FLAG_HEADERS.indexOf('Resolved') + 1;
+  if (keyCol < 1 || resolvedCol < 1) return 0;
+  var n    = sheet.getLastRow() - 1;
+  var keys = sheet.getRange(2, keyCol, n, 1).getValues();
+  var done = 0;
+  for (var i = 0; i < keys.length; i++) {
+    if (String(keys[i][0] || '').trim().toLowerCase() !== wantKey) continue;
+    var cell = sheet.getRange(i + 2, resolvedCol);
+    // 'Yes', not 'TRUE' — webResolve_ writes 'Yes' and every reader tests
+    // String(...).toLowerCase() === 'yes' (PatternRecognition.js:121,
+    // MonthlyReview.js:288, Code.js:1276). Anything else reads as UNresolved.
+    if (String(cell.getValue() || '').trim().toLowerCase() !== 'yes') {
+      cell.setValue('Yes');
+      done++;
+      // Same hook webResolve_ runs: the flag was resolved because he acted on
+      // it, which is exactly the signal the learning pass wants.
+      try { recordFlagOutcome_(String(keys[i][0]).trim(), 'resolved'); }
+      catch (slErr) { Logger.log('resolveCardPerkFlag_: signal hook (non-fatal) — ' + slErr.message); }
+    }
+  }
+  return done;
 }
 
 function webClearPerkReview_(e) {

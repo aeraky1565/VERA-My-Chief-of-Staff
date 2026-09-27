@@ -601,10 +601,7 @@ function buildChatSystemPrompt_(context) {
       var cd = context.cardsData;
       if (!cd || !cd.cards || !cd.cards.length) return 'CREDIT CARDS: (none on file)\n\n';
       var now = new Date(); now.setHours(0,0,0,0);
-      var curMonth   = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
-      var curYear    = String(now.getFullYear());
-      var curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
-      var curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
+      var perkTz = Session.getScriptTimeZone();
       var activeCards = cd.cards.filter(function(c) { return c.active === 'Yes'; });
       // Group by owner
       var byOwner = {};
@@ -625,19 +622,26 @@ function buildChatSystemPrompt_(context) {
           var lastUsed = c.lastUsed ? c.lastUsed : null;
           var daysAgo  = lastUsed ? Math.round((now - new Date(lastUsed)) / 86400000) : null;
           if (daysAgo == null || daysAgo > 60) inactiveWarn.push(c.cardName + ' (' + owner + ')');
-          // Unused perks this month
+          // Perks not yet used in their CURRENT period — which is a month, a
+          // quarter, a half or a year depending on the perk. cardPerkPeriodKey_
+          // (Code.js) is the one definition of that; this block used to carry a
+          // fourth hand-rolled copy built from Date getters.
           var cardPerks = (cd.perks || []).filter(function(p) { return p.cardName === c.cardName && !p.autopay; });
           var unusedPerks = cardPerks.filter(function(p) {
-            var period = p.frequency === 'Annual' ? curYear
-                       : p.frequency === 'Semiannual' ? curHalf
-                       : p.frequency === 'Quarterly' ? curQuarter : curMonth;
-            return p.lastUsed !== period;
+            return p.lastUsed !== cardPerkPeriodKey_(p.frequency || 'Monthly', now, perkTz);
           });
           var authLabel = c.authUser ? ' [+' + c.authUser + ' auth user]' : '';
           lines += '    ' + c.cardName + authLabel + ': ' + (rwStr || '(no rewards defined)') + '\n';
           if (c.statementCredit) lines += '      Statement credit: ' + c.statementCredit + '\n';
           if (lastUsed) lines += '      Last used: ' + lastUsed + (daysAgo != null ? ' (' + daysAgo + ' days ago)' : '') + '\n';
-          if (unusedPerks.length) lines += '      Unused perks this month: ' + unusedPerks.map(function(p) { return p.perk; }).join(', ') + '\n';
+          // Not "this month" — these perks are on four different cadences, and
+          // announcing a semiannual credit as monthly put that word straight into
+          // the reply. The frequency is named per perk so Claude can tell them
+          // apart, which the ask-don't-guess rule for mark_perk_used depends on.
+          if (unusedPerks.length) lines += '      Unused perks: ' + unusedPerks.map(function(p) {
+            var f = p.frequency || 'Monthly';
+            return p.perk + (f !== 'Monthly' ? ' (' + f + ')' : '');
+          }).join(', ') + '\n';
         });
       });
       if (inactiveWarn.length) lines += '  ⚠ Inactivity risk (>60 days unused): ' + inactiveWarn.join(', ') + '\n';
@@ -955,6 +959,7 @@ function buildChatSystemPrompt_(context) {
     '     ~60 days ahead and skips it if it is already on a calendar.\n' +
     '  \u2014 Re-using an existing label updates that date rather than adding a second row.\n' +
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
+    'ACTION:mark_perk_used|{perk}|{card_name or blank}  \u2014 mark a card perk used for its CURRENT period (month/quarter/half/year, per the perk\'s frequency)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
     // Reference documents
     'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
@@ -1036,6 +1041,7 @@ function buildChatSystemPrompt_(context) {
     '- For query_health_due: use when Ahmed asks "when is my next dentist appointment?", "am I due for a physical?", or "when did I last see my eye doctor?". Reads from Google Calendar history. Emit this ACTION and include the result in your reply.\n' +
     '- For read_resource: ONLY use when Ahmed explicitly asks about the contents of a specific document or policy (e.g. "what does my insurance doc say about X", "read my Verizon policy"). Pass the resource name or ID from REFERENCE DOCUMENTS above. Do not use proactively.\n' +
     '- For log_card_used: use when Ahmed says "I used my X card", "paid with my X", or "charged it to X". Confirm the card was logged. Card name can be partial (e.g. "Amex" matches "Amex Gold").\n' +
+    '- For mark_perk_used: use when Ahmed says "I used the Uber credit", "redeemed the Saks credit", "used the airline fee credit". {perk} is the perk TEXT as shown under CREDIT CARDS above \u2014 partial is fine. Fill the 2nd slot with the card name ONLY if he named one; otherwise leave it blank. BEFORE emitting this: if the same perk text appears under more than one card above and he did not say which, ASK which card instead of emitting the action. Never pick one for him. Perks on autopay are not tracked \u2014 if he says he used one, tell him it is on autopay and nothing needs marking. This is per PERIOD, not per day: a quarterly perk stays marked for the whole quarter, so do not re-mark it.\n' +
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
     '- VERA can answer "which card should I use for X?" directly from CREDIT CARDS context — no ACTION needed; just explain the best option and why.\n' +
@@ -1638,6 +1644,10 @@ function incrementTime_(timeStr, minutes) {
 function executeActions_(rawText) {
   var lines    = rawText.split('\n');
   var executed = [];
+  // Things worth telling him that are NOT failures — an ambiguity question, or
+  // "that one is on autopay". errors[] renders as a ⚠️ warning, which is the
+  // wrong register for a question.
+  var notes    = [];
   var errors   = [];
 
   lines.forEach(function(line) {
@@ -2567,6 +2577,68 @@ function executeActions_(rawText) {
         }
       }
 
+      else if (type === 'mark_perk_used') {
+        var mpPerk = (args[0] || '').trim();
+        var mpCard = (args[1] || '').trim();
+        if (mpPerk) {
+          var mpNow  = new Date();
+          var mpTz   = Session.getScriptTimeZone();
+          var mpAll  = webGetCards_();
+          // Active cards only. checkCardPerksExpiring_ ignores perks on inactive
+          // cards, so marking one would write a cell nothing ever watches.
+          var mpActive = {};
+          (mpAll.cards || []).forEach(function(c) {
+            if (c.active === 'Yes') mpActive[c.cardName] = true;
+          });
+          var mpCands = (mpAll.perks || []).filter(function(pk) {
+            if (!mpActive[pk.cardName]) return false;
+            if (String(pk.perk || '').toLowerCase().indexOf(mpPerk.toLowerCase()) < 0) return false;
+            if (mpCard && String(pk.cardName || '').toLowerCase().indexOf(mpCard.toLowerCase()) < 0) return false;
+            return true;
+          });
+          // Autopay perks are not tracked at all, so they are never written —
+          // split them out first and say so rather than failing silently.
+          var mpAuto  = mpCands.filter(function(pk) { return !!pk.autopay; });
+          var mpUsable = mpCands.filter(function(pk) { return !pk.autopay; });
+          // Prefer perks not yet used this period. This is what collapses "the
+          // Uber credit" to one answer when one of the two is already redeemed.
+          var mpUnused = mpUsable.filter(function(pk) {
+            return pk.lastUsed !== cardPerkPeriodKey_(pk.frequency || 'Monthly', mpNow, mpTz);
+          });
+          var mpPick = mpUnused.length ? mpUnused : mpUsable;
+
+          function mpLabel(pk) {
+            var amt = Number(pk.amount);
+            return pk.perk + ' on ' + pk.cardName +
+                   (isFinite(amt) && amt ? ' ($' + amt + ')' : '') +
+                   ', ' + (pk.frequency || 'Monthly');
+          }
+
+          if (mpPick.length === 1) {
+            var mpRes = webMarkCardPerkUsed_({ parameter: { id: mpPick[0].id } });
+            executed.push('mark_perk_used (' + mpRes.perk + ' · ' + mpRes.cardName +
+                          ' → ' + mpRes.period + ')');
+            if (mpRes.alreadyMarked) {
+              notes.push(mpRes.perk + ' on ' + mpRes.cardName + ' was already marked used for ' +
+                         mpRes.period + ', so nothing changed. It resets ' + mpRes.periodEndLabel + '.');
+            }
+          } else if (mpPick.length > 1) {
+            // Never guess. executeActions_ runs after Claude has already written
+            // its sentence, so this note has to correct it, not merely add to it —
+            // hence the opening clause.
+            notes.push('I did not mark anything yet — "' + mpPerk + '" matches ' + mpPick.length +
+                       ' perks: ' + mpPick.map(mpLabel).join(' · ') + '. Which one?');
+          } else if (mpAuto.length > 0) {
+            notes.push('"' + mpPerk + '" matches ' + mpAuto.map(function(pk) {
+              return pk.perk + ' on ' + pk.cardName;
+            }).join(', ') + ', which is on autopay — it is not tracked, so there is nothing to mark.');
+          } else {
+            errors.push('mark_perk_used: no perk found matching "' + mpPerk + '"' +
+                        (mpCard ? ' on a card matching "' + mpCard + '"' : ''));
+          }
+        }
+      }
+
       else if (type === 'update_loyalty_points') {
         var ulProg  = (args[0] || '').trim();
         var ulPts   = (args[1] || '').trim();
@@ -2651,7 +2723,7 @@ function executeActions_(rawText) {
     }
   });
 
-  return { executed: executed, errors: errors };
+  return { executed: executed, errors: errors, notes: notes };
 }
 
 function stripActions_(text) {
@@ -2765,6 +2837,9 @@ function processChat_(userMessage, sessionId, imageBase64, imageMimeType) {
   }
 
   // Surface any action failures so the user knows something went wrong
+  if (actionResult.notes && actionResult.notes.length > 0) {
+    cleanReply += '\n\n' + actionResult.notes.join('\n');
+  }
   if (actionResult.errors.length > 0) {
     cleanReply += '\n\n⚠️ Note: some actions could not be completed — ' + actionResult.errors.join('; ') + '.';
   }

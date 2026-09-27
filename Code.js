@@ -2363,6 +2363,10 @@ function perkBadgeColor_(name) {
 function buildCardPerkEmailHtml_(data) {
   var perkName   = escapeHtml_(data.perkName);
   var cardName   = escapeHtml_(data.cardName);
+  // Passed in rather than read from Properties here, so this stays a pure
+  // function over `data` like every other field. Absent = render no anchor,
+  // never href="undefined".
+  var dashUrl    = String(data.dashboardUrl || '').trim();
   var merchantLabel  = perkMerchantLabel_(data.perkName);
   var merchantBadge  = escapeHtml_(perkBadgeInitials_(merchantLabel));
   var cardBadge      = escapeHtml_(perkBadgeInitials_(data.cardName));
@@ -2426,6 +2430,14 @@ function buildCardPerkEmailHtml_(data) {
     '<p style="margin-top:20px;font-size:12.5px;color:#6b7280;line-height:1.6;">' +
       'Mark it used from the dashboard (Finances → Cards → ' + cardName + ') once you’ve redeemed it.' +
     '</p>' +
+    // The prose above still names the path, because the dashboard has no hash or
+    // query routing — there is no address for a specific card, only the root.
+    (dashUrl
+      ? '<p style="margin:16px 0 0;"><a href="' + escapeHtml_(dashUrl) + '" ' +
+        'style="display:inline-block;background:#0d1b3e;color:#c9a84c;font-size:14px;' +
+        'font-weight:700;letter-spacing:1px;padding:12px 28px;border-radius:6px;' +
+        'text-decoration:none;border:2px solid #c9a84c;">Open VERA Dashboard &rarr;</a></p>'
+      : '') +
     '</td></tr>' +
     '<tr><td style="padding:14px 36px;background:#f7f7fa;border-top:1px solid #eeeeee;">' +
     '<p style="margin:0;font-size:12px;color:#aaaaaa;text-align:center;">' +
@@ -2521,9 +2533,19 @@ function checkCardPerksExpiring_() {
           var recipients     = [CONFIG.MORNING_NUDGE_EMAIL];
           var victoriaEmail  = (getConfigValues()['victoria_email'] || '').trim();
           if (victoriaEmail) recipients.push(victoriaEmail);
+          // The dashboard root — never a deep link, and NEVER a token. The API
+          // token is a single global credential with no expiry and no scope: it
+          // authorises every doGet action, deletes included (isAuthorized_,
+          // WebApp.js). No VERA email has ever carried one, and this one goes to
+          // two mailboxes plus whatever indexes them. Same property-with-fallback
+          // shape the other email buttons use.
+          var perkDashUrl = PropertiesService.getScriptProperties()
+                              .getProperty('VERA_DASHBOARD_URL') ||
+                            'https://aeraky1565.github.io/VERA-My-Chief-of-Staff/';
           var subject  = 'VERA: ' + perkName + ' expires ' + Utilities.formatDate(periodEnd, tz, 'MMM d');
           var plainBody = flagText + '\n\n' + reason +
-            '\n\nMark it used from the dashboard (Finances → Cards → ' + cardName + ') once you\'ve redeemed it.';
+            '\n\nMark it used from the dashboard (Finances → Cards → ' + cardName + ') once you\'ve redeemed it.' +
+            '\n\nDashboard: ' + perkDashUrl;
           var htmlBody = buildCardPerkEmailHtml_({
             perkName:       perkName,
             cardName:       cardName,
@@ -2532,6 +2554,7 @@ function checkCardPerksExpiring_() {
             periodEndLabel: Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy'),
             daysUntil:      daysUntil,
             reason:         reason,
+            dashboardUrl:   perkDashUrl,
           });
           sendVeraEmail_(recipients.join(','), subject, plainBody, { name: 'VERA', htmlBody: htmlBody }, 'card_perk_expiry');
         } catch (emailErr) {

@@ -185,7 +185,7 @@ VERA's chat system supports the following action categories, each backed by a li
 | **Career** | add_career_win, add_career_goal, update_career_position |
 | **Prescriptions** | add_prescription, mark_prescription_refilled |
 | **Health Appointments** | log_health_visit (creates DR: calendar event), add_health_appointment, query_health_due |
-| **Credit Cards** | log_card_used, update_loyalty_points |
+| **Credit Cards** | log_card_used, mark_perk_used, update_loyalty_points |
 | **Post-trip debrief** | Structured 5-question debrief capturing restaurants, highlights, skips, Victoria's highlights, and would-return decision |
 | **Thought triage** | Walk through THOUGHT INBOX: shelve, promote to task, or archive |
 
@@ -301,6 +301,49 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 ### Finance Overview Dashboard (`Finance.js`)
 
 The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet via `SAT_SHEET_ID`), spending by category from the Transactions sheet (`TRANSACTIONS_SHEET_ID`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
+
+### Card Perks (`Code.js`, `WebApp.js`)
+
+Tracks use-it-or-lose-it credit-card benefits on the `Card Perks` tab. A perk's
+`Frequency` is `Monthly`, `Quarterly`, `Semiannual` or `Annual`, and the periods
+are strictly **calendar** ones — not cardmember-anniversary quarters.
+
+**`Last Used` is both the used-flag and the period stamp.** It holds a period
+key, not a date: `2026-09`, `2026-Q3`, `2026-H2`, `2026`. `cardPerkPeriodKey_`
+(`Code.js:2233`) is the single definition, shared by every reader and writer.
+That design is why a perk **resets for free** — nothing clears the cell at the
+period boundary; the stored key simply stops matching the new one. A perk used in
+Q3 last year therefore also reads as unused.
+
+**Marking one used — three ways:**
+
+| Where | How |
+|---|---|
+| Dashboard | Finances → 💳 Cards → click the card → 🎁 Perks → the green checkbox. A **toggle**, so a second click undoes a mis-click. |
+| Chat | "I used the Uber credit" → `ACTION:mark_perk_used`. **Idempotent** — saying it twice never un-marks. |
+| API | `GET ?action=mark_card_perk_used&id=CP-n` (idempotent) or `toggle_card_perk` (the checkbox's toggle) |
+
+Both writers go through `resolveCardPerkRow_` (`WebApp.js`) so they can never
+disagree about which column they stamp or which key they stamp it with.
+
+If the same perk text appears on two cards, Chat **asks which** rather than
+guessing — a wrong guess would silence a real reminder. Perks with `Autopay=Yes`
+are excluded from tracking entirely; Chat refuses to mark them and says why,
+while the dashboard checkbox still toggles them as a manual override.
+
+**Reminders.** `checkCardPerksExpiring_` runs in `nightlyRun` and skips any perk
+whose stamp matches the current period, so marking one used silences it for the
+rest of the period. Within 14 days of the period end it raises a High flag; within
+7 it also emails and adds a calendar event, both deduped per perk per period.
+Marking used via Chat or the API also **resolves the open flag** — the nightly
+pass stops re-raising it, but nothing used to clear the row already on the
+dashboard. The calendar event is not deleted and will still fire.
+
+The email links to the dashboard root and deliberately carries **no API token**:
+that token is a single global non-expiring credential authorising every endpoint,
+and no VERA email carries one. It cannot deep-link to the specific card because
+the dashboard has no hash or query routing, which is why the email still names
+the path in prose.
 
 ### Email Admin & Travel Email Parser (`EmailParser.js`, `EmailAdmin.js`)
 
