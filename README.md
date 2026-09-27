@@ -563,6 +563,46 @@ The following types are supported in the `add_itinerary_item` chat action and `I
 
 48 hours before departure (configurable via `pretrip_briefing_hours`), VERA generates a High-urgency flag containing: destination weather, all flight legs with confirmation numbers, full itinerary overview, cancellation deadlines, and packing list completion percentage. Fires exactly once per trip via the flag key deduplication system.
 
+### Travel-Day Briefing — where flight times come from
+
+The day-of email reads its itinerary from **`webGetItinerary_`**, the same
+function the dashboard's Active Travel Card uses, called with no second argument
+so its per-event timezone pass runs. That pass formats each departure in the
+event's own `start/timeZone` and each arrival in its `end/timeZone`, which is the
+only reason the card has always shown the right clock.
+
+The briefing used to run its own `CalendarApp` pull, format both ends in the
+script zone, and write `dep_scheduled` / `arr_scheduled` as `.toISOString()` —
+**UTC instants** — into metadata that the Claude prompt then labelled "local to
+the origin/destination airport". It also scraped the destination IATA code from
+the event **title only**, so `Flight to Washington (UA 1370)` yielded nothing.
+Handed a UTC instant under a false label and no destination, Claude converted the
+departure correctly and echoed the raw UTC clock for the arrival: a real email
+showed `6:47 PM (TPA) → 1:03 AM (unknown)` for the flight its own schedule
+section, four lines below, printed correctly as `18:47 – 21:03`.
+
+**Measured, not generated.** `USEFUL TO KNOW` fields that are facts are computed
+server-side and overwrite the model's answer unconditionally after the call:
+
+| Field | Source |
+|---|---|
+| `dep_local`, `arr_local` | `webGetItinerary_`'s per-zone times, formatted 12-hour |
+| `origin_code`, `dest_code` | the itinerary row — description **and** title |
+| `tz_offset_hours`, `tz_offset_label` | the two IANA zones, evaluated **on the flight date** so August gets DST and January does not |
+| `distance_miles`, `haul_category` | haversine over Open-Meteo geocoder coordinates (keyless, cached 6h) |
+| `daynight_pct_day` | still the model's estimate — clamped 0–100 |
+
+Zones come from the calendar where it supplies them and from the geocoded city
+otherwise; the calendar's are exact, so they win. City centroids carry a 10–40 km
+error, irrelevant at the rounding the email prints.
+
+**Nothing prints a number whose input was unknown.** `tz_offset_hours` stays
+`null` rather than becoming `0`, and every renderer gates on it. The dashboard's
+recovery card shows an explicit *"timezone shift unknown"* state — previously the
+`|| 0` coercion set its recovery window to zero days and the panel silently
+disappeared on every day after a flight. A known departure time also survives an
+unknown arrival: the times row is an OR, not an AND, and names the missing half.
+
 ### Flight Status Monitor
 
 `checkFlightStatuses_()` runs every 15 minutes. It scans the Itinerary tab for flight rows with a flight number, plus Google Calendar for events matching the airline-code + number pattern. For flights within 24 hours of departure it queries the AviationStack API. Results are stored in the Itinerary sheet metadata column (JSON) and in Script Properties (`FLIGHT_STATUS_CACHE`). The dashboard merges both sources via `?action=flight_statuses&tripKey=...`.

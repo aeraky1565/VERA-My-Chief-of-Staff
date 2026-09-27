@@ -26,9 +26,9 @@
  * isVirtualMeetingLocation_(location)
  * Same virtual-meeting keyword check isItineraryCalendarRelevant_ (WebApp.js)
  * already applies internally — duplicated here in miniature because that
- * function only exposes include/exclude, not *why*, and getCalendarItemsForToday_
- * needs to know specifically "was this excluded for being virtual" before
- * applying its own looser has-a-real-location fallback.
+ * function only exposes include/exclude, not *why*, and a caller sometimes needs
+ * to know specifically "was this excluded for being virtual" before applying a
+ * looser has-a-real-location fallback. WebApp.js and TravelLegs.js both use it.
  */
 function isVirtualMeetingLocation_(location) {
   var VIRTUAL_LOCS = ['zoom', 'google meet', 'teams', 'webex', 'skype',
@@ -45,108 +45,69 @@ function isVirtualMeetingLocation_(location) {
 }
 
 /**
- * getCalendarItemsForToday_(tripKey, tripLabel, tz)
- * Reads today's events from the same "trusted calendar" set
- * webGetItinerary_() uses for the dashboard's auto-pull (WebApp.js) — gap/
- * shared calendars + the user's personal primary calendar, explicitly
- * excluding extended-family calendars — and keeps any event
- * isItineraryCalendarRelevant_() (WebApp.js) judges relevant to this trip
- * by keyword/location match against tripLabel. That's the same relevance
- * check the dashboard's Travel tab already relies on; no GAS file boundary
- * to cross since every .js file shares one global scope.
+ * Today's itinerary items for a trip, via the SAME path the dashboard's Active
+ * Travel Card uses.
  *
- * Returns an array of synthetic Itinerary row arrays (same 10-column layout)
- * so they can be passed directly to sendTravelDayBriefing_() unchanged —
- * every downstream consumer (enrichTravelItems_, the schedule/map section
- * builders, the plain-text builder) only ever cared about this row shape,
- * never about whether it came from the sheet or a calendar.
+ * This is the fix for the wrong arrival times. webGetItinerary_ runs a per-event
+ * timezone pass (Calendar.Events.list, start/timeZone + end/timeZone) and then
+ * formats each end of a flight in ITS OWN zone — departure in startTz, arrival
+ * in endTz. It has twelve callers and exactly one, the dashboard's
+ * action=itinerary, omits skipEventTz and therefore gets those timezones. That
+ * one is the card that renders correctly.
  *
- * Called for every active trip today, whether or not it already has logged
- * Itinerary rows — the caller (checkAndSendTravelDayBriefings_) merges these
- * in and dedups by title against whatever's already there.
+ * The briefing used to call it not at all. It ran its own CalendarApp pull with
+ * no timezone pass, formatted both ends in the script zone, and wrote
+ * ev.getStartTime().toISOString() into metadata as dep_scheduled — a UTC instant
+ * that the insights prompt then labelled "local to the origin airport". Handed
+ * that, the model converted the departure correctly (it knew the origin) and
+ * echoed the raw UTC clock for the arrival, because the destination had come
+ * through as "unknown". Hence 21:03 rendering as 1:03 AM.
+ *
+ * Note what this deliberately does NOT return: dep_scheduled / arr_scheduled.
+ * Their absence is the fix — buildTravelFlightInsightsData_ then falls through
+ * to the row's own time columns, which are correct per-zone local strings.
+ *
+ * No second argument, so the timezone pass runs. webGetItinerary_ writes to no
+ * sheet, so this is safe to call from a mailer.
+ *
+ * @returns {Array|null} 10-column rows for `today`, or null if unavailable
  */
-function getCalendarItemsForToday_(tripKey, tripLabel, tz) {
-  var today      = new Date();
-  var startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
-  var endOfDay   = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
-  var rows       = [];
-  try {
-    var cfg      = readPTOConfig_();
-    var gapNames = (cfg.gapCalendarsRaw || '').split(',')
-      .map(function(n) { return n.trim(); })
-      .filter(function(n) { return n && n !== cfg.calendarName; });
-    var trustedSet = {};
-    gapNames.forEach(function(n) { trustedSet[n] = true; });
-    var userEmail = Session.getEffectiveUser().getEmail();
+function fetchTripDayItems_(tripKey, startDate, endDate, today) {
+  if (typeof webGetItinerary_ !== 'function') return null;
+  var res = webGetItinerary_({ parameter: {
+    tripKey:   tripKey,
+    startDate: startDate,
+    endDate:   endDate,
+  }});
+  if (!res || !res.items) return null;
 
-    CalendarApp.getAllCalendars().forEach(function(cal) {
-      if (cal.getId() !== userEmail && !trustedSet[cal.getName()]) return;
-
-      cal.getEvents(startOfDay, endOfDay).forEach(function(ev) {
-        var title    = (ev.getTitle()    || '(No title)').trim();
-        var location = (ev.getLocation() || '').trim();
-
-        // Standing habits aren't trip plans — same rule as the itinerary pull
-        // (WebApp.js). The nightly Walk is a routine, not something to brief
-        // on a travel day.
-        if (ev.isRecurringEvent()) return;
-
-        var relevance = isItineraryCalendarRelevant_(title, location, tripLabel);
-        if (!relevance.include) {
-          // isItineraryCalendarRelevant_ requires the trip-label keyword to
-          // literally appear in the title/location — which misses something
-          // like a lunch/dinner reservation whose venue name doesn't contain
-          // the destination (e.g. trip "Anniversary Weekend", venue "The
-          // Grove Bistro"). Err toward including any event with a real
-          // (non-virtual) location rather than dropping it — worst case is
-          // one extra row easily deleted from the Travel tab; the
-          // alternative is a real trip plan silently never showing up. The
-          // caller's title-based dedup still keeps this from ever doubling
-          // up something already logged manually.
-          //
-          // Timed events only — same guard as the itinerary pull
-          // (WebApp.js). An all-day event with a location unrelated to the
-          // trip is awareness of someone else's plans, not a reservation:
-          // "Eraky Family in Germany" @ Düsseldorf would otherwise land in
-          // every morning briefing of a Caribbean cruise. Real all-day trip
-          // items carry their own keywords ("Stay: …") and never reach here.
-          if (ev.isAllDayEvent()) return;
-          if (!location || isVirtualMeetingLocation_(location)) return;
-          relevance = { include: true, type: 'calendar' };
-        }
-
-        var allDay   = ev.isAllDayEvent();
-        var startStr = allDay ? '' : Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
-        var endStr   = allDay ? '' : Utilities.formatDate(ev.getEndTime(),   tz, 'HH:mm');
-
-        var meta = {};
-        if (relevance.type === 'flight') {
-          // Preserve the same flight-detail extraction the old flight-only
-          // fallback did, so flight-day briefings don't lose any detail.
-          var iata      = title.match(/\b([A-Z]{3})\b/g) || [];
-          var desc      = ev.getDescription() || '';
-          var confMatch = desc.match(/conf(?:irmation)?[#:\s]+([A-Z0-9]{5,8})/i);
-          meta = {
-            origin:             iata[0] || '',
-            dest:               iata[1] || '',
-            confirmationNumber: confMatch ? confMatch[1] : '',
-            dep_scheduled:      ev.getStartTime().toISOString(),
-            arr_scheduled:      ev.getEndTime().toISOString(),
-          };
-        }
-
-        // [ID, TripKey, Type, Title, Date, StartTime, EndTime, Location, Notes, Metadata]
-        rows.push(['', tripKey, relevance.type, title,
-                   ev.getStartTime(), startStr, endStr, location, '', JSON.stringify(meta)]);
-      });
-    });
-  } catch (e) {
-    Logger.log('getCalendarItemsForToday_ error: ' + e.message);
-  }
-  return rows.sort(function(a, b) {
-    return String(a[5]) < String(b[5]) ? -1 : 1;
+  // The same adapter webGeneratePacking_ and webGenerateRecommendations_ use.
+  var rows = res.items.map(function(it) {
+    return [it.id, it.tripKey, it.type, it.title, it.date,
+            it.startTime, it.endTime, it.location, it.notes, it.metadata];
   });
+
+  // `date` comes back formatted in the event's OWN start timezone, which is
+  // departure-day semantics — the same assumption the dashboard card makes.
+  var todays = rows.filter(function(r) {
+    var d = r[4];
+    var ds = (d instanceof Date)
+      ? Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : String(d || '').trim();
+    return ds === today;
+  });
+
+  Logger.log('TravelDayBriefing: webGetItinerary_ gave ' + rows.length +
+             ' item(s) for ' + tripKey + ', ' + todays.length + ' dated ' + today);
+  return todays;
 }
+
+// getCalendarItemsForToday_ lived here. It did its own CalendarApp pull with no
+// per-event timezone pass, which is what produced the wrong arrival times, and
+// its caller merged the result in with a title-only dedupe. fetchTripDayItems_
+// above replaces both: webGetItinerary_ already reads the same trusted calendar
+// set, applies the same isItineraryCalendarRelevant_ check, dedupes against the
+// sheet properly and formats each end of a flight in its own zone.
 
 /**
  * checkAndSendTravelDayBriefings_()
@@ -220,41 +181,20 @@ function checkAndSendTravelDayBriefings_(opts) {
       if (!tripMap[key] && today >= t.startDate && today <= t.endDate) {
         tripMap[key] = [];
       }
+      // Retain the range even when the trip already had sheet rows: a
+      // calendar-only trip has no tripRanges entry at all, and webGetItinerary_
+      // requires a start and an end.
+      if (!tripRanges[key]) tripRanges[key] = { min: t.startDate, max: t.endDate };
     });
   } catch (calErr) {
     Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);
   }
 
-  // Merge in today's relevant calendar events alongside whatever Itinerary
-  // rows already exist for the trip today — always, not just when the trip
-  // has zero logged items, so a manually-logged morning activity and an
-  // afternoon dinner plan that only lives on the calendar both show up.
-  // Deduped by title: both sides are already scoped to today by this point,
-  // so title alone is enough to tell "already logged" from "new." A manual
-  // row always wins a collision — it's what the user deliberately entered.
-  Object.keys(tripMap).forEach(function(key) {
-    var keyParts  = key.split('|');
-    var tripLabel = keyParts.length > 1 ? keyParts.slice(1).join('|') : key;
-    var calRows   = getCalendarItemsForToday_(key, tripLabel, tz);
-    if (!calRows.length) return;
-
-    var existingTitles = {};
-    tripMap[key].forEach(function(row) {
-      existingTitles[String(row[3] || '').trim().toLowerCase()] = true;
-    });
-
-    var added = 0;
-    calRows.forEach(function(calRow) {
-      var titleKey = String(calRow[3] || '').trim().toLowerCase();
-      if (existingTitles[titleKey]) return; // already logged manually today — skip
-      tripMap[key].push(calRow);
-      existingTitles[titleKey] = true;
-      added++;
-    });
-    if (added) {
-      Logger.log('TravelDayBriefing: calendar auto-pull added ' + added + ' item(s) for ' + key);
-    }
-  });
+  // The merge of calendar events into today's rows used to happen here, with a
+  // title-only dedupe. It is gone: webGetItinerary_ already merges the two
+  // sources, dedupes them properly and collapses competing holds — see
+  // fetchTripDayItems_ below, called per trip AFTER the send latch so a trip
+  // with two keys costs one call rather than two.
 
   var tripKeys = Object.keys(tripMap);
   if (!tripKeys.length) {
@@ -302,7 +242,22 @@ function checkAndSendTravelDayBriefings_(opts) {
         return;
       }
       _tdbSeen[_sKey] = true;
-      sendTravelDayBriefing_(tripKey, tripMap[tripKey]);
+
+      // Fetch through webGetItinerary_ now that the latch has settled which key
+      // wins. Falls back to the raw sheet rows gathered above if that throws —
+      // a briefing built from sheet rows alone is worse than one with calendar
+      // events merged in, but far better than none.
+      var _range = tripRanges[tripKey] || { min: today, max: today };
+      var _rows  = tripMap[tripKey];
+      try {
+        var _fetched = fetchTripDayItems_(tripKey, _range.min, _range.max, today);
+        if (_fetched) _rows = _fetched;
+      } catch (itinErr) {
+        Logger.log('TravelDayBriefing: webGetItinerary_ failed for ' + tripKey +
+                   ' — falling back to sheet rows. ' + itinErr.message);
+      }
+
+      sendTravelDayBriefing_(tripKey, _rows);
       _tdbProps.setProperty(_sKey, new Date().toISOString());
       sent++;
     } catch (err) {
@@ -347,9 +302,10 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
     return at < bt ? -1 : at > bt ? 1 : 0;
   });
 
-  // Competing holds occupy ONE slot, here as everywhere else. This briefing
-  // reads raw Itinerary rows and never went through webGetItinerary_, so it was
-  // still showing three options for one afternoon as three separate plans.
+  // Competing holds occupy ONE slot, here as everywhere else. Kept even though
+  // webGetItinerary_ now collapses server-side: webSendTravelBriefing_ calls this
+  // function directly with raw sheet rows, which have had no such pass. Collapsing
+  // already-collapsed rows is a no-op, so both callers are safe.
   sortedItems = collapseItineraryRows_(sortedItems, tripKey,
                                        Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
 
@@ -1114,32 +1070,51 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrati
 
   // ── Useful to Know block ──────────────────────────────────────────────────
   if (insights) {
-    lines.push('USEFUL TO KNOW');
-    lines.push('--------------');
-    if (insights.origin_code && insights.dest_code) {
-      lines.push('\u23F0 Timezone:    ' + insights.origin_code + ' \u2192 ' +
-        insights.dest_code + '  ' + (insights.tz_offset_label || ''));
+    // Rows first, heading only if any survived. A fully-null insights object
+    // used to print a bare "USEFUL TO KNOW" and its underline with nothing at
+    // all beneath them.
+    var utk = [];
+    // Both codes AND a label, matching the HTML renderer. The two used to
+    // disagree: text printed "TPA → IAD  " with a trailing gap where the
+    // offset should be, while HTML showed nothing — the same email
+    // contradicting itself about whether the route was known.
+    if (insights.origin_code && insights.dest_code && insights.tz_offset_label) {
+      utk.push('\u23F0 Timezone:    ' + insights.origin_code + ' \u2192 ' +
+        insights.dest_code + '  ' + insights.tz_offset_label);
     }
     if (insights.distance_miles) {
-      lines.push('\uD83D\uDCCF Distance:    ~' +
+      utk.push('\uD83D\uDCCF Distance:    ~' +
         Number(insights.distance_miles).toLocaleString() + ' miles' +
         (insights.haul_category ? ' \u00B7 ' + insights.haul_category : ''));
     }
     if (insights.daynight_pct_day != null) {
-      var filled = Math.round(insights.daynight_pct_day / 10);
+      // Clamped, exactly as the HTML renderer does. String.repeat throws
+      // RangeError on a negative count, this sits outside any try/catch, and
+      // plainText is built BEFORE sendVeraEmail_ — so one out-of-range answer
+      // from the model would take down the email and the Slack copy with it.
+      var pctDay = Math.max(0, Math.min(100, Number(insights.daynight_pct_day) || 0));
+      var filled = Math.max(0, Math.min(10, Math.round(pctDay / 10)));
       var bar    = '\u2588'.repeat(filled) + '\u2591'.repeat(10 - filled);
-      lines.push('\uD83C\uDF17 Your flight: ' + bar + '  ' + insights.daynight_pct_day + '% daytime');
+      utk.push('\uD83C\uDF17 Your flight: ' + bar + '  ' + pctDay + '% daytime');
     }
-    if (insights.dep_local && insights.arr_local) {
-      lines.push('\uD83D\uDEEB Times:       ' + insights.dep_local + ' \u2192 ' + insights.arr_local);
+    // OR, not AND. A known departure used to be thrown away because the
+    // arrival was unknown — which is exactly the case this whole fix is about.
+    if (insights.dep_local || insights.arr_local) {
+      utk.push('\uD83D\uDEEB Times:       ' + (insights.dep_local || 'departure unknown') +
+               ' \u2192 ' + (insights.arr_local || 'arrival unknown'));
     }
     if (insights.pre_trip_tip && !insights.isReturnDay) {
-      lines.push('\uD83D\uDCC5 Before you go: ' + insights.pre_trip_tip);
+      utk.push('\uD83D\uDCC5 Before you go: ' + insights.pre_trip_tip);
     }
     if (insights.arrival_tip) {
-      lines.push('\uD83D\uDCA4 On arrival:    ' + insights.arrival_tip);
+      utk.push('\uD83D\uDCA4 On arrival:    ' + insights.arrival_tip);
     }
-    lines.push('');
+    if (utk.length) {
+      lines.push('USEFUL TO KNOW');
+      lines.push('--------------');
+      utk.forEach(function(l) { lines.push(l); });
+      lines.push('');
+    }
   }
 
   // \u2500\u2500 Lounge Access block \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -1269,6 +1244,105 @@ function webSendTravelBriefing_(e) {
  * @param {string} homeCity     — from Config 'weather_location', e.g. "Washington DC"
  * @returns {Object|null}
  */
+/**
+ * An airport's coordinates and IANA timezone, or null.
+ *
+ * Chains two helpers that already exist and are already cached: an IATA code
+ * resolves to a city via AirportGap (resolveIataToCity_, the same step
+ * webGetDestWeather_ takes, because a bare 3-letter code is not a place name),
+ * and the city resolves to coordinates plus a timezone via Open-Meteo's
+ * geocoder — keyless, and cached for six hours.
+ *
+ * City-centroid coordinates, not runway coordinates: TPA is ~9 km from downtown
+ * Tampa, IAD ~40 km from Washington. At the rounding a mileage figure is shown
+ * at, that is noise — and it is a measured number rather than a generated one.
+ *
+ * @returns {{lat:number, lon:number, timezone:string}|null}
+ */
+function travelAirportGeo_(code) {
+  var c = String(code || '').trim();
+  if (!c) return null;
+  try {
+    var query = c;
+    if (/^[A-Z]{3}$/.test(c) && typeof resolveIataToCity_ === 'function') {
+      var city = resolveIataToCity_(c);
+      if (city) query = city;
+    }
+    if (typeof geocodePackingDestination_ !== 'function') return null;
+    var geo = geocodePackingDestination_(query);
+    if (!geo || typeof geo.lat !== 'number' || typeof geo.lon !== 'number') return null;
+    return { lat: geo.lat, lon: geo.lon, timezone: geo.timezone || '' };
+  } catch (e) {
+    Logger.log('travelAirportGeo_("' + c + '") — ' + e.message);
+    return null;
+  }
+}
+
+/** Great-circle distance in statute miles. */
+function haversineMiles_(a, b) {
+  if (!a || !b) return null;
+  var toRad = function(d) { return d * Math.PI / 180; };
+  var R = 3958.7613;
+  var dLat = toRad(b.lat - a.lat);
+  var dLon = toRad(b.lon - a.lon);
+  var s = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return Math.round(2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)));
+}
+
+/**
+ * A zone's UTC offset in hours ON A GIVEN DATE — so a flight in August gets
+ * daylight saving and the same route in January does not.
+ * @returns {number|null}
+ */
+function tzOffsetHoursOn_(ianaZone, dateStr) {
+  if (!ianaZone) return null;
+  try {
+    var d = new Date(String(dateStr || '') + 'T12:00:00Z');
+    if (isNaN(d.getTime())) d = new Date();
+    var z = Utilities.formatDate(d, ianaZone, 'Z');      // e.g. -0400
+    var m = /^([+-])(\d{2})(\d{2})$/.exec(String(z).trim());
+    if (!m) return null;
+    var hrs = parseInt(m[2], 10) + (parseInt(m[3], 10) / 60);
+    return m[1] === '-' ? -hrs : hrs;
+  } catch (e) {
+    Logger.log('tzOffsetHoursOn_("' + ianaZone + '") — ' + e.message);
+    return null;
+  }
+}
+
+/** "+5h" / "-3h30m" / "same timezone", or '' when the offset is unknown. */
+function tzOffsetLabel_(hours) {
+  if (typeof hours !== 'number' || isNaN(hours)) return '';
+  if (hours === 0) return 'same timezone';
+  var sign  = hours > 0 ? '+' : '-';
+  var abs   = Math.abs(hours);
+  var whole = Math.floor(abs);
+  var mins  = Math.round((abs - whole) * 60);
+  return sign + whole + 'h' + (mins ? mins + 'm' : '');
+}
+
+/** Distance band. Derived from the measured mileage, not asked of the model. */
+function haulCategoryFor_(miles) {
+  if (typeof miles !== 'number' || !isFinite(miles)) return '';
+  if (miles < 1000) return 'Short-haul';
+  if (miles < 3000) return 'Medium-haul';
+  if (miles < 6000) return 'Long-haul';
+  return 'Ultra-long-haul';
+}
+
+/** "6:47 PM" from "18:47". Returns '' for anything that is not HH:mm. */
+function travelTo12Hour_(hhmm) {
+  var m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
+  if (!m) return '';
+  var h = parseInt(m[1], 10);
+  if (h < 0 || h > 23) return '';
+  var suffix = h >= 12 ? 'PM' : 'AM';
+  var h12    = h % 12; if (h12 === 0) h12 = 12;
+  return h12 + ':' + m[2] + ' ' + suffix;
+}
+
 function buildTravelFlightInsightsData_(sortedItems, homeCity) {
   try {
     var cfg = getConfigValues();
@@ -1296,8 +1370,30 @@ function buildTravelFlightInsightsData_(sortedItems, homeCity) {
     var origin   = meta.origin || locCodes[0] || null;
     var dest     = meta.dest   || (locCodes.length > 1 ? locCodes[locCodes.length - 1] : null);
 
-    var depTime  = meta.dep_scheduled || String(flight[5] || '').trim();
-    var arrTime  = meta.arr_scheduled || String(flight[6] || '').trim();
+    // The row's own time columns first. They come from webGetItinerary_, which
+    // formats departure in the event's startTz and arrival in its endTz — the
+    // same path the dashboard's Active Travel Card renders correctly from.
+    //
+    // meta.dep_scheduled is only consulted as a fallback, and ONLY when it is a
+    // bare HH:mm. The old calendar pull wrote ev.getStartTime().toISOString()
+    // into that field — a UTC instant — while the prompt below called it "local
+    // to the origin airport". That is what turned a 21:03 arrival into 1:03 AM.
+    // One field name, two incompatible formats; this refuses the wrong one.
+    function localHHmm_(rowVal, metaVal) {
+      var row = String(rowVal || '').trim();
+      var m   = String(metaVal || '').trim();
+      // Worth saying out loud even when the row wins: an ISO instant sitting in
+      // this field means stale metadata is still on the sheet somewhere.
+      if (m && !/^\d{1,2}:\d{2}$/.test(m)) {
+        Logger.log('buildTravelFlightInsightsData_: ignoring non-local time "' + m +
+                   '" (a UTC instant here is what produced the wrong arrival times)');
+      }
+      if (/^\d{1,2}:\d{2}$/.test(row)) return row;
+      if (/^\d{1,2}:\d{2}$/.test(m))   return m;   // the synthetic dashboard row
+      return row;
+    }
+    var depTime = localHHmm_(flight[5], meta.dep_scheduled);
+    var arrTime = localHHmm_(flight[6], meta.arr_scheduled);
     var flightDate = (function() {
       var d = flight[4];
       if (d instanceof Date && !isNaN(d.getTime())) {
@@ -1306,38 +1402,91 @@ function buildTravelFlightInsightsData_(sortedItems, homeCity) {
       return String(d || '').trim();
     }());
 
+    // ---- Facts, computed here rather than generated -----------------------
+    //
+    // Distance, the timezone offset and the formatted clock times used to be
+    // asked of the model, which had no way to know any of them — there is no
+    // airport table and no haversine in this codebase, so "~842 miles" and
+    // "same timezone" were plausible inventions. All three are now measured.
+    var originGeo = travelAirportGeo_(origin);
+    var destGeo   = travelAirportGeo_(dest);
+
+    // The calendar's own per-event zones are exact when present, so they win
+    // over a city-centroid lookup. endTz is omitted by webGetItinerary_ when it
+    // equals startTz, which is itself the "did not cross zones" signal.
+    var originTz = meta.startTz || (originGeo && originGeo.timezone) || '';
+    var destTz   = meta.endTz   || meta.startTz || (destGeo && destGeo.timezone) || '';
+
+    var originOff = tzOffsetHoursOn_(originTz, flightDate);
+    var destOff   = tzOffsetHoursOn_(destTz,   flightDate);
+    var offsetHrs = (typeof originOff === 'number' && typeof destOff === 'number')
+      ? Math.round((destOff - originOff) * 100) / 100
+      : null;
+
+    var miles = (originGeo && destGeo) ? haversineMiles_(originGeo, destGeo) : null;
+
     var prompt =
       'You are a flight insights assistant. A traveler is flying today.\n' +
       'Origin airport: ' + (origin || 'unknown') + '\n' +
       'Destination airport: ' + (dest || 'unknown') + '\n' +
       'Home city (for timezone reference): ' + (homeCity || 'unknown') + '\n' +
       'Flight date: ' + (flightDate || 'today') + '\n' +
-      (depTime ? 'Departure time (local to origin airport): ' + depTime + '\n' : '') +
-      (arrTime ? 'Arrival time (local to destination airport): ' + arrTime + '\n' : '') +
+      // Labelled by the zone it is ACTUALLY in, and only claimed to be local
+      // when a zone is known. Saying "local" over a UTC instant is the bug.
+      (depTime ? 'Departure time' + (originTz ? ' (' + originTz + ')' : ' (timezone unknown)') +
+                 ': ' + depTime + '\n' : '') +
+      (arrTime ? 'Arrival time'   + (destTz   ? ' (' + destTz   + ')' : ' (timezone unknown)') +
+                 ': ' + arrTime + '\n' : '') +
+      (offsetHrs !== null ? 'Timezone change on arrival: ' + tzOffsetLabel_(offsetHrs) + '\n' : '') +
+      (miles !== null ? 'Great-circle distance: ' + miles + ' miles\n' : '') +
       'Home IANA timezone: ' + Session.getScriptTimeZone() + '\n\n' +
+      'The facts above are measured. Do not restate, recompute or contradict them.\n' +
       'Return ONLY a valid JSON object with exactly these fields (no explanation):\n' +
-      '{\n' +
-      '  "origin_code": "IATA code or null",\n' +
-      '  "origin_local_time": "dep time formatted as h:MM AM/PM in origin local time, or null",\n' +
-      '  "dest_code": "IATA code or null",\n' +
-      '  "dest_local_time": "arr time formatted as h:MM AM/PM in destination local time, or null",\n' +
-      '  "tz_offset_hours": number (positive=ahead of home, negative=behind; 0 if same timezone),\n' +
-      '  "tz_offset_label": "e.g. +5h or -3h or same timezone",\n' +
+      '{\n'
+      // origin_code/dest_code/tz_offset/distance/haul/dep_local/arr_local are
+      // all set from the measurements below — the model is not asked for them.
+      +
       '  "pre_trip_tip": "1 sentence: what to do in the days before departure to prepare — direction-specific (west = shift bedtime earlier, east = stay up later; say no adjustment needed if same tz)",\n' +
       '  "arrival_tip": "REQUIRED — write exactly 1 sentence of specific advice for after landing. Never return null. Westward flight: advise staying awake until local bedtime to reset the body clock. Eastward flight: advise avoiding naps and going to sleep at local time. Same timezone: write that no adjustment is needed but getting morning sunlight helps.",\n' +
-      '  "distance_miles": number (great-circle miles, integer),\n' +
-      '  "haul_category": "Short-haul or Medium-haul or Long-haul or Ultra-long-haul",\n' +
-      '  "daynight_pct_day": integer 0-100 (% of flight time in daylight based on route and departure time),\n' +
-      '  "dep_local": "e.g. 10:30 AM (IAD) or null",\n' +
-      '  "arr_local": "e.g. 11:45 PM (LHR) or null"\n' +
-      '}\n' +
-      'Haul categories: Short-haul <1500 mi, Medium-haul 1500-3500 mi, Long-haul 3500-7000 mi, Ultra-long-haul >7000 mi.';
+      '  "daynight_pct_day": integer 0-100 (% of flight time in daylight based on route and departure time)\n' +
+      '}';
 
-    var result = callClaudeJson_(prompt, null);
-    if (!result || typeof result !== 'object') return null;
+    var result = callClaudeJson_(prompt, null) || {};
+    if (typeof result !== 'object') result = {};
 
-    // Attach raw offset for recovery-day calculations by the dashboard card
-    if (typeof result.tz_offset_hours !== 'number') result.tz_offset_hours = 0;
+    // ---- Overwrite every measured field ------------------------------------
+    //
+    // Assigned after the call, unconditionally, so a model that answers anyway
+    // cannot contradict a measurement. Null where genuinely unknown — never a
+    // confident stand-in.
+    result.origin_code = origin || null;
+    result.dest_code   = dest   || null;
+
+    result.tz_offset_hours = offsetHrs;                 // null stays null
+    result.tz_offset_label = offsetHrs === null ? null : tzOffsetLabel_(offsetHrs);
+
+    result.distance_miles = miles;
+    result.haul_category  = miles === null ? null : haulCategoryFor_(miles);
+
+    // "6:47 PM (TPA)". The airport is appended only when it is actually known —
+    // the old code printed the literal string "(unknown)" beside a UTC clock.
+    var dep12 = travelTo12Hour_(depTime);
+    var arr12 = travelTo12Hour_(arrTime);
+    result.dep_local = dep12 ? (dep12 + (origin ? ' (' + origin + ')' : '')) : null;
+    result.arr_local = arr12 ? (arr12 + (dest   ? ' (' + dest   + ')' : '')) : null;
+
+    // daynight_pct_day stays the model's estimate — real solar geometry is a
+    // lot of code for a bar chart — but it is clamped so a stray value cannot
+    // reach String.repeat and throw.
+    if (result.daynight_pct_day != null) {
+      var pd = Number(result.daynight_pct_day);
+      result.daynight_pct_day = isFinite(pd) ? Math.max(0, Math.min(100, Math.round(pd))) : null;
+    }
+
+    Logger.log('flightInsights: ' + (origin || '?') + '→' + (dest || '?') +
+               '  dep=' + (result.dep_local || 'n/a') + '  arr=' + (result.arr_local || 'n/a') +
+               '  offset=' + (result.tz_offset_label || 'unknown') +
+               '  miles=' + (miles === null ? 'unknown' : miles));
     return result;
 
   } catch (err) {
@@ -1365,13 +1514,15 @@ function buildTravelFlightInsightsSection_(insights) {
   var GREY  = '#555555';
   var LGREY = '#888888';
 
-  var html =
-    '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
-    'letter-spacing:1.5px;text-transform:uppercase;">Useful to Know</p>';
+  // Heading is prepended at the END, only if a row survived. This used to be
+  // emitted unconditionally, so an insights object with every field null
+  // printed a lone "Useful to Know" above an empty table.
+  var html = '';
 
   // Helper: one row in the insights table
   function row(emoji, label, value) {
     if (!value) return '';
+    rowCount++;
     return (
       '<tr>' +
       '<td style="padding:4px 8px 4px 0;font-size:13px;width:20px;vertical-align:top;">' + emoji + '</td>' +
@@ -1381,6 +1532,7 @@ function buildTravelFlightInsightsSection_(insights) {
     );
   }
 
+  var rowCount = 0;
   html += '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">';
 
   // ⏰ Timezone
@@ -1417,9 +1569,11 @@ function buildTravelFlightInsightsSection_(insights) {
     html += row('🌗', 'Your flight', barHtml);
   }
 
-  // 🛫 Local times
-  if (insights.dep_local && insights.arr_local) {
-    var timesVal = escapeHtml_(insights.dep_local) + ' → ' + escapeHtml_(insights.arr_local);
+  // 🛫 Local times — OR, not AND. A known departure used to be discarded
+  // because the arrival was unknown, which is the exact case this fix is about.
+  if (insights.dep_local || insights.arr_local) {
+    var timesVal = escapeHtml_(insights.dep_local || 'departure unknown') + ' → ' +
+                   escapeHtml_(insights.arr_local || 'arrival unknown');
     html += row('🛫', 'Times', timesVal);
   }
 
@@ -1431,15 +1585,22 @@ function buildTravelFlightInsightsSection_(insights) {
       '<p style="margin:8px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
       'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
       '📅 <strong>Before you go:</strong> ' + escapeHtml_(insights.pre_trip_tip) + '</p>';
+    rowCount++;
   }
   if (insights.arrival_tip) {
     html +=
       '<p style="margin:6px 0 0;font-size:13px;color:' + GREY + ';font-style:italic;' +
       'padding:8px 12px;background:#f7f7fa;border-left:3px solid ' + BLUE + ';border-radius:0 4px 4px 0;">' +
       '💤 <strong>On arrival:</strong> ' + escapeHtml_(insights.arrival_tip) + '</p>';
+    rowCount++;
   }
 
-  return html;
+  if (!rowCount) return '';   // nothing to say — say nothing, not a bare heading
+
+  return (
+    '<p style="margin:0 0 16px;font-size:11px;font-weight:700;color:' + BLUE + ';' +
+    'letter-spacing:1.5px;text-transform:uppercase;">Useful to Know</p>' + html
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1482,19 +1643,12 @@ function getLoungePerkPrograms_() {
     var cpData = cpSheet.getRange(2, 1, cpSheet.getLastRow() - 1, 7).getValues();
     var loungeKeywords = ['lounge', 'priority pass', 'centurion', 'capital one lounge'];
 
-  // Tagline block (Napa email ~~ ... ~~ style)
-  if (narrativeData && narrativeData.tagline) {
-    lines.push('~~');
-    lines.push(narrativeData.tagline);
-    lines.push('~~');
-    lines.push('');
-  }
-
-  // VERA narrative
-  if (narrativeData && narrativeData.narrative) {
-    lines.push(narrativeData.narrative);
-    lines.push('');
-  }
+    // NOTE: a stray copy of buildTravelDayPlainText_'s tagline/narrative block
+    // used to sit here, referencing `narrativeData` and `lines` — neither of
+    // which exists in this scope. Every call threw ReferenceError, this
+    // function's own catch swallowed it and returned [], and so the LOUNGE
+    // ACCESS section rendered empty on every single travel-day email, silently.
+    // The real copy lives in buildTravelDayPlainText_ and is untouched.
 
     var results = [];
     var seen    = {};

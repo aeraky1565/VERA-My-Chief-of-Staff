@@ -4456,6 +4456,14 @@ function webGetItinerary_(e, opts) {
                 evMeta.origin = flightCodes[0];
                 evMeta.dest   = flightCodes[1];
               }
+              // Confirmation number, lifted from the description. Moved here from
+              // TravelDayBriefing's own calendar pull, which this function now
+              // replaces — the briefing renders metadata.confirmationNumber in
+              // its Details block, and without this it would lose it for every
+              // calendar-derived flight. Both consumers get it from one place.
+              var confMatch = (ev.getDescription() || '')
+                .match(/conf(?:irmation)?[#:\s]+([A-Z0-9]{5,8})/i);
+              if (confMatch) evMeta.confirmationNumber = confMatch[1];
             }
             // For multi-day events (e.g. hotel stays spanning several nights), store the checkout
             // date in metadata so the frontend gap detector covers the full date range.
@@ -5130,7 +5138,12 @@ function geocodePackingDestination_(destination) {
     const data = JSON.parse(resp.getContentText());
     if (!data.results || data.results.length === 0) return null;
     const r = data.results[0];
-    var result = { lat: r.latitude, lon: r.longitude, name: r.name };
+    // timezone comes back on every Open-Meteo geocoding result and used to be
+    // discarded here. It is an IANA name, which is exactly what the travel-day
+    // briefing needs to state a real timezone offset instead of asking a model
+    // to guess one — and it costs nothing, since this response is already
+    // fetched and already cached for six hours.
+    var result = { lat: r.latitude, lon: r.longitude, name: r.name, timezone: r.timezone || '' };
     try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 21600); } catch(e_) {}
     return result;
   } catch(err) {
