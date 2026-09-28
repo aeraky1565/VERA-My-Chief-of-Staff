@@ -1226,6 +1226,10 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
   const curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
 
   function isPerkUsed(perk) {
+    // A standing benefit has no period, so "used this month" is meaningless.
+    // Without this it falls through to the monthly comparison and always reads
+    // "Not used this month".
+    if (perk.frequency === 'Standing') return false;
     if (!perk.lastUsed) return false;
     if (perk.frequency === 'Annual') return perk.lastUsed === curYear;
     if (perk.frequency === 'Semiannual') return perk.lastUsed === curHalf;
@@ -1233,7 +1237,9 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
     return perk.lastUsed === curMonth;
   }
 
-  const perkGroups = ['Monthly', 'Quarterly', 'Semiannual', 'Annual'];
+  // One section per entry, and anything not listed renders nowhere at all — a
+  // frequency missing here makes the perk invisible with no error.
+  const perkGroups = ['Monthly', 'Quarterly', 'Semiannual', 'Annual', 'Standing'];
 
   const panelStyle = { background:'#161926', border:'1px solid #2a2f45', borderRadius:10, padding:16, marginBottom:16 };
   const inputStyle = { background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'5px 8px', fontSize:12 };
@@ -1325,6 +1331,11 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                           style={{ fontSize:10, fontWeight:700, color:'#93c5fd', background:'#1e3a5f', borderRadius:4, padding:'2px 6px', flexShrink:0 }}>
                           🔁 Autopay
                         </span>
+                      ) : pk.frequency === 'Standing' ? (
+                        <span title="Always available — nothing to use up, so no expiry tracking"
+                          style={{ fontSize:10, fontWeight:700, color:'#86efac', background:'#14532d', borderRadius:4, padding:'2px 6px', flexShrink:0 }}>
+                          ♾️ Standing
+                        </span>
                       ) : (
                         <button onClick={() => onTogglePerk(pk.id)} disabled={busy}
                           style={{ width:18, height:18, borderRadius:4, border:'2px solid ' + (used ? '#22c55e' : '#374151'),
@@ -1334,7 +1345,7 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                       )}
                       <span style={{ fontSize:13, color: used ? '#86efac' : '#dde1f0' }}>{pk.perk}</span>
                       {pk.amount && <span style={{ fontSize:11, color:'#a0a8c0' }}>${pk.amount}</span>}
-                      {!pk.autopay && (
+                      {!pk.autopay && freq !== 'Standing' && (
                         <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
                           {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Semiannual' ? 'this half' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
                         </span>
@@ -1367,7 +1378,7 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
             <input placeholder="$amt" value={newPerk.amount} onChange={e => setPk('amount', e.target.value)}
               style={Object.assign({}, inputStyle, { width:55 })} />
             <select value={newPerk.frequency} onChange={e => setPk('frequency', e.target.value)} style={inputStyle}>
-              <option>Monthly</option><option>Quarterly</option><option>Semiannual</option><option>Annual</option>
+              <option>Monthly</option><option>Quarterly</option><option>Semiannual</option><option>Annual</option><option>Standing</option>
             </select>
             <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#a0a8c0', cursor:'pointer' }}>
               <input type="checkbox" checked={newPerk.autopay} onChange={e => setPk('autopay', e.target.checked)} />

@@ -454,8 +454,34 @@ The Finance tab in the dashboard shows: net income vs. spend (from the Simple As
 ### Card Perks (`Code.js`, `WebApp.js`)
 
 Tracks use-it-or-lose-it credit-card benefits on the `Card Perks` tab. A perk's
-`Frequency` is `Monthly`, `Quarterly`, `Semiannual` or `Annual`, and the periods
-are strictly **calendar** ones — not cardmember-anniversary quarters.
+`Frequency` is `Monthly`, `Quarterly`, `Semiannual`, `Annual` or `Standing`, and
+the periodic ones are strictly **calendar** periods — not cardmember-anniversary
+quarters.
+
+> **Blank `Frequency` means `Monthly`, not "ignore".** Three readers do
+> `String(row[4] || 'Monthly')`, and both period helpers fall through to Monthly
+> for any unrecognised value. A benefit entered with a blank frequency therefore
+> raises a "use it or lose it" flag, email and calendar event **every month,
+> forever**.
+
+**`Standing` is for benefits that never expire** — lounge access, elite status, a
+DashPass membership: things you have rather than things you use up. Leave `Amount`
+blank as well; it is display-only.
+
+- `checkCardPerksExpiring_` skips them entirely — no flag, no email, no calendar
+  event.
+- `cardPerkPeriodEnd_` returns **null** for them, and every derived field
+  (`periodEndIso`, `periodEndLabel`, `daysLeft`) is null rather than a fabricated
+  deadline.
+- Marking one used is a no-op that writes no cell and reports `reason: 'standing'`.
+- **The monthly issuer relevance check still runs.** A standing benefit can be
+  discontinued, and that is exactly the thing worth being told about.
+- The dashboard groups them under their own `Standing` heading with an `♾️`
+  badge in place of the used/unused checkbox.
+
+`Autopay = Yes` also excludes a perk from tracking, but it means something
+different — *this credit spends itself* — so don't reach for it to silence a
+standing benefit.
 
 **`Last Used` is both the used-flag and the period stamp.** It holds a period
 key, not a date: `2026-09`, `2026-Q3`, `2026-H2`, `2026`. `cardPerkPeriodKey_`

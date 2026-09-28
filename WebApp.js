@@ -7472,6 +7472,9 @@ function resolveCardPerkRow_(id) {
     if (String(rows[i][0]).trim() !== id) continue;
     var row  = rows[i];
     var freq = String(row[4] || 'Monthly').trim() || 'Monthly';
+    // Standing benefits have no period end — cardPerkPeriodEnd_ returns null, and
+    // every field derived from it must stay null rather than reaching formatDate.
+    var standing  = freq === 'Standing';
     var periodEnd = cardPerkPeriodEnd_(freq, now, tz);
     var amountRaw = row[3];
     var amountNum = (amountRaw === '' || amountRaw === null || amountRaw === undefined)
@@ -7487,12 +7490,13 @@ function resolveCardPerkRow_(id) {
       // must only render it when finite.
       amount:         (amountNum !== null && isFinite(amountNum)) ? amountNum : null,
       freq:           freq,
+      standing:       standing,
       lastUsed:       String(row[lastUsedCol - 1] || '').trim(),
       period:         cardPerkPeriodKey_(freq, now, tz),
       periodEnd:      periodEnd,
-      periodEndIso:   Utilities.formatDate(periodEnd, tz, 'yyyy-MM-dd'),
-      periodEndLabel: Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy'),
-      daysLeft:       Math.round((periodEnd - now) / 86400000),
+      periodEndIso:   periodEnd ? Utilities.formatDate(periodEnd, tz, 'yyyy-MM-dd') : null,
+      periodEndLabel: periodEnd ? Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy') : null,
+      daysLeft:       periodEnd ? Math.round((periodEnd - now) / 86400000) : null,
       autopay:        autopayCol ? String(row[autopayCol - 1] || '').trim().toLowerCase() === 'yes' : false,
       needsReview:    reviewCol  ? String(row[reviewCol  - 1] || '').trim() !== '' : false,
     };
@@ -7546,11 +7550,18 @@ function webMarkCardPerkUsed_(e) {
     periodEndIso:   r.periodEndIso,
     periodEndLabel: r.periodEndLabel,
     daysLeft:       r.daysLeft,
+    standing:       r.standing,
     needsReview:    r.needsReview,
   };
 
   if (r.autopay) {
     out.reason = 'autopay';
+    return out;
+  }
+  // Nothing to mark: the benefit is always available, so there is no period in
+  // which it is either used or unused. Writes no cell, same as autopay.
+  if (r.standing) {
+    out.reason = 'standing';
     return out;
   }
   if (r.lastUsed === r.period) {

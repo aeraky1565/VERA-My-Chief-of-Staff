@@ -2255,9 +2255,15 @@ function checkContracts_() {
  * webToggleCardPerk_ (WebApp.js) and checkCardPerksExpiring_ below so both
  * always agree on period boundaries.
  * Annual='yyyy', Semiannual='yyyy-H#', Quarterly='yyyy-Q#',
- * Monthly='yyyy-MM' (the default).
+ * Monthly='yyyy-MM' (the default), Standing='standing'.
+ *
+ * Standing is a benefit that never expires — lounge access, elite status — as
+ * opposed to a credit you use up. Its key is deliberately NOT date-shaped, so a
+ * stale Last Used stamp left over from when the row was Monthly can never equal
+ * it and be read as "already used this period".
  */
 function cardPerkPeriodKey_(freq, date, tz) {
+  if (freq === 'Standing') return 'standing';
   var year = Utilities.formatDate(date, tz, 'yyyy');
   if (freq === 'Annual') return year;
   if (freq === 'Semiannual') {
@@ -2277,8 +2283,15 @@ function cardPerkPeriodKey_(freq, date, tz) {
  * its unused allotment resets and is lost (no rollover). Annual -> Dec 31.
  * Semiannual -> Jun 30 or Dec 31. Quarterly -> last day of the current
  * calendar quarter. Monthly -> last day of the current month.
+ *
+ * Standing -> null. There is no end, and handing back a real date here is
+ * precisely what would let an expiry reminder through. Callers must treat null
+ * as "no deadline" rather than passing it to Utilities.formatDate.
+ *
+ * @returns {Date|null}
  */
 function cardPerkPeriodEnd_(freq, today, tz) {
+  if (freq === 'Standing') return null;
   var year  = parseInt(Utilities.formatDate(today, tz, 'yyyy'), 10);
   var month = parseInt(Utilities.formatDate(today, tz, 'M'), 10); // 1-12
   var endMonth;
@@ -2523,6 +2536,10 @@ function checkCardPerksExpiring_() {
     if (!activeCards[cardName]) return;   // card not found or marked inactive
     if (needsReview) return;              // paused pending review
     if (isAutopay) return;                // on autopay — fully excluded from tracking
+    // A standing benefit has nothing to expire. Without this it would fall to the
+    // Monthly default and raise a "use it or lose it" flag, email and calendar
+    // event every single month, forever.
+    if (freq === 'Standing') return;
 
     var periodKey = cardPerkPeriodKey_(freq, today, tz);
     if (lastUsed === periodKey) return;   // already used this period
@@ -2680,10 +2697,20 @@ function checkCardPerksActive_() {
     var snippetText = results.map(function(r) { return r.title + ' — ' + r.snippet; }).join('\n');
     var prompt =
       'A credit card benefit tracker has this entry: card "' + cardName + '" (issuer ' + card.issuer +
-      '), perk "' + perkName + '", amount $' + amount + ', frequency ' + freq + '.\n\n' +
+      '), perk "' + perkName + '"' +
+      // Omitted rather than rendered as a bare "$" — a standing benefit like
+      // lounge access has no dollar value, and "amount $" reads as a broken record.
+      (amount === '' || amount === null || amount === undefined || Number(amount) === 0
+        ? '' : ', amount $' + amount) +
+      (freq === 'Standing'
+        ? ', an ongoing benefit with no periodic allotment'
+        : ', frequency ' + freq) + '.\n\n' +
       'Web search results about this benefit:\n' + snippetText + '\n\n' +
-      'Based ONLY on these results, does this perk still appear to be currently offered as described ' +
-      '(same or similar amount/cadence)? Reply with EXACTLY one word: CURRENT, CHANGED, or UNKNOWN. ' +
+      'Based ONLY on these results, does this perk still appear to be currently offered as described' +
+      (freq === 'Standing'
+        ? ' (still provided by the card at all)? '
+        : ' (same or similar amount/cadence)? ') +
+      'Reply with EXACTLY one word: CURRENT, CHANGED, or UNKNOWN. ' +
       'Use UNKNOWN if the results are inconclusive or unrelated — never guess.';
 
     var verdict = 'UNKNOWN';
