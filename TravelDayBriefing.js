@@ -370,11 +370,12 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
         if (rd && rd > _maxDate) _maxDate = rd;
       });
       isReturnDay = (_maxDate !== '' && _maxDate === today);
+      var _tripKeys = tripKeysFor_(tripKey);
       tomorrowFlights = _allRows.filter(function(row) {
         var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
           ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
           : String(row[4] || '').trim();
-        return String(row[1] || '').trim() === tripKey &&
+        return tripRowMatches_(row[1], _tripKeys) &&
                rowDate === _tomorrow &&
                String(row[2] || '').trim().toLowerCase() === 'flight';
       }).sort(function(a, b) {
@@ -1228,11 +1229,14 @@ function webSendTravelBriefing_(e) {
     var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
     var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
 
+    // Every key this trip answers to: a trip whose start date moved owns two,
+    // and matching one returned half the itinerary.
+    var keys  = tripKeysFor_(tripKey);
     var items = data.filter(function(row) {
       var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
         ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
         : String(row[4] || '').trim();
-      return String(row[1] || '').trim() === tripKey && rowDate === today;
+      return tripRowMatches_(row[1], keys) && rowDate === today;
     });
 
     if (!items.length) {
@@ -2100,10 +2104,10 @@ function getTripToneMode_(tripKey) {
     var sheet = ss.getSheetByName(TABS.TRIP_META);
     if (!sheet || sheet.getLastRow() < 2) return 'professional';
     var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    var keys = tripKeysFor_(tripKey);
     for (var i = 0; i < data.length; i++) {
-      var key     = String(data[i][0] || '').trim();
       var context = String(data[i][1] || '').trim().toLowerCase();
-      if (key === tripKey &&
+      if (tripRowMatches_(data[i][0], keys) &&
           (context.indexOf('anniversary trip') !== -1 ||
            context.indexOf('romantic couples getaway') !== -1)) {
         return 'personal';

@@ -337,11 +337,9 @@ function buildPreTripBriefingFlag_(trip) {
   var reason = sections.join('\n\n');
 
   // ── Build flag key (stable dedup identifier) ──────────────────────────────
-  var safeKey = ('pretrip_briefing_' + trip.tripKey)
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '');
+  // Keyed on the Trip ID: the old form embedded the key string, so a trip whose
+  // start date moved produced a second dedup key and flagged twice.
+  var safeKey = tripFlagKey_('pretrip_briefing_', trip);
 
   return {
     source:  'Pre-Trip Briefing',
@@ -459,9 +457,10 @@ function buildPreTripEmailHtml_(eyebrow, tripLabel, subLabel, sections) {
  * Dedup: one send per trip via PRETRIP_48H_{key} Script Property.
  */
 function sendPreTripEmail_48h_(trip) {
-  var props   = PropertiesService.getScriptProperties();
-  var safeKey = 'PRETRIP_48H_' + trip.tripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  if (props.getProperty(safeKey)) {
+  // Latched on the Trip ID, which survives a date change; tripLatchSeen_ also
+  // honours the legacy key and any older key this trip answered to, so a trip
+  // in flight across this change cannot be mailed twice.
+  if (tripLatchSeen_('PRETRIP_48H_', trip)) {
     Logger.log('sendPreTripEmail_48h_: already sent for ' + trip.tripKey);
     return;
   }
@@ -728,7 +727,7 @@ function sendPreTripEmail_48h_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
     { name: 'VERA Travel', htmlBody: htmlBody }, 'pretrip_48h');
-  props.setProperty(safeKey, new Date().toISOString());
+  tripLatchMark_('PRETRIP_48H_', trip);
   Logger.log('sendPreTripEmail_48h_: sent for ' + trip.tripKey);
 }
 
@@ -739,9 +738,7 @@ function sendPreTripEmail_48h_(trip) {
  * Dedup: one send per trip via PRETRIP_NB_{key} Script Property.
  */
 function sendPreTripEmail_NightBefore_(trip) {
-  var props   = PropertiesService.getScriptProperties();
-  var safeKey = 'PRETRIP_NB_' + trip.tripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  if (props.getProperty(safeKey)) {
+  if (tripLatchSeen_('PRETRIP_NB_', trip)) {
     Logger.log('sendPreTripEmail_NightBefore_: already sent for ' + trip.tripKey);
     return;
   }
@@ -938,7 +935,7 @@ function sendPreTripEmail_NightBefore_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
     { name: 'VERA Travel', htmlBody: htmlBody }, 'pretrip_night_before');
-  props.setProperty(safeKey, new Date().toISOString());
+  tripLatchMark_('PRETRIP_NB_', trip);
   Logger.log('sendPreTripEmail_NightBefore_: sent for ' + trip.tripKey);
 }
 

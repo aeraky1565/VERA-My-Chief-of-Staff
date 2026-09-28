@@ -235,6 +235,39 @@ function tbLoungeAccess() {
   diagnoseLoungeAccess_(TB_DATE, TB_AIRPORTS);
 }
 
+/**
+ * What the registry thinks each trip is. READ-ONLY — sends nothing, writes
+ * nothing, mints nothing.
+ *
+ * Run this FIRST. It prints every upcoming trip's Trip ID, every key string it
+ * answers to, and the end date post-trip would now compute — which is what
+ * confirms a trip that split into two keys has been put back together before
+ * anything acts on it.
+ */
+function tbTripIdentity() {
+  tbBanner_('Trip identity');
+  diagnoseTripIdentity_();
+}
+
+/**
+ * Copies every existing send latch onto its Trip ID.
+ *
+ * Run this ONCE, BEFORE relying on the new latches. Without it, a trip already
+ * in flight looks unsent under its new id and every pre/post-trip email goes out
+ * a second time — the exact bug this whole change exists to stop.
+ *
+ * Additive and idempotent: writes only where an id latch is missing, deletes
+ * nothing, and running it twice changes nothing.
+ */
+function tbSeedTripLatches() {
+  tbBanner_('Seed Trip ID latches');
+  var res = seedTripIdLatches_();
+  Logger.log('Seeded ' + res.seeded + ', already present ' + res.skipped + '.');
+  if (!res.seeded && !res.skipped) {
+    Logger.log('Nothing to seed — no registry rows, or no legacy latches to copy.');
+  }
+}
+
 /** Post-trip debrief prompt. Clears the flag so it can fire again. */
 function tbPostTripCapture() {
   tbBanner_('Post-trip capture');

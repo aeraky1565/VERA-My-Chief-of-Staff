@@ -126,8 +126,17 @@ function mintTripId_() {
 
 var _tripRegistryCache_ = null;
 
-/** Drops the per-execution registry memo. Call after any write. */
-function invalidateTripRegistry_() { _tripRegistryCache_ = null; }
+/**
+ * Drops the per-execution registry memo. Call after any write.
+ *
+ * Also drops the key-set memo below it, which is derived from the registry: an
+ * alias appended during a run would otherwise leave every already-computed key
+ * set stale, and a reader would keep seeing half the trip.
+ */
+function invalidateTripRegistry_() {
+  _tripRegistryCache_ = null;
+  invalidateTripKeyCache_();
+}
 
 /**
  * The whole registry, indexed. Memoized per execution — nightlyRun reaches this
@@ -228,6 +237,152 @@ function tripDateRangeFor_(tripId) {
 }
 
 
+// ---- resolve-on-read: the bridge from a frozen key to a live trip ----------
+//
+// The event-ID anchor works — resolveTripId_ checks reg.byEventId before it looks
+// at anything else, so a trip whose start date moves keeps its id. What did NOT
+// follow is every consumer downstream, which still compares the frozen string
+// startDate + '|' + label. That string is written into eight tabs at insert time
+// and never rewritten (webUpdateItineraryItem_ edits columns 3-10 and has no
+// branch for the key column), so a trip whose date moved owns TWO key strings and
+// every reader sees half a trip.
+//
+// These two functions are how a reader asks the registry instead of trusting the
+// string. Neither mints: minting on a read is how a second identity gets created,
+// which is the bug.
+
+/** Per-execution memo. readTripRegistry_ is cached, but resolveTripId_'s
+ *  label/date scan is O(rows) and these are called inside loops. */
+var _tripKeySetCache_ = {};
+
+/** Dropped alongside _tripRegistryCache_ so a stale set cannot outlive the sheet. */
+function invalidateTripKeyCache_() { _tripKeySetCache_ = {}; }
+
+/**
+ * The trip id a legacy key belongs to, or '' — never minting.
+ *
+ * Splits `yyyy-MM-dd|Label` and hands the pieces to resolveTripId_, so all three
+ * of its branches apply in order: the calendar event id, then this exact string
+ * as a registered alias, then label + dates within TRIP_MATCH_TOLERANCE_DAYS_.
+ *
+ * @param {string} tripKey
+ * @returns {string} 'TRIP-…' or ''
+ */
+function tripIdForKey_(tripKey) {
+  var key = String(tripKey == null ? '' : tripKey).trim();
+  if (!key) return '';
+  if (isTripId_(key)) return String(key).toUpperCase();   // already an id
+
+  var parts     = key.split('|');
+  var startDate = parts[0].trim();
+  var label     = parts.length > 1 ? parts.slice(1).join('|').trim() : '';
+  if (!label) return '';   // not a trip key at all
+
+  try {
+    // Three things here are load-bearing, and all three are about NOT writing:
+    //
+    //   mint:false   — a read must never create a second identity.
+    //   touch:false  — resolveTripId_ otherwise calls touchTripRow_, which writes
+    //                  the label and dates it was handed onto the matched row. A
+    //                  legacy key's date prefix is the trip's OLD start date, so
+    //                  without this a single lookup reverts the registry to
+    //                  whenever that key was minted — including the end date that
+    //                  post-trip timing depends on.
+    //   no endDate   — we genuinely do not know it. Passing startDate as a stand-in
+    //                  made every resolution claim a zero-length trip.
+    //
+    // appendAlias is likewise not set: a read does not write.
+    return resolveTripId_({ label: label, startDate: startDate },
+                          { mint: false, touch: false }) || '';
+  } catch (e) {
+    Logger.log('tripIdForKey_("' + key + '") — ' + e.message);
+    return '';
+  }
+}
+
+/**
+ * Every key string this trip has ever answered to: its canonical key first, then
+ * every alias on the registry row.
+ *
+ * This is what a reader filters rows on. Matching the SET rather than one string
+ * is what makes a trip that split into two keys read as one trip again.
+ *
+ * An unresolvable key comes back as [itself], so a missing Trips tab, an empty
+ * registry or a key from before the registry existed all degrade to exactly
+ * today's behaviour rather than returning nothing and hiding the trip.
+ *
+ * @param {string} tripKey
+ * @returns {Array<string>} always non-empty when tripKey is non-empty
+ */
+function tripKeysFor_(tripKey) {
+  var key = String(tripKey == null ? '' : tripKey).trim();
+  if (!key) return [];
+  if (Object.prototype.hasOwnProperty.call(_tripKeySetCache_, key)) {
+    return _tripKeySetCache_[key];
+  }
+
+  var out = [key];
+  try {
+    var id  = tripIdForKey_(key);
+    var rec = id ? getTripById_(id) : null;
+    if (rec) {
+      var seen = {};
+      out = [];
+      var canonical = String(rec.startDate || '') + '|' + String(rec.label || '');
+      [canonical].concat(rec.aliases || []).concat([key]).forEach(function(k) {
+        var t = String(k || '').trim();
+        if (t && t !== '|' && !seen[t]) { seen[t] = true; out.push(t); }
+      });
+      if (!out.length) out = [key];
+    }
+  } catch (e) {
+    Logger.log('tripKeysFor_("' + key + '") — ' + e.message);
+    out = [key];
+  }
+
+  _tripKeySetCache_[key] = out;
+  return out;
+}
+
+/**
+ * The one key to WRITE with, so new rows stop adding to a split.
+ *
+ * Unresolvable → the input unchanged, which is the safe direction: a row written
+ * under the key it was handed is exactly today's behaviour.
+ */
+function canonicalTripKey_(tripKey) {
+  var key = String(tripKey == null ? '' : tripKey).trim();
+  if (!key) return key;
+  try {
+    var id = tripIdForKey_(key);
+    if (!id) return key;
+    var start = tripStartDateFor_(id);
+    var label = tripLabelFor_(id);
+    if (!start || !label) return key;
+    return start + '|' + label;
+  } catch (e) {
+    Logger.log('canonicalTripKey_("' + key + '") — ' + e.message);
+    return key;
+  }
+}
+
+/**
+ * Does this row's trip-key cell belong to the trip these keys describe?
+ *
+ * Replaces `String(row[n] || '').trim() === tripKey` at every read site. Pass the
+ * result of tripKeysFor_ once, outside the loop — not the raw key.
+ *
+ * @param {*} cellValue         — the raw cell
+ * @param {Array<string>} keys  — from tripKeysFor_
+ */
+function tripRowMatches_(cellValue, keys) {
+  var v = String(cellValue == null ? '' : cellValue).trim();
+  if (!v || !keys || !keys.length) return false;
+  for (var i = 0; i < keys.length; i++) if (v === keys[i]) return true;
+  return false;
+}
+
+
 // ---- resolution ------------------------------------------------------------
 
 /** Days between two yyyy-MM-dd ranges: 0 if they overlap, else the gap. */
@@ -259,6 +414,13 @@ var TRIP_MATCH_TOLERANCE_DAYS_ = 14;
 function resolveTripId_(trip, opts) {
   opts = opts || {};
   var mint = opts.mint !== false;
+  // touch:false makes this a pure lookup. touchTripRow_ WRITES the label, dates
+  // and eventIds of whatever row it matches, which is right when the caller got
+  // its fields from the calendar — and badly wrong when the caller only has a
+  // legacy key, because a key's date prefix is the trip's OLD start date and
+  // writing it back reverts the registry to the state the key came from.
+  var touch = opts.touch !== false;
+  function touch_(id, fields) { if (touch) touchTripRow_(id, fields); }
   if (!trip) return '';
   var label     = String(trip.label || '').trim();
   var startDate = String(trip.startDate || '').trim();
@@ -272,7 +434,7 @@ function resolveTripId_(trip, opts) {
   for (var i = 0; i < eventIds.length; i++) {
     var hit = reg.byEventId[eventIds[i]];
     if (hit) {
-      touchTripRow_(hit, { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
+      touch_(hit, { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
       return hit;
     }
   }
@@ -281,7 +443,7 @@ function resolveTripId_(trip, opts) {
   var legacy = startDate + '|' + label;
   if (reg.byAlias[legacy]) {
     var aliasHit = reg.byAlias[legacy];
-    touchTripRow_(aliasHit, { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
+    touch_(aliasHit, { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
     return aliasHit;
   }
 
@@ -298,7 +460,7 @@ function resolveTripId_(trip, opts) {
   });
 
   if (candidates.length === 1) {
-    touchTripRow_(candidates[0].rec.tripId,
+    touch_(candidates[0].rec.tripId,
                   { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
     if (opts.appendAlias) appendTripAlias_(candidates[0].rec.tripId, legacy);
     return candidates[0].rec.tripId;
@@ -328,7 +490,7 @@ function resolveTripId_(trip, opts) {
         key:     'trip_id_ambiguous_' + tripIdSlugForFlag_(picked.tripId),
       }]);
     } catch (fe) { Logger.log('resolveTripId_: could not flag the ambiguity — ' + fe.message); }
-    touchTripRow_(picked.tripId, { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
+    touch_(picked.tripId, { label: label, startDate: startDate, endDate: endDate, eventIds: eventIds });
     return picked.tripId;
   }
 
@@ -466,6 +628,173 @@ function tripIdSlugForProperty_(tripId) {
 /** The Flags-key form: pretrip_briefing_trip_9f3a7c21b0d4 */
 function tripIdSlugForFlag_(tripId) {
   return String(tripId || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+/** The legacy form every latch used before the registry: the key, slugged. */
+function tripLegacySlugForProperty_(tripKey) {
+  return String(tripKey || '').toUpperCase().replace(/[^A-Z0-9]/g, '_');
+}
+
+/**
+ * A flag dedup key that follows the trip rather than the key string.
+ *
+ * The Flags tab dedups on this string, so a trip whose date moved produced a
+ * SECOND flag key and the pre-trip briefing flagged twice. Built from the Trip ID
+ * where one resolves, and from the key otherwise — identical to the old output in
+ * that case, so existing flags keep matching.
+ *
+ * @param {string} prefix  — e.g. 'pretrip_briefing_'
+ * @param {Object|string} trip
+ */
+function tripFlagKey_(prefix, trip) {
+  var t  = tripLatchTarget_(trip);
+  var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
+  var tail = id ? tripIdSlugForFlag_(id) : String(t.key || '');
+  return (String(prefix) + tail)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+/** Every send latch keyed on a trip. Shared so the sites cannot drift apart. */
+var TRIP_LATCH_PREFIXES_ = [
+  'PRETRIP_48H_', 'PRETRIP_NB_',
+  'POSTTRIP_NUDGE_', 'POSTTRIP_RECAP_', 'POSTTRIP_DEBRIEF_',
+];
+
+/** A trip object with .tripKey/.tripId, or a bare key string. */
+function tripLatchTarget_(trip) {
+  if (trip && typeof trip === 'object') {
+    return { key: String(trip.tripKey || '').trim(),
+             id:  String(trip.tripId  || '').trim().toUpperCase() };
+  }
+  return { key: String(trip == null ? '' : trip).trim(), id: '' };
+}
+
+/**
+ * Has this trip already been sent under `prefix`?
+ *
+ * Checks the Trip ID latch first, then the legacy key latch. The fallback is
+ * deliberate and is what makes this migration safe: the id key only exists for
+ * trips seedTripIdLatches_ has reached, and a trip in flight when this ships
+ * would otherwise look unsent and mail everyone a second time — the exact bug
+ * being fixed. Keep the fallback for one release, then drop it.
+ */
+function tripLatchSeen_(prefix, trip) {
+  var t = tripLatchTarget_(trip);
+  var props = PropertiesService.getScriptProperties();
+
+  var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
+  if (id && props.getProperty(prefix + tripIdSlugForProperty_(id))) return true;
+  if (t.key && props.getProperty(prefix + tripLegacySlugForProperty_(t.key))) return true;
+
+  // Any other key this trip has answered to. A latch written under the OLD key,
+  // before the date moved, still counts as sent.
+  if (t.key) {
+    var keys = tripKeysFor_(t.key);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i] === t.key) continue;
+      if (props.getProperty(prefix + tripLegacySlugForProperty_(keys[i]))) return true;
+    }
+  }
+  return false;
+}
+
+/** The property name a mark would be written under. */
+function tripLatchName_(prefix, trip) {
+  var t  = tripLatchTarget_(trip);
+  var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
+  return id ? (prefix + tripIdSlugForProperty_(id))
+            : (prefix + tripLegacySlugForProperty_(t.key));
+}
+
+/**
+ * The stored value, wherever it lives — id key, legacy key, or an older key the
+ * trip has answered to. Same search order as tripLatchSeen_, which returns a
+ * boolean; this one is for latches carrying a payload, like the debrief marker.
+ *
+ * @returns {string|null}
+ */
+function tripLatchValue_(prefix, trip) {
+  var t     = tripLatchTarget_(trip);
+  var props = PropertiesService.getScriptProperties();
+
+  var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
+  if (id) {
+    var v = props.getProperty(prefix + tripIdSlugForProperty_(id));
+    if (v) return v;
+  }
+  if (!t.key) return null;
+  var keys = tripKeysFor_(t.key);
+  if (keys.indexOf(t.key) === -1) keys = [t.key].concat(keys);
+  for (var i = 0; i < keys.length; i++) {
+    var lv = props.getProperty(prefix + tripLegacySlugForProperty_(keys[i]));
+    if (lv) return lv;
+  }
+  return null;
+}
+
+/** Marks it sent, on the Trip ID where there is one. */
+function tripLatchMark_(prefix, trip, value) {
+  var t = tripLatchTarget_(trip);
+  var id = t.id || (t.key ? tripIdForKey_(t.key) : '');
+  var name = id ? (prefix + tripIdSlugForProperty_(id))
+                : (prefix + tripLegacySlugForProperty_(t.key));
+  try {
+    PropertiesService.getScriptProperties().setProperty(name, value || new Date().toISOString());
+  } catch (e) {
+    Logger.log('tripLatchMark_: could not write ' + name + ' — ' + e.message);
+  }
+  return name;
+}
+
+/**
+ * Copies every legacy latch onto its Trip ID. Run ONCE, before the readers
+ * switch over — otherwise every in-flight trip looks unsent and mails again.
+ *
+ * Additive and idempotent: it writes an id-keyed property only when one is
+ * absent, and deletes nothing. Running it twice changes nothing.
+ *
+ * @returns {{seeded:number, skipped:number, details:Array<string>}}
+ */
+function seedTripIdLatches_() {
+  var props   = PropertiesService.getScriptProperties();
+  var reg     = readTripRegistry_();
+  var seeded  = 0, skipped = 0, details = [];
+
+  reg.rows.forEach(function(rec) {
+    if (rec.status && rec.status.indexOf('merged:') === 0) return;
+    var idSlug    = tripIdSlugForProperty_(rec.tripId);
+    var canonical = String(rec.startDate || '') + '|' + String(rec.label || '');
+    var keys      = [canonical].concat(rec.aliases || []);
+
+    TRIP_LATCH_PREFIXES_.forEach(function(prefix) {
+      var idName = prefix + idSlug;
+      if (props.getProperty(idName)) { skipped++; return; }
+
+      // The earliest legacy value wins: it is when the mail actually went out.
+      var found = null;
+      keys.forEach(function(k) {
+        if (!k || k === '|') return;
+        var v = props.getProperty(prefix + tripLegacySlugForProperty_(k));
+        if (v && (found === null || String(v) < String(found))) found = v;
+      });
+      if (found === null) return;
+
+      try {
+        props.setProperty(idName, found);
+        seeded++;
+        details.push(idName + '  <-  ' + found + '  (' + rec.label + ')');
+      } catch (e) {
+        Logger.log('seedTripIdLatches_: could not write ' + idName + ' — ' + e.message);
+      }
+    });
+  });
+
+  Logger.log('seedTripIdLatches_: ' + seeded + ' seeded, ' + skipped + ' already present');
+  details.forEach(function(d) { Logger.log('  ' + d); });
+  return { seeded: seeded, skipped: skipped, details: details };
 }
 
 
@@ -641,14 +970,25 @@ function repairOrphanTripKeys_(opts) {
  * latch, and two rows for one trip is the visible symptom being cleaned up.
  */
 function clearTripLatches_(tripKey) {
-  var propSlug = String(tripKey).toUpperCase().replace(/[^A-Z0-9]/g, '_');
+  var propSlug = tripLegacySlugForProperty_(tripKey);
   var flagSlug = String(tripKey).toLowerCase().replace(/[^a-z0-9]/g, '_')
                    .replace(/_+/g, '_').replace(/^_|_$/g, '');
   var props = PropertiesService.getScriptProperties();
-  ['PRETRIP_48H_', 'PRETRIP_NB_', 'POSTTRIP_NUDGE_', 'POSTTRIP_RECAP_', 'POSTTRIP_DEBRIEF_']
-    .forEach(function(prefix) {
-      try { props.deleteProperty(prefix + propSlug); } catch (e) {}
-    });
+
+  // LEGACY NAMES ONLY — deliberately.
+  //
+  // Latches now live under the Trip ID, so the obvious "also delete the id-keyed
+  // one" is a trap: repairOrphanTripKeys_ calls appendTripAlias_(targetId,
+  // orphanKey) BEFORE it calls this, so by now the orphan key resolves to the
+  // TARGET's id. Deleting that would wipe the surviving trip's latch and mail
+  // everything again — the precise failure this migration exists to prevent.
+  //
+  // There is no orphan id to clean up: an orphan key is by definition one that
+  // resolved to no live trip, and a genuinely merged registry row forwards via
+  // its `merged:` status instead.
+  TRIP_LATCH_PREFIXES_.forEach(function(prefix) {
+    try { props.deleteProperty(prefix + propSlug); } catch (e) {}
+  });
 
   try {
     var sheet = getSpreadsheet().getSheetByName(TABS.FLAGS);
@@ -670,4 +1010,108 @@ function clearTripLatches_(tripKey) {
 /** Editor entry point: shows what is orphaned, changes nothing. */
 function repairOrphanTripKeysDryRun() {
   return repairOrphanTripKeys_({ dryRun: true });
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * What the registry thinks each trip is, and what post-trip would compute.
+ *
+ * Read-only: sends nothing, writes nothing, and resolves with mint:false so
+ * running it cannot create the second identity it exists to detect.
+ *
+ * The column that matters is "keys" — a trip showing TWO is one whose start date
+ * moved, and the whole point of this change is that both now resolve to one trip.
+ */
+function diagnoseTripIdentity_() {
+  var tz = Session.getScriptTimeZone();
+  Logger.log('=== Trip identity ===');
+
+  var reg = readTripRegistry_();
+  Logger.log(reg.rows.length + ' registry row(s), ' +
+             Object.keys(reg.byAlias).length + ' alias(es), ' +
+             Object.keys(reg.byEventId).length + ' calendar event id(s)');
+  if (!reg.rows.length) {
+    Logger.log('STOP — the Trips tab is empty. Ids are minted by getUpcomingTravel_,');
+    Logger.log('  so run tbPTO() (or wait for the nightly pass) and try again.');
+    return;
+  }
+
+  // Every distinct key actually present in the itinerary, so orphans show up.
+  var keyCounts = {};
+  try {
+    var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    if (sheet && sheet.getLastRow() >= 2) {
+      sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues().forEach(function(r) {
+        var k = String(r[0] || '').trim();
+        if (k) keyCounts[k] = (keyCounts[k] || 0) + 1;
+      });
+    }
+  } catch (e) {
+    Logger.log('Itinerary read failed: ' + e.message);
+  }
+
+  var claimed = {};
+  reg.rows.forEach(function(rec) {
+    if (rec.status && rec.status.indexOf('merged:') === 0) {
+      Logger.log('');
+      Logger.log(rec.tripId + '  "' + rec.label + '"  -> forwarded to ' + rec.status);
+      return;
+    }
+    var canonical = String(rec.startDate || '') + '|' + String(rec.label || '');
+    var keys = tripKeysFor_(canonical);
+    keys.forEach(function(k) { claimed[k] = rec.tripId; });
+
+    var rows = 0;
+    keys.forEach(function(k) { rows += (keyCounts[k] || 0); });
+
+    Logger.log('');
+    Logger.log(rec.tripId + '  "' + rec.label + '"  ' + rec.startDate + ' .. ' + rec.endDate);
+    Logger.log('  event ids: ' + (rec.eventIds.length ? rec.eventIds.join(', ') : '(none — a recurring event, or added before the registry)'));
+    Logger.log('  answers to ' + keys.length + ' key(s):');
+    keys.forEach(function(k) {
+      Logger.log('    ' + (k === canonical ? '* ' : '  ') + k + '   (' + (keyCounts[k] || 0) + ' itinerary row(s))');
+    });
+    if (keys.length > 1) {
+      Logger.log('  ^ this trip SPLIT. Both keys now resolve to one trip; run');
+      Logger.log('    repairOrphanTripKeysDryRun() if you also want the sheet tidied.');
+    }
+
+    // What post-trip would now decide, computed the same way it does.
+    var bounds = null;
+    try { bounds = getTripBoundsByKey_(canonical); } catch (e) {
+      Logger.log('  getTripBoundsByKey_ threw — ' + e.message);
+    }
+    if (!bounds) {
+      Logger.log('  post-trip: no itinerary rows, so nothing would fire.');
+    } else {
+      var endStr = Utilities.formatDate(bounds.endDate, tz, 'yyyy-MM-dd');
+      var depStr = Utilities.formatDate(bounds.departureDate, tz, 'yyyy-MM-dd');
+      var nights = (typeof tripDurationNights_ === 'function') ? tripDurationNights_(bounds) : null;
+      Logger.log('  post-trip would use: ' + depStr + ' .. ' + endStr +
+                 '  (' + (nights === null ? 'length unknown' : nights + ' night(s)') +
+                 ', from ' + rows + ' row(s) across every key)');
+      if (endStr < rec.endDate) {
+        Logger.log('  ! computed end is EARLIER than the registry end (' + rec.endDate +
+                   ') — that would fire early. Worth reporting.');
+      }
+    }
+
+    TRIP_LATCH_PREFIXES_.forEach(function(prefix) {
+      var seen = tripLatchSeen_(prefix, { tripKey: canonical, tripId: rec.tripId });
+      var name = tripLatchName_(prefix, { tripKey: canonical, tripId: rec.tripId });
+      if (seen) Logger.log('  latch ' + prefix + ' SET (would write ' + name + ')');
+    });
+  });
+
+  var orphans = Object.keys(keyCounts).filter(function(k) { return !claimed[k]; });
+  Logger.log('');
+  if (orphans.length) {
+    Logger.log(orphans.length + ' itinerary key(s) claimed by NO live trip:');
+    orphans.forEach(function(k) { Logger.log('  ' + k + '  (' + keyCounts[k] + ' row(s))'); });
+    Logger.log('  These are trips that ended, or split before the registry existed.');
+    Logger.log('  repairOrphanTripKeysDryRun() shows what it would merge them into.');
+  } else {
+    Logger.log('Every itinerary key belongs to a live trip.');
+  }
 }

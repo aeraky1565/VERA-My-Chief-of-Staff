@@ -309,6 +309,52 @@ already has. A `LockService` lock stops two concurrent cold loads both minting;
 on lock failure it resolves read-only and leaves the ID blank, because a briefing
 with no ID is recoverable and two IDs for one trip is not.
 
+**How the rest of the system asks.** Minting the ID was only half of it — every
+consumer still compared the frozen `startDate|label` string, so the anchor existed
+and nothing used it. Two helpers bridge that, and neither writes:
+
+| Helper | Use |
+|---|---|
+| `tripKeysFor_(key)` | **every** key string the trip has answered to — what a read filters on |
+| `canonicalTripKey_(key)` | the single key to **write** with, so new rows stop adding to a split |
+
+Both resolve with `mint: false` **and `touch: false`**. The second matters more
+than it looks: `resolveTripId_` calls `touchTripRow_`, which writes the label and
+dates it was handed onto the matched row. That is correct when the fields came
+from the calendar and destructive when they came from a legacy key — a key's date
+prefix is the trip's *old* start date, so without the gate a single lookup reverts
+the registry to whenever that key was minted, including the end date the post-trip
+timing depends on.
+
+Reads use `tripRowMatches_(cell, keys)` rather than `=== tripKey`, so a trip
+holding two keys reads as one trip everywhere.
+
+**Send latches key on the Trip ID.** `PRETRIP_48H_`, `PRETRIP_NB_`,
+`POSTTRIP_NUDGE_`, `POSTTRIP_RECAP_` and `POSTTRIP_DEBRIEF_` all go through
+`tripLatchSeen_` / `tripLatchMark_`, which check the ID first and then every
+legacy key the trip has used. The flag dedup keys (`pretrip_briefing_`,
+`posttrip_capture_`) go through `tripFlagKey_` for the same reason — the old form
+embedded the key string, so a trip whose date moved flagged twice.
+
+> **Run `tbSeedTripLatches()` once, before relying on this.** Changing the latch
+> key orphans every in-flight trip's existing latch, and the next nightly run
+> re-sends every pre- and post-trip email — the exact bug being fixed. Seeding
+> copies each legacy latch onto its Trip ID, preserving the original timestamp. It
+> is additive and idempotent: it writes only where an ID latch is missing, deletes
+> nothing, and running it twice changes nothing. The readers also fall back to the
+> legacy key for one release, so a missed seed still cannot re-send.
+
+**Post-trip no longer fires early.** `getRecentlyCompletedTrips_` groups by Trip
+ID and takes `endDate = max(registry end, latest row across every key)`. Before
+this it grouped by the raw key string, so a trip whose start date moved had its
+newer key owning only the rows written after the change — its "latest row" was the
+departure day itself, the email fired days early, and the zero-day span is where
+"1 night" came from.
+
+`tbTripIdentity()` prints every trip, its ID, every key it answers to with row
+counts, the end date post-trip would now compute, and any itinerary key belonging
+to no live trip. Read-only: it writes nothing and cannot mint.
+
 **Repairing a trip that already split.** `repairOrphanTripKeysDryRun()` from the
 editor lists every trip key across all eight tabs that resolves to no live trip,
 with per-tab row counts and the trip it would merge into. It changes nothing
@@ -480,7 +526,7 @@ the files they belong to, and nothing is reimplemented here.
 |---------|---------|
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
-| 3. Travel | `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
+| 3. Travel | `tbTripIdentity`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
 | 4. Data & trackers | `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs

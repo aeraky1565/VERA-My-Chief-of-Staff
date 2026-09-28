@@ -140,26 +140,45 @@ function getRecentlyCompletedTrips_(delayDays) {
     var tripKey = String(row[1] || '').trim();
     if (!tripKey) return;
 
-    // TripKey prefix is the departure date: "YYYY-MM-DD|Trip Label"
+    // TripKey prefix is the departure date: "YYYY-MM-DD|Trip Label".
+    //
+    // NOTE: this guard skips any key not date-prefixed, which is correct while
+    // keys keep that shape. It is also exactly what would silently stop post-trip
+    // firing altogether if the tabs were ever migrated to store bare TRIP-… ids —
+    // worth remembering before anyone does that.
     var datePart = tripKey.split('|')[0];
     if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return;
 
-    if (!tripMap[tripKey]) {
+    // Group by TRIP ID, so a trip that split into two key strings lands in ONE
+    // bucket. Before this, each key was its own "trip": the newer one owned only
+    // the rows written after the date changed, so its latest row date was the
+    // departure day itself — the email fired a day early and the 0-day span is
+    // why the duration came out wrong.
+    var groupId = tripIdForKey_(tripKey) || tripKey;
+
+    if (!tripMap[groupId]) {
       var parts     = tripKey.split('|');
       var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
-      tripMap[tripKey] = {
-        tripKey:       tripKey,
-        tripLabel:     tripLabel,
-        departureDate: new Date(datePart + 'T00:00:00'),
-        endDate:       new Date(datePart + 'T00:00:00'), // will be updated below
+      var range     = tripDateRangeFor_(groupId);   // null unless it resolved
+
+      // The registry's dates come from the calendar and are authoritative for
+      // when the trip runs; itinerary rows can extend past them. Both are
+      // considered, and the later end wins — see below.
+      var depStr = (range && range.startDate) || datePart;
+      tripMap[groupId] = {
+        tripKey:       canonicalTripKey_(tripKey),
+        tripLabel:     (range && tripLabelFor_(groupId)) || tripLabel,
+        departureDate: new Date(depStr + 'T00:00:00'),
+        endDate:       new Date(((range && range.endDate) || depStr) + 'T00:00:00'),
       };
     }
 
-    // Update endDate to the latest event date seen for this trip
+    // Update endDate to the latest event date seen for this trip, across every
+    // key it answers to — max(registry end, latest row) is what stops the early fire.
     var eventDate = String(row[4] || '').trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
       var d = new Date(eventDate + 'T00:00:00');
-      if (d > tripMap[tripKey].endDate) tripMap[tripKey].endDate = d;
+      if (d > tripMap[groupId].endDate) tripMap[groupId].endDate = d;
     }
   });
 
@@ -200,11 +219,8 @@ function buildPostTripFlag_(trip) {
     'Open Chat and say: \u201cLet\u2019s do the ' + trip.tripLabel + ' debrief.\u201d';
 
   // Stable dedup key
-  var safeKey = ('posttrip_capture_' + trip.tripKey)
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '');
+  // On the Trip ID rather than the key string -- see tripFlagKey_.
+  var safeKey = tripFlagKey_('posttrip_capture_', trip);
 
   return {
     source:  'Post-Trip Capture',
@@ -229,8 +245,12 @@ function readTripRows_(tripKey) {
   var sheet = ss.getSheetByName(TABS.ITINERARY);
   if (!sheet || sheet.getLastRow() < 2) return [];
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+  // Every key this trip has answered to, not just the one we were handed. A trip
+  // whose start date moved owns two key strings, and matching only one returns
+  // half its itinerary — which is what made the post-trip email fire early.
+  var keys = tripKeysFor_(tripKey);
   return data
-    .filter(function(row) { return String(row[1] || '').trim() === tripKey; })
+    .filter(function(row) { return tripRowMatches_(row[1], keys); })
     .sort(function(a, b) {
       var ak = String(a[4] || '') + '|' + String(a[5] || '');
       var bk = String(b[4] || '') + '|' + String(b[5] || '');
@@ -252,13 +272,24 @@ function getTripBoundsByKey_(tripKey) {
   var datePart = String(tripKey || '').split('|')[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
 
+  // readTripRows_ now gathers every key the trip answers to, so a key that moved
+  // still returns the whole itinerary rather than the sliver written after the move.
   var rows = readTripRows_(tripKey);
   if (!rows.length) return null;
 
   var parts     = tripKey.split('|');
   var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
-  var departureDate = new Date(datePart + 'T00:00:00');
-  var endDate        = new Date(datePart + 'T00:00:00');
+
+  // Seeded from the registry where it resolves — the calendar knows when the trip
+  // runs — and from the key's own date prefix otherwise. Same reasoning as
+  // getRecentlyCompletedTrips_: the later of registry-end and latest-row wins.
+  var tripId = tripIdForKey_(tripKey);
+  var range  = tripId ? tripDateRangeFor_(tripId) : null;
+  if (tripId && tripLabelFor_(tripId)) tripLabel = tripLabelFor_(tripId);
+
+  var depStr        = (range && range.startDate) || datePart;
+  var departureDate = new Date(depStr + 'T00:00:00');
+  var endDate       = new Date(((range && range.endDate) || depStr) + 'T00:00:00');
 
   rows.forEach(function(row) {
     var eventDate = String(row[4] || '').trim();
@@ -268,7 +299,12 @@ function getTripBoundsByKey_(tripKey) {
     }
   });
 
-  return { tripKey: tripKey, tripLabel: tripLabel, departureDate: departureDate, endDate: endDate };
+  return {
+    tripKey:       canonicalTripKey_(tripKey),
+    tripLabel:     tripLabel,
+    departureDate: departureDate,
+    endDate:       endDate,
+  };
 }
 
 /**
@@ -278,9 +314,7 @@ function getTripBoundsByKey_(tripKey) {
  * Dedup: POSTTRIP_NUDGE_{key} Script Property.
  */
 function sendPostTripNudgeEmail_(trip) {
-  var props   = PropertiesService.getScriptProperties();
-  var safeKey = 'POSTTRIP_NUDGE_' + trip.tripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  if (props.getProperty(safeKey)) {
+  if (tripLatchSeen_('POSTTRIP_NUDGE_', trip)) {
     Logger.log('sendPostTripNudgeEmail_: already sent for ' + trip.tripKey);
     return;
   }
@@ -319,7 +353,7 @@ function sendPostTripNudgeEmail_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain,
     { name: 'VERA Travel', htmlBody: htmlBody }, 'posttrip_nudge');
-  props.setProperty(safeKey, new Date().toISOString());
+  tripLatchMark_('POSTTRIP_NUDGE_', trip);
   Logger.log('sendPostTripNudgeEmail_: sent for ' + trip.tripKey);
 }
 
@@ -330,9 +364,7 @@ function sendPostTripNudgeEmail_(trip) {
  * Dedup: POSTTRIP_RECAP_{key} Script Property.
  */
 function sendPostTripRecapEmail_(trip) {
-  var props    = PropertiesService.getScriptProperties();
-  var safeKey  = 'POSTTRIP_RECAP_' + trip.tripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  if (props.getProperty(safeKey)) {
+  if (tripLatchSeen_('POSTTRIP_RECAP_', trip)) {
     Logger.log('sendPostTripRecapEmail_: already sent for ' + trip.tripKey);
     return;
   }
@@ -353,8 +385,10 @@ function sendPostTripRecapEmail_(trip) {
   }).join('\n') || 'No itinerary items on record';
 
   // Check for completed debrief
-  var debriefSafeKey  = 'POSTTRIP_DEBRIEF_' + trip.tripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-  var debriefProp     = props.getProperty(debriefSafeKey);
+  // The debrief marker follows the trip, not the key string it was completed
+  // under: a debrief done before a date change must still count afterwards.
+  var debriefSafeKey  = tripLatchName_('POSTTRIP_DEBRIEF_', trip);
+  var debriefProp     = tripLatchValue_('POSTTRIP_DEBRIEF_', trip);
   var hasDebrief      = !!debriefProp;
 
   // If debrief completed, query Interests sheet for Chat items logged since trip end
@@ -521,6 +555,6 @@ function sendPostTripRecapEmail_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
     { name: 'VERA Travel', htmlBody: htmlBody }, 'posttrip_recap');
-  props.setProperty(safeKey, new Date().toISOString());
+  tripLatchMark_('POSTTRIP_RECAP_', trip);
   Logger.log('sendPostTripRecapEmail_: sent for ' + trip.tripKey + (hasDebrief ? ' (with debrief)' : ' (itinerary-only)'));
 }

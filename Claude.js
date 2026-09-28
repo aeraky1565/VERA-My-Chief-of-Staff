@@ -370,7 +370,8 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
             var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
             if (packSheet && packSheet.getLastRow() >= 2) {
               var packData = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-              packData.forEach(function(r) { if (String(r[1]).trim() === tripKey) packCount++; });
+              var cKeys = tripKeysFor_(tripKey);
+              packData.forEach(function(r) { if (tripRowMatches_(r[1], cKeys)) packCount++; });
             }
           } catch(pe) {}
 
@@ -380,7 +381,7 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
             var itinSheet = ss_t.getSheetByName(TABS.ITINERARY);
             if (itinSheet && itinSheet.getLastRow() >= 2) {
               var itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-              itinData.forEach(function(r) { if (String(r[1]).trim() === tripKey) itinCount++; });
+              itinData.forEach(function(r) { if (tripRowMatches_(r[1], tripKeysFor_(tripKey))) itinCount++; });
             }
           } catch(ie) {}
 

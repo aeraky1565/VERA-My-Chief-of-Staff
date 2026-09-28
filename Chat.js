@@ -2660,11 +2660,13 @@ function executeActions_(rawText) {
       else if (type === 'complete_debrief') {
         var cdTripKey = (args[0] || '').trim();
         if (!cdTripKey) throw new Error('TripKey required for complete_debrief');
-        var cdSafeKey = 'POSTTRIP_DEBRIEF_' + cdTripKey.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-        PropertiesService.getScriptProperties().setProperty(
-          cdSafeKey,
-          JSON.stringify({ completed: new Date().toISOString(), tripKey: cdTripKey })
-        );
+        // This key came out of a chat transcript and may be one the trip has
+        // since stopped using, so it is resolved rather than trusted — that is
+        // what the registry's aliases exist for. tripLatchMark_ writes against
+        // the Trip ID where one resolves.
+        var cdCanonical = canonicalTripKey_(cdTripKey);
+        tripLatchMark_('POSTTRIP_DEBRIEF_', cdTripKey,
+          JSON.stringify({ completed: new Date().toISOString(), tripKey: cdCanonical }));
         // Send the recap now — checkPostTripCapture_'s nightly pass only
         // catches trips 2-4 days post-end, so a debrief done outside that
         // window would otherwise never get a recap. sendPostTripRecapEmail_

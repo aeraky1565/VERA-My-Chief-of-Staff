@@ -4617,8 +4617,9 @@ function ensureTripDecisionsSchema_(sheet) {
 function tdFindDecisionRow_(sheet, tripKey, groupKey) {
   if (!sheet || sheet.getLastRow() < 2) return -1;
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_DECISION_HEADERS.length).getValues();
+  var keys = tripKeysFor_(tripKey);
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][1] || '').trim() === tripKey &&
+    if (tripRowMatches_(rows[i][1], keys) &&
         String(rows[i][2] || '').trim() === groupKey) return i + 2;
   }
   return -1;
@@ -5811,8 +5812,9 @@ function parseRecsResponse_(rawContent) {
  * itinData rows are in ITINERARY_HEADERS column order.
  */
 function inferTripDestination_(itinData, tripKey, tripLabel) {
+  var keys = tripKeysFor_(tripKey);
   var rows = (itinData || []).filter(function(row) {
-    return String(row[1]).trim() === tripKey;
+    return tripRowMatches_(row[1], keys);
   });
 
   // a. Flight metadata.dest — the most explicit statement of destination there is.
@@ -9691,7 +9693,7 @@ function webGetTripBudget_(e) {
       if (!r[0]) return;
       var obj = {};
       hdrs.forEach(function(h, i) { obj[h] = r[i]; });
-      if (String(obj['Trip Key']).trim() === tripKey) items.push(obj);
+      if (tripRowMatches_(obj['Trip Key'], tripKeysFor_(tripKey))) items.push(obj);
     });
   }
 
@@ -10687,8 +10689,9 @@ function webGetTripGifts_(e) {
   var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, gifts: [] };
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_GIFT_HEADERS.length).getValues();
+  var giftKeys = tripKeysFor_(tripKey);
   var gifts = data
-    .filter(function(r) { return String(r[0]).trim() && String(r[1]).trim() === tripKey; })
+    .filter(function(r) { return String(r[0]).trim() && tripRowMatches_(r[1], giftKeys); })
     .map(function(r, i) {
       return {
         id:        String(r[0]).trim(),
