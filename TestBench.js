@@ -250,6 +250,25 @@ function tbTripIdentity() {
 }
 
 /**
+ * Which legacy trip keys would be attached to which trip. DRY RUN — writes
+ * nothing.
+ *
+ * A key written into the tabs before a trip's start date moved belongs to that
+ * trip but the registry has never been told, so reads under it return only part
+ * of the itinerary. This shows what the nightly pass will adopt on its own; run
+ * it when you want to see that before it happens.
+ */
+function tbAdoptTripKeys() {
+  tbBanner_('Adopt legacy trip keys (dry run)');
+  var res = adoptLegacyTripKeysDryRun();
+  Logger.log('Would adopt ' + res.adopted + ', already attached ' + res.already +
+             ', left alone ' + res.unresolved + '.');
+  if (!res.adopted && !res.unresolved) {
+    Logger.log('Nothing to do — every key in the tabs already belongs to a trip.');
+  }
+}
+
+/**
  * Copies every existing send latch onto its Trip ID.
  *
  * Run this ONCE, BEFORE relying on the new latches. Without it, a trip already

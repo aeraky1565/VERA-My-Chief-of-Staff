@@ -355,6 +355,38 @@ departure day itself, the email fired days early, and the zero-day span is where
 counts, the end date post-trip would now compute, and any itinerary key belonging
 to no live trip. Read-only: it writes nothing and cannot mint.
 
+**Why the other tabs still show old keys — and how they connect.** Nothing rewrites
+the key column when a trip's dates move, so a trip that split keeps both strings in
+the sheet. That is deliberate: rows are found by **resolution**, not by rewriting.
+
+But resolution only works if the registry knows the old key, and it cannot learn it
+on its own: `attachTripIds_` sees trips as the **calendar** describes them, and the
+calendar has already moved on. The old key exists solely in sheet rows. Until it is
+adopted, `Aliases` is empty, `tripKeysFor_` returns a one-element set, and every read
+still sees half the trip.
+
+`adoptLegacyTripKeys_` closes that. It scans the eight trip-keyed tabs, and any key
+that resolves to a live trip but is not that trip's canonical key is recorded as an
+alias. It runs in the nightly pass as **Step 0e-ii**, before the pre-trip and
+post-trip steps that depend on it, so the next moved date heals itself.
+
+It resolves with `mint: false, touch: false, strict: true`. `strict` is the
+important one: where minting picks the nearest match on ambiguity — refusing would
+strand a real trip — adoption **refuses**, because the only cost is one key staying
+unattached, against the risk of handing one trip's rows to another. Additive and
+idempotent; a second run writes nothing.
+
+`tbAdoptTripKeys()` previews it without writing. `tbTripIdentity()` separates keys
+that are **adoptable** (a live trip owns them) from ones that are genuinely
+**orphaned** (no trip does) — the two look identical otherwise, which is exactly what
+makes "the tabs still show old keys" hard to read.
+
+> The two fixes are independent and both matter. The registry anchor protects
+> post-trip *timing* even before adoption, because `getTripBoundsByKey_` seeds the
+> end date from the calendar. Adoption restores the *rows* — the itinerary, the
+> recap contents, packing counts — and becomes the only protection when a trip has
+> no registry end date.
+
 **Repairing a trip that already split.** `repairOrphanTripKeysDryRun()` from the
 editor lists every trip key across all eight tabs that resolves to no live trip,
 with per-tab row counts and the trip it would merge into. It changes nothing
@@ -367,6 +399,16 @@ repairOrphanTripKeys_({ dryRun: false, merges: { '2026-09-19|Florida Trip': 'TRI
 It writes the alias first, so a half-failed run has already mapped the orphan and
 nothing re-mints. It **refuses** a merge where both halves have a different
 TripMeta Context or Notes, printing both so you choose.
+
+Rows are re-keyed to the target's **canonical key**, not its bare `TRIP-…` id.
+`getRecentlyCompletedTrips_` and `getTripBoundsByKey_` both skip any key that is not
+`yyyy-MM-dd`-prefixed and derive the departure date from that prefix, so rows
+migrated to ids would disappear from post-trip entirely. The id stays the real
+identity; the key is its current display form. (`tripKeysFor_` carries the id in its
+set regardless, so rows an earlier run already rewrote still match.)
+
+Use it only when you want the sheet itself tidied — adoption already makes the rows
+resolve correctly without touching them.
 
 ### Pre-trip & Post-trip Pipeline (`PreTripBriefing.js`, `PostTripCapture.js`)
 
@@ -474,6 +516,7 @@ the path in prose.
 | Step 0c | `runExplorer_()` | Daily AI discovery bulletin — generates a curiosity nudge based on interests |
 | Step 0d | `getSuppressedKeyPatterns_()` | Load suppressed flag patterns from SignalLearning tab for noise filtering |
 | Step 0e | `recordExpiredFlags_()` | Log flags that have been open >30 days without action into SignalLearning |
+| Step 0e-ii | `adoptLegacyTripKeys_()` | Attach legacy trip keys found in the tabs to the trips they belong to — must precede 0f and 0g |
 | Step 0f | `checkPreTripBriefings_()` | Generate pre-trip briefing flags for trips departing within 48h |
 | Step 0g | `checkPostTripCapture_()` | Fire post-trip debrief prompt for trips that ended 1 day ago |
 | Step 0h | Morning routine reset | Reset morning routine checkboxes to unchecked for the new day |
@@ -526,7 +569,7 @@ the files they belong to, and nothing is reimplemented here.
 |---------|---------|
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
-| 3. Travel | `tbTripIdentity`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
+| 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
 | 4. Data & trackers | `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs

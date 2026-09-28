@@ -908,6 +908,19 @@ function nightlyRun() {
       stepFailures.push('recordExpiredFlags_: ' + expFlagErr.message);
     }
 
+    // Step 0e-ii: Attach legacy trip keys to the trips they belong to.
+    //
+    // MUST run before Steps 0f and 0g. Both resolve trip keys, and a key the
+    // registry has not adopted yet returns only the rows written under it — which
+    // is how a trip whose start date moved got a post-trip email days early.
+    // Additive and idempotent; it never mints and refuses ambiguous matches.
+    try {
+      adoptLegacyTripKeys_({ dryRun: false });
+    } catch (adoptErr) {
+      Logger.log('adoptLegacyTripKeys_ error (non-fatal): ' + adoptErr.message);
+      stepFailures.push('adoptLegacyTripKeys_: ' + adoptErr.message);
+    }
+
     // Step 0f: Pre-trip briefings (48-hour auto-summary) (Issue #81)
     try {
       checkPreTripBriefings_();

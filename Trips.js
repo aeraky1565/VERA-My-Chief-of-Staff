@@ -329,7 +329,10 @@ function tripKeysFor_(tripKey) {
       var seen = {};
       out = [];
       var canonical = String(rec.startDate || '') + '|' + String(rec.label || '');
-      [canonical].concat(rec.aliases || []).concat([key]).forEach(function(k) {
+      // The Trip ID is in the set too, so a row an earlier repairOrphanTripKeys_
+      // run rewrote to a bare TRIP-… still matches. The two storage forms are
+      // interchangeable at read time; only writers have to pick one.
+      [canonical].concat(rec.aliases || []).concat([rec.tripId, key]).forEach(function(k) {
         var t = String(k || '').trim();
         if (t && t !== '|' && !seen[t]) { seen[t] = true; out.push(t); }
       });
@@ -408,7 +411,9 @@ var TRIP_MATCH_TOLERANCE_DAYS_ = 14;
  * The Trip ID for a trip, minting one if it is genuinely new.
  *
  * @param {Object} trip  — {label, startDate, endDate, eventIds?}
- * @param {Object} [opts] — {mint:boolean=true, appendAlias:boolean=false}
+ * @param {Object} [opts] — {mint:boolean=true, appendAlias:boolean=false,
+ *        touch:boolean=true, strict:boolean=false}. strict refuses an ambiguous
+ *        match instead of picking one — see the branch below.
  * @returns {string} the id, or '' when unresolved and minting is off
  */
 function resolveTripId_(trip, opts) {
@@ -467,6 +472,21 @@ function resolveTripId_(trip, opts) {
   }
 
   if (candidates.length > 1) {
+    // strict callers refuse rather than pick.
+    //
+    // Picking is right for minting: the caller has a real trip in hand and
+    // returning nothing would strand it, so a logged, flagged, deterministic
+    // choice beats no id at all. It is wrong for adoption, where the only cost
+    // of refusing is that one legacy key stays unattached — against the risk of
+    // silently handing one trip's rows to another.
+    if (opts.strict) {
+      Logger.log('resolveTripId_: AMBIGUOUS and strict — "' + label + '" ' +
+                 startDate + '..' + endDate + ' matched ' + candidates.length +
+                 ' registry rows (' +
+                 candidates.map(function(c) { return c.rec.tripId; }).join(', ') +
+                 '); refusing to choose.');
+      return '';
+    }
     // Never mint on ambiguity — minting when unsure is precisely how a trip
     // acquires a second identity. Nearest range, then oldest Created so the
     // answer does not depend on row order or on which side of the 600s trip
@@ -841,6 +861,131 @@ function tripKeyedTabs_() {
  *
  * @param {Object} [opts] — {dryRun:boolean=true, merges:{'<orphan key>':'<TRIP-id>'}}
  */
+/**
+ * Every distinct trip-key string across the eight trip-keyed tabs, with a row
+ * count per tab. Shared by adoption and repair so the two cannot disagree about
+ * what is actually in the sheet.
+ *
+ * @returns {Object} key → { tab → count }
+ */
+function scanTripKeyUsage_() {
+  var ss   = getSpreadsheet();
+  var seen = {};
+  tripKeyedTabs_().forEach(function(t) {
+    var sheet = ss.getSheetByName(t.tab);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    sheet.getRange(2, t.col, sheet.getLastRow() - 1, 1).getValues().forEach(function(r) {
+      var k = String(r[0] || '').trim();
+      if (!k) return;                       // EmailParser writes blanks on purpose
+      if (!seen[k]) seen[k] = {};
+      seen[k][t.tab] = (seen[k][t.tab] || 0) + 1;
+    });
+  });
+  return seen;
+}
+
+/**
+ * Teaches the registry the legacy keys it cannot otherwise see.
+ *
+ * WHY THIS HAS TO EXIST. Identity resolves through the calendar event id, which
+ * survives a date change — but attachTripIds_ only ever sees trips as the CALENDAR
+ * describes them, so the only key it can learn is the current one. The old key
+ * lives solely in sheet rows, written before the date moved and never rewritten.
+ * Nothing looked there, so the Aliases column stayed empty, tripKeysFor_ returned a
+ * one-element set, and every read still saw half a trip. The resolve-on-read
+ * plumbing was correct and had no input.
+ *
+ * This scans the tabs instead. A key that resolves to a live trip but is not that
+ * trip's canonical key is recorded as an alias, and from then on every reader finds
+ * the rows under it.
+ *
+ * SAFETY. Resolution is {mint:false, touch:false, strict:true}: it cannot create a
+ * trip, cannot rewrite one, and refuses an ambiguous match rather than picking —
+ * adopting on a guess is how one trip swallows another's rows. Keys that resolve to
+ * nothing are left for repairOrphanTripKeys_, which asks before it acts.
+ *
+ * Additive and idempotent. appendTripAlias_ no-ops on a key it already holds, so a
+ * second run writes nothing.
+ *
+ * @param {Object} [opts] — {dryRun:boolean=true}
+ * @returns {{adopted:number, already:number, ambiguous:number, unresolved:number,
+ *           details:Array<string>}}
+ */
+function adoptLegacyTripKeys_(opts) {
+  opts = opts || {};
+  var dryRun = opts.dryRun !== false;
+
+  var usage = scanTripKeyUsage_();
+  var keys  = Object.keys(usage);
+  var out   = { adopted: 0, already: 0, ambiguous: 0, unresolved: 0, details: [] };
+  if (!keys.length) return out;
+
+  // Canonical keys and known aliases, so an already-attached key costs no resolve.
+  var reg   = readTripRegistry_();
+  var known = {};
+  reg.rows.forEach(function(rec) {
+    if (rec.status && rec.status.indexOf('merged:') === 0) return;
+    known[String(rec.startDate || '') + '|' + String(rec.label || '')] = rec.tripId;
+    known[rec.tripId] = rec.tripId;
+    (rec.aliases || []).forEach(function(a) { if (a) known[a] = rec.tripId; });
+  });
+
+  keys.forEach(function(key) {
+    if (known[key]) { out.already++; return; }
+
+    var id = '';
+    try {
+      id = resolveTripId_({ label: key.split('|').slice(1).join('|').trim(),
+                            startDate: key.split('|')[0].trim() },
+                          { mint: false, touch: false, strict: true }) || '';
+    } catch (e) {
+      Logger.log('adoptLegacyTripKeys_: "' + key + '" — ' + e.message);
+    }
+
+    if (!id) {
+      // Either nothing matched, or strict refused an ambiguous match. The log line
+      // resolveTripId_ already wrote says which.
+      out.unresolved++;
+      out.details.push('  leave  ' + key + '  — no single live trip matches');
+      return;
+    }
+
+    var rec = getTripById_(id);
+    if (!rec) { out.unresolved++; return; }
+    var canonical = String(rec.startDate || '') + '|' + String(rec.label || '');
+    if (key === canonical) { out.already++; return; }
+
+    var rows = 0;
+    Object.keys(usage[key]).forEach(function(tab) { rows += usage[key][tab]; });
+    out.details.push('  adopt  ' + key + '  -> ' + id + ' ("' + rec.label + '")  ' +
+                     rows + ' row(s) in ' + Object.keys(usage[key]).join(', '));
+    if (!dryRun) {
+      if (appendTripAlias_(id, key)) out.adopted++; else out.already++;
+    } else {
+      out.adopted++;
+    }
+  });
+
+  Logger.log('adoptLegacyTripKeys_' + (dryRun ? ' (DRY RUN)' : '') + ': ' +
+             out.adopted + ' adopted, ' + out.already + ' already attached, ' +
+             out.unresolved + ' left alone');
+  out.details.forEach(function(d) { Logger.log(d); });
+  if (dryRun && out.adopted) {
+    Logger.log('  DRY RUN — nothing written. Apply with:');
+    Logger.log('    adoptLegacyTripKeys_({ dryRun: false });');
+  }
+  if (out.unresolved) {
+    Logger.log('  The "leave" keys belong to no live trip — repairOrphanTripKeysDryRun()');
+    Logger.log('  shows what it would merge them into.');
+  }
+  return out;
+}
+
+/** Editor entry point: shows what adoption would attach, changes nothing. */
+function adoptLegacyTripKeysDryRun() {
+  return adoptLegacyTripKeys_({ dryRun: true });
+}
+
 function repairOrphanTripKeys_(opts) {
   opts = opts || {};
   var dryRun = opts.dryRun !== false;
@@ -916,11 +1061,17 @@ function repairOrphanTripKeys_(opts) {
     var metaSheet = ss.getSheetByName(TABS.TRIP_META);
     if (metaSheet && metaSheet.getLastRow() >= 2) {
       var meta = metaSheet.getRange(2, 1, metaSheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+      // The target's row is keyed by its CANONICAL KEY, not its id — TripMeta
+      // stores key strings. Comparing against targetId alone meant b was always
+      // null, so this guard never fired and a genuine Context conflict was
+      // silently overwritten. Both forms are accepted: a previous repair run may
+      // have left an id behind.
+      var targetKey = canonicalTripKey_(targetId);
       var a = null, b = null;
       meta.forEach(function(r) {
         var k = String(r[0] || '').trim();
         if (k === orphanKey) a = r;
-        if (k === targetId)  b = r;
+        if (k === targetId || (targetKey && k === targetKey)) b = r;
       });
       if (a && b) {
         for (var c = 1; c <= 2; c++) {          // Context, Notes
@@ -940,6 +1091,13 @@ function repairOrphanTripKeys_(opts) {
     // Alias FIRST, so a half-failed run already maps the orphan and nothing mints.
     appendTripAlias_(targetId, orphanKey);
 
+    // Rows are re-keyed to the target's CANONICAL KEY, not its bare id.
+    // getRecentlyCompletedTrips_ and getTripBoundsByKey_ both skip any key that
+    // is not yyyy-MM-dd-prefixed and derive the departure date from that prefix,
+    // so rows migrated to TRIP-… would vanish from post-trip entirely. The id
+    // stays the real identity; the key is its current display form.
+    var mergeInto = canonicalTripKey_(targetId) || targetId;
+
     tabs.forEach(function(t) {
       var sheet = ss.getSheetByName(t.tab);
       if (!sheet || sheet.getLastRow() < 2) return;
@@ -947,14 +1105,14 @@ function repairOrphanTripKeys_(opts) {
       var vals  = range.getValues();
       var hits  = 0;
       for (var i = 0; i < vals.length; i++) {
-        if (String(vals[i][0] || '').trim() === orphanKey) { vals[i][0] = targetId; hits++; }
+        if (String(vals[i][0] || '').trim() === orphanKey) { vals[i][0] = mergeInto; hits++; }
       }
       if (hits) { range.setValues(vals); Logger.log('  ' + t.tab + ': re-keyed ' + hits + ' row(s)'); }
     });
 
     clearTripLatches_(orphanKey);
     applied++;
-    Logger.log('MERGED "' + orphanKey + '" → ' + targetId);
+    Logger.log('MERGED "' + orphanKey + '" → ' + targetId + ' (rows re-keyed to "' + mergeInto + '")');
   });
 
   invalidateTripRegistry_();
@@ -1104,14 +1262,39 @@ function diagnoseTripIdentity_() {
     });
   });
 
-  var orphans = Object.keys(keyCounts).filter(function(k) { return !claimed[k]; });
+  // Unclaimed keys split two ways, and the difference decides what you run next.
+  // Before this they printed as one list, which is what made "the tabs still show
+  // old keys" impossible to interpret.
+  var unclaimed  = Object.keys(keyCounts).filter(function(k) { return !claimed[k]; });
+  var adoptable  = [];
+  var orphaned   = [];
+  unclaimed.forEach(function(k) {
+    var id = '';
+    try {
+      id = resolveTripId_({ label: k.split('|').slice(1).join('|').trim(),
+                            startDate: k.split('|')[0].trim() },
+                          { mint: false, touch: false, strict: true }) || '';
+    } catch (e) {}
+    if (id) adoptable.push({ key: k, id: id }); else orphaned.push(k);
+  });
+
   Logger.log('');
-  if (orphans.length) {
-    Logger.log(orphans.length + ' itinerary key(s) claimed by NO live trip:');
-    orphans.forEach(function(k) { Logger.log('  ' + k + '  (' + keyCounts[k] + ' row(s))'); });
-    Logger.log('  These are trips that ended, or split before the registry existed.');
+  if (adoptable.length) {
+    Logger.log(adoptable.length + ' key(s) belong to a live trip but are not attached yet:');
+    adoptable.forEach(function(o) {
+      Logger.log('  ' + o.key + '  -> ' + o.id + '  (' + keyCounts[o.key] + ' row(s))');
+    });
+    Logger.log('  Until they are adopted, reads under them return only part of the trip.');
+    Logger.log('  tbAdoptTripKeys() previews it; the nightly pass applies it on its own.');
+  }
+  if (orphaned.length) {
+    Logger.log(orphaned.length + ' key(s) claimed by NO live trip:');
+    orphaned.forEach(function(k) { Logger.log('  ' + k + '  (' + keyCounts[k] + ' row(s))'); });
+    Logger.log('  Trips that ended, or split before the registry existed — or two live');
+    Logger.log('  trips matched and adoption refused to guess. The log above says which.');
     Logger.log('  repairOrphanTripKeysDryRun() shows what it would merge them into.');
-  } else {
+  }
+  if (!adoptable.length && !orphaned.length) {
     Logger.log('Every itinerary key belongs to a live trip.');
   }
 }
