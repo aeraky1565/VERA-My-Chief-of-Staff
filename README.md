@@ -756,9 +756,38 @@ named, the email lists the programs actually held plus today's airports and says
 to check the program's app. An empty section is indistinguishable from the bug
 above, which is precisely why it went unnoticed for so long.
 
-**Lounge details are not measured.** Unlike the flight times, there is no lounge
-database here — names, terminals, hours and guest fees are recalled, not looked
-up. Both renderers carry one caveat line saying so.
+**Lounge names are grounded in search, not recalled.** They used to come purely from
+the model, and it invented them: a "Centurion Lounge Chicago O'Hare" at an airport
+that has never had one, and the same at IAD. The prompt already said *"only include
+lounges you are CONFIDENT exist — do not guess"*, and it guessed anyway, so that
+paragraph is gone; stronger wording was never going to be the fix.
+
+`searchLoungeCandidates_` now runs one `doWebSearch_` per airport × programme
+(capped at 6, cached 24h), and the prompt asks the model to pick from those results
+rather than to remember. The guard that actually holds the line is deterministic,
+in `validateLounges_`:
+
+- **`loungeNameIsGrounded_`** — the name, reduced to lowercase alphanumerics, must
+  appear in the snippets retrieved **for its own airport**. `centurionloungechicagoohare`
+  is in no ORD snippet, so it never reaches the email. Per-airport on purpose: a real
+  name from one airport must not vouch for a fabrication at another.
+- A name containing a parenthetical or a hedge is **not a name** — the real run
+  produced `"The Salon at O'Hare (United Polaris Lounge excluded; check current
+  PP-participating lounges)"`.
+- `hours`, `guest_limit` and `access_window` that say *"Varies by lounge"* or
+  *"check the app"* are **nulled, not printed**.
+- The airport and programme must be ones we asked about; the card always comes from
+  the Card Perks tab, never the model.
+- **The tip is cleared whenever anything was dropped.** It is written against the
+  pre-validation list, so it once recommended the very Centurion Lounge that had just
+  been removed — the same invention returning through a different field.
+
+Every drop is logged with its reason, and `tbLoungeAccess()` prints them.
+
+**Without `VERA_SEARCH_API_KEY` there are no names at all.** No candidates means no
+model call — the section shows the programmes you hold and the airports in play, and
+stops. The failure mode is silence, never fiction. The caveat line stays even when
+names verify: a search snippet is not an official feed, and hours move.
 
 **`tbLoungeAccess()`** walks the gates in order and stops at the first failure,
 printing every `Card Perks` row with its matched program or why it missed, the

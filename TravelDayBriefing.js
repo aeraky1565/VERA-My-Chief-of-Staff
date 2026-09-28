@@ -1836,6 +1836,183 @@ function getLoungePerkPrograms_() {
  * @param {Array} loungePerks — result of getLoungePerkPrograms_()
  * @returns {{ lounges: Array, tip: string }}
  */
+/** At most this many searches per briefing, so a multi-leg day cannot fan out. */
+var LOUNGE_SEARCH_MAX_QUERIES_ = 6;
+
+/**
+ * Raw search candidates for each airport x programme pair.
+ *
+ * Modelled on searchLocalEvents_ (WeekendPlanner.js): fetch, normalise, truncate,
+ * and return [] on any failure rather than throwing into a mailer.
+ *
+ * WHY THIS EXISTS. The lounge lookup used to be pure model recall, and it invented
+ * lounges — a "Centurion Lounge Chicago O'Hare" at an airport that has never had
+ * one, and the same at IAD. The prompt already said "only include lounges you are
+ * CONFIDENT exist ... do not guess" and it guessed anyway, so the fix is not
+ * stronger wording: it is giving the model something real to read, and then
+ * checking its answer against that text.
+ *
+ * Candidates stay TAGGED by airport. Grounding has to be checked against the
+ * snippets for the airport in question — merging them lets a lounge that really
+ * exists at one airport vouch for a fabricated one at another.
+ *
+ * @param {Array} airports    — [{ code, role }]
+ * @param {Array} loungePerks — [{ program, card }]
+ * @returns {Object} airport code -> [{ title, snippet, link, program }]
+ */
+function searchLoungeCandidates_(airports, loungePerks) {
+  var byAirport = {};
+  if (typeof doWebSearch_ !== 'function') return byAirport;
+
+  var cache   = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  var queries = 0;
+
+  (airports || []).forEach(function(a) {
+    var code = String(a && a.code || '').trim().toUpperCase();
+    if (!code) return;
+    byAirport[code] = byAirport[code] || [];
+
+    (loungePerks || []).forEach(function(p) {
+      if (queries >= LOUNGE_SEARCH_MAX_QUERIES_) return;
+      var program = String(p && p.program || '').trim();
+      if (!program) return;
+
+      var query    = program + ' lounge ' + code + ' airport';
+      // 24h: lounge listings do not move hour to hour, and tbLoungeAccess gets run
+      // repeatedly while diagnosing. Same justification as the geocode cache.
+      var cacheKey = 'lounge_cand_' + code + '_' +
+                     program.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      var hits     = null;
+
+      if (cache) {
+        try {
+          var cached = cache.get(cacheKey);
+          if (cached) hits = JSON.parse(cached);
+        } catch (e_) {}
+      }
+
+      if (hits === null) {
+        queries++;
+        try {
+          hits = doWebSearch_(query, 4) || [];
+        } catch (searchErr) {
+          Logger.log('searchLoungeCandidates_: search failed for "' + query + '" — ' + searchErr.message);
+          hits = [];
+        }
+        if (cache) {
+          try { cache.put(cacheKey, JSON.stringify(hits), 86400); } catch (e2_) {}
+        }
+      }
+
+      hits.forEach(function(r) {
+        byAirport[code].push({
+          title:   String(r.title   || '').replace(/\s+/g, ' ').trim().substring(0, 150),
+          snippet: String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 300),
+          link:    String(r.link    || '').trim(),
+          program: program,
+        });
+      });
+    });
+  });
+
+  return byAirport;
+}
+
+/** Everything fetched for one airport, as one lowercase alphanumeric blob. */
+function loungeCorpusFor_(candidates, code) {
+  var list = (candidates || {})[String(code || '').toUpperCase()] || [];
+  return list.map(function(r) { return r.title + ' ' + r.snippet; })
+             .join(' ')
+             .toLowerCase()
+             .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Does this lounge name actually occur in what we retrieved for its airport?
+ *
+ * The deterministic guard, and the one that stops the invented lounges. Both sides
+ * are reduced to lowercase alphanumerics, so "The Centurion® Lounge" matches
+ * "Centurion Lounge" while "centurionloungechicagoohare" — which appears in no ORD
+ * snippet — does not match anything.
+ */
+function loungeNameIsGrounded_(name, corpus) {
+  var n = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (n.length < 4) return false;          // too short to be evidence of anything
+  return String(corpus || '').indexOf(n) !== -1;
+}
+
+/** A name field carrying a caveat is not a name. */
+var LOUNGE_HEDGE_RE_ = /check|varies|excluded|unknown|n\/a|participating|verify|confirm/i;
+
+/** A detail field carrying a non-answer is not data. */
+var LOUNGE_NONANSWER_RE_ = /varies|check|unknown|n\/a|typically|usually|approximate|depends/i;
+
+/** Nulls a detail field that is really a shrug. */
+function loungeDetailOrNull_(v) {
+  var t = String(v == null ? '' : v).trim();
+  if (!t) return null;
+  return LOUNGE_NONANSWER_RE_.test(t) ? null : t;
+}
+
+/**
+ * Keeps only lounges we can point at, and strips fields that say nothing.
+ *
+ * Runs over the model's reply because the prompt cannot be trusted to enforce its
+ * own rules — this is what actually holds the line. Every drop is logged with its
+ * reason so diagnoseLoungeAccess_ can show the working.
+ *
+ * @returns {{kept: Array, dropped: Array<string>}}
+ */
+function validateLounges_(lounges, candidates, airports, loungePerks) {
+  var okAirports = {};
+  (airports || []).forEach(function(a) {
+    okAirports[String(a && a.code || '').toUpperCase()] = true;
+  });
+  var okPrograms = {};
+  (loungePerks || []).forEach(function(p) {
+    okPrograms[String(p && p.program || '').trim().toLowerCase()] = p.card || '';
+  });
+
+  var kept = [], dropped = [];
+
+  (lounges || []).forEach(function(l) {
+    if (!l || typeof l !== 'object') return;
+    var name = String(l.lounge_name || '').trim();
+    var code = String(l.airport_code || '').trim().toUpperCase();
+    var prog = String(l.program || '').trim();
+
+    if (!name)                       { dropped.push('(unnamed) — no lounge_name'); return; }
+    if (!okAirports[code])           { dropped.push(name + ' — airport "' + code + '" was not asked about'); return; }
+    if (!okPrograms[prog.toLowerCase()]) { dropped.push(name + ' @ ' + code + ' — programme "' + prog + '" is not held'); return; }
+    // Most specific reason first — the diagnostic prints these, and "contains a
+    // caveat" tells you more about what the model did than "too long".
+    if (/[(\[]/.test(name))          { dropped.push(name + ' — name contains a parenthetical caveat'); return; }
+    if (LOUNGE_HEDGE_RE_.test(name)) { dropped.push(name + ' — name hedges rather than names'); return; }
+    if (name.length > 60)            { dropped.push(name.substring(0, 40) + '… — name too long to be a name'); return; }
+
+    var corpus = loungeCorpusFor_(candidates, code);
+    if (!loungeNameIsGrounded_(name, corpus)) {
+      dropped.push(name + ' @ ' + code + ' — NOT FOUND in anything retrieved for ' + code);
+      return;
+    }
+
+    // Details survive only if they say something. The card always comes from the
+    // perks tab, never from the model.
+    l.lounge_name   = name;
+    l.airport_code  = code;
+    l.card          = okPrograms[prog.toLowerCase()] || l.card || '';
+    l.terminal      = loungeDetailOrNull_(l.terminal);
+    l.hours         = loungeDetailOrNull_(l.hours);
+    l.guest_limit   = loungeDetailOrNull_(l.guest_limit);
+    l.access_window = loungeDetailOrNull_(l.access_window);
+    l.access_notes  = loungeDetailOrNull_(l.access_notes);
+    kept.push(l);
+  });
+
+  return { kept: kept, dropped: dropped };
+}
+
 function buildTravelLoungeData_(airports, loungePerks) {
   var programList = loungePerks.map(function(p) {
     return p.program + ' (via ' + p.card + ')';
@@ -1845,17 +2022,45 @@ function buildTravelLoungeData_(airports, loungePerks) {
     return a.code + ' (' + a.role + ')';
   }).join(', ');
 
+  // ---- grounding ----------------------------------------------------------
+  // Asked of the web before it is asked of the model. Without this the lookup was
+  // pure recall and invented lounges that do not exist.
+  var candidates = searchLoungeCandidates_(airports, loungePerks);
+  var candidateCount = 0;
+  Object.keys(candidates).forEach(function(code) { candidateCount += candidates[code].length; });
+
+  if (!candidateCount) {
+    // No search key, or nothing came back. Deliberately does NOT fall through to an
+    // ungrounded model call — that is the behaviour being removed.
+    Logger.log('LOUNGE: no search candidates (VERA_SEARCH_API_KEY unset, or no results). ' +
+               'Falling back to programmes held rather than naming lounges we cannot check.');
+    var bare = emptyLoungeData_(loungePerks, airports);
+    bare.searchedAirports = Object.keys(candidates).length;
+    bare.candidateCount   = 0;
+    return bare;
+  }
+
+  var evidence = Object.keys(candidates).map(function(code) {
+    var rows = candidates[code];
+    if (!rows.length) return code + ': (nothing found)';
+    return code + ':\n' + rows.map(function(r, i) {
+      return '  [' + (i + 1) + '] (' + r.program + ') ' + r.title + ' — ' + r.snippet;
+    }).join('\n');
+  }).join('\n\n');
+
   var prompt =
-    'You are a travel assistant with detailed knowledge of airport lounges worldwide.\n' +
-    'Ahmed holds the following lounge access programs: ' + programList + '.\n' +
+    'You are selecting airport lounges from SEARCH RESULTS. Do not use prior knowledge.\n\n' +
+    'Ahmed holds these lounge access programmes: ' + programList + '.\n' +
     'Today\'s relevant airports (departure and layovers only): ' + airportList + '.\n\n' +
-    'For each airport, list only the lounges Ahmed can access through his programs.\n' +
-    'IMPORTANT: Only include lounges you are CONFIDENT exist and are accessible through these specific programs.\n' +
-    'If you are not certain a lounge exists at an airport for a given program, OMIT it entirely — do not guess.\n' +
-    'If no lounges are confidently known, return { "lounges": [], "tip": "" }.\n\n' +
-    'For guest_limit: state the exact cap and any per-guest fee (e.g. "2 guests at no charge; additional guests $50 each").\n' +
-    'For access_window: state any time restriction on entry (e.g. "Must enter at least 1 hour before close").\n' +
-    'If there are multiple lounges at the same airport, the tip should compare them (e.g. which is better for guests).\n\n' +
+    'SEARCH RESULTS, grouped by airport:\n' + evidence + '\n\n' +
+    'Rules:\n' +
+    '- Name ONLY lounges that appear in the search results above, under their own airport.\n' +
+    '- If the results do not show a lounge for an airport and programme, return nothing for that pair.\n' +
+    '- Copy the lounge name EXACTLY as it appears. Never append a caveat, exclusion, or\n' +
+    '  instruction to the name — the name field must contain a name and nothing else.\n' +
+    '- Fill terminal, hours, guest_limit and access_window ONLY from the results. If the\n' +
+    '  results do not state one, use null. Never write "varies", "check the app", or similar.\n' +
+    '- An empty list is a perfectly good answer.\n\n' +
     'Return ONLY a valid JSON object (no markdown, no preamble):\n' +
     '{\n' +
     '  "lounges": [\n' +
@@ -1864,17 +2069,16 @@ function buildTravelLoungeData_(airports, loungePerks) {
     '      "airport_name": "Washington Dulles International",\n' +
     '      "role": "departure",\n' +
     '      "program": "Priority Pass",\n' +
-    '      "card": "AMEX Platinum",\n' +
     '      "lounge_name": "Club at IAD",\n' +
-    '      "terminal": "C",\n' +
-    '      "location_notes": "Airside, past security",\n' +
-    '      "hours": "5:00 AM – 10:00 PM",\n' +
-    '      "guest_limit": "Guest fee: $32/person" or null,\n' +
+    '      "terminal": "C" or null,\n' +
+    '      "location_notes": "Airside, past security" or null,\n' +
+    '      "hours": "5:00 AM – 10:00 PM" or null,\n' +
+    '      "guest_limit": "2 guests at no charge" or null,\n' +
     '      "access_window": "Must enter at least 1 hour before close" or null,\n' +
-    '      "access_notes": "Capacity limits apply — check app before visiting" or null\n' +
+    '      "access_notes": "Capacity limits apply" or null\n' +
     '    }\n' +
     '  ],\n' +
-    '  "tip": "One sentence tip — compare lounge options at the same airport if applicable, otherwise general advice. Empty string if nothing useful."\n' +
+    '  "tip": "One sentence comparing the options above, or an empty string. Base it only on the results."\n' +
     '}';
 
   // A bigger budget than callClaudeJson_'s 1024 default. Eleven fields per lounge
@@ -1890,17 +2094,35 @@ function buildTravelLoungeData_(airports, loungePerks) {
   if (!Array.isArray(result.lounges)) result.lounges = [];
   if (typeof result.tip !== 'string') result.tip = '';
 
+  // ---- validation ---------------------------------------------------------
+  // The prompt cannot enforce its own rules; this can. A name that appears in no
+  // snippet for its own airport is dropped here.
+  var verdict = validateLounges_(result.lounges, candidates, airports, loungePerks);
+  result.lounges = verdict.kept;
+  result.dropped = verdict.dropped;
+  if (verdict.dropped.length) {
+    Logger.log('LOUNGE: dropped ' + verdict.dropped.length + ' unverifiable lounge(s):');
+    verdict.dropped.forEach(function(d) { Logger.log('   - ' + d); });
+  }
+  // The tip was written against the list BEFORE validation, so anything dropped
+  // invalidates it — the real ORD case had the tip recommending the very Centurion
+  // Lounge that had just been removed, putting the invention back in the email
+  // through a different field. Clearing on ANY drop is the conservative rule; a
+  // good tip occasionally lost costs far less than a confident wrong one.
+  if (!result.lounges.length || verdict.dropped.length) result.tip = '';
+
   // Always carried, so the renderers can show the programs held even when the
   // model named nothing.
   result.programs = loungePerks;
   result.airports = airports;
   result.resolved = result.lounges.length > 0;
+  result.candidateCount = candidateCount;
 
   if (!result.resolved) {
-    Logger.log('LOUNGE: gate 4 — Claude replied but named no lounge it was confident ' +
-               'about for [' + airportList + ']. Falling back to programs held.');
+    Logger.log('LOUNGE: gate 4 — nothing survived grounding for [' + airportList +
+               ']. Falling back to programs held.');
   } else {
-    Logger.log('LOUNGE: ' + result.lounges.length + ' lounge(s) named.');
+    Logger.log('LOUNGE: ' + result.lounges.length + ' lounge(s) named and verified against search.');
   }
   return result;
 }
@@ -2564,9 +2786,34 @@ function diagnoseLoungeAccess_(dateStr, airportsOverride) {
 
   // ---- gates 4 + 5: the model -------------------------------------------
   Logger.log('');
-  Logger.log('Gates 1-3 pass. Calling Claude for [' +
+  Logger.log('Gates 1-3 pass. Looking up [' +
              airports.map(function(a) { return a.code; }).join(', ') + '] with [' +
              loungePerks.map(function(p) { return p.program; }).join(', ') + '].');
+
+  // ---- what the lookup will actually read ---------------------------------
+  // Shown before the call, so "the data is wrong" becomes "that name was in no
+  // snippet" without needing a code change to find out.
+  var cands = {};
+  try {
+    cands = searchLoungeCandidates_(airports, loungePerks);
+  } catch (se) {
+    Logger.log('searchLoungeCandidates_ threw — ' + se.message);
+  }
+  var total = 0;
+  Object.keys(cands).forEach(function(code) { total += cands[code].length; });
+  Logger.log('');
+  Logger.log('Search candidates: ' + total + ' across ' + Object.keys(cands).length + ' airport(s).');
+  Object.keys(cands).forEach(function(code) {
+    Logger.log('  ' + code + ': ' + cands[code].length + ' result(s)');
+    cands[code].slice(0, 4).forEach(function(r) {
+      Logger.log('    (' + r.program + ') ' + r.title.substring(0, 90));
+    });
+  });
+  if (!total) {
+    Logger.log('  NONE. Either VERA_SEARCH_API_KEY is unset in Script Properties, or the');
+    Logger.log('  searches returned nothing. The lookup will NOT fall back to model recall —');
+    Logger.log('  it shows the programmes you hold and stops, which is the point.');
+  }
   var data = null;
   try {
     data = buildTravelLoungeData_(airports, loungePerks);
@@ -2579,8 +2826,10 @@ function diagnoseLoungeAccess_(dateStr, airportsOverride) {
 
   Logger.log('');
   Logger.log('Result: resolved=' + !!data.resolved + ', ' +
-             (data.lounges || []).length + ' lounge(s), ' +
+             (data.lounges || []).length + ' lounge(s) kept, ' +
+             ((data.dropped || []).length) + ' dropped, ' +
              (data.programs || []).length + ' program(s) carried.');
+  (data.dropped || []).forEach(function(d) { Logger.log('  DROPPED  ' + d); });
   (data.lounges || []).forEach(function(l, i) {
     Logger.log('  [' + i + '] ' + (l.lounge_name || '(unnamed)') + ' @ ' + (l.airport_code || '?') +
                '  program=' + (l.program || '?') + '  terminal=' + (l.terminal || '-') +
@@ -2604,13 +2853,25 @@ function diagnoseLoungeAccess_(dateStr, airportsOverride) {
 
   Logger.log('');
   if (data.resolved) {
-    Logger.log('DIAGNOSIS — working. Real lounges named and both renderers produced a section.');
+    Logger.log('DIAGNOSIS — working. Every lounge named above appeared in the search');
+    Logger.log('  results retrieved for its own airport. Details are printed only where the');
+    Logger.log('  results stated them.');
   } else if ((data.programs || []).length) {
-    Logger.log('DIAGNOSIS — gates 1-3 pass; Claude named no lounge it was confident about');
-    Logger.log('  (gate 4) or its reply did not parse (gate 5 — see the log line above for');
-    Logger.log('  which). The email shows the programs-held fallback, so the section is not');
-    Logger.log('  empty. If you know there IS a lounge at these airports, the prompt\'s');
-    Logger.log('  "do not guess" instruction is being read too strictly.');
+    if (!total) {
+      Logger.log('DIAGNOSIS — no search results to work from, so nothing was named. Set');
+      Logger.log('  VERA_SEARCH_API_KEY in Script Properties and re-run. The email shows the');
+      Logger.log('  programmes you hold, which is correct but less useful than it could be.');
+    } else if ((data.dropped || []).length) {
+      Logger.log('DIAGNOSIS — candidates were found, but every lounge Claude named failed');
+      Logger.log('  grounding (see DROPPED above). That is the guard working: a name that');
+      Logger.log('  appears in no snippet for its airport does not reach the email.');
+      Logger.log('  If a lounge you KNOW exists was dropped, the searches are not surfacing');
+      Logger.log('  it — the query shape is the thing to change, not the guard.');
+    } else {
+      Logger.log('DIAGNOSIS — candidates were found but Claude named no lounge from them.');
+      Logger.log('  Likely the results are about the programme in general rather than that');
+      Logger.log('  airport. The email shows the programmes held.');
+    }
   } else {
     Logger.log('DIAGNOSIS — no programs carried through, which should not happen once gate 2');
     Logger.log('  passed. Worth reporting.');
