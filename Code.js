@@ -2347,6 +2347,74 @@ function perkPeriodKeyEnd_(periodKey, tz) {
 }
 
 /**
+ * The marker VERA writes into a perk reminder event's description, and the only
+ * handle anything has on that event afterwards.
+ *
+ * It exists as a function because it has two call sites that must agree exactly —
+ * checkCardPerksExpiring_ writes it, deletePerkReminderEvent_ looks for it — and
+ * for a while it had only one, which is how a reminder event came to outlive the
+ * perk being marked used with nothing able to find it again.
+ *
+ * The period is part of the marker, so a search for one perk's event cannot match
+ * another period's, and the trailing ':' before it keeps 'CP-1' from matching
+ * 'CP-11'.
+ */
+function perkCalendarMark_(perkId, periodKey) {
+  return 'VERA-PERK:' + perkId + ':' + periodKey;
+}
+
+/**
+ * Removes the reminder event for one perk/period from the shared calendar.
+ *
+ * Called when a perk is marked used. The nightly pass creates an all-day event ON
+ * the period end as soon as the perk is within 7 days of expiring; redeeming the
+ * perk after that point used to leave the event in place, so it still fired on the
+ * morning of the deadline for something already spent.
+ *
+ * Only removes an event that has NOT happened yet. A past event is history — it
+ * records a deadline that really did pass, and deleting it would quietly rewrite
+ * the shared calendar. Standing perks and unparseable period keys have no date to
+ * look at and are left alone by construction.
+ *
+ * Best-effort: every failure is logged and swallowed. A perk that was marked used
+ * but kept a stale calendar event is a much smaller problem than a mark that
+ * failed over calendar bookkeeping.
+ *
+ * @returns {number} how many events were removed
+ */
+function deletePerkReminderEvent_(perkId, periodKey) {
+  var id = String(perkId || '').trim();
+  var pk = String(periodKey || '').trim();
+  if (!id || !pk) return 0;
+
+  try {
+    var tz  = Session.getScriptTimeZone();
+    var end = perkPeriodKeyEnd_(pk, tz);
+    if (!end) return 0;                  // standing, or a shape we do not parse
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (end < today) return 0;           // already fired — leave it as history
+
+    var cal = getPrimarySharedCalendar_();
+    if (!cal) return 0;
+
+    var mark    = perkCalendarMark_(id, pk);
+    var removed = 0;
+    cal.getEventsForDay(end).forEach(function(ev) {
+      if ((ev.getDescription() || '').indexOf(mark) === -1) return;
+      ev.deleteEvent();
+      removed++;
+    });
+    if (removed) Logger.log('deletePerkReminderEvent_: removed ' + removed + ' reminder event(s) for ' + mark);
+    return removed;
+  } catch (err) {
+    Logger.log('deletePerkReminderEvent_: calendar error for ' + id + ' — ' + err.message);
+    return 0;
+  }
+}
+
+/**
  * Closes perk-expiry flags whose period has already ended.
  *
  * Card perks are use-it-or-lose-it, so once the period end has passed the perk is
@@ -2713,7 +2781,7 @@ function checkCardPerksExpiring_() {
           if (!sharedCal) sharedCal = getPrimarySharedCalendar_();
           if (sharedCal) {
             var evTitle    = '⏰ ' + perkName + (amountStr ? ' (' + amountStr + ')' : '') + ' expires today — ' + cardName;
-            var dedupMark  = 'VERA-PERK:' + id + ':' + periodKey;
+            var dedupMark  = perkCalendarMark_(id, periodKey);
             var dupExists  = sharedCal.getEventsForDay(periodEnd).some(function(ev) {
               return (ev.getDescription() || '').indexOf(dedupMark) !== -1;
             });

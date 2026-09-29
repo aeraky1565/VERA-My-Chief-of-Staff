@@ -510,9 +510,28 @@ while the dashboard checkbox still toggles them as a manual override.
 whose stamp matches the current period, so marking one used silences it for the
 rest of the period. Within 14 days of the period end it raises a High flag; within
 7 it also emails and adds a calendar event, both deduped per perk per period.
-Marking used via Chat or the API also **resolves the open flag** — the nightly
-pass stops re-raising it, but nothing used to clear the row already on the
-dashboard. The calendar event is not deleted and will still fire.
+**Marking one used cleans up after the reminder**, whichever way you do it. Both
+writers end in `finishCardPerkMarkedUsed_` (`WebApp.js`), which resolves the
+open flag and takes the reminder event off the shared calendar if its day has not
+arrived yet. An event whose date has already passed stays as history.
+
+> They did **not** always agree. `webMarkCardPerkUsed_` (Chat, API) resolved the
+> flag; `webToggleCardPerk_` — the dashboard checkbox, the path actually used —
+> wrote the `Last Used` cell and nothing else. And the `VERA-PERK:<id>:<period>`
+> marker had exactly one occurrence in the repo, where it is written, so nothing
+> could find the event again. A perk redeemed from the dashboard therefore kept
+> its High flag *and* still fired its calendar reminder on the deadline. Both
+> writers now share one cleanup, and `perkCalendarMark_` builds the marker for the
+> writer and the reader alike.
+
+The event is matched on that exact marker — the period is part of it, and the
+trailing `:` is what stops `CP-1` matching `CP-11`. This runs against the
+**shared** calendar, so a loose match would delete real plans.
+
+**Un-ticking a mis-click writes only the cell.** The flag stays resolved and the
+event stays gone: re-raising them would mean clearing `writeFlags`' fingerprint
+and the `PERK_NOTIFY_` latch too, and a mis-click is far commoner than genuinely
+wanting the reminder back. The email, of course, cannot be unsent.
 
 **And when the period ends unredeemed, the flag closes itself.**
 `closeExpiredPerkFlags_` runs in `nightlyRun` immediately before the checker: any

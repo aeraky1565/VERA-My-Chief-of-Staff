@@ -7505,9 +7505,47 @@ function resolveCardPerkRow_(id) {
 }
 
 /**
- * Toggles a perk's used state for the current period. Behaviour is unchanged —
- * this is what the dashboard checkbox calls, and a second click must still clear
- * the stamp so a mis-click can be undone.
+ * Everything that has to happen once a perk is stamped used, beyond the stamp
+ * itself: the open flag is resolved, and the reminder event is taken off the
+ * shared calendar if its day has not arrived yet.
+ *
+ * It is one function because the two writers below have to agree, and for a long
+ * time they did not: webMarkCardPerkUsed_ resolved the flag and the dashboard
+ * checkbox — the path actually used — did neither. Both now end here.
+ *
+ * Only ever called on the transition INTO used. Un-ticking a mis-click restores
+ * the unused stamp and stops there: the flag stays resolved and the event stays
+ * gone. Re-raising them would mean clearing writeFlags' fingerprint and the
+ * PERK_NOTIFY latch as well, and a mis-click is far commoner than genuinely
+ * wanting the reminder back.
+ *
+ * Both halves are best-effort. A perk marked used that kept a flag or an event is
+ * a much smaller problem than a mark that failed over bookkeeping.
+ */
+function finishCardPerkMarkedUsed_(perkId, periodKey) {
+  var out = { flagsResolved: 0, eventsRemoved: 0 };
+  try {
+    out.flagsResolved = resolveCardPerkFlag_(perkId, periodKey);
+  } catch (fe) {
+    Logger.log('finishCardPerkMarkedUsed_: could not resolve the expiry flag — ' + fe.message);
+  }
+  try {
+    out.eventsRemoved = deletePerkReminderEvent_(perkId, periodKey);
+  } catch (ce) {
+    Logger.log('finishCardPerkMarkedUsed_: could not remove the reminder event — ' + ce.message);
+  }
+  return out;
+}
+
+/**
+ * Toggles a perk's used state for the current period. This is what the dashboard
+ * checkbox calls, and a second click must still clear the stamp so a mis-click can
+ * be undone.
+ *
+ * Ticking it now runs the same cleanup Chat and the API run — it previously wrote
+ * the cell and nothing else, which is why a perk marked used from the dashboard
+ * kept its High-urgency flag and still had its calendar reminder fire on the
+ * deadline. Un-ticking writes only the cell, by design.
  *
  * Deliberately still toggles an Autopay perk: that is a manual override on a row
  * the user is looking at. Chat refuses instead (see webMarkCardPerkUsed_), and
@@ -7518,7 +7556,14 @@ function webToggleCardPerk_(e) {
   var r = resolveCardPerkRow_((p.id || '').trim());
   var newUsed = (r.lastUsed === r.period) ? '' : r.period;
   r.sheet.getRange(r.rowNum, r.lastUsedCol).setValue(newUsed);
-  return { ok: true, used: newUsed !== '', period: r.period };
+
+  var out = { ok: true, used: newUsed !== '', period: r.period };
+  if (newUsed !== '') {
+    var done = finishCardPerkMarkedUsed_(r.id, r.period);
+    out.flagsResolved = done.flagsResolved;
+    out.eventsRemoved = done.eventsRemoved;
+  }
+  return out;
 }
 
 /**
@@ -7575,15 +7620,11 @@ function webMarkCardPerkUsed_(e) {
   r.sheet.getRange(r.rowNum, r.lastUsedCol).setValue(r.period);
   out.marked = true;
 
-  // The nightly pass stops re-flagging once the stamp matches, but the flag it
-  // already raised would sit on the dashboard until resolved by hand. Non-fatal:
-  // a perk that was marked used but still shows a flag is a much smaller problem
-  // than a mark that failed because of flag bookkeeping.
-  try {
-    out.flagsResolved = resolveCardPerkFlag_(r.id, r.period);
-  } catch (fe) {
-    Logger.log('webMarkCardPerkUsed_: could not resolve the expiry flag — ' + fe.message);
-  }
+  // The nightly pass stops re-flagging once the stamp matches, but the flag and the
+  // calendar reminder it already raised would outlive the redemption.
+  var done = finishCardPerkMarkedUsed_(r.id, r.period);
+  out.flagsResolved = done.flagsResolved;
+  out.eventsRemoved = done.eventsRemoved;
   return out;
 }
 
