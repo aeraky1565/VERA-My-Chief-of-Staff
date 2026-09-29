@@ -514,6 +514,27 @@ Marking used via Chat or the API also **resolves the open flag** — the nightly
 pass stops re-raising it, but nothing used to clear the row already on the
 dashboard. The calendar event is not deleted and will still fire.
 
+**And when the period ends unredeemed, the flag closes itself.**
+`closeExpiredPerkFlags_` runs in `nightlyRun` immediately before the checker: any
+`perk_expiry_*` flag whose period has passed gets `Resolved = Yes`, so a credit
+that died on Dec 31 stops shouting "expiring in 3 days" from the dashboard in
+March. Marking used was previously the *only* exit — `resolveCardPerkFlag_` fires
+on that alone, and `recordExpiredFlags_` records an outcome at 30 days without
+ever setting `Resolved` — so unredeemed perks accumulated one open flag per period.
+
+- The deadline is derived from the **flag key**, not the perk row.
+  `perkPeriodKeyEnd_` parses the period out of `perk_expiry_<id>_<periodKey>`
+  (`2026`, `2026-H2`, `2026-Q3`, `2026-09`). The row may since have been deleted,
+  renamed or given a different frequency, and the flag still has to close.
+- A key it does not recognise — including `standing` — returns **null and the flag
+  is left alone**. Closing someone's reminder on a guess is worse than leaving it.
+- The outcome is recorded as **`expired`, not `resolved`**. He did not act on it;
+  it lapsed, and "which perks he never redeems" is the signal the learning pass
+  wants. This also prevents a double count: `recordExpiredFlags_` skips rows that
+  are already resolved.
+- The perk row and the calendar event are untouched. The event is an all-day
+  event *on* the period end, so it is already in the past and self-documenting.
+
 The email links to the dashboard root and deliberately carries **no API token**:
 that token is a single global non-expiring credential authorising every endpoint,
 and no VERA email carries one. It cannot deep-link to the specific card because

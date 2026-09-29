@@ -978,6 +978,9 @@ function nightlyRun() {
     try { checkTripDecisionPremises_(); } catch (tpErr) { Logger.log('checkTripDecisionPremises_ error (non-fatal): ' + tpErr.message); stepFailures.push('checkTripDecisionPremises_: ' + tpErr.message); }
 
     // Step 0m-ii: Card perk expiry reminders — flag/email/calendar 2 weeks before a perk period resets unused (Issue #187)
+    // Close last period's lapsed flags BEFORE raising this period's, so the tidy-up
+    // and the new reminders are obviously one step and in the obvious order.
+    try { closeExpiredPerkFlags_(); } catch (cpcErr) { Logger.log('closeExpiredPerkFlags_ error (non-fatal): ' + cpcErr.message); stepFailures.push('closeExpiredPerkFlags_: ' + cpcErr.message); }
     try { checkCardPerksExpiring_(); } catch (cpeErr) { Logger.log('checkCardPerksExpiring_ error (non-fatal): ' + cpeErr.message); stepFailures.push('checkCardPerksExpiring_: ' + cpeErr.message); }
     // Step 0m-iii: Monthly card perk relevance check — verify with issuer via web search, flag stale perks for review (Issue #187)
     try { checkCardPerksActive_(); } catch (cpaErr) { Logger.log('checkCardPerksActive_ error (non-fatal): ' + cpaErr.message); stepFailures.push('checkCardPerksActive_: ' + cpaErr.message); }
@@ -2302,6 +2305,107 @@ function cardPerkPeriodEnd_(freq, today, tz) {
   var d = new Date(year, endMonth, 0); // day 0 of the NEXT month = last day of endMonth
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+/**
+ * When the period a flag key names actually ended.
+ *
+ * Derived from the KEY, not from the perk row. The key already encodes the period
+ * ('2026', '2026-Q3', '2026-H2', '2026-09'), and a perk can be deleted, renamed or
+ * switched to another frequency after its flag was raised — looking the row up
+ * would strand exactly those flags open forever, which is the bug this exists to
+ * close.
+ *
+ * Mirrors cardPerkPeriodKey_'s output shapes exactly; if you add a frequency there,
+ * add its shape here.
+ *
+ * @param {string} periodKey
+ * @param {string} tz
+ * @returns {Date|null} last day of that period, or null when it is not a period we
+ *          recognise — including 'standing', which never ends. Null means LEAVE THE
+ *          FLAG ALONE: closing someone's reminder on a guess is worse than leaving it.
+ */
+function perkPeriodKeyEnd_(periodKey, tz) {
+  var k = String(periodKey || '').trim();
+  if (!k || k.toLowerCase() === 'standing') return null;
+
+  function lastDayOf(year, endMonth) {          // endMonth 1-12
+    var d = new Date(year, endMonth, 0);        // day 0 of the NEXT month
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  var m;
+  if ((m = /^(\d{4})$/.exec(k)))            return lastDayOf(+m[1], 12);
+  if ((m = /^(\d{4})-H([12])$/.exec(k)))    return lastDayOf(+m[1], m[2] === '1' ? 6 : 12);
+  if ((m = /^(\d{4})-Q([1-4])$/.exec(k)))   return lastDayOf(+m[1], +m[2] * 3);
+  if ((m = /^(\d{4})-(\d{2})$/.exec(k))) {
+    var mo = +m[2];
+    if (mo >= 1 && mo <= 12) return lastDayOf(+m[1], mo);
+  }
+  return null;
+}
+
+/**
+ * Closes perk-expiry flags whose period has already ended.
+ *
+ * Card perks are use-it-or-lose-it, so once the period end has passed the perk is
+ * simply gone and the reminder is noise. Nothing closed these before:
+ * resolveCardPerkFlag_ (WebApp.js) fires only when a perk is MARKED USED, and
+ * recordExpiredFlags_ records an outcome after 30 days without ever setting
+ * Resolved. A perk he never redeemed therefore left a High-urgency "expiring in 3
+ * days" flag open indefinitely, for a credit that died on Dec 31.
+ *
+ * The outcome is recorded as 'expired', not 'resolved'. He did not act on it; it
+ * lapsed — and "which perks he never redeems" is the signal SignalLearning wants.
+ * Closing here also stops the 30-day double count, since recordExpiredFlags_ skips
+ * rows already resolved.
+ *
+ * @returns {number} how many flags were closed
+ */
+function closeExpiredPerkFlags_() {
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.FLAGS);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+
+  var tz          = Session.getScriptTimeZone();
+  var today       = new Date();
+  today.setHours(0, 0, 0, 0);
+  var keyCol      = FLAG_HEADERS.indexOf('Key') + 1;
+  var resolvedCol = FLAG_HEADERS.indexOf('Resolved') + 1;
+  if (keyCol < 1 || resolvedCol < 1) return 0;
+
+  var n    = sheet.getLastRow() - 1;
+  var keys = sheet.getRange(2, keyCol, n, 1).getValues();
+  var res  = sheet.getRange(2, resolvedCol, n, 1).getValues();
+  var closed = 0;
+
+  for (var i = 0; i < n; i++) {
+    var key = String(keys[i][0] || '').trim();
+    if (!key || key.toLowerCase().indexOf('perk_expiry_') !== 0) continue;
+    // Already closed — leave it, and do not re-record an outcome for it.
+    if (String(res[i][0] || '').trim().toLowerCase() === 'yes') continue;
+
+    // Everything after the last underscore is the period key. The perk id itself
+    // can contain underscores, so take the TAIL rather than splitting.
+    var periodKey = key.substring(key.lastIndexOf('_') + 1);
+    var end = perkPeriodKeyEnd_(periodKey, tz);
+    if (!end) continue;                  // unparseable or standing — leave it alone
+    if (end >= today) continue;          // still live; the period ends today or later
+
+    // 'Yes', not TRUE — webResolve_ writes 'Yes' and every reader tests
+    // String(...).toLowerCase() === 'yes'. Anything else reads as UNresolved.
+    sheet.getRange(i + 2, resolvedCol).setValue('Yes');
+    closed++;
+    try {
+      recordFlagOutcome_(key, 'expired');
+    } catch (slErr) {
+      Logger.log('closeExpiredPerkFlags_: signal hook (non-fatal) for "' + key + '" — ' + slErr.message);
+    }
+  }
+
+  if (closed) Logger.log('closeExpiredPerkFlags_: closed ' + closed + ' lapsed perk flag(s).');
+  return closed;
 }
 
 /**
