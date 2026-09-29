@@ -1837,7 +1837,29 @@ function getLoungePerkPrograms_() {
  * @returns {{ lounges: Array, tip: string }}
  */
 /** At most this many searches per briefing, so a multi-leg day cannot fan out. */
-var LOUNGE_SEARCH_MAX_QUERIES_ = 6;
+var LOUNGE_SEARCH_MAX_QUERIES_ = 12;
+
+/**
+ * The query for one programme at one airport.
+ *
+ * The old template was program + ' lounge ' + code + ' airport', which for a
+ * programme whose name already contains the word produced "Centurion Lounge lounge
+ * DCA airport". That duplication is why half the results came back as brand pages
+ * naming no specific lounge.
+ */
+function loungeProgramQuery_(program, code) {
+  var p = String(program || '').trim();
+  return /lounge|club/i.test(p) ? (p + ' ' + code) : (p + ' lounge ' + code);
+}
+
+/**
+ * The query that surfaces pages actually enumerating an airport's lounges. The
+ * single best result of the real DCA run — "Lounges at Ronald Reagan Washington
+ * National Airport [DCA]" — came from this shape, not from a programme query.
+ */
+function loungeAirportQuery_(code) {
+  return String(code || '').trim().toUpperCase() + ' airport lounges list';
+}
 
 /**
  * Raw search candidates for each airport x programme pair.
@@ -1868,55 +1890,132 @@ function searchLoungeCandidates_(airports, loungePerks) {
   try { cache = CacheService.getScriptCache(); } catch (e) {}
   var queries = 0;
 
-  (airports || []).forEach(function(a) {
-    var code = String(a && a.code || '').trim().toUpperCase();
-    if (!code) return;
-    byAirport[code] = byAirport[code] || [];
-
-    (loungePerks || []).forEach(function(p) {
+  // 24h: lounge listings do not move hour to hour, and tbLoungeAccess gets run
+  // repeatedly while diagnosing. Same justification as the geocode cache.
+  function fetch_(query, cacheKey, code, program) {
+    var hits = null;
+    if (cache) {
+      try {
+        var cached = cache.get(cacheKey);
+        if (cached) hits = JSON.parse(cached);
+      } catch (e_) {}
+    }
+    if (hits === null) {
       if (queries >= LOUNGE_SEARCH_MAX_QUERIES_) return;
+      queries++;
+      try {
+        hits = doWebSearch_(query, 4) || [];
+      } catch (searchErr) {
+        Logger.log('searchLoungeCandidates_: search failed for "' + query + '" — ' + searchErr.message);
+        hits = [];
+      }
+      if (cache) {
+        try { cache.put(cacheKey, JSON.stringify(hits), 86400); } catch (e2_) {}
+      }
+    }
+    hits.forEach(function(r) {
+      byAirport[code].push({
+        title:   String(r.title   || '').replace(/\s+/g, ' ').trim().substring(0, 150),
+        snippet: String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 300),
+        link:    String(r.link    || '').trim(),
+        program: program,
+      });
+    });
+  }
+
+  var codes = (airports || []).map(function(a) {
+    return String(a && a.code || '').trim().toUpperCase();
+  }).filter(function(c) { return !!c; });
+
+  // General listing queries FIRST. They are the ones that surface pages naming
+  // specific lounges, so a run that hits the cap keeps the most informative
+  // results rather than a pile of brand pages.
+  codes.forEach(function(code) {
+    byAirport[code] = byAirport[code] || [];
+    fetch_(loungeAirportQuery_(code), 'lounge_cand_' + code + '_all', code, '');
+  });
+
+  codes.forEach(function(code) {
+    (loungePerks || []).forEach(function(p) {
       var program = String(p && p.program || '').trim();
       if (!program) return;
-
-      var query    = program + ' lounge ' + code + ' airport';
-      // 24h: lounge listings do not move hour to hour, and tbLoungeAccess gets run
-      // repeatedly while diagnosing. Same justification as the geocode cache.
-      var cacheKey = 'lounge_cand_' + code + '_' +
-                     program.toLowerCase().replace(/[^a-z0-9]/g, '_');
-      var hits     = null;
-
-      if (cache) {
-        try {
-          var cached = cache.get(cacheKey);
-          if (cached) hits = JSON.parse(cached);
-        } catch (e_) {}
-      }
-
-      if (hits === null) {
-        queries++;
-        try {
-          hits = doWebSearch_(query, 4) || [];
-        } catch (searchErr) {
-          Logger.log('searchLoungeCandidates_: search failed for "' + query + '" — ' + searchErr.message);
-          hits = [];
-        }
-        if (cache) {
-          try { cache.put(cacheKey, JSON.stringify(hits), 86400); } catch (e2_) {}
-        }
-      }
-
-      hits.forEach(function(r) {
-        byAirport[code].push({
-          title:   String(r.title   || '').replace(/\s+/g, ' ').trim().substring(0, 150),
-          snippet: String(r.snippet || '').replace(/\s+/g, ' ').trim().substring(0, 300),
-          link:    String(r.link    || '').trim(),
-          program: program,
-        });
-      });
+      fetch_(loungeProgramQuery_(program, code),
+             'lounge_cand_' + code + '_' + program.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+             code, program);
     });
   });
 
   return byAirport;
+}
+
+/**
+ * Does this programme actually operate a lounge at this airport?
+ *
+ * WHY A SEPARATE CHECK. Substring grounding answers "is this name in the text",
+ * which is the wrong question for a descriptive name. "The Centurion Lounge at
+ * Ronald Reagan Washington National Airport" is real but is not a contiguous string
+ * in any snippet, while "Centurion Lounge" appears in ORD's results too — inside a
+ * list of cities that does not include Chicago. No string test can separate "there
+ * is one here" from "they exist, elsewhere". This asks that question directly.
+ *
+ * Same search-then-verdict shape as checkCardPerksActive_ (Code.js): one targeted
+ * search, one short reply, one word. UNKNOWN counts as not confirmed — the failure
+ * mode stays silence.
+ *
+ * @returns {string} 'CONFIRMED' | 'NOT_FOUND' | 'UNKNOWN'
+ */
+function verifyLoungeProgramAtAirport_(program, code) {
+  var prog = String(program || '').trim();
+  var ap   = String(code || '').trim().toUpperCase();
+  if (!prog || !ap) return 'UNKNOWN';
+
+  var cacheKey = 'lounge_verify_' + ap + '_' + prog.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  if (cache) {
+    try {
+      var hit = cache.get(cacheKey);
+      if (hit) return hit;
+    } catch (e_) {}
+  }
+
+  var verdict = 'UNKNOWN';
+  try {
+    var results = doWebSearch_(prog + ' ' + ap + ' airport location', 4) || [];
+    if (!results.length) {
+      if (cache) { try { cache.put(cacheKey, verdict, 86400); } catch (e1_) {} }
+      return verdict;
+    }
+    var snippetText = results.map(function(r) {
+      return String(r.title || '') + ' — ' + String(r.snippet || '');
+    }).join('\n');
+
+    var prompt =
+      'Question: does ' + prog + ' operate, or give access to, a lounge at ' + ap +
+      ' airport?\n\n' +
+      'Search results:\n' + snippetText + '\n\n' +
+      'Answer from these results ONLY. Beware of pages that list the programme\'s ' +
+      'locations at OTHER airports — those are not evidence about ' + ap + '.\n' +
+      'Reply with EXACTLY one word: CONFIRMED if the results show a lounge at ' + ap +
+      ', NOT_FOUND if they indicate there is none there, or UNKNOWN if they do not say.';
+
+    // Raw text, not callClaudeJson_: the answer is one word, not an object.
+    var payload = { model: CLAUDE_MODEL, max_tokens: 10, messages: [{ role: 'user', content: prompt }] };
+    var resp = fetchTracked_('anthropic', CLAUDE_API_URL, {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'x-api-key': getApiKey(), 'anthropic-version': '2023-06-01' },
+      payload: JSON.stringify(payload),
+    });
+    var text = JSON.parse(resp.getContentText()).content[0].text.trim().toUpperCase();
+    if (text.indexOf('NOT_FOUND') !== -1 || text.indexOf('NOT FOUND') !== -1) verdict = 'NOT_FOUND';
+    else if (text.indexOf('CONFIRMED') !== -1) verdict = 'CONFIRMED';
+  } catch (err) {
+    Logger.log('verifyLoungeProgramAtAirport_(' + prog + ', ' + ap + ') — ' + err.message);
+    verdict = 'UNKNOWN';
+  }
+
+  if (cache) { try { cache.put(cacheKey, verdict, 86400); } catch (e3_) {} }
+  return verdict;
 }
 
 /** Everything fetched for one airport, as one lowercase alphanumeric blob. */
@@ -1985,15 +2084,43 @@ function validateLounges_(lounges, candidates, airports, loungePerks) {
     if (!name)                       { dropped.push('(unnamed) — no lounge_name'); return; }
     if (!okAirports[code])           { dropped.push(name + ' — airport "' + code + '" was not asked about'); return; }
     if (!okPrograms[prog.toLowerCase()]) { dropped.push(name + ' @ ' + code + ' — programme "' + prog + '" is not held'); return; }
-    // Most specific reason first — the diagnostic prints these, and "contains a
-    // caveat" tells you more about what the model did than "too long".
+    // Model misbehaviour first — these say something about what it did, which is
+    // more useful in the log than a length complaint.
     if (/[(\[]/.test(name))          { dropped.push(name + ' — name contains a parenthetical caveat'); return; }
     if (LOUNGE_HEDGE_RE_.test(name)) { dropped.push(name + ' — name hedges rather than names'); return; }
-    if (name.length > 60)            { dropped.push(name.substring(0, 40) + '… — name too long to be a name'); return; }
 
+    // TWO WAYS IN, and keeping both matters.
+    //
+    // Verbatim is the deterministic guard and costs nothing — it is how a proper
+    // noun like "The Club DCA" gets through. But it produced a false negative on a
+    // real lounge: "The Centurion Lounge at Ronald Reagan Washington National
+    // Airport" is a description, not a string any snippet contains, and a 60-char
+    // cap killed it before it was even tested.
+    //
+    // So a name that is not verbatim is not rejected — it is escalated to the
+    // question a string test cannot answer: does this programme have a lounge at
+    // this airport at all? That is what separates the real DCA Centurion from the
+    // invented ORD one, since "Centurion Lounge" appears in both corpora.
     var corpus = loungeCorpusFor_(candidates, code);
-    if (!loungeNameIsGrounded_(name, corpus)) {
-      dropped.push(name + ' @ ' + code + ' — NOT FOUND in anything retrieved for ' + code);
+    if (loungeNameIsGrounded_(name, corpus)) {
+      l.admittedBy = 'verbatim';
+    } else {
+      var verdict = 'UNKNOWN';
+      try { verdict = verifyLoungeProgramAtAirport_(prog, code); } catch (ve) {
+        Logger.log('validateLounges_: verification threw — ' + ve.message);
+      }
+      if (verdict !== 'CONFIRMED') {
+        dropped.push(name + ' @ ' + code + ' — not in ' + code + '’s results, and "' +
+                     prog + ' at ' + code + '" came back ' + verdict);
+        return;
+      }
+      l.admittedBy = 'verified';
+    }
+
+    // Length last, and generous: a real name can be long. This is a sanity bound on
+    // a runaway string, not a judgement about what a name looks like.
+    if (name.length > 100) {
+      dropped.push(name.substring(0, 40) + '… — name implausibly long (' + name.length + ' chars)');
       return;
     }
 
@@ -2809,6 +2936,18 @@ function diagnoseLoungeAccess_(dateStr, airportsOverride) {
       Logger.log('    (' + r.program + ') ' + r.title.substring(0, 90));
     });
   });
+  if (total) {
+    Logger.log('');
+    Logger.log('Programme-at-airport verdicts (the check a string match cannot make):');
+    Object.keys(cands).forEach(function(code) {
+      loungePerks.forEach(function(p) {
+        var v = 'UNKNOWN';
+        try { v = verifyLoungeProgramAtAirport_(p.program, code); } catch (ve) {}
+        Logger.log('  ' + p.program + ' @ ' + code + '  ->  ' + v +
+                   (v === 'CONFIRMED' ? '' : '   (a lounge for this pair now needs a verbatim match)'));
+      });
+    });
+  }
   if (!total) {
     Logger.log('  NONE. Either VERA_SEARCH_API_KEY is unset in Script Properties, or the');
     Logger.log('  searches returned nothing. The lookup will NOT fall back to model recall —');
@@ -2834,6 +2973,9 @@ function diagnoseLoungeAccess_(dateStr, airportsOverride) {
     Logger.log('  [' + i + '] ' + (l.lounge_name || '(unnamed)') + ' @ ' + (l.airport_code || '?') +
                '  program=' + (l.program || '?') + '  terminal=' + (l.terminal || '-') +
                '  hours=' + (l.hours || '-'));
+    Logger.log('        admitted by: ' + (l.admittedBy === 'verbatim'
+               ? 'name found verbatim in ' + (l.airport_code || '?') + '’s results'
+               : 'verification — "' + (l.program || '?') + ' at ' + (l.airport_code || '?') + '" CONFIRMED'));
   });
   if (data.tip) Logger.log('  tip: ' + data.tip);
 

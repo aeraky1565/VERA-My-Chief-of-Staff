@@ -762,15 +762,35 @@ that has never had one, and the same at IAD. The prompt already said *"only incl
 lounges you are CONFIDENT exist — do not guess"*, and it guessed anyway, so that
 paragraph is gone; stronger wording was never going to be the fix.
 
-`searchLoungeCandidates_` now runs one `doWebSearch_` per airport × programme
-(capped at 6, cached 24h), and the prompt asks the model to pick from those results
-rather than to remember. The guard that actually holds the line is deterministic,
+`searchLoungeCandidates_` runs a general `<CODE> airport lounges list` query per
+airport — the shape that surfaces pages actually enumerating lounges — then one per
+programme, phrased so a name already containing the word does not produce
+`Centurion Lounge lounge DCA airport`. General queries go first so a capped run keeps
+the informative ones; 12 queries max, cached 24h. The prompt then asks the model to
+pick from those results rather than to remember. The guard that actually holds the line is deterministic,
 in `validateLounges_`:
 
-- **`loungeNameIsGrounded_`** — the name, reduced to lowercase alphanumerics, must
-  appear in the snippets retrieved **for its own airport**. `centurionloungechicagoohare`
-  is in no ORD snippet, so it never reaches the email. Per-airport on purpose: a real
-  name from one airport must not vouch for a fabrication at another.
+**Two ways in, and both are needed.** A lounge is kept when it passes the cheap
+rejections **and** either:
+
+- **its name appears verbatim** in the snippets retrieved for *its own airport* —
+  `loungeNameIsGrounded_`, normalising both sides to lowercase alphanumerics. Free,
+  deterministic, and how a proper noun like `The Club DCA` gets through. Per-airport
+  on purpose: a real name from one airport must not vouch for a fabrication at
+  another; or
+- **its (programme, airport) pair verifies** — `verifyLoungeProgramAtAirport_` runs
+  one targeted search and takes a one-word `CONFIRMED` / `NOT_FOUND` / `UNKNOWN`
+  verdict, cached 24h. **`UNKNOWN` is not a yes.**
+
+The second path exists because the first had a false negative: `The Centurion Lounge
+at Ronald Reagan Washington National Airport` is real, but it is a *description*, not
+a string any snippet contains — and it was being rejected by an arbitrary 60-character
+cap before grounding even ran. The cap is now 100 and runs *after* grounding.
+
+Equally, the pair check cannot replace the string check. `Centurion Lounge` appears in
+ORD's results too, inside a list of cities that does not include Chicago — so no
+substring test can separate *"there is one here"* from *"they exist, elsewhere"*, and
+no model verdict alone should be the only guard. Keeping both is the point.
 - A name containing a parenthetical or a hedge is **not a name** — the real run
   produced `"The Salon at O'Hare (United Polaris Lounge excluded; check current
   PP-participating lounges)"`.
