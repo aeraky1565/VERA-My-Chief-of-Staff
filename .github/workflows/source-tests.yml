@@ -1,0 +1,91 @@
+name: VERA Source Tests
+
+# Tests that read the repo's own source. They brace-match the real functions out of
+# Code.js, WebApp.js and the dashboard files and run them in a vm, so they check what
+# is committed rather than a transcription of it.
+#
+# Distinct from "VERA Regression Tests", which drives the DEPLOYED dashboard over the
+# network and therefore has to wait for Pages to publish first. These need nothing but
+# a checkout, so they run on every branch — until now nothing checked a branch at all.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: source-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast:
+    name: node tests + controls
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No browser needed, so skip the Chromium download entirely.
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --no-audit --no-fund
+
+      # The controls are part of this job on purpose: they are what proves the
+      # assertions bite, and several have gone vacuous after a refactor.
+      - name: Run tests
+        run: node tests/run.js --node --controls
+
+  ui:
+    name: browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: npx playwright install --with-deps chromium
+
+      # These render docs/index.html and docs/dashboard-lite.html from file:// and
+      # measure the result, so they need no server and no deployment.
+      - name: Run tests
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: '0'
+        run: node tests/run.js --browser
+
+  notify:
+    name: report a failure
+    runs-on: ubuntu-latest
+    needs: [fast, ui]
+    if: failure() && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set — skipping Slack notification"
+            exit 0
+          fi
+          COMMIT_MSG=$(git log -1 --pretty=format:%s)
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          curl -sX POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"text\":\"❌ VERA source tests *failed* on \`main\`\n\`${COMMIT_SHA}\` ${COMMIT_MSG}\"}"

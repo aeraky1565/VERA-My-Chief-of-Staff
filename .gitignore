@@ -9,5 +9,9 @@ docs/_app.jsx
 test-results/
 playwright-report/
 
+# Mutated source trees the negative-control runners build and then delete. The
+# trailing slash matters: the ctl_*.js runners themselves are tracked.
+tests/source/ctl*/
+
 # Local env (credentials — never commit)
 .env.local

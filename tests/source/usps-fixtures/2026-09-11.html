@@ -1,0 +1,1862 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+ <head>
+  <meta content="IE.0000" http-equiv="X-UA-Compatible">
+  <meta http-equiv="content-t pe" content="application/xhtml+xml; charset=UTF-8">
+  <meta name="viewport" content="width�vice-width, initial-scale=1.0">
+  <title>Informed Delivery</title>
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <style type="text/css">
+      /* Dark Mode media queries to target Apple Mail, some Android and Outlook.com */
+      @media (prefers-color-scheme: dark) {
+        .img-dark-mode,
+        .multi-envelope-icon-dark-mode,
+        .x_img-dark-mode,
+        .x_multi-envelope-icon-dark-mode {
+          filter: invert(100%) sepia(100%) saturate(0) hue-rotate(204deg)
+            brightness(103%) contrast(104%);
+        }
+        .primary-background-color {
+          background: linear-gradient(#3573b1, #3573b1);
+        }
+        .secondary-background-color {
+          background: linear-gradient(#336, #336);
+        }
+        .header-font-colors {
+          color: #fffffe !important;
+        }
+        .dark-mode-section {
+          background: linear-gradient(#2a2a32, #2a2a32);
+          background-color: #2a2a32;
+          color: #fffffe !important;
+        }
+        .primary-font-color,
+        .responsive-header {
+          color: #fffffe !important;
+        }
+        .secondary-font-color {
+          color: #fffffe !important;
+        }
+        .tracking-number a {
+          color: #fffffe !important;
+        }
+        .estimated-delivery {
+          color: #fffffe !important;
+        }
+        .warning-message {
+          color: #fffffe !important;
+        }
+        .linkable-text {
+          color: #fffffe !important;
+          -webkit-text-fill-color: #fffffe !important;
+          text-decoration: none !important;
+        }
+      }
+      /* DARK Mode END */
+
+      .primary-background-color {
+        background-color: #336;
+      }
+      .secondary-background-color {
+        background-color: #3573b1;
+      }
+      .header-font-colors {
+        color: #336;
+      }
+      .dark-mode-section {
+        background-color: #f7f7f7;
+        color: #000001;
+      }
+      .from-section-desktop {
+        border-bottom: 2px solid #b8b8b8;
+      }
+      .from-section-mobile {
+        background-color: #f7f7f7;
+        border-bottom: none;
+      }
+      .primary-font-color,
+      .responsive-header {
+        color: #336;
+      }
+      .secondary-font-color {
+        color: #000001;
+      }
+      .email-box-shadow {
+        box-shadow: 0 8px 4px -4px#dee2e6 !important;
+      }
+      .mobile {
+        display: none;
+      }
+      .expected-items-total {
+        background-color: #336 !important;
+        min-width: 80px;
+        padding: 10px 8px 8px 8px;
+        margin: 0;
+        font-size: 15px;
+        text-align: center;
+        color: #fffffe !important;
+        border-radius: 12px;
+        font-weight: 400 !important;
+      }
+      .linkable-text {
+        color: #000001;
+        text-decoration: none !important;
+      }
+      .linkable-text:focus {
+        outline: 3px solid #52addb !important;
+      }
+      .primary-button {
+        background-color: #333367 !important;
+        border: none !important;
+        border-radius: 3px;
+        color: #fffffe !important;
+        display: inline-block;
+        font-size: 16px;
+        line-height: 44px;
+        text-align: center;
+        text-decoration: none;
+        width: 225px;
+        -webkit-text-size-adjust: none;
+        white-space: nowrap;
+        -webkit-text-size-adjust: none;
+        height: 42px;
+        font-weight: 700;
+        font-family: Arial, Helvetica, sans-serif;
+        vertical-align: middle !important;
+        margin-right: 20px;
+      }
+      .view-dashboard-a,
+      .x_view-dashboard-a {
+        text-decoration: none !important;
+      }
+      a[class~="view-dashboard-a"] {
+        text-decoration: none !important;
+      }
+      .view-dashboard-button {
+        border-radius: 3px;
+        padding: 9px 10px;
+        border: 1px solid #fffffe !important;
+        text-decoration: none !important;
+        cursor: pointer;
+        text-align: center;
+        font-weight: 700;
+        font-size: 16px;
+        height: 44px;
+        color: #fffffe !important;
+        width: 200px;
+        white-space: nowrap;
+      }
+      .view-dashboard-button:focus {
+        outline: 4px solid #52addb;
+      }
+      .secondary-button {
+        border: 1px solid #336;
+        background-color: #fffffe !important;
+        border-radius: 3px;
+        color: #336 !important;
+        display: inline-block;
+        font-size: 16px;
+        line-height: 44px;
+        text-align: center;
+        text-decoration: none;
+        width: 225px;
+        -webkit-text-size-adjust: none;
+        white-space: nowrap;
+        -webkit-text-size-adjust: none;
+        height: 42px;
+        font-weight: 700;
+        font-family: Arial, Helvetica, sans-serif;
+        vertical-align: middle !important;
+        margin-right: 20px;
+      }
+      .expected-items-total {
+        background-color: #336 !important;
+        min-width: 80px;
+        padding: 10px 8px 8px 8px;
+        margin: 0;
+        font-size: 15px;
+        text-align: center;
+        color: #fffffe !important;
+        border-radius: 12px;
+        font-weight: 400 !important;
+      }
+      .more-mail {
+        border-bottom: 2px solid #999;
+        padding-bottom: 5px;
+      }
+      .more-mail p {
+        font-size: 12px;
+      }
+      .legal p {
+        font-size: 11px;
+      }
+      .legal td {
+        color: #000001 !important;
+      }
+      .legal td a {
+        color: #3573b1 !important;
+      }
+      .tracking-number {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .estimated-delivery {
+        font-size: 16px;
+      }
+      .warning-message {
+        border-left: 10px solid #d4352d !important;
+        padding-left: 15px;
+        margin-right: 25px;
+        line-height: 22px;
+        margin-top: 0;
+      }
+      body,
+      html {
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-text-size-adjust: none;
+      }
+      .custom-email-doc {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 15px;
+        font-weight: 400;
+        display: block;
+        margin: 0 auto;
+        max-width: 800px;
+      }
+      hr {
+        clear: both;
+        display: block;
+        height: 2px;
+        background-color: #b8b8b8 !important;
+        border-top-width: 0;
+        border-right-width: 0;
+        border-bottom-width: 0;
+        border-left-width: 0;
+        border-top-style: none;
+        border-right-style: none;
+        border-bottom-style: none;
+        border-left-style: none;
+        margin-top: 0;
+        margin-right: 0;
+        margin-bottom: 0;
+        margin-left: 0;
+      }
+      h2 {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 21px;
+        font-weight: 700;
+        margin: 0;
+        padding: 5px 0;
+      }
+      .header h1 {
+        font-size: 33px;
+        font-weight: 700;
+      }
+      .header tbody tr td a img {
+        padding-left: 30px;
+      }
+      .refer {
+        border-top: 2px solid #999 !important;
+      }
+      .refer button {
+        margin-right: 20px;
+        margin-bottom: 20px;
+      }
+
+      @media screen and (max-width: 768px) {
+        h2.section-heading {
+          font-size: 17px !important;
+        }
+        .desktop {
+          mso-hide: all !important;
+          display: none !important;
+        }
+        .mobile {
+          display: block !important;
+        }
+        .mobile-button {
+          border: none !important;
+          text-decoration: underline !important;
+          font-weight: 400 !important;
+        }
+        .responsive-header {
+          font-size: 18px !important;
+          margin-right: auto !important;
+        }
+        .responsive-header-logo {
+          margin-left: auto !important;
+        }
+        .from-section-desktop {
+          border-bottom: none !important;
+          border-top-right-radius: 18px;
+        }
+        .from-section-mobile {
+          border-bottom: 2px solid #b8b8b8 !important;
+        }
+        .img-container img {
+          width: 100%;
+        }
+        .primary-button {
+          width: 100% !important;
+          margin-bottom: 20px;
+          margin-right: 0 !important;
+        }
+        .secondary-button {
+          width: 100% !important;
+          margin-top: 0 !important;
+          margin-right: 0 !important;
+        }
+        .refer button {
+          margin-right: 0 !important;
+        }
+        .referButtons {
+          text-align: center !important;
+          margin-left: 0 !important;
+        }
+        #refer-email-link,
+        #refer-text-link,
+        .refer-email-button,
+        .refer-text-button {
+          text-align: center !important;
+          margin-left: 0 !important;
+          display: block !important;
+          width: 100% !important;
+        }
+        .img-container img {
+          width: 100%;
+        }
+        .view-dashboard-button,
+        a.view-dashboard-button {
+          border: none !important;
+          text-decoration: underline !important;
+          font-weight: 400 !important;
+        }
+        .section-header-title,
+        .x_section-header-title {
+          font-size: 23px !important ;
+        }
+        h1[class~="section-header-title"] {
+          font-size: 23px !important;
+        }
+        td[class~="td-view-dash"] {
+          padding-right: 8px !important;
+        }
+        .td-view-dash,
+        .x_td-view-dash {
+          padding-right: 8px !important;
+        }
+      }
+
+      /* Override only the heading size for <C0px, 15px max to prevent wrapping */
+      @media screen and (max-width: 430px) {
+        h2.section-heading {
+          font-size: 15px !important;
+        }
+      }
+    </style>
+ </head>
+ <body leftmargin="0" marginwidth="0" topmargin="0" marginheight="0" offset="0" style="
+      margin: 0 auto !important;
+      padding: 0 !important;
+      mso-line-height-rule: exactly;
+      max-width: 820px !important;
+      -webkit-text-size-adjust: none;
+      font-family: Arial, Helvetica, sans-serif;
+    " class="email-background">
+  <p style="display: none; visibility: hidden">
+   <br>
+   <img height="0" width="0" alt="" src="http://pixel.watch/1ewx" style="display: none; visibility: hidden"> <img id="email-tracking-href-id" height="0" width="0" alt="" style="display: none; visibility: hidden" src="https://informeddelivery.usps.com/tracking/emailRead?emailToken�eb61dc-70a7-41d7-ba58-3a8dd54bfd42&sentTime 26-09-11T16:18:35.486Z&deliveryDate 26-09-11T05:00:00.000Z&origin=cloudDigest"> <img id="cloud-email-read-href-id" height="0" width="0" alt="" style="display: none; visibility: hidden" src="https://informeddelivery.usps.com/trackingV2/digest/open?a=k_yp4ClVYElkKr_NtNR9j-tj2SlddxvF2G2W8qqnnGXQXfQQlsbbvPSQTK0-UAdNQuBay5bshQ5GH4SnLx9yMOffTxQVSfqc2T0B2yjzmmmkmV_tD4gaZ5FpRBFfDekLG_k46NPoL8jV7HMPvxgQ9fe3q5ft0UHDmDZPXYMOEeJCdgD2y3DE1Zcmwg">
+  </p>
+  <!-- YAHOO styles, YAHOO removes style tag from header so 2nd styles tag needs to be in body tag -->
+  <style>
+      @media screen and (max-width: 768px) {
+        h2.section-heading {
+          font-size: 17px !important;
+        }
+        .desktop {
+          mso-hide: all !important;
+          display: none !important;
+        }
+        .mobile {
+          display: block !important;
+        }
+        .mobile-button {
+          border: none !important;
+          text-decoration: underline !important;
+          font-weight: 400 !important;
+        }
+        .responsive-header {
+          font-size: 18px !important;
+          margin-right: auto !important;
+        }
+        .responsive-header-logo {
+          margin-left: auto !important;
+        }
+        .from-section-desktop {
+          border-bottom: none !important;
+          border-top-right-radius: 18px;
+        }
+        .from-section-mobile {
+          border-bottom: 2px solid #b8b8b8 !important;
+        }
+        .img-container img {
+          width: 100%;
+        }
+        .primary-button {
+          width: 100% !important;
+          margin-bottom: 20px;
+          margin-right: 0 !important;
+        }
+        .secondary-button {
+          width: 100% !important;
+          margin-top: 0 !important;
+          margin-right: 0 !important;
+        }
+        .refer button {
+          margin-right: 0 !important;
+        }
+        .referButtons {
+          text-align: center !important;
+          margin-left: 0 !important;
+        }
+        #refer-email-link,
+        #refer-text-link,
+        .refer-email-button,
+        .refer-text-button {
+          text-align: center !important;
+          margin-left: 0 !important;
+          display: block !important;
+          width: 100% !important;
+        }
+        .img-container img {
+          width: 100%;
+        }
+        .view-dashboard-button,
+        a.view-dashboard-button {
+          border: none !important;
+          text-decoration: underline !important;
+          font-weight: 400 !important;
+        }
+        .section-header-title,
+        .x_section-header-title {
+          font-size: 23px !important ;
+        }
+        h1[class~="section-header-title"] {
+          font-size: 23px !important;
+        }
+        td[class~="td-view-dash"] {
+          padding-right: 8px !important;
+        }
+        .td-view-dash,
+        .x_td-view-dash {
+          padding-right: 8px !important;
+        }
+      }
+
+      /* Override only the heading size for <C0px */
+      @media screen and (max-width: 430px) {
+        h2.section-heading {
+          font-size: 15px !important;
+        }
+      }
+    </style>
+  <!--[if mso]>
+        <table role="presentation" class="mso-ghost-wrapper" align="center" width="820" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+                <td width="100%">
+    <![endif]-->
+  <div class="custom-email-doc">
+   <table role="presentation" align="center" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout: fixed; display: block">
+    <tbody>
+     <tr>
+      <td width="*"><!-- EMAIL HEAD -->
+       <table role="presentation" class="header" align="center" style="text-align: center; width: 100%" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tbody align="center">
+         <tr style="width: 100%; text-align: center; margin-top: 40px">
+          <td style="padding-left: 20px; padding-top: 40px; width: 100%" class="responsive-header-logo"><img src="https://www.usps.com/email/id/uspslogo.png" alt="USPS Logo" width="64" height="36"></td>
+         </tr>
+         <tr style="
+                    width: 100%;
+                    text-align: center;
+                    vertical-align: middle;
+                  " align="center">
+          <!--[if !mso]><!-->
+          <td style="
+                      vertical-align: middle;
+                      width: 100%;
+                      text-align: center;
+                    " align="center"><!--<![endif]--> <!--[if mso]>
+                        <td style="vertical-align: middle; width: 100%;text-align:center;padding:20px;" align="center">
+                        <![endif]-->
+           <h1 class="responsive-header primary-font-color" style="
+                        width: 100%;
+                        text-align: center;
+                        mso-line-height-rule: exactly;
+                        line-height: 40px;
+                        color: #333366;
+                      ">COMING TO YOU SOON</h1></td>
+         </tr>
+        </tbody>
+       </table>
+       <!-- DESK HEAD -->
+       <table role="presentation" class="header desktop" style="border-collapse: separate !important" width="100%" cellpadding="0" cellspacing="0" align="center" border="0">
+        <tbody style="border-collapse: separate !important" cellpadding="0" cellspacing="0">
+         <tr class="email-box-shadow" style="border-radius: 20px" cellpadding="0" cellspacing="0" border="0">
+          <td class="primary-background-color" align="left" style="
+                      background-color: #333366;
+                      color: #fffffe;
+                      width: 50%;
+                      padding: 20px 20px 10px 20px;
+                      border: 1px solid #707070;
+                      border-right: none;
+                      border-radius: 20px 0px 0px 20px;
+                      border-collapse: separate !important;
+                    " height="100%" cellpadding="0" cellspacing="0" border="0">
+           <h2 id="userDeskGreet" style="font-size: 22px; color: #fffffe">Hi<span id="userNameDesk" style="font-size: 22px; color: #fffffe">, Ahmed</span>!</h2>
+           <p style="
+                        color: #fffffe;
+                        font-size: 16px;
+                        font-weight: 100;
+                        line-height: 28px;
+                      ">You have <span id="total-mailpieces">1</span> mailpiece(s) and <span id="total-packages">2</span> inbound package(s) arriving soon.</p>
+           <h2 style="font-size: 24px; padding: 0" id="date-day">Friday</h2>
+           <table align="left" style="
+                        border-collapse: separate !important;
+                        text-align: left !important;
+                        display: block;
+                      " cellpadding="0" cellspacing="0" border="0" role="presentation">
+            <tbody align="left" style="
+                          text-align: left !important;
+                          border-collapse: separate !important;
+                        " cellpadding="0" cellspacing="0" border="0">
+             <tr align="left" style="
+                            text-align: left !important;
+                            border-collapse: separate !important;
+                          ">
+              <td align="left" style="
+                              text-align: left !important;
+                              display: inline-block;
+                            "><span style="
+                                font-size: 60px;
+                                font-weight: normal;
+                                color: #fffffe;
+                                padding: 0;
+                                text-align: left !important;
+                              " id="date-number">11</span></td>
+              <td align="left" style="
+                              text-align: left !important;
+                              padding-left: 8px;
+                              padding-top: 10px;
+                              display: inline-block;
+                            ">
+               <div style="
+                                color: #fffffe;
+                                font-size: 14px;
+                                font-weight: bold;
+                                text-align: left !important;
+                                padding-bottom: 3px;
+                              " id="month">September</div>
+               <div style="
+                                color: #fffffe;
+                                font-size: 14px;
+                                font-weight: bold;
+                                text-align: left !important;
+                                padding-bottom: 0px;
+                              " id="year">2026</div>
+              </td>
+             </tr>
+             <tr style="
+                            border-collapse: separate !important;
+                            font-size: 1px !important;
+                            line-height: 1px !important;
+                          " cellpadding="0" cellspacing="0">
+              <td colspan="2" style="
+                              font-size: 1px !important;
+                              line-height: 1px !important;
+                            "> </td>
+             </tr>
+            </tbody>
+           </table>
+          </td>
+          <td class="dark-mode-section" style="
+                      border-collapse: separate !important;
+                      border: 1px solid #707070;
+                      border-left: none;
+                      border-radius: 0px 20px 20px 0px;
+                      padding: 20px 55px;
+                    " height="100%" cellpadding="0" cellspacing="0" border="0">
+           <table align="center" style="
+                        text-align: center;
+                        border-collapse: separate !important;
+                      " cellpadding="0" cellspacing="0" border="0" role="presentation">
+            <tbody>
+             <tr cellpadding="0" cellspacing="0" border="0">
+              <td style="text-align: center; vertical-align: middle">
+               <h1 class="primary-font-color" style="
+                                font-size: 56px;
+                                margin-bottom: 5px;
+                                margin-top: 0;
+                              " id="bg-total-mailpieces">1</h1>
+               <p class="numbers"><strong>Mailpiece(s)</strong></p>
+              </td>
+              <td width="40px" style="padding: 30px"> </td>
+              <td style="text-align: center; vertical-align: middle">
+               <h1 class="primary-font-color" style="
+                                font-size: 56px;
+                                margin-bottom: 5px;
+                                margin-top: 0;
+                              " id="bg-total-packages">2</h1>
+               <p class="numbers"><strong>Package(s)</strong></p>
+              </td>
+             </tr>
+            </tbody>
+           </table>
+          </td>
+         </tr>
+        </tbody>
+       </table>
+       <!-- END DESK HEAD --><!-- MOB HEAD -->
+       <table role="presentation" class="header mobile" style="
+                mso-hide: all;
+                display: none;
+                border-collapse: separate !important;
+              " width="100%" cellpadding="0" cellspacing="0" align="center" border="0">
+        <tbody>
+         <tr class="email-box-shadow" style="border-radius: 20px">
+          <td class="primary-background-color" style="
+                      background-color: #333366;
+                      mso-hide: all;
+                      color: #fffffe;
+                      width: 50%;
+                      padding: 20px;
+                      border-radius: 20px 20px 0px 00px;
+                    ">
+           <h2 id="userMobileGreet" style="
+                        font-size: clamp(1.125rem, 2.2vw + 0.5rem, 1.6rem);
+                        color: #fffffe;
+                      ">Hi<span id="userNameMobile" style="
+                          font-size: clamp(1.125rem, 2.2vw + 0.5rem, 1.6rem);
+                          color: #fffffe;
+                        ">, Ahmed</span>!</h2>
+           <p style="
+                        color: #fffffe;
+                        font-size: clamp(1rem, 2vw + 0.5rem, 1.5rem);
+                        font-weight: 100;
+                        line-height: 28px;
+                      ">You have <span id="total-mailpieces-secondary">1</span> mailpiece(s) and <span id="total-packages-secondary">2</span> inbound package(s) arriving soon.</p>
+          </td>
+         </tr>
+         <tr style="mso-line-height-rule: exactly">
+          <td align="center" class="dark-mode-section email-box-shadow header-font-colors" style="
+                      mso-hide: all;
+                      border-radius: 0 0 20px 20px;
+                      margin: 0 auto !important;
+                      display: block;
+                      mso-line-height-rule: exactly;
+                    ">
+           <table cellpadding="0" cellspacing="0" style="border-collapse: separate !important">
+            <tbody>
+             <tr>
+              <td style="
+                              mso-hide: all;
+                              text-align: center;
+                              padding: 20px;
+                              mso-line-height-rule: exactly;
+                              line-height: 20px;
+                              padding-top: 0px;
+                            ">
+               <h1 style="
+                                mso-line-height-rule: exactly;
+                                mso-hide: all;
+                                font-size: 27px;
+                                padding-top: 8px;
+                                text-transform: uppercase;
+                              " id="date-month-secondary">Sep</h1>
+               <h1 class="header-font-colors" style="
+                                mso-line-height-rule: exactly;
+                                mso-hide: all;
+                                font-size: 26px;
+                                padding-top: 0px;
+                              " id="date-day-secondary"><strong></strong> 11</h1>
+              </td>
+              <td style="
+                              mso-hide: all;
+                              text-align: center;
+                              padding: 20px;
+                            ">
+               <h1 id="bg-total-mailpieces-secondary" style="
+                                mso-hide: all;
+                                font-size: 32px;
+                                margin-bottom: 5px;
+                                margin-top: 0;
+                              ">1</h1>
+               <p class="header-font-colors" style="mso-hide: all; font-size: 15px"><strong>Mailpiece(s)</strong></p>
+              </td>
+              <td style="
+                              mso-hide: all;
+                              text-align: center;
+                              padding: 20px;
+                            ">
+               <h1 id="bg-total-packages-secondary" style="
+                                mso-hide: all;
+                                font-size: 32px;
+                                margin-bottom: 5px;
+                                margin-top: 0;
+                              ">2</h1>
+               <p class="header-font-colors" style="mso-hide: all; font-size: 15px"><strong>Package(s)</strong></p>
+              </td>
+             </tr>
+             <tr class="desktop"></tr>
+            </tbody>
+           </table>
+          </td>
+         </tr>
+         <tr height="10px" style="mso-hide: all"></tr>
+        </tbody>
+       </table>
+       <!-- END MOB HEAD --><!-- END HEAD CONT -->
+       <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+        <tbody>
+         <tr>
+          <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+         </tr>
+        </tbody>
+       </table>
+       <!-- START MAIL SECT -->
+       <div id="mail-section" style="display: block">
+        <table role="presentation" class="mail section-header primary-background-color" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+                  background-color: #333366;
+                  color: #fffffe;
+                  border-top-left-radius: 18px;
+                  border-top-right-radius: 18px;
+                  width: 100% !important;
+                  table-layout: fixed;
+                ">
+         <tbody>
+          <tr>
+           <td class="primary-background-color" height="80" width="50" style="
+                        background-color: #333366;
+                        width: 50px;
+                        min-width: 50px;
+                        padding-left: 20px;
+                        border-top-left-radius: 18px;
+                      "><a id="mailbox-url-icon" href="#"> <img style="
+                            filter: saturate(1000%) brightness(1003%) !important;
+                            width: 50px !important;
+                            min-width: 50px;
+                          " src="https://www.usps.com/email/id/icon-envelope.png" alt="Icon Envelope" width="50" height="34"> </a></td>
+           <td class="primary-background-color" style="
+                        background-color: #333366;
+                        vertical-align: middle;
+                        width: auto;
+                      "><span>
+             <h1 class="section-header-title" style="
+                            display: inline;
+                            vertical-align: middle;
+                            font-size: clamp(1.25rem, 3.56vw, 2.2rem);
+                          ">  MAIL</h1>
+            </span></td>
+           <td class="primary-background-color td-view-dash" style="
+                        background-color: #333366;
+                        border-top-right-radius: 18px;
+                        padding-right: 20px;
+                        text-align: right;
+                      "><a id="mailbox-url-link" class="view-dashboard-a" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9jxD-BQ5t0bYUlHvHv3eB6zwbWMpeS8Aloz5sGFF-osZgBy1XJmxuzt8MskJEYBdRlqKIX-VYwGpgIk4dOrL9nKmOFf44MdeYYzz714NfB4aRYVEZFUi5VUikpM4bDOauvVsuye-ruboVMbvwYQWQNVt3Kn0BqUkpPQj0hf-FkDx01-S1PQkZNj3JtHCfauE" style="text-decoration: none"> <span class="mobile-button primary-background-color view-dashboard-button" tabindex="0" style="
+                            background-color: #333366;
+                            border-radius: 3px;
+                            padding: 9px 10px;
+                            border: 1px solid #fffffe;
+                            text-decoration: none;
+                            cursor: pointer;
+                            text-align: center;
+                            font-weight: bold;
+                            font-size: 16px;
+                            height: 44px;
+                            color: #fffffe;
+                            width: 200px;
+                            white-space: nowrap;
+                          ">View Dashboard</span> </a></td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- EXPECTED TODAY SUB SECTION -->
+        <div id="expected-today">
+         <table class="mail" id="mail_today_header" width="100%" style="
+                    color: #fffffe;
+                    border-collapse: separate !important;
+                    border-spacing: 0 !important;
+                    width: 100% !important;
+                  " cellpadding="0" cellspacing="0">
+          <tbody>
+           <tr>
+            <td align="left" class="secondary-background-color" style="
+                          background-color: #3573b1;
+                          padding: 20px;
+                          margin-bottom: 30px;
+                          vertical-align: middle;
+                        ">
+             <h2 class="section-heading" style="
+                            font-size: 22px;
+                            vertical-align: middle;
+                            display: inline;
+                          ">Expected Today</h2>
+            </td>
+            <td align="right" class="secondary-background-color" style="
+                          background-color: #3573b1;
+                          border-collapse: separate !important;
+                          border-spacing: 0 !important;
+                          padding: 20px;
+                        "><!--[if mso]>
+                                            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="width:125px;height:38px;padding-right:8px;padding-left:8px;padding-top:0px;padding-bottom:0px" arcsize="12%" strokecolor="#3573B1" fillcolor="#FFFFFE">
+                                                <w:anchorlock/><center style="color:#3573B1;font-family:sans-serif;font-size:16px;font-weight:bold;padding:0px;white-space: nowrap;" class="primary-font-color">
+                                        <![endif]--> <!--[if !mso]><!-->
+             <p style="
+                            display: block;
+                            white-space: nowrap;
+                            min-width: 106px;
+                            width: max-content;
+                            max-width: max-content;
+                            padding: 10px 8px 8px 8px;
+                            margin: 0;
+                            font-size: 18px;
+                            text-align: center;
+                            float: right;
+                            color: #3573b1;
+                            border-radius: 12px;
+                            font-weight: bold;
+                            background: linear-gradient(
+                              #fffffe,
+                              #fffffe
+                            ) !important;
+                            background-color: #fffffe !important;
+                          "><!--<![endif]--> <span id="today-mailitem-number" style="
+                              color: #3573b1;
+                              white-space: nowrap;
+                              display: inline;
+                            ">1</span> <span style="
+                              color: #3573b1;
+                              white-space: nowrap;
+                              display: inline;
+                            ">item(s)</span> <!--[if !mso]><!--></p>
+             <!--<![endif]--><!--[if mso]>
+                                            </center></v:roundrect>
+                                        <![endif]--></td>
+           </tr>
+          </tbody>
+         </table>
+         <!-- Campaigns -->
+         <table border="0" align="center" width="100%" role="module" data-type="columns" style="max-width: 820px; display: block" cellpadding="0" cellspacing="0">
+          <tbody style="display: block">
+           <tr role="module-content" style="display: block">
+            <td id="campaign-div-id" style="
+                          height: 100%;
+                          vertical-align: top;
+                          display: block;
+                        "><!-- Multiple Campaigns --> <!-- START MAIL SECTION -->
+             <div>
+              <table class="module" role="presentation" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout:fixed;">
+               <tbody>
+                <tr>
+                 <td style="padding:0px 0px 30px 0px;" role="module-content"></td>
+                </tr>
+               </tbody>
+              </table>
+             </div>
+             <div>
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width: 100%">
+               <tbody>
+                <tr>
+                 <td width="100%" style="padding-right:1px;" cellpadding="0" cellspacing="0"><!--[if !mso]><!-->
+                  <div class="email-box-shadow dark-mode-section" style="border: 2px solid #999999; mso-border-alt: 2px solid #999999; border-collapse: separate !important; border-radius: 18px; padding-left:13px;padding-top:0px;padding-bottom:0px;padding-right:13px;">
+                   <!--<![endif]-->
+                   <!--[if mso]>
+    <div class="email-box-shadow dark-mode-section"
+    style="border: 2px solid #999999; mso-border-alt: 2px solid #999999; border-collapse: separate !important; padding:0px;background-color:#f7f7f7 !important;">
+    <![endif]-->
+                   <table role="presentation" style="display:block!important;padding:0px;margin:0px;border:none;border-collapse: separate !important;overflow:hidden !important;margin-top:1px !important;margin-bottom:1px !important;font-family:Arial,Helvetica,sans-serif;" cellpadding="0" cellspacing="0" width="100%">
+                    <tbody>
+                     <tr class="dark-mode-section">
+                      <td class="dark-mode-section" style="padding-bottom:10px;"><!-- Start Mailpiece  --> <!-- End Mailpiece  --> <!-- Start Campaign  -->
+                       <div id="mail-campaign">
+                        <table class="mail dark-mode-section" style="width:100%;border-collapse: separate !important;" cellpadding="0" cellspacing="0" align="left">
+                         <tbody class="dark-mode-section">
+                          <tr align="left" class="dark-mode-section">
+                           <td class="dark-mode-section" style="border-top-left-radius: 18px;border-top-right-radius: 18px;padding: 20px 20px 10px 10px;" width="100%">
+                            <p id="campaign-from-label-id" class="primary-font-color" style="text-align:left;font-size: 18px; margin: 0;margin-top: 3px;color: #333366;">FROM: <b><span id="campaign-from-span-id">USPS Local XChange™</span></b></p>
+                           </td>
+                          </tr>
+                          <tr align="left" class="dark-mode-section">
+                           <td align="left" class="dark-mode-section" style="padding-left:10px;">
+                            <div style="display: block; align-items: left;text-align:left; min-height: 60px;padding-bottom:10px;" class="img-container">
+                             <a id="ra-representative-href-id" href="" tabindex="0" title="Please visit this website for more info." target="_blank"> <img id="campaign-representative-image-src-id" alt="campaign" src="cid:mailer-1202076425.jpg"></a>
+                            </div>
+                           </td>
+                          </tr>
+                         </tbody>
+                        </table>
+                        <!-- DESKTOP MAIL BUTTONS -->
+                        <div class="desktop" id="socialSharingEnableId">
+                         <table class="mail dark-mode-section" align="left" style="border-collapse: separate !important;" width="100%" cellpadding="0" cellspacing="0">
+                          <tbody>
+                           <tr class="dark-mode-section" align="left">
+                            <td align="left" style="padding: 25px 50px 25px 10px; width: 50%;" class="dark-mode-section">
+                             <p class="primary-font-color" style="font-size: 18px; margin-bottom: 20px; margin-top: 0; white-space: nowrap; "><b><a id="ra-know-more-href-id" href="https://informeddelivery.usps.com/trackingV2/digest/mcClick?a=MEaiQ4qLM1xd435Jyq-3tkwxYcOoqn8Tcs7gNA3pr6ARaWb0G3M_HQIb-c8X5E5axjHJmOIKUStIkrNaHRSyZ2HGcsFz1lSOrt7A02G6qcu1-NdxgCJ3rbmYcw7n_KVLkRYCjW4wq3VSMY-EbTx1hj0fc0vEbmtSP0ev8Qog2Qk9cjldTQA3D8GVUotBsMbX02FbaDPJmkCLXJ2sZ1UC3F3vp5xBy7jL_nevXPuLgF4a6anhUssJ9TMG_CDqFyMrMmwBoaGWRbaSbAPaiogeFu1o5-moTQs6W4eoyFlnIRbz1SVSWE4Jic6AKs4Y75sBkZNp3AEn9NAqVMpeV1Yl7C61ruu3n4QhhyQlMZVzIJkU1SKmyuFSBNprkIA4Za3Zlrxvc2n5O4f5whjXcSDcZew1PYmzXctlhqYb6B8fw4QpbwAVjlx9e1dfV13yBft52EPr3rirEf61RWclZDdHV3h-Q91_0RVAvwHVVIHnzv3E-Ghs_BIBVO2RAPUfj-SztXs1U70XfZy6VewLLqKo" class="primary-font-color" style="color: #333366;text-decoration:none !important;">Learn more about your mail <span class="primary-font-color" style="font-size:16px;"> ❯</span> </a></b></p>
+                             <a id="campaign-ridealong-image-href-id" href="https://informeddelivery.usps.com/trackingV2/digest/mcClick?a=i356syJWXNnYFJMtoFUjcz-1OwyUJ-cy-Mnaew-__wrPy4Iu2aHXuvWtE1C9fOsioKK3NWGwxSwVQuDQ4NOgap809Ymuh3wvA_6MYfuFne-AMLNp1e512KcBWZWwJ5_GwOPGfpohgWNA-aU4Bxj2FfJ9v5q7YDVJUokZyoyLMhQs0KLdWi3GI6DypSaDzG3NGf9-dw3-TsoUovSVw5YlL1n57tc4r_SZHfYDR4IGPQsk6nZZQ_LJYcSRx0OLDXTTx4WZKdqv-WCttCyFJafP4SpK5eAx1Ak-1XlX8kKSZixlB5haENz3ZzCQhXSfD2kZv9Wam_VKgFFKXa1UYiTgdcgv73kFGoZ0rPfJ2aCPH320qfHa487r99HZs7eyN3O2MTmeKj2aEQ5td3RkOtSN3K6PYAD5kF7zO90PqkuXd1du7i-pnSkdFZYxLRiQM5RtuPWyApjrEQVRfYIgSzylu6DVuBhO5RPuW8ndDyF_MyA9ErGPwdwQlueBi6xUKWDtZUKv5ooeDUmIBtL9EfBUq-Wm9V0e"><img id="campaign-ridealong-image-src-id" style="width: 300px;" src="cid:content-1202076425.jpg" alt="RideAlong image"></a>
+                            </td>
+                           </tr>
+                          </tbody>
+                         </table>
+                         <table align="left" class="mail dark-mode-section" width="100%" style="border-radius:0 0 18px 18px;padding-left: 10px; border-collapse: separate !important;" cellpadding="0" cellspacing="0">
+                          <tbody>
+                           <tr align="left" class="dark-mode-section">
+                            <td id="svia" style="width: 100px;">
+                             <p class="primary-font-color" style="font-size: 18px; margin-bottom: 20px; margin-top: 0;"><b>Share via:</b></p>
+                            </td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                           </tr>
+                           <tr align="left" style="text-align:left!important;" class="dark-mode-section">
+                            <td class="dark-mode-section" align="left" style="text-align:left!important;">
+                             <table class="dark-mode-section secondary-font-color" align="left" style="font-size: 16px;" cellpadding="0" cellspacing="0">
+                              <tbody>
+                              <tr class="dark-mode-section">
+                              <td id="em-img" style="padding-right: 10px;"><a id="link-email-image" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=iPaVh2-1NcRDImexoxrREIhtGmxJf_b3EKW314me-UkRrUURbjou20FEwe2Q5RJqql3-eWAhZS58vZI9p6QlmreRUFzm92D7pBzubqSz5J6vlAX3mytqn4yAbHwyEJ3DlB0imUljL30-6ZzDdHRcGllY3W1jVg3NZH-1ok3wVWRxhcLPnYLu112jvzfQu91NKTHo23VBkLgYrzz3tKhYotBSJE3JntDhkOvptcxXbzSJ2tMiMWcpN1zqtsX9pVrAQSbbL0Bdf9N4LXfSpu8kVNQuXqlv98roJNntLAmFQHO6wOxq-KamN3aPvJNwPJlmBocnrs-MgmTRGI1XZUR9d0jftPenAUpaMf0yQ4GufSWvnFvGYVh4Ytmbis31kFFBIvQn-IjQmxJ5EVGRIzSA0EVH-qvBvgWXHjSNiGJIfZZm0hnYfPS53o-5Vk2-2ROECcn679eqas5VM1xHr2glrecUfsgB41HliB866bB-YVNA8WRiRnJR-RWaPfD2FQ" style="text-decoration:none !important;"> <img class="img-dark-mode" src="https://www.usps.com/email/id/email-light.png" alt="share email" width="40" height="40"></a></td>
+                              <td id="em" style="padding-right: 30px;"><a id="link-email-href-id" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=iPaVh2-1NcRDImexoxrREIhtGmxJf_b3EKW314me-UkRrUURbjou20FEwe2Q5RJqql3-eWAhZS58vZI9p6QlmreRUFzm92D7pBzubqSz5J6vlAX3mytqn4yAbHwyEJ3DlB0imUljL30-6ZzDdHRcGllY3W1jVg3NZH-1ok3wVWRxhcLPnYLu112jvzfQu91NKTHo23VBkLgYrzz3tKhYotBSJE3JntDhkOvptcxXbzSJ2tMiMWcpN1zqtsX9pVrAQSbbL0Bdf9N4LXfSpu8kVNQuXqlv98roJNntLAmFQHO6wOxq-KamN3aPvJNwPJlmBocnrs-MgmTRGI1XZUR9d0jftPenAUpaMf0yQ4GufSWvnFvGYVh4Ytmbis31kFFBIvQn-IjQmxJ5EVGRIzSA0EVH-qvBvgWXHjSNiGJIfZZm0hnYfPS53o-5Vk2-2ROECcn679eqas5VM1xHr2glrecUfsgB41HliB866bB-YVNA8WRiRnJR-RWaPfD2FQ" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">Email</a></td>
+                              <td id="sms-img" style="padding-right: 10px;"><a id="link-sms-image" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=HgzbkZRLa_XpR_qVa2o8uCMOYYyvI7UobKWGhiq-mMoyfJYHVjuP9MfRiMKZIBbg19f8JCbWOVZVvEArTgl2YU3_gaRY3pLyI_eg9bwfoXCdfmD64wajO3cIkJkoGrq2G_slmBDenE2qd-YRHU19v-y_h_hn527fVRllDVl2ZUPDXZVTDwhDpO3zjezEcBX5csAHaQX26UC-cIuWf1qXmWzV7I0Ofrz4tX3Wask4szW1-kjOyc2rXLFjh9X4XNYbJ6B0fV0JOKKa6Q6ZaTrN2FEExxqWcwR-WDaGAWO4u3WzopfG5haiHd9zsBQFVcuJ7SETDsF3dqyXqgs0jLXeEOzYTZBil8GeNYTXqz2jsIEANsAFLV4yNFzu9vcAK1nFIs1PNPqM75bnXi5UfCSveyLomDOYIOh_6KEZ7jXgnZh3ozl683o79U_Sxe5bD3QhnSJxPS_lqDJeEl2zh8rJjiKW9PQ149qaca6kMLvaV1JSm-PwnOlK-Kp8" style="text-decoration:none !important;"> <img class="img-dark-mode" src="https://www.usps.com/email/id/text-light.png" alt="share text" width="40" height="40"></a></td>
+                              <td id="sms" style="padding-right: 30px;"><a id="link-sms-href" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=HgzbkZRLa_XpR_qVa2o8uCMOYYyvI7UobKWGhiq-mMoyfJYHVjuP9MfRiMKZIBbg19f8JCbWOVZVvEArTgl2YU3_gaRY3pLyI_eg9bwfoXCdfmD64wajO3cIkJkoGrq2G_slmBDenE2qd-YRHU19v-y_h_hn527fVRllDVl2ZUPDXZVTDwhDpO3zjezEcBX5csAHaQX26UC-cIuWf1qXmWzV7I0Ofrz4tX3Wask4szW1-kjOyc2rXLFjh9X4XNYbJ6B0fV0JOKKa6Q6ZaTrN2FEExxqWcwR-WDaGAWO4u3WzopfG5haiHd9zsBQFVcuJ7SETDsF3dqyXqgs0jLXeEOzYTZBil8GeNYTXqz2jsIEANsAFLV4yNFzu9vcAK1nFIs1PNPqM75bnXi5UfCSveyLomDOYIOh_6KEZ7jXgnZh3ozl683o79U_Sxe5bD3QhnSJxPS_lqDJeEl2zh8rJjiKW9PQ149qaca6kMLvaV1JSm-PwnOlK-Kp8" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">Text</a></td>
+                              <td id="fb-img" style="padding-right: 10px;"><a id="link-facebook-image" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=3rVXZLpF_G9SfrHYeUUidxncXhrsQfrlzUXX5UcHMm2CnjG2TTEOSHoclhapF9Gvs1X4SLFSxNY46IbHzlCH8YE-3zo5vFGOsiRIPS4rQkIIqKi6fR62U15vj3OYfhqOoGSDrXzxY2scow4OJJebwdNKuF3RfuYd0dpHmmi75M0oEA2FA79xJ6XW2omj-n62y7OZaEmBKBh0MUmgMM_rhH9vwL7vhyi0Qj7XV05zQANdo0oOkOFqBpYAIUp_gbGvAgRNpvmbV4Nq2_dGmJw5Ilu187g-N-4UdPNS0Jpoq9qmRDvZZNUwn_HiZs1xzM97drGJiMdMbgPNomsktCmb1dFp9_meVbfWqPO5reAiFAYuRcMz02V0PgJ5x9UNuaz9LbbKMhoIN-kyqChtv4UNPPKtjvBQ2sDyGZ55wkUD2wAjMcwxEclOciyIJu0uUhFen3POdmq3qbz9dRyVt8i8dxsFVuNuDXALem8C12OTW-XkOMr_ApJdrcc5cmoJHWQv4oEQtQ" style="text-decoration:none !important;"><img class="img-dark-mode" src="https://www.usps.com/email/id/facebook-light.png" style=" width: 40px; height: 40px;" width="40" height="40" alt="share facebook"></a></td>
+                              <td id="fb" style="padding-right: 30px;"><a id="link-facebook-href" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=3rVXZLpF_G9SfrHYeUUidxncXhrsQfrlzUXX5UcHMm2CnjG2TTEOSHoclhapF9Gvs1X4SLFSxNY46IbHzlCH8YE-3zo5vFGOsiRIPS4rQkIIqKi6fR62U15vj3OYfhqOoGSDrXzxY2scow4OJJebwdNKuF3RfuYd0dpHmmi75M0oEA2FA79xJ6XW2omj-n62y7OZaEmBKBh0MUmgMM_rhH9vwL7vhyi0Qj7XV05zQANdo0oOkOFqBpYAIUp_gbGvAgRNpvmbV4Nq2_dGmJw5Ilu187g-N-4UdPNS0Jpoq9qmRDvZZNUwn_HiZs1xzM97drGJiMdMbgPNomsktCmb1dFp9_meVbfWqPO5reAiFAYuRcMz02V0PgJ5x9UNuaz9LbbKMhoIN-kyqChtv4UNPPKtjvBQ2sDyGZ55wkUD2wAjMcwxEclOciyIJu0uUhFen3POdmq3qbz9dRyVt8i8dxsFVuNuDXALem8C12OTW-XkOMr_ApJdrcc5cmoJHWQv4oEQtQ" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">Facebook</a></td>
+                              <td id="tw-img" style="padding-right: 10px;"><a id="link-twitter-image" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=RVRAOZi8ql6hpsCP_wxl-cgfd4S1tC8b7dukQpA4Rl4iakNxUikYQytci3R0jAgL8eCNXHikdJ98Rs8ap9Th9mMAEPbXoaGKj4yHTH0mvzlDPnPjsCAjmsoftfcriJP_O6uwh56y-K9POVlpNTAOEXa_qqCzWMO923R_62IXREcCgA2E-OlVFwzqR5l4_n92ojykFQ5e2QthtVzKmJjRbBYETdujjWtwyI5x1qoQWXLy2QQwoZDY4DWhMlRh2UVyMG9o-1d_0FeD_Y_wDLDvSnbKxPdAahn0ZCBZzHn4MMzculfTxj5iyNwAOCmEgkC2jj5m3h7jwCgt3xUjMO-wvShTRCeomRzKNoq0Fu9t7rOKj4tOPVWfYvscUZkTstQZVTnBpvoooQBVdzoEF_q-FXiOFj_BPXWIj3T3iMKDV46zOh_E2Dlm3B2M1zxIXQfKEEn-SdcG9_Q6Za1QsIIoXHT5UNNe_KjSPHuIqLqlJTKKv-7X8X4qamk7CAs" style="text-decoration:none !important;"> <img class="img-dark-mode" src="https://www.usps.com/email/id/x-light.png" width="40" height="40" style=" width: 40px; height: 40px;" alt="share x"></a></td>
+                              <td id="tw"><a id="link-twitter-href" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=RVRAOZi8ql6hpsCP_wxl-cgfd4S1tC8b7dukQpA4Rl4iakNxUikYQytci3R0jAgL8eCNXHikdJ98Rs8ap9Th9mMAEPbXoaGKj4yHTH0mvzlDPnPjsCAjmsoftfcriJP_O6uwh56y-K9POVlpNTAOEXa_qqCzWMO923R_62IXREcCgA2E-OlVFwzqR5l4_n92ojykFQ5e2QthtVzKmJjRbBYETdujjWtwyI5x1qoQWXLy2QQwoZDY4DWhMlRh2UVyMG9o-1d_0FeD_Y_wDLDvSnbKxPdAahn0ZCBZzHn4MMzculfTxj5iyNwAOCmEgkC2jj5m3h7jwCgt3xUjMO-wvShTRCeomRzKNoq0Fu9t7rOKj4tOPVWfYvscUZkTstQZVTnBpvoooQBVdzoEF_q-FXiOFj_BPXWIj3T3iMKDV46zOh_E2Dlm3B2M1zxIXQfKEEn-SdcG9_Q6Za1QsIIoXHT5UNNe_KjSPHuIqLqlJTKKv-7X8X4qamk7CAs" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">X</a></td>
+                              </tr>
+                              </tbody>
+                             </table>
+                            </td>
+                           </tr>
+                          </tbody>
+                         </table>
+                        </div>
+                        <!-- END DESKTOP MAIL BUTTONS -->
+                        <!-- START MOBILE MAIL BUTTONS -->
+                        <div class="mobile" style="mso-hide:all;display:none;text-align:left !important;" id="socialSharingEnableIdMobile">
+                         <table class="mail dark-mode-section" width="100%" align="left" style="mso-hide:all;text-align:left !important;" cellpadding="0" cellspacing="0">
+                          <tbody>
+                           <tr style="height:20px;" height="25"></tr>
+                           <tr align="left">
+                            <td align="left" style="mso-hide:all;padding: 0 50px 0 10px; width: 50%;">
+                             <p style="mso-hide:all;font-size: 18px; margin-bottom: 20px; margin-top: 0; white-space: nowrap;"><b><a href="https://informeddelivery.usps.com/trackingV2/digest/mcClick?a=MEaiQ4qLM1xd435Jyq-3tkwxYcOoqn8Tcs7gNA3pr6ARaWb0G3M_HQIb-c8X5E5axjHJmOIKUStIkrNaHRSyZ2HGcsFz1lSOrt7A02G6qcu1-NdxgCJ3rbmYcw7n_KVLkRYCjW4wq3VSMY-EbTx1hj0fc0vEbmtSP0ev8Qog2Qk9cjldTQA3D8GVUotBsMbX02FbaDPJmkCLXJ2sZ1UC3F3vp5xBy7jL_nevXPuLgF4a6anhUssJ9TMG_CDqFyMrMmwBoaGWRbaSbAPaiogeFu1o5-moTQs6W4eoyFlnIRbz1SVSWE4Jic6AKs4Y75sBkZNp3AEn9NAqVMpeV1Yl7C61ruu3n4QhhyQlMZVzIJkU1SKmyuFSBNprkIA4Za3Zlrxvc2n5O4f5whjXcSDcZew1PYmzXctlhqYb6B8fw4QpbwAVjlx9e1dfV13yBft52EPr3rirEf61RWclZDdHV3h-Q91_0RVAvwHVVIHnzv3E-Ghs_BIBVO2RAPUfj-SztXs1U70XfZy6VewLLqKo" id="ra-know-more-href-id-secondary" class="primary-font-color" style="mso-hide:all;text-decoration:none !important;color: #333366;">Learn more about your mail <span class="primary-font-color" style="font-size:16px;"> ❯</span> </a></b></p>
+                             <a id="campaign-ridealong-image-href-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcClick?a=i356syJWXNnYFJMtoFUjcz-1OwyUJ-cy-Mnaew-__wrPy4Iu2aHXuvWtE1C9fOsioKK3NWGwxSwVQuDQ4NOgap809Ymuh3wvA_6MYfuFne-AMLNp1e512KcBWZWwJ5_GwOPGfpohgWNA-aU4Bxj2FfJ9v5q7YDVJUokZyoyLMhQs0KLdWi3GI6DypSaDzG3NGf9-dw3-TsoUovSVw5YlL1n57tc4r_SZHfYDR4IGPQsk6nZZQ_LJYcSRx0OLDXTTx4WZKdqv-WCttCyFJafP4SpK5eAx1Ak-1XlX8kKSZixlB5haENz3ZzCQhXSfD2kZv9Wam_VKgFFKXa1UYiTgdcgv73kFGoZ0rPfJ2aCPH320qfHa487r99HZs7eyN3O2MTmeKj2aEQ5td3RkOtSN3K6PYAD5kF7zO90PqkuXd1du7i-pnSkdFZYxLRiQM5RtuPWyApjrEQVRfYIgSzylu6DVuBhO5RPuW8ndDyF_MyA9ErGPwdwQlueBi6xUKWDtZUKv5ooeDUmIBtL9EfBUq-Wm9V0e"> <img id="campaign-ridealong-image-src-id-secondary" style="mso-hide:all;max-width: 300px" src="cid:content-1202076425.jpg" alt="RideAlong"> </a>
+                            </td>
+                           </tr>
+                          </tbody>
+                         </table>
+                         <table class="mail dark-mode-section" width="100%" align="left" cellpadding="0" cellspacing="0">
+                          <tbody>
+                           <tr align="left">
+                            <td id="svia-secondary" align="left" style="padding: 0 50px 0 10px; width: 200px;">
+                             <p class="primary-font-color" style="mso-hide:all;font-size: 18px; margin-bottom: 20px; margin-top: 0;color: #333366;"><b>Share via:</b></p>
+                            </td>
+                           </tr>
+                          </tbody>
+                         </table>
+                         <table class="dark-mode-section" align="left" style="mso-hide:all;width: 100%;border-radius:0 0 18px 18px; padding-right: 4px;text-align:left!important;" cellpadding="0" cellspacing="0">
+                          <tbody align="left" style="text-align:left!important;">
+                           <tr align="left" style="text-align:left!important;">
+                            <td align="left" style="text-align:left!important;">
+                             <table class="secondary-font-color dark-mode-section" align="left" style="mso-hide:all;font-size: 16px;text-align:left !important;">
+                              <tbody align="left" style="text-align:left!important;">
+                              <tr align="left" style="text-align:left !important;">
+                              <td id="em-img-secondary" align="left" style="mso-hide:all;padding-right: 10px; padding-left: 10px; padding-bottom: 20px;text-align:left !important;"><a id="link-email-image-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=iPaVh2-1NcRDImexoxrREIhtGmxJf_b3EKW314me-UkRrUURbjou20FEwe2Q5RJqql3-eWAhZS58vZI9p6QlmreRUFzm92D7pBzubqSz5J6vlAX3mytqn4yAbHwyEJ3DlB0imUljL30-6ZzDdHRcGllY3W1jVg3NZH-1ok3wVWRxhcLPnYLu112jvzfQu91NKTHo23VBkLgYrzz3tKhYotBSJE3JntDhkOvptcxXbzSJ2tMiMWcpN1zqtsX9pVrAQSbbL0Bdf9N4LXfSpu8kVNQuXqlv98roJNntLAmFQHO6wOxq-KamN3aPvJNwPJlmBocnrs-MgmTRGI1XZUR9d0jftPenAUpaMf0yQ4GufSWvnFvGYVh4Ytmbis31kFFBIvQn-IjQmxJ5EVGRIzSA0EVH-qvBvgWXHjSNiGJIfZZm0hnYfPS53o-5Vk2-2ROECcn679eqas5VM1xHr2glrecUfsgB41HliB866bB-YVNA8WRiRnJR-RWaPfD2FQ" style="text-decoration:none !important;text-align:left !important;"> <img class="img-dark-mode" src="https://www.usps.com/email/id/email-light.png" alt="share email" width="40" height="40"></a></td>
+                              <td id="em-secondary" align="left" style="mso-hide:all;padding-right: 30px; padding-bottom: 20px;text-align:left !important;"><a id="link-email-href-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=iPaVh2-1NcRDImexoxrREIhtGmxJf_b3EKW314me-UkRrUURbjou20FEwe2Q5RJqql3-eWAhZS58vZI9p6QlmreRUFzm92D7pBzubqSz5J6vlAX3mytqn4yAbHwyEJ3DlB0imUljL30-6ZzDdHRcGllY3W1jVg3NZH-1ok3wVWRxhcLPnYLu112jvzfQu91NKTHo23VBkLgYrzz3tKhYotBSJE3JntDhkOvptcxXbzSJ2tMiMWcpN1zqtsX9pVrAQSbbL0Bdf9N4LXfSpu8kVNQuXqlv98roJNntLAmFQHO6wOxq-KamN3aPvJNwPJlmBocnrs-MgmTRGI1XZUR9d0jftPenAUpaMf0yQ4GufSWvnFvGYVh4Ytmbis31kFFBIvQn-IjQmxJ5EVGRIzSA0EVH-qvBvgWXHjSNiGJIfZZm0hnYfPS53o-5Vk2-2ROECcn679eqas5VM1xHr2glrecUfsgB41HliB866bB-YVNA8WRiRnJR-RWaPfD2FQ" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">Email</a></td>
+                              <td id="sms-img-secondary" align="left" style="mso-hide:all;padding-right: 10px; padding-bottom: 20px;text-align:left !important;"><a id="link-sms-image-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=HgzbkZRLa_XpR_qVa2o8uCMOYYyvI7UobKWGhiq-mMoyfJYHVjuP9MfRiMKZIBbg19f8JCbWOVZVvEArTgl2YU3_gaRY3pLyI_eg9bwfoXCdfmD64wajO3cIkJkoGrq2G_slmBDenE2qd-YRHU19v-y_h_hn527fVRllDVl2ZUPDXZVTDwhDpO3zjezEcBX5csAHaQX26UC-cIuWf1qXmWzV7I0Ofrz4tX3Wask4szW1-kjOyc2rXLFjh9X4XNYbJ6B0fV0JOKKa6Q6ZaTrN2FEExxqWcwR-WDaGAWO4u3WzopfG5haiHd9zsBQFVcuJ7SETDsF3dqyXqgs0jLXeEOzYTZBil8GeNYTXqz2jsIEANsAFLV4yNFzu9vcAK1nFIs1PNPqM75bnXi5UfCSveyLomDOYIOh_6KEZ7jXgnZh3ozl683o79U_Sxe5bD3QhnSJxPS_lqDJeEl2zh8rJjiKW9PQ149qaca6kMLvaV1JSm-PwnOlK-Kp8" style="text-decoration:none !important;text-align:left !important;"><img class="img-dark-mode" src="https://www.usps.com/email/id/text-light.png" alt="share text" width="40" height="40"></a></td>
+                              <td id="sms-secondary" align="left" style="mso-hide:all;padding-right: 30px; padding-bottom: 20px;text-align:left !important;"><a id="link-sms-href-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=HgzbkZRLa_XpR_qVa2o8uCMOYYyvI7UobKWGhiq-mMoyfJYHVjuP9MfRiMKZIBbg19f8JCbWOVZVvEArTgl2YU3_gaRY3pLyI_eg9bwfoXCdfmD64wajO3cIkJkoGrq2G_slmBDenE2qd-YRHU19v-y_h_hn527fVRllDVl2ZUPDXZVTDwhDpO3zjezEcBX5csAHaQX26UC-cIuWf1qXmWzV7I0Ofrz4tX3Wask4szW1-kjOyc2rXLFjh9X4XNYbJ6B0fV0JOKKa6Q6ZaTrN2FEExxqWcwR-WDaGAWO4u3WzopfG5haiHd9zsBQFVcuJ7SETDsF3dqyXqgs0jLXeEOzYTZBil8GeNYTXqz2jsIEANsAFLV4yNFzu9vcAK1nFIs1PNPqM75bnXi5UfCSveyLomDOYIOh_6KEZ7jXgnZh3ozl683o79U_Sxe5bD3QhnSJxPS_lqDJeEl2zh8rJjiKW9PQ149qaca6kMLvaV1JSm-PwnOlK-Kp8" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">Text</a></td>
+                              </tr>
+                              <tr align="left" style="text-align:left !important;">
+                              <td id="fb-img-secondary" align="left" style="mso-hide:all;padding-right: 10px;padding-left: 10px;text-align:left !important;"><a id="link-facebook-image-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=3rVXZLpF_G9SfrHYeUUidxncXhrsQfrlzUXX5UcHMm2CnjG2TTEOSHoclhapF9Gvs1X4SLFSxNY46IbHzlCH8YE-3zo5vFGOsiRIPS4rQkIIqKi6fR62U15vj3OYfhqOoGSDrXzxY2scow4OJJebwdNKuF3RfuYd0dpHmmi75M0oEA2FA79xJ6XW2omj-n62y7OZaEmBKBh0MUmgMM_rhH9vwL7vhyi0Qj7XV05zQANdo0oOkOFqBpYAIUp_gbGvAgRNpvmbV4Nq2_dGmJw5Ilu187g-N-4UdPNS0Jpoq9qmRDvZZNUwn_HiZs1xzM97drGJiMdMbgPNomsktCmb1dFp9_meVbfWqPO5reAiFAYuRcMz02V0PgJ5x9UNuaz9LbbKMhoIN-kyqChtv4UNPPKtjvBQ2sDyGZ55wkUD2wAjMcwxEclOciyIJu0uUhFen3POdmq3qbz9dRyVt8i8dxsFVuNuDXALem8C12OTW-XkOMr_ApJdrcc5cmoJHWQv4oEQtQ" style="text-decoration:none !important;text-align:left !important;"><img class="img-dark-mode" src="https://www.usps.com/email/id/facebook-light.png" alt="share facebook" width="40" height="40" style="mso-hide:all; width: 40px; height: 40px;"></a></td>
+                              <td id="fb-secondary" align="left" style="mso-hide:all;padding-right: 30px;text-align:left !important;"><a id="link-facebook-href-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=3rVXZLpF_G9SfrHYeUUidxncXhrsQfrlzUXX5UcHMm2CnjG2TTEOSHoclhapF9Gvs1X4SLFSxNY46IbHzlCH8YE-3zo5vFGOsiRIPS4rQkIIqKi6fR62U15vj3OYfhqOoGSDrXzxY2scow4OJJebwdNKuF3RfuYd0dpHmmi75M0oEA2FA79xJ6XW2omj-n62y7OZaEmBKBh0MUmgMM_rhH9vwL7vhyi0Qj7XV05zQANdo0oOkOFqBpYAIUp_gbGvAgRNpvmbV4Nq2_dGmJw5Ilu187g-N-4UdPNS0Jpoq9qmRDvZZNUwn_HiZs1xzM97drGJiMdMbgPNomsktCmb1dFp9_meVbfWqPO5reAiFAYuRcMz02V0PgJ5x9UNuaz9LbbKMhoIN-kyqChtv4UNPPKtjvBQ2sDyGZ55wkUD2wAjMcwxEclOciyIJu0uUhFen3POdmq3qbz9dRyVt8i8dxsFVuNuDXALem8C12OTW-XkOMr_ApJdrcc5cmoJHWQv4oEQtQ" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">Facebook</a></td>
+                              <td id="tw-img-secondary" align="left" style="mso-hide:all;padding-right: 10px;text-align:left !important;"><a id="link-twitter-image-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=RVRAOZi8ql6hpsCP_wxl-cgfd4S1tC8b7dukQpA4Rl4iakNxUikYQytci3R0jAgL8eCNXHikdJ98Rs8ap9Th9mMAEPbXoaGKj4yHTH0mvzlDPnPjsCAjmsoftfcriJP_O6uwh56y-K9POVlpNTAOEXa_qqCzWMO923R_62IXREcCgA2E-OlVFwzqR5l4_n92ojykFQ5e2QthtVzKmJjRbBYETdujjWtwyI5x1qoQWXLy2QQwoZDY4DWhMlRh2UVyMG9o-1d_0FeD_Y_wDLDvSnbKxPdAahn0ZCBZzHn4MMzculfTxj5iyNwAOCmEgkC2jj5m3h7jwCgt3xUjMO-wvShTRCeomRzKNoq0Fu9t7rOKj4tOPVWfYvscUZkTstQZVTnBpvoooQBVdzoEF_q-FXiOFj_BPXWIj3T3iMKDV46zOh_E2Dlm3B2M1zxIXQfKEEn-SdcG9_Q6Za1QsIIoXHT5UNNe_KjSPHuIqLqlJTKKv-7X8X4qamk7CAs" style="text-decoration:none !important;text-align:left !important;"><img class="img-dark-mode" src="https://www.usps.com/email/id/x-light.png" alt="share x" width="40" height="40" style="mso-hide:all; width: 40px; height: 40px;"></a></td>
+                              <td id="tw-secondary" align="left" style="mso-hide:all;text-align:left !important;"><a id="link-twitter-href-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/mcShare?a=RVRAOZi8ql6hpsCP_wxl-cgfd4S1tC8b7dukQpA4Rl4iakNxUikYQytci3R0jAgL8eCNXHikdJ98Rs8ap9Th9mMAEPbXoaGKj4yHTH0mvzlDPnPjsCAjmsoftfcriJP_O6uwh56y-K9POVlpNTAOEXa_qqCzWMO923R_62IXREcCgA2E-OlVFwzqR5l4_n92ojykFQ5e2QthtVzKmJjRbBYETdujjWtwyI5x1qoQWXLy2QQwoZDY4DWhMlRh2UVyMG9o-1d_0FeD_Y_wDLDvSnbKxPdAahn0ZCBZzHn4MMzculfTxj5iyNwAOCmEgkC2jj5m3h7jwCgt3xUjMO-wvShTRCeomRzKNoq0Fu9t7rOKj4tOPVWfYvscUZkTstQZVTnBpvoooQBVdzoEF_q-FXiOFj_BPXWIj3T3iMKDV46zOh_E2Dlm3B2M1zxIXQfKEEn-SdcG9_Q6Za1QsIIoXHT5UNNe_KjSPHuIqLqlJTKKv-7X8X4qamk7CAs" class="linkable-text" style="white-space: nowrap;text-decoration:none !important;color:#000000;-webkit-text-fill-color: #000000;">X</a></td>
+                              </tr>
+                              </tbody>
+                             </table>
+                            </td>
+                           </tr>
+                          </tbody>
+                         </table>
+                        </div>
+                        <!-- END MOBILE MAIL BUTTONS -->
+                       </div>
+                       <!-- End Campaign  --><!-- Start SAT Campaign  --> <!-- End SAT Campaign  --></td>
+                     </tr>
+                    </tbody>
+                   </table>
+                  </div></td>
+                </tr>
+               </tbody>
+              </table>
+             </div>
+             <!-- END MAIL SECTION --></td>
+           </tr>
+          </tbody>
+         </table>
+         <!-- Single Mailpiece-->
+         <table border="0" role="module" data-type="columns" style="max-width: 820px; display: block" width="100%" cellpadding="0" cellspacing="0">
+          <tbody style="display: block">
+           <tr role="module-content" style="display: block">
+            <td style="
+                          height: 100%;
+                          vertical-align: top;
+                          display: block;
+                        " id="mailpiece-div-id"><!-- Attach multiple images using template--></td>
+           </tr>
+          </tbody>
+         </table>
+         <!-- START NO MAIL TODAY SECTION -->
+         <!-- END NO MAIL SECTION -->
+         <!-- START MAILPIECE WITH NO IMAGE -->
+        </div>
+        <!-- END MAILPIECE WITH NO IMAGE -->
+        <!-- START EXPECTED THIS WEEK SUB SECTION -->
+        <div id="thisweek-saturation">
+         <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+          <tbody>
+           <tr>
+            <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+           </tr>
+          </tbody>
+         </table>
+         <!-- START NO MAIL SAT SECTION -->
+         <!-- END NO MAIL SECTION -->
+        </div>
+        <!-- END EXPECTED THIS WEEK SUB SECTION -->
+       </div>
+       <!-- END MAIL SECTION --><!-- START PACKAGES SECTION -->
+       <div id="packages-section" style="display: block">
+        <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+         <tbody>
+          <tr>
+           <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+         </tbody>
+        </table>
+        <table role="presentation" class="mail section-header primary-background-color" width="100%" cellpadding="0" cellspacing="0" border="0" style="
+                  background-color: #333366;
+                  color: #fffffe;
+                  border-top-left-radius: 18px;
+                  border-top-right-radius: 18px;
+                  table-layout: fixed;
+                ">
+         <tbody>
+          <tr>
+           <td class="primary-background-color" height="80" width="50" style="
+                        background-color: #333366;
+                        width: 50px;
+                        min-width: 50px;
+                        padding-left: 20px;
+                        border-top-left-radius: 18px;
+                      "><a id="view-all-package-link-icon" href="https://informeddelivery.usps.com/box/pages/secure/DashboardAction_input?keyword=pack"> <img src="https://www.usps.com/email/id/packages-icon.png" style="
+                            filter: saturate(1000%) brightness(1003%) !important;
+                            width: 46px !important;
+                            max-width: 46px;
+                          " alt="Package Icon" width="46" height="36"> </a></td>
+           <td class="primary-background-color" style="
+                        background-color: #333366;
+                        vertical-align: middle;
+                        width: auto;
+                      "><span>
+             <h1 class="section-header-title" style="
+                            vertical-align: middle;
+                            display: inline;
+                            font-size: clamp(1.25rem, 3.56vw, 2.2rem);
+                            word-wrap: normal;
+                          ">  PACKAGES</h1>
+            </span></td>
+           <td class="primary-background-color td-view-dash" style="
+                        background-color: #333366;
+                        border-top-right-radius: 18px;
+                        padding-right: 20px;
+                        text-align: right;
+                      "><a id="view-all-package-link-id" class="view-dashboard-a" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j7-TJPUfEItQLX8NEC2IdBDIysJqCQs0XGX04nQRMdwVK1h-ZLHJahB5FDr5EUWHfN0ct_PZIvF7kYku_qCr98VO-KN9prgYvl9SBBnEsPgv14OnGO1eSK-bJnUmJlgV-BYUS7v5M9CygBgr9sDXdg-PTLQV-8iYXrRoN979yrgmyAjBQ9LcHwSJkFCDPXFJId8" style="text-decoration: none"> <span class="mobile-button primary-background-color view-dashboard-button" tabindex="0" style="
+                            background-color: #333366;
+                            border-radius: 3px;
+                            padding: 9px 10px;
+                            border: 1px solid #fffffe;
+                            text-decoration: none;
+                            cursor: pointer;
+                            text-align: center;
+                            font-weight: bold;
+                            font-size: 16px;
+                            height: 44px;
+                            color: #fffffe;
+                            width: 200px;
+                            white-space: nowrap;
+                          ">View Dashboard</span> </a></td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- EXPECT TODAY SUB SECT -->
+        <table class="package" id="expected_today_header" width="100%" style="
+                  color: #fffffe;
+                  border-collapse: separate !important;
+                  border-spacing: 0 !important;
+                  width: 100% !important;
+                " cellpadding="0" cellspacing="0">
+         <tbody>
+          <tr>
+           <td align="left" class="secondary-background-color" style="
+                        background-color: #3573b1;
+                        padding: 20px;
+                        margin-bottom: 30px;
+                        vertical-align: middle;
+                        width: 100%;
+                      ">
+            <h2 class="section-heading" style="
+                          font-size: 22px;
+                          vertical-align: middle;
+                          display: inline;
+                        ">Expected Today</h2>
+           </td>
+           <td align="right" class="secondary-background-color" style="
+                        background-color: #3573b1;
+                        border-collapse: separate !important;
+                        border-spacing: 0 !important;
+                        padding: 20px;
+                      "><!--[if mso]>
+                                               <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="width:125px;height:38px;padding-right:8px;padding-left:8px;padding-top:0px;padding-bottom:0px" arcsize="12%" strokecolor="#3573B1" fillcolor="#FFFFFE">
+                                                   <w:anchorlock/><center style="color:#3573B1;font-family:sans-serif;font-size:16px;font-weight:bold;padding:0px;white-space: nowrap;" class="primary-font-color">
+                                           <![endif]--> <!--[if !mso]><!-->
+            <p style="
+                          display: block;
+                          white-space: nowrap;
+                          min-width: 106px;
+                          width: max-content;
+                          max-width: 100%;
+                          padding: 10px 8px 8px 8px;
+                          margin: 0;
+                          font-size: 18px;
+                          text-align: center;
+                          color: #3573b1;
+                          border-radius: 12px;
+                          font-weight: bold;
+                          background: linear-gradient(
+                            #fffffe,
+                            #fffffe
+                          ) !important;
+                          background-color: #fffffe !important;
+                        "><!--<![endif]--> <span id="today-package-item-number" style="
+                            color: #3573b1;
+                            white-space: nowrap;
+                            display: inline;
+                          ">1</span> <span style="
+                            color: #3573b1;
+                            white-space: nowrap;
+                            display: inline;
+                          ">item(s)</span> <!--[if !mso]><!--></p>
+            <!--<![endif]--><!--[if mso]>
+                                            </center></v:roundrect>
+                                        <![endif]--></td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- START NO PACK SECT -->
+        <!-- END NO PACK SECT -->
+        <div id="today-package-div">
+         <!-- PACKAGE TEMPLATE -->
+         <div>
+          <table class="module" role="presentation" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+           <tbody>
+            <tr>
+             <td style="padding: 0px 0px 30px 0px" role="module-content"></td>
+            </tr>
+           </tbody>
+          </table>
+         </div>
+         <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+          <tbody>
+           <tr>
+            <td width="100%" style="padding-right: 1px" cellpadding="0" cellspacing="0"><!--[if !mso]><!-->
+             <div class="email-box-shadow dark-mode-section" style="
+          border: 2px solid #999999;
+          mso-border-alt: 2px solid #999999;
+          border-collapse: separate !important;
+          border-radius: 18px;
+          padding-left: 13px;
+          padding-top: 0px;
+          padding-bottom: 0px;
+          padding-right: 13px;
+        ">
+              <!--<![endif]-->
+              <!--[if mso]>
+<div class="email-box-shadow dark-mode-section"
+style="border: 2px solid #999999; mso-border-alt: 2px solid #999999; border-collapse: separate !important; padding:0px;background-color:#f7f7f7 !important;">
+<![endif]-->
+              <table role="presentation" style="
+            display: block !important;
+            padding: 0px;
+            margin: 0px;
+            border: none;
+            border-collapse: separate !important;
+            overflow: hidden !important;
+            font-family: Arial, Helvetica, sans-serif;
+          " cellpadding="0" cellspacing="0" width="100%">
+               <tbody>
+                <tr class="dark-mode-section">
+                 <td class="dark-mode-section">
+                  <table class="dark-mode-section" role="presentation" width="100%" style="color: #fffffe; table-layout: fixed" cellpadding="0" cellspacing="0">
+                   <tbody>
+                    <tr class="dark-mode-section">
+                     <td class="dark-mode-section from-section-desktop" style="
+                        padding: 20px 10px 20px 10px;
+                        vertical-align: top;
+                        border-bottom: 2px solid #b8b8b8;
+                      ">
+                      <p class="primary-font-color" style="
+                          font-size: 18px;
+                          margin: 0;
+                          margin-top: 3px;
+                          font-family: Arial, Helvetica, sans-serif;
+                          color: #333366;
+                        ">FROM: <b><span id="pra-shipper-name-id" class="primary-font-color" style="color: #333366">WACOAL AMERICA INC</span></b></p>
+                     </td>
+                     <td style="
+                        padding: 20px 10px 20px 10px;
+                        vertical-align: top;
+                        border-bottom: 2px solid #b8b8b8;
+                      " class="dark-mode-section desktop from-section-desktop">
+                      <p class="tracking-number" style="
+                          font-size: 18px;
+                          text-align: right;
+                          margin: 0;
+                          margin-top: 3px;
+                        "><a id="tracking-number-href-id" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j-HtyGPaD4_8CEjEA5Yc5KymwJ18RpSAt4_aVvZnFIH_avljlrkFWcdg7BemVu__ZwKDAh-6uOLFHJPi7YgEpEWcS-yGc2o08OZ05uARvMyXF85yPUHb17AVN7aJiA45hJHCYmsEUtv3OK---ZP-4gKjpvt6cPPV2N1EMbzxGuCd2Mb8MDVlYpNO3-QGKW0dkyv6oub9fAScZwyY065XdMFHJBlQrH8IN05E-YoSLG09hTJ0fxlZ9O0MNfONgsajlOEF_yE7xkdTZmfDOO_yfQ"><span id="pra-tracking-number-id" style="
+                              text-decoration: underline !important;
+                              color: #3573b1;
+                              font-weight: bold;
+                            ">9261290339735606310685</span></a></p>
+                     </td>
+                    </tr>
+                    <tr class="dark-mode-section">
+                     <td style="
+                        padding: 10px 20px 10px 10px;
+                        mso-hide: all;
+                        display: none;
+                      " class="dark-mode-section mobile from-section-mobile">
+                      <p class="tracking-number dark-mode-section" style="font-size: 18px; margin: 0; margin-top: 3px"><a id="tracking-number-href-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j-HtyGPaD4_8CEjEA5Yc5KymwJ18RpSAt4_aVvZnFIH_avljlrkFWcdg7BemVu__ZwKDAh-6uOLFHJPi7YgEpEWcS-yGc2o08OZ05uARvMyXF85yPUHb17AVN7aJiA45hJHCYmsEUtv3OK---ZP-4gKjpvt6cPPV2N1EMbzxGuCd2Mb8MDVlYpNO3-QGKW0dkyv6oub9fAScZwyY065XdMFHJBlQrH8IN05E-YoSLG09hTJ0fxlZ9O0MNfONgsajlOEF_yE7xkdTZmfDOO_yfQ"><span class="dark-mode-section" id="pra-tracking-number-id-secondary" style="
+                              text-decoration: underline !important;
+                              color: #3573b1;
+                              font-weight: bold;
+                            ">9261290339735606310685</span></a></p>
+                     </td>
+                    </tr>
+                   </tbody>
+                  </table>
+                  <table role="presentation" id="qr-code-content" class="package dark-mode-section" width="100%" cellpadding="0" cellspacing="0">
+                   <tbody></tbody>
+                  </table>
+                 </td>
+                </tr>
+               </tbody>
+              </table>
+             </div></td>
+           </tr>
+          </tbody>
+         </table>
+        </div>
+        <!-- END EXPECT TODAY SUB SECT -->
+        <!-- EXPECT 1-2 DAY SUB SECT -->
+        <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+         <tbody>
+          <tr>
+           <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+         </tbody>
+        </table>
+        <table id="expected_1-2_days_header" class="mail" width="100%" style="
+                  color: #fffffe;
+                  border-collapse: separate !important;
+                  border-spacing: 0 !important;
+                  width: 100% !important;
+                " cellpadding="0" cellspacing="0">
+         <tbody>
+          <tr>
+           <td align="left" class="secondary-background-color" style="
+                        background-color: #3573b1;
+                        padding: 20px;
+                        margin-bottom: 30px;
+                        vertical-align: middle;
+                        width: 100%;
+                      ">
+            <h2 class="section-heading" style="
+                          font-size: 22px;
+                          vertical-align: middle;
+                          display: inline;
+                        ">Expected 1-2 Days</h2>
+           </td>
+           <td align="right" class="secondary-background-color" style="
+                        background-color: #3573b1;
+                        border-collapse: separate !important;
+                        border-spacing: 0 !important;
+                        padding: 20px;
+                      "><!--[if mso]>
+                                               <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="width:125px;height:38px;padding-right:8px;padding-left:8px;padding-top:0px;padding-bottom:0px" arcsize="12%" strokecolor="#3573B1" fillcolor="#FFFFFE">
+                                                   <w:anchorlock/><center style="color:#3573B1;font-family:sans-serif;font-size:16px;font-weight:bold;padding:0px;white-space: nowrap;" class="primary-font-color">
+                                           <![endif]--> <!--[if !mso]><!-->
+            <p style="
+                          display: block;
+                          white-space: nowrap;
+                          min-width: 106px;
+                          width: max-content;
+                          max-width: max-content;
+                          padding: 10px 8px 8px 8px;
+                          margin: 0;
+                          font-size: 18px;
+                          text-align: center;
+                          color: #3573b1;
+                          border-radius: 12px;
+                          font-weight: bold;
+                          background: linear-gradient(
+                            #fffffe,
+                            #fffffe
+                          ) !important;
+                          background-color: #fffffe !important;
+                        "><!--<![endif]--> <span id="onetwodays-package-item-number" style="
+                            color: #3573b1;
+                            white-space: nowrap;
+                            display: inline;
+                          ">0</span> <span style="
+                            color: #3573b1;
+                            white-space: nowrap;
+                            display: inline;
+                          ">item(s)</span> <!--[if !mso]><!--></p>
+            <!--<![endif]--><!--[if mso]>
+                                            </center></v:roundrect>
+                                        <![endif]--></td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- START NO PACK SECT -->
+        <div id="no-packages-1-2days">
+         <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+          <tbody>
+           <tr>
+            <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+           </tr>
+          </tbody>
+         </table>
+         <table class="packages email-box-shadow dark-mode-section" width="100%" height="100" style="
+                    border-radius: 18px;
+                    border-collapse: separate !important;
+                    height: 100px;
+                  ">
+          <tbody>
+           <tr>
+            <td class="secondary-font-color" height="100" style="
+                          border: 1px solid #999999;
+                          border-radius: 18px;
+                          padding: 0 40px;
+                          font-size: 16px;
+                          line-height: 24px;
+                          height: 100px;
+                        "><strong>No packages are available to display.</strong></td>
+           </tr>
+          </tbody>
+         </table>
+        </div>
+        <!-- END NO PACK SECT -->
+        <div id="soon-package-div"></div>
+        <!-- END 1-2 DAY SUB SECT -->
+        <!-- AWAIT SENDER SUB SECT -->
+        <div id="awaiting_section">
+         <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+          <tbody>
+           <tr>
+            <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+           </tr>
+          </tbody>
+         </table>
+         <table id="awaiting_header" class="mail" width="100%" style="
+                    color: #fffffe;
+                    border-collapse: separate !important;
+                    border-spacing: 0 !important;
+                    width: 100% !important;
+                  " cellpadding="0" cellspacing="0">
+          <tbody>
+           <tr>
+            <td align="left" class="secondary-background-color" style="
+                          background-color: #3573b1;
+                          padding: 20px;
+                          margin-bottom: 30px;
+                          vertical-align: middle;
+                          width: 100%;
+                        ">
+             <h2 class="section-heading" style="
+                            font-size: 22px;
+                            vertical-align: middle;
+                            display: inline;
+                          ">Awaiting From Sender</h2>
+            </td>
+            <td align="right" class="secondary-background-color" style="
+                          background-color: #3573b1;
+                          border-collapse: separate !important;
+                          border-spacing: 0 !important;
+                          padding: 20px;
+                        "><!--[if mso]>
+                                               <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="width:125px;height:38px;padding-right:8px;padding-left:8px;padding-top:0px;padding-bottom:0px" arcsize="12%" strokecolor="#3573B1" fillcolor="#FFFFFE">
+                                                   <w:anchorlock/><center style="color:#3573B1;font-family:sans-serif;font-size:16px;font-weight:bold;padding:0px;white-space: nowrap;" class="primary-font-color">
+                                           <![endif]--> <!--[if !mso]><!-->
+             <p style="
+                            display: block;
+                            white-space: nowrap;
+                            min-width: 106px;
+                            width: max-content;
+                            max-width: max-content;
+                            padding: 10px 8px 8px 8px;
+                            margin: 0;
+                            font-size: 18px;
+                            text-align: center;
+                            color: #3573b1;
+                            border-radius: 12px;
+                            font-weight: bold;
+                            background: linear-gradient(
+                              #fffffe,
+                              #fffffe
+                            ) !important;
+                            background-color: #fffffe !important;
+                          "><!--<![endif]--> <span id="awaiting-package-item-number" style="
+                              color: #3573b1;
+                              white-space: nowrap;
+                              display: inline;
+                            ">1</span> <span style="
+                              color: #3573b1;
+                              white-space: nowrap;
+                              display: inline;
+                            ">item(s)</span> <!--[if !mso]><!--></p>
+             <!--<![endif]--><!--[if mso]>
+                                            </center></v:roundrect>
+                                        <![endif]--></td>
+           </tr>
+          </tbody>
+         </table>
+         <!-- AWAIT START NO PACK SECT -->
+         <!-- END NO PACK SECT -->
+         <div id="awaiting-sender-package-div">
+          <!-- PACKAGE TEMPLATE -->
+          <div>
+           <table class="module" role="presentation" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+            <tbody>
+             <tr>
+              <td style="padding: 0px 0px 30px 0px" role="module-content"></td>
+             </tr>
+            </tbody>
+           </table>
+          </div>
+          <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+           <tbody>
+            <tr>
+             <td width="100%" style="padding-right: 1px" cellpadding="0" cellspacing="0"><!--[if !mso]><!-->
+              <div class="email-box-shadow dark-mode-section" style="
+          border: 2px solid #999999;
+          mso-border-alt: 2px solid #999999;
+          border-collapse: separate !important;
+          border-radius: 18px;
+          padding-left: 13px;
+          padding-top: 0px;
+          padding-bottom: 0px;
+          padding-right: 13px;
+        ">
+               <!--<![endif]-->
+               <!--[if mso]>
+<div class="email-box-shadow dark-mode-section"
+style="border: 2px solid #999999; mso-border-alt: 2px solid #999999; border-collapse: separate !important; padding:0px;background-color:#f7f7f7 !important;">
+<![endif]-->
+               <table role="presentation" style="
+            display: block !important;
+            padding: 0px;
+            margin: 0px;
+            border: none;
+            border-collapse: separate !important;
+            overflow: hidden !important;
+            font-family: Arial, Helvetica, sans-serif;
+          " cellpadding="0" cellspacing="0" width="100%">
+                <tbody>
+                 <tr class="dark-mode-section">
+                  <td class="dark-mode-section">
+                   <table class="dark-mode-section" role="presentation" width="100%" style="color: #fffffe; table-layout: fixed" cellpadding="0" cellspacing="0">
+                    <tbody>
+                     <tr class="dark-mode-section">
+                      <td class="dark-mode-section from-section-desktop" style="
+                        padding: 20px 10px 20px 10px;
+                        vertical-align: top;
+                        border-bottom: 2px solid #b8b8b8;
+                      ">
+                       <p class="primary-font-color" style="
+                          font-size: 18px;
+                          margin: 0;
+                          margin-top: 3px;
+                          font-family: Arial, Helvetica, sans-serif;
+                          color: #333366;
+                        ">FROM: <b><span id="pra-shipper-name-id" class="primary-font-color" style="color: #333366">SHIPPO</span></b></p>
+                      </td>
+                      <td style="
+                        padding: 20px 10px 20px 10px;
+                        vertical-align: top;
+                        border-bottom: 2px solid #b8b8b8;
+                      " class="dark-mode-section desktop from-section-desktop">
+                       <p class="tracking-number" style="
+                          font-size: 18px;
+                          text-align: right;
+                          margin: 0;
+                          margin-top: 3px;
+                        "><a id="tracking-number-href-id" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j_YGThpUq1MeoAkgmKbqC06zHeM10cPFTYPEd20uAsnlA5FbF3nOYACmRRj-JHPHSXZId8qbPkfXmPnVoahjX_arbIvo3nQwfDIs9OgsEv_9njs4__npylm8Y1fcaPdhhL34hJu7nGybMEv3pEs0trHYV8GZy_On6ygaBnb9DjdboteCK_1g4e-JjtNaYKmq6XcC-KP92CKL1t4wtAc7U0elGETr2gV5vR6xUdCaHFWGoN5oMHnarnohcVG2asKT5I2sBf2n8w7lx2gcxLYDOQ"><span id="pra-tracking-number-id" style="
+                              text-decoration: underline !important;
+                              color: #3573b1;
+                              font-weight: bold;
+                            ">9300120845500074973694</span></a></p>
+                      </td>
+                     </tr>
+                     <tr class="dark-mode-section">
+                      <td style="
+                        padding: 10px 20px 10px 10px;
+                        mso-hide: all;
+                        display: none;
+                      " class="dark-mode-section mobile from-section-mobile">
+                       <p class="tracking-number dark-mode-section" style="font-size: 18px; margin: 0; margin-top: 3px"><a id="tracking-number-href-id-secondary" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j_YGThpUq1MeoAkgmKbqC06zHeM10cPFTYPEd20uAsnlA5FbF3nOYACmRRj-JHPHSXZId8qbPkfXmPnVoahjX_arbIvo3nQwfDIs9OgsEv_9njs4__npylm8Y1fcaPdhhL34hJu7nGybMEv3pEs0trHYV8GZy_On6ygaBnb9DjdboteCK_1g4e-JjtNaYKmq6XcC-KP92CKL1t4wtAc7U0elGETr2gV5vR6xUdCaHFWGoN5oMHnarnohcVG2asKT5I2sBf2n8w7lx2gcxLYDOQ"><span class="dark-mode-section" id="pra-tracking-number-id-secondary" style="
+                              text-decoration: underline !important;
+                              color: #3573b1;
+                              font-weight: bold;
+                            ">9300120845500074973694</span></a></p>
+                      </td>
+                     </tr>
+                    </tbody>
+                   </table>
+                   <table role="presentation" id="qr-code-content" class="package dark-mode-section" width="100%" cellpadding="0" cellspacing="0">
+                    <tbody></tbody>
+                   </table>
+                  </td>
+                 </tr>
+                </tbody>
+               </table>
+              </div></td>
+            </tr>
+           </tbody>
+          </table>
+         </div>
+        </div>
+        <!-- END AWAIT SENDER SUB SECT -->
+        <!-- OUTB SECT -->
+        <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+         <tbody>
+          <tr>
+           <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+         </tbody>
+        </table>
+        <table id="outbound_header" class="package" width="100%" style="
+                  color: #fffffe;
+                  border-collapse: separate !important;
+                  border-spacing: 0 !important;
+                  width: 100% !important;
+                " cellpadding="0" cellspacing="0">
+         <tbody>
+          <tr>
+           <td align="left" class="secondary-background-color" style="
+                        background-color: #3573b1;
+                        padding: 20px;
+                        margin-bottom: 30px;
+                        vertical-align: middle;
+                        width: 100%;
+                      ">
+            <h2 class="section-heading" style="
+                          font-size: 22px;
+                          vertical-align: middle;
+                          display: inline;
+                        ">Outbound</h2>
+           </td>
+           <td align="right" class="secondary-background-color" style="
+                        background-color: #3573b1;
+                        border-collapse: separate !important;
+                        border-spacing: 0 !important;
+                        padding: 20px;
+                      "><!--[if mso]>
+                                           <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="width:125px;height:38px;padding-right:8px;padding-left:8px;padding-top:0px;padding-bottom:0px" arcsize="12%" strokecolor="#3573B1" fillcolor="#FFFFFE">
+                                               <w:anchorlock/>
+                                               <center style="color:#3573B1;font-family:sans-serif;font-size:16px;font-weight:bold;padding:0px;white-space: nowrap;" class="primary-font-color">
+                                       <![endif]--> <!--[if !mso]><!-->
+            <p style="
+                          display: block;
+                          white-space: nowrap;
+                          min-width: 106px;
+                          width: max-content;
+                          max-width: max-content;
+                          padding: 10px 8px 8px 8px;
+                          margin: 0;
+                          font-size: 18px;
+                          text-align: center;
+                          color: #3573b1;
+                          border-radius: 12px;
+                          font-weight: bold;
+                          background: linear-gradient(
+                            #fffffe,
+                            #fffffe
+                          ) !important;
+                          background-color: #fffffe !important;
+                        "><!--<![endif]--> <span id="outbound-package-item-number" style="
+                            color: #3573b1;
+                            white-space: nowrap;
+                            display: inline;
+                          ">0</span> <span style="
+                            color: #3573b1;
+                            white-space: nowrap;
+                            display: inline;
+                          ">item(s)</span> <!--[if !mso]><!--></p>
+            <!--<![endif]--><!--[if mso]>
+                                            </center></v:roundrect>
+                                        <![endif]--></td>
+          </tr>
+         </tbody>
+        </table>
+        <table class="module" role="module" data-type="spacer" border="0" width="100%" style="width: 100%; max-width: 820px" cellpadding="0" cellspacing="0">
+         <tbody>
+          <tr id="outbound-packages-spaces-tr">
+           <td style="padding: 0px 0px 0px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- START NO PACK SECT -->
+        <div id="no-packages-outbound">
+         <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+          <tbody>
+           <tr>
+            <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+           </tr>
+          </tbody>
+         </table>
+         <table class="packages email-box-shadow dark-mode-section" width="100%" height="100" style="
+                    border-radius: 18px;
+                    border-collapse: separate !important;
+                    height: 100px;
+                  ">
+          <tbody>
+           <tr>
+            <td class="secondary-font-color" height="100" style="
+                          border: 1px solid #999999;
+                          border-radius: 18px;
+                          padding: 0 40px;
+                          font-size: 16px;
+                          line-height: 24px;
+                          height: 100px;
+                        "><strong>No packages are available to display.</strong></td>
+           </tr>
+          </tbody>
+         </table>
+        </div>
+        <div id="outbound-package-div"></div>
+        <!-- END OB and Main SECT -->
+        <!-- FOOT ADVERT CONT -->
+        <table class="module" role="module" data-type="spacer" border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed">
+         <tbody>
+          <tr>
+           <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+         </tbody>
+        </table>
+        <table role="presentation" id="refer-friend-package" class="refer" style="border-top: 2px solid #999999" width="100%" cellpadding="0" cellspacing="0">
+         <tbody>
+          <tr>
+           <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+          <tr>
+           <td align="center" style="margin: 0 auto"><img id="footer-banner-img-id" style="width: 100%" src="https://www.usps.com/email/id/refer-friends-and-family-banner.png" alt="footer banner"></td>
+          </tr>
+          <tr>
+           <td style="padding: 0px 0px 30px 0px" role="module-content" bgcolor=""></td>
+          </tr>
+          <!--[if !mso]><!-->
+          <tr>
+           <!--<![endif]-->
+           <!--[if mso]>
+                                    <tr style="padding-left:20px;padding-right:20px;">
+                                    <![endif]-->
+           <td style="
+                        padding-top: 0px;
+                        display: inline;
+                        vertical-align: middle;
+                      ">
+            <div class="referButtons" style="
+                          text-align: left;
+                          padding-left: 2px;
+                          padding-right: 4px;
+                        ">
+             <span id="refer-email-button" class="refer-email-button" style="
+                            display: inline-block;
+                            margin-bottom: 10px;
+                            margin-right: 20px;
+                            text-align: left;
+                            vertical-align: middle !important;
+                          "> <!--[if mso]>
+                                                 <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="display:inline-block;padding-top:5px;margin-bottom:10px;margin-right:30px;height:42px;v-text-anchor:middle;width:225px;background-color:#333367 !important;background-image: linear-gradient(#333367,#333367);" arcsize="10%" strokecolor="#333367" fillcolor="#333367">
+                                              <w:anchorlock/><v:textbox inset="0,0,0,0"><center style="color:#fffffe !important;-webkit-text-fill-color: #fffffe";font-family:sans-serif;font-size:16px;font-weight:normal;">
+                                              <![endif]--> <span class="primary-button" style="
+                              background-color: #333367 !important;
+                              border: 1px solid #333367 !important;
+                              border-radius: 3px;
+                              color: #fffffe !important;
+                              display: inline-block;
+                              vertical-align: middle !important;
+                            "> <a id="refer-email-link" target="_blank" href="https://informeddelivery.usps.com/trackingV2/digest/referral?a=k_yp4ClVYElkKr_NtNR9j0OvJZJVrVeNbzp50fBCs4EktAngNrXiPPJXCycoGx-HKpxcmRQWviwSUWK3DTxmV7Pap1q-OK2Da0TTkQOujefFZU1BiHpB9kcdofe5xSBhb6w5VwyIXaKoWSkNikr46Gzeb1cJf6GRZlqqaxM3eAOSJ3lt4Ssv9NR1O7l-3DR6rRnanw" style="
+                                background-color: #333367 !important;
+                                border: none !important;
+                                border-radius: 5px;
+                                color: #fffffe !important;
+                                display: inline-block;
+                                font-family: sans-serif;
+                                font-size: 16px !important;
+                                line-height: 40px;
+                                text-align: center;
+                                text-decoration: none;
+                                width: 225px;
+                                -webkit-text-size-adjust: none;
+                                white-space: nowrap;
+                                -webkit-text-size-adjust: none;
+                                min-height: 42px;
+                                height: 42px;
+                                max-height: 42px;
+                                font-weight: bold !important;
+                                font-family: Arial, Helvetica, sans-serif;
+                                text-align: center;
+                                vertical-align: middle !important;
+                              ">Refer via Email</a> </span> <!--[if mso]>
+                                              </center></v:textbox></v:roundrect>
+                                              <![endif]--> </span> <!--[if mso]>
+                          <v:rect
+                            fillcolor="none"
+                            strokecolor="none"
+                            opacity="0%"
+                            style="top: 1; left: 1; width: 20; height: 42"
+                          ></v:rect>
+                        <![endif]-->
+             <span id="refer-text-button" class="refer-text-button" style="
+                            display: inline-block;
+                            margin-bottom: 10px;
+                            margin-right: 30px;
+                            text-align: left;
+                            vertical-align: middle !important;
+                          "> <!--[if mso]>
+                                              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" style="display:inline-block;padding-top:5px;margin-bottom:10px;margin-right:30px;height:42px;v-text-anchor:middle;width:225px;background-color:#fffffe !important;background-image: linear-gradient(#fffffe,#fffffe);" arcsize="10%" strokecolor="#333367" fillcolor="#fffffe">
+                                              <w:anchorlock/><v:textbox inset="0,0,0,0"><center style="color:#333367 !important;-webkit-text-fill-color: #333367";font-family:sans-serif;font-size:16px;font-weight:normal;">
+                                              <![endif]--> <span class="secondary-button" style="
+                              background-color: #fffffe !important;
+                              border: 1px solid #333367 !important;
+                              border-radius: 3px;
+                              color: #333367 !important;
+                              display: inline-block;
+                              vertical-align: middle !important;
+                              padding-right: 1px;
+                            "> <a id="refer-text-link" target="_blank" href="https://informeddelivery.usps.com/trackingV2/digest/referral?a=k_yp4ClVYElkKr_NtNR9j01lttToeeU8ixnzqz86Y2CdRCWiWccA4SvCFHp82136UFqT2yLUwmJB0i6vuahKRdhJw8kbmLiyHefWEWMElBf1oVXMiZaY8gxd4aDYt9dmwj3ygBdl-Tt723aYI1mytumubV-rSjDr_pmc7HipyHEGIXe-hU9omCMJCkMnP2yFWwA" style="
+                                background-color: #fffffe !important;
+                                border: none !important;
+                                border-radius: 5px;
+                                color: #333367 !important;
+                                display: inline-block;
+                                font-family: sans-serif;
+                                font-size: 16px !important;
+                                line-height: 40px;
+                                text-align: center;
+                                text-decoration: none;
+                                width: 225px;
+                                -webkit-text-size-adjust: none;
+                                white-space: nowrap;
+                                -webkit-text-size-adjust: none;
+                                min-height: 42px;
+                                height: 42px;
+                                max-height: 42px;
+                                font-weight: bold !important;
+                                font-family: Arial, Helvetica, sans-serif;
+                                text-align: center;
+                                vertical-align: top !important;
+                                overflow: hidden !important;
+                                margin-left: 1px !important;
+                                margin-right: 1px !important;
+                              ">Refer via Text</a> </span> <!--[if mso]>
+                                              </center></v:textbox></v:roundrect>
+                                              <![endif]--> </span>
+            </div>
+           </td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- END FOOT ADVERT CONT -->
+        <!-- EMAIL LEGAL CONT -->
+        <table role="presentation" class="more-mail" style="border-bottom: 2px solid #999999" width="100%" cellpadding="0" cellspacing="0" border="0">
+         <tbody>
+          <tr>
+           <!--[if !mso]><!-->
+           <td width="100%" style="
+                        padding: 20px 0px 5px 0px;
+                        font-size: 12px;
+                        line-height: 22px;
+                      "><!--<![endif]--> <!--[if mso]>
+                                            <td width="100%" style="padding:20px 20px 5px 20px;font-size: 12px; line-height: 22px;">
+                                            <![endif]-->
+            <p class="secondary-font-color">You may have more mail or packages than are shown in your Daily Digest. To check, <strong><a class="anchored-text" id="mailbox-url-link-2" style="
+                              text-decoration: underline !important;
+                              color: #3573b1;
+                              font-weight: bold;
+                            " href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j7vcxaSyOrroUEfyTnjJUstlkVTcILGwwjsLyZrRyuNJiMFXfQ7A1w5SVWJJFVBJnCrrIZFs7Z4P3qVcgRdo43RwazuFTFoabm1NXDZn7CiN6LbQd1C0HPqHaK2lBUsqDwrVmKKxq_-JN4woCNP2mcsf8rTXI_1SsDgOAqDYHAJ55nHdh3PaQH_arMAfEgyxANQ">go to your Dashboard</a></strong>.</p>
+            <p class="secondary-font-color">Mail may arrive after you receive the notification. Please allow several days for delivery before reporting missing mail. <strong><a class="anchored-text" id="missing-mailpiece-href-id" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j03F_LHGYDXKQIZEr2eY6a3qVLueU7UdQVx3ogUDIky0ZDbvKgul_BBh83ZXWaaA-LuWO54lRht65hq-S36W_FaZujF_Fauww5noSH1KlCVzjJnuIOVtDLF9L6attbCMrbYwPkIOur2rsdH_5rFWGID80fzwldKjHLi7hR2KhJph3Cjg1KqqGqyZNmEYldVRi5oF" style="
+                              text-decoration: underline !important;
+                              color: #3573b1;
+                              font-weight: bold;
+                            ">Sign in</a></strong> to your consumer dashboard to report missing mail within 7 days of receiving this Daily Digest email.</p></td>
+          </tr>
+         </tbody>
+        </table>
+        <table role="presentation" class="legal" width="100%" cellpadding="0" cellspacing="0" border="0">
+         <tbody>
+          <tr>
+           <!--[if !mso]><!-->
+           <td width="100%" style="
+                        padding: 20px 0px;
+                        font-size: 11px;
+                        line-height: 14px;
+                      "><!--<![endif]--> <!--[if mso]>
+                                        <td width="100%" style="padding: 20px 20px; font-size: 11px; line-height: 14px;">
+                                        <![endif]-->
+            <p class="secondary-font-color">*These images represent mail pieces that are sorted on USPS<sup>®</sup> automated equipment. Some of your mail may not be shown here.</p>
+            <p class="secondary-font-color">You subscribed to this service with USPS<sup>®</sup> Product Technology Innovation, 475 L`Enfant Plaza SW, Washington, DC 20260.</p>
+            <p class="secondary-font-color">If you no longer wish to receive daily email notifications, <a class="anchored-text" id="unsubscribe-url-link" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j5WC3vPHkd3gOlQcAjbxtjCmr5v9sr2AVw54RIBLXydOrrefF6AacV2SxwkdUoZ0C_7bMcHw7xWS5gBhFmykVfoEJuAFmMGR2A8TQAQiCW80fjh2AssGgtqy7FEvAT66rPTb1_TJWB4zv8tJRyrEjEk3vz9kl8ZXTBjUxo--i9W-5otGQm-4IsV1bePLjOpAYPW4kD3KW6JLq2UvNpjmqqJ21nW89LvADnltXS3HcPU8LCwr2oF5OVc" target="_blank" style="
+                            text-decoration: underline !important;
+                            color: #3573b1;
+                            font-weight: bold;
+                          ">unsubscribe here</a>.</p>
+            <p class="secondary-font-color">If you need support, please visit <a class="anchored-text" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9jzgMBN9B1A2IM2IJsJzttIyeJtJ8M2Wj_gmhXI0mK402hMzIOCQdEX9XgWvmHPleSbNC2BPTbEQKqfyl2NBIvpnlfrFc4RhtAX_yS9nHlf3K2cSq5icfGBSHG1XASq7OiLu64-Fz--OZOcQEqtX59skYawltUFcbLOuJgbMUzYJ6qq6hufFqunh9mMzjn4ZjAw" target="_blank" id="user-support-href-id" style="
+                            text-decoration: underline !important;
+                            color: #3573b1;
+                            font-weight: bold;
+                          ">user support for Informed Delivery<sup>®</sup></a>.</p>
+            <p class="secondary-font-color">For more information about this service, please visit <a class="anchored-text" id="faq-href-id" target="_blank" href="https://informeddelivery.usps.com/trackingV2/digest/click?a=k_yp4ClVYElkKr_NtNR9j7nxV5gpHeu2Pq1CT685pXcZBcHpfaWcm07by8xvAKSHMuZm6FbLTMDGYAb3xgYds_vLwvpyY9x9_OppQQBq-WlKORtAQIzl-p96cPS2T2jSLTTOFb2YyxpGppTRbzOWXgySkYzDxZ5a71hMMwcUf4h344u29KHmOg8uJ758sNKYTRCwkA" style="
+                            text-decoration: underline !important;
+                            color: #3573b1;
+                            font-weight: bold;
+                          ">general information about Informed Delivery</a>.</p>
+            <p class="secondary-font-color">Copyright © <span id="copyright-year">2026</span> United States Postal Service<sup>®</sup>. All Rights Reserved. The Eagle Logo and the trade dress of USPS<sup>®</sup> Packaging are among the many trademarks of the U.S. Postal Service<sup>®</sup>.</p>
+            <p class="secondary-font-color">This is an automated email, please do not reply to this message. This message is for the designated recipient only and may contain privileged, proprietary, or otherwise private information. If you have received it in error, please delete. Any other use of the email by you is prohibited.</p></td>
+          </tr>
+         </tbody>
+        </table>
+        <!-- END EMAIL LEGAL CONT -->
+       </div></td>
+     </tr>
+    </tbody>
+   </table>
+  </div>
+  <!--[if mso]>
+                </td>
+            </tr>
+        </table>
+    <![endif]-->
+ </body>
+</html>

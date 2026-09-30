@@ -2,9 +2,15 @@
   "name": "vera-dashboard-tests",
   "private": true,
   "devDependencies": {
-    "@playwright/test": "^1.45.0"
+    "@babel/standalone": "8.0.5",
+    "@playwright/test": "^1.45.0",
+    "playwright": "1.63.0"
   },
   "scripts": {
+    "test": "node tests/run.js",
+    "test:source": "node tests/run.js --node --controls",
+    "test:ui": "node tests/run.js --browser",
+    "test:controls": "node tests/run.js --controls",
     "test:regression": "playwright test tests/regression.spec.js"
   }
 }

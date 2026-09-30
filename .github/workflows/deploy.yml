@@ -10,7 +10,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Nothing but `node --check` used to stand between a push and the live Apps Script
+  # project, so a commit that broke the period keys or the perk cleanup deployed to
+  # the running assistant and was found out afterwards. This is the node tests and the
+  # control runners — about fifteen seconds — and the deploy waits for it.
+  #
+  # The browser tests are deliberately NOT a gate: a dashboard layout test cannot tell
+  # you anything about the .js files being pushed here, and making an Apps Script fix
+  # wait three minutes on Chromium would be a tax with no return. They run in their own
+  # workflow, where they still block that workflow.
+  #
+  # If a test is wrong and something urgent is broken, workflow_dispatch above still
+  # deploys by hand.
+  fast:
+    name: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --no-audit --no-fund
+
+      - name: Run tests
+        run: node tests/run.js --node --controls
+
   deploy:
+    needs: [fast]
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

@@ -1532,6 +1532,69 @@ mechanical and `--check` makes drift detectable.
 
 ---
 
+## Tests
+
+Two layers, and the distinction matters:
+
+| | `tests/source/` | `tests/regression.spec.js` |
+|---|---|---|
+| Tests | the committed source | the **deployed** dashboard |
+| Needs | a checkout | Pages published, `VERA_URL` + `VERA_TOKEN` |
+| Runs on | every push and PR, any branch | push to `main`, after a 90s wait |
+| Size | 64 files, 3115 assertions | 185 lines |
+
+```bash
+npm ci
+npm test              # everything
+npm run test:source   # node tests + controls — ~15s, and what gates the deploy
+npm run test:ui       # the ones that render in Chromium — ~2min
+node tests/run.js --list
+```
+
+`tests/run.js` discovers `tests/source/test_*.js`, classifies each by whether it
+*requires* `playwright` or `@babel/standalone`, and runs it. Classification is by
+require rather than by mention, because several pure-Node tests discuss both in their
+comments — `test_globals.js` greps the source for them.
+
+**How these tests work.** They read the repo's own `.js` files, brace-match the real
+function out by name, and run *that* function in a `vm` with the Apps Script surface
+stubbed. Never a copy: a transcription only proves the transcription works. So
+`test_perkflagclose.js` runs the actual `closeExpiredPerkFlags_` from `Code.js`, and
+renaming a column header in `FLAG_HEADERS` breaks it.
+
+**Every behaviour has a negative control.** The `ctl_*.js` runners write a mutated copy
+of the source to a temp directory, point the test at it with `VERA_ROOT`, and assert
+the test *fails*. A test that cannot fail is not a test, and several here have gone
+vacuous after a refactor — cache moved behind a helper, a constant changed, a guard
+relocated. That is why the controls run in CI beside the tests and not as an
+afterthought.
+
+**A test may declare that it is supposed to fail.** `test_triprow_control.js` is the
+card layout *without* the wrap fix, so the assertions in `test_triprow.js` can be shown
+to bite. It carries
+
+```js
+// EXPECT-FAILURES: 6
+```
+
+and the runner checks that count **exactly**. Too few is as much a failure as too many:
+if the control ever passes clean, the thing it controls for has stopped guarding
+anything.
+
+**The deploy waits for `test:source`.** `deploy.yml` gained a `fast` job that runs the
+node tests and the controls, and `deploy` needs it. Before that, the only thing between
+a push and the live Apps Script project was `node --check` — syntax — so a commit that
+broke the perk period keys deployed to the running assistant and was found out
+afterwards. The browser tests deliberately do **not** gate it: they cannot tell you
+anything about the `.js` files being pushed, and `workflow_dispatch` still forces a
+deploy by hand when a test is wrong and something urgent is broken.
+
+> Commit messages before this section existed refer to `scratchpad/test_*.js`. That is
+> the same file, at `tests/source/test_*.js`; the suite lived in a temp directory until
+> it was brought into the repo.
+
+---
+
 ## Setup & Deployment
 
 ### Step 1 — Create the Life OS Google Sheet
