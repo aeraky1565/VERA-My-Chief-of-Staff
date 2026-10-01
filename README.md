@@ -1682,6 +1682,35 @@ npm run test:ui       # the ones that render in Chromium — ~2min
 node tests/run.js --list
 ```
 
+### When the regression suite times out
+
+`tests/regression.spec.js` calls `action=regression_test` on the live web app, which
+runs nine read-only checks serially — including `CalendarApp.getAllCalendars()`, whose
+latency is Google's and not ours.
+
+It used to have no time budget at all. When the nine checks overran the spec's 60-second
+patience the request simply never returned, and because the response carries the
+per-check timings, **a slow check produced a timeout that named nothing**:
+
+```
+TimeoutError: apiRequestContext.get: Timeout 60000ms exceeded.
+  - → GET ***?action=regression_test&token=***
+```
+
+`REGRESSION_BUDGET_MS` (45s, deliberately inside the spec's 60s — **raise them
+together or not at all**) now stops it *starting* a new check once the budget is
+gone. Those checks come back `status: 'skipped'`, the response is sent, and the spec
+prints every check with its timing plus the total against the budget.
+
+An overrun still fails the build — *"I ran out of time"* is not a clean bill of health
+— but it now fails naming the last check that completed and how long it took. Checks
+are deliberately **not** reordered cheapest-first: that would make the suite look
+healthier while hiding the thing worth finding.
+
+> Same lesson as the nightly run above, in a different place: Apps Script work that
+> outgrows its time box reports as **silence**, and silence is indistinguishable from
+> never having happened. Both now answer before they are cut off.
+
 `tests/run.js` discovers `tests/source/test_*.js`, classifies each by whether it
 *requires* `playwright` or `@babel/standalone`, and runs it. Classification is by
 require rather than by mention, because several pure-Node tests discuss both in their

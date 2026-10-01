@@ -170,15 +170,31 @@ test.describe('Tier 3 — Apps Script API', () => {
     expect(data).toHaveProperty('results');
     expect(Array.isArray(data.results)).toBe(true);
 
-    // Print per-check results for easy debugging
+    // Print every check with its timing, not just the failures. The timings ARE
+    // the diagnosis — this endpoint's real failure mode is running out of time,
+    // and knowing which check ate it is the whole question.
     if (data.results) {
       data.results.forEach(r => {
         if (r.status === 'fail') {
-          console.error(`  ❌ ${r.name}: ${r.error}`);
+          console.error(`  ❌ ${r.name} (${r.ms}ms): ${r.error}`);
+        } else if (r.status === 'skipped') {
+          console.error(`  ⏭  ${r.name}: never ran — ${r.error}`);
         } else {
           console.log(`  ✅ ${r.name} (${r.ms}ms)`);
         }
       });
+      console.log(`  total ${data.total_ms}ms of ${data.budget_ms}ms budget`);
+    }
+    // A budget overrun is a failure, and now a legible one: the log above names
+    // the last check that ran and how long it took. Before this, the endpoint
+    // simply never answered and the spec died on a timeout that named nothing.
+    if (data.skipped) {
+      const lastRan = data.results.filter(r => r.status !== 'skipped').pop();
+      throw new Error(
+        `regression_test ran out of its ${data.budget_ms}ms budget after ` +
+        `${data.results.length - data.skipped} of ${data.results.length} checks` +
+        (lastRan ? ` — slowest completed: ${lastRan.name} (${lastRan.ms}ms)` : '')
+      );
     }
     expect(data.ok).toBe(true);
   });
