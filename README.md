@@ -723,9 +723,12 @@ things were wrong, and the second shapes the whole design:
 
 1. The packing prompt's beach hint listed *"swimwear, water shoes, dry bag,
    reef-safe sunscreen"* — it named neither.
-2. That hint only fires when an **itinerary row is typed `beach`**. `activityTypes`
+2. That hint only fired when an **itinerary row was typed `beach`**. `activityTypes`
    is built from itinerary row types, not from the trip's name or context. With no
-   beach-typed row, the hint never ran at all.
+   beach-typed row, the hint never ran at all. **Fixed at the source:** the hints now
+   also read the trip's Characteristics, so a trip marked `beach` gets beach guidance
+   whatever its itinerary contains. The same applied to the ski, cruise, outdoors and
+   theme-park hints, which all had the identical weakness.
 
 The capture half already half-existed: debrief question 3 has always asked *"anything
 you'd skip or do differently?"*, and the answer went into the Shared Interests ledger
@@ -735,18 +738,51 @@ did**. The loop was built on one side only.
 **A lesson is a scoped rule, not a diary entry.** It lives on the `Memory Log` tab as
 a `trip_lesson` row, with two columns no other event type uses:
 
-| Scope | Fires on |
-|---|---|
-| `always:*` | every trip |
-| `destination:florida` | trips whose destination matches, either way round — stored `florida` matches a trip reading `Orlando, Florida` |
-| `context:Family` | trips with that Trip Context |
-| `activity:beach` | trips with an itinerary row of that type |
+| Scope | Fires on | |
+|---|---|---|
+| `trait:beach` | any trip marked with that **characteristic** | **prefer this** |
+| `always:*` | every trip | |
+| `context:Family Trip` | trips with that Trip Context — who you are with | |
+| `destination:florida` | trips to that place, matched either way round so stored `florida` catches `Orlando, Florida` | narrow fallback |
+| `activity:beach` | trips with an itinerary row of that `type` | narrower still |
 
-> **Scope is the whole point, and the debrief asks rather than guesses.** A lesson
-> scoped `activity:beach` would have missed the Florida trip *for exactly the same
-> reason the hint did* — no beach-typed row. `destination:florida` or `context:Family`
-> would have caught it. Chat is told to explain the four options in plain terms and
-> let you pick, and is warned about this specific trap.
+> **A lesson generalises over the kind of trip, not the place.** The hat and the water
+> bottle have nothing to do with Florida — they are about *beach trips*, and should
+> fire for Hawaii or Greece too. Scoped `destination:florida` the lesson only ever
+> helps on a return visit to the same state; scoped `activity:beach` it would have
+> missed the original trip *for exactly the same reason the hint did*, since both
+> read itinerary row types and no row was typed `beach`.
+>
+> `destination` survives because some lessons really are about a place — *"leave 30
+> min earlier for ORD"*, *"tipping works differently in Japan"*. It is the wrong
+> default, not a wrong idea. The debrief now offers `trait` first and names
+> `destination` as the narrow fallback.
+
+**Trip Characteristics** are what `trait` matches against: a `Characteristics` column
+on `TripMeta` holding `beach, city` — multi-value, because Miami is both and forcing
+one would make the field lie. The vocabulary is `beach · city · resort · ski ·
+outdoors · roadtrip · cruise · themepark`, and `normaliseTripCharacteristics_` drops
+anything outside it, since a characteristic nothing can match is indistinguishable
+from a typo.
+
+This is a **different axis from Trip Context**, which is `Anniversary Trip · Work Trip
+· Family Trip · Girls Trip · Solo Adventure` — entirely *who you are with and why*.
+A beach trip is a beach trip whether it is an anniversary or a family holiday.
+
+Set them from the chips under the trip briefing in the dashboard, or in Chat with
+`set_trip_characteristics`. Seeding is a deterministic keyword scan of **the trip
+briefing** — the field that already says what the trip is actually for, so *"beach
+week with the family"* suggests `beach`. No Claude call: explainable, free, and wrong
+only by omission, which is why it is a suggestion and the field stays editable. The
+trip *label* is deliberately never scanned — "Florida Trip" does not say beach, and
+guessing a trip's character from its name is the move that already failed.
+
+> **A blank Characteristics field is the one real hazard.** It reads exactly like
+> "not a beach trip", so every `trait:` lesson silently says *no match* for a reason
+> that has nothing to do with the lesson. It is therefore reported rather than
+> inferred: the chips say so when empty, `webGeneratePacking_` returns
+> `characteristicsMissing` with what the briefing suggests, and `tbTripLessons()`
+> prints a note.
 
 `Category` decides who reads it back: **Packing** reaches the packing prompt,
 **Dining** and **Activities** reach the recommendations prompt. **Logistics** and

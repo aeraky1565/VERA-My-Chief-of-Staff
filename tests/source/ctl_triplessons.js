@@ -3,8 +3,10 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const SRC_DIR = path.join(__dirname, '..', '..');
 const OUT = path.join(__dirname, 'ctl_tls');
 const FILES = ['Memory.js', 'WebApp.js', 'Code.js', 'Chat.js'];
+const DOCS  = ['app.js', 'index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
+DOCS.forEach(f => { BASE['docs/' + f] = fs.readFileSync(path.join(SRC_DIR, 'docs', f), 'utf8'); });
 
 const CONTROLS = {
   'an unparseable scope is treated as "applies to everything"': b => ({
@@ -90,11 +92,71 @@ const CONTROLS = {
                                     'pick a sensible scope yourself'),
   }),
   'the activity-scope warning is dropped': b => ({
-    'Chat.js': b['Chat.js'].replace(/scoped activity:beach will NOT fire[^']*/, 'is fine '),
+    'Chat.js': b['Chat.js'].replace(/activity:beach will NOT fire[^']*/, 'is fine '),
+  }),
+  'the debrief stops offering trait first': b => ({
+    'Chat.js': b['Chat.js'].replace('OFFER trait FIRST', 'offer any scope'),
+  }),
+  'destination is no longer called the narrow fallback': b => ({
+    'Chat.js': b['Chat.js'].replace('Destination is the narrow fallback', 'Destination is a good default'),
   }),
   'a rejected lesson is swallowed instead of reported': b => ({
     'Chat.js': b['Chat.js'].replace(/          errors\.push\('log_trip_lesson: ' \+ ltRes\.reason\);/,
                                     "          executed.push('log_trip_lesson (skipped)');"),
+  }),
+  'trait is dropped from the recognised scopes': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "var TRIP_LESSON_SCOPES = ['trait', 'always', 'destination', 'context', 'activity'];",
+      "var TRIP_LESSON_SCOPES = ['always', 'destination', 'context', 'activity'];"),
+  }),
+  'trait falls back to itinerary activity types': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "    return tripTraitList_(t.traits).indexOf(parsed.value) !== -1;",
+      "    return tripTraitList_(t.traits).indexOf(parsed.value) !== -1 || !!(t.activityTypes || {})[parsed.value];"),
+  }),
+  'trait matches a trip with no characteristics': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "    return tripTraitList_(t.traits).indexOf(parsed.value) !== -1;",
+      "    var tl = tripTraitList_(t.traits);\n    return !tl.length || tl.indexOf(parsed.value) !== -1;"),
+  }),
+  'the characteristics list is not lowercased': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "  return arr.map(function(s) { return String(s || '').trim().toLowerCase(); })",
+      "  return arr.map(function(s) { return String(s || '').trim(); })"),
+  }),
+  'the packing hints ignore the characteristics': b => ({
+    'WebApp.js': b['WebApp.js']
+      .replace("  if (isTrip('beach') || activityTypes.beach", "  if (activityTypes.beach")
+      .replace("  if (isTrip('ski') || activityTypes.skiing", "  if (activityTypes.skiing"),
+  }),
+  'setTripMeta wipes characteristics when the field is omitted': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /        if \(p\.characteristics !== undefined\) \{\n          sheet\.getRange\(rowNum, 11\)\.setValue\(normaliseTripCharacteristics_\(p\.characteristics\)\);\n        \}/,
+      "        sheet.getRange(rowNum, 11).setValue(normaliseTripCharacteristics_(p.characteristics));"),
+  }),
+  'an unknown characteristic is kept instead of dropped': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (TRIP_CHARACTERISTICS.indexOf(s) === -1) return;\n", ''),
+  }),
+  'the blank-characteristics signal is removed': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  packResult\.characteristicsMissing = !traits;\n/, ''),
+  }),
+  'the briefing scan guesses from the trip label too': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "function suggestTripCharacteristics_(briefing, activityTypes) {\n  var text = ' ' + String(briefing || '').toLowerCase() + ' ';",
+      "function suggestTripCharacteristics_(briefing, activityTypes, tripLabel) {\n  var text = ' ' + String(briefing || '').toLowerCase() + ' ' + String(tripLabel || '').toLowerCase() + ' ';"),
+  }),
+  'index.html is stale — the chips exist only in app.js': b => ({
+    'docs/index.html': b['docs/index.html'].replace(/TripCharacteristicsBlock/g, 'DeadBlock'),
+  }),
+  'the UI vocabulary drifts from the server': b => ({
+    'docs/app.js':     b['docs/app.js'].replace("'beach','city','resort','ski','outdoors','roadtrip','cruise','themepark'", "'beach','city','mountains'"),
+    'docs/index.html': b['docs/index.html'].replace("'beach','city','resort','ski','outdoors','roadtrip','cruise','themepark'", "'beach','city','mountains'"),
+  }),
+  'the "not set" warning is dropped from the UI': b => ({
+    'docs/app.js':     b['docs/app.js'].replace(/not set, so beach\/ski lessons and hints won't fire/g, ''),
+    'docs/index.html': b['docs/index.html'].replace(/not set, so beach\/ski lessons and hints won't fire/g, ''),
   }),
   'the Scope and Category columns are removed from the schema': b => ({
     'Code.js': b['Code.js'].replace(
@@ -107,6 +169,7 @@ let allBit = true;
 Object.keys(CONTROLS).forEach(name => {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
+  fs.mkdirSync(path.join(OUT, 'docs'), { recursive: true });
   const patch = CONTROLS[name](BASE);
   const files = Object.assign({}, BASE, patch);
   let changed = false;

@@ -64,11 +64,16 @@ var TB_TRIP_LABEL = '';
 var TB_AIRPORTS = '';
 
 /**
- * Trip to test trip lessons against, as 'destination|context|activity,activity'.
- * e.g. 'Orlando, Florida|Family|dining,beach'
+ * Trip to test trip lessons against, as
+ * 'destination|context|activity,activity|trait,trait'
+ * e.g. '|Family Trip||beach' \u2014 a family beach trip with nothing scheduled yet.
  *
- * Any part may be blank: '|Family|' tests context alone. Blank overall = show
- * every lesson on file and which trips each one would fire on.
+ * Any part may be blank: '|Family Trip||' tests context alone. Blank overall = show
+ * every lesson on file without matching.
+ *
+ * The fourth segment is the trip's Characteristics, and it is the one that usually
+ * matters: a lesson scoped trait:beach fires on it with no beach-typed itinerary
+ * row anywhere, which is exactly the case the third segment cannot express.
  *
  * It is a made-up trip on purpose. A lesson is worth checking BEFORE the trip it
  * is meant to help exists on the calendar, and the point of the check is whether
@@ -277,9 +282,10 @@ function tbTripLessons() {
 
   var parts   = String(TB_LESSON_TRIP || '').split('|');
   var trip = {
-    destination: (parts[0] || '').trim(),
-    context:     (parts[1] || '').trim(),
+    destination:   (parts[0] || '').trim(),
+    context:       (parts[1] || '').trim(),
     activityTypes: {},
+    traits:        (parts[3] || '').trim(),
   };
   (parts[2] || '').split(',').forEach(function(a) {
     var t = a.trim().toLowerCase();
@@ -314,7 +320,14 @@ function tbTripLessons() {
 
   if (TB_LESSON_TRIP) {
     Logger.log('Testing against: destination="' + trip.destination + '" context="' +
-               trip.context + '" activities=' + JSON.stringify(Object.keys(trip.activityTypes)));
+               trip.context + '" activities=' + JSON.stringify(Object.keys(trip.activityTypes)) +
+               ' characteristics=' + JSON.stringify(tripTraitList_(trip.traits)));
+    if (!tripTraitList_(trip.traits).length) {
+      // Said out loud because it is the silent failure: no characteristics reads
+      // exactly like "not a beach trip", and every trait-scoped lesson below will
+      // say "no match" for a reason that has nothing to do with the lesson.
+      Logger.log('NOTE: no characteristics set \u2014 every trait: lesson will read as "no match".');
+    }
   } else {
     Logger.log('TB_LESSON_TRIP is blank — listing only, no matching.');
   }

@@ -17,6 +17,8 @@ const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherev
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = {
   Mem:  fs.readFileSync(ROOT + '/Memory.js', 'utf8'),
+  App:   fs.readFileSync(ROOT + '/docs/app.js', 'utf8'),
+  Index: fs.readFileSync(ROOT + '/docs/index.html', 'utf8'),
   Web:  fs.readFileSync(ROOT + '/WebApp.js', 'utf8'),
   Code: fs.readFileSync(ROOT + '/Code.js', 'utf8'),
   Chat: fs.readFileSync(ROOT + '/Chat.js', 'utf8'),
@@ -108,6 +110,7 @@ function loadCtx(sheet, opts) {
     extractFn(SRC.Mem, 'ensureMemoryColumns_'),
     extractFn(SRC.Mem, 'appendMemoryEvent_'),
     extractFn(SRC.Mem, 'parseTripLessonScope_'),
+    extractFn(SRC.Mem, 'tripTraitList_'),
     extractFn(SRC.Mem, 'tripLessonApplies_'),
     extractFn(SRC.Mem, 'getTripLessons_'),
     extractFn(SRC.Mem, 'tripLessonsPromptBlock_'),
@@ -166,6 +169,60 @@ console.log('\nMatching a lesson to a trip');
   check('an unparseable scope matches nothing', c.tripLessonApplies_('florida', florida) === false);
   check('a blank trip field matches nothing',   c.tripLessonApplies_('destination:florida', {}) === false);
   check('a missing trip object does not throw', c.tripLessonApplies_('always:*', undefined) === true);
+}
+
+console.log('\nTrait scope — the axis a lesson actually generalises over');
+{
+  const c = loadCtx(makeMemorySheet([]));
+
+  // Guarded: when 'trait' is not a recognised scope the parser returns null, and a
+  // bare .value turns an assertion failure into a crash that says nothing.
+  const parsedTrait = c.parseTripLessonScope_('trait:beach');
+  check('trait parses', !!parsedTrait && parsedTrait.value === 'beach', JSON.stringify(parsedTrait));
+  check('…and is a recognised scope', c.TRIP_LESSON_SCOPES.indexOf('trait') !== -1);
+
+  // THE case this whole change exists for, stated as a test.
+  const floridaBeach = {
+    destination: 'Orlando, Florida',
+    context: 'Family Trip',
+    activityTypes: { dining: true },     // nothing typed 'beach' — as it was
+    traits: 'beach',
+  };
+  check('trait:beach FIRES for a beach trip with no beach itinerary row',
+        c.tripLessonApplies_('trait:beach', floridaBeach) === true,
+        'the Florida case: the hint missed it because nothing was typed beach');
+  check('…while activity:beach still does NOT',
+        c.tripLessonApplies_('activity:beach', floridaBeach) === false,
+        'the two must stay distinct — "is a beach trip" vs "a beach is scheduled"');
+
+  // And it generalises, which destination never did.
+  const hawaii = { destination: 'Maui, Hawaii', context: 'Anniversary Trip', activityTypes: {}, traits: 'beach, resort' };
+  check('the same lesson fires on a different beach trip',
+        c.tripLessonApplies_('trait:beach', hawaii) === true,
+        'this is what destination:florida could never do');
+  check('destination:florida does NOT reach Hawaii',
+        c.tripLessonApplies_('destination:florida', hawaii) === false,
+        'which is exactly why it was the wrong axis');
+
+  check('a multi-value list matches either value',
+        c.tripLessonApplies_('trait:resort', hawaii) === true &&
+        c.tripLessonApplies_('trait:beach', hawaii) === true);
+  check('…and not a value it does not hold',
+        c.tripLessonApplies_('trait:ski', hawaii) === false);
+
+  check('a trip with NO characteristics matches no trait scope',
+        c.tripLessonApplies_('trait:beach', { destination: 'Orlando', context: '', activityTypes: {}, traits: '' }) === false,
+        'correct, but silent — which is why the blank is reported rather than inferred');
+  check('…and a missing traits field behaves the same',
+        c.tripLessonApplies_('trait:beach', { destination: 'Orlando' }) === false);
+
+  check('whitespace and case in the stored list are tolerated',
+        c.tripLessonApplies_('trait:city', { traits: ' Beach ,  CITY ' }) === true);
+  check('an array is accepted as well as a string',
+        c.tripLessonApplies_('trait:ski', { traits: ['ski', 'outdoors'] }) === true);
+  check('trait does NOT fall back to activity types',
+        c.tripLessonApplies_('trait:beach', { activityTypes: { beach: true }, traits: '' }) === false,
+        'blurring them would re-admit the failure trait exists to fix');
 }
 
 console.log('\nReading lessons back, filtered by category');
@@ -330,6 +387,132 @@ console.log('\nThe generators actually read it');
         'what he rejected should shape the search, not be applied to its results');
 }
 
+console.log('\nTrip characteristics: the field a trait scope matches against');
+{
+  const set    = extractFn(SRC.Web, 'webSetTripMeta_');
+  const get    = extractFn(SRC.Web, 'webGetTripMeta_');
+  const norm   = extractFn(SRC.Web, 'normaliseTripCharacteristics_');
+  const ensure = extractFn(SRC.Web, 'ensureTripMetaColumns_');
+
+  check('the header carries Characteristics', /'Characteristics'/.test(SRC.Code));
+  check('…as the 11th column', /'Luggage JSON', 'Characteristics'/.test(SRC.Code));
+  check('the vocabulary is declared', /TRIP_CHARACTERISTICS\s*=/.test(SRC.Code));
+
+  check('the writer guards it like every other field',
+        /if \(p\.characteristics !== undefined\)/.test(set),
+        'an omitted field must not wipe it — the bug this function already records');
+  check('…writes column 11', /getRange\(rowNum, 11\)/.test(set));
+  check('…and normalises on the way in', /normaliseTripCharacteristics_\(p\.characteristics\)/.test(set));
+  check('the append row grew to match the header',
+        /\(p\.characteristics \|\| ''\)\.trim\(\),/.test(set),
+        'setValues sizes from TRIP_META_HEADERS.length and throws on a short row');
+  check('the reader returns it', /characteristics: String\(data\[i\]\[10\]/.test(get));
+  check('…and defaults it to blank when there is no row',
+        (get.match(/characteristics: ''/g) || []).length >= 2);
+  check('the tab self-heals its header', /TRIP_META_HEADERS\.forEach/.test(ensure));
+
+  // Run the real normaliser.
+  const ctx = { String, Array, Object, console };
+  vm.createContext(ctx);
+  vm.runInContext(extractDecl(SRC.Code, 'TRIP_CHARACTERISTICS') + '\n' + norm, ctx);
+  check('it lowercases and trims', ctx.normaliseTripCharacteristics_(' Beach , CITY ') === 'beach, city');
+  check('it de-duplicates',        ctx.normaliseTripCharacteristics_('beach,beach') === 'beach');
+  check('it accepts an array',     ctx.normaliseTripCharacteristics_(['beach', 'ski']) === 'beach, ski');
+  check('it DROPS a value outside the vocabulary',
+        ctx.normaliseTripCharacteristics_('beach, jungle') === 'beach',
+        'a characteristic nothing can match is indistinguishable from a typo');
+  check('blank in, blank out', ctx.normaliseTripCharacteristics_('') === '' &&
+                               ctx.normaliseTripCharacteristics_(null) === '');
+}
+
+console.log('\nSeeding characteristics from the briefing');
+{
+  const fn  = extractFn(SRC.Web, 'suggestTripCharacteristics_');
+  const ctx = { String, Array, Object, RegExp, console };
+  vm.createContext(ctx);
+  vm.runInContext(extractDecl(SRC.Code, 'TRIP_CHARACTERISTICS') + '\n' + fn, ctx);
+  const sug = (b, a) => ctx.suggestTripCharacteristics_(b, a || {});
+
+  check('"beach week with the family" seeds beach',
+        sug('beach week with the family').join() === 'beach',
+        JSON.stringify(sug('beach week with the family')));
+  check('"city break in Lisbon" seeds city', sug('city break in Lisbon').indexOf('city') !== -1);
+  check('"skiing in March" seeds ski',       sug('skiing in March').indexOf('ski') !== -1);
+  check('"all-inclusive in Cancun" seeds resort', sug('all-inclusive in Cancun').indexOf('resort') !== -1);
+
+  check('"we\'re going to the shore" seeds NOTHING',
+        sug("we're going to the shore").length === 0,
+        'wrong only by omission — the field stays editable, and this is a suggestion');
+  check('an empty briefing seeds nothing', sug('').length === 0 && sug(null).length === 0);
+
+  check('a beach-typed itinerary row seeds beach on its own',
+        sug('', { beach: true }).join() === 'beach');
+  check('…and a cruise row seeds cruise', sug('', { cruise: true }).join() === 'cruise');
+
+  check('the suggestion is ordered by the vocabulary, not by discovery',
+        sug('city beach').join(',') === 'beach,city',
+        JSON.stringify(sug('city beach')));
+
+  // The guess that already failed, explicitly not reattempted.
+  check('the trip LABEL is not an input', !/tripLabel|label/.test(fn),
+        '"Florida Trip" does not say beach');
+}
+
+console.log('\nThe packing hints no longer depend on itinerary row types');
+{
+  const p = extractFn(SRC.Web, 'buildPackingPrompt_');
+  check('the builder takes the trip characteristics', /lessonsBlock, traits\) \{/.test(p));
+  check('…and turns them into a lookup', /function isTrip\(trait\)/.test(p));
+  check('the beach hint fires on the characteristic', /isTrip\('beach'\) \|\| activityTypes\.beach/.test(p),
+        'the Florida fix at its source: no beach-typed row needed');
+  check('…and so do ski, cruise, outdoors and themepark',
+        /isTrip\('ski'\)/.test(p) && /isTrip\('cruise'\)/.test(p) &&
+        /isTrip\('outdoors'\)/.test(p) && /isTrip\('themepark'\)/.test(p),
+        'they all had the identical weakness');
+  check('the itinerary signal is kept, not replaced',
+        /isTrip\('beach'\) \|\| activityTypes\.beach \|\| activityTypes\.snorkeling/.test(p),
+        'a scheduled beach still counts even on an unmarked trip');
+
+  const gen = extractFn(SRC.Web, 'webGeneratePacking_');
+  check('packing loads the characteristics', /traits   = String\(metaResult\.characteristics/.test(gen));
+  check('…passes them to the lesson matcher', /activityTypes: activityTypes, traits: traits/.test(gen));
+  check('…and to the prompt builder', /packingLessons, traits/.test(gen));
+  check('a blank field is REPORTED, not silently treated as "no"',
+        /characteristicsMissing/.test(gen),
+        'blank reads exactly like "not a beach trip" — that must be visible');
+  check('…along with what the briefing suggests',
+        /characteristicsSuggested/.test(gen) && /suggestTripCharacteristics_\(briefing, activityTypes\)/.test(gen));
+
+  const recs = extractFn(SRC.Web, 'webGenerateRecommendations_');
+  check('recommendations match on characteristics too', /traits: recTraits/.test(recs));
+}
+
+console.log('\nThe dashboard can set them');
+{
+  // index.html is GENERATED from app.js, and drift has shipped a dead feature
+  // before: a change made only in app.js is invisible on the live dashboard.
+  [['docs/app.js', SRC.App], ['docs/index.html', SRC.Index]].forEach(function(pair) {
+    const label = pair[0], src = pair[1];
+    check(label + ': has the characteristics chips', /TripCharacteristicsBlock/.test(src));
+    check(label + ': offers the full vocabulary',
+          /'beach','city','resort','ski','outdoors','roadtrip','cruise','themepark'/.test(src));
+    check(label + ': saves through set_trip_meta', /action=set_trip_meta/.test(src));
+    check(label + ': sends ONLY characteristics',
+          /characteristics='\+encodeURIComponent/.test(src) &&
+          !/action=set_trip_meta[^)]*context=/.test(src),
+          'sending context or notes too would clear whichever it got wrong');
+    check(label + ': says so when nothing is set',
+          /not set, so beach\/ski lessons and hints won't fire/.test(src),
+          'blank is the silent failure — it has to be visible in the UI too');
+  });
+
+  // The dashboard vocabulary and the server vocabulary have to agree, or a chip
+  // writes a value normaliseTripCharacteristics_ then drops on the floor.
+  const ui = /\['beach','city','resort','ski','outdoors','roadtrip','cruise','themepark'\]/.test(SRC.App);
+  const srv = /\['beach', 'city', 'resort', 'ski', 'outdoors', 'roadtrip', 'cruise', 'themepark'\]/.test(SRC.Code);
+  check('the UI and server vocabularies match', ui && srv, 'ui=' + ui + ' server=' + srv);
+}
+
 console.log('\nThe debrief captures it, and asks for the scope');
 {
   check('the action is declared', /ACTION:log_trip_lesson\|\{category\}\|\{scope\}\|\{trip\}\|\{lesson\}/.test(SRC.Chat));
@@ -339,8 +522,22 @@ console.log('\nThe debrief captures it, and asks for the scope');
   check('…and is told to ASK for the scope, never guess',
         /the scope is the whole point and you must ASK, never guess/.test(SRC.Chat));
   check('…and warned about the activity-scope trap',
-        /scoped activity:beach will NOT fire/.test(SRC.Chat),
+        /activity:beach will NOT fire/.test(SRC.Chat),
         'the exact failure that caused this feature');
+  check('…and offers trait FIRST',
+        /OFFER trait FIRST/.test(SRC.Chat),
+        'destination over-fits: a hat lesson is about beach trips, not about Florida');
+  check('…naming destination as the narrow fallback',
+        /Destination is the narrow fallback/.test(SRC.Chat));
+  check('…and warned about the trait trap too',
+        /trait scope matches\s*\n?\s*'? ?\+? ?'?only trips MARKED with that characteristic/.test(SRC.Chat) ||
+        /only trips MARKED with that characteristic/.test(SRC.Chat),
+        'an unmarked trip reads exactly like "not a beach trip"');
+  check('setting a trip\'s characteristics is an action',
+        /ACTION:set_trip_characteristics/.test(SRC.Chat));
+  check('…with a handler that preserves the other fields',
+        /type === 'set_trip_characteristics'/.test(SRC.Chat) &&
+        /characteristics: stcsTK\.rest\.join/.test(SRC.Chat));
   check('the handler exists', /type === 'log_trip_lesson'/.test(SRC.Chat));
   check('…and surfaces a rejected scope as an error',
         /errors\.push\('log_trip_lesson: '/.test(SRC.Chat));

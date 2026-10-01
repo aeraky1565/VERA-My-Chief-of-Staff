@@ -4829,7 +4829,7 @@ function webGetTripMeta_(e) {
 
   const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.TRIP_META);
-  if (!sheet) return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '' };
+  if (!sheet) return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', characteristics: '' };
 
   if (sheet.getLastRow() >= 2) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
@@ -4842,17 +4842,105 @@ function webGetTripMeta_(e) {
                  tripBudget:     data[i][5] !== undefined ? Number(data[i][5]) || '' : '',
                  tripTravellers: data[i][6] !== undefined ? Number(data[i][6]) || 2 : 2,
                  outboundMode:   String(data[i][7] || ''),
-                 returnMode:     String(data[i][8] || '') };
+                 returnMode:     String(data[i][8] || ''),
+                 // Reads blank on a sheet seeded before this column existed, which
+                 // is the correct answer: no characteristics set. ensureTripMetaColumns_
+                 // adds the header on the first write rather than on every read.
+                 characteristics: String(data[i][10] || '') };
       }
     }
   }
-  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2, outboundMode: '', returnMode: '' };
+  return { ok: true, tripKey, context: '', notes: '', traveler: '', tripBudget: '', tripTravellers: 2, outboundMode: '', returnMode: '', characteristics: '' };
 }
 
 /**
  * GET set_trip_meta — params: tripKey, context, notes
  * Upserts TripMeta row. Returns { ok }
  */
+/**
+ * Ensures TripMeta has every header in TRIP_META_HEADERS, adding what is missing.
+ * Characteristics arrived after the live tab was seeded, and ensureSheet() only
+ * writes headers into a BLANK sheet. Same self-heal as ensureCardPerkColumns_.
+ */
+function ensureTripMetaColumns_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var header  = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+                  .map(function(h) { return String(h || '').trim(); });
+  TRIP_META_HEADERS.forEach(function(name) {
+    if (header.indexOf(name) !== -1) return;
+    header.push(name);
+    sheet.getRange(1, header.length).setValue(name);
+  });
+  return header;
+}
+
+/**
+ * Cleans a characteristics value to a canonical 'beach, city' string: lowercased,
+ * de-duplicated, order preserved, and anything outside TRIP_CHARACTERISTICS
+ * dropped.
+ *
+ * Unknown values are dropped rather than kept, because a characteristic nothing
+ * can match is indistinguishable from a typo, and a lesson scoped to it would
+ * silently fire for nothing. Accepts an array or a comma-separated string.
+ */
+function normaliseTripCharacteristics_(raw) {
+  if (raw === null || raw === undefined) return '';
+  var arr = Array.isArray(raw) ? raw : String(raw).split(',');
+  var seen = {};
+  var out  = [];
+  arr.forEach(function(v) {
+    var s = String(v || '').trim().toLowerCase();
+    if (!s || seen[s]) return;
+    if (TRIP_CHARACTERISTICS.indexOf(s) === -1) return;
+    seen[s] = true;
+    out.push(s);
+  });
+  return out.join(', ');
+}
+
+/**
+ * Suggests characteristics for a trip from what is already written about it.
+ *
+ * The briefing is the best signal there is — it is literally the field for "what
+ * this trip is actually for" — and it already exists on every trip that has one.
+ * A briefing reading "beach week with the family" yields 'beach'.
+ *
+ * Deterministic keyword scan, no Claude call: explainable, free, and wrong only by
+ * omission. "We're going to the shore" yields nothing, which is why the field stays
+ * editable and the result is a SUGGESTION, never a write.
+ *
+ * The trip LABEL is deliberately not scanned. "Florida Trip" does not say beach,
+ * and guessing a trip's character from its name is the move that already failed.
+ *
+ * @param {string} briefing      TripMeta Notes
+ * @param {Object} activityTypes itinerary row types, { beach: true, ... }
+ * @returns {Array} suggested characteristics, possibly empty
+ */
+function suggestTripCharacteristics_(briefing, activityTypes) {
+  var text = ' ' + String(briefing || '').toLowerCase() + ' ';
+  var found = {};
+
+  TRIP_CHARACTERISTICS.forEach(function(trait) {
+    if (text.indexOf(trait) !== -1) found[trait] = true;
+  });
+  // A couple of phrasings that are unambiguous and common enough to be worth
+  // naming. Not a synonym dictionary — that is what the editable field is for.
+  if (/\b(skiing|snowboard|slopes)\b/.test(text))      found['ski'] = true;
+  if (/\b(all-inclusive|all inclusive)\b/.test(text))  found['resort'] = true;
+  if (/\b(road trip|driving trip)\b/.test(text))       found['roadtrip'] = true;
+  if (/\b(hiking|camping|national park)\b/.test(text)) found['outdoors'] = true;
+
+  // Itinerary rows that already name the thing. Narrower than the briefing but
+  // certain when present.
+  var types = activityTypes || {};
+  if (types.beach || types.snorkeling || types.diving) found['beach'] = true;
+  if (types.skiing || types.snowboard)                 found['ski'] = true;
+  if (types.cruise)                                    found['cruise'] = true;
+  if (types.theme_park)                                found['themepark'] = true;
+
+  return TRIP_CHARACTERISTICS.filter(function(t) { return found[t]; });
+}
+
 function webSetTripMeta_(e) {
   const p       = (e && e.parameter) ? e.parameter : {};
   const tripKey = (p.tripKey || '').trim();
@@ -4861,6 +4949,7 @@ function webSetTripMeta_(e) {
   const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(TABS.TRIP_META);
   if (!sheet) throw new Error('TripMeta tab not found. Run setupVERA() to create it.');
+  ensureTripMetaColumns_(sheet);
   const tz    = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
 
@@ -4882,6 +4971,12 @@ function webSetTripMeta_(e) {
         if (p.traveler !== undefined) sheet.getRange(rowNum, 5).setValue((p.traveler || '').trim());
         if (p.outboundMode !== undefined) sheet.getRange(rowNum, 8).setValue((p.outboundMode || '').trim());
         if (p.returnMode   !== undefined) sheet.getRange(rowNum, 9).setValue((p.returnMode   || '').trim());
+        // Guarded like the rest: a caller sending only { tripKey, notes } must not
+        // wipe the trip's characteristics, which is the exact bug this function's
+        // comment above records for context and traveller.
+        if (p.characteristics !== undefined) {
+          sheet.getRange(rowNum, 11).setValue(normaliseTripCharacteristics_(p.characteristics));
+        }
         const dc = sheet.getRange(rowNum, 4);
         dc.setNumberFormat('@');
         dc.setValue(today);
@@ -4905,6 +5000,10 @@ function webSetTripMeta_(e) {
     (p.outboundMode || '').trim(),
     (p.returnMode   || '').trim(),
     '',   // Luggage JSON
+    // Must stay in step with TRIP_META_HEADERS.length, which this setValues call
+    // sizes itself from — a short row throws on dimension mismatch rather than
+    // writing a blank cell.
+    (p.characteristics || '').trim(),
   ]]);
   return { ok: true };
 }
@@ -4956,7 +5055,9 @@ function setTripBriefing_(tripKey, text) {
   var dateCell = sheet.getRange(newRow, 4);
   dateCell.setNumberFormat('@');
   sheet.getRange(newRow, 1, 1, TRIP_META_HEADERS.length).setValues([[
-    key, '', briefing, today, '', '', 2, '', '', '',
+    // Width must track TRIP_META_HEADERS.length, which the getRange above sizes
+    // from — the trailing '' is Characteristics, and a short row throws.
+    key, '', briefing, today, '', '', 2, '', '', '', '',
   ]]);
   return { ok: true, tripKey: key, briefing: briefing, action: 'created' };
 }
@@ -5249,7 +5350,7 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
                               context, traveler, destination, season,
                               itinerarySummary, weatherSummary,
                               activityTypes, dressCodes, freeDays, briefing,
-                              lessonsBlock) {
+                              lessonsBlock, traits) {
   var travelersLine = traveler
     ? 'Travelers: ' + traveler
     : 'Travelers: Ahmed and Victoria';
@@ -5267,19 +5368,33 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
   var datesLine = 'Dates: ' + startDate + ' to ' + endDate +
                   ' (' + durationNights + ' nights' + (season ? ', ' + season : '') + ')';
 
-  // Activity-specific hints — only emit lines relevant to this trip
+  // Activity-specific hints — only emit lines relevant to this trip.
+  //
+  // These used to read activityTypes alone, which is built from itinerary row
+  // TYPES. That is why a Florida beach trip got no beach guidance: no row was
+  // typed 'beach', so the hint never fired, and the list came back without a hat
+  // or a water bottle. A trip marked with the characteristic now says so directly,
+  // whatever its itinerary happens to contain.
+  var tripTraits = {};
+  (Array.isArray(traits) ? traits : String(traits || '').split(','))
+    .forEach(function(t) {
+      var k = String(t || '').trim().toLowerCase();
+      if (k) tripTraits[k] = true;
+    });
+  function isTrip(trait) { return !!tripTraits[trait]; }
+
   var hints = [];
-  if (activityTypes.beach || activityTypes.snorkeling || activityTypes.diving || activityTypes.swimming) {
+  if (isTrip('beach') || activityTypes.beach || activityTypes.snorkeling || activityTypes.diving || activityTypes.swimming) {
     // Hat and refillable water bottle added after the Florida trip went without
     // either. Sun and hydration are the two things a beach day actually needs and
     // the list named neither.
     hints.push('- Beach/water activities: include swimwear, water shoes, dry bag, reef-safe sunscreen, ' +
                'a wide-brim or packable sun hat, and a refillable water bottle.');
   }
-  if (activityTypes.hiking || activityTypes.trekking || activityTypes.outdoor) {
+  if (isTrip('outdoors') || activityTypes.hiking || activityTypes.trekking || activityTypes.outdoor) {
     hints.push('- Hiking/outdoor: include trail shoes, daypack, moisture-wicking layers.');
   }
-  if (activityTypes.skiing || activityTypes.snowboard) {
+  if (isTrip('ski') || activityTypes.skiing || activityTypes.snowboard) {
     hints.push('- Winter sports: include thermals, ski socks, goggles, gloves, neck gaiter.');
   }
   if (activityTypes.spa) {
@@ -5288,10 +5403,10 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
   if (activityTypes.show || activityTypes.museum || activityTypes.theater) {
     hints.push('- Cultural/show event: ensure at least one smart-casual or formal outfit.');
   }
-  if (activityTypes.theme_park) {
+  if (isTrip('themepark') || activityTypes.theme_park) {
     hints.push('- Theme park: comfortable walking shoes, layers.');
   }
-  if (activityTypes.cruise || activityTypes.ferry) {
+  if (isTrip('cruise') || activityTypes.cruise || activityTypes.ferry) {
     hints.push('- Cruise/boat: sea-sickness meds, wind layers, formal night outfit.');
   }
   if (activityTypes.dining) {
@@ -5454,11 +5569,13 @@ function webGeneratePacking_(e) {
   let context   = '';
   var traveler  = '';
   var briefing  = '';
+  var traits    = '';
   try {
     const metaResult = webGetTripMeta_(e);
     context  = metaResult.context  || '';
     traveler = metaResult.traveler || '';
     briefing = String(metaResult.notes || '').trim();
+    traits   = String(metaResult.characteristics || '').trim();
   } catch(err) { /* graceful */ }
 
   // Step 4 — Infer destination for weather. The label guess is kept here (unlike
@@ -5487,7 +5604,7 @@ function webGeneratePacking_(e) {
   var packingLessons = '';
   try {
     packingLessons = tripLessonsPromptBlock_(
-      { destination: destination, context: context, activityTypes: activityTypes },
+      { destination: destination, context: context, activityTypes: activityTypes, traits: traits },
       ['Packing']
     );
   } catch (lsErr) {
@@ -5499,7 +5616,7 @@ function webGeneratePacking_(e) {
     context, traveler, destination, season,
     itinerarySummary, weatherSummary,
     activityTypes, dressCodes, freeDays, briefing,
-    packingLessons
+    packingLessons, traits
   );
 
   // Step 7 — Call Claude
@@ -5581,8 +5698,16 @@ function webGeneratePacking_(e) {
     packSheet.getRange(startRow, 1, allNewItems.length, PACKING_ITEM_HEADERS.length).setValues(allNewItems);
   }
 
-  // Return all items for this trip
-  return webGetPacking_(e);
+  // Return all items for this trip, and say whether the trip had no characteristics
+  // set. A blank field reads exactly like "not a beach trip" and would reproduce the
+  // original failure in silence, so it is reported rather than left to be inferred —
+  // along with what the briefing suggests, which is the actionable half.
+  var packResult = webGetPacking_(e);
+  packResult.characteristics        = traits;
+  packResult.characteristicsMissing = !traits;
+  packResult.characteristicsSuggested = traits
+    ? [] : suggestTripCharacteristics_(briefing, activityTypes);
+  return packResult;
 }
 
 // ---- Trip Recommendations (Issue #73) --------------------------------------
@@ -6095,11 +6220,14 @@ function webGenerateRecommendations_(e) {
   // Trip context
   let context = '';
   let briefing = '';
-  // One read for both — the label and the narrative come from the same row.
+  let recTraits = '';
+  // One read for all three — the label, the narrative and the characteristics come
+  // from the same row.
   try {
     const rMeta = webGetTripMeta_(e) || {};
-    context  = rMeta.context || '';
-    briefing = String(rMeta.notes || '').trim();
+    context   = rMeta.context || '';
+    briefing  = String(rMeta.notes || '').trim();
+    recTraits = String(rMeta.characteristics || '').trim();
   } catch(err) { /* graceful */ }
 
   // Infer destination (same helper as packing).
@@ -6120,7 +6248,7 @@ function webGenerateRecommendations_(e) {
   var recsLessons = '';
   try {
     recsLessons = tripLessonsPromptBlock_(
-      { destination: destination, context: context, activityTypes: {} },
+      { destination: destination, context: context, activityTypes: {}, traits: recTraits },
       ['Dining', 'Activities']
     );
   } catch (lsErr) {

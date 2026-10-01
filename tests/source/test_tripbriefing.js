@@ -37,6 +37,7 @@ function extractFn(src, name) {
 
 const HDRS_SRC = CODE.match(/^const TRIP_META_HEADERS +=.*;$/m)[0];
 const HEADERS  = JSON.parse(HDRS_SRC.slice(HDRS_SRC.indexOf('[')).replace(/;\s*$/, '').replace(/'/g, '"'));
+const CHARS_SRC = /^const TRIP_CHARACTERISTICS\s*=.*?;/m.exec(CODE)[0];
 const WIDTH    = HEADERS.length;
 
 // ---- fake sheet ------------------------------------------------------------
@@ -46,6 +47,8 @@ function makeSheet(rows) {
   const sheet = {
     _rows: data, _writes: 0,
     getMaxColumns: () => cols,
+    // ensureTripMetaColumns_ reads the header row to find what is missing.
+    getLastColumn: () => (data[0] ? data[0].length : cols),
     getLastRow: () => data.length,
     getRange: (row, c, nr, nc) => {
       nr = nr === undefined ? 1 : nr; nc = nc === undefined ? 1 : nc;
@@ -89,6 +92,11 @@ function makeSheet(rows) {
 
 const PRELUDE = [
   HDRS_SRC,
+  // Characteristics arrived after this harness was written. Apps Script's single
+  // shared scope hands webSetTripMeta_ these two for free; a vm does not.
+  CHARS_SRC,
+  extractFn(WEB, 'ensureTripMetaColumns_'),
+  extractFn(WEB, 'normaliseTripCharacteristics_'),
   extractFn(WEB, 'webGetTripMeta_'),
   extractFn(WEB, 'webSetTripMeta_'),
   extractFn(WEB, 'setTripBriefing_'),

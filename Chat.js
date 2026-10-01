@@ -885,6 +885,10 @@ function buildChatSystemPrompt_(context) {
     'ACTION:delete_itinerary_item|{id}\n' +
     'ACTION:set_trip_context|{tripKey}|{context}  \u2014 e.g. Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends\n' +
     'ACTION:set_trip_briefing|{tripKey}|{briefing}  \u2014 free text: what the trip is actually FOR\n' +
+    'ACTION:set_trip_characteristics|{tripKey}|{comma-separated}  \u2014 what KIND of trip it is, from: ' +
+    'beach, city, resort, ski, outdoors, roadtrip, cruise, themepark. A trip can be several ("beach, city"). ' +
+    'This is NOT the context: context is who you are with and why, this is the character of the trip, ' +
+    'and it is what trip lessons scoped trait:<kind> match against.\n' +
     // Tentative holds (Issue #187)
     'ACTION:decide_trip_option|{tripKey}|{groupKey}|{option title, or a distinctive word from it}\n' +
     '  \u2014 confirms ONE option for a slot where Ahmed is holding several. groupKey and the option\n' +
@@ -966,7 +970,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:complete_debrief|{tripKey}  \u2014 log that a post-trip debrief conversation has been completed for {tripKey}. Emit once, at the very end of a debrief session after all items are logged.\n' +
     'ACTION:log_trip_lesson|{category}|{scope}|{trip}|{lesson}  \u2014 record a lesson to apply to FUTURE trips. ' +
     '{category} is one of Packing, Dining, Activities, Logistics, Other. ' +
-    '{scope} says when it applies and must be one of: always:*  |  destination:{place}  |  context:{trip context}  |  activity:{itinerary type, e.g. beach}. ' +
+    '{scope} says when it applies and must be one of: trait:{kind of trip, e.g. beach}  |  always:*  |  context:{trip context}  |  destination:{place}  |  activity:{itinerary type}. PREFER trait. ' +
     '{trip} is the trip this was learned on, for provenance (its label, or blank). ' +
     '{lesson} comes LAST and is one imperative sentence ("Pack a wide-brim hat and a refillable water bottle"); ' +
     'it may contain the | character, everything after the third | is the lesson.\n' +
@@ -1009,6 +1013,7 @@ function buildChatSystemPrompt_(context) {
     '- For add_itinerary_item: use the TripKey exactly as shown in UPCOMING TRIPS (e.g., "2026-06-19|Alaska Cruise"). Date must be YYYY-MM-DD. Use blank for optional time/location/notes.\n' +
     '- For update_itinerary_item / delete_itinerary_item: use the item ID (e.g., ITIN-20260101-01) shown in UPCOMING TRIPS above.\n' +
     '- For set_trip_context: use the TripKey exactly as shown. Context should describe the trip sentiment (Anniversary Trip, Family Trip, Work Trip, Honeymoon, Visiting Friends, Visiting Family, Solo Adventure, Girls Trip, Group Trip, etc.).\n' +
+    '- For set_trip_characteristics: the CHARACTER of the trip, not who is on it. A beach trip is a beach trip whether it is an anniversary or a family holiday. Set it whenever Ahmed describes a trip in a way that names one ("a week on the beach", "city break in Lisbon", "skiing in March"), because trip lessons scoped trait:beach only fire for trips marked beach — and an unmarked trip reads exactly like "not a beach trip".\n' +
     '- For set_trip_briefing: the briefing is a SENTENCE, not a label \u2014 why the trip is happening and what matters about it ("visiting Sarah and Tom for the new baby; quiet and low-key, we want to be useful"). Whenever Ahmed explains the reason for a trip, record it with set_trip_briefing rather than only replying: it steers the discoveries, the packing list and the pre-trip emails. set_trip_context stays the short category label; the two are separate and both are kept.\n' +
     '- For add_packing_item: person must be "ahmed", "victoria", or "shared". Use the TripKey exactly as shown.\n' +
     '- For check_packing_item / delete_packing_item: use the item ID (e.g., PACK-20260101-01) shown in UPCOMING TRIPS above.\n' +
@@ -1062,11 +1067,18 @@ function buildChatSystemPrompt_(context) {
     '  6. Was anything missing from the packing list, or anything you want VERA to remember for next time? ' +
     '(\u2192 ACTION:log_trip_lesson per lesson)\n' +
     'ON QUESTION 6 \u2014 the scope is the whole point and you must ASK, never guess. A lesson only helps if it comes back ' +
-    'on the right future trip. Say what each option would mean in plain terms and let him pick: every trip (always:*), ' +
-    'only this place (destination:{place}), this kind of trip (context:{label}), or when a matching activity is on the ' +
-    'itinerary (activity:{type}). Prefer destination or context over activity unless he is sure the itinerary will carry ' +
-    'that row type \u2014 activity scope only matches when an itinerary item is actually typed that way, so a beach lesson ' +
-    'scoped activity:beach will NOT fire for a beach trip whose itinerary never says "beach". ' +
+    'on the right future trip. OFFER trait FIRST: "does this apply to every beach trip, or only to this one place?" ' +
+    'Most lessons generalise over the KIND of trip \u2014 trait:beach, trait:city, trait:ski \u2014 and that is almost always ' +
+    'the right answer. A hat and a water bottle are about beach trips, not about Florida: scoped destination:florida the ' +
+    'lesson would only ever help on a return visit to the same state. ' +
+    'The full set, in the order to offer them: this kind of trip (trait:{beach|city|resort|ski|outdoors|roadtrip|cruise|themepark}), ' +
+    'every trip (always:*), who the trip is with (context:{label}), only this place (destination:{place}), ' +
+    'or only when a matching item is on the itinerary (activity:{type}). ' +
+    'Two traps to state plainly if he reaches for them: activity scope matches ONLY when an itinerary row is actually typed ' +
+    'that way, so activity:beach will NOT fire for a beach trip whose itinerary never says "beach"; and trait scope matches ' +
+    'only trips MARKED with that characteristic, so if the trip he just took is not marked, offer set_trip_characteristics ' +
+    'for it too. Destination is the narrow fallback \u2014 right for "leave 30 min earlier for ORD" or "tipping works ' +
+    'differently in Japan", wrong for anything about the kind of trip. ' +
     'Split a compound answer into one lesson per item, and keep each to a single imperative sentence.\n' +
     'After the questions, emit ACTION:add_country if the destination isn\'t already in COUNTRIES VISITED, ' +
     'using the trip notes as the Notes field. Confirm each item logged. End with a brief summary of what was captured. ' +
@@ -2030,6 +2042,17 @@ function executeActions_(rawText) {
         // webSetTripMeta_ now preserves what it is not given.
         webSetTripMeta_(makeFakeEvent_({ tripKey: stcTK.tripKey, context: stcTK.rest[0] || '' }));
         executed.push('set_trip_context (' + stcTK.tripKey + ' \u2192 ' + (stcTK.rest[0] || '') + ')');
+      }
+      else if (type === 'set_trip_characteristics') {
+        var stcsTK = tripKeyArgs_();
+        // Only `characteristics` — webSetTripMeta_ preserves every field it is not
+        // given, which is what keeps this from clearing the context or briefing.
+        webSetTripMeta_(makeFakeEvent_({
+          tripKey: stcsTK.tripKey,
+          characteristics: stcsTK.rest.join(',').trim(),
+        }));
+        executed.push('set_trip_characteristics (' + stcsTK.tripKey + ' \u2192 ' +
+                      stcsTK.rest.join(',').trim() + ')');
       }
       else if (type === 'set_trip_briefing') {
         var stbTK = tripKeyArgs_();

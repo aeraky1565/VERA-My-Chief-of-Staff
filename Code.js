@@ -180,7 +180,18 @@ const TAKEOUT_ITEM_HEADERS       = ['Restaurant', 'Item', 'Description', 'Rating
 const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 const IDEA_HEADERS              = ['ID', 'Date Added', 'Idea', 'Category', 'Tags', 'Notes', 'Status'];
 const ITINERARY_HEADERS         = ['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start Time', 'End Time', 'Location', 'Notes', 'Metadata'];
-const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date', 'Traveler', 'Trip Budget', 'Trip Travellers', 'Outbound Mode', 'Return Mode', 'Luggage JSON'];
+const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date', 'Traveler', 'Trip Budget', 'Trip Travellers', 'Outbound Mode', 'Return Mode', 'Luggage JSON', 'Characteristics'];
+
+/**
+ * What KIND of trip this is — as opposed to Context, which is who you are with and
+ * why (Anniversary Trip, Work Trip, Family Trip…). Nothing in VERA described the
+ * character of a trip before, which is why a lesson learned on a beach trip could
+ * only be pinned to a place.
+ *
+ * Multi-value, comma separated: Miami is 'beach, city' and forcing one would make
+ * the field lie. Kept short on purpose — a long dropdown is one nobody reads.
+ */
+const TRIP_CHARACTERISTICS      = ['beach', 'city', 'resort', 'ski', 'outdoors', 'roadtrip', 'cruise', 'themepark'];
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];

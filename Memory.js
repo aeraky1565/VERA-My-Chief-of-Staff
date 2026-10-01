@@ -44,17 +44,25 @@ var MEMORY_TYPE = {
 // A lesson is only useful if it comes back on the right trip, so each one records
 // WHEN it applies as '<scope>:<value>':
 //
+//   trait:beach             any trip marked with that characteristic  <- PREFER THIS
 //   always:*                every trip
-//   destination:florida     trips whose destination matches
-//   context:Family          trips with that Trip Context
+//   context:Family          trips with that Trip Context (who/why)
 //   activity:beach          trips with an itinerary row of that type
+//   destination:florida     trips to that place
 //
-// Scope choice is not cosmetic. The Florida packing miss happened because the
-// prompt's beach hint only fires when an itinerary row is TYPED 'beach' — a
-// lesson scoped activity:beach would have missed it for exactly the same reason,
-// while destination:florida or context:Beach would have caught it. The debrief
-// asks which, rather than guessing.
-var TRIP_LESSON_SCOPES = ['always', 'destination', 'context', 'activity'];
+// Scope choice is not cosmetic, and 'trait' exists because the first three were
+// all wrong for the case that prompted this.
+//
+// The hat-and-water-bottle lesson has nothing to do with Florida — it is about
+// BEACH TRIPS, and should fire for Hawaii or Greece too; destination:florida only
+// helps on a return visit. activity:beach would have missed the original trip for
+// exactly the reason the packing hint did, since both read itinerary row types and
+// no row was typed 'beach'. And Context is who you are with, not where you are.
+//
+// So: trait is the axis a lesson usually generalises over. destination survives
+// because some lessons really are about a place — "leave 30 min earlier for ORD",
+// "tipping works differently in Japan" — but the debrief now offers trait first.
+var TRIP_LESSON_SCOPES = ['trait', 'always', 'destination', 'context', 'activity'];
 
 // What reads the lesson back. Packing lessons reach the packing prompt, Dining and
 // Activities reach the recommendations prompt; anything else is captured and shown
@@ -623,12 +631,30 @@ function parseTripLessonScope_(raw) {
 }
 
 /**
+ * A trip's Characteristics as a lowercased array, from either an array or the
+ * comma-separated string the TripMeta cell holds.
+ *
+ * Blank in, empty out — which means a trip with no characteristics set matches no
+ * trait scope at all. That is correct but silent, and silence here looks exactly
+ * like "not a beach trip", so callers surface the blank rather than relying on it
+ * reading as a decision.
+ */
+function tripTraitList_(raw) {
+  if (!raw) return [];
+  var arr = Array.isArray(raw) ? raw : String(raw).split(',');
+  return arr.map(function(s) { return String(s || '').trim().toLowerCase(); })
+            .filter(function(s) { return !!s; });
+}
+
+/**
  * Does one lesson apply to this trip?
  *
  * @param {string} rawScope  the stored Scope cell
- * @param {Object} trip      { destination, context, activityTypes }
+ * @param {Object} trip      { destination, context, activityTypes, traits }
  *                           activityTypes is the same { beach: true, ... } map the
- *                           packing prompt builds from itinerary row types.
+ *                           packing prompt builds from itinerary row types;
+ *                           traits is the trip's Characteristics, as an array or a
+ *                           comma-separated string.
  */
 function tripLessonApplies_(rawScope, trip) {
   var parsed = parseTripLessonScope_(rawScope);
@@ -636,6 +662,13 @@ function tripLessonApplies_(rawScope, trip) {
   if (parsed.scope === 'always') return true;
 
   var t = trip || {};
+  if (parsed.scope === 'trait') {
+    // Deliberately NOT falling back to activityTypes. The two mean different
+    // things — "this is a beach trip" versus "a beach is on the schedule" — and
+    // blurring them would re-admit the failure trait exists to fix: a trip whose
+    // itinerary happens to name a beach is not the same as one that is about one.
+    return tripTraitList_(t.traits).indexOf(parsed.value) !== -1;
+  }
   if (parsed.scope === 'activity') {
     var types = t.activityTypes || {};
     return !!types[parsed.value];
