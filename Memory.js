@@ -324,6 +324,59 @@ function writeWeeklySnapshot_() {
  * Deletes Memory Log and Memory Snapshot rows older than the retention window.
  * Called nightly from nightlyRun().
  */
+/**
+ * Deletes every row older than `cutoff`, in as few spreadsheet calls as possible.
+ *
+ * Reads all candidate rows in ONE getValues() and deletes contiguous runs with
+ * deleteRows(start, count), rather than touching Sheets twice per row.
+ *
+ * That is not a micro-optimisation. The shape this replaces did two getValue()
+ * round-trips PER ROW plus a deleteRow() per deleted row, inside nightlyRun. A log
+ * of a few thousand rows therefore cost thousands of round-trips, and an execution
+ * that overruns its time limit is TERMINATED — which skips nightlyRun's finally
+ * block, so no heartbeat is recorded and the Watchdog reports the run as never
+ * having happened. Modelled on pruneSystemLog_ (VERALog.js), which has always
+ * pruned its log this way.
+ *
+ * @param {Sheet}    sheet
+ * @param {number}   stampCol  1-based column holding the timestamp
+ * @param {Date}     cutoff    rows strictly older than this go
+ * @param {Function} [keep]    row array -> true to keep it whatever its age
+ * @returns {number} rows deleted
+ */
+function deleteRowsOlderThan_(sheet, stampCol, cutoff, keep) {
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+
+  var n     = sheet.getLastRow() - 1;
+  var width = Math.max(sheet.getLastColumn(), stampCol);
+  var rows  = sheet.getRange(2, 1, n, width).getValues();   // ONE read, not one per row
+
+  // Collect the sheet rows to drop, collapsing neighbours into runs as we go.
+  var runs = [];
+  for (var i = 0; i < rows.length; i++) {
+    var ts = rows[i][stampCol - 1];
+    if (!ts) continue;
+    if (keep && keep(rows[i])) continue;
+    var d = new Date(ts);
+    if (isNaN(d.getTime()) || d >= cutoff) continue;
+
+    var rowNum = i + 2;
+    var last   = runs.length ? runs[runs.length - 1] : null;
+    if (last && last.start + last.count === rowNum) last.count++;
+    else runs.push({ start: rowNum, count: 1 });
+  }
+
+  // Back to front: deleting a run shifts everything below it up, so taking the
+  // LAST run first leaves the earlier runs' indices still correct. Front to back
+  // would delete a row further down than intended on every run after the first.
+  var deleted = 0;
+  for (var r = runs.length - 1; r >= 0; r--) {
+    sheet.deleteRows(runs[r].start, runs[r].count);
+    deleted += runs[r].count;
+  }
+  return deleted;
+}
+
 function pruneMemoryLog_() {
   try {
     var cfg            = getConfigValues();
@@ -337,42 +390,22 @@ function pruneMemoryLog_() {
 
     var pruned = 0;
 
-    // Prune Memory Log (col B = Timestamp, e.g. "2025-04-01 23:00")
+    // Memory Log (col B = Timestamp, e.g. "2025-04-01 23:00")
     var logSheet = ss.getSheetByName(TABS.MEMORY_LOG);
     if (logSheet && logSheet.getLastRow() >= 2) {
-      var logCol  = ensureMemoryColumns_(logSheet);
-      var typeCol = logCol['Type'] || 3;
-      for (var i = logSheet.getLastRow(); i >= 2; i--) {
+      // Once, not once per row.
+      var typeCol = ensureMemoryColumns_(logSheet)['Type'] || 3;
+      pruned += deleteRowsOlderThan_(logSheet, 2, cutoff, function(row) {
         // Lessons are the one type that does not age out. Everything else here is
         // a record of something that happened, and a year on it has served its
         // purpose; a lesson is a standing rule, and deleting it on its first
         // birthday would silently undo the thing it was written for.
-        var rowType = String(logSheet.getRange(i, typeCol).getValue() || '').trim();
-        if (rowType === MEMORY_TYPE.TRIP_LESSON) continue;
-
-        var ts = logSheet.getRange(i, 2).getValue();
-        if (!ts) continue;
-        var d = new Date(ts);
-        if (!isNaN(d.getTime()) && d < cutoff) {
-          logSheet.deleteRow(i);
-          pruned++;
-        }
-      }
+        return String(row[typeCol - 1] || '').trim() === MEMORY_TYPE.TRIP_LESSON;
+      });
     }
 
-    // Prune Memory Snapshot (col E = As Of, e.g. "2025-04-06")
-    var snapSheet = ss.getSheetByName(TABS.MEMORY_SNAPSHOT);
-    if (snapSheet && snapSheet.getLastRow() >= 2) {
-      for (var j = snapSheet.getLastRow(); j >= 2; j--) {
-        var asOf = snapSheet.getRange(j, 5).getValue();
-        if (!asOf) continue;
-        var sd = new Date(asOf);
-        if (!isNaN(sd.getTime()) && sd < cutoff) {
-          snapSheet.deleteRow(j);
-          pruned++;
-        }
-      }
-    }
+    // Memory Snapshot (col E = As Of, e.g. "2025-04-06"). Nothing is exempt here.
+    pruned += deleteRowsOlderThan_(ss.getSheetByName(TABS.MEMORY_SNAPSHOT), 5, cutoff, null);
 
     if (pruned > 0) Logger.log('pruneMemoryLog_: deleted ' + pruned + ' row(s) older than ' + retentionMonths + ' months.');
     else Logger.log('pruneMemoryLog_: nothing to prune.');

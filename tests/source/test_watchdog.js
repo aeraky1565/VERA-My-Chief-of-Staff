@@ -113,6 +113,42 @@ console.log('\ngetOverdueJobs_');
 
 // ---- getSilentFeeds_ --------------------------------------------------------
 
+console.log('\na run that started and died reads differently from one that never fired');
+{
+  // These need different answers from you — a missing trigger is a settings
+  // problem, a killed run is a code problem — and reporting both as "has not run"
+  // is what sent the real investigation down the wrong path. nightlyRun records
+  // LAST_NIGHTLY_START before any work precisely so the two can be told apart.
+  const now = Date.now();
+
+  const died = loadWatchdog({ nightlyRun: { lastRun: now - 31 * HOUR } });
+  died._props['LAST_NIGHTLY_START'] = new Date(now - 9 * HOUR).toISOString();
+  const d = vm.runInContext('getOverdueJobs_()', died).find(o => o.job === 'nightlyRun');
+  check('a start newer than the last completion says it did not finish',
+        !!d && /did not finish/.test(d.verb), d && d.verb);
+
+  const neverFired = loadWatchdog({ nightlyRun: { lastRun: now - 31 * HOUR } });
+  const n = vm.runInContext('getOverdueJobs_()', neverFired).find(o => o.job === 'nightlyRun');
+  check('with no start marker it still reads as "has not run in"',
+        !!n && n.verb === 'has not run in', n && n.verb);
+
+  const ranFine = loadWatchdog({ nightlyRun: { lastRun: now - 31 * HOUR } });
+  ranFine._props['LAST_NIGHTLY_START'] = new Date(now - 40 * HOUR).toISOString();
+  const rf = vm.runInContext('getOverdueJobs_()', ranFine).find(o => o.job === 'nightlyRun');
+  check('a start OLDER than the last completion does not claim a death',
+        !!rf && rf.verb === 'has not run in', rf && rf.verb);
+
+  const junk = loadWatchdog({ nightlyRun: { lastRun: now - 31 * HOUR } });
+  junk._props['LAST_NIGHTLY_START'] = 'not a date';
+  const jk = vm.runInContext('getOverdueJobs_()', junk).find(o => o.job === 'nightlyRun');
+  check('an unparseable marker falls back rather than throwing',
+        !!jk && jk.verb === 'has not run in', jk && jk.verb);
+
+  // Only nightlyRun carries a start marker today; the others must be unaffected.
+  const others = vm.runInContext('getOverdueJobs_()', died).filter(o => o.job !== 'nightlyRun');
+  check('no other job claims to have died', others.every(o => !/did not finish/.test(o.verb)));
+}
+
 console.log('\ngetSilentFeeds_');
 {
   const now = Date.now();
@@ -265,6 +301,29 @@ console.log('\nflushSystemLog_ failure handling');
   check('a failed write is swallowed, not thrown', n === 0);
   vm.runInContext('flushSystemLog_()', ctx);
   check('and the rows are not retried into a duplicate', attempts === 1);
+}
+
+console.log('\nnightlyRun records both ends of the run');
+{
+  const COD = fs.readFileSync(ROOT + '/Code.js', 'utf8');
+  const fn  = COD.slice(COD.indexOf('function nightlyRun()'),
+                        COD.indexOf('function nightlyRun()') + 32000);
+
+  check('it writes a start marker', /LAST_NIGHTLY_START/.test(fn));
+  check('…before any work', fn.indexOf('LAST_NIGHTLY_START') < fn.indexOf('escalateAgedFlags_'),
+        'a marker written after the first slow step cannot prove the run started');
+  check('…and non-fatally', /catch \(startErr\)/.test(fn),
+        'a dead Properties service must not take the run down');
+
+  check('it writes the completion marker Slack reads', /LAST_NIGHTLY_RUN/.test(fn));
+  check('…in the finally, beside the heartbeat',
+        fn.indexOf('recordHeartbeat_') < fn.indexOf('LAST_NIGHTLY_RUN'),
+        'it describes the same moment the heartbeat does');
+
+  check('the memory prune is budget-guarded',
+        /if \(Date\.now\(\) < DEADLINE\) \{\n      try \{ pruneMemoryLog_/.test(fn),
+        'a slow maintenance step early in the run leaves the later guards no budget to skip with');
+  check('…and says so when it skips', /pruneMemoryLog_: skipped \(time budget\)/.test(fn));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

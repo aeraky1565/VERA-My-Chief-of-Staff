@@ -572,6 +572,41 @@ the path in prose.
 
 `nightlyRun()` runs every night at 11 PM via a time-based trigger. All steps are wrapped in individual try/catch so a failure in one step never aborts the rest of the run. Failures are collected and posted to `#vera-logs` as a summary at the end.
 
+### What a missing nightly run does and does not mean
+
+`recordHeartbeat_('nightlyRun')` sits in a **`finally`** block — *the trigger fired*
+is what a heartbeat records, success or not. That makes the failure modes readable,
+and they are not the same thing:
+
+| What you see | What happened |
+|---|---|
+| Heartbeat recorded, `#vera-logs` summary with step warnings | Steps failed; the run finished. The warnings name them. |
+| **"VERA Error — Nightly Run Failed"** email with a stack | Something threw outside a step's own guard. The `catch` emailed you, and the `finally` still recorded the heartbeat. |
+| Watchdog says **"started but did not finish"** | The execution was **terminated** — almost always the 6-minute Apps Script ceiling. `finally` never ran, so there is no heartbeat and no email. |
+| Watchdog says **"has not run in …"** with no start marker | The trigger never fired. Check **Triggers** in the editor; Apps Script auto-disables one after repeated failures. |
+
+The last two used to be indistinguishable, which cost an investigation. `nightlyRun`
+now writes `LAST_NIGHTLY_START` before any work and `LAST_NIGHTLY_RUN` beside the
+heartbeat, and the Watchdog compares them. (`LAST_NIGHTLY_RUN` had been *read* by
+`Slack.js` and written nowhere, so that status line always said `unknown`.)
+
+> **A start marker is not a heartbeat.** It is deliberately not recorded as one: a run
+> that started is not a run that happened, and letting the Watchdog count it would hide
+> exactly the failure it exists to surface.
+
+**Time budget.** `DEADLINE` is set at 5 min 30 s, 30 seconds short of the ceiling. The
+two Claude-calling steps at the end of the run check it, and so does `pruneMemoryLog_`
+— deleting year-old rows is the definition of work that can wait until tomorrow. A
+heavy step *early* in the run is the dangerous one, because the later guards never get
+the chance to skip anything if the budget is already gone.
+
+> Maintenance that walks a whole tab must read it in **one** `getValues()` and delete
+> contiguous runs with `deleteRows(start, count)` — see `deleteRowsOlderThan_`
+> (`Memory.js`) and `pruneSystemLog_` (`VERALog.js`). In Apps Script every `getValue()`
+> and `deleteRow()` is its own round-trip, so a per-row loop over a few thousand rows
+> is minutes of wall clock. That is not a micro-optimisation: it is the difference
+> between a run that finishes and one that is killed without recording anything.
+
 | Step | Function | Description |
 |------|----------|-------------|
 | Step -1 | `escalateAgedFlags_()` | Escalate unacknowledged flags older than 3 days (Medium) or 7 days (High) |

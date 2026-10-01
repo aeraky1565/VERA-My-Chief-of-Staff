@@ -43,7 +43,7 @@ var _heartbeatCache_ = null;
  * slow run is not an incident.
  */
 var HEARTBEAT_REGISTRY = [
-  { job: 'nightlyRun',            label: 'Nightly run',          maxAgeHours: 26 },
+  { job: 'nightlyRun',            label: 'Nightly run',          maxAgeHours: 26, startProp: 'LAST_NIGHTLY_START' },
   { job: 'morningNudge',          label: 'Morning email',        maxAgeHours: 26 },
   { job: 'hourlyCheck',           label: 'Hourly check',         maxAgeHours: 3  },
   { job: 'checkFlightStatuses_',  label: 'Flight status poll',   maxAgeHours: 2  },
@@ -160,10 +160,26 @@ function getOverdueJobs_() {
     var windowMs = r.maxAgeHours * 3600000;
     var ageMs    = now - entry.lastRun;
     if (ageMs <= windowMs) return;
+    // A job whose heartbeat is stale has either never fired or fired and died.
+    // Those need different answers from you — one is a trigger problem, the other
+    // is the code — and saying "has not run" for both sent an hour of this
+    // investigation down the wrong path. A start marker newer than the last
+    // heartbeat means the trigger IS firing and the run is being killed partway.
+    var verb = r.verb || 'has not run in';
+    if (r.startProp) {
+      try {
+        var startedRaw = PropertiesService.getScriptProperties().getProperty(r.startProp);
+        var startedAt  = startedRaw ? new Date(startedRaw).getTime() : 0;
+        if (startedAt && startedAt > entry.lastRun) {
+          verb = 'started but did not finish; last completed run was';
+        }
+      } catch (spErr) { /* fall back to the plain wording */ }
+    }
+
     out.push({
       job:         r.job,
       label:       r.label,
-      verb:        r.verb || 'has not run in',
+      verb:        verb,
       lastRun:     entry.lastRun,
       ageMs:       ageMs,
       ageText:     formatAge_(ageMs),

@@ -55,15 +55,22 @@ function makeMemorySheet(rows, headers) {
   const hdr = (headers || HEADERS).slice();
   const grid = [hdr].concat(rows || []);
   const appended = [];
+  // Every Sheets round-trip is counted. In Apps Script each of these is a separate
+  // call over the wire, and the cost of a prune is the COUNT, not the outcome — a
+  // loop doing two getValue()s per row is what overran the nightly run's time
+  // limit and killed it silently.
+  const calls = { getRange: 0, getValue: 0, getValues: 0, deleteRow: 0, deleteRows: 0 };
   const sheet = {
-    grid, appended,
+    grid, appended, calls,
     getLastRow:    () => grid.length,
     getLastColumn: () => grid[0].length,
     appendRow: r => { grid.push(r.slice()); appended.push(r.slice()); },
-    getRange: (r, c, nR, nC) => ({
-      getValue:  () => (grid[r - 1] || [])[c - 1],
+    deleteRows: (start, count) => { calls.deleteRows++; grid.splice(start - 1, count); },
+    getRange: (r, c, nR, nC) => (calls.getRange++, {
+      getValue:  () => (calls.getValue++, (grid[r - 1] || [])[c - 1]),
       setValue:  v => { while (grid[r - 1].length < c) grid[r - 1].push(''); grid[r - 1][c - 1] = v; },
       getValues: () => {
+        calls.getValues++;
         const out = [];
         for (let i = 0; i < (nR || 1); i++) {
           const row = grid[r - 1 + i] || [];
@@ -74,7 +81,7 @@ function makeMemorySheet(rows, headers) {
         return out;
       },
     }),
-    deleteRow: i => { grid.splice(i - 1, 1); },
+    deleteRow: i => { calls.deleteRow++; grid.splice(i - 1, 1); },
   };
   return sheet;
 }
@@ -115,6 +122,7 @@ function loadCtx(sheet, opts) {
     extractFn(SRC.Mem, 'getTripLessons_'),
     extractFn(SRC.Mem, 'tripLessonsPromptBlock_'),
     extractFn(SRC.Mem, 'logTripLesson_'),
+    extractFn(SRC.Mem, 'deleteRowsOlderThan_'),
     extractFn(SRC.Mem, 'pruneMemoryLog_'),
   ].join('\n\n'), ctx);
   return ctx;
@@ -354,6 +362,45 @@ console.log('\nLessons do not age out');
   check('the recent event survives',        titles.indexOf('Recent trip') !== -1);
   check('the six-year-old LESSON survives', titles.indexOf('Pack a hat') !== -1,
         'a lesson is a standing rule; deleting it on its first birthday undoes the point');
+}
+
+console.log('\nPruning costs a handful of calls, not one per row');
+{
+  // The assertion the regression would have failed. pruneMemoryLog_ used to make
+  // TWO getValue() round-trips per row plus a deleteRow() per deleted row; on a
+  // log of a few thousand rows that is thousands of calls inside nightlyRun, and
+  // an execution that overruns its limit is TERMINATED — skipping the finally
+  // that records the heartbeat, so the run reads as never having happened.
+  const OLD = '2020-01-01 09:00';
+  const NEW = '2026-09-01 09:00';
+  const rows = [];
+  for (let i = 0; i < 400; i++) {
+    rows.push(['MEM-' + i, OLD, 'trip_completed', 'Ahmed', 'Old ' + i, '', '', '', '']);
+  }
+  rows.push(['MEM-L', OLD, 'trip_lesson', 'Both', 'Pack a hat', '', '', 'always:*', 'Packing']);
+  for (let i = 0; i < 400; i++) {
+    rows.push(['MEMN-' + i, OLD, 'trip_completed', 'Ahmed', 'Old b ' + i, '', '', '', '']);
+  }
+  rows.push(['MEM-R', NEW, 'trip_completed', 'Ahmed', 'Recent', '', '', '', '']);
+
+  const sheet = makeMemorySheet(rows);
+  const c = loadCtx(sheet, { cfg: { memory_log_retention_months: '12' } });
+  c.pruneMemoryLog_();
+
+  const titles = sheet.grid.slice(1).map(r => r[4]);
+  check('all 800 expired rows are gone', titles.length === 2, titles.length);
+  check('…the exempt lesson survives in the middle', titles.indexOf('Pack a hat') !== -1);
+  check('…and the recent row survives', titles.indexOf('Recent') !== -1);
+
+  // 801 rows, two contiguous runs of deletions separated by the lesson.
+  check('it deletes in RUNS, not row by row',
+        sheet.calls.deleteRows === 2 && sheet.calls.deleteRow === 0,
+        'deleteRows=' + sheet.calls.deleteRows + ' deleteRow=' + sheet.calls.deleteRow);
+  check('it never reads a cell at a time',
+        sheet.calls.getValue === 0, 'getValue=' + sheet.calls.getValue);
+  check('the whole prune is a handful of calls, not ~1600',
+        sheet.calls.getRange < 20,
+        'getRange=' + sheet.calls.getRange + ' for 801 rows — this is the number that killed the nightly run');
 }
 
 console.log('\nThe generators actually read it');

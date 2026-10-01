@@ -761,6 +761,15 @@ function setupTriggers() {
 function nightlyRun() {
   try {
     Logger.log('=== VERA nightly run started: ' + new Date() + ' ===');
+    // Written before any work, so that a run KILLED mid-flight leaves a trace.
+    // recordHeartbeat_ below runs in a finally and so covers a thrown error, but
+    // an execution that overruns the time limit is terminated outright — finally
+    // included — and until now that was indistinguishable from the trigger never
+    // having fired at all. A start with no matching heartbeat means "it died".
+    try {
+      PropertiesService.getScriptProperties()
+        .setProperty('LAST_NIGHTLY_START', new Date().toISOString());
+    } catch (startErr) { Logger.log('LAST_NIGHTLY_START (non-fatal): ' + startErr.message); }
     var today        = new Date();
     var runStart     = Date.now();
     var DEADLINE     = runStart + 5.5 * 60 * 1000;  // 5 min 30 s — 30 s buffer before GAS kills at 6 min
@@ -911,7 +920,16 @@ function nightlyRun() {
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     try { writeWeeklySnapshot_(); }    catch (wsErr)  { Logger.log('writeWeeklySnapshot_ error (non-fatal): '    + wsErr.message);  stepFailures.push('writeWeeklySnapshot_: '    + wsErr.message);  }
-    try { pruneMemoryLog_(); }         catch (pmErr)  { Logger.log('pruneMemoryLog_ error (non-fatal): '         + pmErr.message);  stepFailures.push('pruneMemoryLog_: '         + pmErr.message);  }
+    // Budget-guarded like the Claude steps at the end of the run. Deleting rows a
+    // year old is the definition of work that can wait until tomorrow, and letting
+    // it run long is what takes the whole run down with it — the later guards never
+    // get the chance to skip anything if an earlier step eats the entire budget.
+    if (Date.now() < DEADLINE) {
+      try { pruneMemoryLog_(); }       catch (pmErr)  { Logger.log('pruneMemoryLog_ error (non-fatal): '         + pmErr.message);  stepFailures.push('pruneMemoryLog_: '         + pmErr.message);  }
+    } else {
+      Logger.log('pruneMemoryLog_: skipped — time budget exceeded');
+      stepFailures.push('pruneMemoryLog_: skipped (time budget)');
+    }
     try { pruneSystemLog_(); }         catch (pslErr) { Logger.log('pruneSystemLog_ error (non-fatal): '         + pslErr.message); stepFailures.push('pruneSystemLog_: '         + pslErr.message); }
     try { sendWeeklyTrendReview_(); }  catch (wtrErr) { Logger.log('sendWeeklyTrendReview_ error (non-fatal): '  + wtrErr.message); stepFailures.push('sendWeeklyTrendReview_: '  + wtrErr.message); }
 
@@ -1094,6 +1112,13 @@ function nightlyRun() {
     // The trigger fired — that is what a heartbeat records, success or not.
     // Whether the run went WELL is reported separately, above.
     try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}
+    // Slack.js has always READ this property and nothing has ever written it, so
+    // "Last nightly run" reported 'unknown' forever. Written here beside the
+    // heartbeat, which is the moment it describes.
+    try {
+      PropertiesService.getScriptProperties()
+        .setProperty('LAST_NIGHTLY_RUN', new Date().toISOString());
+    } catch (lnrErr) {}
     // Flushed here rather than only on the happy path: a run that died is
     // exactly the run whose log you want to read afterwards.
     try { flushSystemLog_(); } catch (flErr) {}

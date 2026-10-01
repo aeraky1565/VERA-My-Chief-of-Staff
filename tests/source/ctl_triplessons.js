@@ -54,7 +54,28 @@ const CONTROLS = {
   }),
   'lessons are pruned with everything else': b => ({
     'Memory.js': b['Memory.js'].replace(
-      "        if (rowType === MEMORY_TYPE.TRIP_LESSON) continue;\n", ''),
+      /      pruned \+= deleteRowsOlderThan_\(logSheet, 2, cutoff, function\(row\) \{[\s\S]*?\}\);/,
+      "      pruned += deleteRowsOlderThan_(logSheet, 2, cutoff, null);"),
+  }),
+  'the prune goes back to reading one cell per row': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "  var rows  = sheet.getRange(2, 1, n, width).getValues();   // ONE read, not one per row",
+      "  var rows = [];\n  for (var q = 2; q <= sheet.getLastRow(); q++) rows.push([sheet.getRange(q, 1).getValue(), sheet.getRange(q, stampCol).getValue()]);\n  for (var z = 0; z < rows.length; z++) rows[z][stampCol - 1] = rows[z][1];"),
+  }),
+  'deletions happen one row at a time': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      /  for \(var r = runs\.length - 1; r >= 0; r--\) \{\n    sheet\.deleteRows\(runs\[r\]\.start, runs\[r\]\.count\);\n    deleted \+= runs\[r\]\.count;\n  \}/,
+      "  for (var r = runs.length - 1; r >= 0; r--) {\n    for (var q2 = runs[r].count - 1; q2 >= 0; q2--) sheet.deleteRow(runs[r].start + q2);\n    deleted += runs[r].count;\n  }"),
+  }),
+  'runs are deleted front to back, shifting the indices': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "  for (var r = runs.length - 1; r >= 0; r--) {",
+      "  for (var r = 0; r < runs.length; r++) {"),
+  }),
+  'adjacent rows are no longer collapsed into a run': b => ({
+    'Memory.js': b['Memory.js'].replace(
+      "    if (last && last.start + last.count === rowNum) last.count++;\n    else runs.push({ start: rowNum, count: 1 });",
+      "    runs.push({ start: rowNum, count: 1 });"),
   }),
   'the packing prompt stops reading lessons': b => ({
     'WebApp.js': b['WebApp.js'].replace("    (lessonsBlock ? lessonsBlock + '\\n' : '') +\n    'Generate a practical packing list", "    'Generate a practical packing list"),
