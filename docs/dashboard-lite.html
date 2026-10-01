@@ -1195,11 +1195,11 @@ function CardModal({ mode, card, onSave, onClose, busy }) {
   );
 }
 
-function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onEditPerk, onDeletePerk, onTogglePerk, onClearReview, busy }) {
+function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteReward, onAddPerk, onEditPerk, onDeletePerk, onTogglePerk, onClearReview, onSetPerkLastUsed, busy }) {
   const cardRewards = rewards.filter(function(r) { return r.cardName === card.cardName; });
   const cardPerks   = perks.filter(function(p) { return p.cardName === card.cardName; });
   const [newReward, setNewReward] = React.useState({ category:'', rate:'', rateType:'x points', conditions:'' });
-  const blankPerk = { perk:'', amount:'', frequency:'Monthly', category:'', autopay:false };
+  const blankPerk = { perk:'', amount:'', frequency:'Monthly', category:'', autopay:false, lastUsed:'' };
   const [newPerk,   setNewPerk]   = React.useState(blankPerk);
   const [editingPerkId, setEditingPerkId] = React.useState(null);
   const setRw = (k, v) => setNewReward(prev => Object.assign({}, prev, { [k]: v }));
@@ -1207,7 +1207,19 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
 
   function startEditPerk(pk) {
     setEditingPerkId(pk.id);
-    setNewPerk({ perk: pk.perk, amount: pk.amount != null ? String(pk.amount) : '', frequency: pk.frequency, category: pk.category || '', autopay: !!pk.autopay });
+    setNewPerk({ perk: pk.perk, amount: pk.amount != null ? String(pk.amount) : '', frequency: pk.frequency, category: pk.category || '', autopay: !!pk.autopay, lastUsed: pk.lastUsed || '' });
+  }
+
+  // Changing the cadence to a multi-year one has to drop a stamp that is not a
+  // date. An Annual row leaves '2023' behind, which a date input cannot display
+  // and the server rejects — the user would get an error for a field they never
+  // touched. Going the other way the stamp is dropped from the request anyway,
+  // since only a multi-year perk sends one.
+  function setPerkFrequency(freq) {
+    setNewPerk(prev => {
+      const keep = perkCycleYears(freq) && /^\d{4}-\d{2}-\d{2}$/.test(String(prev.lastUsed || ''));
+      return Object.assign({}, prev, { frequency: freq, lastUsed: keep ? prev.lastUsed : '' });
+    });
   }
   function resetPerkForm() {
     setEditingPerkId(null);
@@ -1225,6 +1237,9 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
   const curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
   const curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
   const todayMid   = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // For the date inputs' max: you cannot have claimed something in the future, and
+  // a stray 2033 would hide the perk for a decade with no error anywhere.
+  const todayIso   = curMonth + '-' + String(now.getDate()).padStart(2,'0');
 
   // 'Every 4 Years' -> 4, everything else -> 0. The browser cannot call Apps
   // Script, so this mirrors perkCycleYears_ (Code.js) and a test asserts the two
@@ -1394,6 +1409,15 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                           style={{ fontSize:10, fontWeight:700, color:'#86efac', background:'#14532d', borderRadius:4, padding:'2px 6px', flexShrink:0 }}>
                           ♾️ Standing
                         </span>
+                      ) : perkCycleYears(pk.frequency) ? (
+                        // No checkbox for a use-anchored perk: the exact DAY is what the
+                        // next cycle is measured from, so a one-click "today" is the wrong
+                        // control. Clearing the box clears the cell.
+                        <input type="date" value={/^\d{4}-\d{2}-\d{2}$/.test(String(pk.lastUsed || '')) ? pk.lastUsed : ''}
+                          max={todayIso} disabled={busy}
+                          onChange={e => onSetPerkLastUsed(pk.id, e.target.value)}
+                          title="The day you claimed this credit — the next cycle is counted from here"
+                          style={{ background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:4, padding:'1px 4px', fontSize:11, flexShrink:0 }} />
                       ) : (
                         <button onClick={() => onTogglePerk(pk.id)} disabled={busy}
                           style={{ width:18, height:18, borderRadius:4, border:'2px solid ' + (used ? '#22c55e' : '#374151'),
@@ -1435,9 +1459,20 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
               style={Object.assign({}, inputStyle, { flex:1, minWidth:120 })} />
             <input placeholder="$amt" value={newPerk.amount} onChange={e => setPk('amount', e.target.value)}
               style={Object.assign({}, inputStyle, { width:55 })} />
-            <select value={newPerk.frequency} onChange={e => setPk('frequency', e.target.value)} style={inputStyle}>
+            <select value={newPerk.frequency} onChange={e => setPerkFrequency(e.target.value)} style={inputStyle}>
               <option>Monthly</option><option>Quarterly</option><option>Semiannual</option><option>Annual</option><option>Every 4 Years</option><option>Standing</option>
             </select>
+            {/* Only a use-anchored perk gets this. For every other cadence the cell
+                holds a period key the checkbox owns, not a date anyone should type. */}
+            {perkCycleYears(newPerk.frequency) ? (
+              <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#a0a8c0' }}>
+                Last claimed
+                <input type="date" value={newPerk.lastUsed} max={todayIso}
+                  onChange={e => setPk('lastUsed', e.target.value)}
+                  title="The day you claimed this credit. Leave blank if you never have — VERA stays quiet rather than guessing."
+                  style={Object.assign({}, inputStyle, { fontSize:11 })} />
+              </label>
+            ) : null}
             <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#a0a8c0', cursor:'pointer' }}>
               <input type="checkbox" checked={newPerk.autopay} onChange={e => setPk('autopay', e.target.checked)} />
               Autopay
@@ -1660,18 +1695,34 @@ function CardsTab({ apiUrl, apiToken }) {
   async function handleAddPerk(cardName, pk) {
     setBusy(true);
     try {
-      await apiGet(apiUrl, apiToken, { action: 'add_card_perk', cardName, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '', autopay: pk.autopay ? 'yes' : '' });
+      await apiGet(apiUrl, apiToken, { action: 'add_card_perk', cardName, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '', autopay: pk.autopay ? 'yes' : '', lastUsed: pk.lastUsed || '' });
       await load();
     } catch (err) { setError('Add perk failed: ' + err.message); }
     setBusy(false);
   }
 
+  // autopaySet and lastUsedSet exist because makeUrl drops falsy values, so a blank
+  // never reaches the server and reads as "leave this field alone". Without the
+  // flags, un-checking Autopay and clearing a date are both silent no-ops.
   async function handleEditPerk(id, pk) {
     setBusy(true);
     try {
-      await apiGet(apiUrl, apiToken, { action: 'update_card_perk', id, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '', autopay: pk.autopay ? 'yes' : '' });
+      await apiGet(apiUrl, apiToken, { action: 'update_card_perk', id, perk: pk.perk, amount: pk.amount || '', frequency: pk.frequency, category: pk.category || '', autopay: pk.autopay ? 'yes' : '', autopaySet: 'yes', lastUsed: pk.lastUsed || '', lastUsedSet: 'yes' });
       await load();
     } catch (err) { setError('Edit perk failed: ' + err.message); }
+    setBusy(false);
+  }
+
+  // The inline date box on a multi-year perk row. Goes through the SAME action as
+  // the edit form, so there is exactly one write path to that cell — two of them is
+  // how the toggle and the marker drifted apart before. No frequency is sent, so
+  // the server validates against the row's own.
+  async function handleSetPerkLastUsed(id, value) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken, { action: 'update_card_perk', id, lastUsed: value || '', lastUsedSet: 'yes' });
+      await load();
+    } catch (err) { setError('Set last claimed failed: ' + err.message); }
     setBusy(false);
   }
 
@@ -1969,7 +2020,7 @@ function CardsTab({ apiUrl, apiToken }) {
         <CardDetailModal card={modal.data} rewards={rewards} perks={perks} busy={busy}
           onClose={() => setModal(null)}
           onAddReward={handleAddReward} onDeleteReward={handleDeleteReward}
-          onAddPerk={handleAddPerk} onEditPerk={handleEditPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} onClearReview={handleClearReview} />
+          onAddPerk={handleAddPerk} onEditPerk={handleEditPerk} onDeletePerk={handleDeletePerk} onTogglePerk={handleTogglePerk} onClearReview={handleClearReview} onSetPerkLastUsed={handleSetPerkLastUsed} />
       )}
       {modal && modal.type === 'program' && (
         <LoyaltyModal mode={modal.data ? 'edit' : 'add'} program={modal.data} busy={busy}

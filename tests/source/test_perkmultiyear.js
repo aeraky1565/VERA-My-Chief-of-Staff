@@ -34,8 +34,19 @@ const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
 function extractFn(src, name) {
   const start = src.indexOf('function ' + name + '(');
   if (start === -1) throw new Error('not found: ' + name);
+  // Walk PAST the parameter list before looking for the body's opening brace.
+  // `function makeUrl(base, token, params = {})` has a `{}` in its signature, and
+  // matching from the first brace in the file returns the default value instead of
+  // the function — which parses as "unexpected end of input", several frames away
+  // from the actual cause.
+  let paren = 0, afterParams = -1;
+  for (let j = src.indexOf('(', start); j < src.length; j++) {
+    if (src[j] === '(') paren++;
+    else if (src[j] === ')') { paren--; if (paren === 0) { afterParams = j; break; } }
+  }
+  if (afterParams === -1) throw new Error('unbalanced parameter list: ' + name);
   let depth = 0;
-  for (let j = src.indexOf('{', start); j < src.length; j++) {
+  for (let j = src.indexOf('{', afterParams); j < src.length; j++) {
     if (src[j] === '{') depth++;
     else if (src[j] === '}') { depth--; if (depth === 0) return src.slice(start, j + 1); }
   }
@@ -794,6 +805,307 @@ console.log('\nThe rest of the wiring');
   const readme = fs.readFileSync(ROOT + '/README.md', 'utf8');
   check('the README explains calendar-aligned vs use-anchored',
         /use-anchored/i.test(readme) && /Every 4 Years/.test(readme));
+}
+
+// ============================================================================
+// Entering the anchor by hand.
+//
+// He had to open the backend sheet to record when Global Entry was last claimed,
+// because the perk form has a name, an amount, a frequency and an Autopay box and
+// nothing else. For a calendar-aligned perk that was fine — Last Used holds a
+// period key the checkbox owns. For a use-anchored perk that cell IS the cycle.
+//
+// The shape of the fix is forced by makeUrl in all three dashboards:
+//   Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
+// A falsy value is DROPPED, not sent — so a blank arrives as undefined and reads as
+// "leave this field alone". Hence a presence flag per clearable field. The same
+// mechanism is why un-checking Autopay used to be a silent no-op.
+// ============================================================================
+console.log('\nThe writers: validating an anchor a human typed');
+{
+  const PERK_H = ['ID','Card Name','Perk','Amount','Frequency','Category','Last Used','Needs Review','Autopay'];
+
+  // `now` drives the future-date guard; `rows` is the live tab.
+  function harness(rows, now) {
+    const writes = [], appended = [];
+    const sheet = {
+      getDataRange: () => ({ getValues: () => rows }),
+      getRange: (r, c) => ({ setValue: v => { writes.push({ r, c, v }); rows[r - 1][c - 1] = v; } }),
+      appendRow: r => appended.push(r),
+      getLastColumn: () => PERK_H.length,
+    };
+    const ctx = {
+      String, Number, Object, Array, Math, JSON, RegExp, Boolean,
+      isFinite, isNaN, parseInt, parseFloat, Error, console,
+      Logger: { log: () => {} },
+      Utilities: { formatDate: fmtDate },
+      Session: { getScriptTimeZone: () => TZ },
+      CONFIG: { SHEET_ID: 'x' },
+      TABS: { CARD_PERKS: 'Card Perks' },
+      SpreadsheetApp: { openById: () => ({ getSheetByName: () => sheet }) },
+      // The real one WRITES missing headers; the fixture already has them.
+      ensureCardPerkColumns_: () => ({ reviewCol: 8, autopayCol: 9 }),
+      __writes: writes,
+      __appended: appended,
+      __rows: rows,
+    };
+    vm.createContext(ctx);
+    vm.runInContext([
+      extractFn(SRC.Code, 'perkCycleYears_'),
+      extractFn(SRC.Code, 'perkAnchorDate_'),
+      extractFn(SRC.Web, 'perkAnchorForWrite_'),
+      extractFn(SRC.Web, 'webAddCardPerk_'),
+      extractFn(SRC.Web, 'webUpdateCardPerk_'),
+      'var __Real = Date;',
+      'Date = function() {',
+      '  if (arguments.length === 0) return new __Real(' + now.getTime() + ');',
+      '  if (arguments.length === 1) return new __Real(arguments[0]);',
+      '  return new __Real(arguments[0], arguments[1], arguments.length > 2 ? arguments[2] : 1,',
+      '                    arguments[3] || 0, arguments[4] || 0, arguments[5] || 0);',
+      '};',
+      'Date.now = function() { return ' + now.getTime() + '; };',
+    ].join('\n'), ctx);
+    return ctx;
+  }
+
+  const NOW = new Date(2026, 9, 1, 11, 0);   // 1 Oct 2026
+  const freshRows = () => [
+    PERK_H.slice(),
+    ['CP-6',  'AMEX Platinum', 'Uber Cash',    15,  'Monthly',       'Travel', '2026-10', '', ''],
+    ['CP-14', 'AMEX Platinum', 'Global Entry', 120, 'Every 4 Years', 'Travel', '2023-12-14', '', 'Yes'],
+  ];
+  const threw = fn => { try { fn(); return null; } catch (e) { return e.message; } };
+
+  // ---- the validator on its own ----
+  {
+    const c = harness(freshRows(), NOW);
+    check('a valid date on a multi-year perk is accepted',
+          c.perkAnchorForWrite_('Every 4 Years', '2023-12-14') === '2023-12-14');
+    check('…and whitespace is trimmed', c.perkAnchorForWrite_('Every 4 Years', ' 2023-12-14 ') === '2023-12-14');
+    // A throw here must report as a failed assertion, not escape the file: these
+    // run the real validator, and a control that refuses a blank would otherwise
+    // crash the whole test instead of naming the behaviour it broke.
+    const safe = (f, v) => { try { return c.perkAnchorForWrite_(f, v); } catch (e) { return 'THREW: ' + e.message; } };
+    check('a blank is a legitimate CLEAR, not an error',
+          safe('Every 4 Years', '') === '' && safe('Monthly', '') === '',
+          '"I have never claimed this" is a real answer, and a wrong date you cannot take back is worse: ' +
+          JSON.stringify([safe('Every 4 Years', ''), safe('Monthly', '')]));
+    check('…including undefined, which is what a dropped parameter looks like',
+          safe('Every 4 Years', undefined) === '', safe('Every 4 Years', undefined));
+
+    const nonDate = threw(() => c.perkAnchorForWrite_('Every 4 Years', '2023'));
+    check('a bare year is refused', nonDate !== null);
+    check('…naming the expected form', /yyyy-mm-dd/.test(nonDate), nonDate);
+    check('…and quoting what it got', /2023/.test(nonDate), nonDate);
+
+    check('a rolled-over day is refused', threw(() => c.perkAnchorForWrite_('Every 4 Years', '2023-02-30')) !== null,
+          'new Date(2023,1,30) is March 2 — accepting it shifts the cycle by two days');
+    check('a quarter key is refused', threw(() => c.perkAnchorForWrite_('Every 4 Years', '2026-Q3')) !== null);
+
+    const future = threw(() => c.perkAnchorForWrite_('Every 4 Years', '2033-12-14'));
+    check('a future date is refused', future !== null,
+          'a fat-fingered 2033 would hide the perk for fourteen years with no error anywhere');
+    check('…and says so', /future/i.test(future), future);
+    check('TODAY is not the future', c.perkAnchorForWrite_('Every 4 Years', '2026-10-01') === '2026-10-01',
+          'he can claim a credit and record it the same day');
+
+    ['Monthly', 'Quarterly', 'Semiannual', 'Annual', 'Standing', ''].forEach(f => {
+      const m = threw(() => c.perkAnchorForWrite_(f, '2023-12-14'));
+      check('a date is refused on a ' + (f || 'blank') + ' perk', m !== null,
+            'those stamps are period keys the checkbox owns; a hand-typed one never matches');
+    });
+    check('…and the refusal points at the checkbox',
+          /checkbox/i.test(threw(() => c.perkAnchorForWrite_('Monthly', '2023-12-14'))));
+  }
+
+  // ---- webUpdateCardPerk_ ----
+  {
+    // THE regression guard. Editing a Monthly perk's name sends every other field
+    // and no flag; the stamp must survive.
+    const c = harness(freshRows(), NOW);
+    c.webUpdateCardPerk_({ parameter: { id: 'CP-6', perk: 'Uber Credit', amount: '15',
+                                        frequency: 'Monthly', category: 'Travel' } });
+    check('without the flag, Last Used is NOT touched',
+          !c.__writes.some(w => w.c === 7) && c.__rows[1][6] === '2026-10',
+          JSON.stringify(c.__writes));
+    check('…while the other fields are written', c.__rows[1][2] === 'Uber Credit');
+    check('…and Autopay is left alone too without ITS flag',
+          !c.__writes.some(w => w.c === 9),
+          'a caller that never mentions a field must not clear it');
+  }
+  {
+    const c = harness(freshRows(), NOW);
+    // No frequency is sent — this is the inline date box's request shape. It must be
+    // judged against the ROW's 'Every 4 Years', so capture the throw rather than
+    // letting it escape: a control that crashes reports nothing useful.
+    const err = threw(() => c.webUpdateCardPerk_({
+      parameter: { id: 'CP-14', lastUsed: '2022-06-01', lastUsedSet: 'yes' } }));
+    check('…validated against the ROW\'s frequency, not a missing one', err === null,
+          'defaulting to Monthly would refuse every date the inline box can send: ' + err);
+    check('with the flag, the anchor is written', c.__rows[2][6] === '2022-06-01', c.__rows[2][6]);
+    check('…to the header-resolved column', c.__writes.some(w => w.c === 7), JSON.stringify(c.__writes));
+    check('…and nothing else is', c.__writes.length === 1, JSON.stringify(c.__writes));
+  }
+  {
+    const c = harness(freshRows(), NOW);
+    const e2 = threw(() => c.webUpdateCardPerk_({ parameter: { id: 'CP-14', lastUsedSet: 'yes' } }));
+    check('clearing is not an error', e2 === null, String(e2));
+    check('the flag with no value CLEARS the anchor', c.__rows[2][6] === '',
+          'this is the makeUrl trap: a blank never arrives, so the flag is the only signal');
+  }
+  {
+    const c = harness(freshRows(), NOW);
+    const m = threw(() => c.webUpdateCardPerk_({ parameter: {
+      id: 'CP-14', perk: 'Renamed', lastUsed: 'rubbish', lastUsedSet: 'yes' } }));
+    check('a refused anchor fails the whole request', m !== null, String(m));
+    check('…leaving NO field half-written', c.__writes.length === 0 && c.__rows[2][2] === 'Global Entry',
+          'validate before writing, or a rejected edit still renames the perk');
+  }
+  {
+    // Switching cadence and setting the anchor in one request must be judged by the
+    // NEW frequency — the row still says Annual at that moment.
+    const rows = freshRows();
+    rows[1][4] = 'Annual';
+    const c = harness(rows, NOW);
+    c.webUpdateCardPerk_({ parameter: { id: 'CP-6', frequency: 'Every 4 Years',
+                                        lastUsed: '2022-06-01', lastUsedSet: 'yes' } });
+    check('a cadence change and an anchor land together',
+          c.__rows[1][4] === 'Every 4 Years' && c.__rows[1][6] === '2022-06-01',
+          JSON.stringify([c.__rows[1][4], c.__rows[1][6]]));
+  }
+  {
+    // The Autopay bug: un-checking was a silent no-op because '' was dropped.
+    const c = harness(freshRows(), NOW);
+    c.webUpdateCardPerk_({ parameter: { id: 'CP-14', autopaySet: 'yes' } });
+    check('the flag with no value turns Autopay OFF', c.__rows[2][8] === '',
+          'this never worked from the form — makeUrl dropped autopay=\'\'');
+    const c2 = harness(freshRows(), NOW);
+    c2.webUpdateCardPerk_({ parameter: { id: 'CP-6', autopay: 'yes' } });
+    check('…and the old bare parameter still turns it ON', c2.__rows[1][8] === 'Yes',
+          'an existing API caller must keep working');
+    const c3 = harness(freshRows(), NOW);
+    c3.webUpdateCardPerk_({ parameter: { id: 'CP-14', autopay: 'yes', autopaySet: 'yes' } });
+    check('…and flag plus value still sets it', c3.__rows[2][8] === 'Yes');
+  }
+  {
+    const c = harness(freshRows(), NOW);
+    check('an unknown id still throws', threw(() => c.webUpdateCardPerk_({ parameter: { id: 'CP-404' } })) !== null);
+    check('…and a blank id too', threw(() => c.webUpdateCardPerk_({ parameter: {} })) !== null);
+  }
+
+  // ---- webAddCardPerk_ ----
+  {
+    const c = harness(freshRows(), NOW);
+    c.webAddCardPerk_({ parameter: { cardName: 'AMEX Platinum', perk: 'Global Entry',
+                                     amount: '120', frequency: 'Every 4 Years',
+                                     category: 'Travel', lastUsed: '2022-06-01' } });
+    const row = c.__appended[0];
+    check('a new perk can carry its anchor', row[6] === '2022-06-01', JSON.stringify(row));
+    check('…in a full-width row', row.length === PERK_H.length, String(row.length));
+    check('…with the cadence intact', row[4] === 'Every 4 Years');
+
+    const c2 = harness(freshRows(), NOW);
+    c2.webAddCardPerk_({ parameter: { cardName: 'C', perk: 'Uber', frequency: 'Monthly' } });
+    check('a Monthly perk is still added with a blank stamp', c2.__appended[0][6] === '');
+
+    const c3 = harness(freshRows(), NOW);
+    const m = threw(() => c3.webAddCardPerk_({ parameter: {
+      cardName: 'C', perk: 'X', frequency: 'Every 4 Years', lastUsed: '2033-01-01' } }));
+    check('a bad anchor refuses the add', m !== null, String(m));
+    check('…before the row exists', c3.__appended.length === 0,
+          'a perk created with a stamp nothing can read is worse than no perk');
+  }
+}
+
+console.log('\nThe form and the row — all three dashboard copies');
+{
+  const COPIES = { 'docs/app.js': SRC.App, 'docs/index.html': SRC.Index,
+                   'docs/dashboard-lite.html': SRC.Lite };
+  Object.keys(COPIES).forEach(label => {
+    const s = COPIES[label];
+
+    check(label + ': the form field is conditional on the cadence',
+          /perkCycleYears\(newPerk\.frequency\)/.test(s),
+          'choose Every 4 Years and it appears — that is the whole request');
+    check(label + ': …and is a date picker', /Last claimed/.test(s) && /type="date"|type:"date"/.test(s));
+    check(label + ': …capped at today', /max=\{todayIso\}|max:todayIso/.test(s),
+          'you cannot have claimed something in the future');
+    check(label + ': the form state carries lastUsed',
+          /blankPerk\s*=\s*\{[^}]*lastUsed/.test(s) &&
+          /startEditPerk[\s\S]{0,400}?lastUsed:\s*pk\.lastUsed/.test(s),
+          'without it, editing a perk submits a blank and clears the anchor');
+    check(label + ': the select goes through setPerkFrequency',
+          /setPerkFrequency\(e\.target\.value\)/.test(s),
+          "otherwise a stale '2023' from an Annual row is submitted and refused");
+    check(label + ': …which drops a stamp that is not a date',
+          /function setPerkFrequency[\s\S]{0,300}?\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(s));
+
+    check(label + ': a multi-year row gets a date box, not a checkbox',
+          /perkCycleYears\(pk\.frequency\)\s*\?/.test(s),
+          'the exact day is the point, so a one-click "today" is the wrong control');
+    check(label + ': …wired to onSetPerkLastUsed',
+          /onSetPerkLastUsed\(pk\.id,\s*e\.target\.value\)/.test(s));
+    check(label + ': …and it is ordered after the two badges',
+          s.indexOf("pk.frequency === 'Standing'") < s.indexOf('perkCycleYears(pk.frequency)') ||
+          s.indexOf("pk.frequency==='Standing'") < s.indexOf('perkCycleYears(pk.frequency)'),
+          'autopay and standing are exclusions and must win');
+    check(label + ': a Monthly row still has its checkbox',
+          /onTogglePerk\(pk\.id\)/.test(s), 'only the multi-year arm was replaced');
+
+    check(label + ': the edit request carries both presence flags',
+          /autopaySet:\s*'yes'/.test(s) && /lastUsedSet:\s*'yes'/.test(s),
+          'makeUrl drops a blank, so without these, clearing either field is a silent no-op');
+    check(label + ': the add request carries the anchor',
+          /add_card_perk[\s\S]{0,260}?lastUsed:\s*pk\.lastUsed/.test(s));
+    check(label + ': the inline box writes through the SAME action',
+          /handleSetPerkLastUsed[\s\S]{0,300}?action:\s*'update_card_perk'/.test(s),
+          'a second write path to that cell is how the toggle and the marker drifted apart');
+    check(label + ': …sending no frequency, so the row\'s own is used',
+          /handleSetPerkLastUsed[\s\S]{0,300}?lastUsedSet:\s*'yes'/.test(s) &&
+          !/handleSetPerkLastUsed[\s\S]{0,300}?frequency:/.test(s));
+    check(label + ': the parent actually wires the handler in',
+          /onSetPerkLastUsed=\{handleSetPerkLastUsed\}|onSetPerkLastUsed:handleSetPerkLastUsed/.test(s),
+          'the bare name also appears in the signature and the row, so match the wiring');
+    // RUN the real makeUrl rather than matching its source: the three copies have
+    // already drifted on it — app.js/index.html test
+    // `v !== undefined && v !== null && v !== ''` where the lite dashboard tests
+    // plain `if (v)` — and what the presence flags depend on is the BEHAVIOUR they
+    // share, which is that an empty string never leaves the browser.
+    {
+      const mu = { URL, Object, String, console };
+      vm.createContext(mu);
+      vm.runInContext(extractFn(s, 'makeUrl'), mu);
+      const sent = mu.makeUrl('https://x.test/exec', 'TOK',
+                              { action: 'update_card_perk', id: 'CP-14', lastUsed: '' });
+      check(label + ': makeUrl drops an empty value instead of sending it',
+            sent.indexOf('lastUsed') === -1, sent);
+      check(label + ': …which is exactly why the presence flag is needed',
+            mu.makeUrl('https://x.test/exec', 'TOK', { lastUsed: '', lastUsedSet: 'yes' })
+              .indexOf('lastUsedSet=yes') !== -1,
+            'the flag is truthy, so it survives and says "I mean this field, blank and all"');
+    }
+  });
+  check('index.html is not a stale build',
+        SRC.Index.indexOf('setPerkFrequency') !== -1 && SRC.Index.indexOf('onSetPerkLastUsed') !== -1,
+        'run node docs/build.js');
+
+  // The modal takes the prop explicitly, so the fixture has to pass it or the
+  // test renders a component whose handler is undefined. Read from REPO, not ROOT:
+  // this is a sibling test, not production source, so the control harness does not
+  // copy it into its mutated tree and no control mutates it.
+  const cd = fs.readFileSync(REPO + '/tests/source/test_carddetail.js', 'utf8');
+  check('the card-detail fixture passes onSetPerkLastUsed', /onSetPerkLastUsed/.test(cd));
+
+  // And the single global scope: one declaration across every root .js file.
+  const roots = fs.readdirSync(ROOT).filter(f => f.endsWith('.js'));
+  const n = roots.reduce((acc, f) => acc +
+    (fs.readFileSync(path.join(ROOT, f), 'utf8')
+       .match(/^function perkAnchorForWrite_\(/gm) || []).length, 0);
+  check('perkAnchorForWrite_ is declared exactly once', n === 1, String(n));
+
+  const readme = fs.readFileSync(ROOT + '/README.md', 'utf8');
+  check('the README says how the anchor is entered',
+        /Last claimed/.test(readme) && /no checkbox/i.test(readme));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

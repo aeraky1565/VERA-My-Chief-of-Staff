@@ -35,6 +35,7 @@ async function detailTextFor(page, card) {
       card: c, rewards: [], perks: [], busy: false,
       onClose: noop, onAddReward: noop, onDeleteReward: noop, onAddPerk: noop,
       onEditPerk: noop, onDeletePerk: noop, onTogglePerk: noop, onClearReview: noop,
+      onSetPerkLastUsed: noop,
     }));
     return new Promise(r => setTimeout(() => r({ text: host.innerText }), 250));
   }, card);

@@ -193,6 +193,101 @@ const CONTROLS = {
     'docs/index.html': b['docs/index.html'].replace(/Multi-year/g, 'Annual'),
   }),
 
+  // ---- entering the anchor by hand ----------------------------------------
+  'the presence flag is ignored (clearing a date is a silent no-op again)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      var newAnchor = (p.lastUsedSet === 'yes') ? perkAnchorForWrite_(effFreq, p.lastUsed) : null;",
+      "      var newAnchor = (p.lastUsed !== undefined) ? perkAnchorForWrite_(effFreq, p.lastUsed) : null;"),
+  }),
+  'the anchor is written with no flag at all (a Monthly edit wipes its stamp)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      if (newAnchor !== null)        sheet.getRange(rowNum, lastUsedCol).setValue(newAnchor);",
+      "      sheet.getRange(rowNum, lastUsedCol).setValue(String(p.lastUsed || '').trim());"),
+  }),
+  'the anchor is judged against Monthly when no frequency is sent': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /      var effFreq = \(p\.frequency !== undefined\)\n[\s\S]*?: \(String\(rows\[i\]\[4\] \|\| 'Monthly'\)\.trim\(\) \|\| 'Monthly'\);/,
+      "      var effFreq = (p.frequency || 'Monthly').trim() || 'Monthly';"),
+  }),
+  'the row is written before the anchor is validated': b => ({
+    'WebApp.js': b['WebApp.js']
+      .replace("      var newAnchor = (p.lastUsedSet === 'yes') ? perkAnchorForWrite_(effFreq, p.lastUsed) : null;\n", '')
+      .replace("      if (newAnchor !== null)        sheet.getRange(rowNum, lastUsedCol).setValue(newAnchor);",
+               "      if (p.lastUsedSet === 'yes') sheet.getRange(rowNum, lastUsedCol).setValue(perkAnchorForWrite_(effFreq, p.lastUsed));"),
+  }),
+  'a future date is accepted': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  var today = new Date\(\);\n  today\.setHours\(0, 0, 0, 0\);\n  if \(anchor > today\) \{\n[\s\S]*?\n  \}\n/, ''),
+  }),
+  'a hand-typed period key is accepted on any frequency': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  if \(!perkCycleYears_\(frequency\)\) \{\n[\s\S]*?\n  \}\n/, ''),
+  }),
+  'the anchor is not parsed, just stored': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  var anchor = perkAnchorDate_\(lu\);\n  if \(!anchor\) \{\n[\s\S]*?\n  \}\n/,
+      '  var anchor = perkAnchorDate_(lu) || new Date(1970, 0, 1);\n'),
+  }),
+  'a blank is refused instead of clearing': b => ({
+    'WebApp.js': b['WebApp.js'].replace("  if (!lu) return '';",
+                                        "  if (!lu) throw new Error('Last Used is required');"),
+  }),
+  'the writer targets a hardcoded column instead of the header': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var lastUsedCol = hdr.indexOf('Last Used') === -1 ? 7 : hdr.indexOf('Last Used') + 1;",
+      "  var lastUsedCol = 8;"),
+  }),
+  'adding a perk drops the anchor on the floor': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "(p.category || '').trim(), lastUsed, '', autopay]",
+      "(p.category || '').trim(), '', '', autopay]"),
+  }),
+  'the add validates nothing': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var lastUsed = perkAnchorForWrite_(frequency, p.lastUsed);",
+      "  var lastUsed = String(p.lastUsed || '').trim();"),
+  }),
+  'un-checking Autopay goes back to being a no-op': b => ({
+    'WebApp.js': b['WebApp.js'].replace("      if (p.autopaySet === 'yes' || p.autopay !== undefined) {",
+                                        "      if (p.autopay !== undefined) {"),
+  }),
+  'the old bare autopay parameter stops working': b => ({
+    'WebApp.js': b['WebApp.js'].replace("      if (p.autopaySet === 'yes' || p.autopay !== undefined) {",
+                                        "      if (p.autopaySet === 'yes') {"),
+  }),
+
+  // ---- the form and the row, all three copies ------------------------------
+  'the form field is always shown, whatever the cadence': b => eachDoc(b, s => s
+    .replace(/perkCycleYears\(newPerk\.frequency\)\s*\?/g, 'true ?')),
+  'the form field never appears (today\'s bug)': b => eachDoc(b, s => s
+    .replace(/perkCycleYears\(newPerk\.frequency\)\s*\?/g, 'false ?')),
+  'the date field has no upper bound': b => eachDoc(b, s => s
+    .replace(/max=\{todayIso\}/g, '').replace(/max:todayIso,/g, '')),
+  'the form state forgets lastUsed': b => eachDoc(b, s => s
+    .replace(/lastUsed:\s*pk\.lastUsed\s*\|\|\s*''/g, "lastUsed: ''")),
+  'the select writes the frequency directly again': b => eachDoc(b, s => s
+    .replace(/setPerkFrequency\(e\.target\.value\)/g, "setPk('frequency', e.target.value)")),
+  'a stale non-date stamp is carried across a cadence change': b => eachDoc(b, s => s
+    .replace(/const keep\s*=\s*perkCycleYears\(freq\)\s*&&\s*\/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$\/\.test\(String\(prev\.lastUsed \|\| ''\)\);/g,
+             'const keep = true;')),
+  'the multi-year row keeps its checkbox': b => eachDoc(b, s => s
+    .replace(/perkCycleYears\(pk\.frequency\)\s*\?/g, 'false ?')),
+  'the Monthly row loses its checkbox too': b => eachDoc(b, s => s
+    .replace(/perkCycleYears\(pk\.frequency\)\s*\?/g, 'true ?')),
+  'the edit request drops the presence flags': b => eachDoc(b, s => s
+    .replace(/autopaySet:\s*'yes',\s*/g, '').replace(/,\s*lastUsedSet:\s*'yes'/g, '')),
+  'the add request drops the anchor': b => eachDoc(b, s => s
+    .replace(/(action:\s*'add_card_perk'[\s\S]{0,260}?),\s*lastUsed:\s*pk\.lastUsed\s*\|\|\s*''/g, '$1')),
+  'the inline box sends a frequency of its own': b => eachDoc(b, s => s
+    .replace(/(handleSetPerkLastUsed\(id,\s*value\)\s*\{[\s\S]{0,300}?action:\s*'update_card_perk',\s*id)/g,
+             "$1, frequency: 'Monthly'")),
+  'the modal is never handed the handler': b => eachDoc(b, s => s
+    .replace(/onSetPerkLastUsed=\{handleSetPerkLastUsed\}/g, '')
+    .replace(/,onSetPerkLastUsed:handleSetPerkLastUsed/g, '')),
+  'index.html is a stale build (the form change never shipped)': b => ({
+    'docs/index.html': b['docs/index.html'].replace(/setPerkFrequency/g, 'setPkFreqOld'),
+  }),
+
   // ---- the seeds and the docs ---------------------------------------------
   'one seeded Global Entry row is still Annual': b => ({
     'Code.js': b['Code.js'].replace(

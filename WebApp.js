@@ -7572,6 +7572,51 @@ function webDeleteCardReward_(e) {
 
 // ---- Card Perks CRUD + toggle ----
 
+/**
+ * Validates a Last Used value a HUMAN typed, and returns what to store.
+ *
+ * The one place that decides whether a hand-entered stamp may reach the cell, so
+ * the add form, the edit form and the inline date box on the perk row cannot
+ * disagree about what is acceptable.
+ *
+ * Only a use-anchored perk gets one. For Monthly through Annual the cell holds a
+ * period key that the used/unused checkbox owns and cardPerkPeriodKey_ mints
+ * ('2026-09', '2026-Q3'); letting someone type one by hand is how you end up with
+ * a '2026-Q5' that no reader will ever match and a perk that reads unused forever.
+ *
+ * A blank is allowed and means CLEAR — "I have never claimed this" is a real
+ * answer, and the alternative is a wrong date you cannot take back.
+ *
+ * @param {string} frequency the perk's effective frequency
+ * @param {string} raw       what the user typed
+ * @returns {string} the value to write: '' or a 'yyyy-MM-dd' date
+ * @throws with a message naming the expected form — it surfaces in the dashboard's
+ *         error banner, so it is the whole of the user's feedback.
+ */
+function perkAnchorForWrite_(frequency, raw) {
+  var lu = String(raw === undefined || raw === null ? '' : raw).trim();
+  if (!lu) return '';
+
+  if (!perkCycleYears_(frequency)) {
+    throw new Error('Last Used can only be set by hand for an "Every N Years" perk. ' +
+                    'A ' + (frequency || 'Monthly') + ' perk is marked used with its checkbox.');
+  }
+  // Rejects '2023-02-30', which the Date constructor would silently turn into
+  // March 2 and shift the whole cycle by two days.
+  var anchor = perkAnchorDate_(lu);
+  if (!anchor) {
+    throw new Error('Last Used must be a real date in yyyy-mm-dd form, e.g. 2023-12-14 — got "' + lu + '"');
+  }
+  // A fat-fingered 2033 for 2023 would hide the perk for fourteen years with no
+  // error anywhere, which is exactly the kind of silence this tab keeps producing.
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (anchor > today) {
+    throw new Error('Last Used cannot be in the future — got "' + lu + '"');
+  }
+  return lu;
+}
+
 function webAddCardPerk_(e) {
   var p = (e && e.parameter) ? e.parameter : {};
   var cardName  = (p.cardName  || '').trim();
@@ -7579,10 +7624,14 @@ function webAddCardPerk_(e) {
   var frequency = (p.frequency || 'Monthly').trim();
   var autopay   = (p.autopay   || '').trim().toLowerCase() === 'yes' ? 'Yes' : '';
   if (!cardName || !perk) throw new Error('cardName and perk are required');
+  // Adding a Global Entry row with the date it was actually claimed is one step,
+  // not "add it, then go and edit it". Validated before the row exists, so a bad
+  // date fails loudly instead of creating a perk with a stamp nothing can read.
+  var lastUsed = perkAnchorForWrite_(frequency, p.lastUsed);
   var id    = 'CP-' + Date.now();
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CARD_PERKS);
-  sheet.appendRow([id, cardName, perk, (p.amount || '').toString().trim(), frequency, (p.category || '').trim(), '', '', autopay]);
+  sheet.appendRow([id, cardName, perk, (p.amount || '').toString().trim(), frequency, (p.category || '').trim(), lastUsed, '', autopay]);
   return { ok: true, id: id };
 }
 
@@ -7936,6 +7985,18 @@ function webClearPerkReview_(e) {
   throw new Error('Card perk not found: ' + id);
 }
 
+/**
+ * Updates one Card Perks row field by field.
+ *
+ * TWO PARAMETERS CARRY A PRESENCE FLAG, and the reason is makeUrl in the
+ * dashboards: `Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); })`
+ * drops every falsy value instead of sending it. So a blank never arrives at all —
+ * it is indistinguishable from a caller that never mentioned the field, and
+ * `p.x !== undefined` reads it as "leave it alone". That is why un-checking Autopay
+ * used to do nothing: `autopay: ''` was dropped, this function skipped the write,
+ * and the cell kept 'Yes'. `autopaySet=yes` and `lastUsedSet=yes` say "I mean this
+ * field, even if the value is empty".
+ */
 function webUpdateCardPerk_(e) {
   var p  = (e && e.parameter) ? e.parameter : {};
   var id = (p.id || '').trim();
@@ -7944,14 +8005,35 @@ function webUpdateCardPerk_(e) {
   var sheet = ss.getSheetByName(TABS.CARD_PERKS);
   var cols  = ensureCardPerkColumns_(sheet);
   var rows  = sheet.getDataRange().getValues();
+  var hdr   = rows.length ? rows[0].map(function(h) { return String(h || '').trim(); }) : [];
+  // Header-driven with the same fallback resolveCardPerkRow_ uses, so the two
+  // writers to this cell can never target different columns.
+  var lastUsedCol = hdr.indexOf('Last Used') === -1 ? 7 : hdr.indexOf('Last Used') + 1;
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       var rowNum = i + 1;
+      // The frequency the anchor is judged against. The inline date box on the perk
+      // row sends only the id and the date, so when no frequency comes with the
+      // request the row's own is the right one to validate against — not 'Monthly',
+      // which would reject every date the box could possibly send.
+      var effFreq = (p.frequency !== undefined)
+                      ? (p.frequency.trim() || 'Monthly')
+                      : (String(rows[i][4] || 'Monthly').trim() || 'Monthly');
+      // Validate BEFORE writing anything: a request that is going to be refused
+      // must not leave half the row updated.
+      var newAnchor = (p.lastUsedSet === 'yes') ? perkAnchorForWrite_(effFreq, p.lastUsed) : null;
+
       if (p.perk      !== undefined) sheet.getRange(rowNum, 3).setValue(p.perk.trim());
       if (p.amount     !== undefined) sheet.getRange(rowNum, 4).setValue(p.amount.toString().trim());
-      if (p.frequency !== undefined) sheet.getRange(rowNum, 5).setValue(p.frequency.trim() || 'Monthly');
+      if (p.frequency !== undefined) sheet.getRange(rowNum, 5).setValue(effFreq);
       if (p.category  !== undefined) sheet.getRange(rowNum, 6).setValue(p.category.trim());
-      if (p.autopay   !== undefined) sheet.getRange(rowNum, cols.autopayCol).setValue(p.autopay.trim().toLowerCase() === 'yes' ? 'Yes' : '');
+      if (newAnchor !== null)        sheet.getRange(rowNum, lastUsedCol).setValue(newAnchor);
+      // The flag clears it; the bare parameter still sets it, so an existing API
+      // caller that passes autopay=yes keeps working.
+      if (p.autopaySet === 'yes' || p.autopay !== undefined) {
+        sheet.getRange(rowNum, cols.autopayCol)
+             .setValue(String(p.autopay || '').trim().toLowerCase() === 'yes' ? 'Yes' : '');
+      }
       return { ok: true };
     }
   }

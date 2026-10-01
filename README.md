@@ -520,6 +520,23 @@ calendar, for a fee credit that cannot be claimed again for years.
 - The dashboard folds every cadence into one **Multi-year** group — `perkGroups`
   is a list of exact strings, so a frequency carrying a number would otherwise
   render nowhere at all with no error, the same trap `Standing` fell into.
+- **A multi-year row has no checkbox.** In its place is a date box holding the day
+  you claimed the credit, because the exact day is what the next cycle is counted
+  from and a one-click "today" is the wrong control for it. The perk form grows a
+  **Last claimed** field the moment you pick `Every 4 Years`, so a new row can
+  carry its anchor from the start. Clearing either one clears the cell and the perk
+  goes back to reading *"Never claimed"*.
+- Both go through `update_card_perk`, and `perkAnchorForWrite_` (`WebApp.js`) is the
+  only thing that decides whether a typed value may be stored: a real `yyyy-mm-dd`
+  date, not in the future, and **only** on an `Every N Years` row. A hand-typed
+  period key on a Monthly perk is refused, because nothing would ever match it.
+
+> **Two parameters carry a presence flag — `lastUsedSet` and `autopaySet` — and
+> they are not optional decoration.** `makeUrl` in the dashboards drops falsy
+> values rather than sending them, so a blank never arrives and is
+> indistinguishable from a caller that never mentioned the field. Without the flag,
+> *clearing* anything is a silent no-op. That is exactly why un-checking Autopay
+> from the perk form did nothing until the flag was added.
 
 > **Integer years only.** A benefit advertised as "every 4.5 years" should be
 > entered as `Every 5 Years` and be late rather than early.
