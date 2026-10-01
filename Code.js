@@ -284,7 +284,11 @@ const BUCKET_ACTIVITIES_HEADERS  = ['ID', 'Bucket ID', 'Activity', 'Done', 'Adde
 const WISH_LIST_HEADERS          = ['ID', 'Person', 'Category', 'Item', 'Description', 'URLs', 'Price', 'Priority', 'Status', 'Date Added', 'Notes', 'Date Purchased']; // Issue #131
 const COUPON_HEADERS             = ['ID', 'Store', 'Offer', 'Discount', 'Min Spend', 'Offer Code', 'Customer Code', 'Expires', 'Channel', 'Addressed To', 'Status', 'Added']; // Issue #173
 // HEALTH_APPOINTMENT_HEADERS removed (Issue #85): appointments read from Google Calendar, no sheet needed
-const MEMORY_LOG_HEADERS         = ['ID', 'Timestamp', 'Type', 'Who', 'Title', 'Detail', 'Context'];           // Issue #9
+// Scope + Category are read only by trip_lesson rows (see Memory.js). Every other
+// event type leaves them blank, which is why they sit at the end: appendMemoryEvent_
+// writes by header name, but a sheet seeded before these existed still has 7 columns
+// and ensureMemoryColumns_ appends the missing two.
+const MEMORY_LOG_HEADERS         = ['ID', 'Timestamp', 'Type', 'Who', 'Title', 'Detail', 'Context', 'Scope', 'Category']; // Issue #9
 const MEMORY_SNAPSHOT_HEADERS    = ['Week Key', 'Metric', 'Who', 'Value', 'As Of'];                             // Issue #9
 const WELLNESS_LOG_HEADERS       = ['ID', 'Date', 'Who', 'Metric', 'Value', 'Source', 'Logged At'];             // Feature 12
 

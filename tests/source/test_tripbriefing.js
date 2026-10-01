@@ -270,7 +270,11 @@ console.log('\nevery generator actually loads it');
 {
   const recs = extractFn(WEB, 'webGenerateRecommendations_');
   check('discoveries read notes off the meta', /rMeta\.notes/.test(recs));
-  check('…and pass it to the prompt builder', /buildRecsUserPrompt_\([^)]*briefing\)/.test(recs));
+  // Was /…briefing\)/ — pinned to briefing being the LAST argument, which is not
+  // what this is guarding. Adding the trip-lessons argument after it broke the
+  // assertion without breaking the behaviour. It still requires briefing to be
+  // passed; it no longer cares what follows.
+  check('…and pass it to the prompt builder', /buildRecsUserPrompt_\([^)]*\bbriefing\b/.test(recs));
 
   const pack = extractFn(WEB, 'webGeneratePacking_');
   check('packing reads notes off the meta', /metaResult\.notes/.test(pack));

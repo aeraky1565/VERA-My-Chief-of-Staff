@@ -5248,7 +5248,8 @@ function getPackingWeather_(destination, startDate, endDate) {
 function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
                               context, traveler, destination, season,
                               itinerarySummary, weatherSummary,
-                              activityTypes, dressCodes, freeDays, briefing) {
+                              activityTypes, dressCodes, freeDays, briefing,
+                              lessonsBlock) {
   var travelersLine = traveler
     ? 'Travelers: ' + traveler
     : 'Travelers: Ahmed and Victoria';
@@ -5269,7 +5270,11 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
   // Activity-specific hints — only emit lines relevant to this trip
   var hints = [];
   if (activityTypes.beach || activityTypes.snorkeling || activityTypes.diving || activityTypes.swimming) {
-    hints.push('- Beach/water activities: include swimwear, water shoes, dry bag, reef-safe sunscreen.');
+    // Hat and refillable water bottle added after the Florida trip went without
+    // either. Sun and hydration are the two things a beach day actually needs and
+    // the list named neither.
+    hints.push('- Beach/water activities: include swimwear, water shoes, dry bag, reef-safe sunscreen, ' +
+               'a wide-brim or packable sun hat, and a refillable water bottle.');
   }
   if (activityTypes.hiking || activityTypes.trekking || activityTypes.outdoor) {
     hints.push('- Hiking/outdoor: include trail shoes, daypack, moisture-wicking layers.');
@@ -5310,6 +5315,10 @@ function buildPackingPrompt_(tripLabel, startDate, endDate, durationNights,
     (briefingLine ? briefingLine + '\n' : '') +
     weatherLine + '\n\n' +
     (itinerarySummary ? '=== ITINERARY ===\n' + itinerarySummary + '\n\n' : '') +
+    // Above the rules, not below them: a lesson exists because the generic rules
+    // already failed once, so it has to be read before them rather than as a
+    // footnote after.
+    (lessonsBlock ? lessonsBlock + '\n' : '') +
     'Generate a practical packing list split across "ahmed", "victoria", and "shared"\n' +
     '(shared = items only needed once: adapters, sunscreen, first aid kit, travel umbrella, etc.).\n' +
     'Group by category. Use concise names like: Documents, Clothing, Shoes, Toiletries,\n' +
@@ -5472,11 +5481,25 @@ function webGeneratePacking_(e) {
   const weatherSummary = getPackingWeather_(destination, startDate || '', endDate || '');
 
   // Step 6 — Build prompt with full enriched context
+  // What earlier trips taught, narrowed to the ones that apply to this one.
+  // Non-fatal: a packing list generated without the lessons is the old behaviour,
+  // and losing the whole list because the Memory Log is unreadable is worse.
+  var packingLessons = '';
+  try {
+    packingLessons = tripLessonsPromptBlock_(
+      { destination: destination, context: context, activityTypes: activityTypes },
+      ['Packing']
+    );
+  } catch (lsErr) {
+    Logger.log('webGeneratePacking_: trip lessons unavailable (non-fatal) — ' + lsErr.message);
+  }
+
   const prompt = buildPackingPrompt_(
     tripLabel, startDate, endDate, durationNights,
     context, traveler, destination, season,
     itinerarySummary, weatherSummary,
-    activityTypes, dressCodes, freeDays, briefing
+    activityTypes, dressCodes, freeDays, briefing,
+    packingLessons
   );
 
   // Step 7 — Call Claude
@@ -5718,7 +5741,7 @@ function buildRecsSystemPrompt_() {
 /**
  * Builds the user message for trip recommendations.
  */
-function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing) {
+function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, lessonsBlock) {
   return (
     'Trip: ' + tripLabel + '\n' +
     'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
@@ -5734,6 +5757,9 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     'Destination: ' + (destination || '(unknown — infer it from the planned itinerary below)') + '\n\n' +
     '=== PLANNED ITINERARY ===\n' + (itinerarySummary || '(No items planned yet)') + '\n\n' +
     '=== DAY-BY-DAY GAP ANALYSIS ===\n' + gapSummary + '\n\n' +
+    // Before the search instruction, so what he has already told us not to
+    // suggest shapes the search rather than being applied to its results.
+    (lessonsBlock ? lessonsBlock + '\n' : '') +
     (destination
       ? 'Search the web for top attractions and dining in ' + destination + ' matching the trip context, '
       : 'Search the web for top attractions and dining at the places named in the itinerary above, matching the trip context, ') +
@@ -6086,7 +6112,22 @@ function webGenerateRecommendations_(e) {
 
   // Build prompts
   const sysPrompt  = buildRecsSystemPrompt_();
-  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing);
+  // Recommendations see Dining and Activities lessons — "we'd skip the aquarium",
+  // "book dinner before 6" — so VERA stops re-suggesting what was already rejected.
+  // Packing lessons are deliberately excluded: they say nothing about where to go.
+  // No activityTypes here; recommendations run to FILL empty days, so matching on
+  // what is already scheduled would drop exactly the lessons worth applying.
+  var recsLessons = '';
+  try {
+    recsLessons = tripLessonsPromptBlock_(
+      { destination: destination, context: context, activityTypes: {} },
+      ['Dining', 'Activities']
+    );
+  } catch (lsErr) {
+    Logger.log('webGenerateRecommendations_: trip lessons unavailable (non-fatal) — ' + lsErr.message);
+  }
+
+  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, recsLessons);
   const apiKey     = getApiKey();
   const tools      = getSearchTools_(); // from Chat.js — empty if no VERA_SEARCH_API_KEY
 

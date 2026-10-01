@@ -635,7 +635,7 @@ the files they belong to, and nothing is reimplemented here.
 |---------|---------|
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
-| 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
+| 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
 | 4. Data & trackers | `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs
@@ -650,6 +650,7 @@ it, save, then run.
 | `TB_PRETRIP_HOURS` | Widens the pre-trip departure window, in hours, to reach a trip further out than the configured 48. `0` = use `pretrip_briefing_hours`. |
 | `TB_TRIP_LABEL` | Which trip `tbGeneratePacking` / `tbGenerateDiscoveries` target. Blank = the next upcoming one. |
 | `TB_AIRPORTS` | `'TPA,IAD'` — airports for `tbLoungeAccess`, first treated as the departure. Set it to check lounge matching on a day with no trip; blank = scan the itinerary. |
+| `TB_LESSON_TRIP` | `'Orlando, Florida\|Family\|beach'` — a made-up trip for `tbTripLessons` to match lessons against, as `destination\|context\|activities`. Any part may be blank. Blank overall = list every lesson without matching. |
 
 ### These send for real
 
@@ -714,6 +715,65 @@ Claude AI · Pattern Recognition · Health Tracker · Contracts · Pantry · Fit
 The following types are supported in the `add_itinerary_item` chat action and `Itinerary` tab:
 
 `flight` · `train` · `cruise` · `ferry` · `hotel` · `dining` · `museum` · `beach` · `show` · `spa` · `skiing` · `snorkeling` · `theme_park` · `shopping` · `market` · `manual`
+
+### Trip Lessons — what one trip teaches the next
+
+A Florida beach trip was packed without a hat or a water bottle. Two separate
+things were wrong, and the second shapes the whole design:
+
+1. The packing prompt's beach hint listed *"swimwear, water shoes, dry bag,
+   reef-safe sunscreen"* — it named neither.
+2. That hint only fires when an **itinerary row is typed `beach`**. `activityTypes`
+   is built from itinerary row types, not from the trip's name or context. With no
+   beach-typed row, the hint never ran at all.
+
+The capture half already half-existed: debrief question 3 has always asked *"anything
+you'd skip or do differently?"*, and the answer went into the Shared Interests ledger
+— which `Interests.js` and the recap email read, and **nothing that plans a trip ever
+did**. The loop was built on one side only.
+
+**A lesson is a scoped rule, not a diary entry.** It lives on the `Memory Log` tab as
+a `trip_lesson` row, with two columns no other event type uses:
+
+| Scope | Fires on |
+|---|---|
+| `always:*` | every trip |
+| `destination:florida` | trips whose destination matches, either way round — stored `florida` matches a trip reading `Orlando, Florida` |
+| `context:Family` | trips with that Trip Context |
+| `activity:beach` | trips with an itinerary row of that type |
+
+> **Scope is the whole point, and the debrief asks rather than guesses.** A lesson
+> scoped `activity:beach` would have missed the Florida trip *for exactly the same
+> reason the hint did* — no beach-typed row. `destination:florida` or `context:Family`
+> would have caught it. Chat is told to explain the four options in plain terms and
+> let you pick, and is warned about this specific trap.
+
+`Category` decides who reads it back: **Packing** reaches the packing prompt,
+**Dining** and **Activities** reach the recommendations prompt. **Logistics** and
+**Other** are captured and visible in chat but injected nowhere — a vague lesson
+cannot quietly distort a generator.
+
+In both prompts the block sits **above** the rules, not after them: a lesson exists
+because the generic rules already failed once. In recommendations it sits before the
+search instruction, so what you rejected shapes the search rather than being applied
+to its results. Both lookups are non-fatal — an unreadable Memory Log costs you the
+lessons, never the list.
+
+**Lessons do not age out.** `pruneMemoryLog_` deletes rows older than
+`memory_log_retention_months` (default 12) and now skips `trip_lesson`. Everything
+else in that log records something that happened and has served its purpose a year
+on; a lesson is a standing rule, and deleting it on its first birthday would silently
+undo the thing it was written for. Retire one by deleting its row.
+
+An unparseable scope is **refused at the door** — `logTripLesson_` returns an error
+Chat surfaces, rather than writing a row every reader would ignore. Treating it as
+"applies to everything" would push it into every prompt forever.
+
+Check your work with `tbTripLessons()` (set `TB_LESSON_TRIP`), which lists every
+lesson, says which would fire for a made-up trip, flags any unparseable scope, and
+prints the exact block each prompt would receive. The failure mode is otherwise
+silent: a lesson scoped to something your next trip won't match is indistinguishable
+from no lesson at all.
 
 ### Pre-trip Briefing
 

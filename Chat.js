@@ -964,6 +964,12 @@ function buildChatSystemPrompt_(context) {
     // Reference documents
     'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
     'ACTION:complete_debrief|{tripKey}  \u2014 log that a post-trip debrief conversation has been completed for {tripKey}. Emit once, at the very end of a debrief session after all items are logged.\n' +
+    'ACTION:log_trip_lesson|{category}|{scope}|{trip}|{lesson}  \u2014 record a lesson to apply to FUTURE trips. ' +
+    '{category} is one of Packing, Dining, Activities, Logistics, Other. ' +
+    '{scope} says when it applies and must be one of: always:*  |  destination:{place}  |  context:{trip context}  |  activity:{itinerary type, e.g. beach}. ' +
+    '{trip} is the trip this was learned on, for provenance (its label, or blank). ' +
+    '{lesson} comes LAST and is one imperative sentence ("Pack a wide-brim hat and a refillable water bottle"); ' +
+    'it may contain the | character, everything after the third | is the lesson.\n' +
     // Day Sequencing (Issue #187)
     'ACTION:apply_day_plan  \u2014 apply VERA\'s day sequencing plan from this morning\'s briefing by creating time-block events on the Vera calendar for any suggested time shifts. Use when Ahmed says "apply today\'s plan", "block out my day", "apply the plan", or similar.\n' +
     '\n' +
@@ -1053,6 +1059,15 @@ function buildChatSystemPrompt_(context) {
     '  3. Anything you\'d skip or do differently next time? (\u2192 ACTION:log_interest|Ahmed|skip: {thing}, {city}|Travel)\n' +
     '  4. Anything Victoria specifically loved? (\u2192 ACTION:log_interest|Victoria|{thing}|{best category})\n' +
     '  5. Would you go back? (\u2192 ACTION:add_bucket_item or ACTION:update_bucket_item if destination already in bucket list)\n' +
+    '  6. Was anything missing from the packing list, or anything you want VERA to remember for next time? ' +
+    '(\u2192 ACTION:log_trip_lesson per lesson)\n' +
+    'ON QUESTION 6 \u2014 the scope is the whole point and you must ASK, never guess. A lesson only helps if it comes back ' +
+    'on the right future trip. Say what each option would mean in plain terms and let him pick: every trip (always:*), ' +
+    'only this place (destination:{place}), this kind of trip (context:{label}), or when a matching activity is on the ' +
+    'itinerary (activity:{type}). Prefer destination or context over activity unless he is sure the itinerary will carry ' +
+    'that row type \u2014 activity scope only matches when an itinerary item is actually typed that way, so a beach lesson ' +
+    'scoped activity:beach will NOT fire for a beach trip whose itinerary never says "beach". ' +
+    'Split a compound answer into one lesson per item, and keep each to a single imperative sentence.\n' +
     'After the questions, emit ACTION:add_country if the destination isn\'t already in COUNTRIES VISITED, ' +
     'using the trip notes as the Notes field. Confirm each item logged. End with a brief summary of what was captured. ' +
     'Then emit ACTION:complete_debrief|{tripKey} (use the TripKey from RECENTLY COMPLETED TRIPS) to record that the debrief is complete — this triggers the recap email.\n' +
@@ -2653,6 +2668,33 @@ function executeActions_(rawText) {
           } else {
             errors.push('update_loyalty_points: no program found matching "' + ulProg + '"');
           }
+        }
+      }
+
+      // ---- Trip lesson -----------------------------------------------------
+      // The half of the debrief that was missing: question 3 has always asked what
+      // he'd do differently, and the answer went into the Shared Interests ledger,
+      // which nothing that plans a trip ever reads. This writes a scoped rule that
+      // the packing and recommendation prompts look up by trip.
+      else if (type === 'log_trip_lesson') {
+        var ltCategory = (args[0] || '').trim();
+        var ltScope    = (args[1] || '').trim();
+        var ltTrip     = (args[2] || '').trim();
+        // Free text comes last and keeps any pipes it contains. The three fixed
+        // fields lead for exactly that reason — a lesson is a sentence someone
+        // wrote, and a trailing optional field after it could not be told apart
+        // from the sentence continuing.
+        var ltLesson   = (args.slice(3).join('|') || '').trim();
+        if (!ltLesson) throw new Error('Lesson text required for log_trip_lesson');
+
+        var ltRes = logTripLesson_(ltLesson, ltScope, ltCategory, ltTrip, '');
+        if (ltRes.ok) {
+          executed.push('log_trip_lesson (' + ltRes.category + ' · ' + ltRes.scope + ': ' + ltLesson + ')');
+        } else {
+          // Surfaced rather than swallowed: a rejected scope means the lesson was
+          // NOT saved, and silently dropping it is how he'd find out months later
+          // that the next packing list still forgot the hat.
+          errors.push('log_trip_lesson: ' + ltRes.reason);
         }
       }
 

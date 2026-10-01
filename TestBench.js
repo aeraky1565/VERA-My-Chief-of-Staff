@@ -63,6 +63,19 @@ var TB_TRIP_LABEL = '';
  */
 var TB_AIRPORTS = '';
 
+/**
+ * Trip to test trip lessons against, as 'destination|context|activity,activity'.
+ * e.g. 'Orlando, Florida|Family|dining,beach'
+ *
+ * Any part may be blank: '|Family|' tests context alone. Blank overall = show
+ * every lesson on file and which trips each one would fire on.
+ *
+ * It is a made-up trip on purpose. A lesson is worth checking BEFORE the trip it
+ * is meant to help exists on the calendar, and the point of the check is whether
+ * the scope you chose will actually match.
+ */
+var TB_LESSON_TRIP = '';
+
 
 // ============================================================
 // 1. HEALTH & CONNECTIONS — is anything broken?
@@ -247,6 +260,89 @@ function tbLoungeAccess() {
 function tbTripIdentity() {
   tbBanner_('Trip identity');
   diagnoseTripIdentity_();
+}
+
+/**
+ * Every trip lesson on file, and which would fire for TB_LESSON_TRIP. READ ONLY.
+ *
+ * Set TB_LESSON_TRIP to 'destination|context|activity,activity' — e.g.
+ * 'Orlando, Florida|Family|dining'. Blank shows all lessons with no matching.
+ *
+ * Worth running after recording a lesson, because the failure mode is silent:
+ * a lesson scoped to something the next trip will not match is indistinguishable
+ * from no lesson at all until the packing list comes back missing the hat again.
+ */
+function tbTripLessons() {
+  tbBanner_('Trip lessons');
+
+  var parts   = String(TB_LESSON_TRIP || '').split('|');
+  var trip = {
+    destination: (parts[0] || '').trim(),
+    context:     (parts[1] || '').trim(),
+    activityTypes: {},
+  };
+  (parts[2] || '').split(',').forEach(function(a) {
+    var t = a.trim().toLowerCase();
+    if (t) trip.activityTypes[t] = true;
+  });
+
+  // getTripLessons_ filters by match, so "everything on file" needs the scope
+  // check bypassed — read the tab directly rather than inventing a trip that
+  // matches every scope, which is not a thing that exists.
+  var ss    = getSpreadsheet();
+  var sheet = ss.getSheetByName(TABS.MEMORY_LOG);
+  var rows  = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var col = ensureMemoryColumns_(sheet);
+    var w   = Math.max.apply(null, Object.keys(col).map(function(k) { return col[k]; }));
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, w).getValues().forEach(function(r) {
+      if (String(r[col['Type'] - 1] || '').trim() !== MEMORY_TYPE.TRIP_LESSON) return;
+      rows.push({
+        title:    String(r[col['Title'] - 1] || '').trim(),
+        scope:    String(r[col['Scope'] - 1] || '').trim(),
+        category: String(r[col['Category'] - 1] || '').trim() || 'Other',
+        trip:     String(r[col['Context'] - 1] || '').trim(),
+      });
+    });
+  }
+
+  Logger.log(rows.length + ' lesson(s) on file.');
+  if (!rows.length) {
+    Logger.log('Record one from Chat: "let\'s do the <trip> debrief" and answer question 6.');
+    return;
+  }
+
+  if (TB_LESSON_TRIP) {
+    Logger.log('Testing against: destination="' + trip.destination + '" context="' +
+               trip.context + '" activities=' + JSON.stringify(Object.keys(trip.activityTypes)));
+  } else {
+    Logger.log('TB_LESSON_TRIP is blank — listing only, no matching.');
+  }
+  Logger.log('');
+
+  rows.forEach(function(l) {
+    var line = '[' + l.category + '] ' + l.title + '   scope=' + l.scope +
+               (l.trip ? '   from ' + l.trip : '');
+    if (TB_LESSON_TRIP) {
+      var hit = tripLessonApplies_(l.scope, trip);
+      // An unparseable scope reads as "no match", which looks identical to a
+      // scope that simply does not fit this trip — so say which it is.
+      var why = parseTripLessonScope_(l.scope) ? (hit ? 'FIRES' : 'no match')
+                                               : 'UNPARSEABLE SCOPE — fires for nothing, ever';
+      line = (hit ? '  ✓ ' : '  · ') + why + '  ' + line;
+    } else {
+      line = '  ' + line;
+    }
+    Logger.log(line);
+  });
+
+  if (TB_LESSON_TRIP) {
+    Logger.log('');
+    Logger.log('Packing prompt would receive:');
+    Logger.log(tripLessonsPromptBlock_(trip, ['Packing']) || '  (nothing)');
+    Logger.log('Recommendations prompt would receive:');
+    Logger.log(tripLessonsPromptBlock_(trip, ['Dining', 'Activities']) || '  (nothing)');
+  }
 }
 
 /**

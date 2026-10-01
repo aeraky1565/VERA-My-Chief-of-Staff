@@ -32,9 +32,61 @@ var MEMORY_TYPE = {
   VACATION_STARTED:  'vacation_started',
   VACATION_ENDED:    'vacation_ended',
   TRIP_COMPLETED:    'trip_completed',
+  // A rule learned from a trip that already happened, to be applied to trips that
+  // have not. Unlike every other type here it is not a thing that occurred at a
+  // moment — it is a standing instruction — which is why it carries Scope and
+  // Category and why pruneMemoryLog_ leaves it alone.
+  TRIP_LESSON:       'trip_lesson',
 };
 
+// ── Trip lesson scopes ───────────────────────────────────────────────────────
+//
+// A lesson is only useful if it comes back on the right trip, so each one records
+// WHEN it applies as '<scope>:<value>':
+//
+//   always:*                every trip
+//   destination:florida     trips whose destination matches
+//   context:Family          trips with that Trip Context
+//   activity:beach          trips with an itinerary row of that type
+//
+// Scope choice is not cosmetic. The Florida packing miss happened because the
+// prompt's beach hint only fires when an itinerary row is TYPED 'beach' — a
+// lesson scoped activity:beach would have missed it for exactly the same reason,
+// while destination:florida or context:Beach would have caught it. The debrief
+// asks which, rather than guessing.
+var TRIP_LESSON_SCOPES = ['always', 'destination', 'context', 'activity'];
+
+// What reads the lesson back. Packing lessons reach the packing prompt, Dining and
+// Activities reach the recommendations prompt; anything else is captured and shown
+// in chat but not injected, so a vague lesson cannot quietly distort a generator.
+var TRIP_LESSON_CATEGORIES = ['Packing', 'Dining', 'Activities', 'Logistics', 'Other'];
+
 // ── Append a single event row ─────────────────────────────────────────────────
+
+/**
+ * Ensures the Memory Log has the Scope and Category columns, adding whichever is
+ * missing. MEMORY_LOG_HEADERS grew after the live sheet was seeded, and
+ * ensureSheet() only writes headers into a BLANK sheet — so an existing tab never
+ * picks up new columns on its own. Same self-healing shape as
+ * ensureCardPerkColumns_ (Code.js).
+ *
+ * @returns {Object} header name -> 1-based column index, for every header present
+ */
+function ensureMemoryColumns_(sheet) {
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var header  = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+                  .map(function(h) { return String(h || '').trim(); });
+
+  MEMORY_LOG_HEADERS.forEach(function(name) {
+    if (header.indexOf(name) !== -1) return;
+    header.push(name);
+    sheet.getRange(1, header.length).setValue(name);
+  });
+
+  var map = {};
+  header.forEach(function(name, i) { if (name) map[name] = i + 1; });
+  return map;
+}
 
 /**
  * Appends one row to the Memory Log tab.
@@ -45,8 +97,11 @@ var MEMORY_TYPE = {
  * @param {string} title   - Short summary line (≤ 80 chars recommended)
  * @param {string} detail  - Optional longer context
  * @param {string} context - Optional free-form tag or source label
+ * @param {Object} [opts]  - { scope, category } — trip_lesson rows only. Every
+ *                           other type leaves both blank, and the five existing
+ *                           callers pass no opts at all.
  */
-function appendMemoryEvent_(type, who, title, detail, context) {
+function appendMemoryEvent_(type, who, title, detail, context, opts) {
   try {
     var cfg = getConfigValues();
     if ((cfg['memory_log_enabled'] || 'true') === 'false') return;
@@ -71,15 +126,25 @@ function appendMemoryEvent_(type, who, title, detail, context) {
     }
     var id = 'MEM-' + dateKey + '-' + String(seq).padStart(3, '0');
 
-    sheet.appendRow([
-      id,
-      ts,
-      type   || '',
-      who    || 'System',
-      title  || '',
-      detail || '',
-      context || '',
-    ]);
+    // Written by header name rather than by position: a sheet seeded before Scope
+    // and Category existed has seven columns, and a fixed-length array would put
+    // the values in whichever cells happened to line up.
+    var col    = ensureMemoryColumns_(sheet);
+    var width  = Math.max.apply(null, Object.keys(col).map(function(k) { return col[k]; }));
+    var values = new Array(width).fill('');
+    function put(name, value) { if (col[name]) values[col[name] - 1] = value; }
+
+    put('ID',        id);
+    put('Timestamp', ts);
+    put('Type',      type    || '');
+    put('Who',       who     || 'System');
+    put('Title',     title   || '');
+    put('Detail',    detail  || '');
+    put('Context',   context || '');
+    put('Scope',     (opts && opts.scope)    || '');
+    put('Category',  (opts && opts.category) || '');
+
+    sheet.appendRow(values);
   } catch (e) {
     Logger.log('appendMemoryEvent_ error (non-fatal): ' + e.message);
   }
@@ -267,7 +332,16 @@ function pruneMemoryLog_() {
     // Prune Memory Log (col B = Timestamp, e.g. "2025-04-01 23:00")
     var logSheet = ss.getSheetByName(TABS.MEMORY_LOG);
     if (logSheet && logSheet.getLastRow() >= 2) {
+      var logCol  = ensureMemoryColumns_(logSheet);
+      var typeCol = logCol['Type'] || 3;
       for (var i = logSheet.getLastRow(); i >= 2; i--) {
+        // Lessons are the one type that does not age out. Everything else here is
+        // a record of something that happened, and a year on it has served its
+        // purpose; a lesson is a standing rule, and deleting it on its first
+        // birthday would silently undo the thing it was written for.
+        var rowType = String(logSheet.getRange(i, typeCol).getValue() || '').trim();
+        if (rowType === MEMORY_TYPE.TRIP_LESSON) continue;
+
         var ts = logSheet.getRange(i, 2).getValue();
         if (!ts) continue;
         var d = new Date(ts);
@@ -520,4 +594,161 @@ function getMemoryContext_(days) {
     Logger.log('getMemoryContext_ error (non-fatal): ' + e.message);
     return '';
   }
+}
+
+// ── Trip lessons ─────────────────────────────────────────────────────────────
+//
+// Captured at the post-trip debrief, read back when the next trip is planned.
+// Without the read-back half this is just a diary: the "anything you'd skip"
+// answer has been captured since the debrief was written, into the Shared
+// Interests ledger, and nothing that plans a trip has ever looked at it.
+
+/**
+ * Normalises a scope string to '<scope>:<value>', both lowercased.
+ * Returns null for anything unrecognised — an unparseable scope means a lesson we
+ * cannot place, and silently treating it as "applies to everything" would push it
+ * into every prompt forever.
+ */
+function parseTripLessonScope_(raw) {
+  var s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  var i = s.indexOf(':');
+  if (i === -1) return null;
+  var scope = s.substring(0, i).trim();
+  var value = s.substring(i + 1).trim();
+  if (TRIP_LESSON_SCOPES.indexOf(scope) === -1) return null;
+  if (scope === 'always') return { scope: 'always', value: '*' };
+  if (!value) return null;
+  return { scope: scope, value: value };
+}
+
+/**
+ * Does one lesson apply to this trip?
+ *
+ * @param {string} rawScope  the stored Scope cell
+ * @param {Object} trip      { destination, context, activityTypes }
+ *                           activityTypes is the same { beach: true, ... } map the
+ *                           packing prompt builds from itinerary row types.
+ */
+function tripLessonApplies_(rawScope, trip) {
+  var parsed = parseTripLessonScope_(rawScope);
+  if (!parsed) return false;
+  if (parsed.scope === 'always') return true;
+
+  var t = trip || {};
+  if (parsed.scope === 'activity') {
+    var types = t.activityTypes || {};
+    return !!types[parsed.value];
+  }
+
+  // Destination and context are free text on both sides ('Florida' vs 'Orlando,
+  // Florida'), so match either way round rather than demanding equality.
+  var hay = String((parsed.scope === 'destination' ? t.destination : t.context) || '')
+              .trim().toLowerCase();
+  if (!hay) return false;
+  return hay.indexOf(parsed.value) !== -1 || parsed.value.indexOf(hay) !== -1;
+}
+
+/**
+ * Lessons that apply to a trip, optionally filtered to one or more categories.
+ *
+ * @param {Object} trip        { destination, context, activityTypes }
+ * @param {Array}  [categories] e.g. ['Packing'] — omit for all
+ * @returns {Array} [{ title, detail, category, scope, date }]
+ */
+function getTripLessons_(trip, categories) {
+  try {
+    var ss    = getSpreadsheet();
+    var sheet = ss.getSheetByName(TABS.MEMORY_LOG);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+
+    var col = ensureMemoryColumns_(sheet);
+    var n   = sheet.getLastRow() - 1;
+    var w   = Math.max.apply(null, Object.keys(col).map(function(k) { return col[k]; }));
+    var rows = sheet.getRange(2, 1, n, w).getValues();
+
+    function cell(row, name) {
+      return col[name] ? String(row[col[name] - 1] || '').trim() : '';
+    }
+
+    var wanted = (categories && categories.length)
+      ? categories.map(function(c) { return String(c).toLowerCase(); })
+      : null;
+
+    var out = [];
+    rows.forEach(function(row) {
+      if (cell(row, 'Type') !== MEMORY_TYPE.TRIP_LESSON) return;
+      var title = cell(row, 'Title');
+      if (!title) return;
+      var category = cell(row, 'Category') || 'Other';
+      if (wanted && wanted.indexOf(category.toLowerCase()) === -1) return;
+      if (!tripLessonApplies_(cell(row, 'Scope'), trip)) return;
+      out.push({
+        title:    title,
+        detail:   cell(row, 'Detail'),
+        category: category,
+        scope:    cell(row, 'Scope'),
+        date:     cell(row, 'Timestamp').substring(0, 10),
+        trip:     cell(row, 'Context'),
+      });
+    });
+    return out;
+  } catch (e) {
+    Logger.log('getTripLessons_ error (non-fatal): ' + e.message);
+    return [];
+  }
+}
+
+/**
+ * The lessons block for a generator prompt, or '' when there are none.
+ *
+ * Returns '' rather than a header with nothing under it: an empty section invites
+ * the model to fill it, and "no lessons recorded" is noise in a prompt that is
+ * already long.
+ */
+function tripLessonsPromptBlock_(trip, categories) {
+  var lessons = getTripLessons_(trip, categories);
+  if (!lessons.length) return '';
+  var lines = lessons.map(function(l) {
+    return '• ' + l.title + (l.detail ? ' — ' + l.detail : '') +
+           (l.trip ? '  (from ' + l.trip + ')' : '');
+  });
+  return '=== LESSONS FROM PAST TRIPS ===\n' +
+         'Ahmed recorded these after earlier trips. Treat them as requirements, not suggestions.\n' +
+         lines.join('\n') + '\n';
+}
+
+/**
+ * Records a lesson. Thin wrapper over appendMemoryEvent_ so callers cannot forget
+ * the type, and so an unparseable scope is rejected at the door rather than
+ * written and silently ignored by every reader afterwards.
+ *
+ * @returns {Object} { ok, scope, category, reason }
+ */
+function logTripLesson_(lesson, scope, category, tripLabel, detail) {
+  var text = String(lesson || '').trim();
+  if (!text) return { ok: false, reason: 'lesson text is required' };
+
+  var parsed = parseTripLessonScope_(scope);
+  if (!parsed) {
+    return { ok: false, reason: 'scope must be one of ' +
+             TRIP_LESSON_SCOPES.join(', ') + ' as "<scope>:<value>" (e.g. destination:florida)' };
+  }
+
+  var cat = String(category || '').trim();
+  var match = TRIP_LESSON_CATEGORIES.filter(function(c) {
+    return c.toLowerCase() === cat.toLowerCase();
+  })[0];
+  if (!match) match = 'Other';
+
+  var normalisedScope = parsed.scope + ':' + parsed.value;
+  appendMemoryEvent_(
+    MEMORY_TYPE.TRIP_LESSON,
+    'Both',
+    text,
+    String(detail || '').trim(),
+    String(tripLabel || '').trim(),
+    { scope: normalisedScope, category: match }
+  );
+  return { ok: true, scope: normalisedScope, category: match };
 }
