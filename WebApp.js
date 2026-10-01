@@ -7615,8 +7615,9 @@ function webDeleteCardPerk_(e) {
  * Autopay or Needs Review column simply reads as absent.
  *
  * @returns {Object} sheet, rowNum, lastUsedCol, id, cardName, perkName, amount,
- *                   freq, lastUsed, period, periodEnd, periodEndIso,
- *                   periodEndLabel, daysLeft, autopay, needsReview
+ *                   freq, lastUsed, used, period, periodEnd, periodEndIso,
+ *                   periodEndLabel, daysLeft, cycleYears, eligibleFrom,
+ *                   eligibleFromIso, eligibleFromLabel, autopay, needsReview
  * @throws if id is blank or no row matches — matching the sibling handlers.
  */
 function resolveCardPerkRow_(id) {
@@ -7643,8 +7644,13 @@ function resolveCardPerkRow_(id) {
     var freq = String(row[4] || 'Monthly').trim() || 'Monthly';
     // Standing benefits have no period end — cardPerkPeriodEnd_ returns null, and
     // every field derived from it must stay null rather than reaching formatDate.
-    var standing  = freq === 'Standing';
-    var periodEnd = cardPerkPeriodEnd_(freq, now, tz);
+    // A multi-year perk has no period end either: there is no deadline to miss,
+    // only a day it becomes available again, which is eligibleFrom below.
+    var standing   = freq === 'Standing';
+    var cycleYears = perkCycleYears_(freq);
+    var periodEnd  = cardPerkPeriodEnd_(freq, now, tz);
+    var lastUsed   = String(row[lastUsedCol - 1] || '').trim();
+    var eligible   = cycleYears ? cardPerkEligibleFrom_(lastUsed, cycleYears) : null;
     var amountRaw = row[3];
     var amountNum = (amountRaw === '' || amountRaw === null || amountRaw === undefined)
                       ? null : Number(amountRaw);
@@ -7660,8 +7666,18 @@ function resolveCardPerkRow_(id) {
       amount:         (amountNum !== null && isFinite(amountNum)) ? amountNum : null,
       freq:           freq,
       standing:       standing,
-      lastUsed:       String(row[lastUsedCol - 1] || '').trim(),
+      cycleYears:     cycleYears,
+      lastUsed:       lastUsed,
       period:         cardPerkPeriodKey_(freq, now, tz),
+      // Whether the perk is ALREADY used, which for a multi-year perk is a range
+      // test against its anchor and not an equality test against today's stamp.
+      // Both writers below branch on this: comparing lastUsed to period directly
+      // would read a credit used in 2023 as unused, re-stamp it, and lose the one
+      // anchor the cycle is measured from.
+      used:           cardPerkIsUsed_(freq, lastUsed, now, tz),
+      eligibleFrom:      eligible,
+      eligibleFromIso:   eligible ? Utilities.formatDate(eligible, tz, 'yyyy-MM-dd') : null,
+      eligibleFromLabel: eligible ? Utilities.formatDate(eligible, tz, 'MMM d, yyyy') : null,
       periodEnd:      periodEnd,
       periodEndIso:   periodEnd ? Utilities.formatDate(periodEnd, tz, 'yyyy-MM-dd') : null,
       periodEndLabel: periodEnd ? Utilities.formatDate(periodEnd, tz, 'MMM d, yyyy') : null,
@@ -7703,6 +7719,17 @@ function finishCardPerkMarkedUsed_(perkId, periodKey) {
   } catch (ce) {
     Logger.log('finishCardPerkMarkedUsed_: could not remove the reminder event — ' + ce.message);
   }
+  // A multi-year perk's open "available again" notice, if it has one. Matched on
+  // the perk alone rather than on the anchor it was raised with: the anchor has
+  // just been overwritten by the caller, and a notice raised against a stamp that
+  // was since edited by hand on the sheet should still close when he acts on it.
+  try {
+    out.eligibleResolved = resolveCardPerkEligibleFlags_(perkId);
+    out.flagsResolved   += out.eligibleResolved;
+  } catch (ge) {
+    out.eligibleResolved = 0;
+    Logger.log('finishCardPerkMarkedUsed_: could not resolve the eligibility flag — ' + ge.message);
+  }
   return out;
 }
 
@@ -7723,7 +7750,7 @@ function finishCardPerkMarkedUsed_(perkId, periodKey) {
 function webToggleCardPerk_(e) {
   var p = (e && e.parameter) ? e.parameter : {};
   var r = resolveCardPerkRow_((p.id || '').trim());
-  var newUsed = (r.lastUsed === r.period) ? '' : r.period;
+  var newUsed = r.used ? '' : r.period;
   r.sheet.getRange(r.rowNum, r.lastUsedCol).setValue(newUsed);
 
   var out = { ok: true, used: newUsed !== '', period: r.period };
@@ -7731,6 +7758,7 @@ function webToggleCardPerk_(e) {
     var done = finishCardPerkMarkedUsed_(r.id, r.period);
     out.flagsResolved = done.flagsResolved;
     out.eventsRemoved = done.eventsRemoved;
+    out.eligibleResolved = done.eligibleResolved;
   }
   return out;
 }
@@ -7766,6 +7794,12 @@ function webMarkCardPerkUsed_(e) {
     daysLeft:       r.daysLeft,
     standing:       r.standing,
     needsReview:    r.needsReview,
+    // Multi-year perks have no reset date to report, so Chat has to say when the
+    // credit comes BACK instead. Zero/null for every other frequency.
+    cycleYears:        r.cycleYears,
+    lastUsed:          r.lastUsed,
+    eligibleFromIso:   r.eligibleFromIso,
+    eligibleFromLabel: r.eligibleFromLabel,
   };
 
   if (r.autopay) {
@@ -7778,9 +7812,11 @@ function webMarkCardPerkUsed_(e) {
     out.reason = 'standing';
     return out;
   }
-  if (r.lastUsed === r.period) {
-    // Already stamped for this period. Write nothing at all — the point of an
-    // idempotent setter is that the second call touches no cells.
+  if (r.used) {
+    // Already used in this period. Write nothing at all — the point of an
+    // idempotent setter is that the second call touches no cells. For a
+    // multi-year perk this also protects the anchor: re-stamping it with today
+    // would silently push the next cycle four years further out.
     out.alreadyMarked = true;
     out.marked        = true;
     return out;
@@ -7794,6 +7830,7 @@ function webMarkCardPerkUsed_(e) {
   var done = finishCardPerkMarkedUsed_(r.id, r.period);
   out.flagsResolved = done.flagsResolved;
   out.eventsRemoved = done.eventsRemoved;
+  out.eligibleResolved = done.eligibleResolved;
   return out;
 }
 
@@ -7834,6 +7871,53 @@ function resolveCardPerkFlag_(perkId, periodKey) {
       try { recordFlagOutcome_(String(keys[i][0]).trim(), 'resolved'); }
       catch (slErr) { Logger.log('resolveCardPerkFlag_: signal hook (non-fatal) — ' + slErr.message); }
     }
+  }
+  return done;
+}
+
+/**
+ * Resolves any open "available again" notice for a multi-year perk.
+ *
+ * Deliberately a PREFIX match on 'perk_eligible_<id>_', where resolveCardPerkFlag_
+ * above matches one exact key. The expiry flag's period comes from the calendar, so
+ * the caller can always reconstruct it; the eligibility flag's key carries the
+ * anchor the notice was raised against, and by the time this runs the caller has
+ * already overwritten that anchor with today. Matching on the perk closes the
+ * notice whatever anchor raised it — including one raised before the Last Used cell
+ * was edited by hand.
+ *
+ * The trailing underscore in the prefix is load-bearing: without it 'CP-1' matches
+ * every flag belonging to CP-14, CP-17 and CP-23, which is the exact trap
+ * perkCalendarMark_ (Code.js) exists to document.
+ *
+ * It stays a separate loop from resolveCardPerkFlag_ rather than sharing one with a
+ * predicate: they differ in how they match and the shared version would be a third
+ * thing to understand to read either.
+ *
+ * @returns {number} rows marked resolved
+ */
+function resolveCardPerkEligibleFlags_(perkId) {
+  var id = String(perkId || '').trim();
+  if (!id) return 0;
+  var sheet = SpreadsheetApp.openById(CONFIG.SHEET_ID).getSheetByName(TABS.FLAGS);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var prefix      = ('perk_eligible_' + id + '_').toLowerCase();
+  var keyCol      = FLAG_HEADERS.indexOf('Key') + 1;
+  var resolvedCol = FLAG_HEADERS.indexOf('Resolved') + 1;
+  if (keyCol < 1 || resolvedCol < 1) return 0;
+  var n    = sheet.getLastRow() - 1;
+  var keys = sheet.getRange(2, keyCol, n, 1).getValues();
+  var done = 0;
+  for (var i = 0; i < keys.length; i++) {
+    var key = String(keys[i][0] || '').trim();
+    if (key.toLowerCase().indexOf(prefix) !== 0) continue;
+    var cell = sheet.getRange(i + 2, resolvedCol);
+    // 'Yes', not TRUE — every reader tests String(...).toLowerCase() === 'yes'.
+    if (String(cell.getValue() || '').trim().toLowerCase() === 'yes') continue;
+    cell.setValue('Yes');
+    done++;
+    try { recordFlagOutcome_(key, 'resolved'); }
+    catch (slErr) { Logger.log('resolveCardPerkEligibleFlags_: signal hook (non-fatal) — ' + slErr.message); }
   }
   return done;
 }

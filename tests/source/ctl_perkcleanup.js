@@ -57,7 +57,8 @@ const CONTROLS = {
     return { 'Code.js': s.replace(fn, bare) };
   },
   'the checker loses its already-used skip': b => ({
-    'Code.js': b['Code.js'].replace('    if (lastUsed === periodKey) return;   // already used this period\n', ''),
+    'Code.js': b['Code.js'].replace(
+      '    if (cardPerkIsUsed_(freq, lastUsed, today, tz)) return;   // already used this period\n', ''),
   }),
   'the idempotent second mark runs the cleanup': b => {
     const s = b['WebApp.js'];

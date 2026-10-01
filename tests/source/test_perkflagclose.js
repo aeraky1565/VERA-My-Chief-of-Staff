@@ -107,6 +107,7 @@ function loadCtx(sheet, today, outcomes) {
   if (!hdr) throw new Error('FLAG_HEADERS not found in Code.js');
   new vm.Script(hdr[0]).runInContext(ctx);
   new vm.Script(extractFn(SRC.Code, 'perkPeriodKeyEnd_')).runInContext(ctx);
+  new vm.Script(extractFn(SRC.Code, 'perkCycleYears_')).runInContext(ctx);
   new vm.Script(extractFn(SRC.Code, 'cardPerkPeriodKey_')).runInContext(ctx);
   new vm.Script(extractFn(SRC.Code, 'cardPerkPeriodEnd_')).runInContext(ctx);
   new vm.Script(extractFn(SRC.Code, 'closeExpiredPerkFlags_')).runInContext(ctx);

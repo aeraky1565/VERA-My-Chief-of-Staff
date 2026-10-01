@@ -614,12 +614,12 @@ function populateCreditCardHub_() {
     ['CP-11', 'AMEX Platinum',          'Equinox Credit',                                     300, 'Annual',   'Other',     ''],
     ['CP-12', 'AMEX Platinum',          'lululemon Credit',                                   300, 'Annual',   'Other',     ''],
     ['CP-13', 'AMEX Platinum',          'Airline Fee Credit',                                 200, 'Annual',   'Travel',    ''],
-    ['CP-14', 'AMEX Platinum',          'Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
+    ['CP-14', 'AMEX Platinum',          'Global Entry / TSA PreCheck',                        120, 'Every 4 Years', 'Travel', ''],
     ['CP-15', 'AMEX Platinum',          'Priority Pass (airport lounge access)',               0,   'Annual',   'Travel',    ''],
     // BILT Worldwide
     ['CP-16', 'BILT Worldwide',         'Rent Day Double Points (1st of month)',               0,   'Monthly',  'Other',     ''],
     // Capital One Venture
-    ['CP-17', 'Capital One Venture',    'Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
+    ['CP-17', 'Capital One Venture',    'Global Entry / TSA PreCheck',                        120, 'Every 4 Years', 'Travel', ''],
     ['CP-18', 'Capital One Venture',    'Lifestyle Collection Hotel Credit',                   50,  'Annual',   'Travel',    ''],
     // AMEX Blue Cash Everyday
     ['CP-19', 'AMEX Blue Cash Everyday','Disney Bundle Credit',                                7,   'Monthly',  'Streaming', ''],
@@ -627,7 +627,7 @@ function populateCreditCardHub_() {
     ['CP-20', 'IHG One Rewards Premier','Anniversary Free Night Certificate',                  0,   'Annual',   'Travel',    ''],
     ['CP-21', 'IHG One Rewards Premier','IHG Platinum Elite Status',                           0,   'Annual',   'Travel',    ''],
     ['CP-22', 'IHG One Rewards Premier','United TravelBank Cash',                              50,  'Annual',   'Travel',    ''],
-    ['CP-23', 'IHG One Rewards Premier','Global Entry / TSA PreCheck',                        120, 'Annual',   'Travel',    ''],
+    ['CP-23', 'IHG One Rewards Premier','Global Entry / TSA PreCheck',                        120, 'Every 4 Years', 'Travel', ''],
     ['CP-24', 'IHG One Rewards Premier',             'DashPass Membership',               0,   'Annual',   'Dining',  ''],
     // Chase Sapphire Preferred (Ahmed)
     ['CP-25', 'Chase Sapphire Preferred (Ahmed)',   'Annual Hotel Credit (Chase Travel)', 50,  'Annual',   'Travel',  ''],
@@ -2293,20 +2293,132 @@ function checkContracts_() {
 // ============================================================
 
 /**
- * Computes the current "period key" for a perk's Frequency — used to detect
- * whether a perk has already been marked used this period. Shared by
+ * The cycle length, in years, of a USE-ANCHORED perk — 'Every 4 Years' -> 4.
+ * Returns 0 for every other frequency, which is what every caller branches on.
+ *
+ * Every other frequency VERA tracks is calendar-aligned: everyone's Q3 is the
+ * same Q3, so the period is a property of the calendar and of nothing else. The
+ * Global Entry application-fee credit is not like that. It comes back roughly
+ * four years after YOU used it, which makes the period a property of the row —
+ * and that is the whole reason the frequency needs a number in it at all.
+ *
+ * Integer years only. A benefit advertised as "every 4.5 years" should be entered
+ * as 'Every 5 Years' and be late rather than early: a credit prompted before it
+ * exists is a rejected application.
+ *
+ * @returns {number} N >= 1, or 0 when this is not a multi-year frequency
+ */
+function perkCycleYears_(freq) {
+  var m = /^every\s+(\d{1,2})\s+years?$/i.exec(String(freq || '').trim());
+  if (!m) return 0;
+  var n = parseInt(m[1], 10);
+  return n >= 1 ? n : 0;
+}
+
+/**
+ * Parses the 'yyyy-MM-dd' stamp a multi-year perk keeps in Last Used.
+ *
+ * Validates by round-trip rather than by range, so '2023-02-30' — which the Date
+ * constructor silently turns into March 2 — is rejected as the typo it is instead
+ * of quietly shifting the whole cycle.
+ *
+ * @returns {Date|null} local midnight on that day, or null if it is not a real one
+ */
+function perkAnchorDate_(lastUsed) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(lastUsed || '').trim());
+  if (!m) return null;
+  var y = +m[1], mo = +m[2], d = +m[3];
+  var dt = new Date(y, mo - 1, d);
+  dt.setHours(0, 0, 0, 0);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+/**
+ * The day a multi-year perk becomes available again: the anchor plus N years.
+ *
+ * This is why Last Used holds a full date for these rows and not just a year. A
+ * credit used in December 2023 on a 4-year cycle comes back in December 2027 —
+ * comparing years alone would call it available on 1 January 2027, eleven months
+ * early, which for Global Entry means a rejected application and a lost fee.
+ *
+ * @returns {Date|null} null when there is no usable anchor or no real cycle
+ */
+function cardPerkEligibleFrom_(lastUsed, years) {
+  var n = Math.floor(Number(years));
+  if (!(n >= 1)) return null;
+  var a = perkAnchorDate_(lastUsed);
+  if (!a) return null;
+
+  var from = new Date(a.getFullYear() + n, a.getMonth(), a.getDate());
+  from.setHours(0, 0, 0, 0);
+  // Feb 29 anchored into a non-leap year rolls forward into March. Clamp back to
+  // the last day of the intended month so the cycle lands on the month it means.
+  if (from.getMonth() !== a.getMonth()) {
+    from = new Date(a.getFullYear() + n, a.getMonth() + 1, 0);
+    from.setHours(0, 0, 0, 0);
+  }
+  return from;
+}
+
+/**
+ * Has this perk already been used in its current period?
+ *
+ * The one definition. For the calendar-aligned frequencies it is an equality test
+ * against the key today falls in; for a multi-year perk it is a RANGE test against
+ * the anchor, because "this period" is measured from the last use rather than from
+ * the calendar. Four separate hand-rolled copies of the equality test used to live
+ * in checkCardPerksExpiring_ and two places in Chat.js, and a multi-year perk would
+ * have read as unused by all of them the day after it was redeemed.
+ *
+ * A multi-year perk with no anchor, or an unreadable one, reads as NOT used: a
+ * missing stamp is an absence of evidence, and the safe reading of "I don't know"
+ * is to leave the perk visible rather than hide it for four years.
+ *
+ * Standing is never "used" — there is no period to be used in.
+ *
+ * The browser cannot call Apps Script, so the dashboard keeps its own isPerkUsed
+ * (docs/app.js, docs/dashboard-lite.html). A test asserts the two agree.
+ */
+function cardPerkIsUsed_(freq, lastUsed, now, tz) {
+  var f  = String(freq || 'Monthly').trim() || 'Monthly';
+  var lu = String(lastUsed || '').trim();
+  if (!lu || f === 'Standing') return false;
+
+  var years = perkCycleYears_(f);
+  if (years) {
+    var from = cardPerkEligibleFrom_(lu, years);
+    if (!from) return false;
+    var today = new Date(now.getTime());   // never mutate the caller's Date
+    today.setHours(0, 0, 0, 0);
+    return today < from;
+  }
+  return lu === cardPerkPeriodKey_(f, now, tz);
+}
+
+/**
+ * Computes the current "period key" for a perk's Frequency — the stamp to write
+ * into Last Used if the perk is marked used right now. Shared by
  * webToggleCardPerk_ (WebApp.js) and checkCardPerksExpiring_ below so both
  * always agree on period boundaries.
  * Annual='yyyy', Semiannual='yyyy-H#', Quarterly='yyyy-Q#',
- * Monthly='yyyy-MM' (the default), Standing='standing'.
+ * Monthly='yyyy-MM' (the default), Standing='standing',
+ * 'Every N Years'='yyyy-MM-dd'.
  *
  * Standing is a benefit that never expires — lounge access, elite status — as
  * opposed to a credit you use up. Its key is deliberately NOT date-shaped, so a
  * stale Last Used stamp left over from when the row was Monthly can never equal
  * it and be read as "already used this period".
+ *
+ * A multi-year perk gets a full date: it is the anchor the next cycle is measured
+ * from, so it has to say which DAY, not just which period. Note that this function
+ * still never sees Last Used — reading the stamp is cardPerkIsUsed_'s job, and
+ * splitting them that way is what keeps "what do I write" from drifting into
+ * "what does it mean".
  */
 function cardPerkPeriodKey_(freq, date, tz) {
   if (freq === 'Standing') return 'standing';
+  if (perkCycleYears_(freq)) return Utilities.formatDate(date, tz, 'yyyy-MM-dd');
   var year = Utilities.formatDate(date, tz, 'yyyy');
   if (freq === 'Annual') return year;
   if (freq === 'Semiannual') {
@@ -2331,10 +2443,18 @@ function cardPerkPeriodKey_(freq, date, tz) {
  * precisely what would let an expiry reminder through. Callers must treat null
  * as "no deadline" rather than passing it to Utilities.formatDate.
  *
+ * 'Every N Years' -> null for the same reason, and this one line is what stops
+ * the December noise. These three Global Entry rows were marked Annual, so every
+ * December they produced a High-urgency "expires Dec 31 — use it or lose it"
+ * flag, an email and a calendar event each, for a credit that cannot be used
+ * again for years. A use-anchored perk has no deadline to miss at all: miss it
+ * and you have simply not claimed something that is still there.
+ *
  * @returns {Date|null}
  */
 function cardPerkPeriodEnd_(freq, today, tz) {
   if (freq === 'Standing') return null;
+  if (perkCycleYears_(freq)) return null;
   var year  = parseInt(Utilities.formatDate(today, tz, 'yyyy'), 10);
   var month = parseInt(Utilities.formatDate(today, tz, 'M'), 10); // 1-12
   var endMonth;
@@ -2357,7 +2477,9 @@ function cardPerkPeriodEnd_(freq, today, tz) {
  * close.
  *
  * Mirrors cardPerkPeriodKey_'s output shapes exactly; if you add a frequency there,
- * add its shape here.
+ * add its shape here. The one deliberate omission is the multi-year 'yyyy-MM-dd'
+ * shape: a use-anchored perk has no deadline, so it never raises an expiry flag or
+ * a calendar event for this to close, and falling through to null is right.
  *
  * @param {string} periodKey
  * @param {string} tz
@@ -2699,6 +2821,54 @@ function buildCardPerkEmailHtml_(data) {
 }
 
 /**
+ * The notice a use-anchored perk gets instead of an expiry reminder: once its
+ * cycle has run out, VERA says the credit is available again.
+ *
+ * Medium urgency, not High. Nothing is at risk — the credit is simply there now,
+ * and there is no date by which it must be claimed. A High flag that can never
+ * expire is how an alert surface loses the right to be believed.
+ *
+ * A perk with no Last Used gets NOTHING. A blank stamp is not evidence that the
+ * credit is due; it is the absence of evidence, and manufacturing an anchor would
+ * prompt him about credits he may have spent years before VERA existed.
+ *
+ * The anchor is in the key, so writeFlags' fingerprint — which dedups against
+ * every flag ever written, resolved ones included — stops this repeating nightly,
+ * and the next cycle is a different key rather than a flag that can never come
+ * back. Marking the perk used moves the anchor and closes this one
+ * (resolveCardPerkEligibleFlags_, WebApp.js).
+ *
+ * Called per-row from checkCardPerksExpiring_, which has already applied every
+ * row-level exclusion. Takes a plain object rather than a sheet so it can be
+ * tested on its own.
+ *
+ * @returns {number} flags written — 0 or 1
+ */
+function checkCardPerkEligibleAgain_(p) {
+  var years  = Math.floor(Number(p.years));
+  var anchor = perkAnchorDate_(p.lastUsed);
+  // One gate, not two. cardPerkEligibleFrom_ already rejects a cadence below one,
+  // so repeating that check here would be a branch no test could ever observe —
+  // and an unobservable guard is just a place for the two copies to disagree.
+  var from = cardPerkEligibleFrom_(p.lastUsed, years);
+  if (!anchor || !from) return 0;   // never used, unreadable stamp, or no real cadence
+  if (p.today < from) return 0;     // still inside the cycle
+
+  var amountStr = p.amount ? (' ($' + p.amount + ')') : '';
+  writeFlags([{
+    source:  'Card Perks',
+    flag:    p.perkName + ' is available again' + amountStr + ' — ' + p.cardName,
+    reason:  'Once every ' + years + ' years. Last used ' +
+             Utilities.formatDate(anchor, p.tz, 'MMM d, yyyy') + ', eligible again from ' +
+             Utilities.formatDate(from, p.tz, 'MMM d, yyyy') + '. Nothing expires — ' +
+             'mark it used from the dashboard once you have claimed it.',
+    urgency: 'Medium',
+    key:     'perk_eligible_' + p.id + '_' + p.lastUsed,
+  }]);
+  return 1;
+}
+
+/**
  * checkCardPerksExpiring_()
  * Nightly. Reminds Ahmed + Victoria when a tracked card perk is within 14
  * days of its period reset and hasn't been marked used — writes a High
@@ -2753,8 +2923,23 @@ function checkCardPerksExpiring_() {
     // event every single month, forever.
     if (freq === 'Standing') return;
 
+    // A use-anchored perk has no deadline either, so none of the expiry machinery
+    // below applies to it. The one notice it DOES get — "this is available again" —
+    // is raised from right here rather than from a second nightly sweep: this row
+    // already has every field that notice needs and has already passed every
+    // exclusion (inactive card, needs review, autopay), and re-reading both tabs to
+    // say one extra thing a year would double this step's spreadsheet round trips.
+    var cycleYears = perkCycleYears_(freq);
+    if (cycleYears) {
+      flagsGenerated += checkCardPerkEligibleAgain_({
+        id: id, cardName: cardName, perkName: perkName, amount: amount,
+        years: cycleYears, lastUsed: lastUsed, today: today, tz: tz,
+      });
+      return;
+    }
+
     var periodKey = cardPerkPeriodKey_(freq, today, tz);
-    if (lastUsed === periodKey) return;   // already used this period
+    if (cardPerkIsUsed_(freq, lastUsed, today, tz)) return;   // already used this period
 
     var periodEnd = cardPerkPeriodEnd_(freq, today, tz);
     var daysUntil = Math.round((periodEnd - today) / 86400000);

@@ -130,6 +130,10 @@ function serverCtx(now, perkRows) {
   };
   vm.createContext(ctx);
   vm.runInContext([
+    extractFn(SRC.Code, 'perkCycleYears_'),
+    extractFn(SRC.Code, 'perkAnchorDate_'),
+    extractFn(SRC.Code, 'cardPerkEligibleFrom_'),
+    extractFn(SRC.Code, 'cardPerkIsUsed_'),
     extractFn(SRC.Code, 'cardPerkPeriodKey_'),
     extractFn(SRC.Code, 'cardPerkPeriodEnd_'),
     extractFn(SRC.Code, 'perkPeriodKeyEnd_'),
@@ -137,6 +141,7 @@ function serverCtx(now, perkRows) {
     extractFn(SRC.Code, 'deletePerkReminderEvent_'),
     extractFn(SRC.Web, 'resolveCardPerkRow_'),
     extractFn(SRC.Web, 'resolveCardPerkFlag_'),
+    extractFn(SRC.Web, 'resolveCardPerkEligibleFlags_'),
     extractFn(SRC.Web, 'finishCardPerkMarkedUsed_'),
     extractFn(SRC.Web, 'webToggleCardPerk_'),
     extractFn(SRC.Web, 'webMarkCardPerkUsed_'),

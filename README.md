@@ -454,9 +454,21 @@ The Finance tab in the dashboard shows: net income vs. spend (from the Simple As
 ### Card Perks (`Code.js`, `WebApp.js`)
 
 Tracks use-it-or-lose-it credit-card benefits on the `Card Perks` tab. A perk's
-`Frequency` is `Monthly`, `Quarterly`, `Semiannual`, `Annual` or `Standing`, and
-the periodic ones are strictly **calendar** periods — not cardmember-anniversary
-quarters.
+`Frequency` is `Monthly`, `Quarterly`, `Semiannual`, `Annual`, `Every N Years` or
+`Standing`, and the periodic ones are strictly **calendar** periods — not
+cardmember-anniversary quarters.
+
+> **One of those frequencies is not like the others.** `Monthly` through `Annual`
+> are **calendar-aligned**: everyone's Q3 is the same Q3, so the period belongs to
+> the calendar and to nothing else — which is why `cardPerkPeriodKey_` is never
+> shown `Last Used`. `Every N Years` is **use-anchored**: the period runs from the
+> day *you* claimed it. Adding it was therefore not a matter of adding a literal.
+> "Used this period" stopped being an equality test against a key derived from
+> today and became a range test against the stored anchor, and the four
+> hand-rolled copies of that equality test — `checkCardPerksExpiring_`, two sites
+> in `Chat.js`, and `isPerkUsed` in the dashboard — all had to become one
+> predicate, `cardPerkIsUsed_` (`Code.js`). If you add another frequency, decide
+> which of the two kinds it is first.
 
 > **Blank `Frequency` means `Monthly`, not "ignore".** Three readers do
 > `String(row[4] || 'Monthly')`, and both period helpers fall through to Monthly
@@ -479,16 +491,52 @@ blank as well; it is display-only.
 - The dashboard groups them under their own `Standing` heading with an `♾️`
   badge in place of the used/unused checkbox.
 
+**`Every N Years` is for a credit you can claim once every few years** — the
+Global Entry / TSA PreCheck application fee is the case it exists for — enter it
+as `Every 4 Years` — and it appears on three cards (`CP-14`, `CP-17`, `CP-23`).
+All three shipped as `Annual`,
+so every December VERA raised three High-urgency *"expires Dec 31, use it or lose
+it"* flags, emailed both mailboxes three times and put three events on the shared
+calendar, for a fee credit that cannot be claimed again for years.
+
+- **`Last Used` holds a full date** — `2023-12-14` — not a year. It is the anchor
+  the next cycle is measured from, and a year alone would read as available on
+  1 January, eleven months early. For Global Entry that means a rejected
+  application and a lost $120.
+- `cardPerkPeriodEnd_` returns **null**, exactly as for `Standing`. That one line
+  is what switches off the flag, the email and the calendar event: there is no
+  deadline to miss, so missing it costs nothing.
+- Instead it gets one **Medium** flag when the cycle completes —
+  *"Global Entry / TSA PreCheck is available again ($120) — AMEX Platinum"* —
+  written by `checkCardPerkEligibleAgain_` and keyed
+  `perk_eligible_<id>_<anchor>`. Medium, not High: nothing is at risk, and a High
+  flag that can never expire is how an alert surface stops being believed.
+- **A blank `Last Used` gets no notice at all.** An absent stamp is not evidence
+  that the credit is due; inventing an anchor would prompt you about credits you
+  may have spent before VERA existed.
+- Marking it used re-anchors it to today and closes the notice
+  (`resolveCardPerkEligibleFlags_`, which matches on the perk rather than the
+  anchor, because the caller has just overwritten the anchor).
+- The dashboard folds every cadence into one **Multi-year** group — `perkGroups`
+  is a list of exact strings, so a frequency carrying a number would otherwise
+  render nowhere at all with no error, the same trap `Standing` fell into.
+
+> **Integer years only.** A benefit advertised as "every 4.5 years" should be
+> entered as `Every 5 Years` and be late rather than early.
+
 `Autopay = Yes` also excludes a perk from tracking, but it means something
 different — *this credit spends itself* — so don't reach for it to silence a
 standing benefit.
 
-**`Last Used` is both the used-flag and the period stamp.** It holds a period
-key, not a date: `2026-09`, `2026-Q3`, `2026-H2`, `2026`. `cardPerkPeriodKey_`
-(`Code.js:2233`) is the single definition, shared by every reader and writer.
-That design is why a perk **resets for free** — nothing clears the cell at the
-period boundary; the stored key simply stops matching the new one. A perk used in
-Q3 last year therefore also reads as unused.
+**`Last Used` is both the used-flag and the period stamp.** For the
+calendar-aligned frequencies it holds a period key, not a date: `2026-09`,
+`2026-Q3`, `2026-H2`, `2026`; for `Every N Years` it holds `yyyy-MM-dd`.
+`cardPerkPeriodKey_` (`Code.js`) is the single definition of what gets written,
+and `cardPerkIsUsed_` of what it means. That design is why a periodic perk
+**resets for free** — nothing clears the cell at the period boundary; the stored
+key simply stops matching the new one. A perk used in Q3 last year therefore also
+reads as unused. A multi-year perk resets for free too, just by a different
+mechanism: today walks past the anchor plus N years.
 
 **Marking one used — three ways:**
 

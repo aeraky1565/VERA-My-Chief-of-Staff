@@ -187,8 +187,11 @@ console.log('\nBoth writers now end in the same place');
 
   check('finishCardPerkMarkedUsed_ resolves the flag', /resolveCardPerkFlag_\(perkId, periodKey\)/.test(finish));
   check('…and removes the event', /deletePerkReminderEvent_\(perkId, periodKey\)/.test(finish));
-  check('…each guarded separately', (finish.match(/try \{/g) || []).length === 2,
-        'one failing half must not skip the other');
+  check('…and closes any "available again" notice',
+        /resolveCardPerkEligibleFlags_\(perkId\)/.test(finish),
+        'acting on the prompt has to close it, or it sits there until the next cycle');
+  check('…each guarded separately', (finish.match(/try \{/g) || []).length === 3,
+        'one failing third must not skip the other two');
 
   check('the dashboard toggle calls it', /finishCardPerkMarkedUsed_\(r\.id, r\.period\)/.test(toggle),
         'this is the path the checkbox uses, and it did neither before');
@@ -206,8 +209,12 @@ console.log('\nTicking cleans up; un-ticking only writes the cell');
     const ctx = {
       String, Object, Array, Number, Math, Boolean, console, Error,
       Logger: { log: () => {} },
+      // Stands in for the real resolver, whose contract now carries `used` —
+      // the toggle must branch on that and not re-derive it, because for a
+      // multi-year perk "used" is a range test the toggle cannot do inline.
+      // Mimics what the real one computes for this Quarterly fixture.
       resolveCardPerkRow_: () => ({
-        id: 'CP-7', period: '2026-Q3', lastUsed,
+        id: 'CP-7', period: '2026-Q3', lastUsed, used: lastUsed === '2026-Q3',
         rowNum: 4, lastUsedCol: 7,
         sheet: { getRange: (r, c) => ({ setValue: v => writes.push({ r, c, v }) }) },
       }),
@@ -256,10 +263,13 @@ console.log('\nThe mark-used writer keeps its existing guards');
 console.log('\nThe nightly checker is unchanged where it was already right');
 {
   const checker = extractFn(SRC.Code, 'checkCardPerksExpiring_');
+  const USED_GUARD = 'if (cardPerkIsUsed_(freq, lastUsed, today, tz)) return;';
   check('it still skips a perk already used this period',
-        /if \(lastUsed === periodKey\) return;/.test(checker));
+        checker.indexOf(USED_GUARD) !== -1,
+        'the hand-rolled lastUsed === periodKey test is now cardPerkIsUsed_');
   check('…before any flag, email or event',
-        checker.indexOf('if (lastUsed === periodKey) return;') < checker.indexOf('writeFlags'),
+        checker.indexOf(USED_GUARD) !== -1 &&
+        checker.indexOf(USED_GUARD) < checker.indexOf('writeFlags'),
         'it never created the event AFTER the perk was marked — that part was right');
   check('it still dedups before creating an event', /dupExists/.test(checker));
   check('it still latches email+calendar per perk per period', /PERK_NOTIFY_/.test(checker));

@@ -1224,6 +1224,28 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
   const curYear    = String(now.getFullYear());
   const curQuarter = curYear + '-Q' + (Math.floor(now.getMonth() / 3) + 1);
   const curHalf    = curYear + '-H' + (now.getMonth() < 6 ? 1 : 2);
+  const todayMid   = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // 'Every 4 Years' -> 4, everything else -> 0. The browser cannot call Apps
+  // Script, so this mirrors perkCycleYears_ (Code.js) and a test asserts the two
+  // agree on every frequency.
+  function perkCycleYears(freq) {
+    const m = /^every\s+(\d{1,2})\s+years?$/i.exec(String(freq || '').trim());
+    return m && +m[1] >= 1 ? +m[1] : 0;
+  }
+
+  // The day a use-anchored credit comes back: the 'yyyy-MM-dd' anchor plus N years.
+  function perkEligibleFrom(lastUsed, years) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(lastUsed || '').trim());
+    if (!m || !years) return null;
+    const y = +m[1], mo = +m[2], d = +m[3];
+    const a = new Date(y, mo - 1, d);
+    if (a.getFullYear() !== y || a.getMonth() !== mo - 1 || a.getDate() !== d) return null;
+    let from = new Date(y + years, mo - 1, d);
+    if (from.getMonth() !== mo - 1) from = new Date(y + years, mo, 0); // Feb 29 -> Feb 28
+    from.setHours(0, 0, 0, 0);
+    return from;
+  }
 
   function isPerkUsed(perk) {
     // A standing benefit has no period, so "used this month" is meaningless.
@@ -1231,15 +1253,51 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
     // "Not used this month".
     if (perk.frequency === 'Standing') return false;
     if (!perk.lastUsed) return false;
+    // Use-anchored: a RANGE test from the anchor, not an equality test against a
+    // key derived from today. Comparing years alone would report a credit used in
+    // Dec 2023 as available on 1 Jan 2027 — eleven months early, which for Global
+    // Entry is a rejected application and a lost fee.
+    const yrs = perkCycleYears(perk.frequency);
+    if (yrs) {
+      const from = perkEligibleFrom(perk.lastUsed, yrs);
+      return from ? todayMid < from : false;
+    }
     if (perk.frequency === 'Annual') return perk.lastUsed === curYear;
     if (perk.frequency === 'Semiannual') return perk.lastUsed === curHalf;
     if (perk.frequency === 'Quarterly') return perk.lastUsed === curQuarter;
     return perk.lastUsed === curMonth;
   }
 
+  function fmtPerkDay(d) {
+    return d ? d.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }) : '';
+  }
+
+  // The line under a perk. A multi-year perk cannot say "not used this month" —
+  // its period runs from the last use, so the only honest line names the dates.
+  function perkStatusLabel(perk, used) {
+    const yrs = perkCycleYears(perk.frequency);
+    if (yrs) {
+      if (!perk.lastUsed) return 'Never claimed · once every ' + yrs + ' years';
+      const from = perkEligibleFrom(perk.lastUsed, yrs);
+      if (!from) return 'Last Used needs a date (yyyy-mm-dd)';
+      return used ? 'Used ' + perk.lastUsed + ' · available ' + fmtPerkDay(from)
+                  : 'Available now · last used ' + perk.lastUsed;
+    }
+    const per = perk.frequency === 'Annual' ? 'this year'
+              : perk.frequency === 'Semiannual' ? 'this half'
+              : perk.frequency === 'Quarterly' ? 'this quarter' : 'this month';
+    return (used ? 'Used ' : 'Not used ') + per;
+  }
+
   // One section per entry, and anything not listed renders nowhere at all — a
-  // frequency missing here makes the perk invisible with no error.
-  const perkGroups = ['Monthly', 'Quarterly', 'Semiannual', 'Annual', 'Standing'];
+  // frequency missing here makes the perk invisible with no error. Which is why
+  // the filter below groups through perkGroupOf rather than comparing the
+  // frequency string directly: 'Every 4 Years' carries a number, so no fixed list
+  // of literals could ever contain it.
+  function perkGroupOf(freq) {
+    return perkCycleYears(freq) ? 'Multi-year' : String(freq || 'Monthly');
+  }
+  const perkGroups = ['Monthly', 'Quarterly', 'Semiannual', 'Annual', 'Multi-year', 'Standing'];
 
   const panelStyle = { background:'#161926', border:'1px solid #2a2f45', borderRadius:10, padding:16, marginBottom:16 };
   const inputStyle = { background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'5px 8px', fontSize:12 };
@@ -1317,7 +1375,7 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
         <div style={panelStyle}>
           <div style={{ fontWeight:700, fontSize:13, color:'#dde1f0', marginBottom:10 }}>🎁 Perks</div>
           {perkGroups.map(function(freq) {
-            var grp = cardPerks.filter(function(p) { return p.frequency === freq; });
+            var grp = cardPerks.filter(function(p) { return perkGroupOf(p.frequency) === freq; });
             if (!grp.length) return null;
             return (
               <div key={freq} style={{ marginBottom:10 }}>
@@ -1345,9 +1403,9 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
                       )}
                       <span style={{ fontSize:13, color: used ? '#86efac' : '#dde1f0' }}>{pk.perk}</span>
                       {pk.amount && <span style={{ fontSize:11, color:'#a0a8c0' }}>${pk.amount}</span>}
-                      {!pk.autopay && freq !== 'Standing' && (
+                      {!pk.autopay && pk.frequency !== 'Standing' && (
                         <span style={{ fontSize:11, color: used ? '#22c55e' : '#6b7280' }}>
-                          {used ? 'Used' : 'Not used'} {freq === 'Annual' ? 'this year' : freq === 'Semiannual' ? 'this half' : freq === 'Quarterly' ? 'this quarter' : 'this month'}
+                          {perkStatusLabel(pk, used)}
                         </span>
                       )}
                       {pk.needsReview && (
@@ -1378,7 +1436,7 @@ function CardDetailModal({ card, rewards, perks, onClose, onAddReward, onDeleteR
             <input placeholder="$amt" value={newPerk.amount} onChange={e => setPk('amount', e.target.value)}
               style={Object.assign({}, inputStyle, { width:55 })} />
             <select value={newPerk.frequency} onChange={e => setPk('frequency', e.target.value)} style={inputStyle}>
-              <option>Monthly</option><option>Quarterly</option><option>Semiannual</option><option>Annual</option><option>Standing</option>
+              <option>Monthly</option><option>Quarterly</option><option>Semiannual</option><option>Annual</option><option>Every 4 Years</option><option>Standing</option>
             </select>
             <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'#a0a8c0', cursor:'pointer' }}>
               <input type="checkbox" checked={newPerk.autopay} onChange={e => setPk('autopay', e.target.checked)} />

@@ -24,8 +24,8 @@ const CONTROLS = {
   }),
   'the tick is written as TRUE instead of the period key': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      "  var newUsed = (r.lastUsed === r.period) ? '' : r.period;",
-      "  var newUsed = (r.lastUsed === r.period) ? '' : true;"),
+      "  var newUsed = r.used ? '' : r.period;",
+      "  var newUsed = r.used ? '' : true;"),
   }),
   'the writer targets the wrong column': b => ({
     'WebApp.js': b['WebApp.js'].replace("  var lastUsedCol = colOf('Last Used',   7);",
@@ -49,7 +49,7 @@ const CONTROLS = {
              "curYear + '-Q3'")),
   'un-ticking leaves the stamp in place': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      "  var newUsed = (r.lastUsed === r.period) ? '' : r.period;",
+      "  var newUsed = r.used ? '' : r.period;",
       "  var newUsed = r.period;"),
   }),
   'marking used writes nothing at all': b => ({

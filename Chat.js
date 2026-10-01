@@ -623,12 +623,14 @@ function buildChatSystemPrompt_(context) {
           var daysAgo  = lastUsed ? Math.round((now - new Date(lastUsed)) / 86400000) : null;
           if (daysAgo == null || daysAgo > 60) inactiveWarn.push(c.cardName + ' (' + owner + ')');
           // Perks not yet used in their CURRENT period — which is a month, a
-          // quarter, a half or a year depending on the perk. cardPerkPeriodKey_
-          // (Code.js) is the one definition of that; this block used to carry a
-          // fourth hand-rolled copy built from Date getters.
+          // quarter, a half, a year, or several years depending on the perk.
+          // cardPerkIsUsed_ (Code.js) is the one definition of that; this block
+          // used to carry a hand-rolled copy built from Date getters, and then a
+          // hand-rolled equality test that read a multi-year perk as unused the
+          // day after it was redeemed.
           var cardPerks = (cd.perks || []).filter(function(p) { return p.cardName === c.cardName && !p.autopay; });
           var unusedPerks = cardPerks.filter(function(p) {
-            return p.lastUsed !== cardPerkPeriodKey_(p.frequency || 'Monthly', now, perkTz);
+            return !cardPerkIsUsed_(p.frequency || 'Monthly', p.lastUsed, now, perkTz);
           });
           var authLabel = c.authUser ? ' [+' + c.authUser + ' auth user]' : '';
           lines += '    ' + c.cardName + authLabel + ': ' + (rwStr || '(no rewards defined)') + '\n';
@@ -2641,7 +2643,7 @@ function executeActions_(rawText) {
           // Prefer perks not yet used this period. This is what collapses "the
           // Uber credit" to one answer when one of the two is already redeemed.
           var mpUnused = mpUsable.filter(function(pk) {
-            return pk.lastUsed !== cardPerkPeriodKey_(pk.frequency || 'Monthly', mpNow, mpTz);
+            return !cardPerkIsUsed_(pk.frequency || 'Monthly', pk.lastUsed, mpNow, mpTz);
           });
           var mpPick = mpUnused.length ? mpUnused : mpUsable;
 
@@ -2657,8 +2659,18 @@ function executeActions_(rawText) {
             executed.push('mark_perk_used (' + mpRes.perk + ' · ' + mpRes.cardName +
                           ' → ' + mpRes.period + ')');
             if (mpRes.alreadyMarked) {
-              notes.push(mpRes.perk + ' on ' + mpRes.cardName + ' was already marked used for ' +
-                         mpRes.period + ', so nothing changed. It resets ' + mpRes.periodEndLabel + '.');
+              // A multi-year perk has no reset date — periodEndLabel is null for
+              // one, and saying "it resets null" is worse than saying nothing. What
+              // it has instead is the day the credit comes back.
+              if (mpRes.cycleYears) {
+                notes.push(mpRes.perk + ' on ' + mpRes.cardName + ' is already marked used — ' +
+                           'last claimed ' + mpRes.lastUsed + ', and it is a once-every-' +
+                           mpRes.cycleYears + '-years benefit, so it is available again ' +
+                           mpRes.eligibleFromLabel + '. Nothing changed.');
+              } else {
+                notes.push(mpRes.perk + ' on ' + mpRes.cardName + ' was already marked used for ' +
+                           mpRes.period + ', so nothing changed. It resets ' + mpRes.periodEndLabel + '.');
+              }
             }
           } else if (mpPick.length > 1) {
             // Never guess. executeActions_ runs after Claude has already written

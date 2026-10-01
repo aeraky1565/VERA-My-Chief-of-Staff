@@ -31,19 +31,24 @@ const PLAN_GUIDANCE_SRC = (() => {
 })();
 
 // Same reason as PROJECT_PLAN_GUIDANCE_ above: the CREDIT CARDS block now calls
-// cardPerkPeriodKey_, which lives in Code.js. Pull in the real one so a change to
-// the period rule still flows through to these assertions.
+// cardPerkIsUsed_, which lives in Code.js along with the helpers it leans on.
+// Pull in the real ones so a change to the period rule still flows through to
+// these assertions.
 const PERIOD_KEY_SRC = (() => {
   const CODE = fs.readFileSync(
     (process.env.VERA_ROOT || REPO) + '/Code.js', 'utf8');
-  const at = CODE.indexOf('function cardPerkPeriodKey_(');
-  if (at === -1) throw new Error('cardPerkPeriodKey_ not found in Code.js');
-  let depth = 0;
-  for (let j = CODE.indexOf('{', at); j < CODE.length; j++) {
-    if (CODE[j] === '{') depth++;
-    else if (CODE[j] === '}') { depth--; if (depth === 0) return CODE.slice(at, j + 1); }
+  function fn(name) {
+    const at = CODE.indexOf('function ' + name + '(');
+    if (at === -1) throw new Error(name + ' not found in Code.js');
+    let depth = 0;
+    for (let j = CODE.indexOf('{', at); j < CODE.length; j++) {
+      if (CODE[j] === '{') depth++;
+      else if (CODE[j] === '}') { depth--; if (depth === 0) return CODE.slice(at, j + 1); }
+    }
+    throw new Error('unbalanced ' + name);
   }
-  throw new Error('unbalanced cardPerkPeriodKey_');
+  return ['perkCycleYears_', 'perkAnchorDate_', 'cardPerkEligibleFrom_',
+          'cardPerkPeriodKey_', 'cardPerkIsUsed_'].map(fn).join('\n');
 })();
 
 function prompt(importantDates, cardsData) {

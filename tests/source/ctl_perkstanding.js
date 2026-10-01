@@ -62,7 +62,8 @@ const CONTROLS = {
   },
   'the period suffix is shown for Standing': b => {
     const o = {};
-    DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f].replace(/&&\s*freq\s*!==\s*'Standing'/g, ''); });
+    DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f]
+      .replace(/&&\s*(?:pk\.)?freq(?:uency)?\s*!==\s*'Standing'/g, ''); });
     return o;
   },
   'the select no longer offers Standing': b => {

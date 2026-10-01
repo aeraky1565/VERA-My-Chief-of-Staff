@@ -114,12 +114,17 @@ function ctxFor(rows) {
   ctx.__sheet = sheet;
   vm.createContext(ctx);
   vm.runInContext([
+    extractFn(COD, 'perkCycleYears_'),
+    extractFn(COD, 'perkAnchorDate_'),
+    extractFn(COD, 'cardPerkEligibleFrom_'),
+    extractFn(COD, 'cardPerkIsUsed_'),
     extractFn(COD, 'cardPerkPeriodKey_'),
     extractFn(COD, 'cardPerkPeriodEnd_'),
     extractFn(WEB, 'resolveCardPerkRow_'),
     extractFn(WEB, 'webToggleCardPerk_'),
     extractFn(WEB, 'webMarkCardPerkUsed_'),
     extractFn(WEB, 'resolveCardPerkFlag_'),
+    extractFn(WEB, 'resolveCardPerkEligibleFlags_'),
     extractFn(WEB, 'finishCardPerkMarkedUsed_'),
     extractFn(COD, 'perkPeriodKeyEnd_'),
     extractFn(COD, 'perkCalendarMark_'),
@@ -490,8 +495,9 @@ console.log('\nthe wiring');
   check('the notes channel is returned', /return \{ executed: executed, errors: errors, notes: notes \}/.test(CHT));
   check('…and surfaced to the reply', /actionResult\.notes/.test(CHT));
   check('the chat context no longer says "this month"', !/Unused perks this month/.test(CHT));
-  check('…and uses the shared period helper',
-        /cardPerkPeriodKey_\(p\.frequency/.test(CHT));
+  check('…and uses the shared used-this-period predicate',
+        /cardPerkIsUsed_\(p\.frequency/.test(CHT),
+        'a hand-rolled equality test reads a multi-year perk as unused the day after it is used');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

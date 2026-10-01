@@ -57,8 +57,14 @@ function baseCtx(extra) {
     },
   }, extra || {});
   vm.createContext(ctx);
+  // perkCycleYears_ first: both period helpers branch on it to recognise a
+  // use-anchored frequency, so loading them without it is a ReferenceError.
+  new vm.Script(extractFn(SRC.Code, 'perkCycleYears_')).runInContext(ctx);
+  new vm.Script(extractFn(SRC.Code, 'perkAnchorDate_')).runInContext(ctx);
+  new vm.Script(extractFn(SRC.Code, 'cardPerkEligibleFrom_')).runInContext(ctx);
   new vm.Script(extractFn(SRC.Code, 'cardPerkPeriodKey_')).runInContext(ctx);
   new vm.Script(extractFn(SRC.Code, 'cardPerkPeriodEnd_')).runInContext(ctx);
+  new vm.Script(extractFn(SRC.Code, 'cardPerkIsUsed_')).runInContext(ctx);
   return ctx;
 }
 
@@ -168,7 +174,7 @@ console.log('\nMarking one used is a no-op');
   const resolve = extractFn(SRC.Web, 'resolveCardPerkRow_');
 
   check('resolveCardPerkRow_ flags standing rows', /standing:       standing,/.test(resolve));
-  check('…derived from the frequency', /var standing  = freq === 'Standing';/.test(resolve));
+  check('…derived from the frequency', /var standing\s+= freq === 'Standing';/.test(resolve));
 
   // periodEnd is null for Standing, so every derived field must be null rather
   // than handed to Utilities.formatDate, which would throw.
@@ -200,7 +206,7 @@ console.log('\nThe dashboard shows it — all three copies');
           /frequency\s*===\s*'Standing'\)\s*return false/.test(s));
     check(label + ': a badge replaces the checkbox', /Standing/.test(s) && /♾️/.test(s));
     check(label + ': the period suffix is suppressed',
-          /freq\s*!==\s*'Standing'/.test(s), 'would read "Not used this month"');
+          /(?:pk\.)?freq(?:uency)?\s*!==\s*'Standing'/.test(s), 'would read "Not used this month"');
   });
 
   // index.html is generated; drift has shipped a dead feature before.
