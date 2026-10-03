@@ -320,10 +320,20 @@ console.log('\nnightlyRun records both ends of the run');
         fn.indexOf('recordHeartbeat_') < fn.indexOf('LAST_NIGHTLY_RUN'),
         'it describes the same moment the heartbeat does');
 
-  check('the memory prune is budget-guarded',
-        /if \(Date\.now\(\) < DEADLINE\) \{\n      try \{ pruneMemoryLog_/.test(fn),
+  // The guard used to be spelled out at this one call site. It is now in
+  // nightlyStep_, which EVERY step goes through — so the assertion got stronger:
+  // not "the prune is guarded" but "nothing is unguarded".
+  check('the memory prune goes through the budgeted step runner',
+        /nightlyStep_\(ctx, 'pruneMemoryLog_', pruneMemoryLog_\)/.test(fn),
         'a slow maintenance step early in the run leaves the later guards no budget to skip with');
-  check('…and says so when it skips', /pruneMemoryLog_: skipped \(time budget\)/.test(fn));
+  check('…and NO step still hand-rolls its own budget check',
+        !/if \(Date\.now\(\) < DEADLINE\)/.test(fn),
+        'three of forty steps checking the deadline is how one slow step killed the run');
+  const runner = COD.slice(COD.indexOf('function nightlyStep_('),
+                           COD.indexOf('function slowestNightlySteps_('));
+  check('the runner refuses to start a step past the deadline',
+        /if \(Date\.now\(\) >= ctx\.deadline\)/.test(runner));
+  check('…and says so when it skips', /skipped — time budget exceeded/.test(runner));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

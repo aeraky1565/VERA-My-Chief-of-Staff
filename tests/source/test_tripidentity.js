@@ -552,14 +552,17 @@ console.log('\nThe repair tool writes a form the readers accept');
 console.log('\nAdoption runs before anything depends on it');
 {
   const CODE = fs.readFileSync(ROOT + '/Code.js', 'utf8');
-  const adopt   = CODE.indexOf('adoptLegacyTripKeys_({ dryRun: false })');
-  const preTrip = CODE.indexOf('checkPreTripBriefings_()');
-  const postTrip = CODE.indexOf('checkPostTripCapture_()');
+  // Each step is now registered with nightlyStep_, so the ORDER is the order of
+  // those registrations — which is still exactly what this is asserting.
+  const adopt    = CODE.indexOf("nightlyStep_(ctx, 'adoptLegacyTripKeys_'");
+  const preTrip  = CODE.indexOf("nightlyStep_(ctx, 'checkPreTripBriefings_'");
+  const postTrip = CODE.indexOf("nightlyStep_(ctx, 'checkPostTripCapture_'");
   check('the nightly pass adopts', adopt !== -1);
-  check('…before pre-trip', adopt !== -1 && adopt < preTrip, adopt + ' vs ' + preTrip);
-  check('…and before post-trip', adopt !== -1 && adopt < postTrip);
+  check('…before pre-trip', adopt !== -1 && preTrip !== -1 && adopt < preTrip, adopt + ' vs ' + preTrip);
+  check('…and before post-trip', adopt !== -1 && postTrip !== -1 && adopt < postTrip);
   check('…non-fatally, like its neighbours',
-        /adoptLegacyTripKeys_: ' \+ adoptErr\.message/.test(CODE));
+        /nightlyStep_\(ctx, 'adoptLegacyTripKeys_', function\(\) \{/.test(CODE),
+        'the per-step try/catch moved into nightlyStep_, which every step goes through');
   check('TestBench previews it', /function tbAdoptTripKeys\(\)/.test(SRC.TestBench));
   check('…as a dry run', /adoptLegacyTripKeysDryRun\(\)/.test(SRC.TestBench));
 

@@ -635,7 +635,15 @@ the path in prose.
 
 ## Nightly Pipeline
 
-`nightlyRun()` runs every night at 11 PM via a time-based trigger. All steps are wrapped in individual try/catch so a failure in one step never aborts the rest of the run. Failures are collected and posted to `#vera-logs` as a summary at the end.
+`nightlyRun()` runs every night at 11 PM via a time-based trigger. **Every step goes
+through `nightlyStep_(ctx, name, fn)`**, which checks the time budget, writes a
+breadcrumb, times the step and catches anything it throws — so a failure in one step
+never aborts the rest of the run. Failures, skips and the slowest steps are posted to
+`#vera-logs` as a summary at the end.
+
+Each step used to hand-roll its own seven-line `try/catch`, forty times over, and
+only three of those forty consulted the deadline. Two (`writeSummarySnapshot`,
+`checkTaxDocuments_`) had no guard at all and could take the whole run down.
 
 ### What a missing nightly run does and does not mean
 
@@ -647,7 +655,7 @@ and they are not the same thing:
 |---|---|
 | Heartbeat recorded, `#vera-logs` summary with step warnings | Steps failed; the run finished. The warnings name them. |
 | **"VERA Error — Nightly Run Failed"** email with a stack | Something threw outside a step's own guard. The `catch` emailed you, and the `finally` still recorded the heartbeat. |
-| Watchdog says **"started but did not finish"** | The execution was **terminated** — almost always the 6-minute Apps Script ceiling. `finally` never ran, so there is no heartbeat and no email. |
+| Watchdog says **"started but did not finish — died during `X`"** | The execution was **terminated** — almost always the 6-minute Apps Script ceiling. `finally` never ran, so there is no heartbeat and no email. `X` is the step it was in; see the breadcrumb below. |
 | Watchdog says **"has not run in …"** with no start marker | The trigger never fired. Check **Triggers** in the editor; Apps Script auto-disables one after repeated failures. |
 
 The last two used to be indistinguishable, which cost an investigation. `nightlyRun`
@@ -659,11 +667,53 @@ heartbeat, and the Watchdog compares them. (`LAST_NIGHTLY_RUN` had been *read* b
 > that started is not a run that happened, and letting the Watchdog count it would hide
 > exactly the failure it exists to surface.
 
-**Time budget.** `DEADLINE` is set at 5 min 30 s, 30 seconds short of the ceiling. The
-two Claude-calling steps at the end of the run check it, and so does `pruneMemoryLog_`
-— deleting year-old rows is the definition of work that can wait until tomorrow. A
-heavy step *early* in the run is the dangerous one, because the later guards never get
-the chance to skip anything if the budget is already gone.
+**The breadcrumb: `NIGHTLY_STEP`.** Knowing the run *died* still left the real
+question open, and a terminated run takes its own evidence with it — the System Log
+buffer only flushes at 50 rows (`SYSTEM_LOG_AUTOFLUSH_ROWS_`) and a nightly run never
+reaches that, so the whole run's log is lost. `nightlyStep_` therefore writes
+`<step>|<seconds elapsed>` to a Script Property **before** running each step. A marker
+written afterwards would never survive the kill it exists to explain. A completed run
+deletes it, so its *presence* is the signal, and the Watchdog reads it to name the
+step.
+
+> This does not guarantee the run survives. The budget cannot preempt a step that is
+> already running, so one pathologically slow step can still blow the ceiling. What it
+> guarantees is that the run stops being *invisible*: accumulated slowness now skips
+> instead of dying, and a single slow step is named in the next morning's email.
+
+**Time budget.** `DEADLINE` is set at 5 min 30 s, 30 seconds short of the ceiling, and
+**`nightlyStep_` checks it before every step**. Past it, a step is skipped and
+recorded rather than started — which is what lets the run reach its own `finally`,
+write the heartbeat and report what it dropped, instead of being killed silently.
+Skips are reported separately from warnings in the summary: the budget working as
+designed is not a step failure.
+
+The old arrangement checked the deadline at three sites, which meant a heavy step
+*early* in the run spent the whole budget and the three guarded steps at the end never
+got the chance to skip anything.
+
+**Per-step timings** go to `#vera-logs` on every run, not only bad ones — a step
+creeping towards the ceiling is worth seeing while it is still creeping, because by
+the time it kills the run, the run is the thing that cannot tell you about it.
+
+### API health: what belongs in the "SOME DATA IS NOT LIVE" banner
+
+The banner's job is to say *do not trust this data*, and it loses that authority the
+moment it reports things that are fine. Two rules keep it honest:
+
+- **A successful call with an empty result is not an outage.** `fetchFlightStatus_`
+  used to record a health *failure* on an HTTP 200 with an empty `data` array — but
+  the AviationStack free tier only carries current/upcoming flights, so a flight
+  booked weeks out legitimately returns nothing and the API answered perfectly to say
+  so. It records a **success** now and still returns `null`, because *this flight has
+  no live status* is a fact about the flight, not about the API.
+- **`pruneApiHealthState_` drops entries nothing has touched in 14 days.** A source
+  retired from the code leaves residue that can never recover — clearing a failure
+  requires a successful call, and nothing is ever going to make one. That is how
+  `googlefit-steps` nagged daily for an integration that does not exist (only
+  `googlefit-sleep` does). The discriminator is **recency of activity**, not failure
+  count: a genuinely broken source still has code calling it, so its `lastFailure` is
+  refreshed every night and it survives the prune however long it has been failing.
 
 > Maintenance that walks a whole tab must read it in **one** `getValues()` and delete
 > contiguous runs with `deleteRows(start, count)` — see `deleteRowsOlderThan_`

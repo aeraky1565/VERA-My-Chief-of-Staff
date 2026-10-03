@@ -754,6 +754,86 @@ function setupTriggers() {
 // NIGHTLY RUN — Main intelligence pipeline
 // ============================================================
 
+// Where a killed run leaves its last word. See nightlyStep_.
+var NIGHTLY_STEP_PROP_ = 'NIGHTLY_STEP';
+
+/**
+ * Runs one nightly step inside the run's time budget, and leaves a trace that
+ * survives the run being KILLED.
+ *
+ * WHY THIS EXISTS. Apps Script terminates an execution at six minutes, and a
+ * terminated execution does not run its finally block. nightlyRun's finally is
+ * where the heartbeat, LAST_NIGHTLY_RUN and flushSystemLog_ all live, so a killed
+ * run writes NONE of them: no heartbeat, no error email, and the entire System Log
+ * for that run is lost, because the buffer only autoflushes at 50 rows
+ * (SYSTEM_LOG_AUTOFLUSH_ROWS_, VERALog.js) and a nightly run never reaches that.
+ * The morning email said "started but did not finish" and nothing, anywhere, could
+ * say which step did it.
+ *
+ * So this does three things no hand-rolled try/catch did:
+ *
+ *  1. CHECKS THE BUDGET FIRST. The run already had a DEADLINE, and exactly three of
+ *     its forty steps consulted it — so one slow step early on spent the whole
+ *     budget and the three guarded steps at the end never got the chance to skip
+ *     anything. Past the deadline a step is skipped and recorded. That is what turns
+ *     a silent death into a loud, correct partial run: the rest skip cheaply, the
+ *     run reaches its finally, and the summary says what was dropped.
+ *
+ *  2. WRITES A BREADCRUMB BEFORE THE WORK, NOT AFTER. A marker written afterwards
+ *     never survives the kill it exists to explain. This property is the only thing
+ *     that outlives a terminated run, which is the whole reason it is worth a
+ *     round trip per step.
+ *
+ *  3. TIMES THE STEP, always — not only when something fails. The timings are the
+ *     diagnosis, the same way they are for the regression endpoint: creep is
+ *     visible long before it becomes a kill.
+ *
+ * It cannot preempt a step that is ALREADY running, so a single pathologically slow
+ * step will still blow the ceiling. What changes is that it stops being invisible:
+ * the accumulation case is handled by skipping, and the single-slow-step case is
+ * named in the next morning's email.
+ *
+ * @param {Object}   ctx   { deadline, failures, skipped, timings, runStart }
+ * @param {string}   name  step name, as it should appear in the email
+ * @param {Function} fn    the work
+ * @returns {boolean} true if the step ran (whether or not it threw)
+ */
+function nightlyStep_(ctx, name, fn) {
+  if (Date.now() >= ctx.deadline) {
+    ctx.skipped.push(name);
+    Logger.log(name + ': skipped — time budget exceeded');
+    return false;
+  }
+
+  var elapsed = Date.now() - ctx.runStart;
+  try {
+    PropertiesService.getScriptProperties()
+      .setProperty(NIGHTLY_STEP_PROP_, name + '|' + Math.round(elapsed / 1000));
+  } catch (bcErr) { /* a breadcrumb must never be able to break the run */ }
+
+  var t0 = Date.now();
+  try {
+    fn();
+  } catch (err) {
+    Logger.log(name + ' error (non-fatal): ' + err.message);
+    ctx.failures.push(name + ': ' + err.message);
+  }
+  ctx.timings.push({ name: name, ms: Date.now() - t0 });
+  return true;
+}
+
+/**
+ * The slowest steps of a run, for the #vera-logs summary. Reported even when
+ * everything passed — a step creeping towards the ceiling is worth seeing before
+ * it is the one that kills the run.
+ */
+function slowestNightlySteps_(timings, topN) {
+  return (timings || []).slice()
+    .sort(function(a, b) { return b.ms - a.ms; })
+    .slice(0, topN || 5)
+    .map(function(t) { return t.name + ' ' + (t.ms / 1000).toFixed(1) + 's'; });
+}
+
 /**
  * Main nightly function. Called by time-based trigger at 11pm.
  * Collects data → packages prompt → calls Claude → writes flags.
@@ -774,54 +854,49 @@ function nightlyRun() {
     var runStart     = Date.now();
     var DEADLINE     = runStart + 5.5 * 60 * 1000;  // 5 min 30 s — 30 s buffer before GAS kills at 6 min
     var stepFailures = [];  // Collects non-fatal step failure messages for #vera-logs summary
+    var stepSkipped  = [];  // Steps the time budget pushed to tomorrow
+    var stepTimings  = [];  // { name, ms } per step — the diagnosis, reported either way
+    // Every step goes through nightlyStep_ with this. The budget used to be checked
+    // at three of forty call sites; it is now checked at all of them.
+    var ctx = {
+      runStart: runStart,
+      deadline: DEADLINE,
+      failures: stepFailures,
+      skipped:  stepSkipped,
+      timings:  stepTimings,
+    };
 
     // Step -1: Escalate aged unacknowledged flags (Issue #5)
-    try {
-      escalateAgedFlags_();
-    } catch (escErr) {
-      Logger.log('escalateAgedFlags_ error (non-fatal): ' + escErr.message);
-      stepFailures.push('escalateAgedFlags_: ' + escErr.message);
-    }
+    nightlyStep_(ctx, 'escalateAgedFlags_', escalateAgedFlags_);
 
     // === CRITICAL PATH: hoisted to run first so generateFlags never times out ===
 
     // Step 0d [hoisted]: Signal Learning — get suppressed patterns to filter noise (Issue #24)
     var suppressedPatterns = [];
-    try {
+    nightlyStep_(ctx, 'getSuppressedKeyPatterns_', function() {
       suppressedPatterns = getSuppressedKeyPatterns_();
       if (suppressedPatterns.length > 0) {
         Logger.log('SignalLearning: suppressing ' + suppressedPatterns.length + ' noise pattern(s): ' + suppressedPatterns.join(', '));
       }
-    } catch (slErr) {
-      Logger.log('getSuppressedKeyPatterns_ error (non-fatal): ' + slErr.message);
-      stepFailures.push('getSuppressedKeyPatterns_: ' + slErr.message);
-    }
+    });
 
     // Step 0a2: Advance the PTO year + rollover once the calendar year has
     // turned over, before anything below reads cfg.year/cfg.rolloverDays.
-    try {
-      checkPTOYearRollover_();
-    } catch (yrErr) {
-      Logger.log('checkPTOYearRollover_ error (non-fatal): ' + yrErr.message);
-      stepFailures.push('checkPTOYearRollover_: ' + yrErr.message);
-    }
+    nightlyStep_(ctx, 'checkPTOYearRollover_', checkPTOYearRollover_);
 
     // Step 0b [hoisted]: PTO snapshot + Vera calendar recommendations (Issue #19)
     var ptoStats = null;
-    try {
+    nightlyStep_(ctx, 'writePTOSnapshot_', function() {
       ptoStats = writePTOSnapshot_();
       Logger.log('PTO snapshot written — vacation used: ' + (ptoStats && ptoStats.used ? ptoStats.used.vacationDays : '?') + ' days.');
-    } catch (ptoErr) {
-      Logger.log('PTO snapshot error (non-fatal): ' + ptoErr.message);
-      stepFailures.push('writePTOSnapshot_: ' + ptoErr.message);
-    }
+    });
 
     // Step 0c: Warm the travel-time cache for upcoming trips. Deliberately
     // after the PTO snapshot, which has already paid for getUpcomingTravel_'s
     // calendar scan (it is memoized per execution). Bounded by its own per-run
     // call ceiling and skips any location pair already cached, so on a settled
     // itinerary this makes zero API calls and costs nothing.
-    try {
+    nightlyStep_(ctx, 'computeTravelLegs_', function() {
       var legStats = computeTravelLegs_();
       if (legStats.calls > 0 || legStats.error) {
         Logger.log('TravelLegs: ' + legStats.calls + ' call(s), ' + legStats.cached +
@@ -830,10 +905,7 @@ function nightlyRun() {
       if (legStats.error && legStats.error !== 'no_api_key') {
         stepFailures.push('computeTravelLegs_: ' + legStats.error);
       }
-    } catch (legErr) {
-      Logger.log('computeTravelLegs_ error (non-fatal): ' + legErr.message);
-      stepFailures.push('computeTravelLegs_: ' + legErr.message);
-    }
+    });
 
     // Step 1: Collect
     const events    = getUpcomingEvents();
@@ -851,6 +923,13 @@ function nightlyRun() {
       Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
       var elapsedEmpty = Math.round((Date.now() - runStart) / 1000);
       try { sendSlackLog_('\u2705 Nightly run \u2014 0 flags (no data) in ' + elapsedEmpty + 's'); } catch (e) {}
+      // This is a COMPLETE run, just an empty one, so the breadcrumb has to be
+      // cleared here too. Returning with it still set would leave the name of the
+      // last step that ran, and tomorrow's watchdog would report a death that
+      // never happened.
+      try {
+        PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_STEP_PROP_);
+      } catch (bcErr) {}
       return;
     }
 
@@ -879,23 +958,16 @@ function nightlyRun() {
     // === SUPPLEMENTARY STEPS — run after critical path ===
 
     // Step 0: Auto-populate Summaries tab from live data (Phase 5)
-    writeSummarySnapshot();
+    // Was a bare call with no try/catch at all — a throw here took the whole run down.
+    nightlyStep_(ctx, 'writeSummarySnapshot', writeSummarySnapshot);
 
     // Step 0a: Sync upcoming birthdays from Joint Chaos calendar to Important Dates (Issue #80)
-    try { syncCalendarBirthdaysToImportantDates_(); }
-    catch (idErr) {
-      Logger.log('syncCalendarBirthdaysToImportantDates_ error (non-fatal): ' + idErr.message);
-      stepFailures.push('syncCalendarBirthdays_: ' + idErr.message);
-    }
+    nightlyStep_(ctx, 'syncCalendarBirthdaysToImportantDates_', syncCalendarBirthdaysToImportantDates_);
 
     // Step 0a-i: Place upcoming Important Dates on a calendar. Nightly with a
     // 60-day horizon rather than a monthly trigger, so a missed night catches
     // up the next night. Only rows with "Add to Calendar" set are touched.
-    try { syncImportantDatesToCalendar_(); }
-    catch (icErr) {
-      Logger.log('syncImportantDatesToCalendar_ error (non-fatal): ' + icErr.message);
-      stepFailures.push('syncImportantDatesToCalendar_: ' + icErr.message);
-    }
+    nightlyStep_(ctx, 'syncImportantDatesToCalendar_', syncImportantDatesToCalendar_);
 
     // Step 0a-ib: ...and flag the ones coming up. Half this feature ran and half
     // did not: dates reached the calendar above, but the flag engine was only
@@ -905,41 +977,27 @@ function nightlyRun() {
     //
     // After the sync, not before, so a date newly placed on the calendar is also
     // considered for a flag on the same run.
-    try { checkImportantDates_(); }
-    catch (idErr) {
-      Logger.log('checkImportantDates_ error (non-fatal): ' + idErr.message);
-      stepFailures.push('checkImportantDates_: ' + idErr.message);
-    }
+    nightlyStep_(ctx, 'checkImportantDates_', checkImportantDates_);
 
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
-    try { resetChoresByCadence_(); }
-    catch (chErr) {
-      Logger.log('resetChoresByCadence_ error (non-fatal): ' + chErr.message);
-      stepFailures.push('resetChoresByCadence_: ' + chErr.message);
-    }
+    nightlyStep_(ctx, 'resetChoresByCadence_', resetChoresByCadence_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
-    try { writeWeeklySnapshot_(); }    catch (wsErr)  { Logger.log('writeWeeklySnapshot_ error (non-fatal): '    + wsErr.message);  stepFailures.push('writeWeeklySnapshot_: '    + wsErr.message);  }
-    // Budget-guarded like the Claude steps at the end of the run. Deleting rows a
-    // year old is the definition of work that can wait until tomorrow, and letting
-    // it run long is what takes the whole run down with it — the later guards never
-    // get the chance to skip anything if an earlier step eats the entire budget.
-    if (Date.now() < DEADLINE) {
-      try { pruneMemoryLog_(); }       catch (pmErr)  { Logger.log('pruneMemoryLog_ error (non-fatal): '         + pmErr.message);  stepFailures.push('pruneMemoryLog_: '         + pmErr.message);  }
-    } else {
-      Logger.log('pruneMemoryLog_: skipped — time budget exceeded');
-      stepFailures.push('pruneMemoryLog_: skipped (time budget)');
-    }
-    try { pruneSystemLog_(); }         catch (pslErr) { Logger.log('pruneSystemLog_ error (non-fatal): '         + pslErr.message); stepFailures.push('pruneSystemLog_: '         + pslErr.message); }
-    try { sendWeeklyTrendReview_(); }  catch (wtrErr) { Logger.log('sendWeeklyTrendReview_ error (non-fatal): '  + wtrErr.message); stepFailures.push('sendWeeklyTrendReview_: '  + wtrErr.message); }
+    nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);
+    // Deleting rows a year old is the definition of work that can wait until
+    // tomorrow. The budget check that used to be spelled out here is now inside
+    // nightlyStep_, where every step gets it instead of only three.
+    nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_);
+    nightlyStep_(ctx, 'pruneSystemLog_', pruneSystemLog_);
+    // Drops health entries for sources no code records any more. 'googlefit-steps'
+    // had been sitting in the morning "SOME DATA IS NOT LIVE" banner every day for
+    // a source that does not exist — nothing could ever clear it, because clearing
+    // requires a successful call and nothing was ever going to make one.
+    nightlyStep_(ctx, 'pruneApiHealthState_', pruneApiHealthState_);
+    nightlyStep_(ctx, 'sendWeeklyTrendReview_', sendWeeklyTrendReview_);
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
-    try {
-      recordExpiredFlags_();
-    } catch (expFlagErr) {
-      Logger.log('recordExpiredFlags_ error (non-fatal): ' + expFlagErr.message);
-      stepFailures.push('recordExpiredFlags_: ' + expFlagErr.message);
-    }
+    nightlyStep_(ctx, 'recordExpiredFlags_', recordExpiredFlags_);
 
     // Step 0e-ii: Attach legacy trip keys to the trips they belong to.
     //
@@ -947,31 +1005,18 @@ function nightlyRun() {
     // registry has not adopted yet returns only the rows written under it — which
     // is how a trip whose start date moved got a post-trip email days early.
     // Additive and idempotent; it never mints and refuses ambiguous matches.
-    try {
+    nightlyStep_(ctx, 'adoptLegacyTripKeys_', function() {
       adoptLegacyTripKeys_({ dryRun: false });
-    } catch (adoptErr) {
-      Logger.log('adoptLegacyTripKeys_ error (non-fatal): ' + adoptErr.message);
-      stepFailures.push('adoptLegacyTripKeys_: ' + adoptErr.message);
-    }
+    });
 
     // Step 0f: Pre-trip briefings (48-hour auto-summary) (Issue #81)
-    try {
-      checkPreTripBriefings_();
-    } catch (ptbErr) {
-      Logger.log('checkPreTripBriefings_ error (non-fatal): ' + ptbErr.message);
-      stepFailures.push('checkPreTripBriefings_: ' + ptbErr.message);
-    }
+    nightlyStep_(ctx, 'checkPreTripBriefings_', checkPreTripBriefings_);
 
     // Step 0g: Post-trip capture prompts (Issue #87)
-    try {
-      checkPostTripCapture_();
-    } catch (ptcErr) {
-      Logger.log('checkPostTripCapture_ error (non-fatal): ' + ptcErr.message);
-      stepFailures.push('checkPostTripCapture_: ' + ptcErr.message);
-    }
+    nightlyStep_(ctx, 'checkPostTripCapture_', checkPostTripCapture_);
 
     // Step 0h: Reset morning routine checkboxes for the new day
-    try {
+    nightlyStep_(ctx, 'morningRoutineReset', function() {
       var mrSheet = getSpreadsheet().getSheetByName(TABS.MORNING_ROUTINE);
       if (mrSheet && mrSheet.getLastRow() > 1) {
         var mrRows = mrSheet.getLastRow() - 1;
@@ -980,85 +1025,67 @@ function nightlyRun() {
         mrSheet.getRange(2, 5, mrRows, 2).setValues(resetVals); // cols 5-6: Checked, Checked At
         Logger.log('Morning routine: reset ' + mrRows + ' item(s) to unchecked.');
       }
-    } catch (mrErr) {
-      Logger.log('Morning routine reset error (non-fatal): ' + mrErr.message);
-      stepFailures.push('morningRoutineReset: ' + mrErr.message);
-    }
+    });
 
     // Step 0i: Gym session check-in prompts (Issue #97)
-    try {
-      checkGymSessions_();
-    } catch (gymErr) {
-      Logger.log('checkGymSessions_ error (non-fatal): ' + gymErr.message);
-      stepFailures.push('checkGymSessions_: ' + gymErr.message);
-    }
+    nightlyStep_(ctx, 'checkGymSessions_', checkGymSessions_);
 
     // Step 0j: Fitness consistency + travel gap checks (Issue #84)
-    try { checkFitnessConsistency_(); } catch (fcErr) { Logger.log('checkFitnessConsistency_ error (non-fatal): ' + fcErr.message); stepFailures.push('checkFitnessConsistency_: ' + fcErr.message); }
-    try { checkFitnessTravelGap_();   } catch (ftErr) { Logger.log('checkFitnessTravelGap_ error (non-fatal): '   + ftErr.message); stepFailures.push('checkFitnessTravelGap_: '   + ftErr.message); }
+    nightlyStep_(ctx, 'checkFitnessConsistency_', checkFitnessConsistency_);
+    nightlyStep_(ctx, 'checkFitnessTravelGap_', checkFitnessTravelGap_);
 
     // Step 0k: Purchase history auto-restock + pantry trip-overlap flags (Issue #111)
-    try { autoRestockItems_();    } catch (arErr) { Logger.log('autoRestockItems_ error (non-fatal): '    + arErr.message); stepFailures.push('autoRestockItems_: '    + arErr.message); }
-    try { generatePantryFlags_(); } catch (pfErr) { Logger.log('generatePantryFlags_ error (non-fatal): ' + pfErr.message); stepFailures.push('generatePantryFlags_: ' + pfErr.message); }
+    nightlyStep_(ctx, 'autoRestockItems_', autoRestockItems_);
+    nightlyStep_(ctx, 'generatePantryFlags_', generatePantryFlags_);
 
     // Step 0l: Capacity mode inference — score tomorrow's calendar load (Issue #8)
-    try { inferCapacityMode_(); } catch (capErr) { Logger.log('inferCapacityMode_ error (non-fatal): ' + capErr.message); stepFailures.push('inferCapacityMode_: ' + capErr.message); }
+    nightlyStep_(ctx, 'inferCapacityMode_', inferCapacityMode_);
 
     // Step 0m: Contract expiry checks — generate flags for upcoming renewals/expirations (Issue #146)
-    try { checkContracts_(); } catch (conErr) { Logger.log('checkContracts_ error (non-fatal): ' + conErr.message); stepFailures.push('checkContracts_: ' + conErr.message); }
-    try { checkWarrantiesExpiring_(); } catch (wErr) { Logger.log('checkWarrantiesExpiring_ error (non-fatal): ' + wErr.message); stepFailures.push('checkWarrantiesExpiring_: ' + wErr.message); }
-    try { checkTripDecisions_(); } catch (tdErr) { Logger.log('checkTripDecisions_ error (non-fatal): ' + tdErr.message); stepFailures.push('checkTripDecisions_: ' + tdErr.message); }
-    try { checkTripDecisionPremises_(); } catch (tpErr) { Logger.log('checkTripDecisionPremises_ error (non-fatal): ' + tpErr.message); stepFailures.push('checkTripDecisionPremises_: ' + tpErr.message); }
+    nightlyStep_(ctx, 'checkContracts_', checkContracts_);
+    nightlyStep_(ctx, 'checkWarrantiesExpiring_', checkWarrantiesExpiring_);
+    nightlyStep_(ctx, 'checkTripDecisions_', checkTripDecisions_);
+    nightlyStep_(ctx, 'checkTripDecisionPremises_', checkTripDecisionPremises_);
 
     // Step 0m-ii: Card perk expiry reminders — flag/email/calendar 2 weeks before a perk period resets unused (Issue #187)
     // Close last period's lapsed flags BEFORE raising this period's, so the tidy-up
     // and the new reminders are obviously one step and in the obvious order.
-    try { closeExpiredPerkFlags_(); } catch (cpcErr) { Logger.log('closeExpiredPerkFlags_ error (non-fatal): ' + cpcErr.message); stepFailures.push('closeExpiredPerkFlags_: ' + cpcErr.message); }
-    try { checkCardPerksExpiring_(); } catch (cpeErr) { Logger.log('checkCardPerksExpiring_ error (non-fatal): ' + cpeErr.message); stepFailures.push('checkCardPerksExpiring_: ' + cpeErr.message); }
+    nightlyStep_(ctx, 'closeExpiredPerkFlags_', closeExpiredPerkFlags_);
+    nightlyStep_(ctx, 'checkCardPerksExpiring_', checkCardPerksExpiring_);
     // Step 0m-iii: Monthly card perk relevance check — verify with issuer via web search, flag stale perks for review (Issue #187)
-    try { checkCardPerksActive_(); } catch (cpaErr) { Logger.log('checkCardPerksActive_ error (non-fatal): ' + cpaErr.message); stepFailures.push('checkCardPerksActive_: ' + cpaErr.message); }
+    nightlyStep_(ctx, 'checkCardPerksActive_', checkCardPerksActive_);
 
-    checkTaxDocuments_();
-    Logger.log('Step 0n: tax document check done');
+    // Also previously unguarded.
+    nightlyStep_(ctx, 'checkTaxDocuments_', checkTaxDocuments_);
 
     // Step 0n-ii: Coupon expiry flags + purge expired rows (Issue #173)
-    try { checkExpiringCoupons_(); } catch (cpErr) { Logger.log('checkExpiringCoupons_ error (non-fatal): ' + cpErr.message); stepFailures.push('checkExpiringCoupons_: ' + cpErr.message); }
-    try { purgeExpiredCoupons_();  } catch (cpErr) { Logger.log('purgeExpiredCoupons_ error (non-fatal): '  + cpErr.message); stepFailures.push('purgeExpiredCoupons_: '  + cpErr.message); }
+    nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);
+    nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
-    try { checkHealthAppointments_(); } catch (hErr) { Logger.log('checkHealthAppointments_ error (non-fatal): ' + hErr.message); stepFailures.push('checkHealthAppointments_: ' + hErr.message); }
+    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);
 
     // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
-    try { checkMonthlyReview_(ptoStats); } catch (mrErr) { Logger.log('checkMonthlyReview_ error (non-fatal): ' + mrErr.message); stepFailures.push('checkMonthlyReview_: ' + mrErr.message); }
+    nightlyStep_(ctx, 'checkMonthlyReview_', function() { checkMonthlyReview_(ptoStats); });
 
     // Step 0o-ii: Health-performance insight — monthly deep dive on 1st (Feature 12)
     if (today.getDate() === 1) {
-      try { sendHealthPerformanceInsightMonthly_(); } catch (hiErr) { Logger.log('sendHealthPerformanceInsightMonthly_ error (non-fatal): ' + hiErr.message); stepFailures.push('health_insight_monthly: ' + hiErr.message); }
+      nightlyStep_(ctx, 'sendHealthPerformanceInsightMonthly_', sendHealthPerformanceInsightMonthly_);
     }
 
     // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
     if (today.getDay() === 6) {
-      try { resetWeekMealPlan_(); } catch (mpErr) { Logger.log('resetWeekMealPlan_ error (non-fatal): ' + mpErr.message); stepFailures.push('resetWeekMealPlan_: ' + mpErr.message); }
+      nightlyStep_(ctx, 'resetWeekMealPlan_', resetWeekMealPlan_);
     }
 
     // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
-    try { checkCrossPatternFlags_(); } catch (prErr) { Logger.log('checkCrossPatternFlags_ error (non-fatal): ' + prErr.message); stepFailures.push('checkCrossPatternFlags_: ' + prErr.message); }
+    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);
 
     // Step 1b: Suggest due dates for undated tasks — budget-guarded (Claude API, 1024 tokens)
-    if (Date.now() < DEADLINE) {
-      try { suggestDueDates(tasks); } catch (sdErr) { Logger.log('suggestDueDates error (non-fatal): ' + sdErr.message); stepFailures.push('suggestDueDates: ' + sdErr.message); }
-    } else {
-      Logger.log('suggestDueDates: skipped — time budget exceeded');
-      stepFailures.push('suggestDueDates: skipped (time budget)');
-    }
+    nightlyStep_(ctx, 'suggestDueDates', function() { suggestDueDates(tasks); });
 
     // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
-    if (Date.now() < DEADLINE) {
-      try { runExplorer_(); } catch (expErr) { Logger.log('runExplorer_ error (non-fatal): ' + expErr.message); stepFailures.push('runExplorer_: ' + expErr.message); }
-    } else {
-      Logger.log('runExplorer_: skipped — time budget exceeded');
-      stepFailures.push('runExplorer_: skipped (time budget)');
-    }
+    nightlyStep_(ctx, 'runExplorer_', runExplorer_);
 
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
 
@@ -1075,20 +1102,42 @@ function nightlyRun() {
       if (flagCount > 0) summary += ' (' + highCount + ' High, ' + medCount + ' Med, ' + lowCount + ' Low)';
       if (deduped > 0)   summary += ' \u00b7 ' + deduped + ' deduplicated';
       if (stepFailures.length) summary += ' \u00b7 ' + stepFailures.length + ' step warning' + (stepFailures.length > 1 ? 's' : '');
+      // Skipped is NOT a warning \u2014 it is the budget working as designed, and the
+      // whole point of the change: steps pushed to tomorrow instead of the run
+      // being killed. It is reported separately so the two are never confused.
+      if (stepSkipped.length) summary += ' \u00b7 ' + stepSkipped.length + ' skipped (time budget)';
       summary += ' in ' + elapsed + 's';
       sendSlackLog_(summary);
       if (stepFailures.length) {
         sendSlackLog_('\u26a0\ufe0f Step warnings:\n' + stepFailures.map(function(f) { return '\u2022 ' + f; }).join('\n'));
       }
+      if (stepSkipped.length) {
+        sendSlackLog_('\u23ed\ufe0f Skipped for time:\n' + stepSkipped.map(function(f) { return '\u2022 ' + f; }).join('\n'));
+      }
+      // Reported on EVERY run, not only a bad one. A step creeping towards the
+      // ceiling is worth seeing while it is still creeping; by the time it kills
+      // the run, the run is the thing that cannot tell you about it.
+      var slowest = slowestNightlySteps_(stepTimings, 5);
+      if (slowest.length) sendSlackLog_('\u23f1\ufe0f Slowest steps: ' + slowest.join(' \u00b7 '));
       veraLog_('nightlyRun', 'Nightly',
         stepFailures.length ? 'Partial' : 'Success',
         flagCount + ' new flag' + (flagCount !== 1 ? 's' : '') + ' written' +
           (flagCount > 0 ? ' (' + highCount + 'H ' + medCount + 'M ' + lowCount + 'L)' : '') +
           (deduped > 0 ? ' · ' + deduped + ' deduplicated' : '') +
           (stepFailures.length ? ' · ' + stepFailures.length + ' step warning(s)' : ''),
+          (stepSkipped.length ? ' · ' + stepSkipped.length + ' skipped (time budget)' : '') +
+          (slowest.length ? ' · slowest: ' + slowest.join(', ') : ''),
         elapsed * 1000,
         stepFailures.length ? stepFailures.join('; ') : '');
     } catch (slackSummaryErr) { /* non-fatal — never let logging break the run */ }
+
+    // The run finished. Clear the breadcrumb so its PRESENCE means "died here" and
+    // tomorrow's watchdog cannot read a stale name as this morning's death.
+    // Deliberately here on the success path and not in the finally: a run that
+    // threw its way out really did stop somewhere, and that is worth keeping.
+    try {
+      PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_STEP_PROP_);
+    } catch (bcErr) { /* non-fatal */ }
 
   } catch (e) {
     Logger.log('VERA nightly run ERROR: ' + e.message + '\n' + e.stack);

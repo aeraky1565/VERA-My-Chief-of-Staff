@@ -10,7 +10,7 @@ FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); }
 const CONTROLS = {
   'the whole pass is gone (today\'s behaviour: flags never close)': b => ({
     'Code.js': b['Code.js'].replace(
-      /    try \{ closeExpiredPerkFlags_\(\); \} catch \(cpcErr\) \{[^\n]*\n/, ''),
+      /    nightlyStep_\(ctx, 'closeExpiredPerkFlags_'[^\n]*\n/, ''),
   }),
   'it writes TRUE instead of \'Yes\'': b => ({
     'Code.js': b['Code.js'].replace(
@@ -74,8 +74,8 @@ const CONTROLS = {
   }),
   'the pass runs AFTER the checker': b => {
     const s = b['Code.js'];
-    const close = /    try \{ closeExpiredPerkFlags_\(\); \} catch \(cpcErr\) \{[^\n]*\n/.exec(s)[0];
-    const check = /    try \{ checkCardPerksExpiring_\(\); \} catch \(cpeErr\) \{[^\n]*\n/.exec(s)[0];
+    const close = /    nightlyStep_\(ctx, 'closeExpiredPerkFlags_'[^\n]*\n/.exec(s)[0];
+    const check = /    nightlyStep_\(ctx, 'checkCardPerksExpiring_'[^\n]*\n/.exec(s)[0];
     return { 'Code.js': s.replace(close + check, check + close) };
   },
 };

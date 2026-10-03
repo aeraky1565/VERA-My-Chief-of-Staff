@@ -43,7 +43,7 @@ var _heartbeatCache_ = null;
  * slow run is not an incident.
  */
 var HEARTBEAT_REGISTRY = [
-  { job: 'nightlyRun',            label: 'Nightly run',          maxAgeHours: 26, startProp: 'LAST_NIGHTLY_START' },
+  { job: 'nightlyRun',            label: 'Nightly run',          maxAgeHours: 26, startProp: 'LAST_NIGHTLY_START', stepProp: 'NIGHTLY_STEP' },
   { job: 'morningNudge',          label: 'Morning email',        maxAgeHours: 26 },
   { job: 'hourlyCheck',           label: 'Hourly check',         maxAgeHours: 3  },
   { job: 'checkFlightStatuses_',  label: 'Flight status poll',   maxAgeHours: 2  },
@@ -165,13 +165,27 @@ function getOverdueJobs_() {
     // is the code — and saying "has not run" for both sent an hour of this
     // investigation down the wrong path. A start marker newer than the last
     // heartbeat means the trigger IS firing and the run is being killed partway.
-    var verb = r.verb || 'has not run in';
+    var verb    = r.verb || 'has not run in';
+    var diedAt  = '';
     if (r.startProp) {
       try {
         var startedRaw = PropertiesService.getScriptProperties().getProperty(r.startProp);
         var startedAt  = startedRaw ? new Date(startedRaw).getTime() : 0;
         if (startedAt && startedAt > entry.lastRun) {
           verb = 'started but did not finish; last completed run was';
+          // …and WHERE it stopped, if the run left a breadcrumb. Telling you the
+          // run died was already better than "has not run", but it still left the
+          // actual question open, and a killed run takes its own log with it —
+          // this property is the only thing that survives. Written as
+          // '<step>|<seconds elapsed>' by nightlyStep_ (Code.js).
+          if (r.stepProp) {
+            var crumb = PropertiesService.getScriptProperties().getProperty(r.stepProp);
+            if (crumb) {
+              var bits = String(crumb).split('|');
+              var secs = parseInt(bits[1], 10);
+              diedAt = bits[0] + (isFinite(secs) ? ' (' + formatAge_(secs * 1000) + ' in)' : '');
+            }
+          }
         }
       } catch (spErr) { /* fall back to the plain wording */ }
     }
@@ -180,6 +194,7 @@ function getOverdueJobs_() {
       job:         r.job,
       label:       r.label,
       verb:        verb,
+      diedAt:      diedAt,
       lastRun:     entry.lastRun,
       ageMs:       ageMs,
       ageText:     formatAge_(ageMs),
@@ -255,6 +270,7 @@ function getWatchdogNotices_() {
 
   jobs.forEach(function(j) {
     lines.push(j.label + ' ' + j.verb + ' ' + j.ageText +
+               (j.diedAt ? ' \u2014 died during ' + j.diedAt : '') +
                ' (expected every ' + describeHours_(j.maxAgeHours) + ')');
   });
 
@@ -363,7 +379,8 @@ function syncWatchdogFlags_(notices) {
   var wanted = {};
   notices.jobs.forEach(function(j) {
     wanted[WATCHDOG_FLAG_PREFIX_ + j.job.toLowerCase().replace(/[^a-z0-9]/g, '')] = {
-      flag:    j.label + ' ' + j.verb + ' ' + j.ageText,
+      flag:    j.label + ' ' + j.verb + ' ' + j.ageText +
+               (j.diedAt ? ' \u2014 died during ' + j.diedAt : ''),
       reason:  'Expected every ' + describeHours_(j.maxAgeHours) +
                '. Last run ' + Utilities.formatDate(new Date(j.lastRun), tz, 'MMM d, h:mm a') +
                '. Check the Apps Script trigger — Google disables triggers after repeated failures.',

@@ -52,6 +52,13 @@ console.log('\nthe entry points themselves');
   check('triggers are registered by name', triggerNames.length >= 5, triggerNames.join(', '));
 }
 
+// A reference counts, not only a call. nightlyRun hands each of its ~40 steps to
+// nightlyStep_ by reference — nightlyStep_(ctx, 'checkFoo_', checkFoo_) — so a
+// scanner that only recognises `checkFoo_(` would read every one of them as dead.
+// The quoted step name is not matched by this (the next character is a quote), so
+// only the genuine reference counts.
+const USED = fn => new RegExp('\\b' + fn + '\\s*[(,)]');
+
 // Everything reachable from an entry point, one hop deep through the entry's
 // own body plus the bodies of what it calls.
 const entryBodies = ENTRIES.map(findEntry).join('\n');
@@ -67,26 +74,29 @@ const reachableText = entryBodies + '\n' + secondHop;
 
 function isReachable(fn) {
   if (directlyCalled.has(fn)) return true;
-  return new RegExp('\\b' + fn + '\\s*\\(').test(reachableText);
+  return USED(fn).test(reachableText);
 }
 
 console.log('\nitem 1 — checkImportantDates_ now runs');
 {
   const nightly = extract(CODE, 'nightlyRun');
-  check('nightlyRun calls it', /\bcheckImportantDates_\s*\(/.test(nightly));
-  check('…and calls the calendar sync too', /\bsyncImportantDatesToCalendar_\s*\(/.test(nightly));
+  check('nightlyRun runs it', /nightlyStep_\(ctx, 'checkImportantDates_'/.test(nightly));
+  check('…and the calendar sync too', /nightlyStep_\(ctx, 'syncImportantDatesToCalendar_'/.test(nightly));
 
   // Order matters: a date placed on the calendar this run should also be
   // considered for a flag on the same run.
-  const syncAt  = nightly.indexOf('syncImportantDatesToCalendar_(');
-  const checkAt = nightly.indexOf('checkImportantDates_(');
+  const syncAt  = nightly.indexOf("nightlyStep_(ctx, 'syncImportantDatesToCalendar_'");
+  const checkAt = nightly.indexOf("nightlyStep_(ctx, 'checkImportantDates_'");
   check('the sync runs BEFORE the check', syncAt !== -1 && checkAt > syncAt,
         'sync@' + syncAt + ' check@' + checkAt);
 
-  // It is wrapped like every other step, so a throw cannot take the night down.
-  const around = nightly.slice(Math.max(0, checkAt - 400), checkAt + 300);
-  check('it is wrapped in try/catch', /try\s*\{\s*checkImportantDates_\(\);/.test(around), '');
-  check('…and records the failure', /stepFailures\.push\('checkImportantDates_/.test(around));
+  // The guard moved rather than disappeared: it used to be hand-rolled at each of
+  // ~40 call sites and is now inside nightlyStep_, which every step goes through.
+  const step = extract(CODE, 'nightlyStep_');
+  check('the step runner catches, so a throw cannot take the night down',
+        /catch \(err\)/.test(step));
+  check('…and records the failure against the step name',
+        /ctx\.failures\.push\(name \+ ': ' \+ err\.message\)/.test(step));
 }
 
 console.log('\nwriteFlags is the right choice here');
@@ -131,7 +141,7 @@ console.log('\nnothing else is quietly dead');
   });
 
   const orphans = defined.filter(([fn]) => {
-    const callRe = new RegExp('\\b' + fn + '\\s*\\(', 'g');
+    const callRe = new RegExp('\\b' + fn + '\\s*[(,)]', 'g');
     const total  = (ALL.match(callRe) || []).length;      // includes the definition
     const inTest = (testText.match(callRe) || []).length;
     return (total - inTest) <= 1;                          // definition only

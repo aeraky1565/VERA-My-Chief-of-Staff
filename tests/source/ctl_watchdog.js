@@ -16,7 +16,7 @@ const CONTROLS = {
       "          verb = r.verb || 'has not run in';"),
   }),
   'the start marker is dropped from the registry': b => ({
-    'Watchdog.js': b['Watchdog.js'].replace(", startProp: 'LAST_NIGHTLY_START' }", " }"),
+    'Watchdog.js': b['Watchdog.js'].replace(", startProp: 'LAST_NIGHTLY_START', stepProp: 'NIGHTLY_STEP' }", " }"),
   }),
   'an unparseable start marker is trusted': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(
@@ -34,10 +34,16 @@ const CONTROLS = {
   'the completion marker is removed': b => ({
     'Code.js': b['Code.js'].replace(/\n    try \{\n      PropertiesService\.getScriptProperties\(\)\n        \.setProperty\('LAST_NIGHTLY_RUN'[\s\S]*?\n    \} catch \(lnrErr\) \{\}/, ''),
   }),
-  'the memory prune loses its budget guard': b => ({
+  // The guard is no longer at the prune's call site — it is in nightlyStep_, where
+  // every step gets it. So this reverts the thing that actually matters now.
+  'the step runner loses its budget check (every step runs regardless)': b => ({
     'Code.js': b['Code.js'].replace(
-      /    if \(Date\.now\(\) < DEADLINE\) \{\n      try \{ pruneMemoryLog_\(\); \}([\s\S]*?)\n    \} else \{\n      Logger\.log\('pruneMemoryLog_: skipped[^\n]*\n      stepFailures\.push\('pruneMemoryLog_: skipped \(time budget\)'\);\n    \}/,
-      "    try { pruneMemoryLog_(); }$1"),
+      /  if \(Date\.now\(\) >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
+  }),
+  'a step hand-rolls its own budget check again': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_);",
+      "    if (Date.now() < DEADLINE) { nightlyStep_(ctx, 'pruneMemoryLog_', pruneMemoryLog_); }"),
   }),
 };
 

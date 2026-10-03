@@ -121,8 +121,24 @@ function fetchFlightStatus_(flightIata, flightDate) {
     }
     var json = JSON.parse(resp.getContentText());
     if (!json.data || json.data.length === 0) {
-      Logger.log('FlightStatus: No data returned for ' + flightIata);
-      recordApiHealth_('aviationstack', false, 'no data returned for ' + flightIata, code);
+      // NOT an API failure. The free tier only carries current/upcoming flights —
+      // see the note above the URL — so a flight booked weeks out legitimately
+      // returns an empty set, and the API answered perfectly to say so.
+      //
+      // Recording this as a failure is what left 'aviationstack (last good data:
+      // 10d)' sitting in the morning "SOME DATA IS NOT LIVE" banner while nothing
+      // was wrong with the API at all. A banner whose job is to say "do not trust
+      // this data" loses its authority the moment it reports things that are fine.
+      //
+      // Recording a SUCCESS rather than staying silent is deliberate: it is true
+      // (HTTP 200, well-formed body), and it actively clears a source already stuck
+      // in a degraded state from earlier empty responses.
+      //
+      // The caller still gets null, so the FLIGHT is correctly treated as having no
+      // live status — that is a fact about the flight, not about the API's health,
+      // and stampFlightFetchFailure_ goes on marking the shown status unconfirmed.
+      Logger.log('FlightStatus: no live data yet for ' + flightIata + ' (expected for a future flight; not an API fault)');
+      recordApiHealth_('aviationstack', true, '', code);
       return null;
     }
     // Pick the result whose scheduled departure date matches flightDate (YYYY-MM-DD).

@@ -379,3 +379,56 @@ function clearApiHealthSource_(source) {
   setApiHealthState_(state);
   Logger.log('clearApiHealthSource_: removed "' + source + '" from API health state.');
 }
+
+// How long an entry may sit with nothing touching it before it is treated as the
+// residue of deleted code rather than a live problem.
+var API_HEALTH_ORPHAN_MS_ = 14 * 24 * 60 * 60 * 1000;   // 14 days
+
+/**
+ * Drops health entries that nothing has touched in a fortnight.
+ *
+ * clearApiHealthSource_ above already describes this exact situation — a source
+ * retired from the code whose last failure sits in the degraded list forever —
+ * but it has to be called BY HAND, and nobody ever does. That is how
+ * 'googlefit-steps (no successful call on record)' came to appear in the morning
+ * "SOME DATA IS NOT LIVE" banner every day: nothing in the codebase records that
+ * source (only googlefit-sleep exists), so consecutiveFailures can never reset and
+ * the warning can never clear itself.
+ *
+ * THE DISCRIMINATOR IS RECENCY OF ACTIVITY, NOT FAILURE COUNT. A source that is
+ * genuinely broken still has code calling it, so its lastFailure is refreshed every
+ * night and it survives this prune however long it has been failing — which is the
+ * property that makes the rule safe. A source whose code was deleted has a FROZEN
+ * timestamp and ages out. And if nothing has tried a source in a fortnight there is
+ * nothing to warn anyone about today; the warning comes straight back the moment a
+ * real call fails again.
+ *
+ * Deliberately looks at max(lastSuccess, lastFailure) rather than lastFailure alone:
+ * pruning on failure time would drop a source that is succeeding perfectly well but
+ * happened to fail once long ago, losing its history for no reason.
+ *
+ * @param {number} [nowMs]  injectable clock, for tests
+ * @returns {Array<string>} the sources removed
+ */
+function pruneApiHealthState_(nowMs) {
+  var now     = nowMs || Date.now();
+  var state   = getApiHealthState_();
+  var removed = [];
+
+  Object.keys(state).forEach(function(source) {
+    var e = state[source] || {};
+    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0);
+    // An entry with no timestamps at all is malformed, not merely old — it can
+    // never age out on its own, so treat it as orphaned too.
+    if (lastTouched && (now - lastTouched) <= API_HEALTH_ORPHAN_MS_) return;
+    delete state[source];
+    removed.push(source);
+  });
+
+  if (removed.length) {
+    setApiHealthState_(state);
+    Logger.log('pruneApiHealthState_: dropped ' + removed.length +
+               ' stale source(s): ' + removed.join(', '));
+  }
+  return removed;
+}
