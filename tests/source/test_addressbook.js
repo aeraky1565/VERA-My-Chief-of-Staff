@@ -92,6 +92,9 @@ const HH_H = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City', 'St
               'Postal Code', 'Country', 'Relationship', 'Address Confirmed', 'Notes'];
 const P_H  = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'Notes'];
 const M_H  = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
+// The six columns a pasted address is split into; mirrors IMPORT_ADDRESS_PARTS_.
+const ADDR_PARTS = ['Address Line 1', 'Address Line 2', 'City', 'State',
+                    'Postal Code', 'Country'];
 const I_H  = ['Household', 'Name', 'Member Type', 'Email', 'Phone',
               'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code',
               'Country', 'Full Address', 'Relationship', 'Household Notes',
@@ -222,6 +225,21 @@ function harness(opts) {
     extractFn(SRC.Book, 'deleteAddressBookRowsFor_'),
     extractFn(SRC.Book, 'newAddressBookId_'),
     extractFn(SRC.Book, 'ensureImportColumns_'),
+    decl(SRC.Book, 'US_STATES_'),
+    // The self-registering block that maps each code to itself.
+    SRC.Book.slice(SRC.Book.indexOf('(function() {\n  var codes'),
+                   SRC.Book.indexOf('})();', SRC.Book.indexOf('(function() {\n  var codes')) + 5),
+    decl(SRC.Book, 'COUNTRIES_'),
+    decl(SRC.Book, 'UNIT_KEYWORDS_'),
+    decl(SRC.Book, 'STREET_SUFFIXES_'),
+    decl(SRC.Book, 'DIRECTIONALS_'),
+    decl(SRC.Book, 'POSTAL_PATTERNS_'),
+    extractFn(SRC.Book, 'parseUsState_'),
+    extractFn(SRC.Book, 'parseCountry_'),
+    extractFn(SRC.Book, 'parsePostalCode_'),
+    extractFn(SRC.Book, 'isStreetSuffix_'),
+    extractFn(SRC.Book, 'splitStreetAndCity_'),
+    extractFn(SRC.Book, 'splitStreetAndUnit_'),
     extractFn(SRC.Book, 'parseFullAddress_'),
     extractFn(SRC.Web, 'webGetAddressBook_'),
     extractFn(SRC.Web, 'addressBookForWrite_'),
@@ -1204,6 +1222,54 @@ console.log('\nBulk import');
           JSON.stringify(again.households));
   }
 
+  // ---- a line it cannot read ----
+  //
+  // The behaviour Ahmed chose over a best guess: leave the columns blank, keep the
+  // one-liner so there is something to retype from, and say so on the row. The old
+  // parser instead put the whole line in Address Line 1, which reads as a filled-in
+  // row with no city and only surfaces when somebody prints an envelope.
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []),
+      'Import': fakeSheet(I_H, [
+        impRow({ Household: 'The Olds', 'Full Address': 'Flat 3 The Old Mill Lane' }),
+        impRow({ Household: 'The Patels', 'Full Address': '3 Oak Rd, Reston, VA 20190' }),
+      ]),
+    }});
+    c.webPreviewAddressImport_();
+    const imp = () => c._tabs['Import']._data;
+    const col = n => I_H.indexOf(n);
+    const st  = () => imp().slice(1).map(r => r[col('Status')]);
+
+    check('a line it cannot read leaves the address columns blank',
+          ADDR_PARTS.every(k => String(imp()[1][col(k)] || '') === ''),
+          JSON.stringify(imp()[1]));
+    check('…KEEPS the one-liner, so there is something to retype from',
+          imp()[1][col('Full Address')] === 'Flat 3 The Old Mill Lane',
+          'clearing it would lose the only copy of a line we could not read');
+    check('…and says so on the row, naming the line',
+          /could not read "Flat 3 The Old Mill Lane"/.test(st()[0]) &&
+          /by hand/.test(st()[0]), JSON.stringify(st()[0]));
+    check('a readable line on the SAME run is still split and consumed',
+          imp()[2][col('City')] === 'Reston' && imp()[2][col('State')] === 'VA' &&
+          imp()[2][col('Full Address')] === '',
+          JSON.stringify(imp()[2]));
+    check('…so "cleared means split" holds in both directions',
+          imp()[1][col('Full Address')] !== '' && imp()[2][col('Full Address')] === '',
+          'one rule, or it is not a rule');
+
+    // And the household still imports — a bad address is not a reason to drop a name.
+    c.webRunAddressImport_();
+    const names = c.webGetAddressBook_().households.map(h => h.household).sort();
+    check('the household is still imported, just without an address',
+          names.join(',') === 'The Olds,The Patels', JSON.stringify(names));
+    check('…with nothing invented for it',
+          c.webGetAddressBook_().households
+            .filter(h => h.household === 'The Olds')[0].address1 === '',
+          'a wrong address is worse than a missing one on an envelope');
+  }
+
   // ---- an Import tab with no Full Address column at all ----
   //
   // Either a stale deployment that predates the column, or somebody deleted it. The
@@ -1240,10 +1306,10 @@ console.log('\nBulk import');
     let got = null, blew = null;
     try { got = c.splitImportAddresses_(bare, noCol, rows); } catch (e) { blew = e.message; }
     check('splitting a tab with no Full Address column is a no-op, not a throw',
-          blew === null && JSON.stringify(got) === '[]' &&
+          blew === null && got && got.split.length === 0 && got.failed.length === 0 &&
           bare._writes.setValues === 0 &&
           JSON.stringify(rows) === '[["The Lees","Reston"]]',
-          String(blew) + ' ' + JSON.stringify([rows, bare._writes]));
+          String(blew) + ' ' + JSON.stringify([got, rows, bare._writes]));
   }
 
   // ---- the cost of splitting, which must not scale with the rows ----
@@ -1297,38 +1363,167 @@ console.log('\nBulk import');
           JSON.stringify(status[0]));
   }
 
-  // The parser on its own, because the branches it takes are not all reachable
-  // through a realistic Import tab, and an untested branch is a guess.
+  // THE PARSER, TABLE DRIVEN OVER ALL SIX FIELDS.
+  //
+  // Asserting one field at a time is how a parse that got the city right and the
+  // street wrong kept passing — "123 Main Street, Apt 4B, Austin, Texas 78701" had
+  // the correct Address Line 1 while the city was "Texas 78701" and Austin had been
+  // pushed into Line 2. Every row below pins the whole answer.
+  //
+  // The vocabularies are the point: a state is a state because it is IN THE LIST of
+  // states, not because it is two letters long ("St" is two letters), and a country
+  // because it is in the list of countries, not because it has no digits in it
+  // ("Texas" has none).
   {
     const c = harness({ props: {}, tabs: {} });
-    const p = c.parseFullAddress_;
-    check('"City ST 00000" in one comma-free part is split',
-          JSON.stringify(p('12 Elm St, Apt 4, Austin TX 78701')) ===
-          JSON.stringify({ City:'Austin', State:'TX', 'Postal Code':'78701',
-                           'Address Line 1':'12 Elm St', 'Address Line 2':'Apt 4' }),
-          JSON.stringify(p('12 Elm St, Apt 4, Austin TX 78701')));
-    check('a ZIP+4 survives whole', p('450 Serra Mall, Stanford, CA 94305-2004')['Postal Code']
-          === '94305-2004');
-    check('a UK postcode is a postcode, not a street',
-          p('221B Baker Street, London, NW1 6XE, United Kingdom')['Postal Code'] === 'NW1 6XE');
-    check('…but an all-caps street line is NOT',
-          p('ELM STREET')['Address Line 1'] === 'ELM STREET',
-          'nine legal characters of [A-Z ] would otherwise be filed as a postal code');
-    check('a postcode BEFORE the city is handled',
-          p('88 Rue de Rivoli, 75001 Paris, France')['Postal Code'] === '75001' &&
-          p('88 Rue de Rivoli, 75001 Paris, France')['City'] === 'Paris',
-          'most of the world writes it that way round');
-    check('…but a five-digit house number on its own is still a street',
-          p('10400 NE 4th St')['Address Line 1'] === '10400 NE 4th St' &&
-          p('10400 NE 4th St')['Postal Code'] === undefined,
-          'the guard that keeps the postcode-first rule from eating a street');
-    check('newlines work as well as commas',
-          p('12 Elm St\nAustin, TX 78701\nUSA')['City'] === 'Austin');
-    check('empty in, empty out', JSON.stringify(p('')) === '{}' &&
-          JSON.stringify(p('   ')) === '{}' && JSON.stringify(p(null)) === '{}');
-    check('a run of empty parts is not an empty field',
-          p('12 Elm St,,, Austin,  TX   78701 ,  USA ')['City'] === 'Austin',
-          'pasted blocks have stray commas and doubled spaces in them');
+    const FIELDS = ['Address Line 1', 'Address Line 2', 'City', 'State',
+                    'Postal Code', 'Country'];
+    // '-' means the parser DECLINED: it could not identify a city, state, postcode or
+    // country, so it returns nothing rather than filing the whole line under Address
+    // Line 1. That dumping behaviour is the bug this rewrite exists to fix.
+    const shows = input => {
+      const r = c.parseFullAddress_(input);
+      return Object.keys(r).length === 0 ? '-' : FIELDS.map(k => r[k] || '').join(' | ');
+    };
+    const row = (input, want, why) =>
+      check('parse: ' + JSON.stringify(input), shows(input) === want,
+            'want ' + want + '\n              got  ' + shows(input) + (why ? '\n              — ' + why : ''));
+
+    // ---- the shapes that were reported broken ----
+    row('123 Main Street, Apt 4B, Austin, Texas 78701',
+        '123 Main Street | Apt 4B | Austin | TX | 78701 | ',
+        'a full state name: the city used to come out as "Texas 78701"');
+    row('5 Oak Ave, Reston, Virginia 20190, USA',
+        '5 Oak Ave |  | Reston | VA | 20190 | USA');
+    row('7 Nile Street, Zamalek, Cairo, Egypt',
+        '7 Nile Street | Zamalek | Cairo |  |  | Egypt');
+    row('12 Elm St Austin TX 78701 USA',
+        '12 Elm St |  | Austin | TX | 78701 | USA',
+        'no commas at all: the whole line used to land in Address Line 1');
+    row('12 Elm St Austin TX 78701',
+        '12 Elm St |  | Austin | TX | 78701 | ');
+
+    // ---- the shapes that already worked, which must keep working ----
+    row('12 Elm St, Apt 4, Austin, TX 78701, USA',
+        '12 Elm St | Apt 4 | Austin | TX | 78701 | USA');
+    row('450 Serra Mall, Stanford, CA 94305-2004',
+        '450 Serra Mall |  | Stanford | CA | 94305-2004 | ', 'ZIP+4 survives whole');
+    row('1600 Pennsylvania Avenue NW, Washington, DC 20500',
+        '1600 Pennsylvania Avenue NW |  | Washington | DC | 20500 | ');
+    row('221B Baker Street, London, NW1 6XE, United Kingdom',
+        '221B Baker Street |  | London |  | NW1 6XE | United Kingdom');
+    row('88 Rue de Rivoli, 75001 Paris, France',
+        '88 Rue de Rivoli |  | Paris |  | 75001 | France',
+        'most of the world puts the postcode before the city');
+    row('12 Elm St,,, Austin,  TX   78701 ,  USA ',
+        '12 Elm St |  | Austin | TX | 78701 | USA',
+        'pasted blocks have stray commas and doubled spaces in them');
+    row('12 Elm St\nAustin, TX 78701\nUSA',
+        '12 Elm St |  | Austin | TX | 78701 | USA', 'newlines work as well as commas');
+
+    // ---- states: both spellings, two-word names, and the two-letter trap ----
+    row('1 A St, Raleigh, North Carolina 27601', '1 A St |  | Raleigh | NC | 27601 | ');
+    row('1 A St, Albany, New York 12207',        '1 A St |  | Albany | NY | 12207 | ');
+    row('1 A St, Albany, NY 12207',              '1 A St |  | Albany | NY | 12207 | ');
+    row('1 A St, Washington, D.C. 20001',        '1 A St |  | Washington | DC | 20001 | ');
+    row('12 Elm St, Austin, TX 78701',  '12 Elm St |  | Austin | TX | 78701 | ');
+    row('5 Oak Dr, Reston, VA 20190',   '5 Oak Dr |  | Reston | VA | 20190 | ',
+        '"Dr" is two letters and must not be read as a state');
+    row('7 Maple Ln, Cary, NC 27511',   '7 Maple Ln |  | Cary | NC | 27511 | ');
+
+    check('every state name maps to its code, and every code to itself',
+          c.parseUsState_('Texas') === 'TX' && c.parseUsState_('texas') === 'TX' &&
+          c.parseUsState_('TX') === 'TX' && c.parseUsState_('tx') === 'TX' &&
+          c.parseUsState_('D.C.') === 'DC' && c.parseUsState_('District of Columbia') === 'DC');
+
+    // ALL FIFTY, by name and by code. Spot-checking a handful is how a list with a
+    // typo'd or missing state passes: a control that broke 'alabama' changed nothing
+    // observable, because no test had ever asked about Alabama.
+    const ALL_50 = [
+      ['Alabama','AL'],['Alaska','AK'],['Arizona','AZ'],['Arkansas','AR'],
+      ['California','CA'],['Colorado','CO'],['Connecticut','CT'],['Delaware','DE'],
+      ['Florida','FL'],['Georgia','GA'],['Hawaii','HI'],['Idaho','ID'],
+      ['Illinois','IL'],['Indiana','IN'],['Iowa','IA'],['Kansas','KS'],
+      ['Kentucky','KY'],['Louisiana','LA'],['Maine','ME'],['Maryland','MD'],
+      ['Massachusetts','MA'],['Michigan','MI'],['Minnesota','MN'],['Mississippi','MS'],
+      ['Missouri','MO'],['Montana','MT'],['Nebraska','NE'],['Nevada','NV'],
+      ['New Hampshire','NH'],['New Jersey','NJ'],['New Mexico','NM'],['New York','NY'],
+      ['North Carolina','NC'],['North Dakota','ND'],['Ohio','OH'],['Oklahoma','OK'],
+      ['Oregon','OR'],['Pennsylvania','PA'],['Rhode Island','RI'],['South Carolina','SC'],
+      ['South Dakota','SD'],['Tennessee','TN'],['Texas','TX'],['Utah','UT'],
+      ['Vermont','VT'],['Virginia','VA'],['Washington','WA'],['West Virginia','WV'],
+      ['Wisconsin','WI'],['Wyoming','WY'],
+    ];
+    const wrongName = ALL_50.filter(([name, code]) => c.parseUsState_(name) !== code);
+    const wrongCode = ALL_50.filter(([, code]) => c.parseUsState_(code) !== code);
+    check('all 50 states resolve from their full name',
+          ALL_50.length === 50 && wrongName.length === 0,
+          JSON.stringify(wrongName.map(x => x[0])));
+    check('…and from their code', wrongCode.length === 0,
+          JSON.stringify(wrongCode.map(x => x[1])));
+    check('…and each one actually parses in an address',
+          ALL_50.every(([name, code]) =>
+            (c.parseFullAddress_('1 A St, Springfield, ' + name + ' 12345') || {})['State'] === code),
+          JSON.stringify(ALL_50.filter(([name, code]) =>
+            (c.parseFullAddress_('1 A St, Springfield, ' + name + ' 12345') || {})['State'] !== code)
+            .map(x => x[0])));
+    check('…and a street suffix is not one of them',
+          ['St', 'Dr', 'Ave', 'Ln', 'Rd', 'Pl', 'Way', 'Blvd'].every(w => c.parseUsState_(w) === ''),
+          'the shape-based rule this replaced matched every two-letter one of these');
+    // 'Ct' GENUINELY IS Connecticut, so there is no vocabulary answer here — the
+    // answer is position: a state is only read from the end of the tail segment, and
+    // a street's suffix is found by scanning from the end of what remains. Both
+    // orderings are pinned below rather than wished away.
+    check('…except Ct, which really is Connecticut', c.parseUsState_('Ct') === 'CT');
+    row('12 Oak Ct, Hartford, CT 06103',  '12 Oak Ct |  | Hartford | CT | 06103 | ');
+    row('12 Oak Ct Hartford CT 06103',    '12 Oak Ct |  | Hartford | CT | 06103 | ',
+        'the street suffix and the state are the same word, in one segment');
+
+    // ---- units, with and without a comma ----
+    row('123 Main St Apt 4B, Austin, TX 78701',  '123 Main St | Apt 4B | Austin | TX | 78701 | ');
+    row('4000 Legato Rd Suite 1100, Fairfax, VA 22033',
+        '4000 Legato Rd | Suite 1100 | Fairfax | VA | 22033 | ');
+    row('20 Pine St #12, Boston, MA 02108',      '20 Pine St | #12 | Boston | MA | 02108 | ');
+    row('9 High St Unit 3, Denver, CO 80202',    '9 High St | Unit 3 | Denver | CO | 80202 | ');
+    // A line that BEGINS with a unit word is still a first line — splitting at word
+    // zero would leave Address Line 1 empty and the whole thing in Line 2.
+    row('Box 42, Austin, TX 78701',              'Box 42 |  | Austin | TX | 78701 | ');
+    // With no comma, the quadrant has to stay with the street rather than starting
+    // the city: 'NW Washington' is not a place.
+    row('1600 Pennsylvania Avenue NW Washington DC 20500',
+        '1600 Pennsylvania Avenue NW |  | Washington | DC | 20500 | ');
+
+    // ---- countries collapse to ONE spelling ----
+    ['USA', 'US', 'U.S.', 'United States', 'America'].forEach(name =>
+      row('1 A St, Austin, TX 78701, ' + name, '1 A St |  | Austin | TX | 78701 | USA'));
+    ['UK', 'United Kingdom', 'England'].forEach(name =>
+      row('1 A St, London, SW1A 1AA, ' + name,
+          '1 A St |  | London |  | SW1A 1AA | United Kingdom'));
+    check('…so two rows of one list do not become two countries',
+          c.parseCountry_('US') === c.parseCountry_('United States'),
+          'nothing would group by country again');
+
+    // ---- THE CONFIDENCE RULE, which is the behaviour change ----
+    //
+    // These used to "degrade gracefully" into Address Line 1. That degradation IS
+    // the reported bug: a row that looks filled in, with a one-line address and no
+    // city, which only shows up as wrong at the point of printing an envelope.
+    row('10400 NE 4th St', '-',
+        'a house number is not a postcode and "NE" here is not Nebraska');
+    row('ELM STREET', '-');
+    row('Cairo', '-');
+    row('12 Elm St', '-');
+    row('', '-');
+    row('   ', '-');
+    check('null in, nothing out', shows(null) === '-');
+
+    // ADDR_PARTS above mirrors a list in AddressBook.js, and a mirror can drift.
+    check('the test\'s idea of the address columns matches the real one',
+          decl(SRC.Book, 'IMPORT_ADDRESS_PARTS_')
+            .replace(/[\s\S]*?\[/, '[').replace(/;$/, '')
+            .replace(/'/g, '"').replace(/\s+/g, '') ===
+          JSON.stringify(ADDR_PARTS).replace(/\s+/g, ''),
+          decl(SRC.Book, 'IMPORT_ADDRESS_PARTS_'));
   }
 
   // ---- the column the live sheet is missing ----

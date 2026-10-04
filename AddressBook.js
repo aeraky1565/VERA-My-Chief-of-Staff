@@ -185,72 +185,292 @@ function ensureImportColumns_(sheet) {
   return adding;
 }
 
+// ---- Reading an address written as one line ---------------------------------
+//
+// WHY VOCABULARIES RATHER THAN SHAPES. The first version of this split on commas and
+// then guessed: a state was "any two letters", a country was "anything with no
+// digits". Both are wrong often enough to matter — 'St' is two letters, 'Texas' is
+// not — and the failures were silent. A comma-light overseas address put the whole
+// line into Address Line 1, and 'Austin, Texas 78701' made the CITY 'Texas 78701'
+// and pushed Austin into Address Line 2.
+//
+// Knowing what states and countries are actually called turns them into ANCHORS:
+// find the state and the city is what sits before it, the street is what sits before
+// that. Commas become a hint that reinforces a boundary rather than the only source
+// of structure.
+
+// Both spellings of every state, because people write either, and the code is what
+// goes on an envelope. Keys are lower-cased; dots are stripped before lookup, so
+// 'D.C.' arrives as 'dc'.
+var US_STATES_ = {
+  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
+  'colorado':'CO','connecticut':'CT','delaware':'DE','florida':'FL','georgia':'GA',
+  'hawaii':'HI','idaho':'ID','illinois':'IL','indiana':'IN','iowa':'IA','kansas':'KS',
+  'kentucky':'KY','louisiana':'LA','maine':'ME','maryland':'MD','massachusetts':'MA',
+  'michigan':'MI','minnesota':'MN','mississippi':'MS','missouri':'MO','montana':'MT',
+  'nebraska':'NE','nevada':'NV','new hampshire':'NH','new jersey':'NJ',
+  'new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND',
+  'ohio':'OH','oklahoma':'OK','oregon':'OR','pennsylvania':'PA','rhode island':'RI',
+  'south carolina':'SC','south dakota':'SD','tennessee':'TN','texas':'TX','utah':'UT',
+  'vermont':'VT','virginia':'VA','washington':'WA','west virginia':'WV',
+  'wisconsin':'WI','wyoming':'WY',
+  // 'washington dc' is deliberately NOT an alias here. As a two-word state it ate the
+  // city as well: '…Avenue NW Washington DC 20500' came out with the state right and
+  // no city at all. Washington is the city, DC is the state, and the single-word 'DC'
+  // match handles it.
+  'district of columbia':'DC',
+  'puerto rico':'PR','virgin islands':'VI','guam':'GU','american samoa':'AS',
+  'northern mariana islands':'MP',
+};
+// The codes map to themselves, so one lookup answers both spellings.
+(function() {
+  var codes = {};
+  Object.keys(US_STATES_).forEach(function(k) { codes[US_STATES_[k].toLowerCase()] = US_STATES_[k]; });
+  Object.keys(codes).forEach(function(k) { US_STATES_[k] = codes[k]; });
+})();
+
+// Aliases collapse to ONE spelling, or 'US' and 'United States' become two different
+// countries on two rows of the same list and nothing groups properly again.
+var COUNTRIES_ = {
+  'usa':'USA','us':'USA','u.s.':'USA','u.s.a.':'USA','united states':'USA',
+  'united states of america':'USA','america':'USA',
+  'uk':'United Kingdom','u.k.':'United Kingdom','united kingdom':'United Kingdom',
+  'great britain':'United Kingdom','england':'United Kingdom','scotland':'United Kingdom',
+  'wales':'United Kingdom','northern ireland':'United Kingdom',
+  'uae':'United Arab Emirates','u.a.e.':'United Arab Emirates',
+  'united arab emirates':'United Arab Emirates',
+  'ksa':'Saudi Arabia','saudi arabia':'Saudi Arabia','saudi':'Saudi Arabia',
+  'egypt':'Egypt','canada':'Canada','mexico':'Mexico','france':'France',
+  'germany':'Germany','italy':'Italy','spain':'Spain','portugal':'Portugal',
+  'netherlands':'Netherlands','holland':'Netherlands','belgium':'Belgium',
+  'switzerland':'Switzerland','austria':'Austria','ireland':'Ireland',
+  'sweden':'Sweden','norway':'Norway','denmark':'Denmark','finland':'Finland',
+  'poland':'Poland','greece':'Greece','turkey':'Turkey','israel':'Israel',
+  'jordan':'Jordan','lebanon':'Lebanon','qatar':'Qatar','kuwait':'Kuwait',
+  'bahrain':'Bahrain','oman':'Oman','morocco':'Morocco','tunisia':'Tunisia',
+  'south africa':'South Africa','nigeria':'Nigeria','kenya':'Kenya',
+  'india':'India','pakistan':'Pakistan','bangladesh':'Bangladesh',
+  'china':'China','japan':'Japan','south korea':'South Korea','korea':'South Korea',
+  'singapore':'Singapore','malaysia':'Malaysia','indonesia':'Indonesia',
+  'thailand':'Thailand','vietnam':'Vietnam','philippines':'Philippines',
+  'australia':'Australia','new zealand':'New Zealand',
+  'brazil':'Brazil','argentina':'Argentina','chile':'Chile','colombia':'Colombia',
+};
+
+// What starts a second address line. 'Apartment or suite number if found in line 2'
+// was the request, and it has to work with or without a comma in front of it.
+var UNIT_KEYWORDS_ = ['apt', 'apartment', 'unit', 'suite', 'ste', 'fl', 'floor',
+                      'rm', 'room', 'bldg', 'building', 'penthouse', 'ph', 'lot',
+                      'space', 'trlr', 'trailer', 'box', 'no'];
+
+// Where a street line ENDS. This is what tells '12 Elm St Austin' apart into a street
+// and a city when they share a segment, and it is also the guard that stops the house
+// number in '10400 NE 4th St' being read as a postal code.
+var STREET_SUFFIXES_ = ['st','street','ave','avenue','av','rd','road','dr','drive',
+  'ln','lane','blvd','boulevard','way','ct','court','pl','place','ter','terrace',
+  'cir','circle','pkwy','parkway','hwy','highway','trail','trl','loop','sq','square',
+  'walk','row','crescent','cres','close','mews','gardens','gdns','park','alley',
+  'bend','pike','run','path','plaza','point','ridge','view','vista','expy','cswy',
+  'turnpike','tpke','broadway','mall'];
+
+// A trailing quadrant belongs to the street, not to the city: '1600 Pennsylvania
+// Avenue NW Washington' is Washington, not 'NW Washington'.
+var DIRECTIONALS_ = ['n','s','e','w','ne','nw','se','sw','north','south','east','west',
+                     'northeast','northwest','southeast','southwest'];
+
+// Enough to recognise a postcode rather than wonder about it. Ordered: the specific
+// national shapes first, the bare run of digits last.
+var POSTAL_PATTERNS_ = [
+  /^\d{5}-\d{4}$/,                                   // US ZIP+4
+  /^\d{5}$/,                                         // US ZIP
+  /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i,            // UK
+  /^[A-Z]\d[A-Z]\s*\d[A-Z]\d$/i,                     // Canada
+  /^\d{4,6}$/,                                       // most of the rest
+];
+
+/** 'Texas' or 'tx' -> 'TX'; anything else -> ''. */
+function parseUsState_(word) {
+  var k = String(word || '').trim().replace(/\./g, '').toLowerCase();
+  return US_STATES_[k] || '';
+}
+
+/** 'United States' -> 'USA'; anything else -> ''. */
+function parseCountry_(word) {
+  var raw = String(word || '').trim().toLowerCase();
+  return COUNTRIES_[raw] || COUNTRIES_[raw.replace(/\./g, '')] || '';
+}
+
+/** A postcode, or ''. */
+function parsePostalCode_(word) {
+  var w = String(word || '').trim();
+  if (!w) return '';
+  for (var i = 0; i < POSTAL_PATTERNS_.length; i++) {
+    if (POSTAL_PATTERNS_[i].test(w)) return w.toUpperCase().replace(/\s+/g, ' ');
+  }
+  return '';
+}
+
+/** Is this word the end of a street name? */
+function isStreetSuffix_(word) {
+  return STREET_SUFFIXES_.indexOf(String(word || '').replace(/\./g, '').toLowerCase()) !== -1;
+}
+
 /**
- * Splits a whole address pasted into one cell.
+ * Splits a segment that holds BOTH a street and a city, at the street's suffix.
+ * '12 Elm St Austin' -> { street: '12 Elm St', city: 'Austin' }
  *
- * Works from the END, because that is where the structure is: a postal code and a
- * state are recognisable, a street line is not. Whatever is left over at the front
- * is the street, which is the right way round — a parser that guesses at the street
- * and works forwards gets everything after its first mistake wrong too.
+ * Without this the two stay glued together, which is what '12 Elm St Austin TX 78701'
+ * did: a street of '12 Elm St Austin' and no city at all. Returns no city when there
+ * is no suffix to cut at, rather than guessing at a word boundary.
+ */
+function splitStreetAndCity_(segment) {
+  var words = String(segment || '').trim().split(/\s+/);
+  for (var i = words.length - 1; i >= 0; i--) {
+    if (!isStreetSuffix_(words[i])) continue;
+    var end = i;
+    // A quadrant right after the suffix is still the street.
+    if (words[i + 1] &&
+        DIRECTIONALS_.indexOf(words[i + 1].replace(/\./g, '').toLowerCase()) !== -1) {
+      end = i + 1;
+    }
+    if (end >= words.length - 1) return { street: words.join(' '), city: '' };
+    return { street: words.slice(0, end + 1).join(' '),
+             city:   words.slice(end + 1).join(' ') };
+  }
+  return { street: words.join(' '), city: '' };
+}
+
+/**
+ * Splits a street line at the first unit keyword.
+ * '123 Main St Apt 4B' -> { line1: '123 Main St', line2: 'Apt 4B' }
+ */
+function splitStreetAndUnit_(street) {
+  var words = String(street || '').trim().split(/\s+/);
+  for (var i = 1; i < words.length; i++) {          // never the first word
+    var w = words[i].replace(/\./g, '').toLowerCase();
+    if (w.charAt(0) === '#' || UNIT_KEYWORDS_.indexOf(w) !== -1) {
+      return { line1: words.slice(0, i).join(' '), line2: words.slice(i).join(' ') };
+    }
+  }
+  return { line1: words.join(' '), line2: '' };
+}
+
+/**
+ * Reads an address written as one line.
  *
- * Deliberately not clever. It is allowed to be approximate ONLY because the import
- * preview prints what it understood, per row, before anything is written; without
- * that dry run a fuzzy parser here would be indefensible.
+ * Works from the END, because that is where the recognisable things are: a country, a
+ * postcode, a state. Each one that matches is consumed, and whatever is left at the
+ * front is the street — the right way round, since a parser that guesses the street
+ * first gets everything after its first mistake wrong too.
  *
- * @param {string} text  e.g. "12 Elm St, Apt 4, Austin, TX 78701, USA"
+ * RETURNS NOTHING WHEN IT CANNOT TELL. If no city, state, postcode or country could
+ * be identified, this is not an address it understood, and it says so by returning an
+ * empty object. The caller then leaves the row's columns blank and flags it. The
+ * previous version instead put the whole line into Address Line 1, which is the bug
+ * that prompted this rewrite: a row that LOOKS filled in, with a one-line address and
+ * no city, and only shows up as wrong when somebody goes to print an envelope.
+ *
+ * @param {string} text  e.g. '123 Main Street, Apt 4B, Austin, Texas 78701, USA'
  * @returns {Object} any of Address Line 1/2, City, State, Postal Code, Country
  */
 function parseFullAddress_(text) {
-  var out   = {};
-  var parts = String(text || '')
+  var out  = {};
+  var segs = String(text || '')
     .replace(/[\r\n]+/g, ',')
     .split(',')
     .map(function(p) { return p.replace(/\s+/g, ' ').trim(); })
     .filter(function(p) { return p !== ''; });
-  if (!parts.length) return out;
+  if (!segs.length) return out;
 
-  // A trailing part with no digit in it is a country, not a street or a postcode.
-  // Guarded on length because a single part is not an address with a country in it —
-  // one lone word stays as the street line, where it is at least still visible.
-  if (parts.length > 1 && !/\d/.test(parts[parts.length - 1])) {
-    out['Country'] = parts.pop();
+  // ---- country, from the last segment or the last word or two of it ----
+  var last = segs[segs.length - 1];
+  var c    = parseCountry_(last);
+  if (c) { out['Country'] = c; segs.pop(); }
+  else {
+    var lw = last.split(' ');
+    for (var take = Math.min(3, lw.length); take >= 1 && !out['Country']; take--) {
+      var tail = lw.slice(lw.length - take).join(' ');
+      var hit  = parseCountry_(tail);
+      // Only when something is left in front of it, or 'Egypt' alone would be a
+      // country with no address attached rather than the city it probably is.
+      if (hit && (lw.length > take || segs.length > 1)) {
+        out['Country'] = hit;
+        segs[segs.length - 1] = lw.slice(0, lw.length - take).join(' ');
+        if (!segs[segs.length - 1]) segs.pop();
+      }
+    }
   }
 
-  var tail = parts.length ? parts[parts.length - 1] : '';
-  var m;
-  if ((m = /^(.+?)\s+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/.exec(tail))) {
-    // "Austin TX 78701" — the whole thing in one comma-free part.
-    out['City'] = m[1]; out['State'] = m[2].toUpperCase(); out['Postal Code'] = m[3];
-    parts.pop();
-  } else if ((m = /^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/.exec(tail))) {
-    // "TX 78701", with the city as its own part before it.
-    out['State'] = m[1].toUpperCase(); out['Postal Code'] = m[2];
-    parts.pop();
-    if (parts.length > 1) out['City'] = parts.pop();
-  } else if ((m = /^(?:\d{5}(?:-\d{4})?|(?=[^a-z]*\d)[A-Z][\dA-Z ]{4,9})$/.exec(tail))) {
-    // A bare postcode, US ("78701") or otherwise ("NW1 6XE"). The non-US form has to
-    // contain a digit, or an all-caps street line with no house number — "ELM STREET"
-    // — is nine legal characters and would be filed as a postal code.
-    out['Postal Code'] = tail;
-    parts.pop();
-    if (parts.length > 1) out['City'] = parts.pop();
-  } else if (parts.length > 1 && (m = /^(\d{4,5})\s+(.+)$/.exec(tail))) {
-    // "75001 Paris" — most of the world puts the postcode before the city. Guarded on
-    // there being an earlier part, because a lone "10400 NE 4th St" is a street with a
-    // five-digit house number, not a postcode followed by a town.
-    out['Postal Code'] = m[1]; out['City'] = m[2];
-    parts.pop();
-  } else if (!out['Country'] && parts.length > 2) {
-    // No postcode anywhere and no country taken: the last part is the city.
-    out['City'] = parts.pop();
-  } else if (out['Country'] && parts.length > 1) {
-    out['City'] = parts.pop();
+  // ---- postcode and state, BY POSITION in the tail segment ----
+  //
+  // Both normally sit in the city's own segment ('Austin TX 78701'), so this reads
+  // words rather than comma position — but strictly from the end, and the state only
+  // where a state actually goes. Sweeping the whole segment for 'anything that looks
+  // like a state' is how 'NE' in '10400 NE 4th St' became Nebraska.
+  if (segs.length) {
+    var words = segs[segs.length - 1].split(' ');
+
+    // 1. A postcode at the very end. Two words for the UK and Canada.
+    var two = words.length > 1
+      ? parsePostalCode_(words[words.length - 2] + ' ' + words[words.length - 1]) : '';
+    if (two) { out['Postal Code'] = two; words.length -= 2; }
+    else if (parsePostalCode_(words[words.length - 1])) {
+      out['Postal Code'] = parsePostalCode_(words[words.length - 1]);
+      words.pop();
+    }
+
+    // 2. A state immediately before it — or at the end when there is no postcode.
+    //    TWO WORDS FIRST, or 'West Virginia' matches on 'Virginia' alone and comes
+    //    out as VA with a city of 'West'. Every two-word state ends in a word that
+    //    is either a state itself or looks like one.
+    if (words.length > 1 &&
+        parseUsState_(words[words.length - 2] + ' ' + words[words.length - 1])) {
+      out['State'] = parseUsState_(words[words.length - 2] + ' ' + words[words.length - 1]);
+      words.length -= 2;
+    } else if (words.length && parseUsState_(words[words.length - 1])) {
+      out['State'] = parseUsState_(words[words.length - 1]);
+      words.pop();
+    }
+
+    // 3. Postcode BEFORE the city, as most of the world writes it ('75001 Paris').
+    //    Guarded by the street suffix: in '10400 NE 4th St' the leading number is a
+    //    house number, and the 'St' is what says so.
+    if (!out['Postal Code'] && words.length > 1 && parsePostalCode_(words[0]) &&
+        !words.some(isStreetSuffix_)) {
+      out['Postal Code'] = parsePostalCode_(words[0]);
+      words.shift();
+    }
+
+    if (words.length) segs[segs.length - 1] = words.join(' ');
+    else segs.pop();
   }
 
-  if (parts.length) out['Address Line 1'] = parts.shift();
-  // Anything still unclaimed is an apartment or suite line, rejoined rather than
-  // dropped — losing half an address silently is worse than an untidy second line.
-  if (parts.length) out['Address Line 2'] = parts.join(', ');
+  // ---- city ----
+  // Its own segment when there is still a street in front of it, so a lone 'Cairo' is
+  // not read as a city with no address attached.
+  if (segs.length > 1) out['City'] = segs.pop();
+  else if (segs.length === 1 && (out['State'] || out['Postal Code'])) {
+    // One segment holding street AND city, anchored by the state we just took:
+    // '12 Elm St Austin'. The street's suffix is the cut.
+    var both = splitStreetAndCity_(segs[0]);
+    if (both.city) { out['City'] = both.city; segs[0] = both.street; }
+    else if (!/\d/.test(segs[0])) out['City'] = segs.pop();
+  }
+
+  // ---- street, split at a unit keyword ----
+  if (segs.length) {
+    var street = splitStreetAndUnit_(segs.shift());
+    out['Address Line 1'] = street.line1;
+    // Anything still unclaimed — 'Zamalek', a building name — joins line 2 rather
+    // than being dropped. Losing half an address silently is the worst outcome here.
+    var line2 = [street.line2].concat(segs).filter(function(v) { return v; });
+    if (line2.length) out['Address Line 2'] = line2.join(', ');
+  }
+
+  // THE CONFIDENCE RULE. A street line and nothing else is not an address that was
+  // understood; it is the whole string sitting in one field, which is what this
+  // rewrite exists to stop.
+  if (!out['City'] && !out['State'] && !out['Postal Code'] && !out['Country']) return {};
   return out;
 }
 

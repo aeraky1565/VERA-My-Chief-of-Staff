@@ -4008,7 +4008,11 @@ function AddressBookView({
       color: '#6b7fa8',
       marginTop: 5
     }
-  }, "Or paste whole addresses into ", /*#__PURE__*/React.createElement("strong", null, "Full Address"), ", one per line — each line lands in its own row. ", /*#__PURE__*/React.createElement("strong", null, "Preview splits them"), " into the Address, City, State, Postcode and Country columns and empties the Full Address cell, so you can correct the split in the sheet before importing. The line it came from is kept in ", /*#__PURE__*/React.createElement("strong", null, "Status"), " to check against. A cell you typed yourself is never overwritten."), /*#__PURE__*/React.createElement("div", {
+  }, "Or paste whole addresses into ", /*#__PURE__*/React.createElement("strong", null, "Full Address"), ", one per line — each line lands in its own row. ", /*#__PURE__*/React.createElement("strong", null, "Preview splits them"), " into the Address, City, State, Postcode and Country columns and empties the Full Address cell, so you can correct the split in the sheet before importing. The line it came from is kept in ", /*#__PURE__*/React.createElement("strong", null, "Status"), " to check against. A cell you typed yourself is never overwritten. An apartment or suite goes to ", /*#__PURE__*/React.createElement("strong", null, "Address line 2"), ", and “Texas” is stored as “TX”.", /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 4
+    }
+  }, "A line it ", /*#__PURE__*/React.createElement("em", null, "cannot"), " read is left alone: the columns stay blank, the Full Address cell is kept, and Status says so — so a wrong address never looks like a right one.")), /*#__PURE__*/React.createElement("div", {
     style: {
       color: '#6b7fa8',
       marginTop: 5

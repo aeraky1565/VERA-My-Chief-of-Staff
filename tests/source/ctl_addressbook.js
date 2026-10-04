@@ -527,8 +527,8 @@ const CONTROLS = {
   }),
   'the split is never written back to the tab': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      /  Object\.keys\(changed\)\.forEach\(function\(c\) \{\n[\s\S]*?\n  \}\);\n  return splitFrom;/,
-      '  return splitFrom;'),
+      /  Object\.keys\(changed\)\.forEach\(function\(c\) \{\n[\s\S]*?\n  \}\);\n  return \{ split/,
+      '  return { split'),
   }),
   'the split is written one row at a time': b => ({
     'WebApp.js': b['WebApp.js'].replace(
@@ -538,12 +538,12 @@ const CONTROLS = {
   }),
   'the pre-pass is not wired in (nothing is ever split)': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      '  var splitFrom = splitImportAddresses_(impSheet, impCols, raw);',
-      '  var splitFrom = [];'),
+      '  var split     = splitImportAddresses_(impSheet, impCols, raw);',
+      '  var split     = { split: [], failed: [] };'),
   }),
   'a missing Full Address column takes the whole import down': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      "  if (!fullCol) return splitFrom;        // the column was removed by hand",
+      /  if \(!fullCol\) return \{ split: splitFrom, failed: failed \};/,
       "  if (!fullCol) throw new Error('No Full Address column');"),
   }),
 
@@ -575,6 +575,9 @@ const CONTROLS = {
       /      g\.addrs\[IMPORT_ADDRESS_PARTS_\.map\(function\(k\) \{ return importCell_\(row, k\); \}\)\n *\.join\('\|'\)\.toLowerCase\(\)\] = true;/,
       '      g.addrs[g.label.toLowerCase()] = true;'),
   }),
+  // ---- the parser, and the vocabularies it now leans on --------------------
+  //
+  // THE REPORTED BUG, put back: everything in Address Line 1.
   'the whole address lands in Address Line 1': b => ({
     'AddressBook.js': b['AddressBook.js'].replace(
       /^function parseFullAddress_\(text\) \{\n[\s\S]*?\n\}$/m,
@@ -582,24 +585,82 @@ const CONTROLS = {
       "  var t = String(text || '').trim();\n" +
       "  return t ? { 'Address Line 1': t } : {};\n}"),
   }),
-  'a trailing country is read as part of the street': b => ({
+  // The confidence rule, which is the half that STOPS it happening again.
+  'an unreadable line is dumped into Address Line 1 instead of declined': b => ({
     'AddressBook.js': b['AddressBook.js'].replace(
-      "  if (parts.length > 1 && !/\\d/.test(parts[parts.length - 1])) {\n    out['Country'] = parts.pop();\n  }\n",
+      "  if (!out['City'] && !out['State'] && !out['Postal Code'] && !out['Country']) return {};\n",
       ''),
   }),
-  'an all-caps street line is filed as a postal code': b => ({
+  'a state is any two letters again': b => ({
     'AddressBook.js': b['AddressBook.js'].replace(
-      '/^(?:\\d{5}(?:-\\d{4})?|(?=[^a-z]*\\d)[A-Z][\\dA-Z ]{4,9})$/',
-      '/^(?:\\d{5}(?:-\\d{4})?|[A-Z][\\dA-Z ]{4,9})$/'),
+      '  var k = String(word || \'\').trim().replace(/\\./g, \'\').toLowerCase();\n  return US_STATES_[k] || \'\';',
+      '  var k = String(word || \'\').trim().replace(/\\./g, \'\');\n' +
+      '  return /^[A-Za-z]{2}$/.test(k) ? k.toUpperCase() : (US_STATES_[k.toLowerCase()] || \'\');'),
   }),
-  'the postcode-first rule eats a five-digit house number': b => ({
-    'AddressBook.js': b['AddressBook.js'].replace(
-      '} else if (parts.length > 1 && (m = /^(\\d{4,5})\\s+(.+)$/.exec(tail))) {',
-      '} else if ((m = /^(\\d{4,5})\\s+(.+)$/.exec(tail))) {'),
+  'the state vocabulary knows only the codes, not the names': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace("'alabama':'AL',", "'xalabamax':'AL',")
+      .replace("'texas':'TX',", "'xtexasx':'TX',"),
   }),
-  'the leftover parts are dropped rather than kept as a second line': b => ({
+  'a country is anything without digits again': b => ({
     'AddressBook.js': b['AddressBook.js'].replace(
-      "  if (parts.length) out['Address Line 2'] = parts.join(', ');\n", ''),
+      "  var raw = String(word || '').trim().toLowerCase();\n" +
+      "  return COUNTRIES_[raw] || COUNTRIES_[raw.replace(/\\./g, '')] || '';",
+      "  var raw = String(word || '').trim();\n" +
+      "  return /\\d/.test(raw) ? '' : raw;"),
+  }),
+  'country aliases are not collapsed to one spelling': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace("'us':'USA',", "'us':'US',"),
+  }),
+  'the street suffixes are gone (street and city stay glued)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(/^var STREET_SUFFIXES_ = \[[\s\S]*?\];$/m,
+                                                  'var STREET_SUFFIXES_ = [];'),
+  }),
+  'a trailing quadrant is taken off the street': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(/^var DIRECTIONALS_ = \[[\s\S]*?\];$/m,
+                                                  'var DIRECTIONALS_ = [];'),
+  }),
+  'the unit keywords are gone (no second address line)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(/^var UNIT_KEYWORDS_ = \[[\s\S]*?\];$/m,
+                                                  'var UNIT_KEYWORDS_ = [];'),
+  }),
+  'a unit keyword at the start of the street still splits it': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  for (var i = 1; i < words.length; i++) {          // never the first word',
+      '  for (var i = 0; i < words.length; i++) {'),
+  }),
+  'the state is matched anywhere in the segment, not at the end': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /    \/\/ 2\. A state immediately before it[\s\S]*?\n    \}\n/,
+      '    for (var si = words.length - 1; si >= 0; si--) {\n' +
+      '      if (parseUsState_(words[si])) { out[\'State\'] = parseUsState_(words[si]);\n' +
+      '                                      words.splice(si, 1); break; }\n' +
+      '    }\n'),
+  }),
+  'the postcode-first rule loses its street-suffix guard': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "        !words.some(isStreetSuffix_)) {", '        true) {'),
+  }),
+  'the leftover middle segments are dropped rather than kept as line 2': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "    var line2 = [street.line2].concat(segs).filter(function(v) { return v; });",
+      "    var line2 = [street.line2].filter(function(v) { return v; });"),
+  }),
+
+  // ---- a line it cannot read -----------------------------------------------
+  'a declined line has its one-liner cleared anyway': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (!Object.keys(parsed).length) { failed[i] = whole; return; }",
+      "    if (!Object.keys(parsed).length) { failed[i] = whole; r[fullCol - 1] = '';\n" +
+      "                                       changed[fullCol] = true; return; }"),
+  }),
+  'nothing on the row says the line could not be read': b => ({
+    'WebApp.js': b['WebApp.js'].replace(/      if \(splitFailed\[i\]\) \{\n[\s\S]*?\n      \}\n/, ''),
+  }),
+  'a declined line is reported but its columns are filled anyway': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (!Object.keys(parsed).length) { failed[i] = whole; return; }",
+      "    if (!Object.keys(parsed).length) { failed[i] = whole;\n" +
+      "      parsed = { 'Address Line 1': whole }; }"),
   }),
 
   // ---- the column the live Import tab is missing ----------------------------

@@ -11667,12 +11667,14 @@ function webConfirmAddress_(body) {
  * @param {Sheet} sheet    the Import tab
  * @param {Object} cols    name -> 1-based column, from addressBookCols_
  * @param {Array} raw      rows from row 2 down; MUTATED so pass 1 sees the split
- * @returns {Array} the original one-liner per row index, for the Status column
+ * @returns {Object} { split, failed } — the original one-liner per row index, for
+ *                   the Status column; `failed` is the rows it declined to split
  */
 function splitImportAddresses_(sheet, cols, raw) {
   var fullCol = cols['Full Address'];
-  var splitFrom = [];
-  if (!fullCol) return splitFrom;        // the column was removed by hand
+  var splitFrom = [], failed = [];
+  // The column was removed by hand, or this is a tab that predates it.
+  if (!fullCol) return { split: splitFrom, failed: failed };
 
   var cell    = function(r, c) { return c ? importCell_({ v: r[c - 1] }, 'v') : ''; };
   var changed = {};
@@ -11681,6 +11683,15 @@ function splitImportAddresses_(sheet, cols, raw) {
     var whole = cell(r, fullCol);
     if (!whole) return;
     var parsed = parseFullAddress_(whole);
+
+    // DECLINED. parseFullAddress_ returns nothing when it could not identify a city,
+    // state, postcode or country — it no longer drops the whole line into Address
+    // Line 1, which produced a row that LOOKED filled in and only showed up as wrong
+    // when somebody went to print an envelope. The one-liner is KEPT here, because a
+    // row has to show what could not be read, and 'cleared means split' stays true:
+    // nothing was split.
+    if (!Object.keys(parsed).length) { failed[i] = whole; return; }
+
     IMPORT_ADDRESS_PARTS_.forEach(function(part) {
       var c = cols[part];
       if (!c || !parsed[part] || cell(r, c)) return;   // never overwrite a typed cell
@@ -11702,7 +11713,7 @@ function splitImportAddresses_(sheet, cols, raw) {
     var block = raw.map(function(r) { return [r[col - 1]]; });
     sheet.getRange(2, col, block.length, 1).setValues(block);
   });
-  return splitFrom;
+  return { split: splitFrom, failed: failed };
 }
 
 function importCell_(row, name) {
@@ -11733,7 +11744,8 @@ function addressBookImport_(dryRun) {
   // Pass 0: any pasted one-liner becomes ordinary columns before anything else looks
   // at the rows, so everything below reads a typed row and the parse is not a special
   // case in the grouping, the precedence or the writes.
-  var splitFrom = splitImportAddresses_(impSheet, impCols, raw);
+  var split     = splitImportAddresses_(impSheet, impCols, raw);
+  var splitFrom = split.split, splitFailed = split.failed;
 
   // Existing state, read ONCE rather than per row.
   var households = readAddressBookTab_(hhSheet, HOUSEHOLD_HEADERS);
@@ -11905,6 +11917,12 @@ function addressBookImport_(dryRun) {
       var line = status[i] || '';
       if (splitFrom[i]) {
         line += (line ? ' · ' : '') + 'split from "' + splitFrom[i] + '"';
+      }
+      // A line it could not read is the one thing worth saying even on a row that
+      // otherwise had nothing to report, so it is appended last and unconditionally.
+      if (splitFailed[i]) {
+        line += (line ? ' · ' : '') + '\u26a0 could not read "' + splitFailed[i] +
+          '" \u2014 fill the address columns in by hand';
       }
       block.push([line]);
     }

@@ -520,9 +520,40 @@ fix anything, then press **Import**.
 
 **Or paste whole addresses into `Full Address`, one per line.** Pasting a multi-line
 block into a Sheets cell puts each line in its own row, which is exactly the shape
-wanted. VERA splits each one working **from the end** — postal code, state, country —
-because that is where the structure is; a street line is not recognisable, so it is
-whatever is left over at the front.
+wanted. VERA splits each one working **from the end** — country, postal code, state —
+because that is where the recognisable things are; whatever is left at the front is
+the street, cut at a unit keyword (`Apt`, `Suite`, `Unit`, `#`…) so an apartment lands
+in `Address Line 2`.
+
+> **It matches vocabularies, not shapes.** The first version split on commas and then
+> guessed: a state was "any two letters", a country "anything without digits". Both
+> are wrong often enough to matter — `St` is two letters, `Texas` is not — and they
+> failed *silently*. `7 Nile Street Zamalek Cairo, Egypt` put the whole line into
+> `Address Line 1`, and `Austin, Texas 78701` made the **city** `Texas 78701` and
+> pushed Austin into `Address Line 2`.
+>
+> So there are now four lists: every state by **code and full name** (`Texas` → `TX`),
+> countries by alias (`US`, `U.S.`, `United States` → one spelling, or the same list
+> groups under two countries), street suffixes, and unit keywords. Knowing the state
+> turns it into an **anchor** — the city is what sits before it, the street before
+> that — and commas become a hint rather than the only structure.
+>
+> `Ct` is both Connecticut and Court, and no vocabulary fixes that. **Position** does:
+> a state is only read from the end of the tail, and a street's suffix is found by
+> scanning back from what remains. Both orderings of `12 Oak Ct … CT 06103` are
+> pinned.
+
+**A line it cannot read is left alone and flagged.** If no city, state, postcode or
+country can be identified, the address columns stay **blank**, the `Full Address` cell
+is **kept** so there is something to retype from, and `Status` says
+*⚠ could not read "…" — fill the address columns in by hand*. The household still
+imports; it just has no address.
+
+> The old behaviour was to put the unreadable line in `Address Line 1`. That reads as
+> a filled-in row with no city and surfaces only when somebody goes to print an
+> envelope — **a wrong address is worse than a missing one.** It also means "cleared
+> means split" holds in both directions: consumed when it parsed, kept when it did
+> not.
 
 **The split happens in the Import tab, on Preview.** The parts are written into that
 row's own `Address Line 1` / `City` / `State` / `Postal Code` / `Country` cells and
@@ -538,7 +569,7 @@ a non-blank cell is simply never overwritten.
 > not survive the *next* run's Status, so comparing is something to do when you
 > preview, not next week.
 
-> The parser is allowed to be approximate **only because you see and can fix its work
+> It is still allowed to be approximate **only because you see and can fix its work
 > before anything is written**. Earlier it parsed invisibly on the way to `Households`
 > and merely *reported* what it had read — by the time a misread was obvious the row
 > was already in.

@@ -8114,6 +8114,13 @@ function AddressBookView({ apiUrl, apiToken }) {
               Full Address cell, so you can correct the split in the sheet before
               importing. The line it came from is kept in <strong>Status</strong> to
               check against. A cell you typed yourself is never overwritten.
+              An apartment or suite goes to <strong>Address line 2</strong>, and
+              “Texas” is stored as “TX”.
+              <div style={{ marginTop:4 }}>
+                A line it <em>cannot</em> read is left alone: the columns stay blank,
+                the Full Address cell is kept, and Status says so — so a wrong address
+                never looks like a right one.
+              </div>
             </div>
             <div style={{ color:'#6b7fa8', marginTop:5 }}>
               Rows group by the <strong>Household</strong> column, not by address — so
