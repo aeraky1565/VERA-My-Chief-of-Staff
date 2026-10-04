@@ -253,6 +253,80 @@ const CONTROLS = {
       "    'Notes':            String(b.notes        || '').trim(),\n    'Send Card': '', 'Last Card Sent': '',\n  };"),
   }),
 
+  // ---- bulk import ---------------------------------------------------------
+  'the Import tab is never created': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  ensureSheet(ss, ADDRESS_BOOK_IMPORT_,     IMPORT_HEADERS);\n', ''),
+  }),
+  'the preview writes for real (not a preview at all)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      'function webPreviewAddressImport_() { return addressBookImport_(true); }',
+      'function webPreviewAddressImport_() { return addressBookImport_(false); }'),
+  }),
+  'the import only previews (silently does nothing)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      'function webRunAddressImport_() { return addressBookImport_(false); }',
+      'function webRunAddressImport_() { return addressBookImport_(true); }'),
+  }),
+  'rows group by address instead of the Household column': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    var key = hh.toLowerCase();",
+      "    var key = importCell_(row, 'Address Line 1').toLowerCase();"),
+  }),
+  'a person with no Household cell is dropped': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    if (!hh && name) hh = name;\n", ''),
+  }),
+  'a blank spacer row becomes a household': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    if (!hh && !name) { status[i] = ''; return; }\n", ''),
+  }),
+  'the first non-blank no longer wins (last row of a family overwrites)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      if (v && !g.fields[HOUSEHOLD_FIELDS[src]]) g.fields[HOUSEHOLD_FIELDS[src]] = v;",
+      "      g.fields[HOUSEHOLD_FIELDS[src]] = v;"),
+  }),
+  'a BLANK import cell overwrites an existing value': b => ({
+    'WebApp.js': b['WebApp.js']
+      .replace("      if (v && !g.fields[HOUSEHOLD_FIELDS[src]]) g.fields[HOUSEHOLD_FIELDS[src]] = v;",
+               "      g.fields[HOUSEHOLD_FIELDS[src]] = v;")
+      .replace("        if (g.fields[target] && g.fields[target] !== existing[target]) changed.push(target);",
+               "        if (g.fields[target] !== existing[target]) changed.push(target);"),
+  }),
+  'an existing household is duplicated instead of updated': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    var existing = hhByName[key];",
+                                        "    var existing = null;"),
+  }),
+  'a second run duplicates people': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      if (peopleKey[pk]) {\n        pSkipped++;", "      if (false) {\n        pSkipped++;"),
+  }),
+  'the Status column is never written': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /    var block = \[\];\n    for \(var i = 0; i < raw\.length; i\+\+\) block\.push\(\[status\[i\] \|\| ''\]\);\n    impSheet\.getRange\(2, statusCol, block\.length, 1\)\.setValues\(block\);\n/, ''),
+  }),
+  'the Status is written one row at a time': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    impSheet.getRange(2, statusCol, block.length, 1).setValues(block);",
+      "    block.forEach(function(v, i) { impSheet.getRange(2 + i, statusCol).setValue(v[0]); });"),
+  }),
+  'the import deletes the rows it processed': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  if (!dryRun) {\n    appendAddressBookRows_(hhSheet, HOUSEHOLD_HEADERS, newHouseholds);",
+      "  if (!dryRun) {\n    for (var dz = raw.length; dz >= 2; dz--) impSheet.deleteRow(dz);\n" +
+      "    appendAddressBookRows_(hhSheet, HOUSEHOLD_HEADERS, newHouseholds);"),
+  }),
+  'the bulk append goes back to one call per row': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  sheet.getRange(sheet.getLastRow() + 1, 1, block.length, lastCol).setValues(block);",
+      "  block.forEach(function(r) { sheet.appendRow(r); });"),
+  }),
+  'the preview and the import stop sharing one implementation': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      'function webPreviewAddressImport_() { return addressBookImport_(true); }',
+      'function webPreviewAddressImport_() { return { ok: true, rows: 0, ' +
+      'households: { created: 0, updated: 0 }, people: { created: 0, skipped: 0 }, ' +
+      "messages: ['Preview: looks fine.'] }; }"),
+  }),
+
   // ---- the dashboards: the card run -------------------------------------
   'the card run no longer carries the list forward': b => eachDoc(b, s =>
     s.replace(/forEvent\(h\.id, event\)\.length > 0/g, 'false')),

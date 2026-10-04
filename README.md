@@ -495,6 +495,29 @@ interpreted, only counted.
 > delete them from a sheet that still has them — it stops reading and writing them, so
 > the columns can be removed by hand whenever it suits.
 
+**Bulk entry: the `Import` tab.** One row per person, with the household name
+repeated for everyone in the same family; the address only needs filling on one row of
+each household (first non-blank wins). Press **Preview** in the dashboard and VERA
+fills a `Status` column saying what each row *would* do, writing nothing else; read it,
+fix anything, then press **Import**.
+
+- **Rows group by the `Household` column, not by matching addresses.** "12 Elm St" and
+  "12 Elm Street" are one house to a person and two to a string comparison, which is
+  how one family quietly becomes two.
+- A person with no `Household` cell becomes a household of one. A blank row is a
+  spacer, not an error — a pasted block usually has a few.
+- **Re-running is safe.** Households match on name and people on household + name, so
+  a second run reports what is already there rather than duplicating it.
+- An existing household is **updated** from the Import row, but **a blank Import cell
+  leaves the existing value alone**. "The import is the fresher copy" and "a
+  half-filled row wipes a good address" are the same code if you are not careful.
+- Imported rows are **not deleted**. Every row keeps its Status so you can check the
+  result; clear the tab yourself when you are happy.
+
+> Preview and import are **one function with a flag**, not two implementations. A
+> preview that can disagree with the thing it previews is worse than none, because
+> being believed is the only way a preview can hurt you.
+
 **The card run carries forward from history.** Pick an event and a household is on the
 list **if it has ever been sent that event** — send someone a Christmas card once and
 they are on the list every year after, with no flag anywhere to keep in step or go

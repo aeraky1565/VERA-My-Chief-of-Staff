@@ -58,6 +58,9 @@ const HH_H = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City', 'St
               'Postal Code', 'Country', 'Relationship', 'Address Confirmed', 'Notes'];
 const P_H  = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'Notes'];
 const M_H  = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
+const I_H  = ['Household', 'Name', 'Member Type', 'Email', 'Phone',
+              'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code',
+              'Country', 'Relationship', 'Household Notes', 'Person Notes', 'Status'];
 // What Ahmed's live sheet looks like TODAY: the two retired columns are still in it.
 // VERA must read around them and never write to them.
 const HH_LEGACY = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City', 'State',
@@ -74,6 +77,7 @@ function fakeSheet(headers, rows) {
     .concat((rows || []).map(r => r.slice()));
   const api = {
     _data: data,
+    _writes: { setValue: 0, setValues: 0 },
     getLastRow: () => data.length,
     getLastColumn: () => data.reduce((m, r) => Math.max(m, r.length), 0),
     getRange: (r, c, nr, nc) => ({
@@ -89,8 +93,18 @@ function fakeSheet(headers, rows) {
         return out;
       },
       getValue: () => { const row = data[r - 1] || []; return row[c - 1] === undefined ? '' : row[c - 1]; },
-      setValue: v => { while ((data[r - 1] || []).length < c) data[r - 1].push(''); data[r - 1][c - 1] = v; },
-      setValues: vals => { vals.forEach((row, i) => { data[r - 1 + i] = row.slice(); }); },
+      setValue: v => { api._writes.setValue++;
+        while ((data[r - 1] || []).length < c) data[r - 1].push(''); data[r - 1][c - 1] = v; },
+      setValues: vals => {
+        api._writes.setValues++;
+        vals.forEach((row, i) => {
+          const target = data[r - 1 + i] || (data[r - 1 + i] = []);
+          row.forEach((v, j) => {
+            while (target.length < c + j) target.push('');
+            target[c - 1 + j] = v;
+          });
+        });
+      },
       setFontWeight: () => api._range, setBackground: () => api._range, setFontColor: () => api._range,
     }),
     setFrozenRows: () => {},
@@ -149,6 +163,9 @@ function harness(opts) {
     decl(SRC.Book, 'HOUSEHOLD_HEADERS'),
     decl(SRC.Book, 'CONTACT_HEADERS'),
     decl(SRC.Book, 'MAILING_HEADERS'),
+    decl(SRC.Book, 'IMPORT_HEADERS'),
+    decl(SRC.Book, 'ADDRESS_BOOK_IMPORT_'),
+    extractFn(SRC.Book, 'appendAddressBookRows_'),
     decl(SRC.Book, 'ADDRESS_BOOK_MAILINGS_'),
     extractFn(SRC.Code, 'ensureSheet'),
     extractFn(SRC.Book, 'getAddressBookSheet_'),
@@ -174,6 +191,10 @@ function harness(opts) {
     extractFn(SRC.Web, 'webSaveMailing_'),
     extractFn(SRC.Web, 'findMailing_'),
     extractFn(SRC.Web, 'webDeleteMailing_'),
+    extractFn(SRC.Web, 'importCell_'),
+    extractFn(SRC.Web, 'addressBookImport_'),
+    extractFn(SRC.Web, 'webPreviewAddressImport_'),
+    extractFn(SRC.Web, 'webRunAddressImport_'),
     extractFn(SRC.Web, 'webConfirmAddress_'),
   ].join('\n'), ctx);
   return ctx;
@@ -279,8 +300,9 @@ console.log('\nVERA adds its tabs and disturbs nothing else');
                       tabs: { "Ahmed's list": his } });
   c.webGetAddressBook_();
 
-  check('all three tabs are created', c._created.indexOf('Households') !== -1 &&
-        c._created.indexOf('People') !== -1 && c._created.indexOf('Mailings') !== -1,
+  check('all four tabs are created', c._created.indexOf('Households') !== -1 &&
+        c._created.indexOf('People') !== -1 && c._created.indexOf('Mailings') !== -1 &&
+        c._created.indexOf('Import') !== -1,
         JSON.stringify(c._created));
   const hdrOf = t => ((c._tabs[t] && c._tabs[t]._data[0]) || []).join('|');
   check('…with the full headers', hdrOf('Households') === HH_H.join('|'), hdrOf('Households'));
@@ -295,7 +317,7 @@ console.log('\nVERA adds its tabs and disturbs nothing else');
 
   const before = JSON.stringify(c._tabs['Households']._data);
   c.webGetAddressBook_();
-  check('a second call creates nothing new', c._created.length === 3, JSON.stringify(c._created));
+  check('a second call creates nothing new', c._created.length === 4, JSON.stringify(c._created));
   check('…and rewrites no headers', JSON.stringify(c._tabs['Households']._data) === before);
 }
 
@@ -738,6 +760,149 @@ console.log('\nThe property store stops filling up');
         'delete-all then restore loses EVERYTHING if the run is killed between them, ' +
         'and the nightly run is killed often enough to have a watchdog for it');
   check('…and one failed delete does not abort the rest', /catch \(delErr\)/.test(code));
+}
+
+console.log('\nBulk import');
+{
+  // A realistic paste: a family across three rows with the address on the first only,
+  // a single-person household with no Household cell, a blank spacer, and a row with
+  // nothing but a name.
+  const importRows = () => [
+    ['The Smiths Family', 'John Smith', 'Adult', 'john@x.test', '555-1',
+     '12 Elm St', 'Apt 4', 'Austin', 'TX', '78701', 'USA', 'Family', 'via Jane', '', ''],
+    ['The Smiths Family', 'Jane Smith', 'Adult', 'jane@x.test', '', '', '', '', '', '', '', '', '', '', ''],
+    ['The Smiths Family', 'Mia Smith',  'Child', '',            '', '', '', '', '', '', '', '', '', 'allergic to nuts', ''],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['', 'Aunt Mary', 'Adult', 'mary@x.test', '', '3 Oak Rd', '', 'Reston', 'VA', '', 'USA', 'Family', '', '', ''],
+  ];
+  const freshTabs = (hh, pp) => ({
+    'Households': fakeSheet(HH_H, hh || []),
+    'People':     fakeSheet(P_H, pp || []),
+    'Mailings':   fakeSheet(M_H, []),
+    'Import':     fakeSheet(I_H, importRows()),
+  });
+
+  // ---- the preview writes nothing but Status ----
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: freshTabs() });
+    const r = c.webPreviewAddressImport_();
+    check('the preview counts the households', r.households.created === 2, JSON.stringify(r.households));
+    check('…and the people', r.people.created === 4, JSON.stringify(r.people));
+    check('…and says it wrote nothing',
+          r.messages.some(m => /Nothing has been written/.test(m)), JSON.stringify(r.messages));
+    check('NOTHING reached the address book',
+          c._tabs['Households']._data.length === 1 && c._tabs['People']._data.length === 1,
+          'a preview that writes is not a preview');
+    const status = c._tabs['Import']._data.slice(1).map(row => row[I_H.indexOf('Status')]);
+    check('each row says what WILL happen', /^Will add: John Smith/.test(status[0]), JSON.stringify(status[0]));
+    check('…and a blank spacer row says nothing', status[3] === '', JSON.stringify(status[3]));
+  }
+
+  // ---- the import ----
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: freshTabs() });
+    const r = c.webRunAddressImport_();
+    const out = c.webGetAddressBook_();
+
+    check('two households are created', out.households.length === 2, JSON.stringify(out.households.map(h => h.household)));
+    check('…three rows of one family became ONE household',
+          out.households.filter(h => h.household === 'The Smiths Family').length === 1,
+          'grouped by the Household column, not by matching addresses');
+    const smiths = out.households.filter(h => h.household === 'The Smiths Family')[0];
+    check('…taking the address from the one row that had it',
+          smiths.address1 === '12 Elm St' && smiths.city === 'Austin' && smiths.postalCode === '78701',
+          JSON.stringify(smiths));
+    check('…and the household note', smiths.notes === 'via Jane');
+
+    check('four people are created', out.people.length === 4, String(out.people.length));
+    check('…three of them in the Smith household',
+          out.people.filter(p => p.householdId === smiths.id).length === 3);
+    check('…with their own emails', out.people.filter(p => p.name === 'John Smith')[0].email === 'john@x.test');
+    check('…and member type', out.people.filter(p => p.name === 'Mia Smith')[0].memberType === 'Child');
+    check('…and a person note stays on the person',
+          out.people.filter(p => p.name === 'Mia Smith')[0].notes === 'allergic to nuts');
+
+    const mary = out.households.filter(h => h.household === 'Aunt Mary')[0];
+    check('a person with no Household cell becomes a household of one',
+          !!mary && out.people.filter(p => p.householdId === mary.id).length === 1,
+          JSON.stringify(out.households.map(h => h.household)));
+    check('…keeping their own address', mary.city === 'Reston');
+
+    check('a blank spacer row creates nothing', out.households.length === 2);
+    check('the Status column reports what happened',
+          /^Added: John Smith/.test(c._tabs['Import']._data[1][I_H.indexOf('Status')]),
+          JSON.stringify(c._tabs['Import']._data[1][I_H.indexOf('Status')]));
+    check('the Import rows are NOT deleted', c._tabs['Import']._data.length === 6,
+          'VERA deleting rows you typed is not something to do unwatched');
+
+    // Assertions on COST, not only outcome. Five rows must not mean five writes.
+    check('the whole Status column is written in ONE call',
+          c._tabs['Import']._writes.setValues === 1 && c._tabs['Import']._writes.setValue === 0,
+          JSON.stringify(c._tabs['Import']._writes) +
+          ' — every setValue is its own round trip, and an import is hundreds of rows');
+    check('…and the new rows go in as one block per tab',
+          c._tabs['Households']._writes.setValues === 1 &&
+          c._tabs['People']._writes.setValues === 1,
+          JSON.stringify({ hh: c._tabs['Households']._writes, p: c._tabs['People']._writes }));
+  }
+
+  // ---- running it twice ----
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: freshTabs() });
+    c.webRunAddressImport_();
+    const r2 = c.webRunAddressImport_();
+    const out = c.webGetAddressBook_();
+    check('a second run creates no duplicate households', out.households.length === 2,
+          JSON.stringify(out.households.map(h => h.household)));
+    check('…nor duplicate people', out.people.length === 4, String(out.people.length));
+    check('…and reports them as already present', r2.people.skipped === 4, JSON.stringify(r2.people));
+    check('…saying so per row',
+          /Already present/.test(c._tabs['Import']._data[1][I_H.indexOf('Status')]));
+  }
+
+  // ---- an existing household: non-blank wins, blank leaves alone ----
+  {
+    const tabs = freshTabs([
+      ['HH-9', 'The Smiths Family', '99 Old Rd', '', 'Dallas', 'TX', '75001', 'USA',
+       'Family', '2026-01-10', 'keep this note'],
+    ]);
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: tabs });
+    const r = c.webRunAddressImport_();
+    const smiths = c.webGetAddressBook_().households.filter(h => h.id === 'HH-9')[0];
+
+    check('an existing household is updated, not duplicated', r.households.created === 1 &&
+          r.households.updated === 1, JSON.stringify(r.households));
+    check('…the Import row wins where it has a value',
+          smiths.address1 === '12 Elm St' && smiths.city === 'Austin' && smiths.postalCode === '78701',
+          JSON.stringify(smiths));
+    check('…a BLANK Import cell leaves the existing value alone',
+          smiths.addressConfirmed === '2026-01-10',
+          'a half-filled Import row must not wipe a good value — that is the hazard ' +
+          'of letting the import win, and the whole reason blanks are skipped');
+    check('…and its people are added to it',
+          c.webGetAddressBook_().people.filter(p => p.householdId === 'HH-9').length === 3);
+  }
+
+  // ---- an empty tab, and the shared implementation ----
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []), 'Import': fakeSheet(I_H, []),
+    }});
+    const r = c.webRunAddressImport_();
+    check('an empty Import tab is a no-op that says so', r.rows === 0 &&
+          /empty/i.test(r.messages.join(' ')), JSON.stringify(r.messages));
+  }
+
+  check('preview and import are the SAME function with a flag',
+        /function webPreviewAddressImport_\(\) \{ return addressBookImport_\(true\); \}/.test(SRC.Web) &&
+        /function webRunAddressImport_\(\) \{ return addressBookImport_\(false\); \}/.test(SRC.Web),
+        'a preview with its own implementation is a preview that can lie, and being ' +
+        'believed is the only way a preview can hurt you');
+  check('the bulk append writes one block, not a row at a time',
+        /setValues\(block\)/.test(extractFn(SRC.Book, 'appendAddressBookRows_')) &&
+        !/appendRow/.test(extractFn(SRC.Book, 'appendAddressBookRows_')),
+        'appendRow per row is a round trip per row, and an import is hundreds');
 }
 
 console.log('\nWiring');

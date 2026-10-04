@@ -2407,6 +2407,8 @@ function AddressBookView({
   // right most of the time and inexplicable the rest.
   const [unsentOnly, setUnsentOnly] = React.useState('year');
   const [addingTo, setAddingTo] = React.useState(false);
+  const [importMsg, setImportMsg] = React.useState(null);
+  const [showImport, setShowImport] = React.useState(false);
   const [open, setOpen] = React.useState({});
   const [hhForm, setHhForm] = React.useState(null);
   const [cForm, setCForm] = React.useState(null);
@@ -2429,6 +2431,28 @@ function AddressBookView({
   React.useEffect(() => {
     load();
   }, []);
+
+  // Preview and import share one server function, so what you are shown and what
+  // happens cannot disagree.
+  async function runImport(dry) {
+    setBusy(true);
+    setImportMsg(null);
+    try {
+      const d = await apiPost(apiUrl, apiToken, {
+        action: dry ? 'preview_address_import' : 'run_address_import'
+      });
+      setImportMsg({
+        dry: dry,
+        lines: d.messages || []
+      });
+      if (!dry) await load();
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function write(body) {
     setBusy(true);
     try {
@@ -2550,13 +2574,85 @@ function AddressBookView({
       cursor: 'pointer',
       fontSize: 13
     }
-  }, "+ Household")), error && /*#__PURE__*/React.createElement("div", {
+  }, "+ Household"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowImport(v => !v),
+    disabled: busy,
+    className: 'subtab-btn' + (showImport ? ' active' : '')
+  }, "⬆️ Bulk import")), error && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: '#f87171',
       marginBottom: 10
     }
-  }, "⚠️ ", error), event && /*#__PURE__*/React.createElement(CardRunView, {
+  }, "⚠️ ", error), showImport && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#101c33',
+      border: '1px solid #1e3060',
+      borderRadius: 10,
+      padding: 14,
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: '#dde1f0',
+      fontWeight: 600,
+      marginBottom: 6
+    }
+  }, "⬆️ Bulk import"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: '#8aa0c0',
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, "Fill the ", /*#__PURE__*/React.createElement("strong", null, "Import"), " tab in the sheet — ", /*#__PURE__*/React.createElement("strong", null, "one row per person"), ", with the household name repeated for everyone in the same family. The address only needs filling on one row of each household. Then preview, read the", /*#__PURE__*/React.createElement("strong", null, " Status"), " column, and import.", /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#6b7fa8',
+      marginTop: 5
+    }
+  }, "Rows group by the ", /*#__PURE__*/React.createElement("strong", null, "Household"), " column, not by address — so “12 Elm St” and “12 Elm Street” will not split one family into two. Running it twice is safe: people already in the book are reported, not duplicated.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      flexWrap: 'wrap'
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => runImport(true),
+    disabled: busy,
+    style: {
+      background: 'none',
+      border: '1px solid #3d5fa0',
+      color: '#8ab4f8',
+      borderRadius: 6,
+      padding: '5px 14px',
+      fontSize: 12,
+      cursor: 'pointer'
+    }
+  }, "Preview"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      if (window.confirm('Import the rows from the Import tab into the address book?')) runImport(false);
+    },
+    disabled: busy,
+    style: {
+      background: '#8ab4f8',
+      color: '#0d1117',
+      border: 'none',
+      borderRadius: 6,
+      padding: '5px 14px',
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: 'pointer'
+    }
+  }, "Import")), importMsg && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      fontSize: 12,
+      color: importMsg.dry ? '#c9a84c' : '#86efac'
+    }
+  }, importMsg.lines.map((l, i) => /*#__PURE__*/React.createElement("div", {
+    key: i
+  }, l)))), event && /*#__PURE__*/React.createElement(CardRunView, {
     event: event,
     households: households,
     mailings: mailings,

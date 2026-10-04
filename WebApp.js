@@ -556,6 +556,8 @@ function doPost(e) {
       case 'delete_contact':             return jsonOut_(webDeleteContact_(body));
       case 'save_mailing':               return jsonOut_(webSaveMailing_(body));
       case 'delete_mailing':             return jsonOut_(webDeleteMailing_(body));
+      case 'preview_address_import':     return jsonOut_(webPreviewAddressImport_());
+      case 'run_address_import':         return jsonOut_(webRunAddressImport_());
       case 'confirm_address':            return jsonOut_(webConfirmAddress_(body));
       // Neighborhood Watch — Flyer upload (Issue #179)
       case 'extract_flyer':              return jsonOut_(webExtractFlyer_(body));
@@ -11590,3 +11592,186 @@ function webConfirmAddress_(body) {
   writeAddressBookRow_(sheet, rowNum, { 'Address Confirmed': when });
   return { ok: true, id: id, confirmed: when };
 }
+
+// ============================================================
+// ADDRESS BOOK — bulk import
+// ============================================================
+//
+// The Import tab is a paste target: one row per person, the household repeated. This
+// reads it, groups rows into households by the 'Household' column, and creates or
+// updates the address book from them.
+//
+// ONE FUNCTION DRIVES BOTH THE PREVIEW AND THE COMMIT. A preview that is a separate
+// implementation is a preview that can be wrong, and being wrong is the only way a
+// preview can hurt you — you read it, believe it, and press the button.
+
+/** Trimmed string for a field, '' when absent. */
+function importCell_(row, name) {
+  return String(row[name] === undefined || row[name] === null ? '' : row[name]).trim();
+}
+
+/**
+ * Reads the Import tab and either reports what it would do (dryRun) or does it.
+ *
+ * @param {boolean} dryRun
+ * @returns {Object} { ok, rows, households: {created, updated}, people: {created, skipped}, messages }
+ */
+function addressBookImport_(dryRun) {
+  var ss      = addressBookForWrite_();
+  var impSheet = ss.getSheetByName(ADDRESS_BOOK_IMPORT_);
+  var hhSheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  var pSheet   = ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+
+  if (!impSheet || impSheet.getLastRow() < 2) {
+    return { ok: true, dryRun: !!dryRun, rows: 0, households: { created: 0, updated: 0 },
+             people: { created: 0, skipped: 0 }, messages: ['The Import tab is empty.'] };
+  }
+
+  var impCols = addressBookCols_(impSheet);
+  var width   = Math.max(impSheet.getLastColumn(), 1);
+  var raw     = impSheet.getRange(2, 1, impSheet.getLastRow() - 1, width).getValues();
+
+  // Existing state, read ONCE rather than per row.
+  var households = readAddressBookTab_(hhSheet, HOUSEHOLD_HEADERS);
+  var people     = readAddressBookTab_(pSheet,  CONTACT_HEADERS);
+  var hhByName   = {};
+  households.forEach(function(h) { hhByName[h['Household'].toLowerCase()] = h; });
+  var peopleKey  = {};
+  people.forEach(function(p) {
+    peopleKey[p['Household ID'] + '|' + p['Name'].toLowerCase()] = true;
+  });
+
+  var HOUSEHOLD_FIELDS = {
+    'Address Line 1': 'Address Line 1', 'Address Line 2': 'Address Line 2',
+    'City': 'City', 'State': 'State', 'Postal Code': 'Postal Code',
+    'Country': 'Country', 'Relationship': 'Relationship',
+    'Household Notes': 'Notes',
+  };
+
+  // ---- pass 1: group the rows into households ----
+  var groups = {}, order = [], status = [];
+  raw.forEach(function(r, i) {
+    var row = {};
+    Object.keys(impCols).forEach(function(name) { row[name] = r[impCols[name] - 1]; });
+
+    var name = importCell_(row, 'Name');
+    var hh   = importCell_(row, 'Household');
+    // A person with no household of their own is a household of one. Entirely blank
+    // rows are spacers, not errors — a pasted block usually has a few.
+    if (!hh && name) hh = name;
+    if (!hh && !name) { status[i] = ''; return; }
+
+    var key = hh.toLowerCase();
+    if (!groups[key]) { groups[key] = { label: hh, fields: {}, members: [], rows: [] }; order.push(key); }
+    var g = groups[key];
+    g.rows.push(i);
+    // First non-blank wins, so the address can be filled on just the first row of a
+    // family rather than repeated down every one of them.
+    Object.keys(HOUSEHOLD_FIELDS).forEach(function(src) {
+      var v = importCell_(row, src);
+      if (v && !g.fields[HOUSEHOLD_FIELDS[src]]) g.fields[HOUSEHOLD_FIELDS[src]] = v;
+    });
+    if (name) {
+      g.members.push({ rowIndex: i, name: name,
+                       memberType: importCell_(row, 'Member Type'),
+                       email: importCell_(row, 'Email'),
+                       phone: importCell_(row, 'Phone'),
+                       notes: importCell_(row, 'Person Notes') });
+    }
+  });
+
+  // ---- pass 2: decide, and (unless dry) write ----
+  var newHouseholds = [], newPeople = [];
+  var hhCreated = 0, hhUpdated = 0, pCreated = 0, pSkipped = 0;
+  var messages = [];
+
+  order.forEach(function(key) {
+    var g        = groups[key];
+    var existing = hhByName[key];
+    var hhId, verb, changed = [];
+
+    if (existing) {
+      hhId = existing['ID'];
+      // NON-BLANK WINS, BLANK LEAVES ALONE. "The Import tab is the fresher copy" is
+      // what was asked for; "a half-filled row wipes a good address" is not, and the
+      // two are the same code if you are not careful.
+      Object.keys(g.fields).forEach(function(target) {
+        if (g.fields[target] && g.fields[target] !== existing[target]) changed.push(target);
+      });
+      if (changed.length) {
+        hhUpdated++;
+        verb = 'updates ' + changed.join(', ');
+        if (!dryRun) {
+          var rowNum = findAddressBookRow_(hhSheet, hhId);
+          var patch  = {};
+          changed.forEach(function(t) { patch[t] = g.fields[t]; });
+          writeAddressBookRow_(hhSheet, rowNum, patch);
+        }
+      } else {
+        verb = 'household already matches';
+      }
+    } else {
+      hhId = newAddressBookId_('HH');
+      hhCreated++;
+      verb = 'new household';
+      var fields = { 'ID': hhId, 'Household': g.label };
+      Object.keys(g.fields).forEach(function(t) { fields[t] = g.fields[t]; });
+      newHouseholds.push(fields);
+    }
+
+    var added = 0;
+    g.members.forEach(function(m) {
+      var pk = hhId + '|' + m.name.toLowerCase();
+      if (peopleKey[pk]) {
+        pSkipped++;
+        status[m.rowIndex] = (dryRun ? 'Already present: ' : 'Already present: ') + m.name;
+        return;
+      }
+      peopleKey[pk] = true;
+      pCreated++; added++;
+      newPeople.push({ 'ID': newAddressBookId_('P'), 'Household ID': hhId, 'Name': m.name,
+                       'Email': m.email, 'Phone': m.phone,
+                       'Member Type': m.memberType || 'Adult', 'Notes': m.notes });
+      status[m.rowIndex] = (dryRun ? 'Will add: ' : 'Added: ') + m.name + ' — ' + verb;
+    });
+
+    // Household-only rows (an address with nobody named) still deserve an answer.
+    g.rows.forEach(function(ri) {
+      if (status[ri]) return;
+      status[ri] = (dryRun ? 'Will ' : '') + verb + (added ? '' : ', no new people');
+    });
+  });
+
+  if (!dryRun) {
+    appendAddressBookRows_(hhSheet, HOUSEHOLD_HEADERS, newHouseholds);
+    appendAddressBookRows_(pSheet,  CONTACT_HEADERS,   newPeople);
+  }
+
+  // The Status column in ONE write, not one per row.
+  var statusCol = impCols['Status'];
+  if (statusCol) {
+    var block = [];
+    for (var i = 0; i < raw.length; i++) block.push([status[i] || '']);
+    impSheet.getRange(2, statusCol, block.length, 1).setValues(block);
+  } else {
+    messages.push('No Status column on the Import tab, so there is nowhere to report per-row.');
+  }
+
+  messages.push((dryRun ? 'Preview: ' : 'Imported: ') +
+    hhCreated + ' new household' + (hhCreated === 1 ? '' : 's') + ', ' +
+    hhUpdated + ' updated, ' +
+    pCreated + ' ' + (pCreated === 1 ? 'person' : 'people') + ', ' +
+    pSkipped + ' already present.');
+  if (dryRun) messages.push('Nothing has been written. Check the Status column, then press Import.');
+
+  return { ok: true, dryRun: !!dryRun, rows: raw.length,
+           households: { created: hhCreated, updated: hhUpdated },
+           people: { created: pCreated, skipped: pSkipped },
+           messages: messages };
+}
+
+/** POST preview_address_import — says what it would do, writes nothing but Status. */
+function webPreviewAddressImport_() { return addressBookImport_(true); }
+
+/** POST run_address_import — does it. */
+function webRunAddressImport_() { return addressBookImport_(false); }

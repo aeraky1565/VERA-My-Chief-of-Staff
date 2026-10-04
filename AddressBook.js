@@ -30,6 +30,7 @@ var ADDRESS_BOOK_HEALTH_     = 'sheet:AddressBook';
 var ADDRESS_BOOK_HOUSEHOLDS_ = 'Households';
 var ADDRESS_BOOK_PEOPLE_     = 'People';
 var ADDRESS_BOOK_MAILINGS_   = 'Mailings';
+var ADDRESS_BOOK_IMPORT_     = 'Import';
 
 // The envelope.
 //
@@ -54,6 +55,21 @@ var CONTACT_HEADERS   = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member
 // occasion on Households — grows the tab forever, and a one-off like wedding
 // thank-yous would widen it permanently for something that happens once.
 var MAILING_HEADERS   = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
+
+// The paste target for bulk entry: ONE ROW PER PERSON, with the household repeated.
+// That is the shape a contact list is already in and the shape a CSV export lands in,
+// so it can be pasted rather than retyped.
+//
+// Rows group into households by the 'Household' column, NOT by matching addresses.
+// "12 Elm St" and "12 Elm Street" are the same house to a person and two houses to a
+// string comparison, and that is exactly how one family quietly becomes two.
+//
+// 'Status' is written BY VERA, never by hand: it is where the preview says what each
+// row will do, and where the import says what it did.
+var IMPORT_HEADERS    = ['Household', 'Name', 'Member Type', 'Email', 'Phone',
+                         'Address Line 1', 'Address Line 2', 'City', 'State',
+                         'Postal Code', 'Country', 'Relationship',
+                         'Household Notes', 'Person Notes', 'Status'];
 
 // ---- Access -----------------------------------------------------------------
 
@@ -119,6 +135,7 @@ function ensureAddressBookTabs_(ss) {
   ensureSheet(ss, ADDRESS_BOOK_HOUSEHOLDS_, HOUSEHOLD_HEADERS);
   ensureSheet(ss, ADDRESS_BOOK_PEOPLE_,     CONTACT_HEADERS);
   ensureSheet(ss, ADDRESS_BOOK_MAILINGS_,   MAILING_HEADERS);
+  ensureSheet(ss, ADDRESS_BOOK_IMPORT_,     IMPORT_HEADERS);
 }
 
 /**
@@ -187,6 +204,30 @@ function writeAddressBookRow_(sheet, rowNum, fields) {
     if (!c) return;
     sheet.getRange(rowNum, c).setValue(fields[name]);
   });
+}
+
+/**
+ * Appends MANY rows in one call.
+ *
+ * appendRow is a round trip each, and an import of sixty families is a few hundred
+ * of them — minutes of wall clock for work that is one write. Same rule the memory
+ * prune follows in reverse: batch, do not loop.
+ */
+function appendAddressBookRows_(sheet, headers, rowObjects) {
+  if (!rowObjects || !rowObjects.length) return 0;
+  var cols    = addressBookCols_(sheet);
+  var lastCol = Math.max(sheet.getLastColumn(), headers.length);
+  var block   = rowObjects.map(function(fields) {
+    var row = [];
+    for (var i = 0; i < lastCol; i++) row.push('');
+    Object.keys(fields).forEach(function(name) {
+      var c = cols[name];
+      if (c) row[c - 1] = fields[name];
+    });
+    return row;
+  });
+  sheet.getRange(sheet.getLastRow() + 1, 1, block.length, lastCol).setValues(block);
+  return block.length;
 }
 
 /** Appends a row, placing each field under its own header. */
