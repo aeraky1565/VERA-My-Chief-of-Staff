@@ -3823,6 +3823,22 @@ function AddressBookView({
       setBusy(false);
     }
   }
+
+  // Entering a card run — including one for an event nobody has ever been sent.
+  function startEvent(choice) {
+    if (choice !== '__new__') {
+      setEvent(choice);
+      setAddingTo(false);
+      return;
+    }
+    const name = (window.prompt('Name the event — for example "Christmas card" or "Wedding thank you"') || '').trim();
+    if (!name) return; // cancelled; stay where we were
+    setEvent(name);
+    // Nobody has had it yet, so open the pool straight away rather than showing an
+    // empty list and a hint about a button they would then have to find.
+    setAddingTo(true);
+    setUnsentOnly('year');
+  }
   async function write(body) {
     setBusy(true);
     try {
@@ -3921,17 +3937,21 @@ function AddressBookView({
     })
   }), /*#__PURE__*/React.createElement("select", {
     value: event,
-    onChange: e => setEvent(e.target.value),
-    title: "Pick an event to run a card list for it",
+    onChange: e => startEvent(e.target.value),
+    title: "Pick an event to run a card list for it, or start a new one",
     style: Object.assign({}, inp, {
       maxWidth: 190
     })
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
-  }, "📒 Address book"), events.map(ev => /*#__PURE__*/React.createElement("option", {
+  }, "📒 Address book"), event && events.indexOf(event) === -1 && /*#__PURE__*/React.createElement("option", {
+    value: event
+  }, "✉️ ", event), events.map(ev => /*#__PURE__*/React.createElement("option", {
     key: ev,
     value: ev
-  }, "✉️ ", ev))), /*#__PURE__*/React.createElement("button", {
+  }, "✉️ ", ev)), /*#__PURE__*/React.createElement("option", {
+    value: "__new__"
+  }, "＋ New event…")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setHhForm(abBlankHousehold()),
     disabled: busy,
     style: {

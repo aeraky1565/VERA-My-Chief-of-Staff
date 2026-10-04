@@ -1002,8 +1002,23 @@ console.log('\nThe dashboards');
     check(label + ': a mis-tick is undoable', /action:\s*'delete_mailing'/.test(s));
     check(label + ': the full history renders under a household',
           /SENT/.test(s) && /m\.event/.test(s) && /m\.sent/.test(s));
-    check(label + ': a new event can be started from nothing',
-          /Add someone/.test(s), 'otherwise a brand-new event is unreachable');
+    // THE DEAD END THIS SHIPPED WITH, and the blind spot that let it through.
+    // `events` is derived from the mailings that already exist, so on an address
+    // book with no history the picker offered only "📒 Address book" — and the one
+    // control that starts an event from nothing, "+ Add someone", lives INSIDE the
+    // run you could not reach. The check below passed the whole time, because every
+    // fixture seeded `events`. It stays, but it no longer carries the claim alone.
+    check(label + ': once you are in a run, + Add someone draws from the pool',
+          /Add someone/.test(s));
+    check(label + ': the picker offers a way into an event nobody has ever had',
+          /value="__new__"|value:\s*"__new__"/.test(s),
+          'built from history, so with no history there was nothing to pick');
+    check(label + ': …and the chosen event is an option before it has any history',
+          /events\.indexOf\(event\) === -1/.test(s),
+          'otherwise the run opens with the picker sitting blank');
+    check(label + ': …and the picker goes through startEvent, not straight to setEvent',
+          /onChange(?:=\{|:\s*)e => startEvent\(e\.target\.value\)/.test(s),
+          "setEvent would open a run called '__new__' and file mailings under it");
 
     // An empty household showed "0 people" as dead grey text with the only way in
     // being a 4px triangle, which reads as broken rather than empty. Both halves of
@@ -1025,6 +1040,61 @@ console.log('\nThe dashboards');
 
   check('index.html is not a stale build',
         SRC.Index.indexOf('AddressBookView') !== -1, 'run node docs/build.js');
+
+  // startEvent is the whole of the way in, so it is RUN rather than grepped — the
+  // real function out of each shipped copy, over stub setters. index.html is in the
+  // list because it is the file the browser actually loads.
+  [['docs/app.js', SRC.App], ['docs/dashboard-lite.html', SRC.Lite],
+   ['docs/index.html', SRC.Index]].forEach(([label, s]) => {
+    const run = (choice, answer) => {
+      const got = { event: [], adding: [], unsent: [], asked: [] };
+      const ctx = {
+        window: { prompt: msg => { got.asked.push(msg); return answer; } },
+        setEvent:      v => got.event.push(v),
+        setAddingTo:   v => got.adding.push(v),
+        setUnsentOnly: v => got.unsent.push(v),
+      };
+      vm.createContext(ctx);
+      vm.runInContext(extractFn(s, 'startEvent') +
+                      ';startEvent(' + JSON.stringify(choice) + ');', ctx);
+      return got;
+    };
+
+    const existing = run('Christmas card', null);
+    check(label + ': picking an event that has history just opens its run',
+          existing.event.length === 1 && existing.event[0] === 'Christmas card' &&
+          existing.asked.length === 0,
+          'nothing to name — it already has a name');
+    check(label + ': …and closes the add-someone pool left open by the last run',
+          existing.adding.length === 1 && existing.adding[0] === false,
+          'otherwise the pool follows you from event to event');
+
+    const fresh = run('__new__', 'Wedding thank you');
+    check(label + ': + New event asks what to call it', fresh.asked.length === 1 &&
+          /Christmas card/.test(fresh.asked[0]),
+          'an example is worth more than the word "event"');
+    check(label + ': …enters the run for the name given',
+          fresh.event.length === 1 && fresh.event[0] === 'Wedding thank you');
+    check(label + ': …with the pool open, because nobody has had it yet',
+          fresh.adding.length === 1 && fresh.adding[0] === true,
+          'an empty list plus a hint about a button is how the dead end felt');
+    check(label + ': …and the still-to-send filter set, not left on the last event',
+          fresh.unsent.length === 1 && fresh.unsent[0] === 'year');
+    check(label + ': the sentinel never becomes an event name',
+          fresh.event.indexOf('__new__') === -1,
+          'a mailing filed under __new__ renders nowhere');
+
+    const cancelled = run('__new__', null);
+    check(label + ': cancelling the prompt changes nothing',
+          cancelled.event.length === 0 && cancelled.adding.length === 0 &&
+          cancelled.unsent.length === 0,
+          'stranding you in a nameless run is worse than the dead end');
+    check(label + ': …and so does a name that is only spaces',
+          run('__new__', '   ').event.length === 0);
+    check(label + ': the name is trimmed',
+          run('__new__', '  Christmas card  ').event[0] === 'Christmas card',
+          'an untrimmed name is a SECOND event that looks identical in the picker');
+  });
 
   const readme = fs.readFileSync(ROOT + '/README.md', 'utf8');
   check('the README documents the script property', /ADDRESS_BOOK_SHEET_ID/.test(readme));

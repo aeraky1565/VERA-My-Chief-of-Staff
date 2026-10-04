@@ -15,9 +15,18 @@ FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); }
 DOCS.forEach(f => { BASE['docs/' + f] = fs.readFileSync(path.join(SRC_DIR, 'docs', f), 'utf8'); });
 BASE['README.md'] = fs.readFileSync(path.join(SRC_DIR, 'README.md'), 'utf8');
 
+// The same mutation applied to all three shipped copies. Every one of them must
+// actually change: the three differ in whitespace (app.js and index.html are what
+// Babel reprinted, dashboard-lite.html is the JSX as written), so a pattern tuned to
+// one shape can silently miss another — and a control that half-applies still looks
+// like it bit, because the harness only sees that SOMETHING changed.
 const eachDoc = (b, fn) => {
-  const o = {};
-  DOCS.forEach(f => { o['docs/' + f] = fn(b['docs/' + f]); });
+  const o = {}, missed = [];
+  DOCS.forEach(f => {
+    o['docs/' + f] = fn(b['docs/' + f]);
+    if (o['docs/' + f] === b['docs/' + f]) missed.push(f);
+  });
+  if (missed.length) throw new Error('mutation did not apply to ' + missed.join(', '));
   return o;
 };
 
@@ -426,6 +435,30 @@ const CONTROLS = {
   }),
   'an empty household goes back to dead "0 people" text': b => eachDoc(b, s =>
     s.replace(/\+ Add the names/g, '0 people')),
+
+  // ---- the dead end: reaching an event nobody has ever been sent -----------
+  // Each of these puts back the shipped version of the closed loop, in which the
+  // picker was built from the mailings that already existed.
+  'the picker is wired straight to setEvent again': b => eachDoc(b, s =>
+    s.replace(/startEvent\(e\.target\.value\)/g, 'setEvent(e.target.value)')),
+  'the + New event option is taken out of the picker': b => eachDoc(b, s => s
+    .replace(/\n *\{\/\* Without this the UI is a closed loop:[\s\S]*?\*\/\}\n *<option value="__new__">＋ New event…<\/option>/, '')
+    .replace(/, \/\*#__PURE__\*\/React\.createElement\("option", \{\n *value: "__new__"\n *\}, "＋ New event…"\)/, '')),
+  'a just-named event is not offered as its own option (blank picker)': b => eachDoc(b, s => s
+    .replace(/\n *\{event && events\.indexOf\(event\) === -1 &&\n *<option value=\{event\}>✉️ \{event\}<\/option>\}/, '')
+    .replace(/event && events\.indexOf\(event\) === -1 && \/\*#__PURE__\*\/React\.createElement\("option", \{\n *value: event\n *\}, "✉️ ", event\), /, '')),
+  'cancelling the name prompt enters a nameless run': b => eachDoc(b, s =>
+    s.replace(/ *if \(!name\) return;[^\n]*\n/, '')),
+  'the typed name is not trimmed': b => eachDoc(b, s =>
+    // Scoped to the prompt itself. `|| '').trim()` appears in more than one function,
+    // and a loose replace lands in whichever comes first in the file.
+    s.replace(/(window\.prompt\('Name the event[^\n]*\|\| ''\))\.trim\(\)/, '$1')),
+  'a new event opens on an empty list instead of the pool': b => eachDoc(b, s =>
+    s.replace(/setAddingTo\(true\);(\s*)setUnsentOnly\('year'\);/, "$1setUnsentOnly('year');")),
+  'a new event inherits the last run\'s filter': b => eachDoc(b, s =>
+    s.replace(/setAddingTo\(true\);\s*setUnsentOnly\('year'\);/, 'setAddingTo(true);')),
+  'switching events leaves the add-someone pool open': b => eachDoc(b, s =>
+    s.replace(/setEvent\(choice\);\s*setAddingTo\(false\);/, 'setEvent(choice);')),
   'only the small triangle opens a household again': b => eachDoc(b, s =>
     s.replace(/Open to add people and see what has been sent/g, '')),
   'the dashboards write through apiGet again': b => {

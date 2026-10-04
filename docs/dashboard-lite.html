@@ -7985,6 +7985,18 @@ function AddressBookView({ apiUrl, apiToken }) {
     finally { setBusy(false); }
   }
 
+  // Entering a card run — including one for an event nobody has ever been sent.
+  function startEvent(choice) {
+    if (choice !== '__new__') { setEvent(choice); setAddingTo(false); return; }
+    const name = (window.prompt('Name the event — for example "Christmas card" or "Wedding thank you"') || '').trim();
+    if (!name) return;                       // cancelled; stay where we were
+    setEvent(name);
+    // Nobody has had it yet, so open the pool straight away rather than showing an
+    // empty list and a hint about a button they would then have to find.
+    setAddingTo(true);
+    setUnsentOnly('year');
+  }
+
   async function write(body) {
     setBusy(true);
     try {
@@ -8051,11 +8063,20 @@ function AddressBookView({ apiUrl, apiToken }) {
         <input placeholder="Search name, household, city…" value={query}
           onChange={e => setQuery(e.target.value)}
           style={Object.assign({}, inp, { flex:1, minWidth:160 })} />
-        <select value={event} onChange={e => setEvent(e.target.value)}
-          title="Pick an event to run a card list for it"
+        <select value={event} onChange={e => startEvent(e.target.value)}
+          title="Pick an event to run a card list for it, or start a new one"
           style={Object.assign({}, inp, { maxWidth:190 })}>
           <option value="">📒 Address book</option>
+          {/* A just-named event is not in `events` until its first mailing is saved,
+              so without an option carrying it the picker would sit blank while the
+              run for it is open. */}
+          {event && events.indexOf(event) === -1 &&
+            <option value={event}>✉️ {event}</option>}
           {events.map(ev => <option key={ev} value={ev}>✉️ {ev}</option>)}
+          {/* Without this the UI is a closed loop: the event list is built from
+              mailings that already exist, and the only way to log the first one is
+              from inside a card run you cannot reach. */}
+          <option value="__new__">＋ New event…</option>
         </select>
         <button onClick={() => setHhForm(abBlankHousehold())} disabled={busy}
           style={{ padding:'6px 14px', borderRadius:6, border:'none', background:'#8ab4f8',
@@ -8490,6 +8511,7 @@ function AddressBookContactModal({ form, setForm, onSave, busy }) {
     </AddressBookModalShell>
   );
 }
+
 
 // ---- App --------------------------------------------------------------------
 

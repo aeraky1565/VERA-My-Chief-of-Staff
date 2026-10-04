@@ -524,6 +524,17 @@ they are on the list every year after, with no flag anywhere to keep in step or 
 stale. Ticking logs a mailing dated today; un-ticking deletes it, so a mis-tick is
 undoable. A brand-new event starts empty, which is what *+ Add someone* is for.
 
+**Starting the first event.** The picker is built from the mailings that already
+exist, so on an empty address book it offers *＋ New event…*: it asks what to call
+the event, then opens its run with the add-someone pool already showing, because by
+definition nobody has had it yet.
+
+> Without that option the feature was a **closed loop** — the event list came from
+> history, and the only control that can create the first piece of history lived
+> inside a run you could not reach. Every test seeded the event list, so none of
+> them ever stood where Ahmed was standing. The fix is pinned by running the real
+> `startEvent` out of all three shipped dashboard copies.
+
 > The still-to-send filter is a **toggle**, not an inference: *not sent this year*
 > (right for anything annual) or *everyone on the list*. Guessing an event's cadence
 > from its own history would be right most of the time and inexplicable the rest.
