@@ -220,8 +220,8 @@ const CONTROLS = {
   }),
   'the event list is ordered oldest first': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      "    return String(b.sent || '').localeCompare(String(a.sent || ''));",
-      "    return String(a.sent || '').localeCompare(String(b.sent || ''));"),
+      '    return key(b).localeCompare(key(a));',
+      '    return key(a).localeCompare(key(b));'),
   }),
   'logging the same mailing twice writes two rows': b => ({
     'WebApp.js': b['WebApp.js'].replace(
@@ -243,8 +243,8 @@ const CONTROLS = {
   }),
   'save_mailing always inserts, never updates': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      /  var id = String\(b\.id \|\| ''\)\.trim\(\);\n  if \(id\) \{\n    var rowNum = findAddressBookRow_\(sheet, id\);\n    if \(!rowNum\) throw new Error\('Mailing not found: ' \+ id\);\n    writeAddressBookRow_\(sheet, rowNum, fields\);\n    return \{ ok: true, id: id, action: 'updated' \};\n  \}\n/,
-      "  var id = '';\n"),
+      "  var id = String(b.id || '').trim();\n  if (id) {",
+      "  var id = String(b.id || '').trim();\n  if (false) {"),
   }),
   'delete_mailing removes the household instead': b => ({
     'WebApp.js': b['WebApp.js'].replace(
@@ -312,7 +312,7 @@ const CONTROLS = {
   }),
   'the Status column is never written': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      /    var block = \[\];\n    for \(var i = 0; i < raw\.length; i\+\+\) block\.push\(\[status\[i\] \|\| ''\]\);\n    impSheet\.getRange\(2, statusCol, block\.length, 1\)\.setValues\(block\);\n/, ''),
+      /    var block = \[\];\n    for \(var i = 0;[\s\S]*?impSheet\.getRange\(2, statusCol, block\.length, 1\)\.setValues\(block\);\n/, ''),
   }),
   'the Status is written one row at a time': b => ({
     'WebApp.js': b['WebApp.js'].replace(
@@ -477,6 +477,121 @@ const CONTROLS = {
     DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f].replace(/ADDRESS_BOOK_SHEET_ID/g, 'the setting'); });
     return o;
   },
+  // ---- planned rows: a blank Sent means on the list, not posted -------------
+  'planned is not expressible (every row dated today)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var planned = String(b.planned || '') === 'true' || b.planned === true;",
+      '  var planned = false;'),
+  }),
+  'the planned flag only accepts a real boolean': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var planned = String(b.planned || '') === 'true' || b.planned === true;",
+      '  var planned = b.planned === true;'),
+  }),
+  'marking sent adds a row beside the planned one (the ghost)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  if \(!planned\) \{\n    var pending = findMailing_\(sheet, householdId, event, ''\);\n[\s\S]*?\n  \}\n/,
+      ''),
+  }),
+  'reverting twins the planned row instead of merging': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /    if \(planned\) \{\n      var twin = findMailing_\(sheet, householdId, event, ''\);\n[\s\S]*?\n    \}\n/,
+      ''),
+  }),
+  'a planned-only event sorts last in the dropdown': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var key = function(m) { return String(m.sent || '').trim() || '9999-12-31'; };",
+      "  var key = function(m) { return String(m.sent || '').trim(); };"),
+  }),
+
+  // ---- one-cell addresses ---------------------------------------------------
+  'the Full Address column is gone from the schema': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace("'Country', 'Full Address', 'Relationship',",
+                                                  "'Country', 'Relationship',"),
+  }),
+  'a pasted address overrides the columns typed by hand': b => ({
+    'WebApp.js': b['WebApp.js'].replace('        if (parsed[target] && !g.fields[target]) {',
+                                        '        if (parsed[target]) {'),
+  }),
+  'the parse never says what it understood': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      if (parseNotes[i]) line = line ? line + ' · ' + parseNotes[i] : parseNotes[i];\n", ''),
+  }),
+  'the whole address lands in Address Line 1': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /^function parseFullAddress_\(text\) \{\n[\s\S]*?\n\}$/m,
+      "function parseFullAddress_(text) {\n" +
+      "  var t = String(text || '').trim();\n" +
+      "  return t ? { 'Address Line 1': t } : {};\n}"),
+  }),
+  'a trailing country is read as part of the street': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  if (parts.length > 1 && !/\\d/.test(parts[parts.length - 1])) {\n    out['Country'] = parts.pop();\n  }\n",
+      ''),
+  }),
+  'an all-caps street line is filed as a postal code': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '/^(?:\\d{5}(?:-\\d{4})?|(?=[^a-z]*\\d)[A-Z][\\dA-Z ]{4,9})$/',
+      '/^(?:\\d{5}(?:-\\d{4})?|[A-Z][\\dA-Z ]{4,9})$/'),
+  }),
+  'the postcode-first rule eats a five-digit house number': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '} else if (parts.length > 1 && (m = /^(\\d{4,5})\\s+(.+)$/.exec(tail))) {',
+      '} else if ((m = /^(\\d{4,5})\\s+(.+)$/.exec(tail))) {'),
+  }),
+  'the leftover parts are dropped rather than kept as a second line': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  if (parts.length) out['Address Line 2'] = parts.join(', ');\n", ''),
+  }),
+
+  // ---- the column the live Import tab is missing ----------------------------
+  'the missing column is never added to the live tab': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  ensureImportColumns_(ss.getSheetByName(ADDRESS_BOOK_IMPORT_));\n', ''),
+  }),
+  'it rewrites the whole header row instead of appending': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  var at = Math.max(sheet.getLastColumn(), 0) + 1;\n' +
+      '  sheet.getRange(1, at, 1, adding.length).setValues([adding]);',
+      '  sheet.getRange(1, 1, 1, IMPORT_HEADERS.length).setValues([IMPORT_HEADERS]);'),
+  }),
+  'it adds every column again on every call': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  var adding = IMPORT_HEADERS.filter(function(h) { return !have[h]; });',
+      '  var adding = IMPORT_HEADERS.slice();'),
+  }),
+
+  // ---- the dashboards: planned, and the two buttons -------------------------
+  // The pool's ＋ Add goes, leaving only ✓ Sent — which is the shipped version of
+  // "the only way to start an event is to claim you already sent it". The label is
+  // changed rather than the button excised: "＋ Add" occurs 26 times in docs/app.js
+  // (Add Person, Add Idea, Add Chore…), so removing one and looking for the string
+  // file-wide bit nothing at all until the assertions were scoped to the block.
+  'the pool offers only + Sent again': b => eachDoc(b, s => s
+    .replace(/title=\{'Add to ' \+ event \+ ' — not sent yet'\}/, "title={'Sent'}")
+    .replace(/title: 'Add to ' \+ event \+ ' — not sent yet'/, "title: 'Sent'")
+    .replace(/＋ Add\n *<\/button>/, '✓ Sent\n              </button>')
+    .replace(/\}, "＋ Add"\)/, '}, "✓ Sent")')),
+  'un-ticking deletes the row again instead of going back to planned': b => eachDoc(b, s => s
+    .replace(/write\(\{ action:'save_mailing', id: sent\[0\]\.id, householdId:h\.id, event: event, planned:true \}\)/,
+             "write({ action:'delete_mailing', id: sent[0].id })")
+    .replace(/write\(\{\n *action: 'save_mailing',\n *id: sent\[0\]\.id,\n *householdId: h\.id,\n *event: event,\n *planned: true\n *\}\)/,
+             "write({ action: 'delete_mailing', id: sent[0].id })")),
+  // Babel drops the inner parens, so the JSX and the two compiled copies differ:
+  // `String((m && m.sent) || '')` against `String(m && m.sent || '')`.
+  'a planned row counts as sent': b => eachDoc(b, s =>
+    s.replace(/function abIsSent\(m\) \{\s*return String\(\(?m && m\.sent\)? \|\| ''\)\.trim\(\) !== '';\s*\}/,
+              'function abIsSent(m) { return !!m; }')),
+  'nothing tells you a named event is not saved yet': b => eachDoc(b, s =>
+    s.replace(/Nothing is saved for/g, 'No cards yet for')),
+  'taking a household off an event needs no confirmation': b => eachDoc(b, s =>
+    s.replace(/if \(!window\.confirm\(msg\)\) return;/, 'if (false) return;')),
+  'the removals fire together and race their reloads': b => eachDoc(b, s => s
+    .replace(/for \(const m of rows\) \{\n *if \(!await write\(\{ action:'delete_mailing', id:m\.id \}\)\) return;[^\n]*\n *\}/,
+             "rows.forEach(m => write({ action:'delete_mailing', id:m.id }));")
+    .replace(/for \(const m of rows\) \{\n *if \(!\(await write\(\{\n *action: 'delete_mailing',\n *id: m\.id\n *\}\)\)\) return;[\s\S]*?\n *\}/,
+             "rows.forEach(m => write({ action: 'delete_mailing', id: m.id }));")),
+
   // ---- the live read-only check -------------------------------------------
   'the live run never checks the address book is configured': b => ({
     'tests/regression.spec.js': b['tests/regression.spec.js'].replace(

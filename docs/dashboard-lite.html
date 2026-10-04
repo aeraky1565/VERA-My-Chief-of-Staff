@@ -7930,6 +7930,11 @@ function abBlankHousehold() {
            postalCode:'', country:'', relationship:'Family', notes:'' };
 }
 function abThisYear() { return String(new Date().getFullYear()); }
+
+// A BLANK 'Sent' MEANS PLANNED: on the list for that event, not posted yet. One place
+// decides it, so "has this gone?" cannot be answered two different ways in two
+// different views.
+function abIsSent(m) { return String((m && m.sent) || '').trim() !== ''; }
 function abBlankContact(householdId) {
   return { id:'', householdId: householdId || '', name:'', email:'', phone:'',
            memberType:'Adult', notes:'' };
@@ -8159,7 +8164,12 @@ function AddressBookView({ apiUrl, apiToken }) {
           </div>
           {groups[g].map(h => {
             const members = membersOf(h.id);
-            const sentItems = mailingsOf(h.id);
+            // Split, because a planned row has no date: "last " + m.sent rendered with
+            // nothing after it, and counting the two together said a card had gone
+            // when it had only been put on a list.
+            const allItems  = mailingsOf(h.id);
+            const sentItems = allItems.filter(m => abIsSent(m));
+            const planItems = allItems.filter(m => !abIsSent(m));
             const isOpen  = !!open[h.id];
             // A confidently wrong address is the real failure of a card list, so an
             // unconfirmed one is worth a quiet marker — not a flag, not an email.
@@ -8200,6 +8210,9 @@ function AddressBookView({ apiUrl, apiToken }) {
                         ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings')
                           + ', last ' + sentItems[0].sent
                         : ' · nothing sent yet'}
+                      {planItems.length
+                        ? ' · ' + planItems.length + ' planned'
+                        : ''}
                       {staleConfirm && (
                         <span title="Worth checking this address is still right"
                           style={{ color:'#c9a84c' }}>
@@ -8220,8 +8233,8 @@ function AddressBookView({ apiUrl, apiToken }) {
                     <button disabled={busy}
                       onClick={() => {
                         const bits = [];
-                        if (members.length)   bits.push(members.length + ' ' + (members.length === 1 ? 'member' : 'members'));
-                        if (sentItems.length) bits.push(sentItems.length + ' ' + (sentItems.length === 1 ? 'mailing' : 'mailings'));
+                        if (members.length)  bits.push(members.length + ' ' + (members.length === 1 ? 'member' : 'members'));
+                        if (allItems.length) bits.push(allItems.length + ' ' + (allItems.length === 1 ? 'mailing' : 'mailings'));
                         const msg = bits.length
                           ? 'Delete ' + h.household + ' and its ' + bits.join(' and ') + '?'
                           : 'Delete ' + h.household + '?';
@@ -8262,14 +8275,18 @@ function AddressBookView({ apiUrl, apiToken }) {
                     </button>
 
                     {/* The full history, which is the thing a single "last sent" column
-                        could never hold: every card, not only the most recent. */}
-                    {sentItems.length > 0 && (
+                        could never hold: every card, not only the most recent. Planned
+                        rows sit in the same list, marked — they are the same kind of
+                        thing at an earlier stage, not a separate feature. */}
+                    {allItems.length > 0 && (
                       <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid #1a2a40' }}>
                         <div style={{ fontSize:11, color:'#6b7280', marginBottom:4 }}>SENT</div>
-                        {sentItems.map(m => (
+                        {planItems.concat(sentItems).map(m => (
                           <div key={m.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
                             <span style={{ fontSize:12, color:'#dde1f0' }}>{m.event}</span>
-                            <span style={{ fontSize:11, color:'#a0a8c0' }}>{m.sent}</span>
+                            <span style={{ fontSize:11, color: abIsSent(m) ? '#a0a8c0' : '#c9a84c' }}>
+                              {abIsSent(m) ? m.sent : 'planned'}
+                            </span>
                             {m.notes && <span style={{ fontSize:11, color:'#6b7fa8' }}>{m.notes}</span>}
                             <button onClick={() => { if (window.confirm('Remove this ' + m.event + '?')) write({ action:'delete_mailing', id:m.id }); }}
                               disabled={busy} style={{ background:'none', border:'none', color:'#ef4444',
@@ -8301,19 +8318,26 @@ function AddressBookView({ apiUrl, apiToken }) {
 // ---- CardRunView -------------------------------------------------------------
 //
 // One event's run. Who is on the list is CARRIED FORWARD FROM HISTORY: a household is
-// on it if it has ever been sent this event. Send someone a Christmas card once and
+// on it if it has a row for this event at all. Send someone a Christmas card once and
 // they are on the list every year after, with no flag anywhere to keep in step — and
 // nothing to go stale when somebody edits the sheet by hand.
 //
-// A brand-new event therefore starts empty, which is why "+ Add someone" searches the
-// whole address book: that is how the first Christmas, or a one-off like wedding
-// thank-yous, gets started from nothing.
+// A row with a date is sent; A ROW WITH A BLANK DATE IS PLANNED — on the list, not
+// posted yet. That is what makes a brand-new event keepable: an event exists only as
+// the rows filed against it, so with nothing but sent rows allowed, the only way to
+// save a new one was to claim a card had already gone. "＋ Add" files the intention,
+// "✓ Sent" files the fact, and marking a planned household sent takes over its row
+// rather than adding a second.
 function CardRunView({ event, households, forEvent, unsentOnly, setUnsentOnly,
                        addingTo, setAddingTo, query, busy, thisYear, write }) {
   const onList = households.filter(h => forEvent(h.id, event).length > 0);
 
   const sentThisYear = h =>
-    forEvent(h.id, event).some(m => String(m.sent || '').slice(0, 4) === thisYear);
+    forEvent(h.id, event).some(m => abIsSent(m) && String(m.sent).slice(0, 4) === thisYear);
+  // The planned row for this household and event, if there is one. At most one can
+  // exist: the server takes over a planned row when you mark it sent, and refuses to
+  // add a second blank-dated row for the same pair.
+  const plannedRow = h => forEvent(h.id, event).filter(m => !abIsSent(m))[0] || null;
 
   const q = String(query || '').trim().toLowerCase();
   const matches = h => !q || (h.household + ' ' + h.city + ' ' + h.country).toLowerCase().indexOf(q) !== -1;
@@ -8324,7 +8348,8 @@ function CardRunView({ event, households, forEvent, unsentOnly, setUnsentOnly,
     if (unsentOnly === 'never') return false;   // everyone on the list has had one
     return true;
   });
-  const doneCount = onList.filter(sentThisYear).length;
+  const doneCount    = onList.filter(sentThisYear).length;
+  const plannedCount = onList.filter(h => !sentThisYear(h) && plannedRow(h)).length;
 
   // Households that have never had this event — the pool "+ Add someone" draws from.
   const newcomers = households.filter(h => forEvent(h.id, event).length === 0 && matches(h));
@@ -8335,10 +8360,36 @@ function CardRunView({ event, households, forEvent, unsentOnly, setUnsentOnly,
     fontSize:11, cursor:'pointer',
   });
 
+  // Ticking sends, un-ticking puts it BACK TO PLANNED rather than off the event.
+  // Un-ticking used to delete the row, which undid far more than a mis-click means:
+  // the household dropped out of the event altogether and had to be found again in
+  // the pool. Taking somebody off an event is its own control, with a confirm.
   function toggle(h) {
-    const already = forEvent(h.id, event).filter(m => String(m.sent || '').slice(0, 4) === thisYear);
-    if (already.length) write({ action:'delete_mailing', id: already[0].id });   // a mis-tick is undoable
-    else write({ action:'save_mailing', householdId:h.id, event: event });
+    const sent = forEvent(h.id, event)
+      .filter(m => abIsSent(m) && String(m.sent).slice(0, 4) === thisYear);
+    if (sent.length) {
+      write({ action:'save_mailing', id: sent[0].id, householdId:h.id, event: event, planned:true });
+    } else {
+      write({ action:'save_mailing', householdId:h.id, event: event });
+    }
+  }
+
+  async function removeFrom(h) {
+    const rows = forEvent(h.id, event);
+    const sent = rows.filter(abIsSent).length;
+    // Named plainly, because this drops the whole history for this event and not
+    // just this year's — the one thing the old un-tick did by accident.
+    const msg = sent
+      ? 'Take ' + h.household + ' off ' + event + '? That removes all ' + sent +
+        ' already recorded as sent, not just this year.'
+      : 'Take ' + h.household + ' off ' + event + '?';
+    if (!window.confirm(msg)) return;
+    // Sequential, not a forEach of un-awaited promises: each write reloads the whole
+    // book, so firing them together would race the reloads against each other and
+    // leave the view showing whichever one happened to land last.
+    for (const m of rows) {
+      if (!await write({ action:'delete_mailing', id:m.id })) return;  // stop on the first failure
+    }
   }
 
   return (
@@ -8346,43 +8397,53 @@ function CardRunView({ event, households, forEvent, unsentOnly, setUnsentOnly,
       <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:12 }}>
         <span style={{ fontSize:13, color:'#dde1f0', fontWeight:600 }}>✉️ {event}</span>
         <span style={{ fontSize:12, color:'#6b7fa8' }}>
-          {doneCount} of {onList.length} sent in {thisYear}
+          {doneCount} sent in {thisYear}
+          {plannedCount ? ' · ' + plannedCount + ' planned' : ''}
+          {onList.length ? ' · ' + onList.length + ' on the list' : ''}
         </span>
         <button onClick={() => setUnsentOnly('year')}  style={pill(unsentOnly === 'year')}>Not sent in {thisYear}</button>
         <button onClick={() => setUnsentOnly('all')}   style={pill(unsentOnly === 'all')}>Everyone on the list</button>
         <button onClick={() => setAddingTo(!addingTo)} style={pill(addingTo)}>+ Add someone</button>
       </div>
 
-      {onList.length === 0 && !addingTo && (
-        <div className="empty-state" style={{ padding:32 }}>
-          <div style={{ fontSize:28, marginBottom:10 }}>✉️</div>
-          <div style={{ color:'#dde1f0' }}>Nobody has been sent a {event} yet.</div>
-          <div style={{ fontSize:13, color:'#6b7fa8', marginTop:6 }}>
-            Use <strong>+ Add someone</strong> to start the list — after that it carries forward on its own.
-          </div>
+      {/* An event only exists as the rows filed against it, so a name on its own is
+          not saved anywhere and will be gone on the next load. Saying so is the
+          honest version — and it is one click away from being untrue. */}
+      {onList.length === 0 && (
+        <div style={{ background:'#2a2410', border:'1px solid #6b5a2a', borderRadius:8,
+                      padding:'10px 12px', marginBottom:12, fontSize:13, color:'#e8d9b0' }}>
+          Nothing is saved for <strong>{event}</strong> yet. Add the first household
+          below and it will be in the dropdown from then on.
         </div>
       )}
 
       {shown.map(h => {
         const done = sentThisYear(h);
-        const hist = forEvent(h.id, event).slice()
-          .sort((a, b) => String(b.sent || '').localeCompare(String(a.sent || '')));
+        const pend = !done && !!plannedRow(h);
+        const hist = forEvent(h.id, event).filter(abIsSent)
+          .sort((a, b) => String(b.sent).localeCompare(String(a.sent)));
         return (
           <div key={h.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 10px',
                                    background:'#101c33', border:'1px solid #1e3060',
                                    borderRadius:8, marginBottom:5 }}>
             <button onClick={() => toggle(h)} disabled={busy}
-              title={done ? 'Sent in ' + thisYear + ' — click to undo' : 'Mark sent today'}
+              title={done ? 'Sent in ' + thisYear + ' — click to put it back to planned'
+                          : 'Mark sent today'}
               style={{ width:18, height:18, borderRadius:4, flexShrink:0, cursor:'pointer',
-                       border:'2px solid ' + (done ? '#22c55e' : '#374151'),
+                       border:'2px solid ' + (done ? '#22c55e' : pend ? '#6b5a2a' : '#374151'),
                        background: done ? '#166534' : 'transparent' }}>
               {done ? <span style={{ color:'#86efac', fontSize:11, lineHeight:'14px' }}>✓</span> : null}
             </button>
             <span style={{ fontSize:13, color: done ? '#86efac' : '#dde1f0' }}>{h.household}</span>
+            {pend && <span style={{ fontSize:11, color:'#c9a84c' }}>planned</span>}
             <span style={{ fontSize:11, color:'#6b7fa8' }}>
-              {hist.length === 1 ? 'once' : hist.length + ' times'}
-              {hist.length ? ', last ' + hist[0].sent : ''}
+              {hist.length === 0 ? 'never sent'
+                : (hist.length === 1 ? 'once' : hist.length + ' times') + ', last ' + hist[0].sent}
             </span>
+            <button onClick={() => removeFrom(h)} disabled={busy}
+              title={'Take ' + h.household + ' off ' + event}
+              style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer',
+                       fontSize:13, marginLeft:'auto' }}>✕</button>
           </div>
         );
       })}
@@ -8393,19 +8454,30 @@ function CardRunView({ event, households, forEvent, unsentOnly, setUnsentOnly,
         </div>
       )}
 
-      {addingTo && (
+      {/* Forced open while nothing is on the list, so the banner above never points
+          "below" at an empty space. */}
+      {(addingTo || onList.length === 0) && (
         <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #1a2a40' }}>
           <div style={{ fontSize:11, color:'#6b7280', marginBottom:6 }}>
-            NEVER SENT A {event.toUpperCase()} — {newcomers.length}
+            NOT ON {event.toUpperCase()} — {newcomers.length}
             {q ? '' : ' · use the search box above to narrow this'}
           </div>
           {newcomers.slice(0, 40).map(h => (
-            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 10px' }}>
+            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 10px' }}>
+              {/* Two buttons, because putting somebody on a list and posting their
+                  card are different days. With only "+ Sent" the only way to start
+                  an event was to claim you had already sent it. */}
+              <button onClick={() => write({ action:'save_mailing', householdId:h.id, event: event, planned:true })}
+                disabled={busy} title={'Add to ' + event + ' — not sent yet'}
+                style={{ background:'none', border:'1px solid #6b5a2a', color:'#e8d9b0',
+                         borderRadius:6, padding:'2px 9px', fontSize:11, cursor:'pointer' }}>
+                ＋ Add
+              </button>
               <button onClick={() => write({ action:'save_mailing', householdId:h.id, event: event })}
-                disabled={busy}
+                disabled={busy} title="Add and mark sent today"
                 style={{ background:'none', border:'1px solid #2a5a3a', color:'#86efac',
                          borderRadius:6, padding:'2px 9px', fontSize:11, cursor:'pointer' }}>
-                + Sent
+                ✓ Sent
               </button>
               <span style={{ fontSize:13, color:'#dde1f0' }}>{h.household}</span>
               <span style={{ fontSize:11, color:'#4d6080' }}>{h.city}</span>

@@ -3744,6 +3744,13 @@ function abBlankHousehold() {
 function abThisYear() {
   return String(new Date().getFullYear());
 }
+
+// A BLANK 'Sent' MEANS PLANNED: on the list for that event, not posted yet. One place
+// decides it, so "has this gone?" cannot be answered two different ways in two
+// different views.
+function abIsSent(m) {
+  return String(m && m.sent || '').trim() !== '';
+}
 function abBlankContact(householdId) {
   return {
     id: '',
@@ -4096,7 +4103,12 @@ function AddressBookView({
     }
   }, g.toUpperCase(), " · ", groups[g].length), groups[g].map(h => {
     const members = membersOf(h.id);
-    const sentItems = mailingsOf(h.id);
+    // Split, because a planned row has no date: "last " + m.sent rendered with
+    // nothing after it, and counting the two together said a card had gone
+    // when it had only been put on a list.
+    const allItems = mailingsOf(h.id);
+    const sentItems = allItems.filter(m => abIsSent(m));
+    const planItems = allItems.filter(m => !abIsSent(m));
     const isOpen = !!open[h.id];
     // A confidently wrong address is the real failure of a card list, so an
     // unconfirmed one is worth a quiet marker — not a flag, not an email.
@@ -4175,7 +4187,7 @@ function AddressBookView({
         color: '#8ab4f8',
         fontWeight: 600
       }
-    }, "+ Add the names") : members.length + (members.length === 1 ? ' person' : ' people'), sentItems.length ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings') + ', last ' + sentItems[0].sent : ' · nothing sent yet', staleConfirm && /*#__PURE__*/React.createElement("span", {
+    }, "+ Add the names") : members.length + (members.length === 1 ? ' person' : ' people'), sentItems.length ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings') + ', last ' + sentItems[0].sent : ' · nothing sent yet', planItems.length ? ' · ' + planItems.length + ' planned' : '', staleConfirm && /*#__PURE__*/React.createElement("span", {
       title: "Worth checking this address is still right",
       style: {
         color: '#c9a84c'
@@ -4217,7 +4229,7 @@ function AddressBookView({
       onClick: () => {
         const bits = [];
         if (members.length) bits.push(members.length + ' ' + (members.length === 1 ? 'member' : 'members'));
-        if (sentItems.length) bits.push(sentItems.length + ' ' + (sentItems.length === 1 ? 'mailing' : 'mailings'));
+        if (allItems.length) bits.push(allItems.length + ' ' + (allItems.length === 1 ? 'mailing' : 'mailings'));
         const msg = bits.length ? 'Delete ' + h.household + ' and its ' + bits.join(' and ') + '?' : 'Delete ' + h.household + '?';
         if (window.confirm(msg)) write({
           action: 'delete_household',
@@ -4321,7 +4333,7 @@ function AddressBookView({
         cursor: 'pointer',
         marginTop: 4
       }
-    }, "+ Person"), sentItems.length > 0 && /*#__PURE__*/React.createElement("div", {
+    }, "+ Person"), allItems.length > 0 && /*#__PURE__*/React.createElement("div", {
       style: {
         marginTop: 10,
         paddingTop: 8,
@@ -4333,7 +4345,7 @@ function AddressBookView({
         color: '#6b7280',
         marginBottom: 4
       }
-    }, "SENT"), sentItems.map(m => /*#__PURE__*/React.createElement("div", {
+    }, "SENT"), planItems.concat(sentItems).map(m => /*#__PURE__*/React.createElement("div", {
       key: m.id,
       style: {
         display: 'flex',
@@ -4349,9 +4361,9 @@ function AddressBookView({
     }, m.event), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
-        color: '#a0a8c0'
+        color: abIsSent(m) ? '#a0a8c0' : '#c9a84c'
       }
-    }, m.sent), m.notes && /*#__PURE__*/React.createElement("span", {
+    }, abIsSent(m) ? m.sent : 'planned'), m.notes && /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
         color: '#6b7fa8'
@@ -4397,13 +4409,16 @@ function AddressBookView({
 // ---- CardRunView -------------------------------------------------------------
 //
 // One event's run. Who is on the list is CARRIED FORWARD FROM HISTORY: a household is
-// on it if it has ever been sent this event. Send someone a Christmas card once and
+// on it if it has a row for this event at all. Send someone a Christmas card once and
 // they are on the list every year after, with no flag anywhere to keep in step — and
 // nothing to go stale when somebody edits the sheet by hand.
 //
-// A brand-new event therefore starts empty, which is why "+ Add someone" searches the
-// whole address book: that is how the first Christmas, or a one-off like wedding
-// thank-yous, gets started from nothing.
+// A row with a date is sent; A ROW WITH A BLANK DATE IS PLANNED — on the list, not
+// posted yet. That is what makes a brand-new event keepable: an event exists only as
+// the rows filed against it, so with nothing but sent rows allowed, the only way to
+// save a new one was to claim a card had already gone. "＋ Add" files the intention,
+// "✓ Sent" files the fact, and marking a planned household sent takes over its row
+// rather than adding a second.
 function CardRunView({
   event,
   households,
@@ -4418,7 +4433,11 @@ function CardRunView({
   write
 }) {
   const onList = households.filter(h => forEvent(h.id, event).length > 0);
-  const sentThisYear = h => forEvent(h.id, event).some(m => String(m.sent || '').slice(0, 4) === thisYear);
+  const sentThisYear = h => forEvent(h.id, event).some(m => abIsSent(m) && String(m.sent).slice(0, 4) === thisYear);
+  // The planned row for this household and event, if there is one. At most one can
+  // exist: the server takes over a planned row when you mark it sent, and refuses to
+  // add a second blank-dated row for the same pair.
+  const plannedRow = h => forEvent(h.id, event).filter(m => !abIsSent(m))[0] || null;
   const q = String(query || '').trim().toLowerCase();
   const matches = h => !q || (h.household + ' ' + h.city + ' ' + h.country).toLowerCase().indexOf(q) !== -1;
   const shown = onList.filter(h => {
@@ -4428,6 +4447,7 @@ function CardRunView({
     return true;
   });
   const doneCount = onList.filter(sentThisYear).length;
+  const plannedCount = onList.filter(h => !sentThisYear(h) && plannedRow(h)).length;
 
   // Households that have never had this event — the pool "+ Add someone" draws from.
   const newcomers = households.filter(h => forEvent(h.id, event).length === 0 && matches(h));
@@ -4440,17 +4460,45 @@ function CardRunView({
     fontSize: 11,
     cursor: 'pointer'
   });
+
+  // Ticking sends, un-ticking puts it BACK TO PLANNED rather than off the event.
+  // Un-ticking used to delete the row, which undid far more than a mis-click means:
+  // the household dropped out of the event altogether and had to be found again in
+  // the pool. Taking somebody off an event is its own control, with a confirm.
   function toggle(h) {
-    const already = forEvent(h.id, event).filter(m => String(m.sent || '').slice(0, 4) === thisYear);
-    if (already.length) write({
-      action: 'delete_mailing',
-      id: already[0].id
-    }); // a mis-tick is undoable
-    else write({
-      action: 'save_mailing',
-      householdId: h.id,
-      event: event
-    });
+    const sent = forEvent(h.id, event).filter(m => abIsSent(m) && String(m.sent).slice(0, 4) === thisYear);
+    if (sent.length) {
+      write({
+        action: 'save_mailing',
+        id: sent[0].id,
+        householdId: h.id,
+        event: event,
+        planned: true
+      });
+    } else {
+      write({
+        action: 'save_mailing',
+        householdId: h.id,
+        event: event
+      });
+    }
+  }
+  async function removeFrom(h) {
+    const rows = forEvent(h.id, event);
+    const sent = rows.filter(abIsSent).length;
+    // Named plainly, because this drops the whole history for this event and not
+    // just this year's — the one thing the old un-tick did by accident.
+    const msg = sent ? 'Take ' + h.household + ' off ' + event + '? That removes all ' + sent + ' already recorded as sent, not just this year.' : 'Take ' + h.household + ' off ' + event + '?';
+    if (!window.confirm(msg)) return;
+    // Sequential, not a forEach of un-awaited promises: each write reloads the whole
+    // book, so firing them together would race the reloads against each other and
+    // leave the view showing whichever one happened to land last.
+    for (const m of rows) {
+      if (!(await write({
+        action: 'delete_mailing',
+        id: m.id
+      }))) return; // stop on the first failure
+    }
   }
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4471,7 +4519,7 @@ function CardRunView({
       fontSize: 12,
       color: '#6b7fa8'
     }
-  }, doneCount, " of ", onList.length, " sent in ", thisYear), /*#__PURE__*/React.createElement("button", {
+  }, doneCount, " sent in ", thisYear, plannedCount ? ' · ' + plannedCount + ' planned' : '', onList.length ? ' · ' + onList.length + ' on the list' : ''), /*#__PURE__*/React.createElement("button", {
     onClick: () => setUnsentOnly('year'),
     style: pill(unsentOnly === 'year')
   }, "Not sent in ", thisYear), /*#__PURE__*/React.createElement("button", {
@@ -4480,29 +4528,20 @@ function CardRunView({
   }, "Everyone on the list"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setAddingTo(!addingTo),
     style: pill(addingTo)
-  }, "+ Add someone")), onList.length === 0 && !addingTo && /*#__PURE__*/React.createElement("div", {
-    className: "empty-state",
+  }, "+ Add someone")), onList.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
-      padding: 32
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 28,
-      marginBottom: 10
-    }
-  }, "✉️"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      color: '#dde1f0'
-    }
-  }, "Nobody has been sent a ", event, " yet."), /*#__PURE__*/React.createElement("div", {
-    style: {
+      background: '#2a2410',
+      border: '1px solid #6b5a2a',
+      borderRadius: 8,
+      padding: '10px 12px',
+      marginBottom: 12,
       fontSize: 13,
-      color: '#6b7fa8',
-      marginTop: 6
+      color: '#e8d9b0'
     }
-  }, "Use ", /*#__PURE__*/React.createElement("strong", null, "+ Add someone"), " to start the list — after that it carries forward on its own.")), shown.map(h => {
+  }, "Nothing is saved for ", /*#__PURE__*/React.createElement("strong", null, event), " yet. Add the first household below and it will be in the dropdown from then on."), shown.map(h => {
     const done = sentThisYear(h);
-    const hist = forEvent(h.id, event).slice().sort((a, b) => String(b.sent || '').localeCompare(String(a.sent || '')));
+    const pend = !done && !!plannedRow(h);
+    const hist = forEvent(h.id, event).filter(abIsSent).sort((a, b) => String(b.sent).localeCompare(String(a.sent)));
     return /*#__PURE__*/React.createElement("div", {
       key: h.id,
       style: {
@@ -4518,14 +4557,14 @@ function CardRunView({
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => toggle(h),
       disabled: busy,
-      title: done ? 'Sent in ' + thisYear + ' — click to undo' : 'Mark sent today',
+      title: done ? 'Sent in ' + thisYear + ' — click to put it back to planned' : 'Mark sent today',
       style: {
         width: 18,
         height: 18,
         borderRadius: 4,
         flexShrink: 0,
         cursor: 'pointer',
-        border: '2px solid ' + (done ? '#22c55e' : '#374151'),
+        border: '2px solid ' + (done ? '#22c55e' : pend ? '#6b5a2a' : '#374151'),
         background: done ? '#166534' : 'transparent'
       }
     }, done ? /*#__PURE__*/React.createElement("span", {
@@ -4539,12 +4578,29 @@ function CardRunView({
         fontSize: 13,
         color: done ? '#86efac' : '#dde1f0'
       }
-    }, h.household), /*#__PURE__*/React.createElement("span", {
+    }, h.household), pend && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: '#c9a84c'
+      }
+    }, "planned"), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
         color: '#6b7fa8'
       }
-    }, hist.length === 1 ? 'once' : hist.length + ' times', hist.length ? ', last ' + hist[0].sent : ''));
+    }, hist.length === 0 ? 'never sent' : (hist.length === 1 ? 'once' : hist.length + ' times') + ', last ' + hist[0].sent), /*#__PURE__*/React.createElement("button", {
+      onClick: () => removeFrom(h),
+      disabled: busy,
+      title: 'Take ' + h.household + ' off ' + event,
+      style: {
+        background: 'none',
+        border: 'none',
+        color: '#ef4444',
+        cursor: 'pointer',
+        fontSize: 13,
+        marginLeft: 'auto'
+      }
+    }, "✕"));
   }), unsentOnly === 'year' && onList.length > 0 && shown.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       color: '#86efac',
@@ -4552,7 +4608,7 @@ function CardRunView({
       textAlign: 'center',
       padding: '20px 0'
     }
-  }, "All ", onList.length, " sent for ", thisYear, ". 🎉"), addingTo && /*#__PURE__*/React.createElement("div", {
+  }, "All ", onList.length, " sent for ", thisYear, ". 🎉"), (addingTo || onList.length === 0) && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 14,
       paddingTop: 12,
@@ -4564,21 +4620,40 @@ function CardRunView({
       color: '#6b7280',
       marginBottom: 6
     }
-  }, "NEVER SENT A ", event.toUpperCase(), " — ", newcomers.length, q ? '' : ' · use the search box above to narrow this'), newcomers.slice(0, 40).map(h => /*#__PURE__*/React.createElement("div", {
+  }, "NOT ON ", event.toUpperCase(), " — ", newcomers.length, q ? '' : ' · use the search box above to narrow this'), newcomers.slice(0, 40).map(h => /*#__PURE__*/React.createElement("div", {
     key: h.id,
     style: {
       display: 'flex',
       alignItems: 'center',
-      gap: 10,
+      gap: 8,
       padding: '5px 10px'
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => write({
       action: 'save_mailing',
       householdId: h.id,
+      event: event,
+      planned: true
+    }),
+    disabled: busy,
+    title: 'Add to ' + event + ' — not sent yet',
+    style: {
+      background: 'none',
+      border: '1px solid #6b5a2a',
+      color: '#e8d9b0',
+      borderRadius: 6,
+      padding: '2px 9px',
+      fontSize: 11,
+      cursor: 'pointer'
+    }
+  }, "＋ Add"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => write({
+      action: 'save_mailing',
+      householdId: h.id,
       event: event
     }),
     disabled: busy,
+    title: "Add and mark sent today",
     style: {
       background: 'none',
       border: '1px solid #2a5a3a',
@@ -4588,7 +4663,7 @@ function CardRunView({
       fontSize: 11,
       cursor: 'pointer'
     }
-  }, "+ Sent"), /*#__PURE__*/React.createElement("span", {
+  }, "✓ Sent"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       color: '#dde1f0'

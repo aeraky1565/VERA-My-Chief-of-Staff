@@ -30,10 +30,17 @@ const SRC = {
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
                              : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
+// Checks on an async handler. removeFrom awaits each write deliberately — firing them
+// together would race the reloads — so asserting on it synchronously only ever saw
+// the first delete. These run before the summary at the bottom.
+const pending = [];
 
 function extractFn(src, name) {
-  const start = src.indexOf('function ' + name + '(');
+  let start = src.indexOf('function ' + name + '(');
   if (start === -1) throw new Error('not found: ' + name);
+  // Back up over `async `, or the slice starts at `function` and every `await` in the
+  // body is a syntax error rather than a function that runs.
+  if (src.slice(Math.max(0, start - 6), start) === 'async ') start -= 6;
   let paren = 0, afterParams = -1;
   for (let j = src.indexOf('(', start); j < src.length; j++) {
     if (src[j] === '(') paren++;
@@ -46,6 +53,33 @@ function extractFn(src, name) {
   }
   throw new Error('unbalanced: ' + name);
 }
+// The address book's slice of a dashboard bundle.
+//
+// extractFn takes the FIRST function of a given name in the file, and docs/app.js has
+// four called `toggle` — the PTO one, the gift-ideas one and two more. Extracting by
+// name alone silently tested somebody else's function, which is the same trap that
+// made a String.replace in the controls patch the wrong one.
+const AB_MARK = '// ---- AddressBookView ----';
+function abBlock(src) {
+  const a = src.indexOf(AB_MARK);
+  if (a === -1) throw new Error('address book block not found');
+  const ends = ['function PeopleTab(', '// ---- App ----', '// ---- ChoresView'];
+  const b = ends.map(e => src.indexOf(e, a)).filter(i => i !== -1).sort((x, y) => x - y)[0];
+  return src.slice(a, b === undefined ? src.length : b);
+}
+// The same block WITHOUT its comments, for asserting that a control exists.
+//
+// The comments here explain the controls by name — «"＋ Add" files the intention» —
+// so a pattern looking for the button matched the prose describing it, and a control
+// that deleted the real button bit nothing. The same trap caught a deleteAllProperties
+// assertion earlier: code assertions must read code.
+//
+// Safe to do naively only because this block has no '//' inside a string literal
+// (checked: no '://' anywhere in it) and no regex literals.
+function abCode(src) {
+  return abBlock(src).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+}
+
 // [\s\S] rather than . — HOUSEHOLD_HEADERS is wrapped across three lines, and a
 // dot-based match stops at the first newline and finds nothing.
 const decl = (src, name) => {
@@ -60,7 +94,12 @@ const P_H  = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'No
 const M_H  = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
 const I_H  = ['Household', 'Name', 'Member Type', 'Email', 'Phone',
               'Address Line 1', 'Address Line 2', 'City', 'State', 'Postal Code',
-              'Country', 'Relationship', 'Household Notes', 'Person Notes', 'Status'];
+              'Country', 'Full Address', 'Relationship', 'Household Notes',
+              'Person Notes', 'Status'];
+// The Import tab as it stands in the live sheet TODAY: created before 'Full Address'
+// existed, so the column is missing and a header-driven read maps that name to
+// nothing. ensureImportColumns_ is the only reason it ever appears.
+const I_H_OLD = I_H.filter(h => h !== 'Full Address');
 // What Ahmed's live sheet looks like TODAY: the two retired columns are still in it.
 // VERA must read around them and never write to them.
 const HH_LEGACY = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City', 'State',
@@ -182,6 +221,8 @@ function harness(opts) {
     extractFn(SRC.Book, 'appendAddressBookRow_'),
     extractFn(SRC.Book, 'deleteAddressBookRowsFor_'),
     extractFn(SRC.Book, 'newAddressBookId_'),
+    extractFn(SRC.Book, 'ensureImportColumns_'),
+    extractFn(SRC.Book, 'parseFullAddress_'),
     extractFn(SRC.Web, 'webGetAddressBook_'),
     extractFn(SRC.Web, 'addressBookForWrite_'),
     extractFn(SRC.Web, 'webSaveHousehold_'),
@@ -575,6 +616,116 @@ console.log('\nLogging a mailing');
         threw(() => c.webSaveMailing_({ id: 'M-404', householdId: 'HH-1', event: 'X' })) !== null);
 }
 
+// ============================================================================
+// PLANNED ROWS. A blank 'Sent' means on the list but not posted yet.
+//
+// This exists because an event has no storage of its own — the dropdown is derived
+// from these rows — so with only sent rows allowed, naming a new event saved NOTHING
+// and the name was gone on the next load. "I added an event and it didn't save."
+console.log('\nPlanned mailings');
+{
+  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  const today = (() => { const d = new Date(); const p2 = n => String(n).padStart(2, '0');
+                         return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); })();
+  const rowsFor = (hh, ev) => c.webGetAddressBook_().mailings.filter(m =>
+    m.householdId === hh && String(m.event).toLowerCase() === ev.toLowerCase());
+
+  const pl = c.webSaveMailing_({ householdId: 'HH-2', event: 'Diwali card', planned: true });
+  check('a household can be added to an event without claiming it was sent',
+        pl.action === 'planned' && /^M-/.test(pl.id), JSON.stringify(pl));
+  check('…and the date stays BLANK rather than defaulting to today',
+        rowsFor('HH-2', 'Diwali card')[0].sent === '',
+        "`b.sent || today` turns '' into today, which is why planned is a flag");
+  check('…so a planned row is not counted as sent',
+        rowsFor('HH-2', 'Diwali card').filter(m => String(m.sent).trim()).length === 0);
+
+  // The whole point: the name now survives a reload.
+  check('the event appears in the dropdown with nothing sent yet',
+        c.webGetAddressBook_().events.indexOf('Diwali card') !== -1,
+        'this is the bug — a named event that saved nothing at all');
+  check('…and it sorts FIRST, not under everything finished years ago',
+        c.webGetAddressBook_().events[0] === 'Diwali card',
+        'a blank Sent sorts last on the raw value, which is backwards');
+
+  const twice = c.webSaveMailing_({ householdId: 'HH-2', event: 'Diwali card', planned: true });
+  check('adding the same household to the same event twice is idempotent',
+        twice.alreadyLogged === true && twice.id === pl.id, JSON.stringify(twice));
+  check('…writing no second row', rowsFor('HH-2', 'Diwali card').length === 1);
+  check('…case-insensitively, since the event is free text somebody types',
+        c.webSaveMailing_({ householdId: 'HH-2', event: 'DIWALI CARD', planned: true })
+          .alreadyLogged === true);
+
+  // Marking sent must TAKE OVER the planned row. A planned ghost beside the sent row
+  // carries the same event name and nothing downstream could tell them apart.
+  const sent = c.webSaveMailing_({ householdId: 'HH-2', event: 'Diwali card' });
+  check('marking a planned household sent reuses THAT row',
+        sent.action === 'sent' && sent.id === pl.id, JSON.stringify(sent));
+  check('…so there is one row afterwards, not two',
+        rowsFor('HH-2', 'Diwali card').length === 1,
+        'the planned ghost is the failure this rule exists to prevent');
+  check('…now carrying today', rowsFor('HH-2', 'Diwali card')[0].sent === today);
+
+  // Undo: back to planned, still on the event.
+  const undone = c.webSaveMailing_({ id: sent.id, householdId: 'HH-2',
+                                     event: 'Diwali card', planned: true });
+  check('un-ticking puts the row back to planned', undone.action === 'updated');
+  check('…clearing the date', rowsFor('HH-2', 'Diwali card')[0].sent === '');
+  check('…and leaving them ON the event',
+        rowsFor('HH-2', 'Diwali card').length === 1,
+        'un-ticking used to delete the row, which undid far more than a mis-click means');
+
+  // A household with history can also be planned again for the next round.
+  const nextRound = c.webSaveMailing_({ householdId: 'HH-1', event: 'Christmas card', planned: true });
+  check('a household with years of history can be planned again',
+        nextRound.action === 'planned', JSON.stringify(nextRound));
+  check('…without touching what already went out',
+        rowsFor('HH-1', 'Christmas card').filter(m => String(m.sent).trim()).length === 2,
+        'the full history is the thing this tab exists for');
+
+  // Reverting when a planned row already exists would leave two identical rows, and
+  // the next tick would pick an arbitrary one. Reaching that case takes a dated row
+  // that did NOT come from taking over a planned one, so the dated send goes first.
+  const c2 = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  const rows2 = () => c2.webGetAddressBook_().mailings.filter(m =>
+    m.householdId === 'HH-1' && String(m.event).toLowerCase() === 'christmas card');
+  const sent2 = c2.webSaveMailing_({ householdId: 'HH-1', event: 'Christmas card',
+                                     sent: '2027-12-05' });
+  check('a dated send with no planned row waiting is a new row',
+        sent2.action === 'created', JSON.stringify(sent2));
+  const planAgain = c2.webSaveMailing_({ householdId: 'HH-1', event: 'Christmas card',
+                                         planned: true });
+  check('…and a planned row can then be added alongside it',
+        planAgain.action === 'planned', JSON.stringify(planAgain));
+  const merged = c2.webSaveMailing_({ id: sent2.id, householdId: 'HH-1',
+                                      event: 'Christmas card', planned: true });
+  check('reverting it MERGES into the existing planned row instead of twinning',
+        merged.action === 'merged' && merged.id === planAgain.id, JSON.stringify(merged));
+  check('…leaving exactly one planned row',
+        rows2().filter(m => !String(m.sent).trim()).length === 1,
+        'two identical blank rows and the next tick picks whichever it finds first');
+  check('…and the sent history still intact',
+        rows2().filter(m => String(m.sent).trim()).length === 2,
+        JSON.stringify(rows2()));
+
+  // Rule 2 again, from the other direction: a planned row waiting means even an
+  // explicitly dated send fills it in rather than adding a row beside it.
+  const c3 = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  c3.webSaveMailing_({ householdId: 'HH-2', event: 'Diwali card', planned: true });
+  const dated = c3.webSaveMailing_({ householdId: 'HH-2', event: 'Diwali card',
+                                     sent: '2026-11-08' });
+  check('a dated send takes over the planned row too, not just a default-dated one',
+        dated.action === 'sent' &&
+        c3.webGetAddressBook_().mailings.filter(m => m.householdId === 'HH-2' &&
+          m.event === 'Diwali card').length === 1,
+        JSON.stringify(dated));
+
+  check('a planned mailing still needs a household that exists',
+        threw(() => c.webSaveMailing_({ householdId: 'HH-404', event: 'X', planned: true })) !== null);
+  check('planned also arrives as the string "true" over the wire',
+        c.webSaveMailing_({ householdId: 'HH-2', event: 'Eid card', planned: 'true' }).action === 'planned',
+        'a JSON body is not the only way a flag reaches here');
+}
+
 console.log('\nUn-ticking, and the cascade');
 {
   const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
@@ -767,13 +918,25 @@ console.log('\nBulk import');
   // A realistic paste: a family across three rows with the address on the first only,
   // a single-person household with no Household cell, a blank spacer, and a row with
   // nothing but a name.
+  // Built BY COLUMN NAME, not by position. The same rows written as bare arrays broke
+  // the moment 'Full Address' was inserted in the middle of the schema — and the
+  // benign version of that breakage is a test failure; the other version is every
+  // value silently landing one column to the left.
+  const impRow     = o => I_H.map(h => (o[h] === undefined ? '' : o[h]));
+  const impRow_old = o => I_H_OLD.map(h => (o[h] === undefined ? '' : o[h]));
   const importRows = () => [
-    ['The Smiths Family', 'John Smith', 'Adult', 'john@x.test', '555-1',
-     '12 Elm St', 'Apt 4', 'Austin', 'TX', '78701', 'USA', 'Family', 'via Jane', '', ''],
-    ['The Smiths Family', 'Jane Smith', 'Adult', 'jane@x.test', '', '', '', '', '', '', '', '', '', '', ''],
-    ['The Smiths Family', 'Mia Smith',  'Child', '',            '', '', '', '', '', '', '', '', '', 'allergic to nuts', ''],
-    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
-    ['', 'Aunt Mary', 'Adult', 'mary@x.test', '', '3 Oak Rd', '', 'Reston', 'VA', '', 'USA', 'Family', '', '', ''],
+    impRow({ Household:'The Smiths Family', Name:'John Smith', 'Member Type':'Adult',
+             Email:'john@x.test', Phone:'555-1', 'Address Line 1':'12 Elm St',
+             'Address Line 2':'Apt 4', City:'Austin', State:'TX', 'Postal Code':'78701',
+             Country:'USA', Relationship:'Family', 'Household Notes':'via Jane' }),
+    impRow({ Household:'The Smiths Family', Name:'Jane Smith', 'Member Type':'Adult',
+             Email:'jane@x.test' }),
+    impRow({ Household:'The Smiths Family', Name:'Mia Smith', 'Member Type':'Child',
+             'Person Notes':'allergic to nuts' }),
+    impRow({}),                                        // a blank spacer row
+    impRow({ Name:'Aunt Mary', 'Member Type':'Adult', Email:'mary@x.test',
+             'Address Line 1':'3 Oak Rd', City:'Reston', State:'VA', Country:'USA',
+             Relationship:'Family' }),                 // no Household cell of her own
   ];
   const freshTabs = (hh, pp) => ({
     'Households': fakeSheet(HH_H, hh || []),
@@ -894,6 +1057,170 @@ console.log('\nBulk import');
           /empty/i.test(r.messages.join(' ')), JSON.stringify(r.messages));
   }
 
+  // ---- a whole address pasted into one cell ----
+  //
+  // Eight columns for one address means splitting it by hand, row after row. The
+  // parse is allowed to be approximate ONLY because the preview prints what it
+  // understood before anything is written, so every case below also checks the note.
+  {
+    const oneCell = () => [
+      impRow({ Household:'The Patels', Name:'Raj Patel', 'Member Type':'Adult',
+               'Full Address':'12 Elm St, Apt 4, Austin, TX 78701, USA',
+               Relationship:'Friends' }),
+      // Typed columns alongside a pasted block: the typed ones must win.
+      impRow({ Household:'The Khans', Name:'Sara Khan', City:'Houston',
+               'Full Address':'9 Oak Ave, Austin, TX 78702, USA' }),
+      // Overseas, no postal code at all.
+      impRow({ Household:'Dana & Omar', Name:'Dana',
+               'Full Address':'7 Nile Street, Zamalek, Cairo, Egypt' }),
+      // A blank Full Address must change nothing — the Autopay trap, again.
+      impRow({ Household:'The Lees', Name:'Ann Lee', 'Address Line 1':'4 Pine Ct',
+               City:'Reston', 'Full Address':'' }),
+    ];
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []), 'Import': fakeSheet(I_H, oneCell()),
+    }});
+    const prev   = c.webPreviewAddressImport_();
+    const status = () => c._tabs['Import']._data.slice(1).map(r => r[I_H.indexOf('Status')]);
+    const notes  = status();
+    check('the preview says what it read out of the pasted address',
+          /address read as: 12 Elm St \/ Apt 4 \/ Austin \/ TX \/ 78701 \/ USA/.test(notes[0]),
+          JSON.stringify(notes[0]));
+    check('…alongside what the row was going to say anyway',
+          /Will add: Raj Patel/.test(notes[0]), JSON.stringify(notes[0]));
+    check('…and nothing was written, parse or no parse',
+          c._tabs['Households']._data.length === 1, 'a preview that writes is not a preview');
+
+    c.webRunAddressImport_();
+    const hh = {};
+    c.webGetAddressBook_().households.forEach(h => { hh[h.household] = h; });
+    check('one pasted cell fills all five parts',
+          hh['The Patels'].address1 === '12 Elm St' && hh['The Patels'].address2 === 'Apt 4' &&
+          hh['The Patels'].city === 'Austin' && hh['The Patels'].state === 'TX' &&
+          hh['The Patels'].postalCode === '78701' && hh['The Patels'].country === 'USA',
+          JSON.stringify(hh['The Patels']));
+    check('…and the Relationship column beside it is untouched',
+          hh['The Patels'].relationship === 'Friends',
+          'Full Address sits between Country and Relationship in the schema');
+
+    check('a TYPED column beats the same field in the pasted block',
+          hh['The Khans'].city === 'Houston', JSON.stringify(hh['The Khans']));
+    check('…while the parse still fills what was left blank',
+          hh['The Khans'].address1 === '9 Oak Ave' && hh['The Khans'].state === 'TX' &&
+          hh['The Khans'].postalCode === '78702');
+    check('…and the note says the city was NOT taken from the paste',
+          status()[1].indexOf('Houston') === -1 && /address read as: 9 Oak Ave/.test(status()[1]),
+          JSON.stringify(status()[1]));
+
+    check('an overseas address with no postal code still yields city and country',
+          hh['Dana & Omar'].city === 'Cairo' && hh['Dana & Omar'].country === 'Egypt' &&
+          hh['Dana & Omar'].address1 === '7 Nile Street',
+          JSON.stringify(hh['Dana & Omar']));
+    check('…keeping the district rather than dropping half the address',
+          hh['Dana & Omar'].address2 === 'Zamalek', JSON.stringify(hh['Dana & Omar']));
+
+    check('a BLANK Full Address changes nothing and says nothing',
+          hh['The Lees'].address1 === '4 Pine Ct' && hh['The Lees'].city === 'Reston' &&
+          status()[3].indexOf('address read as') === -1,
+          JSON.stringify([hh['The Lees'], status()[3]]));
+  }
+
+  // The parser on its own, because the branches it takes are not all reachable
+  // through a realistic Import tab, and an untested branch is a guess.
+  {
+    const c = harness({ props: {}, tabs: {} });
+    const p = c.parseFullAddress_;
+    check('"City ST 00000" in one comma-free part is split',
+          JSON.stringify(p('12 Elm St, Apt 4, Austin TX 78701')) ===
+          JSON.stringify({ City:'Austin', State:'TX', 'Postal Code':'78701',
+                           'Address Line 1':'12 Elm St', 'Address Line 2':'Apt 4' }),
+          JSON.stringify(p('12 Elm St, Apt 4, Austin TX 78701')));
+    check('a ZIP+4 survives whole', p('450 Serra Mall, Stanford, CA 94305-2004')['Postal Code']
+          === '94305-2004');
+    check('a UK postcode is a postcode, not a street',
+          p('221B Baker Street, London, NW1 6XE, United Kingdom')['Postal Code'] === 'NW1 6XE');
+    check('…but an all-caps street line is NOT',
+          p('ELM STREET')['Address Line 1'] === 'ELM STREET',
+          'nine legal characters of [A-Z ] would otherwise be filed as a postal code');
+    check('a postcode BEFORE the city is handled',
+          p('88 Rue de Rivoli, 75001 Paris, France')['Postal Code'] === '75001' &&
+          p('88 Rue de Rivoli, 75001 Paris, France')['City'] === 'Paris',
+          'most of the world writes it that way round');
+    check('…but a five-digit house number on its own is still a street',
+          p('10400 NE 4th St')['Address Line 1'] === '10400 NE 4th St' &&
+          p('10400 NE 4th St')['Postal Code'] === undefined,
+          'the guard that keeps the postcode-first rule from eating a street');
+    check('newlines work as well as commas',
+          p('12 Elm St\nAustin, TX 78701\nUSA')['City'] === 'Austin');
+    check('empty in, empty out', JSON.stringify(p('')) === '{}' &&
+          JSON.stringify(p('   ')) === '{}' && JSON.stringify(p(null)) === '{}');
+    check('a run of empty parts is not an empty field',
+          p('12 Elm St,,, Austin,  TX   78701 ,  USA ')['City'] === 'Austin',
+          'pasted blocks have stray commas and doubled spaces in them');
+  }
+
+  // ---- the column the live sheet is missing ----
+  {
+    const c = harness({ props: {}, tabs: {} });
+    const sheet = fakeSheet(I_H_OLD, [['The Smiths Family'].concat(I_H_OLD.slice(1).map(() => ''))]);
+    const added = c.ensureImportColumns_(sheet);
+    check('a missing column is added to a tab that already has data',
+          added.length === 1 && added[0] === 'Full Address', JSON.stringify(added));
+    check('…at the right-hand edge, so nothing already in the tab moves',
+          sheet._data[0].slice(0, I_H_OLD.length).join('|') === I_H_OLD.join('|'),
+          JSON.stringify(sheet._data[0]));
+    check('…and the row beneath it is untouched',
+          String(sheet._data[1][0]) === 'The Smiths Family', JSON.stringify(sheet._data[1]));
+    check('…and it is then found by name', c.addressBookCols_(sheet)['Full Address'] > 0);
+    check('a second call adds nothing', c.ensureImportColumns_(sheet).length === 0,
+          'this runs on every dashboard load');
+    check('a sheet that is already complete is never written to',
+          c.ensureImportColumns_(fakeSheet(I_H, [])).length === 0);
+
+    // A column Ahmed added himself must survive, and must not be renamed into one
+    // of ours by being in the way.
+    const mine = fakeSheet(I_H_OLD.concat(['My own column']), []);
+    c.ensureImportColumns_(mine);
+    check('a hand-added column is left exactly where it was',
+          mine._data[0][I_H_OLD.length] === 'My own column', JSON.stringify(mine._data[0]));
+    check('…and ours goes after it', mine._data[0][I_H_OLD.length + 1] === 'Full Address',
+          JSON.stringify(mine._data[0]));
+    check('no sheet at all is survivable', c.ensureImportColumns_(null).length === 0);
+  }
+
+  // WIRED IN, not merely present. A perfect function nothing calls is the same as no
+  // function at all — the live Import tab would still be missing the column, and a
+  // header-driven read maps a name it cannot find to nothing.
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []),
+      // Exactly the live tab: created before the column existed, with data in it.
+      'Import': fakeSheet(I_H_OLD, [impRow_old({ Household:'The Smiths Family',
+                                                 Name:'John Smith' })]),
+    }});
+    check('an Import tab missing the column does not have it yet',
+          c._tabs['Import']._data[0].indexOf('Full Address') === -1);
+    c.webGetAddressBook_();
+    check('…and simply loading the dashboard adds it',
+          c._tabs['Import']._data[0].indexOf('Full Address') !== -1,
+          JSON.stringify(c._tabs['Import']._data[0]));
+    check('…without disturbing the row already in the tab',
+          String(c._tabs['Import']._data[1][0]) === 'The Smiths Family');
+    // And then the paste actually works through the public route, which is the only
+    // thing that proves the two halves meet.
+    const imp = c._tabs['Import'];
+    imp.getRange(2, imp._data[0].indexOf('Full Address') + 1, 1, 1)
+       .setValues([['12 Elm St, Austin, TX 78701, USA']]);
+    c.webRunAddressImport_();
+    const smiths = c.webGetAddressBook_().households
+      .filter(h => h.household === 'The Smiths Family')[0];
+    check('…so a pasted address imported through the normal route lands in the fields',
+          smiths && smiths.city === 'Austin' && smiths.postalCode === '78701',
+          JSON.stringify(smiths));
+  }
+
   check('preview and import are the SAME function with a flag',
         /function webPreviewAddressImport_\(\) \{ return addressBookImport_\(true\); \}/.test(SRC.Web) &&
         /function webRunAddressImport_\(\) \{ return addressBookImport_\(false\); \}/.test(SRC.Web),
@@ -979,29 +1306,53 @@ console.log('\nThe dashboards');
 
   ['docs/app.js', 'docs/dashboard-lite.html'].forEach((label, i) => {
     const s = [SRC.App, SRC.Lite][i];
+    // POSITIVE assertions run against the address book's slice of the bundle, not the
+    // whole file: "＋ Add" appears 26 times in docs/app.js — Add Person, Add Idea, Add
+    // Date — so looking for it file-wide proved nothing at all, which is exactly what
+    // a control caught. Negative assertions stay on the whole file, where they are
+    // stronger: a leftover reference anywhere is still a leftover.
+    const ab = abCode(s);   // comments stripped — see abCode
     check(label + ': writes go through apiPost, not apiGet',
-          /apiPost\(apiUrl, apiToken, body\)|apiPost\(apiUrl,apiToken,body\)/.test(s),
+          /apiPost\(apiUrl, apiToken, body\)|apiPost\(apiUrl,apiToken,body\)/.test(ab),
           'a GET would drop every cleared field');
     check(label + ': the unconfigured state is explained, not an error',
-          /ADDRESS_BOOK_SHEET_ID/.test(s));
+          /ADDRESS_BOOK_SHEET_ID/.test(ab));
     check(label + ': deleting a household warns about what goes with it',
-          /member' : 'members'/.test(s) && /mailing' : 'mailings'/.test(s),
+          /member' : 'members'/.test(ab) && /mailing' : 'mailings'/.test(ab),
           'the cascade now covers a third tab and must not be a surprise');
 
     check(label + ': the event picker exists',
-          /events\.map\(ev =>/.test(s) || /events\.map\(function\(ev\)/.test(s) ||
-          /events\.map\(ev=>/.test(s),
+          /events\.map\(ev =>/.test(ab) || /events\.map\(function\(ev\)/.test(ab) ||
+          /events\.map\(ev=>/.test(ab),
           'picking an event is how you get to a card run');
     check(label + ': the card run carries the list forward from history',
-          /forEvent\(h\.id, event\)\.length > 0/.test(s),
+          /forEvent\(h\.id, event\)\.length > 0/.test(ab),
           'on the list if ever sent — no flag anywhere to go stale');
     check(label + ': …with a still-to-send toggle rather than an inference',
-          /unsentOnly === 'year'/.test(s),
+          /unsentOnly === 'year'/.test(ab),
           "guessing an event's cadence would be right most of the time and " +
           'inexplicable the rest');
-    check(label + ': a mis-tick is undoable', /action:\s*'delete_mailing'/.test(s));
+    check(label + ': a mis-tick is undoable', /action:\s*'delete_mailing'/.test(ab));
+
+    // Two buttons, because putting somebody on a list and posting their card are
+    // different days. With only "+ Sent", starting an event meant claiming you had
+    // already sent it — and since an event is only the rows filed against it, that
+    // was the ONLY way to make a new event survive a reload.
+    check(label + ': the pool can add a household without claiming it was sent',
+          /＋ Add/.test(ab) && /planned:\s*true/.test(ab),
+          'the fix for "I added an event and it did not save"');
+    check(label + ': …and mark one sent, separately', /✓ Sent/.test(ab));
+    check(label + ': a named event with nobody on it says it is not saved',
+          /Nothing is saved for/.test(ab),
+          'the name lives only in the browser until the first row is written');
+    check(label + ': …and the pool is open so "add below" points at something',
+          /addingTo \|\| onList\.length === 0/.test(ab));
+    check(label + ': planned is decided in ONE place',
+          (s.match(/function abIsSent/g) || []).length === 1 &&
+          /String\(\(?m && m\.sent\)? \|\| ''\)\.trim\(\) !== ''/.test(ab),
+          '"has this gone?" must not be answerable two ways in two views');
     check(label + ': the full history renders under a household',
-          /SENT/.test(s) && /m\.event/.test(s) && /m\.sent/.test(s));
+          /SENT/.test(ab) && /m\.event/.test(ab) && /m\.sent/.test(ab));
     // THE DEAD END THIS SHIPPED WITH, and the blind spot that let it through.
     // `events` is derived from the mailings that already exist, so on an address
     // book with no history the picker offered only "📒 Address book" — and the one
@@ -1009,25 +1360,25 @@ console.log('\nThe dashboards');
     // run you could not reach. The check below passed the whole time, because every
     // fixture seeded `events`. It stays, but it no longer carries the claim alone.
     check(label + ': once you are in a run, + Add someone draws from the pool',
-          /Add someone/.test(s));
+          /Add someone/.test(ab));
     check(label + ': the picker offers a way into an event nobody has ever had',
-          /value="__new__"|value:\s*"__new__"/.test(s),
+          /value="__new__"|value:\s*"__new__"/.test(ab),
           'built from history, so with no history there was nothing to pick');
     check(label + ': …and the chosen event is an option before it has any history',
-          /events\.indexOf\(event\) === -1/.test(s),
+          /events\.indexOf\(event\) === -1/.test(ab),
           'otherwise the run opens with the picker sitting blank');
     check(label + ': …and the picker goes through startEvent, not straight to setEvent',
-          /onChange(?:=\{|:\s*)e => startEvent\(e\.target\.value\)/.test(s),
+          /onChange(?:=\{|:\s*)e => startEvent\(e\.target\.value\)/.test(ab),
           "setEvent would open a run called '__new__' and file mailings under it");
 
     // An empty household showed "0 people" as dead grey text with the only way in
     // being a 4px triangle, which reads as broken rather than empty. Both halves of
     // the fix are pinned: the row opens on click, and an empty one says what to do.
     check(label + ': an empty household prompts instead of reading "0 people"',
-          /\+ Add the names/.test(s),
+          /\+ Add the names/.test(ab),
           'dead text next to a hidden control is how a working feature looks broken');
     check(label + ': …and the whole row opens it, not just the triangle',
-          /cursor:\s*'pointer'[\s\S]{0,120}?Open to add people|Open to add people/.test(s),
+          /cursor:\s*'pointer'[\s\S]{0,120}?Open to add people|Open to add people/.test(ab),
           'clicking the name to see who is in a household is what anyone tries first');
 
     // The retired controls must be gone, not merely unused.
@@ -1055,7 +1406,7 @@ console.log('\nThe dashboards');
         setUnsentOnly: v => got.unsent.push(v),
       };
       vm.createContext(ctx);
-      vm.runInContext(extractFn(s, 'startEvent') +
+      vm.runInContext(extractFn(abBlock(s), 'startEvent') +
                       ';startEvent(' + JSON.stringify(choice) + ');', ctx);
       return got;
     };
@@ -1094,6 +1445,65 @@ console.log('\nThe dashboards');
     check(label + ': the name is trimmed',
           run('__new__', '  Christmas card  ').event[0] === 'Christmas card',
           'an untrimmed name is a SECOND event that looks identical in the picker');
+
+    // The tick and the ✕ are run too. Which one of them fires matters more than any
+    // other wiring here: un-ticking used to DELETE the row, so a mis-click dropped
+    // a household off the event entirely rather than putting it back to planned.
+    const EVENT = 'Christmas card';
+    const block = abBlock(s);     // not the whole bundle — see abBlock
+    const runRow = (fnName, rows, confirmYes) => {
+      const posts = [], asked = [];
+      const ctx = {
+        event: EVENT,
+        thisYear: '2026',
+        busy: false,
+        write: body => { posts.push(body); return Promise.resolve(true); },
+        forEvent: () => rows,
+        abIsSent: m => String((m && m.sent) || '').trim() !== '',
+        window: { confirm: msg => { asked.push(msg); return confirmYes; } },
+      };
+      vm.createContext(ctx);
+      const done = vm.runInContext(extractFn(block, fnName) +
+        ';' + fnName + '({ id: "HH-1", household: "The Smith Family" });', ctx);
+      return { posts: posts, asked: asked, done: done };
+    };
+
+    const sentRow  = [{ id: 'M-9', sent: '2026-12-01' }];
+    const plainRow = [{ id: 'M-8', sent: '' }];
+
+    const untick = runRow('toggle', sentRow, true);
+    check(label + ': un-ticking a sent household puts the row BACK TO PLANNED',
+          untick.posts.length === 1 && untick.posts[0].action === 'save_mailing' &&
+          untick.posts[0].id === 'M-9' && untick.posts[0].planned === true,
+          JSON.stringify(untick.posts));
+    check(label + ': …and does NOT delete it',
+          !untick.posts.some(p => p.action === 'delete_mailing'),
+          'dropping them off the event undoes far more than a mis-click means');
+
+    const tick = runRow('toggle', plainRow, true);
+    check(label + ': ticking a planned household marks it sent',
+          tick.posts.length === 1 && tick.posts[0].action === 'save_mailing' &&
+          !tick.posts[0].planned && !tick.posts[0].id,
+          JSON.stringify(tick.posts));
+    check(label + ': …letting the server take over the planned row by household+event',
+          tick.posts[0].householdId === 'HH-1' && tick.posts[0].event === EVENT);
+
+    const off = runRow('removeFrom', sentRow.concat(plainRow), true);
+    check(label + ': the ✕ asks first, and says it drops the whole history',
+          off.asked.length === 1 && /not just this year/.test(off.asked[0]),
+          JSON.stringify(off.asked));
+    check(label + ': …and declining removes nothing',
+          runRow('removeFrom', sentRow, false).posts.length === 0);
+    pending.push(off.done.then(() => {
+      check(label + ': the ✕ deletes every row for that event, not just this year\'s',
+            off.posts.length === 2 && off.posts.every(p => p.action === 'delete_mailing'),
+            JSON.stringify(off.posts));
+      // The sequencing is the point: one write at a time, because each one reloads
+      // the whole book and concurrent reloads leave whichever lands last on screen.
+      check(label + ': …awaiting each one rather than firing them together',
+            /for \(const m of rows\)/.test(block) && /await write\(/.test(block),
+            'a forEach of un-awaited promises races its own reloads');
+    }));
   });
 
   // The sheet id deliberately lives outside the repo, so nothing in this suite can
@@ -1144,5 +1554,11 @@ console.log('\nThe dashboards');
   });
 }
 
-console.log('\n' + pass + ' passed, ' + fail + ' failed');
-process.exit(fail ? 1 : 0);
+Promise.all(pending).then(() => {
+  console.log('\n' + pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}, err => {
+  console.log('  FAIL an async check threw  — ' + err.message);
+  console.log('\n' + pass + ' passed, ' + (fail + 1) + ' failed');
+  process.exit(1);
+});

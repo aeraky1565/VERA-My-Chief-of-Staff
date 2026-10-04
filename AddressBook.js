@@ -46,8 +46,20 @@ var HOUSEHOLD_HEADERS = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 
 
 var CONTACT_HEADERS   = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'Notes'];
 
-// One row per thing actually posted. EVERY ROW IS SOMETHING THAT WENT OUT — there is
-// no planned or draft state, so a row never has to be interpreted, only counted.
+// One row per thing sent, or intended to be sent.
+//
+// A BLANK 'Sent' MEANS PLANNED: the household is on the list for that event but the
+// card has not gone yet. A date means it went on that date. This started out as
+// "every row is something that actually went out, so a row never has to be
+// interpreted" — which was wrong in a way that showed up the moment the feature was
+// used. The event dropdown is derived from these rows, so with nothing but sent rows
+// allowed, naming a new event saved NOTHING until the first card was posted, and the
+// name was gone on the next load.
+//
+// It is stored as a blank rather than a separate Status column on purpose. A Status
+// cell can disagree with the date — 'Planned' sitting next to 2025-11-02 — and in a
+// tab two people edit by hand it eventually will. A blank date cannot contradict
+// anything.
 //
 // 'Event' is free text ('Christmas card', 'Wedding thank you'). The dashboard offers
 // the values already in use and lets a new one be typed, so inventing an occasion
@@ -64,11 +76,16 @@ var MAILING_HEADERS   = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
 // "12 Elm St" and "12 Elm Street" are the same house to a person and two houses to a
 // string comparison, and that is exactly how one family quietly becomes two.
 //
+// 'Full Address' is the alternative to the eight columns before it: paste the whole
+// thing as it appears on a contact card or an email signature and let VERA split it.
+// The broken-out columns always win where they are filled, so one row can be typed
+// field by field and the next pasted whole.
+//
 // 'Status' is written BY VERA, never by hand: it is where the preview says what each
 // row will do, and where the import says what it did.
 var IMPORT_HEADERS    = ['Household', 'Name', 'Member Type', 'Email', 'Phone',
                          'Address Line 1', 'Address Line 2', 'City', 'State',
-                         'Postal Code', 'Country', 'Relationship',
+                         'Postal Code', 'Country', 'Full Address', 'Relationship',
                          'Household Notes', 'Person Notes', 'Status'];
 
 // ---- Access -----------------------------------------------------------------
@@ -136,6 +153,100 @@ function ensureAddressBookTabs_(ss) {
   ensureSheet(ss, ADDRESS_BOOK_PEOPLE_,     CONTACT_HEADERS);
   ensureSheet(ss, ADDRESS_BOOK_MAILINGS_,   MAILING_HEADERS);
   ensureSheet(ss, ADDRESS_BOOK_IMPORT_,     IMPORT_HEADERS);
+  ensureImportColumns_(ss.getSheetByName(ADDRESS_BOOK_IMPORT_));
+}
+
+/**
+ * Adds any IMPORT_HEADERS column that is missing, at the right-hand edge.
+ *
+ * ensureSheet only writes headers into a BLANK tab, which is the right rule for
+ * Households and People — they are someone else's document and VERA must not reshape
+ * them. The Import tab is different: VERA created it, owns its schema and is the only
+ * thing that reads it. Without this, every column added to the schema after the tab
+ * first appeared would be invisible in the live sheet, and a header-driven read maps
+ * a name it cannot find to nothing at all. 'Full Address' was exactly that.
+ *
+ * Additive and BY NAME: existing headers are never moved, renamed or rewritten, so a
+ * column Ahmed added himself, or one he reordered, is left exactly where it is.
+ */
+function ensureImportColumns_(sheet) {
+  if (!sheet) return [];
+  var have   = addressBookCols_(sheet);
+  var adding = IMPORT_HEADERS.filter(function(h) { return !have[h]; });
+  if (!adding.length) return [];
+  // One write at the end of the header row, not one per column.
+  var at = Math.max(sheet.getLastColumn(), 0) + 1;
+  sheet.getRange(1, at, 1, adding.length).setValues([adding]);
+  return adding;
+}
+
+/**
+ * Splits a whole address pasted into one cell.
+ *
+ * Works from the END, because that is where the structure is: a postal code and a
+ * state are recognisable, a street line is not. Whatever is left over at the front
+ * is the street, which is the right way round — a parser that guesses at the street
+ * and works forwards gets everything after its first mistake wrong too.
+ *
+ * Deliberately not clever. It is allowed to be approximate ONLY because the import
+ * preview prints what it understood, per row, before anything is written; without
+ * that dry run a fuzzy parser here would be indefensible.
+ *
+ * @param {string} text  e.g. "12 Elm St, Apt 4, Austin, TX 78701, USA"
+ * @returns {Object} any of Address Line 1/2, City, State, Postal Code, Country
+ */
+function parseFullAddress_(text) {
+  var out   = {};
+  var parts = String(text || '')
+    .replace(/[\r\n]+/g, ',')
+    .split(',')
+    .map(function(p) { return p.replace(/\s+/g, ' ').trim(); })
+    .filter(function(p) { return p !== ''; });
+  if (!parts.length) return out;
+
+  // A trailing part with no digit in it is a country, not a street or a postcode.
+  // Guarded on length because a single part is not an address with a country in it —
+  // one lone word stays as the street line, where it is at least still visible.
+  if (parts.length > 1 && !/\d/.test(parts[parts.length - 1])) {
+    out['Country'] = parts.pop();
+  }
+
+  var tail = parts.length ? parts[parts.length - 1] : '';
+  var m;
+  if ((m = /^(.+?)\s+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/.exec(tail))) {
+    // "Austin TX 78701" — the whole thing in one comma-free part.
+    out['City'] = m[1]; out['State'] = m[2].toUpperCase(); out['Postal Code'] = m[3];
+    parts.pop();
+  } else if ((m = /^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/.exec(tail))) {
+    // "TX 78701", with the city as its own part before it.
+    out['State'] = m[1].toUpperCase(); out['Postal Code'] = m[2];
+    parts.pop();
+    if (parts.length > 1) out['City'] = parts.pop();
+  } else if ((m = /^(?:\d{5}(?:-\d{4})?|(?=[^a-z]*\d)[A-Z][\dA-Z ]{4,9})$/.exec(tail))) {
+    // A bare postcode, US ("78701") or otherwise ("NW1 6XE"). The non-US form has to
+    // contain a digit, or an all-caps street line with no house number — "ELM STREET"
+    // — is nine legal characters and would be filed as a postal code.
+    out['Postal Code'] = tail;
+    parts.pop();
+    if (parts.length > 1) out['City'] = parts.pop();
+  } else if (parts.length > 1 && (m = /^(\d{4,5})\s+(.+)$/.exec(tail))) {
+    // "75001 Paris" — most of the world puts the postcode before the city. Guarded on
+    // there being an earlier part, because a lone "10400 NE 4th St" is a street with a
+    // five-digit house number, not a postcode followed by a town.
+    out['Postal Code'] = m[1]; out['City'] = m[2];
+    parts.pop();
+  } else if (!out['Country'] && parts.length > 2) {
+    // No postcode anywhere and no country taken: the last part is the city.
+    out['City'] = parts.pop();
+  } else if (out['Country'] && parts.length > 1) {
+    out['City'] = parts.pop();
+  }
+
+  if (parts.length) out['Address Line 1'] = parts.shift();
+  // Anything still unclaimed is an apartment or suite line, rejoined rather than
+  // dropped — losing half an address silently is worse than an untidy second line.
+  if (parts.length) out['Address Line 2'] = parts.join(', ');
+  return out;
 }
 
 /**

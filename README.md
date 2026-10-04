@@ -518,11 +518,46 @@ fix anything, then press **Import**.
 > preview that can disagree with the thing it previews is worse than none, because
 > being believed is the only way a preview can hurt you.
 
+**Or paste the whole address into one cell.** `Full Address` is the alternative to the
+eight columns before it: paste it as it appears on a contact card and VERA splits it,
+working from the end — postal code, state, country — because that is where the
+structure is. **A typed column always wins**, so one row can be filled in field by
+field and the next pasted whole. Every row where the parse was used says what it
+understood in its `Status` cell: *address read as: 12 Elm St / Austin / TX / 78701 /
+USA*.
+
+> The parser is allowed to be approximate **only because the preview prints its work
+> before anything is written**. Without the dry run it would be indefensible.
+
+> `Full Address` arrived after the Import tab already existed, and `ensureSheet` only
+> writes headers into a *blank* tab — so the column would never have appeared.
+> `ensureImportColumns_` appends anything missing at the right-hand edge. It applies
+> to `Import` alone, which VERA created and is the only reader of; `Households` and
+> `People` stay under the never-disturb rule.
+
 **The card run carries forward from history.** Pick an event and a household is on the
-list **if it has ever been sent that event** — send someone a Christmas card once and
-they are on the list every year after, with no flag anywhere to keep in step or go
-stale. Ticking logs a mailing dated today; un-ticking deletes it, so a mis-tick is
-undoable. A brand-new event starts empty, which is what *+ Add someone* is for.
+list **if it has a row for that event at all** — send someone a Christmas card once
+and they are on the list every year after, with no flag anywhere to keep in step or go
+stale.
+
+**A row with a date is sent; a row with a blank `Sent` is planned** — on the list, not
+posted yet. The pool offers both: *＋ Add* files the intention, *✓ Sent* files the
+fact. Ticking a planned household marks it sent and **takes over that row** rather
+than adding a second. Un-ticking puts it **back to planned**, and a *✕* on the row
+takes the household off the event entirely, behind a confirm that says it drops the
+whole history for that event and not just this year's.
+
+> **Planned is stored as a blank date, not a Status column.** A Status cell can
+> disagree with the date — `Planned` sitting next to `2025-11-02` — and in a tab two
+> people edit by hand it eventually will. A blank date cannot contradict anything.
+
+> **This reverses the original design**, which said every row was something that
+> actually went out so a row would never have to be interpreted. That was wrong the
+> first time the feature was used: an event has no storage of its own — the dropdown
+> is derived from these rows — so with only sent rows allowed, naming a new event
+> saved *nothing* and the name was gone on the next load. There is still no `Events`
+> tab; an event becomes real on the first household added to it, and the run says so
+> in as many words until then.
 
 **Starting the first event.** The picker is built from the mailings that already
 exist, so on an empty address book it offers *＋ New event…*: it asks what to call
@@ -539,7 +574,7 @@ definition nobody has had it yet.
 > (right for anything annual) or *everyone on the list*. Guessing an event's cadence
 > from its own history would be right most of the time and inexplicable the rest.
 
-`ensureAddressBookTabs_` adds those two tabs if they are missing and **touches
+`ensureAddressBookTabs_` adds any of those tabs that are missing and **touches
 nothing else in that document** — it reuses `ensureSheet`, which only writes headers
 into a blank sheet, so whatever you already built in there is left exactly as it was.
 

@@ -11334,11 +11334,17 @@ function webGetAddressBook_() {
   });
 
   // The event vocabulary, most recently used first. There is no list to maintain
-  // anywhere: what you have sent IS the set of events, so typing a new one once puts
-  // it in the dropdown for next time.
+  // anywhere: what you have on the list IS the set of events, so naming a new one and
+  // adding one household puts it in the dropdown from then on.
+  //
+  // A PLANNED ROW SORTS FIRST. Sorting on the raw value puts a blank Sent last, which
+  // is backwards: an event with nothing sent yet is the one being worked on right now,
+  // and it would have arrived at the bottom of the dropdown under everything finished
+  // years ago.
+  var key = function(m) { return String(m.sent || '').trim() || '9999-12-31'; };
   var seen = {};
   mailings.slice().sort(function(a, b) {
-    return String(b.sent || '').localeCompare(String(a.sent || ''));
+    return key(b).localeCompare(key(a));
   }).forEach(function(m) {
     var e = String(m.event || '').trim();
     if (e && !seen[e.toLowerCase()]) seen[e.toLowerCase()] = e;
@@ -11518,8 +11524,14 @@ function webSaveMailing_(body) {
   }
   var sheet = ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);
 
-  var tz   = Session.getScriptTimeZone();
-  var sent = String(b.sent || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')).trim();
+  // PLANNED IS A PRESENCE FLAG, not an empty 'sent'. `b.sent || today` turns '' into
+  // today's date, so without a separate flag "on the list, not sent yet" could not be
+  // expressed at all — the same trap that made un-checking Autopay a silent no-op.
+  var planned = String(b.planned || '') === 'true' || b.planned === true;
+  var tz      = Session.getScriptTimeZone();
+  var sent    = planned
+    ? ''
+    : String(b.sent || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')).trim();
 
   var fields = {
     'Household ID': householdId,
@@ -11532,17 +11544,40 @@ function webSaveMailing_(body) {
   if (id) {
     var rowNum = findAddressBookRow_(sheet, id);
     if (!rowNum) throw new Error('Mailing not found: ' + id);
+    // Undo: this row goes back to planned. If the household ALREADY has a planned row
+    // for this event, reverting would leave two identical ones and the next tick
+    // would pick an arbitrary one, so drop this row instead of twinning it.
+    if (planned) {
+      var twin = findMailing_(sheet, householdId, event, '');
+      if (twin && twin !== id) {
+        sheet.deleteRow(rowNum);          // rowNum is already in hand
+        return { ok: true, id: twin, action: 'merged' };
+      }
+    }
     writeAddressBookRow_(sheet, rowNum, fields);
     return { ok: true, id: id, action: 'updated' };
   }
 
+  // Marking a household sent takes over its planned row rather than adding a second.
+  // Otherwise a planned ghost sits beside the sent row for the same card, carrying
+  // the same event name, and nothing downstream can tell them apart.
+  if (!planned) {
+    var pending = findMailing_(sheet, householdId, event, '');
+    if (pending) {
+      writeAddressBookRow_(sheet, findAddressBookRow_(sheet, pending), { 'Sent': sent });
+      return { ok: true, id: pending, action: 'sent' };
+    }
+  }
+
+  // Idempotent for free: findMailing_ compares the trimmed cell against the wanted
+  // value, so '' matches a blank Sent and adding the same household twice is a no-op.
   var dup = findMailing_(sheet, householdId, event, sent);
   if (dup) return { ok: true, id: dup, action: 'unchanged', alreadyLogged: true };
 
   id = newAddressBookId_('M');
   fields['ID'] = id;
   appendAddressBookRow_(sheet, MAILING_HEADERS, fields);
-  return { ok: true, id: id, action: 'created' };
+  return { ok: true, id: id, action: planned ? 'planned' : 'created' };
 }
 
 /** The id of a mailing matching household + event + date, or '' . Event match is
@@ -11647,9 +11682,11 @@ function addressBookImport_(dryRun) {
     'Country': 'Country', 'Relationship': 'Relationship',
     'Household Notes': 'Notes',
   };
+  var PARSE_REPORT_ORDER = ['Address Line 1', 'Address Line 2', 'City', 'State',
+                            'Postal Code', 'Country'];
 
   // ---- pass 1: group the rows into households ----
-  var groups = {}, order = [], status = [];
+  var groups = {}, order = [], status = [], parseNotes = [];
   raw.forEach(function(r, i) {
     var row = {};
     Object.keys(impCols).forEach(function(name) { row[name] = r[impCols[name] - 1]; });
@@ -11671,6 +11708,29 @@ function addressBookImport_(dryRun) {
       var v = importCell_(row, src);
       if (v && !g.fields[HOUSEHOLD_FIELDS[src]]) g.fields[HOUSEHOLD_FIELDS[src]] = v;
     });
+
+    // A whole address pasted into one cell, split and then run through the SAME
+    // first-non-blank-wins rule — which is what makes "an explicit column always
+    // wins" true without a second code path: the typed columns above have already
+    // claimed their targets, so the parse can only fill what is still empty.
+    var whole = importCell_(row, 'Full Address');
+    if (whole) {
+      var parsed = parseFullAddress_(whole);
+      var used   = [];
+      // Reported in envelope order, not the order the parser happened to work them
+      // out in, so the status cell reads like an address instead of a rearrangement.
+      PARSE_REPORT_ORDER.forEach(function(target) {
+        if (parsed[target] && !g.fields[target]) {
+          g.fields[target] = parsed[target];
+          used.push(parsed[target]);
+        }
+      });
+      // What it understood. This is the whole reason an approximate parser is
+      // acceptable here: the preview shows its work before anything is written.
+      parseNotes[i] = used.length
+        ? 'address read as: ' + used.join(' / ')
+        : 'full address ignored — those columns are already filled';
+    }
     if (name) {
       g.members.push({ rowIndex: i, name: name,
                        memberType: importCell_(row, 'Member Type'),
@@ -11751,7 +11811,13 @@ function addressBookImport_(dryRun) {
   var statusCol = impCols['Status'];
   if (statusCol) {
     var block = [];
-    for (var i = 0; i < raw.length; i++) block.push([status[i] || '']);
+    for (var i = 0; i < raw.length; i++) {
+      // The parse note rides along on whatever the row was going to say anyway,
+      // rather than needing a column of its own.
+      var line = status[i] || '';
+      if (parseNotes[i]) line = line ? line + ' · ' + parseNotes[i] : parseNotes[i];
+      block.push([line]);
+    }
     impSheet.getRange(2, statusCol, block.length, 1).setValues(block);
   } else {
     messages.push('No Status column on the Import tab, so there is nowhere to report per-row.');
