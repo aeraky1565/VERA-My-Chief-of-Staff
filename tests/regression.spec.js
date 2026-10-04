@@ -151,6 +151,39 @@ test.describe('Tier 3 — Apps Script API', () => {
     expect(data.ok).toBe(true);
   });
 
+  // READ-ONLY, deliberately: this reaches the real shared address book, so it counts
+  // rows and never writes one. The counts are the point — the sheet id lives outside
+  // the repo (Script Property, or an address_book_sheet_id row in the Config tab once
+  // the properties editor goes read-only past 50), so this is the only place that can
+  // see whether it is actually set. Counts only: names, emails and postal addresses
+  // do not belong in a CI log.
+  test('address_book is configured and readable', async () => {
+    if (!HAS_CREDS) {
+      test.skip(true, 'VERA_URL / VERA_TOKEN not set');
+    }
+    const resp = await ctx.get(
+      `${VERA_URL}?action=address_book&token=${VERA_TOKEN}`,
+      { timeout: 30000 }
+    );
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    // A wrong id, or one that was never shared with the account VERA runs as,
+    // answers ok:false and carries the reason. That reason is worth reading out.
+    expect(data.ok, `address_book failed: ${data.error || '(no reason given)'}`).toBe(true);
+    expect(
+      data.configured,
+      'the address book is not configured — set the ADDRESS_BOOK_SHEET_ID script ' +
+      'property, or add an address_book_sheet_id row to the Config tab'
+    ).toBe(true);
+    ['households', 'people', 'mailings', 'events'].forEach(k => {
+      expect(Array.isArray(data[k]),
+        `${k} is missing from the response — is the live deployment stale?`).toBe(true);
+    });
+    console.log(`  📒 address book: ${data.households.length} households, ` +
+                `${data.people.length} people, ${data.mailings.length} mailings, ` +
+                `${data.events.length} event(s)`);
+  });
+
   test('regression_test endpoint returns pass results', async () => {
     if (!HAS_CREDS) {
       test.skip(true, 'VERA_URL / VERA_TOKEN not set');

@@ -1096,6 +1096,32 @@ console.log('\nThe dashboards');
           'an untrimmed name is a SECOND event that looks identical in the picker');
   });
 
+  // The sheet id deliberately lives outside the repo, so nothing in this suite can
+  // tell whether it is set. The live regression run is the only place that can, and
+  // it must look without touching: it reaches the real book that Ahmed and Victoria
+  // share, where a stray write is somebody's actual address.
+  {
+    const spec = fs.readFileSync(ROOT + '/tests/regression.spec.js', 'utf8');
+    const i = spec.indexOf("test('address_book is configured and readable'");
+    check('the live run checks the address book is configured', i !== -1,
+          'the id is not in the repo, so this is the only check that can see it');
+    const body = i === -1 ? '' : spec.slice(i, spec.indexOf('\n  });', i));
+    check('…by reading, never writing',
+          /action=address_book/.test(body) &&
+          !/save_|delete_|run_address_import|\.post\(/.test(body),
+          'a regression suite that writes to a real address book is a liability');
+    check('…and says how to fix it, not just that it is broken',
+          /address_book_sheet_id/.test(body) && /ADDRESS_BOOK_SHEET_ID/.test(body),
+          'both routes in, because the properties editor goes read-only past 50');
+    check('…and logs counts rather than who is in it',
+          /\.length/.test(body) &&
+          !/\.name|\.email|\.phone|\.household\b|address1|\[0\]/.test(body),
+          'a CI log is a public place to put a postal address');
+    check('…and a stale deployment is named as the suspect',
+          /stale/.test(body),
+          'a missing field reads as a code bug when it is really an old deploy');
+  }
+
   const readme = fs.readFileSync(ROOT + '/README.md', 'utf8');
   check('the README documents the script property', /ADDRESS_BOOK_SHEET_ID/.test(readme));
   check('…and why birthdays are deliberately absent',

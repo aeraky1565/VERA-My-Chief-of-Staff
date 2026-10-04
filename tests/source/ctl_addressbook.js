@@ -14,6 +14,8 @@ const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 DOCS.forEach(f => { BASE['docs/' + f] = fs.readFileSync(path.join(SRC_DIR, 'docs', f), 'utf8'); });
 BASE['README.md'] = fs.readFileSync(path.join(SRC_DIR, 'README.md'), 'utf8');
+BASE['tests/regression.spec.js'] =
+  fs.readFileSync(path.join(SRC_DIR, 'tests', 'regression.spec.js'), 'utf8');
 
 // The same mutation applied to all three shipped copies. Every one of them must
 // actually change: the three differ in whitespace (app.js and index.html are what
@@ -475,6 +477,36 @@ const CONTROLS = {
     DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f].replace(/ADDRESS_BOOK_SHEET_ID/g, 'the setting'); });
     return o;
   },
+  // ---- the live read-only check -------------------------------------------
+  'the live run never checks the address book is configured': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      "test('address_book is configured and readable'",
+      "test.skip('address_book is configured and readable'"),
+  }),
+  'the live check writes to the real address book': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      '    expect(resp.ok()).toBeTruthy();\n    const data = await resp.json();\n' +
+      '    // A wrong id,',
+      '    await ctx.post(VERA_URL, { data: { action: \'save_mailing\', token: VERA_TOKEN } });\n' +
+      '    expect(resp.ok()).toBeTruthy();\n    const data = await resp.json();\n' +
+      '    // A wrong id,'),
+  }),
+  'the live check stops naming the Config tab route in': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      "'property, or add an address_book_sheet_id row to the Config tab'",
+      "'property'"),
+  }),
+  'the live check logs who is in the book': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      '`  📒 address book: ${data.households.length} households, `',
+      '`  📒 address book: ${data.households[0].household} and others, `'),
+  }),
+  'a missing field no longer points at a stale deployment': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      '`${k} is missing from the response — is the live deployment stale?`',
+      '`${k} should be an array`'),
+  }),
+
   'index.html is a stale build': b => ({
     'docs/index.html': b['docs/index.html'].replace(/AddressBookView/g, 'ComingSoonView'),
   }),
@@ -487,6 +519,7 @@ let allBit = true;
 Object.keys(CONTROLS).forEach(name => {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(path.join(OUT, 'docs'), { recursive: true });
+  fs.mkdirSync(path.join(OUT, 'tests'), { recursive: true });
   let patch;
   try { patch = CONTROLS[name](BASE); }
   catch (e) { console.log('\n=== CONTROL: ' + name); console.log('  !! MUTATION THREW: ' + e.message); allBit = false; return; }
