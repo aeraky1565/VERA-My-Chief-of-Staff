@@ -458,9 +458,21 @@ invitations to the children's things. Lives under **People → 👤 People** in 
 dashboard and as its own **📒 Address Book** tab in the mobile one.
 
 **It is a different spreadsheet on purpose.** It is shared with Victoria on its own,
-without handing over finances, health and career with it. VERA reaches it by id from
-the `ADDRESS_BOOK_SHEET_ID` script property, the same way the Simple Ass Tracker
-budget is read and written. With that property unset the tab shows a setup line and
+without handing over finances, health and career with it.
+
+**Point VERA at it from the Config tab**, with a row whose key is
+`address_book_sheet_id` and whose value is the sheet id. The
+`ADDRESS_BOOK_SHEET_ID` script property is also read, and wins when both are set, so
+an existing deployment keeps working — but the Config tab is the one that actually
+works in practice:
+
+> **The Apps Script property editor lists only the first 50 properties and is
+> read-only past that** — *"to manage or view all of your properties, do so
+> programmatically using the Properties service."* VERA is well past 50, so a setting
+> a human has to type cannot be added there at all. A sheet has no such cap, and
+> `wishlist_*` and `victoria_email` already live there.
+
+With neither set the tab shows a setup line and
 **records nothing against API health** — an unconfigured feature is not an outage,
 and filing one as a fault is how the "SOME DATA IS NOT LIVE" banner lost its
 credibility the first time.
@@ -764,6 +776,36 @@ moment it reports things that are fine. Two rules keep it honest:
   `googlefit-sleep` does). The discriminator is **recency of activity**, not failure
   count: a genuinely broken source still has code calling it, so its `lastFailure` is
   refreshed every night and it survives the prune however long it has been failing.
+
+### Script property housekeeping
+
+`pruneScriptProperties_` (`AddressBook.js`) runs nightly and drops expired latches.
+Three kinds were written and **never deleted**, and only fixed-name properties
+(`Pacing.js`, `PTO.js`) were ever cleaned up:
+
+| Key | Written | Growth |
+|---|---|---|
+| `day_plan_<yyyy-MM-dd>` | a cache for Chat's apply action | one a day — 365 a year |
+| `PERK_NOTIFY_<ID>_<PERIOD>` | "already emailed about this perk" | one per perk per period |
+| `TDB_SENT_<yyyymmdd>_<LABEL>` | "already sent this travel briefing" | one per travel day |
+
+Each answers *"have I already done this"*, and the answer stops mattering once the
+period is past. This is the same disease as the orphaned `googlefit-steps` health
+entry — accumulated state nothing prunes — and it is what pushed the property store
+past the editor's 50-row cap.
+
+> **Deleting one too early re-sends something**, so every window is far wider than it
+> needs to be: 7 days for a day plan (a pure cache), 30 for a travel briefing, and 60
+> days **after the period end** for a perk notification. A key shape it does not
+> recognise is left alone rather than guessed at.
+
+> **It deletes one key at a time, never `deleteAllProperties()` plus a restore.** The
+> cheap version is one round trip instead of N, and also a way to lose the API health
+> state, every heartbeat and the web token if the run is killed between the two calls
+> — and the nightly run is killed often enough to have a watchdog for it. The perk
+> period is matched at the **end** of the key, because ids are minted as
+> `'CP-' + Date.now()` and a four-digit match anywhere would read part of the
+> timestamp as the period.
 
 > Maintenance that walks a whole tab must read it in **one** `getValues()` and delete
 > contiguous runs with `deleteRows(start, count)` — see `deleteRowsOlderThan_`

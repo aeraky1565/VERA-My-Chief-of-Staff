@@ -54,7 +54,28 @@ var CONTACT_HEADERS   = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member
  * @returns {Object} { ok, configured, ss, error }
  */
 function getAddressBookSheet_() {
-  var id = PropertiesService.getScriptProperties().getProperty(ADDRESS_BOOK_PROP_);
+  var id = '';
+  try {
+    id = String(PropertiesService.getScriptProperties().getProperty(ADDRESS_BOOK_PROP_) || '').trim();
+  } catch (propErr) { id = ''; }
+
+  // THE CONFIG TAB IS THE USABLE HOME FOR THIS, and the Script Property is the
+  // fallback rather than the other way round in practice.
+  //
+  // The Apps Script property editor lists only the first 50 properties and goes
+  // READ-ONLY past that — "to manage or view all of your properties, do so
+  // programmatically using the Properties service". VERA is well past 50, largely
+  // through latches nothing prunes (day_plan_*, PERK_NOTIFY_*, TDB_SENT_*), so a
+  // value a human has to type simply cannot be added there any more.
+  //
+  // The Config tab has no such cap, is a sheet both of them can already edit, and
+  // is where wishlist_* and victoria_email already live. Property first so an
+  // existing deployment keeps working.
+  if (!id) {
+    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }
+    catch (cfgErr) { id = ''; }
+  }
+
   if (!id) return { ok: true, configured: false, ss: null, error: '' };
 
   try {
@@ -179,4 +200,106 @@ function addressBookYesNo_(v) {
 /** A short, sortable, collision-free id. Mirrors 'CP-' + Date.now() elsewhere. */
 function newAddressBookId_(prefix) {
   return prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+}
+
+// ============================================================
+// SCRIPT PROPERTY HOUSEKEEPING
+// ============================================================
+//
+// This lives here because the address book is what ran into it: the Apps Script
+// property editor lists only the first 50 properties and turns read-only past that,
+// so ADDRESS_BOOK_SHEET_ID could not be added by hand at all.
+//
+// The reason there are so many is that several latches are written and NEVER
+// deleted. Only fixed-name properties (Pacing.js, PTO.js) are ever cleaned up:
+//
+//   day_plan_<yyyy-MM-dd>        one per day, forever — 365 a year on its own
+//   PERK_NOTIFY_<ID>_<PERIOD>    one per perk per period — hundreds a year
+//   TDB_SENT_<yyyymmdd>_<LABEL>  one per travel day, forever
+//
+// Each is a "have I already done this" marker whose answer stops mattering once its
+// period is comfortably past, and keeping it after that buys nothing. This is the
+// same disease as the orphaned googlefit-steps health entry: accumulated state that
+// nothing prunes, which eventually costs you a surface you need.
+//
+// DELETING ONE TOO EARLY RE-SENDS SOMETHING, so every window here is deliberately
+// far wider than it needs to be. A day plan is a pure cache. A perk notification
+// cannot fire again once its period key no longer matches the current one. A travel
+// briefing is keyed to a date that has passed.
+
+var PROP_PRUNE_DAY_PLAN_DAYS_  = 7;    // a pure cache for Chat's apply action
+var PROP_PRUNE_PERK_DAYS_      = 60;   // after the period END, not the stamp
+var PROP_PRUNE_TDB_DAYS_       = 30;   // the briefing was for a day that has passed
+
+/**
+ * Drops expired latches from the script property store.
+ *
+ * @param {number} [nowMs] injectable clock, for tests
+ * @returns {Object} { scanned, removed, keys }
+ */
+function pruneScriptProperties_(nowMs) {
+  var now   = nowMs || Date.now();
+  var props = PropertiesService.getScriptProperties();
+  var all   = props.getProperties();
+  var keys  = Object.keys(all);
+  var removed = [];
+
+  function ageDays(ms) { return (now - ms) / 86400000; }
+
+  keys.forEach(function(key) {
+    var m;
+
+    // day_plan_2026-10-04
+    if ((m = /^day_plan_(\d{4})-(\d{2})-(\d{2})$/.exec(key))) {
+      var d = new Date(+m[1], +m[2] - 1, +m[3]);
+      if (ageDays(d.getTime()) > PROP_PRUNE_DAY_PLAN_DAYS_) removed.push(key);
+      return;
+    }
+
+    // TDB_SENT_20261004_SOME_TRIP_LABEL
+    if ((m = /^TDB_SENT_(\d{4})(\d{2})(\d{2})_/.exec(key))) {
+      var t = new Date(+m[1], +m[2] - 1, +m[3]);
+      if (ageDays(t.getTime()) > PROP_PRUNE_TDB_DAYS_) removed.push(key);
+      return;
+    }
+
+    // PERK_NOTIFY_CP_14_2026_Q3 — the id itself contains underscores, so the period
+    // is matched at the END of the key rather than by splitting. The separators were
+    // uppercased and underscored on the way in, so they are turned back here before
+    // perkPeriodKeyEnd_ (Code.js) is asked when that period actually ended.
+    if (/^PERK_NOTIFY_/.test(key)) {
+      m = /_(\d{4})(?:_(\d{2}|Q[1-4]|H[12]))?$/.exec(key);
+      if (!m) return;                                  // a shape we do not parse — leave it
+      var periodKey = m[1] + (m[2] ? '-' + m[2] : '');
+      var end;
+      try { end = perkPeriodKeyEnd_(periodKey, Session.getScriptTimeZone()); }
+      catch (pkErr) { return; }
+      if (!end) return;                                // standing, or unrecognised
+      if (ageDays(end.getTime()) > PROP_PRUNE_PERK_DAYS_) removed.push(key);
+      return;
+    }
+  });
+
+  // ONE KEY AT A TIME, deliberately.
+  //
+  // The cheap version is deleteAllProperties() followed by setProperties(kept) — one
+  // round trip instead of N. It is also a way to lose EVERYTHING: an execution killed
+  // between those two calls (and the nightly run is killed at six minutes often
+  // enough that there is a watchdog for it) would take the API health state, every
+  // heartbeat, the nightly markers and the address book id with it. There is no undo.
+  //
+  // deleteProperty is its own round trip, but the count is bounded: this only ever
+  // touches keys that are already expired, so after the first run it is a handful a
+  // night. A slow correct prune is skipped by the time budget; a fast one that loses
+  // the store is unrecoverable.
+  var deleted = [];
+  removed.forEach(function(k) {
+    try { props.deleteProperty(k); deleted.push(k); }
+    catch (delErr) { Logger.log('pruneScriptProperties_: could not delete ' + k + ' — ' + delErr.message); }
+  });
+  if (deleted.length) {
+    Logger.log('pruneScriptProperties_: removed ' + deleted.length + ' expired latch(es) of ' +
+               keys.length + ' propert(ies).');
+  }
+  return { scanned: keys.length, removed: deleted.length, keys: deleted };
 }

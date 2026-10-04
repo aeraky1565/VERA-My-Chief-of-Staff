@@ -196,6 +196,72 @@ const CONTROLS = {
                '  if (!ss.getSheetByName(ADDRESS_BOOK_PEOPLE_)) ss.insertSheet(ADDRESS_BOOK_PEOPLE_);'),
   }),
 
+  // ---- the Config-tab fallback (the 50-property editor cap) ----------------
+  'the Config tab fallback is removed (unsettable past 50 properties)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /  if \(!id\) \{\n    try \{ id = String\(getConfigValues\(\)\['address_book_sheet_id'\] \|\| ''\)\.trim\(\); \}\n    catch \(cfgErr\) \{ id = ''; \}\n  \}\n/, ''),
+  }),
+  'the Config tab wins over the script property': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  if (!id) {\n    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }",
+      "  if (true) {\n    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }"),
+  }),
+  'a broken Config tab takes the whole read down': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "    try { id = String(getConfigValues()['address_book_sheet_id'] || '').trim(); }\n    catch (cfgErr) { id = ''; }",
+      "    id = String(getConfigValues()['address_book_sheet_id'] || '').trim();"),
+  }),
+  'the config key is spelled differently': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace("'address_book_sheet_id'", "'addressBookSheetId'"),
+  }),
+
+  // ---- the property prune --------------------------------------------------
+  'the prune does nothing': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace('  keys.forEach(function(key) {',
+                                                  '  keys.forEach(function(key) { return;'),
+  }),
+  'it uses deleteAllProperties + restore (loses everything on a kill)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /  var deleted = \[\];\n  removed\.forEach\(function\(k\) \{\n[\s\S]*?\n  \}\);\n/,
+      "  var deleted = removed.slice();\n  removed.forEach(function(k) { delete all[k]; });\n" +
+      "  if (deleted.length) { props.deleteAllProperties(); props.setProperties(all); }\n"),
+  }),
+  'one failed delete aborts the rest': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "    try { props.deleteProperty(k); deleted.push(k); }\n" +
+      "    catch (delErr) { Logger.log('pruneScriptProperties_: could not delete ' + k + ' — ' + delErr.message); }",
+      "    props.deleteProperty(k); deleted.push(k);"),
+  }),
+  'day plans are pruned after one day': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace('var PROP_PRUNE_DAY_PLAN_DAYS_  = 7;',
+                                                  'var PROP_PRUNE_DAY_PLAN_DAYS_  = 0;'),
+  }),
+  'travel-day latches are pruned after a day (re-sends briefings)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace('var PROP_PRUNE_TDB_DAYS_       = 30;',
+                                                  'var PROP_PRUNE_TDB_DAYS_       = 1;'),
+  }),
+  'perk latches are pruned the moment the period ends (re-emails)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace('var PROP_PRUNE_PERK_DAYS_      = 60;',
+                                                  'var PROP_PRUNE_PERK_DAYS_      = -400;'),
+  }),
+  'the perk period is taken by splitting on _ (CP_14 read as the period)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "      m = /_(\\d{4})(?:_(\\d{2}|Q[1-4]|H[12]))?$/.exec(key);",
+      "      m = /_(\\d{4})/.exec(key);"),
+  }),
+  'an unrecognised key shape is deleted rather than left alone': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  keys.forEach(function(key) {\n    var m;',
+      '  keys.forEach(function(key) {\n    var m;\n    if (!/^(day_plan_|TDB_SENT_|PERK_NOTIFY_)/.test(key)) { removed.push(key); return; }'),
+  }),
+  'the prune is not wired into the nightly run': b => ({
+    'Code.js': b['Code.js'].replace(/\n *nightlyStep_\(ctx, 'pruneScriptProperties_', pruneScriptProperties_\);/, ''),
+  }),
+  'the clock cannot be injected': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace('  var now   = nowMs || Date.now();',
+                                                  '  var now   = Date.now();'),
+  }),
+
   // ---- the dashboards ------------------------------------------------------
   'the People sub-tab goes back to "Coming soon"': b => ({
     'docs/app.js': b['docs/app.js'].replace(

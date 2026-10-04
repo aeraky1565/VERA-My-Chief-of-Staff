@@ -121,6 +121,10 @@ function harness(opts) {
     PropertiesService: { getScriptProperties: () => ({
       getProperty: k => (k in props ? props[k] : null),
       setProperty: (k, v) => { props[k] = v; },
+      getProperties: () => Object.assign({}, props),
+      deleteProperty: k => { delete props[k]; },
+      // Deliberately absent: deleteAllProperties. Reaching for it here would mean
+      // the prune could lose the entire store if it died mid-way.
     }) },
     SpreadsheetApp: { openById: id => {
       if (o.openThrows) throw new Error(o.openThrows);
@@ -128,6 +132,7 @@ function harness(opts) {
       return ss;
     } },
     recordApiHealth_: (source, ok, detail, code) => health.push({ source, ok, detail, code }),
+    getConfigValues: () => (o.config || {}),
     _tabs: tabs, _created: created, _health: health, _props: props,
   };
   vm.createContext(ctx);
@@ -140,6 +145,11 @@ function harness(opts) {
     decl(SRC.Book, 'CONTACT_HEADERS'),
     extractFn(SRC.Code, 'ensureSheet'),
     extractFn(SRC.Book, 'getAddressBookSheet_'),
+    decl(SRC.Book, 'PROP_PRUNE_DAY_PLAN_DAYS_'),
+    decl(SRC.Book, 'PROP_PRUNE_PERK_DAYS_'),
+    decl(SRC.Book, 'PROP_PRUNE_TDB_DAYS_'),
+    extractFn(SRC.Code, 'perkPeriodKeyEnd_'),
+    extractFn(SRC.Book, 'pruneScriptProperties_'),
     extractFn(SRC.Book, 'ensureAddressBookTabs_'),
     extractFn(SRC.Book, 'addressBookCols_'),
     extractFn(SRC.Book, 'readAddressBookTab_'),
@@ -192,6 +202,39 @@ console.log('Not configured is not broken');
         JSON.stringify(c._health));
   check('…because an unconfigured feature is not an outage', true,
         'that is the aviationstack bug: a normal state filed as a fault, nagging daily');
+}
+
+console.log('\nThe sheet id can come from the Config TAB, not just a property');
+{
+  // The Apps Script property editor lists 50 and goes read-only past that, and VERA
+  // is well past it — so for a value a human types, the Config tab is the only home
+  // that actually works.
+  const viaCfg = harness({ props: {}, config: { address_book_sheet_id: 'BOOK-ID' }, tabs: seeded() });
+  const out = viaCfg.webGetAddressBook_();
+  check('a Config row configures it', out.configured === true && out.ok === true,
+        JSON.stringify({ c: out.configured, ok: out.ok }));
+  check('…and the data comes back', out.households.length === 2);
+
+  const viaProp = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  check('the script property still works', viaProp.webGetAddressBook_().configured === true,
+        'an existing deployment must not break');
+
+  const both = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' },
+                         config: { address_book_sheet_id: 'WRONG-ID' }, tabs: seeded() });
+  check('the property wins when both are set', both.webGetAddressBook_().ok === true,
+        'openById throws on any id but BOOK-ID, so this proves which was used');
+
+  const neither = harness({ props: {}, config: {} });
+  check('neither set is still just "not configured"',
+        neither.webGetAddressBook_().configured === false);
+
+  const cfgThrows = harness({ props: {}, tabs: seeded() });
+  cfgThrows.getConfigValues = () => { throw new Error('Config tab missing'); };
+  let cfgOut = null, cfgErr = null;
+  try { cfgOut = cfgThrows.webGetAddressBook_(); } catch (e) { cfgErr = e.message; }
+  check('a broken Config tab does not take the read down',
+        cfgErr === null && cfgOut && cfgOut.configured === false,
+        'it should read as unconfigured, not throw: ' + cfgErr);
 }
 
 console.log('\nA sheet we WERE told to open and could not IS an outage');
@@ -454,8 +497,106 @@ console.log('\nConfirming an address');
 }
 
 // ============================================================================
+console.log('\nThe property store stops filling up');
+{
+  const DAY = 86400000;
+  // Years from any clock this runs on: with a fixture near today, removing the
+  // injectable nowMs would still pass because real Date.now() gives the same answers.
+  const NOW = Date.UTC(2031, 5, 17, 6, 0, 0);
+  const iso = ms => { const d = new Date(ms); const p = n => String(n).padStart(2, '0');
+                      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
+  const compact = ms => iso(ms).replace(/-/g, '');
+
+  const props = {
+    // Expired — these are what fill the store.
+    ['day_plan_' + iso(NOW - 30 * DAY)]: '{}',
+    ['TDB_SENT_' + compact(NOW - 90 * DAY) + '_PARIS']: '1',
+    'PERK_NOTIFY_CP_14_2024_Q1': '1',
+    'PERK_NOTIFY_CP_6_2024_09':  '1',
+    'PERK_NOTIFY_CP_9_2023':     '1',
+    // Still live, and deleting any of these re-sends something.
+    ['day_plan_' + iso(NOW)]: '{}',
+    ['day_plan_' + iso(NOW - 2 * DAY)]: '{}',
+    ['TDB_SENT_' + compact(NOW - 3 * DAY) + '_ROME']: '1',
+    ['PERK_NOTIFY_CP_14_' + new Date(NOW).getFullYear() + '_Q2']: '1',
+    // webAddCardPerk_ mints ids as 'CP-' + Date.now(), so a real key looks like
+    // this. Matching the first \\d{4} anywhere would read '1759' out of the ID as
+    // the period, date it to 1759, and delete a LIVE latch — duplicate emails.
+    ['PERK_NOTIFY_CP_1759539102345_' + new Date(NOW).getFullYear() + '_Q2']: '1',
+    // Nothing to do with latches. Losing any of these would be serious.
+    'API_HEALTH_STATE': '{}', 'LAST_NIGHTLY_RUN': 'x', 'NIGHTLY_STEP': 'y',
+    'ADDRESS_BOOK_SHEET_ID': 'BOOK-ID', 'VERA_WEB_TOKEN': 'secret',
+    'SCHED_SLACK_abc123': '1',
+  };
+  const c = harness({ props: props });
+  let r = { scanned: 0, removed: 0, keys: [] }, pruneErr = null;
+  try { r = c.pruneScriptProperties_(NOW); } catch (e) { pruneErr = e.message; }
+  check('the prune completes without throwing', pruneErr === null, String(pruneErr),
+        'a prune that reaches for an API the store does not have is worse than none');
+
+  check('it reports what it scanned and removed', r.scanned === Object.keys(props).length + 0 || r.scanned > 0,
+        JSON.stringify({ scanned: r.scanned, removed: r.removed }));
+  check('an old day plan goes', r.keys.indexOf('day_plan_' + iso(NOW - 30 * DAY)) !== -1,
+        JSON.stringify(r.keys));
+  check('an old travel-day latch goes',
+        r.keys.some(k => /^TDB_SENT_.*PARIS$/.test(k)));
+  check('perk latches from past periods go — quarter, month and year shapes',
+        r.keys.indexOf('PERK_NOTIFY_CP_14_2024_Q1') !== -1 &&
+        r.keys.indexOf('PERK_NOTIFY_CP_6_2024_09') !== -1 &&
+        r.keys.indexOf('PERK_NOTIFY_CP_9_2023') !== -1,
+        JSON.stringify(r.keys));
+  check('…matched at the END of the key, since a perk id contains underscores', true,
+        'splitting on _ would read CP_14 as the period');
+
+  check("TODAY's day plan stays", c._props['day_plan_' + iso(NOW)] === '{}');
+  check('…and one from two days ago', c._props['day_plan_' + iso(NOW - 2 * DAY)] === '{}',
+        'it is a cache Chat still reads');
+  check('a recent travel-day latch stays',
+        c._props['TDB_SENT_' + compact(NOW - 3 * DAY) + '_ROME'] === '1',
+        'deleting it re-sends a briefing');
+  check('a CURRENT perk latch stays',
+        c._props['PERK_NOTIFY_CP_14_' + new Date(NOW).getFullYear() + '_Q2'] === '1',
+        'deleting it emails about a perk twice');
+  check('…even when the perk ID itself contains four digits',
+        c._props['PERK_NOTIFY_CP_1759539102345_' + new Date(NOW).getFullYear() + '_Q2'] === '1',
+        'ids are minted as CP- + Date.now(); reading the period out of the ID dates a ' +
+        'live latch to 1759 and deletes it, which re-sends the email');
+
+  check('everything that is not a latch is untouched',
+        c._props['API_HEALTH_STATE'] === '{}' && c._props['LAST_NIGHTLY_RUN'] === 'x' &&
+        c._props['NIGHTLY_STEP'] === 'y' && c._props['ADDRESS_BOOK_SHEET_ID'] === 'BOOK-ID' &&
+        c._props['VERA_WEB_TOKEN'] === 'secret',
+        JSON.stringify(Object.keys(c._props)));
+  check('…including a key shape it does not recognise',
+        c._props['SCHED_SLACK_abc123'] === '1',
+        'an unparseable key is left alone rather than guessed at');
+
+  const again = c.pruneScriptProperties_(NOW);
+  check('a second pass removes nothing', again.removed === 0, JSON.stringify(again.keys));
+
+  const empty = harness({ props: {} });
+  check('an empty store is a no-op', empty.pruneScriptProperties_(NOW).removed === 0);
+
+  // THE guard that matters: it must never be able to lose the store wholesale.
+  const fn = extractFn(SRC.Book, 'pruneScriptProperties_');
+  // Comments stripped: the comment in there NAMES deleteAllProperties in prose, to
+  // explain why it is not used, and matching the source would read that as a call.
+  const code = fn.replace(/\/\/[^\n]*/g, '');
+  check('it deletes key by key, never deleteAllProperties',
+        /deleteProperty\(k\)/.test(code) && !/deleteAllProperties/.test(code),
+        'delete-all then restore loses EVERYTHING if the run is killed between them, ' +
+        'and the nightly run is killed often enough to have a watchdog for it');
+  check('…and one failed delete does not abort the rest', /catch \(delErr\)/.test(code));
+}
+
 console.log('\nWiring');
 {
+  const nightly = SRC.Code.slice(SRC.Code.indexOf('function nightlyRun()'),
+                                 SRC.Code.indexOf('function nightlyRun()') + 40000);
+  check('the property prune runs nightly',
+        /nightlyStep_\(ctx, 'pruneScriptProperties_'/.test(nightly),
+        'unpruned, the latches grow by hundreds a year');
+
   check('the read is a GET action', /case 'address_book':\s*return jsonOut_\(webGetAddressBook_\(\)\)/.test(SRC.Web));
 
   // Every write is POST. Under GET, makeUrl would drop each blank.

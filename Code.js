@@ -994,6 +994,11 @@ function nightlyRun() {
     // a source that does not exist — nothing could ever clear it, because clearing
     // requires a successful call and nothing was ever going to make one.
     nightlyStep_(ctx, 'pruneApiHealthState_', pruneApiHealthState_);
+    // Drops day_plan_*, PERK_NOTIFY_* and TDB_SENT_* latches whose moment has
+    // passed. Left alone they grow by hundreds a year, and the Apps Script
+    // property editor goes read-only past 50 — which is how adding a setting by
+    // hand became impossible.
+    nightlyStep_(ctx, 'pruneScriptProperties_', pruneScriptProperties_);
     nightlyStep_(ctx, 'sendWeeklyTrendReview_', sendWeeklyTrendReview_);
 
     // Step 0e: Signal Learning — record expired flags (open > 30 days, never actioned)
