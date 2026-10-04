@@ -8108,8 +8108,18 @@ function AddressBookView({ apiUrl, apiToken }) {
             needs filling on one row of each household. Then preview, read the
             <strong> Status</strong> column, and import.
             <div style={{ color:'#6b7fa8', marginTop:5 }}>
+              Or paste whole addresses into <strong>Full Address</strong>, one per line —
+              each line lands in its own row. <strong>Preview splits them</strong> into
+              the Address, City, State, Postcode and Country columns and empties the
+              Full Address cell, so you can correct the split in the sheet before
+              importing. The line it came from is kept in <strong>Status</strong> to
+              check against. A cell you typed yourself is never overwritten.
+            </div>
+            <div style={{ color:'#6b7fa8', marginTop:5 }}>
               Rows group by the <strong>Household</strong> column, not by address — so
               “12 Elm St” and “12 Elm Street” will not split one family into two.
+              A row with an address but <em>no</em> household name is imported named after
+              the address itself, for you to rename.
               Running it twice is safe: people already in the book are reported, not duplicated.
             </div>
           </div>

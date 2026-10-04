@@ -518,16 +518,48 @@ fix anything, then press **Import**.
 > preview that can disagree with the thing it previews is worse than none, because
 > being believed is the only way a preview can hurt you.
 
-**Or paste the whole address into one cell.** `Full Address` is the alternative to the
-eight columns before it: paste it as it appears on a contact card and VERA splits it,
-working from the end — postal code, state, country — because that is where the
-structure is. **A typed column always wins**, so one row can be filled in field by
-field and the next pasted whole. Every row where the parse was used says what it
-understood in its `Status` cell: *address read as: 12 Elm St / Austin / TX / 78701 /
-USA*.
+**Or paste whole addresses into `Full Address`, one per line.** Pasting a multi-line
+block into a Sheets cell puts each line in its own row, which is exactly the shape
+wanted. VERA splits each one working **from the end** — postal code, state, country —
+because that is where the structure is; a street line is not recognisable, so it is
+whatever is left over at the front.
 
-> The parser is allowed to be approximate **only because the preview prints its work
-> before anything is written**. Without the dry run it would be indefensible.
+**The split happens in the Import tab, on Preview.** The parts are written into that
+row's own `Address Line 1` / `City` / `State` / `Postal Code` / `Country` cells and
+the `Full Address` cell is **emptied**, so you can correct a misread cell by cell
+before anything reaches the address book. Everything downstream then reads an
+ordinary typed row — the parse is not a special case in the grouping, the precedence
+or the writes, and *"a typed column wins"* stops being a rule that needs writing down:
+a non-blank cell is simply never overwritten.
+
+> **The one-liner is consumed**, so a non-blank `Full Address` always means "not split
+> yet" — paste again and it splits again. It is not lost on the spot: the line it came
+> from goes into that row's `Status` cell, which is where you check the split. It does
+> not survive the *next* run's Status, so comparing is something to do when you
+> preview, not next week.
+
+> The parser is allowed to be approximate **only because you see and can fix its work
+> before anything is written**. Earlier it parsed invisibly on the way to `Households`
+> and merely *reported* what it had read — by the time a misread was obvious the row
+> was already in.
+
+**A row with an address but no household name** is imported named after the address
+(`12 Elm St, Austin`), for renaming later, and every row of it says so in `Status`
+until it is. It used to hit the blank-row guard — which runs *before* the parse — and
+vanish with an empty `Status` and no trace: forty addresses pasted, three names
+missed, three silently gone.
+
+> Households group by **name**, so naming one after its street means two different
+> addresses on the same street *and* city land in one household, and
+> first-non-blank-wins drops the second one's details. Street + city makes that rare;
+> beyond that, a group that absorbed more than one distinct address **says so in
+> `Status`**, naming it, rather than losing one quietly. Keying those groups by the
+> address instead was rejected: that key also decides update-or-insert, so it would
+> need a second key just for matching, and getting that wrong breaks "running it twice
+> is safe".
+
+> **The preview still writes nothing to `Households`, `People` or `Mailings`.** It
+> does fill in the Import tab, which it always did — that is where `Status` goes.
 
 > `Full Address` arrived after the Import tab already existed, and `ensureSheet` only
 > writes headers into a *blank* tab — so the column would never have appeared.

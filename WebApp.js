@@ -11641,6 +11641,70 @@ function webConfirmAddress_(body) {
 // preview can hurt you — you read it, believe it, and press the button.
 
 /** Trimmed string for a field, '' when absent. */
+/**
+ * PASS 0 — splits a pasted one-liner into the ordinary columns, IN THE TAB ITSELF.
+ *
+ * Previously the parse happened invisibly on the way to Households: the Status cell
+ * said what it had read, but a misread could only be corrected by editing the
+ * one-liner and previewing again, and by then the row was already in. Writing the
+ * parts into the Import tab's own columns makes the split reviewable and correctable
+ * cell by cell, and then the rest of the import sees an ordinary typed row — the
+ * parse stops being a special case anywhere downstream.
+ *
+ * 'A typed column wins' is no longer a rule that needs writing down: a non-blank cell
+ * is simply never overwritten.
+ *
+ * THE ONE-LINER IS CONSUMED. A non-blank 'Full Address' therefore always means "not
+ * split yet", which is the whole mental model — paste again and it splits again. The
+ * original text is not lost on the spot: it goes into that row's Status cell, which
+ * is where you check the split. It does not survive the NEXT run's Status, so a
+ * comparison is something to do when you preview, not next week.
+ *
+ * Runs on the preview too, because reviewing before importing is the point. The
+ * preview's guarantee is unchanged where it matters: nothing reaches Households,
+ * People or Mailings.
+ *
+ * @param {Sheet} sheet    the Import tab
+ * @param {Object} cols    name -> 1-based column, from addressBookCols_
+ * @param {Array} raw      rows from row 2 down; MUTATED so pass 1 sees the split
+ * @returns {Array} the original one-liner per row index, for the Status column
+ */
+function splitImportAddresses_(sheet, cols, raw) {
+  var fullCol = cols['Full Address'];
+  var splitFrom = [];
+  if (!fullCol) return splitFrom;        // the column was removed by hand
+
+  var cell    = function(r, c) { return c ? importCell_({ v: r[c - 1] }, 'v') : ''; };
+  var changed = {};
+
+  raw.forEach(function(r, i) {
+    var whole = cell(r, fullCol);
+    if (!whole) return;
+    var parsed = parseFullAddress_(whole);
+    IMPORT_ADDRESS_PARTS_.forEach(function(part) {
+      var c = cols[part];
+      if (!c || !parsed[part] || cell(r, c)) return;   // never overwrite a typed cell
+      r[c - 1]      = parsed[part];
+      changed[c]    = true;
+    });
+    r[fullCol - 1]  = '';
+    changed[fullCol] = true;
+    splitFrom[i]    = whole;
+  });
+
+  // ONE WRITE PER COLUMN THAT CHANGED, never one per row: an import is hundreds of
+  // rows and every setValues is its own round trip. Writing the column back from
+  // `raw` means untouched rows are rewritten with the value they already had, which
+  // is a no-op for values and would flatten a formula — fair for a staging tab VERA
+  // owns, and only ever in the address columns.
+  Object.keys(changed).forEach(function(c) {
+    var col   = Number(c);
+    var block = raw.map(function(r) { return [r[col - 1]]; });
+    sheet.getRange(2, col, block.length, 1).setValues(block);
+  });
+  return splitFrom;
+}
+
 function importCell_(row, name) {
   return String(row[name] === undefined || row[name] === null ? '' : row[name]).trim();
 }
@@ -11666,6 +11730,11 @@ function addressBookImport_(dryRun) {
   var width   = Math.max(impSheet.getLastColumn(), 1);
   var raw     = impSheet.getRange(2, 1, impSheet.getLastRow() - 1, width).getValues();
 
+  // Pass 0: any pasted one-liner becomes ordinary columns before anything else looks
+  // at the rows, so everything below reads a typed row and the parse is not a special
+  // case in the grouping, the precedence or the writes.
+  var splitFrom = splitImportAddresses_(impSheet, impCols, raw);
+
   // Existing state, read ONCE rather than per row.
   var households = readAddressBookTab_(hhSheet, HOUSEHOLD_HEADERS);
   var people     = readAddressBookTab_(pSheet,  CONTACT_HEADERS);
@@ -11682,11 +11751,8 @@ function addressBookImport_(dryRun) {
     'Country': 'Country', 'Relationship': 'Relationship',
     'Household Notes': 'Notes',
   };
-  var PARSE_REPORT_ORDER = ['Address Line 1', 'Address Line 2', 'City', 'State',
-                            'Postal Code', 'Country'];
-
   // ---- pass 1: group the rows into households ----
-  var groups = {}, order = [], status = [], parseNotes = [];
+  var groups = {}, order = [], status = [];
   raw.forEach(function(r, i) {
     var row = {};
     Object.keys(impCols).forEach(function(name) { row[name] = r[impCols[name] - 1]; });
@@ -11696,12 +11762,40 @@ function addressBookImport_(dryRun) {
     // A person with no household of their own is a household of one. Entirely blank
     // rows are spacers, not errors — a pasted block usually has a few.
     if (!hh && name) hh = name;
+
+    // A PASTED ADDRESS WITH NOBODY NAMED takes its name from the address, so the row
+    // imports and can be renamed, rather than hitting the spacer guard below and
+    // disappearing without a word — which is what a column of addresses with a
+    // missed name used to do, with an empty Status cell and no trace anywhere.
+    var autoNamed = false;
+    if (!hh) {
+      var label = [importCell_(row, 'Address Line 1'), importCell_(row, 'City')]
+        .filter(function(v) { return v; }).join(', ')
+        || [importCell_(row, 'Postal Code'), importCell_(row, 'Country')]
+             .filter(function(v) { return v; }).join(', ');
+      if (label) { hh = label; autoNamed = true; }
+    }
+
     if (!hh && !name) { status[i] = ''; return; }
 
     var key = hh.toLowerCase();
-    if (!groups[key]) { groups[key] = { label: hh, fields: {}, members: [], rows: [] }; order.push(key); }
+    if (!groups[key]) {
+      groups[key] = { label: hh, fields: {}, members: [], rows: [],
+                      autoNamed: autoNamed, addrs: {} };
+      order.push(key);
+    }
     var g = groups[key];
     g.rows.push(i);
+    if (autoNamed) {
+      g.autoNamed = true;
+      // Households group by NAME, so naming one after its street means two different
+      // addresses on the same street and city land in the same group and
+      // first-non-blank-wins quietly drops the second one's details. Rare — two flats
+      // in one building — but a silently lost address is the thing to avoid, so the
+      // distinct addresses are counted and reported rather than designed away.
+      g.addrs[IMPORT_ADDRESS_PARTS_.map(function(k) { return importCell_(row, k); })
+                .join('|').toLowerCase()] = true;
+    }
     // First non-blank wins, so the address can be filled on just the first row of a
     // family rather than repeated down every one of them.
     Object.keys(HOUSEHOLD_FIELDS).forEach(function(src) {
@@ -11709,28 +11803,6 @@ function addressBookImport_(dryRun) {
       if (v && !g.fields[HOUSEHOLD_FIELDS[src]]) g.fields[HOUSEHOLD_FIELDS[src]] = v;
     });
 
-    // A whole address pasted into one cell, split and then run through the SAME
-    // first-non-blank-wins rule — which is what makes "an explicit column always
-    // wins" true without a second code path: the typed columns above have already
-    // claimed their targets, so the parse can only fill what is still empty.
-    var whole = importCell_(row, 'Full Address');
-    if (whole) {
-      var parsed = parseFullAddress_(whole);
-      var used   = [];
-      // Reported in envelope order, not the order the parser happened to work them
-      // out in, so the status cell reads like an address instead of a rearrangement.
-      PARSE_REPORT_ORDER.forEach(function(target) {
-        if (parsed[target] && !g.fields[target]) {
-          g.fields[target] = parsed[target];
-          used.push(parsed[target]);
-        }
-      });
-      // What it understood. This is the whole reason an approximate parser is
-      // acceptable here: the preview shows its work before anything is written.
-      parseNotes[i] = used.length
-        ? 'address read as: ' + used.join(' / ')
-        : 'full address ignored — those columns are already filled';
-    }
     if (name) {
       g.members.push({ rowIndex: i, name: name,
                        memberType: importCell_(row, 'Member Type'),
@@ -11800,6 +11872,20 @@ function addressBookImport_(dryRun) {
       if (status[ri]) return;
       status[ri] = (dryRun ? 'Will ' : '') + verb + (added ? '' : ', no new people');
     });
+
+    // A household named after its own address is the name that would go on an
+    // envelope, so every row of it says so until it is renamed.
+    if (g.autoNamed) {
+      var collided = Object.keys(g.addrs).length > 1;
+      g.rows.forEach(function(ri) {
+        status[ri] += ' · named after the address, rename it';
+        if (collided) {
+          status[ri] += ' · ⚠ ' + Object.keys(g.addrs).length + ' DIFFERENT addresses ' +
+            'were all named "' + g.label + '", so only the first one’s details were ' +
+            'kept — rename them apart and import again';
+        }
+      });
+    }
   });
 
   if (!dryRun) {
@@ -11812,10 +11898,14 @@ function addressBookImport_(dryRun) {
   if (statusCol) {
     var block = [];
     for (var i = 0; i < raw.length; i++) {
-      // The parse note rides along on whatever the row was going to say anyway,
-      // rather than needing a column of its own.
+      // The one-liner that was consumed rides along on whatever the row was going to
+      // say anyway. It is the only remaining copy of what was pasted, so it is here
+      // to check the split against — which is the reason the split is reviewable at
+      // all, and the reason clearing the cell is safe to do.
       var line = status[i] || '';
-      if (parseNotes[i]) line = line ? line + ' · ' + parseNotes[i] : parseNotes[i];
+      if (splitFrom[i]) {
+        line += (line ? ' · ' : '') + 'split from "' + splitFrom[i] + '"';
+      }
       block.push([line]);
     }
     impSheet.getRange(2, statusCol, block.length, 1).setValues(block);

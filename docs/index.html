@@ -4008,7 +4008,12 @@ function AddressBookView({
       color: '#6b7fa8',
       marginTop: 5
     }
-  }, "Rows group by the ", /*#__PURE__*/React.createElement("strong", null, "Household"), " column, not by address — so “12 Elm St” and “12 Elm Street” will not split one family into two. Running it twice is safe: people already in the book are reported, not duplicated.")), /*#__PURE__*/React.createElement("div", {
+  }, "Or paste whole addresses into ", /*#__PURE__*/React.createElement("strong", null, "Full Address"), ", one per line — each line lands in its own row. ", /*#__PURE__*/React.createElement("strong", null, "Preview splits them"), " into the Address, City, State, Postcode and Country columns and empties the Full Address cell, so you can correct the split in the sheet before importing. The line it came from is kept in ", /*#__PURE__*/React.createElement("strong", null, "Status"), " to check against. A cell you typed yourself is never overwritten."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#6b7fa8',
+      marginTop: 5
+    }
+  }, "Rows group by the ", /*#__PURE__*/React.createElement("strong", null, "Household"), " column, not by address — so “12 Elm St” and “12 Elm Street” will not split one family into two. A row with an address but ", /*#__PURE__*/React.createElement("em", null, "no"), " household name is imported named after the address itself, for you to rename. Running it twice is safe: people already in the book are reported, not duplicated.")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       gap: 8,

@@ -509,13 +509,71 @@ const CONTROLS = {
     'AddressBook.js': b['AddressBook.js'].replace("'Country', 'Full Address', 'Relationship',",
                                                   "'Country', 'Relationship',"),
   }),
-  'a pasted address overrides the columns typed by hand': b => ({
-    'WebApp.js': b['WebApp.js'].replace('        if (parsed[target] && !g.fields[target]) {',
-                                        '        if (parsed[target]) {'),
-  }),
-  'the parse never says what it understood': b => ({
+  'a pasted address overwrites the columns typed by hand': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      "      if (parseNotes[i]) line = line ? line + ' · ' + parseNotes[i] : parseNotes[i];\n", ''),
+      '      if (!c || !parsed[part] || cell(r, c)) return;   // never overwrite a typed cell',
+      '      if (!c || !parsed[part]) return;'),
+  }),
+  'the split never says what was pasted': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /      if \(splitFrom\[i\]\) \{\n[\s\S]*?\n      \}\n/, ''),
+  }),
+  'the split does not reach the columns at all': b => ({
+    'WebApp.js': b['WebApp.js'].replace('      r[c - 1]      = parsed[part];',
+                                        '      ;'),
+  }),
+  'the one-liner is left behind after being split': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    r[fullCol - 1]  = '';\n", ''),
+  }),
+  'the split is never written back to the tab': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  Object\.keys\(changed\)\.forEach\(function\(c\) \{\n[\s\S]*?\n  \}\);\n  return splitFrom;/,
+      '  return splitFrom;'),
+  }),
+  'the split is written one row at a time': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '    var block = raw.map(function(r) { return [r[col - 1]]; });\n' +
+      '    sheet.getRange(2, col, block.length, 1).setValues(block);',
+      '    raw.forEach(function(r, i) { sheet.getRange(2 + i, col, 1, 1).setValues([[r[col - 1]]]); });'),
+  }),
+  'the pre-pass is not wired in (nothing is ever split)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '  var splitFrom = splitImportAddresses_(impSheet, impCols, raw);',
+      '  var splitFrom = [];'),
+  }),
+  'a missing Full Address column takes the whole import down': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  if (!fullCol) return splitFrom;        // the column was removed by hand",
+      "  if (!fullCol) throw new Error('No Full Address column');"),
+  }),
+
+  // ---- a column of addresses with nobody named ------------------------------
+  'a nameless pasted address vanishes again': b => ({
+    'WebApp.js': b['WebApp.js'].replace(/    var autoNamed = false;\n    if \(!hh\) \{\n[\s\S]*?\n    \}\n/,
+                                        '    var autoNamed = false;\n'),
+  }),
+  'the invented name is the street without the city': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      var label = [importCell_(row, 'Address Line 1'), importCell_(row, 'City')]",
+      "      var label = [importCell_(row, 'Address Line 1')]"),
+  }),
+  'a genuinely blank row becomes a household too': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    if (!hh && !name) { status[i] = ''; return; }",
+                                        "    if (!hh && !name) { hh = 'Unknown'; }"),
+  }),
+  'nothing says the household was named after its address': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "        status[ri] += ' · named after the address, rename it';\n", ''),
+  }),
+  'two different addresses under one invented name are merged silently': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '      var collided = Object.keys(g.addrs).length > 1;',
+      '      var collided = false;'),
+  }),
+  'the collision check looks at the name rather than the address': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /      g\.addrs\[IMPORT_ADDRESS_PARTS_\.map\(function\(k\) \{ return importCell_\(row, k\); \}\)\n *\.join\('\|'\)\.toLowerCase\(\)\] = true;/,
+      '      g.addrs[g.label.toLowerCase()] = true;'),
   }),
   'the whole address lands in Address Line 1': b => ({
     'AddressBook.js': b['AddressBook.js'].replace(

@@ -233,6 +233,8 @@ function harness(opts) {
     extractFn(SRC.Web, 'findMailing_'),
     extractFn(SRC.Web, 'webDeleteMailing_'),
     extractFn(SRC.Web, 'importCell_'),
+    extractFn(SRC.Web, 'splitImportAddresses_'),
+    decl(SRC.Book, 'IMPORT_ADDRESS_PARTS_'),
     extractFn(SRC.Web, 'addressBookImport_'),
     extractFn(SRC.Web, 'webPreviewAddressImport_'),
     extractFn(SRC.Web, 'webRunAddressImport_'),
@@ -1081,49 +1083,218 @@ console.log('\nBulk import');
       'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
       'Mailings': fakeSheet(M_H, []), 'Import': fakeSheet(I_H, oneCell()),
     }});
-    const prev   = c.webPreviewAddressImport_();
-    const status = () => c._tabs['Import']._data.slice(1).map(r => r[I_H.indexOf('Status')]);
-    const notes  = status();
-    check('the preview says what it read out of the pasted address',
-          /address read as: 12 Elm St \/ Apt 4 \/ Austin \/ TX \/ 78701 \/ USA/.test(notes[0]),
-          JSON.stringify(notes[0]));
-    check('…alongside what the row was going to say anyway',
-          /Will add: Raj Patel/.test(notes[0]), JSON.stringify(notes[0]));
-    check('…and nothing was written, parse or no parse',
-          c._tabs['Households']._data.length === 1, 'a preview that writes is not a preview');
+    // THE SPLIT HAPPENS IN THE TAB, ON PREVIEW. The point is that it is reviewable:
+    // the parts land in the Import tab's own columns, where a misread can be fixed
+    // cell by cell before anything reaches the address book.
+    c.webPreviewAddressImport_();
+    const imp    = () => c._tabs['Import']._data;
+    const col    = n => I_H.indexOf(n);
+    const status = () => imp().slice(1).map(r => r[col('Status')]);
 
+    check('the preview fills the ordinary columns from the one-liner',
+          imp()[1][col('Address Line 1')] === '12 Elm St' &&
+          imp()[1][col('Address Line 2')] === 'Apt 4' &&
+          imp()[1][col('City')] === 'Austin' &&
+          imp()[1][col('State')] === 'TX' &&
+          imp()[1][col('Postal Code')] === '78701' &&
+          imp()[1][col('Country')] === 'USA',
+          JSON.stringify(imp()[1]));
+    check('…and CONSUMES the one-liner',
+          imp()[1][col('Full Address')] === '',
+          'a non-blank Full Address has to mean "not split yet" or the rule is not a rule');
+    check('…recording what was pasted in Status, the only copy left',
+          /split from "12 Elm St, Apt 4, Austin, TX 78701, USA"/.test(status()[0]),
+          JSON.stringify(status()[0]));
+    check('…alongside what the row was going to say anyway',
+          /Will add: Raj Patel/.test(status()[0]), JSON.stringify(status()[0]));
+    check('…and NOTHING reached the address book',
+          c._tabs['Households']._data.length === 1 && c._tabs['People']._data.length === 1,
+          'the preview may write to its own staging tab; the book is still untouched');
+
+    check('a TYPED column is not overwritten by the paste',
+          imp()[2][col('City')] === 'Houston', JSON.stringify(imp()[2]));
+    check('…while the blanks beside it are filled',
+          imp()[2][col('Address Line 1')] === '9 Oak Ave' &&
+          imp()[2][col('State')] === 'TX' && imp()[2][col('Postal Code')] === '78702');
+
+    check('an overseas address with no postal code still yields city and country',
+          imp()[3][col('City')] === 'Cairo' && imp()[3][col('Country')] === 'Egypt' &&
+          imp()[3][col('Address Line 1')] === '7 Nile Street', JSON.stringify(imp()[3]));
+    check('…keeping the district rather than dropping half the address',
+          imp()[3][col('Address Line 2')] === 'Zamalek', JSON.stringify(imp()[3]));
+
+    check('a BLANK Full Address changes nothing and says nothing',
+          imp()[4][col('Address Line 1')] === '4 Pine Ct' &&
+          imp()[4][col('City')] === 'Reston' &&
+          status()[3].indexOf('split from') === -1,
+          JSON.stringify([imp()[4], status()[3]]));
+
+    // A second run has nothing left to split, which is the whole value of consuming
+    // the cell — there is no second parse to disagree with the first.
+    const beforeSecond = JSON.stringify(imp());
+    c.webPreviewAddressImport_();
+    check('a second preview splits nothing, because there is nothing left to split',
+          status().every(st => st.indexOf('split from') === -1),
+          JSON.stringify(status()));
+
+    // Now the correction a reviewer would actually make, and the import taking it.
+    const cityCol = col('City') + 1;
+    c._tabs['Import'].getRange(2, cityCol, 1, 1).setValues([['Round Rock']]);
     c.webRunAddressImport_();
     const hh = {};
     c.webGetAddressBook_().households.forEach(h => { hh[h.household] = h; });
-    check('one pasted cell fills all five parts',
+    check('a correction typed into the split column is what gets imported',
+          hh['The Patels'].city === 'Round Rock', JSON.stringify(hh['The Patels']));
+    check('…with the rest of the split intact',
           hh['The Patels'].address1 === '12 Elm St' && hh['The Patels'].address2 === 'Apt 4' &&
-          hh['The Patels'].city === 'Austin' && hh['The Patels'].state === 'TX' &&
           hh['The Patels'].postalCode === '78701' && hh['The Patels'].country === 'USA',
           JSON.stringify(hh['The Patels']));
-    check('…and the Relationship column beside it is untouched',
-          hh['The Patels'].relationship === 'Friends',
-          'Full Address sits between Country and Relationship in the schema');
-
-    check('a TYPED column beats the same field in the pasted block',
+    check('…and the Relationship column beside Full Address untouched throughout',
+          hh['The Patels'].relationship === 'Friends', JSON.stringify(hh['The Patels']));
+    check('the typed city still wins after the import too',
           hh['The Khans'].city === 'Houston', JSON.stringify(hh['The Khans']));
-    check('…while the parse still fills what was left blank',
-          hh['The Khans'].address1 === '9 Oak Ave' && hh['The Khans'].state === 'TX' &&
-          hh['The Khans'].postalCode === '78702');
-    check('…and the note says the city was NOT taken from the paste',
-          status()[1].indexOf('Houston') === -1 && /address read as: 9 Oak Ave/.test(status()[1]),
-          JSON.stringify(status()[1]));
+  }
 
-    check('an overseas address with no postal code still yields city and country',
-          hh['Dana & Omar'].city === 'Cairo' && hh['Dana & Omar'].country === 'Egypt' &&
-          hh['Dana & Omar'].address1 === '7 Nile Street',
-          JSON.stringify(hh['Dana & Omar']));
-    check('…keeping the district rather than dropping half the address',
-          hh['Dana & Omar'].address2 === 'Zamalek', JSON.stringify(hh['Dana & Omar']));
+  // ---- a column of addresses with nobody named ----
+  //
+  // The shape Ahmed actually receives: one address per line, pasted in. A row with no
+  // Household and no Name used to hit the spacer guard and vanish, with an EMPTY
+  // Status cell and no trace anywhere — forty pasted, three names missed, three gone.
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []),
+      'Import': fakeSheet(I_H, [
+        impRow({ 'Full Address': '12 Elm St, Austin, TX 78701, USA' }),
+        impRow({ 'Full Address': '3 Oak Rd, Reston, VA 20190, USA' }),
+        impRow({}),                                        // a real spacer
+        impRow({ 'Full Address': '78701' }),               // nothing namable but a code
+      ]),
+    }});
+    const r = c.webRunAddressImport_();
+    const names = c.webGetAddressBook_().households.map(h => h.household).sort();
+    const status = c._tabs['Import']._data.slice(1).map(x => x[I_H.indexOf('Status')]);
 
-    check('a BLANK Full Address changes nothing and says nothing',
-          hh['The Lees'].address1 === '4 Pine Ct' && hh['The Lees'].city === 'Reston' &&
-          status()[3].indexOf('address read as') === -1,
-          JSON.stringify([hh['The Lees'], status()[3]]));
+    check('a nameless pasted address imports, named after the address',
+          names.indexOf('12 Elm St, Austin') !== -1 && names.indexOf('3 Oak Rd, Reston') !== -1,
+          JSON.stringify(names));
+    check('…street AND city, not the street alone',
+          names.every(n => n.indexOf(',') !== -1 || n === '78701'),
+          'two "12 Elm St" in different cities would otherwise be one household');
+    check('…with the address still split into its fields',
+          c.webGetAddressBook_().households
+            .filter(h => h.household === '12 Elm St, Austin')[0].postalCode === '78701');
+    check('…and the row says the name was invented',
+          /named after the address, rename it/.test(status[0]), JSON.stringify(status[0]));
+    check('a paste with nothing namable but a postcode still lands somewhere visible',
+          names.indexOf('78701') !== -1, JSON.stringify(names));
+
+    // The guard being split is shared with the spacer rule, so this is the regression
+    // that matters most here.
+    check('a GENUINELY blank row is still a silent spacer',
+          status[2] === '', JSON.stringify(status));
+    check('…and creates nothing', r.households.created === 3, JSON.stringify(r.households));
+
+    // Running it twice is a documented guarantee, and auto-named households have to
+    // keep it: they match themselves by name on the second run.
+    const again = c.webRunAddressImport_();
+    check('running it twice does not duplicate an auto-named household',
+          again.households.created === 0 &&
+          c.webGetAddressBook_().households.length === 3,
+          JSON.stringify(again.households));
+  }
+
+  // ---- an Import tab with no Full Address column at all ----
+  //
+  // Either a stale deployment that predates the column, or somebody deleted it. The
+  // import has to carry on with the ordinary columns rather than fall over: the
+  // pre-pass is an extra way IN, not a dependency.
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []),
+      'Import': fakeSheet(I_H_OLD, [impRow_old({ Household: 'The Lees', Name: 'Ann Lee',
+                                                 'Address Line 1': '4 Pine Ct', City: 'Reston' })]),
+    }});
+    const err = threw(() => c.webRunAddressImport_());
+    check('an Import tab with no Full Address column still imports',
+          err === null, String(err));
+    const hh = c.webGetAddressBook_().households;
+    check('…the typed columns landing as normal',
+          hh.length === 1 && hh[0].address1 === '4 Pine Ct' && hh[0].city === 'Reston',
+          JSON.stringify(hh));
+    check('…and the column itself quietly restored on the way through',
+          c._tabs['Import']._data[0].indexOf('Full Address') !== -1 &&
+          c._tabs['Import']._writes.setValues === 2,
+          JSON.stringify(c._tabs['Import']._writes) + ' — the header fix, and Status');
+
+    // Which means the no-column guard is UNREACHABLE through the handlers, since the
+    // write path ensures the tabs first. Its contract is therefore tested directly,
+    // the same way the blank-value guard on the shared row delete is: an unobservable
+    // guard is a place for two readers to disagree about what it does.
+    const noCol = { 'Household': 1, 'City': 2 };
+    const rows  = [['The Lees', 'Reston']];
+    const bare  = fakeSheet(['Household', 'City'], rows);
+    // Guarded, so a version that throws FAILS rather than taking the whole file down
+    // with it and reporting nothing at all.
+    let got = null, blew = null;
+    try { got = c.splitImportAddresses_(bare, noCol, rows); } catch (e) { blew = e.message; }
+    check('splitting a tab with no Full Address column is a no-op, not a throw',
+          blew === null && JSON.stringify(got) === '[]' &&
+          bare._writes.setValues === 0 &&
+          JSON.stringify(rows) === '[["The Lees","Reston"]]',
+          String(blew) + ' ' + JSON.stringify([rows, bare._writes]));
+  }
+
+  // ---- the cost of splitting, which must not scale with the rows ----
+  //
+  // Every setValues is its own round trip and an import is hundreds of rows. The old
+  // cost assertion never covered this: its fixture has no one-liners, so pass 0 never
+  // ran at all.
+  {
+    const run = n => {
+      const rows = [];
+      for (let i = 0; i < n; i++) {
+        rows.push(impRow({ Household: 'H' + i,
+                           'Full Address': (i + 1) + ' Elm St, Austin, TX 78701, USA' }));
+      }
+      const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+        'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+        'Mailings': fakeSheet(M_H, []), 'Import': fakeSheet(I_H, rows),
+      }});
+      c.webPreviewAddressImport_();
+      return c._tabs['Import']._writes;
+    };
+    const five = run(5), hundred = run(100);
+    check('splitting 100 rows costs the same as splitting 5',
+          five.setValues === hundred.setValues && five.setValue === 0 && hundred.setValue === 0,
+          JSON.stringify({ five: five, hundred: hundred }));
+    check('…which is one write per column touched, plus Status',
+          hundred.setValues === 7,
+          JSON.stringify(hundred) + ' — 5 address parts filled + Full Address cleared + Status');
+  }
+
+  // ---- two different addresses that would take the same invented name ----
+  {
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, []), 'People': fakeSheet(P_H, []),
+      'Mailings': fakeSheet(M_H, []),
+      'Import': fakeSheet(I_H, [
+        impRow({ 'Full Address': '12 Elm St, Apt 1, Austin, TX 78701, USA' }),
+        impRow({ 'Full Address': '12 Elm St, Apt 2, Austin, TX 78701, USA' }),
+      ]),
+    }});
+    c.webRunAddressImport_();
+    const status = c._tabs['Import']._data.slice(1).map(x => x[I_H.indexOf('Status')]);
+    check('two flats on one street collapse into one household',
+          c.webGetAddressBook_().households.length === 1,
+          'grouping is by name, and both were named "12 Elm St, Austin"');
+    check('…and BOTH rows say so, loudly, rather than losing one silently',
+          /DIFFERENT addresses/.test(status[0]) && /DIFFERENT addresses/.test(status[1]),
+          JSON.stringify(status));
+    check('…naming the collision so it can be fixed',
+          /12 Elm St, Austin/.test(status[0]) && /rename them apart/.test(status[0]),
+          JSON.stringify(status[0]));
   }
 
   // The parser on its own, because the branches it takes are not all reachable

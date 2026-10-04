@@ -83,10 +83,15 @@ var MAILING_HEADERS   = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
 //
 // 'Status' is written BY VERA, never by hand: it is where the preview says what each
 // row will do, and where the import says what it did.
+//
+// The six columns a pasted address is split into, in envelope order.
 var IMPORT_HEADERS    = ['Household', 'Name', 'Member Type', 'Email', 'Phone',
                          'Address Line 1', 'Address Line 2', 'City', 'State',
                          'Postal Code', 'Country', 'Full Address', 'Relationship',
                          'Household Notes', 'Person Notes', 'Status'];
+
+var IMPORT_ADDRESS_PARTS_ = ['Address Line 1', 'Address Line 2', 'City', 'State',
+                             'Postal Code', 'Country'];
 
 // ---- Access -----------------------------------------------------------------
 
