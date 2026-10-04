@@ -7913,6 +7913,373 @@ function ProjectsLiteTab({ apiUrl, apiToken }) {
   );
 }
 
+// ---- AddressBookView ---------------------------------------------------------
+//
+// The shared list of people we send things to. A household is the unit a card is
+// addressed to; the people inside it are who you email or ring.
+//
+// Every write is a POST with a JSON body, never a query string: makeUrl above drops
+// falsy values, so a cleared Address Line 2 or an emptied note would simply never
+// reach the server and would read as "leave it alone".
+
+const AB_RELATIONSHIPS = ['Family', 'Friends', 'Work', 'Neighbour', 'Other'];
+const AB_MEMBER_TYPES  = ['Adult', 'Child'];
+
+function abBlankHousehold() {
+  return { id:'', household:'', address1:'', address2:'', city:'', state:'',
+           postalCode:'', country:'', relationship:'Family', sendCard:false, notes:'' };
+}
+function abBlankContact(householdId) {
+  return { id:'', householdId: householdId || '', name:'', email:'', phone:'',
+           memberType:'Adult', notes:'' };
+}
+
+function abAddressLines(h) {
+  const street = [h.address1, h.address2].filter(Boolean).join(', ');
+  const town   = [h.city, h.state, h.postalCode].filter(Boolean).join(' ');
+  return [street, town, h.country].filter(Boolean);
+}
+
+function AddressBookView({ apiUrl, apiToken }) {
+  const [data,    setData]    = React.useState(null);
+  const [error,   setError]   = React.useState('');
+  const [busy,    setBusy]    = React.useState(false);
+  const [query,   setQuery]   = React.useState('');
+  const [cardsOnly, setCardsOnly] = React.useState(false);
+  const [open,    setOpen]    = React.useState({});
+  const [hhForm,  setHhForm]  = React.useState(null);
+  const [cForm,   setCForm]   = React.useState(null);
+
+  async function load() {
+    try {
+      const d = await apiGet(apiUrl, apiToken, { action: 'address_book' });
+      setData(d);
+      setError('');
+    } catch (err) { setError(err.message); setData({ households: [], people: [], configured: true }); }
+  }
+  React.useEffect(() => { load(); }, []);
+
+  async function write(body) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, body);
+      await load();
+      setError('');
+      return true;
+    } catch (err) { setError(err.message); return false; }
+    finally { setBusy(false); }
+  }
+
+  if (!data) return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading address book…</div>;
+
+  // Not configured is not an error — it is a feature nobody has pointed at a sheet yet.
+  if (data.configured === false) {
+    return (
+      <div className="empty-state" style={{ padding:40 }}>
+        <div style={{ fontSize:32, marginBottom:12 }}>📒</div>
+        <div style={{ color:'#dde1f0', marginBottom:6 }}>No address book connected yet.</div>
+        <div style={{ fontSize:13, color:'#6b7fa8' }}>
+          Add <code style={{ background:'rgba(255,255,255,0.06)', padding:'1px 5px', borderRadius:4 }}>ADDRESS_BOOK_SHEET_ID</code>
+          {' '}to Apps Script → Project Settings → Script Properties, set to your sheet’s id.
+          VERA will add <strong>Households</strong> and <strong>People</strong> tabs and leave everything else in that sheet alone.
+        </div>
+      </div>
+    );
+  }
+
+  const households = data.households || [];
+  const people     = data.people || [];
+  const membersOf  = id => people.filter(p => p.householdId === id);
+  const thisYear   = String(new Date().getFullYear());
+
+  const q = query.trim().toLowerCase();
+  const shown = households.filter(h => {
+    if (cardsOnly && !h.sendCard) return false;
+    if (!q) return true;
+    const hay = [h.household, h.city, h.state, h.country, h.relationship]
+      .concat(membersOf(h.id).map(p => p.name + ' ' + p.email + ' ' + p.phone))
+      .join(' ').toLowerCase();
+    return hay.indexOf(q) !== -1;
+  });
+
+  const groups = {};
+  shown.forEach(h => {
+    const g = h.relationship || 'Other';
+    (groups[g] = groups[g] || []).push(h);
+  });
+  const groupNames = AB_RELATIONSHIPS.filter(r => groups[r])
+    .concat(Object.keys(groups).filter(g => AB_RELATIONSHIPS.indexOf(g) === -1));
+
+  const cardCount = households.filter(h => h.sendCard).length;
+  const sentCount = households.filter(h => h.sendCard && h.lastCardSent === thisYear).length;
+
+  const inp = { background:'#0d1a2e', color:'#dde1f0', border:'1px solid #1e3060',
+                borderRadius:6, padding:'6px 9px', fontSize:13 };
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center', marginBottom:14 }}>
+        <input placeholder="Search name, household, city…" value={query}
+          onChange={e => setQuery(e.target.value)}
+          style={Object.assign({}, inp, { flex:1, minWidth:160 })} />
+        <button onClick={() => setCardsOnly(v => !v)}
+          className={'subtab-btn' + (cardsOnly ? ' active' : '')}>
+          🎄 Card list{cardCount ? ' (' + cardCount + ')' : ''}
+        </button>
+        <button onClick={() => setHhForm(abBlankHousehold())} disabled={busy}
+          style={{ padding:'6px 14px', borderRadius:6, border:'none', background:'#8ab4f8',
+                   color:'#0d1117', fontWeight:600, cursor:'pointer', fontSize:13 }}>
+          + Household
+        </button>
+      </div>
+
+      {cardsOnly && cardCount > 0 && (
+        <div style={{ fontSize:12, color:'#6b7fa8', marginBottom:12 }}>
+          {sentCount} of {cardCount} sent for {thisYear}.
+        </div>
+      )}
+
+      {error && <div style={{ fontSize:12, color:'#f87171', marginBottom:10 }}>⚠️ {error}</div>}
+
+      {households.length === 0 && (
+        <div className="empty-state" style={{ padding:40 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>📒</div>
+          <div style={{ color:'#dde1f0' }}>No households yet.</div>
+          <div style={{ fontSize:13, color:'#6b7fa8', marginTop:6 }}>
+            Add the people you send cards to — one entry per envelope.
+          </div>
+        </div>
+      )}
+      {households.length > 0 && shown.length === 0 && (
+        <div style={{ color:'#4d6080', fontSize:13, textAlign:'center', padding:'24px 0' }}>
+          Nothing matches the current filter.
+        </div>
+      )}
+
+      {groupNames.map(g => (
+        <div key={g} style={{ marginBottom:18 }}>
+          <div style={{ fontSize:11, color:'#6b7280', marginBottom:6, letterSpacing:'0.06em' }}>
+            {g.toUpperCase()} · {groups[g].length}
+          </div>
+          {groups[g].map(h => {
+            const members = membersOf(h.id);
+            const isOpen  = !!open[h.id];
+            const sentThisYear = h.lastCardSent === thisYear;
+            // A confidently wrong address is the real failure of a card list, so an
+            // unconfirmed one is worth a quiet marker — not a flag, not an email.
+            const staleConfirm = h.addressConfirmed
+              ? (new Date().getFullYear() - parseInt(String(h.addressConfirmed).slice(0,4), 10) >= 2)
+              : true;
+            return (
+              <div key={h.id} style={{ background:'#101c33', border:'1px solid #1e3060',
+                                       borderRadius:10, padding:12, marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'flex-start', gap:8, flexWrap:'wrap' }}>
+                  <button onClick={() => setOpen(o => Object.assign({}, o, { [h.id]: !o[h.id] }))}
+                    style={{ background:'none', border:'none', color:'#8ab4f8', cursor:'pointer',
+                             fontSize:14, padding:0, flexShrink:0 }}>
+                    {isOpen ? '▾' : '▸'}
+                  </button>
+                  <div style={{ flex:1, minWidth:150 }}>
+                    <div style={{ fontWeight:700, fontSize:14, color:'#dde1f0' }}>
+                      {h.household}
+                      {h.sendCard && <span title="On the card list" style={{ marginLeft:8, fontSize:11, color:'#86efac' }}>🎄</span>}
+                    </div>
+                    {abAddressLines(h).map((line, i) => (
+                      <div key={i} style={{ fontSize:12, color:'#a0a8c0' }}>{line}</div>
+                    ))}
+                    {abAddressLines(h).length === 0 && (
+                      <div style={{ fontSize:12, color:'#6b5a2a' }}>No address on file</div>
+                    )}
+                    {h.notes && (
+                      <div style={{ fontSize:12, color:'#9aa8c0', marginTop:3, fontStyle:'italic' }}>
+                        {h.notes}
+                      </div>
+                    )}
+                    <div style={{ fontSize:11, color:'#4d6080', marginTop:4 }}>
+                      {members.length} {members.length === 1 ? 'person' : 'people'}
+                      {h.lastCardSent ? ' · card sent ' + h.lastCardSent : ' · no card sent yet'}
+                      {staleConfirm && (
+                        <span title="Worth checking this address is still right"
+                          style={{ color:'#c9a84c' }}>
+                          {' · address ' + (h.addressConfirmed ? 'confirmed ' + h.addressConfirmed : 'never confirmed')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                    {h.sendCard && (
+                      <button onClick={() => write({ action:'mark_card_sent', id:h.id })}
+                        disabled={busy || sentThisYear} title={'Mark a card sent for ' + thisYear}
+                        style={{ background:'none', border:'1px solid ' + (sentThisYear ? '#2a3a50' : '#2a5a3a'),
+                                 color: sentThisYear ? '#4d6080' : '#86efac', borderRadius:6,
+                                 padding:'3px 9px', fontSize:11, cursor: sentThisYear ? 'default' : 'pointer' }}>
+                        {sentThisYear ? '✓ Sent ' + thisYear : 'Mark sent'}
+                      </button>
+                    )}
+                    <button onClick={() => write({ action:'confirm_address', id:h.id })} disabled={busy}
+                      title="I checked — this address is still right"
+                      style={{ background:'none', border:'1px solid #2a3a50', color:'#8ab4f8',
+                               borderRadius:6, padding:'3px 9px', fontSize:11, cursor:'pointer' }}>
+                      Confirm
+                    </button>
+                    <button onClick={() => setHhForm(Object.assign({}, h))} disabled={busy}
+                      style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
+                    <button disabled={busy}
+                      onClick={() => {
+                        const n = members.length;
+                        const msg = n
+                          ? 'Delete ' + h.household + ' and its ' + n + ' ' + (n === 1 ? 'member' : 'members') + '?'
+                          : 'Delete ' + h.household + '?';
+                        if (window.confirm(msg)) write({ action:'delete_household', id:h.id });
+                      }}
+                      style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:14 }}>×</button>
+                  </div>
+                </div>
+
+                {isOpen && (
+                  <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #1a2a40' }}>
+                    {members.length === 0 && (
+                      <div style={{ fontSize:12, color:'#4d6080', marginBottom:8 }}>Nobody listed yet.</div>
+                    )}
+                    {members.map(p => (
+                      <div key={p.id} style={{ display:'flex', alignItems:'center', gap:8,
+                                               flexWrap:'wrap', marginBottom:5 }}>
+                        <span style={{ fontSize:13, color:'#dde1f0' }}>{p.name}</span>
+                        {p.memberType === 'Child' && (
+                          <span style={{ fontSize:10, color:'#93c5fd', background:'#14243f',
+                                         borderRadius:4, padding:'1px 5px' }}>child</span>
+                        )}
+                        {p.email && <a href={'mailto:' + p.email} style={{ fontSize:12, color:'#8ab4f8' }}>{p.email}</a>}
+                        {p.phone && <a href={'tel:' + p.phone} style={{ fontSize:12, color:'#8ab4f8' }}>{p.phone}</a>}
+                        {p.notes && <span style={{ fontSize:11, color:'#6b7fa8' }}>{p.notes}</span>}
+                        <button onClick={() => setCForm(Object.assign({}, p))} disabled={busy}
+                          style={{ background:'none', border:'none', color:'#a0a8c0',
+                                   cursor:'pointer', fontSize:11, marginLeft:'auto' }}>✏️</button>
+                        <button onClick={() => { if (window.confirm('Remove ' + p.name + '?')) write({ action:'delete_contact', id:p.id }); }}
+                          disabled={busy}
+                          style={{ background:'none', border:'none', color:'#ef4444', cursor:'pointer', fontSize:13 }}>×</button>
+                      </div>
+                    ))}
+                    <button onClick={() => setCForm(abBlankContact(h.id))} disabled={busy}
+                      style={{ background:'none', border:'1px solid #2a3a50', color:'#8ab4f8',
+                               borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer', marginTop:4 }}>
+                      + Person
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {hhForm && (
+        <AddressBookHouseholdModal form={hhForm} setForm={setHhForm} busy={busy}
+          onSave={async f => { if (await write(Object.assign({ action:'save_household' }, f))) setHhForm(null); }} />
+      )}
+      {cForm && (
+        <AddressBookContactModal form={cForm} setForm={setCForm} busy={busy}
+          onSave={async f => { if (await write(Object.assign({ action:'save_contact' }, f))) setCForm(null); }} />
+      )}
+    </div>
+  );
+}
+
+function AddressBookModalShell({ title, children, onClose, onSave, busy, canSave }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', zIndex:1000,
+                  display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#101c33', border:'1px solid #1e3060', borderRadius:12, padding:20,
+                    width:'100%', maxWidth:460, maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+          <div style={{ fontWeight:700, fontSize:15, color:'#dde1f0' }}>{title}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#a0a8c0',
+                                             fontSize:20, cursor:'pointer' }}>×</button>
+        </div>
+        {children}
+        <div style={{ display:'flex', gap:8, marginTop:16 }}>
+          <button onClick={onSave} disabled={busy || !canSave}
+            style={{ background:'#8ab4f8', color:'#0d1117', border:'none', borderRadius:6,
+                     padding:'7px 16px', fontWeight:600, cursor:'pointer', fontSize:13 }}>Save</button>
+          <button onClick={onClose} disabled={busy}
+            style={{ background:'none', border:'1px solid #2a3a50', color:'#a0a8c0',
+                     borderRadius:6, padding:'7px 16px', cursor:'pointer', fontSize:13 }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddressBookField({ label, value, onChange, placeholder }) {
+  return (
+    <label style={{ display:'block', marginBottom:9 }}>
+      <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:3 }}>{label}</div>
+      <input value={value || ''} placeholder={placeholder || ''} onChange={e => onChange(e.target.value)}
+        style={{ width:'100%', boxSizing:'border-box', background:'#0d1a2e', color:'#dde1f0',
+                 border:'1px solid #1e3060', borderRadius:6, padding:'6px 9px', fontSize:13 }} />
+    </label>
+  );
+}
+
+function AddressBookHouseholdModal({ form, setForm, onSave, busy }) {
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
+  return (
+    <AddressBookModalShell title={form.id ? 'Edit household' : 'New household'}
+      onClose={() => setForm(null)} onSave={() => onSave(form)} busy={busy}
+      canSave={!!String(form.household || '').trim()}>
+      <AddressBookField label="Household (as it goes on the envelope)" value={form.household}
+        onChange={v => set('household', v)} placeholder="The Smith Family" />
+      <AddressBookField label="Address line 1" value={form.address1} onChange={v => set('address1', v)} />
+      <AddressBookField label="Address line 2" value={form.address2} onChange={v => set('address2', v)} />
+      <div style={{ display:'flex', gap:8 }}>
+        <div style={{ flex:2 }}><AddressBookField label="City" value={form.city} onChange={v => set('city', v)} /></div>
+        <div style={{ flex:1 }}><AddressBookField label="State" value={form.state} onChange={v => set('state', v)} /></div>
+        <div style={{ flex:1 }}><AddressBookField label="Postcode" value={form.postalCode} onChange={v => set('postalCode', v)} /></div>
+      </div>
+      <AddressBookField label="Country" value={form.country} onChange={v => set('country', v)} />
+      <label style={{ display:'block', marginBottom:9 }}>
+        <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:3 }}>Relationship</div>
+        <select value={form.relationship || 'Family'} onChange={e => set('relationship', e.target.value)}
+          style={{ width:'100%', background:'#0d1a2e', color:'#dde1f0', border:'1px solid #1e3060',
+                   borderRadius:6, padding:'6px 9px', fontSize:13 }}>
+          {AB_RELATIONSHIPS.map(r => <option key={r}>{r}</option>)}
+        </select>
+      </label>
+      <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#a0a8c0',
+                      cursor:'pointer', marginBottom:9 }}>
+        <input type="checkbox" checked={!!form.sendCard} onChange={e => set('sendCard', e.target.checked)} />
+        🎄 On the card list
+      </label>
+      <AddressBookField label="Notes" value={form.notes} onChange={v => set('notes', v)} />
+    </AddressBookModalShell>
+  );
+}
+
+function AddressBookContactModal({ form, setForm, onSave, busy }) {
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
+  return (
+    <AddressBookModalShell title={form.id ? 'Edit person' : 'Add person'}
+      onClose={() => setForm(null)} onSave={() => onSave(form)} busy={busy}
+      canSave={!!String(form.name || '').trim()}>
+      <AddressBookField label="Name" value={form.name} onChange={v => set('name', v)} />
+      <AddressBookField label="Email" value={form.email} onChange={v => set('email', v)} />
+      <AddressBookField label="Phone" value={form.phone} onChange={v => set('phone', v)} />
+      <label style={{ display:'block', marginBottom:9 }}>
+        <div style={{ fontSize:11, color:'#6b7fa8', marginBottom:3 }}>Member type</div>
+        <select value={form.memberType || 'Adult'} onChange={e => set('memberType', e.target.value)}
+          style={{ width:'100%', background:'#0d1a2e', color:'#dde1f0', border:'1px solid #1e3060',
+                   borderRadius:6, padding:'6px 9px', fontSize:13 }}>
+          {AB_MEMBER_TYPES.map(t => <option key={t}>{t}</option>)}
+        </select>
+      </label>
+      <AddressBookField label="Notes" value={form.notes} onChange={v => set('notes', v)} />
+      <div style={{ fontSize:11, color:'#4d6080', marginTop:4 }}>
+        Birthdays live in People → Important Dates, which already reminds you and adds them to the calendar.
+      </div>
+    </AddressBookModalShell>
+  );
+}
+
 // ---- App --------------------------------------------------------------------
 
 const TOP_TABS = [
@@ -7927,6 +8294,7 @@ const TOP_TABS = [
   { id: 'travel',        label: '✈️ Travel'         },
   { id: 'finances',      label: '💰 Finances'       },
   { id: 'home_front',    label: '🏡 Home Front'     },
+  { id: 'people',        label: '📒 Address Book'   },
 ];
 
 const FINANCE_TABS = [
@@ -8419,6 +8787,10 @@ function App() {
             status={status}
             onNavigate={setActiveTab}
           />
+        )}
+
+        {activeTab === 'people' && (
+          <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
         {activeTab === 'chat' && (

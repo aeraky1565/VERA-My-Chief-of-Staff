@@ -254,6 +254,8 @@ function doGet(e) {
       case 'update_prescription':        return jsonOut_(webUpdatePrescription_(e));
       case 'delete_prescription':        return jsonOut_(webDeletePrescription_(e));
       // Credit Card Hub (Issues #115 + #117)
+      // Address Book — the shared list of people we send things to
+      case 'address_book':               return jsonOut_(webGetAddressBook_());
       case 'cards':                      return jsonOut_(webGetCards_());
       case 'add_card':                   return jsonOut_(webAddCard_(e));
       case 'update_card':                return jsonOut_(webUpdateCard_(e));
@@ -545,6 +547,15 @@ function doPost(e) {
       // Coupons (Issue #173)
       case 'extract_coupon':             return jsonOut_(webExtractCoupon_(body));
       case 'save_coupon':                return jsonOut_(webSaveCoupon_(body));
+      // Address Book — POST because nearly every field is optional free text and
+      // makeUrl drops falsy values from a query string, so a blank would never
+      // arrive. A JSON body carries '' faithfully. See the note above the handlers.
+      case 'save_household':             return jsonOut_(webSaveHousehold_(body));
+      case 'delete_household':           return jsonOut_(webDeleteHousehold_(body));
+      case 'save_contact':               return jsonOut_(webSaveContact_(body));
+      case 'delete_contact':             return jsonOut_(webDeleteContact_(body));
+      case 'mark_card_sent':             return jsonOut_(webMarkCardSent_(body));
+      case 'confirm_address':            return jsonOut_(webConfirmAddress_(body));
       // Neighborhood Watch — Flyer upload (Issue #179)
       case 'extract_flyer':              return jsonOut_(webExtractFlyer_(body));
       case 'save_flyer':                 return jsonOut_(webSaveFlyer_(body));
@@ -11248,4 +11259,265 @@ function webSetConfigValue_(e) {
   sheet.appendRow([key, value]);
   _configCache_ = null;
   return { ok: true };
+}
+
+// ============================================================
+// ADDRESS BOOK — handlers (see AddressBook.js for the storage model)
+// ============================================================
+//
+// THE WRITES ARE POST, NOT GET, AND THAT IS THE POINT.
+//
+// makeUrl in all three dashboards drops falsy values instead of sending them, so a
+// blank never arrives and reads as "leave this field alone". That is why un-checking
+// Autopay silently did nothing, and why update_card_perk needed the lastUsedSet and
+// autopaySet presence flags (1a317f3). An address book is nearly all OPTIONAL free
+// text — Address Line 2, Notes, an unticked Send Card — so under GET almost every
+// field would need a flag of its own.
+//
+// A JSON body carries "" faithfully. These handlers therefore take `body` straight
+// from doPost, the way save_coupon already does, and clearing a field just works.
+
+/** GET action=address_book — everything the tab renders, in one call. */
+function webGetAddressBook_() {
+  var book = getAddressBookSheet_();
+  if (!book.configured) {
+    return { ok: true, configured: false, households: [], people: [] };
+  }
+  if (!book.ok) {
+    return { ok: false, configured: true, error: book.error, households: [], people: [] };
+  }
+
+  ensureAddressBookTabs_(book.ss);
+  var hhSheet = book.ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  var pSheet  = book.ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+
+  var households = readAddressBookTab_(hhSheet, HOUSEHOLD_HEADERS).map(function(r) {
+    return {
+      id:               r['ID'],
+      household:        r['Household'],
+      address1:         r['Address Line 1'],
+      address2:         r['Address Line 2'],
+      city:             r['City'],
+      state:            r['State'],
+      postalCode:       r['Postal Code'],
+      country:          r['Country'],
+      relationship:     r['Relationship'],
+      sendCard:         String(r['Send Card'] || '').trim().toLowerCase() === 'yes',
+      lastCardSent:     r['Last Card Sent'],
+      addressConfirmed: r['Address Confirmed'],
+      notes:            r['Notes'],
+    };
+  });
+
+  var people = readAddressBookTab_(pSheet, CONTACT_HEADERS).map(function(r) {
+    return {
+      id:          r['ID'],
+      householdId: r['Household ID'],
+      name:        r['Name'],
+      email:       r['Email'],
+      phone:       r['Phone'],
+      memberType:  r['Member Type'],
+      notes:       r['Notes'],
+    };
+  });
+
+  return { ok: true, configured: true, households: households, people: people };
+}
+
+/** Opens the book for a write, or throws with a message the dashboard can show. */
+function addressBookForWrite_() {
+  var book = getAddressBookSheet_();
+  if (!book.configured) {
+    throw new Error('No address book is configured. Set ADDRESS_BOOK_SHEET_ID in ' +
+                    'Apps Script → Project Settings → Script Properties to your sheet’s id.');
+  }
+  if (!book.ok) throw new Error('Cannot open the address book: ' + book.error);
+  ensureAddressBookTabs_(book.ss);
+  return book.ss;
+}
+
+/**
+ * POST save_household — inserts when `id` is absent, updates in place when it is.
+ *
+ * One function for both, so the two paths cannot drift apart. That is the same
+ * reasoning behind resolveCardPerkRow_: the bug it fixed was two writers disagreeing
+ * about which column they stamped.
+ */
+function webSaveHousehold_(body) {
+  var b     = body || {};
+  var name  = String(b.household || '').trim();
+  if (!name) throw new Error('A household name is required — it is what goes on the envelope.');
+
+  var ss    = addressBookForWrite_();
+  var sheet = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+
+  // Every field is written on every save, including the empty ones. The body is
+  // JSON, so '' arrives as '' and clearing a note really clears it.
+  var fields = {
+    'Household':        name,
+    'Address Line 1':   String(b.address1     || '').trim(),
+    'Address Line 2':   String(b.address2     || '').trim(),
+    'City':             String(b.city         || '').trim(),
+    'State':            String(b.state        || '').trim(),
+    'Postal Code':      String(b.postalCode   || '').trim(),
+    'Country':          String(b.country      || '').trim(),
+    'Relationship':     String(b.relationship || '').trim(),
+    'Send Card':        addressBookYesNo_(b.sendCard),
+    'Notes':            String(b.notes        || '').trim(),
+  };
+  // Only set by mark_card_sent / confirm_address, never clobbered by an ordinary
+  // edit — otherwise fixing a typo in a postcode would wipe the card history.
+  if (b.lastCardSent     !== undefined) fields['Last Card Sent']    = String(b.lastCardSent || '').trim();
+  if (b.addressConfirmed !== undefined) fields['Address Confirmed'] = String(b.addressConfirmed || '').trim();
+
+  var id = String(b.id || '').trim();
+  if (id) {
+    var rowNum = findAddressBookRow_(sheet, id);
+    if (!rowNum) throw new Error('Household not found: ' + id);
+    writeAddressBookRow_(sheet, rowNum, fields);
+    return { ok: true, id: id, action: 'updated' };
+  }
+
+  id = newAddressBookId_('HH');
+  fields['ID'] = id;
+  appendAddressBookRow_(sheet, HOUSEHOLD_HEADERS, fields);
+  return { ok: true, id: id, action: 'created' };
+}
+
+/**
+ * POST delete_household — removes the household AND its members.
+ *
+ * Cascades deliberately. A person row pointing at a household id that no longer
+ * exists is worse than the deletion: it renders nowhere, so it cannot be found and
+ * fixed, and it comes back as a dangling reference the next time anything joins the
+ * two tabs. The dashboard names the member count in its confirm prompt.
+ */
+function webDeleteHousehold_(body) {
+  var id = String((body || {}).id || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var ss      = addressBookForWrite_();
+  var hhSheet = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  var pSheet  = ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+
+  var rowNum = findAddressBookRow_(hhSheet, id);
+  if (!rowNum) throw new Error('Household not found: ' + id);
+
+  // Members first, back to front so the row numbers below the one being deleted do
+  // not shift under us — the same rule deleteRowsOlderThan_ (Memory.js) follows.
+  var removedMembers = 0;
+  if (pSheet && pSheet.getLastRow() >= 2) {
+    var cols  = addressBookCols_(pSheet);
+    var hhCol = cols['Household ID'] || 2;
+    var vals  = pSheet.getRange(2, hhCol, pSheet.getLastRow() - 1, 1).getValues();
+    for (var i = vals.length - 1; i >= 0; i--) {
+      if (String(vals[i][0] || '').trim() !== id) continue;
+      pSheet.deleteRow(i + 2);
+      removedMembers++;
+    }
+  }
+
+  hhSheet.deleteRow(rowNum);
+  return { ok: true, action: 'deleted', membersRemoved: removedMembers };
+}
+
+/** POST save_contact — insert without `id`, update in place with one. */
+function webSaveContact_(body) {
+  var b    = body || {};
+  var name = String(b.name || '').trim();
+  if (!name) throw new Error('A name is required');
+  var householdId = String(b.householdId || '').trim();
+  if (!householdId) throw new Error('A contact must belong to a household');
+
+  var ss      = addressBookForWrite_();
+  var hhSheet = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  if (!findAddressBookRow_(hhSheet, householdId)) {
+    throw new Error('Household not found: ' + householdId);
+  }
+  var sheet = ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+
+  var fields = {
+    'Household ID': householdId,
+    'Name':         name,
+    'Email':        String(b.email      || '').trim(),
+    'Phone':        String(b.phone      || '').trim(),
+    'Member Type':  String(b.memberType || '').trim(),
+    'Notes':        String(b.notes      || '').trim(),
+  };
+
+  var id = String(b.id || '').trim();
+  if (id) {
+    var rowNum = findAddressBookRow_(sheet, id);
+    if (!rowNum) throw new Error('Contact not found: ' + id);
+    writeAddressBookRow_(sheet, rowNum, fields);
+    return { ok: true, id: id, action: 'updated' };
+  }
+
+  id = newAddressBookId_('P');
+  fields['ID'] = id;
+  appendAddressBookRow_(sheet, CONTACT_HEADERS, fields);
+  return { ok: true, id: id, action: 'created' };
+}
+
+/** POST delete_contact — one person; the household and its siblings are untouched. */
+function webDeleteContact_(body) {
+  var id = String((body || {}).id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss     = addressBookForWrite_();
+  var sheet  = ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+  var rowNum = findAddressBookRow_(sheet, id);
+  if (!rowNum) throw new Error('Contact not found: ' + id);
+  sheet.deleteRow(rowNum);
+  return { ok: true, action: 'deleted' };
+}
+
+/**
+ * POST mark_card_sent — stamps the year a card went out.
+ *
+ * A year, not a date: "did they get one this Christmas" is the only question anyone
+ * asks of it, and a year answers it without pretending to a precision nobody has.
+ * Idempotent within a year, so clicking twice writes nothing the second time.
+ */
+function webMarkCardSent_(body) {
+  var b  = body || {};
+  var id = String(b.id || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var ss     = addressBookForWrite_();
+  var sheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  var rowNum = findAddressBookRow_(sheet, id);
+  if (!rowNum) throw new Error('Household not found: ' + id);
+
+  var tz   = Session.getScriptTimeZone();
+  var year = String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy')).trim();
+  var cols = addressBookCols_(sheet);
+  var col  = cols['Last Card Sent'];
+  if (col && String(sheet.getRange(rowNum, col).getValue() || '').trim() === year) {
+    return { ok: true, id: id, year: year, alreadyMarked: true };
+  }
+
+  writeAddressBookRow_(sheet, rowNum, { 'Last Card Sent': year });
+  return { ok: true, id: id, year: year, alreadyMarked: false };
+}
+
+/**
+ * POST confirm_address — "I checked, this address is still right."
+ *
+ * The real failure of a card list is not a missing address, it is a confidently
+ * wrong one. This is the only thing that can tell those apart later.
+ */
+function webConfirmAddress_(body) {
+  var b  = body || {};
+  var id = String(b.id || '').trim();
+  if (!id) throw new Error('id is required');
+
+  var ss     = addressBookForWrite_();
+  var sheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  var rowNum = findAddressBookRow_(sheet, id);
+  if (!rowNum) throw new Error('Household not found: ' + id);
+
+  var tz   = Session.getScriptTimeZone();
+  var when = String(b.date || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')).trim();
+  writeAddressBookRow_(sheet, rowNum, { 'Address Confirmed': when });
+  return { ok: true, id: id, confirmed: when };
 }

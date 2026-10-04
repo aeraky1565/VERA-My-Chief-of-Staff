@@ -1,0 +1,272 @@
+// Negative controls: revert ONE behaviour at a time and confirm the test bites.
+//
+// The ones that matter most put back mistakes this codebase has already made once:
+// filing an unconfigured feature as an outage (aviationstack), letting a blank fail
+// to clear a field (Autopay), reading a hand-edited sheet by column position, and
+// leaving orphan rows behind a delete.
+const fs = require('fs'), path = require('path'), cp = require('child_process');
+const REPO = path.join(__dirname, '..', '..');
+const SRC_DIR = process.env.VERA_ROOT || REPO;
+const OUT = path.join(__dirname, 'ctl_abk');
+const FILES = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js'));
+const DOCS  = ['app.js', 'index.html', 'dashboard-lite.html'];
+const BASE = {};
+FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
+DOCS.forEach(f => { BASE['docs/' + f] = fs.readFileSync(path.join(SRC_DIR, 'docs', f), 'utf8'); });
+BASE['README.md'] = fs.readFileSync(path.join(SRC_DIR, 'README.md'), 'utf8');
+
+const CONTROLS = {
+  // ---- configuration and health -------------------------------------------
+  'an unconfigured book is recorded as an outage': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  if (!id) return { ok: true, configured: false, ss: null, error: '' };",
+      "  if (!id) { recordApiHealth_(ADDRESS_BOOK_HEALTH_, false, 'not configured', 0);\n" +
+      "             return { ok: true, configured: false, ss: null, error: '' }; }"),
+  }),
+  'a real open failure is NOT recorded': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "    recordApiHealth_(ADDRESS_BOOK_HEALTH_, false, err.message, 0);\n", ''),
+  }),
+  'an unconfigured book throws instead of answering': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  if (!id) return { ok: true, configured: false, ss: null, error: '' };",
+      "  if (!id) throw new Error('ADDRESS_BOOK_SHEET_ID not set');"),
+  }),
+  'the health source name drifts': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace("var ADDRESS_BOOK_HEALTH_     = 'sheet:AddressBook';",
+                                                  "var ADDRESS_BOOK_HEALTH_     = 'addressbook';"),
+  }),
+
+  // ---- not disturbing Ahmed's sheet ---------------------------------------
+  'the tabs are never created': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /function ensureAddressBookTabs_\(ss\) \{\n[\s\S]*?\n\}/,
+      'function ensureAddressBookTabs_(ss) {}'),
+  }),
+  'only the households tab is created': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  ensureSheet(ss, ADDRESS_BOOK_PEOPLE_,     CONTACT_HEADERS);\n", ''),
+  }),
+  'the headers are rewritten on every call': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  ensureSheet(ss, ADDRESS_BOOK_HOUSEHOLDS_, HOUSEHOLD_HEADERS);',
+      '  var _s = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);\n' +
+      '  if (_s) _s.getRange(1, 1, 1, HOUSEHOLD_HEADERS.length).setValues([HOUSEHOLD_HEADERS]);\n' +
+      '  ensureSheet(ss, ADDRESS_BOOK_HOUSEHOLDS_, HOUSEHOLD_HEADERS);'),
+  }),
+
+  // ---- header-driven reads and writes --------------------------------------
+  'reads go back to fixed column positions': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "      var c = cols[h];\n      rec[h] = c ?",
+      "      var c = headers.indexOf(h) + 1;\n      rec[h] = c ?"),
+  }),
+  'writes go back to fixed column positions': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "function writeAddressBookRow_(sheet, rowNum, fields) {\n  var cols = addressBookCols_(sheet);",
+      "function writeAddressBookRow_(sheet, rowNum, fields) {\n" +
+      "  var cols = {}; HOUSEHOLD_HEADERS.concat(CONTACT_HEADERS).forEach(function(h, i) { cols[h] = i + 1; });"),
+  }),
+  'a row with no ID is read as a real entry': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace("    if (!rec['ID']) return;", "    // kept"),
+  }),
+
+  // ---- the makeUrl trap, which POST exists to avoid ------------------------
+  'save only writes the fields that are truthy (the GET bug)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  var fields = \{\n    'Household':        name,\n([\s\S]*?)\n  \};/,
+      "  var fields = { 'Household': name };\n" +
+      "  if (b.address1)     fields['Address Line 1'] = String(b.address1).trim();\n" +
+      "  if (b.address2)     fields['Address Line 2'] = String(b.address2).trim();\n" +
+      "  if (b.city)         fields['City'] = String(b.city).trim();\n" +
+      "  if (b.state)        fields['State'] = String(b.state).trim();\n" +
+      "  if (b.postalCode)   fields['Postal Code'] = String(b.postalCode).trim();\n" +
+      "  if (b.country)      fields['Country'] = String(b.country).trim();\n" +
+      "  if (b.relationship) fields['Relationship'] = String(b.relationship).trim();\n" +
+      "  if (b.sendCard)     fields['Send Card'] = addressBookYesNo_(b.sendCard);\n" +
+      "  if (b.notes)        fields['Notes'] = String(b.notes).trim();"),
+  }),
+  'an ordinary edit clobbers the card history': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  if (b.lastCardSent     !== undefined) fields['Last Card Sent']    = String(b.lastCardSent || '').trim();\n" +
+      "  if (b.addressConfirmed !== undefined) fields['Address Confirmed'] = String(b.addressConfirmed || '').trim();",
+      "  fields['Last Card Sent']    = String(b.lastCardSent || '').trim();\n" +
+      "  fields['Address Confirmed'] = String(b.addressConfirmed || '').trim();"),
+  }),
+  'Send Card is written as a boolean': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /function addressBookYesNo_\(v\) \{\n[\s\S]*?\n\}/,
+      'function addressBookYesNo_(v) { return v === true || String(v).toLowerCase() === \'yes\'; }'),
+  }),
+  'Send Card is read case-sensitively': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      sendCard:         String(r['Send Card'] || '').trim().toLowerCase() === 'yes',",
+      "      sendCard:         r['Send Card'] === 'YES',"),
+  }),
+
+  // ---- insert vs update ----------------------------------------------------
+  'save always inserts, never updates': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var id = String(b.id || '').trim();\n  if (id) {\n    var rowNum = findAddressBookRow_(sheet, id);\n    if (!rowNum) throw new Error('Household not found: ' + id);\n    writeAddressBookRow_(sheet, rowNum, fields);\n    return { ok: true, id: id, action: 'updated' };\n  }\n",
+      "  var id = '';\n"),
+  }),
+  'an unknown id is silently inserted instead of refused': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    if (!rowNum) throw new Error('Household not found: ' + id);\n    writeAddressBookRow_",
+                                        "    if (!rowNum) { appendAddressBookRow_(sheet, HOUSEHOLD_HEADERS, fields); return { ok: true, id: id, action: 'created' }; }\n    writeAddressBookRow_"),
+  }),
+  'a household with no name is accepted': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  if \(!name\) throw new Error\('A household name is required [^']*'\);\n/, ''),
+  }),
+  'a contact can belong to no household': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  if (!householdId) throw new Error('A contact must belong to a household');", ''),
+  }),
+  'a contact can point at a household that does not exist': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  if \(!findAddressBookRow_\(hhSheet, householdId\)\) \{\n    throw new Error\('Household not found: ' \+ householdId\);\n  \}\n/, ''),
+  }),
+
+  // ---- deletion ------------------------------------------------------------
+  'deleting a household orphans its members': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  var removedMembers = 0;\n  if \(pSheet && pSheet\.getLastRow\(\) >= 2\) \{\n[\s\S]*?\n  \}\n/,
+      '  var removedMembers = 0;\n'),
+  }),
+  'the member sweep runs front to back (rows shift under it)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '    for (var i = vals.length - 1; i >= 0; i--) {',
+      '    for (var i = 0; i < vals.length; i++) {'),
+  }),
+  'the cascade deletes every member, not just this household\'s': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      if (String(vals[i][0] || '').trim() !== id) continue;\n", ''),
+  }),
+  'deleting a contact deletes the whole household': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /function webDeleteContact_\(body\) \{\n([\s\S]*?)  var sheet  = ss\.getSheetByName\(ADDRESS_BOOK_PEOPLE_\);/,
+      'function webDeleteContact_(body) {\n$1  var sheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);'),
+  }),
+
+  // ---- the card run --------------------------------------------------------
+  'marking a card sent is not idempotent': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  if \(col && String\(sheet\.getRange\(rowNum, col\)\.getValue\(\) \|\| ''\)\.trim\(\) === year\) \{\n    return \{ ok: true, id: id, year: year, alreadyMarked: true \};\n  \}\n/, ''),
+  }),
+  'the card log stores a full date instead of a year': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var year = String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy')).trim();",
+      "  var year = String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')).trim();"),
+  }),
+  'an explicit year is ignored': b => ({
+    'WebApp.js': b['WebApp.js'].replace("String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy')).trim()",
+                                        "Utilities.formatDate(new Date(), tz, 'yyyy')"),
+  }),
+  'confirming an address also rewrites the row': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  writeAddressBookRow_(sheet, rowNum, { 'Address Confirmed': when });",
+      "  writeAddressBookRow_(sheet, rowNum, { 'Address Confirmed': when, 'City': '' });"),
+  }),
+
+  // ---- schema and wiring ---------------------------------------------------
+  'a Birthday column creeps back into the schema': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "var CONTACT_HEADERS   = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'Notes'];",
+      "var CONTACT_HEADERS   = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Birthday', 'Member Type', 'Notes'];"),
+  }),
+  'the writes are exposed as GET routes too': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      case 'address_book':               return jsonOut_(webGetAddressBook_());",
+      "      case 'address_book':               return jsonOut_(webGetAddressBook_());\n" +
+      "      case 'save_household':             return jsonOut_(webSaveHousehold_(e));"),
+  }),
+  'the read route is dropped': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      case 'address_book':               return jsonOut_(webGetAddressBook_());\n", ''),
+  }),
+  'a write route is dropped': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      case 'mark_card_sent':             return jsonOut_(webMarkCardSent_(body));\n", ''),
+  }),
+  'ensureSheet is reimplemented instead of reused': b => ({
+    'AddressBook.js': b['AddressBook.js']
+      .replace('  ensureSheet(ss, ADDRESS_BOOK_HOUSEHOLDS_, HOUSEHOLD_HEADERS);',
+               '  if (!ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_)) ss.insertSheet(ADDRESS_BOOK_HOUSEHOLDS_);')
+      .replace('  ensureSheet(ss, ADDRESS_BOOK_PEOPLE_,     CONTACT_HEADERS);',
+               '  if (!ss.getSheetByName(ADDRESS_BOOK_PEOPLE_)) ss.insertSheet(ADDRESS_BOOK_PEOPLE_);'),
+  }),
+
+  // ---- the dashboards ------------------------------------------------------
+  'the People sub-tab goes back to "Coming soon"': b => ({
+    'docs/app.js': b['docs/app.js'].replace(
+      "sub==='people'&&/*#__PURE__*/React.createElement(AddressBookView,{apiUrl:apiUrl,apiToken:apiToken})",
+      "sub==='people'&&/*#__PURE__*/React.createElement(\"div\",{className:\"empty-state\"},\"Coming soon\")"),
+  }),
+  'PeopleTab is no longer given the credentials': b => ({
+    'docs/app.js': b['docs/app.js'].replace("React.createElement(PeopleTab,{apiUrl:apiUrl,apiToken:apiToken,",
+                                            "React.createElement(PeopleTab,{"),
+  }),
+  'the lite dashboard loses its tab': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "  { id: 'people',        label: '📒 Address Book'   },\n", ''),
+  }),
+  'the lite dashboard never renders the view': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      /\{activeTab === 'people' && \(\s*<AddressBookView[\s\S]*?\)\}/, ''),
+  }),
+  'the dashboards write through apiGet again': b => {
+    const o = {};
+    DOCS.forEach(f => {
+      o['docs/' + f] = b['docs/' + f]
+        .replace(/await apiPost\(apiUrl, apiToken, body\);/g, 'await apiGet(apiUrl, apiToken, body);')
+        .replace(/await apiPost\(apiUrl,apiToken,body\);/g, 'await apiGet(apiUrl,apiToken,body);');
+    });
+    return o;
+  },
+  'the unconfigured state stops naming the property': b => {
+    const o = {};
+    DOCS.forEach(f => { o['docs/' + f] = b['docs/' + f].replace(/ADDRESS_BOOK_SHEET_ID/g, 'the setting'); });
+    return o;
+  },
+  'index.html is a stale build': b => ({
+    'docs/index.html': b['docs/index.html'].replace(/AddressBookView/g, 'ComingSoonView'),
+  }),
+  'the README never documents the property': b => ({
+    'README.md': b['README.md'].replace(/ADDRESS_BOOK_SHEET_ID/g, 'the sheet id'),
+  }),
+};
+
+let allBit = true;
+Object.keys(CONTROLS).forEach(name => {
+  fs.rmSync(OUT, { recursive: true, force: true });
+  fs.mkdirSync(path.join(OUT, 'docs'), { recursive: true });
+  let patch;
+  try { patch = CONTROLS[name](BASE); }
+  catch (e) { console.log('\n=== CONTROL: ' + name); console.log('  !! MUTATION THREW: ' + e.message); allBit = false; return; }
+  const files = Object.assign({}, BASE, patch);
+  const changed = [];
+  Object.keys(files).forEach(f => {
+    if (files[f] !== BASE[f]) changed.push(f);
+    fs.writeFileSync(path.join(OUT, f), files[f]);
+  });
+
+  const r = cp.spawnSync('node', ['test_addressbook.js'], {
+    cwd: __dirname, encoding: 'utf8',
+    env: Object.assign({}, process.env, { VERA_ROOT: OUT }),
+  });
+  const out = (r.stdout || '') + (r.stderr || '');
+  const fails = (out.match(/^  FAIL .*$/gm) || []).map(s => s.replace(/^  FAIL /, '').split('  — ')[0]);
+  const crashed = r.status !== 0 && fails.length === 0;
+
+  console.log('\n=== CONTROL: ' + name);
+  if (!changed.length) { console.log('  !! MUTATION DID NOT APPLY — vacuous'); allBit = false; return; }
+  if (crashed)         { console.log('  !! CRASHED with no clean assertion failure'); console.log(out.split('\n').slice(-6).join('\n')); allBit = false; return; }
+  if (!fails.length)   { console.log('  !! NOTHING BIT (patched: ' + changed.join(', ') + ')'); allBit = false; return; }
+  console.log('  ' + fails.length + ' bit:');
+  fails.slice(0, 3).forEach(f => console.log('    - ' + f));
+  if (fails.length > 3) console.log('    … and ' + (fails.length - 3) + ' more');
+});
+
+fs.rmSync(OUT, { recursive: true, force: true });
+console.log('\n' + (allBit ? 'ALL CONTROLS BIT' : 'SOME CONTROLS DID NOT BITE'));
+process.exit(allBit ? 0 : 1);

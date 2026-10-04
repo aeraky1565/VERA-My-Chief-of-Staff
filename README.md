@@ -451,6 +451,56 @@ Nightly Step 0i scans the past 24–48 hours of all Google Calendars for events 
 
 The Finance tab in the dashboard shows: net income vs. spend (from the Simple Ass Tracker budget sheet via `SAT_SHEET_ID`), spending by category from the Transactions sheet (`TRANSACTIONS_SHEET_ID`), cashflow timeline, and bill status. Transaction data uses the Empower CSV export format. Categories can be configured for exclusion via `finance_skip_categories` in the Config tab.
 
+### Address Book (`AddressBook.js`, `WebApp.js`)
+
+The shared list of people we send things to — Christmas cards, birthday cards,
+invitations to the children's things. Lives under **People → 👤 People** in the main
+dashboard and as its own **📒 Address Book** tab in the mobile one.
+
+**It is a different spreadsheet on purpose.** It is shared with Victoria on its own,
+without handing over finances, health and career with it. VERA reaches it by id from
+the `ADDRESS_BOOK_SHEET_ID` script property, the same way the Simple Ass Tracker
+budget is read and written. With that property unset the tab shows a setup line and
+**records nothing against API health** — an unconfigured feature is not an outage,
+and filing one as a fault is how the "SOME DATA IS NOT LIVE" banner lost its
+credibility the first time.
+
+**Two tabs, because a card and an email reach different things.** A card is addressed
+to a `Household` — one envelope, one address, "and family". An email or a phone call
+reaches a person in `People`. One flat list would mean either duplicating the address
+on every member, where the copies drift apart, or losing the per-person details.
+
+`ensureAddressBookTabs_` adds those two tabs if they are missing and **touches
+nothing else in that document** — it reuses `ensureSheet`, which only writes headers
+into a blank sheet, so whatever you already built in there is left exactly as it was.
+
+> **There is no Birthday column, deliberately.** The `Important Dates` tab already
+> stores birthdays, flags them ahead of time and writes them to the shared calendar.
+> A second birthday list would be a second thing to keep right, and the one that is
+> already wired up would win.
+
+**Reads are header-driven.** Two people edit this sheet by hand, so a column *will*
+get inserted in the middle of it; reading by position would shift every field by one
+from that moment on and the first sign would be an address in the Notes column. A
+write targets the header too, so a column you add yourself is never eaten.
+
+**Writes are POST with a JSON body, not GET.** `makeUrl` in the dashboards drops
+falsy values rather than sending them, so a cleared Address Line 2 or an emptied note
+would never arrive and would read as *"leave this field alone"* — the bug that made
+un-checking Autopay a silent no-op. Nearly every field here is optional free text, so
+under GET almost all of them would have needed a presence flag. A JSON body carries
+`""` faithfully.
+
+- `Send Card` holds the literal `'Yes'` or blank, like `Resolved` and `Autopay`.
+- `Last Card Sent` is a **year** — "did they get one this Christmas" is the only
+  question anyone asks of it. Marking twice in one year writes nothing.
+- `Address Confirmed` is a date. A confidently wrong address is the real failure of a
+  card list, and this is the only thing that can tell it from a merely old one. It
+  renders as a quiet marker on the row — **no flag, no nightly step, no email.**
+- **Deleting a household deletes its members.** An orphan person row pointing at a
+  household that no longer exists renders nowhere, so it can never be found and
+  fixed. The dashboard names the member count before you confirm.
+
 ### Card Perks (`Code.js`, `WebApp.js`)
 
 Tracks use-it-or-lose-it credit-card benefits on the `Card Perks` tab. A perk's
@@ -1426,6 +1476,7 @@ Set all properties in the Apps Script editor: **Project Settings → Script Prop
 | `VERA_DASHBOARD_URL` | No | morningNudge | Dashboard URL shown as "Open VERA Dashboard →" button in email |
 | `VERA_LOGO_FILE_ID` | No | morningNudge | Google Drive file ID for VERA logo in morning email; falls back to text banner |
 | `SAT_SHEET_ID` | No | Finance.js | Simple Ass Tracker Google Sheet ID |
+| `ADDRESS_BOOK_SHEET_ID` | No | AddressBook.js | Shared address book Google Sheet ID. Unset simply hides the feature |
 | `TRANSACTIONS_SHEET_ID` | No | Finance.js | Transactions Google Sheet ID (Empower CSV format) |
 | `SLACK_BOT_TOKEN` | No | Slack.js | Slack bot OAuth token (`xoxb-...`) |
 | `SLACK_CHAT_CHANNEL_ID` | No | Slack.js | Channel ID for #vera-chat |
@@ -1908,6 +1959,7 @@ Optional but recommended:
 | `SLACK_NOTIFICATIONS_CHANNEL_ID` | Channel ID for #vera-notifications |
 | `SLACK_LOGS_CHANNEL_ID` | Channel ID for #vera-logs |
 | `SAT_SHEET_ID` | Simple Ass Tracker Sheet ID (if using finance module) |
+| `ADDRESS_BOOK_SHEET_ID` | Shared address book Sheet ID (if using the Address Book) |
 | `TRANSACTIONS_SHEET_ID` | Transactions Sheet ID (if using transaction tracking) |
 | `AVIATIONSTACK_KEY` | AviationStack API key (if using flight status) |
 | `OPENWEATHER_API_KEY` | OpenWeather API key (if using weather) |

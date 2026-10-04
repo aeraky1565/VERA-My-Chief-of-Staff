@@ -2346,7 +2346,789 @@ setNewPersonName('');setAddingPerson(false);openAddFor(name);}function startImpo
 var formatDate=function(dateStr,recurring,entry){if(entry&&entry.nextDate)return fmtDate(entry.nextDate);return fmtDate(dateStr);};return/*#__PURE__*/React.createElement("div",{style:{maxWidth:600}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}},/*#__PURE__*/React.createElement("button",{onClick:()=>openAddFor(''),style:{fontSize:12,background:'#1a3a6e',color:'#a0c0ff',border:'none',borderRadius:6,padding:'6px 14px',cursor:'pointer'}},"＋ Add Date"),/*#__PURE__*/React.createElement("button",{onClick:startImport,disabled:calPreviewLoading,style:{fontSize:12,background:'transparent',color:'#6b9adb',border:'1px solid #2a3a5e',borderRadius:6,padding:'6px 14px',cursor:'pointer'}},calPreviewLoading?'Loading…':'📅 Import from Calendar')),comingUp.length>0&&/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,fontWeight:700,color:'#4d6080',letterSpacing:1,textTransform:'uppercase',marginBottom:8}},"Coming Up"),comingUp.map(function(d){var u=urgencyDot(d._days);return/*#__PURE__*/React.createElement("div",{key:d.ID,style:{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid #0a1628'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,minWidth:18}},u?u.dot:''),/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#6b7fa8',minWidth:60}},d._days===0?'Today':d._days+' day'+(d._days!==1?'s':'')),/*#__PURE__*/React.createElement("span",{style:{flex:1,fontSize:13,color:'#dde1f0'}},d.Label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#4d6080'}},formatDate(d.Date,null,d)," ",d['Add to Calendar']&&String(d['Add to Calendar']).toLowerCase()!=='no'?'· 📅':'',String(d.Recurring||'').toLowerCase()==='yes'?'· Annual':''));})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:8}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,fontWeight:700,color:'#4d6080',letterSpacing:1,textTransform:'uppercase',marginBottom:8}},"By Person"),people.map(function(person){var personDates=byPerson[person]||[];var isOpen=!!expanded[person];var upcoming=personDates.filter(function(d){return d._days>=0&&d._days<=90;}).length;return/*#__PURE__*/React.createElement("div",{key:person,style:{marginBottom:6,background:'#0d1b3e',borderRadius:8,border:'1px solid #1e3a6e',overflow:'hidden'}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'9px 14px',cursor:'pointer',justifyContent:'space-between'},onClick:()=>togglePerson(person)},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:8}},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,color:'#8899bb'}},isOpen?'▾':'▸'),/*#__PURE__*/React.createElement("span",{style:{fontSize:14,fontWeight:600,color:'#dde1f0'}},person),upcoming>0&&/*#__PURE__*/React.createElement("span",{style:{fontSize:10,background:'#1a3a6e',color:'#a0c0ff',borderRadius:10,padding:'1px 7px'}},upcoming," upcoming")),/*#__PURE__*/React.createElement("button",{onClick:function(ev){ev.stopPropagation();openAddFor(person);},style:{fontSize:11,color:'#6b9adb',background:'transparent',border:'1px solid #2a3a5e',borderRadius:5,padding:'2px 8px',cursor:'pointer'},disabled:busy},"＋")),isOpen&&/*#__PURE__*/React.createElement("div",{style:{borderTop:'1px solid #152040',padding:'8px 14px'}},personDates.length===0&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#3a4d66',marginBottom:4}},"No dates yet."),personDates.map(function(d){var u=urgencyDot(d._days);return/*#__PURE__*/React.createElement("div",{key:d.ID,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:'1px solid #0a1628'}},u&&/*#__PURE__*/React.createElement("span",{style:{fontSize:11}},u.dot),/*#__PURE__*/React.createElement("span",{style:{flex:1,fontSize:13,color:'#c8d0e8'}},d.Label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#4d6080'}},formatDate(d.Date,null,d),d['Add to Calendar']&&String(d['Add to Calendar']).toLowerCase()!=='no'?' · 📅':'',String(d.Recurring||'').toLowerCase()==='yes'?' · Annual':''),/*#__PURE__*/React.createElement("button",{onClick:function(){openEdit(d);},style:{fontSize:11,color:'#6b9adb',background:'transparent',border:'none',cursor:'pointer',padding:'2px 4px'},disabled:busy},"✎"),/*#__PURE__*/React.createElement("button",{onClick:function(){if(window.confirm('Delete "'+d.Label+'"?'))onDelete(d.ID);},style:{fontSize:10,color:'#6b3a3a',background:'transparent',border:'none',cursor:'pointer',padding:'2px 4px',opacity:0.6},disabled:busy},"✕"));})));}),/*#__PURE__*/React.createElement("div",{style:{marginTop:10}},addingPerson?/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6}},/*#__PURE__*/React.createElement("input",{type:"text",placeholder:"Person's name…",value:newPersonName,onChange:function(ev){setNewPersonName(ev.target.value);},onKeyDown:function(ev){if(ev.key==='Enter')submitNewPerson();if(ev.key==='Escape'){setAddingPerson(false);setNewPersonName('');}},autoFocus:true,style:{flex:1,fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 10px',color:'#dde1f0'}}),/*#__PURE__*/React.createElement("button",{onClick:submitNewPerson,style:{fontSize:12,background:'#1a3a6e',color:'#a0c0ff',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer'},disabled:!newPersonName.trim()},"Add"),/*#__PURE__*/React.createElement("button",{onClick:()=>{setAddingPerson(false);setNewPersonName('');},style:{fontSize:12,background:'transparent',color:'#6b7fa8',border:'1px solid #2a3a5e',borderRadius:6,padding:'5px 10px',cursor:'pointer'}},"Cancel")):/*#__PURE__*/React.createElement("button",{onClick:()=>setAddingPerson(true),style:{fontSize:12,color:'#6b9adb',background:'transparent',border:'1px dashed #2a3a5e',borderRadius:6,padding:'6px 14px',cursor:'pointer'}},"＋ Add Person"))),dates.length===0&&/*#__PURE__*/React.createElement("div",{style:{textAlign:'center',padding:'32px 0',color:'#3a4d66',fontSize:13}},"No important dates yet. Add one above or import from your calendar."),showAddModal&&/*#__PURE__*/React.createElement("div",{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'},onClick:()=>{setShowAddModal(false);setEditEntry(null);}},/*#__PURE__*/React.createElement("div",{style:{background:'#0d1b3e',border:'1px solid #1e3a6e',borderRadius:10,padding:24,width:340,maxWidth:'90vw'},onClick:function(ev){ev.stopPropagation();}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:16}},editEntry?'Edit Date':'Add Important Date'),[{label:'Occasion',key:'label',placeholder:'e.g. Victoria\'s Birthday'},{label:'Person',key:'person',placeholder:'e.g. Victoria'}].map(function(f){return/*#__PURE__*/React.createElement("div",{key:f.key,style:{marginBottom:12}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginBottom:4}},f.label),/*#__PURE__*/React.createElement("input",{type:"text",placeholder:f.placeholder,value:form[f.key],onChange:function(ev){var v=ev.target.value;setForm(function(p){return Object.assign({},p,{[f.key]:v});});},style:{width:'100%',boxSizing:'border-box',fontSize:13,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'6px 10px',color:'#dde1f0'}}));}),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginBottom:6}},"Date Type"),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,marginBottom:8,flexWrap:'wrap'}},['annual','onetime','rule'].map(function(m){return/*#__PURE__*/React.createElement("button",{key:m,className:"date-mode-btn","data-mode":m,onClick:()=>{setDateMode(m);setForm(function(p){return Object.assign({},p,{date:''});});},style:{fontSize:11,padding:'4px 10px',borderRadius:5,cursor:'pointer',background:dateMode===m?'#1a3a6e':'transparent',color:dateMode===m?'#a0c0ff':'#6b7fa8',border:'1px solid '+(dateMode===m?'#1a3a6e':'#2a3a5e')}},m==='annual'?'Annual (MM-DD)':m==='onetime'?'One-time (YYYY-MM-DD)':'Repeating rule');})),dateMode!=='rule'?/*#__PURE__*/React.createElement("input",{type:"text",placeholder:dateMode==='annual'?'MM-DD (e.g. 04-14)':'YYYY-MM-DD (e.g. 2019-06-08)',value:form.date,onChange:function(ev){var v=ev.target.value;setForm(function(p){return Object.assign({},p,{date:v});});},style:{width:'100%',boxSizing:'border-box',fontSize:13,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'6px 10px',color:'#dde1f0'}}):/*#__PURE__*/React.createElement("div",{className:"rule-builder"},/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,marginBottom:8}},['nth','offset'].map(function(k){return/*#__PURE__*/React.createElement("button",{key:k,className:"rule-kind-btn","data-kind":k,onClick:()=>setRuleKind(k),style:{fontSize:11,padding:'3px 9px',borderRadius:5,cursor:'pointer',background:ruleKind===k?'#123055':'transparent',color:ruleKind===k?'#a0c0ff':'#6b7fa8',border:'1px solid '+(ruleKind===k?'#1a3a6e':'#2a3a5e')}},k==='nth'?'Weekday of a month':'Relative to another date');})),ruleKind==='nth'?/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},/*#__PURE__*/React.createElement("select",{className:"rule-nth",value:rule.nth,onChange:function(ev){var v=ev.target.value;setRule(function(p){return Object.assign({},p,{nth:v});});},style:{fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 8px',color:'#dde1f0'}},RULE_NTHS.map(function(o){return/*#__PURE__*/React.createElement("option",{key:o.v,value:o.v},o.l);})),/*#__PURE__*/React.createElement("select",{className:"rule-weekday",value:rule.weekday,onChange:function(ev){var v=ev.target.value;setRule(function(p){return Object.assign({},p,{weekday:v});});},style:{fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 8px',color:'#dde1f0'}},RULE_WEEKDAYS.map(function(o){return/*#__PURE__*/React.createElement("option",{key:o.v,value:o.v},o.l);})),/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#6b7fa8'}},"of"),/*#__PURE__*/React.createElement("select",{className:"rule-month",value:rule.month,onChange:function(ev){var v=ev.target.value;setRule(function(p){return Object.assign({},p,{month:v});});},style:{fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 8px',color:'#dde1f0'}},RULE_MONTHS.map(function(o){return/*#__PURE__*/React.createElement("option",{key:o.v,value:o.v},o.l);}))):/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},/*#__PURE__*/React.createElement("input",{type:"number",min:"0",className:"rule-offset-days",value:rule.offsetDays,onChange:function(ev){var v=ev.target.value;setRule(function(p){return Object.assign({},p,{offsetDays:v});});},style:{width:60,fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 8px',color:'#dde1f0'}}),/*#__PURE__*/React.createElement("select",{className:"rule-offset-dir",value:rule.offsetDir,onChange:function(ev){var v=ev.target.value;setRule(function(p){return Object.assign({},p,{offsetDir:v});});},style:{fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 8px',color:'#dde1f0'}},/*#__PURE__*/React.createElement("option",{value:"before"},"days before"),/*#__PURE__*/React.createElement("option",{value:"after"},"days after")),/*#__PURE__*/React.createElement("select",{className:"rule-ref",value:rule.refLabel,onChange:function(ev){var v=ev.target.value;setRule(function(p){return Object.assign({},p,{refLabel:v});});},style:{fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 8px',color:'#dde1f0'}},/*#__PURE__*/React.createElement("option",{value:""},"choose a date…"),/*#__PURE__*/React.createElement("option",{value:"easter"},"Easter"),dates.filter(function(d){return String(d.Label||'').trim()&&(!editEntry||d.ID!==editEntry.ID);}).map(function(d){return/*#__PURE__*/React.createElement("option",{key:d.ID,value:String(d.Label)},String(d.Label));}))),/*#__PURE__*/React.createElement("div",{className:"rule-preview",style:{fontSize:11,color:composeRule(ruleKind,rule)?'#6b9adb':'#6b3a3a',marginTop:8,minHeight:15}},composeRule(ruleKind,rule)?ruleInEnglish(ruleKind,rule)+'  →  '+composeRule(ruleKind,rule):'Pick a date to count from.'))),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginBottom:4}},"Lead time (days before VERA flags)"),/*#__PURE__*/React.createElement("input",{type:"number",value:form.leadTime,onChange:function(ev){var v=ev.target.value;setForm(function(p){return Object.assign({},p,{leadTime:v});});},style:{width:80,fontSize:13,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'6px 10px',color:'#dde1f0'}})),/*#__PURE__*/React.createElement("div",{style:{marginBottom:12,paddingTop:10,borderTop:'1px solid #152040'}},/*#__PURE__*/React.createElement("label",{style:{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}},/*#__PURE__*/React.createElement("input",{type:"checkbox",className:"add-to-cal",checked:String(form.addToCalendar||'').trim()!==''&&String(form.addToCalendar).toLowerCase()!=='no',onChange:function(ev){var on=ev.target.checked;setForm(function(p){return Object.assign({},p,{addToCalendar:on?'Yes':''});});}}),/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#dde1f0'}},"Put this on the shared calendar")),String(form.addToCalendar||'').trim()!==''&&String(form.addToCalendar).toLowerCase()!=='no'&&/*#__PURE__*/React.createElement("div",{style:{marginTop:8,paddingLeft:24}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginBottom:4}},"How far ahead to add it (days)"),/*#__PURE__*/React.createElement("input",{type:"number",className:"cal-lead",placeholder:"60",value:form.calendarLeadDays,onChange:function(ev){var v=ev.target.value;setForm(function(p){return Object.assign({},p,{calendarLeadDays:v});});},style:{width:80,fontSize:13,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'6px 10px',color:'#dde1f0'}}),/*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#4d6080',marginTop:4}},"Blank uses the default of 60. VERA skips it if it is already on a calendar."))),/*#__PURE__*/React.createElement("div",{style:{marginBottom:18}},/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#6b7fa8',marginBottom:4}},"Notes (optional)"),/*#__PURE__*/React.createElement("input",{type:"text",placeholder:"Gift preferences, ideas…",value:form.notes,onChange:function(ev){var v=ev.target.value;setForm(function(p){return Object.assign({},p,{notes:v});});},style:{width:'100%',boxSizing:'border-box',fontSize:13,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'6px 10px',color:'#dde1f0'}})),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8}},/*#__PURE__*/React.createElement("button",{onClick:submitForm,disabled:!form.label.trim()||!(dateMode==='rule'?composeRule(ruleKind,rule):form.date).trim()||busy,style:{flex:1,fontSize:13,background:'#1a3a6e',color:'#a0c0ff',border:'none',borderRadius:6,padding:'8px',cursor:'pointer'}},editEntry?'Save':'Add'),/*#__PURE__*/React.createElement("button",{onClick:()=>{setShowAddModal(false);setEditEntry(null);},style:{fontSize:13,background:'transparent',color:'#6b7fa8',border:'1px solid #2a3a5e',borderRadius:6,padding:'8px 16px',cursor:'pointer'}},"Cancel")))),showImportModal&&/*#__PURE__*/React.createElement("div",{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'},onClick:()=>setShowImportModal(false)},/*#__PURE__*/React.createElement("div",{style:{background:'#0d1b3e',border:'1px solid #1e3a6e',borderRadius:10,padding:24,width:380,maxWidth:'90vw',maxHeight:'80vh',overflowY:'auto'},onClick:function(ev){ev.stopPropagation();}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:4}},"Import from Calendar"),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',marginBottom:16}},"Select birthdays to import from your Birthdays/Contacts calendar."),calPreviewLoading&&/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Scanning calendars…"),!calPreviewLoading&&(calPreviews||[]).length===0&&/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#4d6080',marginBottom:16}},"No birthdays found in your calendar. Check that a \"Birthdays\" or \"Contacts\" calendar is enabled."),(calPreviews||[]).map(function(p){var checked=selectedImport[p.person]!==false;return/*#__PURE__*/React.createElement("div",{key:p.person,style:{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:'1px solid #0a1628',cursor:'pointer'},onClick:function(){setSelectedImport(function(prev){var n=Object.assign({},prev);n[p.person]=!checked;return n;});}},/*#__PURE__*/React.createElement("span",{style:{fontSize:16}},checked?'☑':'☐'),/*#__PURE__*/React.createElement("span",{style:{flex:1,fontSize:13,color:'#dde1f0'}},p.person),/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#6b7fa8'}},p.date.replace(/^(\d{2})-(\d{2})$/,function(_,m,d){var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return months[parseInt(m,10)-1]+' '+parseInt(d,10);})));}),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:8,marginTop:16}},/*#__PURE__*/React.createElement("button",{onClick:confirmImport,disabled:!(calPreviews||[]).some(function(p){return selectedImport[p.person]!==false;})||busy,style:{flex:1,fontSize:13,background:'#1a3a6e',color:'#a0c0ff',border:'none',borderRadius:6,padding:'8px',cursor:'pointer'}},"Import ",(calPreviews||[]).filter(function(p){return selectedImport[p.person]!==false;}).length," dates"),/*#__PURE__*/React.createElement("button",{onClick:()=>setShowImportModal(false),style:{fontSize:13,background:'transparent',color:'#6b7fa8',border:'1px solid #2a3a5e',borderRadius:6,padding:'8px 16px',cursor:'pointer'}},"Cancel")))));}// ── End Important Dates ──────────────────────────────────────────────────────
 function GiftIdeasView({people,ideas,loading,busy,onAddPerson,onDeletePerson,onAddIdea,onDeleteIdea}){var[expanded,setExpanded]=React.useState({Ahmed:true,Victoria:true});var[inputs,setInputs]=React.useState({});var[newPerson,setNewPerson]=React.useState('');var[addingPerson,setAddingPerson]=React.useState(false);if(loading)return/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading gift ideas…");// Group ideas by person
 var byPerson={};ideas.forEach(function(idea){var p=idea.Person||'';if(!byPerson[p])byPerson[p]=[];byPerson[p].push(idea);});function toggle(name){setExpanded(function(prev){var n=Object.assign({},prev);n[name]=!n[name];return n;});}function submitIdea(person){var text=(inputs[person]||'').trim();if(!text||busy)return;onAddIdea(person,text);setInputs(function(prev){var n=Object.assign({},prev);n[person]='';return n;});}function submitNewPerson(){var name=newPerson.trim();if(!name||busy)return;onAddPerson(name);setNewPerson('');setAddingPerson(false);setExpanded(function(prev){var n=Object.assign({},prev);n[name]=true;return n;});}return/*#__PURE__*/React.createElement("div",{style:{maxWidth:560}},people.map(function(person){var personIdeas=byPerson[person]||[];var isOpen=!!expanded[person];return/*#__PURE__*/React.createElement("div",{key:person,style:{marginBottom:8,background:'#0d1b3e',borderRadius:8,border:'1px solid #1e3a6e',overflow:'hidden'}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'10px 14px',cursor:'pointer',justifyContent:'space-between'},onClick:()=>toggle(person)},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:8}},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,color:'#8899bb'}},isOpen?'▾':'▸'),/*#__PURE__*/React.createElement("span",{style:{fontSize:14,fontWeight:600,color:'#dde1f0'}},person),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#4d6080',marginLeft:2}},personIdeas.length," idea",personIdeas.length!==1?'s':'')),/*#__PURE__*/React.createElement("button",{onClick:function(ev){ev.stopPropagation();if(window.confirm('Remove '+person+' and all their gift ideas?'))onDeletePerson(person);},style:{fontSize:11,color:'#6b3a3a',background:'transparent',border:'none',cursor:'pointer',padding:'2px 6px',opacity:0.6},disabled:busy},"✕")),isOpen&&/*#__PURE__*/React.createElement("div",{style:{borderTop:'1px solid #152040',padding:'10px 14px'}},personIdeas.length===0&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#3a4d66',marginBottom:10}},"No ideas yet — add one below."),personIdeas.map(function(idea){return/*#__PURE__*/React.createElement("div",{key:idea.ID,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid #0a1628'}},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,color:'#c8d0e8'}},"🎁 ",idea.Idea),/*#__PURE__*/React.createElement("button",{onClick:function(){onDeleteIdea(idea.ID);},style:{fontSize:10,color:'#6b3a3a',background:'transparent',border:'none',cursor:'pointer',padding:'2px 4px',opacity:0.6},disabled:busy},"✕"));}),/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,marginTop:10}},/*#__PURE__*/React.createElement("input",{type:"text",placeholder:"Add gift idea…",value:inputs[person]||'',onChange:function(ev){var v=ev.target.value;setInputs(function(prev){var n=Object.assign({},prev);n[person]=v;return n;});},onKeyDown:function(ev){if(ev.key==='Enter')submitIdea(person);},style:{flex:1,fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 10px',color:'#dde1f0'},disabled:busy}),/*#__PURE__*/React.createElement("button",{onClick:function(){submitIdea(person);},style:{fontSize:13,background:'#1a3a6e',color:'#a0c0ff',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer'},disabled:busy||!(inputs[person]||'').trim()},"＋"))));}),/*#__PURE__*/React.createElement("div",{style:{marginTop:12}},addingPerson?/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6}},/*#__PURE__*/React.createElement("input",{type:"text",placeholder:"Person's name…",value:newPerson,onChange:function(ev){setNewPerson(ev.target.value);},onKeyDown:function(ev){if(ev.key==='Enter')submitNewPerson();if(ev.key==='Escape'){setAddingPerson(false);setNewPerson('');}},autoFocus:true,style:{flex:1,fontSize:12,background:'#060e24',border:'1px solid #1e3a6e',borderRadius:6,padding:'5px 10px',color:'#dde1f0'}}),/*#__PURE__*/React.createElement("button",{onClick:submitNewPerson,style:{fontSize:12,background:'#1a3a6e',color:'#a0c0ff',border:'none',borderRadius:6,padding:'5px 12px',cursor:'pointer'},disabled:!newPerson.trim()},"Add"),/*#__PURE__*/React.createElement("button",{onClick:()=>{setAddingPerson(false);setNewPerson('');},style:{fontSize:12,background:'transparent',color:'#6b7fa8',border:'1px solid #2a3a5e',borderRadius:6,padding:'5px 10px',cursor:'pointer'}},"Cancel")):/*#__PURE__*/React.createElement("button",{onClick:()=>setAddingPerson(true),style:{fontSize:12,color:'#6b9adb',background:'transparent',border:'1px dashed #2a3a5e',borderRadius:6,padding:'6px 14px',cursor:'pointer'}},"＋ Add Person")));}// ---- WishListsView (Issue #106) ---------------------------------------------
-function WishListsView({wishlists,loading,onRefresh}){if(loading)return/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',padding:16}},"Loading wish lists…");const note=wishlists&&wishlists.note;const items=wishlists&&wishlists.wishlists||[];return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:10,marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',flex:1}},"Holiday & seasonal wish lists, read directly from family Google Docs."),/*#__PURE__*/React.createElement("button",{onClick:onRefresh,style:{padding:'5px 12px',borderRadius:8,background:'rgba(100,160,255,0.1)',border:'1px solid rgba(100,160,255,0.3)',color:'#7ab4ff',fontSize:12,cursor:'pointer'}},"↻ Refresh")),note&&/*#__PURE__*/React.createElement("div",{style:{padding:'10px 14px',borderRadius:8,background:'rgba(255,200,60,0.08)',border:'1px solid rgba(255,200,60,0.25)',color:'#c9a84c',fontSize:13,marginBottom:16}},"⚠️ ",note,/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#7a8fb8',marginTop:6}},"Add ",/*#__PURE__*/React.createElement("code",{style:{background:'rgba(255,255,255,0.06)',padding:'1px 5px',borderRadius:4}},"wishlist_name")," rows to your Config tab with the Google Doc ID as the value.")),items.length===0&&!note&&/*#__PURE__*/React.createElement("div",{className:"empty-state",style:{paddingTop:32}},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:10}},"🎄"),/*#__PURE__*/React.createElement("div",{style:{fontWeight:600,fontSize:14,color:'#a0b0c8',marginBottom:6}},"No wish lists configured"),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#4d6080'}},"Add ",/*#__PURE__*/React.createElement("code",{style:{background:'rgba(255,255,255,0.06)',padding:'1px 5px',borderRadius:4}},"wishlist_name")," rows to your Config tab (value = Google Doc ID).")),/*#__PURE__*/React.createElement("div",{style:{display:'flex',flexWrap:'wrap',gap:16}},items.map(function(wl){return/*#__PURE__*/React.createElement("div",{key:wl.person,style:{background:'#1a2540',border:'1px solid #2a3a5a',borderRadius:12,padding:16,minWidth:220,flex:'1 1 220px',maxWidth:360}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#e8d9b0',marginBottom:10}},"🎁 ",wl.person),wl.error&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#ef5350',marginBottom:8}},"⚠️ ",wl.error),wl.items.length===0&&!wl.error&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080'}},"No unpurchased items found."),/*#__PURE__*/React.createElement("ul",{style:{margin:0,padding:'0 0 0 18px',listStyle:'disc'}},wl.items.map(function(item,i){return/*#__PURE__*/React.createElement("li",{key:i,style:{fontSize:13,color:'#c0cfe8',marginBottom:4,lineHeight:1.4}},item);})));})));}function PeopleTab({giftData,giftLoading,busy,onAddGiftPerson,onDeleteGiftPerson,onAddGiftIdea,onDeleteGiftIdea,datesData,datesLoading,onAddImportantDate,onUpdateImportantDate,onDeleteImportantDate,onPreviewCalendarBirthdays,onImportCalendarBirthdays,calPreviews,calPreviewLoading,wishListsData,wishListsLoading,onRefreshWishLists,features}){const feat=features||{};const allSubTabs=[{id:'dates',label:'📅 Important Dates',hint:'Add birthdays and anniversaries to Google Calendar as <strong>Birthday: Name</strong> or <strong>Anniversary: Name</strong>. VERA imports them automatically. You can also add dates manually below.'},{id:'gifts',label:'🎁 Gift Ideas'},{id:'wishlists',label:'🎄 Wish Lists',featureKey:'wishlists'},{id:'people',label:'👤 People'}];const subTabs=allSubTabs.filter(function(t){return!t.featureKey||feat[t.featureKey]!==false;});const[sub,setSub]=React.useState('dates');const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);React.useEffect(function(){if(subTabs.length>0&&!subTabs.find(function(t){return t.id===sub;})){setSub(subTabs[0].id);}},[subTabs.map(function(t){return t.id;}).join(',')]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"subtab-row",style:{display:'flex',alignItems:'center'}},subTabs.map(s=>/*#__PURE__*/React.createElement("button",{key:s.id,className:`subtab-btn${sub===s.id?' active':''}`,onClick:()=>setSub(s.id)},s.label)),/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='dates'&&/*#__PURE__*/React.createElement(ImportantDatesView,{dates:datesData&&datesData.dates||[],loading:!!datesLoading,busy:busy,onAdd:onAddImportantDate,onUpdate:onUpdateImportantDate,onDelete:onDeleteImportantDate,onPreviewCalendar:onPreviewCalendarBirthdays,onImportCalendar:onImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading}),sub==='gifts'&&/*#__PURE__*/React.createElement(GiftIdeasView,{people:giftData&&giftData.people||[],ideas:giftData&&giftData.ideas||[],loading:!!giftLoading,busy:busy,onAddPerson:onAddGiftPerson,onDeletePerson:onDeleteGiftPerson,onAddIdea:onAddGiftIdea,onDeleteIdea:onDeleteGiftIdea}),sub==='wishlists'&&/*#__PURE__*/React.createElement(WishListsView,{wishlists:wishListsData,loading:!!wishListsLoading,onRefresh:onRefreshWishLists}),sub==='people'&&/*#__PURE__*/React.createElement("div",{className:"empty-state",style:{paddingTop:48}},/*#__PURE__*/React.createElement("div",{style:{fontSize:40,marginBottom:12}},"👤"),/*#__PURE__*/React.createElement("div",{style:{fontWeight:600,fontSize:15,color:'#a0b0c8',marginBottom:6}},"People"),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#4d6080'}},"Key people in your life — family, friends, colleagues. Notes, birthdays, and relationship context all in one place."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#3a4d66',marginTop:8}},"Coming soon")));}// ---- ChoresView --------------------------------------------------------------
+function WishListsView({wishlists,loading,onRefresh}){if(loading)return/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',padding:16}},"Loading wish lists…");const note=wishlists&&wishlists.note;const items=wishlists&&wishlists.wishlists||[];return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:10,marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',flex:1}},"Holiday & seasonal wish lists, read directly from family Google Docs."),/*#__PURE__*/React.createElement("button",{onClick:onRefresh,style:{padding:'5px 12px',borderRadius:8,background:'rgba(100,160,255,0.1)',border:'1px solid rgba(100,160,255,0.3)',color:'#7ab4ff',fontSize:12,cursor:'pointer'}},"↻ Refresh")),note&&/*#__PURE__*/React.createElement("div",{style:{padding:'10px 14px',borderRadius:8,background:'rgba(255,200,60,0.08)',border:'1px solid rgba(255,200,60,0.25)',color:'#c9a84c',fontSize:13,marginBottom:16}},"⚠️ ",note,/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#7a8fb8',marginTop:6}},"Add ",/*#__PURE__*/React.createElement("code",{style:{background:'rgba(255,255,255,0.06)',padding:'1px 5px',borderRadius:4}},"wishlist_name")," rows to your Config tab with the Google Doc ID as the value.")),items.length===0&&!note&&/*#__PURE__*/React.createElement("div",{className:"empty-state",style:{paddingTop:32}},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:10}},"🎄"),/*#__PURE__*/React.createElement("div",{style:{fontWeight:600,fontSize:14,color:'#a0b0c8',marginBottom:6}},"No wish lists configured"),/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#4d6080'}},"Add ",/*#__PURE__*/React.createElement("code",{style:{background:'rgba(255,255,255,0.06)',padding:'1px 5px',borderRadius:4}},"wishlist_name")," rows to your Config tab (value = Google Doc ID).")),/*#__PURE__*/React.createElement("div",{style:{display:'flex',flexWrap:'wrap',gap:16}},items.map(function(wl){return/*#__PURE__*/React.createElement("div",{key:wl.person,style:{background:'#1a2540',border:'1px solid #2a3a5a',borderRadius:12,padding:16,minWidth:220,flex:'1 1 220px',maxWidth:360}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#e8d9b0',marginBottom:10}},"🎁 ",wl.person),wl.error&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#ef5350',marginBottom:8}},"⚠️ ",wl.error),wl.items.length===0&&!wl.error&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080'}},"No unpurchased items found."),/*#__PURE__*/React.createElement("ul",{style:{margin:0,padding:'0 0 0 18px',listStyle:'disc'}},wl.items.map(function(item,i){return/*#__PURE__*/React.createElement("li",{key:i,style:{fontSize:13,color:'#c0cfe8',marginBottom:4,lineHeight:1.4}},item);})));})));}// ---- AddressBookView ---------------------------------------------------------
+//
+// The shared list of people we send things to. A household is the unit a card is
+// addressed to; the people inside it are who you email or ring.
+//
+// Every write is a POST with a JSON body, never a query string: makeUrl above drops
+// falsy values, so a cleared Address Line 2 or an emptied note would simply never
+// reach the server and would read as "leave it alone".
+
+const AB_RELATIONSHIPS = ['Family', 'Friends', 'Work', 'Neighbour', 'Other'];
+const AB_MEMBER_TYPES = ['Adult', 'Child'];
+function abBlankHousehold() {
+  return {
+    id: '',
+    household: '',
+    address1: '',
+    address2: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: '',
+    relationship: 'Family',
+    sendCard: false,
+    notes: ''
+  };
+}
+function abBlankContact(householdId) {
+  return {
+    id: '',
+    householdId: householdId || '',
+    name: '',
+    email: '',
+    phone: '',
+    memberType: 'Adult',
+    notes: ''
+  };
+}
+function abAddressLines(h) {
+  const street = [h.address1, h.address2].filter(Boolean).join(', ');
+  const town = [h.city, h.state, h.postalCode].filter(Boolean).join(' ');
+  return [street, town, h.country].filter(Boolean);
+}
+function AddressBookView({
+  apiUrl,
+  apiToken
+}) {
+  const [data, setData] = React.useState(null);
+  const [error, setError] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [query, setQuery] = React.useState('');
+  const [cardsOnly, setCardsOnly] = React.useState(false);
+  const [open, setOpen] = React.useState({});
+  const [hhForm, setHhForm] = React.useState(null);
+  const [cForm, setCForm] = React.useState(null);
+  async function load() {
+    try {
+      const d = await apiGet(apiUrl, apiToken, {
+        action: 'address_book'
+      });
+      setData(d);
+      setError('');
+    } catch (err) {
+      setError(err.message);
+      setData({
+        households: [],
+        people: [],
+        configured: true
+      });
+    }
+  }
+  React.useEffect(() => {
+    load();
+  }, []);
+  async function write(body) {
+    setBusy(true);
+    try {
+      await apiPost(apiUrl, apiToken, body);
+      await load();
+      setError('');
+      return true;
+    } catch (err) {
+      setError(err.message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!data) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: '#6b7fa8',
+      padding: 16
+    }
+  }, "Loading address book…");
+
+  // Not configured is not an error — it is a feature nobody has pointed at a sheet yet.
+  if (data.configured === false) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "empty-state",
+      style: {
+        padding: 40
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 32,
+        marginBottom: 12
+      }
+    }, "📒"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        color: '#dde1f0',
+        marginBottom: 6
+      }
+    }, "No address book connected yet."), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 13,
+        color: '#6b7fa8'
+      }
+    }, "Add ", /*#__PURE__*/React.createElement("code", {
+      style: {
+        background: 'rgba(255,255,255,0.06)',
+        padding: '1px 5px',
+        borderRadius: 4
+      }
+    }, "ADDRESS_BOOK_SHEET_ID"), ' ', "to Apps Script → Project Settings → Script Properties, set to your sheet’s id. VERA will add ", /*#__PURE__*/React.createElement("strong", null, "Households"), " and ", /*#__PURE__*/React.createElement("strong", null, "People"), " tabs and leave everything else in that sheet alone."));
+  }
+  const households = data.households || [];
+  const people = data.people || [];
+  const membersOf = id => people.filter(p => p.householdId === id);
+  const thisYear = String(new Date().getFullYear());
+  const q = query.trim().toLowerCase();
+  const shown = households.filter(h => {
+    if (cardsOnly && !h.sendCard) return false;
+    if (!q) return true;
+    const hay = [h.household, h.city, h.state, h.country, h.relationship].concat(membersOf(h.id).map(p => p.name + ' ' + p.email + ' ' + p.phone)).join(' ').toLowerCase();
+    return hay.indexOf(q) !== -1;
+  });
+  const groups = {};
+  shown.forEach(h => {
+    const g = h.relationship || 'Other';
+    (groups[g] = groups[g] || []).push(h);
+  });
+  const groupNames = AB_RELATIONSHIPS.filter(r => groups[r]).concat(Object.keys(groups).filter(g => AB_RELATIONSHIPS.indexOf(g) === -1));
+  const cardCount = households.filter(h => h.sendCard).length;
+  const sentCount = households.filter(h => h.sendCard && h.lastCardSent === thisYear).length;
+  const inp = {
+    background: '#0d1a2e',
+    color: '#dde1f0',
+    border: '1px solid #1e3060',
+    borderRadius: 6,
+    padding: '6px 9px',
+    fontSize: 13
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    placeholder: "Search name, household, city…",
+    value: query,
+    onChange: e => setQuery(e.target.value),
+    style: Object.assign({}, inp, {
+      flex: 1,
+      minWidth: 160
+    })
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setCardsOnly(v => !v),
+    className: 'subtab-btn' + (cardsOnly ? ' active' : '')
+  }, "🎄 Card list", cardCount ? ' (' + cardCount + ')' : ''), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setHhForm(abBlankHousehold()),
+    disabled: busy,
+    style: {
+      padding: '6px 14px',
+      borderRadius: 6,
+      border: 'none',
+      background: '#8ab4f8',
+      color: '#0d1117',
+      fontWeight: 600,
+      cursor: 'pointer',
+      fontSize: 13
+    }
+  }, "+ Household")), cardsOnly && cardCount > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: '#6b7fa8',
+      marginBottom: 12
+    }
+  }, sentCount, " of ", cardCount, " sent for ", thisYear, "."), error && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: '#f87171',
+      marginBottom: 10
+    }
+  }, "⚠️ ", error), households.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "empty-state",
+    style: {
+      padding: 40
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 32,
+      marginBottom: 12
+    }
+  }, "📒"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#dde1f0'
+    }
+  }, "No households yet."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: '#6b7fa8',
+      marginTop: 6
+    }
+  }, "Add the people you send cards to — one entry per envelope.")), households.length > 0 && shown.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#4d6080',
+      fontSize: 13,
+      textAlign: 'center',
+      padding: '24px 0'
+    }
+  }, "Nothing matches the current filter."), groupNames.map(g => /*#__PURE__*/React.createElement("div", {
+    key: g,
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: '#6b7280',
+      marginBottom: 6,
+      letterSpacing: '0.06em'
+    }
+  }, g.toUpperCase(), " · ", groups[g].length), groups[g].map(h => {
+    const members = membersOf(h.id);
+    const isOpen = !!open[h.id];
+    const sentThisYear = h.lastCardSent === thisYear;
+    // A confidently wrong address is the real failure of a card list, so an
+    // unconfirmed one is worth a quiet marker — not a flag, not an email.
+    const staleConfirm = h.addressConfirmed ? new Date().getFullYear() - parseInt(String(h.addressConfirmed).slice(0, 4), 10) >= 2 : true;
+    return /*#__PURE__*/React.createElement("div", {
+      key: h.id,
+      style: {
+        background: '#101c33',
+        border: '1px solid #1e3060',
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 8
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 8,
+        flexWrap: 'wrap'
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setOpen(o => Object.assign({}, o, {
+        [h.id]: !o[h.id]
+      })),
+      style: {
+        background: 'none',
+        border: 'none',
+        color: '#8ab4f8',
+        cursor: 'pointer',
+        fontSize: 14,
+        padding: 0,
+        flexShrink: 0
+      }
+    }, isOpen ? '▾' : '▸'), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 150
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontWeight: 700,
+        fontSize: 14,
+        color: '#dde1f0'
+      }
+    }, h.household, h.sendCard && /*#__PURE__*/React.createElement("span", {
+      title: "On the card list",
+      style: {
+        marginLeft: 8,
+        fontSize: 11,
+        color: '#86efac'
+      }
+    }, "🎄")), abAddressLines(h).map((line, i) => /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        fontSize: 12,
+        color: '#a0a8c0'
+      }
+    }, line)), abAddressLines(h).length === 0 && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: '#6b5a2a'
+      }
+    }, "No address on file"), h.notes && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: '#9aa8c0',
+        marginTop: 3,
+        fontStyle: 'italic'
+      }
+    }, h.notes), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: '#4d6080',
+        marginTop: 4
+      }
+    }, members.length, " ", members.length === 1 ? 'person' : 'people', h.lastCardSent ? ' · card sent ' + h.lastCardSent : ' · no card sent yet', staleConfirm && /*#__PURE__*/React.createElement("span", {
+      title: "Worth checking this address is still right",
+      style: {
+        color: '#c9a84c'
+      }
+    }, ' · address ' + (h.addressConfirmed ? 'confirmed ' + h.addressConfirmed : 'never confirmed')))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 6,
+        flexWrap: 'wrap'
+      }
+    }, h.sendCard && /*#__PURE__*/React.createElement("button", {
+      onClick: () => write({
+        action: 'mark_card_sent',
+        id: h.id
+      }),
+      disabled: busy || sentThisYear,
+      title: 'Mark a card sent for ' + thisYear,
+      style: {
+        background: 'none',
+        border: '1px solid ' + (sentThisYear ? '#2a3a50' : '#2a5a3a'),
+        color: sentThisYear ? '#4d6080' : '#86efac',
+        borderRadius: 6,
+        padding: '3px 9px',
+        fontSize: 11,
+        cursor: sentThisYear ? 'default' : 'pointer'
+      }
+    }, sentThisYear ? '✓ Sent ' + thisYear : 'Mark sent'), /*#__PURE__*/React.createElement("button", {
+      onClick: () => write({
+        action: 'confirm_address',
+        id: h.id
+      }),
+      disabled: busy,
+      title: "I checked — this address is still right",
+      style: {
+        background: 'none',
+        border: '1px solid #2a3a50',
+        color: '#8ab4f8',
+        borderRadius: 6,
+        padding: '3px 9px',
+        fontSize: 11,
+        cursor: 'pointer'
+      }
+    }, "Confirm"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setHhForm(Object.assign({}, h)),
+      disabled: busy,
+      style: {
+        background: 'none',
+        border: 'none',
+        color: '#a0a8c0',
+        cursor: 'pointer',
+        fontSize: 12
+      }
+    }, "✏️"), /*#__PURE__*/React.createElement("button", {
+      disabled: busy,
+      onClick: () => {
+        const n = members.length;
+        const msg = n ? 'Delete ' + h.household + ' and its ' + n + ' ' + (n === 1 ? 'member' : 'members') + '?' : 'Delete ' + h.household + '?';
+        if (window.confirm(msg)) write({
+          action: 'delete_household',
+          id: h.id
+        });
+      },
+      style: {
+        background: 'none',
+        border: 'none',
+        color: '#ef4444',
+        cursor: 'pointer',
+        fontSize: 14
+      }
+    }, "×"))), isOpen && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTop: '1px solid #1a2a40'
+      }
+    }, members.length === 0 && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: '#4d6080',
+        marginBottom: 8
+      }
+    }, "Nobody listed yet."), members.map(p => /*#__PURE__*/React.createElement("div", {
+      key: p.id,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+        marginBottom: 5
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13,
+        color: '#dde1f0'
+      }
+    }, p.name), p.memberType === 'Child' && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        color: '#93c5fd',
+        background: '#14243f',
+        borderRadius: 4,
+        padding: '1px 5px'
+      }
+    }, "child"), p.email && /*#__PURE__*/React.createElement("a", {
+      href: 'mailto:' + p.email,
+      style: {
+        fontSize: 12,
+        color: '#8ab4f8'
+      }
+    }, p.email), p.phone && /*#__PURE__*/React.createElement("a", {
+      href: 'tel:' + p.phone,
+      style: {
+        fontSize: 12,
+        color: '#8ab4f8'
+      }
+    }, p.phone), p.notes && /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: '#6b7fa8'
+      }
+    }, p.notes), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCForm(Object.assign({}, p)),
+      disabled: busy,
+      style: {
+        background: 'none',
+        border: 'none',
+        color: '#a0a8c0',
+        cursor: 'pointer',
+        fontSize: 11,
+        marginLeft: 'auto'
+      }
+    }, "✏️"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        if (window.confirm('Remove ' + p.name + '?')) write({
+          action: 'delete_contact',
+          id: p.id
+        });
+      },
+      disabled: busy,
+      style: {
+        background: 'none',
+        border: 'none',
+        color: '#ef4444',
+        cursor: 'pointer',
+        fontSize: 13
+      }
+    }, "×"))), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setCForm(abBlankContact(h.id)),
+      disabled: busy,
+      style: {
+        background: 'none',
+        border: '1px solid #2a3a50',
+        color: '#8ab4f8',
+        borderRadius: 6,
+        padding: '3px 10px',
+        fontSize: 11,
+        cursor: 'pointer',
+        marginTop: 4
+      }
+    }, "+ Person")));
+  }))), hhForm && /*#__PURE__*/React.createElement(AddressBookHouseholdModal, {
+    form: hhForm,
+    setForm: setHhForm,
+    busy: busy,
+    onSave: async f => {
+      if (await write(Object.assign({
+        action: 'save_household'
+      }, f))) setHhForm(null);
+    }
+  }), cForm && /*#__PURE__*/React.createElement(AddressBookContactModal, {
+    form: cForm,
+    setForm: setCForm,
+    busy: busy,
+    onSave: async f => {
+      if (await write(Object.assign({
+        action: 'save_contact'
+      }, f))) setCForm(null);
+    }
+  }));
+}
+function AddressBookModalShell({
+  title,
+  children,
+  onClose,
+  onSave,
+  busy,
+  canSave
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(0,0,0,0.7)',
+      zIndex: 1000,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: '#101c33',
+      border: '1px solid #1e3060',
+      borderRadius: 12,
+      padding: 20,
+      width: '100%',
+      maxWidth: 460,
+      maxHeight: '90vh',
+      overflowY: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 15,
+      color: '#dde1f0'
+    }
+  }, title), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: 'none',
+      border: 'none',
+      color: '#a0a8c0',
+      fontSize: 20,
+      cursor: 'pointer'
+    }
+  }, "×")), children, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onSave,
+    disabled: busy || !canSave,
+    style: {
+      background: '#8ab4f8',
+      color: '#0d1117',
+      border: 'none',
+      borderRadius: 6,
+      padding: '7px 16px',
+      fontWeight: 600,
+      cursor: 'pointer',
+      fontSize: 13
+    }
+  }, "Save"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    disabled: busy,
+    style: {
+      background: 'none',
+      border: '1px solid #2a3a50',
+      color: '#a0a8c0',
+      borderRadius: 6,
+      padding: '7px 16px',
+      cursor: 'pointer',
+      fontSize: 13
+    }
+  }, "Cancel"))));
+}
+function AddressBookField({
+  label,
+  value,
+  onChange,
+  placeholder
+}) {
+  return /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'block',
+      marginBottom: 9
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: '#6b7fa8',
+      marginBottom: 3
+    }
+  }, label), /*#__PURE__*/React.createElement("input", {
+    value: value || '',
+    placeholder: placeholder || '',
+    onChange: e => onChange(e.target.value),
+    style: {
+      width: '100%',
+      boxSizing: 'border-box',
+      background: '#0d1a2e',
+      color: '#dde1f0',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '6px 9px',
+      fontSize: 13
+    }
+  }));
+}
+function AddressBookHouseholdModal({
+  form,
+  setForm,
+  onSave,
+  busy
+}) {
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, {
+    [k]: v
+  }));
+  return /*#__PURE__*/React.createElement(AddressBookModalShell, {
+    title: form.id ? 'Edit household' : 'New household',
+    onClose: () => setForm(null),
+    onSave: () => onSave(form),
+    busy: busy,
+    canSave: !!String(form.household || '').trim()
+  }, /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Household (as it goes on the envelope)",
+    value: form.household,
+    onChange: v => set('household', v),
+    placeholder: "The Smith Family"
+  }), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Address line 1",
+    value: form.address1,
+    onChange: v => set('address1', v)
+  }), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Address line 2",
+    value: form.address2,
+    onChange: v => set('address2', v)
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 2
+    }
+  }, /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "City",
+    value: form.city,
+    onChange: v => set('city', v)
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "State",
+    value: form.state,
+    onChange: v => set('state', v)
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Postcode",
+    value: form.postalCode,
+    onChange: v => set('postalCode', v)
+  }))), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Country",
+    value: form.country,
+    onChange: v => set('country', v)
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'block',
+      marginBottom: 9
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: '#6b7fa8',
+      marginBottom: 3
+    }
+  }, "Relationship"), /*#__PURE__*/React.createElement("select", {
+    value: form.relationship || 'Family',
+    onChange: e => set('relationship', e.target.value),
+    style: {
+      width: '100%',
+      background: '#0d1a2e',
+      color: '#dde1f0',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '6px 9px',
+      fontSize: 13
+    }
+  }, AB_RELATIONSHIPS.map(r => /*#__PURE__*/React.createElement("option", {
+    key: r
+  }, r)))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      fontSize: 13,
+      color: '#a0a8c0',
+      cursor: 'pointer',
+      marginBottom: 9
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!form.sendCard,
+    onChange: e => set('sendCard', e.target.checked)
+  }), "🎄 On the card list"), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Notes",
+    value: form.notes,
+    onChange: v => set('notes', v)
+  }));
+}
+function AddressBookContactModal({
+  form,
+  setForm,
+  onSave,
+  busy
+}) {
+  const set = (k, v) => setForm(prev => Object.assign({}, prev, {
+    [k]: v
+  }));
+  return /*#__PURE__*/React.createElement(AddressBookModalShell, {
+    title: form.id ? 'Edit person' : 'Add person',
+    onClose: () => setForm(null),
+    onSave: () => onSave(form),
+    busy: busy,
+    canSave: !!String(form.name || '').trim()
+  }, /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Name",
+    value: form.name,
+    onChange: v => set('name', v)
+  }), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Email",
+    value: form.email,
+    onChange: v => set('email', v)
+  }), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Phone",
+    value: form.phone,
+    onChange: v => set('phone', v)
+  }), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: 'block',
+      marginBottom: 9
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: '#6b7fa8',
+      marginBottom: 3
+    }
+  }, "Member type"), /*#__PURE__*/React.createElement("select", {
+    value: form.memberType || 'Adult',
+    onChange: e => set('memberType', e.target.value),
+    style: {
+      width: '100%',
+      background: '#0d1a2e',
+      color: '#dde1f0',
+      border: '1px solid #1e3060',
+      borderRadius: 6,
+      padding: '6px 9px',
+      fontSize: 13
+    }
+  }, AB_MEMBER_TYPES.map(t => /*#__PURE__*/React.createElement("option", {
+    key: t
+  }, t)))), /*#__PURE__*/React.createElement(AddressBookField, {
+    label: "Notes",
+    value: form.notes,
+    onChange: v => set('notes', v)
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: '#4d6080',
+      marginTop: 4
+    }
+  }, "Birthdays live in People → Important Dates, which already reminds you and adds them to the calendar."));
+}
+function PeopleTab({apiUrl,apiToken,giftData,giftLoading,busy,onAddGiftPerson,onDeleteGiftPerson,onAddGiftIdea,onDeleteGiftIdea,datesData,datesLoading,onAddImportantDate,onUpdateImportantDate,onDeleteImportantDate,onPreviewCalendarBirthdays,onImportCalendarBirthdays,calPreviews,calPreviewLoading,wishListsData,wishListsLoading,onRefreshWishLists,features}){const feat=features||{};const allSubTabs=[{id:'dates',label:'📅 Important Dates',hint:'Add birthdays and anniversaries to Google Calendar as <strong>Birthday: Name</strong> or <strong>Anniversary: Name</strong>. VERA imports them automatically. You can also add dates manually below.'},{id:'gifts',label:'🎁 Gift Ideas'},{id:'wishlists',label:'🎄 Wish Lists',featureKey:'wishlists'},{id:'people',label:'👤 People'}];const subTabs=allSubTabs.filter(function(t){return!t.featureKey||feat[t.featureKey]!==false;});const[sub,setSub]=React.useState('dates');const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);React.useEffect(function(){if(subTabs.length>0&&!subTabs.find(function(t){return t.id===sub;})){setSub(subTabs[0].id);}},[subTabs.map(function(t){return t.id;}).join(',')]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"subtab-row",style:{display:'flex',alignItems:'center'}},subTabs.map(s=>/*#__PURE__*/React.createElement("button",{key:s.id,className:`subtab-btn${sub===s.id?' active':''}`,onClick:()=>setSub(s.id)},s.label)),/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='dates'&&/*#__PURE__*/React.createElement(ImportantDatesView,{dates:datesData&&datesData.dates||[],loading:!!datesLoading,busy:busy,onAdd:onAddImportantDate,onUpdate:onUpdateImportantDate,onDelete:onDeleteImportantDate,onPreviewCalendar:onPreviewCalendarBirthdays,onImportCalendar:onImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading}),sub==='gifts'&&/*#__PURE__*/React.createElement(GiftIdeasView,{people:giftData&&giftData.people||[],ideas:giftData&&giftData.ideas||[],loading:!!giftLoading,busy:busy,onAddPerson:onAddGiftPerson,onDeletePerson:onDeleteGiftPerson,onAddIdea:onAddGiftIdea,onDeleteIdea:onDeleteGiftIdea}),sub==='wishlists'&&/*#__PURE__*/React.createElement(WishListsView,{wishlists:wishListsData,loading:!!wishListsLoading,onRefresh:onRefreshWishLists}),sub==='people'&&/*#__PURE__*/React.createElement(AddressBookView,{apiUrl:apiUrl,apiToken:apiToken}));}// ---- ChoresView --------------------------------------------------------------
 const CADENCES=['Daily','Weekly','Biweekly','Monthly','Bimonthly','Quarterly','Annually','Seasonal'];const CADENCE_META={Daily:{label:'☀️ Daily',reset:'Resets nightly'},Weekly:{label:'📅 Weekly',reset:'Resets every Friday'},Biweekly:{label:'🗓️ Biweekly',reset:'Resets every other Friday'},Monthly:{label:'📆 Monthly',reset:'Resets last day of month'},Bimonthly:{label:'🔄 Bimonthly',reset:'Resets every other month'},Quarterly:{label:'📊 Quarterly',reset:'Resets end of each quarter'},Annually:{label:'🏆 Annually',reset:'Resets Dec 31'},Seasonal:{label:'🌿 Seasonal',reset:'No auto-reset'}};function ChoresView({chores,loading,busy,onToggle,onAdd,onDelete,onUpdateCadence}){const[expanded,setExpanded]=React.useState({Daily:true,Weekly:true,Biweekly:true,Monthly:true,Bimonthly:true,Quarterly:true,Annually:true,Seasonal:true});const[addCadence,setAddCadence]=React.useState(null);// which section's add input is open
 const[addText,setAddText]=React.useState('');const[dragId,setDragId]=React.useState(null);const[dragOverCad,setDragOverCad]=React.useState(null);if(loading)return/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#6b7fa8',padding:16}},"Loading chores…");const byCategory={};CADENCES.forEach(function(c){byCategory[c]=[];});(chores||[]).forEach(function(ch){var cat=ch.Cadence||'Daily';if(!byCategory[cat])byCategory[cat]=[];byCategory[cat].push(ch);});const total=(chores||[]).length;const done=(chores||[]).filter(function(c){return c.Checked===true||c.Checked==='TRUE';}).length;const pct=total?Math.round(done/total*100):0;function handleDrop(cadence){if(dragId&&dragId!==cadence&&cadence!==dragOverCad){// dragId is the chore ID, dragOverCad is the target cadence
 }if(dragId){onUpdateCadence(dragId,cadence);}setDragId(null);setDragOverCad(null);}async function submitAdd(cadence){const text=addText.trim();if(!text)return;setAddText('');setAddCadence(null);await onAdd(text,cadence);}const inputStyle={flex:1,padding:'5px 9px',borderRadius:6,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:13};return/*#__PURE__*/React.createElement("div",null,total>0&&/*#__PURE__*/React.createElement("div",{style:{marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',fontSize:12,color:'#6b7fa8',marginBottom:4}},/*#__PURE__*/React.createElement("span",null,done,"/",total," chores done today"),/*#__PURE__*/React.createElement("span",null,pct,"%")),/*#__PURE__*/React.createElement("div",{style:{height:6,background:'#0e1e3a',borderRadius:3,overflow:'hidden'}},/*#__PURE__*/React.createElement("div",{style:{width:pct+'%',height:'100%',background:pct===100?'#2ecc71':'#3a7bd5',borderRadius:3,transition:'width 0.3s'}}))),CADENCES.map(function(cadence){const items=byCategory[cadence]||[];const isOpen=!!expanded[cadence];const isOver=dragOverCad===cadence;const cadDone=items.filter(function(c){return c.Checked===true||c.Checked==='TRUE';}).length;const meta=CADENCE_META[cadence];return/*#__PURE__*/React.createElement("div",{key:cadence,style:{marginBottom:10,border:isOver?'1px dashed #3a7bd5':'1px solid #1e3060',borderRadius:8,background:'#0e1e3a',transition:'border 0.15s'},onDragOver:function(e){e.preventDefault();setDragOverCad(cadence);},onDragLeave:function(){if(dragOverCad===cadence)setDragOverCad(null);},onDrop:function(e){e.preventDefault();handleDrop(cadence);}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'9px 14px',cursor:'pointer',userSelect:'none'},onClick:function(){setExpanded(function(prev){return Object.assign({},prev,{[cadence]:!prev[cadence]});});}},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",meta.label,/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#4d6080',fontWeight:400,marginLeft:8}},cadDone,"/",items.length," · ",meta.reset)),/*#__PURE__*/React.createElement("button",{className:"btn btn-ghost",style:{fontSize:11,padding:'2px 8px'},disabled:busy,onClick:function(e){e.stopPropagation();setAddText('');setAddCadence(cadence);}},"＋ Add")),isOpen&&/*#__PURE__*/React.createElement("div",{style:{padding:'0 14px 10px'}},items.length===0&&addCadence!==cadence&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginBottom:4}},"No chores yet. Click ＋ Add to get started."),items.map(function(ch){const checked=ch.Checked===true||ch.Checked==='TRUE';return/*#__PURE__*/React.createElement("div",{key:ch.ID,draggable:true,onDragStart:function(){setDragId(ch.ID);},onDragEnd:function(){setDragId(null);setDragOverCad(null);},style:{display:'flex',alignItems:'center',padding:'5px 0',borderBottom:'1px solid #0a1628',opacity:checked?0.55:1,cursor:'grab'}},/*#__PURE__*/React.createElement("span",{style:{marginRight:8,cursor:'default',color:'#4d6080',fontSize:12}},"⠿"),/*#__PURE__*/React.createElement("input",{type:"checkbox",checked:checked,style:{marginRight:10,cursor:'pointer'},onChange:function(){onToggle(ch.ID,!checked);}}),/*#__PURE__*/React.createElement("span",{style:{flex:1,fontSize:13,color:checked?'#4d6080':'#dde1f0',textDecoration:checked?'line-through':'none'}},ch.Chore),/*#__PURE__*/React.createElement("button",{className:"btn btn-ghost",style:{fontSize:11,color:'#c0392b',padding:'1px 6px',marginLeft:6},disabled:busy,onClick:function(){onDelete(ch.ID);}},"✕"));}),addCadence===cadence&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,marginTop:8}},/*#__PURE__*/React.createElement("input",{style:inputStyle,autoFocus:true,placeholder:'Add '+cadence.toLowerCase()+' chore…',value:addText,onChange:function(e){setAddText(e.target.value);},onKeyDown:function(e){if(e.key==='Enter')submitAdd(cadence);if(e.key==='Escape')setAddCadence(null);}}),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12,padding:'5px 12px'},disabled:busy||!addText.trim(),onClick:function(){submitAdd(cadence);}},"＋"),/*#__PURE__*/React.createElement("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setAddCadence(null);setAddText('');}},"✕"))));}));}// ---- GuestsView (Issue #150) -------------------------------------------------
@@ -3215,4 +3997,4 @@ const isConfigured=apiUrl&&apiToken;return/*#__PURE__*/React.createElement(React
 // browsers (Safari especially). Force a real network fetch by making
 // this a "new" URL via a cache-busting query param.
 const u=new URL(window.location.href);u.searchParams.set('_r',Date.now());window.location.href=u.toString();}},loading?'⟳ Loading…':'⟳ Refresh'),isConfigured&&/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setNotifSettingsOpen(true),title:"Notification settings",style:{marginRight:4}},"🔔"),/*#__PURE__*/React.createElement("button",{className:"btn-settings",onClick:()=>setShowSettings(true),title:"Settings"},"⚙"))),taskModal&&/*#__PURE__*/React.createElement(TaskFormModal,{task:taskModal.task||null,onSave:handleSaveTask,onClose:()=>setTaskModal(null),busy:busy}),suggestModal&&/*#__PURE__*/React.createElement(SuggestTasksModal,{project:suggestModal,onDraft:handleDraftProjectTasks,onAppend:handleAppendProjectTasks,onClose:()=>setSuggestModal(null),busy:busy}),newProjectModal&&/*#__PURE__*/React.createElement(NewProjectModal,{onSave:handleCreateProject,onDraft:handleDraftProjectTasks,onClose:()=>setNewProjectModal(false),busy:busy}),projectTaskModal&&/*#__PURE__*/React.createElement(ProjectTaskModal,{mode:projectTaskModal.mode,task:projectTaskModal.task||null,onSave:handleSaveProjectTask,onClose:()=>setProjectTaskModal(null),busy:busy}),addItemModal&&shopping.length>0&&/*#__PURE__*/React.createElement(AddItemModal,{stores:shopping,onSave:handleAddShoppingItem,onClose:()=>setAddItemModal(false),busy:busy,initialStore:addItemInitialStore}),showSettings&&/*#__PURE__*/React.createElement(SettingsModal,{initial:{url:apiUrl,token:apiToken,mapsKey:stored('vera_maps_key')},onSave:handleConnect,onClose:isConfigured?()=>setShowSettings(false):null}),!isConfigured&&!showSettings&&/*#__PURE__*/React.createElement("div",{className:"main"},/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:40,marginBottom:16}},"🔌"),/*#__PURE__*/React.createElement("div",{style:{fontSize:16,color:'#dde1f0',marginBottom:8}},"Not connected"),/*#__PURE__*/React.createElement("div",{style:{marginBottom:20}},"Click the ⚙ icon to add your API URL and token"))),isConfigured&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement(StatusBar,{status:status,loading:loading}),/*#__PURE__*/React.createElement("div",{className:"tabs"},['home','chat','flags','tasks','projects','shopping','home_front','people','pto','travel','finances','health','career','growth','explore'].map(tab=>/*#__PURE__*/React.createElement("button",{key:tab,className:`tab-btn ${activeTab===tab?'active':''}`,onClick:()=>{setActiveTab(tab);if(tab==='home')loadMailCounter();if(tab==='tasks')loadGoogleTasks(apiUrl,apiToken);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='explore'){loadInterests(apiUrl,apiToken);loadIdeas(apiUrl,apiToken);loadResources(apiUrl,apiToken);loadWishList(apiUrl,apiToken);loadExperiments(apiUrl,apiToken);}if(tab==='growth'){loadGoals(apiUrl,apiToken);loadGrowth(apiUrl,apiToken);}if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='home_front'){loadHomeFront(apiUrl,apiToken);loadPurchaseHistory(apiUrl,apiToken);loadChores(apiUrl,apiToken);loadChoresForOthers(apiUrl,apiToken);loadVehicles(apiUrl,apiToken);loadCoupons(apiUrl,apiToken);}if(tab==='people'){loadGiftData(apiUrl,apiToken);loadDatesData(apiUrl,apiToken);loadWishListsData(apiUrl,apiToken);}if(tab==='career')loadCareer(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel'){loadPTO(apiUrl,apiToken);loadProfiles(apiUrl,apiToken);}// upcomingTravel lives in PTO stats
-if(tab==='finances'){loadBudget(apiUrl,apiToken);loadBills(apiUrl,apiToken);loadCalendarBills(apiUrl,apiToken);loadTxList(apiUrl,apiToken);loadFinancialGoals();}}},tab==='home'?`🏠 Home`:'',tab==='chat'?`💬 Chat`:'',tab==='flags'?`🚩 Flags${status?` (${status.activeFlags})`:''}`:'',tab==='tasks'?`✅ Tasks${tasks.length?` (${tasks.length})`:''}`:'',tab==='projects'?`🏗️ Projects${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length?` (${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length})`:''}`:'',tab==='shopping'?`🛒 Shopping`:'',tab==='home_front'?`🏡 Home Front`:'',tab==='people'?`👥 People`:'',tab==='pto'?`🌴 PTO Planner`:'',tab==='travel'?`✈️ Travel`:'',tab==='finances'?`💰 Finances`:'',tab==='explore'?`🔭 Explore`:'',tab==='health'?`🏥 Health`:'',tab==='growth'?`🌱 Growth`:'',tab==='career'?`💼 Career`:''))),/*#__PURE__*/React.createElement("div",{className:"main"},error&&/*#__PURE__*/React.createElement("div",{className:"error-banner"},"⚠️ ",error),activeTab==='flags'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:`filter-toggle ${filterActive?'on':''}`,onClick:()=>setFilterActive(v=>!v)},filterActive?'● Active only':'○ All flags'),/*#__PURE__*/React.createElement("span",{className:"count-badge"},flags.length," shown")),loading&&flags.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading flags…"):flags.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",null,"No ",filterActive?'active ':'',"flags — you're all clear!")):flags.map(flag=>/*#__PURE__*/React.createElement(FlagCard,{key:flag.id,flag:flag,onAction:handleAction,busy:busy}))),activeTab==='tasks'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:()=>setTaskModal({mode:'add'})},"+ Add Task"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},tasks.length+googleTasks.length," open")),loading&&tasks.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading tasks…"):tasks.length===0&&googleTasks.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},"No open tasks found."):(()=>{const TASK_GROUPS=[{key:'overdue',label:'🔴 Overdue / Late'},{key:'today',label:'📌 Today'},{key:'tomorrow',label:'➡️ Tomorrow'},{key:'next_3_days',label:'📅 Next 3 Days'},{key:'next_week',label:'📆 Next Week'},{key:'next_month',label:'🗓 Next Month'},{key:'upcoming',label:'🔭 Upcoming'},{key:'no_date',label:'— No Due Date'}];function getTaskGroup(task){let days=task.daysUntilDue;if(days==null&&task.dueDate){const tod=new Date();tod.setHours(0,0,0,0);days=Math.floor((new Date(task.dueDate+'T00:00:00')-tod)/86400000);}if(days==null)return'no_date';if(days<0)return'overdue';if(days===0)return'today';if(days===1)return'tomorrow';if(days<=4)return'next_3_days';if(days<=7)return'next_week';if(days<=30)return'next_month';return'upcoming';}const veraTasksMapped=tasks.map(t=>({...t,_source:'vera'}));const gTasksMapped=googleTasks.map(t=>({...t,_source:'google'}));const merged=veraTasksMapped.concat(gTasksMapped).sort((a,b)=>{if(a.dueDate&&b.dueDate)return a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0;if(a.dueDate&&!b.dueDate)return-1;if(!a.dueDate&&b.dueDate)return 1;return 0;});const buckets={};TASK_GROUPS.forEach(g=>{buckets[g.key]=[];});merged.forEach(task=>{buckets[getTaskGroup(task)].push(task);});return TASK_GROUPS.map(group=>{const items=buckets[group.key];if(!items.length)return null;const isOpen=!!taskGroupsExpanded[group.key];return/*#__PURE__*/React.createElement("div",{key:group.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'8px 14px',background:'#0e1e3a',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',userSelect:'none',marginBottom:isOpen?6:0},onClick:()=>setTaskGroupsExpanded(prev=>({...prev,[group.key]:!prev[group.key]}))},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",group.label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',background:'#0a1628',padding:'2px 8px',borderRadius:10,border:'1px solid #1e3060'}},items.length)),isOpen&&items.map((task,i)=>/*#__PURE__*/React.createElement(TaskCard,{key:(task._source==='google'?'g-':'')+(task.id||i),task:task,onComplete:task._source==='google'?handleCompleteGoogleTask:handleComplete,onEdit:task._source==='google'?null:t=>setTaskModal({mode:'edit',task:t}),completing:!!completingIds[task.id]})));});})(),googleTasksError&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#f87171',marginTop:8}},"Google Tasks unavailable: ",googleTasksError)),activeTab==='home'&&/*#__PURE__*/React.createElement(HomeTab,{flags:flags,tasks:tasks,projects:projects,shopping:shopping,pto:pto,milestones:milestones,summaries:summaries,status:status,pacingStatus:pacingStatus,apiUrl:apiUrl,apiToken:apiToken,onNavigate:tab=>{setActiveTab(tab);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel')loadPTO(apiUrl,apiToken);},onViewItinerary:function(trip){if(trip)setTravelFocusTripKey(trip.startDate+'|'+trip.label);setActiveTab('travel');loadPTO(apiUrl,apiToken);},mailCounter:mailCounter,mailCounterBusy:mailCounterBusy,onResetMailCounter:handleResetMailCounter}),activeTab==='chat'&&/*#__PURE__*/React.createElement(ChatPanel,{apiUrl:apiUrl,apiToken:apiToken,messages:chatMessages,setMessages:setChatMessages,input:chatInput,setInput:setChatInput}),activeTab==='projects'&&(tabLoading.projects?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading projects…"):/*#__PURE__*/React.createElement(ProjectsTab,{projects:projects,onCompleteTask:handleCompleteProjectTask,onSetOwner:handleSetProjectOwner,onSetTarget:handleSetProjectTarget,onSetContext:handleSetProjectContext,onSuggestTasks:p=>setSuggestModal(p),onReorder:handleReorderProjectTasks,onCloseProject:handleCloseProject,onAddTask:p=>setProjectTaskModal({mode:'add',project:p}),onEditTask:t=>setProjectTaskModal({mode:'edit',task:t}),onDeleteTask:handleDeleteProjectTask,onCreateProject:()=>setNewProjectModal(true),busy:busy})),activeTab==='explore'&&/*#__PURE__*/React.createElement(ExploreTab,{interests:interests,interestsLoading:!!tabLoading.interests,onDeleteInterest:handleDeleteInterest,onAddInterest:()=>setInterestModal(true),ideas:ideas,ideasLoading:!!tabLoading.ideas,onAddIdea:handleAddIdea,onPromoteIdea:handlePromoteIdea,onArchiveIdea:handleArchiveIdea,onShelveIdea:handleShelveThought,resources:resources,resourcesLoading:!!tabLoading.resources,onAddResource:handleAddResource,onUpdateResource:handleUpdateResource,onDeleteResource:handleDeleteResource,experiments:experiments,experimentsLoading:!!tabLoading.experiments,onAddExperiment:handleAddExperiment,onUpdateExperiment:handleUpdateExperiment,onDeleteExperiment:handleDeleteExperiment,onAddExperimentCheckin:handleAddExperimentCheckin,wishList:wishList,wishListLoading:!!tabLoading.wishList,onAddWishItem:handleAddWishItem,onUpdateWishItem:handleUpdateWishItem,onMarkWishPurchased:handleMarkWishPurchased,onDeleteWishItem:handleDeleteWishItem,busy:busy,features:status&&status.features,apiUrl:apiUrl,apiToken:apiToken}),activeTab==='shopping'&&(tabLoading.shopping?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading shopping lists…"):/*#__PURE__*/React.createElement(ShoppingTab,{stores:shopping,onToggle:handleToggleShopping,onAddItem:storeId=>{setAddItemInitialStore(storeId||'');setAddItemModal(true);},onDelete:handleDeleteShoppingItem,onEdit:handleUpdateShoppingItem,busy:busy,onLogRun:handleLogRun})),activeTab==='home_front'&&/*#__PURE__*/React.createElement(HomeFrontTab,{homeFront:homeFront,loading:!!tabLoading.home_front,busy:busy,onRecordService:handleRecordService,onAddHomeItem:handleAddHomeItem,onDeleteHomeItem:handleDeleteHomeItem,onRecipeToShopping:handleRecipeToShopping,purchaseHistory:purchaseHistory,onAddTakeoutRestaurant:handleAddTakeoutRestaurant,onDeleteTakeoutRestaurant:handleDeleteTakeoutRestaurant,onAddTakeoutItem:handleAddTakeoutItem,onDeleteTakeoutItem:handleDeleteTakeoutItem,chores:chores,choresLoading:choresLoading,onToggleChore:handleToggleChore,onAddChore:handleAddChore,onDeleteChore:handleDeleteChore,onUpdateChoreCadence:handleUpdateChoreCadence,choresForOthers:choresForOthers,choresForOthersLoading:choresForOthersLoading,onAddChoreForOthers:handleAddChoreForOthers,onCompleteChoreForOthers:handleCompleteChoreForOthers,onEditChoreForOthers:handleEditChoreForOthers,onDeleteChoreForOthers:handleDeleteChoreForOthers,vehicles:vehicles,vehiclesLoading:vehiclesLoading,onVehicleOilChange:handleVehicleOilChange,onVehicleService:handleVehicleService,onVehicleMileage:handleVehicleMileage,onAddVehicle:handleAddVehicle,onDeleteVehicle:handleDeleteVehicle,onVehicleTireChange:handleVehicleTireChange,onVehicleEmissionInspect:handleVehicleEmissionInspect,onVehicleSafetyInspect:handleVehicleSafetyInspect,coupons:coupons,couponsLoading:couponsLoading,onExtractCoupon:handleExtractCoupon,onSaveCoupon:handleSaveCoupon,onDeleteCoupon:handleDeleteCoupon,onMarkCouponUsed:handleMarkCouponUsed,apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='people'&&/*#__PURE__*/React.createElement(PeopleTab,{giftData:giftData,giftLoading:giftLoading,busy:busy,onAddGiftPerson:handleAddGiftPerson,onDeleteGiftPerson:handleDeleteGiftPerson,onAddGiftIdea:handleAddGiftIdea,onDeleteGiftIdea:handleDeleteGiftIdea,datesData:datesData,datesLoading:datesLoading,onAddImportantDate:handleAddImportantDate,onUpdateImportantDate:handleUpdateImportantDate,onDeleteImportantDate:handleDeleteImportantDate,onPreviewCalendarBirthdays:handlePreviewCalendarBirthdays,onImportCalendarBirthdays:handleImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading,wishListsData:wishListsData,wishListsLoading:wishListsLoading,onRefreshWishLists:()=>loadWishListsData(apiUrl,apiToken),features:status&&status.features}),activeTab==='pto'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading PTO data…"):/*#__PURE__*/React.createElement(PTOTab,{ahmedStats:pto&&pto.ahmedStats,victoriaStats:pto&&pto.victoriaStats,onTriggerBuffer:handleTriggerBuffer,onTriggerVictoriaBuffer:handleTriggerVictoriaBuffer,busy:busy,loadError:ptoError,onReload:()=>loadPTO(apiUrl,apiToken)})),activeTab==='travel'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading travel data…"):/*#__PURE__*/React.createElement(TravelTab,{pto:pto,itineraries:itineraries,packingItems:packingItems,tripMeta:tripMeta,packingFocusTripKey:packingFocusTripKey,itineraryFocusTripKey:travelFocusTripKey,countries:countries,countriesLoaded:countriesLoaded,busy:busy,onSelectTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onExpandTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onAddItinItem:function(tripKey,sd,ed){setItinItemModal({mode:'add',tripKey,tripStartDate:sd,tripEndDate:ed});},onEditItinItem:function(item,tripKey,sd,ed){setItinItemModal({mode:'edit',item,tripKey,tripStartDate:sd,tripEndDate:ed});},onDeleteItinItem:handleDeleteItineraryItem,onSetTripMeta:handleSetTripMeta,onSetTripBriefing:handleSetTripBriefing,onLoadTripMeta:loadTripMeta,onLoadPacking:loadPacking,onGeneratePacking:handleGeneratePacking,onTogglePackingItem:handleTogglePackingItem,onAddPackingItem:handleAddPackingItem,onDeletePackingItem:handleDeletePackingItem,onGoToPacking:handleGoToPacking,onLoadCountries:loadCountries,onAddCountry:handleAddCountry,onDeleteCountry:handleDeleteCountry,bucketList:bucketList,onLoadBucketList:loadBucketList,onAddBucketItem:handleAddBucketItem,onMarkBucketVisited:handleMarkBucketVisited,onDeleteBucketItem:handleDeleteBucketItem,onAddBucketActivity:handleAddBucketActivity,onToggleBucketActivity:handleToggleBucketActivity,onDeleteBucketActivity:handleDeleteBucketActivity,recommendations:recommendations,onLoadRecs:loadRecs,onGenerateRecs:handleGenerateRecs,onAcceptRec:handleAcceptRec,onDismissRec:handleDismissRec,profiles:profiles,profilesLoading:profilesLoading,onSaveProfile:handleSaveProfile,onDeleteProfile:handleDeleteProfile,apiUrl:apiUrl,apiToken:apiToken})),activeTab==='finances'&&/*#__PURE__*/React.createElement(FinancesTab,{summaries:summaries,budget:budget,budgetLoading:!!tabLoading.finances,bills:bills,billsLoading:!!tabLoading.bills,onBillToggle:handleBillToggle,calBills:calBills,onCalBillToggle:handleCalendarBillToggle,onAddBill:handleAddBill,onSyncTransactions:handleSyncBillsFromTransactions,txList:txList,apiUrl:apiUrl,apiToken:apiToken,busy:busy,financialGoals:financialGoals,goalsLoading:goalsLoading,onLoadGoals:loadFinancialGoals,onAddGoal:handleAddGoal,onUpdateGoal:handleUpdateGoal,onDeleteGoal:handleDeleteGoal}),activeTab==='health'&&/*#__PURE__*/React.createElement(HealthTab,{apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='growth'&&/*#__PURE__*/React.createElement(GrowthTab,{milestones:milestones,flags:flags,tasks:tasks,onAction:handleAction,goals:goals,goalsLoading:!!tabLoading.goals,dragGoalId:dragGoalId,dragOverCol:dragOverCol,onDragStart:id=>setDragGoalId(id),onDragOver:col=>setDragOverCol(col),onDrop:async newStatus=>{if(!dragGoalId||!newStatus){setDragGoalId(null);setDragOverCol(null);return;}const id=dragGoalId;setDragGoalId(null);setDragOverCol(null);setGoals(prev=>prev.map(g=>g.id===id?{...g,status:newStatus}:g));try{await apiGet(apiUrl,apiToken,{action:'update_goal',id,status:newStatus});}catch(err){setError('Failed to move goal: '+err.message);loadGoals(apiUrl,apiToken);}},onAddGoal:status=>setGoalModal({mode:'add',status:status||'To Do'}),onEditGoal:g=>setGoalModal({mode:'edit',goal:g}),onDeleteGoal:async id=>{if(!window.confirm('Delete this goal?'))return;setGoals(prev=>prev.filter(g=>g.id!==id));try{await apiGet(apiUrl,apiToken,{action:'delete_goal',id});}catch(err){setError('Failed to delete goal: '+err.message);loadGoals(apiUrl,apiToken);}},growthData:growthData,growthLoading:!!tabLoading.growth,onAddBook:handleAddBook,onUpdateBook:handleUpdateBook,onDeleteBook:handleDeleteBook,onAddCourse:handleAddCourse,onUpdateCourse:handleUpdateCourse,onDeleteCourse:handleDeleteCourse,onAddSkill:handleAddSkill,onUpdateSkill:handleUpdateSkill,onRecordSkillPractice:handleRecordSkillPractice,onDeleteSkill:handleDeleteSkill,busy:busy}),activeTab==='career'&&/*#__PURE__*/React.createElement(CareerTab,{career:career,loading:!!tabLoading.career,busy:busy,onUpdatePosition:handleUpdateCareerPosition,onAddGoal:handleAddCareerGoal,onUpdateGoal:handleUpdateCareerGoal,onDeleteGoal:handleDeleteCareerGoal,onUpdateGoalFull:handleUpdateCareerGoalFull,onAddProgression:handleAddCareerProgression,onDeleteProgression:handleDeleteCareerProgression,onUpdateProgression:handleUpdateCareerProgression,onAddDevelopment:handleAddCareerDevelopment,onUpdateDevelopment:handleUpdateCareerDevelopment,onDeleteDevelopment:handleDeleteCareerDevelopment,onUpdateDevelopmentFull:handleUpdateCareerDevelopmentFull,onAddWin:handleAddCareerWin,onDeleteWin:handleDeleteCareerWin,onUpdateWin:handleUpdateCareerWin,onAddNetwork:handleAddCareerNetwork,onUpdateNetwork:handleUpdateCareerNetwork,onDeleteNetwork:handleDeleteCareerNetwork,onUpdateNetworkFull:handleUpdateCareerNetworkFull}))),goalModal&&/*#__PURE__*/React.createElement(GoalModal,{mode:goalModal.mode,goal:goalModal.goal,defaultStatus:goalModal.status,onSave:handleSaveGoal,onClose:()=>setGoalModal(null),busy:busy}),interestModal&&/*#__PURE__*/React.createElement(AddInterestModal,{onSave:handleSaveInterest,onClose:()=>setInterestModal(false),busy:busy}),itinItemModal&&/*#__PURE__*/React.createElement(AddItineraryItemModal,{mode:itinItemModal.mode,item:itinItemModal.item,tripKey:itinItemModal.tripKey,onSave:itinItemModal.mode==='edit'?handleUpdateItineraryItem:handleAddItineraryItem,onClose:()=>setItinItemModal(null),busy:busy}),notifSettingsOpen&&/*#__PURE__*/React.createElement(NotifSettingsModal,{apiUrl:apiUrl,apiToken:apiToken,onClose:()=>setNotifSettingsOpen(false)}),toast&&/*#__PURE__*/React.createElement("div",{className:`toast${toast.isError?' error':''}`},toast.msg));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));
+if(tab==='finances'){loadBudget(apiUrl,apiToken);loadBills(apiUrl,apiToken);loadCalendarBills(apiUrl,apiToken);loadTxList(apiUrl,apiToken);loadFinancialGoals();}}},tab==='home'?`🏠 Home`:'',tab==='chat'?`💬 Chat`:'',tab==='flags'?`🚩 Flags${status?` (${status.activeFlags})`:''}`:'',tab==='tasks'?`✅ Tasks${tasks.length?` (${tasks.length})`:''}`:'',tab==='projects'?`🏗️ Projects${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length?` (${projects.filter(p=>p.tasks.some(t=>t.status!=='Done')).length})`:''}`:'',tab==='shopping'?`🛒 Shopping`:'',tab==='home_front'?`🏡 Home Front`:'',tab==='people'?`👥 People`:'',tab==='pto'?`🌴 PTO Planner`:'',tab==='travel'?`✈️ Travel`:'',tab==='finances'?`💰 Finances`:'',tab==='explore'?`🔭 Explore`:'',tab==='health'?`🏥 Health`:'',tab==='growth'?`🌱 Growth`:'',tab==='career'?`💼 Career`:''))),/*#__PURE__*/React.createElement("div",{className:"main"},error&&/*#__PURE__*/React.createElement("div",{className:"error-banner"},"⚠️ ",error),activeTab==='flags'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:`filter-toggle ${filterActive?'on':''}`,onClick:()=>setFilterActive(v=>!v)},filterActive?'● Active only':'○ All flags'),/*#__PURE__*/React.createElement("span",{className:"count-badge"},flags.length," shown")),loading&&flags.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading flags…"):flags.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:32,marginBottom:12}},"🎉"),/*#__PURE__*/React.createElement("div",null,"No ",filterActive?'active ':'',"flags — you're all clear!")):flags.map(flag=>/*#__PURE__*/React.createElement(FlagCard,{key:flag.id,flag:flag,onAction:handleAction,busy:busy}))),activeTab==='tasks'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement("div",{className:"toolbar"},/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{fontSize:12},onClick:()=>setTaskModal({mode:'add'})},"+ Add Task"),/*#__PURE__*/React.createElement("span",{className:"count-badge"},tasks.length+googleTasks.length," open")),loading&&tasks.length===0?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading tasks…"):tasks.length===0&&googleTasks.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},"No open tasks found."):(()=>{const TASK_GROUPS=[{key:'overdue',label:'🔴 Overdue / Late'},{key:'today',label:'📌 Today'},{key:'tomorrow',label:'➡️ Tomorrow'},{key:'next_3_days',label:'📅 Next 3 Days'},{key:'next_week',label:'📆 Next Week'},{key:'next_month',label:'🗓 Next Month'},{key:'upcoming',label:'🔭 Upcoming'},{key:'no_date',label:'— No Due Date'}];function getTaskGroup(task){let days=task.daysUntilDue;if(days==null&&task.dueDate){const tod=new Date();tod.setHours(0,0,0,0);days=Math.floor((new Date(task.dueDate+'T00:00:00')-tod)/86400000);}if(days==null)return'no_date';if(days<0)return'overdue';if(days===0)return'today';if(days===1)return'tomorrow';if(days<=4)return'next_3_days';if(days<=7)return'next_week';if(days<=30)return'next_month';return'upcoming';}const veraTasksMapped=tasks.map(t=>({...t,_source:'vera'}));const gTasksMapped=googleTasks.map(t=>({...t,_source:'google'}));const merged=veraTasksMapped.concat(gTasksMapped).sort((a,b)=>{if(a.dueDate&&b.dueDate)return a.dueDate<b.dueDate?-1:a.dueDate>b.dueDate?1:0;if(a.dueDate&&!b.dueDate)return-1;if(!a.dueDate&&b.dueDate)return 1;return 0;});const buckets={};TASK_GROUPS.forEach(g=>{buckets[g.key]=[];});merged.forEach(task=>{buckets[getTaskGroup(task)].push(task);});return TASK_GROUPS.map(group=>{const items=buckets[group.key];if(!items.length)return null;const isOpen=!!taskGroupsExpanded[group.key];return/*#__PURE__*/React.createElement("div",{key:group.key,style:{marginBottom:10}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',padding:'8px 14px',background:'#0e1e3a',borderRadius:8,cursor:'pointer',border:'1px solid #1e3060',userSelect:'none',marginBottom:isOpen?6:0},onClick:()=>setTaskGroupsExpanded(prev=>({...prev,[group.key]:!prev[group.key]}))},/*#__PURE__*/React.createElement("span",{style:{fontSize:13,fontWeight:600,color:'#dde1f0',flex:1}},isOpen?'▾':'▸'," ",group.label),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#6b7fa8',background:'#0a1628',padding:'2px 8px',borderRadius:10,border:'1px solid #1e3060'}},items.length)),isOpen&&items.map((task,i)=>/*#__PURE__*/React.createElement(TaskCard,{key:(task._source==='google'?'g-':'')+(task.id||i),task:task,onComplete:task._source==='google'?handleCompleteGoogleTask:handleComplete,onEdit:task._source==='google'?null:t=>setTaskModal({mode:'edit',task:t}),completing:!!completingIds[task.id]})));});})(),googleTasksError&&/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#f87171',marginTop:8}},"Google Tasks unavailable: ",googleTasksError)),activeTab==='home'&&/*#__PURE__*/React.createElement(HomeTab,{flags:flags,tasks:tasks,projects:projects,shopping:shopping,pto:pto,milestones:milestones,summaries:summaries,status:status,pacingStatus:pacingStatus,apiUrl:apiUrl,apiToken:apiToken,onNavigate:tab=>{setActiveTab(tab);if(tab==='projects')loadProjects(apiUrl,apiToken);if(tab==='shopping')loadShopping(apiUrl,apiToken);if(tab==='pto')loadPTO(apiUrl,apiToken);if(tab==='travel')loadPTO(apiUrl,apiToken);},onViewItinerary:function(trip){if(trip)setTravelFocusTripKey(trip.startDate+'|'+trip.label);setActiveTab('travel');loadPTO(apiUrl,apiToken);},mailCounter:mailCounter,mailCounterBusy:mailCounterBusy,onResetMailCounter:handleResetMailCounter}),activeTab==='chat'&&/*#__PURE__*/React.createElement(ChatPanel,{apiUrl:apiUrl,apiToken:apiToken,messages:chatMessages,setMessages:setChatMessages,input:chatInput,setInput:setChatInput}),activeTab==='projects'&&(tabLoading.projects?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading projects…"):/*#__PURE__*/React.createElement(ProjectsTab,{projects:projects,onCompleteTask:handleCompleteProjectTask,onSetOwner:handleSetProjectOwner,onSetTarget:handleSetProjectTarget,onSetContext:handleSetProjectContext,onSuggestTasks:p=>setSuggestModal(p),onReorder:handleReorderProjectTasks,onCloseProject:handleCloseProject,onAddTask:p=>setProjectTaskModal({mode:'add',project:p}),onEditTask:t=>setProjectTaskModal({mode:'edit',task:t}),onDeleteTask:handleDeleteProjectTask,onCreateProject:()=>setNewProjectModal(true),busy:busy})),activeTab==='explore'&&/*#__PURE__*/React.createElement(ExploreTab,{interests:interests,interestsLoading:!!tabLoading.interests,onDeleteInterest:handleDeleteInterest,onAddInterest:()=>setInterestModal(true),ideas:ideas,ideasLoading:!!tabLoading.ideas,onAddIdea:handleAddIdea,onPromoteIdea:handlePromoteIdea,onArchiveIdea:handleArchiveIdea,onShelveIdea:handleShelveThought,resources:resources,resourcesLoading:!!tabLoading.resources,onAddResource:handleAddResource,onUpdateResource:handleUpdateResource,onDeleteResource:handleDeleteResource,experiments:experiments,experimentsLoading:!!tabLoading.experiments,onAddExperiment:handleAddExperiment,onUpdateExperiment:handleUpdateExperiment,onDeleteExperiment:handleDeleteExperiment,onAddExperimentCheckin:handleAddExperimentCheckin,wishList:wishList,wishListLoading:!!tabLoading.wishList,onAddWishItem:handleAddWishItem,onUpdateWishItem:handleUpdateWishItem,onMarkWishPurchased:handleMarkWishPurchased,onDeleteWishItem:handleDeleteWishItem,busy:busy,features:status&&status.features,apiUrl:apiUrl,apiToken:apiToken}),activeTab==='shopping'&&(tabLoading.shopping?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading shopping lists…"):/*#__PURE__*/React.createElement(ShoppingTab,{stores:shopping,onToggle:handleToggleShopping,onAddItem:storeId=>{setAddItemInitialStore(storeId||'');setAddItemModal(true);},onDelete:handleDeleteShoppingItem,onEdit:handleUpdateShoppingItem,busy:busy,onLogRun:handleLogRun})),activeTab==='home_front'&&/*#__PURE__*/React.createElement(HomeFrontTab,{homeFront:homeFront,loading:!!tabLoading.home_front,busy:busy,onRecordService:handleRecordService,onAddHomeItem:handleAddHomeItem,onDeleteHomeItem:handleDeleteHomeItem,onRecipeToShopping:handleRecipeToShopping,purchaseHistory:purchaseHistory,onAddTakeoutRestaurant:handleAddTakeoutRestaurant,onDeleteTakeoutRestaurant:handleDeleteTakeoutRestaurant,onAddTakeoutItem:handleAddTakeoutItem,onDeleteTakeoutItem:handleDeleteTakeoutItem,chores:chores,choresLoading:choresLoading,onToggleChore:handleToggleChore,onAddChore:handleAddChore,onDeleteChore:handleDeleteChore,onUpdateChoreCadence:handleUpdateChoreCadence,choresForOthers:choresForOthers,choresForOthersLoading:choresForOthersLoading,onAddChoreForOthers:handleAddChoreForOthers,onCompleteChoreForOthers:handleCompleteChoreForOthers,onEditChoreForOthers:handleEditChoreForOthers,onDeleteChoreForOthers:handleDeleteChoreForOthers,vehicles:vehicles,vehiclesLoading:vehiclesLoading,onVehicleOilChange:handleVehicleOilChange,onVehicleService:handleVehicleService,onVehicleMileage:handleVehicleMileage,onAddVehicle:handleAddVehicle,onDeleteVehicle:handleDeleteVehicle,onVehicleTireChange:handleVehicleTireChange,onVehicleEmissionInspect:handleVehicleEmissionInspect,onVehicleSafetyInspect:handleVehicleSafetyInspect,coupons:coupons,couponsLoading:couponsLoading,onExtractCoupon:handleExtractCoupon,onSaveCoupon:handleSaveCoupon,onDeleteCoupon:handleDeleteCoupon,onMarkCouponUsed:handleMarkCouponUsed,apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='people'&&/*#__PURE__*/React.createElement(PeopleTab,{apiUrl:apiUrl,apiToken:apiToken,giftData:giftData,giftLoading:giftLoading,busy:busy,onAddGiftPerson:handleAddGiftPerson,onDeleteGiftPerson:handleDeleteGiftPerson,onAddGiftIdea:handleAddGiftIdea,onDeleteGiftIdea:handleDeleteGiftIdea,datesData:datesData,datesLoading:datesLoading,onAddImportantDate:handleAddImportantDate,onUpdateImportantDate:handleUpdateImportantDate,onDeleteImportantDate:handleDeleteImportantDate,onPreviewCalendarBirthdays:handlePreviewCalendarBirthdays,onImportCalendarBirthdays:handleImportCalendarBirthdays,calPreviews:calPreviews,calPreviewLoading:calPreviewLoading,wishListsData:wishListsData,wishListsLoading:wishListsLoading,onRefreshWishLists:()=>loadWishListsData(apiUrl,apiToken),features:status&&status.features}),activeTab==='pto'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading PTO data…"):/*#__PURE__*/React.createElement(PTOTab,{ahmedStats:pto&&pto.ahmedStats,victoriaStats:pto&&pto.victoriaStats,onTriggerBuffer:handleTriggerBuffer,onTriggerVictoriaBuffer:handleTriggerVictoriaBuffer,busy:busy,loadError:ptoError,onReload:()=>loadPTO(apiUrl,apiToken)})),activeTab==='travel'&&(tabLoading.pto?/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading travel data…"):/*#__PURE__*/React.createElement(TravelTab,{pto:pto,itineraries:itineraries,packingItems:packingItems,tripMeta:tripMeta,packingFocusTripKey:packingFocusTripKey,itineraryFocusTripKey:travelFocusTripKey,countries:countries,countriesLoaded:countriesLoaded,busy:busy,onSelectTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onExpandTrip:function(trip){if(!itineraries[trip.tripKey])loadItinerary(trip.tripKey,trip.startDate,trip.endDate);},onAddItinItem:function(tripKey,sd,ed){setItinItemModal({mode:'add',tripKey,tripStartDate:sd,tripEndDate:ed});},onEditItinItem:function(item,tripKey,sd,ed){setItinItemModal({mode:'edit',item,tripKey,tripStartDate:sd,tripEndDate:ed});},onDeleteItinItem:handleDeleteItineraryItem,onSetTripMeta:handleSetTripMeta,onSetTripBriefing:handleSetTripBriefing,onLoadTripMeta:loadTripMeta,onLoadPacking:loadPacking,onGeneratePacking:handleGeneratePacking,onTogglePackingItem:handleTogglePackingItem,onAddPackingItem:handleAddPackingItem,onDeletePackingItem:handleDeletePackingItem,onGoToPacking:handleGoToPacking,onLoadCountries:loadCountries,onAddCountry:handleAddCountry,onDeleteCountry:handleDeleteCountry,bucketList:bucketList,onLoadBucketList:loadBucketList,onAddBucketItem:handleAddBucketItem,onMarkBucketVisited:handleMarkBucketVisited,onDeleteBucketItem:handleDeleteBucketItem,onAddBucketActivity:handleAddBucketActivity,onToggleBucketActivity:handleToggleBucketActivity,onDeleteBucketActivity:handleDeleteBucketActivity,recommendations:recommendations,onLoadRecs:loadRecs,onGenerateRecs:handleGenerateRecs,onAcceptRec:handleAcceptRec,onDismissRec:handleDismissRec,profiles:profiles,profilesLoading:profilesLoading,onSaveProfile:handleSaveProfile,onDeleteProfile:handleDeleteProfile,apiUrl:apiUrl,apiToken:apiToken})),activeTab==='finances'&&/*#__PURE__*/React.createElement(FinancesTab,{summaries:summaries,budget:budget,budgetLoading:!!tabLoading.finances,bills:bills,billsLoading:!!tabLoading.bills,onBillToggle:handleBillToggle,calBills:calBills,onCalBillToggle:handleCalendarBillToggle,onAddBill:handleAddBill,onSyncTransactions:handleSyncBillsFromTransactions,txList:txList,apiUrl:apiUrl,apiToken:apiToken,busy:busy,financialGoals:financialGoals,goalsLoading:goalsLoading,onLoadGoals:loadFinancialGoals,onAddGoal:handleAddGoal,onUpdateGoal:handleUpdateGoal,onDeleteGoal:handleDeleteGoal}),activeTab==='health'&&/*#__PURE__*/React.createElement(HealthTab,{apiUrl:apiUrl,apiToken:apiToken,features:status&&status.features}),activeTab==='growth'&&/*#__PURE__*/React.createElement(GrowthTab,{milestones:milestones,flags:flags,tasks:tasks,onAction:handleAction,goals:goals,goalsLoading:!!tabLoading.goals,dragGoalId:dragGoalId,dragOverCol:dragOverCol,onDragStart:id=>setDragGoalId(id),onDragOver:col=>setDragOverCol(col),onDrop:async newStatus=>{if(!dragGoalId||!newStatus){setDragGoalId(null);setDragOverCol(null);return;}const id=dragGoalId;setDragGoalId(null);setDragOverCol(null);setGoals(prev=>prev.map(g=>g.id===id?{...g,status:newStatus}:g));try{await apiGet(apiUrl,apiToken,{action:'update_goal',id,status:newStatus});}catch(err){setError('Failed to move goal: '+err.message);loadGoals(apiUrl,apiToken);}},onAddGoal:status=>setGoalModal({mode:'add',status:status||'To Do'}),onEditGoal:g=>setGoalModal({mode:'edit',goal:g}),onDeleteGoal:async id=>{if(!window.confirm('Delete this goal?'))return;setGoals(prev=>prev.filter(g=>g.id!==id));try{await apiGet(apiUrl,apiToken,{action:'delete_goal',id});}catch(err){setError('Failed to delete goal: '+err.message);loadGoals(apiUrl,apiToken);}},growthData:growthData,growthLoading:!!tabLoading.growth,onAddBook:handleAddBook,onUpdateBook:handleUpdateBook,onDeleteBook:handleDeleteBook,onAddCourse:handleAddCourse,onUpdateCourse:handleUpdateCourse,onDeleteCourse:handleDeleteCourse,onAddSkill:handleAddSkill,onUpdateSkill:handleUpdateSkill,onRecordSkillPractice:handleRecordSkillPractice,onDeleteSkill:handleDeleteSkill,busy:busy}),activeTab==='career'&&/*#__PURE__*/React.createElement(CareerTab,{career:career,loading:!!tabLoading.career,busy:busy,onUpdatePosition:handleUpdateCareerPosition,onAddGoal:handleAddCareerGoal,onUpdateGoal:handleUpdateCareerGoal,onDeleteGoal:handleDeleteCareerGoal,onUpdateGoalFull:handleUpdateCareerGoalFull,onAddProgression:handleAddCareerProgression,onDeleteProgression:handleDeleteCareerProgression,onUpdateProgression:handleUpdateCareerProgression,onAddDevelopment:handleAddCareerDevelopment,onUpdateDevelopment:handleUpdateCareerDevelopment,onDeleteDevelopment:handleDeleteCareerDevelopment,onUpdateDevelopmentFull:handleUpdateCareerDevelopmentFull,onAddWin:handleAddCareerWin,onDeleteWin:handleDeleteCareerWin,onUpdateWin:handleUpdateCareerWin,onAddNetwork:handleAddCareerNetwork,onUpdateNetwork:handleUpdateCareerNetwork,onDeleteNetwork:handleDeleteCareerNetwork,onUpdateNetworkFull:handleUpdateCareerNetworkFull}))),goalModal&&/*#__PURE__*/React.createElement(GoalModal,{mode:goalModal.mode,goal:goalModal.goal,defaultStatus:goalModal.status,onSave:handleSaveGoal,onClose:()=>setGoalModal(null),busy:busy}),interestModal&&/*#__PURE__*/React.createElement(AddInterestModal,{onSave:handleSaveInterest,onClose:()=>setInterestModal(false),busy:busy}),itinItemModal&&/*#__PURE__*/React.createElement(AddItineraryItemModal,{mode:itinItemModal.mode,item:itinItemModal.item,tripKey:itinItemModal.tripKey,onSave:itinItemModal.mode==='edit'?handleUpdateItineraryItem:handleAddItineraryItem,onClose:()=>setItinItemModal(null),busy:busy}),notifSettingsOpen&&/*#__PURE__*/React.createElement(NotifSettingsModal,{apiUrl:apiUrl,apiToken:apiToken,onClose:()=>setNotifSettingsOpen(false)}),toast&&/*#__PURE__*/React.createElement("div",{className:`toast${toast.isError?' error':''}`},toast.msg));}ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App,null));
