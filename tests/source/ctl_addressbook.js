@@ -253,7 +253,7 @@ const CONTROLS = {
       "    'Notes':            String(b.notes        || '').trim(),\n    'Send Card': '', 'Last Card Sent': '',\n  };"),
   }),
 
-  // ---- the dashboards ------------------------------------------------------
+  // ---- the dashboards: the card run -------------------------------------
   'the card run no longer carries the list forward': b => eachDoc(b, s =>
     s.replace(/forEvent\(h\.id, event\)\.length > 0/g, 'false')),
   'the still-to-send toggle is gone': b => eachDoc(b, s =>
@@ -350,6 +350,10 @@ const CONTROLS = {
     'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
       /\{activeTab === 'people' && \(\s*<AddressBookView[\s\S]*?\)\}/, ''),
   }),
+  'an empty household goes back to dead "0 people" text': b => eachDoc(b, s =>
+    s.replace(/\+ Add the names/g, '0 people')),
+  'only the small triangle opens a household again': b => eachDoc(b, s =>
+    s.replace(/Open to add people and see what has been sent/g, '')),
   'the dashboards write through apiGet again': b => {
     const o = {};
     DOCS.forEach(f => {

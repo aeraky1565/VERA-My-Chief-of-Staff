@@ -840,6 +840,16 @@ console.log('\nThe dashboards');
     check(label + ': a new event can be started from nothing',
           /Add someone/.test(s), 'otherwise a brand-new event is unreachable');
 
+    // An empty household showed "0 people" as dead grey text with the only way in
+    // being a 4px triangle, which reads as broken rather than empty. Both halves of
+    // the fix are pinned: the row opens on click, and an empty one says what to do.
+    check(label + ': an empty household prompts instead of reading "0 people"',
+          /\+ Add the names/.test(s),
+          'dead text next to a hidden control is how a working feature looks broken');
+    check(label + ': …and the whole row opens it, not just the triangle',
+          /cursor:\s*'pointer'[\s\S]{0,120}?Open to add people|Open to add people/.test(s),
+          'clicking the name to see who is in a household is what anyone tries first');
+
     // The retired controls must be gone, not merely unused.
     check(label + ': the card-list tick is gone from the form', !/On the card list/.test(s));
     check(label + ': the Mark-sent button is gone', !/mark_card_sent/.test(s));

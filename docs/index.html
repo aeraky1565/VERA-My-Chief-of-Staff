@@ -4015,10 +4015,15 @@ function AddressBookView({
         flexShrink: 0
       }
     }, isOpen ? '▾' : '▸'), /*#__PURE__*/React.createElement("div", {
+      onClick: () => setOpen(o => Object.assign({}, o, {
+        [h.id]: !o[h.id]
+      })),
       style: {
         flex: 1,
-        minWidth: 150
-      }
+        minWidth: 150,
+        cursor: 'pointer'
+      },
+      title: isOpen ? 'Collapse' : 'Open to add people and see what has been sent'
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         fontWeight: 700,
@@ -4049,7 +4054,12 @@ function AddressBookView({
         color: '#4d6080',
         marginTop: 4
       }
-    }, members.length, " ", members.length === 1 ? 'person' : 'people', sentItems.length ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings') + ', last ' + sentItems[0].sent : ' · nothing sent yet', staleConfirm && /*#__PURE__*/React.createElement("span", {
+    }, members.length === 0 ? /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: '#8ab4f8',
+        fontWeight: 600
+      }
+    }, "+ Add the names") : members.length + (members.length === 1 ? ' person' : ' people'), sentItems.length ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings') + ', last ' + sentItems[0].sent : ' · nothing sent yet', staleConfirm && /*#__PURE__*/React.createElement("span", {
       title: "Worth checking this address is still right",
       style: {
         color: '#c9a84c'

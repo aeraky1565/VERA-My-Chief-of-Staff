@@ -8094,7 +8094,9 @@ function AddressBookView({ apiUrl, apiToken }) {
                              fontSize:14, padding:0, flexShrink:0 }}>
                     {isOpen ? '▾' : '▸'}
                   </button>
-                  <div style={{ flex:1, minWidth:150 }}>
+                  <div onClick={() => setOpen(o => Object.assign({}, o, { [h.id]: !o[h.id] }))}
+                    style={{ flex:1, minWidth:150, cursor:'pointer' }}
+                    title={isOpen ? 'Collapse' : 'Open to add people and see what has been sent'}>
                     <div style={{ fontWeight:700, fontSize:14, color:'#dde1f0' }}>
                       {h.household}
                     </div>
@@ -8110,7 +8112,9 @@ function AddressBookView({ apiUrl, apiToken }) {
                       </div>
                     )}
                     <div style={{ fontSize:11, color:'#4d6080', marginTop:4 }}>
-                      {members.length} {members.length === 1 ? 'person' : 'people'}
+                      {members.length === 0
+                        ? <span style={{ color:'#8ab4f8', fontWeight:600 }}>+ Add the names</span>
+                        : members.length + (members.length === 1 ? ' person' : ' people')}
                       {sentItems.length
                         ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings')
                           + ', last ' + sentItems[0].sent
