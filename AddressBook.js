@@ -29,15 +29,31 @@ var ADDRESS_BOOK_PROP_       = 'ADDRESS_BOOK_SHEET_ID';
 var ADDRESS_BOOK_HEALTH_     = 'sheet:AddressBook';
 var ADDRESS_BOOK_HOUSEHOLDS_ = 'Households';
 var ADDRESS_BOOK_PEOPLE_     = 'People';
+var ADDRESS_BOOK_MAILINGS_   = 'Mailings';
 
-// The envelope. 'Send Card' holds the literal 'Yes' or blank — the same convention
-// as Resolved, Autopay and Needs Review, where every reader tests
-// String(...).trim().toLowerCase() === 'yes'. A checkbox TRUE reads as unset.
+// The envelope.
+//
+// 'Send Card' and 'Last Card Sent' USED TO BE HERE and were retired when Mailings
+// arrived. They tracked exactly one occasion and exactly one date, so a second
+// Christmas card overwrote the first and "did they get one in 2024?" had no answer.
+// VERA does not delete them from a sheet that already has them — ensureSheet only
+// writes headers into a blank tab — it simply stops reading and writing them, so the
+// columns can be removed by hand whenever it suits.
 var HOUSEHOLD_HEADERS = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City',
-                         'State', 'Postal Code', 'Country', 'Relationship', 'Send Card',
-                         'Last Card Sent', 'Address Confirmed', 'Notes'];
+                         'State', 'Postal Code', 'Country', 'Relationship',
+                         'Address Confirmed', 'Notes'];
 
 var CONTACT_HEADERS   = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'Notes'];
+
+// One row per thing actually posted. EVERY ROW IS SOMETHING THAT WENT OUT — there is
+// no planned or draft state, so a row never has to be interpreted, only counted.
+//
+// 'Event' is free text ('Christmas card', 'Wedding thank you'). The dashboard offers
+// the values already in use and lets a new one be typed, so inventing an occasion
+// needs no column, no config and no deploy. The alternative — a pair of columns per
+// occasion on Households — grows the tab forever, and a one-off like wedding
+// thank-yous would widen it permanently for something that happens once.
+var MAILING_HEADERS   = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
 
 // ---- Access -----------------------------------------------------------------
 
@@ -102,6 +118,7 @@ function getAddressBookSheet_() {
 function ensureAddressBookTabs_(ss) {
   ensureSheet(ss, ADDRESS_BOOK_HOUSEHOLDS_, HOUSEHOLD_HEADERS);
   ensureSheet(ss, ADDRESS_BOOK_PEOPLE_,     CONTACT_HEADERS);
+  ensureSheet(ss, ADDRESS_BOOK_MAILINGS_,   MAILING_HEADERS);
 }
 
 /**
@@ -186,15 +203,33 @@ function appendAddressBookRow_(sheet, headers, fields) {
 }
 
 /**
- * 'Yes' or '' — never a boolean. See the HOUSEHOLD_HEADERS note.
+ * Deletes every row whose named column matches, BACK TO FRONT.
  *
- * Accepts a real boolean as well as the string, because a JSON body sends
- * `"sendCard": true` naturally and the sheet must still end up holding the literal
- * the readers look for.
+ * Front to back is the classic way to get this wrong: deleting row 4 moves row 5 up
+ * into its place, the loop moves on to row 5, and the row that just shifted is
+ * skipped. Same rule deleteRowsOlderThan_ (Memory.js) follows.
+ *
+ * One implementation rather than one per tab: a household cascades to both its
+ * members and its mailings, and two copies of a back-to-front delete is two chances
+ * to write the forward one.
+ *
+ * @returns {number} rows removed
  */
-function addressBookYesNo_(v) {
-  if (v === true) return 'Yes';
-  return String(v === undefined || v === null ? '' : v).trim().toLowerCase() === 'yes' ? 'Yes' : '';
+function deleteAddressBookRowsFor_(sheet, columnName, value) {
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var cols = addressBookCols_(sheet);
+  var col  = cols[columnName];
+  if (!col) return 0;
+  var want = String(value || '').trim();
+  if (!want) return 0;
+  var vals = sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues();
+  var removed = 0;
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0] || '').trim() !== want) continue;
+    sheet.deleteRow(i + 2);
+    removed++;
+  }
+  return removed;
 }
 
 /** A short, sortable, collision-free id. Mirrors 'CP-' + Date.now() elsewhere. */

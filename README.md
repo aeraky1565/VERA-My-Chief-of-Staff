@@ -477,10 +477,33 @@ With neither set the tab shows a setup line and
 and filing one as a fault is how the "SOME DATA IS NOT LIVE" banner lost its
 credibility the first time.
 
-**Two tabs, because a card and an email reach different things.** A card is addressed
-to a `Household` — one envelope, one address, "and family". An email or a phone call
-reaches a person in `People`. One flat list would mean either duplicating the address
-on every member, where the copies drift apart, or losing the per-person details.
+**Three tabs.** A card is addressed to a `Household` — one envelope, one address, "and
+family". An email or a phone call reaches a person in `People`. And `Mailings` records
+what was actually sent: one row per thing posted, `Household ID · Event · Sent ·
+Notes`. One flat list would mean either duplicating the address on every member, where
+the copies drift apart, or losing the per-person details.
+
+**`Event` is free text** — "Christmas card", "Wedding thank you". The dashboard offers
+the values already in use, most recent first, and lets a new one be typed, so inventing
+an occasion needs no column, no config and no deploy. Every row is something that
+**actually went out**; there is no planned or draft state, so a row never has to be
+interpreted, only counted.
+
+> **`Send Card` and `Last Card Sent` were retired when `Mailings` arrived.** They
+> tracked exactly one occasion and exactly one date, so a second Christmas card
+> overwrote the first and *"did they get one in 2024?"* had no answer. VERA does not
+> delete them from a sheet that still has them — it stops reading and writing them, so
+> the columns can be removed by hand whenever it suits.
+
+**The card run carries forward from history.** Pick an event and a household is on the
+list **if it has ever been sent that event** — send someone a Christmas card once and
+they are on the list every year after, with no flag anywhere to keep in step or go
+stale. Ticking logs a mailing dated today; un-ticking deletes it, so a mis-tick is
+undoable. A brand-new event starts empty, which is what *+ Add someone* is for.
+
+> The still-to-send filter is a **toggle**, not an inference: *not sent this year*
+> (right for anything annual) or *everyone on the list*. Guessing an event's cadence
+> from its own history would be right most of the time and inexplicable the rest.
 
 `ensureAddressBookTabs_` adds those two tabs if they are missing and **touches
 nothing else in that document** — it reuses `ensureSheet`, which only writes headers
@@ -503,15 +526,18 @@ un-checking Autopay a silent no-op. Nearly every field here is optional free tex
 under GET almost all of them would have needed a presence flag. A JSON body carries
 `""` faithfully.
 
-- `Send Card` holds the literal `'Yes'` or blank, like `Resolved` and `Autopay`.
-- `Last Card Sent` is a **year** — "did they get one this Christmas" is the only
-  question anyone asks of it. Marking twice in one year writes nothing.
+- `save_mailing` is **idempotent on household + event + date**, because the dashboard
+  logs by ticking a box and a double click must not leave two identical rows. The same
+  event on a *different* date is a new row — that is the history the tab exists for.
 - `Address Confirmed` is a date. A confidently wrong address is the real failure of a
   card list, and this is the only thing that can tell it from a merely old one. It
   renders as a quiet marker on the row — **no flag, no nightly step, no email.**
-- **Deleting a household deletes its members.** An orphan person row pointing at a
-  household that no longer exists renders nowhere, so it can never be found and
-  fixed. The dashboard names the member count before you confirm.
+- **Deleting a household deletes its members and its mailings.** An orphan row
+  pointing at a household that no longer exists renders nowhere, so it can never be
+  found and fixed. The dashboard names both counts before you confirm. Both sweeps go
+  through one `deleteAddressBookRowsFor_`, which deletes **back to front** — two copies
+  of that loop is two chances to write the forward one, where deleting row 4 shifts
+  row 5 up into its place and the loop skips it.
 
 ### Card Perks (`Code.js`, `WebApp.js`)
 

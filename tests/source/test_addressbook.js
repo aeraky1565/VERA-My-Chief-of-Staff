@@ -55,9 +55,14 @@ const decl = (src, name) => {
 };
 
 const HH_H = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City', 'State',
-              'Postal Code', 'Country', 'Relationship', 'Send Card', 'Last Card Sent',
-              'Address Confirmed', 'Notes'];
+              'Postal Code', 'Country', 'Relationship', 'Address Confirmed', 'Notes'];
 const P_H  = ['ID', 'Household ID', 'Name', 'Email', 'Phone', 'Member Type', 'Notes'];
+const M_H  = ['ID', 'Household ID', 'Event', 'Sent', 'Notes'];
+// What Ahmed's live sheet looks like TODAY: the two retired columns are still in it.
+// VERA must read around them and never write to them.
+const HH_LEGACY = ['ID', 'Household', 'Address Line 1', 'Address Line 2', 'City', 'State',
+                   'Postal Code', 'Country', 'Relationship', 'Send Card', 'Last Card Sent',
+                   'Address Confirmed', 'Notes'];
 
 // A spreadsheet that behaves like the real one where it matters: rows shift when you
 // delete, appendRow pads to the widest row, and a tab can have EXTRA columns.
@@ -143,6 +148,8 @@ function harness(opts) {
     decl(SRC.Book, 'ADDRESS_BOOK_PEOPLE_'),
     decl(SRC.Book, 'HOUSEHOLD_HEADERS'),
     decl(SRC.Book, 'CONTACT_HEADERS'),
+    decl(SRC.Book, 'MAILING_HEADERS'),
+    decl(SRC.Book, 'ADDRESS_BOOK_MAILINGS_'),
     extractFn(SRC.Code, 'ensureSheet'),
     extractFn(SRC.Book, 'getAddressBookSheet_'),
     decl(SRC.Book, 'PROP_PRUNE_DAY_PLAN_DAYS_'),
@@ -156,7 +163,7 @@ function harness(opts) {
     extractFn(SRC.Book, 'findAddressBookRow_'),
     extractFn(SRC.Book, 'writeAddressBookRow_'),
     extractFn(SRC.Book, 'appendAddressBookRow_'),
-    extractFn(SRC.Book, 'addressBookYesNo_'),
+    extractFn(SRC.Book, 'deleteAddressBookRowsFor_'),
     extractFn(SRC.Book, 'newAddressBookId_'),
     extractFn(SRC.Web, 'webGetAddressBook_'),
     extractFn(SRC.Web, 'addressBookForWrite_'),
@@ -164,7 +171,9 @@ function harness(opts) {
     extractFn(SRC.Web, 'webDeleteHousehold_'),
     extractFn(SRC.Web, 'webSaveContact_'),
     extractFn(SRC.Web, 'webDeleteContact_'),
-    extractFn(SRC.Web, 'webMarkCardSent_'),
+    extractFn(SRC.Web, 'webSaveMailing_'),
+    extractFn(SRC.Web, 'findMailing_'),
+    extractFn(SRC.Web, 'webDeleteMailing_'),
     extractFn(SRC.Web, 'webConfirmAddress_'),
   ].join('\n'), ctx);
   return ctx;
@@ -174,8 +183,20 @@ const threw = fn => { try { fn(); return null; } catch (e) { return e.message; }
 const seeded = () => ({
   'Households': fakeSheet(HH_H, [
     ['HH-1', 'The Smith Family', '12 Elm St', 'Apt 4', 'Austin', 'TX', '78701', 'USA',
-     'Family', 'Yes', '2025', '2026-01-10', 'via Jane'],
-    ['HH-2', 'Dana & Omar', '3 Nile Rd', '', 'Cairo', '', '', 'Egypt', 'Friends', '', '', '', ''],
+     'Family', '2026-01-10', 'via Jane'],
+    ['HH-2', 'Dana & Omar', '3 Nile Rd', '', 'Cairo', '', '', 'Egypt', 'Friends', '', ''],
+  ]),
+  'Mailings': fakeSheet(M_H, [
+    // Two Christmas cards to the same household in different years. A single
+    // 'Last Card Sent' column could only ever have held the second.
+    ['M-1', 'HH-1', 'Christmas card',    '2024-12-12', ''],
+    ['M-2', 'HH-1', 'Christmas card',    '2025-12-09', ''],
+    // Deliberately the most recent, so 'most recently used first' is observable:
+    // with Christmas as both oldest and newest, either sort order gives the
+    // same answer and the assertion proves nothing.
+    ['M-3', 'HH-1', 'Wedding thank you', '2026-07-02', 'for the vase'],
+    ['M-4', 'HH-2', 'Christmas card',    '2025-12-11', ''],
+    ['', '', '', '', ''],   // a spacer row left behind by hand
   ]),
   'People': fakeSheet(P_H, [
     // A half-typed row somebody left in the sheet. It has no ID, so it is not an
@@ -258,11 +279,13 @@ console.log('\nVERA adds its tabs and disturbs nothing else');
                       tabs: { "Ahmed's list": his } });
   c.webGetAddressBook_();
 
-  check('both tabs are created', c._created.indexOf('Households') !== -1 &&
-        c._created.indexOf('People') !== -1, JSON.stringify(c._created));
+  check('all three tabs are created', c._created.indexOf('Households') !== -1 &&
+        c._created.indexOf('People') !== -1 && c._created.indexOf('Mailings') !== -1,
+        JSON.stringify(c._created));
   const hdrOf = t => ((c._tabs[t] && c._tabs[t]._data[0]) || []).join('|');
   check('…with the full headers', hdrOf('Households') === HH_H.join('|'), hdrOf('Households'));
   check('…and the contact headers', hdrOf('People') === P_H.join('|'), hdrOf('People'));
+  check('…and the mailing headers', hdrOf('Mailings') === M_H.join('|'), hdrOf('Mailings'));
 
   check('the pre-existing tab is left EXACTLY as it was',
         his._data.length === 2 && his._data[1][0] === 'Grandma' && his._data[0][0] === 'Name',
@@ -272,7 +295,7 @@ console.log('\nVERA adds its tabs and disturbs nothing else');
 
   const before = JSON.stringify(c._tabs['Households']._data);
   c.webGetAddressBook_();
-  check('a second call creates nothing new', c._created.length === 2, JSON.stringify(c._created));
+  check('a second call creates nothing new', c._created.length === 3, JSON.stringify(c._created));
   check('…and rewrites no headers', JSON.stringify(c._tabs['Households']._data) === before);
 }
 
@@ -286,8 +309,14 @@ console.log('\nReading');
   check('…with their fields', out.households[0].household === 'The Smith Family' &&
         out.households[0].city === 'Austin' && out.households[0].postalCode === '78701',
         JSON.stringify(out.households[0]));
-  check('Send Card reads as a boolean for the UI', out.households[0].sendCard === true &&
-        out.households[1].sendCard === false);
+  check('mailings come back', out.mailings.length === 4, String(out.mailings.length));
+  check('…with the FULL history, not just the most recent',
+        out.mailings.filter(m => m.householdId === 'HH-1' && m.event === 'Christmas card').length === 2,
+        'a single Last Card Sent column could only ever hold the second');
+  check('the event vocabulary is distinct', out.events.length === 2, JSON.stringify(out.events));
+  check('…most recently used first',
+        out.events[0] === 'Wedding thank you' && out.events[1] === 'Christmas card',
+        JSON.stringify(out.events));
   check('all three people come back', out.people.length === 3, String(out.people.length));
   check('…and the blank spacer row is not one of them',
         out.people.every(p => p.id && p.name),
@@ -306,14 +335,15 @@ console.log('\nReads are header-driven, because two people edit this sheet by ha
 {
   // Victoria inserts a 'Salutation' column between Household and Address Line 1.
   const moved = ['ID', 'Household', 'Salutation', 'Address Line 1', 'Address Line 2', 'City',
-                 'State', 'Postal Code', 'Country', 'Relationship', 'Send Card',
-                 'Last Card Sent', 'Address Confirmed', 'Notes'];
+                 'State', 'Postal Code', 'Country', 'Relationship',
+                 'Address Confirmed', 'Notes'];
   const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
     'Households': fakeSheet(moved, [
       ['HH-1', 'The Smith Family', 'Dear John & Jane', '12 Elm St', '', 'Austin', 'TX',
-       '78701', 'USA', 'Family', 'Yes', '2025', '2026-01-10', 'note'],
+       '78701', 'USA', 'Family', '2026-01-10', 'note'],
     ]),
-    'People': fakeSheet(P_H, []),
+    'People':   fakeSheet(P_H, []),
+    'Mailings': fakeSheet(M_H, []),
   }});
   const h = c.webGetAddressBook_().households[0];
   check('an inserted column does not shift every field',
@@ -338,14 +368,11 @@ console.log('\nSaving a household');
   const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
   const r = c.webSaveHousehold_({ household: 'The Patels', address1: '7 Cedar Way',
                                   city: 'Reston', state: 'VA', postalCode: '20190',
-                                  country: 'USA', relationship: 'Friends', sendCard: true });
+                                  country: 'USA', relationship: 'Friends' });
   check('no id means insert', r.action === 'created' && /^HH-/.test(r.id), JSON.stringify(r));
   check('…appended to the tab', c._tabs['Households']._data.length === 4);
   const added = c.webGetAddressBook_().households.filter(h => h.id === r.id)[0];
   check('…with its fields', added.household === 'The Patels' && added.city === 'Reston');
-  check('…and Send Card as the literal "Yes"',
-        c._tabs['Households']._data[3][HH_H.indexOf('Send Card')] === 'Yes',
-        'a boolean TRUE reads as unset to every other reader in this codebase');
 
   const r2 = c.webSaveHousehold_({ id: 'HH-2', household: 'Dana & Omar', city: 'Alexandria',
                                    country: 'Egypt', relationship: 'Friends' });
@@ -370,36 +397,53 @@ console.log('\nA blank really clears — the makeUrl trap, pinned');
   // HH-1 starts with 'Apt 4' and 'via Jane'. Save it with both emptied.
   c.webSaveHousehold_({ id: 'HH-1', household: 'The Smith Family', address1: '12 Elm St',
                         address2: '', city: 'Austin', state: 'TX', postalCode: '78701',
-                        country: 'USA', relationship: 'Family', sendCard: true, notes: '' });
+                        country: 'USA', relationship: 'Family', notes: '' });
   const h = c.webGetAddressBook_().households.filter(x => x.id === 'HH-1')[0];
   check('an emptied Address Line 2 is actually emptied', h.address2 === '',
         JSON.stringify(h.address2) + ' — under GET this blank would never have been sent');
   check('…and an emptied note too', h.notes === '', JSON.stringify(h.notes));
   check('…while the fields that were set survive', h.address1 === '12 Elm St' && h.city === 'Austin');
 
-  c.webSaveHousehold_({ id: 'HH-1', household: 'The Smith Family', sendCard: false });
-  check('un-ticking the card list really clears it',
-        c.webGetAddressBook_().households.filter(x => x.id === 'HH-1')[0].sendCard === false,
-        'this is the exact shape of the Autopay bug');
-
-  check('…but the card history is NOT clobbered by an ordinary edit',
-        c.webGetAddressBook_().households.filter(x => x.id === 'HH-1')[0].lastCardSent === '2025',
-        'fixing a typo in a postcode must not wipe what you know about past cards');
-  check('…nor the confirmation date',
-        c.webGetAddressBook_().households.filter(x => x.id === 'HH-1')[0].addressConfirmed === '2026-01-10');
+  check('the confirmation date is NOT clobbered by an ordinary edit',
+        c.webGetAddressBook_().households.filter(x => x.id === 'HH-1')[0].addressConfirmed === '2026-01-10',
+        'fixing a typo in a postcode must not wipe when the address was last checked');
+  check('…and neither is the mailing history',
+        c.webGetAddressBook_().mailings.length === 4,
+        'the history lives in its own tab precisely so an edit cannot touch it');
 }
 
-console.log('\nSend Card is the literal "Yes"');
+console.log('\nA sheet that still has the retired columns is not disturbed');
 {
-  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
-  check('true becomes Yes',      c.addressBookYesNo_(true) === 'Yes');
-  check("'yes' becomes Yes",     c.addressBookYesNo_('yes') === 'Yes');
-  check("'YES' becomes Yes",     c.addressBookYesNo_('YES') === 'Yes');
-  check('false becomes blank',   c.addressBookYesNo_(false) === '');
-  check('undefined becomes blank', c.addressBookYesNo_(undefined) === '');
-  check("'no' becomes blank",    c.addressBookYesNo_('no') === '');
-  check('it never yields a boolean',
-        typeof c.addressBookYesNo_(true) === 'string' && typeof c.addressBookYesNo_(false) === 'string');
+  // Ahmed's live sheet has Send Card and Last Card Sent in it. They are retired, not
+  // deleted: VERA reads around them and must never write to them.
+  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+    'Households': fakeSheet(HH_LEGACY, [
+      ['HH-1', 'The Smith Family', '12 Elm St', '', 'Austin', 'TX', '78701', 'USA',
+       'Family', 'Yes', '2025', '2026-01-10', 'via Jane'],
+    ]),
+    'People':   fakeSheet(P_H, []),
+    'Mailings': fakeSheet(M_H, []),
+  }});
+  const h = c.webGetAddressBook_().households[0];
+  check('the household still reads correctly around them',
+        h.household === 'The Smith Family' && h.city === 'Austin' &&
+        h.addressConfirmed === '2026-01-10' && h.notes === 'via Jane',
+        JSON.stringify(h));
+  check('…and the retired fields are simply not in the payload',
+        h.sendCard === undefined && h.lastCardSent === undefined,
+        JSON.stringify(Object.keys(h)));
+
+  c.webSaveHousehold_({ id: 'HH-1', household: 'The Smith Family', city: 'Dallas', notes: '' });
+  const row = c._tabs['Households']._data[1];
+  check('an edit leaves Send Card exactly as it was',
+        row[HH_LEGACY.indexOf('Send Card')] === 'Yes', JSON.stringify(row));
+  check('…and Last Card Sent too', row[HH_LEGACY.indexOf('Last Card Sent')] === '2025',
+        'retiring a column must not quietly wipe what is in it');
+  check('…while the edit itself lands', row[HH_LEGACY.indexOf('City')] === 'Dallas');
+
+  check('ensureSheet never removes them either',
+        c._tabs['Households']._data[0].indexOf('Send Card') !== -1,
+        'they are the user\'s to delete, in their own time');
 }
 
 // ============================================================================
@@ -458,28 +502,135 @@ console.log('\nDeleting a contact touches nothing else');
 }
 
 // ============================================================================
-console.log('\nThe card run');
+console.log('\nLogging a mailing');
 {
   const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
-  const thisYear = String(new Date().getFullYear());
+  const today = (() => { const d = new Date(); const p2 = n => String(n).padStart(2, '0');
+                         return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); })();
 
-  const r = c.webMarkCardSent_({ id: 'HH-2' });
-  check('it stamps the current year', r.year === thisYear && r.alreadyMarked === false,
+  const r = c.webSaveMailing_({ householdId: 'HH-2', event: 'Anniversary card' });
+  check('a mailing is logged', r.action === 'created' && /^M-/.test(r.id), JSON.stringify(r));
+  check('…dated today by default',
+        c.webGetAddressBook_().mailings.filter(m => m.id === r.id)[0].sent === today);
+  check('…against its household',
+        c.webGetAddressBook_().mailings.filter(m => m.id === r.id)[0].householdId === 'HH-2');
+
+  // The tick box can be double-clicked, and a request can be retried.
+  const again = c.webSaveMailing_({ householdId: 'HH-2', event: 'Anniversary card' });
+  check('logging the same thing on the same day is idempotent',
+        again.alreadyLogged === true && again.id === r.id, JSON.stringify(again));
+  check('…writing no second row', c.webGetAddressBook_().mailings.length === 5,
+        'two identical rows would both have to be deleted by hand');
+  check('…matching the event case-insensitively',
+        c.webSaveMailing_({ householdId: 'HH-2', event: 'ANNIVERSARY CARD' }).alreadyLogged === true,
+        'the event is free text somebody types');
+
+  const nextYear = c.webSaveMailing_({ householdId: 'HH-2', event: 'Anniversary card', sent: '2027-07-02' });
+  check('the SAME event on a different date is a new row', nextYear.action === 'created',
+        'that is the history this tab exists for');
+
+  const upd = c.webSaveMailing_({ id: 'M-1', householdId: 'HH-1', event: 'Christmas card',
+                                  sent: '2024-12-14', notes: 'posted late' });
+  check('an id updates in place', upd.action === 'updated');
+  check('…changing only that row',
+        c.webGetAddressBook_().mailings.filter(m => m.id === 'M-1')[0].sent === '2024-12-14' &&
+        c.webGetAddressBook_().mailings.filter(m => m.id === 'M-2')[0].sent === '2025-12-09');
+
+  c.webSaveMailing_({ id: 'M-1', householdId: 'HH-1', event: 'Christmas card',
+                      sent: '2024-12-14', notes: '' });
+  check('an emptied note really clears', c.webGetAddressBook_().mailings
+        .filter(m => m.id === 'M-1')[0].notes === '', 'the makeUrl trap, again');
+
+  check('a mailing with no event is refused',
+        threw(() => c.webSaveMailing_({ householdId: 'HH-1' })) !== null);
+  check('…with no household is refused',
+        threw(() => c.webSaveMailing_({ event: 'Christmas card' })) !== null);
+  const ghost = threw(() => c.webSaveMailing_({ householdId: 'HH-404', event: 'Christmas card' }));
+  check('…and one pointing at a household that does not exist',
+        ghost !== null && /not found/.test(ghost), String(ghost),
+        'an orphan row renders nowhere, so it can never be found and fixed');
+  check('an unknown id is refused rather than silently inserted',
+        threw(() => c.webSaveMailing_({ id: 'M-404', householdId: 'HH-1', event: 'X' })) !== null);
+}
+
+console.log('\nUn-ticking, and the cascade');
+{
+  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  const err = threw(() => c.webDeleteMailing_({ id: 'M-2' }));
+  check('a mailing can be removed', err === null, String(err));
+  const after = c.webGetAddressBook_();
+  check('…and is gone', after.mailings.filter(m => m.id === 'M-2').length === 0);
+  check('the household stays', after.households.filter(h => h.id === 'HH-1').length === 1);
+  check('…and its OTHER mailings stay', after.mailings.filter(m => m.householdId === 'HH-1').length === 2,
+        JSON.stringify(after.mailings.map(m => m.id)));
+  check('an unknown mailing is refused', threw(() => c.webDeleteMailing_({ id: 'M-404' })) !== null);
+}
+{
+  // The orphan rule now covers a third tab.
+  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  const r = c.webDeleteHousehold_({ id: 'HH-1' });
+  check('deleting a household reports the mailings it removed', r.mailingsRemoved === 3,
         JSON.stringify(r));
-  check('…onto the row', c.webGetAddressBook_().households
-        .filter(h => h.id === 'HH-2')[0].lastCardSent === thisYear);
+  // The shared delete refuses a blank value. Without that guard, every row whose
+  // Household ID is blank — the spacer somebody left in the sheet — is swept away
+  // with it, and reading the payload would never show the difference.
+  check('…and a blank spacer row in the sheet is NOT swept away',
+        c._tabs['Mailings']._data.some(r2 => String(r2[0] || '') === '' && r2.length > 1),
+        JSON.stringify(c._tabs['Mailings']._data));
+  const after = c.webGetAddressBook_();
+  check('…and they are gone', after.mailings.filter(m => m.householdId === 'HH-1').length === 0);
+  check('the other household keeps its own', after.mailings.length === 1 &&
+        after.mailings[0].householdId === 'HH-2', JSON.stringify(after.mailings));
+  check('…and its members', after.people.length === 1);
+}
 
-  const again = c.webMarkCardSent_({ id: 'HH-2' });
-  check('marking twice in one year is a no-op', again.alreadyMarked === true,
-        'the second click of an idempotent button must write nothing');
+console.log('\nThe shared row delete, on its own');
+{
+  // Its contract is tested directly because the handlers only ever pass a real id,
+  // so the blank guard is unreachable from them — and an unobservable guard is a
+  // place for two readers to disagree about what it does.
+  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  const sheet = c._tabs['Mailings'];
+  const before = sheet._data.length;
 
-  const back = c.webMarkCardSent_({ id: 'HH-1', year: '2019' });
-  check('an explicit year can be recorded', back.year === '2019' &&
-        c.webGetAddressBook_().households.filter(h => h.id === 'HH-1')[0].lastCardSent === '2019',
-        'you might be filling in last year after the fact');
+  check('a blank value removes NOTHING',
+        c.deleteAddressBookRowsFor_(sheet, 'Household ID', '') === 0 &&
+        sheet._data.length === before,
+        'without this, every row with a blank Household ID — the spacer somebody ' +
+        'left in the sheet — is swept away by a delete that should match nothing');
+  check('…and so does undefined', c.deleteAddressBookRowsFor_(sheet, 'Household ID') === 0);
+  check('a column it does not have removes nothing',
+        c.deleteAddressBookRowsFor_(sheet, 'Nope', 'HH-1') === 0 && sheet._data.length === before);
+  check('a real value removes exactly its rows',
+        c.deleteAddressBookRowsFor_(sheet, 'Household ID', 'HH-1') === 3,
+        'three Christmas/wedding rows for HH-1');
+  check('…leaving the others', sheet._data.length === before - 3);
+  check('an empty sheet is a no-op',
+        c.deleteAddressBookRowsFor_(fakeSheet(M_H, []), 'Household ID', 'HH-1') === 0);
+}
 
-  check('an unknown household is refused', threw(() => c.webMarkCardSent_({ id: 'HH-404' })) !== null);
-  check('a blank id is refused', threw(() => c.webMarkCardSent_({})) !== null);
+console.log('\nCarrying the list forward');
+{
+  // The rule the dashboard applies, over the real payload: on the list if ever sent.
+  const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: seeded() });
+  const out = c.webGetAddressBook_();
+  const forEvent = (hid, ev) => out.mailings.filter(m => m.householdId === hid &&
+    m.event.toLowerCase() === ev.toLowerCase());
+  const onList = out.households.filter(h => forEvent(h.id, 'Christmas card').length > 0);
+
+  check('both households that have had a Christmas card are on the list',
+        onList.length === 2, JSON.stringify(onList.map(h => h.id)));
+  check('…and a household that has never had one is not',
+        onList.every(h => h.id !== 'HH-3'),
+        'a brand-new event starts empty, which is what "+ Add someone" is for');
+
+  const sentIn = (hid, ev, yr) => forEvent(hid, ev).some(m => m.sent.slice(0, 4) === yr);
+  check('the 2025 filter hides both', onList.filter(h => !sentIn(h.id, 'Christmas card', '2025')).length === 0);
+  check('…and the 2026 filter shows both again',
+        onList.filter(h => !sentIn(h.id, 'Christmas card', '2026')).length === 2,
+        'that is the carry-forward: last year\'s list is this year\'s list');
+  check('a different event has its own, smaller list',
+        out.households.filter(h => forEvent(h.id, 'Wedding thank you').length > 0).length === 1);
 }
 
 console.log('\nConfirming an address');
@@ -601,7 +752,7 @@ console.log('\nWiring');
 
   // Every write is POST. Under GET, makeUrl would drop each blank.
   ['save_household', 'delete_household', 'save_contact', 'delete_contact',
-   'mark_card_sent', 'confirm_address'].forEach(a => {
+   'save_mailing', 'delete_mailing', 'confirm_address'].forEach(a => {
     const re = new RegExp("case '" + a + "':\\s*return jsonOut_\\(web[A-Za-z]+_\\(body\\)\\)");
     check("'" + a + "' is routed in doPost, taking the body", re.test(SRC.Web),
           'a query string cannot carry a cleared field');
@@ -613,16 +764,29 @@ console.log('\nWiring');
   // One declaration each across the shared global scope.
   const roots = fs.readdirSync(ROOT).filter(f => f.endsWith('.js'));
   ['getAddressBookSheet_', 'ensureAddressBookTabs_', 'readAddressBookTab_',
-   'findAddressBookRow_', 'webGetAddressBook_', 'webSaveHousehold_', 'webSaveContact_',
-   'addressBookYesNo_'].forEach(name => {
+   'findAddressBookRow_', 'deleteAddressBookRowsFor_', 'webGetAddressBook_',
+   'webSaveHousehold_', 'webSaveContact_', 'webSaveMailing_', 'findMailing_'].forEach(name => {
     const n = roots.reduce((acc, f) => acc +
       (fs.readFileSync(path.join(ROOT, f), 'utf8')
          .match(new RegExp('^function ' + name + '\\(', 'gm')) || []).length, 0);
     check(name + ' is declared exactly once', n === 1, String(n));
   });
 
+  // The retired pair must not come back by accident.
+  check('mark_card_sent is gone entirely',
+        !/mark_card_sent|webMarkCardSent_/.test(SRC.Web),
+        'superseded by save_mailing, which keeps the whole history');
+  check('…and the schema no longer names the retired columns',
+        !/'Send Card'/.test(decl(SRC.Book, 'HOUSEHOLD_HEADERS')) &&
+        !/'Last Card Sent'/.test(decl(SRC.Book, 'HOUSEHOLD_HEADERS')),
+        JSON.stringify(decl(SRC.Book, 'HOUSEHOLD_HEADERS')));
+  check('the cascade uses ONE back-to-front delete for both tabs',
+        (SRC.Web.match(/deleteAddressBookRowsFor_\(/g) || []).length === 2,
+        'two copies of a back-to-front delete is two chances to write the forward one');
+
   check('ensureSheet is reused, not reimplemented',
-        /ensureSheet\(ss, ADDRESS_BOOK_HOUSEHOLDS_/.test(SRC.Book),
+        /ensureSheet\(ss, ADDRESS_BOOK_HOUSEHOLDS_/.test(SRC.Book) &&
+        /ensureSheet\(ss, ADDRESS_BOOK_MAILINGS_/.test(SRC.Book),
         'it already takes the spreadsheet as a parameter, so it works on an external one');
   check('there is no Birthday column anywhere in the schema',
         !/Birthday/.test(decl(SRC.Book, 'CONTACT_HEADERS')) &&
@@ -655,8 +819,33 @@ console.log('\nThe dashboards');
           'a GET would drop every cleared field');
     check(label + ': the unconfigured state is explained, not an error',
           /ADDRESS_BOOK_SHEET_ID/.test(s));
-    check(label + ': deleting a household warns about its members',
-          /members'\)|member' : 'members'/.test(s), 'the cascade must not be a surprise');
+    check(label + ': deleting a household warns about what goes with it',
+          /member' : 'members'/.test(s) && /mailing' : 'mailings'/.test(s),
+          'the cascade now covers a third tab and must not be a surprise');
+
+    check(label + ': the event picker exists',
+          /events\.map\(ev =>/.test(s) || /events\.map\(function\(ev\)/.test(s) ||
+          /events\.map\(ev=>/.test(s),
+          'picking an event is how you get to a card run');
+    check(label + ': the card run carries the list forward from history',
+          /forEvent\(h\.id, event\)\.length > 0/.test(s),
+          'on the list if ever sent — no flag anywhere to go stale');
+    check(label + ': …with a still-to-send toggle rather than an inference',
+          /unsentOnly === 'year'/.test(s),
+          "guessing an event's cadence would be right most of the time and " +
+          'inexplicable the rest');
+    check(label + ': a mis-tick is undoable', /action:\s*'delete_mailing'/.test(s));
+    check(label + ': the full history renders under a household',
+          /SENT/.test(s) && /m\.event/.test(s) && /m\.sent/.test(s));
+    check(label + ': a new event can be started from nothing',
+          /Add someone/.test(s), 'otherwise a brand-new event is unreachable');
+
+    // The retired controls must be gone, not merely unused.
+    check(label + ': the card-list tick is gone from the form', !/On the card list/.test(s));
+    check(label + ': the Mark-sent button is gone', !/mark_card_sent/.test(s));
+    check(label + ': and nothing still reads the retired fields',
+          !/h\.sendCard/.test(s) && !/h\.lastCardSent/.test(s) && !/cardsOnly/.test(s),
+          'a leftover reference to removed state is a blank screen, not a missing feature');
   });
 
   check('index.html is not a stale build',

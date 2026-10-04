@@ -554,7 +554,8 @@ function doPost(e) {
       case 'delete_household':           return jsonOut_(webDeleteHousehold_(body));
       case 'save_contact':               return jsonOut_(webSaveContact_(body));
       case 'delete_contact':             return jsonOut_(webDeleteContact_(body));
-      case 'mark_card_sent':             return jsonOut_(webMarkCardSent_(body));
+      case 'save_mailing':               return jsonOut_(webSaveMailing_(body));
+      case 'delete_mailing':             return jsonOut_(webDeleteMailing_(body));
       case 'confirm_address':            return jsonOut_(webConfirmAddress_(body));
       // Neighborhood Watch — Flyer upload (Issue #179)
       case 'extract_flyer':              return jsonOut_(webExtractFlyer_(body));
@@ -11302,8 +11303,6 @@ function webGetAddressBook_() {
       postalCode:       r['Postal Code'],
       country:          r['Country'],
       relationship:     r['Relationship'],
-      sendCard:         String(r['Send Card'] || '').trim().toLowerCase() === 'yes',
-      lastCardSent:     r['Last Card Sent'],
       addressConfirmed: r['Address Confirmed'],
       notes:            r['Notes'],
     };
@@ -11321,7 +11320,31 @@ function webGetAddressBook_() {
     };
   });
 
-  return { ok: true, configured: true, households: households, people: people };
+  var mSheet = book.ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);
+  var mailings = readAddressBookTab_(mSheet, MAILING_HEADERS).map(function(r) {
+    return {
+      id:          r['ID'],
+      householdId: r['Household ID'],
+      event:       r['Event'],
+      sent:        r['Sent'],
+      notes:       r['Notes'],
+    };
+  });
+
+  // The event vocabulary, most recently used first. There is no list to maintain
+  // anywhere: what you have sent IS the set of events, so typing a new one once puts
+  // it in the dropdown for next time.
+  var seen = {};
+  mailings.slice().sort(function(a, b) {
+    return String(b.sent || '').localeCompare(String(a.sent || ''));
+  }).forEach(function(m) {
+    var e = String(m.event || '').trim();
+    if (e && !seen[e.toLowerCase()]) seen[e.toLowerCase()] = e;
+  });
+  var events = Object.keys(seen).map(function(k) { return seen[k]; });
+
+  return { ok: true, configured: true, households: households, people: people,
+           mailings: mailings, events: events };
 }
 
 /** Opens the book for a write, or throws with a message the dashboard can show. */
@@ -11362,12 +11385,14 @@ function webSaveHousehold_(body) {
     'Postal Code':      String(b.postalCode   || '').trim(),
     'Country':          String(b.country      || '').trim(),
     'Relationship':     String(b.relationship || '').trim(),
-    'Send Card':        addressBookYesNo_(b.sendCard),
     'Notes':            String(b.notes        || '').trim(),
   };
-  // Only set by mark_card_sent / confirm_address, never clobbered by an ordinary
-  // edit — otherwise fixing a typo in a postcode would wipe the card history.
-  if (b.lastCardSent     !== undefined) fields['Last Card Sent']    = String(b.lastCardSent || '').trim();
+  // Set by confirm_address, never clobbered by an ordinary edit — otherwise fixing a
+  // typo in a postcode would wipe what you know about when the address was checked.
+  //
+  // 'Send Card' and 'Last Card Sent' are deliberately absent. A sheet that still has
+  // those columns keeps them exactly as they are: writeAddressBookRow_ only touches
+  // the headers named here, so retiring them disturbs nothing.
   if (b.addressConfirmed !== undefined) fields['Address Confirmed'] = String(b.addressConfirmed || '').trim();
 
   var id = String(b.id || '').trim();
@@ -11399,26 +11424,20 @@ function webDeleteHousehold_(body) {
   var ss      = addressBookForWrite_();
   var hhSheet = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
   var pSheet  = ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+  var mSheet  = ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);
 
   var rowNum = findAddressBookRow_(hhSheet, id);
   if (!rowNum) throw new Error('Household not found: ' + id);
 
-  // Members first, back to front so the row numbers below the one being deleted do
-  // not shift under us — the same rule deleteRowsOlderThan_ (Memory.js) follows.
-  var removedMembers = 0;
-  if (pSheet && pSheet.getLastRow() >= 2) {
-    var cols  = addressBookCols_(pSheet);
-    var hhCol = cols['Household ID'] || 2;
-    var vals  = pSheet.getRange(2, hhCol, pSheet.getLastRow() - 1, 1).getValues();
-    for (var i = vals.length - 1; i >= 0; i--) {
-      if (String(vals[i][0] || '').trim() !== id) continue;
-      pSheet.deleteRow(i + 2);
-      removedMembers++;
-    }
-  }
+  var removedMembers = deleteAddressBookRowsFor_(pSheet, 'Household ID', id);
+
+  // The orphan rule covers mailings too: a row pointing at a household that no longer
+  // exists renders nowhere, so it can never be found and fixed.
+  var removedMailings = deleteAddressBookRowsFor_(mSheet, 'Household ID', id);
 
   hhSheet.deleteRow(rowNum);
-  return { ok: true, action: 'deleted', membersRemoved: removedMembers };
+  return { ok: true, action: 'deleted', membersRemoved: removedMembers,
+           mailingsRemoved: removedMailings };
 }
 
 /** POST save_contact — insert without `id`, update in place with one. */
@@ -11471,33 +11490,83 @@ function webDeleteContact_(body) {
   return { ok: true, action: 'deleted' };
 }
 
-/**
- * POST mark_card_sent — stamps the year a card went out.
- *
- * A year, not a date: "did they get one this Christmas" is the only question anyone
- * asks of it, and a year answers it without pretending to a precision nobody has.
- * Idempotent within a year, so clicking twice writes nothing the second time.
- */
-function webMarkCardSent_(body) {
-  var b  = body || {};
-  var id = String(b.id || '').trim();
-  if (!id) throw new Error('id is required');
 
-  var ss     = addressBookForWrite_();
-  var sheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
-  var rowNum = findAddressBookRow_(sheet, id);
-  if (!rowNum) throw new Error('Household not found: ' + id);
+/**
+ * POST save_mailing — records something that went out.
+ *
+ * Insert without an id, update in place with one, like the other two writers, so the
+ * paths cannot drift apart.
+ *
+ * IDEMPOTENT ON household + event + date. The dashboard logs a mailing by ticking a
+ * box, and a double click or a retried request must not leave two identical rows that
+ * would then both have to be deleted by hand. Two mailings of the same event on
+ * DIFFERENT dates are two real rows — that is the history this tab exists for.
+ */
+function webSaveMailing_(body) {
+  var b     = body || {};
+  var event = String(b.event || '').trim();
+  if (!event) throw new Error('An event is required \u2014 for example "Christmas card"');
+  var householdId = String(b.householdId || '').trim();
+  if (!householdId) throw new Error('A mailing must belong to a household');
+
+  var ss      = addressBookForWrite_();
+  var hhSheet = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  if (!findAddressBookRow_(hhSheet, householdId)) {
+    throw new Error('Household not found: ' + householdId);
+  }
+  var sheet = ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);
 
   var tz   = Session.getScriptTimeZone();
-  var year = String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy')).trim();
-  var cols = addressBookCols_(sheet);
-  var col  = cols['Last Card Sent'];
-  if (col && String(sheet.getRange(rowNum, col).getValue() || '').trim() === year) {
-    return { ok: true, id: id, year: year, alreadyMarked: true };
+  var sent = String(b.sent || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')).trim();
+
+  var fields = {
+    'Household ID': householdId,
+    'Event':        event,
+    'Sent':         sent,
+    'Notes':        String(b.notes || '').trim(),
+  };
+
+  var id = String(b.id || '').trim();
+  if (id) {
+    var rowNum = findAddressBookRow_(sheet, id);
+    if (!rowNum) throw new Error('Mailing not found: ' + id);
+    writeAddressBookRow_(sheet, rowNum, fields);
+    return { ok: true, id: id, action: 'updated' };
   }
 
-  writeAddressBookRow_(sheet, rowNum, { 'Last Card Sent': year });
-  return { ok: true, id: id, year: year, alreadyMarked: false };
+  var dup = findMailing_(sheet, householdId, event, sent);
+  if (dup) return { ok: true, id: dup, action: 'unchanged', alreadyLogged: true };
+
+  id = newAddressBookId_('M');
+  fields['ID'] = id;
+  appendAddressBookRow_(sheet, MAILING_HEADERS, fields);
+  return { ok: true, id: id, action: 'created' };
+}
+
+/** The id of a mailing matching household + event + date, or '' . Event match is
+ *  case-insensitive, because the event is free text someone types. */
+function findMailing_(sheet, householdId, event, sent) {
+  var rows = readAddressBookTab_(sheet, MAILING_HEADERS);
+  var want = String(event || '').trim().toLowerCase();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i]['Household ID'] || '').trim() !== householdId) continue;
+    if (String(rows[i]['Event'] || '').trim().toLowerCase() !== want) continue;
+    if (String(rows[i]['Sent'] || '').trim() !== String(sent || '').trim()) continue;
+    return rows[i]['ID'];
+  }
+  return '';
+}
+
+/** POST delete_mailing — un-ticks one. The household and its other mailings stay. */
+function webDeleteMailing_(body) {
+  var id = String((body || {}).id || '').trim();
+  if (!id) throw new Error('id is required');
+  var ss     = addressBookForWrite_();
+  var sheet  = ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);
+  var rowNum = findAddressBookRow_(sheet, id);
+  if (!rowNum) throw new Error('Mailing not found: ' + id);
+  sheet.deleteRow(rowNum);
+  return { ok: true, action: 'deleted' };
 }
 
 /**

@@ -7927,8 +7927,9 @@ const AB_MEMBER_TYPES  = ['Adult', 'Child'];
 
 function abBlankHousehold() {
   return { id:'', household:'', address1:'', address2:'', city:'', state:'',
-           postalCode:'', country:'', relationship:'Family', sendCard:false, notes:'' };
+           postalCode:'', country:'', relationship:'Family', notes:'' };
 }
+function abThisYear() { return String(new Date().getFullYear()); }
 function abBlankContact(householdId) {
   return { id:'', householdId: householdId || '', name:'', email:'', phone:'',
            memberType:'Adult', notes:'' };
@@ -7945,7 +7946,15 @@ function AddressBookView({ apiUrl, apiToken }) {
   const [error,   setError]   = React.useState('');
   const [busy,    setBusy]    = React.useState(false);
   const [query,   setQuery]   = React.useState('');
-  const [cardsOnly, setCardsOnly] = React.useState(false);
+  // '' = the address book. Anything else = the card run for that event.
+  const [event,   setEvent]   = React.useState('');
+  const [newEvent, setNewEvent] = React.useState('');
+  // Which households the card run shows: those not sent this event THIS YEAR (right
+  // for anything annual) or those never sent it at all (right for a one-off burst).
+  // A toggle rather than an inference from the event's own history, which would be
+  // right most of the time and inexplicable the rest.
+  const [unsentOnly, setUnsentOnly] = React.useState('year');
+  const [addingTo, setAddingTo] = React.useState(false);
   const [open,    setOpen]    = React.useState({});
   const [hhForm,  setHhForm]  = React.useState(null);
   const [cForm,   setCForm]   = React.useState(null);
@@ -7989,12 +7998,17 @@ function AddressBookView({ apiUrl, apiToken }) {
 
   const households = data.households || [];
   const people     = data.people || [];
+  const mailings   = data.mailings || [];
+  const events     = data.events || [];
   const membersOf  = id => people.filter(p => p.householdId === id);
-  const thisYear   = String(new Date().getFullYear());
+  const thisYear   = abThisYear();
+  const mailingsOf = id => mailings.filter(m => m.householdId === id)
+    .slice().sort((a, b) => String(b.sent || '').localeCompare(String(a.sent || '')));
+  const forEvent   = (id, ev) => mailings.filter(m => m.householdId === id &&
+    String(m.event || '').toLowerCase() === String(ev || '').toLowerCase());
 
   const q = query.trim().toLowerCase();
   const shown = households.filter(h => {
-    if (cardsOnly && !h.sendCard) return false;
     if (!q) return true;
     const hay = [h.household, h.city, h.state, h.country, h.relationship]
       .concat(membersOf(h.id).map(p => p.name + ' ' + p.email + ' ' + p.phone))
@@ -8010,8 +8024,6 @@ function AddressBookView({ apiUrl, apiToken }) {
   const groupNames = AB_RELATIONSHIPS.filter(r => groups[r])
     .concat(Object.keys(groups).filter(g => AB_RELATIONSHIPS.indexOf(g) === -1));
 
-  const cardCount = households.filter(h => h.sendCard).length;
-  const sentCount = households.filter(h => h.sendCard && h.lastCardSent === thisYear).length;
 
   const inp = { background:'#0d1a2e', color:'#dde1f0', border:'1px solid #1e3060',
                 borderRadius:6, padding:'6px 9px', fontSize:13 };
@@ -8022,10 +8034,12 @@ function AddressBookView({ apiUrl, apiToken }) {
         <input placeholder="Search name, household, city…" value={query}
           onChange={e => setQuery(e.target.value)}
           style={Object.assign({}, inp, { flex:1, minWidth:160 })} />
-        <button onClick={() => setCardsOnly(v => !v)}
-          className={'subtab-btn' + (cardsOnly ? ' active' : '')}>
-          🎄 Card list{cardCount ? ' (' + cardCount + ')' : ''}
-        </button>
+        <select value={event} onChange={e => setEvent(e.target.value)}
+          title="Pick an event to run a card list for it"
+          style={Object.assign({}, inp, { maxWidth:190 })}>
+          <option value="">📒 Address book</option>
+          {events.map(ev => <option key={ev} value={ev}>✉️ {ev}</option>)}
+        </select>
         <button onClick={() => setHhForm(abBlankHousehold())} disabled={busy}
           style={{ padding:'6px 14px', borderRadius:6, border:'none', background:'#8ab4f8',
                    color:'#0d1117', fontWeight:600, cursor:'pointer', fontSize:13 }}>
@@ -8033,15 +8047,16 @@ function AddressBookView({ apiUrl, apiToken }) {
         </button>
       </div>
 
-      {cardsOnly && cardCount > 0 && (
-        <div style={{ fontSize:12, color:'#6b7fa8', marginBottom:12 }}>
-          {sentCount} of {cardCount} sent for {thisYear}.
-        </div>
-      )}
-
       {error && <div style={{ fontSize:12, color:'#f87171', marginBottom:10 }}>⚠️ {error}</div>}
 
-      {households.length === 0 && (
+      {event && (
+        <CardRunView event={event} households={households} mailings={mailings}
+          forEvent={forEvent} unsentOnly={unsentOnly} setUnsentOnly={setUnsentOnly}
+          addingTo={addingTo} setAddingTo={setAddingTo} query={query}
+          busy={busy} thisYear={thisYear} write={write} />
+      )}
+
+      {!event && households.length === 0 && (
         <div className="empty-state" style={{ padding:40 }}>
           <div style={{ fontSize:32, marginBottom:12 }}>📒</div>
           <div style={{ color:'#dde1f0' }}>No households yet.</div>
@@ -8050,21 +8065,21 @@ function AddressBookView({ apiUrl, apiToken }) {
           </div>
         </div>
       )}
-      {households.length > 0 && shown.length === 0 && (
+      {!event && households.length > 0 && shown.length === 0 && (
         <div style={{ color:'#4d6080', fontSize:13, textAlign:'center', padding:'24px 0' }}>
           Nothing matches the current filter.
         </div>
       )}
 
-      {groupNames.map(g => (
+      {!event && groupNames.map(g => (
         <div key={g} style={{ marginBottom:18 }}>
           <div style={{ fontSize:11, color:'#6b7280', marginBottom:6, letterSpacing:'0.06em' }}>
             {g.toUpperCase()} · {groups[g].length}
           </div>
           {groups[g].map(h => {
             const members = membersOf(h.id);
+            const sentItems = mailingsOf(h.id);
             const isOpen  = !!open[h.id];
-            const sentThisYear = h.lastCardSent === thisYear;
             // A confidently wrong address is the real failure of a card list, so an
             // unconfirmed one is worth a quiet marker — not a flag, not an email.
             const staleConfirm = h.addressConfirmed
@@ -8082,7 +8097,6 @@ function AddressBookView({ apiUrl, apiToken }) {
                   <div style={{ flex:1, minWidth:150 }}>
                     <div style={{ fontWeight:700, fontSize:14, color:'#dde1f0' }}>
                       {h.household}
-                      {h.sendCard && <span title="On the card list" style={{ marginLeft:8, fontSize:11, color:'#86efac' }}>🎄</span>}
                     </div>
                     {abAddressLines(h).map((line, i) => (
                       <div key={i} style={{ fontSize:12, color:'#a0a8c0' }}>{line}</div>
@@ -8097,7 +8111,10 @@ function AddressBookView({ apiUrl, apiToken }) {
                     )}
                     <div style={{ fontSize:11, color:'#4d6080', marginTop:4 }}>
                       {members.length} {members.length === 1 ? 'person' : 'people'}
-                      {h.lastCardSent ? ' · card sent ' + h.lastCardSent : ' · no card sent yet'}
+                      {sentItems.length
+                        ? ' · ' + sentItems.length + (sentItems.length === 1 ? ' mailing' : ' mailings')
+                          + ', last ' + sentItems[0].sent
+                        : ' · nothing sent yet'}
                       {staleConfirm && (
                         <span title="Worth checking this address is still right"
                           style={{ color:'#c9a84c' }}>
@@ -8107,15 +8124,6 @@ function AddressBookView({ apiUrl, apiToken }) {
                     </div>
                   </div>
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                    {h.sendCard && (
-                      <button onClick={() => write({ action:'mark_card_sent', id:h.id })}
-                        disabled={busy || sentThisYear} title={'Mark a card sent for ' + thisYear}
-                        style={{ background:'none', border:'1px solid ' + (sentThisYear ? '#2a3a50' : '#2a5a3a'),
-                                 color: sentThisYear ? '#4d6080' : '#86efac', borderRadius:6,
-                                 padding:'3px 9px', fontSize:11, cursor: sentThisYear ? 'default' : 'pointer' }}>
-                        {sentThisYear ? '✓ Sent ' + thisYear : 'Mark sent'}
-                      </button>
-                    )}
                     <button onClick={() => write({ action:'confirm_address', id:h.id })} disabled={busy}
                       title="I checked — this address is still right"
                       style={{ background:'none', border:'1px solid #2a3a50', color:'#8ab4f8',
@@ -8126,9 +8134,11 @@ function AddressBookView({ apiUrl, apiToken }) {
                       style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
                     <button disabled={busy}
                       onClick={() => {
-                        const n = members.length;
-                        const msg = n
-                          ? 'Delete ' + h.household + ' and its ' + n + ' ' + (n === 1 ? 'member' : 'members') + '?'
+                        const bits = [];
+                        if (members.length)   bits.push(members.length + ' ' + (members.length === 1 ? 'member' : 'members'));
+                        if (sentItems.length) bits.push(sentItems.length + ' ' + (sentItems.length === 1 ? 'mailing' : 'mailings'));
+                        const msg = bits.length
+                          ? 'Delete ' + h.household + ' and its ' + bits.join(' and ') + '?'
                           : 'Delete ' + h.household + '?';
                         if (window.confirm(msg)) write({ action:'delete_household', id:h.id });
                       }}
@@ -8165,6 +8175,24 @@ function AddressBookView({ apiUrl, apiToken }) {
                                borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer', marginTop:4 }}>
                       + Person
                     </button>
+
+                    {/* The full history, which is the thing a single "last sent" column
+                        could never hold: every card, not only the most recent. */}
+                    {sentItems.length > 0 && (
+                      <div style={{ marginTop:10, paddingTop:8, borderTop:'1px solid #1a2a40' }}>
+                        <div style={{ fontSize:11, color:'#6b7280', marginBottom:4 }}>SENT</div>
+                        {sentItems.map(m => (
+                          <div key={m.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                            <span style={{ fontSize:12, color:'#dde1f0' }}>{m.event}</span>
+                            <span style={{ fontSize:11, color:'#a0a8c0' }}>{m.sent}</span>
+                            {m.notes && <span style={{ fontSize:11, color:'#6b7fa8' }}>{m.notes}</span>}
+                            <button onClick={() => { if (window.confirm('Remove this ' + m.event + '?')) write({ action:'delete_mailing', id:m.id }); }}
+                              disabled={busy} style={{ background:'none', border:'none', color:'#ef4444',
+                                                       cursor:'pointer', fontSize:12, marginLeft:'auto' }}>×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -8180,6 +8208,130 @@ function AddressBookView({ apiUrl, apiToken }) {
       {cForm && (
         <AddressBookContactModal form={cForm} setForm={setCForm} busy={busy}
           onSave={async f => { if (await write(Object.assign({ action:'save_contact' }, f))) setCForm(null); }} />
+      )}
+    </div>
+  );
+}
+
+// ---- CardRunView -------------------------------------------------------------
+//
+// One event's run. Who is on the list is CARRIED FORWARD FROM HISTORY: a household is
+// on it if it has ever been sent this event. Send someone a Christmas card once and
+// they are on the list every year after, with no flag anywhere to keep in step — and
+// nothing to go stale when somebody edits the sheet by hand.
+//
+// A brand-new event therefore starts empty, which is why "+ Add someone" searches the
+// whole address book: that is how the first Christmas, or a one-off like wedding
+// thank-yous, gets started from nothing.
+function CardRunView({ event, households, forEvent, unsentOnly, setUnsentOnly,
+                       addingTo, setAddingTo, query, busy, thisYear, write }) {
+  const onList = households.filter(h => forEvent(h.id, event).length > 0);
+
+  const sentThisYear = h =>
+    forEvent(h.id, event).some(m => String(m.sent || '').slice(0, 4) === thisYear);
+
+  const q = String(query || '').trim().toLowerCase();
+  const matches = h => !q || (h.household + ' ' + h.city + ' ' + h.country).toLowerCase().indexOf(q) !== -1;
+
+  const shown = onList.filter(h => {
+    if (!matches(h)) return false;
+    if (unsentOnly === 'year')  return !sentThisYear(h);
+    if (unsentOnly === 'never') return false;   // everyone on the list has had one
+    return true;
+  });
+  const doneCount = onList.filter(sentThisYear).length;
+
+  // Households that have never had this event — the pool "+ Add someone" draws from.
+  const newcomers = households.filter(h => forEvent(h.id, event).length === 0 && matches(h));
+
+  const pill = (on) => ({
+    background:'none', border:'1px solid ' + (on ? '#3d5fa0' : '#2a3a50'),
+    color: on ? '#8ab4f8' : '#6b7fa8', borderRadius:20, padding:'3px 11px',
+    fontSize:11, cursor:'pointer',
+  });
+
+  function toggle(h) {
+    const already = forEvent(h.id, event).filter(m => String(m.sent || '').slice(0, 4) === thisYear);
+    if (already.length) write({ action:'delete_mailing', id: already[0].id });   // a mis-tick is undoable
+    else write({ action:'save_mailing', householdId:h.id, event: event });
+  }
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:12 }}>
+        <span style={{ fontSize:13, color:'#dde1f0', fontWeight:600 }}>✉️ {event}</span>
+        <span style={{ fontSize:12, color:'#6b7fa8' }}>
+          {doneCount} of {onList.length} sent in {thisYear}
+        </span>
+        <button onClick={() => setUnsentOnly('year')}  style={pill(unsentOnly === 'year')}>Not sent in {thisYear}</button>
+        <button onClick={() => setUnsentOnly('all')}   style={pill(unsentOnly === 'all')}>Everyone on the list</button>
+        <button onClick={() => setAddingTo(!addingTo)} style={pill(addingTo)}>+ Add someone</button>
+      </div>
+
+      {onList.length === 0 && !addingTo && (
+        <div className="empty-state" style={{ padding:32 }}>
+          <div style={{ fontSize:28, marginBottom:10 }}>✉️</div>
+          <div style={{ color:'#dde1f0' }}>Nobody has been sent a {event} yet.</div>
+          <div style={{ fontSize:13, color:'#6b7fa8', marginTop:6 }}>
+            Use <strong>+ Add someone</strong> to start the list — after that it carries forward on its own.
+          </div>
+        </div>
+      )}
+
+      {shown.map(h => {
+        const done = sentThisYear(h);
+        const hist = forEvent(h.id, event).slice()
+          .sort((a, b) => String(b.sent || '').localeCompare(String(a.sent || '')));
+        return (
+          <div key={h.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 10px',
+                                   background:'#101c33', border:'1px solid #1e3060',
+                                   borderRadius:8, marginBottom:5 }}>
+            <button onClick={() => toggle(h)} disabled={busy}
+              title={done ? 'Sent in ' + thisYear + ' — click to undo' : 'Mark sent today'}
+              style={{ width:18, height:18, borderRadius:4, flexShrink:0, cursor:'pointer',
+                       border:'2px solid ' + (done ? '#22c55e' : '#374151'),
+                       background: done ? '#166534' : 'transparent' }}>
+              {done ? <span style={{ color:'#86efac', fontSize:11, lineHeight:'14px' }}>✓</span> : null}
+            </button>
+            <span style={{ fontSize:13, color: done ? '#86efac' : '#dde1f0' }}>{h.household}</span>
+            <span style={{ fontSize:11, color:'#6b7fa8' }}>
+              {hist.length === 1 ? 'once' : hist.length + ' times'}
+              {hist.length ? ', last ' + hist[0].sent : ''}
+            </span>
+          </div>
+        );
+      })}
+
+      {unsentOnly === 'year' && onList.length > 0 && shown.length === 0 && (
+        <div style={{ color:'#86efac', fontSize:13, textAlign:'center', padding:'20px 0' }}>
+          All {onList.length} sent for {thisYear}. 🎉
+        </div>
+      )}
+
+      {addingTo && (
+        <div style={{ marginTop:14, paddingTop:12, borderTop:'1px solid #1a2a40' }}>
+          <div style={{ fontSize:11, color:'#6b7280', marginBottom:6 }}>
+            NEVER SENT A {event.toUpperCase()} — {newcomers.length}
+            {q ? '' : ' · use the search box above to narrow this'}
+          </div>
+          {newcomers.slice(0, 40).map(h => (
+            <div key={h.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'5px 10px' }}>
+              <button onClick={() => write({ action:'save_mailing', householdId:h.id, event: event })}
+                disabled={busy}
+                style={{ background:'none', border:'1px solid #2a5a3a', color:'#86efac',
+                         borderRadius:6, padding:'2px 9px', fontSize:11, cursor:'pointer' }}>
+                + Sent
+              </button>
+              <span style={{ fontSize:13, color:'#dde1f0' }}>{h.household}</span>
+              <span style={{ fontSize:11, color:'#4d6080' }}>{h.city}</span>
+            </div>
+          ))}
+          {newcomers.length > 40 && (
+            <div style={{ fontSize:11, color:'#4d6080', padding:'4px 10px' }}>
+              …and {newcomers.length - 40} more. Narrow with the search box.
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -8244,11 +8396,6 @@ function AddressBookHouseholdModal({ form, setForm, onSave, busy }) {
                    borderRadius:6, padding:'6px 9px', fontSize:13 }}>
           {AB_RELATIONSHIPS.map(r => <option key={r}>{r}</option>)}
         </select>
-      </label>
-      <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#a0a8c0',
-                      cursor:'pointer', marginBottom:9 }}>
-        <input type="checkbox" checked={!!form.sendCard} onChange={e => set('sendCard', e.target.checked)} />
-        🎄 On the card list
       </label>
       <AddressBookField label="Notes" value={form.notes} onChange={v => set('notes', v)} />
     </AddressBookModalShell>

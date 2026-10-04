@@ -15,6 +15,12 @@ FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); }
 DOCS.forEach(f => { BASE['docs/' + f] = fs.readFileSync(path.join(SRC_DIR, 'docs', f), 'utf8'); });
 BASE['README.md'] = fs.readFileSync(path.join(SRC_DIR, 'README.md'), 'utf8');
 
+const eachDoc = (b, fn) => {
+  const o = {};
+  DOCS.forEach(f => { o['docs/' + f] = fn(b['docs/' + f]); });
+  return o;
+};
+
 const CONTROLS = {
   // ---- configuration and health -------------------------------------------
   'an unconfigured book is recorded as an outage': b => ({
@@ -86,23 +92,6 @@ const CONTROLS = {
       "  if (b.sendCard)     fields['Send Card'] = addressBookYesNo_(b.sendCard);\n" +
       "  if (b.notes)        fields['Notes'] = String(b.notes).trim();"),
   }),
-  'an ordinary edit clobbers the card history': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      "  if (b.lastCardSent     !== undefined) fields['Last Card Sent']    = String(b.lastCardSent || '').trim();\n" +
-      "  if (b.addressConfirmed !== undefined) fields['Address Confirmed'] = String(b.addressConfirmed || '').trim();",
-      "  fields['Last Card Sent']    = String(b.lastCardSent || '').trim();\n" +
-      "  fields['Address Confirmed'] = String(b.addressConfirmed || '').trim();"),
-  }),
-  'Send Card is written as a boolean': b => ({
-    'AddressBook.js': b['AddressBook.js'].replace(
-      /function addressBookYesNo_\(v\) \{\n[\s\S]*?\n\}/,
-      'function addressBookYesNo_(v) { return v === true || String(v).toLowerCase() === \'yes\'; }'),
-  }),
-  'Send Card is read case-sensitively': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      "      sendCard:         String(r['Send Card'] || '').trim().toLowerCase() === 'yes',",
-      "      sendCard:         r['Send Card'] === 'YES',"),
-  }),
 
   // ---- insert vs update ----------------------------------------------------
   'save always inserts, never updates': b => ({
@@ -128,20 +117,6 @@ const CONTROLS = {
   }),
 
   // ---- deletion ------------------------------------------------------------
-  'deleting a household orphans its members': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      /  var removedMembers = 0;\n  if \(pSheet && pSheet\.getLastRow\(\) >= 2\) \{\n[\s\S]*?\n  \}\n/,
-      '  var removedMembers = 0;\n'),
-  }),
-  'the member sweep runs front to back (rows shift under it)': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      '    for (var i = vals.length - 1; i >= 0; i--) {',
-      '    for (var i = 0; i < vals.length; i++) {'),
-  }),
-  'the cascade deletes every member, not just this household\'s': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      "      if (String(vals[i][0] || '').trim() !== id) continue;\n", ''),
-  }),
   'deleting a contact deletes the whole household': b => ({
     'WebApp.js': b['WebApp.js'].replace(
       /function webDeleteContact_\(body\) \{\n([\s\S]*?)  var sheet  = ss\.getSheetByName\(ADDRESS_BOOK_PEOPLE_\);/,
@@ -149,19 +124,6 @@ const CONTROLS = {
   }),
 
   // ---- the card run --------------------------------------------------------
-  'marking a card sent is not idempotent': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      /  if \(col && String\(sheet\.getRange\(rowNum, col\)\.getValue\(\) \|\| ''\)\.trim\(\) === year\) \{\n    return \{ ok: true, id: id, year: year, alreadyMarked: true \};\n  \}\n/, ''),
-  }),
-  'the card log stores a full date instead of a year': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      "  var year = String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy')).trim();",
-      "  var year = String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd')).trim();"),
-  }),
-  'an explicit year is ignored': b => ({
-    'WebApp.js': b['WebApp.js'].replace("String(b.year || Utilities.formatDate(new Date(), tz, 'yyyy')).trim()",
-                                        "Utilities.formatDate(new Date(), tz, 'yyyy')"),
-  }),
   'confirming an address also rewrites the row': b => ({
     'WebApp.js': b['WebApp.js'].replace(
       "  writeAddressBookRow_(sheet, rowNum, { 'Address Confirmed': when });",
@@ -186,7 +148,7 @@ const CONTROLS = {
   }),
   'a write route is dropped': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      "      case 'mark_card_sent':             return jsonOut_(webMarkCardSent_(body));\n", ''),
+      "      case 'save_mailing':               return jsonOut_(webSaveMailing_(body));\n", ''),
   }),
   'ensureSheet is reimplemented instead of reused': b => ({
     'AddressBook.js': b['AddressBook.js']
@@ -195,6 +157,114 @@ const CONTROLS = {
       .replace('  ensureSheet(ss, ADDRESS_BOOK_PEOPLE_,     CONTACT_HEADERS);',
                '  if (!ss.getSheetByName(ADDRESS_BOOK_PEOPLE_)) ss.insertSheet(ADDRESS_BOOK_PEOPLE_);'),
   }),
+
+  // ---- the cascade, now through one shared helper -------------------------
+  'the cascade is removed entirely (orphans everywhere)': b => ({
+    'WebApp.js': b['WebApp.js']
+      .replace("  var removedMembers = deleteAddressBookRowsFor_(pSheet, 'Household ID', id);",
+               '  var removedMembers = 0;')
+      .replace("  var removedMailings = deleteAddressBookRowsFor_(mSheet, 'Household ID', id);",
+               '  var removedMailings = 0;'),
+  }),
+  'mailings are left behind when a household goes': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "  var removedMailings = deleteAddressBookRowsFor_(mSheet, 'Household ID', id);",
+      '  var removedMailings = 0;'),
+  }),
+  'the shared delete runs front to back (rows shift under it)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  for (var i = vals.length - 1; i >= 0; i--) {',
+      '  for (var i = 0; i < vals.length; i++) {'),
+  }),
+  'the shared delete ignores the column and removes everything': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "    if (String(vals[i][0] || '').trim() !== want) continue;\n", ''),
+  }),
+  // Anchored on the line ABOVE as well: "if (!want) return 0;" appears twice in the
+  // file, and a bare string replace hits findAddressBookRow_'s copy instead — a
+  // control that silently mutates a different function proves nothing.
+  'a blank value deletes every row': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "  var want = String(value || '').trim();\n  if (!want) return 0;\n",
+      "  var want = String(value || '').trim();\n"),
+  }),
+
+  // ---- mailings ------------------------------------------------------------
+  'the Mailings tab is never created': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      '  ensureSheet(ss, ADDRESS_BOOK_MAILINGS_,   MAILING_HEADERS);\n', ''),
+  }),
+  'the read drops mailings': b => ({
+    'WebApp.js': b['WebApp.js'].replace('           mailings: mailings, events: events };',
+                                        '           mailings: [], events: events };'),
+  }),
+  'the event vocabulary is dropped': b => ({
+    'WebApp.js': b['WebApp.js'].replace('           mailings: mailings, events: events };',
+                                        '           mailings: mailings, events: [] };'),
+  }),
+  'the event list is not deduplicated': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '    if (e && !seen[e.toLowerCase()]) seen[e.toLowerCase()] = e;',
+      '    if (e) seen[e + Math.random()] = e;'),
+  }),
+  'the event list is ordered oldest first': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    return String(b.sent || '').localeCompare(String(a.sent || ''));",
+      "    return String(a.sent || '').localeCompare(String(b.sent || ''));"),
+  }),
+  'logging the same mailing twice writes two rows': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  var dup = findMailing_\(sheet, householdId, event, sent\);\n  if \(dup\) return \{ ok: true, id: dup, action: 'unchanged', alreadyLogged: true \};\n/, ''),
+  }),
+  'the duplicate check is case-sensitive on the event': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (String(rows[i]['Event'] || '').trim().toLowerCase() !== want) continue;",
+      "    if (String(rows[i]['Event'] || '').trim() !== event) continue;"),
+  }),
+  'the duplicate check ignores the date (history collapses to one row)': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (String(rows[i]['Sent'] || '').trim() !== String(sent || '').trim()) continue;\n", ''),
+  }),
+  'a mailing can point at a household that does not exist': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  if \(!findAddressBookRow_\(hhSheet, householdId\)\) \{\n    throw new Error\('Household not found: ' \+ householdId\);\n  \}\n  var sheet = ss\.getSheetByName\(ADDRESS_BOOK_MAILINGS_\);/,
+      '  var sheet = ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);'),
+  }),
+  'save_mailing always inserts, never updates': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /  var id = String\(b\.id \|\| ''\)\.trim\(\);\n  if \(id\) \{\n    var rowNum = findAddressBookRow_\(sheet, id\);\n    if \(!rowNum\) throw new Error\('Mailing not found: ' \+ id\);\n    writeAddressBookRow_\(sheet, rowNum, fields\);\n    return \{ ok: true, id: id, action: 'updated' \};\n  \}\n/,
+      "  var id = '';\n"),
+  }),
+  'delete_mailing removes the household instead': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      /function webDeleteMailing_\(body\) \{\n([\s\S]*?)  var sheet  = ss\.getSheetByName\(ADDRESS_BOOK_MAILINGS_\);/,
+      'function webDeleteMailing_(body) {\n$1  var sheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);'),
+  }),
+
+  // ---- the retired columns -------------------------------------------------
+  'Send Card creeps back into the schema': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      "'Country', 'Relationship',\n                         'Address Confirmed', 'Notes'];",
+      "'Country', 'Relationship', 'Send Card',\n                         'Last Card Sent', 'Address Confirmed', 'Notes'];"),
+  }),
+  'an ordinary edit writes to the retired columns again': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    'Notes':            String(b.notes        || '').trim(),\n  };",
+      "    'Notes':            String(b.notes        || '').trim(),\n    'Send Card': '', 'Last Card Sent': '',\n  };"),
+  }),
+
+  // ---- the dashboards ------------------------------------------------------
+  'the card run no longer carries the list forward': b => eachDoc(b, s =>
+    s.replace(/forEvent\(h\.id, event\)\.length > 0/g, 'false')),
+  'the still-to-send toggle is gone': b => eachDoc(b, s =>
+    s.replace(/unsentOnly === 'year'/g, 'false')),
+  'a mis-tick can no longer be undone': b => eachDoc(b, s =>
+    s.replace(/action:\s*'delete_mailing'/g, "action:'save_mailing'")),
+  'the Add-someone path is removed (a new event is unreachable)': b => eachDoc(b, s =>
+    s.replace(/\+ Add someone/g, 'x')),
+  'a leftover reference to the removed card-list state': b => eachDoc(b, s =>
+    s.replace(/const shown = households\.filter\(h => \{/g,
+              'const shown = households.filter(h => {\n    if (cardsOnly && !h.sendCard) return false;')),
 
   // ---- the Config-tab fallback (the 50-property editor cap) ----------------
   'the Config tab fallback is removed (unsettable past 50 properties)': b => ({
