@@ -946,6 +946,76 @@ took it. A reserve turns "killed, silently" into "skipped, and said so".
 **Adding the second trigger needs `setupTriggers` re-run in the Apps Script editor.**
 It cannot be registered from outside.
 
+### `setupTriggers` is safe to re-run, and says what it did
+
+It used to hold **three** lists: a hand-written `||` chain of handler names to delete,
+a run of create blocks, and a hardcoded `Logger.log` summary. Adding `nightlyRunTail`
+touched exactly one of them.
+
+So the function whose own docstring promises it is *"safe to call multiple times"*
+deleted seven handlers, created eight, and **appended the tail on every call**. Two
+tails a night means two Explorer bulletins, two `suggestDueDates` Claude calls, two
+`checkCrossPatternFlags_` passes over the same flags, and two heartbeats racing one
+property — and Apps Script caps triggers per script, so the list only grew. Meanwhile
+the log named the seven it had always named, so it could not even tell you the eighth
+existed. That is the log line that prompted this.
+
+All three now derive from one `veraTriggerSpecs_()` list, so **a handler cannot be
+created without also being deletable, and cannot be created without appearing in the
+log.** The next trigger added gets all three for free, which is the actual fix.
+
+- A **function**, not a top-level `var`: the root `.js` files share one global scope
+  with no guaranteed load order, so a list initialised from `CONFIG.…` or
+  `Session.getScriptTimeZone()` at load time would be a cross-file ordering dependency.
+- Every delete runs **before** any create. Interleaving would let a create land ahead
+  of its own delete, rebuilding the duplicate from the other direction.
+- Re-running it **repairs** a project that already has duplicates: every handler it
+  owns is removed before any is recreated, so two of anything collapse back to one.
+- Triggers it does not own are untouched — `Slack.js` manages its own queue triggers
+  the same way, and got this right first.
+
+`tests/source/test_triggers.js` pins the **exact builder chain for all eight handlers**.
+That is not a description of the new code, it is an equivalence check against what was
+live before: this function points real schedules, and a dropped `.everyDays(1)` or an
+`.inTimezone()` added to an `everyMinutes` chain is a silent misfire. The two minute-
+interval pollers deliberately take no timezone.
+
+### "Never run" and "does not exist" used to look identical
+
+`getOverdueJobs_` skipped any job with no heartbeat. The reason was good — on a fresh
+deploy nothing has recorded, and alarming on all eight would teach you to ignore the
+alarm before it ever said anything true — but it had a consequence: **a job that has
+never run was indistinguishable from a job that does not exist.**
+
+`nightlyRunTail` sat in exactly that state after being added. No heartbeat, no start
+marker, so nothing said each morning whether its trigger had registered at all. Had it
+not, the watchdog would have stayed silent about it forever — which is the failure the
+two-half split exists to end, rebuilt inside the thing that was supposed to be
+watching.
+
+`setupTriggers` now records **when** it registered each handler
+(`recordTriggerRegistrations_`, one JSON property mirroring `SYSTEM_HEARTBEATS`). That
+is the missing evidence:
+
+| Heartbeat | Registered | Verdict |
+|---|---|---|
+| none | never | quiet — the fresh-deploy case, unchanged |
+| none | within its window | quiet — it was not due yet |
+| none | longer ago than its window, **no** start marker | **"has not run in the … since it was registered — the trigger may not exist"** |
+| none | longer ago than its window, start marker **present** | **"has started but never finished in the …"** + `died during <step>` |
+| stale | anything | unchanged — the registration never overrides a real heartbeat |
+
+The last two draw the same trigger-problem/code-problem distinction the stale branch
+already drew, now shared through one `jobStartedAndDied_` helper rather than copied.
+
+> The map is **replaced** on each `setupTriggers` run, not merged: a handler no longer
+> in the list is no longer registered, and carrying its timestamp forward would leave
+> the watchdog waiting on a trigger that is gone.
+
+**This needs `setupTriggers` run once to take effect** — that is what writes the
+registration timestamps. Until then the watchdog stays exactly as silent about
+never-run jobs as before, so nothing regresses in the meantime.
+
 ### Flags are written as they go, and read once, last
 
 The split raised a fair question: are the dependencies across the two triggers still
@@ -1020,8 +1090,9 @@ and they are not the same thing:
 | **"VERA Error — Nightly Run Failed"** email with a stack | Something threw outside a step's own guard. The `catch` emailed you, and the `finally` still recorded the heartbeat. |
 | Watchdog says **"started but did not finish — died during `X`"** | The execution was **terminated** — almost always the 6-minute Apps Script ceiling. `finally` never ran, so there is no heartbeat and no email. `X` is the step it was in; see the breadcrumb below. |
 | Watchdog says **"has not run in …"** with no start marker | The trigger never fired. Check **Triggers** in the editor; Apps Script auto-disables one after repeated failures. |
+| Watchdog says **"has not run in the … since it was registered — the trigger may not exist"** | It has *never* run. `setupTriggers` recorded registering it, and no execution has followed. See below. |
 
-The last two used to be indistinguishable, which cost an investigation. `nightlyRun`
+The middle two used to be indistinguishable, which cost an investigation. `nightlyRun`
 now writes `LAST_NIGHTLY_START` before any work and `LAST_NIGHTLY_RUN` beside the
 heartbeat, and the Watchdog compares them. (`LAST_NIGHTLY_RUN` had been *read* by
 `Slack.js` and written nowhere, so that status line always said `unknown`.)

@@ -680,85 +680,140 @@ function ensureSheet(ss, name, headers, defaultRows) {
 // ============================================================
 
 /**
- * Creates the nightly (11pm) and morning nudge (7am) triggers.
- * Safe to call multiple times — deletes existing VERA triggers first.
+ * Every time-based trigger VERA owns: its handler, its schedule, and how to say so.
+ *
+ * WHY ONE LIST. setupTriggers used to hold three: a hand-written `||` chain of handler
+ * names to delete, a run of eight create blocks, and a hardcoded Logger.log summary.
+ * Adding nightlyRunTail touched exactly one of them.
+ *
+ * The result was a function whose own docstring promises it is "safe to call multiple
+ * times" and was not: the delete guard listed seven handlers, the creates made eight,
+ * so every call deleted-and-recreated seven and APPENDED the tail. Twice run meant the
+ * night's second half running twice — two Explorer bulletins, two suggestDueDates
+ * Claude calls, two checkCrossPatternFlags_ passes over the same flags, two heartbeats
+ * racing one property — and Apps Script caps triggers per script, so the list only
+ * grew. Meanwhile the log named the seven it had always named and could not tell you
+ * whether the eighth existed.
+ *
+ * Derived from this, a handler cannot be created without also being deletable, and
+ * cannot be created without appearing in the log. The next trigger added here gets all
+ * three for free, which is the actual fix.
+ *
+ * A FUNCTION, NOT A TOP-LEVEL VAR. The root .js files share one global scope with no
+ * guaranteed load order, so an array initialised with CONFIG.… or
+ * Session.getScriptTimeZone() at load time would be a cross-file ordering dependency.
+ * Read at call time, both are simply there.
+ *
+ * `build` receives the TimeBased builder and returns it configured. The chains differ
+ * in ways that matter: the minute-based pollers take no .inTimezone() at all, and the
+ * HOA scan is weekly-plus-weekday-plus-hour. They are reproduced exactly, and
+ * tests/source/test_triggers.js pins each one.
+ *
+ * @returns {Array<{handler: string, when: string, build: Function}>}
+ */
+function veraTriggerSpecs_() {
+  var tz = Session.getScriptTimeZone();
+
+  return [
+    { handler: 'nightlyRun',
+      when: 'daily at ' + CONFIG.NIGHTLY_RUN_HOUR + ':00',
+      build: function(t) {
+        return t.atHour(CONFIG.NIGHTLY_RUN_HOUR).everyDays(1).inTimezone(tz);
+      } },
+
+    // The second half of the night, an hour later. The run outgrew Apps Script's
+    // six-minute limit, so it runs as two executions with a fresh budget each. An hour
+    // apart rather than back to back: the first half has to have finished, and a run
+    // that overruns its own budget should not have the next starting underneath it.
+    { handler: 'nightlyRunTail',
+      when: 'daily at ' + ((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24) + ':00',
+      build: function(t) {
+        return t.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24).everyDays(1).inTimezone(tz);
+      } },
+
+    { handler: 'morningNudge',
+      when: 'daily at ' + CONFIG.MORNING_NUDGE_HOUR + ':00',
+      build: function(t) {
+        return t.atHour(CONFIG.MORNING_NUDGE_HOUR).everyDays(1).inTimezone(tz);
+      } },
+
+    // Hourly Anticipator — evaluates reminder rules every hour
+    { handler: 'hourlyCheck',
+      when: 'every hour',
+      build: function(t) { return t.everyHours(1).inTimezone(tz); } },
+
+    // Flight status monitor — polls AviationStack for flights within 24h of departure.
+    // No .inTimezone(): a minute interval has no local time of day to be in.
+    { handler: 'checkFlightStatuses_',
+      when: 'every 15 min',
+      build: function(t) { return t.everyMinutes(15); } },
+
+    // Email inbox scanner — parses travel confirmation emails (Issue #98)
+    // ⚠ WARNING: email_parser_enabled=true can generate up to 144 Claude API calls/day.
+    // Only enable in Config when actively processing a travel email backlog.
+    { handler: 'runEmailScan_',
+      when: 'every 30 min',
+      build: function(t) { return t.everyMinutes(30); } },
+
+    // USPS Informed Delivery scanner — 10am catches the daily mail/package email (Issue #175)
+    { handler: 'scanUSPSMail_',
+      when: 'daily at 10:00',
+      build: function(t) { return t.atHour(10).everyDays(1).inTimezone(tz); } },
+
+    // HOA website scanner (Issue #179)
+    { handler: 'scanHoaWebsite_',
+      when: 'Mondays at 09:00',
+      build: function(t) {
+        return t.everyWeeks(1).onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(9).inTimezone(tz);
+      } },
+  ];
+}
+
+/**
+ * Installs every trigger in veraTriggerSpecs_, replacing any it already owns.
+ *
+ * Safe to call multiple times, and now actually is: the delete pass is derived from the
+ * same list as the creates, so no handler can be created without being cleaned up
+ * first. That also repairs a project that already has duplicates — every handler in the
+ * list is removed before any is recreated, so running this once collapses two of
+ * anything back to one.
+ *
+ * Must be run from the Apps Script editor; triggers cannot be registered from outside.
  */
 function setupTriggers() {
-  // Remove any existing triggers for these functions to avoid duplicates
-  const existingTriggers = ScriptApp.getProjectTriggers();
-  existingTriggers.forEach(function(trigger) {
-    const handlerName = trigger.getHandlerFunction();
-    if (handlerName === 'nightlyRun' || handlerName === 'morningNudge' || handlerName === 'hourlyCheck' || handlerName === 'checkFlightStatuses_' || handlerName === 'runEmailScan_' || handlerName === 'scanUSPSMail_' || handlerName === 'scanHoaWebsite_') {
+  var specs    = veraTriggerSpecs_();
+  var handlers = specs.map(function(s) { return s.handler; });
+
+  // DELETE EVERYTHING WE OWN FIRST, all of it, before creating any of it. Interleaving
+  // would mean a create landing before the matching delete, which is the duplicate
+  // this function exists to prevent. Same shape as Slack.js's queue triggers.
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (handlers.indexOf(trigger.getHandlerFunction()) !== -1) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
 
-  // Nightly run at 11pm
-  ScriptApp.newTrigger('nightlyRun')
-    .timeBased()
-    .atHour(CONFIG.NIGHTLY_RUN_HOUR)
-    .everyDays(1)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
+  var created = [];
+  specs.forEach(function(s) {
+    s.build(ScriptApp.newTrigger(s.handler).timeBased()).create();
+    created.push(s.handler + ' ' + s.when);
+  });
 
-  // …and its second half an hour later. The night outgrew Apps Script's six-minute
-  // limit, so it runs as two executions with a fresh budget each. An hour apart
-  // rather than back to back: the first half has to have finished, and a run that
-  // overruns its own budget should not have the next one starting underneath it.
-  ScriptApp.newTrigger('nightlyRunTail')
-    .timeBased()
-    .atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24)
-    .everyDays(1)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
+  // When each handler was registered, so the watchdog can tell a job that has never
+  // run from a job that does not exist. Until this existed, a trigger that silently
+  // failed to register produced no heartbeat, and getOverdueJobs_ skips a job with no
+  // heartbeat — so it would have gone unreported every morning, forever.
+  // Bookkeeping must never be able to stop a trigger being created, hence the catch.
+  try {
+    recordTriggerRegistrations_(handlers);
+  } catch (regErr) {
+    Logger.log('recordTriggerRegistrations_ (non-fatal): ' + regErr.message);
+  }
 
-  // Morning nudge at 7am
-  ScriptApp.newTrigger('morningNudge')
-    .timeBased()
-    .atHour(CONFIG.MORNING_NUDGE_HOUR)
-    .everyDays(1)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
-
-  // Hourly Anticipator — evaluates reminder rules every hour
-  ScriptApp.newTrigger('hourlyCheck')
-    .timeBased()
-    .everyHours(1)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
-
-  // Flight status monitor — polls AviationStack for flights within 24h of departure
-  ScriptApp.newTrigger('checkFlightStatuses_')
-    .timeBased()
-    .everyMinutes(15)
-    .create();
-
-  // Email inbox scanner — parses travel confirmation emails every 30 min (Issue #98)
-  // ⚠ WARNING: email_parser_enabled=true can generate up to 144 Claude API calls/day.
-  // Only enable in Config when actively processing a travel email backlog. Disable when done.
-  ScriptApp.newTrigger('runEmailScan_')
-    .timeBased()
-    .everyMinutes(30)
-    .create();
-
-  // USPS Informed Delivery scanner — runs at 10am to catch daily mail/package emails (Issue #175)
-  ScriptApp.newTrigger('scanUSPSMail_')
-    .timeBased()
-    .atHour(10)
-    .everyDays(1)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
-
-  // HOA website scanner — runs every Monday at 9am (Issue #179)
-  ScriptApp.newTrigger('scanHoaWebsite_')
-    .timeBased()
-    .everyWeeks(1)
-    .onWeekDay(ScriptApp.WeekDay.MONDAY)
-    .atHour(9)
-    .inTimezone(Session.getScriptTimeZone())
-    .create();
-
-  Logger.log('Triggers set: nightlyRun at 11pm, morningNudge at 7am, hourlyCheck every hour, checkFlightStatuses_ every 15min, runEmailScan_ every 30min, scanUSPSMail_ at 10am, scanHoaWebsite_ every Monday 9am.');
+  // Built from what was actually created rather than typed out beside it. The old
+  // literal named seven handlers while the function created eight, and the one it
+  // omitted was the one that needed confirming.
+  Logger.log('Triggers set (' + created.length + '): ' + created.join(', ') + '.');
 }
 
 // ============================================================

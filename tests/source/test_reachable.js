@@ -36,8 +36,16 @@ const ALL = files.map(f => src[f]).join('\n');
 // as unreachable is how a sweep like this produces false alarms.
 const CODE = src['Code.js'];
 const ENTRIES = ['nightlyRun', 'morningNudge', 'hourlyCheck'];
+//
+// Two forms, because setupTriggers stopped naming handlers at the call site: it loops
+// over veraTriggerSpecs_ and calls ScriptApp.newTrigger(s.handler), so one list drives
+// the creates, the delete guard and the log instead of three drifting copies. Reading
+// only the literal form left every scheduled handler looking unreachable — this sweep
+// would have reported eight false alarms on a refactor that broke nothing.
 const triggerNames = (ALL.match(/ScriptApp\.newTrigger\('([A-Za-z0-9_]+)'\)/g) || [])
-  .map(m => m.replace(/.*'([A-Za-z0-9_]+)'.*/, '$1'));
+  .map(m => m.replace(/.*'([A-Za-z0-9_]+)'.*/, '$1'))
+  .concat((extract(CODE, 'veraTriggerSpecs_').match(/handler:\s*'([A-Za-z0-9_]+)'/g) || [])
+    .map(m => m.replace(/.*'([A-Za-z0-9_]+)'.*/, '$1')));
 
 // An entry point is not necessarily in Code.js — hourlyCheck lives in
 // Reminders.js, beside the rules it dispatches.

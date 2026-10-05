@@ -34,6 +34,11 @@
 
 var HEARTBEAT_KEY_ = 'SYSTEM_HEARTBEATS';
 
+// When setupTriggers last registered each handler. ONE property holding a map, the
+// same shape as the heartbeats above, rather than eight properties — a trigger list
+// that grows should not grow the property count with it.
+var TRIGGER_REGISTRY_KEY_ = 'TRIGGER_REGISTRATIONS';
+
 // Per-execution read cache, mirroring ApiHealth's _apiHealthCache_.
 var _heartbeatCache_ = null;
 
@@ -92,6 +97,27 @@ function setHeartbeatState_(state) {
   PropertiesService.getScriptProperties().setProperty(HEARTBEAT_KEY_, JSON.stringify(state));
 }
 
+/**
+ * When each trigger handler was last registered by setupTriggers, as { job: ms }.
+ *
+ * Deliberately NOT cached per execution like the heartbeats: it is read once, by the
+ * watchdog, and a cache would only add a way for it to be stale.
+ *
+ * @returns {Object} handler name → epoch ms. {} when nothing has been registered.
+ */
+function getTriggerRegistrations_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(TRIGGER_REGISTRY_KEY_) || '{}';
+    var map = JSON.parse(raw);
+    return (map && typeof map === 'object') ? map : {};
+  } catch (e) {
+    // Unparseable means "we do not know when these were registered", which has to read
+    // as "not registered" — the alternative is treating corrupt state as evidence.
+    Logger.log('getTriggerRegistrations_ failed, treating as empty: ' + e.message);
+    return {};
+  }
+}
+
 // ---- Recording --------------------------------------------------------------
 
 /**
@@ -113,6 +139,34 @@ function recordHeartbeat_(job) {
   } catch (e) {
     Logger.log('recordHeartbeat_ failed silently for "' + job + '": ' + e.message);
   }
+}
+
+/**
+ * Records that setupTriggers registered these handlers, now.
+ *
+ * WHY THIS EXISTS. getOverdueJobs_ skips any job with no heartbeat, for a good reason
+ * — on a fresh deploy nothing has recorded, and alarming on all eight would teach you
+ * to ignore the alarm before it ever said anything true. But it left a job that has
+ * NEVER run indistinguishable from a job that does not exist, so a trigger that
+ * silently failed to register would go unreported every morning, forever. That is the
+ * failure the two-half nightly split exists to end, rebuilt inside the watching.
+ *
+ * A registration timestamp is the missing evidence: past its own window with no
+ * heartbeat, a registered job is overdue, while an unregistered one stays quiet.
+ *
+ * The whole map is REPLACED, not merged. setupTriggers deletes and recreates every
+ * handler it owns, so a handler no longer in the list is no longer registered, and
+ * carrying its old timestamp forward would have the watchdog waiting on a trigger that
+ * is gone.
+ *
+ * @param {Array<string>} handlers  Handler names just registered
+ */
+function recordTriggerRegistrations_(handlers) {
+  var now = Date.now();
+  var map = {};
+  (handlers || []).forEach(function(h) { map[h] = now; });
+  PropertiesService.getScriptProperties()
+    .setProperty(TRIGGER_REGISTRY_KEY_, JSON.stringify(map));
 }
 
 /**
@@ -146,61 +200,116 @@ function recordFeedResult_(feed, count) {
 // ---- Reads ------------------------------------------------------------------
 
 /**
- * Jobs that have not run inside their expected window, oldest first.
+ * Did this job FIRE and die, rather than never fire at all?
  *
- * A job with no record at all is NOT overdue: on a fresh deploy nothing has
- * recorded yet, and alarming on all seven would teach you to ignore the alarm
- * before it ever said anything true.
+ * Those need different answers from you — one is a trigger problem, the other is the
+ * code — and saying "has not run" for both sent an hour of one investigation down the
+ * wrong path. A start marker later than the last heartbeat (or any start marker, when
+ * there has never been a heartbeat) means the trigger IS firing and the run is being
+ * killed partway.
  *
- * @returns {Array<Object>} { job, label, lastRun, ageMs, ageText, maxAgeHours }
+ * Extracted because the never-ran case needs the identical reasoning: a job registered
+ * a week ago with a start marker and no heartbeat has been dying on its first run every
+ * time, which is worth saying in those words.
+ *
+ * @param {Object} r            HEARTBEAT_REGISTRY entry — startProp/stepProp
+ * @param {number} lastRunMs    last heartbeat, or 0 when there has never been one
+ * @returns {?{diedAt: string}} null when it did not start, or we cannot tell
+ */
+function jobStartedAndDied_(r, lastRunMs) {
+  if (!r.startProp) return null;
+  try {
+    var props      = PropertiesService.getScriptProperties();
+    var startedRaw = props.getProperty(r.startProp);
+    var startedAt  = startedRaw ? new Date(startedRaw).getTime() : 0;
+    if (!startedAt || isNaN(startedAt)) return null;
+    if (startedAt <= lastRunMs) return null;
+
+    // WHERE it stopped, if the run left a breadcrumb. Telling you the run died was
+    // already better than "has not run", but it still left the actual question open,
+    // and a killed run takes its own log with it — this property is the only thing
+    // that survives. Written as '<step>|<seconds elapsed>' by nightlyStep_ (Code.js).
+    var diedAt = '';
+    if (r.stepProp) {
+      var crumb = props.getProperty(r.stepProp);
+      if (crumb) {
+        var bits = String(crumb).split('|');
+        var secs = parseInt(bits[1], 10);
+        diedAt = bits[0] + (isFinite(secs) ? ' (' + formatAge_(secs * 1000) + ' in)' : '');
+      }
+    }
+    return { diedAt: diedAt };
+  } catch (spErr) {
+    return null;        // fall back to the plain wording
+  }
+}
+
+/**
+ * Jobs that have not run inside their expected window, worst first.
+ *
+ * A job with no heartbeat AND no registration is NOT overdue: on a fresh deploy
+ * nothing has recorded yet, and alarming on all eight would teach you to ignore the
+ * alarm before it ever said anything true.
+ *
+ * But "no heartbeat" alone used to be enough to skip a job, and that left a job which
+ * has NEVER run indistinguishable from one that does not exist. nightlyRunTail sat in
+ * exactly that state: no heartbeat, no start marker, and so nothing said each morning
+ * whether its trigger had registered at all. A registration timestamp
+ * (recordTriggerRegistrations_, written by setupTriggers) is the missing evidence —
+ * past its own window with no heartbeat, a REGISTERED job is overdue.
+ *
+ * @returns {Array<Object>} { job, label, verb, diedAt, lastRun, ageMs, ageText, … }
  */
 function getOverdueJobs_() {
-  var state = getHeartbeatState_();
-  var now   = Date.now();
-  var out   = [];
+  var state         = getHeartbeatState_();
+  var registrations = getTriggerRegistrations_();
+  var now           = Date.now();
+  var out           = [];
 
   HEARTBEAT_REGISTRY.forEach(function(r) {
-    var entry = state[r.job];
-    if (!entry || !entry.lastRun) return;          // never recorded — see above
+    var entry    = state[r.job];
     var windowMs = r.maxAgeHours * 3600000;
-    var ageMs    = now - entry.lastRun;
-    if (ageMs <= windowMs) return;
-    // A job whose heartbeat is stale has either never fired or fired and died.
-    // Those need different answers from you — one is a trigger problem, the other
-    // is the code — and saying "has not run" for both sent an hour of this
-    // investigation down the wrong path. A start marker newer than the last
-    // heartbeat means the trigger IS firing and the run is being killed partway.
-    var verb    = r.verb || 'has not run in';
-    var diedAt  = '';
-    if (r.startProp) {
-      try {
-        var startedRaw = PropertiesService.getScriptProperties().getProperty(r.startProp);
-        var startedAt  = startedRaw ? new Date(startedRaw).getTime() : 0;
-        if (startedAt && startedAt > entry.lastRun) {
-          verb = 'started but did not finish; last completed run was';
-          // …and WHERE it stopped, if the run left a breadcrumb. Telling you the
-          // run died was already better than "has not run", but it still left the
-          // actual question open, and a killed run takes its own log with it —
-          // this property is the only thing that survives. Written as
-          // '<step>|<seconds elapsed>' by nightlyStep_ (Code.js).
-          if (r.stepProp) {
-            var crumb = PropertiesService.getScriptProperties().getProperty(r.stepProp);
-            if (crumb) {
-              var bits = String(crumb).split('|');
-              var secs = parseInt(bits[1], 10);
-              diedAt = bits[0] + (isFinite(secs) ? ' (' + formatAge_(secs * 1000) + ' in)' : '');
-            }
-          }
-        }
-      } catch (spErr) { /* fall back to the plain wording */ }
+    var lastRun  = (entry && entry.lastRun) ? entry.lastRun : 0;
+
+    // verb goes BEFORE the age and suffix after it, so every wording reads as one
+    // sentence once the consumer joins them: "<label> <verb> <ageText> <suffix>".
+    var verb, suffix = '', ageMs, died;
+
+    if (!lastRun) {
+      // NEVER RECORDED. Only a registration makes this reportable — without one we
+      // genuinely do not know the job was ever meant to run, and that is the
+      // fresh-deploy case this stays quiet for.
+      var registeredAt = registrations[r.job];
+      if (!registeredAt) return;
+      ageMs = now - registeredAt;
+      if (ageMs <= windowMs) return;          // registered, but not due yet
+
+      died = jobStartedAndDied_(r, 0);
+      if (died) {
+        verb   = 'has started but never finished in the';
+        suffix = 'since it was registered';
+      } else {
+        verb   = 'has not run in the';
+        // The actionable half: no heartbeat and no start marker since registration
+        // means the trigger itself is the suspect, not the code inside it.
+        suffix = 'since it was registered — the trigger may not exist';
+      }
+    } else {
+      ageMs = now - lastRun;
+      if (ageMs <= windowMs) return;
+      died = jobStartedAndDied_(r, lastRun);
+      verb = died ? 'started but did not finish; last completed run was'
+                  : (r.verb || 'has not run in');
     }
 
     out.push({
       job:         r.job,
       label:       r.label,
       verb:        verb,
-      diedAt:      diedAt,
-      lastRun:     entry.lastRun,
+      suffix:      suffix,
+      diedAt:      died ? died.diedAt : '',
+      lastRun:     lastRun,
+      neverRan:    !lastRun,
       ageMs:       ageMs,
       ageText:     formatAge_(ageMs),
       maxAgeHours: r.maxAgeHours,
@@ -275,6 +384,7 @@ function getWatchdogNotices_() {
 
   jobs.forEach(function(j) {
     lines.push(j.label + ' ' + j.verb + ' ' + j.ageText +
+               (j.suffix ? ' ' + j.suffix : '') +
                (j.diedAt ? ' \u2014 died during ' + j.diedAt : '') +
                ' (expected every ' + describeHours_(j.maxAgeHours) + ')');
   });
@@ -385,10 +495,16 @@ function syncWatchdogFlags_(notices) {
   notices.jobs.forEach(function(j) {
     wanted[WATCHDOG_FLAG_PREFIX_ + j.job.toLowerCase().replace(/[^a-z0-9]/g, '')] = {
       flag:    j.label + ' ' + j.verb + ' ' + j.ageText +
+               (j.suffix ? ' ' + j.suffix : '') +
                (j.diedAt ? ' \u2014 died during ' + j.diedAt : ''),
-      reason:  'Expected every ' + describeHours_(j.maxAgeHours) +
-               '. Last run ' + Utilities.formatDate(new Date(j.lastRun), tz, 'MMM d, h:mm a') +
-               '. Check the Apps Script trigger — Google disables triggers after repeated failures.',
+      reason:  'Expected every ' + describeHours_(j.maxAgeHours) + '. ' +
+               // lastRun is 0 for a job that has NEVER run, and formatting that gives
+               // "Dec 31, 7:00 PM" — 1969, stated as fact. The flag has to say it has
+               // never run, which is also the more useful thing to read.
+               (j.neverRan
+                 ? 'It has never run since being registered.'
+                 : 'Last run ' + Utilities.formatDate(new Date(j.lastRun), tz, 'MMM d, h:mm a') + '.') +
+               ' Check the Apps Script trigger — Google disables triggers after repeated failures.',
       urgency: 'High',
     };
   });

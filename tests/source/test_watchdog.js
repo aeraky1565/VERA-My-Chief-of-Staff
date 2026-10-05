@@ -44,8 +44,15 @@ const DAY  = 86400000;
 
 // ---- Shared stubs -----------------------------------------------------------
 
-function makeCtx(heartbeatState) {
+function makeCtx(heartbeatState, registrations) {
   const props = { SYSTEM_HEARTBEATS: JSON.stringify(heartbeatState || {}) };
+  // Written by setupTriggers. Absent means "nothing has ever been registered", which
+  // is the fresh-deploy state the watchdog must stay quiet about.
+  if (registrations !== undefined) {
+    props.TRIGGER_REGISTRATIONS = typeof registrations === 'string'
+      ? registrations                                  // for the corrupt-JSON case
+      : JSON.stringify(registrations);
+  }
   const ctx = {
     console,
     Logger: { log: () => {} },
@@ -63,13 +70,16 @@ function makeCtx(heartbeatState) {
 }
 
 const WATCHDOG_READS = [
-  'HEARTBEAT_KEY_', '_heartbeatCache_', 'HEARTBEAT_REGISTRY', 'FEED_REGISTRY',
-  'getHeartbeatState_', 'setHeartbeatState_', 'recordHeartbeat_', 'recordFeedResult_',
+  'HEARTBEAT_KEY_', 'TRIGGER_REGISTRY_KEY_', '_heartbeatCache_',
+  'HEARTBEAT_REGISTRY', 'FEED_REGISTRY',
+  'getHeartbeatState_', 'setHeartbeatState_', 'getTriggerRegistrations_',
+  'recordHeartbeat_', 'recordTriggerRegistrations_', 'recordFeedResult_',
+  'jobStartedAndDied_',
   'getOverdueJobs_', 'getSilentFeeds_', 'getWatchdogNotices_', 'describeHours_',
 ];
 
-function loadWatchdog(state) {
-  const ctx = makeCtx(state);
+function loadWatchdog(state, registrations) {
+  const ctx = makeCtx(state, registrations);
   // formatAge_ lives in ApiHealth.js and is reused rather than reimplemented.
   vm.runInContext(extract('ApiHealth.js', ['formatAge_']), ctx);
   vm.runInContext(extract('Watchdog.js', WATCHDOG_READS), ctx);
@@ -109,6 +119,157 @@ console.log('\ngetOverdueJobs_');
   check('sorted worst-first', overdue.length === 2 && overdue[0].job === 'checkFlightStatuses_',
         JSON.stringify(jobs));
   check('carries a human age', /h|d/.test(overdue[0].ageText), overdue[0].ageText);
+}
+
+// ---- A job that has NEVER run ----------------------------------------------
+//
+// "No heartbeat" used to be enough to skip a job entirely. The rationale was right —
+// a fresh deploy has recorded nothing and alarming on all eight would teach you to
+// ignore the alarm — but it left a job that has never run indistinguishable from a
+// job that does not exist.
+//
+// nightlyRunTail sat in exactly that state after being added: no heartbeat, no start
+// marker, and so nothing said each morning whether its trigger had registered at all.
+// If it never had, the watchdog would have stayed silent about it forever — which is
+// the failure the two-half split exists to end, rebuilt inside the watching.
+//
+// A registration timestamp, written by setupTriggers, is the missing evidence.
+console.log('\nA job that has never run');
+{
+  const now = Date.now();
+
+  // 1. No heartbeat, NOTHING registered — the fresh deploy. Still silent.
+  const fresh = vm.runInContext('getOverdueJobs_()', loadWatchdog({}));
+  check('a fresh deploy with nothing registered alarms about nothing',
+        fresh.length === 0, JSON.stringify(fresh.map(j => j.job)) +
+        ' — alarming on all eight teaches you to ignore the alarm');
+
+  // 2. Registered, but not yet past its own window. Not due, so not overdue.
+  const young = vm.runInContext('getOverdueJobs_()', loadWatchdog({}, {
+    nightlyRunTail: now - 2 * HOUR,          // 26h window
+  }));
+  check('a job registered two hours ago is not yet overdue at a 26h window',
+        !young.map(j => j.job).includes('nightlyRunTail'),
+        'registering a trigger must not alarm before the job was ever due');
+
+  // 3. Registered well past its window, never ran, no start marker. THE CASE.
+  const ctx3 = loadWatchdog({}, { nightlyRunTail: now - 30 * HOUR });
+  const dead = vm.runInContext('getOverdueJobs_()', ctx3);
+  const tail = dead.filter(j => j.job === 'nightlyRunTail')[0];
+  check('a job registered 30h ago that has never run IS overdue',
+        !!tail, JSON.stringify(dead.map(j => j.job)) +
+        ' — this is the state nothing could report before');
+  check('…and is marked as never having run',
+        tail && tail.neverRan === true && tail.lastRun === 0,
+        JSON.stringify(tail));
+  check('…and the age is measured from registration, not from epoch zero',
+        tail && tail.ageMs > 29 * HOUR && tail.ageMs < 31 * HOUR,
+        tail && String(tail.ageMs) +
+        ' — lastRun is 0, so a naive now-lastRun would read as 56 years');
+  check('…and it says the trigger itself is the suspect',
+        tail && /the trigger may not exist/.test(tail.suffix),
+        tail && JSON.stringify(tail.suffix) +
+        ' — no heartbeat AND no start marker is a registration problem, not a code one');
+  check('…and does not claim to know where it died',
+        tail && tail.diedAt === '', tail && JSON.stringify(tail.diedAt));
+
+  // The whole line, as the morning banner renders it.
+  const notices = vm.runInContext('getWatchdogNotices_()', ctx3);
+  const line = (notices.lines || []).filter(l => /part 2/.test(l))[0] || '';
+  check('the rendered line reads as one sentence',
+        /Nightly run \(part 2\) has not run in the .+ since it was registered — the trigger may not exist/
+          .test(line), JSON.stringify(line) +
+        ' — verb before the age and suffix after it, or the age lands mid-clause');
+
+  // 4. Registered, never completed, but a START MARKER exists: it fires and dies.
+  //    Same distinction the stale branch already draws, applied to the never-ran case.
+  const ctx4 = loadWatchdog({}, { nightlyRunTail: now - 30 * HOUR });
+  ctx4._props.LAST_NIGHTLY_TAIL_START = new Date(now - 2 * HOUR).toISOString();
+  ctx4._props.NIGHTLY_TAIL_STEP = 'checkHealthAppointments_|300';
+  const died = vm.runInContext('getOverdueJobs_()', ctx4)
+    .filter(j => j.job === 'nightlyRunTail')[0];
+  check('a never-completed job WITH a start marker is worded as dying, not missing',
+        died && /never finished/.test(died.verb) &&
+        !/may not exist/.test(died.suffix || ''),
+        died && JSON.stringify({ verb: died.verb, suffix: died.suffix }) +
+        ' — "the trigger may not exist" is wrong when the trigger demonstrably fired');
+  check('…and names the step it died in, from the breadcrumb',
+        died && /checkHealthAppointments_/.test(died.diedAt) && /5m/.test(died.diedAt),
+        died && JSON.stringify(died.diedAt));
+
+  // 5. A non-trigger registry entry is never "registered", so it cannot be reported
+  //    this way. delivery:morning_briefing tracks a delivery, not an execution.
+  const delivery = vm.runInContext('getOverdueJobs_()', loadWatchdog({}, {
+    nightlyRun: now - 30 * HOUR,
+  })).map(j => j.job);
+  check('a delivery marker is not reported as an unregistered trigger',
+        !delivery.includes('delivery:morning_briefing'),
+        JSON.stringify(delivery) + ' — it has no trigger to register');
+
+  // 6. The Flags row. lastRun is 0 for a job that has never run, and the reason
+  //    string formats it as a date — so this said "Last run Dec 31, 7:00 PM", 1969,
+  //    stated as fact, on the one flag whose whole point is that it has never run.
+  //    Asserted on the source because syncWatchdogFlags_ writes to a sheet and has no
+  //    harness here; that is a weaker check than the rest of this file and worth
+  //    knowing, but it does pin the branch.
+  const wdSrc = fs.readFileSync(path.join(ROOT, 'Watchdog.js'), 'utf8');
+  check('the flag reason does not format lastRun for a job that never ran',
+        /j\.neverRan[\s\S]{0,120}never run since being registered/.test(wdSrc) &&
+        /j\.neverRan\s*\?[\s\S]{0,200}Utilities\.formatDate\(new Date\(j\.lastRun\)/.test(wdSrc),
+        'new Date(0) formats as Dec 31 1969 and the flag would assert it as the last run');
+
+  // 7. Corrupt registration state must not be read as evidence of a good deploy —
+  //    nor crash the morning email on its way past.
+  let threw = '';
+  let corrupt = [];
+  try {
+    corrupt = vm.runInContext('getOverdueJobs_()', loadWatchdog({}, '{not json'));
+  } catch (e) { threw = e.message; }
+  check('unparseable registration state neither throws nor alarms',
+        threw === '' && corrupt.length === 0, threw || JSON.stringify(corrupt));
+}
+
+console.log('\nA registered job still reports normally once it has run');
+{
+  const now = Date.now();
+  // Registration must not override a real heartbeat: a job that ran recently is fine
+  // however long ago it was registered, and one that is stale reports the old way.
+  const ctx = loadWatchdog(
+    // Heartbeats are { job: { lastRun } }; the registrations below are bare numbers.
+    { nightlyRun: { lastRun: now - 27 * HOUR }, nightlyRunTail: { lastRun: now - 1 * HOUR } },
+    { nightlyRun: now - 90 * DAY, nightlyRunTail: now - 90 * DAY });
+  const jobs = vm.runInContext('getOverdueJobs_()', ctx);
+  const byJob = {};
+  jobs.forEach(j => { byJob[j.job] = j; });
+
+  check('a job that ran an hour ago is not overdue, however old its registration',
+        !byJob.nightlyRunTail, JSON.stringify(Object.keys(byJob)));
+  check('a stale job is still reported, with the original wording',
+        byJob.nightlyRun && /has not run in/.test(byJob.nightlyRun.verb) &&
+        !byJob.nightlyRun.suffix && byJob.nightlyRun.neverRan === false,
+        JSON.stringify(byJob.nightlyRun));
+  check('…and its age comes from the heartbeat, not the registration',
+        byJob.nightlyRun && byJob.nightlyRun.ageMs < 28 * HOUR,
+        byJob.nightlyRun && String(byJob.nightlyRun.ageMs) +
+        ' — 90 days would be the registration, which is not what went wrong');
+}
+
+console.log('\nrecordTriggerRegistrations_');
+{
+  const ctx = loadWatchdog({}, { staleHandler: 1 });
+  vm.runInContext("recordTriggerRegistrations_(['a', 'b'])", ctx);
+  const stored = JSON.parse(ctx._props.TRIGGER_REGISTRATIONS);
+
+  check('it records every handler it is given',
+        stored.a > 0 && stored.b > 0, JSON.stringify(stored));
+  check('…and REPLACES the map rather than merging into it',
+        !('staleHandler' in stored), JSON.stringify(stored) +
+        ' — setupTriggers recreates everything it owns, so a handler no longer in the ' +
+        'list is no longer registered, and a carried-over timestamp would have the ' +
+        'watchdog waiting on a trigger that is gone');
+  check('…in one property, not one per handler',
+        Object.keys(ctx._props).filter(k => /^TRIGGER_REG/.test(k)).length === 1,
+        JSON.stringify(Object.keys(ctx._props)));
 }
 
 // ---- getSilentFeeds_ --------------------------------------------------------

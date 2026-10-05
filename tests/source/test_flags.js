@@ -83,7 +83,12 @@ function check(name, cond, detail) {
 const NOTICE = (function () {
   const ctx = { console, Logger: { log: () => {} },
     PropertiesService: { getScriptProperties: () => ({
-      getProperty: () => JSON.stringify({ nightlyRun: { lastRun: Date.now() - 51 * 3600000 } }),
+      // Answers only the key it is asked for. Returning the heartbeat JSON for every
+      // key fed it back as the trigger-registration map too, which is the sort of
+      // agreeable stub that makes a fixture stop resembling the real service.
+      getProperty: k => k === 'SYSTEM_HEARTBEATS'
+        ? JSON.stringify({ nightlyRun: { lastRun: Date.now() - 51 * 3600000 } })
+        : null,
       setProperty: () => {}, deleteProperty: () => {} }) } };
   vm.createContext(ctx);
   vm.runInContext(extractFn('ApiHealth.js', 'formatAge_'), ctx);
@@ -92,6 +97,8 @@ const NOTICE = (function () {
       .match(/var HEARTBEAT_KEY_[\s\S]*?^\];/m)[0], ctx);
   vm.runInContext("var _heartbeatCache_ = null;", ctx);
   vm.runInContext(extractFn('Watchdog.js', 'getHeartbeatState_'), ctx);
+  vm.runInContext(extractFn('Watchdog.js', 'getTriggerRegistrations_'), ctx);
+  vm.runInContext(extractFn('Watchdog.js', 'jobStartedAndDied_'), ctx);
   vm.runInContext(extractFn('Watchdog.js', 'getOverdueJobs_'), ctx);
   const jobs = vm.runInContext('getOverdueJobs_()', ctx);
   if (!jobs.length) throw new Error('fixture setup produced no overdue jobs');

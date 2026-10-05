@@ -10,18 +10,87 @@ const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
 const CONTROLS = {
+  // These two went VACUOUS when the start-marker logic moved into
+  // jobStartedAndDied_ — they matched text that no longer existed, so the mutation
+  // silently did not apply and the control proved nothing. Re-aimed at the extracted
+  // helper, which is now the one place the behaviour lives.
   'a killed run is reported as "has not run" again': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(
-      "          verb = 'started but did not finish; last completed run was';",
-      "          verb = r.verb || 'has not run in';"),
+      "      verb = died ? 'started but did not finish; last completed run was'\n" +
+      "                  : (r.verb || 'has not run in');",
+      "      verb = r.verb || 'has not run in';"),
   }),
   'the start marker is dropped from the registry': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(", startProp: 'LAST_NIGHTLY_START', stepProp: 'NIGHTLY_STEP' }", " }"),
   }),
   'an unparseable start marker is trusted': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(
-      "        if (startedAt && startedAt > entry.lastRun) {",
-      "        if (startedRaw) {"),
+      "    if (!startedAt || isNaN(startedAt)) return null;",
+      "    if (!startedRaw) return null;"),
+  }),
+  'a start marker OLDER than the last run is read as a death': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      "    if (startedAt <= lastRunMs) return null;", ''),
+  }),
+
+  // ---- a job that has never run -------------------------------------------
+  'a job with no heartbeat is skipped outright again (the blind spot)': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      /    if \(!lastRun\) \{\n[\s\S]*?\n    \} else \{\n/,
+      '    if (!lastRun) return;\n    {\n'),
+  }),
+  'an UNregistered job with no heartbeat alarms too (the fresh deploy)': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      '      if (!registeredAt) return;',
+      '      if (!registeredAt) registeredAt = 0;'),
+  }),
+  'a job alarms the moment it is registered, before it was ever due': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      '      if (ageMs <= windowMs) return;          // registered, but not due yet', ''),
+  }),
+  'the never-ran age is measured from the epoch instead of registration': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      '      ageMs = now - registeredAt;',
+      '      ageMs = now - lastRun;'),
+  }),
+  'a never-run job blames the code instead of the trigger': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      "        suffix = 'since it was registered — the trigger may not exist';",
+      "        suffix = 'since it was registered';"),
+  }),
+  'a job that fires and dies on every first run is reported as missing': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      "      died = jobStartedAndDied_(r, 0);\n      if (died) {",
+      "      died = null;\n      if (died) {"),
+  }),
+  'the suffix is dropped from the rendered line': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      "               (j.suffix ? ' ' + j.suffix : '') +\n" +
+      "               (j.diedAt ? ' \\u2014 died during ' + j.diedAt : '') +\n" +
+      "               ' (expected every '",
+      "               (j.diedAt ? ' \\u2014 died during ' + j.diedAt : '') +\n" +
+      "               ' (expected every '"),
+  }),
+  'registrations are merged rather than replaced (a dead handler lingers)': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      '  var map = {};\n  (handlers || []).forEach(function(h) { map[h] = now; });',
+      '  var map = getTriggerRegistrations_();\n  (handlers || []).forEach(function(h) { map[h] = now; });'),
+  }),
+  'corrupt registration state is allowed to throw': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      /  try \{\n    var raw = PropertiesService\.getScriptProperties\(\)\.getProperty\(TRIGGER_REGISTRY_KEY_\)[\s\S]*?\n  \}\n\}/,
+      '  var raw = PropertiesService.getScriptProperties().getProperty(TRIGGER_REGISTRY_KEY_) || \'{}\';\n' +
+      '  return JSON.parse(raw);\n}'),
+  }),
+  'the flag reason formats lastRun=0 as a 1969 date again': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      /               \(j\.neverRan\n[\s\S]*?Utilities\.formatDate\(new Date\(j\.lastRun\), tz, 'MMM d, h:mm a'\) \+ '\.'\) \+/,
+      "               'Last run ' + Utilities.formatDate(new Date(j.lastRun), tz, 'MMM d, h:mm a') + '.' +"),
+  }),
+  'a real heartbeat is overridden by the registration age': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      '    var lastRun  = (entry && entry.lastRun) ? entry.lastRun : 0;',
+      '    var lastRun  = 0;'),
   }),
   'nightlyRun stops writing the start marker': b => ({
     'Code.js': b['Code.js'].replace(/\n    try \{\n      PropertiesService\.getScriptProperties\(\)\n        \.setProperty\('LAST_NIGHTLY_START'[\s\S]*?\n    \} catch \(startErr\) \{[^\n]*\}/, ''),

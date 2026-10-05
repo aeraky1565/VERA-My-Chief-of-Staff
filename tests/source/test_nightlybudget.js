@@ -337,13 +337,22 @@ console.log('\nnightlyRun wires it up');
 console.log('\nThe watchdog says WHERE it died');
 {
   const fn = extractFn(SRC.Watch, 'getOverdueJobs_');
+  // The start-marker reasoning now lives in one helper, shared by the stale branch and
+  // the never-ran one. These two assertions used to read getOverdueJobs_'s inline copy
+  // and went stale with it — re-aimed rather than relaxed.
+  const died_ = extractFn(SRC.Watch, 'jobStartedAndDied_');
   check('the nightly job registers the breadcrumb property',
         /stepProp: 'NIGHTLY_STEP'/.test(SRC.Watch));
-  check('the step is only read when the run actually died',
-        fn.indexOf("started but did not finish") < fn.indexOf('r.stepProp'),
+  check('the step is only read once the start marker has beaten the heartbeat',
+        died_.indexOf('startedAt <= lastRunMs') < died_.indexOf('r.stepProp') &&
+        died_.indexOf('r.stepProp') !== -1,
         'a breadcrumb means nothing unless the start marker beat the heartbeat');
   check('the marker is split on the pipe nightlyStep_ writes',
-        /split\('\|'\)/.test(fn), 'the two must agree on the format');
+        /split\('\|'\)/.test(died_), 'the two must agree on the format');
+  check('…and there is only ONE copy of that reasoning',
+        !/started but did not finish/.test(died_) &&
+        (SRC.Watch.match(/split\('\|'\)/g) || []).length === 1,
+        'two copies and the never-ran branch drifts from the stale one');
   check('both renderers name it',
         (SRC.Watch.match(/died during/g) || []).length === 2,
         'the email lines and the flag are two surfaces and both were guessing');
@@ -362,7 +371,13 @@ console.log('\nThe watchdog says WHERE it died');
       _now: now,
     };
     vm.createContext(ctx);
-    vm.runInContext('Date.now = function() { return ' + now + '; };\n' + fn, ctx);
+    // The real helper and the real registration read, not stubs: jobStartedAndDied_ IS
+    // the subject here, and getTriggerRegistrations_ reading no property returns {},
+    // which is the "nothing registered" state these cases all assume.
+    vm.runInContext('Date.now = function() { return ' + now + '; };\n' +
+                    /^var TRIGGER_REGISTRY_KEY_\s*=.*?;/m.exec(SRC.Watch)[0] + '\n' +
+                    extractFn(SRC.Watch, 'getTriggerRegistrations_') + '\n' +
+                    extractFn(SRC.Watch, 'jobStartedAndDied_') + '\n' + fn, ctx);
     return ctx.getOverdueJobs_();
   }
 
@@ -529,8 +544,12 @@ console.log('\nThe tail reports its own death');
         /job: 'nightlyRunTail'[\s\S]*?startProp: 'LAST_NIGHTLY_TAIL_START'[\s\S]*?stepProp: 'NIGHTLY_TAIL_STEP'/
           .test(SRC.Watch),
         'a half nothing watches is a half that can die every night unseen');
+  // setupTriggers no longer names handlers at the newTrigger call — they come from
+  // veraTriggerSpecs_, so that one list drives the creates, the delete guard and the
+  // log. test_triggers.js pins the full chain; this just says the tail is in the list.
   check('…and a trigger fires it',
-        /newTrigger\('nightlyRunTail'\)/.test(SRC.Code));
+        /handler: 'nightlyRunTail'/.test(SRC.Code) &&
+        /ScriptApp\.newTrigger\(s\.handler\)/.test(SRC.Code));
   check('…an hour after the first half, not alongside it',
         /atHour\(\(CONFIG\.NIGHTLY_RUN_HOUR \+ 1\) % 24\)/.test(SRC.Code),
         'back to back and the second starts underneath an overrunning first');

@@ -119,14 +119,13 @@ const CONTROLS = {
   'the watchdog stops reading the breadcrumb': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(", stepProp: 'NIGHTLY_STEP' }", " }"),
   }),
-  'the breadcrumb is read even when the run did NOT die': b => {
-    const s = b['Watchdog.js'];
-    return { 'Watchdog.js': s.replace(
-      "          if (r.stepProp) {",
-      "          }\n          if (r.stepProp) {").replace(
-      "              diedAt = bits[0] + (isFinite(secs) ? ' (' + formatAge_(secs * 1000) + ' in)' : '');\n            }\n          }\n        }",
-      "              diedAt = bits[0] + (isFinite(secs) ? ' (' + formatAge_(secs * 1000) + ' in)' : '');\n            }\n          }") };
-  },
+  // Went vacuous when the start-marker reasoning moved into jobStartedAndDied_ — it
+  // matched indentation that no longer exists, so the mutation silently did not apply.
+  // Re-aimed at the guard itself, which is now the one place it lives.
+  'the breadcrumb is read even when the run did NOT die': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(
+      '    if (startedAt <= lastRunMs) return null;', ''),
+  }),
   'the step is not shown in the rendered lines': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(
       /\n *\(j\.diedAt \? ' \\u2014 died during ' \+ j\.diedAt : ''\) \+/, ''),
@@ -170,8 +169,11 @@ const CONTROLS = {
   'the watchdog does not know about the tail': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(/  \{ job: 'nightlyRunTail'[^\n]*\n/, ''),
   }),
+  // Also went vacuous: setupTriggers no longer names handlers at the newTrigger call.
+  // The tail is a spec in veraTriggerSpecs_ now, so that is what has to be removed.
   'no trigger fires the tail': b => ({
-    'Code.js': b['Code.js'].replace(/  ScriptApp\.newTrigger\('nightlyRunTail'\)[\s\S]*?\.create\(\);\n/, ''),
+    'Code.js': b['Code.js'].replace(
+      /    \{ handler: 'nightlyRunTail',[\s\S]*?\n      \} \},\n/, ''),
   }),
   'the tail runs at the same hour as the head': b => ({
     'Code.js': b['Code.js'].replace('.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24)',
