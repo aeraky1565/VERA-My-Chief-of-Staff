@@ -9,6 +9,13 @@ on:
       - '!playwright.config.js'
   workflow_dispatch:
 
+# Shares a group with regression.yml so the two never hold the live /exec at once —
+# see the comment there for what it cost. Queue, never cancel: a deploy interrupted
+# part way through re-pointing a deployment is the one outcome worse than a slow one.
+concurrency:
+  group: vera-live-exec
+  cancel-in-progress: false
+
 jobs:
   # Nothing but `node --check` used to stand between a push and the live Apps Script
   # project, so a commit that broke the period keys or the perk cleanup deployed to

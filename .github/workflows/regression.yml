@@ -5,6 +5,27 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# THE SUITE AND THE DEPLOY WERE RACING FOR THE SAME /exec URL.
+#
+# Both fire on a push to main. deploy.yml re-points the live Apps Script deployment
+# while this suite is calling it, and during that window /exec does not answer: a run
+# failed with four TimeoutErrors — status, get_config_rows, address_book and the home
+# tab — not one of them an assertion, and took 4.4 minutes instead of forty seconds.
+#
+# A shared concurrency group serialises them, so whichever starts second waits instead
+# of testing an endpoint that is being replaced underneath it. cancel-in-progress is
+# false deliberately: the point is to QUEUE, and cancelling the deploy half way
+# through re-pointing a deployment is worse than anything it would save.
+#
+# This fixes the COLLISION, not the ordering: whichever workflow starts first wins,
+# so a run that beats the deploy tests the previous deployment. That is a weaker
+# guarantee than it looks and worth knowing before trusting a green run to mean "the
+# code in this commit is live" — but a suite that reads slightly stale code beats one
+# that times out against an endpoint being swapped underneath it.
+concurrency:
+  group: vera-live-exec
+  cancel-in-progress: false
+
 jobs:
   regression:
     runs-on: ubuntu-latest
