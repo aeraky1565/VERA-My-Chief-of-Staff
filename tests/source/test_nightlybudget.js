@@ -47,16 +47,33 @@ function extractFn(src, name) {
 
 // A clock the test drives. The subject is behaviour at 5m30s, and a test that waits
 // five and a half minutes to find out is a test nobody runs.
+//
+// A real wall-clock epoch rather than a small number, so that "four hours before the
+// run" is still a valid date. With now = 1000000 it was four hours before 1970 and
+// every age assertion would have been testing an Invalid Date instead.
+const CLOCK0 = Date.parse('2026-10-06T00:00:00Z');
+
 function runnerCtx() {
-  let now = 1000000;
+  let now = CLOCK0;
   const props = {};
+  // Date.now() is driven by the test; `new Date(iso)` has to keep working, because
+  // nightlyHeadCompletedTonight_ parses a stored timestamp with it. A constructor
+  // function that RETURNS an object hands that object back from `new`, so one stub
+  // serves both callers.
+  const RealDate = Date;
+  const FakeDate = function(v) {
+    return arguments.length ? new RealDate(v) : new RealDate(now);
+  };
+  FakeDate.now = () => now;
   const ctx = {
-    String, Number, Object, Array, Math, JSON, Error, console,
+    String, Number, Object, Array, Math, JSON, Error, console, isNaN,
     Logger: { log: () => {} },
-    Date: { now: () => now },
+    Date: FakeDate,
     _advance: ms => { now += ms; },
     _nowIs: () => now,
     _props: props,
+    // "the head finished this long ago", as the property actually stores it.
+    _isoAgo: ms => new RealDate(now - ms).toISOString(),
     PropertiesService: { getScriptProperties: () => ({
       getProperty: k => (k in props ? props[k] : null),
       setProperty: (k, v) => { props[k] = String(v); },
@@ -66,16 +83,18 @@ function runnerCtx() {
   vm.createContext(ctx);
   vm.runInContext(extractFn(SRC.Code, 'nightlyStep_') + '\n' +
                   extractFn(SRC.Code, 'slowestNightlySteps_') + '\n' +
+                  extractFn(SRC.Code, 'nightlyHeadCompletedTonight_') + '\n' +
                   /^var NIGHTLY_STEP_PROP_\s*=.*?;/m.exec(SRC.Code)[0] + '\n' +
                   /^var NIGHTLY_TAIL_STEP_PROP_\s*=.*?;/m.exec(SRC.Code)[0] + '\n' +
-                  /^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m.exec(SRC.Code)[0], ctx);
+                  /^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m.exec(SRC.Code)[0] + '\n' +
+                  /^var NIGHTLY_HEAD_MAX_AGE_MS_\s*=.*?;/m.exec(SRC.Code)[0], ctx);
   return ctx;
 }
 
-const START = 1000000;
+const START = CLOCK0;
 const freshCtx = c => ({
   runStart: START, deadline: START + 330000,   // 5m30s, as the run uses
-  failures: [], skipped: [], timings: [],
+  failures: [], skipped: [], blocked: [], timings: [],
 });
 
 // ============================================================================
@@ -521,6 +540,278 @@ console.log('\nThe tail reports its own death');
         /today\.getDate\(\) === 1 \? writePTOSnapshot_\(\) : null/.test(body),
         'checkMonthlyReview_ returns immediately on the other 30 days, and the ' +
         'snapshot is one of the heaviest steps in the night');
+}
+
+// ============================================================================
+// FLAGS ARE READ AFTER THEY ARE WRITTEN
+//
+// The question the split raised: are the dependencies across the two triggers in the
+// right order — should flag-setting come last so nothing slips under the radar?
+//
+// There is no deferred flag write to get wrong. ~15 modules call writeFlags as each
+// step determines something, so a flag exists the moment it is found. What matters is
+// which step READS them, and there is exactly one that reads TONIGHT'S:
+// checkCrossPatternFlags_, whose buildCrossDomainSnapshot_ counts unresolved High
+// flags into the intensity signal. It is last in the night, which is why the order
+// holds — and that is worth asserting rather than describing, because the next person
+// to re-split or reorder has no way to know it.
+//
+// The age-based readers (escalateAgedFlags_ at >=7 days, recordExpiredFlags_,
+// closeExpiredPerkFlags_) are order-insensitive by construction: tonight's flags are
+// zero days old, so running them first is correct.
+//
+// This asserts only on WRITES. Classifying READS the same way produced a false
+// positive — writeWeeklySnapshot_ looked like a flag reader and has zero flag
+// references — whereas a write is a literal writeFlags( call and reliable to find.
+console.log('\nFlags are read after they are written');
+{
+  const ALL = fs.readdirSync(ROOT)
+    .filter(f => f.endsWith('.js') && f !== 'playwright.config.js')
+    .map(f => fs.readFileSync(path.join(ROOT, f), 'utf8'))
+    .join('\n');
+
+  const stepsIn = body =>
+    (body.match(/nightlyStep_\(ctx,\s*'([^']+)'/g) || [])
+      .map(m => /'([^']+)'/.exec(m)[1]);
+  const order = stepsIn(extractFn(SRC.Code, 'nightlyRun'))
+          .concat(stepsIn(extractFn(SRC.Code, 'nightlyRunTail')));
+
+  // A step is either a named function or an inline closure at the call site. BOTH are
+  // read: classifying only named functions would quietly treat every closure as a
+  // non-writer, which is the way this test would go blind without failing.
+  const closureAt = name => {
+    const re = new RegExp("nightlyStep_\\(ctx,\\s*'" + name + "',\\s*function\\s*\\(");
+    const m = re.exec(SRC.Code);
+    if (!m) return null;
+    let depth = 0;
+    for (let j = SRC.Code.indexOf('{', m.index); j < SRC.Code.length; j++) {
+      if (SRC.Code[j] === '{') depth++;
+      else if (SRC.Code[j] === '}') { depth--; if (depth === 0) return SRC.Code.slice(m.index, j + 1); }
+    }
+    return null;
+  };
+  const named = name => { try { return extractFn(ALL, name); } catch (e) { return null; } };
+  const bodiesFor = name => [named(name), closureAt(name)].filter(Boolean);
+
+  // One level deep, which is how a step that writes through a module helper is caught:
+  // writePTOSnapshot_ writes via checkAccrualCapRisk_ and adoptLegacyTripKeys_ via
+  // resolveTripId_, and neither names writeFlags itself.
+  const writesFlags = name => {
+    const bodies = bodiesFor(name);
+    if (bodies.some(b => /\bwriteFlags\(/.test(b))) return true;
+    const callees = new Set();
+    bodies.forEach(b => (b.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g) || [])
+      .forEach(c => callees.add(c.replace(/\s*\($/, ''))));
+    callees.delete(name);
+    for (const c of callees) {
+      const cb = named(c);
+      if (cb && /\bwriteFlags\(/.test(cb)) return true;
+    }
+    return false;
+  };
+
+  const unresolved = order.filter(s => bodiesFor(s).length === 0);
+  check('every nightly step resolves to a body the classifier can read',
+        unresolved.length === 0, JSON.stringify(unresolved) +
+        ' — a step with no body reads as "writes no flags", which is how this test ' +
+        'would stop testing anything without ever failing');
+
+  const writers = order.filter(writesFlags);
+  check('the night writes flags from many steps, not one',
+        writers.length >= 10, JSON.stringify(writers) +
+        ' — if this collapses the classifier has broken, not the code');
+
+  const CROSS = 'checkCrossPatternFlags_';
+  const crossAt = order.indexOf(CROSS);
+  check('the one step that reads tonight\'s flags is in the run at all',
+        crossAt !== -1, JSON.stringify(order.slice(-5)));
+
+  const after = writers.filter(w => order.indexOf(w) > crossAt);
+  check('checkCrossPatternFlags_ runs after EVERY step that writes flags',
+        after.length === 0, JSON.stringify(after) +
+        ' — a writer after it is a flag the intensity signal cannot see, on the night ' +
+        'it was raised');
+  check('…and it is itself the last flag-touching step in the night',
+        writers[writers.length - 1] === CROSS, JSON.stringify(writers.slice(-3)));
+
+  // The Claude batch — the biggest single write of the night — is a bare call in the
+  // head rather than a nightlyStep_, so the step list above does not contain it.
+  check('the Claude batch write is in the FIRST half',
+        /writtenCount = writeFlags\(flags\);/.test(extractFn(SRC.Code, 'nightlyRun')) &&
+        !/writeFlags\(/.test(extractFn(SRC.Code, 'nightlyRunTail')),
+        'it is not a nightlyStep_, so only its half can be asserted — and the half it ' +
+        'is in is the one that has to come first');
+
+  // "escalateAgedFlags_ first" is only correct BECAUSE of the age cutoff, so assert
+  // the cutoff and not merely the position.
+  check('escalateAgedFlags_ is first', order[0] === 'escalateAgedFlags_', order[0]);
+  const esc = named('escalateAgedFlags_');
+  // A cutoff of at least a day, not merely the presence of the words: `ageDays >= 0`
+  // would read every flag written tonight, which is precisely what running first
+  // makes unsafe.
+  check('…and only touches flags at least a day old, which is why first is safe',
+        esc !== null && /ageDays\s*>=\s*[1-9]/.test(esc) && !/ageDays\s*>=\s*0\b/.test(esc),
+        'without a real cutoff it would read tonight\'s flags before most of them exist');
+}
+
+// ============================================================================
+// A HALF-RUN NIGHT IS NOT PATTERN-MATCHED
+//
+// What the split changed: a head that dies no longer stops the tail. The pattern
+// engine would then count unresolved High flags on a night where most writers never
+// ran, read a loaded week as a quiet one, and say so with no sign anything was
+// missing. Skipped and said so beats confidently wrong.
+console.log('\nThe tail asks whether the first half finished');
+{
+  const c = runnerCtx();
+
+  check('no recorded finish at all — not ok',
+        c.nightlyHeadCompletedTonight_().ok === false,
+        'a project that has never run a head is not a project with a complete one');
+
+  // Finished twenty minutes ago, nothing left behind: the normal night.
+  c._props['LAST_NIGHTLY_RUN'] = c._isoAgo(20 * 60 * 1000);
+  const good = c.nightlyHeadCompletedTonight_();
+  check('recent finish, no breadcrumb — ok', good.ok === true && good.reason === '',
+        JSON.stringify(good));
+
+  // A head that THREW reaches its finally and writes LAST_NIGHTLY_RUN anyway. The
+  // breadcrumb is the only thing that separates it from a clean finish.
+  c._props[c.NIGHTLY_STEP_PROP_] = 'checkContracts_|210';
+  const died = c.nightlyHeadCompletedTonight_();
+  check('a breadcrumb left behind — not ok, even with a fresh timestamp',
+        died.ok === false, JSON.stringify(died) +
+        ' — the timestamp is written in the finally, which a thrown run still reaches');
+  check('…and the reason names the step it stopped at',
+        /checkContracts_/.test(died.reason) && !/\|/.test(died.reason),
+        JSON.stringify(died.reason) + ' — the elapsed suffix is for the watchdog, not this');
+  delete c._props[c.NIGHTLY_STEP_PROP_];
+
+  // A hard kill at six minutes never reaches the finally, so the timestamp is
+  // yesterday's and the tail must not read it as tonight's.
+  c._props['LAST_NIGHTLY_RUN'] = c._isoAgo(25 * 60 * 60 * 1000);
+  const stale = c.nightlyHeadCompletedTonight_();
+  check('yesterday\'s finish — not ok', stale.ok === false, JSON.stringify(stale));
+  check('…and the reason says how old it is',
+        /not tonight/.test(stale.reason) && /\d/.test(stale.reason),
+        JSON.stringify(stale.reason));
+
+  // The real gap between the two triggers: .atHour() places each anywhere in its
+  // hour, so head-at-23:00 and tail-at-00:59 is nearly two hours apart and legitimate.
+  c._props['LAST_NIGHTLY_RUN'] = c._isoAgo(115 * 60 * 1000);
+  check('the widest legitimate gap between the two triggers still counts as tonight',
+        c.nightlyHeadCompletedTonight_().ok === true,
+        'atHour() is a window, not a time — a two-hour gap is a normal night, and ' +
+        'refusing it would withhold the step on nights nothing was wrong with');
+  check('…but the window is nowhere near a full day',
+        c.NIGHTLY_HEAD_MAX_AGE_MS_ < 12 * 3600 * 1000 &&
+        c.NIGHTLY_HEAD_MAX_AGE_MS_ > 2 * 3600 * 1000,
+        String(c.NIGHTLY_HEAD_MAX_AGE_MS_) + ' — too wide and yesterday reads as tonight');
+
+  c._props['LAST_NIGHTLY_RUN'] = 'not a date';
+  check('an unreadable timestamp is not treated as a good night',
+        c.nightlyHeadCompletedTonight_().ok === false,
+        'NaN compares false against every threshold, so a bare age check would have ' +
+        'passed this');
+}
+
+console.log('\nA withheld step is not a slow step');
+{
+  const c = runnerCtx();
+  const ctx = freshCtx(c);
+  let ran = 0;
+
+  const out = c.nightlyStep_(ctx, 'checkCrossPatternFlags_', () => { ran++; },
+                             { ok: false, reason: 'the first half stopped during checkContracts_' });
+  check('a step whose precondition failed does not run', ran === 0 && out === false);
+  check('…and is recorded as blocked, not as skipped for time',
+        ctx.blocked.length === 1 && ctx.skipped.length === 0,
+        JSON.stringify({ blocked: ctx.blocked, skipped: ctx.skipped }) +
+        ' — one bucket and a data-dependency failure gets read as a slow night');
+  check('…carrying the reason, not just the name',
+        /checkCrossPatternFlags_/.test(ctx.blocked[0]) &&
+        /checkContracts_/.test(ctx.blocked[0]),
+        JSON.stringify(ctx.blocked) + ' — "skipped" with no reason is a shrug');
+  check('…and is not counted as a failure either',
+        ctx.failures.length === 0, JSON.stringify(ctx.failures));
+  check('…and gets no timing, because nothing was timed',
+        ctx.timings.length === 0, JSON.stringify(ctx.timings));
+
+  // Plenty of budget left: proof the gate, not the clock, is what stopped it.
+  check('the clock was not the reason',
+        c._nowIs() + c.NIGHTLY_STEP_RESERVE_MS_ < ctx.deadline);
+
+  const ok = c.nightlyStep_(ctx, 'checkCrossPatternFlags_', () => { ran++; }, { ok: true, reason: '' });
+  check('a satisfied precondition lets the step run',
+        ok === true && ran === 1 && ctx.blocked.length === 1);
+
+  const ungated = c.nightlyStep_(ctx, 'runExplorer_', () => { ran++; });
+  check('a step with no gate at all is unaffected',
+        ungated === true && ran === 2 && ctx.blocked.length === 1,
+        'all ~44 steps but one pass no gate, and must behave exactly as before');
+
+  // The head's ctx has no `blocked` array. A gate there must not throw.
+  const headCtx = { runStart: START, deadline: START + 330000,
+                    failures: [], skipped: [], timings: [] };
+  let threw = '';
+  try { c.nightlyStep_(headCtx, 'x_', () => {}, { ok: false, reason: 'r' }); }
+  catch (e) { threw = e.message; }
+  check('a gate on a ctx without a blocked array does not throw',
+        threw === '' && headCtx.blocked && headCtx.blocked.length === 1,
+        threw || JSON.stringify(headCtx.blocked));
+
+  // A gate is checked BEFORE the clock: both can be true at once, and "its input was
+  // incomplete" is the more useful of the two answers.
+  const c2 = runnerCtx(), ctx2 = freshCtx(c2);
+  c2._advance(330000 - 30000);
+  c2.nightlyStep_(ctx2, 'checkCrossPatternFlags_', () => {}, { ok: false, reason: 'incomplete' });
+  check('when both the gate and the clock would stop a step, the gate is reported',
+        ctx2.blocked.length === 1 && ctx2.skipped.length === 0,
+        JSON.stringify({ blocked: ctx2.blocked, skipped: ctx2.skipped }));
+}
+
+console.log('\nOnly the pattern engine is gated, and the skip is reported');
+{
+  const body = extractFn(SRC.Code, 'nightlyRunTail');
+
+  check('the head-completion check is made once, before the steps',
+        /var headDone = nightlyHeadCompletedTonight_\(\);/.test(body) &&
+        body.indexOf('nightlyHeadCompletedTonight_()') <
+          body.indexOf("nightlyStep_(ctx, 'checkHealthAppointments_'"),
+        'asked per step, the head\'s state could change mid-tail and two steps ' +
+        'disagree about the same night');
+  check('the pattern engine is gated on it',
+        /nightlyStep_\(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone\)/
+          .test(body));
+
+  // Narrow by design: the other tail steps read their own sheets.
+  const gated = (body.match(/nightlyStep_\(ctx,\s*'([^']+)',[^;]*?,\s*headDone\)/g) || [])
+    .map(m => /'([^']+)'/.exec(m)[1]);
+  check('and nothing else is',
+        gated.length === 1 && gated[0] === 'checkCrossPatternFlags_',
+        JSON.stringify(gated) + ' — withholding steps that read their own sheets ' +
+        'would cost work and buy no correctness');
+
+  check('the tail collects blocked steps separately from skipped ones',
+        /blocked:\s*stepBlocked/.test(body) && /var stepBlocked\s*=\s*\[\]/.test(body),
+        JSON.stringify(body.match(/stepBlocked[^;\n]*/g)));
+  check('…and the Slack summary counts them separately',
+        /stepBlocked\.length \+ ' skipped \(incomplete input\)'/.test(body) &&
+        /stepSkipped\.length \+ ' skipped \(time budget\)'/.test(body),
+        'one count for both and "the night ran long" and "the night was incomplete" ' +
+        'become the same sentence');
+  check('…and names them, with reasons, on their own line',
+        /Tail skipped — incomplete input/.test(body) &&
+        /stepBlocked\.map\(/.test(body),
+        'a count with no names cannot be acted on');
+  check('a withheld step makes the night Partial, not Success',
+        /\(stepFailures\.length \|\| stepBlocked\.length\) \? 'Partial' : 'Success'/.test(body),
+        'logged as Success and the withholding is invisible in the System Log, which ' +
+        'is the one place you would go looking for it');
+
+  check('the head does NOT gate anything on its own completion',
+        !/headDone/.test(extractFn(SRC.Code, 'nightlyRun')),
+        'it cannot know whether it finished while it is still running');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

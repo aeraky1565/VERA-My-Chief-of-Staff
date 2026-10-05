@@ -774,6 +774,72 @@ var NIGHTLY_TAIL_STEP_PROP_ = 'NIGHTLY_TAIL_STEP';
 // rather than being cut off by Apps Script mid-flight.
 var NIGHTLY_STEP_RESERVE_MS_ = 45 * 1000;
 
+// How recently the first half must have finished for the second half to treat its
+// output as tonight's. The tail's trigger is an hour after the head's, but .atHour()
+// places each anywhere inside its hour, so the real gap ranges from a few minutes to
+// nearly two hours. Four hours is comfortably past the worst case and still far short
+// of yesterday's run.
+var NIGHTLY_HEAD_MAX_AGE_MS_ = 4 * 60 * 60 * 1000;
+
+/**
+ * Did the first half of tonight's run actually FINISH?
+ *
+ * WHY THE SECOND HALF HAS TO ASK. Flags are written as they are determined, by ~15
+ * modules spread across the night — there is no deferred write at the end. So the
+ * order that matters is not where flags are written but where they are READ, and
+ * checkCrossPatternFlags_ is the one step that reads TONIGHT'S flags:
+ * buildCrossDomainSnapshot_ counts unresolved High flags into the intensity signal
+ * that decides whether the week is loaded. It is last in the night, which is correct.
+ *
+ * The split is what made this a question. Before, a head that died meant the tail
+ * never ran either; now the tail has its own trigger and runs an hour later
+ * regardless. On a night where the head died at 5m, most of the flag writers never
+ * ran, the High count is near zero, and the pattern engine concludes a busy week is a
+ * quiet one — confidently, with no sign anything was missing. A wrong answer that
+ * looks like a right one is worse than no answer, so the step is skipped and said so.
+ *
+ * TWO PROPERTIES, BECAUSE ONE CANNOT TELL THE DIFFERENCE. LAST_NIGHTLY_RUN is written
+ * in the head's finally, so a hard kill at six minutes skips it — but a head that
+ * THREW reaches the finally and writes it anyway. The NIGHTLY_STEP breadcrumb is
+ * deleted only on the head's success path, so its presence means "stopped somewhere".
+ * Recent timestamp AND no breadcrumb is the only combination that means finished —
+ * the same pair the watchdog already uses to tell "died" from "never fired".
+ *
+ * Non-fatal step failures do NOT count as incomplete. A step that threw named itself
+ * in the head's warnings and the loss is already visible; refusing to pattern-match
+ * any imperfect night would mean refusing almost every night.
+ *
+ * @returns {{ok: boolean, reason: string}} ok:false carries the reason to report
+ */
+function nightlyHeadCompletedTonight_() {
+  var props;
+  try {
+    props = PropertiesService.getScriptProperties();
+  } catch (propErr) {
+    // Unreadable properties are not evidence of a good night. Fail closed.
+    return { ok: false, reason: 'could not read script properties: ' + propErr.message };
+  }
+
+  var last = props.getProperty('LAST_NIGHTLY_RUN');
+  if (!last) return { ok: false, reason: 'the first half has never recorded a finish' };
+
+  var at = new Date(last).getTime();
+  if (isNaN(at)) return { ok: false, reason: 'LAST_NIGHTLY_RUN is unreadable (' + last + ')' };
+
+  var ageMs = Date.now() - at;
+  if (ageMs > NIGHTLY_HEAD_MAX_AGE_MS_) {
+    return { ok: false, reason: 'the first half last finished ' +
+             (ageMs / 3600000).toFixed(1) + 'h ago, not tonight' };
+  }
+
+  var crumb = props.getProperty(NIGHTLY_STEP_PROP_);
+  if (crumb) {
+    return { ok: false, reason: 'the first half stopped during ' + String(crumb).split('|')[0] };
+  }
+
+  return { ok: true, reason: '' };
+}
+
 /**
  * Runs one nightly step inside the run's time budget, and leaves a trace that
  * survives the run being KILLED.
@@ -810,12 +876,27 @@ var NIGHTLY_STEP_RESERVE_MS_ = 45 * 1000;
  * the accumulation case is handled by skipping, and the single-slow-step case is
  * named in the next morning's email.
  *
- * @param {Object}   ctx   { deadline, failures, skipped, timings, runStart }
+ * @param {Object}   ctx   { deadline, failures, skipped, blocked, timings, runStart }
  * @param {string}   name  step name, as it should appear in the email
  * @param {Function} fn    the work
+ * @param {Object=}  gate  optional precondition, { ok, reason }. !ok means the step's
+ *                         INPUT is not there, which is a different thing from no time
+ *                         left to compute it, and is recorded separately — see
+ *                         nightlyHeadCompletedTonight_ for the case that needs it.
  * @returns {boolean} true if the step ran (whether or not it threw)
  */
-function nightlyStep_(ctx, name, fn) {
+function nightlyStep_(ctx, name, fn, gate) {
+  // A MISSING PRECONDITION IS NOT A BUDGET PROBLEM. Checked before the clock because
+  // it is the more specific answer: "skipped, its input was incomplete" and "skipped,
+  // the night ran out of time" need different responses from you, and reporting them
+  // in one bucket is how a data-dependency failure gets read as a slow night.
+  if (gate && !gate.ok) {
+    if (!ctx.blocked) ctx.blocked = [];
+    ctx.blocked.push(name + ' — ' + (gate.reason || 'precondition not met'));
+    Logger.log(name + ': skipped — ' + (gate.reason || 'precondition not met'));
+    return false;
+  }
+
   // ENOUGH LEFT TO FINISH, not merely enough left to start. The guard used to ask
   // only whether the deadline had passed, so a step beginning at 5m00s still had
   // sixty seconds before Apps Script kills the execution at six minutes — and
@@ -1214,15 +1295,23 @@ function nightlyRunTail() {
     var DEADLINE     = runStart + 5.5 * 60 * 1000;
     var stepFailures = [];
     var stepSkipped  = [];
+    var stepBlocked  = [];   // steps whose INPUT was not there — never the same as above
     var stepTimings  = [];
     var ctx = {
       runStart: runStart,
       deadline: DEADLINE,
       failures: stepFailures,
       skipped:  stepSkipped,
+      blocked:  stepBlocked,
       timings:  stepTimings,
       stepProp: NIGHTLY_TAIL_STEP_PROP_,
     };
+
+    // Asked ONCE, before any step runs, so every gated step sees the same answer:
+    // asking per step would let the head's state change mid-tail and two steps
+    // disagree about the same night.
+    var headDone = nightlyHeadCompletedTonight_();
+    if (!headDone.ok) Logger.log('Nightly tail: first half did not complete — ' + headDone.reason);
 
     // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
     nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);
@@ -1249,7 +1338,16 @@ function nightlyRunTail() {
     }
 
     // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
-    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);
+    //
+    // THE ONLY GATED STEP IN THE NIGHT, and the only one that reads tonight's flags:
+    // buildCrossDomainSnapshot_ counts unresolved High flags into the intensity signal.
+    // On a night where the first half died, that count reflects the writers that got to
+    // run and nothing else, and the engine reads a loaded week as a quiet one. The
+    // other tail steps are left ungated on purpose — checkHealthAppointments_,
+    // resetWeekMealPlan_, suggestDueDates and runExplorer_ read their own sheets, and
+    // checkMonthlyReview_ summarises a month rather than a night, so withholding them
+    // because of one bad evening would cost work and buy no correctness.
+    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);
 
     // Step 1b: Suggest due dates for undated tasks — budget-guarded (Claude API, 1024 tokens)
     // Re-read rather than carried over from the first half: getOpenTasks() is cheap
@@ -1269,6 +1367,10 @@ function nightlyRunTail() {
       if (stepFailures.length) summary += ' · ' + stepFailures.length + ' step warning' +
         (stepFailures.length > 1 ? 's' : '');
       if (stepSkipped.length)  summary += ' · ' + stepSkipped.length + ' skipped (time budget)';
+      // Counted and worded separately from the time-budget skips all the way through.
+      // A step held back because its input was incomplete is a different event with a
+      // different fix, and the whole point of withholding it is that you find out.
+      if (stepBlocked.length)  summary += ' · ' + stepBlocked.length + ' skipped (incomplete input)';
       summary += ' in ' + elapsed + 's';
       sendSlackLog_(summary);
       if (stepFailures.length) {
@@ -1277,13 +1379,20 @@ function nightlyRunTail() {
       if (stepSkipped.length) {
         sendSlackLog_('⏭️ Tail skipped for time:\n' + stepSkipped.map(function(f) { return '• ' + f; }).join('\n'));
       }
+      if (stepBlocked.length) {
+        sendSlackLog_('🚧 Tail skipped — incomplete input:\n' +
+          stepBlocked.map(function(f) { return '• ' + f; }).join('\n'));
+      }
       var slowest = slowestNightlySteps_(stepTimings, 5);
       if (slowest.length) sendSlackLog_('⏱️ Slowest tail steps: ' + slowest.join(' · '));
       veraLog_('nightlyRunTail', 'Nightly',
-        stepFailures.length ? 'Partial' : 'Success',
+        // A withheld step makes the night Partial as surely as a thrown one does:
+        // something that should have happened tonight did not.
+        (stepFailures.length || stepBlocked.length) ? 'Partial' : 'Success',
         stepTimings.length + ' step(s) run' +
           (stepFailures.length ? ' · ' + stepFailures.length + ' warning(s)' : '') +
           (stepSkipped.length ? ' · ' + stepSkipped.length + ' skipped (time budget)' : '') +
+          (stepBlocked.length ? ' · ' + stepBlocked.join('; ') : '') +
           (slowest.length ? ' · slowest: ' + slowest.join(', ') : ''),
         elapsed * 1000,
         stepFailures.length ? stepFailures.join('; ') : '');

@@ -946,6 +946,68 @@ took it. A reserve turns "killed, silently" into "skipped, and said so".
 **Adding the second trigger needs `setupTriggers` re-run in the Apps Script editor.**
 It cannot be registered from outside.
 
+### Flags are written as they go, and read once, last
+
+The split raised a fair question: are the dependencies across the two triggers still
+in the right order — should flag-setting come after everything, so nothing slips under
+the radar?
+
+**There is no deferred flag write to get wrong.** Around fifteen modules call
+`writeFlags` as each step determines something, so a flag exists the moment it is
+found; the `writeFlags(flags)` in `nightlyRun` is only the Claude-generated batch. So
+the order that matters is not where flags are *written* but where they are **read**:
+
+| Step | Reads flags for | Position | Why that is right |
+|---|---|---|---|
+| `escalateAgedFlags_` | flags **≥ 3 days old** | first | tonight's are zero days old |
+| `recordExpiredFlags_`, `closeExpiredPerkFlags_` | age / period expiry | mid | about older flags |
+| **`checkCrossPatternFlags_`** | **unresolved High flags** → intensity signal | **last** | needs every writer first |
+
+`checkCrossPatternFlags_` is the only step that reads *tonight's* flags —
+`buildCrossDomainSnapshot_` counts unresolved High ones into the signal that decides
+whether the week is loaded. It is last in the night, which is correct, and it sits in
+the tail, which means **it had not been running at all**.
+
+The split preserved relative order exactly: step N still precedes N+1, with an hour's
+gap. `tests/source/test_nightlybudget.js` holds this as an executable invariant —
+classify every step by whether it calls `writeFlags` (one level deep, which is how
+`writePTOSnapshot_` writing via `checkAccrualCapRisk_` is caught) and assert
+`checkCrossPatternFlags_` comes after all of them. It asserts on **writes** only: the
+same classifier run over *reads* reported `writeWeeklySnapshot_`, which has zero flag
+references.
+
+**What the split did change.** A head that dies no longer stops the tail — it runs an
+hour later regardless. On such a night most writers never ran, the High count is near
+zero, and the pattern engine reads a loaded week as a quiet one, confidently and with
+no sign anything was missing. So `checkCrossPatternFlags_` — alone among the steps —
+is gated on `nightlyHeadCompletedTonight_()`, which requires **both**:
+
+- `LAST_NIGHTLY_RUN` within `NIGHTLY_HEAD_MAX_AGE_MS_` (4h — `.atHour()` is a window,
+  not a time, so the real gap between the halves ranges up to nearly two hours), and
+- **no** `NIGHTLY_STEP` breadcrumb, which is deleted only on the head's success path.
+
+Neither alone suffices: a hard kill skips the `finally` and so the timestamp, but a
+head that *threw* reaches the `finally` and writes it anyway — the breadcrumb is what
+separates those. It is the same pair the watchdog uses to tell "died" from "never
+fired". Non-fatal step failures do **not** count as incomplete; those steps named
+themselves in the head's warnings, and refusing every imperfect night would refuse
+almost every night.
+
+A withheld step is reported as `🚧 Tail skipped — incomplete input`, counted
+separately from `⏭️ Tail skipped for time`, and logs the night `Partial`. The two are
+kept apart the whole way through because they need different responses from you: one
+says the night ran long, the other says the night was incomplete.
+
+> The other tail steps are deliberately **not** gated. `checkHealthAppointments_`,
+> `resetWeekMealPlan_`, `suggestDueDates` and `runExplorer_` read their own sheets, and
+> `checkMonthlyReview_` summarises a month rather than a night. Withholding them
+> because of one bad evening would cost work and buy no correctness.
+>
+> One gap worth naming: the gate catches a head that *died*, not a head that finished
+> having **skipped** steps for time. The head does not tell the tail what it dropped,
+> so a budget-trimmed night still gets pattern-matched. That is the case the morning
+> banner showed, fixed; the other remains open.
+
 ### What a missing nightly run does and does not mean
 
 `recordHeartbeat_('nightlyRun')` sits in a **`finally`** block — *the trigger fired*

@@ -182,9 +182,12 @@ const CONTROLS = {
       "    // The night now ends here.",
       "    nightlyStep_(ctx, 'runExplorer_', runExplorer_);\n    // The night now ends here."),
   }),
+  // Went vacuous when the call site gained its gate argument, which is exactly the
+  // way a control stops testing anything without saying so — hence the harness's
+  // "MUTATION DID NOT APPLY" check. Matched on the call rather than the whole line now.
   'a step is dropped from both halves': b => ({
     'Code.js': b['Code.js'].replace(
-      "    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);\n", ''),
+      /    nightlyStep_\(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_[^;]*\);\n/, ''),
   }),
   'the tail clears its breadcrumb in the finally (presence stops meaning died)': b => ({
     'Code.js': b['Code.js'].replace(
@@ -200,6 +203,112 @@ const CONTROLS = {
   'the PTO snapshot is recomputed every night in the tail': b => ({
     'Code.js': b['Code.js'].replace('var ptoStats = today.getDate() === 1 ? writePTOSnapshot_() : null;',
                                     'var ptoStats = writePTOSnapshot_();'),
+  }),
+
+  // ---- the dependency order ------------------------------------------------
+  // The one consumer of tonight's flags has to come after every producer.
+  'the pattern engine runs FIRST in the tail, before the writers after it': b => ({
+    'Code.js': b['Code.js']
+      .replace("    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);\n", '')
+      .replace("    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);",
+               "    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);\n" +
+               "    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);"),
+  }),
+  'a flag writer is appended after the pattern engine': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    nightlyStep_(ctx, 'runExplorer_', runExplorer_);",
+      "    nightlyStep_(ctx, 'runExplorer_', function() { runExplorer_(); writeFlags([]); });"),
+  }),
+  'escalateAgedFlags_ loses its age cutoff (it now reads tonight\'s flags, first)': b => ({
+    'Code.js': b['Code.js']
+      .replace('ageDays >= 7 && currentEscalated', 'ageDays >= 0 && currentEscalated')
+      .replace('ageDays >= 3 && currentEscalated', 'ageDays >= 0 && currentEscalated'),
+  }),
+  'a step name no longer resolves to a body (the classifier goes blind)': b => ({
+    'Code.js': b['Code.js'].replace("nightlyStep_(ctx, 'checkContracts_', checkContracts_);",
+                                    "nightlyStep_(ctx, 'contracts', checkContracts_);"),
+  }),
+
+  // ---- the guard -----------------------------------------------------------
+  'the gate is ignored and the step runs on a half-populated night (the bug)': b => ({
+    'Code.js': b['Code.js'].replace(
+      /  if \(gate && !gate\.ok\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
+  }),
+  'the pattern engine is ungated again': b => ({
+    'Code.js': b['Code.js'].replace(
+      "nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);",
+      "nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);"),
+  }),
+  'a blocked step is counted as skipped for time instead': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    if (!ctx.blocked) ctx.blocked = [];\n    ctx.blocked.push(name + ' — ' + (gate.reason || 'precondition not met'));",
+      "    ctx.skipped.push(name);"),
+  }),
+  'the blocked step is recorded without its reason': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    ctx.blocked.push(name + ' — ' + (gate.reason || 'precondition not met'));",
+      "    ctx.blocked.push(name);"),
+  }),
+  'the gate is checked after the clock, so a bad night reports as a slow one': b => ({
+    'Code.js': (() => {
+      const s = b['Code.js'];
+      const gate = /  if \(gate && !gate\.ok\) \{\n[\s\S]*?\n    return false;\n  \}\n/.exec(s)[0];
+      const clock = /  if \(Date\.now\(\) \+ NIGHTLY_STEP_RESERVE_MS_ >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/.exec(s)[0];
+      return s.replace(gate, '').replace(clock, clock + gate);
+    })(),
+  }),
+  'a blocked step is given a fake timing': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    ctx.blocked.push(name + ' — ' + (gate.reason || 'precondition not met'));",
+      "    ctx.blocked.push(name + ' — ' + (gate.reason || 'precondition not met'));\n" +
+      "    ctx.timings.push({ name: name, ms: 0 });"),
+  }),
+  'the breadcrumb is not consulted — a head that THREW counts as finished': b => ({
+    'Code.js': b['Code.js'].replace(
+      /  var crumb = props\.getProperty\(NIGHTLY_STEP_PROP_\);\n  if \(crumb\) \{\n[\s\S]*?\n  \}\n/, ''),
+  }),
+  'the age is not consulted — yesterday\'s finish counts as tonight\'s': b => ({
+    'Code.js': b['Code.js'].replace(
+      /  var ageMs = Date\.now\(\) - at;\n  if \(ageMs > NIGHTLY_HEAD_MAX_AGE_MS_\) \{\n[\s\S]*?\n  \}\n/, ''),
+  }),
+  'the window is a full week (yesterday reads as tonight)': b => ({
+    'Code.js': b['Code.js'].replace('var NIGHTLY_HEAD_MAX_AGE_MS_ = 4 * 60 * 60 * 1000;',
+                                    'var NIGHTLY_HEAD_MAX_AGE_MS_ = 7 * 24 * 60 * 60 * 1000;'),
+  }),
+  'the window is tighter than the gap between the two triggers': b => ({
+    'Code.js': b['Code.js'].replace('var NIGHTLY_HEAD_MAX_AGE_MS_ = 4 * 60 * 60 * 1000;',
+                                    'var NIGHTLY_HEAD_MAX_AGE_MS_ = 30 * 60 * 1000;'),
+  }),
+  'an unreadable timestamp is treated as a good night': b => ({
+    'Code.js': b['Code.js'].replace(
+      "  if (isNaN(at)) return { ok: false, reason: 'LAST_NIGHTLY_RUN is unreadable (' + last + ')' };",
+      ''),
+  }),
+  'a project that has never run a head is treated as having finished one': b => ({
+    'Code.js': b['Code.js'].replace(
+      "  if (!last) return { ok: false, reason: 'the first half has never recorded a finish' };",
+      "  if (!last) return { ok: true, reason: '' };"),
+  }),
+  'the head completion is re-asked per step instead of once': b => ({
+    'Code.js': b['Code.js'].replace(
+      '    var headDone = nightlyHeadCompletedTonight_();',
+      '    var headDone = { ok: true, reason: \'\' };'),
+  }),
+
+  // ---- reporting the skip --------------------------------------------------
+  'blocked steps are folded into the time-budget line': b => ({
+    'Code.js': b['Code.js'].replace(
+      "      if (stepBlocked.length)  summary += ' · ' + stepBlocked.length + ' skipped (incomplete input)';",
+      "      if (stepBlocked.length)  summary += ' · ' + stepBlocked.length + ' skipped (time budget)';"),
+  }),
+  'the blocked steps are counted but never named': b => ({
+    'Code.js': b['Code.js'].replace(
+      /      if \(stepBlocked\.length\) \{\n        sendSlackLog_\('🚧 Tail skipped — incomplete input:\\n' \+\n[\s\S]*?\n      \}\n/, ''),
+  }),
+  'a night with a withheld step is logged as Success': b => ({
+    'Code.js': b['Code.js'].replace(
+      "        (stepFailures.length || stepBlocked.length) ? 'Partial' : 'Success',",
+      "        stepFailures.length ? 'Partial' : 'Success',"),
   }),
 };
 
