@@ -610,8 +610,33 @@ function deleteAddressBookRowsFor_(sheet, columnName, value) {
 }
 
 /** A short, sortable, collision-free id. Mirrors 'CP-' + Date.now() elsewhere. */
+var ADDRESS_BOOK_ID_SEQ_ = 0;
+
+/**
+ * A new row id.
+ *
+ * THE COUNTER IS THE PART THAT MATTERS. This used to be Date.now() plus three random
+ * digits, which inside the import's loop means Date.now() never changes and there are
+ * a THOUSAND POSSIBLE IDS PER MILLISECOND. Measured against the real generator: 68
+ * households collide 88.7% of the time, 121 people 99.9%. The live book is 68 and 121.
+ *
+ * Two households sharing an id is not a cosmetic problem. membersOf(id) returns the
+ * union, so both show the other's people and a search for one matches the other;
+ * key={h.id} collides and React corrupts the list on re-render; findAddressBookRow_
+ * returns the first match, so editing the second household edits the first; and
+ * deleteAddressBookRowsFor_ removes EVERY row with that id, so deleting one household
+ * takes the other's members with it and leaves it standing and empty.
+ *
+ * More random bits would only have lengthened the odds. A sequence makes a collision
+ * within one execution impossible, and one execution is exactly where the loop lives.
+ * Date.now() separates executions; the random tail covers two of them starting in the
+ * same millisecond, which is Ahmed and Victoria importing at once.
+ */
 function newAddressBookId_(prefix) {
-  return prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  ADDRESS_BOOK_ID_SEQ_++;
+  return prefix + '-' + Date.now().toString(36) + '-' +
+         ADDRESS_BOOK_ID_SEQ_.toString(36) + '-' +
+         Math.random().toString(36).slice(2, 8);
 }
 
 // ============================================================

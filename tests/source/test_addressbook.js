@@ -223,6 +223,7 @@ function harness(opts) {
     extractFn(SRC.Book, 'writeAddressBookRow_'),
     extractFn(SRC.Book, 'appendAddressBookRow_'),
     extractFn(SRC.Book, 'deleteAddressBookRowsFor_'),
+    decl(SRC.Book, 'ADDRESS_BOOK_ID_SEQ_'),
     extractFn(SRC.Book, 'newAddressBookId_'),
     extractFn(SRC.Book, 'ensureImportColumns_'),
     decl(SRC.Book, 'US_STATES_'),
@@ -256,6 +257,12 @@ function harness(opts) {
     extractFn(SRC.Web, 'addressBookImport_'),
     extractFn(SRC.Web, 'webPreviewAddressImport_'),
     extractFn(SRC.Web, 'webRunAddressImport_'),
+    extractFn(SRC.Web, 'repairRead_'),
+    extractFn(SRC.Web, 'repairCell_'),
+    extractFn(SRC.Web, 'repairWriteColumn_'),
+    extractFn(SRC.Web, 'repairAddressBookIds_'),
+    extractFn(SRC.Web, 'webPreviewAddressRepair_'),
+    extractFn(SRC.Web, 'webRunAddressRepair_'),
     extractFn(SRC.Web, 'webConfirmAddress_'),
   ].join('\n'), ctx);
   return ctx;
@@ -1325,6 +1332,194 @@ console.log('\nBulk import');
     check('…while still applying what it does say', h2.city === 'Baltimore');
   }
 
+  // ---- ids have to be unique, and the repair for when they were not ----
+  //
+  // The generator was Date.now() plus three random digits. Inside the import's loop
+  // Date.now() never changes, so there are a THOUSAND possible ids per millisecond:
+  // at 68 households that collides 88.7% of the time, at 121 people 99.9%. The live
+  // book is 68 and 121, and the dashboard showed it — a search for one household
+  // returning another, cards repeating under a header that said 2.
+  {
+    const c = harness({ props: {}, tabs: {} });
+    const BATCH = 5000;
+    const seen = {};
+    let dupes = 0;
+    for (let i = 0; i < BATCH; i++) {
+      const id = c.newAddressBookId_('HH');
+      if (seen[id]) dupes++;
+      seen[id] = true;
+    }
+    check(BATCH + ' ids generated in a tight loop are all distinct', dupes === 0,
+          dupes + ' collisions — a loop is exactly where the import generates them');
+    check('…and the prefix is kept', /^HH-/.test(c.newAddressBookId_('HH')));
+    check('a sequence is what guarantees it, not more random digits',
+          /ADDRESS_BOOK_ID_SEQ_\+\+/.test(SRC.Book),
+          'random only lengthens the odds; a counter makes it impossible within a run');
+  }
+
+  // THE HAZARD, which is why this is not cosmetic: deleting one household with a
+  // shared id takes the OTHER household's people with it and leaves it standing and
+  // empty. Asserted as it behaves when broken, then as it behaves once repaired.
+  {
+    const twins = () => ({
+      'Households': fakeSheet(HH_H, [
+        ['HH-DUP', 'JeeYoung Oh & Nate Lang', '212 Albany Ave W', '', 'Walkersville',
+         'MD', '21793', 'USA', 'Friends', '', ''],
+        ['HH-DUP', 'Katherine Brunson & Pete Conley', '3884 Poca River Rd', '',
+         'South Poca', 'WV', '25159', 'USA', 'Friends', '', ''],
+      ]),
+      'People': fakeSheet(P_H, [
+        ['P-1', 'HH-DUP', 'JeeYoung Oh',       '', '', 'Adult', ''],
+        ['P-2', 'HH-DUP', 'Nate Lang',         '', '', 'Adult', ''],
+        ['P-3', 'HH-DUP', 'Katherine Brunson', '', '', 'Adult', ''],
+        ['P-4', 'HH-DUP', 'Pete Conley',       '', '', 'Adult', ''],
+      ]),
+      'Mailings': fakeSheet(M_H, [['M-1', 'HH-DUP', 'Christmas card', '', '']]),
+      'Import': fakeSheet(I_H, [
+        impRow({ Household: 'JeeYoung Oh & Nate Lang',       Name: 'JeeYoung Oh' }),
+        impRow({ Household: 'JeeYoung Oh & Nate Lang',       Name: 'Nate Lang' }),
+        impRow({ Household: 'Katherine Brunson & Pete Conley', Name: 'Katherine Brunson' }),
+        impRow({ Household: 'Katherine Brunson & Pete Conley', Name: 'Pete Conley' }),
+      ]),
+    });
+
+    // 1. The damage, as it stands today.
+    {
+      const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: twins() });
+      const book = c.webGetAddressBook_();
+      check('a shared id makes both households claim ALL four people',
+            book.people.filter(p => p.householdId === 'HH-DUP').length === 4,
+            'membersOf(id) returns the union, which is the "4 people" on every card');
+      c.webDeleteHousehold_({ id: 'HH-DUP' });
+      const after = c.webGetAddressBook_();
+      check('…and deleting one of them deletes the OTHER household\'s people',
+            after.people.length === 0 && after.households.length === 1,
+            JSON.stringify(after.households.map(h => h.household)) +
+            ' left standing with nobody in it — silent, and one click away');
+    }
+
+    // 2. The repair.
+    {
+      const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: twins() });
+      const prev = c.webPreviewAddressRepair_();
+      check('the preview reports the damage', prev.households === 1 && prev.clean === false,
+            JSON.stringify(prev.messages));
+      check('…and writes nothing',
+            c._tabs['Households']._data.slice(1).every(r => String(r[0]) === 'HH-DUP'),
+            'a preview that writes is not a preview');
+
+      const run = c.webRunAddressRepair_();
+      const book = c.webGetAddressBook_();
+      const byName = {};
+      book.households.forEach(h => { byName[h.household] = h; });
+      const jee = byName['JeeYoung Oh & Nate Lang'], kat = byName['Katherine Brunson & Pete Conley'];
+
+      check('both households survive, with different ids',
+            book.households.length === 2 && jee.id !== kat.id,
+            JSON.stringify(book.households.map(h => h.id)));
+      check('…and each keeps its OWN people, re-linked from the Import tab by name',
+            book.people.filter(p => p.householdId === jee.id).map(p => p.name).sort().join(',')
+              === 'JeeYoung Oh,Nate Lang' &&
+            book.people.filter(p => p.householdId === kat.id).map(p => p.name).sort().join(',')
+              === 'Katherine Brunson,Pete Conley',
+            JSON.stringify(book.people.map(p => p.name + '->' + p.householdId)));
+      check('…nobody is lost', book.people.length === 4);
+      check('the mailing is flagged rather than attached to a guess',
+            run.flagged.some(f => /mailing/.test(f)), JSON.stringify(run.flagged));
+      check('…and still points at a household that exists',
+            book.households.some(h => h.id === book.mailings[0].householdId),
+            'an orphan renders nowhere, so it could never be found and fixed');
+
+      // The thing the whole repair is for.
+      c.webDeleteHousehold_({ id: jee.id });
+      const after = c.webGetAddressBook_();
+      check('AFTER REPAIR, deleting one household leaves the other intact',
+            after.households.length === 1 &&
+            after.households[0].household === 'Katherine Brunson & Pete Conley' &&
+            after.people.length === 2,
+            JSON.stringify(after.people.map(p => p.name)));
+    }
+
+    // 3. Idempotent, and honest when it cannot tell.
+    {
+      const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: twins() });
+      c.webRunAddressRepair_();
+      const again = c.webRunAddressRepair_();
+      check('a second run finds nothing to do', again.clean === true,
+            JSON.stringify(again.messages));
+      check('…and says so in as many words',
+            /Nothing to repair/.test(again.messages.join(' ')));
+
+      const t = twins();
+      // Somebody who never came through the Import tab: unattributable.
+      t['People'] = fakeSheet(P_H, [
+        ['P-1', 'HH-DUP', 'JeeYoung Oh', '', '', 'Adult', ''],
+        ['P-9', 'HH-DUP', 'Someone Added By Hand', '', '', 'Adult', ''],
+      ]);
+      const c2 = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: t });
+      // Guarded: a repair that reaches for hits[0] without checking there IS one
+      // throws, and a control that takes the suite down reports nothing.
+      let r2 = null, blew = null;
+      try { r2 = c2.webRunAddressRepair_(); } catch (e) { blew = e.message; }
+      check('a person who is not in the Import tab is FLAGGED, not guessed',
+            blew === null && r2.flagged.some(f => /Someone Added By Hand/.test(f)),
+            String(blew) + ' ' + JSON.stringify(r2 && r2.flagged));
+      check('…and left exactly where they were',
+            c2.webGetAddressBook_().people.filter(p => p.name === 'Someone Added By Hand')[0]
+              .householdId === 'HH-DUP',
+            'the retained household — moving them would be a guess with no evidence');
+    }
+
+    // 4. Cost: a repair of many rows is still a handful of writes, not one per row.
+    {
+      const many = n => {
+        const hhRows = [], pRows = [], impRows = [];
+        for (let i = 0; i < n; i++) {
+          hhRows.push(['HH-DUP', 'House ' + i, '', '', '', '', '', '', 'Friends', '', '']);
+          pRows.push(['P-' + i, 'HH-DUP', 'Person ' + i, '', '', 'Adult', '']);
+          impRows.push(impRow({ Household: 'House ' + i, Name: 'Person ' + i }));
+        }
+        const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+          'Households': fakeSheet(HH_H, hhRows), 'People': fakeSheet(P_H, pRows),
+          'Mailings': fakeSheet(M_H, []), 'Import': fakeSheet(I_H, impRows),
+        }});
+        c.webRunAddressRepair_();
+        return { hh: c._tabs['Households']._writes, p: c._tabs['People']._writes };
+      };
+      const five = many(5), hundred = many(100);
+      check('repairing 100 rows costs the same writes as repairing 5',
+            five.hh.setValues === hundred.hh.setValues &&
+            five.p.setValues === hundred.p.setValues &&
+            hundred.hh.setValue === 0 && hundred.p.setValue === 0,
+            JSON.stringify({ five: five, hundred: hundred }));
+      check('…one per column touched',
+            hundred.hh.setValues === 1 && hundred.p.setValues === 2,
+            JSON.stringify(hundred) + ' — Households ID; People ID and Household ID');
+    }
+
+    // 5. Duplicate person ids, which delete and edit the wrong row.
+    {
+      const t = twins();
+      t['Households'] = fakeSheet(HH_H, [
+        ['HH-1', 'The Smith Family', '', '', '', '', '', '', 'Family', '', ''],
+      ]);
+      t['People'] = fakeSheet(P_H, [
+        ['P-SAME', 'HH-1', 'John Smith', '', '', 'Adult', ''],
+        ['P-SAME', 'HH-1', 'Mia Smith',  '', '', 'Child', ''],
+      ]);
+      t['Mailings'] = fakeSheet(M_H, []);
+      const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: t });
+      const r = c.webRunAddressRepair_();
+      const ids = c.webGetAddressBook_().people.map(p => p.id);
+      check('duplicate person ids are re-issued', r.peopleIds === 1 && ids[0] !== ids[1],
+            JSON.stringify(ids));
+      check('…so deleting one no longer takes the other',
+            (c.webDeleteContact_({ id: ids[1] }),
+             c.webGetAddressBook_().people.map(p => p.name).join(',') === 'John Smith'),
+            JSON.stringify(c.webGetAddressBook_().people.map(p => p.name)));
+    }
+  }
+
   // ---- a line it cannot read ----
   //
   // The behaviour Ahmed chose over a best guess: leave the columns blank, keep the
@@ -2000,6 +2195,15 @@ console.log('\nThe dashboards');
     check('…and a stale deployment is named as the suspect',
           /stale/.test(body),
           'a missing field reads as a code bug when it is really an old deploy');
+    // The permanent guard against the id collision ever coming back. Only the live
+    // run can see the real sheet, so only the live run can catch it.
+    check('…and it FAILS when any two rows share an id',
+          /expect\(dupHh[\s\S]*?toEqual\(\[\]\)/.test(body) &&
+          /expect\(dupP[\s\S]*?toEqual\(\[\]\)/.test(body) &&
+          /expect\(dupM[\s\S]*?toEqual\(\[\]\)/.test(body),
+          'reporting a duplicate id without failing is how it went unnoticed for 68 rows');
+    check('…and points at the control that fixes it',
+          /Repair/.test(body), 'a failure that names no remedy is half a failure');
   }
 
   const readme = fs.readFileSync(ROOT + '/README.md', 'utf8');

@@ -737,6 +737,61 @@ const CONTROLS = {
     .replace(/for \(const m of rows\) \{\n *if \(!\(await write\(\{\n *action: 'delete_mailing',\n *id: m\.id\n *\}\)\)\) return;[\s\S]*?\n *\}/,
              "rows.forEach(m => write({ action: 'delete_mailing', id: m.id }));")),
 
+  // ---- unique ids, and the repair -----------------------------------------
+  // THE BUG ITSELF: a thousand possible ids per millisecond.
+  'the id generator goes back to Date.now plus three digits': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace(
+      /  ADDRESS_BOOK_ID_SEQ_\+\+;\n  return prefix[\s\S]*?Math\.random\(\)\.toString\(36\)\.slice\(2, 8\);/,
+      "  return prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 1000);"),
+  }),
+  'the sequence stops advancing (every id in a run is the same)': b => ({
+    'AddressBook.js': b['AddressBook.js'].replace('  ADDRESS_BOOK_ID_SEQ_++;\n', ''),
+  }),
+  'the repair never re-issues a duplicated household id': b => ({
+    'WebApp.js': b['WebApp.js'].replace("      entry.id = newAddressBookId_('HH');",
+                                        '      return;'),
+  }),
+  'the repair re-issues the FIRST of a set too (orphaning its children)': b => ({
+    'WebApp.js': b['WebApp.js'].replace("      if (n === 0) return;              // the first keeps it\n", ''),
+  }),
+  'people are never re-linked, so both households keep all of them': b => ({
+    'WebApp.js': b['WebApp.js'].replace("    r[pp.cols['Household ID'] - 1] = hits[0].id;\n    pRelinked++;",
+                                        '    return;'),
+  }),
+  'an unattributable person is GUESSED rather than flagged': b => ({
+    'WebApp.js': b['WebApp.js'].replace('    if (hits.length !== 1) {',
+                                        '    if (false) {'),
+  }),
+  'the Import tab is ignored, so re-linking has nothing to go on': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    var homes = livesAt[name.toLowerCase()] || {};", '    var homes = {};'),
+  }),
+  'duplicate person and mailing ids are left alone': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      r[tab.cols['ID'] - 1] = newAddressBookId_(pair[2] === 'people' ? 'P' : 'M');\n", ''),
+  }),
+  'a stranded mailing is not reported': b => ({
+    'WebApp.js': b['WebApp.js'].replace(/  if \(mStranded\) \{\n[\s\S]*?\n  \}\n/, ''),
+  }),
+  'the repair preview writes for real (not a preview at all)': b => ({
+    'WebApp.js': b['WebApp.js'].replace('  if (!dryRun) {\n    repairWriteColumn_(hhSheet',
+                                        '  if (true) {\n    repairWriteColumn_(hhSheet'),
+  }),
+  'the repair writes one row at a time': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '  sheet.getRange(2, col, rows.length, 1).setValues(rows.map(function(r) { return [r[col - 1]]; }));',
+      '  rows.forEach(function(r, i) { sheet.getRange(2 + i, col, 1, 1).setValues([[r[col - 1]]]); });'),
+  }),
+  'a clean book is reported as having been repaired': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '  var clean = !hhFixed && !pFixed && !mFixed && !pRelinked && !flagged.length;',
+      '  var clean = false;'),
+  }),
+  'the live run stops checking that ids are unique': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      /    expect\(dupHh[\s\S]*?toEqual\(\[\]\);\n/, ''),
+  }),
+
   // ---- the live read-only check -------------------------------------------
   'the live run never checks the address book is configured': b => ({
     'tests/regression.spec.js': b['tests/regression.spec.js'].replace(

@@ -528,6 +528,31 @@ fix anything, then press **Import**.
 - Imported rows are **not deleted**. Every row keeps its Status so you can check the
   result; clear the tab yourself when you are happy.
 
+**🔧 Check ids / Repair**, beside Preview and Import. Every row id must be unique, and
+for a while they were not: `newAddressBookId_` was `Date.now()` plus three random
+digits, and inside the import's loop `Date.now()` does not change — **a thousand
+possible ids per millisecond**. Measured on the real generator, 68 households collide
+88.7% of the time and 121 people 99.9%.
+
+> Two households sharing an id is not cosmetic. `membersOf(id)` returns the union, so
+> each shows the other's people and a search for one **matches the other**;
+> `key={h.id}` collides and React corrupts the list as you type; `findAddressBookRow_`
+> returns the first match, so the ✏️ on the second card edits the first; and
+> `deleteAddressBookRowsFor_` removes **every** row with that id, so deleting one
+> household takes the other's members with it and leaves it standing and empty.
+
+The generator now carries a **sequence number**. More random digits would only have
+lengthened the odds; a counter makes a collision within one execution impossible, and
+one execution is exactly where the loop lives. `Date.now()` separates executions and a
+random tail covers two of them starting in the same millisecond.
+
+Repair is **in place and non-destructive**: in each colliding set the first row keeps
+its id and the rest take fresh ones, people are re-linked **from the Import tab by
+name**, and anything that cannot be established that way — a person who never came
+through the Import tab, a mailing, which carries no name to match on — is **reported
+and left exactly as it is**. Nothing is deleted and nothing is guessed. On a healthy
+book it says there is nothing to do, so it is safe to press at any time.
+
 > Preview and import are **one function with a flag**, not two implementations. A
 > preview that can disagree with the thing it previews is worse than none, because
 > being believed is the only way a preview can hurt you.

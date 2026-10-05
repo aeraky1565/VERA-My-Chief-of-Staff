@@ -558,6 +558,8 @@ function doPost(e) {
       case 'delete_mailing':             return jsonOut_(webDeleteMailing_(body));
       case 'preview_address_import':     return jsonOut_(webPreviewAddressImport_());
       case 'run_address_import':         return jsonOut_(webRunAddressImport_());
+      case 'preview_address_repair':     return jsonOut_(webPreviewAddressRepair_());
+      case 'run_address_repair':         return jsonOut_(webRunAddressRepair_());
       case 'confirm_address':            return jsonOut_(webConfirmAddress_(body));
       // Neighborhood Watch — Flyer upload (Issue #179)
       case 'extract_flyer':              return jsonOut_(webExtractFlyer_(body));
@@ -11990,3 +11992,171 @@ function webPreviewAddressImport_() { return addressBookImport_(true); }
 
 /** POST run_address_import — does it. */
 function webRunAddressImport_() { return addressBookImport_(false); }
+
+// ---- Repairing duplicate ids ------------------------------------------------
+//
+// newAddressBookId_ used to be Date.now() plus three random digits, which in the
+// import's loop is a thousand possible ids per millisecond: 68 households collide
+// 88.7% of the time. The generator is fixed, but rows already written keep their
+// duplicates, and a duplicate id is not cosmetic — see newAddressBookId_ for the
+// list, of which "deleting one household silently deletes the other's people" is
+// the one that loses data.
+//
+// NOTHING IS DELETED AND NOTHING IS GUESSED. Ids are re-issued, children are
+// re-linked from the Import tab BY NAME, and anything that cannot be established
+// that way is reported and left exactly as it is.
+
+/** Raw rows plus the header map, keeping row positions so ids can be rewritten. */
+function repairRead_(sheet) {
+  if (!sheet || sheet.getLastRow() < 2) return { cols: {}, rows: [] };
+  return {
+    cols: addressBookCols_(sheet),
+    rows: sheet.getRange(2, 1, sheet.getLastRow() - 1,
+                         Math.max(sheet.getLastColumn(), 1)).getValues(),
+  };
+}
+
+function repairCell_(row, cols, name) {
+  var c = cols[name];
+  if (!c) return '';
+  return String(row[c - 1] === null || row[c - 1] === undefined ? '' : row[c - 1]).trim();
+}
+
+/** One setValues per column touched, never one per row. */
+function repairWriteColumn_(sheet, col, rows) {
+  if (!col || !rows.length) return;
+  sheet.getRange(2, col, rows.length, 1).setValues(rows.map(function(r) { return [r[col - 1]]; }));
+}
+
+/**
+ * Gives every duplicated id a fresh one and re-links what pointed at it.
+ *
+ * @param {boolean} dryRun  true to report without writing
+ */
+function repairAddressBookIds_(dryRun) {
+  var ss       = addressBookForWrite_();
+  var hhSheet  = ss.getSheetByName(ADDRESS_BOOK_HOUSEHOLDS_);
+  var pSheet   = ss.getSheetByName(ADDRESS_BOOK_PEOPLE_);
+  var mSheet   = ss.getSheetByName(ADDRESS_BOOK_MAILINGS_);
+  var impSheet = ss.getSheetByName(ADDRESS_BOOK_IMPORT_);
+
+  var hh  = repairRead_(hhSheet);
+  var pp  = repairRead_(pSheet);
+  var mm  = repairRead_(mSheet);
+  var imp = repairRead_(impSheet);
+
+  var messages = [], flagged = [];
+  var hhFixed = 0, pFixed = 0, mFixed = 0, pRelinked = 0;
+
+  // ---- 1. households: the first row of a colliding set keeps its id ----
+  //
+  // Keeping one means half as many children to re-link, and the retained household
+  // is where anything unattributable stays — which is also why it has to be the
+  // first row, the one a human reading the tab would call the original.
+  var groups = {};                      // old id -> [{ rowIdx, name, id }]
+  hh.rows.forEach(function(r, i) {
+    var id = repairCell_(r, hh.cols, 'ID');
+    if (!id) return;
+    (groups[id] = groups[id] || []).push({ rowIdx: i, name: repairCell_(r, hh.cols, 'Household'), id: id });
+  });
+
+  var damaged = {};                     // old id -> [{ name, id }] AFTER re-issue
+  Object.keys(groups).forEach(function(oldId) {
+    var set = groups[oldId];
+    if (set.length < 2) return;
+    set.forEach(function(entry, n) {
+      if (n === 0) return;              // the first keeps it
+      entry.id = newAddressBookId_('HH');
+      hh.rows[entry.rowIdx][hh.cols['ID'] - 1] = entry.id;
+      hhFixed++;
+    });
+    damaged[oldId] = set;
+  });
+
+  // ---- 2. the Import tab says who lives where ----
+  var livesAt = {};                     // person name (lower) -> { household name: true }
+  imp.rows.forEach(function(r) {
+    var name = repairCell_(r, imp.cols, 'Name');
+    var home = repairCell_(r, imp.cols, 'Household') || name;
+    if (!name || !home) return;
+    (livesAt[name.toLowerCase()] = livesAt[name.toLowerCase()] || {})[home.toLowerCase()] = true;
+  });
+
+  // ---- 3. people: re-link the ones whose household id was duplicated ----
+  pp.rows.forEach(function(r) {
+    var oldId = repairCell_(r, pp.cols, 'Household ID');
+    var set   = damaged[oldId];
+    if (!set) return;
+    var name  = repairCell_(r, pp.cols, 'Name');
+    var homes = livesAt[name.toLowerCase()] || {};
+    var hits  = set.filter(function(e) { return homes[e.name.toLowerCase()]; });
+    if (hits.length !== 1) {
+      flagged.push(name
+        ? (hits.length ? '"' + name + '" is in the Import tab under more than one of the '
+                       : '"' + name + '" is not in the Import tab, so which of the ')
+          + set.length + ' households sharing that id they belong to cannot be established'
+        : 'a person row with no name could not be re-linked');
+      return;                           // left exactly as it was, on the retained household
+    }
+    if (hits[0].id === oldId) return;   // already on the right one
+    r[pp.cols['Household ID'] - 1] = hits[0].id;
+    pRelinked++;
+  });
+
+  // ---- 4. duplicate person and mailing ids: no children, so always safe ----
+  [[pp, pSheet, 'people'], [mm, mSheet, 'mailings']].forEach(function(pair) {
+    var tab = pair[0];
+    var seen = {};
+    tab.rows.forEach(function(r) {
+      var id = repairCell_(r, tab.cols, 'ID');
+      if (!id) return;
+      if (!seen[id]) { seen[id] = true; return; }
+      r[tab.cols['ID'] - 1] = newAddressBookId_(pair[2] === 'people' ? 'P' : 'M');
+      if (pair[2] === 'people') pFixed++; else mFixed++;
+    });
+  });
+
+  // ---- 5. mailings pointing at a duplicated household ----
+  //
+  // A mailing carries no name, so there is nothing to match on. It stays with the
+  // retained household and is reported, rather than attached to a guess.
+  var mStranded = 0;
+  mm.rows.forEach(function(r) {
+    if (damaged[repairCell_(r, mm.cols, 'Household ID')]) mStranded++;
+  });
+  if (mStranded) {
+    flagged.push(mStranded + ' mailing' + (mStranded === 1 ? '' : 's') +
+      ' pointed at a shared id and stayed with the first household of its set — ' +
+      're-tick them if they belonged to the other one');
+  }
+
+  if (!dryRun) {
+    repairWriteColumn_(hhSheet, hh.cols['ID'], hh.rows);
+    repairWriteColumn_(pSheet,  pp.cols['ID'], pp.rows);
+    repairWriteColumn_(pSheet,  pp.cols['Household ID'], pp.rows);
+    repairWriteColumn_(mSheet,  mm.cols['ID'], mm.rows);
+  }
+
+  var clean = !hhFixed && !pFixed && !mFixed && !pRelinked && !flagged.length;
+  messages.push(clean
+    ? 'Nothing to repair — every id in the address book is unique.'
+    : (dryRun ? 'Would repair: ' : 'Repaired: ') +
+      hhFixed + ' household id' + (hhFixed === 1 ? '' : 's') + ' re-issued, ' +
+      pRelinked + ' ' + (pRelinked === 1 ? 'person' : 'people') + ' re-linked, ' +
+      pFixed + ' person and ' + mFixed + ' mailing id' + (mFixed === 1 ? '' : 's') +
+      ' re-issued.');
+  flagged.forEach(function(f) { messages.push('⚠ ' + f); });
+  if (dryRun && !clean) messages.push('Nothing has been written. Press Repair to apply it.');
+
+  return { ok: true, dryRun: !!dryRun, clean: clean,
+           households: hhFixed, peopleRelinked: pRelinked,
+           peopleIds: pFixed, mailingIds: mFixed,
+           flagged: flagged, messages: messages };
+}
+
+/** POST preview_address_repair — says what it would do, writes nothing. */
+function webPreviewAddressRepair_() { return repairAddressBookIds_(true); }
+
+/** POST run_address_repair — the same function, for real. */
+function webRunAddressRepair_() { return repairAddressBookIds_(false); }
+

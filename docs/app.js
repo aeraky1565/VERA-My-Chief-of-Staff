@@ -2461,6 +2461,28 @@ function AddressBookView({
     }
   }
 
+  // Repairing duplicate row ids. Same preview-then-do shape as the import, and safe
+  // to press at any time: on a healthy book it reports that there is nothing to do.
+  async function runRepair(dry) {
+    setBusy(true);
+    setImportMsg(null);
+    try {
+      const d = await apiPost(apiUrl, apiToken, {
+        action: dry ? 'preview_address_repair' : 'run_address_repair'
+      });
+      setImportMsg({
+        dry: dry,
+        lines: d.messages || []
+      });
+      if (!dry) await load();
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Entering a card run — including one for an event nobody has ever been sent.
   function startEvent(choice) {
     if (choice !== '__new__') {
@@ -2684,7 +2706,38 @@ function AddressBookView({
       fontWeight: 600,
       cursor: 'pointer'
     }
-  }, "Import")), importMsg && /*#__PURE__*/React.createElement("div", {
+  }, "Import"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => runRepair(true),
+    disabled: busy,
+    title: "Check for rows sharing an id, and say what it would do",
+    style: {
+      background: 'none',
+      border: '1px solid #6b5a2a',
+      color: '#e8d9b0',
+      borderRadius: 6,
+      padding: '5px 12px',
+      fontSize: 12,
+      cursor: 'pointer'
+    }
+  }, "🔧 Check ids"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      if (window.confirm('Give every duplicated row a fresh id and re-link its people? Nothing is deleted.')) runRepair(false);
+    },
+    disabled: busy,
+    style: {
+      background: 'none',
+      border: '1px solid #6b5a2a',
+      color: '#e8d9b0',
+      borderRadius: 6,
+      padding: '5px 12px',
+      fontSize: 12,
+      cursor: 'pointer'
+    }
+  }, "Repair")), importMsg && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 10,
       fontSize: 12,

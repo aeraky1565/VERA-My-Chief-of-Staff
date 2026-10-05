@@ -182,6 +182,25 @@ test.describe('Tier 3 — Apps Script API', () => {
     console.log(`  📒 address book: ${data.households.length} households, ` +
                 `${data.people.length} people, ${data.mailings.length} mailings, ` +
                 `${data.events.length} event(s)`);
+
+    // EVERY ROW ID MUST BE UNIQUE, and this is the only place that can see the real
+    // sheet. The generator was Date.now() plus three random digits, which in the
+    // import's loop is a thousand possible ids per millisecond — 68 households
+    // collided 88.7% of the time. Two households sharing an id show each other's
+    // people, match each other in a search, and delete each other's members.
+    const dupes = rows => {
+      const seen = {}, bad = {};
+      rows.forEach(r => { if (seen[r.id]) bad[r.id] = true; seen[r.id] = true; });
+      return Object.keys(bad);
+    };
+    const dupHh = dupes(data.households), dupP = dupes(data.people), dupM = dupes(data.mailings);
+    if (dupHh.length || dupP.length || dupM.length) {
+      console.error(`  ⚠ duplicate ids — households ${dupHh.length}, ` +
+                    `people ${dupP.length}, mailings ${dupM.length}`);
+    }
+    expect(dupHh, 'households share an id: run 🔧 Repair in the Bulk import panel').toEqual([]);
+    expect(dupP,  'people share an id: run 🔧 Repair in the Bulk import panel').toEqual([]);
+    expect(dupM,  'mailings share an id: run 🔧 Repair in the Bulk import panel').toEqual([]);
   });
 
   test('regression_test endpoint returns pass results', async () => {
