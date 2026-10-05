@@ -904,6 +904,48 @@ Each step used to hand-roll its own seven-line `try/catch`, forty times over, an
 only three of those forty consulted the deadline. Two (`writeSummarySnapshot`,
 `checkTaxDocuments_`) had no guard at all and could take the whole run down.
 
+### The night runs in two halves
+
+It outgrew Apps Script's six-minute ceiling. The morning banner read
+
+```
+Nightly run started but did not finish — died during checkHealthAppointments_ (5m in)
+```
+
+and that breadcrumb — the only timing evidence a *terminated* execution leaves — is
+what chose the boundary: five minutes of work reached exactly that step, so
+everything from it onwards **had not run on any night** for as long as it had been
+happening. `checkMonthlyReview_`, `sendHealthPerformanceInsightMonthly_`,
+`resetWeekMealPlan_`, `checkCrossPatternFlags_`, `suggestDueDates` and `runExplorer_`.
+
+| Trigger | Covers |
+|---|---|
+| `nightlyRun`, `NIGHTLY_RUN_HOUR` | everything through `purgeExpiredCoupons_` |
+| `nightlyRunTail`, an hour later | `checkHealthAppointments_` → `runExplorer_` |
+
+> Splitting at the tidier `=== Critical path done — flags written ===` banner was
+> rejected: it leaves nearly forty steps on the far side, which is where all the time
+> goes. It would have moved the death, not prevented it.
+
+**Each half keeps its own start marker, breadcrumb and heartbeat** —
+`LAST_NIGHTLY_TAIL_START`, `NIGHTLY_TAIL_STEP`, `nightlyRunTail`. One shared
+heartbeat would let the first half's success report the whole night healthy while the
+second died every night unseen, which is the failure the split exists to fix, rebuilt
+one level up.
+
+**And a step is now only started if the budget could plausibly cover it**
+(`NIGHTLY_STEP_RESERVE_MS_`). The guard used to ask only whether the deadline had
+*passed*, so a step beginning at 5m00s still had sixty seconds before the kill — and
+took it. A reserve turns "killed, silently" into "skipped, and said so".
+
+> This is also why the `⏱️ Slowest steps` line had never once appeared: it is emitted
+> at the *end* of a run, so it existed only for runs that did not need it. A run that
+> ends cleanly produces it, which is the number that says whether the split bought
+> enough headroom or only some.
+
+**Adding the second trigger needs `setupTriggers` re-run in the Apps Script editor.**
+It cannot be registered from outside.
+
 ### What a missing nightly run does and does not mean
 
 `recordHeartbeat_('nightlyRun')` sits in a **`finally`** block — *the trigger fired*

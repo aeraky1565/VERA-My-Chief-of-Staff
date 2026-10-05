@@ -16,7 +16,7 @@ const CONTROLS = {
   // ---- the budget ----------------------------------------------------------
   'the budget check is removed (every step runs regardless — the bug)': b => ({
     'Code.js': b['Code.js'].replace(
-      /  if \(Date\.now\(\) >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
+      /  if \(Date\.now\(\) \+ NIGHTLY_STEP_RESERVE_MS_ >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
   }),
   'a skipped step is counted as a failure instead': b => ({
     'Code.js': b['Code.js'].replace('    ctx.skipped.push(name);',
@@ -28,8 +28,8 @@ const CONTROLS = {
       '    try { fn(); } catch (e9) {}\n    ctx.skipped.push(name);'),
   }),
   'the deadline is off by one (a step starting with no time left)': b => ({
-    'Code.js': b['Code.js'].replace('  if (Date.now() >= ctx.deadline) {',
-                                    '  if (Date.now() > ctx.deadline) {'),
+    'Code.js': b['Code.js'].replace('  if (Date.now() + NIGHTLY_STEP_RESERVE_MS_ >= ctx.deadline) {',
+                                    '  if (Date.now() + NIGHTLY_STEP_RESERVE_MS_ > ctx.deadline) {'),
   }),
   'a skipped step is given a fake timing': b => ({
     'Code.js': b['Code.js'].replace(
@@ -61,15 +61,15 @@ const CONTROLS = {
   // ---- the breadcrumb ------------------------------------------------------
   'the breadcrumb is written AFTER the step, not before': b => {
     const s = b['Code.js'];
-    const write = /  var elapsed = Date\.now\(\) - ctx\.runStart;\n  try \{\n    PropertiesService\.getScriptProperties\(\)\n      \.setProperty\(NIGHTLY_STEP_PROP_, name \+ '\|' \+ Math\.round\(elapsed \/ 1000\)\);\n  \} catch \(bcErr\) \{[^\n]*\}\n/.exec(s)[0];
+    const write = /  var elapsed = Date\.now\(\) - ctx\.runStart;\n  try \{\n[\s\S]*?\n  \} catch \(bcErr\) \{[^\n]*\}\n/.exec(s)[0];
     return { 'Code.js': s.replace(write, '').replace(
       '  ctx.timings.push({ name: name, ms: Date.now() - t0 });',
       write + '  ctx.timings.push({ name: name, ms: Date.now() - t0 });') };
   },
   'the breadcrumb loses the elapsed time': b => ({
     'Code.js': b['Code.js'].replace(
-      ".setProperty(NIGHTLY_STEP_PROP_, name + '|' + Math.round(elapsed / 1000));",
-      ".setProperty(NIGHTLY_STEP_PROP_, name);"),
+      ".setProperty(ctx.stepProp || NIGHTLY_STEP_PROP_, name + '|' + Math.round(elapsed / 1000));",
+      ".setProperty(ctx.stepProp || NIGHTLY_STEP_PROP_, name);"),
   }),
   'a skipped step leaves a breadcrumb too': b => ({
     'Code.js': b['Code.js'].replace(
@@ -99,7 +99,7 @@ const CONTROLS = {
       "      if (stepSkipped.length) stepFailures.push('skipped');"),
   }),
   'the slowest steps are never reported': b => ({
-    'Code.js': b['Code.js'].replace(/      var slowest = slowestNightlySteps_\(stepTimings, 5\);\n/,
+    'Code.js': b['Code.js'].replace(/      var slowest = slowestNightlySteps_\(stepTimings, 5\);\n/g,
                                     '      var slowest = [];\n'),
   }),
   'the slowest report sorts fastest first': b => ({
@@ -134,6 +134,72 @@ const CONTROLS = {
   'the step is not shown on the flag': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(
       /\n *\(j\.diedAt \? ' \\u2014 died during ' \+ j\.diedAt : ''\),/, ','),
+  }),
+  // ---- the reserve, and the split -----------------------------------------
+  // THE BUG, put back: a step may start with a millisecond of budget left and then
+  // overrun Apps Script's ceiling, taking the finally — and every diagnostic — with it.
+  'a step may start with no time left to finish in': b => ({
+    'Code.js': b['Code.js'].replace('Date.now() + NIGHTLY_STEP_RESERVE_MS_ >= ctx.deadline',
+                                    'Date.now() >= ctx.deadline'),
+  }),
+  'the reserve is zero': b => ({
+    'Code.js': b['Code.js'].replace(/^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m,
+                                    'var NIGHTLY_STEP_RESERVE_MS_ = 0;'),
+  }),
+  'the reserve is a token amount that no step would fit in': b => ({
+    'Code.js': b['Code.js'].replace(/^var NIGHTLY_STEP_RESERVE_MS_\s*=.*?;/m,
+                                    'var NIGHTLY_STEP_RESERVE_MS_ = 5;'),
+  }),
+  'both halves share one breadcrumb': b => ({
+    'Code.js': b['Code.js'].replace('ctx.stepProp || NIGHTLY_STEP_PROP_', 'NIGHTLY_STEP_PROP_'),
+  }),
+  'the tail does not tell nightlyStep_ which breadcrumb to write': b => ({
+    'Code.js': b['Code.js'].replace('      stepProp: NIGHTLY_TAIL_STEP_PROP_,\n', ''),
+  }),
+  'the tail records no heartbeat of its own': b => ({
+    'Code.js': b['Code.js'].replace("    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}\n", ''),
+  }),
+  'the head records the tail\'s heartbeat too (masking its death)': b => ({
+    'Code.js': b['Code.js'].replace("    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}",
+                                    "    try { recordHeartbeat_('nightlyRun'); } catch (hbErr) {}\n" +
+                                    "    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}"),
+  }),
+  'the tail writes no start marker': b => ({
+    'Code.js': b['Code.js'].replace(/        \.setProperty\('LAST_NIGHTLY_TAIL_START'[^;]*;/, ';'),
+  }),
+  'the watchdog does not know about the tail': b => ({
+    'Watchdog.js': b['Watchdog.js'].replace(/  \{ job: 'nightlyRunTail'[^\n]*\n/, ''),
+  }),
+  'no trigger fires the tail': b => ({
+    'Code.js': b['Code.js'].replace(/  ScriptApp\.newTrigger\('nightlyRunTail'\)[\s\S]*?\.create\(\);\n/, ''),
+  }),
+  'the tail runs at the same hour as the head': b => ({
+    'Code.js': b['Code.js'].replace('.atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24)',
+                                    '.atHour(CONFIG.NIGHTLY_RUN_HOUR)'),
+  }),
+  'a tail step is left behind in the head as well': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    // The night now ends here.",
+      "    nightlyStep_(ctx, 'runExplorer_', runExplorer_);\n    // The night now ends here."),
+  }),
+  'a step is dropped from both halves': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);\n", ''),
+  }),
+  'the tail clears its breadcrumb in the finally (presence stops meaning died)': b => ({
+    'Code.js': b['Code.js'].replace(
+      "    try {\n      PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_TAIL_STEP_PROP_);\n    } catch (bcErr) { /* non-fatal */ }",
+      ''). replace(
+      "    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}",
+      "    try { PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_TAIL_STEP_PROP_); } catch (bcErr) {}\n" +
+      "    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}"),
+  }),
+  'the tail never reports its slowest steps': b => ({
+    'Code.js': b['Code.js'].replace(/Slowest tail steps: /, 'Tail ran: '),
+  }),
+  'the PTO snapshot is recomputed every night in the tail': b => ({
+    'Code.js': b['Code.js'].replace('var ptoStats = today.getDate() === 1 ? writePTOSnapshot_() : null;',
+                                    'var ptoStats = writePTOSnapshot_();'),
   }),
 };
 

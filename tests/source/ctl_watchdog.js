@@ -38,7 +38,7 @@ const CONTROLS = {
   // every step gets it. So this reverts the thing that actually matters now.
   'the step runner loses its budget check (every step runs regardless)': b => ({
     'Code.js': b['Code.js'].replace(
-      /  if \(Date\.now\(\) >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
+      /  if \(Date\.now\(\) \+ NIGHTLY_STEP_RESERVE_MS_ >= ctx\.deadline\) \{\n[\s\S]*?\n    return false;\n  \}\n/, ''),
   }),
   'a step hand-rolls its own budget check again': b => ({
     'Code.js': b['Code.js'].replace(

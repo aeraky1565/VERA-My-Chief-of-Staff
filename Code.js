@@ -701,6 +701,17 @@ function setupTriggers() {
     .inTimezone(Session.getScriptTimeZone())
     .create();
 
+  // …and its second half an hour later. The night outgrew Apps Script's six-minute
+  // limit, so it runs as two executions with a fresh budget each. An hour apart
+  // rather than back to back: the first half has to have finished, and a run that
+  // overruns its own budget should not have the next one starting underneath it.
+  ScriptApp.newTrigger('nightlyRunTail')
+    .timeBased()
+    .atHour((CONFIG.NIGHTLY_RUN_HOUR + 1) % 24)
+    .everyDays(1)
+    .inTimezone(Session.getScriptTimeZone())
+    .create();
+
   // Morning nudge at 7am
   ScriptApp.newTrigger('morningNudge')
     .timeBased()
@@ -755,7 +766,13 @@ function setupTriggers() {
 // ============================================================
 
 // Where a killed run leaves its last word. See nightlyStep_.
-var NIGHTLY_STEP_PROP_ = 'NIGHTLY_STEP';
+var NIGHTLY_STEP_PROP_      = 'NIGHTLY_STEP';
+var NIGHTLY_TAIL_STEP_PROP_ = 'NIGHTLY_TAIL_STEP';
+
+// How much of the budget a step is assumed to need. A step is not started unless
+// this much remains, so the slowest plausible step still lands inside the window
+// rather than being cut off by Apps Script mid-flight.
+var NIGHTLY_STEP_RESERVE_MS_ = 45 * 1000;
 
 /**
  * Runs one nightly step inside the run's time budget, and leaves a trace that
@@ -799,7 +816,14 @@ var NIGHTLY_STEP_PROP_ = 'NIGHTLY_STEP';
  * @returns {boolean} true if the step ran (whether or not it threw)
  */
 function nightlyStep_(ctx, name, fn) {
-  if (Date.now() >= ctx.deadline) {
+  // ENOUGH LEFT TO FINISH, not merely enough left to start. The guard used to ask
+  // only whether the deadline had passed, so a step beginning at 5m00s still had
+  // sixty seconds before Apps Script kills the execution at six minutes — and
+  // checkHealthAppointments_ started at 5m and was terminated inside it. A hard kill
+  // takes the finally with it: no heartbeat, no error email, no flushed log, and the
+  // slowest-steps report, which is emitted at the end, never written at all. The
+  // reserve is what turns "killed, silently" into "skipped, and said so".
+  if (Date.now() + NIGHTLY_STEP_RESERVE_MS_ >= ctx.deadline) {
     ctx.skipped.push(name);
     Logger.log(name + ': skipped — time budget exceeded');
     return false;
@@ -807,8 +831,10 @@ function nightlyStep_(ctx, name, fn) {
 
   var elapsed = Date.now() - ctx.runStart;
   try {
+    // Each half of the night keeps its OWN breadcrumb, or the tail would overwrite
+    // the head's and the watchdog could not say which one died.
     PropertiesService.getScriptProperties()
-      .setProperty(NIGHTLY_STEP_PROP_, name + '|' + Math.round(elapsed / 1000));
+      .setProperty(ctx.stepProp || NIGHTLY_STEP_PROP_, name + '|' + Math.round(elapsed / 1000));
   } catch (bcErr) { /* a breadcrumb must never be able to break the run */ }
 
   var t0 = Date.now();
@@ -1067,30 +1093,9 @@ function nightlyRun() {
     nightlyStep_(ctx, 'checkExpiringCoupons_', checkExpiringCoupons_);
     nightlyStep_(ctx, 'purgeExpiredCoupons_', purgeExpiredCoupons_);
 
-    // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
-    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);
-
-    // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
-    nightlyStep_(ctx, 'checkMonthlyReview_', function() { checkMonthlyReview_(ptoStats); });
-
-    // Step 0o-ii: Health-performance insight — monthly deep dive on 1st (Feature 12)
-    if (today.getDate() === 1) {
-      nightlyStep_(ctx, 'sendHealthPerformanceInsightMonthly_', sendHealthPerformanceInsightMonthly_);
-    }
-
-    // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
-    if (today.getDay() === 6) {
-      nightlyStep_(ctx, 'resetWeekMealPlan_', resetWeekMealPlan_);
-    }
-
-    // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
-    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);
-
-    // Step 1b: Suggest due dates for undated tasks — budget-guarded (Claude API, 1024 tokens)
-    nightlyStep_(ctx, 'suggestDueDates', function() { suggestDueDates(tasks); });
-
-    // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
-    nightlyStep_(ctx, 'runExplorer_', runExplorer_);
+    // The night now ends here. Everything from checkHealthAppointments_ onwards
+    // lives in nightlyRunTail, on its own trigger an hour later — see that function
+    // for why.
 
     Logger.log('=== VERA nightly run complete: ' + new Date() + ' ===');
 
@@ -1175,6 +1180,143 @@ function nightlyRun() {
     } catch (lnrErr) {}
     // Flushed here rather than only on the happy path: a run that died is
     // exactly the run whose log you want to read afterwards.
+    try { flushSystemLog_(); } catch (flErr) {}
+  }
+}
+
+/**
+ * The second half of the night, on its own trigger an hour after nightlyRun.
+ *
+ * WHY THE NIGHT IS IN TWO HALVES. The run outgrew Apps Script's six-minute limit.
+ * The morning banner read "died during checkHealthAppointments_ (5m in)", and that
+ * breadcrumb — the only timing evidence a killed execution leaves behind — is what
+ * chose this boundary: five minutes of work got as far as that step, so everything
+ * from it onwards never ran at all. Not occasionally; every night.
+ *
+ * Splitting at the tidier-looking "critical path done — flags written" banner was
+ * considered and rejected: it leaves nearly forty steps on the far side, which is
+ * where all the time goes. It would have moved the death rather than preventing it.
+ *
+ * Each half keeps its OWN start marker, breadcrumb and heartbeat. Sharing one would
+ * mean this half could die every night while the first half's heartbeat reported the
+ * night healthy — which is the exact failure being fixed, rebuilt somewhere new.
+ */
+function nightlyRunTail() {
+  try {
+    Logger.log('=== VERA nightly tail started: ' + new Date() + ' ===');
+    try {
+      PropertiesService.getScriptProperties()
+        .setProperty('LAST_NIGHTLY_TAIL_START', new Date().toISOString());
+    } catch (startErr) { Logger.log('LAST_NIGHTLY_TAIL_START (non-fatal): ' + startErr.message); }
+
+    var today        = new Date();
+    var runStart     = Date.now();
+    var DEADLINE     = runStart + 5.5 * 60 * 1000;
+    var stepFailures = [];
+    var stepSkipped  = [];
+    var stepTimings  = [];
+    var ctx = {
+      runStart: runStart,
+      deadline: DEADLINE,
+      failures: stepFailures,
+      skipped:  stepSkipped,
+      timings:  stepTimings,
+      stepProp: NIGHTLY_TAIL_STEP_PROP_,
+    };
+
+    // Step 0n: Health appointment due-date checks — flag overdue/upcoming appointments (Issue #85)
+    nightlyStep_(ctx, 'checkHealthAppointments_', checkHealthAppointments_);
+
+    // Step 0o: Monthly Life Review — generates on 1st of each month (Issue #82)
+    nightlyStep_(ctx, 'checkMonthlyReview_', function() {
+      // ptoStats used to arrive from writePTOSnapshot_ earlier in the same run.
+      // checkMonthlyReview_ reads it ONLY on the 1st and returns immediately on
+      // every other day, so computing it nightly here would repeat one of the
+      // heaviest steps in the night for nothing. The snapshot rewrites its sheet
+      // rather than appending, so the 1st's second call is idempotent.
+      var ptoStats = today.getDate() === 1 ? writePTOSnapshot_() : null;
+      checkMonthlyReview_(ptoStats);
+    });
+
+    // Step 0o-ii: Health-performance insight — monthly deep dive on 1st (Feature 12)
+    if (today.getDate() === 1) {
+      nightlyStep_(ctx, 'sendHealthPerformanceInsightMonthly_', sendHealthPerformanceInsightMonthly_);
+    }
+
+    // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
+    if (today.getDay() === 6) {
+      nightlyStep_(ctx, 'resetWeekMealPlan_', resetWeekMealPlan_);
+    }
+
+    // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
+    nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_);
+
+    // Step 1b: Suggest due dates for undated tasks — budget-guarded (Claude API, 1024 tokens)
+    // Re-read rather than carried over from the first half: getOpenTasks() is cheap
+    // and has no side effect, and state smuggled between two executions through a
+    // script property is a third thing that can be stale.
+    nightlyStep_(ctx, 'suggestDueDates', function() { suggestDueDates(getOpenTasks()); });
+
+    // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
+    nightlyStep_(ctx, 'runExplorer_', runExplorer_);
+
+    Logger.log('=== VERA nightly tail complete: ' + new Date() + ' ===');
+
+    try {
+      var elapsed = Math.round((Date.now() - runStart) / 1000);
+      var summary = '✅ Nightly tail — ' + stepTimings.length + ' step' +
+        (stepTimings.length === 1 ? '' : 's') + ' run';
+      if (stepFailures.length) summary += ' · ' + stepFailures.length + ' step warning' +
+        (stepFailures.length > 1 ? 's' : '');
+      if (stepSkipped.length)  summary += ' · ' + stepSkipped.length + ' skipped (time budget)';
+      summary += ' in ' + elapsed + 's';
+      sendSlackLog_(summary);
+      if (stepFailures.length) {
+        sendSlackLog_('⚠️ Tail warnings:\n' + stepFailures.map(function(f) { return '• ' + f; }).join('\n'));
+      }
+      if (stepSkipped.length) {
+        sendSlackLog_('⏭️ Tail skipped for time:\n' + stepSkipped.map(function(f) { return '• ' + f; }).join('\n'));
+      }
+      var slowest = slowestNightlySteps_(stepTimings, 5);
+      if (slowest.length) sendSlackLog_('⏱️ Slowest tail steps: ' + slowest.join(' · '));
+      veraLog_('nightlyRunTail', 'Nightly',
+        stepFailures.length ? 'Partial' : 'Success',
+        stepTimings.length + ' step(s) run' +
+          (stepFailures.length ? ' · ' + stepFailures.length + ' warning(s)' : '') +
+          (stepSkipped.length ? ' · ' + stepSkipped.length + ' skipped (time budget)' : '') +
+          (slowest.length ? ' · slowest: ' + slowest.join(', ') : ''),
+        elapsed * 1000,
+        stepFailures.length ? stepFailures.join('; ') : '');
+    } catch (slackSummaryErr) { /* non-fatal — never let logging break the run */ }
+
+    // Cleared on the success path only, so its PRESENCE means "died here".
+    try {
+      PropertiesService.getScriptProperties().deleteProperty(NIGHTLY_TAIL_STEP_PROP_);
+    } catch (bcErr) { /* non-fatal */ }
+
+  } catch (e) {
+    Logger.log('VERA nightly tail ERROR: ' + e.message + '\n' + e.stack);
+    try { sendSlackLog_('❌ Nightly tail FAILED: ' + e.message + ' (' + (e.fileName || 'Code') + ':' + (e.lineNumber || '?') + ')'); } catch (se) {}
+    try { veraLog_('nightlyRunTail', 'Nightly', 'Failed', '', 0, e.message); } catch (le) {}
+    try {
+      sendVeraEmail_(
+        CONFIG.MORNING_NUDGE_EMAIL,
+        'VERA Error — Nightly Tail Failed',
+        'VERA encountered an error during the second half of the nightly run.\n\n' +
+        'Error: ' + e.message + '\n\n' +
+        'Stack:\n' + e.stack,
+        {},
+        'nightly_error'
+      );
+    } catch (mailErr) {
+      Logger.log('Also failed to send error email: ' + mailErr.message);
+    }
+  } finally {
+    try { recordHeartbeat_('nightlyRunTail'); } catch (hbErr) {}
+    try {
+      PropertiesService.getScriptProperties()
+        .setProperty('LAST_NIGHTLY_TAIL_RUN', new Date().toISOString());
+    } catch (lnrErr) {}
     try { flushSystemLog_(); } catch (flErr) {}
   }
 }

@@ -331,8 +331,10 @@ console.log('\nnightlyRun records both ends of the run');
         'three of forty steps checking the deadline is how one slow step killed the run');
   const runner = COD.slice(COD.indexOf('function nightlyStep_('),
                            COD.indexOf('function slowestNightlySteps_('));
-  check('the runner refuses to start a step past the deadline',
-        /if \(Date\.now\(\) >= ctx\.deadline\)/.test(runner));
+  check('the runner refuses to start a step it may not be able to finish',
+        /if \(Date\.now\(\) \+ NIGHTLY_STEP_RESERVE_MS_ >= ctx\.deadline\)/.test(runner),
+        'checking only whether the deadline had PASSED let a step start at 5m00s ' +
+        'with sixty seconds before the kill, and it took them');
   check('…and says so when it skips', /skipped — time budget exceeded/.test(runner));
 }
 

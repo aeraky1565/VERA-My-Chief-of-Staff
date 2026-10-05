@@ -44,6 +44,11 @@ var _heartbeatCache_ = null;
  */
 var HEARTBEAT_REGISTRY = [
   { job: 'nightlyRun',            label: 'Nightly run',          maxAgeHours: 26, startProp: 'LAST_NIGHTLY_START', stepProp: 'NIGHTLY_STEP' },
+  // The night runs in two halves on two triggers, and each needs its own entry.
+  // One shared heartbeat would let the first half's success report the whole night
+  // healthy while the second died every night unseen — which is the failure the
+  // split exists to fix, rebuilt one level up.
+  { job: 'nightlyRunTail',        label: 'Nightly run (part 2)', maxAgeHours: 26, startProp: 'LAST_NIGHTLY_TAIL_START', stepProp: 'NIGHTLY_TAIL_STEP' },
   { job: 'morningNudge',          label: 'Morning email',        maxAgeHours: 26 },
   { job: 'hourlyCheck',           label: 'Hourly check',         maxAgeHours: 3  },
   { job: 'checkFlightStatuses_',  label: 'Flight status poll',   maxAgeHours: 2  },
