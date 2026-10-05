@@ -789,7 +789,14 @@ const CONTROLS = {
   }),
   'the live run stops checking that ids are unique': b => ({
     'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
-      /    expect\(dupHh[\s\S]*?toEqual\(\[\]\);\n/, ''),
+      /    expect\(\{ households: dupHh[\s\S]*?mailings: 0 \}\);\n/, ''),
+  }),
+  'the live run checks the three kinds separately, stopping at the first': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      /    expect\(\{ households: dupHh[\s\S]*?mailings: 0 \}\);\n/,
+      "    expect(dupHh, 'households share an id').toEqual([]);\n" +
+      "    expect(dupP, 'people share an id').toEqual([]);\n" +
+      "    expect(dupM, 'mailings share an id').toEqual([]);\n"),
   }),
 
   // ---- the live read-only check -------------------------------------------

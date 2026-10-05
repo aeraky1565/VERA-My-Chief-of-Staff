@@ -2198,10 +2198,14 @@ console.log('\nThe dashboards');
     // The permanent guard against the id collision ever coming back. Only the live
     // run can see the real sheet, so only the live run can catch it.
     check('…and it FAILS when any two rows share an id',
-          /expect\(dupHh[\s\S]*?toEqual\(\[\]\)/.test(body) &&
-          /expect\(dupP[\s\S]*?toEqual\(\[\]\)/.test(body) &&
-          /expect\(dupM[\s\S]*?toEqual\(\[\]\)/.test(body),
+          /expect\(\{ households: dupHh\.length, people: dupP\.length, mailings: dupM\.length \}/
+            .test(body) && /toEqual\(\{ households: 0, people: 0, mailings: 0 \}\)/.test(body),
           'reporting a duplicate id without failing is how it went unnoticed for 68 rows');
+    check('…reporting all three kinds in ONE assertion',
+          !/expect\(dupHh\b/.test(body) && !/expect\(dupP\b/.test(body) &&
+          !/expect\(dupM\b/.test(body),
+          'three separate expects stop at the first: the run that found three ' +
+          'duplicate household ids never looked at people or mailings at all');
     check('…and points at the control that fixes it',
           /Repair/.test(body), 'a failure that names no remedy is half a failure');
   }

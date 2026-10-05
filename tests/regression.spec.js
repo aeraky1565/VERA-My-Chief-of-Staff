@@ -197,10 +197,17 @@ test.describe('Tier 3 — Apps Script API', () => {
     if (dupHh.length || dupP.length || dupM.length) {
       console.error(`  ⚠ duplicate ids — households ${dupHh.length}, ` +
                     `people ${dupP.length}, mailings ${dupM.length}`);
+      [['households', dupHh], ['people', dupP], ['mailings', dupM]].forEach(([what, ids]) => {
+        if (ids.length) console.error(`     ${what}: ${ids.join(', ')}`);
+      });
     }
-    expect(dupHh, 'households share an id: run 🔧 Repair in the Bulk import panel').toEqual([]);
-    expect(dupP,  'people share an id: run 🔧 Repair in the Bulk import panel').toEqual([]);
-    expect(dupM,  'mailings share an id: run 🔧 Repair in the Bulk import panel').toEqual([]);
+    // ALL THREE IN ONE ASSERTION. Three separate expects stop at the first, so the
+    // run that found three duplicate household ids never looked at people or
+    // mailings — and a diagnostic you have to run twice to see the whole problem is
+    // half a diagnostic.
+    expect({ households: dupHh.length, people: dupP.length, mailings: dupM.length },
+           'rows share an id — press 🔧 Check ids then Repair in the Bulk import panel')
+      .toEqual({ households: 0, people: 0, mailings: 0 });
   });
 
   test('regression_test endpoint returns pass results', async () => {
