@@ -1129,9 +1129,13 @@ console.log('\nBulk import');
           c._tabs['Households']._data.length === 1 && c._tabs['People']._data.length === 1,
           'the preview may write to its own staging tab; the book is still untouched');
 
-    check('a TYPED column is not overwritten by the paste',
-          imp()[2][col('City')] === 'Houston', JSON.stringify(imp()[2]));
-    check('…while the blanks beside it are filled',
+    // THE PASTED LINE WINS while it is there. This used to be the other way round —
+    // a typed column was protected from the paste — which is what made a bad split
+    // permanent: the pre-pass wrote Address Line 2 on one preview and then refused to
+    // overwrite its OWN output on the next, with the one-liner already cleared.
+    check('a pasted line replaces a column typed beside it',
+          imp()[2][col('City')] === 'Austin', JSON.stringify(imp()[2]));
+    check('…and fills the blanks beside it too',
           imp()[2][col('Address Line 1')] === '9 Oak Ave' &&
           imp()[2][col('State')] === 'TX' && imp()[2][col('Postal Code')] === '78702');
 
@@ -1169,8 +1173,8 @@ console.log('\nBulk import');
           JSON.stringify(hh['The Patels']));
     check('…and the Relationship column beside Full Address untouched throughout',
           hh['The Patels'].relationship === 'Friends', JSON.stringify(hh['The Patels']));
-    check('the typed city still wins after the import too',
-          hh['The Khans'].city === 'Houston', JSON.stringify(hh['The Khans']));
+    check('…and that is what reaches the address book',
+          hh['The Khans'].city === 'Austin', JSON.stringify(hh['The Khans']));
   }
 
   // ---- a column of addresses with nobody named ----
@@ -1220,6 +1224,105 @@ console.log('\nBulk import');
           again.households.created === 0 &&
           c.webGetAddressBook_().households.length === 3,
           JSON.stringify(again.households));
+  }
+
+  // ---- re-pasting to CORRECT an address that is already in the book ----
+  //
+  // Ahmed's screenshot: a household carrying leftovers from the old shape-based
+  // parser —
+  //     7717 Bradshaw Road, Maryland 21087 United States   <- Line 1 + Line 2
+  //     Kingsville MD 21087                                 <- already correct
+  // — where re-pasting the original line could not shift it. The pre-pass refused to
+  // overwrite the stale columns (its own earlier output, indistinguishable from
+  // typing) and a blank could never clear, so Address Line 2 was permanent.
+  {
+    const ONE_LINER = '7717 Bradshaw Road, Kingsville, Maryland 21087, United States';
+    const c = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, [
+        ['HH-9', 'Barry Kraus', '7717 Bradshaw Road', 'Maryland 21087 United States',
+         'Kingsville', 'MD', '21087', 'USA', 'Friends', '', ''],
+      ]),
+      'People': fakeSheet(P_H, []), 'Mailings': fakeSheet(M_H, []),
+      'Import': fakeSheet(I_H, [
+        // Exactly the state of the tab: stale parts from an earlier preview, and the
+        // original line pasted back in to fix them.
+        impRow({ Household: 'Barry Kraus', 'Full Address': ONE_LINER,
+                 'Address Line 1': '7717 Bradshaw Road',
+                 'Address Line 2': 'Maryland 21087 United States' }),
+      ]),
+    }});
+    const imp = () => c._tabs['Import']._data;
+    const col = n => I_H.indexOf(n);
+
+    const prev = c.webPreviewAddressImport_();
+    check('re-pasting REPLACES the stale columns in the Import tab',
+          imp()[1][col('Address Line 2')] === '' &&
+          imp()[1][col('Address Line 1')] === '7717 Bradshaw Road',
+          JSON.stringify(imp()[1]));
+    check('…and reads the rest correctly',
+          imp()[1][col('City')] === 'Kingsville' && imp()[1][col('State')] === 'MD' &&
+          imp()[1][col('Postal Code')] === '21087' && imp()[1][col('Country')] === 'USA',
+          JSON.stringify(imp()[1]));
+    check('the preview says the field will be CLEARED, not just changed',
+          /Address Line 2 \(cleared\)/.test(prev.messages.join(' ') +
+            imp()[1][col('Status')]), JSON.stringify(imp()[1][col('Status')]));
+    check('…and it is still a preview', c._tabs['Households']._data[1][3] ===
+          'Maryland 21087 United States', 'nothing reaches the book until Import');
+
+    c.webRunAddressImport_();
+    const h = c.webGetAddressBook_().households[0];
+    check('IMPORT CLEARS the stale Address Line 2', h.address2 === '',
+          JSON.stringify(h));
+    check('…leaving Line 1 as it was', h.address1 === '7717 Bradshaw Road');
+    check('…and the city block untouched',
+          h.city === 'Kingsville' && h.state === 'MD' && h.postalCode === '21087' &&
+          h.country === 'USA', JSON.stringify(h));
+    check('…updating the household rather than adding a second',
+          c.webGetAddressBook_().households.length === 1);
+
+    // PREVIEW AND IMPORT MUST AGREE. The first version of this keyed the rule on
+    // "the address came from a pasted one-liner" — but the preview CONSUMES the
+    // one-liner, so by the time Import ran there was no paste left to detect: the
+    // preview promised "Address Line 2 (cleared)" and the import then quietly did
+    // nothing. Previewing twice, or importing straight off, must all land the same.
+    const barry = (...calls) => {
+      const h = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+        'Households': fakeSheet(HH_H, [
+          ['HH-9', 'Barry Kraus', '7717 Bradshaw Road', 'Maryland 21087 United States',
+           'Kingsville', 'MD', '21087', 'USA', 'Friends', '', ''],
+        ]),
+        'People': fakeSheet(P_H, []), 'Mailings': fakeSheet(M_H, []),
+        'Import': fakeSheet(I_H, [impRow({ Household: 'Barry Kraus', 'Full Address': ONE_LINER })]),
+      }});
+      calls.forEach(fn => h[fn]());
+      return h.webGetAddressBook_().households[0];
+    };
+    check('importing with no preview at all clears it',
+          barry('webRunAddressImport_').address2 === '',
+          JSON.stringify(barry('webRunAddressImport_')));
+    check('…previewing first lands in the same place',
+          barry('webPreviewAddressImport_', 'webRunAddressImport_').address2 === '');
+    check('…and so does previewing twice',
+          barry('webPreviewAddressImport_', 'webPreviewAddressImport_',
+                'webRunAddressImport_').address2 === '',
+          'the second preview has no one-liner left, and must not change the answer');
+
+    // The rule that is NOT being relaxed: a hand-typed row still cannot wipe.
+    const c2 = harness({ props: { ADDRESS_BOOK_SHEET_ID: 'BOOK-ID' }, tabs: {
+      'Households': fakeSheet(HH_H, [
+        ['HH-9', 'Barry Kraus', '7717 Bradshaw Road', 'Apt 2', 'Kingsville', 'MD',
+         '21087', 'USA', 'Friends', '', 'keep this note'],
+      ]),
+      'People': fakeSheet(P_H, []), 'Mailings': fakeSheet(M_H, []),
+      // No one-liner: somebody typed a correction to the city and nothing else.
+      'Import': fakeSheet(I_H, [impRow({ Household: 'Barry Kraus', City: 'Baltimore' })]),
+    }});
+    c2.webRunAddressImport_();
+    const h2 = c2.webGetAddressBook_().households[0];
+    check('a row with NO one-liner still leaves its blanks alone',
+          h2.address2 === 'Apt 2' && h2.notes === 'keep this note',
+          JSON.stringify(h2) + ' — a half-filled hand-typed row must not wipe an address');
+    check('…while still applying what it does say', h2.city === 'Baltimore');
   }
 
   // ---- a line it cannot read ----
@@ -1335,9 +1438,10 @@ console.log('\nBulk import');
     check('splitting 100 rows costs the same as splitting 5',
           five.setValues === hundred.setValues && five.setValue === 0 && hundred.setValue === 0,
           JSON.stringify({ five: five, hundred: hundred }));
-    check('…which is one write per column touched, plus Status',
-          hundred.setValues === 7,
-          JSON.stringify(hundred) + ' — 5 address parts filled + Full Address cleared + Status');
+    check('…which is one write per address column, plus Status',
+          hundred.setValues === 8,
+          JSON.stringify(hundred) + ' — all 6 parts (a split writes the empty ones ' +
+          'too, which is how a stale value is cleared) + Full Address + Status');
   }
 
   // ---- two different addresses that would take the same invented name ----

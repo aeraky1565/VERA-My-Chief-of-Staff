@@ -8113,9 +8113,14 @@ function AddressBookView({ apiUrl, apiToken }) {
               the Address, City, State, Postcode and Country columns and empties the
               Full Address cell, so you can correct the split in the sheet before
               importing. The line it came from is kept in <strong>Status</strong> to
-              check against. A cell you typed yourself is never overwritten.
-              An apartment or suite goes to <strong>Address line 2</strong>, and
-              “Texas” is stored as “TX”.
+              check against. An apartment or suite goes to <strong>Address line 2</strong>,
+              and “Texas” is stored as “TX”.
+              <div style={{ marginTop:4 }}>
+                A pasted line <strong>replaces the whole address</strong>, so re-pasting
+                one is how you correct a split that went wrong — including emptying a
+                line that should not be there. A row that gives no street line only
+                fills in the fields it names, and leaves the rest alone.
+              </div>
               <div style={{ marginTop:4 }}>
                 A line it <em>cannot</em> read is left alone: the columns stay blank,
                 the Full Address cell is kept, and Status says so — so a wrong address

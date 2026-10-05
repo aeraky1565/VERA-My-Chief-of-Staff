@@ -11692,11 +11692,21 @@ function splitImportAddresses_(sheet, cols, raw) {
     // nothing was split.
     if (!Object.keys(parsed).length) { failed[i] = whole; return; }
 
+    // THE PASTED LINE IS AUTHORITATIVE: it replaces all six parts, including the ones
+    // it did not fill. This used to skip any cell that already had something in it —
+    // "never overwrite a typed cell" — but the pre-pass WROTE those cells itself on an
+    // earlier preview and cannot tell its own stale output from something typed by
+    // hand. With the one-liner cleared on success, that left no way at all to correct
+    // a bad split: Address Line 2 kept 'Maryland 21087 United States' for good.
+    //
+    // A corrected cell is still safe, and that is the distinction that makes this
+    // sound: a successful split CLEARS the one-liner, so a row being corrected no
+    // longer has one. Only a row holding a freshly pasted line is replaced.
     IMPORT_ADDRESS_PARTS_.forEach(function(part) {
       var c = cols[part];
-      if (!c || !parsed[part] || cell(r, c)) return;   // never overwrite a typed cell
-      r[c - 1]      = parsed[part];
-      changed[c]    = true;
+      if (!c) return;
+      r[c - 1]   = parsed[part] || '';
+      changed[c] = true;
     });
     r[fullCol - 1]  = '';
     changed[fullCol] = true;
@@ -11815,6 +11825,22 @@ function addressBookImport_(dryRun) {
       if (v && !g.fields[HOUSEHOLD_FIELDS[src]]) g.fields[HOUSEHOLD_FIELDS[src]] = v;
     });
 
+    // A ROW THAT GIVES A STREET LINE IS STATING THE WHOLE ADDRESS, so its six parts
+    // are kept exactly as they stand — the empty ones too. They are what lets an
+    // import CLEAR a stale value rather than only ever filling a gap.
+    //
+    // Keyed on the street line rather than on "this came from a pasted one-liner",
+    // which was the obvious reading and is wrong: the preview consumes the one-liner,
+    // so by the time Import runs there is no paste to detect and the two disagreed —
+    // the preview promised "Address Line 2 (cleared)" and the import quietly did
+    // nothing. Preview and Import are the same function over the same row, so the
+    // rule has to read the row.
+    if (!g.statesAddress && importCell_(row, 'Address Line 1')) {
+      g.statesAddress = true;
+      g.addr          = {};
+      IMPORT_ADDRESS_PARTS_.forEach(function(part) { g.addr[part] = importCell_(row, part); });
+    }
+
     if (name) {
       g.members.push({ rowIndex: i, name: name,
                        memberType: importCell_(row, 'Member Type'),
@@ -11836,11 +11862,26 @@ function addressBookImport_(dryRun) {
 
     if (existing) {
       hhId = existing['ID'];
-      // NON-BLANK WINS, BLANK LEAVES ALONE. "The Import tab is the fresher copy" is
-      // what was asked for; "a half-filled row wipes a good address" is not, and the
-      // two are the same code if you are not careful.
+      // NON-BLANK WINS, BLANK LEAVES ALONE, for a row typed field by field. "The
+      // Import tab is the fresher copy" is what was asked for; "a half-filled row
+      // wipes a good address" is not, and the two are the same code if you are not
+      // careful.
+      var want = {};
       Object.keys(g.fields).forEach(function(target) {
-        if (g.fields[target] && g.fields[target] !== existing[target]) changed.push(target);
+        if (g.fields[target]) want[target] = g.fields[target];
+      });
+      // EXCEPT where the row gives a street line, and so states the whole address.
+      // There an empty part means "there is no second line", not "leave whatever was
+      // there" — and without it an address corrected by re-pasting can never shed a
+      // wrong Address Line 2. A row that gives no street is only filling in fields,
+      // and keeps the protection above.
+      if (g.statesAddress) {
+        IMPORT_ADDRESS_PARTS_.forEach(function(part) { want[part] = g.addr[part] || ''; });
+      }
+      Object.keys(want).forEach(function(target) {
+        if (want[target] !== String(existing[target] === undefined ? '' : existing[target]).trim()) {
+          changed.push(target + (want[target] ? '' : ' (cleared)'));
+        }
       });
       if (changed.length) {
         hhUpdated++;
@@ -11848,7 +11889,7 @@ function addressBookImport_(dryRun) {
         if (!dryRun) {
           var rowNum = findAddressBookRow_(hhSheet, hhId);
           var patch  = {};
-          changed.forEach(function(t) { patch[t] = g.fields[t]; });
+          changed.forEach(function(t) { var k = t.replace(' (cleared)', ''); patch[k] = want[k]; });
           writeAddressBookRow_(hhSheet, rowNum, patch);
         }
       } else {

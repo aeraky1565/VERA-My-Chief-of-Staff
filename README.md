@@ -508,9 +508,23 @@ fix anything, then press **Import**.
   spacer, not an error — a pasted block usually has a few.
 - **Re-running is safe.** Households match on name and people on household + name, so
   a second run reports what is already there rather than duplicating it.
-- An existing household is **updated** from the Import row, but **a blank Import cell
-  leaves the existing value alone**. "The import is the fresher copy" and "a
-  half-filled row wipes a good address" are the same code if you are not careful.
+- An existing household is **updated** from the Import row, and **a blank Import cell
+  leaves the existing value alone** — unless the row gives an `Address Line 1`, in
+  which case it is stating the whole address and its blanks **clear**. "The import is
+  the fresher copy" and "a half-filled row wipes a good address" are the same code if
+  you are not careful; the street line is what tells them apart.
+
+> Without the second half, a wrong `Address Line 2` was **permanent**. The pre-pass
+> refused to overwrite a non-blank address cell — but it had written that cell itself
+> on an earlier preview and could not tell its own stale output from something typed
+> by hand. With the one-liner consumed on a successful split, re-pasting could not get
+> back in either. So: a pasted line now replaces all six parts, empty ones included.
+>
+> The rule reads **the row**, not where the row came from. Keying it on "this was
+> pasted" is the obvious reading and is wrong — the preview consumes the one-liner, so
+> by the time Import runs there is no paste left to detect, and the preview would
+> promise `Address Line 2 (cleared)` while the import quietly did nothing. Preview and
+> Import are one function over one row; the rule has to be too.
 - Imported rows are **not deleted**. Every row keeps its Status so you can check the
   result; clear the tab yourself when you are happy.
 

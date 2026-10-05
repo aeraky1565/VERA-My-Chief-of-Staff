@@ -509,17 +509,12 @@ const CONTROLS = {
     'AddressBook.js': b['AddressBook.js'].replace("'Country', 'Full Address', 'Relationship',",
                                                   "'Country', 'Relationship',"),
   }),
-  'a pasted address overwrites the columns typed by hand': b => ({
-    'WebApp.js': b['WebApp.js'].replace(
-      '      if (!c || !parsed[part] || cell(r, c)) return;   // never overwrite a typed cell',
-      '      if (!c || !parsed[part]) return;'),
-  }),
   'the split never says what was pasted': b => ({
     'WebApp.js': b['WebApp.js'].replace(
       /      if \(splitFrom\[i\]\) \{\n[\s\S]*?\n      \}\n/, ''),
   }),
   'the split does not reach the columns at all': b => ({
-    'WebApp.js': b['WebApp.js'].replace('      r[c - 1]      = parsed[part];',
+    'WebApp.js': b['WebApp.js'].replace("      r[c - 1]   = parsed[part] || '';",
                                         '      ;'),
   }),
   'the one-liner is left behind after being split': b => ({
@@ -644,6 +639,37 @@ const CONTROLS = {
     'AddressBook.js': b['AddressBook.js'].replace(
       "    var line2 = [street.line2].concat(segs).filter(function(v) { return v; });",
       "    var line2 = [street.line2].filter(function(v) { return v; });"),
+  }),
+
+  // ---- a pasted address replaces what is there ------------------------------
+  // THE REPORTED BUG, put back: the pre-pass protects its own stale output, so a bad
+  // split can never be corrected by re-pasting.
+  'the split refuses to overwrite a column that already has something in it': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      '      if (!c) return;\n      r[c - 1]   = parsed[part] || \'\';',
+      '      if (!c || !parsed[part] || cell(r, c)) return;\n      r[c - 1]   = parsed[part];'),
+  }),
+  'a split writes only the parts it found, never the empty ones': b => ({
+    'WebApp.js': b['WebApp.js'].replace("      r[c - 1]   = parsed[part] || '';",
+                                        "      if (!parsed[part]) return;\n      r[c - 1]   = parsed[part];"),
+  }),
+  'an import can fill a blank field but never clear one': b => ({
+    'WebApp.js': b['WebApp.js'].replace(/      if \(g\.statesAddress\) \{\n[\s\S]*?\n      \}\n/, ''),
+  }),
+  'a row with no street line still claims to state the whole address': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (!g.statesAddress && importCell_(row, 'Address Line 1')) {",
+      '    if (!g.statesAddress) {'),
+  }),
+  'the rule keys on the paste again, so preview and import disagree': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "    if (!g.statesAddress && importCell_(row, 'Address Line 1')) {",
+      '    if (!g.statesAddress && splitFrom[i]) {'),
+  }),
+  'a cleared field is reported as an ordinary update': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "          changed.push(target + (want[target] ? '' : ' (cleared)'));",
+      '          changed.push(target);'),
   }),
 
   // ---- a line it cannot read -----------------------------------------------
