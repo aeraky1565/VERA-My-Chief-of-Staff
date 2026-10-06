@@ -15,6 +15,51 @@ const TAB_LABELS = [
   'career', 'growth', 'explore'
 ];
 
+// ─── Endpoint timing ────────────────────────────────────────────────────────
+//
+// EVERY CALL IS TIMED, AND THE TIME IS PRINTED WHETHER IT PASSES OR NOT.
+//
+// This suite's real failure mode is not a wrong answer, it is no answer. A healthy
+// run takes ~46 seconds; the run that prompted this took 3m40s, which with
+// `retries: 1` and a 20s request timeout is about four requests hanging and being
+// retried. The red tick said none of that, and the step log and artifact are both
+// served from blob storage that the API client used to investigate cannot follow.
+//
+// So: a request creeping from 1s towards the timeout is worth seeing while it is
+// still creeping, the same reason the nightly run reports its slowest steps on every
+// run and not only on a bad one.
+const endpointTimings = [];
+
+async function timedGet(ctx, action, opts) {
+  const t0 = Date.now();
+  try {
+    const resp = await ctx.get(`${VERA_URL}?action=${action}&token=${VERA_TOKEN}`, opts);
+    const ms = Date.now() - t0;
+    endpointTimings.push({ action, ms, status: String(resp.status()) });
+    console.log(`  ⏱  ${action}: ${ms}ms (HTTP ${resp.status()})`);
+    return resp;
+  } catch (err) {
+    const ms = Date.now() - t0;
+    endpointTimings.push({ action, ms, status: 'no answer' });
+    // First line only. The message is what reaches the github reporter's annotation,
+    // and "Request timed out after 20000ms" is the whole diagnosis; the stack is not.
+    console.error(`  ⏱  ${action}: ${ms}ms — NO ANSWER — ${String(err.message).split('\n')[0]}`);
+    throw err;
+  }
+}
+
+function reportEndpointTimings() {
+  if (!endpointTimings.length) return;
+  const slowest = endpointTimings.slice().sort((a, b) => b.ms - a.ms);
+  console.log('\n  ⏱  Endpoint timings, slowest first:');
+  slowest.forEach(t => console.log(`       ${t.action}: ${t.ms}ms (${t.status})`));
+  const dead = slowest.filter(t => t.status === 'no answer');
+  if (dead.length) {
+    console.error(`  ⏱  ${dead.length} action(s) never answered: ` +
+                  dead.map(t => t.action).join(', '));
+  }
+}
+
 // ─── Tier 1: Basic health (no credentials) ──────────────────────────────────
 
 test.describe('Tier 1 — Basic health (no credentials)', () => {
@@ -107,9 +152,30 @@ test.describe('Tier 3 — Apps Script API', () => {
   test.beforeAll(async ({ playwright }) => {
     if (!HAS_CREDS) return;
     ctx = await playwright.request.newContext();
+
+    // ONE WARM-UP REQUEST, DELIBERATELY NOT ASSERTED.
+    //
+    // This suite runs straight after deploy.yml re-points the Apps Script
+    // deployment, and the first call to a new version is cold. A 45s budget here
+    // absorbs that instead of spending a 20s timeout — and more usefully, its
+    // duration tells the two cases apart: slow warm-up then fast tests means cold
+    // start, while slow everything means the endpoint itself is unwell.
+    //
+    // Not an assertion, because its job is to measure and to warm, not to gate: if
+    // the endpoint really is down, the tests below say so with their own names.
+    const t0 = Date.now();
+    try {
+      const resp = await ctx.get(`${VERA_URL}?action=status&token=${VERA_TOKEN}`,
+                                 { timeout: 45000 });
+      console.log(`  🔥 warm-up: ${Date.now() - t0}ms (HTTP ${resp.status()})`);
+    } catch (err) {
+      console.error(`  🔥 warm-up got NO ANSWER after ${Date.now() - t0}ms — ` +
+                    `${String(err.message).split('\n')[0]}`);
+    }
   });
 
   test.afterAll(async () => {
+    reportEndpointTimings();
     if (ctx) await ctx.dispose();
   });
 
@@ -117,9 +183,7 @@ test.describe('Tier 3 — Apps Script API', () => {
     if (!HAS_CREDS) {
       test.skip(true, 'VERA_URL / VERA_TOKEN not set');
     }
-    const resp = await ctx.get(`${VERA_URL}?action=status&token=${VERA_TOKEN}`, {
-      timeout: 20000,
-    });
+    const resp = await timedGet(ctx, 'status', { timeout: 20000 });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(data.ok).toBe(true);
@@ -129,10 +193,7 @@ test.describe('Tier 3 — Apps Script API', () => {
     if (!HAS_CREDS) {
       test.skip(true, 'VERA_URL / VERA_TOKEN not set');
     }
-    const resp = await ctx.get(
-      `${VERA_URL}?action=get_notification_map&token=${VERA_TOKEN}`,
-      { timeout: 20000 }
-    );
+    const resp = await timedGet(ctx, 'get_notification_map', { timeout: 20000 });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(data.ok).toBe(true);
@@ -142,10 +203,7 @@ test.describe('Tier 3 — Apps Script API', () => {
     if (!HAS_CREDS) {
       test.skip(true, 'VERA_URL / VERA_TOKEN not set');
     }
-    const resp = await ctx.get(
-      `${VERA_URL}?action=get_config_rows&token=${VERA_TOKEN}`,
-      { timeout: 20000 }
-    );
+    const resp = await timedGet(ctx, 'get_config_rows', { timeout: 20000 });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(data.ok).toBe(true);
@@ -161,10 +219,7 @@ test.describe('Tier 3 — Apps Script API', () => {
     if (!HAS_CREDS) {
       test.skip(true, 'VERA_URL / VERA_TOKEN not set');
     }
-    const resp = await ctx.get(
-      `${VERA_URL}?action=address_book&token=${VERA_TOKEN}`,
-      { timeout: 30000 }
-    );
+    const resp = await timedGet(ctx, 'address_book', { timeout: 30000 });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     // A wrong id, or one that was never shared with the account VERA runs as,
@@ -214,10 +269,7 @@ test.describe('Tier 3 — Apps Script API', () => {
     if (!HAS_CREDS) {
       test.skip(true, 'VERA_URL / VERA_TOKEN not set');
     }
-    const resp = await ctx.get(
-      `${VERA_URL}?action=regression_test&token=${VERA_TOKEN}`,
-      { timeout: 60000 }
-    );
+    const resp = await timedGet(ctx, 'regression_test', { timeout: 60000 });
     // If the endpoint doesn't exist yet (not deployed via clasp), skip gracefully
     if (resp.status() === 400 || resp.status() === 404) {
       test.skip(true, 'regression_test action not yet deployed to Apps Script');

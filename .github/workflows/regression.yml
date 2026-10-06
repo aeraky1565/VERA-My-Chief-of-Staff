@@ -65,6 +65,12 @@ jobs:
           path: test-results/
           retention-days: 7
 
+      # A RED TICK IS NOT A DIAGNOSIS. This message used to carry only success/failure,
+      # so finding out WHICH tests failed meant opening the run — and the step log and
+      # the uploaded artifact are both served from blob storage, which the API client
+      # used to investigate a failure cannot follow. One failure cost a whole push to
+      # identify. The json reporter already writes test-results/results.json; this
+      # reads the failing titles out of it so the message says what broke.
       - name: Notify Slack
         if: always()
         env:
@@ -78,6 +84,20 @@ jobs:
           EMOJI=$([ "$JOB_STATUS" = "success" ] && echo "✅" || echo "❌")
           COMMIT_MSG=$(git log -1 --pretty=format:%s)
           COMMIT_SHA=$(git rev-parse --short HEAD)
-          curl -sX POST "$SLACK_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"text\":\"${EMOJI} VERA Regression: *${JOB_STATUS}* after push to \`main\`\n\`${COMMIT_SHA}\` ${COMMIT_MSG}\"}"
+
+          # Capped at 8: a total outage fails every test, and thirty lines in the
+          # channel is a wall, not a report. The count still tells you it was total.
+          FAILED=""
+          if [ -f test-results/results.json ]; then
+            FAILED=$(node tests/failing-titles.js test-results/results.json 2>/dev/null || echo "")
+          fi
+
+          TEXT="${EMOJI} VERA Regression: *${JOB_STATUS}* after push to \`main\`\n\`${COMMIT_SHA}\` ${COMMIT_MSG}"
+          if [ -n "$FAILED" ]; then
+            TEXT="${TEXT}\n*Failed:*\n${FAILED}"
+          fi
+          # jq builds the JSON so a quote or backslash in a test title cannot break the
+          # payload — a malformed body would lose the very message that explains the
+          # failure.
+          jq -nc --arg t "$TEXT" '{text: $t}' | curl -sX POST "$SLACK_WEBHOOK_URL" \
+            -H "Content-Type: application/json" --data-binary @-

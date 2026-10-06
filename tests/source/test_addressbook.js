@@ -2181,10 +2181,24 @@ console.log('\nThe dashboards');
     check('the live run checks the address book is configured', i !== -1,
           'the id is not in the repo, so this is the only check that can see it');
     const body = i === -1 ? '' : spec.slice(i, spec.indexOf('\n  });', i));
+    // The call site names the action either inline or through the timed helper the
+    // spec now routes every endpoint call through. Accepting both is not a relaxation:
+    // the read-only guarantee moved INTO the helper, so it is asserted there too, just
+    // below — which is stronger, because one assertion then covers all five actions
+    // instead of this one.
     check('…by reading, never writing',
-          /action=address_book/.test(body) &&
+          (/action=address_book/.test(body) || /timedGet\(ctx, 'address_book'/.test(body)) &&
           !/save_|delete_|run_address_import|\.post\(/.test(body),
           'a regression suite that writes to a real address book is a liability');
+    {
+      const h = spec.indexOf('async function timedGet(');
+      const hBody = h === -1 ? '' : spec.slice(h, spec.indexOf('\n}', h));
+      check('…and the helper it goes through cannot write either',
+            h !== -1 && /ctx\.get\(/.test(hBody) &&
+            !/\.post\(|\.put\(|\.delete\(|\.patch\(|method:/.test(hBody),
+            'every endpoint call in the live suite is funnelled through this one ' +
+            'function, so a write verb here would be a write to the real book');
+    }
     check('…and says how to fix it, not just that it is broken',
           /address_book_sheet_id/.test(body) && /ADDRESS_BOOK_SHEET_ID/.test(body),
           'both routes in, because the properties editor goes read-only past 50');

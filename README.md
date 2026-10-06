@@ -2332,6 +2332,49 @@ npm run test:ui       # the ones that render in Chromium — ~2min
 node tests/run.js --list
 ```
 
+### A failing CI run has to say what failed
+
+The suite went red and said nothing else. Working out *which* requests hung was only
+possible from the **step timings**:
+
+| Run | `Run regression tests` | |
+|---|---|---|
+| passing | 15:20:33 → 15:21:19 — **46s** | the healthy baseline |
+| failing | 15:07:42 → 15:11:22 — **3m40s** | ~4 requests hanging |
+
+With `retries: 1` and a 20s request timeout, four hung requests retried once is ≈160s
+on top of a normal run — which is the arithmetic that identified the failure mode
+without ever seeing the log. That is too much work for a red tick, and it was forced,
+because **the step log and the uploaded artifact are both served from blob storage**
+that an API client cannot follow, and `workflow_dispatch` is not available to every
+token. One failure cost a whole push to identify.
+
+Three things close it:
+
+- **The `github` reporter** (`playwright.config.js`, CI only). Its `::error` output
+  becomes **check-run annotations**, and `repos/{owner}/{repo}/check-runs/{id}/annotations`
+  *does* answer — so a failure now names itself through the one reachable endpoint.
+- **The Slack message lists the failing test titles**, read from the `results.json` the
+  JSON reporter already writes, via `tests/failing-titles.js`. A real script rather
+  than a `node -e` one-liner in the YAML, because the moment it matters is a failing
+  run — the worst moment to be debugging the thing that reports failures. It is capped
+  at 8 titles (a total outage fails everything; a wall of lines is not a report) and
+  the payload is built with `jq`, so a quote in a test title cannot produce malformed
+  JSON and lose the message.
+- **Every endpoint call is timed and printed on every run**, passing or not, with a
+  slowest-first summary and the never-answered actions called out by name. Same reason
+  the nightly run reports its slowest steps unconditionally: a request creeping from 1s
+  towards its timeout is worth seeing while it is still creeping.
+
+And **one warm-up request** ahead of the API block, with a 45s budget and no assertion.
+The suite runs immediately after the deploy re-points the Apps Script deployment, and
+the first call to a new version is cold. Its printed duration is the discriminator:
+slow warm-up then fast tests means cold start; slow everything means the endpoint
+itself is unwell.
+
+> Honest about what that last one is: hardening plus a measurement, not a demonstrated
+> fix. The passing run above also followed a deploy.
+
 ### When the regression suite times out
 
 `tests/regression.spec.js` calls `action=regression_test` on the live web app, which

@@ -787,6 +787,18 @@ const CONTROLS = {
       '  var clean = !hhFixed && !pFixed && !mFixed && !pRelinked && !flagged.length;',
       '  var clean = false;'),
   }),
+  // The read-only guarantee moved into the helper every endpoint call now goes
+  // through, so that is where it has to be defended.
+  'the timed helper gains a write verb (one change, every action writes)': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      'const resp = await ctx.get(`${VERA_URL}?action=${action}&token=${VERA_TOKEN}`, opts);',
+      'const resp = await ctx.post(`${VERA_URL}?action=${action}&token=${VERA_TOKEN}`, opts);'),
+  }),
+  'the timed helper takes a method from its caller': b => ({
+    'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
+      'const resp = await ctx.get(`${VERA_URL}?action=${action}&token=${VERA_TOKEN}`, opts);',
+      'const resp = await ctx.fetch(`${VERA_URL}?action=${action}&token=${VERA_TOKEN}`, { method: opts.method || "GET", ...opts });'),
+  }),
   'the live run stops checking that ids are unique': b => ({
     'tests/regression.spec.js': b['tests/regression.spec.js'].replace(
       /    expect\(\{ households: dupHh[\s\S]*?mailings: 0 \}\);\n/, ''),
