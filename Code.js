@@ -823,6 +823,9 @@ function setupTriggers() {
 // Where a killed run leaves its last word. See nightlyStep_.
 var NIGHTLY_STEP_PROP_      = 'NIGHTLY_STEP';
 var NIGHTLY_TAIL_STEP_PROP_ = 'NIGHTLY_TAIL_STEP';
+// The morning email gets its own, for the same reason and after the same failure:
+// it was killed at the six-minute ceiling and nothing could say which phase did it.
+var MORNING_STEP_PROP_      = 'MORNING_STEP';
 
 // How much of the budget a step is assumed to need. A step is not started unless
 // this much remains, so the slowest plausible step still lands inside the window
@@ -3677,6 +3680,29 @@ function getCapacityMode_() {
  * urgency breakdown, and a plain-text fallback.
  * Sender display name is set to "VERA".
  */
+/**
+ * The 7am briefing.
+ *
+ * WHY THIS IS INSTRUMENTED LIKE THE NIGHTLY RUN. It was killed at Apps Script's
+ * six-minute ceiling, and a terminated execution does not run its finally — so no
+ * heartbeat, no delivery marker, and flushSystemLog_ never ran, taking the whole
+ * run's log with it. The watchdog could only say "has not run in 1d 2h", which is
+ * the same sentence it would use for a trigger that never fired.
+ *
+ * It builds from ~15 sources — the Flags sheet, Drive, Calendar, a weather API, the
+ * watchdog, two task backends, Signal Learning. Each already had its own try/catch,
+ * so it degraded on ERROR but not on TIME: one slow dependency took the whole email.
+ * Routing each through nightlyStep_ (which supplies the catch, so the duplicated
+ * try/catch goes away) buys three things:
+ *
+ *   1. a breadcrumb written BEFORE each phase, so a kill names the phase;
+ *   2. a budget checked before each phase, so a late one is SKIPPED and the email
+ *      still sends without that section — a missing weather ticker beats no email;
+ *   3. timings, so the next change is aimed at evidence rather than a guess.
+ *
+ * Reading the Flags sheet and the send itself are deliberately NOT budgeted: without
+ * them there is no email to degrade.
+ */
 function morningNudge() {
   // Travel day briefing is independent — fires even if morning_briefing is disabled
   try { checkAndSendTravelDayBriefings_(); } catch (tdbErr) {
@@ -3684,11 +3710,39 @@ function morningNudge() {
     try { sendSlackLog_('❌ checkAndSendTravelDayBriefings_ failed: ' + tdbErr.message); } catch (se) {}
   }
 
-  if (!isNotifEnabled_('morning_briefing')) {
-    Logger.log('morningNudge: skipped — morning_briefing disabled');
-    return;
-  }
+  // Written before any work, so a killed run leaves a trace. Paired with the
+  // MORNING_STEP breadcrumb, this is what lets the watchdog say "started but did not
+  // finish — died during X" instead of "has not run".
   try {
+    PropertiesService.getScriptProperties()
+      .setProperty('LAST_MORNING_START', new Date().toISOString());
+  } catch (startErr) { Logger.log('LAST_MORNING_START (non-fatal): ' + startErr.message); }
+
+  var runStart     = Date.now();
+  // 4m30s, not the nightly 5m30s: the HTML build and the send come after the last
+  // budgeted phase, and the whole point is that they still happen.
+  var stepFailures = [];
+  var stepSkipped  = [];
+  var stepTimings  = [];
+  var ctx = {
+    runStart: runStart,
+    deadline: runStart + 4.5 * 60 * 1000,
+    failures: stepFailures,
+    skipped:  stepSkipped,
+    timings:  stepTimings,
+    stepProp: MORNING_STEP_PROP_,
+  };
+
+  try {
+    // INSIDE the try, so the finally still records the heartbeat. Outside it, a
+    // deliberately disabled briefing returned without recording anything and the
+    // watchdog reported it as an outage forever — which is precisely what
+    // Watchdog.js's own comment says must not happen ("Both still record").
+    if (!isNotifEnabled_('morning_briefing')) {
+      Logger.log('morningNudge: skipped — morning_briefing disabled');
+      return;
+    }
+
     const ss    = getSpreadsheet();
     const sheet = ss.getSheetByName(TABS.FLAGS);
 
@@ -3713,9 +3767,16 @@ function morningNudge() {
     }
 
     // ---- Capacity mode filtering (Issue #8) ---------------------------------
-    var capacityInfo = getCapacityMode_();
-    var capMode      = capacityInfo.mode;   // 'busy' | 'normal' | 'light'
-    var capSource    = capacityInfo.source; // 'override' | 'inferred' | 'default'
+    // Defaults chosen so a skip shows everything rather than nothing: if this phase
+    // does not run, the reader should see all their flags, not be silently filtered
+    // by a mode that was never computed.
+    var capMode   = 'light';
+    var capSource = 'default';
+    nightlyStep_(ctx, 'getCapacityMode_', function() {
+      var capacityInfo = getCapacityMode_();
+      capMode   = capacityInfo.mode;    // 'busy' | 'normal' | 'light'
+      capSource = capacityInfo.source;  // 'override' | 'inferred' | 'default'
+    });
 
     // Helper: is a flag time-sensitive today?
     // Checks flag text / key for date-bound phrases so Low-urgency birthdays etc. aren't suppressed.
@@ -3770,18 +3831,18 @@ function morningNudge() {
       urgencyRow('#43a047', '●', 'Low priority',    lowCount);
 
     // ---- Try to load logo from Drive ------------------------------------
-    let inlineImages = {};
-    let logoTag = '';
-    try {
-      const logoFileId = PropertiesService.getScriptProperties().getProperty('VERA_LOGO_FILE_ID');
+    // A Drive fetch for a decorative header image. The email has a text fallback,
+    // so this is the first thing that should go when time is short.
+    var inlineImages = {};
+    var logoTag = '';
+    nightlyStep_(ctx, 'loadLogoFromDrive', function() {
+      var logoFileId = PropertiesService.getScriptProperties().getProperty('VERA_LOGO_FILE_ID');
       if (logoFileId) {
-        const logoBlob = DriveApp.getFileById(logoFileId).getBlob();
+        var logoBlob = DriveApp.getFileById(logoFileId).getBlob();
         inlineImages = { veraLogo: logoBlob };
         logoTag = '<img src="cid:veraLogo" alt="VERA" style="width:100%;display:block;border:0;" />';
       }
-    } catch (logoErr) {
-      Logger.log('Logo load failed (continuing without it): ' + logoErr);
-    }
+    });
 
     // ---- Optional dashboard button (set VERA_DASHBOARD_URL in Script Properties) ----
     const dashboardUrl = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || '';
@@ -3796,36 +3857,48 @@ function morningNudge() {
     // ---- Today's calendar events (fetched early — the weather ticker uses
     // these to localize to wherever today's events actually are, when on a
     // trip) --------------------------------------------------------------
-    let todayEventsAll = [];
-    try {
+    var todayEventsAll = [];
+    nightlyStep_(ctx, 'getUpcomingEvents', function() {
       todayEventsAll = getUpcomingEvents().filter(function(e) { return e.daysUntil === 0; });
-    } catch (calErr) { Logger.log('morningNudge: calendar fetch error — ' + calErr.message); }
+    });
 
     // ---- Weather ticker (graceful — empty string if not configured) -----
-    const weatherTicker = getWeatherTicker_(todayEventsAll);
+    // This was a bare call with NO try/catch on an external HTTP fetch — the one
+    // phase here that could take the whole email down by throwing, as well as by
+    // being slow. Now it can do neither.
+    var weatherTicker = '';
+    nightlyStep_(ctx, 'getWeatherTicker_', function() {
+      weatherTicker = getWeatherTicker_(todayEventsAll) || '';
+    });
 
     // ---- Data freshness notice (Issue #138) -----------------------------
     // Names any source that failed to refresh, so nothing in this email is
     // read as current when it is not.
-    let stalenessNotice     = '';
-    let stalenessPlainText  = '';
-    try {
-      const degradedList = getDegradedSources_();
+    var stalenessNotice     = '';
+    var stalenessPlainText  = '';
+    var watchdogLines       = [];
+
+    // The watchdog is its own phase, and the heaviest one here: it reads the Flags
+    // sheet, APPENDS flag rows and posts to Slack. Separated from the staleness
+    // rendering below so the breadcrumb can tell the two apart — "died during
+    // runWatchdog_" and "died during buildStalenessNotice" are different problems.
+    //
+    // hourlyCheck runs runWatchdog_ every hour regardless, so a skip here costs the
+    // morning email its watchdog LINES, not the watchdog itself.
+    nightlyStep_(ctx, 'runWatchdog_', function() {
+      if (isNotifEnabled_('watchdog_email')) {
+        watchdogLines = runWatchdog_().lines;
+      } else {
+        runWatchdog_();   // still run it — the flag and Slack paths have their own toggles
+      }
+    });
+
+    nightlyStep_(ctx, 'buildStalenessNotice', function() {
+      var degradedList = getDegradedSources_();
 
       // Watchdog notices ride in the same block rather than adding a second
       // warning surface. "This data failed to refresh" and "this job stopped
       // running" are the same sentence to a reader at 7am.
-      let watchdogLines = [];
-      try {
-        if (isNotifEnabled_('watchdog_email')) {
-          watchdogLines = runWatchdog_().lines;
-        } else {
-          runWatchdog_();   // still run it — the flag and Slack paths have their own toggles
-        }
-      } catch (wdErr) {
-        Logger.log('morningNudge: watchdog error — ' + wdErr.message);
-      }
-
       if (degradedList.length > 0 || watchdogLines.length > 0) {
         const items = degradedList.map(function(d) {
           return '<li style="margin:0 0 3px;">' + d.source +
@@ -3845,9 +3918,7 @@ function morningNudge() {
             return '  - ' + l;
           })).join('\n') + '\n';
       }
-    } catch (staleErr) {
-      Logger.log('morningNudge: staleness notice error — ' + staleErr.message);
-    }
+    });
 
     const todayEvents = todayEventsAll.slice(0, 5);
 
@@ -3876,23 +3947,23 @@ function morningNudge() {
     }
 
     // ---- Tasks: overdue + due today count -------------------------------
-    let overdueCount   = 0;
-    let dueTodayCount  = 0;
-    try {
-      const openTasks = getOpenTasks();
+    var overdueCount   = 0;
+    var dueTodayCount  = 0;
+    nightlyStep_(ctx, 'getOpenTasks', function() {
+      var openTasks = getOpenTasks();
       overdueCount  = openTasks.filter(function(t) { return t.isOverdue; }).length;
       dueTodayCount = openTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
-    } catch (taskErr) { Logger.log('morningNudge: task fetch error — ' + taskErr.message); }
+    });
 
-    // Google Tasks counts (Issue #99)
-    let gOverdueCount  = 0;
-    let gDueTodayCount = 0;
-    try {
-      const gRes = webGetGoogleTasks_();
-      const gTasks = (gRes && gRes.tasks) || [];
+    // Google Tasks counts (Issue #99) — a second, external task backend
+    var gOverdueCount  = 0;
+    var gDueTodayCount = 0;
+    nightlyStep_(ctx, 'webGetGoogleTasks_', function() {
+      var gRes = webGetGoogleTasks_();
+      var gTasks = (gRes && gRes.tasks) || [];
       gOverdueCount  = gTasks.filter(function(t) { return t.isOverdue; }).length;
       gDueTodayCount = gTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
-    } catch (gTaskErr) { Logger.log('morningNudge: Google Tasks fetch error (non-fatal) — ' + gTaskErr.message); }
+    });
     const totalOverdue   = overdueCount  + gOverdueCount;
     const totalDueToday  = dueTodayCount + gDueTodayCount;
 
@@ -3909,16 +3980,14 @@ function morningNudge() {
     }
 
     // ---- Morning Intelligence section (Issue #24) -------------------------
-    let intelligenceSection = '';
-    try {
+    var intelligenceSection = '';
+    nightlyStep_(ctx, 'buildMorningIntelligence_', function() {
       intelligenceSection = buildMorningIntelligence_();
-    } catch (intErr) {
-      Logger.log('morningNudge: buildMorningIntelligence_ error (non-fatal) — ' + intErr.message);
-    }
+    });
 
     // ---- Guest arriving soon ticker (Issue #150) ----------------------------
     var guestTicker = '';
-    try {
+    nightlyStep_(ctx, 'getUpcomingGuests_', function() {
       var guestCfg  = readPTOConfig_();
       var guestList = getUpcomingGuests_(guestCfg);
       var arriving  = guestList.filter(function(g) { return g.daysAway >= 0 && g.daysAway <= 7; });
@@ -3933,19 +4002,15 @@ function morningNudge() {
         }).join('');
         guestTicker = '<table cellpadding="0" cellspacing="0" style="margin-bottom:20px;border-left:3px solid #c9a84c;padding-left:12px;">' + guestItems + '</table>';
       }
-    } catch (guestErr) {
-      Logger.log('morningNudge: guest ticker error (non-fatal) — ' + guestErr.message);
-    }
+    });
 
     // ---- Capacity mode ticker (Issue #8) ------------------------------------
     var capacityTicker = (function() {
       var dot, label, subLabel;
-      var meetCount = 0;
-      try {
-        meetCount = getUpcomingEvents().filter(function(e) {
-          return e.daysUntil === 0 && !e.isAllDay;
-        }).length;
-      } catch (e) { /* non-fatal */ }
+      // Counted from the events ALREADY fetched above. This used to call
+      // getUpcomingEvents() a second time — a whole extra calendar round trip to
+      // count today's meetings, on the one execution that was running out of time.
+      var meetCount = todayEventsAll.filter(function(e) { return !e.isAllDay; }).length;
 
       if (capMode === 'busy') {
         dot = '🔴';
@@ -4072,11 +4137,54 @@ function morningNudge() {
     // turn a Slack/email switch in the modal into a false alarm.
     try { recordHeartbeat_('delivery:morning_briefing'); } catch (hbErr) {}
 
+    // What the run cost, reported on EVERY morning rather than only a bad one. This
+    // is the number that was missing when the email died: a phase creeping towards
+    // the ceiling is worth seeing while it is still creeping.
+    try {
+      var mElapsed = Math.round((Date.now() - runStart) / 1000);
+      var mSummary = '✅ Morning email — ' + total + ' flag' + (total === 1 ? '' : 's') +
+                     ' · ' + stepTimings.length + ' phase' + (stepTimings.length === 1 ? '' : 's');
+      if (stepFailures.length) mSummary += ' · ' + stepFailures.length + ' warning' +
+        (stepFailures.length > 1 ? 's' : '');
+      // Skipped is the budget working as designed — the email went out WITHOUT that
+      // section instead of not going out at all. Reported apart from warnings so the
+      // two are never read as the same thing.
+      if (stepSkipped.length)  mSummary += ' · ' + stepSkipped.length + ' skipped (time budget)';
+      mSummary += ' in ' + mElapsed + 's';
+      sendSlackLog_(mSummary);
+      if (stepFailures.length) {
+        sendSlackLog_('⚠️ Morning warnings:\n' + stepFailures.map(function(f) { return '• ' + f; }).join('\n'));
+      }
+      if (stepSkipped.length) {
+        sendSlackLog_('⏭️ Morning sections dropped for time:\n' +
+          stepSkipped.map(function(f) { return '• ' + f; }).join('\n'));
+      }
+      var mSlowest = slowestNightlySteps_(stepTimings, 5);
+      if (mSlowest.length) sendSlackLog_('⏱️ Slowest morning phases: ' + mSlowest.join(' · '));
+      veraLog_('morningNudge', 'Morning',
+        (stepFailures.length || stepSkipped.length) ? 'Partial' : 'Success',
+        total + ' flag(s) · ' + stepTimings.length + ' phase(s)' +
+          (stepFailures.length ? ' · ' + stepFailures.length + ' warning(s)' : '') +
+          (stepSkipped.length ? ' · ' + stepSkipped.length + ' skipped (time budget)' : '') +
+          (mSlowest.length ? ' · slowest: ' + mSlowest.join(', ') : ''),
+        mElapsed * 1000,
+        stepFailures.length ? stepFailures.join('; ') : '');
+    } catch (mSumErr) { /* non-fatal — never let logging break the email */ }
+
   } catch (e) {
     Logger.log('morningNudge ERROR: ' + e.message + '\n' + (e.stack || ''));
     try { sendSlackLog_('❌ *morningNudge* [Nightly] — Failed — ' + e.message); } catch (se) {}
   } finally {
     try { recordHeartbeat_('morningNudge'); } catch (hbErr) {}
+    // Cleared in the finally, NOT on the success path — the opposite of nightlyRun,
+    // and deliberately. This function has three legitimate early returns (disabled,
+    // no flags, no active flags) that reach the finally without having sent anything,
+    // and leaving a breadcrumb set on those would have the watchdog report a death
+    // that never happened. A terminated run never reaches here at all, which is the
+    // only case whose breadcrumb should survive — and the only one it needs to.
+    try {
+      PropertiesService.getScriptProperties().deleteProperty(MORNING_STEP_PROP_);
+    } catch (bcErr) { /* non-fatal */ }
     try { flushSystemLog_(); } catch (flErr) {}
   }
 }

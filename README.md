@@ -1078,6 +1078,76 @@ says the night ran long, the other says the night was incomplete.
 > so a budget-trimmed night still gets pattern-matched. That is the case the morning
 > banner showed, fixed; the other remains open.
 
+### The morning email outgrew six minutes too
+
+One morning no briefing arrived, and the watchdog said only:
+
+```
+• Morning briefing has not gone out in 1d 2h (expected every 26 hours)
+• Morning email has not run in 1d 2h (expected every 26 hours)
+```
+
+The Apps Script Executions row read **Timed out** — the same failure as the nightly
+run, in the job that reports every morning. A terminated execution skips its `finally`,
+so `recordHeartbeat_('morningNudge')`, the delivery marker and `flushSystemLog_` all
+never ran: no heartbeat, no email, and that run's log gone with it.
+
+`morningNudge` builds from ~15 sources — the Flags sheet, Drive, Calendar, a weather
+API, the watchdog, two task backends, Signal Learning. Each already had its own
+try/catch, so it degraded on **error** but not on **time**: one slow dependency took
+the whole email. Every phase now goes through **`nightlyStep_`** (reused as-is — it is
+generic; only its name is nightly), which supplies the catch, so the duplicated
+try/catch is gone, and adds the three things that were missing:
+
+| | |
+|---|---|
+| a **`MORNING_STEP` breadcrumb** written *before* each phase | a kill now names the phase. A marker written afterwards never survives the kill it exists to explain |
+| a **budget** checked before each phase (4m30s, not the nightly 5m30s — the HTML build and the send come after) | **the email still sends, without that section.** A missing weather ticker beats a missing email |
+| **timings**, reported as `⏱️ Slowest morning phases` | emitted at the end of a run, so until the kill was fixed it was only ever produced by runs that did not need it |
+
+Reading the Flags sheet and the send itself are deliberately **not** budgeted: without
+them there is no email left to degrade. `morningNudge` also gained `LAST_MORNING_START`
+and both markers are now in its `HEARTBEAT_REGISTRY` entry, so `jobStartedAndDied_`
+says *"Morning email started but did not finish — died during `X`"* instead of *"has
+not run"*.
+
+> One duplicated round trip went with it: the capacity ticker called
+> `getUpcomingEvents()` a second time purely to count today's meetings, which
+> `todayEventsAll` already held — an extra calendar fetch on the one execution that was
+> out of time.
+
+### "Fired and did nothing" is not "never fired"
+
+Found while diagnosing the above. `Watchdog.js` has stated the rule from the start:
+
+> `runEmailScan_` early-returns when `email_parser_enabled` is false (its default) and
+> `checkFlightStatuses_` no-ops with no flights booked. **Both still record.** Otherwise
+> the watchdog would alarm permanently about correct behaviour.
+
+Nothing enforced it, and `morningNudge` broke it — its
+`if (!isNotifEnabled_('morning_briefing')) return;` sat *before* the `try` whose
+`finally` records. So a briefing you switched off would have reported as an outage every
+morning forever, and a genuinely broken one produced the identical sentence. The check
+is now inside the `try`.
+
+**`tests/source/test_heartbeats.js` enforces it for every job in the registry:** for
+each, find the `try` whose `finalizer` records that job's heartbeat, and assert no
+`return` sits outside it. Derived from `HEARTBEAT_REGISTRY`, so a job added later is
+covered without anyone remembering.
+
+> **It parses rather than scans, and that was learned the hard way.** Four hand-rolled
+> text-scanning versions produced four false positives: `/\bfunction\b/` matched the
+> word in `hourlyCheck`'s *own comment* about returning early; blanking string contents
+> desynchronised on `.replace(/'/g, '')`; walking backwards from the `finally` landed
+> 4.5k characters early inside an object literal; and a block-comment pass that ignored
+> strings read the `*/*` in an HTTP `Accept` header as a comment opener and blanked 40
+> lines of real code. All the same mistake — treating JavaScript as text.
+> `@babel/standalone` was already a devDependency and ships a parser.
+
+And `delivery:morning_briefing` now carries an `enabledKey`, so a briefing that is
+switched off stops being reported as undelivered — while its *job* heartbeat keeps
+reporting, so the trigger itself is still watched.
+
 ### What a missing nightly run does and does not mean
 
 `recordHeartbeat_('nightlyRun')` sits in a **`finally`** block — *the trigger fired*

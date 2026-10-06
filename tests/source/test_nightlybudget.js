@@ -511,10 +511,28 @@ console.log('\nEvery step belongs to exactly one half');
   //   function nightlyStep_(ctx, name, fn)
   // and the count is one too many for a reason that has nothing to do with the split.
   const allCalls = (SRC.Code.match(/nightlyStep_\(ctx,\s*'/g) || []).length;
-  check('every nightlyStep_ call in Code.js is in one half or the other',
-        allCalls === head.length + tail.length,
-        JSON.stringify({ inFile: allCalls, head: head.length, tail: tail.length }) +
-        ' — a step in neither half runs on no night at all');
+
+  // nightlyStep_ is no longer only the night's. morningNudge routes its ~15 phases
+  // through it too, after the morning email was killed at the same six-minute ceiling
+  // — the budget, the breadcrumb and the timings are the same three things, so
+  // reimplementing them would have been two copies to keep in step.
+  //
+  // So the accounting is over the THREE functions that use it, not two. This stays the
+  // same guarantee it was: a call in a fourth, unaccounted function still fails, and a
+  // step belonging to nothing is still impossible rather than merely unlikely. (This
+  // assertion caught exactly that when the morning phases were added — it reported 54
+  // calls against 44 accounted for, which is the whole reason it exists.)
+  const morning = stepsIn(bodyOf('morningNudge'));
+  check('morningNudge shares the same budgeted step runner',
+        morning.length >= 8, JSON.stringify(morning));
+  check('…and its phases are nothing to do with the night',
+        morning.every(s => head.indexOf(s) === -1 && tail.indexOf(s) === -1),
+        JSON.stringify(morning.filter(s => head.indexOf(s) !== -1 || tail.indexOf(s) !== -1)));
+  check('every nightlyStep_ call in Code.js belongs to one of the three',
+        allCalls === head.length + tail.length + morning.length,
+        JSON.stringify({ inFile: allCalls, head: head.length, tail: tail.length,
+                         morning: morning.length }) +
+        ' — a step in none of them runs on no night and no morning at all');
 }
 
 console.log('\nThe tail reports its own death');

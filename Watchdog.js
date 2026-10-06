@@ -54,7 +54,11 @@ var HEARTBEAT_REGISTRY = [
   // healthy while the second died every night unseen — which is the failure the
   // split exists to fix, rebuilt one level up.
   { job: 'nightlyRunTail',        label: 'Nightly run (part 2)', maxAgeHours: 26, startProp: 'LAST_NIGHTLY_TAIL_START', stepProp: 'NIGHTLY_TAIL_STEP' },
-  { job: 'morningNudge',          label: 'Morning email',        maxAgeHours: 26 },
+  // The morning email was killed at the six-minute ceiling and this entry could only
+  // say "has not run in 1d 2h" — the same sentence as a trigger that never fired. It
+  // now carries the same start marker and breadcrumb as the nightly run, so
+  // jobStartedAndDied_ can name the phase instead.
+  { job: 'morningNudge',          label: 'Morning email',        maxAgeHours: 26, startProp: 'LAST_MORNING_START', stepProp: 'MORNING_STEP' },
   { job: 'hourlyCheck',           label: 'Hourly check',         maxAgeHours: 3  },
   { job: 'checkFlightStatuses_',  label: 'Flight status poll',   maxAgeHours: 2  },
   { job: 'runEmailScan_',         label: 'Travel email scan',    maxAgeHours: 3  },
@@ -63,7 +67,11 @@ var HEARTBEAT_REGISTRY = [
   // Delivery, not execution. morningNudge's own heartbeat says the trigger
   // fired; this one says the briefing actually reached you, which is the part
   // you would notice missing.
-  { job: 'delivery:morning_briefing', label: 'Morning briefing', maxAgeHours: 26, verb: 'has not gone out in' },
+  // enabledKey: a briefing you switched OFF has correctly not gone out, and saying so
+  // every morning forever is the false alarm this file's own header warns about. The
+  // job heartbeat above still reports, so a disabled briefing is visible as "ran, sent
+  // nothing" rather than vanishing from the watchdog entirely.
+  { job: 'delivery:morning_briefing', label: 'Morning briefing', maxAgeHours: 26, verb: 'has not gone out in', enabledKey: 'morning_briefing' },
 ];
 
 /**
@@ -267,6 +275,17 @@ function getOverdueJobs_() {
   var out           = [];
 
   HEARTBEAT_REGISTRY.forEach(function(r) {
+    // A feature deliberately switched off is not an outage. Checked before anything
+    // else so a disabled notification cannot alarm at all, however old its marker.
+    if (r.enabledKey) {
+      try {
+        if (!isNotifEnabled_(r.enabledKey)) return;
+      } catch (enErr) {
+        // Cannot tell whether it is enabled — report rather than assume silence.
+        Logger.log('getOverdueJobs_: enabledKey check failed for ' + r.job + ' — ' + enErr.message);
+      }
+    }
+
     var entry    = state[r.job];
     var windowMs = r.maxAgeHours * 3600000;
     var lastRun  = (entry && entry.lastRun) ? entry.lastRun : 0;

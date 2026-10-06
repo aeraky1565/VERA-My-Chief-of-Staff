@@ -44,7 +44,7 @@ const DAY  = 86400000;
 
 // ---- Shared stubs -----------------------------------------------------------
 
-function makeCtx(heartbeatState, registrations) {
+function makeCtx(heartbeatState, registrations, notifDisabled) {
   const props = { SYSTEM_HEARTBEATS: JSON.stringify(heartbeatState || {}) };
   // Written by setupTriggers. Absent means "nothing has ever been registered", which
   // is the fresh-deploy state the watchdog must stay quiet about.
@@ -63,6 +63,11 @@ function makeCtx(heartbeatState, registrations) {
         deleteProperty: k => { delete props[k]; },
       }),
     },
+    // Real dependency, stubbed explicitly. getOverdueJobs_ consults it for registry
+    // entries carrying an enabledKey. Leaving it undefined let the ReferenceError hit
+    // the fail-open catch, so the suppression path was never actually exercised while
+    // the suite reported green.
+    isNotifEnabled_: k => !(notifDisabled || []).includes(k),
     _props: props,
   };
   vm.createContext(ctx);
@@ -78,8 +83,8 @@ const WATCHDOG_READS = [
   'getOverdueJobs_', 'getSilentFeeds_', 'getWatchdogNotices_', 'describeHours_',
 ];
 
-function loadWatchdog(state, registrations) {
-  const ctx = makeCtx(state, registrations);
+function loadWatchdog(state, registrations, notifDisabled) {
+  const ctx = makeCtx(state, registrations, notifDisabled);
   // formatAge_ lives in ApiHealth.js and is reused rather than reimplemented.
   vm.runInContext(extract('ApiHealth.js', ['formatAge_']), ctx);
   vm.runInContext(extract('Watchdog.js', WATCHDOG_READS), ctx);
@@ -252,6 +257,50 @@ console.log('\nA registered job still reports normally once it has run');
         byJob.nightlyRun && byJob.nightlyRun.ageMs < 28 * HOUR,
         byJob.nightlyRun && String(byJob.nightlyRun.ageMs) +
         ' — 90 days would be the registration, which is not what went wrong');
+}
+
+// ---- A notification you switched off is not an outage ----------------------
+//
+// delivery:morning_briefing answers "did the briefing reach you". When the briefing is
+// deliberately disabled it has correctly not reached you, and saying so every morning
+// forever is precisely the false alarm this file's header warns about. The job
+// heartbeat is a different question and keeps reporting, so a disabled briefing shows
+// as "the trigger ran" rather than disappearing from the watchdog.
+console.log('\nA disabled notification is not reported as overdue');
+{
+  const now = Date.now();
+  const stale = { 'delivery:morning_briefing': { lastRun: now - 50 * HOUR },
+                  morningNudge:                { lastRun: now - 50 * HOUR } };
+
+  const on = vm.runInContext('getOverdueJobs_()', loadWatchdog(stale)).map(j => j.job);
+  check('while ENABLED, a stale delivery marker is reported',
+        on.includes('delivery:morning_briefing'),
+        JSON.stringify(on) + ' — otherwise the suppression below proves nothing');
+
+  const off = vm.runInContext('getOverdueJobs_()',
+    loadWatchdog(stale, undefined, ['morning_briefing'])).map(j => j.job);
+  check('while DISABLED, it is not reported',
+        !off.includes('delivery:morning_briefing'), JSON.stringify(off));
+  check('…but the job heartbeat still is, so the trigger is not unwatched',
+        off.includes('morningNudge'), JSON.stringify(off) +
+        ' — suppressing the delivery marker must not hide the job itself');
+
+  // Fail open: if we cannot tell whether it is enabled, report rather than go quiet.
+  const ctx = makeCtx(stale);
+  ctx.isNotifEnabled_ = () => { throw new Error('config unreadable'); };
+  vm.runInContext(extract('ApiHealth.js', ['formatAge_']), ctx);
+  vm.runInContext(extract('Watchdog.js', WATCHDOG_READS), ctx);
+  const broken = vm.runInContext('getOverdueJobs_()', ctx).map(j => j.job);
+  check('an unreadable config reports rather than assuming silence',
+        broken.includes('delivery:morning_briefing'), JSON.stringify(broken) +
+        ' — treating a failed check as "disabled" would silence a real outage');
+
+  // Only the entry carrying enabledKey is affected.
+  const others = vm.runInContext('getOverdueJobs_()',
+    loadWatchdog({ nightlyRun: { lastRun: now - 50 * HOUR } }, undefined,
+                 ['morning_briefing'])).map(j => j.job);
+  check('an entry with no enabledKey is untouched by it',
+        others.includes('nightlyRun'), JSON.stringify(others));
 }
 
 console.log('\nrecordTriggerRegistrations_');
