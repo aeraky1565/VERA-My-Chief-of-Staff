@@ -74,6 +74,14 @@ function hourlyCheck() {
     try { recordHeartbeat_('hourlyCheck'); } catch (hbErr) {}
     // A second, independent place the watchdog runs from. If the nightly run is
     // the thing that died, it cannot be the thing that notices.
+    //
+    // RECORDED FIRST, AND THAT ORDER IS LOAD-BEARING. This is why hourlyCheck passes
+    // no exclusion while morningNudge must: its own heartbeat is already fresh by the
+    // time it asks, so it cannot report itself as dead. morningNudge cannot copy the
+    // trick — its heartbeat lives in a finally so that a TERMINATED run leaves none,
+    // which is the only reason a six-minute kill is detectable at all.
+    //
+    // Swapping these two lines would quietly bring the self-report back here.
     try { runWatchdog_(); } catch (wdErr) { Logger.log('hourlyCheck: watchdog error — ' + wdErr.message); }
     try { flushSystemLog_(); } catch (flErr) {}
   }

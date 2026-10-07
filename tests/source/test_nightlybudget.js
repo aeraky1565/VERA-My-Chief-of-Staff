@@ -353,8 +353,13 @@ console.log('\nThe watchdog says WHERE it died');
         !/started but did not finish/.test(died_) &&
         (SRC.Watch.match(/split\('\|'\)/g) || []).length === 1,
         'two copies and the never-ran branch drifts from the stale one');
+  // Counts the RENDERING EXPRESSION, not the words. Matching /died during/ over the
+  // file also matched a comment quoting the phrase, which pushed the count to 3 — so
+  // deleting one of the two renderers still left 2 and the assertion passed. Its own
+  // controls caught that; the seventh time in this codebase a check has matched prose
+  // about the thing instead of the thing.
   check('both renderers name it',
-        (SRC.Watch.match(/died during/g) || []).length === 2,
+        (SRC.Watch.match(/died during ' \+ j\.diedAt/g) || []).length === 2,
         'the email lines and the flag are two surfaces and both were guessing');
 
   // Behavioural: drive the real function.

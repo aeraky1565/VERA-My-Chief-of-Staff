@@ -4007,11 +4007,22 @@ function morningNudge() {
     //
     // hourlyCheck runs runWatchdog_ every hour regardless, so a skip here costs the
     // morning email its watchdog LINES, not the watchdog itself.
+    // IT MUST NOT REPORT ON ITSELF. This phase runs ~250 lines before either of the
+    // morning heartbeats is written, so without these two names the watchdog looked at
+    // the morning email mid-flight — start marker seconds old, heartbeat from the last
+    // run that actually finished — and printed, into this very email:
+    //
+    //   Morning briefing has not gone out in 1d 23h
+    //   Morning email started but did not finish — died during runWatchdog_
+    //
+    // naming the phase that was asking. See getOverdueJobs_ for why the exclusion sits
+    // there rather than here, and why nothing stops being watched.
+    var SELF = ['morningNudge', 'delivery:morning_briefing'];
     nightlyStep_(ctx, 'runWatchdog_', function() {
       if (isNotifEnabled_('watchdog_email')) {
-        watchdogLines = runWatchdog_().lines;
+        watchdogLines = runWatchdog_(SELF).lines;
       } else {
-        runWatchdog_();   // still run it — the flag and Slack paths have their own toggles
+        runWatchdog_(SELF);   // still run it — the flag and Slack paths have their own toggles
       }
     });
 

@@ -266,15 +266,45 @@ function jobStartedAndDied_(r, lastRunMs) {
  * (recordTriggerRegistrations_, written by setupTriggers) is the missing evidence —
  * past its own window with no heartbeat, a REGISTERED job is overdue.
  *
+ * A JOB CANNOT REPORT ON ITSELF FROM INSIDE ITS OWN RUN, which is what `exclude` is
+ * for. morningNudge runs the watchdog as one of its phases, roughly 250 lines before it
+ * records either of its own heartbeats — so the watchdog looked at the morning email
+ * mid-flight, saw a start marker seconds old against a heartbeat from the last
+ * SUCCESSFUL run, and reported it exactly as designed:
+ *
+ *   Morning briefing has not gone out in 1d 23h
+ *   Morning email started but did not finish — died during runWatchdog_
+ *
+ * …inside the morning email, naming the phase that was asking. Both true of the past
+ * and absurd where they were printed. It surfaces only on the morning after a failure,
+ * because on a normal day the delivery marker is ~24h old and inside its 26h window —
+ * so it appears on precisely the morning the banner most needs to be readable.
+ *
+ * Excluding here rather than at the renderer covers all three surfaces at once: the
+ * same notices object feeds the email lines, syncWatchdogFlags_ (which was opening a
+ * High flag saying this) and announceWatchdogToSlack_.
+ *
+ * No coverage is lost. hourlyCheck runs the watchdog every hour WITHOUT an exclusion,
+ * so these jobs stay watched — just not by themselves. The same reasoning as the
+ * comment at its call site: if a job is the thing that died, it cannot be the thing
+ * that notices.
+ *
+ * @param {Array<string>=} exclude  job names to skip — the caller's own, when it is a
+ *                                  tracked job running the watchdog as part of itself
  * @returns {Array<Object>} { job, label, verb, diedAt, lastRun, ageMs, ageText, … }
  */
-function getOverdueJobs_() {
+function getOverdueJobs_(exclude) {
   var state         = getHeartbeatState_();
   var registrations = getTriggerRegistrations_();
   var now           = Date.now();
   var out           = [];
+  var skip          = {};
+  (exclude || []).forEach(function(j) { skip[j] = true; });
 
   HEARTBEAT_REGISTRY.forEach(function(r) {
+    // Running right now, and asking about itself. Its heartbeat is written at the end.
+    if (skip[r.job]) return;
+
     // A feature deliberately switched off is not an outage. Checked before anything
     // else so a disabled notification cannot alarm at all, however old its marker.
     if (r.enabledKey) {
@@ -396,8 +426,8 @@ function getSilentFeeds_() {
  *
  * @returns {Object} { jobs: [...], feeds: [...], lines: [...], hasAlerts: boolean }
  */
-function getWatchdogNotices_() {
-  var jobs  = getOverdueJobs_();
+function getWatchdogNotices_(exclude) {
+  var jobs  = getOverdueJobs_(exclude);
   var feeds = getSilentFeeds_();
   var lines = [];
 
@@ -444,10 +474,15 @@ var WATCHDOG_SLACK_COOLDOWN_MS_ = 12 * 60 * 60 * 1000;
  * Called from morningNudge and hourlyCheck — deliberately different triggers
  * from nightlyRun, which is the one most likely to be the thing that died.
  *
+ * @param {Array<string>=} exclude  jobs the CALLER is, when the caller is itself
+ *                                  tracked. morningNudge runs this as one of its own
+ *                                  phases and must pass its own names, or it reports
+ *                                  itself dead in the email it is in the middle of
+ *                                  sending. See getOverdueJobs_.
  * @returns {Object} the notices, so callers can render them inline too
  */
-function runWatchdog_() {
-  var notices = getWatchdogNotices_();
+function runWatchdog_(exclude) {
+  var notices = getWatchdogNotices_(exclude);
 
   try { syncWatchdogFlags_(notices); }
   catch (e) { Logger.log('runWatchdog_: flag sync error — ' + e.message); }

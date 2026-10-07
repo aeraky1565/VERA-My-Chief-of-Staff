@@ -1116,6 +1116,50 @@ not run"*.
 > `todayEventsAll` already held — an extra calendar fetch on the one execution that was
 > out of time.
 
+### A job cannot report on itself
+
+The first morning email after the timeout fix arrived — and contained these two lines,
+about itself:
+
+```
+• Morning briefing has not gone out in 1d 23h (expected every 26 hours)
+• Morning email started but did not finish; last run was 1d 23h
+  — died during runWatchdog_ (expected every 26 hours)
+```
+
+**`runWatchdog_` is the phase that produced them.** `morningNudge` runs the watchdog as
+one of its own phases, ~250 lines before it records either of its heartbeats — so the
+watchdog saw a start marker four seconds old against a heartbeat from the last run that
+actually *finished*, and answered exactly as designed. Both lines were true of the past
+and absurd where they were printed, and the breadcrumb obligingly named the phase that
+was asking.
+
+> It only shows up **the morning after a failure**: on a normal day the delivery marker
+> is ~24h old, inside its 26h window, so nothing is reported. Which means it appeared on
+> precisely the morning the banner most needed to be readable.
+
+`runWatchdog_(exclude)` now threads a job list down to `getOverdueJobs_`, and
+`morningNudge` passes `['morningNudge', 'delivery:morning_briefing']`.
+
+**Excluded at the registry walk, not at the renderer** — one `notices` object feeds the
+email lines, `syncWatchdogFlags_` and `announceWatchdogToSlack_`, so filtering in
+`getWatchdogNotices_` would have cleaned the email and left a High flag in the sheet
+saying the morning email died during `runWatchdog_`.
+
+**Nothing stopped being watched, and that is the point.** `hourlyCheck` runs the
+watchdog every hour *without* an exclusion, so both jobs stay covered — just not by
+themselves, mid-run. It is the same reasoning as the comment already at its call site:
+*if a job is the thing that died, it cannot be the thing that notices.*
+
+#### Why not just record the heartbeat earlier
+
+`hourlyCheck` does exactly that — it records, *then* calls `runWatchdog_`, which is why
+it has never reported itself. **`morningNudge` cannot copy it.** Its heartbeat lives in
+a `finally` so that a *terminated* run leaves none, and that is the only reason the
+six-minute kill was detectable at all; recording before the watchdog phase would have
+masked it. So `hourlyCheck`'s ordering is load-bearing, is now commented as such, and is
+asserted — a swap would quietly bring the self-report back there.
+
 ### "Fired and did nothing" is not "never fired"
 
 Found while diagnosing the above. `Watchdog.js` has stated the rule from the start:
