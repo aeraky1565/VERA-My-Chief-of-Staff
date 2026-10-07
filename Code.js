@@ -240,7 +240,10 @@ const PRESCRIPTION_HEADERS       = ['ID', 'Person', 'Medication', 'Dosage', 'Fre
 // WebApp.js (the r[] read, the appendRow array, and colMap), so inserting mid
 // sheet would shift seven columns in all three and need every existing row
 // rewritten. Storage order and display order do not have to agree.
-const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes', 'Credit Limit'];
+// 'No FX Fee' is Yes/No and BLANK MEANS NO — see webGetCreditCards_. It is the one
+// field here whose unset state must not be read as the permissive one: it decides
+// which cards the cheat sheet offers for spending abroad.
+const CREDIT_CARD_HEADERS        = ['ID', 'Card Name', 'Issuer', 'Last 4', 'Annual Fee', 'Due Day', 'Last Used', 'Owner', 'Auth User', 'Active', 'Statement Credit', 'Notes', 'Credit Limit', 'No FX Fee'];
 const BANK_ACCOUNT_HEADERS       = ['Account Name', 'Institution', 'Account Type', 'Owner', 'Notes'];
 const CARD_REWARD_HEADERS        = ['ID', 'Card Name', 'Category', 'Rate', 'Rate Type', 'Conditions'];
 

@@ -89,13 +89,18 @@ console.log('\nensureCreditCardSchema_');
   vm.runInContext(extractFn(WEBAPP, 'ensureCreditCardSchema_'), ctx);
   const ensure = vm.runInContext('ensureCreditCardSchema_', ctx);
 
-  // A populated 12-column sheet, i.e. the live one.
-  const old = fakeSheet(HEADERS.slice(0, 12), [['CC-1', 'AMEX Gold']], 12);
+  // A sheet one column short of the current schema — the live one, whenever a column
+  // has just been added. The WIDTHS COME FROM HEADERS, not from a literal: pinning
+  // them to 12/13 meant this file failed the moment 'No FX Fee' became column 14,
+  // reporting "widens by 2" about an ensure that was behaving correctly.
+  const N = HEADERS.length;
+  const old = fakeSheet(HEADERS.slice(0, N - 1), [['CC-1', 'AMEX Gold']], N - 1);
   ensure(old);
-  check('widens a 12-column sheet by one', old._state.inserted === 1, old._state.inserted);
+  check('widens a short sheet by exactly the shortfall',
+        old._state.inserted === 1, old._state.inserted);
   check('writes the full header row', old._state.headerWrites === 1);
-  check('the header now ends with Credit Limit',
-        old._state.header[12] === 'Credit Limit', old._state.header[12]);
+  check('the header now ends with the last schema column',
+        old._state.header[N - 1] === HEADERS[N - 1], old._state.header[N - 1]);
   check('data rows are left alone', old._state.rows.length === 1 && old._state.rows[0][0] === 'CC-1');
 
   // Second call must be a no-op.
@@ -104,9 +109,16 @@ console.log('\nensureCreditCardSchema_');
   check('idempotent on a second call', old._state.headerWrites === before, old._state.headerWrites);
 
   // An already-correct sheet is untouched.
-  const good = fakeSheet(HEADERS, [], 13);
+  const good = fakeSheet(HEADERS, [], N);
   ensure(good);
   check('an already-correct sheet is not rewritten', good._state.headerWrites === 0 && good._state.inserted === 0);
+
+  // Two columns behind, which is what a sheet that missed a release looks like.
+  const older = fakeSheet(HEADERS.slice(0, N - 2), [['CC-2', 'Chase']], N - 2);
+  ensure(older);
+  check('a sheet two columns behind is caught up in one call',
+        older._state.inserted === 2 && older._state.header.join(',') === HEADERS.join(','),
+        older._state.inserted + ' inserted');
 
   check('a null sheet does not throw', ensure(null) === null);
 }

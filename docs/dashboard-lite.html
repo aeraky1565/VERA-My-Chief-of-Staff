@@ -1120,16 +1120,33 @@ function fmtPts(n) {
   return Number(n).toLocaleString();
 }
 
+// One label for the cheat sheet, used by BOTH the panel and the Copy button. They each
+// built this string independently, which is how a fee-free card with no general-spend
+// rate came to render as "Citi Double Cash (  )" in two places at once. Degrades to
+// the bare card name when there is no rate to show.
+function cheatLabel(r) {
+  var s = r.rate ? (r.cardName + ' (' + r.rate + ' ' + r.rateType + ')') : r.cardName;
+  if (r.conditions) s += ' | ' + r.conditions;
+  return s;
+}
+
 const CARD_CATEGORY_ICONS = {
   'Groceries': '🛒', 'Dining': '🍽️', 'Gas': '⛽', 'Travel': '✈️',
   'Hotels (Prepaid)': '🏨', 'Hotels (Pay at Hotel)': '🏨',
   'Online Shopping': '🛍️', 'Streaming': '📺',
   'General Spend': '💳', 'Everything Else': '💳',
+  'International Travel': '🌍',
 };
 
 function CardModal({ mode, card, onSave, onClose, busy }) {
-  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', creditLimit:'', dueDay:'', lastUsed:'', owner:'Ahmed', authUser:'', active:'Yes', statementCredit:'', notes:'' };
-  const [form, setForm] = React.useState(mode === 'edit' ? Object.assign({}, blank, card) : blank);
+  const blank = { cardName:'', issuer:'', last4:'', annualFee:'', creditLimit:'', dueDay:'', lastUsed:'', owner:'Ahmed', authUser:'', active:'Yes', statementCredit:'', notes:'', noFxFee:'No' };
+  // noFxFee arrives from the server as a BOOLEAN (so the cheat sheet can filter on
+  // it directly) but is written back as 'Yes'/'No'. Without this conversion the
+  // select had no matching option and saving sent "true", which is not 'yes' — so
+  // editing any card silently turned its own FX flag off.
+  const [form, setForm] = React.useState(mode === 'edit'
+    ? Object.assign({}, blank, card, { noFxFee: (card && card.noFxFee) ? 'Yes' : 'No' })
+    : blank);
   const set = (k, v) => setForm(prev => Object.assign({}, prev, { [k]: v }));
   const inp = (k, label, type) => (
     <div>
@@ -1166,6 +1183,14 @@ function CardModal({ mode, card, onSave, onClose, busy }) {
           <div>
             <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}>Active</label>
             <select value={form.active} onChange={e => set('active', e.target.value)}
+              style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
+              <option>Yes</option><option>No</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display:'block', fontSize:11, color:'#6b7280', marginBottom:3 }}
+              title="Yes = no foreign transaction fee. Only these cards appear under International Travel.">No FX Fee</label>
+            <select value={form.noFxFee || 'No'} onChange={e => set('noFxFee', e.target.value)}
               style={{ width:'100%', background:'#161926', color:'#dde1f0', border:'1px solid #2a2f45', borderRadius:6, padding:'6px 8px', fontSize:13 }}>
               <option>Yes</option><option>No</option>
             </select>
@@ -1632,6 +1657,47 @@ function CardsTab({ apiUrl, apiToken }) {
       var sorted = byCat[cat].slice().sort(function(a, b) { return parseFloat(b.rate) - parseFloat(a.rate); });
       result.push({ category: cat, top: sorted.slice(0, 2) });
     });
+
+    // INTERNATIONAL TRAVEL is derived from a card property, not from a reward row the
+    // user typed. A card qualifies only when noFxFee is true, and that flag reads blank
+    // as FALSE (WebApp.js) — so this row is ABSENT until cards are marked. Deliberate:
+    // a card wrongly offered here costs ~3% of a purchase abroad.
+    //
+    // Ranked on GENERAL SPEND / EVERYTHING ELSE only, because a miscellaneous purchase
+    // abroad is exactly non-category spend — a card's 4x dining rate is the wrong
+    // number to put next to it. A fee-free card with no general-spend row still belongs
+    // in the list and simply has no rate; cheatLabel renders it as the bare name.
+    var GENERAL_SPEND_CATS = { 'General Spend': 1, 'Everything Else': 1 };
+    var intl = (visibleCards || [])
+      .filter(function(c) { return c.active === 'Yes' && c.noFxFee; })
+      .map(function(c) {
+        var best = null;
+        rewards.forEach(function(r) {
+          if (r.cardName !== c.cardName) return;
+          if (!GENERAL_SPEND_CATS[r.category]) return;
+          if (!best || parseFloat(r.rate) > parseFloat(best.rate)) best = r;
+        });
+        return best
+          ? { cardName: c.cardName, rate: best.rate, rateType: best.rateType, conditions: best.conditions }
+          : { cardName: c.cardName, rate: '', rateType: '', conditions: '' };
+      })
+      .sort(function(a, b) {
+        var ar = parseFloat(a.rate), br = parseFloat(b.rate);
+        if (isNaN(ar) && isNaN(br)) return a.cardName.localeCompare(b.cardName);
+        if (isNaN(ar)) return 1;
+        if (isNaN(br)) return -1;
+        return br - ar;
+      });
+    if (intl.length) {
+      // Category is a free-text input, so 'International Travel' can also be a real
+      // reward row. Two entries with the same category would be a duplicate React key
+      // and the heading rendered twice, so the derived cards merge into that row.
+      var existing = null;
+      result.forEach(function(row) { if (row.category === 'International Travel') existing = row; });
+      if (existing) existing.top = existing.top.concat(intl).slice(0, 2);
+      else result.push({ category: 'International Travel', top: intl.slice(0, 2) });
+      result.sort(function(a, b) { return a.category.localeCompare(b.category); });
+    }
     return result;
   }, [rewards, visibleCards]);
 
@@ -1640,11 +1706,7 @@ function CardsTab({ apiUrl, apiToken }) {
     var monthName = now.toLocaleString('default', { month: 'long', year: 'numeric' });
     var lines = ['💳 Ahmed & Victoria\'s Card Cheat Sheet – ' + monthName];
     cheatSheet.forEach(function(row) {
-      var cardStrs = row.top.map(function(r) {
-        var s = r.cardName + ' (' + r.rate + ' ' + r.rateType + ')';
-        if (r.conditions) s += ' | ' + r.conditions;
-        return s;
-      }).join(' / ');
+      var cardStrs = row.top.map(cheatLabel).join(' / ');
       lines.push(row.category.padEnd(18) + '→ ' + cardStrs);
     });
     if (navigator.clipboard) {
@@ -1867,8 +1929,7 @@ function CardsTab({ apiUrl, apiToken }) {
                     <div>
                       <div style={{ fontWeight:700, fontSize:13, color:'#dde1f0', textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:3 }}>{row.category}</div>
                       {row.top.map(function(r, idx) {
-                        var label = r.cardName + ' (' + r.rate + ' ' + r.rateType + ')';
-                        if (r.conditions) label += ' | ' + r.conditions;
+                        var label = cheatLabel(r);
                         return <div key={idx} style={{ fontSize:12, color:'#a0a8c0' }}>{label}</div>;
                       })}
                     </div>
@@ -1924,6 +1985,8 @@ function CardsTab({ apiUrl, apiToken }) {
                                 fontSize:10, fontWeight:700, borderRadius:4, padding:'2px 6px' }}>
                                 {c.active === 'Yes' ? 'ACTIVE' : 'INACTIVE'}
                               </span>
+                              {c.noFxFee && <span title="No foreign transaction fee — appears under International Travel on the cheat sheet"
+                                style={{ fontSize:12 }}>🌍</span>}
                               <button onClick={e => { e.stopPropagation(); setModal({ type:'card', data:c }); }} disabled={busy}
                                 style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
                               <button onClick={e => { e.stopPropagation(); handleDeleteCard(c.id); }} disabled={busy}

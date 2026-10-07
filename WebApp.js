@@ -7361,6 +7361,13 @@ function webGetCards_() {
       // Limit header, readSheet reads getLastColumn() columns and r[12] comes
       // back undefined. The `!== ''` shape used above would make that NaN.
       creditLimit:     (r[12] == null || r[12] === '') ? null : Number(r[12]),
+      // A BOOLEAN WITH BLANK MEANING FALSE, not active's default-to-'Yes'. This is
+      // what the cheat sheet's International Travel row filters on, and the costs are
+      // asymmetric: a card wrongly offered for a purchase abroad costs ~3% of it,
+      // while a card wrongly withheld costs a tick in a box. So an unset, absent or
+      // unrecognised value reads as "do not offer this one" — same shape as the Card
+      // Perks needsReview/autopay flags.
+      noFxFee:         String(r[13] == null ? '' : r[13]).trim().toLowerCase() === 'yes',
     };
   });
   // Sort: active first → owner order → name alpha
@@ -7457,6 +7464,7 @@ function webAddCard_(e) {
     (p.statementCredit || '').trim(),
     (p.notes           || '').trim(),
     (p.creditLimit     || '').toString().trim(),
+    (p.noFxFee         || '').trim(),
   ]);
   return { ok: true, id: id };
 }
@@ -7498,7 +7506,11 @@ function webUpdateCard_(e) {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ensureCreditCardSchema_(ss.getSheetByName(TABS.CREDIT_CARDS));
   var rows  = sheet.getDataRange().getValues();
-  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12, creditLimit:13 };
+  // Column NUMBERS, so an index that drifts from CREDIT_CARD_HEADERS writes a field
+  // into the wrong column — the FX flag into Notes, silently. test_cardfx.js derives
+  // the expected numbers from the header list rather than restating them here, so that
+  // whole class of off-by-one is caught rather than trusted.
+  var colMap = { cardName:2, issuer:3, last4:4, annualFee:5, dueDay:6, lastUsed:7, owner:8, authUser:9, active:10, statementCredit:11, notes:12, creditLimit:13, noFxFee:14 };
   for (var i = 1; i < rows.length; i++) {
     if (rows[i][0] === id) {
       for (var key in colMap) {

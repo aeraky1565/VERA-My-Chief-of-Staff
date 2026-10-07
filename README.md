@@ -2332,6 +2332,50 @@ npm run test:ui       # the ones that render in Chromium — ~2min
 node tests/run.js --list
 ```
 
+### No FX Fee, and the International Travel cheat-sheet row
+
+`Credit Cards` carries a **`No FX Fee`** Yes/No column, and the cheat sheet gained an
+**International Travel** row listing the cards worth using for miscellaneous purchases
+outside the US.
+
+That row is unlike every other row in the panel. The others group **Card Rewards** rows
+somebody typed; this one is **derived** from the card's FX flag, because "which card can
+I use abroad" is a property of the card, not a reward category.
+
+**Blank means not offered.** The flag is read as a boolean with unset → `false` — the
+Card Perks `=== 'yes'` convention, deliberately *not* `Active`'s default-to-`'Yes'`. The
+costs are asymmetric: a card wrongly offered costs ~3% of a foreign purchase, a card
+wrongly withheld costs a tick in a box. **So the row is absent until cards are marked**,
+which is the safe default made visible rather than an empty heading implying "no good
+options".
+
+**Ranked on General Spend / Everything Else only.** A miscellaneous purchase abroad is
+exactly non-category spend, so a card's 4x dining rate is the wrong number to put beside
+it. A fee-free card with no general-spend row still appears — it is still free to use —
+listed after the rated ones and rendered as just its name.
+
+Three things that are easy to get wrong here and are pinned by tests:
+
+- **One label helper.** `copyCheatSheet` and the panel each built
+  `cardName (rate rateType) | conditions` *independently*, in both dashboards. A
+  fee-free card with no rate rendered `"Citi Double Cash (  )"` in every one of them, and
+  fixing one would have left the Copy button disagreeing with the panel it copies. There
+  is now a single `cheatLabel`.
+- **Two representations meeting.** The server returns `noFxFee` as a **boolean** so the
+  memo can filter on it directly, and takes `'Yes'`/`'No'` back. Without a conversion in
+  the card modal the select had no matching option and saving posted `"true"`, which is
+  not `'yes'` — so **editing any card silently turned its own FX flag off.**
+- **The category field is free text**, so `International Travel` can also be typed as a
+  real reward row. The derived cards merge into that row rather than adding a second one
+  with the same key.
+
+> No migration: `ensureCreditCardSchema_` already widens the sheet and rewrites the
+> header row whenever it does not match `CREDIT_CARD_HEADERS` — it exists because Credit
+> Limit was added the same way. And `webUpdateCard_` addresses columns by **number**, so
+> `test_cardfx.js` derives every expected index from the header list in both directions:
+> an index that drifts writes the FX flag into Notes, and an absent entry means the edit
+> form can never save it at all.
+
 ### The card-perk calendar lifecycle
 
 September's perk reminders were still on the shared calendar in October, and nothing
