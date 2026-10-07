@@ -560,6 +560,8 @@ function doPost(e) {
       case 'run_address_import':         return jsonOut_(webRunAddressImport_());
       case 'preview_address_repair':     return jsonOut_(webPreviewAddressRepair_());
       case 'run_address_repair':         return jsonOut_(webRunAddressRepair_());
+      case 'preview_perk_event_purge':   return jsonOut_(webPreviewPerkEventPurge_());
+      case 'run_perk_event_purge':       return jsonOut_(webRunPerkEventPurge_());
       case 'confirm_address':            return jsonOut_(webConfirmAddress_(body));
       // Neighborhood Watch — Flyer upload (Issue #179)
       case 'extract_flyer':              return jsonOut_(webExtractFlyer_(body));
@@ -12159,4 +12161,25 @@ function webPreviewAddressRepair_() { return repairAddressBookIds_(true); }
 
 /** POST run_address_repair — the same function, for real. */
 function webRunAddressRepair_() { return repairAddressBookIds_(false); }
+
+/**
+ * The one-off backlog sweep for perk reminder events, previewed first.
+ *
+ * The nightly pass only looks back PERK_EVENT_PURGE_LOOKBACK_DAYS_, so anything older
+ * than that — September and before, which accumulated while nothing could delete them
+ * at all — needs one deeper pass. A wider window, run by hand.
+ *
+ * Preview and run are the same function with a flag, deliberately, exactly as the
+ * address book repair is: a preview that can disagree with the thing it previews is
+ * worse than no preview. And this deletes from a calendar Victoria also reads, so
+ * seeing the list first is the point.
+ */
+function webPreviewPerkEventPurge_() {
+  return purgePastPerkReminderEvents_(PERK_EVENT_PURGE_BACKLOG_DAYS_, true);
+}
+
+/** POST run_perk_event_purge — the same call, for real. */
+function webRunPerkEventPurge_() {
+  return purgePastPerkReminderEvents_(PERK_EVENT_PURGE_BACKLOG_DAYS_, false);
+}
 

@@ -1407,6 +1407,13 @@ function nightlyRunTail() {
     // because of one bad evening would cost work and buy no correctness.
     nightlyStep_(ctx, 'checkCrossPatternFlags_', checkCrossPatternFlags_, headDone);
 
+    // Step 0r: Clear VERA's own perk reminder events whose date has passed. In the
+    // TAIL, not the head: the three perk steps there are already #32–34 of 37 and so
+    // among the first the budget drops, and nothing waits on this housekeeping.
+    nightlyStep_(ctx, 'purgePastPerkReminderEvents_', function() {
+      purgePastPerkReminderEvents_(PERK_EVENT_PURGE_LOOKBACK_DAYS_, false);
+    });
+
     // Step 1b: Suggest due dates for undated tasks — budget-guarded (Claude API, 1024 tokens)
     // Re-read rather than carried over from the first half: getOpenTasks() is cheap
     // and has no side effect, and state smuggled between two executions through a
@@ -2936,6 +2943,118 @@ function deletePerkReminderEvent_(perkId, periodKey) {
   } catch (err) {
     Logger.log('deletePerkReminderEvent_: calendar error for ' + id + ' — ' + err.message);
     return 0;
+  }
+}
+
+// How far back the nightly pass looks. Wider than any one period on purpose: a night
+// skipped for time is simply caught the next, so the sweep is self-healing.
+var PERK_EVENT_PURGE_LOOKBACK_DAYS_ = 40;
+
+// The one-off backlog sweep, run by hand from the dashboard. Reaches a year and a bit,
+// which is everything for a monthly or quarterly perk.
+var PERK_EVENT_PURGE_BACKLOG_DAYS_  = 400;
+
+/**
+ * Removes VERA's own perk reminder events whose date has already passed.
+ *
+ * WHY THIS EXISTS. The reminder events accumulated for ever. deletePerkReminderEvent_
+ * is the only thing that ever removed one, it has a single caller — the dashboard's
+ * mark-used toggle — and it refuses anything in the past by design. So a perk that was
+ * never redeemed kept its event indefinitely, and September's were still sitting on the
+ * shared calendar in October with nothing able to clear them but a human.
+ *
+ * These events are NUDGES, NOT RECORDS. The audit trail lives in the Flags sheet, where
+ * closeExpiredPerkFlags_ marks every lapsed perk 'expired' and feeds recordFlagOutcome_
+ * — so "which perks he never redeems" is kept where the signal work wants it. Once its
+ * date has passed the calendar entry carries nothing the Flags sheet does not, and it is
+ * clutter on a calendar someone else reads.
+ *
+ * DRIVEN OFF THE CALENDAR MARKER, NOT OFF FLAG STATE. Hooking closeExpiredPerkFlags_
+ * looked tidier and is fragile: that loop skips flags already resolved, so it would get
+ * exactly ONE night per period in which to delete the event, and a night dropped for
+ * time would orphan it for ever. Scanning a window of the calendar instead means any
+ * missed night is caught by the next one.
+ *
+ * ONLY EVENTS CARRYING 'VERA-PERK:' ARE TOUCHED. That prefix is what perkCalendarMark_
+ * writes into the description, so the match covers every reminder VERA created and
+ * nothing else on a shared calendar — anything Ahmed or Victoria added is out of reach
+ * by construction, not by care.
+ *
+ * ONE getEvents CALL, however wide the lookback. A call per day would make the nightly
+ * cost scale with the window for no benefit.
+ *
+ * @param {number=}  lookbackDays  how far back to look (default the nightly window)
+ * @param {boolean=} dryRun        true to report without deleting
+ * @returns {Object} { ok, dryRun, from, to, scanned, matched, removed, events, error }
+ */
+function purgePastPerkReminderEvents_(lookbackDays, dryRun) {
+  var days = Number(lookbackDays) > 0 ? Number(lookbackDays) : PERK_EVENT_PURGE_LOOKBACK_DAYS_;
+  var out  = { ok: true, dryRun: !!dryRun, scanned: 0, matched: 0, removed: 0, events: [] };
+
+  try {
+    var tz = Session.getScriptTimeZone();
+
+    // STRICTLY BEFORE TODAY, the same boundary deletePerkReminderEvent_ uses. A perk
+    // whose period ends today is still live all day and its reminder has to survive —
+    // and because an all-day event on the 29th spans the 29th 00:00 to the 30th 00:00,
+    // getEvents' overlap semantics would include TODAY'S event if the range ran to
+    // today 00:00. Ending a millisecond earlier is what keeps a live perk's nudge.
+    var to = new Date();
+    to.setHours(0, 0, 0, 0);
+    to = new Date(to.getTime() - 1);
+
+    var from = new Date(to.getTime());
+    from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - days + 1);
+
+    out.from = Utilities.formatDate(from, tz, 'yyyy-MM-dd');
+    out.to   = Utilities.formatDate(to,   tz, 'yyyy-MM-dd');
+
+    var cal = getPrimarySharedCalendar_();
+    if (!cal) {
+      out.ok    = false;
+      out.error = 'no shared calendar configured (pto_gap_calendars)';
+      return out;
+    }
+
+    var events = cal.getEvents(from, to);
+    out.scanned = events.length;
+
+    events.forEach(function(ev) {
+      var desc = '';
+      try { desc = ev.getDescription() || ''; } catch (dErr) { return; }
+      if (desc.indexOf('VERA-PERK:') === -1) return;      // not ours — never touch it
+
+      out.matched++;
+      // The title is a perk name and a card name, which is what makes this listable in
+      // the dashboard and in a log without leaking anything personal.
+      var when = '';
+      try { when = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd'); } catch (sErr) {}
+      var title = '';
+      try { title = ev.getTitle() || ''; } catch (tErr) {}
+      out.events.push({ date: when, title: title });
+
+      if (dryRun) return;
+      try {
+        ev.deleteEvent();
+        out.removed++;
+      } catch (delErr) {
+        Logger.log('purgePastPerkReminderEvents_: could not delete "' + title + '" — ' + delErr.message);
+      }
+    });
+
+    Logger.log('purgePastPerkReminderEvents_: ' + out.from + '..' + out.to + ' — ' +
+               out.scanned + ' event(s) scanned, ' + out.matched + ' perk reminder(s) past, ' +
+               (dryRun ? '0 removed (dry run)' : out.removed + ' removed'));
+    return out;
+
+  } catch (err) {
+    // Best effort, like deletePerkReminderEvent_: clutter left on the calendar is a
+    // far smaller problem than a nightly step that throws.
+    Logger.log('purgePastPerkReminderEvents_: ' + err.message);
+    out.ok    = false;
+    out.error = err.message;
+    return out;
   }
 }
 

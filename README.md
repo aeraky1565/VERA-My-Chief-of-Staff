@@ -1320,7 +1320,7 @@ the files they belong to, and nothing is reimplemented here.
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
 | 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
-| 4. Data & trackers | `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
+| 4. Data & trackers | `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs
 
@@ -2331,6 +2331,62 @@ npm run test:source   # node tests + controls — ~15s, and what gates the deplo
 npm run test:ui       # the ones that render in Chromium — ~2min
 node tests/run.js --list
 ```
+
+### The card-perk calendar lifecycle
+
+September's perk reminders were still on the shared calendar in October, and nothing
+could remove them. Both halves of that are worth writing down, because one of them
+wasn't a bug:
+
+| | When |
+|---|---|
+| flag raised | 0–14 days before the perk's period end |
+| **email + calendar event** | **≤ 7 days**, once per perk per period (a `PERK_NOTIFY_*` script property gates it, after they fired up to 15 times each) |
+| event deleted on mark-used | `deletePerkReminderEvent_`, and **only while the date is still in the future** |
+| event deleted once lapsed | `purgePastPerkReminderEvents_`, nightly in the **tail** |
+
+**So a monthly perk ending 31 Oct gets its calendar event on 24 Oct.** Seeing nothing
+for October on the 6th was correct, not a missing run — that half of the report was a
+false alarm, and it is written down here so it doesn't get reported twice.
+
+**The deletion half was a real gap.** `deletePerkReminderEvent_` had exactly one caller
+— the dashboard's mark-used toggle — and refuses anything in the past on purpose
+(*"a past event is history"*). Nothing in the nightly run touched perk events at all, so
+a perk never redeemed kept its reminder for ever.
+
+Deleting those loses nothing: the events are **nudges, not records**, and the audit
+trail already lives in the Flags sheet, where `closeExpiredPerkFlags_` marks every
+lapsed perk `expired` and feeds `recordFlagOutcome_`.
+
+Three things make a destructive sweep over a **shared** calendar safe:
+
+- **Only events whose description carries `VERA-PERK:`.** Not `VERA` — `ImportantDates.js`
+  writes `VERA-DATE:<id>:<year>` into birthday and anniversary descriptions, and those
+  legitimately stay on the calendar after the day has passed. A loose match would delete
+  someone's birthday. The test has a past-birthday fixture precisely so the loose-match
+  control has something to bite on.
+- **Only events strictly before today.** An all-day event on the 29th spans the 29th to
+  the 30th, so a window ending at today 00:00 would catch *today's* reminder through
+  `getEvents` overlap semantics — and a perk whose period ends today is still live.
+- **Preview before delete.** `tbPerkEventPurgePreview()` lists the dates and perk names
+  and removes nothing; `tbPerkEventPurgeRun()` is a separate function.
+
+> **Driven off the calendar marker, not off flag state.** Hooking
+> `closeExpiredPerkFlags_` looked tidier and is fragile: it skips flags already
+> resolved, so it would get exactly *one* night per period to delete the event and a
+> night dropped for time would orphan it for ever. A 40-day window means any missed
+> night is caught by the next one.
+>
+> The nightly sweep lives in the **tail** because the head's three perk steps are
+> already #32–34 of 37 and so among the first the budget drops. And
+> `deletePerkReminderEvent_`'s past-event guard was **not** relaxed — that would have
+> been the lazy way to clear September and would have broken documented behaviour with
+> its own tests.
+
+The backlog sweep is in `TestBench.js` rather than the dashboard: the Credit Card Hub is
+one minified `React.createElement` line, and wedging buttons into compiled output for a
+run-once operation is risk without return. The `preview_perk_event_purge` /
+`run_perk_event_purge` endpoint actions exist, so wiring UI later is one step.
 
 ### A failing CI run has to say what failed
 

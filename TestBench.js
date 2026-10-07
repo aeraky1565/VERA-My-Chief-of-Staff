@@ -463,6 +463,47 @@ function tbFlightStatus() {
 // 4. DATA & TRACKERS — sheet readers and writers
 // ============================================================
 
+/**
+ * The one-off backlog sweep for stale perk reminder events — PREVIEW, deletes nothing.
+ *
+ * The nightly pass only looks back PERK_EVENT_PURGE_LOOKBACK_DAYS_, so reminders that
+ * accumulated before it existed — September's and earlier, from the months when
+ * nothing could delete them at all — need one deeper pass.
+ *
+ * RUN THIS FIRST and read the list. It deletes from the calendar Victoria also reads,
+ * so seeing what would go is the point. Only events carrying VERA's own 'VERA-PERK:'
+ * marker are ever candidates; birthdays (VERA-DATE:) and anything either of you created
+ * are out of reach by construction.
+ */
+function tbPerkEventPurgePreview() {
+  tbBanner_('Stale perk reminder events — PREVIEW (nothing is deleted)');
+  var out = purgePastPerkReminderEvents_(PERK_EVENT_PURGE_BACKLOG_DAYS_, true);
+  if (!out.ok) {
+    Logger.log('Could not look: ' + out.error);
+    return;
+  }
+  Logger.log('Window: ' + out.from + ' .. ' + out.to +
+             '  (' + out.scanned + ' event(s) on the calendar in it)');
+  Logger.log('Past perk reminders found: ' + out.matched);
+  out.events.forEach(function(e) { Logger.log('  ' + e.date + '  ' + e.title); });
+  Logger.log(out.matched
+    ? 'Run tbPerkEventPurgeRun() to delete these ' + out.matched + '.'
+    : 'Nothing to clean up.');
+}
+
+/** The same sweep, FOR REAL. Run tbPerkEventPurgePreview() first. */
+function tbPerkEventPurgeRun() {
+  tbBanner_('Stale perk reminder events — DELETING');
+  var out = purgePastPerkReminderEvents_(PERK_EVENT_PURGE_BACKLOG_DAYS_, false);
+  if (!out.ok) {
+    Logger.log('Failed: ' + out.error);
+    return;
+  }
+  out.events.forEach(function(e) { Logger.log('  removed  ' + e.date + '  ' + e.title); });
+  Logger.log('Removed ' + out.removed + ' of ' + out.matched + ' past perk reminder(s).');
+  Logger.log('From here the nightly tail keeps up with it; this should never be needed twice.');
+}
+
 /** PTO balances, accrual and suggested windows. */
 function tbPTO()             { tbBanner_('PTO');              testPTO(); }
 

@@ -492,15 +492,33 @@ console.log('\nEvery step belongs to exactly one half');
   const overlap = head.filter(s => tail.indexOf(s) !== -1);
   check('no step is in BOTH halves', overlap.length === 0, JSON.stringify(overlap));
 
-  // The seven the banner said were being starved.
-  const EXPECTED_TAIL = ['checkHealthAppointments_', 'checkMonthlyReview_',
+  // The seven the banner said were being starved. Still the point of the split, so
+  // they are asserted as a set AND in their original relative order — a re-split that
+  // reordered them would break the dependency work pinned further down this file.
+  const STARVED = ['checkHealthAppointments_', 'checkMonthlyReview_',
     'sendHealthPerformanceInsightMonthly_', 'resetWeekMealPlan_',
     'checkCrossPatternFlags_', 'suggestDueDates', 'runExplorer_'];
-  check('the tail is exactly the steps that were being starved',
-        tail.join(',') === EXPECTED_TAIL.join(','), JSON.stringify(tail));
+  check('every starved step is in the tail',
+        STARVED.every(s => tail.indexOf(s) !== -1),
+        JSON.stringify(STARVED.filter(s => tail.indexOf(s) === -1)));
+  check('…in the order they always ran in',
+        tail.filter(s => STARVED.indexOf(s) !== -1).join(',') === STARVED.join(','),
+        JSON.stringify(tail));
   check('…and none of them is still in the first half',
-        EXPECTED_TAIL.every(s => head.indexOf(s) === -1),
-        JSON.stringify(EXPECTED_TAIL.filter(s => head.indexOf(s) !== -1)));
+        STARVED.every(s => head.indexOf(s) === -1),
+        JSON.stringify(STARVED.filter(s => head.indexOf(s) !== -1)));
+
+  // The tail's FULL contents, named. It was once exactly the starved seven; the
+  // perk-event sweep was added deliberately because the head's three perk steps are
+  // already #32-34 of 37 and so among the first the budget drops. Listing the whole
+  // thing keeps that an explicit decision — a step cannot drift into the tail, or out
+  // of it, without this line changing.
+  const EXPECTED_TAIL = ['checkHealthAppointments_', 'checkMonthlyReview_',
+    'sendHealthPerformanceInsightMonthly_', 'resetWeekMealPlan_',
+    'checkCrossPatternFlags_', 'purgePastPerkReminderEvents_',
+    'suggestDueDates', 'runExplorer_'];
+  check('the tail is exactly its named steps, no more and no fewer',
+        tail.join(',') === EXPECTED_TAIL.join(','), JSON.stringify(tail));
 
   // Nothing fell down the gap between the two. Comparing against git HEAD was the
   // obvious way and is worthless: the moment the split is committed, HEAD becomes
