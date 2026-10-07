@@ -1244,6 +1244,75 @@ got the chance to skip anything.
 creeping towards the ceiling is worth seeing while it is still creeping, because by
 the time it kills the run, the run is the thing that cannot tell you about it.
 
+### A function that takes no arguments fetches everything twice
+
+The first timings those phases produced said:
+
+```
+⏱️ Slowest morning phases: buildMorningIntelligence_ 27.5s · getUpcomingEvents 12.6s ·
+   getWeatherTicker_ 2.1s · getUpcomingGuests_ 1.3s · getOpenTasks 1.3s
+```
+
+**Most of that 27.5s was work the same execution had already done.**
+`buildMorningIntelligence_` took no arguments, so every dependency it needed it fetched
+for itself, ~150 lines after `morningNudge` had put the same data in a local variable:
+
+| Duplicated | Cost | What already held it |
+|---|---|---|
+| `getUpcomingEvents(7)` — a second all-calendar 7-day scan | **~12.6s** | `todayEventsAll`, from the phase that had just made the identical scan and kept only day 0 |
+| `getOpenTasks()` ×2 | ~2.6s | the `getOpenTasks` phase — the tab was read **three times** in one run |
+| geocode + forecast | ~2s | the `getWeatherTicker_` phase |
+| `getCapacityMode_()` | — | `capMode`, read ~200 lines earlier |
+| the Packing Items tab, re-read **once per trip** | scales with trips | one pass already has every count |
+| 8 × `SpreadsheetApp.openById` | — | all the same document |
+
+Each is now **passed in**: `buildMorningIntelligence_(allEvents, openTasks, capMode,
+subTimings)`. The calendar phase keeps its whole scan instead of filtering it away —
+`var allEvents = null` beside `todayEventsAll`, where **`null` and `[]` mean different
+things**: `[]` is a real answer ("nothing on any calendar all week"), `null` means the
+phase never ran. Only `null` may suppress the day plan.
+
+> **The rule for fallbacks**, because `x || refetch()` is how this cost comes back
+> while looking defensive: *a lazy fallback is allowed only when the fallback is cheap
+> and bounded — a scalar default, or one `getValues`. It is forbidden when the fallback
+> **is** the expensive thing being removed.* So `openTasks` falls back to one sheet
+> read, `capMode` to the string `'normal'`, and `allEvents` to **nothing at all**.
+
+**The one accepted behaviour change:** if the calendar phase is skipped for budget, the
+day plan is now dropped rather than rendered after a second 12.6s scan — on the block
+that runs latest, with the least time left, having been told there was no time. That is
+the same trade the capacity ticker already made when it stopped re-fetching the calendar
+to count today's meetings.
+
+A second `#vera-logs` line now names the blocks inside the phase, through the **same**
+`slowestNightlySteps_` formatter so the two can never drift:
+
+```
+⏱️ buildMorningIntelligence_ breakdown: daySeq 10.8s · travel 0.3s · bills 0.2s · …
+```
+
+It deliberately does **not** go through `nightlyStep_`: that writes a Script Property per
+call, its timings would be reported as *phases* and double-counted inside the parent's
+own total, and its budget guard would start skipping internal blocks — turning
+degradation that is error-driven into degradation that is time-driven.
+
+> **Caches here are per-execution, because Apps Script gives every execution a fresh
+> global scope.** `getSpreadsheet()` memoises its handle (it was a fresh `openById` on
+> each of ~320 call sites); `fetchWeatherForecast_` memoises **by location**, since on a
+> trip day the ticker wants the trip city while the day plan wants home; `readPTOConfig_`
+> memoises the Config tab's **rows** and not its object, because that object holds arrays
+> and one caller pushing to one would corrupt it for every later caller. Each caches
+> **successes only** — a cached `null` turns one transient failure into no data for the
+> rest of the run, and in the geocode's case would suppress the health failure that puts
+> the source in the banner below. `geocodeLocation_` additionally caches across
+> executions for 6h, like `geocodePackingDestination_`: coordinates do not change.
+>
+> The spreadsheet memo is safe in the direction that looks risky. Every `insertSheet` in
+> the repo runs on a handle that came from `getSpreadsheet()` — none on a direct
+> `SpreadsheetApp.openById` — so one memoised handle makes creators and readers in a run
+> *agree*, where opening a new one each time did not. `invalidateSpreadsheet_()` exists
+> for a caller that must re-read structure it just changed.
+
 ### API health: what belongs in the "SOME DATA IS NOT LIVE" banner
 
 The banner's job is to say *do not trust this data*, and it loses that authority the

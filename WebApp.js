@@ -11204,11 +11204,13 @@ function webSetNotifEnabled_(e) {
     if (String(data[i][0]).trim() === configKey) {
       sheet.getRange(i + 2, 2).setValue(value);
       _configCache_ = null;
+      invalidatePTOConfigRows_();
       return { ok: true };
     }
   }
   sheet.appendRow([configKey, value]);
   _configCache_ = null;
+  invalidatePTOConfigRows_();
   return { ok: true };
 }
 
@@ -11233,11 +11235,13 @@ function webSetNotifChannel_(e) {
     if (String(data[i][0]).trim() === configKey) {
       sheet.getRange(i + 2, 2).setValue(channel);
       _configCache_ = null;
+      invalidatePTOConfigRows_();
       return { ok: true };
     }
   }
   sheet.appendRow([configKey, channel]);
   _configCache_ = null;
+  invalidatePTOConfigRows_();
   return { ok: true };
 }
 
@@ -11271,12 +11275,14 @@ function webSetConfigValue_(e) {
       if (String(data[i][0]).trim() === key) {
         sheet.getRange(i + 2, 2).setValue(value);
         _configCache_ = null;
+        invalidatePTOConfigRows_();
         return { ok: true };
       }
     }
   }
   sheet.appendRow([key, value]);
   _configCache_ = null;
+  invalidatePTOConfigRows_();
   return { ok: true };
 }
 

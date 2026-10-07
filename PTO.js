@@ -28,16 +28,46 @@
 // what actually governs.
 var PTO_DEFAULT_ACCRUAL_DAY_ = 16;
 
+// Per-execution memo of the Config tab's RAW ROWS. GAS gives every execution a fresh
+// global scope, so this lives exactly as long as one run.
+//
+// The morning run read this full range three times — Weather.js (isTodayOnATrip_, via
+// the weather ticker), buildMorningIntelligence_'s travel block, and the guest ticker
+// — for a tab that cannot change between them.
+//
+// ONLY THE ROWS ARE CACHED. Every caller still builds its own object, because the one
+// readPTOConfig_ returns holds arrays (milestoneKeywords, travelExtraCalendars,
+// guestKeywords) and a single caller among 40-odd that pushed to one would corrupt it
+// for every later caller — the same hazard _upcomingTravelCache_'s .slice() prevents.
+//
+// The WRITERS below deliberately do NOT read through this. They need row indices to
+// write back against, and a memo taken before an append would point at the wrong row.
+// They read directly and invalidate afterwards.
+var _ptoConfigRows_ = null;
+
+/** Drops the row memo. Called by every Config writer. */
+function invalidatePTOConfigRows_() {
+  _ptoConfigRows_ = null;
+}
+
+/**
+ * The Config tab's rows, read once per execution.
+ * Throws 'Config tab not found' exactly as the readers did inline.
+ */
+function readPTOConfigRows_() {
+  if (_ptoConfigRows_) return _ptoConfigRows_;
+  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+  if (!sheet) throw new Error('Config tab not found');
+  _ptoConfigRows_ = sheet.getDataRange().getValues();
+  return _ptoConfigRows_;
+}
+
 /**
  * Reads all pto_* keys from the Config tab.
  * @returns {Object} structured config
  */
 function readPTOConfig_() {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) throw new Error('Config tab not found');
-
-  var data    = sheet.getDataRange().getValues();
+  var data    = readPTOConfigRows_();
   var raw     = {};
   var allKeys = {};
   for (var i = 0; i < data.length; i++) {
@@ -102,11 +132,7 @@ function readPTOConfig_() {
  * @returns {Object} structured config (same shape as readPTOConfig_())
  */
 function readVictoriaPTOConfig_() {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) throw new Error('Config tab not found');
-
-  var data    = sheet.getDataRange().getValues();
+  var data    = readPTOConfigRows_();
   var raw     = {};
   var shared  = {};
   var allKeys2 = {};
@@ -160,10 +186,10 @@ function readVictoriaPTOConfig_() {
  * Falls back to cfg.bufferDays if not set.
  */
 function readPTOBufferRemaining_(cfg) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) return cfg.bufferDays;
-  var data = sheet.getDataRange().getValues();
+  // try/catch preserves the old `if (!sheet) return cfg.bufferDays` exactly —
+  // readPTOConfigRows_ throws where this function returned the fallback.
+  var data;
+  try { data = readPTOConfigRows_(); } catch (e) { return cfg.bufferDays; }
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === 'pto_buffer_remaining') {
       var v = parseInt(String(data[i][1]).trim(), 10);
@@ -184,21 +210,21 @@ function setPTOBufferRemaining_(newVal) {
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === 'pto_buffer_remaining') {
       sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));
+      invalidatePTOConfigRows_();
       return;
     }
   }
   // Not found — append
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['pto_buffer_remaining', Math.max(0, newVal)]]);
+  invalidatePTOConfigRows_();
 }
 
 /**
  * Reads victoria_pto_buffer_remaining from Config tab.
  */
 function readVictoriaPTOBufferRemaining_(cfg) {
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.CONFIG);
-  if (!sheet) return cfg.bufferDays;
-  var data = sheet.getDataRange().getValues();
+  var data;
+  try { data = readPTOConfigRows_(); } catch (e) { return cfg.bufferDays; }
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === 'victoria_pto_buffer_remaining') {
       var v = parseInt(String(data[i][1]).trim(), 10);
@@ -219,11 +245,13 @@ function setVictoriaPTOBufferRemaining_(newVal) {
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === 'victoria_pto_buffer_remaining') {
       sheet.getRange(i + 1, 2).setValue(Math.max(0, newVal));
+      invalidatePTOConfigRows_();
       return;
     }
   }
   // Not found — append
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([['victoria_pto_buffer_remaining', Math.max(0, newVal)]]);
+  invalidatePTOConfigRows_();
 }
 
 /**
@@ -240,11 +268,13 @@ function setPTOConfigValue_(key, value) {
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][0]).trim() === key) {
       sheet.getRange(i + 1, 2).setValue(value);
+      invalidatePTOConfigRows_();
       return;
     }
   }
   // Not found — append
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([[key, value]]);
+  invalidatePTOConfigRows_();
 }
 
 // ---- Calendar helpers -------------------------------------------------------

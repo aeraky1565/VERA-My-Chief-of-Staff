@@ -55,6 +55,22 @@ function geocodeLocation_(location, apiKey) {
   // Normalize: remove spaces after commas ("Fairfax, VA" → "Fairfax,VA")
   var compact = location.replace(/,\s+/g, ',');
 
+  // Coordinates do not change, so this is cached across executions for 6 hours — the
+  // same trade geocodePackingDestination_ (WebApp.js) already makes against the same
+  // kind of lookup. It saves the 1-2 geocode fetches that precede every forecast, on
+  // the morning run, the nightly run and every dashboard load.
+  //
+  // SUCCESSES ONLY, below. Caching a null would blind weather for six hours off one
+  // transient failure, and would suppress the recordApiHealth_ failure at the bottom
+  // of this function that puts the source in the "SOME DATA IS NOT LIVE" banner.
+  var geoCacheKey = 'owmgeo_' + compact.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+  try {
+    var geoCached = CacheService.getScriptCache().get(geoCacheKey);
+    if (geoCached) {
+      try { return JSON.parse(geoCached); } catch (e_) {}
+    }
+  } catch (e_) {}
+
   // Build candidate queries to try in order:
   // 1. Normalized form (e.g. "Fairfax,VA")
   // 2. If it looks like "City,ST" (2-letter suffix, no country yet), also try "City,ST,US"
@@ -72,7 +88,9 @@ function geocodeLocation_(location, apiKey) {
     try {
       var results = JSON.parse(response.getContentText());
       if (results && results.length > 0) {
-        return { lat: results[0].lat, lon: results[0].lon };
+        var coords = { lat: results[0].lat, lon: results[0].lon };
+        try { CacheService.getScriptCache().put(geoCacheKey, JSON.stringify(coords), 21600); } catch (e_) {}
+        return coords;
       }
     } catch (e) {
       Logger.log('geocodeLocation_ parse error for "' + candidates[i] + '": ' + e.message);
@@ -90,7 +108,28 @@ function geocodeLocation_(location, apiKey) {
  * Geocodes the city name first to get lat/lon (OWM recommends lat/lon over q= city name).
  * Returns parsed JSON or null.
  */
+// Per-execution forecast memo, KEYED BY LOCATION. GAS gives every execution a fresh
+// global scope, so this lives exactly as long as one run.
+//
+// The morning run fetched the same forecast twice — once for the ticker
+// (Code.js, getWeatherTicker_ phase) and again for the day plan
+// (getWeatherSummaryForPlanning_) — a geocode AND a forecast each time, for data that
+// cannot change inside six minutes against a feed with three-hour granularity.
+//
+// Keyed rather than single-slot because the two callers legitimately ask for DIFFERENT
+// cities: on a trip day the ticker resolves the trip location while the day plan
+// deliberately uses the home weather_location. A one-slot cache would hand one of them
+// the other's city.
+var _weatherForecastCache_ = {};
+
 function fetchWeatherForecast_(location, apiKey) {
+  // Truthy check, NOT hasOwnProperty: only successes are memoised. Caching a null
+  // would turn one transient OWM failure into no weather for the rest of the
+  // execution, where today the day plan's fetch retries after the ticker's failed.
+  // (getWeatherTicker_'s own local cache does memoise null — that is deliberate, so
+  // its home-fallback does not refetch a known failure. It is left alone.)
+  if (_weatherForecastCache_[location]) return _weatherForecastCache_[location];
+
   var coords = geocodeLocation_(location, apiKey);
   if (!coords) return null;
   var url = 'https://api.openweathermap.org/data/2.5/forecast?' +
@@ -100,7 +139,9 @@ function fetchWeatherForecast_(location, apiKey) {
   var response = fetchWithHealth_('openweathermap', url);
   if (!response) return null;
   try {
-    return JSON.parse(response.getContentText());
+    var parsed = JSON.parse(response.getContentText());
+    if (parsed) _weatherForecastCache_[location] = parsed;
+    return parsed;
   } catch (e) {
     Logger.log('fetchWeatherForecast_ parse error: ' + e.message);
     recordApiHealth_('openweathermap', false, 'forecast parse error: ' + e.message, 200);

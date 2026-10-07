@@ -20,6 +20,10 @@ function extractFn(name) {
 }
 
 const DEFAULT_LINE = SRC.match(/var PTO_DEFAULT_ACCRUAL_DAY_ = \d+;/)[0];
+// readPTOConfig_ reads its rows through readPTOConfigRows_ now — a per-execution memo,
+// since the morning run read the whole Config range three times. Lifted from source
+// rather than stubbed, so the memo under test is the shipped one.
+const ROWS_MEMO_LINE = SRC.match(/^var _ptoConfigRows_\s*=.*?;/m)[0];
 
 let pass = 0, fail = 0;
 function check(name, cond, detail) {
@@ -47,6 +51,8 @@ function ctxFor(configRows) {
   };
   vm.createContext(ctx);
   vm.runInContext(DEFAULT_LINE, ctx);
+  vm.runInContext(ROWS_MEMO_LINE, ctx);
+  vm.runInContext(extractFn('readPTOConfigRows_'), ctx);
   vm.runInContext(extractFn('readPTOConfig_'), ctx);
   vm.runInContext(extractFn('computeAccrualCapStatus_'), ctx);
   return ctx;

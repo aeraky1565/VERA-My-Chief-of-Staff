@@ -208,6 +208,34 @@ console.log('\nThe duplicated calendar fetch is gone');
   check('…and the meeting count comes from the events already fetched',
         /todayEventsAll\.filter\(function\(e\) \{ return !e\.isAllDay; \}\)\.length/.test(BODY),
         BODY.slice(BODY.indexOf('var meetCount'), BODY.indexOf('var meetCount') + 160));
+
+  // The count above stays 1 while buildMorningIntelligence_ makes the SECOND scan for
+  // itself — 12.6s of it, twenty times the ticker's cost, and invisible to this
+  // assertion because it happens in another function. So the array has to be kept and
+  // handed over, and that is what these pin.
+  check('the whole scan is kept, not filtered away at the source',
+        /var allEvents\s*=\s*null;/.test(BODY) &&
+        /allEvents\s*=\s*getUpcomingEvents\(\);/.test(BODY),
+        'null, not [] — [] is a real answer, null means the phase never ran');
+  check('…and todayEventsAll is still exactly today',
+        /todayEventsAll\s*=\s*allEvents\.filter\(function\(e\) \{ return e\.daysUntil === 0; \}\);/.test(BODY),
+        'every consumer of todayEventsAll must see precisely what it saw before');
+  check('…and the open tasks are kept too',
+        /var openTasks\s*=\s*null;/.test(BODY) && /openTasks\s*=\s*getOpenTasks\(\);/.test(BODY),
+        'the Tasks tab was read three times in one run');
+  check('the intelligence section is handed what the run already has',
+        /buildMorningIntelligence_\(allEvents, openTasks, capMode, intelSubTimings\)/.test(BODY),
+        'the whole point: it took no arguments and re-fetched all three');
+  check('…and capMode is read before it is handed over',
+        BODY.indexOf('capacityInfo.mode') < BODY.indexOf('buildMorningIntelligence_(allEvents'),
+        'otherwise it would pass the initial value, not the real one');
+
+  // The breakdown line exists and shares the phase line's formatter, so a number in
+  // one can never be computed differently from a number in the other.
+  check('the sub-phase breakdown uses the same formatter as the phase line',
+        /slowestNightlySteps_\(intelSubTimings, 6\)/.test(BODY) &&
+        /buildMorningIntelligence_ breakdown: /.test(BODY),
+        'and 6 of 6, because a breakdown that hides a block is not a breakdown');
 }
 
 // ============================================================================
@@ -295,9 +323,10 @@ console.log('\nThe phase variables are still assigned');
   // throw at runtime — in a closure, which nightlyStep_ catches, turning the section
   // silently blank instead of loudly wrong.
   const declared = ['capMode', 'capSource', 'inlineImages', 'logoTag', 'todayEventsAll',
+                    'allEvents', 'openTasks',
                     'weatherTicker', 'watchdogLines', 'stalenessNotice', 'stalenessPlainText',
                     'overdueCount', 'dueTodayCount', 'gOverdueCount', 'gDueTodayCount',
-                    'intelligenceSection', 'guestTicker'];
+                    'intelligenceSection', 'intelSubTimings', 'guestTicker'];
   const stillConst = declared.filter(v =>
     new RegExp('(const|let)\\s+' + v + '\\b').test(BODY));
   check('no phase variable is still const or let',

@@ -12,6 +12,10 @@
 // ----------------------------------------------------------------------------
 const CONFIG = {
   SHEET_ID: PropertiesService.getScriptProperties().getProperty('VERA_SHEET_ID') || '',
+  // Also the window the morning day plan's week outlook rides on — morningNudge makes
+  // ONE scan at this width and hands it to buildMorningIntelligence_, so lowering it
+  // below 7 silently narrows that outlook too. (The 'calendar_days_ahead' Config row
+  // seeded by createSheetTabs is vestigial: nothing reads it.)
   CALENDAR_DAYS_AHEAD: 7,
   MAX_FLAGS: 8,
   MORNING_NUDGE_EMAIL: PropertiesService.getScriptProperties().getProperty('MORNING_NUDGE_EMAIL') || '',
@@ -328,11 +332,39 @@ function setupVERA() {
   Logger.log('   Next step: set your CLAUDE_API_KEY in Script Properties.');
 }
 
+// Per-execution memo of the spreadsheet handle. GAS gives every execution a fresh
+// global scope, so this lives exactly as long as one run.
+//
+// There are ~320 getSpreadsheet() call sites and every one of them used to be a
+// fresh SpreadsheetApp.openById. buildMorningIntelligence_ alone made eight, all
+// returning a handle to the same document.
+//
+// THIS IS SAFE IN THE DIRECTION THAT LOOKS RISKY. The worry is a memoised handle
+// not seeing a tab created through a different handle. But every insertSheet in the
+// repo is on a handle that originated here — Code.js:658 (ensureSheet, via
+// createSheetTabs' ss), ChoresForOthers.js, Habits.js ×2, HouseholdInfo.js,
+// Reminders.js, SignalLearning.js, MonthlyReview.js, PTO.js, Summaries.js ×2. Not
+// one creator uses a direct SpreadsheetApp.openById. So the memo makes every
+// creator and reader in an execution share ONE handle, which is strictly more
+// coherent than opening a new one each time. (ensureAddressBookTabs_ creates tabs
+// in a DIFFERENT document and takes its handle as a parameter, so this cannot
+// reach it.)
+//
+// The honest caveat: openById is the cheap part. What dominates is getSheetByName
+// / getLastRow / getValues, which this does not touch. Worth doing, not a cure.
+var _spreadsheet_ = null;
+
+/** Drops the memo. For a caller that must re-read structure it just changed. */
+function invalidateSpreadsheet_() {
+  _spreadsheet_ = null;
+}
+
 function getSpreadsheet() {
   if (CONFIG.SHEET_ID === 'YOUR_SHEET_ID_HERE') {
     throw new Error('SHEET_ID not configured. Open Code.js and replace YOUR_SHEET_ID_HERE with your actual Google Sheet ID.');
   }
-  return SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  if (!_spreadsheet_) _spreadsheet_ = SpreadsheetApp.openById(CONFIG.SHEET_ID);
+  return _spreadsheet_;
 }
 
 function createSheetTabs(ss) {
@@ -1943,9 +1975,22 @@ function readSummaryTab_(ss, tabName) {
  * Builds a TODAY'S FOCUS / MAINTENANCE / TRAVEL HTML section for the morning email.
  * Only renders sections that have content — silently skips empty ones.
  *
+ * EVERY ARGUMENT IS WORK THE CALLER HAS ALREADY DONE. This took none and fetched
+ * all of it for itself, ~150 lines after morningNudge put the same data in a local
+ * variable: a second 12.6s all-calendar scan, two more reads of the Tasks tab, a
+ * second geocode and forecast, four more openById calls. 27.5s of a 6-minute
+ * ceiling, most of it a repeat.
+ *
+ * @param {Array|null}  allEvents  The 7-day calendar scan morningNudge already made.
+ *                                 null means that phase never ran — see
+ *                                 buildDaySequencingSection_ for why that is not a
+ *                                 cue to make one here.
+ * @param {Array|null}  openTasks  The open tasks morningNudge already read, or null.
+ * @param {string=}     capMode    'busy' | 'normal' | 'light'.
+ * @param {Array=}      subTimings Collector for per-block {name, ms}.
  * @returns {string} HTML string (may be empty if nothing urgent)
  */
-function buildMorningIntelligence_() {
+function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
   var html     = '';
   var tz       = Session.getScriptTimeZone();
   var today    = new Date(); today.setHours(0, 0, 0, 0);
@@ -1955,10 +2000,36 @@ function buildMorningIntelligence_() {
   var maintRows = [];
   var travelRows = [];
 
+  // ONE handle for the four tabs below. getSpreadsheet() is memoised now, so this is
+  // belt and braces — but it keeps the function efficient on its own terms if that
+  // memo is ever reverted, and it says at the call site that one handle is intended.
+  //
+  // LAZY, not `var ss = getSpreadsheet()` up here: an eager call sits outside every
+  // block's try, so a SHEET_ID failure would throw past all of them and blank the
+  // whole section. Today each block's own catch absorbs it and the rest still render.
+  var _ss = null;
+  function ss_() { if (!_ss) _ss = getSpreadsheet(); return _ss; }
+
+  // Per-block timing. Deliberately NOT nightlyStep_: that writes a Script Property
+  // per call, and it pushes onto ctx.timings where slowestNightlySteps_ would report
+  // these sub-blocks AS phases and double-count their ms inside this function's own
+  // total. Its budget guard would also start skipping blocks, turning degradation
+  // from error-driven into time-driven. logAs keeps each catch message byte-identical
+  // to what it has always logged.
+  var subs = subTimings || [];
+  function sub_(label, fn, logAs) {
+    var t0 = Date.now();
+    try { fn(); }
+    catch (e) { Logger.log('buildMorningIntelligence_: ' + (logAs || label) + ' — ' + e.message); }
+    subs.push({ name: label, ms: Date.now() - t0 });
+  }
+
   // ---- Today's Focus: Overdue tasks by name --------------------------------
-  try {
-    var openTasks = getOpenTasks();
-    var overdueTasks = openTasks.filter(function(t) { return t.isOverdue; })
+  sub_('tasks', function() {
+    // .filter allocates, so the .sort below sorts the copy — the injected array is
+    // never reordered for the other consumer. Do not make this an in-place sort.
+    var taskList = openTasks || getOpenTasks();
+    var overdueTasks = taskList.filter(function(t) { return t.isOverdue; })
       .sort(function(a, b) { return Math.abs(b.daysUntilDue || 0) - Math.abs(a.daysUntilDue || 0); })
       .slice(0, 3);
 
@@ -1968,11 +2039,11 @@ function buildMorningIntelligence_() {
         escapeHtml_(t.task) + '</strong> <span style="color:#c62828;font-size:13px;">— ' +
         days + ' day' + (days === 1 ? '' : 's') + ' overdue</span></p>');
     });
-  } catch (e) { Logger.log('buildMorningIntelligence_: tasks — ' + e.message); }
+  });
 
   // ---- Today's Focus: Bills due within 5 days -----------------------------
-  try {
-    var billsSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
+  sub_('bills', function() {
+    var billsSheet = ss_().getSheetByName(TABS.BILLS);
     if (billsSheet && billsSheet.getLastRow() >= 2) {
       var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
       var billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
@@ -1991,11 +2062,11 @@ function buildMorningIntelligence_() {
           escapeHtml_(name) + amtStr + '</strong> <span style="color:#e65100;font-size:13px;">— ' + dueStr + '</span></p>');
       });
     }
-  } catch (e) { Logger.log('buildMorningIntelligence_: bills — ' + e.message); }
+  });
 
   // ---- Expiring coupons (≤3 days) — Issue #173 ----------------------------
-  try {
-    var couponSheet = getSpreadsheet().getSheetByName(TABS.COUPONS);
+  sub_('coupons', function() {
+    var couponSheet = ss_().getSheetByName(TABS.COUPONS);
     if (couponSheet && couponSheet.getLastRow() >= 2) {
       var todayCp = new Date(); todayCp.setHours(0, 0, 0, 0);
       couponSheet.getRange(2, 1, couponSheet.getLastRow() - 1, COUPON_HEADERS.length)
@@ -2012,11 +2083,11 @@ function buildMorningIntelligence_() {
           }
         });
     }
-  } catch (e) { Logger.log('buildMorningIntelligence_: coupons — ' + e.message); }
+  });
 
   // ---- Maintenance: Home items overdue or due within 14 days ---------------
-  try {
-    var homeSheet = getSpreadsheet().getSheetByName(TABS.HOME_ITEMS);
+  sub_('home', function() {
+    var homeSheet = ss_().getSheetByName(TABS.HOME_ITEMS);
     if (homeSheet && homeSheet.getLastRow() >= 2) {
       var homeData = homeSheet.getRange(2, 1, homeSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
       homeData.forEach(function(r) {
@@ -2053,31 +2124,53 @@ function buildMorningIntelligence_() {
           (wDays <= 14 ? '#c62828' : '#777777') + ';font-size:13px;">— ' + wStatus + '</span></p>');
       });
     }
-  } catch (e) { Logger.log('buildMorningIntelligence_: home — ' + e.message); }
+  });
 
   // ---- Travel: Upcoming trips within 14 days --------------------------------
-  try {
+  sub_('travel', function() {
     var travelCfg   = readPTOConfig_();
     var travelTrips = getUpcomingTravel_(travelCfg);
-    var ss_t = getSpreadsheet();
+    // Resolved HERE rather than inside the try below, which is where the old
+    // `var ss_t = getSpreadsheet()` sat. The distinction is behavioural: an
+    // unreachable spreadsheet drops the whole Travel section (it did before), while a
+    // Packing-tab-specific failure degrades every trip to "packing not started" (it
+    // did before too). Moving this inside the try would quietly merge the two and
+    // render a Travel section claiming nobody has started packing.
+    var ss_t = ss_();
+
+    // ONE read of Packing Items, bucketed by trip key, BEFORE the loop. This used to
+    // sit inside travelTrips.forEach: a full getValues of the whole tab per trip, so
+    // the cost scaled with how many trips fall inside 14 days — to produce a count
+    // that one pass already has. Same shape of fix as the capacity ticker's meeting
+    // count in morningNudge.
+    //
+    // The inner try/catch stays. If the read throws, every trip falls to "packing not
+    // started" exactly as it did before; letting it escape to the travel catch below
+    // would drop the whole Travel section instead, which would be a regression.
+    var packByTrip = {};                       // tripKey -> { total, done }
+    try {
+      var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
+      if (packSheet && packSheet.getLastRow() >= 2) {
+        packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length)
+          .getValues().forEach(function(r) {
+            var k = String(r[1]).trim();
+            if (!k) return;      // matched no trip before either — every key has a '|'
+            var b = packByTrip[k] || (packByTrip[k] = { total: 0, done: 0 });
+            b.total++;
+            var checked = String(r[5]).toLowerCase();
+            if (checked === 'true' || checked === 'yes') b.done++;
+          });
+      }
+    } catch(pe) {}
 
     travelTrips.forEach(function(trip) {
       var daysAway = trip.daysAway !== undefined ? trip.daysAway
         : (trip.startDate ? Math.round((new Date(trip.startDate) - today) / 86400000) : null);
       if (daysAway === null || daysAway > 14 || daysAway < 0) return;
 
-      var tripKey = trip.startDate + '|' + trip.label;
-      var packTotal = 0, packDone = 0;
-      try {
-        var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
-        if (packSheet && packSheet.getLastRow() >= 2) {
-          packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues().forEach(function(r) {
-            if (String(r[1]).trim() !== tripKey) return;
-            packTotal++;
-            if (String(r[5]).toLowerCase() === 'true' || String(r[5]).toLowerCase() === 'yes') packDone++;
-          });
-        }
-      } catch(pe) {}
+      var tripKey   = trip.startDate + '|' + trip.label;
+      var bucket    = packByTrip[tripKey] || { total: 0, done: 0 };
+      var packTotal = bucket.total, packDone = bucket.done;
 
       var packStr = packTotal === 0 ? '⚠ packing not started' : (packDone + '/' + packTotal + ' packed');
       var daysStr = daysAway === 0 ? 'TODAY' : (daysAway + ' days away');
@@ -2085,17 +2178,15 @@ function buildMorningIntelligence_() {
         escapeHtml_(trip.label) + '</strong> <span style="color:#555555;font-size:13px;">— ' +
         daysStr + ' · ' + packStr + '</span></p>');
     });
-  } catch (e) { Logger.log('buildMorningIntelligence_: travel — ' + e.message); }
+  });
 
   // ---- Day Sequencing section (Issue #187) --------------------------------
   var calPlanHtml = '';
   var daySeqEnabled = String(getConfigValues()['day_sequencing_enabled'] || 'true').toLowerCase() !== 'false';
   if (daySeqEnabled) {
-    try {
-      calPlanHtml = buildDaySequencingSection_();
-    } catch (calPlanErr) {
-      Logger.log('buildMorningIntelligence_: day sequencing (non-fatal) — ' + calPlanErr.message);
-    }
+    sub_('daySeq', function() {
+      calPlanHtml = buildDaySequencingSection_(allEvents, openTasks, capMode);
+    }, 'day sequencing (non-fatal)');
   }
 
   // ---- Assemble HTML -------------------------------------------------------
@@ -2317,9 +2408,17 @@ function buildCalPlanHtml_(analysis) {
  * Orchestrates data collection and renders the "Your Day, Sequenced" section.
  * Returns empty string when suppressed (< 2 timed events, analysis fails, etc.).
  */
-function buildDaySequencingSection_() {
-  // Single calendar call covers today + week
-  var allEvents = getUpcomingEvents(7);
+function buildDaySequencingSection_(allEvents, openTasks, capMode) {
+  // NO LAZY REFETCH. allEvents === null means morningNudge's calendar phase did not
+  // run — the budget has already decided there was no time for an all-calendar scan,
+  // and making one here is the exact cost the budget exists to refuse, on the block
+  // that runs latest with the least time left. The day plan drops like any other
+  // section instead. This is the same choice the capacity ticker makes: it reads
+  // todayEventsAll and accepts "0 meetings" rather than paying 12.6s to correct it.
+  //
+  // (This used to be `var allEvents = getUpcomingEvents(7);` — the same 7-day,
+  // all-calendar scan morningNudge had just made and thrown six sevenths of away.)
+  if (!allEvents) return '';
 
   var todayTimedEvents = allEvents.filter(function(e) {
     return e.daysUntil === 0 && !e.isAllDay;
@@ -2346,20 +2445,22 @@ function buildDaySequencingSection_() {
   var weatherSummary = '';
   try { weatherSummary = getWeatherSummaryForPlanning_(); } catch (e) {}
 
-  // Unscheduled open tasks (top 5, not overdue)
+  // Unscheduled open tasks (top 5, not overdue). The fallback is one sheet read and
+  // only reachable when the getOpenTasks phase was itself skipped, so it is allowed
+  // where the calendar's would not be — see the rule in README.
   var tasks = [];
   try {
-    tasks = getOpenTasks()
+    tasks = (openTasks || getOpenTasks())
       .filter(function(t) { return !t.isOverdue; })
       .slice(0, 5)
       .map(function(t) { return t.task; });
   } catch (e) {}
 
-  // Capacity mode
-  var capMode = 'normal';
-  try { capMode = getCapacityMode_().mode; } catch (e) {}
+  // Capacity mode — morningNudge has already read this (four PropertiesService gets)
+  // before it reaches this function. 'normal' stays the standalone default.
+  var mode = capMode || 'normal';
 
-  var analysis = getDaySequencingAnalysis_(todayTimedEvents, freeWindows, weekLoad, weatherSummary, tasks, capMode);
+  var analysis = getDaySequencingAnalysis_(todayTimedEvents, freeWindows, weekLoad, weatherSummary, tasks, mode);
   return buildCalPlanHtml_(analysis);
 }
 
@@ -3979,9 +4080,19 @@ function morningNudge() {
     // ---- Today's calendar events (fetched early — the weather ticker uses
     // these to localize to wherever today's events actually are, when on a
     // trip) --------------------------------------------------------------
+    // allEvents is the WHOLE scan, KEPT rather than thrown away. It is the same
+    // array buildDaySequencingSection_ used to fetch for itself — a second
+    // all-calendar, 7-day round trip, 12.6s, on the one execution that was running
+    // out of time. Same fix and the same reason as the capacity ticker below.
+    //
+    // null, not [], and the difference is load-bearing: [] is a real answer
+    // ("nothing on any calendar for a week"); null means this phase never ran, and
+    // only that may suppress the day plan.
+    var allEvents      = null;
     var todayEventsAll = [];
     nightlyStep_(ctx, 'getUpcomingEvents', function() {
-      todayEventsAll = getUpcomingEvents().filter(function(e) { return e.daysUntil === 0; });
+      allEvents      = getUpcomingEvents();
+      todayEventsAll = allEvents.filter(function(e) { return e.daysUntil === 0; });
     });
 
     // ---- Weather ticker (graceful — empty string if not configured) -----
@@ -4082,8 +4193,11 @@ function morningNudge() {
     // ---- Tasks: overdue + due today count -------------------------------
     var overdueCount   = 0;
     var dueTodayCount  = 0;
+    // Hoisted out of the closure for the same reason as allEvents: the intelligence
+    // section read this tab twice more for itself. null = this phase did not run.
+    var openTasks      = null;
     nightlyStep_(ctx, 'getOpenTasks', function() {
-      var openTasks = getOpenTasks();
+      openTasks     = getOpenTasks();
       overdueCount  = openTasks.filter(function(t) { return t.isOverdue; }).length;
       dueTodayCount = openTasks.filter(function(t) { return !t.isOverdue && t.daysUntilDue === 0; }).length;
     });
@@ -4113,9 +4227,13 @@ function morningNudge() {
     }
 
     // ---- Morning Intelligence section (Issue #24) -------------------------
+    // Handed what this run ALREADY fetched — the calendar scan, the open tasks and
+    // the capacity mode — instead of fetching all three again. intelSubTimings comes
+    // back filled so the breakdown line below can name the blocks inside it.
     var intelligenceSection = '';
+    var intelSubTimings     = [];
     nightlyStep_(ctx, 'buildMorningIntelligence_', function() {
-      intelligenceSection = buildMorningIntelligence_();
+      intelligenceSection = buildMorningIntelligence_(allEvents, openTasks, capMode, intelSubTimings);
     });
 
     // ---- Guest arriving soon ticker (Issue #150) ----------------------------
@@ -4294,6 +4412,12 @@ function morningNudge() {
       }
       var mSlowest = slowestNightlySteps_(stepTimings, 5);
       if (mSlowest.length) sendSlackLog_('⏱️ Slowest morning phases: ' + mSlowest.join(' · '));
+      // One line refining the line above it, through the SAME formatter so the two can
+      // never drift apart. topN 6 shows all six blocks — a breakdown that hides one is
+      // not a breakdown. Without this, "buildMorningIntelligence_ 27.5s" named the
+      // slowest phase and said nothing about which part of it was slow.
+      var mIntel = slowestNightlySteps_(intelSubTimings, 6);
+      if (mIntel.length) sendSlackLog_('⏱️ buildMorningIntelligence_ breakdown: ' + mIntel.join(' · '));
       veraLog_('morningNudge', 'Morning',
         (stepFailures.length || stepSkipped.length) ? 'Partial' : 'Success',
         total + ' flag(s) · ' + stepTimings.length + ' phase(s)' +
