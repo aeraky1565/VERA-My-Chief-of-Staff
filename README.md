@@ -2521,10 +2521,41 @@ Clicking the cell toggles the **effective** value, so an unset card goes straigh
 calls `e.stopPropagation()` because the row's own `onClick` opens the detail modal, which
 would otherwise cover every change the moment it was made.
 
-**Ranked on General Spend / Everything Else only.** A miscellaneous purchase abroad is
-exactly non-category spend, so a card's 4x dining rate is the wrong number to put beside
-it. A fee-free card with no general-spend row still appears — it is still free to use —
-listed after the rated ones and rendered as just its name.
+**The flag is the gate; the benefits decide the order.** Each qualifying card contributes
+one entry, from the best basis available to it:
+
+| tier | basis |
+|---|---|
+| 1 | the card's own typed `International Travel` reward row — the most explicit signal there is |
+| 2 | `General Spend` / `Everything Else` — applies to *any* purchase abroad |
+| 3 | a category whose name hints at travel (`travel`, `hotel`, `flight`, `airfare`, `dining`, `restaurant`, `transit`) |
+| 4 | nothing — still listed, it is still free to use abroad |
+
+**Tier beats rate, and that ordering is the point:** a card earning 2x on *everything*
+abroad beats one earning 4x on dining only. A tier-3 rate is conditional, so `cheatLabel`
+renders it **with its category** — `Chase Sapphire Preferred (3 x points · travel)` — and
+a tier-1 or tier-2 rate carries no basis because it already applies to whatever you are
+buying. Tier 3 is keyword-matched against free text, which is a heuristic; it is
+acceptable *only* because the category is shown, so a questionable match is visible rather
+than silently inflating what a card looks worth abroad.
+
+> **The row is built from the card list, never from `byCat` — and that is a bug fix.**
+> `byCat` groups reward rows by their free-text category and is gated only on the card
+> being active; **it never looks at `noFxFee`.** Because `International Travel` is
+> typeable, and because before this flag existed typing such a row *was* how you recorded
+> "use this card abroad", those rows landed in `byCat` as an ordinary category. The old
+> code then merged with `existing.top.concat(intl).slice(0, 2)` — two typed entries filled
+> both slots, the correctly-filtered cards were appended behind them, and `slice` threw
+> every one away. **The live row ended up listing exactly the cards that do charge a
+> foreign transaction fee.** It was silent because `cheatLabel` formats a typed row and a
+> derived entry identically. The whole reconciliation also sat inside `if (intl.length)`,
+> so with nothing marked a typed row rendered alone — the one case the row must be absent.
+>
+> The reserved category is now **deleted** from `result` and the row rebuilt from the
+> cards, so the leak is impossible rather than guarded against. It is matched on a
+> **normalised** category (`trim().toLowerCase()`), because an exact `===` let
+> `international travel` or a trailing space create a second, visually identical row that
+> escaped every check.
 
 Three things that are easy to get wrong here and are pinned by tests:
 
@@ -2538,8 +2569,10 @@ Three things that are easy to get wrong here and are pinned by tests:
   the card modal the select had no matching option and saving posted `"true"`, which is
   not `'yes'` — so **editing any card silently turned its own FX flag off.**
 - **The category field is free text**, so `International Travel` can also be typed as a
-  real reward row. The derived cards merge into that row rather than adding a second one
-  with the same key.
+  real reward row. That row is **reserved**: any `byCat` row of that name is dropped and
+  the heading is rebuilt from the fee-free cards, so there is exactly one of it and
+  nothing in it escaped the FX gate. A typed row still counts — as tier 1 — but only for
+  a card that qualifies.
 
 > No migration: `ensureCreditCardSchema_` already widens the sheet and rewrites the
 > header row whenever it does not match `CREDIT_CARD_HEADERS` — it exists because Credit

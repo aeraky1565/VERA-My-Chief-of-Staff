@@ -1125,7 +1125,14 @@ function fmtPts(n) {
 // rate came to render as "Citi Double Cash (  )" in two places at once. Degrades to
 // the bare card name when there is no rate to show.
 function cheatLabel(r) {
-  var s = r.rate ? (r.cardName + ' (' + r.rate + ' ' + r.rateType + ')') : r.cardName;
+  // `basis` names the category a rate came from, and only the International Travel row
+  // sets it. That row ranks a card's BEST applicable rate, which may be a conditional
+  // one — "4 x points" on a dining-only card next to "2 x points" on an everything card
+  // reads as the better deal when it is not. Naming the basis makes the comparison
+  // honest. Rows built from a single category pass no basis and are unchanged.
+  var s = r.rate
+    ? (r.cardName + ' (' + r.rate + ' ' + r.rateType + (r.basis ? ' · ' + r.basis : '') + ')')
+    : r.cardName;
   if (r.conditions) s += ' | ' + r.conditions;
   return s;
 }
@@ -1658,44 +1665,89 @@ function CardsTab({ apiUrl, apiToken }) {
       result.push({ category: cat, top: sorted.slice(0, 2) });
     });
 
-    // INTERNATIONAL TRAVEL is derived from a card property, not from a reward row the
-    // user typed. A card qualifies only when noFxFee is true, and that flag reads blank
-    // as FALSE (WebApp.js) — so this row is ABSENT until cards are marked. Deliberate:
-    // a card wrongly offered here costs ~3% of a purchase abroad.
+    // ---- INTERNATIONAL TRAVEL: a RESERVED category ------------------------------
     //
-    // Ranked on GENERAL SPEND / EVERYTHING ELSE only, because a miscellaneous purchase
-    // abroad is exactly non-category spend — a card's 4x dining rate is the wrong
-    // number to put next to it. A fee-free card with no general-spend row still belongs
-    // in the list and simply has no rate; cheatLabel renders it as the bare name.
+    // This row is built from the CARD LIST, never from byCat. That is the whole point,
+    // and it is the fix for a shipped bug: byCat groups reward rows by their free-text
+    // category and is gated only on the card being active — it never looks at noFxFee.
+    // Category is a free-text field, so 'International Travel' is also typeable as an
+    // ordinary reward row, and before the flag existed that was HOW you recorded "use
+    // this card abroad". Those rows then landed in byCat, and the old merge was
+    //
+    //     existing.top = existing.top.concat(intl).slice(0, 2);
+    //
+    // so two typed entries filled both slots, the correctly-filtered cards were appended
+    // behind them, and slice(0,2) threw every one away. The row ended up listing exactly
+    // the cards that DO charge a foreign transaction fee. It was silent because
+    // cheatLabel formats a typed row and a derived entry identically. Worse, the whole
+    // reconciliation sat inside `if (intl.length)`, so with nothing marked a typed row
+    // rendered alone — the one case the row is supposed to be absent.
+    //
+    // Deleting the byCat row and rebuilding from the cards makes the leak impossible
+    // rather than guarded against. Matched on a NORMALISED category, because an exact
+    // === let 'international travel' or a trailing space make a second, visually
+    // identical row that escaped every check.
+    var isIntlCat = function(cat) {
+      return String(cat).trim().toLowerCase() === 'international travel';
+    };
+    result = result.filter(function(row) { return !isIntlCat(row.category); });
+
+    // Each qualifying card contributes ONE entry, from the best basis available to it.
+    // Tier beats rate, and that ordering is the point: a card earning 2x on EVERYTHING
+    // abroad beats one earning 4x on dining only. cheatLabel renders the basis, so a
+    // conditional rate never reads as an unconditional one.
+    //   1  the card's own typed 'International Travel' row — the user said so outright
+    //   2  General Spend / Everything Else — applies to any purchase abroad
+    //   3  a category whose name hints at travel — conditional, so always shown WITH it
+    //   4  nothing — still listed, it is still free to use abroad
     var GENERAL_SPEND_CATS = { 'General Spend': 1, 'Everything Else': 1 };
+    // Keyword-matched against free text, which is a heuristic: 'HOTELS (PREPAID)' and
+    // 'IHG HOTELS' match, 'ONLINE GROCERIES' and 'RENT' do not. Acceptable ONLY because
+    // the category is rendered beside the rate — a questionable match is then visible
+    // rather than silently inflating what a card looks worth abroad.
+    var ABROAD_HINTS = ['travel', 'hotel', 'flight', 'airfare', 'dining', 'restaurant', 'transit'];
+    var abroadHinted = function(cat) {
+      var c = String(cat).trim().toLowerCase();
+      return ABROAD_HINTS.some(function(h) { return c.indexOf(h) !== -1; });
+    };
+
     var intl = (visibleCards || [])
       .filter(function(c) { return c.active === 'Yes' && c.noFxFee; })
       .map(function(c) {
-        var best = null;
+        var pick = null;   // { tier, row }
         rewards.forEach(function(r) {
           if (r.cardName !== c.cardName) return;
-          if (!GENERAL_SPEND_CATS[r.category]) return;
-          if (!best || parseFloat(r.rate) > parseFloat(best.rate)) best = r;
+          var tier = isIntlCat(r.category) ? 1
+                   : GENERAL_SPEND_CATS[r.category] ? 2
+                   : abroadHinted(r.category) ? 3
+                   : 0;
+          if (!tier) return;
+          if (!pick || tier < pick.tier ||
+              (tier === pick.tier && parseFloat(r.rate) > parseFloat(pick.row.rate))) {
+            pick = { tier: tier, row: r };
+          }
         });
-        return best
-          ? { cardName: c.cardName, rate: best.rate, rateType: best.rateType, conditions: best.conditions }
-          : { cardName: c.cardName, rate: '', rateType: '', conditions: '' };
+        if (!pick) return { cardName: c.cardName, rate: '', rateType: '', conditions: '', tier: 4, basis: '' };
+        return {
+          cardName: c.cardName, rate: pick.row.rate, rateType: pick.row.rateType,
+          conditions: pick.row.conditions, tier: pick.tier,
+          // Tiers 1 and 2 already mean "applies to what you are buying", so naming them
+          // would be noise. Tier 3 is the conditional one and must say so.
+          basis: pick.tier === 3 ? String(pick.row.category).trim().toLowerCase() : '',
+        };
       })
       .sort(function(a, b) {
+        if (a.tier !== b.tier) return a.tier - b.tier;
         var ar = parseFloat(a.rate), br = parseFloat(b.rate);
         if (isNaN(ar) && isNaN(br)) return a.cardName.localeCompare(b.cardName);
         if (isNaN(ar)) return 1;
         if (isNaN(br)) return -1;
         return br - ar;
       });
+
+    // Unconditional: no qualifying card means NO ROW, not a stale one left behind.
     if (intl.length) {
-      // Category is a free-text input, so 'International Travel' can also be a real
-      // reward row. Two entries with the same category would be a duplicate React key
-      // and the heading rendered twice, so the derived cards merge into that row.
-      var existing = null;
-      result.forEach(function(row) { if (row.category === 'International Travel') existing = row; });
-      if (existing) existing.top = existing.top.concat(intl).slice(0, 2);
-      else result.push({ category: 'International Travel', top: intl.slice(0, 2) });
+      result.push({ category: 'International Travel', top: intl.slice(0, 2) });
       result.sort(function(a, b) { return a.category.localeCompare(b.category); });
     }
     return result;

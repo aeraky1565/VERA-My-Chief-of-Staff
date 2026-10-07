@@ -300,8 +300,110 @@ console.log('\nA typed category of the same name does not double the row');
   check('there is exactly ONE International Travel row',
         matching.length === 1, matching.length +
         ' — two rows with the same category is a duplicate React key and the heading twice');
-  check('…and it still shows at most 2 cards',
-        matching[0].top.length <= 2, JSON.stringify(matching[0].top));
+  // Was `top.length <= 2`, which is satisfied by the card listed TWICE — and by the
+  // shipped bug that put fee-charging cards here. Pin the contents.
+  check('…listing the card exactly once',
+        matching[0].top.length === 1 && matching[0].top[0].cardName === 'Mine',
+        JSON.stringify(matching[0].top));
+  check('…at its typed International Travel rate, not its general-spend one',
+        matching[0].top[0].rate === '3', JSON.stringify(matching[0].top[0]) +
+        ' — a row the user typed for this category is the most explicit signal there is');
+}
+
+// ============================================================================
+// THE SHIPPED BUG. byCat groups reward rows by free-text category and is gated only
+// on the card being active — it never looks at noFxFee. 'International Travel' is
+// typeable, and before the flag existed that was HOW you recorded "use this abroad".
+// The old merge was `existing.top.concat(intl).slice(0,2)`, so two typed entries filled
+// both slots and every correctly-filtered card was thrown away. The live row ended up
+// listing precisely the two cards that DO charge a fee.
+console.log('\nA typed row cannot smuggle a fee-charging card into the row');
+{
+  const out = runCheatSheet([
+    card('BMW Card',                { noFxFee: false }),
+    card('AMEX Blue Cash Everyday', { noFxFee: false }),
+    card('Capital One Venture',     { noFxFee: true  }),
+  ], [
+    rw('BMW Card',                'International Travel', 1.5),
+    rw('AMEX Blue Cash Everyday', 'International Travel', 1, '% cashback'),
+    rw('Capital One Venture',     'General Spend',        2),
+  ]);
+  const row = intlRow(out.rows);
+  check('the row exists', !!row, JSON.stringify(out.rows.map(r => r.category)));
+  check('…and contains ONLY the fee-free card',
+        row && row.top.length === 1 && row.top[0].cardName === 'Capital One Venture',
+        JSON.stringify(row && row.top.map(t => t.cardName)));
+  check('…with both fee-charging cards gone, typed row or not',
+        row && !row.top.some(t => /BMW|Blue Cash/.test(t.cardName)),
+        JSON.stringify(row && row.top.map(t => t.cardName)) +
+        ' — 1.5x points does not beat a 3% fee');
+  check('…and the typed rows survive under their own heading nowhere else',
+        out.rows.filter(r => /international travel/i.test(r.category)).length === 1,
+        JSON.stringify(out.rows.map(r => r.category)));
+}
+
+console.log('\n…and cannot create the row at all when nothing is marked');
+{
+  // The second path: with intl empty the old code never reconciled, so a typed row
+  // rendered alone — the one case the row is supposed to be absent.
+  const out = runCheatSheet([card('BMW Card', { noFxFee: false })],
+                            [rw('BMW Card', 'International Travel', 1.5)]);
+  check('no International Travel row exists',
+        out.rows.filter(r => /international travel/i.test(r.category)).length === 0,
+        JSON.stringify(out.rows.map(r => r.category)) +
+        ' — a heading promising no-FX cards, populated entirely by one that charges');
+}
+
+console.log('\nThe reserved category is matched normalised, not by ===');
+{
+  // An exact === let a trailing space or different casing make a second, visually
+  // identical row that escaped every guard.
+  [['lower case', 'international travel'],
+   ['trailing space', 'International Travel '],
+   ['mixed case', 'INTERNATIONAL travel']].forEach(([what, cat]) => {
+    const out = runCheatSheet([card('Charges', { noFxFee: false })], [rw('Charges', cat, 9)]);
+    check('  ' + what + ' is reserved too',
+          out.rows.filter(r => /^\s*international travel\s*$/i.test(r.category)).length === 0,
+          JSON.stringify(out.rows.map(r => r.category)));
+  });
+}
+
+console.log('\nRanked on the best applicable benefit, tier before rate');
+{
+  const out = runCheatSheet([
+    card('Everything 2x', { noFxFee: true }),
+    card('Dining 4x',     { noFxFee: true }),
+  ], [
+    rw('Everything 2x', 'General Spend', 2),
+    rw('Dining 4x',     'Dining',        4),
+  ]);
+  const row = intlRow(out.rows);
+  check('a card good on EVERYTHING outranks one good on dining only',
+        row.top[0].cardName === 'Everything 2x',
+        JSON.stringify(row.top.map(t => t.cardName)) +
+        ' — ranking on raw rate would put 4x dining first for a miscellaneous purchase');
+  check('…and the conditional rate names its category',
+        out.label(row.top[1]) === 'Dining 4x (4 x points · dining)', out.label(row.top[1]));
+  check('…while an unconditional one does not',
+        out.label(row.top[0]) === 'Everything 2x (2 x points)', out.label(row.top[0]));
+}
+
+console.log('\nOnly travel-ish categories count as a basis');
+{
+  const out = runCheatSheet([card('Grocer', { noFxFee: true })],
+                            [rw('Grocer', 'Online Groceries', 5)]);
+  const row = intlRow(out.rows);
+  check('a 5x groceries rate is NOT offered as a travel basis',
+        row.top[0].rate === '', JSON.stringify(row.top[0]) +
+        ' — it would read as 5x abroad, which it is not');
+  check('…but the card is still listed, as a bare name',
+        row.top[0].cardName === 'Grocer' && out.label(row.top[0]) === 'Grocer',
+        out.label(row.top[0]) + ' — it is still free to use abroad');
+
+  const hotel = runCheatSheet([card('Hotelier', { noFxFee: true })],
+                              [rw('Hotelier', 'Hotels (Prepaid)', 5)]);
+  check('a hotels category DOES count', intlRow(hotel.rows).top[0].rate === '5',
+        JSON.stringify(intlRow(hotel.rows).top[0]));
 }
 
 console.log('\nIt sorts in with the rest');
