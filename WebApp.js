@@ -7368,6 +7368,16 @@ function webGetCards_() {
       // unrecognised value reads as "do not offer this one" — same shape as the Card
       // Perks needsReview/autopay flags.
       noFxFee:         String(r[13] == null ? '' : r[13]).trim().toLowerCase() === 'yes',
+      // Whether anyone has ANSWERED the question, which is not the same as the answer.
+      // An unset cell and an explicit 'No' both read noFxFee === false on purpose, but
+      // the card tracker has to tell them apart or there is no way to see what still
+      // needs setting across a dozen cards — which is exactly how this flag shipped
+      // invisible: nothing was set, so nothing rendered.
+      //
+      // NOTHING FILTERS ON THIS. It is display only and must stay that way: the moment
+      // a filter reads it, blank stops meaning "do not offer this one" and the asymmetry
+      // above is lost. test_cardfx.js asserts it appears in no filter.
+      noFxFeeSet:      String(r[13] == null ? '' : r[13]).trim() !== '',
     };
   });
   // Sort: active first → owner order → name alpha

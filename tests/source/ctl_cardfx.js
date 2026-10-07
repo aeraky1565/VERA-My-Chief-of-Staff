@@ -171,13 +171,88 @@ const CONTROLS = {
     'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
       "  'International Travel': '🌍',\n", ''),
   }),
-  'only the lite dashboard badges fee-free cards': b => ({
-    'docs/app.js': b['docs/app.js'].replace(
-      'c.noFxFee&&/*#__PURE__*/React.createElement("span",{title:"No foreign transaction fee',
-      'false&&/*#__PURE__*/React.createElement("span",{title:"No foreign transaction fee'),
+  // ---- the third state, and the trap it exists to avoid ---------------------
+  'noFxFeeSet is dropped, so an unset card looks like one that charges fees': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "      noFxFeeSet:      String(r[13] == null ? '' : r[13]).trim() !== '',\n", ''),
   }),
+  'noFxFeeSet collapses back into noFxFee': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "noFxFeeSet:      String(r[13] == null ? '' : r[13]).trim() !== '',",
+      "noFxFeeSet:      String(r[13] == null ? '' : r[13]).trim().toLowerCase() === 'yes',"),
+  }),
+  // THE EXPENSIVE ONE: a tri-state string makes 'No' truthy, so every card explicitly
+  // marked as charging a fee starts being offered for foreign purchases.
+  'noFxFee becomes the raw cell, so "No" reads truthy': b => ({
+    'WebApp.js': b['WebApp.js'].replace(
+      "noFxFee:         String(r[13] == null ? '' : r[13]).trim().toLowerCase() === 'yes',",
+      "noFxFee:         String(r[13] == null ? '' : r[13]).trim(),"),
+  }),
+  'the cheat sheet filters on noFxFeeSet instead of noFxFee': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "      .filter(function(c) { return c.active === 'Yes' && c.noFxFee; })",
+      "      .filter(function(c) { return c.active === 'Yes' && c.noFxFeeSet; })"),
+    'docs/app.js': b['docs/app.js'].replace(
+      "filter(function(c){return c.active==='Yes'&&c.noFxFee;})",
+      "filter(function(c){return c.active==='Yes'&&c.noFxFeeSet;})"),
+  }),
+
+  // ---- the column ----------------------------------------------------------
+  'the No FX column is removed from the tracker header': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "'Statement Credit','No FX','Status'", "'Statement Credit','Status'"),
+    'docs/app.js': b['docs/app.js'].replace(
+      "'Statement Credit','No FX','Status'", "'Statement Credit','Status'"),
+  }),
+  'the three states collapse to two (unset renders as No)': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "{c.noFxFee ? '🌍 Yes' : c.noFxFeeSet ? 'No' : 'Set'}",
+      "{c.noFxFee ? '🌍 Yes' : 'No'}"),
+    'docs/app.js': b['docs/app.js'].replace(
+      "c.noFxFee?'🌍 Yes':c.noFxFeeSet?'No':'Set'", "c.noFxFee?'🌍 Yes':'No'"),
+  }),
+  'only the lite dashboard gets the column': b => ({
+    'docs/app.js': b['docs/app.js'].replace(
+      "'Statement Credit','No FX','Status'", "'Statement Credit','Status'"),
+  }),
+
+  // ---- the toggle ----------------------------------------------------------
+  'the toggle always writes Yes, so it cannot be turned back off': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "noFxFee: c.noFxFee ? 'No' : 'Yes'", "noFxFee: 'Yes'"),
+    'docs/app.js': b['docs/app.js'].replace(
+      "noFxFee:c.noFxFee?'No':'Yes'", "noFxFee:'Yes'"),
+  }),
+  'the toggle stops stopping propagation, so every click opens the modal too': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      'onClick={e => { e.stopPropagation(); handleToggleFx(c); }}',
+      'onClick={e => { handleToggleFx(c); }}'),
+    'docs/app.js': b['docs/app.js'].replace(
+      'onClick:e=>{e.stopPropagation();handleToggleFx(c);}',
+      'onClick:e=>{handleToggleFx(c);}'),
+  }),
+  'the toggle invents its own web action instead of update_card': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "{ action: 'update_card', id: c.id, noFxFee:", "{ action: 'set_fx_flag', id: c.id, noFxFee:"),
+    'docs/app.js': b['docs/app.js'].replace(
+      "{action:'update_card',id:c.id,noFxFee:", "{action:'set_fx_flag',id:c.id,noFxFee:"),
+  }),
+  'the duplicate glyph comes back to the Status cell': b => ({
+    'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
+      "                                {c.active === 'Yes' ? 'ACTIVE' : 'INACTIVE'}\n                              </span>",
+      "                                {c.active === 'Yes' ? 'ACTIVE' : 'INACTIVE'}\n                              </span>\n" +
+      "                              {c.noFxFee && <span style={{ fontSize:12 }}>🌍</span>}"),
+    'docs/app.js': b['docs/app.js'].replace(
+      "c.active==='Yes'?'ACTIVE':'INACTIVE')",
+      "c.active==='Yes'?'ACTIVE':'INACTIVE'),c.noFxFee&&/*#__PURE__*/React.createElement(\"span\",{style:{fontSize:12}},\"🌍\")"),
+  }),
+
   'index.html is not rebuilt from app.js': b => ({
     'docs/index.html': b['docs/index.html'].replace(/GENERAL_SPEND_CATS/g, 'STALE_BUNDLE'),
+  }),
+  'index.html is not rebuilt after the column lands': b => ({
+    'docs/index.html': b['docs/index.html'].replace(
+      "'Statement Credit','No FX','Status'", "'Statement Credit','Status'"),
   }),
 };
 

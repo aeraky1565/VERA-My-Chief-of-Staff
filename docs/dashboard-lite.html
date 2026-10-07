@@ -1726,6 +1726,22 @@ function CardsTab({ apiUrl, apiToken }) {
     setBusy(false);
   }
 
+  // A one-field update_card, so it rides the route that already runs
+  // ensureCreditCardSchema_ — the first toggle on a 13-column sheet widens it to 14 and
+  // writes the 'No FX Fee' header before storing anything.
+  //
+  // Toggles the EFFECTIVE value: an unset card has noFxFee === false, so the first click
+  // writes 'Yes', which is the intent when working through which cards are fee-free.
+  async function handleToggleFx(c) {
+    setBusy(true);
+    try {
+      await apiGet(apiUrl, apiToken,
+        { action: 'update_card', id: c.id, noFxFee: c.noFxFee ? 'No' : 'Yes' });
+      await load();
+    } catch (err) { setError('Could not update the FX flag: ' + err.message); }
+    setBusy(false);
+  }
+
   async function handleDeleteCard(id) {
     if (!confirm('Delete this card and all its rewards/perks?')) return;
     setBusy(true);
@@ -1950,7 +1966,8 @@ function CardsTab({ apiUrl, apiToken }) {
               : <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }} title="Scroll sideways for the remaining columns">
                 <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
                   <thead>
-                    <tr>{['Card','Owner','Annual Fee','Credit Limit','Due','Statement Credit','Status'].map(h => (
+                    {/* 'No FX' sits before Status so Status keeps the action buttons last. */}
+                    <tr>{['Card','Owner','Annual Fee','Credit Limit','Due','Statement Credit','No FX','Status'].map(h => (
                       <th key={h} style={{ textAlign:'left', color:'#6b7280', padding:'4px 8px 8px 0', borderBottom:'1px solid #1f4033', whiteSpace:'nowrap' }}>{h}</th>
                     ))}</tr>
                   </thead>
@@ -1979,14 +1996,34 @@ function CardsTab({ apiUrl, apiToken }) {
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0', whiteSpace:'nowrap' }}>{c.creditLimit != null && c.creditLimit !== '' ? '$' + Number(c.creditLimit).toLocaleString() : '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0' }}>{c.dueDay ? c.dueDay + 'th' : '—'}</td>
                           <td style={{ padding:'6px 8px 6px 0', color:'#a0a8c0', fontSize:11 }}>{c.statementCredit || '—'}</td>
+                          {/* Three states, not two. noFxFee is false both for "charges FX
+                              fees" and "nobody has said yet", so an unset card reads amber
+                              SET — that is the backlog marker, and the reason this column
+                              exists at all. Clicking toggles the EFFECTIVE value, so an
+                              unset card goes straight to Yes. */}
+                          <td style={{ padding:'6px 8px 6px 0' }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); handleToggleFx(c); }}
+                              disabled={busy}
+                              title={c.noFxFee
+                                ? 'No foreign transaction fee — appears under International Travel on the cheat sheet. Click to change to No.'
+                                : c.noFxFeeSet
+                                  ? 'This card charges a foreign transaction fee. Click to change to Yes.'
+                                  : 'Not set yet — click to mark this card as having NO foreign transaction fee'}
+                              style={{ fontSize:10, fontWeight:700, borderRadius:4, padding:'2px 6px', cursor:'pointer',
+                                border: c.noFxFeeSet ? 'none' : '1px dashed #a16207',
+                                background: c.noFxFee ? '#166534' : c.noFxFeeSet ? '#374151' : 'transparent',
+                                color:      c.noFxFee ? '#86efac' : c.noFxFeeSet ? '#9ca3af' : '#fbbf24',
+                                whiteSpace:'nowrap' }}>
+                              {c.noFxFee ? '🌍 Yes' : c.noFxFeeSet ? 'No' : 'Set'}
+                            </button>
+                          </td>
                           <td style={{ padding:'6px 8px 6px 0' }}>
                             <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                               <span style={{ background: c.active === 'Yes' ? '#166534' : '#374151', color: c.active === 'Yes' ? '#86efac' : '#9ca3af',
                                 fontSize:10, fontWeight:700, borderRadius:4, padding:'2px 6px' }}>
                                 {c.active === 'Yes' ? 'ACTIVE' : 'INACTIVE'}
                               </span>
-                              {c.noFxFee && <span title="No foreign transaction fee — appears under International Travel on the cheat sheet"
-                                style={{ fontSize:12 }}>🌍</span>}
                               <button onClick={e => { e.stopPropagation(); setModal({ type:'card', data:c }); }} disabled={busy}
                                 style={{ background:'none', border:'none', color:'#a0a8c0', cursor:'pointer', fontSize:12 }}>✏️</button>
                               <button onClick={e => { e.stopPropagation(); handleDeleteCard(c.id); }} disabled={busy}

@@ -147,6 +147,49 @@ console.log('\nThe flag is read from the sheet the same way');
         !/noFxFee:\s*String\(r\[13\][^)]*\|\|\s*'Yes'/.test(WEB),
         "active defaults to 'Yes' because an unmarked card is presumably in use; an " +
         'unmarked FX flag means unknown, which is a different thing');
+
+  // THE TRAP, asserted where the real expression is in scope. Making noFxFee a tri-state
+  // string would have been the obvious way to get a third state for the tracker, and
+  // 'No' is truthy — every card marked No would start being offered for foreign
+  // purchases at ~3% a time. It stays a boolean; noFxFeeSet carries the third state.
+  check('it stays a BOOLEAN, never the raw cell',
+        /\.toLowerCase\(\)\s*===\s*'yes'/.test(expr) &&
+        typeof coerce('No') === 'boolean' && typeof coerce('Yes') === 'boolean',
+        'a tri-state string would invert the cheat-sheet filter\'s meaning: ' +
+        JSON.stringify(expr));
+}
+
+console.log('\nnoFxFeeSet separates "No" from "nobody has said"');
+{
+  // The second field exists because noFxFee cannot answer "has anyone told us?" — and
+  // that is what the card tracker needs to show a backlog. Driven through the real
+  // expression, like the one above.
+  const setStart = WEB.indexOf("noFxFeeSet:      String(r[13]");
+  check('the companion mapping exists', setStart !== -1,
+        'without it the tracker cannot distinguish an unset card from one that charges fees');
+  const setExpr = WEB.slice(setStart + 'noFxFeeSet:'.length, WEB.indexOf(',', setStart)).trim();
+  const isSet = v => {
+    const ctx = { String, r: { 13: v } };
+    vm.createContext(ctx);
+    return vm.runInContext('(' + setExpr + ')', ctx);
+  };
+
+  check("'Yes' is set",       isSet('Yes') === true);
+  check("'No' is ALSO set",   isSet('No')  === true,
+        'answered, and the answer was no — the whole point of this field');
+  check("'' is not set",      isSet('')    === false);
+  check("'  ' is not set",    isSet('   ') === false, 'a cell of spaces is nobody answering');
+  check('undefined is not set (a sheet that predates the column)',
+        isSet(undefined) === false);
+
+  // Nothing may filter on the new field, in the server or either dashboard.
+  const filterish = /(filter|if)\s*\([^)]{0,120}noFxFeeSet/;
+  [['WebApp.js', WEB], ['docs/app.js', APP], ['docs/dashboard-lite.html', LITE]].forEach(([n, src]) => {
+    check('  ' + n + ': noFxFeeSet is never filtered on',
+          !filterish.test(src),
+          'it is display only. The moment a filter reads it, blank stops meaning ' +
+          '"do not offer this one" and the asymmetry the flag exists for is gone');
+  });
 }
 
 console.log('\nRanked on general spend, not the best rate anywhere');
@@ -358,13 +401,52 @@ console.log('\nBoth dashboards got it, and there is one label helper');
           /noFxFee:\s*\(card\s*&&\s*card\.noFxFee\)\s*\?\s*'Yes'\s*:\s*'No'/.test(src),
           'the server returns a boolean and takes Yes/No back; without this, editing ' +
           'any card posted "true" and silently turned its own flag off');
-    check('  ' + name + ': the tracker badges fee-free cards',
-          /c\.noFxFee\s*&&/.test(src));
+    // This used to be `/c\.noFxFee\s*&&/` — satisfied by ANY occurrence anywhere in the
+    // file, which is why the flag could ship with its entire on-row presence being a
+    // conditional glyph nobody could find. The assertions below pin the column itself.
+    check('  ' + name + ': the tracker has a No FX column, before Status',
+          /'Statement Credit','No FX','Status'/.test(src),
+          'the one place a dozen cards can be triaged at a glance; Status stays last ' +
+          'because it carries the row action buttons');
+    check('  ' + name + ': the cell renders all THREE states',
+          /c\.noFxFee\s*\?\s*'🌍 Yes'\s*:\s*c\.noFxFeeSet\s*\?\s*'No'\s*:\s*'Set'/.test(src),
+          'Yes / No / never-answered. Collapsing the last two is how the flag became ' +
+          'invisible: an unset card looked identical to one that charges fees');
+    check('  ' + name + ': the toggle flips the EFFECTIVE value',
+          /noFxFee:\s*c\.noFxFee\s*\?\s*'No'\s*:\s*'Yes'/.test(src),
+          'so an unset card goes straight to Yes, which is the intent when working ' +
+          'through which cards are fee-free');
+    check('  ' + name + ': …through update_card, which runs the schema migration',
+          /action:\s*'update_card',\s*id:\s*c\.id,\s*noFxFee:/.test(src),
+          'no new web action — the first toggle widens the sheet to 14 columns because ' +
+          'webUpdateCard_ calls ensureCreditCardSchema_ before writing');
+    check('  ' + name + ': the toggle stops the row click propagating',
+          /e\.stopPropagation\(\);\s*handleToggleFx\(c\)/.test(src),
+          'the <tr> opens the detail modal, so without this every toggle also opens a ' +
+          'modal over the change it just made');
+    check('  ' + name + ': the duplicate glyph is gone from the Status cell',
+          !/c\.noFxFee\s*&&/.test(src),
+          'the column carries it now; two indicators for one flag is noise');
   });
 
-  check('index.html was rebuilt from app.js',
-        fs.readFileSync(ROOT + '/docs/index.html', 'utf8').indexOf('GENERAL_SPEND_CATS') !== -1,
-        'docs/build.js inlines app.js; forgetting it ships the old bundle');
+  // Was `indexOf('GENERAL_SPEND_CATS') !== -1` — which only ever caught a bundle missing
+  // the feature that existed when it was written. A bundle stale by exactly the NEW
+  // column sailed through it, and its control did not bite. So compare the whole app
+  // block the way docs/build.js --check does: every future feature is then covered
+  // without anyone remembering to add a string here.
+  {
+    const html = fs.readFileSync(ROOT + '/docs/index.html', 'utf8');
+    const CLOSE = '</script>\n</body>', OPEN = '<script>';
+    const closeAt = html.lastIndexOf(CLOSE);
+    const openAt  = closeAt === -1 ? -1 : html.lastIndexOf(OPEN, closeAt);
+    const inlined = openAt === -1 ? null : html.slice(openAt + OPEN.length, closeAt);
+    const desired = '\n' + APP.replace(/\n+$/, '') + '\n';
+    check('index.html was rebuilt from app.js',
+          inlined === desired,
+          inlined === null ? 'could not find the app block'
+            : 'app block ' + inlined.length.toLocaleString() + ' bytes vs app.js ' +
+              desired.length.toLocaleString() + ' — run: node docs/build.js');
+  }
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

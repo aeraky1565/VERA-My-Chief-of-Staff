@@ -2491,6 +2491,36 @@ wrongly withheld costs a tick in a box. **So the row is absent until cards are m
 which is the safe default made visible rather than an empty heading implying "no good
 options".
 
+**That safe default also made the whole feature invisible.** It shipped with no column in
+the card tracker, its only on-row presence a 🌍 that renders when the flag is already
+`Yes`, and the words "No FX Fee" appearing in exactly one place in the UI — a label inside
+the edit modal. Nothing was marked, so nothing rendered anywhere, and there was no way to
+tell from the tracker which cards still needed answering.
+
+The tracker now has a **`No FX` column with three states**, because two were not enough:
+
+| shows | `noFxFee` / `noFxFeeSet` | means |
+|---|---|---|
+| 🌍 **Yes** | `true` / `true` | no foreign transaction fee — appears under International Travel |
+| **No** | `false` / `true` | answered: this card charges one |
+| **Set** (amber, dashed) | `false` / `false` | **never answered** — the backlog marker |
+
+> **`noFxFee` stays a boolean and `noFxFeeSet` is a second, display-only field.** Making
+> `noFxFee` a tri-state string would have been the obvious way to get the third state and
+> is the dangerous one: **`'No'` is truthy**, so `filter(c => c.active === 'Yes' &&
+> c.noFxFee)` would start offering every card explicitly marked as charging a fee. For the
+> same reason **nothing may filter on `noFxFeeSet`** — the moment something does, blank
+> stops meaning "do not offer this one" and the asymmetry above is lost. `test_cardfx.js`
+> asserts it appears in no filter, in `WebApp.js` and both dashboards.
+
+Clicking the cell toggles the **effective** value, so an unset card goes straight to `Yes`
+— the intent when working through which cards are fee-free. It is a one-field
+`update_card`, so it needs no new web action and rides the route that already calls
+`ensureCreditCardSchema_`: **the first toggle widens a 13-column sheet to 14 and writes the
+`No FX Fee` header itself.** Nothing has to be run in the Apps Script editor. The handler
+calls `e.stopPropagation()` because the row's own `onClick` opens the detail modal, which
+would otherwise cover every change the moment it was made.
+
 **Ranked on General Spend / Everything Else only.** A miscellaneous purchase abroad is
 exactly non-category spend, so a card's 4x dining rate is the wrong number to put beside
 it. A fee-free card with no general-spend row still appears — it is still free to use —
