@@ -100,6 +100,49 @@ function recordApiHealth_(source, ok, detail, httpCode) {
           error:   '',
         };
       }
+    } else if (Number(httpCode) === 429) {
+      // RATE LIMITED IS NOT BROKEN. A 429 says "try later"; it says nothing about
+      // whether the data this source returns is any good. Counting it as a failure put
+      // a line in the morning email's "SOME DATA IS NOT LIVE" every single day:
+      //
+      //   open-meteo — last good data 8h 17m ago
+      //   HTTP 429 — {"reason":"Daily API request limit exceeded..."}
+      //
+      // …for a quota VERA does not spend. Open-Meteo limits per IP and Apps Script
+      // egresses from Google ranges shared with every Apps Script project, while VERA
+      // makes a handful of calls a night. Unactionable, daily, and corrosive to the one
+      // banner that has to stay worth reading.
+      //
+      // So it records that it happened and changes NOTHING ELSE. consecutiveFailures is
+      // what getDegradedSources_ filters on, so leaving it alone keeps the source out of
+      // the banner; leaving lastError alone stops a 429 overwriting the message from a
+      // real fault. Two properties fall out of that and both are wanted: a source
+      // already degraded by a genuine failure STAYS degraded through a 429 and cannot be
+      // papered over by one, and a later success still clears everything normally
+      // because the success branch above is untouched.
+      entry = {
+        lastSuccess:         prev.lastSuccess,
+        lastFailure:         prev.lastFailure,
+        lastError:           prev.lastError,
+        consecutiveFailures: prev.consecutiveFailures,
+        lastAlertedAt:       prev.lastAlertedAt || 0,
+        lastRateLimited:     now,
+        rateLimitHits:       (prev.rateLimitHits || 0) + 1,
+        // Its OWN cooldown. Sharing lastAlertedAt would let a daily rate limit suppress
+        // the alert for a genuine outage that started in between.
+        lastRateLimitAlertedAt: prev.lastRateLimitAlertedAt || 0,
+      };
+      Logger.log('ApiHealth [' + source + ']: rate limited (HTTP 429) — ' + (detail || ''));
+      if ((now - (prev.lastRateLimitAlertedAt || 0)) > API_ALERT_COOLDOWN_MS_) {
+        entry.lastRateLimitAlertedAt = now;
+        alert = {
+          status:  'Warning',
+          summary: source + ' is rate limited (HTTP 429) — not a fault in the source, ' +
+                   'and not counted as degraded data',
+          error:   detail || '',
+        };
+      }
+
     } else {
       var reason = (httpCode ? 'HTTP ' + httpCode + ' — ' : '') + (detail || 'unknown error');
       entry = {
@@ -108,6 +151,10 @@ function recordApiHealth_(source, ok, detail, httpCode) {
         lastError:           reason,
         consecutiveFailures: prev.consecutiveFailures + 1,
         lastAlertedAt:       prev.lastAlertedAt || 0,
+        // Carried forward, or a real failure would reset the rate-limit cooldown.
+        lastRateLimited:        prev.lastRateLimited || 0,
+        rateLimitHits:          prev.rateLimitHits || 0,
+        lastRateLimitAlertedAt: prev.lastRateLimitAlertedAt || 0,
       };
       var cooledOff = (now - (prev.lastAlertedAt || 0)) > API_ALERT_COOLDOWN_MS_;
       if (!wasDegraded || cooledOff) {
@@ -417,7 +464,11 @@ function pruneApiHealthState_(nowMs) {
 
   Object.keys(state).forEach(function(source) {
     var e = state[source] || {};
-    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0);
+    // lastRateLimited counts as activity. A 429 deliberately leaves lastSuccess and
+    // lastFailure alone, so a source that is being rate limited every day — exactly
+    // what open-meteo does — would otherwise have both frozen, age out as an orphan,
+    // and be recreated on the next call, for ever.
+    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0, e.lastRateLimited || 0);
     // An entry with no timestamps at all is malformed, not merely old — it can
     // never age out on its own, so treat it as orphaned too.
     if (lastTouched && (now - lastTouched) <= API_HEALTH_ORPHAN_MS_) return;

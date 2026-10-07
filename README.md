@@ -1247,7 +1247,7 @@ the time it kills the run, the run is the thing that cannot tell you about it.
 ### API health: what belongs in the "SOME DATA IS NOT LIVE" banner
 
 The banner's job is to say *do not trust this data*, and it loses that authority the
-moment it reports things that are fine. Two rules keep it honest:
+moment it reports things that are fine. Three rules keep it honest:
 
 - **A successful call with an empty result is not an outage.** `fetchFlightStatus_`
   used to record a health *failure* on an HTTP 200 with an empty `data` array — but
@@ -1255,6 +1255,19 @@ moment it reports things that are fine. Two rules keep it honest:
   booked weeks out legitimately returns nothing and the API answered perfectly to say
   so. It records a **success** now and still returns `null`, because *this flight has
   no live status* is a fact about the flight, not about the API.
+- **An HTTP 429 is "try later", not "this data is wrong".** `recordApiHealth_` counted
+  a rate limit like a 500, so open-meteo put a line in the banner every single morning
+  — `last good data 8h 17m ago`, for a quota VERA does not spend. Open-Meteo limits
+  **per IP** and Apps Script egresses from Google ranges shared with every Apps Script
+  project, while VERA makes a handful of calls a night; caching harder cannot reliably
+  change that. A 429 now records `lastRateLimited` / `rateLimitHits` and changes
+  **nothing else** — `consecutiveFailures`, `lastError` and `lastFailure` are left
+  exactly as they were. Two consequences fall out of that, and both are wanted: a
+  source already degraded by a genuine fault **stays** degraded through a 429 and
+  cannot be papered over by one, and a later success still clears everything normally.
+  It is still announced in `#vera-logs`, through its **own** cooldown field
+  (`lastRateLimitAlertedAt`) — sharing `lastAlertedAt` would let a daily rate limit
+  suppress the alert for a real outage that started in between.
 - **`pruneApiHealthState_` drops entries nothing has touched in 14 days.** A source
   retired from the code leaves residue that can never recover — clearing a failure
   requires a successful call, and nothing is ever going to make one. That is how
@@ -1262,6 +1275,22 @@ moment it reports things that are fine. Two rules keep it honest:
   `googlefit-sleep` does). The discriminator is **recency of activity**, not failure
   count: a genuinely broken source still has code calling it, so its `lastFailure` is
   refreshed every night and it survives the prune however long it has been failing.
+  **`lastRateLimited` counts as activity** in that recency check, because a 429
+  deliberately freezes both `lastSuccess` and `lastFailure` — a source rate limited
+  every day would otherwise age out as an orphan and be recreated on the next call,
+  for ever.
+
+> **open-meteo has four callers, not one.** `geocodePackingDestination_` (city →
+> lat/lon, cached 6h) and `getPackingWeather_` (`WebApp.js`), `tripDailyForecast_`
+> (`TripDecisions.js`), and — until the 429 work — the `☀️ UV` chip in `Weather.js`.
+> Those first three feed `PreTripBriefing.js`, `TravelDayBriefing.js`, `TripDecisions.js`
+> and two dashboard endpoints, so **open-meteo is load-bearing for packing and trip
+> weather** and a real open-meteo fault must still reach the banner. `fetchUVIndex_` was
+> the least valuable of the four — it already degraded to a dash — and is gone; the
+> ticker keeps temperature, rain and AQI. openweathermap carries UV only on One Call
+> 3.0, a separate subscription the three endpoints VERA uses do not include.
+> `test_ratelimit.js` asserts the other three callers still exist and still record
+> health, so "remove the UV chip" can never quietly become "remove trip weather".
 
 ### Script property housekeeping
 

@@ -22,12 +22,12 @@ const CONTROLS = {
   }),
   'it prunes on lastFailure alone': b => ({
     'ApiHealth.js': b['ApiHealth.js'].replace(
-      '    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0);',
+      '    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0, e.lastRateLimited || 0);',
       '    var lastTouched = e.lastFailure || 0;'),
   }),
   'it prunes on lastSuccess alone (a live failing source is dropped)': b => ({
     'ApiHealth.js': b['ApiHealth.js'].replace(
-      '    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0);',
+      '    var lastTouched = Math.max(e.lastSuccess || 0, e.lastFailure || 0, e.lastRateLimited || 0);',
       '    var lastTouched = e.lastSuccess || 0;'),
   }),
   'it prunes on how long the source has been BROKEN': b => ({

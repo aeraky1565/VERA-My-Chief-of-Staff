@@ -147,38 +147,13 @@ function fetchAQI_(lat, lon, apiKey) {
   }
 }
 
-/**
- * Calls Open-Meteo (no key needed) for the UV index at the current local hour.
- * Returns integer UV value or null.
- */
-function fetchUVIndex_(lat, lon) {
-  var url = 'https://api.open-meteo.com/v1/forecast' +
-            '?latitude=' + lat + '&longitude=' + lon +
-            '&hourly=uv_index&forecast_days=1&timezone=auto';
-  var response = fetchWithHealth_('open-meteo', url);
-  if (!response) return null;
-  try {
-    var data = JSON.parse(response.getContentText());
-    if (!data.hourly || !data.hourly.uv_index) {
-      recordApiHealth_('open-meteo', false, 'response contained no uv_index series', 200);
-      return null;
-    }
-    var hour = parseInt(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'H'), 10);
-    return Math.round(data.hourly.uv_index[hour] || 0);
-  } catch (e) {
-    Logger.log('fetchUVIndex_ error: ' + e.message);
-    recordApiHealth_('open-meteo', false, 'UV parse error: ' + e.message, 200);
-    return null;
-  }
-}
-
 // ---- HTML builder -------------------------------------------
 
 /**
  * Assembles the ticker <tr> row from forecast data.
  * Returns '' if no meaningful data is available.
  */
-function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi, awayLabel9am, awayLabel6pm) {
+function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, awayLabel9am, awayLabel6pm) {
   var sep     = '<span style="color:rgba(201,168,76,0.6);margin:0 10px;">|</span>';
   var muted   = '#8a8a8a';   // Issue #138: a dash in grey reads as "no data", not as a value
   var parts   = [];
@@ -216,12 +191,20 @@ function buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi, awayLabel9am, awa
     parts.push('🌿&nbsp;AQI&nbsp;<strong style="color:' + muted + ';">&mdash;</strong>');
   }
 
-  if (uvi !== null && uvi !== undefined) {
-    var uvColor = uvi <= 2 ? '#43a047' : uvi <= 5 ? '#f9a825' : uvi <= 7 ? '#e53935' : '#7b1fa2';
-    parts.push('☀️&nbsp;UV&nbsp;<strong style="color:' + uvColor + ';">' + uvi + '</strong>');
-  } else {
-    parts.push('☀️&nbsp;UV&nbsp;<strong style="color:' + muted + ';">&mdash;</strong>');
-  }
+  // UV USED TO SIT HERE, FROM OPEN-METEO. Removed, not disabled: it answered
+  // HTTP 429 "Daily API request limit exceeded" to a call VERA makes about ONCE A
+  // DAY, because Open-Meteo rate-limits per IP and Apps Script egresses from Google
+  // ranges shared with every Apps Script project. That quota is not VERA's to spend
+  // or to fix.
+  //
+  // The chip degrading to a dash was never the cost. The cost was recordApiHealth_
+  // marking open-meteo degraded, which put a line in "SOME DATA IS NOT LIVE" every
+  // single morning for a third party's shared quota — the "alarm permanently about
+  // correct behaviour" failure Watchdog.js's own header warns about, on the one
+  // banner that has to stay worth reading. One fewer API, one fewer failure mode.
+  //
+  // openweathermap has UV only on One Call 3.0, a separate subscription; the three
+  // endpoints VERA uses (forecast, air_pollution, geo) do not carry it.
 
   if (parts.length === 0) return '';
 
@@ -384,14 +367,13 @@ function getWeatherTicker_(todayEvents) {
     var lat = primary.city.coord.lat;
     var lon = primary.city.coord.lon;
     var aqi = fetchAQI_(lat, lon, apiKey);
-    var uvi = fetchUVIndex_(lat, lon);
 
     // Only label a slot when it actually ended up somewhere other than home —
     // no tag at all already means "this is your default city."
     var awayLabel9am = (r9.usedLoc !== home) ? r9.usedLoc : null;
     var awayLabel6pm = (r6.usedLoc !== home) ? r6.usedLoc : null;
 
-    return buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, uvi, awayLabel9am, awayLabel6pm);
+    return buildTickerHtml_(slot9am, slot6pm, rainPct, aqi, awayLabel9am, awayLabel6pm);
   } catch (e) {
     Logger.log('getWeatherTicker_ error: ' + e.message);
     recordApiHealth_('openweathermap', false, 'ticker build error: ' + e.message, 0);
