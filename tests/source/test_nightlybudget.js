@@ -492,6 +492,48 @@ console.log('\nEvery step belongs to exactly one half');
   const head = stepsIn(bodyOf('nightlyRun'));
   const tail = stepsIn(bodyOf('nightlyRunTail'));
 
+  // THE BUDGET CANNOT PROTECT WHAT IT DOES NOT WRAP.
+  //
+  // Step 1's four collectors were bare calls at the top level of nightlyRun. On the
+  // night of 8 Oct the budget skipped computeTravelLegs_ at 5m25s — correctly — and
+  // then these ran anyway and the execution was killed 30s later, 355s into a 360s
+  // ceiling. The breadcrumb still named writePTOSnapshot_, the last step ATTEMPTED,
+  // which had finished four minutes earlier: work outside a step is work the
+  // breadcrumb cannot name, so the morning email blamed the wrong function.
+  //
+  // Counting call forms rather than parsing, to keep this file in the fast --node
+  // group that gates the deploy. That only works while the names are absent from the
+  // comments in nightlyRun, which is stated there.
+  {
+    const body = bodyOf('nightlyRun');
+    const COLLECTORS = ['getUpcomingEvents()', 'getOpenTasks()', 'getSummaries()',
+                        'getSharedInterestLedger_()'];
+    check('  the collection is a budgeted step', head.indexOf('collect') !== -1,
+          JSON.stringify(head));
+
+    const m = /nightlyStep_\(ctx, 'collect', function\(\) \{([\s\S]*?)\n    \}\);/.exec(body);
+    check('  …whose closure is findable', !!m);
+    COLLECTORS.forEach(c => {
+      const inBody    = body.split(c).length - 1;
+      const inClosure = m ? m[1].split(c).length - 1 : 0;
+      check('    ' + c + ' is called once, inside it',
+            inBody === 1 && inClosure === 1,
+            'in nightlyRun: ' + inBody + ', in the collect closure: ' + inClosure +
+            ' — a bare call here runs after the budget has already given up');
+    });
+
+    // Out of time must not be reported as nothing to say.
+    check('  a skipped collection ends the run instead of claiming "no data"',
+          /if \(!collected\) \{/.test(body) &&
+          /stopped before the Claude call/.test(body),
+          'the empty-data branch would otherwise post "0 flags (no data)" for a night ' +
+          'that simply ran out of budget');
+    check('  …and the collectors are var, not const, so the closure can assign them',
+          /var events = null, tasks = null, summaries = null, ledger = null;/.test(body),
+          'a const reassigned inside the closure throws where nightlyStep_ catches it, ' +
+          'which blanks the run with only a warning to show for it');
+  }
+
   check('both halves run steps', head.length > 20 && tail.length > 0,
         JSON.stringify({ head: head.length, tail: tail.length }));
   const overlap = head.filter(s => tail.indexOf(s) !== -1);

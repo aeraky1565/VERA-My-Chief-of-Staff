@@ -1108,12 +1108,52 @@ function nightlyRun() {
     });
 
     // Step 1: Collect
-    const events    = getUpcomingEvents();
-    const tasks     = getOpenTasks();
-    const summaries = getSummaries();
-    const ledger    = getSharedInterestLedger_();
+    //
+    // BUDGETED, AND THAT IS A FIX. These were four bare calls, outside nightlyStep_,
+    // and the budget cannot protect what it does not wrap. On the night of Oct 8 the
+    // budget did its job — it skipped computeTravelLegs_ at 5m25s — and then this ran
+    // anyway, because nothing stopped it, and the execution was killed 30s later
+    // inside the all-calendar scan: the most expensive call in the codebase, seven
+    // days across every calendar with two API passes each, started after the run had
+    // already been declared out of time.
+    //
+    // The four collectors are deliberately NOT named in this comment. test_nightlybudget
+    // counts each call form in this function and expects exactly one — a mention here
+    // would read as a second call site. Ninth time a check in this repo would have
+    // matched prose about the thing instead of the thing.
+    //
+    // It also cost the diagnosis. The breadcrumb still read writePTOSnapshot_ — the
+    // last step ATTEMPTED, since skips do not write one — so the morning email named
+    // a function that had finished four minutes earlier, and the search started in
+    // the wrong file. Work inside a step is work the breadcrumb can name.
+    //
+    // var, not const: the closure assigns to these and nightlyStep_ catches, so a
+    // const would throw inside the catch and blank the run with only a warning.
+    var events = null, tasks = null, summaries = null, ledger = null;
+    var collected = nightlyStep_(ctx, 'collect', function() {
+      events    = getUpcomingEvents();
+      tasks     = getOpenTasks();
+      summaries = getSummaries();
+      ledger    = getSharedInterestLedger_();
+      Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length +
+                 ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length);
+    });
 
-    Logger.log('Data collected — Events: ' + events.length + ', Tasks: ' + tasks.length + ', Summaries: ' + summaries.length + ', Interests: ' + ledger.length);
+    // OUT OF TIME IS NOT THE SAME AS NOTHING TO SAY. If the collection was skipped,
+    // every list below is null and the empty-data branch would report "0 flags (no
+    // data)" — a cheerful, false statement about a night that ran out of budget. End
+    // here instead, and say which it was. The finally still records the heartbeat and
+    // flushes the log, so this is a complete, honest, partial run.
+    if (!collected) {
+      Logger.log('nightlyRun: collection skipped — out of time before Step 1.');
+      var elapsedCut = Math.round((Date.now() - runStart) / 1000);
+      try {
+        sendSlackLog_('⏭️ Nightly run — stopped before the Claude call: ' +
+                      'no time left to collect (' + elapsedCut + 's). Slowest: ' +
+                      slowestNightlySteps_(stepTimings, 3).join(' · '));
+      } catch (e) {}
+      return;
+    }
 
     // Step 2: Skip Claude if there is no meaningful data to reason about.
     // Only bypasses when ALL THREE are simultaneously empty (rare: quiet weekends,

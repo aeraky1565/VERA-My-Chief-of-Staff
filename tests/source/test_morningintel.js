@@ -238,9 +238,17 @@ console.log('The calendar is never re-scanned');
         'a counter at 0 with a blank section is the failure mode a counter alone misses');
   check('…from the injected array', c._prompts.length === 1 && /- Standup: 09:00/.test(c._prompts[0]),
         JSON.stringify(c._prompts[0] || '').slice(0, 200));
+  // The weekday is DERIVED, not written down. It was hard-coded as 'Friday', which
+  // passed on the day it was written and went red the moment the date rolled — a
+  // self-inflicted flake in a suite whose value is that a red run means something.
+  const dayNameIn = n => formatDate(new Date(MIDNIGHT.getTime() + n * DAY), 'tz', 'EEEE');
   check('…including the rest-of-week outlook the second scan used to supply',
-        /REST OF WEEK OUTLOOK:/.test(c._prompts[0]) && /Friday: 1 event/.test(c._prompts[0]),
-        'days 1-6 were exactly the part morningNudge threw away');
+        /REST OF WEEK OUTLOOK:/.test(c._prompts[0]) &&
+        new RegExp(dayNameIn(1) + ': 1 event').test(c._prompts[0]) &&
+        new RegExp(dayNameIn(2) + ': 1 event').test(c._prompts[0]),
+        'days 1-6 were exactly the part morningNudge threw away — expected ' +
+        dayNameIn(1) + ' and ' + dayNameIn(2) + ' in: ' +
+        JSON.stringify((/REST OF WEEK OUTLOOK:[\s\S]*?\n\n/.exec(c._prompts[0]) || [''])[0]));
   check('…and the all-day event is excluded from today\'s timed list',
         !/Birthday/.test(c._prompts[0]));
   check('nothing was logged as a failure', !c._logs.some(l => /day sequencing/.test(l)),

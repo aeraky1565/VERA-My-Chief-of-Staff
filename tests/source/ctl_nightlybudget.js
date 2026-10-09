@@ -312,6 +312,40 @@ const CONTROLS = {
       "        (stepFailures.length || stepBlocked.length) ? 'Partial' : 'Success',",
       "        stepFailures.length ? 'Partial' : 'Success',"),
   }),
+
+  // ---- Step 1 outside the budget: the Oct 8 kill ----------------------------
+  // Restores the four bare calls verbatim. This is what ran after the budget had
+  // already skipped computeTravelLegs_, and what the execution was killed inside.
+  'the collection goes back to bare calls, outside the budget': b => {
+    const s = b['Code.js'];
+    const start = s.indexOf('    var events = null, tasks = null, summaries = null, ledger = null;');
+    const end   = s.indexOf('    // Step 2: Skip Claude if there is no meaningful data', start);
+    if (start === -1 || end === -1) throw new Error('collect step not found');
+    return { 'Code.js': s.slice(0, start) +
+      '    const events    = getUpcomingEvents();\n' +
+      '    const tasks     = getOpenTasks();\n' +
+      '    const summaries = getSummaries();\n' +
+      '    const ledger    = getSharedInterestLedger_();\n\n' +
+      s.slice(end) };
+  },
+  'one collector is hoisted back out of the step': b => ({
+    'Code.js': b['Code.js'].replace(
+      '    var collected = nightlyStep_(ctx, \'collect\', function() {\n      events    = getUpcomingEvents();',
+      '    events = getUpcomingEvents();\n' +
+      '    var collected = nightlyStep_(ctx, \'collect\', function() {'),
+  }),
+  'a skipped collection falls through to the empty-data branch': b => ({
+    'Code.js': b['Code.js'].replace('    if (!collected) {', '    if (false) {'),
+  }),
+  'the collectors go back to const, so the closure throws into the catch': b => ({
+    'Code.js': b['Code.js'].replace(
+      '    var events = null, tasks = null, summaries = null, ledger = null;',
+      '    const events = null, tasks = null, summaries = null, ledger = null;'),
+  }),
+  'the out-of-time message claims there was no data': b => ({
+    'Code.js': b['Code.js'].replace(
+      'stopped before the Claude call: ', '0 flags (no data): '),
+  }),
 };
 
 let allBit = true;
