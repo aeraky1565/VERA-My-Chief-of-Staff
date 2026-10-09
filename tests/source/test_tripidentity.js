@@ -88,7 +88,15 @@ function ctxFor(opts) {
       getRange: (r, c, n, w) => ({
         getValues: () => rows.slice(r - 2, r - 2 + n)
           .map(row => { const o = row.slice(c - 1, c - 1 + (w || 1)); while (o.length < (w || 1)) o.push(''); return o; }),
-        setValues: v => { v.forEach((row, i) => { rows[r - 2 + i] = row.slice(); }); },
+        // Writes at the range's START COLUMN. This replaced the whole row regardless
+        // of c, so a partial write — touchTripRow_ now batches columns 2-5 in one
+        // call — silently blew away columns 1 and 6-8 and the row read back wrong.
+        setValues: v => {
+          v.forEach((row, i) => {
+            const target = rows[r - 2 + i] || (rows[r - 2 + i] = []);
+            row.forEach((val, j) => { target[c - 1 + j] = val; });
+          });
+        },
         setValue: val => { if (!rows[r - 2]) rows[r - 2] = []; rows[r - 2][c - 1] = val; },
         setFontWeight: () => {},
       }),

@@ -1244,6 +1244,57 @@ got the chance to skip anything.
 creeping towards the ceiling is worth seeing while it is still creeping, because by
 the time it kills the run, the run is the thing that cannot tell you about it.
 
+### The night the budget worked and the run died anyway
+
+162s (Oct 6) → 193s (Oct 7) → **killed at 355s of 360s** (Oct 8). Three separate faults,
+and the one the email named was innocent.
+
+**The budget cannot protect what it does not wrap.** It did its job — it skipped
+`computeTravelLegs_` at 5m25s. Then Step 1's four collectors ran anyway, because they
+were bare calls outside `nightlyStep_`, and the execution was killed 30s later inside the
+all-calendar scan: the most expensive call in the codebase, started *after* the run had
+been declared out of time. They are one budgeted step now.
+
+**The breadcrumb named a step that had succeeded.** It holds the last step *attempted*;
+skips do not write one, and work outside a step cannot be named at all — so the death
+landed on `writePTOSnapshot_`, which had finished four minutes earlier. Wrapping the
+collection fixes it at zero cost. `test_nightlybudget` now counts each collector's call
+form and expects exactly one, inside the closure, which is also why those names are
+deliberately absent from the comments there.
+
+**Out of time is not the same as nothing to say.** With the collection skipped every list
+is null, and the empty-data branch would have posted `0 flags (no data)` about a night
+that simply ran out of budget.
+
+> **`writePTOSnapshot_` was 4m 06s of the 6-minute ceiling**, and the log was silent for
+> 155 consecutive seconds inside it — the ~60 lines `getUpcomingTravel_` prints are its
+> cheap tail. Ten `getEvents` calls, four of them redundant:
+>
+> - **`findClearWindows_` and `getMilestones_` fetched the same calendars over the same
+>   window, back to back.** One took its 90 days as a parameter, the other hardcoded 90 —
+>   equal by coincidence, not by agreement, which is precisely why nobody saw it. There is
+>   now one `PTO_GAP_SCAN_DAYS_` and one `scanGapCalendars_` feeding both.
+> - **`getCalendarByName_` had no memo**, so `getCalendarsByName` ran seven times for five
+>   distinct names in one snapshot. It caches misses too: an absent calendar is absent for
+>   the whole run, and re-asking costs a round trip *and* a duplicate warning per caller.
+> - **`getPTOEvents_` walked a year of events twice**, calling `getTitle()` and
+>   `isAllDayEvent()` on every event in both passes. Those are round trips to the Calendar
+>   service, not property reads; they are read once into a prepared array now.
+> - **`touchTripRow_` wrote up to four single cells per trip.** Columns 2-5 are contiguous,
+>   so they go in one `setValues`; `lastSeen` at column 8 is the only separate write. This
+>   matters on the night specifically, because `lastSeen` is rewritten whenever the stored
+>   date is not today — so the nightly run is exactly the run where *every* trip takes it.
+>
+> The step reports its own blocks now (`⏱️ writePTOSnapshot_ breakdown:`), through the
+> **same** `slowestNightlySteps_` formatter as the step line, so the two cannot drift. The
+> timer is declared first in the function: `sub_` is hoisted but `ptoSubs` is not, so an
+> earlier call would push onto `undefined` and take the snapshot down.
+>
+> Two fakes had to be strengthened to catch any of this. `test_tripregistry`'s sheet had
+> `setValues: () => {}` — a **no-op that silently swallowed every batched write** — and
+> `test_tripidentity`'s replaced the whole row regardless of the range's start column. A
+> fake that drops writes cannot catch a bug in writes.
+
 ### A function that takes no arguments fetches everything twice
 
 The first timings those phases produced said:

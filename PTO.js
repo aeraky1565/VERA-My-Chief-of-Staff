@@ -279,17 +279,70 @@ function setPTOConfigValue_(key, value) {
 
 // ---- Calendar helpers -------------------------------------------------------
 
+// Per-execution memo of name → Calendar. GAS gives every execution a fresh global
+// scope, so this lives exactly as long as one run.
+//
+// CalendarApp.getCalendarsByName was called SEVEN times for FIVE distinct names in one
+// writePTOSnapshot_: getPTOEvents_ resolves the work calendar and discards the handle,
+// getUpcomingTravel_ resolves the travel calendars and discards them, then
+// getGapCalendars_ resolves two of the same names again a few lines later.
+//
+// hasOwnProperty, not truthiness, so a name that does not resolve is remembered as a
+// miss. A calendar that is absent is absent for the whole run, and re-asking per caller
+// costs a round trip AND repeats the "calendar not found" line once per caller.
+var _calendarByName_ = {};
+
+/** Drops the memo. For a caller that has just created or renamed a calendar. */
+function invalidateCalendarByName_() {
+  _calendarByName_ = {};
+}
+
 /**
  * Returns the first CalendarApp.Calendar matching the given name.
  * Logs a warning and returns null if not found.
  */
 function getCalendarByName_(name) {
-  var cals = CalendarApp.getCalendarsByName(name.trim());
+  var key = String(name == null ? '' : name).trim();
+  if (Object.prototype.hasOwnProperty.call(_calendarByName_, key)) {
+    return _calendarByName_[key];
+  }
+  var cals = CalendarApp.getCalendarsByName(key);
   if (!cals || cals.length === 0) {
     Logger.log('PTO: calendar not found: "' + name + '"');
+    _calendarByName_[key] = null;
     return null;
   }
+  _calendarByName_[key] = cals[0];
   return cals[0];
+}
+
+// How far ahead the gap analysis looks. ONE constant, because findClearWindows_ took
+// its window as a parameter while getMilestones_ hardcoded the same number — equal by
+// coincidence, which is exactly why nobody noticed they were fetching the same events
+// from the same calendars, back to back, twice.
+var PTO_GAP_SCAN_DAYS_ = 90;
+
+/**
+ * One fetch per gap calendar, shared by findClearWindows_ and getMilestones_.
+ *
+ * Returns an array parallel to gapCalendars: scanned[c] is that calendar's events for
+ * the window. Both consumers walk the same list rather than asking the Calendar service
+ * for it twice — the duplicate was two of the ten getEvents calls in a snapshot that
+ * ran for four minutes and was killed at the six-minute ceiling.
+ */
+function scanGapCalendars_(gapCalendars, today) {
+  var end = new Date(today.getTime() + PTO_GAP_SCAN_DAYS_ * 24 * 60 * 60 * 1000);
+  return (gapCalendars || []).map(function(cal) {
+    try {
+      return cal.getEvents(today, end);
+    } catch (err) {
+      // One unreadable calendar must not cost the other calendars' windows. The
+      // consumers fall back to their own fetch for a null entry, so this degrades to
+      // the old behaviour for that calendar alone.
+      Logger.log('scanGapCalendars_: ' + err.message);
+      return null;
+    }
+  });
 }
 
 /**
@@ -349,6 +402,14 @@ function getPTOEvents_(cfg) {
   var end   = new Date(cfg.year, 11, 31);  // Dec 31
 
   var allEvents  = cal.getEvents(start, end);
+  // ONE read of each getter per event, not one per pass. The two passes below each
+  // called getTitle() and isAllDayEvent() on every event in a 365-day window, so a
+  // year on a busy work calendar paid for both twice. Apps Script event getters are
+  // round trips to the Calendar service, not property reads.
+  var prepared = allEvents.map(function(e) {
+    var t = e.getTitle().trim();
+    return { ev: e, title: t, tLower: t.toLowerCase(), allDay: e.isAllDayEvent() };
+  });
   var holidays   = [];
   var holidaySet = new Set();
   var ptoEvents  = [];
@@ -379,11 +440,12 @@ function getPTOEvents_(cfg) {
   // Only all-day events that match holidayKeywords are treated as holidays.
   // Events matching ignoreKeywords (e.g. "Pay Day") are dropped first.
   // Everything else (STI payout, grants, performance reviews, etc.) is ignored.
-  for (var i = 0; i < allEvents.length; i++) {
-    var ev     = allEvents[i];
-    var title  = ev.getTitle().trim();
-    var tLower = title.toLowerCase();
-    if (!ev.isAllDayEvent()) continue;
+  for (var i = 0; i < prepared.length; i++) {
+    var p      = prepared[i];
+    var ev     = p.ev;
+    var title  = p.title;
+    var tLower = p.tLower;
+    if (!p.allDay) continue;
     if (isIgnored_(tLower)) continue;                        // "Pay Day(V)" etc. — drop entirely
     if (tLower.indexOf('vacation') !== -1) continue;         // handled in Pass 2
     if (tLower.indexOf('pto')      !== -1) continue;         // handled in Pass 2
@@ -398,13 +460,14 @@ function getPTOEvents_(cfg) {
   }
 
   // ---- Pass 2: classify PTO events ----------------------------------------
-  for (var j = 0; j < allEvents.length; j++) {
-    var ev2    = allEvents[j];
-    var title2 = ev2.getTitle().trim();
-    var tLow2  = title2.toLowerCase();
+  for (var j = 0; j < prepared.length; j++) {
+    var p2     = prepared[j];
+    var ev2    = p2.ev;
+    var title2 = p2.title;
+    var tLow2  = p2.tLower;
     if (isIgnored_(tLow2)) continue;                      // skip ignored events in all passes
 
-    if (ev2.isAllDayEvent()) {
+    if (p2.allDay) {
       if (tLow2.indexOf('vacation') !== -1) {
         // Full vacation day(s)
         var vStart   = ev2.getAllDayStartDate();
@@ -1193,8 +1256,8 @@ function getUpcomingGuests_(cfg) {
  * @param {number} minDays       (default 3)
  * @returns {Array} Up to 3 windows: [{ startDate, endDate, workdays }]
  */
-function findClearWindows_(gapCalendars, today, lookAheadDays, minDays) {
-  lookAheadDays = lookAheadDays || 90;
+function findClearWindows_(gapCalendars, today, lookAheadDays, minDays, scannedEvents) {
+  lookAheadDays = lookAheadDays || PTO_GAP_SCAN_DAYS_;
   minDays       = minDays       || 3;
 
   var tz      = Session.getScriptTimeZone();
@@ -1203,7 +1266,11 @@ function findClearWindows_(gapCalendars, today, lookAheadDays, minDays) {
 
   // Collect all events across gap calendars → blocked days
   for (var c = 0; c < gapCalendars.length; c++) {
-    var events = gapCalendars[c].getEvents(today, scanEnd);
+    // scannedEvents[c] is the SAME fetch getMilestones_ uses — see scanGapCalendars_.
+    // Falls back to its own fetch when called standalone, which is cheap and bounded
+    // (one getEvents over a 90-day window), unlike the all-calendar scan the morning
+    // fix deliberately refuses to repeat.
+    var events = (scannedEvents && scannedEvents[c]) || gapCalendars[c].getEvents(today, scanEnd);
     for (var e = 0; e < events.length; e++) {
       var ev = events[e];
       if (ev.isAllDayEvent()) {
@@ -1275,16 +1342,18 @@ function findClearWindows_(gapCalendars, today, lookAheadDays, minDays) {
  * @param {Date}   today
  * @returns {Array} [{ label, date, daysUntil, calendarName }]
  */
-function getMilestones_(gapCalendars, cfg, today) {
+function getMilestones_(gapCalendars, cfg, today, scannedEvents) {
   var tz       = Session.getScriptTimeZone();
-  var end      = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
+  // Was a hardcoded 90 while findClearWindows_ took its 90 as a parameter — equal by
+  // coincidence, not by agreement, which is what made the duplicate fetch invisible.
+  var end      = new Date(today.getTime() + PTO_GAP_SCAN_DAYS_ * 24 * 60 * 60 * 1000);
   var keywords = cfg.milestoneKeywords;
   var results  = [];
   var seen     = {};
 
   for (var c = 0; c < gapCalendars.length; c++) {
     var calName = gapCalendars[c].getName();
-    var events  = gapCalendars[c].getEvents(today, end);
+    var events  = (scannedEvents && scannedEvents[c]) || gapCalendars[c].getEvents(today, end);
     for (var e = 0; e < events.length; e++) {
       var ev    = events[e];
       if (!ev.isAllDayEvent()) continue;
@@ -1904,6 +1973,24 @@ function checkPTOYearRollover_() {
  * @returns {Object} stats object for passing to Claude
  */
 function writePTOSnapshot_() {
+  // TIMED PER BLOCK, because this step ran for 4m 06s of a 6-minute ceiling and the
+  // live log was silent for 155 consecutive seconds inside it — the ~60 lines you can
+  // see from getUpcomingTravel_ are its cheap tail. Every number anyone had about this
+  // function was inferred from its structure. Same sub_ shape as the morning
+  // intelligence breakdown, and deliberately not nightlyStep_: that writes a Script
+  // Property per call, its timings would be double-counted inside this step's own
+  // total, and its budget guard would start skipping blocks here.
+  //
+  // Declared FIRST. sub_ is hoisted but ptoSubs is not — var leaves it undefined until
+  // its initialiser runs, so the first sub_ call above this point would push onto
+  // undefined and take the whole snapshot down.
+  var ptoSubs = [];
+  function sub_(label, fn) {
+    var t0 = Date.now();
+    try { return fn(); }
+    finally { ptoSubs.push({ name: label, ms: Date.now() - t0 }); }
+  }
+
   var cfg   = readPTOConfig_();
   var today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1911,19 +1998,26 @@ function writePTOSnapshot_() {
   var ss    = getSpreadsheet();
 
   // Load PTO Memory early — needed to filter declined windows from all outputs
-  var memory      = loadPTOMemory_(ss);
+  var memory      = sub_('memory', function() { return loadPTOMemory_(ss); });
   var declinedSet = {};
   for (var mi = 0; mi < memory.length; mi++) {
     if (memory[mi].status === 'declined') declinedSet[memory[mi].startDate] = true;
   }
 
   // Collect data
-  var ptoResult  = getPTOEvents_(cfg);
-  var travel     = getUpcomingTravel_(cfg);
-  var gapCals    = getGapCalendars_(cfg);
-  var allWindows = findClearWindows_(gapCals, today, 90, 3);
-  var milestones = getMilestones_(gapCals, cfg, today);
-  var stats      = computePTOStats_(ptoResult, cfg, today);
+  var ptoResult  = sub_('ptoEvents', function() { return getPTOEvents_(cfg); });
+  var travel     = sub_('travel',    function() { return getUpcomingTravel_(cfg); });
+  var gapCals    = sub_('gapCals',   function() { return getGapCalendars_(cfg); });
+  // ONE fetch per gap calendar for the two consumers below. They were handed the same
+  // array object and computed the same window, so each calendar was fetched twice.
+  var gapScan    = sub_('gapScan',   function() { return scanGapCalendars_(gapCals, today); });
+  var allWindows = sub_('clearWindows', function() {
+    return findClearWindows_(gapCals, today, PTO_GAP_SCAN_DAYS_, 3, gapScan);
+  });
+  var milestones = sub_('milestones', function() {
+    return getMilestones_(gapCals, cfg, today, gapScan);
+  });
+  var stats      = sub_('stats', function() { return computePTOStats_(ptoResult, cfg, today); });
 
   // Filter out windows the user has declined — dashboard + Claude also see the filtered list
   var windows = allWindows.filter(function(w) { return !declinedSet[w.startDate]; });
@@ -1932,7 +2026,9 @@ function writePTOSnapshot_() {
   stats.clearWindows   = windows;
   stats.milestones     = milestones;
   stats.upcomingTravel = travel;
-  stats.accrualCap     = computeAccrualCapStatus_(cfg, stats.used.vacationDays, ptoResult.events, today);
+  stats.accrualCap     = sub_('accrual', function() {
+    return computeAccrualCapStatus_(cfg, stats.used.vacationDays, ptoResult.events, today);
+  });
   try { checkAccrualCapRisk_(stats.accrualCap); } catch (accrualErr) {
     Logger.log('writePTOSnapshot_: checkAccrualCapRisk_ error (non-fatal): ' + accrualErr.message);
   }
@@ -1971,15 +2067,21 @@ function writePTOSnapshot_() {
   }
 
   // Update Vera calendar (pass ss + memory for stateful declined-window tracking)
-  try {
-    writeVERARecommendations_(stats, cfg, ss, memory);
-  } catch(e) {
-    Logger.log('PTO: writeVERARecommendations_ error: ' + e.message);
-  }
+  sub_('veraRecs', function() {
+    try {
+      writeVERARecommendations_(stats, cfg, ss, memory);
+    } catch(e) {
+      Logger.log('PTO: writeVERARecommendations_ error: ' + e.message);
+    }
+  });
 
   Logger.log('PTO snapshot done: ' + ptoResult.events.length + ' PTO events, ' +
              windows.length + ' windows (of ' + allWindows.length + ' found, ' +
              Object.keys(declinedSet).length + ' declined), ' + milestones.length + ' milestones.');
+  // Carried on the returned object rather than posted from here: this function is on
+  // the hot path and must not make a Slack call. nightlyRun emits it beside the
+  // slowest-steps line, through the same formatter.
+  stats.subTimings = ptoSubs;
   return stats;
 }
 

@@ -563,7 +563,24 @@ function touchTripRow_(tripId, fields) {
   if (String(rec.lastSeen).slice(0, 10) !== today) writes.push([8, new Date().toISOString()]);
 
   if (!writes.length) return;
-  writes.forEach(function(w) { sheet.getRange(rec._row, w[0]).setValue(w[1]); });
+
+  // ONE setValues PER CONTIGUOUS RUN, not one setValue per cell. The columns written
+  // are 2-5 (label, dates, event ids) and 8 (lastSeen), so a row that changed
+  // everything cost four round trips; it now costs two. This matters on the nightly
+  // run specifically: lastSeen is rewritten whenever the stored date is not today, so
+  // the night is exactly the run where EVERY trip takes this path.
+  writes.sort(function(a, b) { return a[0] - b[0]; });
+  var run = [writes[0]];
+  var flush = function() {
+    sheet.getRange(rec._row, run[0][0], 1, run.length)
+         .setValues([run.map(function(w) { return w[1]; })]);
+  };
+  for (var i = 1; i < writes.length; i++) {
+    if (writes[i][0] === run[run.length - 1][0] + 1) { run.push(writes[i]); continue; }
+    flush();
+    run = [writes[i]];
+  }
+  flush();
   invalidateTripRegistry_();
 }
 

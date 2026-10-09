@@ -1343,6 +1343,14 @@ function nightlyRun() {
       // the run, the run is the thing that cannot tell you about it.
       var slowest = slowestNightlySteps_(stepTimings, 5);
       if (slowest.length) sendSlackLog_('\u23f1\ufe0f Slowest steps: ' + slowest.join(' \u00b7 '));
+      // The heaviest step, broken into its own blocks, through the SAME formatter so
+      // the two lines can never be computed differently. writePTOSnapshot_ was 4m 06s
+      // of a 6-minute ceiling with 155 consecutive seconds of silence inside it, and
+      // "writePTOSnapshot_ 246.0s" said nothing about which part.
+      try {
+        var ptoSub = slowestNightlySteps_(ptoStats && ptoStats.subTimings, 11);
+        if (ptoSub.length) sendSlackLog_('\u23f1\ufe0f writePTOSnapshot_ breakdown: ' + ptoSub.join(' \u00b7 '));
+      } catch (ptoSubErr) { /* a breakdown must never break the summary */ }
       veraLog_('nightlyRun', 'Nightly',
         stepFailures.length ? 'Partial' : 'Success',
         flagCount + ' new flag' + (flagCount !== 1 ? 's' : '') + ' written' +

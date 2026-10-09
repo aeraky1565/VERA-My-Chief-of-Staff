@@ -58,7 +58,16 @@ function ctxFor(opts) {
         for (let i = 0; i < (nR || 1); i++) out.push(rows[r - 1 + i].slice(c - 1, c - 1 + (nC || 1)));
         return out;
       },
-      setValues: () => {}, setFontWeight: () => {},
+      // A real setValues, not a no-op. It was `() => {}`, which silently swallowed
+      // every batched write — so touchTripRow_ switching from four setValue calls to
+      // two setValues made three assertions fail while the product was correct. A fake
+      // that drops writes cannot catch a bug in writes.
+      setValues: vals => {
+        for (let i = 0; i < vals.length; i++) {
+          for (let j = 0; j < vals[i].length; j++) rows[r - 1 + i][c - 1 + j] = vals[i][j];
+        }
+      },
+      setFontWeight: () => {},
     }),
   };
   const ctx = {
