@@ -2164,8 +2164,33 @@ Set all properties in the Apps Script editor: **Project Settings → Script Prop
 | `SLACK_ALLOWED_USER_IDS` | No | Slack.js | Comma-separated authorised Slack user IDs |
 | `AVIATIONSTACK_KEY` | No | FlightStatus.js | AviationStack API key for flight status polling |
 | `OPENWEATHER_API_KEY` | No | Weather.js | OpenWeather API key for weather ticker and destination forecasts |
+| `GOOGLE_STATIC_MAPS_API_KEY` | No | TravelDayBriefing.js, TravelLegs.js | Google Maps key for the travel email's route image **and** the Distance Matrix travel times. **Restrict by API, never by referrer or IP** — see below |
 | `VERA_SEARCH_API_KEY` | No | Chat.js | Serper.dev or Tavily API key for web search in chat |
 | `VERA_SEARCH_ENGINE` | No | Chat.js | `serper` (default) or `tavily` |
+
+> **The travel map needs TWO things, and the dashboard working tells you nothing about
+> either.** They are different Google services with different keys:
+>
+> | | Dashboard trip map | Travel-day email |
+> |---|---|---|
+> | API | Maps **JavaScript** | Maps **Static** |
+> | Key | browser `localStorage['vera_maps_key']`, typed into the settings modal | `GOOGLE_STATIC_MAPS_API_KEY` script property |
+>
+> They cannot share a key. The dashboard's settings hint tells you to restrict its key by
+> HTTP referrer — correct for a browser, and **fatal in email**, because Gmail fetches the
+> image through its own proxy, which sends no referrer and an IP you cannot allowlist.
+> Restrict the script property **by API only**.
+>
+> **Maps Static is enabled separately from Distance Matrix.** Travel times can work while
+> every map is a 403, which is exactly what happened: the health entry (now
+> `googlemaps-distancematrix`, renamed so it cannot be misread) was green while no travel
+> email had ever shown a map.
+>
+> Nothing server-side ever fetches the map URL — Gmail's proxy does, when the mail is
+> opened — so the rejection happens on Google's infrastructure, the error body is never
+> rendered, and the reader sees a blank box. **`tbTravelDayMap()`** is the instrument:
+> it fetches the URL server-side, prints Google's own words, names the cause, and for a
+> bad address bisects marker by marker.
 | `VACATION_MODE_ACTIVE` | Auto | Pacing.js | `true`/`false` — set nightly by `checkVacationMode_()` |
 | `VACATION_MODE_ENDS` | Auto | Pacing.js | `YYYY-MM-DD` last date of active trip |
 | `VACATION_TRIP_NAME` | Auto | Pacing.js | Trip key of active trip |
@@ -2845,6 +2870,7 @@ Optional but recommended:
 | `ADDRESS_BOOK_SHEET_ID` | Shared address book Sheet ID (if using the Address Book) |
 | `TRANSACTIONS_SHEET_ID` | Transactions Sheet ID (if using transaction tracking) |
 | `AVIATIONSTACK_KEY` | AviationStack API key (if using flight status) |
+| `GOOGLE_STATIC_MAPS_API_KEY` | Google Maps key — the travel email's route map and point-to-point travel times |
 | `OPENWEATHER_API_KEY` | OpenWeather API key (if using weather) |
 | `VERA_SEARCH_API_KEY` | Serper.dev or Tavily API key (if using web search in chat) |
 

@@ -203,13 +203,91 @@ console.log('\nthe map diagnostic can name each distinct failure');
   check('it reports the status code', /getResponseCode\(\)/.test(d));
   check('…and prints Google’s own error text', /getContentText\(\)/.test(d));
 
-  check('it distinguishes the API not being enabled', /not authorized to use this api/.test(d));
-  check('…a referrer or IP restriction', /referer/.test(d) && /ip address/.test(d));
-  check('…billing',                      /billing/.test(d));
-  check('…url signing',                  /must be signed/.test(d));
-  check('…and a bad marker',             /code === 400/.test(d));
   check('a 400 bisects to name the offending stop',
-        /Bisecting/.test(d) && /markers\.forEach/.test(d));
+        /Bisecting/.test(extractFn(TDB, 'travelMapVerdict_')) && /markers\.forEach/.test(d));
+  check('the verdict decides whether to bisect',
+        /verdict\.kind === 'bad_marker'/.test(d),
+        'the branch used to be inline, which is why nothing could test it');
+}
+
+// THE VERDICT, RUN FOR REAL.
+//
+// These were source-text regexes over the diagnostic's body — /not authorized to use
+// this api/ and friends. That pins the matcher's SPELLING without ever checking it
+// against what Google says, and on 10 Oct it did not match:
+//
+//   HTTP 403 — "This API is not activated on your API project."
+//   DIAGNOSIS — unrecognised failure.
+//
+// …for the one case the tool exists to name, with a one-click fix. A regex over the
+// source cannot fail when Google's wording changes. This can.
+console.log('\nthe verdict is decided by Google’s actual words');
+{
+  const ctx = { String, Object, Array, console };
+  vm.createContext(ctx);
+  vm.runInContext(extractFn(TDB, 'travelMapVerdict_'), ctx);
+  const verdict = (code, body) =>
+    vm.runInContext('travelMapVerdict_(' + code + ',' + JSON.stringify(body) + ').kind', ctx);
+
+  // The body captured from the live run. This is the regression fixture.
+  const OBSERVED = 'The Google Maps Platform server rejected your request. This API is ' +
+    'not activated on your API project. You may need to enable this API in the Google ' +
+    'Cloud Console: https://console.cloud.google.com/apis/library?filter=category:maps. ' +
+    'Learn more at https://developers.google.com/maps/gmp-get-started#enable-api-sdk.';
+  check('the body Google actually sent reads as NOT ENABLED',
+        verdict(403, OBSERVED) === 'not_enabled',
+        verdict(403, OBSERVED) + ' — this exact text came back as "unrecognised"');
+
+  check('…and so does the older wording',
+        verdict(403, 'This API project is not authorized to use this API.') === 'not_enabled');
+  check('…and the Calendar-style phrasing',
+        verdict(403, 'Maps Static API has not been used in project 402807757311 before ' +
+                     'or it is disabled.') === 'not_enabled',
+        'the same sentence shape the Calendar advanced service produces');
+
+  check('a referrer restriction is named',
+        verdict(403, 'The provided API key has referer restrictions that do not match.') === 'restricted');
+  check('…and an IP restriction',
+        verdict(403, 'This IP address is not authorized. Requests from this IP address ' +
+                     'are blocked by the key\'s IP address restrictions.') === 'restricted');
+  check('billing is named',
+        verdict(403, 'You must enable Billing on the Google Cloud Project.') === 'billing');
+  check('…and a 402 counts as billing even with an empty body',
+        verdict(402, '') === 'billing');
+  check('url signing is named',
+        verdict(403, 'The request must be signed with a signature parameter.') === 'signing');
+  check('a 400 is a bad marker', verdict(400, 'Invalid request. Invalid markers.') === 'bad_marker');
+
+  // The catch-all is what made the misclassified failure recoverable — the diagnostic
+  // still printed Google's own text above it. Widening the matchers must not cost that.
+  check('something genuinely unknown still reaches the catch-all',
+        verdict(500, 'Internal server error.') === 'unknown');
+  check('…and an empty body on an odd code does too',
+        verdict(418, '') === 'unknown');
+  check('the catch-all still points at Google’s own text',
+        /Google's own text/.test(
+          vm.runInContext("travelMapVerdict_(500,'boom').lines.join('|')", ctx)));
+
+  // Restriction must not swallow not-enabled. The real bodies above contain no referrer
+  // wording, so this needs one that matches BOTH — otherwise reordering the branches
+  // changes nothing and the ordering is untested.
+  check('a body matching BOTH reads as not-enabled, the actionable one',
+        verdict(403, 'This API is not activated on your API project. The provided API ' +
+                     'key has referer restrictions.') === 'not_enabled',
+        'enabling the API is the fix; "check your restrictions" would send you elsewhere');
+
+  // The 403 gate is load-bearing: not-enabled wording on some other status is not a
+  // not-enabled verdict, it is something we have not seen.
+  check('not-enabled wording on a 500 is NOT reported as not-enabled',
+        verdict(500, 'This API is not activated on your API project.') === 'unknown',
+        'without the status gate any body mentioning it would be misread');
+  check('…and on a 200 either',
+        verdict(200, 'not activated') === 'unknown');
+}
+
+console.log('\nthe diagnostic’s own shape');
+{
+  const d = extractFn(TDB, 'diagnoseTravelDayMap_');
 
   check('it shows addresses JSON-quoted so arrows and newlines are visible',
         /JSON\.stringify\(e\.displayAddress/.test(d));
@@ -217,8 +295,21 @@ console.log('\nthe map diagnostic can name each distinct failure');
   check('a 200 image is reported as a pass', /PASS/.test(d) && /indexOf\('image'\) === 0/.test(d));
   check('it never sends mail',  !/sendVeraEmail_|MailApp/.test(d));
   check('it never writes a sheet', !/setValue|appendRow/.test(d));
-  check('it explains why testTravelLegsApi_ passing proves nothing',
-        /Distance Matrix|testTravelLegsApi_/.test(d), 'should name the misleading check');
+  // Asserted on the verdict's OUTPUT, not this file's source: the explanation moved
+  // into travelMapVerdict_ when it was split out, and a source-text check over the
+  // wrong function would have gone quietly vacuous.
+  {
+    const vctx = { String, Object, Array, console };
+    vm.createContext(vctx);
+    vm.runInContext(extractFn(TDB, 'travelMapVerdict_'), vctx);
+    const lines = vm.runInContext(
+      "travelMapVerdict_(403,'This API is not activated on your API project.').lines.join('|')", vctx);
+    check('the not-enabled verdict explains why testTravelLegsApi_ passing proves nothing',
+          /Distance Matrix/.test(lines) && /testTravelLegsApi_/.test(lines),
+          lines + ' — the same key can pass Distance Matrix and fail Maps Static');
+    check('…and names the one-click fix',
+          /enable "Maps Static API"/.test(lines), lines);
+  }
 
   check('TestBench exposes it', /function tbTravelDayMap\(\)/.test(TB));
   check('…honouring TB_DATE',   /diagnoseTravelDayMap_\(TB_DATE\)/.test(TB));

@@ -2738,25 +2738,10 @@ function diagnoseTravelDayMap_(dateStr) {
   }
 
   Logger.log('Google said: ' + body);
-  var b = body.toLowerCase();
-  if (code === 403 && b.indexOf('not authorized to use this api') !== -1) {
-    Logger.log('DIAGNOSIS — the Maps Static API is NOT ENABLED on the Cloud project.');
-    Logger.log('  It is separate from Distance Matrix, which is the only thing');
-    Logger.log('  testTravelLegsApi_ checks — so that passing told you nothing here.');
-    Logger.log('  Fix: Cloud Console -> APIs & Services -> enable "Maps Static API".');
-  } else if (b.indexOf('referer') !== -1 || b.indexOf('referrer') !== -1 || b.indexOf('ip address') !== -1) {
-    Logger.log('DIAGNOSIS — the key is RESTRICTED in a way that excludes this call.');
-    Logger.log('  Gmail fetches the image through its own proxy, which sends no');
-    Logger.log('  referrer and an IP you cannot allowlist. A referrer-restricted');
-    Logger.log('  key can never work in email. Use a separate key restricted by');
-    Logger.log('  API only, not by referrer or IP.');
-  } else if (b.indexOf('billing') !== -1 || code === 402) {
-    Logger.log('DIAGNOSIS — BILLING is not enabled on the Cloud project.');
-  } else if (b.indexOf('signature') !== -1 || b.indexOf('must be signed') !== -1) {
-    Logger.log('DIAGNOSIS — this project requires URL SIGNING for Maps Static.');
-  } else if (code === 400) {
-    Logger.log('DIAGNOSIS — a marker failed to geocode, which fails the WHOLE image.');
-    Logger.log('  Bisecting to find which one…');
+  var verdict = travelMapVerdict_(code, body);
+  verdict.lines.forEach(function(l) { Logger.log(l); });
+
+  if (verdict.kind === 'bad_marker') {
     markers.forEach(function(m, i) {
       var one = 'https://maps.googleapis.com/maps/api/staticmap?size=200x200&markers=' +
                 encodeURIComponent(m) + '&key=' + apiKey;
@@ -2766,9 +2751,73 @@ function diagnoseTravelDayMap_(dateStr) {
       Logger.log('    ' + (ok ? 'ok  ' : 'FAIL') + ' [' + i + '] ' + JSON.stringify(m));
     });
     Logger.log('  Fix the FAIL rows\' Location in the Travel tab, or leave them blank.');
-  } else {
-    Logger.log('DIAGNOSIS — unrecognised failure. The body above is Google\'s own text.');
   }
+}
+
+/**
+ * Turns Google's HTTP status and response body into a named verdict.
+ *
+ * SPLIT OUT SO IT CAN BE TESTED. It used to be an if/else chain inline, asserted only
+ * by regexes over this file's source text — which pinned the matcher's spelling without
+ * ever checking that spelling against what Google actually says. It did not match, and
+ * the one case this tool exists to name came out as "unrecognised":
+ *
+ *   HTTP 403 — "This API is not activated on your API project."
+ *   DIAGNOSIS — unrecognised failure.
+ *
+ * The matcher was looking for "not authorized to use this api". Both wordings are real;
+ * Google is not consistent across its Maps APIs, so match on either. A source-text
+ * regex cannot fail when the wording changes. A classifier driven by a real body can.
+ *
+ * @param {number} code  HTTP status
+ * @param {string} body  the response body, as returned
+ * @returns {{kind: string, lines: Array<string>}} kind is one of not_enabled,
+ *          restricted, billing, signing, bad_marker, unknown
+ */
+function travelMapVerdict_(code, body) {
+  var b = String(body == null ? '' : body).toLowerCase();
+
+  // Every wording Google has been observed to use for "you have not switched this on".
+  var notEnabled = b.indexOf('not authorized to use this api') !== -1 ||
+                   b.indexOf('not activated') !== -1 ||
+                   b.indexOf('api is not enabled') !== -1 ||
+                   b.indexOf('has not been used in project') !== -1;
+
+  if (code === 403 && notEnabled) {
+    return { kind: 'not_enabled', lines: [
+      'DIAGNOSIS — the Maps Static API is NOT ENABLED on the Cloud project.',
+      '  It is separate from Distance Matrix, which is the only thing',
+      '  testTravelLegsApi_ checks — so that passing told you nothing here.',
+      '  Fix: Cloud Console -> APIs & Services -> enable "Maps Static API".',
+    ] };
+  }
+  if (b.indexOf('referer') !== -1 || b.indexOf('referrer') !== -1 || b.indexOf('ip address') !== -1) {
+    return { kind: 'restricted', lines: [
+      'DIAGNOSIS — the key is RESTRICTED in a way that excludes this call.',
+      "  Gmail fetches the image through its own proxy, which sends no",
+      '  referrer and an IP you cannot allowlist. A referrer-restricted',
+      '  key can never work in email. Use a separate key restricted by',
+      '  API only, not by referrer or IP.',
+    ] };
+  }
+  if (b.indexOf('billing') !== -1 || code === 402) {
+    return { kind: 'billing', lines: ['DIAGNOSIS — BILLING is not enabled on the Cloud project.'] };
+  }
+  if (b.indexOf('signature') !== -1 || b.indexOf('must be signed') !== -1) {
+    return { kind: 'signing', lines: ['DIAGNOSIS — this project requires URL SIGNING for Maps Static.'] };
+  }
+  if (code === 400) {
+    return { kind: 'bad_marker', lines: [
+      'DIAGNOSIS — a marker failed to geocode, which fails the WHOLE image.',
+      '  Bisecting to find which one…',
+    ] };
+  }
+  // The catch-all still prints Google's own text above it. That is what made this
+  // particular failure recoverable despite being misclassified, and it must survive
+  // every widening of the matchers above.
+  return { kind: 'unknown', lines: [
+    "DIAGNOSIS — unrecognised failure. The body above is Google's own text.",
+  ] };
 }
 
 // ---------------------------------------------------------------------------

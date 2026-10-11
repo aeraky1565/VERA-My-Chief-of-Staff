@@ -30,8 +30,20 @@
  * often as through this dashboard, so hooking the itinerary write actions would
  * miss most of them; catching it at read time catches every source equally.
  *
- * Calls go through fetchTracked_ as the 'googlemaps' source, so failures surface
- * in the API Health panel and the [DOWN] alerts like any other integration.
+ * Calls go through fetchTracked_ as the 'googlemaps-distancematrix' source, so failures
+ * surface in the API Health panel and the [DOWN] alerts like any other integration.
+ *
+ * NAMED FOR THE API IT ACTUALLY CALLS. It used to record as plain 'googlemaps', which
+ * read as "Google Maps is fine" — and the travel-day email's map is a DIFFERENT API
+ * (Maps Static) that has to be enabled separately on the Cloud project. On 10 Oct this
+ * entry was green while every map in every travel email was a 403: the same key passed
+ * Distance Matrix and was rejected for Maps Static. One name covering two separately
+ * enabled APIs is a false reassurance, not a monitoring signal.
+ *
+ * Maps Static deliberately has NO health entry: nothing server-side ever fetches it
+ * (Gmail's proxy does, when the mail is opened), and fetching one nightly just to
+ * monitor it would be a billed request for a signal nobody reads. diagnoseTravelDayMap_
+ * is the instrument for that one, run by hand.
  */
 
 // Upper bound on the gap worth looking up, in minutes.
@@ -164,7 +176,7 @@ function fetchTravelLeg_(from, to, mode, apiKey) {
             '&units=imperial' +
             '&key='          + encodeURIComponent(apiKey);
 
-  var resp = fetchTracked_('googlemaps', url, { muteHttpExceptions: true });
+  var resp = fetchTracked_('googlemaps-distancematrix', url, { muteHttpExceptions: true });
   var body;
   try {
     body = JSON.parse(resp.getContentText());
