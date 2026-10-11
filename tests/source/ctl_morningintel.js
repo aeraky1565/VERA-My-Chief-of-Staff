@@ -59,13 +59,14 @@ const CONTROLS = {
   'the packing read goes back inside the trip loop': b => {
     const s = b['Code.js'];
     // Drop the bucketing pass, and restore the per-trip read it replaced.
-    const bucketStart = s.indexOf('    var packByTrip = {};');
+    const bucketStart = s.indexOf('    var packTotalByKey = {}, packDoneByKey = {};');
     const bucketEnd   = s.indexOf('    travelTrips.forEach(function(trip) {', bucketStart);
     if (bucketStart === -1 || bucketEnd === -1) throw new Error('bucketing block not found');
     let out = s.slice(0, bucketStart) + s.slice(bucketEnd);
     out = out.replace(
-      '      var bucket    = packByTrip[tripKey] || { total: 0, done: 0 };\n' +
-      '      var packTotal = bucket.total, packDone = bucket.done;',
+      '      var cKeys     = tripKeysFor_(tripKey);\n' +
+      '      var packTotal = countForTripKeys_(packTotalByKey, cKeys);\n' +
+      '      var packDone  = countForTripKeys_(packDoneByKey,  cKeys);',
       '      var packTotal = 0, packDone = 0;\n' +
       '      try {\n' +
       '        var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);\n' +

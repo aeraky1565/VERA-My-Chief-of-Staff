@@ -25,6 +25,7 @@ const ROOT = process.env.VERA_ROOT || REPO;
 const CODE  = fs.readFileSync(ROOT + '/Code.js', 'utf8');
 const REM   = fs.readFileSync(ROOT + '/Reminders.js', 'utf8');
 const WX    = fs.readFileSync(ROOT + '/Weather.js', 'utf8');
+const TRIPS = fs.readFileSync(ROOT + '/Trips.js', 'utf8');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -169,6 +170,10 @@ function harness(opts) {
       return {};
     },
     getUpcomingTravel_: () => opts.trips || [],
+    // The alias set for a trip key. Identity by default — opts.aliases is how a test
+    // puts a packing row under a legacy key and still expects it counted, which is
+    // what the travel section gained when it stopped matching the canonical key only.
+    tripKeysFor_: k => (opts.aliases && opts.aliases[k]) || [k],
     getWeatherSummaryForPlanning_: () => opts.weather || '',
     fetchTracked_(src, url, params) {
       calls.fetchTracked_++;
@@ -185,6 +190,9 @@ function harness(opts) {
 
   vm.createContext(ctx);
   [extractFn(CODE, 'escapeHtml_'),
+   // Real, not a fake: summing a tally across the alias set is the whole of what the
+   // packing lookup now does, so a stub here would leave the count untested.
+   extractFn(TRIPS, 'countForTripKeys_'),
    extractFn(REM,  'findNextFreeWindow_'),
    extractFn(CODE, 'buildCalPlanHtml_'),
    extractFn(CODE, 'getDaySequencingAnalysis_'),
@@ -323,6 +331,30 @@ console.log('\nOne packing read, however many trips');
   check('…and Oslo, with no rows, reads as not started',
         /Oslo<\/strong>[\s\S]{0,120}?packing not started/.test(out),
         'a missing bucket must not become 0/0 packed');
+
+  // A ROW UNDER A LEGACY KEY STILL COUNTS.
+  //
+  // This section matched the canonical key and nothing else, while Claude's prompt has
+  // always matched the alias set — so a trip whose rows carry an older key read as
+  // "⚠ packing not started" in the email while the day plan knew the items were there.
+  // One tally, looked up across the aliases, is what closes that.
+  {
+    const c2 = harness({
+      trips: [{ startDate: ROME, label: 'Rome', daysAway: 4 }],
+      aliases: { [ROME + '|Rome']: [ROME + '|Rome', 'TRIP-0000000000AB'] },
+      tabs: { 'Packing Items': [
+        pk('TRIP-0000000000AB', 'TRUE'),            // the same trip, keyed by its id
+        pk('TRIP-0000000000AB', 'FALSE'),
+        pk(ROME + '|Rome', 'TRUE'),                 // and by the canonical key
+      ] },
+    });
+    const out2 = run(c2, EVENTS, TASKS, 'busy');
+    check('a packing row under a legacy key counts for the same trip',
+          /Rome<\/strong>[\s\S]{0,120}?2\/3 packed/.test(out2),
+          out2.slice(out2.indexOf('Rome') - 20, out2.indexOf('Rome') + 140) +
+          ' — exact-key lookup reports "packing not started" for a trip that is 2/3 packed');
+    check('…still on one read', c2._calls.getValues.filter(t => t === 'Packing Items').length === 1);
+  }
 }
 
 console.log('\nOne spreadsheet handle for the four tabs');

@@ -139,6 +139,27 @@ function tbCalendarAccess() {
     cals.forEach(function(c) { Logger.log('  · ' + c.getName()); });
     Logger.log('VERA writes only to: "' + cfg.veraCalendarName + '"');
     Logger.log('  ' + (getCalendarByName_(cfg.veraCalendarName) ? 'FOUND' : 'NOT FOUND — events cannot be created'));
+
+    // What the scan actually costs, and whether the memo is doing its job. The nightly
+    // run used to do this scan four times; it now does it once and three later steps
+    // read the memo. Cold then warm, so the second number is the saving per extra
+    // consumer.
+    invalidateUpcomingEvents_();
+    invalidateCalendarAdvanced_();
+    var t0 = Date.now();
+    var cold = getUpcomingEventsCached_();
+    var coldMs = Date.now() - t0;
+    var t1 = Date.now();
+    var warm = getUpcomingEventsCached_();
+    var warmMs = Date.now() - t1;
+    Logger.log('Scan cost: cold ' + (coldMs / 1000).toFixed(1) + 's for ' + cold.length +
+               ' event(s), warm ' + warmMs + 'ms for ' + warm.length +
+               ' — each extra consumer in one execution now costs the warm number.');
+    Logger.log('Calendar advanced service (per-event timezones): ' +
+      (_calendarAdvancedUnavailable_
+        ? 'NOT ENABLED — every event falls back to the script timezone. Fix: Cloud ' +
+          'Console -> APIs & Services -> enable "Google Calendar API".'
+        : 'OK'));
   } catch (e) {
     Logger.log('FAILED: ' + e.message);
   }

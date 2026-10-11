@@ -599,7 +599,9 @@ function runExplorer_() {
 
   var goals     = getGoals_();
   var tasks     = getOpenTasks();
-  var events    = getUpcomingEvents();
+  // Cached: this is context for a Claude prompt, and it is the fourth step in one
+  // nightly run to scan the same window. See getUpcomingEventsCached_ (Calendar.js).
+  var events    = getUpcomingEventsCached_();
   var summaries = getSummaries();
   var interests = cfg['explorer_interests'] ||
     'specialty coffee, Egyptian culture, boutique fitness, local events, home improvement';

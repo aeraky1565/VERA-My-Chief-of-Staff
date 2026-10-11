@@ -16,6 +16,7 @@ const PTC  = fs.readFileSync(ROOT + '/PostTripCapture.js',   'utf8');
 const TL   = fs.readFileSync(ROOT + '/TravelLegs.js',        'utf8');
 const TB   = fs.readFileSync(ROOT + '/TestBench.js',         'utf8');
 const WEB  = fs.readFileSync(ROOT + '/WebApp.js',           'utf8');
+const AH   = fs.readFileSync(ROOT + '/ApiHealth.js',         'utf8');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -225,6 +226,9 @@ console.log('\nthe verdict is decided by Google’s actual words');
 {
   const ctx = { String, Object, Array, console };
   vm.createContext(ctx);
+  // The not-enabled wording list lives in ApiHealth.js now — one list for the map
+  // and the Calendar advanced service. Two files here, one global scope in Apps Script.
+  vm.runInContext(extractFn(AH, 'googleApiNotEnabled_'), ctx);
   vm.runInContext(extractFn(TDB, 'travelMapVerdict_'), ctx);
   const verdict = (code, body) =>
     vm.runInContext('travelMapVerdict_(' + code + ',' + JSON.stringify(body) + ').kind', ctx);
@@ -301,6 +305,7 @@ console.log('\nthe diagnostic’s own shape');
   {
     const vctx = { String, Object, Array, console };
     vm.createContext(vctx);
+    vm.runInContext(extractFn(AH, 'googleApiNotEnabled_'), vctx);
     vm.runInContext(extractFn(TDB, 'travelMapVerdict_'), vctx);
     const lines = vm.runInContext(
       "travelMapVerdict_(403,'This API is not activated on your API project.').lines.join('|')", vctx);

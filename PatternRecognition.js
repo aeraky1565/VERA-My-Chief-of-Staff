@@ -55,7 +55,11 @@ function buildCrossDomainSnapshot_() {
 
   // ---- Calendar events this week ----
   try {
-    var events  = getUpcomingEvents();
+    // Cached: this snapshot aggregates and never verifies its own writes, and the
+    // nightly run scans the same window in three other steps. One consequence worth
+    // knowing: on a night that creates a brand-new birthday event earlier in the run,
+    // this sees the calendar as it was before that write. See getUpcomingEventsCached_.
+    var events  = getUpcomingEventsCached_();
     var weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
     snap.calendarEventsThisWeek = events.filter(function(ev) {
       if (!ev.start) return false;

@@ -58,6 +58,37 @@ function setApiHealthState_(state) {
   PropertiesService.getScriptProperties().setProperty(API_HEALTH_KEY_, JSON.stringify(state));
 }
 
+// ---- Classifying failures ---------------------------------------------------
+
+/**
+ * True if this error text is Google saying "you have not switched this API on".
+ *
+ * Google words this differently per service and per surface — the Maps Static
+ * HTTP body, the Calendar advanced service's thrown message, and the generic
+ * accessNotConfigured reason are all the same fault with the same one-click fix,
+ * and none of them share a phrase. This is the single list of every wording
+ * observed in the wild, so a second call site cannot drift from the first:
+ * travelMapVerdict_ (TravelDayBriefing.js) had its own copy, and that copy is
+ * exactly why the 403 the map diagnostic exists to name fell through to
+ * "unrecognised failure" (fixed in 4dd60cc).
+ *
+ * Deliberately NOT matched: a bare 'is disabled'. It appears in unrelated faults
+ * (a disabled account, a disabled calendar) whose remedy is not "enable the API",
+ * and naming the wrong remedy is worse than naming none.
+ *
+ * @param {string} text  Response body or error message, any case
+ * @returns {boolean}
+ */
+function googleApiNotEnabled_(text) {
+  var t = String(text == null ? '' : text).toLowerCase();
+  if (!t) return false;
+  return t.indexOf('not authorized to use this api') !== -1 ||
+         t.indexOf('not activated')                  !== -1 ||
+         t.indexOf('api is not enabled')             !== -1 ||
+         t.indexOf('has not been used in project')   !== -1 ||
+         t.indexOf('accessnotconfigured')            !== -1;
+}
+
 // ---- Recording --------------------------------------------------------------
 
 /**

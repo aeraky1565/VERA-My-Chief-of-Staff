@@ -2777,13 +2777,10 @@ function diagnoseTravelDayMap_(dateStr) {
 function travelMapVerdict_(code, body) {
   var b = String(body == null ? '' : body).toLowerCase();
 
-  // Every wording Google has been observed to use for "you have not switched this on".
-  var notEnabled = b.indexOf('not authorized to use this api') !== -1 ||
-                   b.indexOf('not activated') !== -1 ||
-                   b.indexOf('api is not enabled') !== -1 ||
-                   b.indexOf('has not been used in project') !== -1;
-
-  if (code === 403 && notEnabled) {
+  // Every wording Google has been observed to use for "you have not switched this
+  // on" lives in googleApiNotEnabled_ (ApiHealth.js) — one list, because this used
+  // to keep its own and the Calendar advanced service needed the same answer.
+  if (code === 403 && googleApiNotEnabled_(b)) {
     return { kind: 'not_enabled', lines: [
       'DIAGNOSIS — the Maps Static API is NOT ENABLED on the Cloud project.',
       '  It is separate from Distance Matrix, which is the only thing',

@@ -23,28 +23,32 @@ FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); }
 
 const CONTROLS = {
   // ---- the bug itself, restored --------------------------------------------
+  // The wording list moved to googleApiNotEnabled_ (ApiHealth.js) when the Calendar
+  // advanced service needed the same answer, so these three now mutate it there. The
+  // verdict is still what gets checked — one list, two callers, one place to break it.
   'the matcher only knows the old wording (the reported bug)': b => ({
-    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
-      "  var notEnabled = b.indexOf('not authorized to use this api') !== -1 ||\n" +
-      "                   b.indexOf('not activated') !== -1 ||\n" +
-      "                   b.indexOf('api is not enabled') !== -1 ||\n" +
-      "                   b.indexOf('has not been used in project') !== -1;",
-      "  var notEnabled = b.indexOf('not authorized to use this api') !== -1;"),
+    'ApiHealth.js': b['ApiHealth.js'].replace(
+      "  return t.indexOf('not authorized to use this api') !== -1 ||\n" +
+      "         t.indexOf('not activated')                  !== -1 ||\n" +
+      "         t.indexOf('api is not enabled')             !== -1 ||\n" +
+      "         t.indexOf('has not been used in project')   !== -1 ||\n" +
+      "         t.indexOf('accessnotconfigured')            !== -1;",
+      "  return t.indexOf('not authorized to use this api') !== -1;"),
   }),
   'it stops recognising the Calendar-style phrasing': b => ({
-    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
-      "                   b.indexOf('has not been used in project') !== -1;",
-      "                   false;"),
+    'ApiHealth.js': b['ApiHealth.js'].replace(
+      "         t.indexOf('has not been used in project')   !== -1 ||",
+      '         false ||'),
   }),
   'the 403 gate is dropped, so any status reads as not-enabled': b => ({
     'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
-      '  if (code === 403 && notEnabled) {', '  if (notEnabled) {'),
+      '  if (code === 403 && googleApiNotEnabled_(b)) {', '  if (googleApiNotEnabled_(b)) {'),
   }),
 
   // ---- verdicts that go to the wrong branch ---------------------------------
   'restriction is decided before not-enabled': b => {
     const s = b['TravelDayBriefing.js'];
-    const neStart = s.indexOf('  if (code === 403 && notEnabled) {');
+    const neStart = s.indexOf('  if (code === 403 && googleApiNotEnabled_(b)) {');
     const neEnd   = s.indexOf("  if (b.indexOf('referer')", neStart);
     const resEnd  = s.indexOf("  if (b.indexOf('billing')", neEnd);
     if (neStart === -1 || neEnd === -1 || resEnd === -1) throw new Error('branches not found');

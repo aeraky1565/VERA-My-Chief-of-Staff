@@ -385,6 +385,33 @@ function tripRowMatches_(cellValue, keys) {
   return false;
 }
 
+/**
+ * tripRowMatches_ for a tab that has already been read ONCE and tallied by raw key.
+ *
+ * The pattern this exists for: counting rows per trip used to mean re-reading the
+ * whole tab inside the per-trip loop — N trips, N full getValues, for a count one
+ * pass already has. Read once into `{ rawKeyValue: count }`, then call this per trip.
+ *
+ * Summing across the alias set is what keeps it equivalent to the per-row
+ * tripRowMatches_ it replaces: a tab can hold the canonical key, a legacy key and a
+ * bare TRIP-… id for the same trip, and all three must count. tripKeysFor_ dedupes
+ * its output, so the sum cannot double-count one row.
+ *
+ * @param {Object} bucket       — rawKeyValue → count, built in one pass
+ * @param {Array<string>} keys  — from tripKeysFor_
+ * @returns {number}
+ */
+function countForTripKeys_(bucket, keys) {
+  if (!bucket || !keys || !keys.length) return 0;
+  var n = 0;
+  for (var i = 0; i < keys.length; i++) {
+    // hasOwnProperty, not `bucket[k] || 0`: a trip key is user-entered text, and a
+    // row keyed 'constructor' would otherwise add a function to a count.
+    if (Object.prototype.hasOwnProperty.call(bucket, keys[i])) n += Number(bucket[keys[i]]) || 0;
+  }
+  return n;
+}
+
 
 // ---- resolution ------------------------------------------------------------
 

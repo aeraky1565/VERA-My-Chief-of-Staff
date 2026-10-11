@@ -340,6 +340,44 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
       }
     } catch(tme) {}
 
+    // ONE read of each tab, tallied by the raw trip-key cell, BEFORE the loop. Both
+    // of these used to sit inside the map below: a full getValues of the whole tab
+    // per trip, twice, to produce counts one pass already has. Same fix as the morning
+    // email's packing count (buildMorningIntelligence_, Code.js).
+    //
+    // Tallied by RAW key rather than resolved per trip, because the lookup below has
+    // to sum across the alias set — a tab can hold the canonical key, a legacy key and
+    // a bare TRIP-… id for one trip, and tripRowMatches_ counted all three. Bucketing
+    // by trip would have quietly dropped the aliases.
+    //
+    // Each read keeps its own try/catch. A failure here must degrade that one count to
+    // 0 — exactly what the old per-trip catch did, giving "⚠ NO PACKING LIST" — and
+    // must not escape to the outer catch, which would render the whole trips section
+    // as "(unavailable)".
+    var packByKey_t = {};                      // raw trip-key cell -> row count
+    try {
+      var packSheet_t = ss_t.getSheetByName(TABS.PACKING_ITEMS);
+      if (packSheet_t && packSheet_t.getLastRow() >= 2) {
+        packSheet_t.getRange(2, 1, packSheet_t.getLastRow() - 1, PACKING_ITEM_HEADERS.length)
+          .getValues().forEach(function(r) {
+            var k = String(r[1] == null ? '' : r[1]).trim();
+            if (k) packByKey_t[k] = (packByKey_t[k] || 0) + 1;
+          });
+      }
+    } catch(pe) {}
+
+    var itinByKey_t = {};                      // raw trip-key cell -> row count
+    try {
+      var itinSheet_t = ss_t.getSheetByName(TABS.ITINERARY);
+      if (itinSheet_t && itinSheet_t.getLastRow() >= 2) {
+        itinSheet_t.getRange(2, 1, itinSheet_t.getLastRow() - 1, ITINERARY_HEADERS.length)
+          .getValues().forEach(function(r) {
+            var k = String(r[1] == null ? '' : r[1]).trim();
+            if (k) itinByKey_t[k] = (itinByKey_t[k] || 0) + 1;
+          });
+      }
+    } catch(ie) {}
+
     tripsSectionStr = tripsForPrompt.length === 0
       ? 'No upcoming trips.'
       : tripsForPrompt.map(function(trip) {
@@ -364,26 +402,12 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
           }
           line += ' | TripKey: ' + tripKey;
 
-          // Count packing items
-          var packCount = 0;
-          try {
-            var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
-            if (packSheet && packSheet.getLastRow() >= 2) {
-              var packData = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-              var cKeys = tripKeysFor_(tripKey);
-              packData.forEach(function(r) { if (tripRowMatches_(r[1], cKeys)) packCount++; });
-            }
-          } catch(pe) {}
-
-          // Count itinerary items
-          var itinCount = 0;
-          try {
-            var itinSheet = ss_t.getSheetByName(TABS.ITINERARY);
-            if (itinSheet && itinSheet.getLastRow() >= 2) {
-              var itinData = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-              itinData.forEach(function(r) { if (tripRowMatches_(r[1], tripKeysFor_(tripKey))) itinCount++; });
-            }
-          } catch(ie) {}
+          // Counts from the two tallies read once above. cKeys is resolved once per
+          // trip, not once per row — tripKeysFor_ was being called inside the itinerary
+          // row loop.
+          var cKeys     = tripKeysFor_(tripKey);
+          var packCount = countForTripKeys_(packByKey_t, cKeys);
+          var itinCount = countForTripKeys_(itinByKey_t, cKeys);
 
           line += ' | packing: ' + packCount + ' items, itinerary: ' + itinCount + ' items';
           // Only flag missing prep for trips Ahmed is on

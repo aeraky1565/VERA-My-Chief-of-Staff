@@ -506,7 +506,7 @@ console.log('\nEvery step belongs to exactly one half');
   // comments in nightlyRun, which is stated there.
   {
     const body = bodyOf('nightlyRun');
-    const COLLECTORS = ['getUpcomingEvents()', 'getOpenTasks()', 'getSummaries()',
+    const COLLECTORS = ['getUpcomingEventsCached_()', 'getOpenTasks()', 'getSummaries()',
                         'getSharedInterestLedger_()'];
     check('  the collection is a budgeted step', head.indexOf('collect') !== -1,
           JSON.stringify(head));

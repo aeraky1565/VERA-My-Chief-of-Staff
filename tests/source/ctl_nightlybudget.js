@@ -328,12 +328,18 @@ const CONTROLS = {
       '    const ledger    = getSharedInterestLedger_();\n\n' +
       s.slice(end) };
   },
-  'one collector is hoisted back out of the step': b => ({
-    'Code.js': b['Code.js'].replace(
-      '    var collected = nightlyStep_(ctx, \'collect\', function() {\n      events    = getUpcomingEvents();',
-      '    events = getUpcomingEvents();\n' +
-      '    var collected = nightlyStep_(ctx, \'collect\', function() {'),
-  }),
+  // Anchored on the call line alone and made to throw if it moves, rather than on the
+  // call plus the step line as one string: that form sat next to a comment, and adding
+  // a line to the comment would have made the mutation silently fail to apply.
+  'one collector is hoisted back out of the step': b => {
+    const s    = b['Code.js'];
+    const call = '      events    = getUpcomingEventsCached_();\n';
+    if (s.indexOf(call) === -1) throw new Error('the collect call moved: ' + call.trim());
+    return { 'Code.js': s.replace(call, '').replace(
+      "    var collected = nightlyStep_(ctx, 'collect', function() {",
+      '    events = getUpcomingEventsCached_();\n' +
+      "    var collected = nightlyStep_(ctx, 'collect', function() {") };
+  },
   'a skipped collection falls through to the empty-data branch': b => ({
     'Code.js': b['Code.js'].replace('    if (!collected) {', '    if (false) {'),
   }),

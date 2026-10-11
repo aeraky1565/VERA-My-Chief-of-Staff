@@ -218,7 +218,9 @@ function buildTaskMetrics_() {
  */
 function buildCalendarMetrics_() {
   try {
-    const events = getUpcomingEvents();
+    // Cached: this only counts events, and the nightly run scans the same window in
+    // three other steps. See getUpcomingEventsCached_ (Calendar.js).
+    const events = getUpcomingEventsCached_();
     const today  = todayStr_();
 
     return [

@@ -1131,7 +1131,9 @@ function nightlyRun() {
     // const would throw inside the catch and blank the run with only a warning.
     var events = null, tasks = null, summaries = null, ledger = null;
     var collected = nightlyStep_(ctx, 'collect', function() {
-      events    = getUpcomingEvents();
+      // Cached form: three later steps in this same run aggregate the same scan.
+      // See getUpcomingEventsCached_ (Calendar.js) for why it is opt-in.
+      events    = getUpcomingEventsCached_();
       tasks     = getOpenTasks();
       summaries = getSummaries();
       ledger    = getSharedInterestLedger_();
@@ -2195,7 +2197,14 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
     // The inner try/catch stays. If the read throws, every trip falls to "packing not
     // started" exactly as it did before; letting it escape to the travel catch below
     // would drop the whole Travel section instead, which would be a regression.
-    var packByTrip = {};                       // tripKey -> { total, done }
+    //
+    // Tallied by the RAW key cell and looked up through the alias set below. This
+    // section has only ever matched the exact canonical key, while Claude's prompt has
+    // always matched aliases too — so a trip whose rows carry a legacy key or a bare
+    // TRIP-… id read as "⚠ packing not started" here while the day plan knew the items
+    // were there. One read either way; the registry behind tripKeysFor_ is itself
+    // cached per execution.
+    var packTotalByKey = {}, packDoneByKey = {};   // raw key cell -> row count
     try {
       var packSheet = ss_t.getSheetByName(TABS.PACKING_ITEMS);
       if (packSheet && packSheet.getLastRow() >= 2) {
@@ -2203,10 +2212,9 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
           .getValues().forEach(function(r) {
             var k = String(r[1]).trim();
             if (!k) return;      // matched no trip before either — every key has a '|'
-            var b = packByTrip[k] || (packByTrip[k] = { total: 0, done: 0 });
-            b.total++;
+            packTotalByKey[k] = (packTotalByKey[k] || 0) + 1;
             var checked = String(r[5]).toLowerCase();
-            if (checked === 'true' || checked === 'yes') b.done++;
+            if (checked === 'true' || checked === 'yes') packDoneByKey[k] = (packDoneByKey[k] || 0) + 1;
           });
       }
     } catch(pe) {}
@@ -2217,8 +2225,9 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
       if (daysAway === null || daysAway > 14 || daysAway < 0) return;
 
       var tripKey   = trip.startDate + '|' + trip.label;
-      var bucket    = packByTrip[tripKey] || { total: 0, done: 0 };
-      var packTotal = bucket.total, packDone = bucket.done;
+      var cKeys     = tripKeysFor_(tripKey);
+      var packTotal = countForTripKeys_(packTotalByKey, cKeys);
+      var packDone  = countForTripKeys_(packDoneByKey,  cKeys);
 
       var packStr = packTotal === 0 ? '⚠ packing not started' : (packDone + '/' + packTotal + ' packed');
       var daysStr = daysAway === 0 ? 'TODAY' : (daysAway + ' days away');

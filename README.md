@@ -2191,6 +2191,20 @@ Set all properties in the Apps Script editor: **Project Settings → Script Prop
 > rendered, and the reader sees a blank box. **`tbTravelDayMap()`** is the instrument:
 > it fetches the URL server-side, prints Google's own words, names the cause, and for a
 > bad address bisects marker by marker.
+
+> ⚠️ **The Calendar advanced service needs the Google Calendar API switched on, which the
+> manifest cannot do.** `appsscript.json` declares `Calendar` under
+> `enabledAdvancedServices`, and that is necessary but not sufficient: the **Google
+> Calendar API** must also be enabled on the Cloud project (Cloud Console → APIs &
+> Services → Library). Until it is, `Calendar.Events.list` throws "has not been used in
+> project … before or it is disabled" on every calendar.
+>
+> The only consumer is the per-event timezone in `getUpcomingEvents` — a flight arriving
+> at "11:30 PST" rather than in the script timezone — so the failure is quiet by design:
+> every event simply falls back to `Session.getScriptTimeZone()`. It is now reported as
+> the `googlecalendar-advanced` health source, once per scan, so it reaches the morning
+> banner instead of only the execution log. `tbCalendarAccess()` prints the verdict
+> directly, alongside what a cold scan costs against a warm one.
 | `VACATION_MODE_ACTIVE` | Auto | Pacing.js | `true`/`false` — set nightly by `checkVacationMode_()` |
 | `VACATION_MODE_ENDS` | Auto | Pacing.js | `YYYY-MM-DD` last date of active trip |
 | `VACATION_TRIP_NAME` | Auto | Pacing.js | Trip key of active trip |
