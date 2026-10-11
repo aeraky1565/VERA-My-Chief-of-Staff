@@ -53,7 +53,7 @@ function extractVar(src, name) {
 
 const TRIPS_FNS = [
   'getTripsSheet_', 'isTripId_', 'invalidateTripKeyCache_', 'invalidateTripRegistry_',
-  'readTripRegistry_', 'tripDateCell_', 'splitTripList_', 'getTripById_',
+  'readTripRegistry_', 'dateCellToIso_', 'splitTripList_', 'getTripById_',
   'tripLabelFor_', 'tripStartDateFor_', 'tripDateRangeFor_', 'tripRangeDistanceDays_',
   'normaliseTripLabel_', 'resolveTripId_', 'touchTripRow_', 'appendTripAlias_',
   'tripIdForKey_', 'tripKeysFor_', 'canonicalTripKey_', 'tripRowMatches_',

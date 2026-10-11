@@ -162,8 +162,8 @@ function readTripRegistry_() {
     var rec = {
       tripId:    id,
       label:     String(r[1] || '').trim(),
-      startDate: tripDateCell_(r[2]),
-      endDate:   tripDateCell_(r[3]),
+      startDate: dateCellToIso_(r[2]),
+      endDate:   dateCellToIso_(r[3]),
       eventIds:  splitTripList_(r[4]),
       aliases:   splitTripList_(r[5]),
       created:   String(r[6] || '').trim(),
@@ -180,8 +180,17 @@ function readTripRegistry_() {
   return out;
 }
 
-/** A Date cell or a yyyy-MM-dd string, normalised to yyyy-MM-dd. */
-function tripDateCell_(v) {
+/**
+ * A Date cell or a yyyy-MM-dd string, normalised to yyyy-MM-dd.
+ *
+ * Not trip-specific despite living here, and deliberately shared rather than copied:
+ * writing 'yyyy-MM-dd' into a cell makes Sheets store a DATE, so reading it back with
+ * a bare String() gives 'Sun Oct 05 2026 00:00:00 GMT-0400 (EDT)'. Any code that then
+ * compares that against a 'yyyy-MM-dd' string matches nothing. MealPlan.js had exactly
+ * that bug — every week lookup missed, so reads re-seeded blank rows forever and saves
+ * appended instead of updating.
+ */
+function dateCellToIso_(v) {
   if (v instanceof Date && !isNaN(v.getTime())) {
     return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }

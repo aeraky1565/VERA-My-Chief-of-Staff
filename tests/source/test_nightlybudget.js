@@ -542,8 +542,11 @@ console.log('\nEvery step belongs to exactly one half');
   // The seven the banner said were being starved. Still the point of the split, so
   // they are asserted as a set AND in their original relative order — a re-split that
   // reordered them would break the dependency work pinned further down this file.
+  // resetWeekMealPlan_ was the fourth of them. It seeded seven blank Meal Plan rows
+  // for next week, the planner stopped having blank rows to seed, and the step was
+  // removed rather than left to append nothing — so the starved set is six now.
   const STARVED = ['checkHealthAppointments_', 'checkMonthlyReview_',
-    'sendHealthPerformanceInsightMonthly_', 'resetWeekMealPlan_',
+    'sendHealthPerformanceInsightMonthly_',
     'checkCrossPatternFlags_', 'suggestDueDates', 'runExplorer_'];
   check('every starved step is in the tail',
         STARVED.every(s => tail.indexOf(s) !== -1),
@@ -561,7 +564,7 @@ console.log('\nEvery step belongs to exactly one half');
   // thing keeps that an explicit decision — a step cannot drift into the tail, or out
   // of it, without this line changing.
   const EXPECTED_TAIL = ['checkHealthAppointments_', 'checkMonthlyReview_',
-    'sendHealthPerformanceInsightMonthly_', 'resetWeekMealPlan_',
+    'sendHealthPerformanceInsightMonthly_',
     'checkCrossPatternFlags_', 'purgePastPerkReminderEvents_',
     'suggestDueDates', 'runExplorer_'];
   check('the tail is exactly its named steps, no more and no fewer',

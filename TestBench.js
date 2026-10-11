@@ -485,6 +485,62 @@ function tbFlightStatus() {
 // ============================================================
 
 /**
+ * What the Meal Plan tab holds, and in what cell types. Reads only.
+ *
+ * The planner looked empty and saves vanished for one reason: Week Start was written
+ * as '2026-10-05' and Sheets stored a DATE, so every weekStart comparison missed. That
+ * is invisible in the sheet and in the dashboard; this prints it.
+ */
+function tbMealPlan() {
+  tbBanner_('Meal Plan tab');
+  var info = inspectMealPlanTab_();
+  if (!info.ok) { Logger.log('FAILED: ' + info.error); return; }
+
+  Logger.log('Rows: ' + info.rows + '  (' + info.blanks + ' with no dinner in them)');
+  Logger.log('Week Start cell type: ' + info.cellTypes.weekStart +
+             '   raw: "' + info.cellTypes.rawWeekStart + '"');
+  Logger.log('Date cell type:       ' + info.cellTypes.date);
+  if (info.cellTypes.weekStart === 'Date') {
+    Logger.log('  ^ a Date, not a string — dateCellToIso_ in _readMealPlanRows_ is what');
+    Logger.log('    makes the lookups match. Before that fix, none of them did.');
+  }
+
+  info.weeks.forEach(function(w) {
+    Logger.log('  ' + w.weekStart + ' — ' + w.rows + ' row(s), ' + w.meals + ' dinner(s)' +
+               (w.duplicatedDays ? ', ' + w.duplicatedDays + ' day(s) duplicated' : ''));
+  });
+
+  var cur = getCurrentWeekStart_();
+  Logger.log('This week (' + cur + ') reads back ' + getMealPlanWeek_(cur).length + ' row(s).');
+  Logger.log('Next week (' + getNextWeekStart_() + ') reads back ' +
+             getMealPlanWeek_(getNextWeekStart_()).length + ' row(s).');
+  if (info.blanks) {
+    Logger.log('Run tbMealPlanCleanupPreview() to see what a cleanup would remove.');
+  }
+}
+
+/** Blank Meal Plan rows that a cleanup would delete — PREVIEW, deletes nothing. */
+function tbMealPlanCleanupPreview() {
+  tbBanner_('Blank Meal Plan rows — PREVIEW (nothing is deleted)');
+  var out = purgeBlankMealPlanRows_(true);
+  if (!out.ok) { Logger.log('Could not look: ' + out.error); return; }
+  Logger.log('Rows holding no dinner: ' + out.matched);
+  Logger.log(out.matched
+    ? 'These are debris from the old seed-on-read, which appended seven every page\n' +
+      'load. Nothing with a meal name in it is a candidate.\n' +
+      'Run tbMealPlanCleanupRun() to delete these ' + out.matched + '.'
+    : 'Nothing to clean up.');
+}
+
+/** Deletes the blank Meal Plan rows. Run tbMealPlanCleanupPreview() first. */
+function tbMealPlanCleanupRun() {
+  tbBanner_('Blank Meal Plan rows — DELETING');
+  var out = purgeBlankMealPlanRows_(false);
+  if (!out.ok) { Logger.log('Could not run: ' + out.error); return; }
+  Logger.log('Deleted ' + out.deleted + ' blank row(s).');
+}
+
+/**
  * The one-off backlog sweep for stale perk reminder events — PREVIEW, deletes nothing.
  *
  * The nightly pass only looks back PERK_EVENT_PURGE_LOOKBACK_DAYS_, so reminders that

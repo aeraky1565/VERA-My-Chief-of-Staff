@@ -106,7 +106,7 @@ function ctxFor(opts) {
     extractFn(TRP, 'invalidateTripKeyCache_'),
     extractFn(TRP, 'invalidateTripRegistry_'),
     extractFn(TRP, 'readTripRegistry_'),
-    extractFn(TRP, 'tripDateCell_'),
+    extractFn(TRP, 'dateCellToIso_'),
     extractFn(TRP, 'splitTripList_'),
     extractFn(TRP, 'getTripById_'),
     extractFn(TRP, 'tripLabelFor_'),

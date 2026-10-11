@@ -156,6 +156,7 @@ function doGet(e) {
       case 'set_meal':              return jsonOut_(webSetMeal_(e));
       case 'update_meal_status':    return jsonOut_(webUpdateMealStatus_(e));
       case 'suggest_meals':         return jsonOut_(webSuggestMeals_(e));
+      case 'move_meal':             return jsonOut_(webMoveMeal_(e));
       case 'takeouts':              return jsonOut_(webGetTakeouts_());
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
       case 'homesteward_service':   return jsonOut_(webRecordService_(e));
@@ -3291,10 +3292,40 @@ function webDeleteRecipe_(e) {
 
 // ---- Meal Planner (Issue #122) ---------------------------------------------
 
+/**
+ * One or more consecutive weeks in a single call.
+ *
+ * The dashboard shows this week and next together — you cannot drag a dinner into a
+ * week that is not on screen — and Apps Script round trips are slow enough on a phone
+ * that fetching them separately is visible. `weeks` defaults to 1, so any caller
+ * written against the old shape still gets exactly what it got before; `days` is kept
+ * alongside `weeks` for the same reason.
+ */
 function webGetMealPlan_(e) {
-  var weekStart = (e && e.parameter && e.parameter.weekStart) || getCurrentWeekStart_();
-  var days      = getMealPlanWeek_(weekStart);
-  return { ok: true, weekStart: weekStart, days: days };
+  var p         = (e && e.parameter) || {};
+  var weekStart = p.weekStart || getCurrentWeekStart_();
+  var n         = Math.min(Math.max(parseInt(p.weeks, 10) || 1, 1), 8);
+
+  var weeks = [];
+  for (var i = 0; i < n; i++) {
+    var ws = addWeeksToStart_(weekStart, i);
+    weeks.push({ weekStart: ws, days: getMealPlanWeek_(ws) });
+  }
+
+  return { ok: true, weekStart: weekStart, days: weeks[0].days, weeks: weeks };
+}
+
+function webMoveMeal_(e) {
+  var p = (e && e.parameter) || {};
+  var fromWeek = (p.fromWeekStart || p.weekStart || getCurrentWeekStart_()).trim();
+  var toWeek   = (p.toWeekStart   || fromWeek).trim();
+  var fromDay  = (p.fromDay || '').trim();
+  var toDay    = (p.toDay   || '').trim();
+  if (!fromDay) throw new Error('fromDay parameter required');
+  if (!toDay)   throw new Error('toDay parameter required');
+  var res = moveMealPlanEntry_(fromWeek, fromDay, toWeek, toDay);
+  res.ok = true;
+  return res;
 }
 
 function webSetMeal_(e) {

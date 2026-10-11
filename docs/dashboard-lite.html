@@ -4024,8 +4024,6 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
 
 function MealPlanSubTab({ apiUrl, apiToken }) {
   const DAYS      = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-  const DAY_FULL  = { Mon:'Monday', Tue:'Tuesday', Wed:'Wednesday', Thu:'Thursday',
-                      Fri:'Friday', Sat:'Saturday', Sun:'Sunday' };
   const TYPE_COLORS = {
     'Home Cooked': { bg:'rgba(102,187,106,.12)', color:'#66bb6a', border:'rgba(102,187,106,.3)' },
     'Leftovers':   { bg:'rgba(107,127,168,.12)', color:'#7e9ab8', border:'rgba(107,127,168,.3)' },
@@ -4038,24 +4036,47 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
     'Skipped': { color:'#ef5350' },
   };
 
-  const [days,       setDays]       = React.useState([]);
-  const [weekStart,  setWeekStart]  = React.useState('');
+  const [weeks,      setWeeks]      = React.useState([]);
   const [loading,    setLoading]    = React.useState(false);
-  const [suggesting, setSuggesting] = React.useState(false);
-  const [editDay,    setEditDay]    = React.useState(null);
+  const [suggesting, setSuggesting] = React.useState(null);   // weekStart being suggested
+  const [editKey,    setEditKey]    = React.useState(null);   // 'weekStart|Day'
   const [editVal,    setEditVal]    = React.useState({ mealName:'', type:'Home Cooked' });
+  const [moving,     setMoving]     = React.useState(null);   // { weekStart, day, mealName }
+  const [showPast,   setShowPast]   = React.useState(false);
+  const [busy,       setBusy]       = React.useState(false);
   const [error,      setError]      = React.useState(null);
 
-  const todayAbbrev = React.useMemo(function() {
-    return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
+  // Local midnight as yyyy-MM-dd. Compared as strings against the row dates, which is
+  // sound for ISO dates and avoids building Date objects per row per render.
+  const todayIso = React.useMemo(function() {
+    var d = new Date(), p = function(n) { return String(n).padStart(2,'0'); };
+    return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
   }, []);
+
+  const slotKey = function(weekStart, day) { return weekStart + '|' + day; };
+
+  // The date of a day WITHOUT needing a row for it. Empty days have no row to carry a
+  // date now that the tab holds only real dinners, and a day with no date reads as a
+  // placeholder rather than as Thursday the 15th.
+  function dateFor(weekStart, day) {
+    try {
+      var d = new Date(weekStart + 'T00:00:00');
+      d.setDate(d.getDate() + DAYS.indexOf(day));
+      var p = function(n) { return String(n).padStart(2,'0'); };
+      return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+    } catch(e) { return ''; }
+  }
+  function shortDate(iso) {
+    try { return new Date(iso + 'T00:00:00').toLocaleDateString('en-US',{ month:'short', day:'numeric' }); }
+    catch(e) { return iso; }
+  }
 
   function load() {
     if (!apiUrl || !apiToken) return;
     setLoading(true);
-    apiGet(apiUrl, apiToken, { action: 'meal_plan' })
+    apiGet(apiUrl, apiToken, { action:'meal_plan', weeks:2 })
       .then(function(r) {
-        if (r.ok) { setDays(r.days || []); setWeekStart(r.weekStart || ''); }
+        if (r.ok) { setWeeks(r.weeks || []); setError(null); }
         else setError(r.error || 'Load failed');
       })
       .catch(function(e) { setError(e.message); })
@@ -4064,154 +4085,241 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
 
   React.useEffect(load, [apiUrl, apiToken]);
 
-  function suggestWeek() {
-    setSuggesting(true); setError(null);
-    apiGet(apiUrl, apiToken, { action: 'suggest_meals' })
-      .then(function(r) { if (r.ok) load(); else setError(r.error || 'Suggest failed'); })
+  // Every write goes through here, so no failure can be silent again. The planner
+  // looked broken for weeks partly because `if (r.ok) load()` had no else: a rejected
+  // write and a successful one were indistinguishable on screen.
+  function send(params, done) {
+    setBusy(true);
+    apiGet(apiUrl, apiToken, params)
+      .then(function(r) {
+        if (r.ok) { setError(null); load(); }
+        else setError(r.error || (params.action + ' failed'));
+      })
       .catch(function(e) { setError(e.message); })
-      .finally(function() { setSuggesting(false); });
+      .finally(function() { setBusy(false); if (done) done(); });
   }
 
-  function openEdit(day) {
-    var entry = days.find(function(d) { return d.day === day; }) || {};
-    setEditVal({ mealName: entry.mealName || '', type: entry.type || 'Home Cooked' });
-    setEditDay(day);
+  function suggestWeek(weekStart) {
+    setSuggesting(weekStart);
+    // weekStart is passed explicitly: without it the backend defaults to the CURRENT
+    // week, so "Suggest Week" on next week silently filled this one.
+    apiGet(apiUrl, apiToken, { action:'suggest_meals', weekStart:weekStart })
+      .then(function(r) { if (r.ok) { setError(null); load(); } else setError(r.error || 'Suggest failed'); })
+      .catch(function(e) { setError(e.message); })
+      .finally(function() { setSuggesting(null); });
   }
 
-  function saveEdit(day) {
-    if (!editVal.mealName.trim()) { setEditDay(null); return; }
-    apiGet(apiUrl, apiToken, { action: 'set_meal', day: day,
-      weekStart: weekStart, mealName: editVal.mealName.trim(), type: editVal.type })
-      .then(function(r) { if (r.ok) load(); })
-      .finally(function() { setEditDay(null); });
+  function openEdit(weekStart, day, entry) {
+    setMoving(null);
+    setEditVal({ mealName: (entry && entry.mealName) || '', type: (entry && entry.type) || 'Home Cooked' });
+    setEditKey(slotKey(weekStart, day));
+  }
+  function saveEdit(weekStart, day) {
+    if (!editVal.mealName.trim()) { setEditKey(null); return; }
+    send({ action:'set_meal', day:day, weekStart:weekStart,
+           mealName:editVal.mealName.trim(), type:editVal.type }, function() { setEditKey(null); });
+  }
+  function updateStatus(weekStart, day, status) {
+    send({ action:'update_meal_status', day:day, weekStart:weekStart, status:status });
   }
 
-  function updateStatus(day, status) {
-    apiGet(apiUrl, apiToken, { action: 'update_meal_status', day: day, weekStart: weekStart, status: status })
-      .then(function(r) { if (r.ok) load(); });
+  // ---- Move: tap to pick up, tap to drop ----------------------------------
+  // Not HTML5 drag-and-drop. `draggable` fires no events on touch, so the Chores
+  // pattern would do nothing at all on a phone, which is where this planner is read.
+  function pickUp(weekStart, day, entry) {
+    setEditKey(null);
+    setMoving({ weekStart:weekStart, day:day, mealName:entry.mealName });
+  }
+  function dropOn(weekStart, day) {
+    if (!moving) return;
+    if (moving.weekStart === weekStart && moving.day === day) { setMoving(null); return; }
+    send({ action:'move_meal', fromWeekStart:moving.weekStart, fromDay:moving.day,
+           toWeekStart:weekStart, toDay:day }, function() { setMoving(null); });
   }
 
-  var weekLabel = '';
-  if (weekStart) {
-    try {
-      var d = new Date(weekStart + 'T00:00:00');
-      weekLabel = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-    } catch(e) { weekLabel = weekStart; }
+  if (loading && !weeks.length) {
+    return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading meal plan…</div>;
   }
 
-  if (loading) return <div style={{ fontSize:13, color:'#6b7fa8', padding:16 }}>Loading meal plan…</div>;
+  function weekLabel(weekStart, idx) {
+    var end = dateFor(weekStart, 'Sun');
+    return (idx === 0 ? 'This week' : idx === 1 ? 'Next week' : 'Week of ' + shortDate(weekStart)) +
+           ' · ' + shortDate(weekStart) + ' – ' + shortDate(end);
+  }
 
   return (
-    <div>
-      {error && <div style={{ color:'#ef5350', fontSize:13, marginBottom:10 }}>{error}</div>}
+    <div className="mp-root">
+      {error && <div className="mp-error" style={{ color:'#ef5350', fontSize:13, marginBottom:10 }}>{error}</div>}
 
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <div>
-          <div style={{ fontSize:16, fontWeight:700, color:'#e8eaf6' }}>Week of {weekLabel}</div>
-          <div style={{ fontSize:12, color:'#4d6080', marginTop:2 }}>Dinner plan — Mon through Sun</div>
+      {moving && (
+        <div className="mp-moving-bar" style={{
+          position:'sticky', top:0, zIndex:5, marginBottom:10, padding:'9px 12px', borderRadius:8,
+          background:'rgba(201,168,76,.14)', border:'1px solid rgba(201,168,76,.45)',
+          display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, color:'#c9a84c', fontWeight:600, flex:1 }}>
+            Moving “{moving.mealName}” — tap any day to drop it
+          </span>
+          <button className="mp-cancel-move" onClick={function(){ setMoving(null); }}
+            style={{ background:'none', border:'1px solid rgba(107,127,168,.3)', color:'#6b7fa8',
+                     borderRadius:6, padding:'4px 12px', fontSize:12, cursor:'pointer' }}>Cancel</button>
         </div>
-        <button onClick={suggestWeek} disabled={suggesting}
-          style={{ background:'rgba(201,168,76,.12)', border:'1px solid rgba(201,168,76,.3)',
-                   color:'#c9a84c', borderRadius:8, padding:'7px 16px', fontSize:12,
-                   fontWeight:600, cursor: suggesting ? 'wait' : 'pointer' }}>
-          {suggesting ? '✨ Suggesting…' : '✨ Suggest Week'}
-        </button>
-      </div>
+      )}
 
-      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {DAYS.map(function(day) {
-          var entry   = days.find(function(d) { return d.day === day; }) || { day: day, mealName:'', type:'', status:'Planned' };
-          var isToday = day === todayAbbrev;
-          var tc      = TYPE_COLORS[entry.type] || {};
-          var sc      = STATUS_COLORS[entry.status] || STATUS_COLORS['Planned'];
-          var isEmpty = !entry.mealName;
-          var isEditing = editDay === day;
+      {weeks.map(function(wk, wi) {
+        var days = wk.days || [];
+        var pastDays = wi === 0
+          ? DAYS.filter(function(d) { return dateFor(wk.weekStart, d) < todayIso; })
+          : [];
+        var visibleDays = DAYS.filter(function(d) {
+          return !(wi === 0 && !showPast && pastDays.indexOf(d) !== -1);
+        });
 
-          return (
-            <div key={day} style={{
-              background: isToday ? 'rgba(201,168,76,.06)' : '#0d1b3e',
-              border: '1px solid ' + (isToday ? 'rgba(201,168,76,.3)' : '#1e2e4a'),
-              borderRadius:10, padding:'12px 16px',
-              display:'flex', alignItems:'center', gap:12,
-            }}>
-              <div style={{ width:44, flexShrink:0 }}>
-                <div style={{ fontSize:12, fontWeight:700, color: isToday ? '#c9a84c' : '#6b7fa8' }}>{day}</div>
-                {entry.date && <div style={{ fontSize:10, color:'#3d5070' }}>
-                  {(function(){ try { return new Date(entry.date+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}); } catch(e){ return entry.date; }})()}
-                </div>}
+        return (
+          <div key={wk.weekStart} className="mp-week" style={{ marginBottom: wi === 0 ? 22 : 0 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                          marginBottom:10, gap:10, flexWrap:'wrap' }}>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:'#e8eaf6' }}>{weekLabel(wk.weekStart, wi)}</div>
+                <div style={{ fontSize:12, color:'#4d6080', marginTop:2 }}>Dinner plan — Mon through Sun</div>
               </div>
-
-              <div style={{ flex:1 }}>
-                {isEditing ? (
-                  <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-                    <input
-                      autoFocus
-                      value={editVal.mealName}
-                      onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{mealName:e.target.value}); }); }}
-                      onKeyDown={function(e){ if(e.key==='Enter') saveEdit(day); if(e.key==='Escape') setEditDay(null); }}
-                      placeholder="Dinner name…"
-                      style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
-                               color:'#e8eaf6', fontSize:13, padding:'4px 10px', flex:1, minWidth:140 }}
-                    />
-                    <select value={editVal.type}
-                      onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{type:e.target.value}); }); }}
-                      style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
-                               color:'#c9d9ff', fontSize:12, padding:'4px 8px' }}>
-                      {['Home Cooked','Leftovers','Takeout','Eating Out'].map(function(t){
-                        return <option key={t} value={t}>{t}</option>;
-                      })}
-                    </select>
-                    <button onClick={function(){ saveEdit(day); }}
-                      style={{ background:'rgba(102,187,106,.15)', border:'1px solid rgba(102,187,106,.3)',
-                               color:'#66bb6a', borderRadius:6, padding:'4px 10px', fontSize:12, cursor:'pointer' }}>Save</button>
-                    <button onClick={function(){ setEditDay(null); }}
-                      style={{ background:'none', border:'none', color:'#4d6080', fontSize:12, cursor:'pointer' }}>✕</button>
-                  </div>
-                ) : (
-                  <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-                    <span style={{ fontSize:14, color: isEmpty ? '#2e3d55' : '#e8eaf6', fontStyle: isEmpty ? 'italic' : 'normal' }}>
-                      {isEmpty ? '—' : entry.mealName}
-                    </span>
-                    {!isEmpty && entry.type && (
-                      <span style={{ fontSize:11, padding:'2px 8px', borderRadius:12, fontWeight:600,
-                        background: tc.bg, color: tc.color, border:'1px solid '+(tc.border||'transparent') }}>
-                        {entry.type}
-                      </span>
-                    )}
-                    {!isEmpty && (
-                      <span style={{ fontSize:11, color: sc.color, fontWeight:600 }}>{entry.status}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {!isEditing && (
-                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                  <button onClick={function(){ openEdit(day); }}
-                    style={{ background:'rgba(107,127,168,.1)', border:'1px solid rgba(107,127,168,.2)',
-                             color:'#6b7fa8', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
-                    ✏️
-                  </button>
-                  {!isEmpty && entry.status !== 'Cooked' && (
-                    <button onClick={function(){ updateStatus(day,'Cooked'); }}
-                      style={{ background:'rgba(102,187,106,.1)', border:'1px solid rgba(102,187,106,.2)',
-                               color:'#66bb6a', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
-                      ✓
-                    </button>
-                  )}
-                  {!isEmpty && entry.status !== 'Skipped' && (
-                    <button onClick={function(){ updateStatus(day,'Skipped'); }}
-                      style={{ background:'rgba(239,83,80,.08)', border:'1px solid rgba(239,83,80,.2)',
-                               color:'#ef5350', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
-                      ✗
-                    </button>
-                  )}
-                </div>
-              )}
+              <button className="mp-suggest" onClick={function(){ suggestWeek(wk.weekStart); }}
+                disabled={!!suggesting || busy}
+                style={{ background:'rgba(201,168,76,.12)', border:'1px solid rgba(201,168,76,.3)',
+                         color:'#c9a84c', borderRadius:8, padding:'7px 16px', fontSize:12,
+                         fontWeight:600, cursor: suggesting ? 'wait' : 'pointer' }}>
+                {suggesting === wk.weekStart ? '✨ Suggesting…' : '✨ Suggest Week'}
+              </button>
             </div>
-          );
-        })}
-      </div>
+
+            {wi === 0 && pastDays.length > 0 && (
+              <button className="mp-past-toggle" onClick={function(){ setShowPast(!showPast); }}
+                style={{ background:'none', border:'none', color:'#4d6080', fontSize:12,
+                         cursor:'pointer', padding:'4px 0', marginBottom:6 }}>
+                {showPast ? '▾ Hide ' : '▸ '}{pastDays.length} earlier day{pastDays.length === 1 ? '' : 's'}
+              </button>
+            )}
+
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {visibleDays.map(function(day) {
+                var entry     = days.find(function(d) { return d.day === day; }) ||
+                                { day:day, mealName:'', type:'', status:'Planned' };
+                var iso       = dateFor(wk.weekStart, day);
+                var isToday   = iso === todayIso;
+                var isPast    = iso < todayIso;
+                var tc        = TYPE_COLORS[entry.type] || {};
+                var sc        = STATUS_COLORS[entry.status] || STATUS_COLORS['Planned'];
+                var isEmpty   = !entry.mealName;
+                var isEditing = editKey === slotKey(wk.weekStart, day);
+                var isSource  = !!moving && moving.weekStart === wk.weekStart && moving.day === day;
+                var isTarget  = !!moving && !isSource;
+
+                return (
+                  <div key={day}
+                    className={'mp-day' + (isTarget ? ' mp-target' : '') + (isSource ? ' mp-moving' : '')}
+                    onClick={isTarget ? function(){ dropOn(wk.weekStart, day); } : undefined}
+                    style={{
+                      background: isSource ? 'rgba(201,168,76,.14)'
+                                : isToday  ? 'rgba(201,168,76,.06)' : '#0d1b3e',
+                      border: '1px solid ' + (isSource ? 'rgba(201,168,76,.6)'
+                                            : isTarget ? 'rgba(201,168,76,.35)'
+                                            : isToday  ? 'rgba(201,168,76,.3)' : '#1e2e4a'),
+                      borderStyle: isTarget ? 'dashed' : 'solid',
+                      borderRadius:10, padding:'12px 16px',
+                      display:'flex', alignItems:'center', gap:12,
+                      opacity: isPast && !isSource ? 0.6 : 1,
+                      cursor: isTarget ? 'pointer' : 'default',
+                    }}>
+                    <div style={{ width:44, flexShrink:0 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color: isToday ? '#c9a84c' : '#6b7fa8' }}>{day}</div>
+                      <div style={{ fontSize:10, color:'#3d5070' }}>{shortDate(iso)}</div>
+                    </div>
+
+                    <div style={{ flex:1 }}>
+                      {isEditing ? (
+                        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+                          <input
+                            className="mp-input"
+                            autoFocus
+                            value={editVal.mealName}
+                            onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{mealName:e.target.value}); }); }}
+                            onKeyDown={function(e){ if(e.key==='Enter') saveEdit(wk.weekStart, day); if(e.key==='Escape') setEditKey(null); }}
+                            placeholder="Dinner name…"
+                            style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
+                                     color:'#e8eaf6', fontSize:13, padding:'4px 10px', flex:1, minWidth:140 }}
+                          />
+                          <select className="mp-type" value={editVal.type}
+                            onChange={function(e){ setEditVal(function(v){ return Object.assign({},v,{type:e.target.value}); }); }}
+                            style={{ background:'#0a1628', border:'1px solid #2e4060', borderRadius:6,
+                                     color:'#c9d9ff', fontSize:12, padding:'4px 8px' }}>
+                            {['Home Cooked','Leftovers','Takeout','Eating Out'].map(function(t){
+                              return <option key={t} value={t}>{t}</option>;
+                            })}
+                          </select>
+                          <button className="mp-save" onClick={function(){ saveEdit(wk.weekStart, day); }}
+                            style={{ background:'rgba(102,187,106,.15)', border:'1px solid rgba(102,187,106,.3)',
+                                     color:'#66bb6a', borderRadius:6, padding:'4px 10px', fontSize:12, cursor:'pointer' }}>Save</button>
+                          <button onClick={function(){ setEditKey(null); }}
+                            style={{ background:'none', border:'none', color:'#4d6080', fontSize:12, cursor:'pointer' }}>✕</button>
+                        </div>
+                      ) : (
+                        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                          <span style={{ fontSize:14, color: isEmpty ? '#2e3d55' : '#e8eaf6', fontStyle: isEmpty ? 'italic' : 'normal' }}>
+                            {isEmpty ? (isTarget ? 'Drop here' : '—') : entry.mealName}
+                          </span>
+                          {!isEmpty && entry.type && (
+                            <span style={{ fontSize:11, padding:'2px 8px', borderRadius:12, fontWeight:600,
+                              background: tc.bg, color: tc.color, border:'1px solid '+(tc.border||'transparent') }}>
+                              {entry.type}
+                            </span>
+                          )}
+                          {!isEmpty && (
+                            <span style={{ fontSize:11, color: sc.color, fontWeight:600 }}>{entry.status}</span>
+                          )}
+                          {isTarget && !isEmpty && (
+                            <span style={{ fontSize:11, color:'#c9a84c', fontWeight:600 }}>· tap to swap</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {!isEditing && !moving && (
+                      <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                        {!isEmpty && (
+                          <button className="mp-handle" title="Move this dinner"
+                            onClick={function(){ pickUp(wk.weekStart, day, entry); }}
+                            style={{ background:'rgba(107,127,168,.1)', border:'1px solid rgba(107,127,168,.2)',
+                                     color:'#6b7fa8', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'grab' }}>
+                            ⠿
+                          </button>
+                        )}
+                        <button className="mp-edit" onClick={function(){ openEdit(wk.weekStart, day, entry); }}
+                          style={{ background:'rgba(107,127,168,.1)', border:'1px solid rgba(107,127,168,.2)',
+                                   color:'#6b7fa8', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                          ✏️
+                        </button>
+                        {!isEmpty && entry.status !== 'Cooked' && (
+                          <button className="mp-cooked" onClick={function(){ updateStatus(wk.weekStart, day,'Cooked'); }}
+                            style={{ background:'rgba(102,187,106,.1)', border:'1px solid rgba(102,187,106,.2)',
+                                     color:'#66bb6a', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                            ✓
+                          </button>
+                        )}
+                        {!isEmpty && entry.status !== 'Skipped' && (
+                          <button className="mp-skipped" onClick={function(){ updateStatus(wk.weekStart, day,'Skipped'); }}
+                            style={{ background:'rgba(239,83,80,.08)', border:'1px solid rgba(239,83,80,.2)',
+                                     color:'#ef5350', borderRadius:6, padding:'4px 8px', fontSize:11, cursor:'pointer' }}>
+                            ✗
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

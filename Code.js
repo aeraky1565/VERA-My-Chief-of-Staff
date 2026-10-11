@@ -1475,10 +1475,10 @@ function nightlyRunTail() {
       nightlyStep_(ctx, 'sendHealthPerformanceInsightMonthly_', sendHealthPerformanceInsightMonthly_);
     }
 
-    // Step 0p: Meal Plan Saturday reset — archive current week, seed next week (Issue #122)
-    if (today.getDay() === 6) {
-      nightlyStep_(ctx, 'resetWeekMealPlan_', resetWeekMealPlan_);
-    }
+    // Step 0p was the Meal Plan Saturday reset. It seeded seven blank rows for next
+    // week, and the planner no longer has blank rows to seed: a row is created when a
+    // dinner is actually set (MealPlan.js). Removing it drops a step that could only
+    // ever append empty rows, from the half of the night the budget reaches last.
 
     // Step 0q: Cross-domain pattern recognition — compound signals across all domains (Issue #90)
     //

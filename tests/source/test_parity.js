@@ -66,6 +66,24 @@ const RULES = [
   ['reads the reason for it',                  s => /recommendBecauseOf/.test(s)],
   ['marks the suggested option',               s => /itin-suggested-chip/.test(s)],
   ['shows why it is suggested',                s => /itin-suggested-why/.test(s)],
+
+  // The meal planner. One dashboard showing one week while the other shows two is
+  // not a cosmetic split: you cannot move a dinner into a week that is not drawn.
+  ['the planner asks for two weeks',           s => /weeks\s*:\s*2/.test(s)],
+  ['it draws a week section',                  s => /mp-week/.test(s)],
+  ['past days collapse behind a toggle',       s => /mp-past-toggle/.test(s)],
+  ['a dinner can be picked up',                s => /mp-handle/.test(s)],
+  ['…and dropped on another day',              s => /mp-target/.test(s)],
+  ['it calls move_meal',                       s => /move_meal/.test(s)],
+  ['Suggest Week names the week it fills',     s => /action\s*:\s*'suggest_meals',\s*weekStart/.test(s)
+                                                 || /action:'suggest_meals',weekStart/.test(s)],
+  // The silent-failure path that hid the save bug for weeks: `if (r.ok) load()` with
+  // no else, so a rejected write looked exactly like a successful one.
+  ['a failed write is shown, not swallowed',   s => /mp-error/.test(s)],
+  // Both weeks are LABELLED, not just fetched. Asking for two and drawing one is the
+  // failure this pair of rules exists to separate.
+  ['this week is labelled',                    s => /'This week'/.test(s)],
+  ['next week is labelled',                    s => /'Next week'/.test(s)],
 ];
 
 RULES.forEach(([name, fn]) => {

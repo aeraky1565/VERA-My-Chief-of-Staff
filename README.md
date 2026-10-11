@@ -1470,7 +1470,6 @@ past the editor's 50-row cap.
 | Step 0m | `checkContracts_()` | Flag contracts approaching expiry or within notice period |
 | Step 0n | `checkHealthAppointments_()` | Flag overdue or upcoming DR: calendar appointments |
 | Step 0o | `checkMonthlyReview_()` | Generate monthly life review on the 1st of each month |
-| Step 0p | `resetWeekMealPlan_()` | Saturday only: archive current week meal plan, seed next week |
 | Step 0q | `checkCrossPatternFlags_()` | Evaluate 7 cross-domain compound patterns |
 | Step 1 | `getUpcomingEvents()` + `getOpenTasks()` + `getSummaries()` + `getSharedInterestLedger_()` | Collect all data for Claude |
 | Step 1b | `suggestDueDates()` | Suggest due dates for undated tasks (writes back to sheet) |
@@ -1513,7 +1512,7 @@ the files they belong to, and nothing is reimplemented here.
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
 | 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
-| 4. Data & trackers | `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
+| 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs
 
@@ -2011,7 +2010,7 @@ Every tab is created automatically by `setupVERA()` → `createSheetTabs()`. Hea
 | Shared Interests | `INTEREST_LEDGER` | Ahmed + Victoria interest log | User + chat managed |
 | Bills | `BILLS` | Recurring bill tracker | User + chat managed |
 | Recipes | `RECIPES` | Recipe library | User + chat managed |
-| Meal Plan | `MEAL_PLAN` | Weekly dinner plan | AI + user managed; reset Saturdays |
+| Meal Plan | `MEAL_PLAN` | Weekly dinner plan | AI + user managed; one row per dinner that exists |
 | Takeout Restaurants | `TAKEOUT_RESTAURANTS` | Favourite takeout places | User + chat managed |
 | Takeout Items | `TAKEOUT_ITEMS` | Menu items per restaurant | User + chat managed |
 | Home Items | `HOME_ITEMS` | Warranties + service log | User + chat managed |
@@ -2192,6 +2191,19 @@ Set all properties in the Apps Script editor: **Project Settings → Script Prop
 > it fetches the URL server-side, prints Google's own words, names the cause, and for a
 > bad address bisects marker by marker.
 
+> ⚠️ **A date-shaped string written to a cell comes back as a Date.** `appendRow` and
+> `setValue` apply the same parsing as typing into the cell, so `'2026-10-05'` is stored
+> as a date value and `String()` on the way back gives
+> `'Sun Oct 05 2026 00:00:00 GMT-0400 (EDT)'`. Any code comparing that against a
+> `yyyy-MM-dd` string matches nothing.
+>
+> This silently broke the meal planner for its whole life: every week lookup missed, so
+> reads re-seeded seven blank rows on each page load, saves appended instead of updating,
+> and the planner showed an empty week over a tab full of dinners. **Read date columns
+> through `dateCellToIso_` (`Trips.js`)** — it is not trip-specific, and it is the single
+> implementation on purpose. `tbMealPlan()` prints the raw cell types when a tab is
+> suspected of this.
+
 > ⚠️ **The Calendar advanced service needs the Google Calendar API switched on, which the
 > manifest cannot do.** `appsscript.json` declares `Calendar` under
 > `enabledAdvancedServices`, and that is necessary but not sufficient: the **Google
@@ -2285,9 +2297,10 @@ All requests must include `?token=YOUR_VERA_WEB_TOKEN`. All mutations use GET to
 | `set_tx_alias` | `merchant`, `alias` | Set a merchant alias |
 | `recipes` | — | All recipes |
 | `recipe_to_shopping` | `row` | Add recipe ingredients to shopping list |
-| `meal_plan` | `week` | Weekly meal plan |
-| `set_meal` | `day`, `meal`, `type` | Set a meal for a day |
-| `update_meal_status` | `id`, `status` | Update meal status |
+| `meal_plan` | `weekStart`, `weeks` | Meal plan; `weeks=2` returns this week and next in one call |
+| `set_meal` | `day`, `weekStart`, `mealName`, `type` | Set a dinner for a day |
+| `update_meal_status` | `day`, `weekStart`, `status` | Update meal status |
+| `move_meal` | `fromDay`, `toDay`, `fromWeekStart`, `toWeekStart` | Move a dinner to another day; swaps if the target is taken |
 | `suggest_meals` | — | AI-suggest full week of dinners |
 | `takeouts` | — | Favourite takeout restaurants with items |
 | `homesteward` | — | Home items with service status |
@@ -2469,7 +2482,7 @@ Slack Events API payloads (Block Kit interactions and slash commands as form-enc
 | `Fitness.js` | Weekly consistency checks + travel gap detection |
 | `ImportantDates.js` | Birthday auto-sync from Joint Chaos calendar; important dates flagging |
 | `MonthlyReview.js` | Monthly life review generator (1st of each month) |
-| `MealPlan.js` | Weekly meal plan management + Saturday reset |
+| `MealPlan.js` | Weekly meal plan management; move/swap between days and weeks |
 | `Pantry.js` | Purchase history EMA model + auto-restock predictions |
 | `Shopping.js` | Shopping list CRUD; recipe-to-shopping |
 | `Memory.js` | Memory event log (vacation start/end, etc.) |
