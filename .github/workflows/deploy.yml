@@ -90,7 +90,12 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      # Full history on purpose. The weekly reconcile asks whether anything Apps
+      # Script SERVES has changed since the deployed commit, which means diffing
+      # against that commit — and a depth-1 checkout does not contain it.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -151,13 +156,33 @@ jobs:
           OUT=$(clasp deployments 2>&1) || true
           DEPLOYED=$(printf '%s' "$OUT" | node "$GITHUB_WORKSPACE/scripts/clasp-parse.js" deployed-sha "$DEPLOYMENT_ID" | cut -c1-7)
 
+          # DRIFT IS NOT "main MOVED". A commit touching only tests, docs or this
+          # workflow moves main without changing a single file clasp pushes, and
+          # comparing shas would then find drift every week for ever — one version
+          # every Sunday to re-deploy identical code, which is worse than the waste
+          # this cadence exists to stop. So the question is whether anything /exec SERVES
+          # has changed since the deployed commit, which is the same set of files as
+          # the push filter at the top of this workflow.
           if [ "$EVENT" = "schedule" ] && [ "$SHOULD" != "true" ]; then
             if [ -z "$DEPLOYED" ]; then
               # FAIL OPEN. An unreadable description costs at most one version a week;
               # failing closed would mean /exec lags forever and the log says nothing.
               SHOULD=true; REASON=drift-unknown
-            elif [ "$DEPLOYED" != "$HEAD_SHA" ]; then
-              SHOULD=true; REASON=drift
+            elif [ "$DEPLOYED" = "$HEAD_SHA" ]; then
+              echo "/exec is serving HEAD."
+            elif ! git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null; then
+              # The sha is readable but not in this history — a force-push, or a
+              # deploy made from somewhere else. Unknowable, so deploy.
+              SHOULD=true; REASON=drift-unknown
+            else
+              CHANGED=$(git diff --name-only "$DEPLOYED" HEAD -- '*.js' 'appsscript.json' \
+                | grep -v '/' | grep -v '^playwright\.config\.js$' || true)
+              if [ -n "$CHANGED" ]; then
+                SHOULD=true; REASON=drift
+                echo "changed since $DEPLOYED: $(echo "$CHANGED" | tr '\n' ' ')"
+              else
+                echo "main has moved since $DEPLOYED, but nothing Apps Script serves changed."
+              fi
             fi
           fi
 

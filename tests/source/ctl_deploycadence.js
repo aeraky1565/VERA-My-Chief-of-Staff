@@ -91,6 +91,33 @@ const CONTROLS = {
       "      - '.github/workflows/deploy.yml'\n      - 'scripts/*.js'",
       "      - 'appsscript.json'"),
   }),
+  // Drift by sha comparison reads a tests-only commit as drift, so the reconcile
+  // would mint a version every Sunday for ever. The test runs the step against real
+  // git history, which is the only place this is visible.
+  'drift goes back to comparing shas instead of what /exec serves': b => ({
+    '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
+      "              CHANGED=$(git diff --name-only \"$DEPLOYED\" HEAD -- '*.js' 'appsscript.json' \\\n                | grep -v '/' | grep -v '^playwright\\.config\\.js$' || true)",
+      '              CHANGED=yes'),
+  }),
+  'the drift diff stops excluding subdirectories': b => ({
+    '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
+      "                | grep -v '/' | grep -v '^playwright\\.config\\.js$' || true)",
+      '                || true)'),
+  }),
+  'a deployed sha outside this history reads as no drift': b => ({
+    '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
+      '            elif ! git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null; then\n' +
+      '              # The sha is readable but not in this history — a force-push, or a\n' +
+      '              # deploy made from somewhere else. Unknowable, so deploy.\n' +
+      '              SHOULD=true; REASON=drift-unknown',
+      '            elif ! git cat-file -e "$DEPLOYED^{commit}" 2>/dev/null; then\n' +
+      '              echo "unknown sha, assuming fine"'),
+  }),
+  'the deploy job goes back to a shallow checkout': b => ({
+    '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
+      '      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n\n      - uses: actions/setup-node@v4\n        with:\n          node-version: \'20\'\n\n      - name: Install clasp',
+      "      - uses: actions/checkout@v4\n\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n\n      - name: Install clasp"),
+  }),
   'the reconcile treats an unreadable description as no drift': b => ({
     '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
       '              SHOULD=true; REASON=drift-unknown',

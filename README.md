@@ -2982,9 +2982,12 @@ cleared by hand in the editor, and the ceiling has already blocked a deploy once
 - **running the workflow by hand** (Actions → Deploy to Apps Script → Run workflow) —
   the escape hatch, and how to deploy a commit whose marker was forgotten.
 - **the Sunday reconcile** (`37 17 * * 0`) — it reads the sha out of the live
-  deployment's description and deploys only if `/exec` has fallen behind `main`. A
-  forgotten marker therefore costs at most a week of lag, and nothing at all when
-  nothing drifted.
+  deployment's description and deploys only if something `/exec` **serves** has changed
+  since then. "Drift" is a diff of the same files as the push filter above, not a sha
+  comparison: a commit touching only tests or docs moves `main` without changing
+  anything Apps Script runs, and treating that as drift would mint a version every
+  Sunday for ever. A forgotten marker therefore costs at most a week of lag, and
+  nothing at all when nothing drifted.
 
 Every skipped deploy prints a notice naming both shas — what was pushed, and what
 `/exec` is still serving — so the gap is never silent. The workflow also warns once the

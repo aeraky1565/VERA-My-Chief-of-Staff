@@ -13,7 +13,7 @@
 //      UNKNOWN, since unknown is what triggers the fail-open deploy;
 //   2. that the three files still agree on the string, which is a text assertion and
 //      says so.
-const fs = require('fs'), path = require('path');
+const fs = require('fs'), path = require('path'), cp = require('child_process'), os = require('os');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 
@@ -193,6 +193,11 @@ console.log('\ndeploy.yml pushes always and deploys sometimes');
   check('…and a change to either script does too',
         /- 'scripts\/\*\.js'/.test(YAML));
 
+  // The reconcile's diff is against the DEPLOYED commit, which a depth-1 checkout
+  // does not contain — it would resolve to "not in this history" and deploy weekly.
+  check('the deploy job checks out full history', /fetch-depth: 0/.test(YAML),
+        'the reconcile diffs against the deployed commit');
+
   // The expression form is what matched the prose. It must not come back.
   check('the marker is decided by the script, not by a contains() on the whole message',
         /deploy-marker\.js"/.test(YAML) &&
@@ -236,6 +241,146 @@ console.log('\ndeploy.yml pushes always and deploys sometimes');
   check('the deployment id is declared once', (YAML.match(/AKfycbx1PHRW/g) || []).length === 1,
         'two copies of a deployment id is one too many');
   check('…and referenced through the env var', (YAML.match(/\$DEPLOYMENT_ID/g) || []).length >= 2);
+}
+
+// ============ the reconcile, run for real against real git history ========
+//
+// Everything above this point is a parser or a text assertion. The decision itself
+// is shell, and the mistake it nearly shipped was invisible to both: comparing
+// main's sha to the deployed sha reads EVERY commit as drift, including the ones
+// that change only tests and docs, so a weekly reconcile would have minted a version
+// every Sunday for ever — on a 30-version budget. The only way to see that is to run
+// the step.
+//
+// So: extract the real `run:` block out of deploy.yml, build throwaway git repos,
+// stub clasp, and let it decide.
+
+console.log('\nthe reconcile asks what /exec serves, not whether main moved');
+{
+  // The step's script, lifted verbatim. No yaml library in this suite, so the block
+  // is read by indentation — and if that ever stops finding it, this throws rather
+  // than silently testing nothing.
+  function extractRun(yaml, stepName) {
+    const at = yaml.indexOf('name: ' + stepName);
+    if (at === -1) throw new Error('step not found: ' + stepName);
+    const runAt = yaml.indexOf('run: |', at);
+    if (runAt === -1) throw new Error('no run block: ' + stepName);
+    const lines = yaml.slice(yaml.indexOf('\n', runAt) + 1).split('\n');
+    const indent = /^(\s*)/.exec(lines[0])[1].length;
+    const out = [];
+    for (const l of lines) {
+      if (l.trim() !== '' && /^(\s*)/.exec(l)[1].length < indent) break;
+      out.push(l.slice(indent));
+    }
+    return out.join('\n');
+  }
+
+  const decide = extractRun(YAML, 'Decide whether to deploy');
+  check('the decision script was found in the workflow',
+        /SHOULD=true; REASON=drift/.test(decide) && /GITHUB_OUTPUT/.test(decide),
+        decide.slice(0, 80));
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vera-cadence-'));
+  const sh = path.join(tmp, 'decide.sh');
+  fs.writeFileSync(sh, 'set -e\n' + decide);
+  const bin = path.join(tmp, 'bin');
+  fs.mkdirSync(bin);
+
+  const git = (repo, args) => cp.execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
+
+  // A repo with one commit that changes a root .js file (which clasp pushes) and one
+  // that changes only a test (which it does not).
+  function buildRepo() {
+    const repo = fs.mkdtempSync(path.join(tmp, 'repo-'));
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.email', 't@example.com']);
+    git(repo, ['config', 'user.name', 'T']);
+    fs.writeFileSync(path.join(repo, 'Code.js'), 'function a(){}\n');
+    git(repo, ['add', '-A']); git(repo, ['commit', '-qm', 'base']);
+    const base = git(repo, ['rev-parse', '--short=7', 'HEAD']);
+
+    fs.mkdirSync(path.join(repo, 'tests'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'tests', 'x.js'), '// a test\n');
+    fs.writeFileSync(path.join(repo, 'README.md'), 'docs\n');
+    git(repo, ['add', '-A']); git(repo, ['commit', '-qm', 'tests and docs only']);
+    const docsOnly = git(repo, ['rev-parse', '--short=7', 'HEAD']);
+
+    fs.writeFileSync(path.join(repo, 'Code.js'), 'function a(){ return 1; }\n');
+    git(repo, ['add', '-A']); git(repo, ['commit', '-qm', 'change what /exec serves']);
+    const served = git(repo, ['rev-parse', '--short=7', 'HEAD']);
+    return { repo: repo, base: base, docsOnly: docsOnly, served: served };
+  }
+
+  const R = buildRepo();
+  const ID = 'AKfycbTESTdeploymentIDTESTTESTTEST';
+
+  // `at` is the commit the stubbed deployment claims to be serving; HEAD is wherever
+  // the repo is checked out.
+  function run(event, deployedSha, head, messages) {
+    fs.writeFileSync(path.join(bin, 'clasp'),
+      '#!/bin/bash\n' + (deployedSha === null
+        ? 'echo "nope" >&2; exit 1\n'
+        : 'echo "- ' + ID + ' @HEAD"\necho "- ' + ID + ' @42 - Auto-deploy ' + deployedSha + '"\n'));
+    fs.chmodSync(path.join(bin, 'clasp'), 0o755);
+    git(R.repo, ['checkout', '-q', head]);
+    const outFile = path.join(tmp, 'out.txt');
+    fs.writeFileSync(outFile, '');
+    const r = cp.spawnSync('bash', [sh], {
+      cwd: R.repo, encoding: 'utf8',
+      env: Object.assign({}, process.env, {
+        PATH: bin + path.delimiter + process.env.PATH,
+        EVENT: event,
+        COMMIT_MESSAGES: JSON.stringify(messages || []),
+        DEPLOYMENT_ID: ID,
+        GITHUB_OUTPUT: outFile,
+        GITHUB_WORKSPACE: REPO,          // where the two scripts live
+      }),
+    });
+    const o = {};
+    fs.readFileSync(outFile, 'utf8').split('\n').forEach(l => {
+      const i = l.indexOf('=');
+      if (i > 0) o[l.slice(0, i)] = l.slice(i + 1);
+    });
+    o.exit = r.status;
+    o.log = (r.stdout || '') + (r.stderr || '');
+    return o;
+  }
+
+  // THE DEFECT THIS SECTION EXISTS FOR.
+  let o = run('schedule', R.base, R.docsOnly);
+  check('a tests-and-docs commit is not drift',
+        o.should === 'false' && o.reason === 'skip',
+        o.reason + ' — comparing shas here mints a version every Sunday for ever');
+  check('…and it says why rather than going quiet',
+        /nothing Apps Script serves changed/.test(o.log), o.log.trim().split('\n').pop());
+
+  o = run('schedule', R.base, R.served);
+  check('a change to a root .js file IS drift', o.should === 'true' && o.reason === 'drift', o.reason);
+  check('…and names the file', /Code\.js/.test(o.log), o.log.trim().split('\n').pop());
+
+  o = run('schedule', R.served, R.served);
+  check('/exec already on HEAD is not drift', o.should === 'false' && o.reason === 'skip', o.reason);
+
+  o = run('schedule', null, R.served);
+  check('an unreadable description deploys', o.should === 'true' && o.reason === 'drift-unknown', o.reason);
+
+  // A sha that parses but is not in this history — a force-push, or a deploy from
+  // somewhere else. Unknowable, so it must not read as "no drift".
+  o = run('schedule', 'deadbee', R.served);
+  check('a sha that is not in this history deploys',
+        o.should === 'true' && o.reason === 'drift-unknown', o.reason);
+
+  // The other events must be unaffected by all of the above.
+  o = run('push', R.base, R.docsOnly, ['Tidy the tests']);
+  check('an unmarked push never deploys', o.should === 'false' && o.reason === 'skip', o.reason);
+  o = run('push', R.base, R.docsOnly, ['Tidy the tests [deploy]']);
+  check('a marked push deploys whatever changed', o.should === 'true' && o.reason === 'marker', o.reason);
+  o = run('workflow_dispatch', R.base, R.docsOnly);
+  check('a manual dispatch deploys', o.should === 'true' && o.reason === 'manual', o.reason);
+
+  check('every run exited cleanly', o.exit === 0, 'exit ' + o.exit);
+
+  fs.rmSync(tmp, { recursive: true, force: true });
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
