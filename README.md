@@ -2972,11 +2972,13 @@ Google caps a project at 200 versions and offers **no API to delete one**; they 
 cleared by hand in the editor, and the ceiling has already blocked a deploy once. So
 `.github/workflows/deploy.yml` mints a version only when one is needed:
 
-- **a commit message containing `[deploy]`** — mark it when the change is reachable from
+- **`[deploy]` in a commit's SUBJECT LINE** — mark it when the change is reachable from
   `WebApp.js`'s `doGet`/`doPost` switch: a dashboard action, a reader behind one, or
   `docs/` work that calls a new action. Leave it off when the change is reached only
   from `nightlyRun`, an email, or `TestBench.js` — those run pushed head code and are
-  live the moment the push lands.
+  live the moment the push lands. The subject only: a commit **body** that merely
+  mentions `[deploy]` — explaining the cadence, or quoting a reverted commit — does not
+  opt in, which it did once and cost a version.
 - **running the workflow by hand** (Actions → Deploy to Apps Script → Run workflow) —
   the escape hatch, and how to deploy a commit whose marker was forgotten.
 - **the Sunday reconcile** (`37 17 * * 0`) — it reads the sha out of the live
@@ -2990,4 +2992,7 @@ project passes 180 versions; the warning can never fail the job.
 
 The description `Auto-deploy <short sha>` is **load-bearing**: the reconcile parses it
 (`scripts/clasp-parse.js`, tested by `tests/source/test_deploycadence.js`). `push.ps1`
-writes the same format for the same reason.
+writes the same format for the same reason. The marker is read by
+`scripts/deploy-marker.js`, which fails **closed** — unreadable input mints nothing —
+while the drift check fails **open**. A missed marker costs a week at worst, because the
+reconcile catches it; a spent version cannot be reclaimed.

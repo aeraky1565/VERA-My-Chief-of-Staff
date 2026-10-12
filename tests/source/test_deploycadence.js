@@ -17,12 +17,14 @@ const fs = require('fs'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 
-const PARSE_PATH = path.join(ROOT, 'scripts', 'clasp-parse.js');
+const PARSE_PATH  = path.join(ROOT, 'scripts', 'clasp-parse.js');
+const MARKER_PATH = path.join(ROOT, 'scripts', 'deploy-marker.js');
 const YAML = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy.yml'), 'utf8');
 const PS1  = fs.readFileSync(path.join(ROOT, 'push.ps1'), 'utf8');
 
-// The real module, not a transcription of it.
+// The real modules, not a transcription of them.
 const { deployedSha, versionCount } = require(PARSE_PATH);
+const { hasMarker } = require(MARKER_PATH);
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -109,6 +111,46 @@ console.log('\nversionCount reads the ceiling, or admits it cannot');
   check('…and null is not 0', versionCount('') !== 0);
 }
 
+// ============ only a subject line can spend a version ======================
+
+console.log('\nhasMarker reads the subject, not the essay underneath it');
+{
+  const J = v => JSON.stringify(v);
+
+  // THE COMMIT THAT CAUSED THIS. Subject carries no marker; the body explains what
+  // the marker is for. `contains(toJSON(...), '[deploy]')` said true and spent a
+  // version on the one commit written to demonstrate a skipped deploy.
+  const theIncident = 'Spend a deploy version only when /exec needs one\n\n' +
+    'always pushes and deploys only when a version is actually needed: a commit\n' +
+    'marked [deploy], a manual dispatch, or a Sunday reconcile that deploys solely\n' +
+    'when /exec has fallen behind main.\n';
+  check('prose about the marker does not opt in', hasMarker(J([theIncident])) === false,
+        'this exact message spent a version in run #114');
+
+  check('a marked subject opts in', hasMarker(J(['Add the meal plan tab [deploy]'])) === true);
+  check('…at the front of the subject too', hasMarker(J(['[deploy] fix the chat row numbers'])) === true);
+  check('an unmarked subject does not', hasMarker(J(['Tidy the nightly budget log'])) === false);
+
+  // A push of several commits deploys if ANY subject asks for it — otherwise batching
+  // a dashboard fix behind a doc tweak would silently skip it.
+  check('any one marked subject in the push is enough',
+        hasMarker(J(['Tidy the log', 'Fix the Meal Plan week [deploy]', 'Update README'])) === true);
+  check('…and none means none',
+        hasMarker(J(['Tidy the log', 'Update README',
+                     'Explain the deploy cadence in the docs\n\nmark a commit [deploy]\n'])) === false);
+
+  // A revert quotes the original message wholesale, body and all.
+  check('a revert quoting a marked commit does not re-opt in',
+        hasMarker(J(['Revert "Fix the Meal Plan week"\n\nThis reverts commit abc1234.\nOriginal subject: Fix the Meal Plan week [deploy]\n'])) === false);
+
+  // FAILS CLOSED, unlike the drift check. A missed marker costs a week; a spent
+  // version cannot be reclaimed by any API.
+  check('a schedule or dispatch has no commits', hasMarker('[]') === false);
+  check('unparseable input spends nothing', hasMarker('not json') === false);
+  check('…nor does an empty string', hasMarker('') === false);
+  check('…nor a JSON object instead of an array', hasMarker('{"message":"x [deploy]"}') === false);
+}
+
 // ============ the three files still agree on the string ====================
 
 console.log('\nthe description format is the same in every file that touches it');
@@ -148,11 +190,16 @@ console.log('\ndeploy.yml pushes always and deploys sometimes');
   // never runs it.
   check('a change to the workflow triggers the workflow',
         /- '\.github\/workflows\/deploy\.yml'/.test(YAML));
-  check('…and a change to the parser does too',
-        /- 'scripts\/clasp-parse\.js'/.test(YAML));
+  check('…and a change to either script does too',
+        /- 'scripts\/\*\.js'/.test(YAML));
 
-  check('a marked commit is what opts in',
-        /contains\(toJSON\(github\.event\.commits\.\*\.message\), '\[deploy\]'\)/.test(YAML));
+  // The expression form is what matched the prose. It must not come back.
+  check('the marker is decided by the script, not by a contains() on the whole message',
+        /deploy-marker\.js"/.test(YAML) &&
+        !/contains\(toJSON\(github\.event\.commits\.\*\.message\)/.test(YAML),
+        'contains() over the full message matched a commit body and spent a version');
+  check('…and the script is handed every commit message in the push',
+        /COMMIT_MESSAGES: \$\{\{ toJSON\(github\.event\.commits\.\*\.message\) \}\}/.test(YAML));
   check('workflow_dispatch is still the manual escape hatch', /^  workflow_dispatch:/m.test(YAML));
 
   // Without the schedule, a forgotten marker is permanent.

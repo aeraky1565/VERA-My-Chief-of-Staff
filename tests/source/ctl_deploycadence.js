@@ -16,7 +16,8 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_deploycad');
 
-const FILES = ['scripts/clasp-parse.js', '.github/workflows/deploy.yml', 'push.ps1'];
+const FILES = ['scripts/clasp-parse.js', 'scripts/deploy-marker.js',
+               '.github/workflows/deploy.yml', 'push.ps1'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -56,6 +57,26 @@ const CONTROLS = {
       "const DESC_RE = /@\\d+ - (.+)$/;"),
   }),
 
+  // ---- the marker ----------------------------------------------------------
+  // The first of these is the actual defect, reproduced: it spent a version on the
+  // commit that introduced the cadence, because that commit's body explains what
+  // [deploy] means.
+  'the marker is matched anywhere in the message again, body included': b => ({
+    'scripts/deploy-marker.js': swap(b['scripts/deploy-marker.js'],
+      "    var subject = String(msgs[i] == null ? '' : msgs[i]).split('\\n')[0];",
+      "    var subject = String(msgs[i] == null ? '' : msgs[i]);"),
+  }),
+  'unreadable commit messages spend a version instead of none': b => ({
+    'scripts/deploy-marker.js': swap(b['scripts/deploy-marker.js'],
+      '  try { msgs = JSON.parse(text); } catch (e) { return false; }',
+      '  try { msgs = JSON.parse(text); } catch (e) { return true; }'),
+  }),
+  'the workflow goes back to deciding the marker with contains()': b => ({
+    '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
+      '          MARKER=$(printf \'%s\' "$COMMIT_MESSAGES" | node "$GITHUB_WORKSPACE/scripts/deploy-marker.js")',
+      '          MARKER=${{ contains(toJSON(github.event.commits.*.message), \'[deploy]\') }}'),
+  }),
+
   // ---- the cadence itself --------------------------------------------------
   // The one that matters most: if the push becomes conditional, every change that
   // is not marked [deploy] stops reaching triggers and the editor too, which is
@@ -67,7 +88,7 @@ const CONTROLS = {
   }),
   'the cadence stops being triggered by changes to itself': b => ({
     '.github/workflows/deploy.yml': swap(b['.github/workflows/deploy.yml'],
-      "      - '.github/workflows/deploy.yml'\n      - 'scripts/clasp-parse.js'",
+      "      - '.github/workflows/deploy.yml'\n      - 'scripts/*.js'",
       "      - 'appsscript.json'"),
   }),
   'the reconcile treats an unreadable description as no drift': b => ({

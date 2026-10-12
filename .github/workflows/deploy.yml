@@ -12,7 +12,7 @@ on:
       # and the first real test is an unrelated push days later. Such a run pushes
       # (free, idempotent) and reports; it mints nothing unless it is marked.
       - '.github/workflows/deploy.yml'
-      - 'scripts/clasp-parse.js'
+      - 'scripts/*.js'
   # The weekly reconcile. It lives in THIS file so it inherits the concurrency group
   # below and can never race regression.yml for the live /exec. Sunday 13:37 ET —
   # regression.yml has no schedule, so nothing else in the group wakes then, and
@@ -123,12 +123,18 @@ jobs:
       - name: Decide whether to deploy
         id: decide
         env:
-          # The marker is read off the pushed commits, not just the tip, so a push of
-          # several commits deploys if ANY of them warrants it.
-          MARKER: ${{ contains(toJSON(github.event.commits.*.message), '[deploy]') }}
+          # Every commit in the push, so a push of several deploys if ANY of them
+          # warrants it. The marker is read by a script and not by
+          # `contains(toJSON(...), '[deploy]')`, because that expression matched the
+          # BODY of the commit that introduced this cadence — prose explaining what
+          # the marker means — and spent a version on a commit written to demonstrate
+          # a skipped deploy. Only a subject line can opt in now; see
+          # scripts/deploy-marker.js.
+          COMMIT_MESSAGES: ${{ toJSON(github.event.commits.*.message) }}
           EVENT: ${{ github.event_name }}
         run: |
           HEAD_SHA=$(git rev-parse --short=7 HEAD)
+          MARKER=$(printf '%s' "$COMMIT_MESSAGES" | node "$GITHUB_WORKSPACE/scripts/deploy-marker.js")
 
           SHOULD=false
           REASON=skip
