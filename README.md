@@ -2124,7 +2124,6 @@ Add these rows to the `Config` tab (`Setting` | `Value`). All keys are read via 
 | `pattern_max_flags` | `2` | PatternRecognition | Max new flags per nightly pattern recognition run |
 | `pattern_dedup_days` | `7` | PatternRecognition | Days before same pattern key can re-fire |
 | `monthly_review_enabled` | `true` | MonthlyReview | Enable monthly life review generation on 1st of month |
-| `meal_planner_enabled` | `true` | MealPlan | Show Meal Plan sub-tab in dashboard |
 | `google_tasks_enabled` | `true` | Tasks | Enable Google Tasks fetch in dashboard and chat |
 | `morning_routine_enabled` | `true` | MorningRoutine | Show Morning Routine sub-tab |
 | `takeouts_enabled` | `true` | Takeouts | Show Takeouts sub-tab |

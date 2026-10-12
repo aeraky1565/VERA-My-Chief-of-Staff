@@ -218,6 +218,53 @@ const THIS_MONDAY = isoOf(_mon), NEXT_MONDAY = isoOf(_next);
             !!suggested && suggested.weekStart === NEXT_MONDAY,
             JSON.stringify(suggested) + ' — expected weekStart ' + NEXT_MONDAY);
 
+      // ---- the tab is REACHABLE ------------------------------------------
+      //
+      // Everything above drives MealPlanSubTab directly, which is exactly how the
+      // sub-tab could go missing from dashboard-lite while every assertion stayed
+      // green: a working planner behind a button nobody drew. So mount the real Home
+      // Front tab, with the precise feature map that hid it — meal_planner false,
+      // its two neighbours true — and look for the button.
+      const row = await page.evaluate(({ kind }) => {
+        document.querySelectorAll('#hfprobe').forEach(n => n.remove());
+        const host = document.createElement('div'); host.id = 'hfprobe'; document.body.appendChild(host);
+        // Reuses the two-week fixture built at the top of this page, so "the button
+        // opens the planner" is checked against real weeks rather than against an
+        // empty list that would render nothing and prove nothing.
+        window.apiGet = (url, token, params) => Promise.resolve(
+          params && params.action === 'meal_plan'
+            ? window.__fixture
+            : { ok: true, items: [], recipes: [], takeouts: [] });
+        const features = { meal_planner: false, takeouts: true, pantry: true };
+        const Tab = (kind === 'lite') ? HomeFrontLiteTab : HomeFrontTab;
+        ReactDOM.createRoot(host).render(
+          React.createElement(Tab, { apiUrl: 'https://vera.test/exec', apiToken: 't', features: features }));
+        return new Promise(r => setTimeout(() => {
+          const labels = Array.from(host.querySelectorAll('.subtab-btn')).map(b => b.textContent);
+          r({ labels: labels });
+        }, 500));
+      }, { kind });
+
+      const has = t => row.labels.some(l => l.indexOf(t) !== -1);
+      check('Meal Plan is in the sub-tab row even with the flag off', has('Meal Plan'),
+            JSON.stringify(row.labels) +
+            ' — meal_planner:false used to delete it from this row silently');
+      check('…and its flagged neighbours are still there', has('Takeouts') && has('Pantry'),
+            JSON.stringify(row.labels) + ' — if these vanished the gate was removed from ' +
+            'the filter rather than from the Meal Plan entry, which is a different change');
+
+      // Reachable, not merely listed: the button has to open the planner.
+      const opened = await page.evaluate(() => {
+        const host = document.getElementById('hfprobe');
+        const btn = Array.from(host.querySelectorAll('.subtab-btn'))
+                         .find(b => b.textContent.indexOf('Meal Plan') !== -1);
+        if (!btn) return null;
+        btn.click();
+        return new Promise(r => setTimeout(() => r(host.querySelectorAll('.mp-week').length), 600));
+      });
+      check('…and clicking it opens the two-week planner', opened === 2,
+            opened + ' week section(s) — listed but not wired is the other way to fail this');
+
       await page.close();
     }
   }

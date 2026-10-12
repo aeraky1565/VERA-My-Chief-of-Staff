@@ -84,6 +84,22 @@ const RULES = [
   // failure this pair of rules exists to separate.
   ['this week is labelled',                    s => /'This week'/.test(s)],
   ['next week is labelled',                    s => /'Next week'/.test(s)],
+
+  // THE TAB ITSELF, not just the component inside it.
+  //
+  // Everything above checks that the planner is BUILT in both pages. None of it
+  // checked that it is REACHABLE, and that is the gap that let the sub-tab go missing
+  // from dashboard-lite with every rule still green: a perfect component behind a
+  // button that was not drawn.
+  ['the Meal Plan sub-tab is registered',      s => /id:\s*'meal_plan'/.test(s)],
+  // No featureKey. It had one, and a Config row set to 'false' removed the tab from a
+  // page with nothing anywhere saying why — a switch whose only feedback was absence.
+  ['…and nothing can flag it out of existence',
+                                               s => !/featureKey\s*:\s*'meal_planner'/.test(s)],
+  // The neighbours keep their flags, so the rule above proves the gate came off the
+  // right entry rather than the filter losing the ability to hide anything at all.
+  ['…while Takeouts and Pantry keep theirs',   s => /featureKey\s*:\s*'takeouts'/.test(s)
+                                                 && /featureKey\s*:\s*'pantry'/.test(s)],
 ];
 
 RULES.forEach(([name, fn]) => {

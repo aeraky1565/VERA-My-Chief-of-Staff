@@ -4956,7 +4956,9 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
     { id:'chores',    label:'✅ Chores'    },
     { id:'chores_for_others', label:'🧒 For Others' },
     { id:'recipes',   label:'🍽️ Recipes'   },
-    { id:'meal_plan', label:'📅 Meal Plan', featureKey:'meal_planner' },
+    // No featureKey. It had one, and a Config row set to 'false' silently removed the
+    // tab from this page with nothing anywhere to say why — see test_mealplan_ui.js.
+    { id:'meal_plan', label:'📅 Meal Plan' },
     { id:'takeouts',  label:'🥡 Takeouts',  featureKey:'takeouts'     },
     { id:'pantry',    label:'🛒 Pantry',    featureKey:'pantry'       },
     { id:'guests',    label:'👥 Guests'    },

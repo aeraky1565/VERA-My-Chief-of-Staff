@@ -173,10 +173,6 @@ Reads Google Calendar for events prefixed with `DR:` (the convention for health 
 
 Fires only on the 1st of each month. Checks whether a review for the prior month already exists in the Flags tab (dedup by key `monthly_review_YYYYMM`). If not, calls `buildMonthlyReview_()`, writes a Low-urgency flag, archives to the `Monthly Reviews` tab, and sends a styled HTML email. The `ptoStats` object computed in Step 0b is passed in to avoid re-reading PTO data. See Section 13 for the full assembly.
 
-### Step 0p: `resetWeekMealPlan_()` (Saturdays only)
-
-Runs only when `today.getDay() === 6` (Saturday). Archives the current week's meal plan entries and seeds a new week's rows. Gated by `meal_planner_enabled = 'true'`.
-
 ### Step 0q: `checkCrossPatternFlags_()`
 
 Builds a cross-domain signal snapshot and evaluates 7 compound patterns. See Section 5 for the full pattern definitions and trigger conditions. Writes at most `pattern_max_flags` (default: 2) new flags per run.

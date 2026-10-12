@@ -417,8 +417,6 @@ function createSheetTabs(ss) {
     ['google_tasks_enabled',   'true'],   // set 'false' to disable Google Tasks fetch in dashboard and chat
     // Monthly Life Review (Issue #82)
     ['monthly_review_enabled', 'true'],   // set 'false' to disable monthly review generation
-    // Meal Planner (Issue #122)
-    ['meal_planner_enabled', 'true'],     // set 'false' to hide Meal Plan subtab
     // Health–Performance Correlation (Feature 12)
     ['wellness_checkin_hour', '6'],       // 24h hour for morning wellness check-in prompt — must run before MORNING_NUDGE_HOUR (7) so Google Fit data is fresh when the morning email checks its staleness
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging

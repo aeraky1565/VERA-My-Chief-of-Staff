@@ -12,9 +12,14 @@ const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_mp');
-const FILES = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js'));
+// The dashboards are not root .js files, and the sub-tab controls below mutate them.
+const EXTRA = ['docs/app.js', 'docs/index.html', 'docs/dashboard-lite.html'];
+const ROOT_JS = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js'));
 const BASE = {};
-FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
+ROOT_JS.concat(EXTRA).forEach(f => {
+  const p = path.join(SRC_DIR, f);
+  if (fs.existsSync(p)) BASE[f] = fs.readFileSync(p, 'utf8');
+});
 
 // An anchor that has moved must THROW, not silently leave the file unchanged — an
 // unapplied mutation is a control that has stopped controlling for anything.
@@ -167,15 +172,44 @@ const CONTROLS = {
     'WebApp.js': swap(b['WebApp.js'],
       "      case 'move_meal':             return jsonOut_(webMoveMeal_(e));", ''),
   }),
+
+  // ---- the tab itself ------------------------------------------------------
+  // The gate, put back one page at a time. Each of these is the exact state that
+  // made the sub-tab vanish from dashboard-lite, and each must be caught — a page
+  // that loses the tab while the other keeps it is the failure that started this.
+  'the dashboard-lite tab is flag-gated again': b => ({
+    'docs/dashboard-lite.html': swap(b['docs/dashboard-lite.html'],
+      "{ id:'meal_plan', label:'📅 Meal Plan' },",
+      "{ id:'meal_plan', label:'📅 Meal Plan', featureKey:'meal_planner' },"),
+  }),
+  'the full dashboard tab is flag-gated again': b => ({
+    'docs/app.js': swap(b['docs/app.js'],
+      "{id:'meal_plan',label:'🗓️ Meal Plan'}",
+      "{id:'meal_plan',label:'🗓️ Meal Plan',featureKey:'meal_planner'}"),
+  }),
+  // docs/index.html is GENERATED from app.js. Gating it alone is what a forgotten
+  // `node docs/build.js` looks like: the source is right and the shipped page is not.
+  'the built page keeps a gate the source dropped': b => ({
+    'docs/index.html': swap(b['docs/index.html'],
+      "{id:'meal_plan',label:'🗓️ Meal Plan'}",
+      "{id:'meal_plan',label:'🗓️ Meal Plan',featureKey:'meal_planner'}"),
+  }),
+  'the sub-tab is dropped from dashboard-lite entirely': b => ({
+    'docs/dashboard-lite.html': swap(b['docs/dashboard-lite.html'],
+      "{ id:'meal_plan', label:'📅 Meal Plan' },", ''),
+  }),
 };
 
-// The parity rules live in their own file, so the dashboard controls run against it.
-const TEST_FOR = name => (name.indexOf('dashboard') !== -1 ? 'test_parity.js' : 'test_mealplan.js');
+// Each control is checked against the test that owns the behaviour: the sub-tab's
+// presence is a parity rule, the morning email's packing count belongs to
+// test_morningintel.js, and everything else to test_mealplan.js.
+const TEST_FOR = name =>
+  (/sub-tab|flag-gated|built page/.test(name) ? 'test_parity.js' : 'test_mealplan.js');
 
 let allBit = true;
 Object.keys(CONTROLS).forEach(name => {
   fs.rmSync(OUT, { recursive: true, force: true });
-  fs.mkdirSync(OUT, { recursive: true });
+  fs.mkdirSync(path.join(OUT, 'docs'), { recursive: true });
   let patch;
   try { patch = CONTROLS[name](BASE); }
   catch (e) { console.log('\n=== CONTROL: ' + name); console.log('  !! MUTATION THREW: ' + e.message); allBit = false; return; }
@@ -183,12 +217,14 @@ Object.keys(CONTROLS).forEach(name => {
   const changed = [];
   Object.keys(files).forEach(f => {
     if (files[f] !== BASE[f]) changed.push(f);
-    fs.writeFileSync(path.join(OUT, f), files[f]);
+    const dest = path.join(OUT, f);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, files[f]);
   });
 
   const r = cp.spawnSync('node', [TEST_FOR(name)], {
     cwd: __dirname, encoding: 'utf8',
-    env: Object.assign({}, process.env, { VERA_ROOT: OUT }),
+    env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_PAGES_ROOT: OUT }),
   });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).map(s => s.replace(/^  FAIL /, '').trim().split('  — ')[0]);
