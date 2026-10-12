@@ -238,9 +238,17 @@ console.log('\nThe memo event records whether it was actually created');
     throw new Error('API call to calendar.events.insert failed with error: Google Calendar ' +
                     'API has not been used in project 402807757311 before or it is disabled.');
   });
-  const none = vm.runInContext('createWeekendMemoEvent_(SAT, "memo")',
-                               Object.assign(badCtx, { SAT: SAT }));
-  check('a failed insert still returns null, so the memo sends', none === null, JSON.stringify(none));
+  // Run through a catch: createWeekendMemoEvent_ must SWALLOW the insert failure, and a
+  // version that rethrows would otherwise take this test down with it instead of failing
+  // the assertion that says so.
+  var none, threw = null;
+  try {
+    none = vm.runInContext('createWeekendMemoEvent_(SAT, "memo")',
+                           Object.assign(badCtx, { SAT: SAT }));
+  } catch (e) { threw = e.message; }
+  check('a failed insert still returns null, so the memo sends',
+        threw === null && none === null,
+        threw ? 'it threw: ' + threw + ' — the memo would not send at all' : JSON.stringify(none));
   check('…and the failure is RECORDED, not just logged',
         badCtx._health.length === 1 && badCtx._health[0].ok === false,
         JSON.stringify(badCtx._health) + ' — this threw every week and said nothing');

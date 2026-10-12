@@ -58,15 +58,16 @@ const CONTROLS = {
   // ---- the advanced service ------------------------------------------------
   'the service is asked once per calendar again': b => ({
     'Calendar.js': swap(b['Calendar.js'],
-      '      if (_calendarAdvancedUnavailable_) {', '      if (false) {'),
+      '    if (_calendarAdvancedUnavailable_) { maps[c.id] = map; return; }',
+      '    if (false) { maps[c.id] = map; return; }'),
   }),
   'the not-enabled answer is not remembered': b => ({
     'Calendar.js': swap(b['Calendar.js'],
-      '          _calendarAdvancedUnavailable_ = true;', '          ;'),
+      '        _calendarAdvancedUnavailable_ = true;', '        ;'),
   }),
   'a transient failure is taken as "the API is off"': b => ({
     'Calendar.js': swap(b['Calendar.js'],
-      '        if (googleApiNotEnabled_(tzErr.message)) {', '        if (true) {'),
+      '      if (googleApiNotEnabled_(tzErr.message)) {', '      if (true) {'),
   }),
   'the wording list widens to a bare "is disabled"': b => ({
     'ApiHealth.js': swap(b['ApiHealth.js'],
@@ -76,24 +77,24 @@ const CONTROLS = {
   }),
   'health is recorded once per calendar, inside the loop': b => {
     const s = b['Calendar.js'];
-    const rec = "    if (activeCalendars.length && !advAlreadyDown) {\n" +
-                "      recordApiHealth_('googlecalendar-advanced', tzOk, tzErrText, 0);\n" +
-                "    }";
+    const rec = "  if (list.length && !advAlreadyDown) {\n" +
+                "    recordApiHealth_('googlecalendar-advanced', tzOk, tzErrText, 0);\n" +
+                "  }";
     if (s.indexOf(rec) === -1) throw new Error('the health record moved');
     return { 'Calendar.js': s.replace(rec, '').replace(
-      '      calTzMaps[c.calendar.getId()] = map;\n    });',
-      '      calTzMaps[c.calendar.getId()] = map;\n' +
-      "      recordApiHealth_('googlecalendar-advanced', tzOk, tzErrText, 0);\n    });") };
+      '    maps[c.id] = map;\n  });',
+      '    maps[c.id] = map;\n' +
+      "    recordApiHealth_('googlecalendar-advanced', tzOk, tzErrText, 0);\n  });") };
   },
   'nothing is recorded at all, as before': b => ({
     'Calendar.js': swap(b['Calendar.js'],
-      '    if (activeCalendars.length && !advAlreadyDown) {',
-      '    if (false) {'),
+      '  if (list.length && !advAlreadyDown) {',
+      '  if (false) {'),
   }),
   'a second scan re-records the same failure': b => ({
     'Calendar.js': swap(b['Calendar.js'],
-      '    if (activeCalendars.length && !advAlreadyDown) {',
-      '    if (activeCalendars.length) {'),
+      '  if (list.length && !advAlreadyDown) {',
+      '  if (list.length) {'),
   }),
 
   // ---- the consumers -------------------------------------------------------
@@ -130,7 +131,46 @@ const CONTROLS = {
   'TestBench reports a stale advanced-service verdict': b => ({
     'TestBench.js': swap(b['TestBench.js'], '    invalidateCalendarAdvanced_();\n', ''),
   }),
+
+  // ---- the second copy, restored -------------------------------------------
+  // webGetItinerary_ had its own loop with a log-only catch, so the same failure the
+  // morning scan reported was swallowed here, once per trusted calendar.
+  'webGetItinerary_ gets its own copy of the pass back': b => ({
+    'WebApp.js': swap(b['WebApp.js'],
+      '        var tzByCal = fetchEventTimezoneMap_(\n' +
+      '          itinTrustedCals.map(function(cal) { return { id: cal.getId(), name: cal.getName() }; }),\n' +
+      '          startDt, endDt);',
+      '        var tzByCal = {};\n' +
+      '        itinTrustedCals.forEach(function(cal) {\n' +
+      '          try { tzByCal[cal.getId()] = Calendar.Events.list(cal.getId(), {}); }\n' +
+      '          catch (e) { Logger.log(e.message); }\n' +
+      '        });'),
+  }),
+  'the generators lose their skipEventTz saving': b => ({
+    'WebApp.js': swap(b['WebApp.js'], '      if (!skipEventTz) {', '      if (true) {'),
+  }),
+
+  // ---- the weekend memo's write --------------------------------------------
+  'weekend memo event: failure goes back to log-only': b => ({
+    'WeekendPlanner.js': swap(b['WeekendPlanner.js'],
+      "    recordApiHealth_('googlecalendar-advanced', false, 'weekend memo event insert: ' + e.message, 0);\n", ''),
+  }),
+  'weekend memo event: a created one is never recorded as healthy': b => ({
+    'WeekendPlanner.js': swap(b['WeekendPlanner.js'],
+      "    recordApiHealth_('googlecalendar-advanced', true, '', 0);\n", ''),
+  }),
+  'weekend memo event: the failure becomes fatal instead of reported': b => ({
+    'WeekendPlanner.js': swap(b['WeekendPlanner.js'],
+      "    recordApiHealth_('googlecalendar-advanced', false, 'weekend memo event insert: ' + e.message, 0);\n    return null;",
+      "    recordApiHealth_('googlecalendar-advanced', false, 'weekend memo event insert: ' + e.message, 0);\n    throw e;"),
+  }),
 };
+
+// Routed by an exact prefix, not by the word "memo": this file's events-CACHE controls
+// are also called "the memo", and a loose /memo/ sent five of them at the wrong test,
+// where they reported NOTHING BIT for the entirely wrong reason.
+const TEST_FOR = name => (name.indexOf('weekend memo event:') === 0
+  ? 'test_weekendmemo_dryrun.js' : 'test_calendarscan.js');
 
 let allBit = true;
 Object.keys(CONTROLS).forEach(name => {
@@ -146,7 +186,7 @@ Object.keys(CONTROLS).forEach(name => {
     fs.writeFileSync(path.join(OUT, f), files[f]);
   });
 
-  const r = cp.spawnSync('node', ['test_calendarscan.js'], {
+  const r = cp.spawnSync('node', [TEST_FOR(name)], {
     cwd: __dirname, encoding: 'utf8',
     env: Object.assign({}, process.env, { VERA_ROOT: OUT }),
   });
