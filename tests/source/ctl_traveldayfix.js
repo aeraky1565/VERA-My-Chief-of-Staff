@@ -21,6 +21,14 @@ const FILES = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js'));
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
+// Replacement through a FUNCTION: String.replace expands `$` patterns in a string
+// replacement, and these bodies are full of them.
+const swapTdb = (b, from, to) => {
+  const src = b['TravelDayBriefing.js'];
+  if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 60));
+  return src.replace(from, function() { return to; });
+};
+
 const CONTROLS = {
   // ---- the bug itself, restored --------------------------------------------
   // The wording list moved to googleApiNotEnabled_ (ApiHealth.js) when the Calendar
@@ -130,6 +138,39 @@ const CONTROLS = {
     if (s2.indexOf(anchor) === -1) throw new Error('the throw guard moved');
     return { 'TravelDayBriefing.js': s2.replace(anchor, '    throw e;') };
   },
+  // ---- the key-restriction verdict ------------------------------------------
+  'the key-restriction 403 goes back to "unrecognised"': b => {
+    const s2 = b['TravelDayBriefing.js'];
+    const start = s2.indexOf("  if (b.indexOf('not authorized to use this service or api') !== -1 ||");
+    const end   = s2.indexOf("  if (b.indexOf('referer') !== -1", start);
+    if (start === -1 || end === -1) throw new Error('the key-restriction branch moved');
+    return { 'TravelDayBriefing.js': s2.slice(0, start) + s2.slice(end) };
+  },
+  // Both are restrictions with incompatible fixes, so the order is the behaviour.
+  'the referrer branch is checked first, naming the wrong fix': b => {
+    const s2 = b['TravelDayBriefing.js'];
+    const kStart = s2.indexOf("  if (b.indexOf('not authorized to use this service or api') !== -1 ||");
+    const kEnd   = s2.indexOf("  if (b.indexOf('referer') !== -1", kStart);
+    const rEnd   = s2.indexOf("  if (b.indexOf('billing')", kEnd);
+    if (kStart === -1 || kEnd === -1 || rEnd === -1) throw new Error('branches not found');
+    return { 'TravelDayBriefing.js':
+      s2.slice(0, kStart) + s2.slice(kEnd, rEnd) + s2.slice(kStart, kEnd) + s2.slice(rEnd) };
+  },
+  'it only matches the first phrase, not the restrictions wording': b => ({
+    'TravelDayBriefing.js': swapTdb(b,
+      "  if (b.indexOf('not authorized to use this service or api') !== -1 ||\n" +
+      "      b.indexOf('api restrictions settings') !== -1) {",
+      "  if (b.indexOf('not authorized to use this service or api') !== -1) {"),
+  }),
+  // The shared predicate learning this wording would name the wrong remedy here AND
+  // leak into the Calendar advanced service, which has no API-key restriction list.
+  'googleApiNotEnabled_ swallows it as a disabled API': b => ({
+    'ApiHealth.js': b['ApiHealth.js'].replace(
+      "         t.indexOf('accessnotconfigured')            !== -1;",
+      "         t.indexOf('accessnotconfigured')            !== -1 ||\n" +
+      "         t.indexOf('not authorized to use this')     !== -1;"),
+  }),
+
   'the TestBench entry needs a knob again': b => ({
     'TestBench.js': b['TestBench.js'].replace(
       '  var r = probeStaticMapsKey_();',

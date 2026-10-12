@@ -264,6 +264,48 @@ console.log('\nthe verdict is decided by Google’s actual words');
                      'or it is disabled.') === 'not_enabled',
         'the same sentence shape the Calendar advanced service produces');
 
+  // THE KEY-RESTRICTION 403, captured 12 Oct from tbMapsStaticKey(). A third distinct
+  // cause, not a third wording: the API is ON and this key may not call it, so the fix
+  // is the Credentials page, not the Library's Enable button.
+  const KEY_RESTRICTED = 'The Google Maps Platform server rejected your request. This ' +
+    'API key is not authorized to use this service or API. Please check the API ' +
+    'restrictions settings of your API key in the Google Cloud Console to ensure that ' +
+    'all of the APIs and services you need to use are correctly specified in the list ' +
+    'of enabled APIs. For more information, see ' +
+    'https://developers.google.com/maps/api-key-best-practices.';
+  check('a key that may not call the API is named as such',
+        verdict(403, KEY_RESTRICTED) === 'key_restricted',
+        verdict(403, KEY_RESTRICTED) + ' — this exact text came back as "unrecognised"');
+  {
+    const lines = vm.runInContext(
+      'travelMapVerdict_(403,' + JSON.stringify(KEY_RESTRICTED) + ').lines.join("|")', ctx);
+    check('…pointing at CREDENTIALS, not the Library',
+          /CREDENTIALS/.test(lines) && /API restrictions/.test(lines), lines);
+    check('…and saying so explicitly, since the two look alike',
+          /NOT the Library/.test(lines), lines);
+    check('…never telling you to enable the API',
+          !/enable "Maps Static API"/.test(lines),
+          lines + ' — that button already says Enabled; sending you there is a dead end');
+  }
+  // EACH PHRASE ON ITS OWN. The captured body carries both, so a test using only it
+  // cannot tell whether the second matcher does anything — a control that drops it
+  // stayed green until this existed. The second sentence is the durable half: it names
+  // the setting to change, and survives Google rewording the first.
+  check('the restrictions sentence alone is enough',
+        verdict(403, 'Please check the API restrictions settings of your API key.') === 'key_restricted',
+        verdict(403, 'Please check the API restrictions settings of your API key.'));
+  check('…and the authorization sentence alone is too',
+        verdict(403, 'This API key is not authorized to use this service or API.') === 'key_restricted');
+
+  // The predicate Calendar shares must NOT learn this wording: same words, wrong remedy.
+  check('googleApiNotEnabled_ stays blind to it',
+        vm.runInContext('googleApiNotEnabled_(' + JSON.stringify(KEY_RESTRICTED) + ')', ctx) === false,
+        'it is shared with the Calendar advanced service, which has no API-key list');
+  // Branch ORDER, pinned. Both are restrictions; their fixes are incompatible.
+  check('a body matching BOTH restriction kinds reads as the key one',
+        verdict(403, KEY_RESTRICTED + ' The provided API key has referer restrictions.') === 'key_restricted',
+        'the API-restriction list is the gate the request actually hit');
+
   check('a referrer restriction is named',
         verdict(403, 'The provided API key has referer restrictions that do not match.') === 'restricted');
   check('…and an IP restriction',

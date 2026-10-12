@@ -2847,7 +2847,7 @@ function probeStaticMapsKey_() {
  * @param {number} code  HTTP status
  * @param {string} body  the response body, as returned
  * @returns {{kind: string, lines: Array<string>}} kind is one of not_enabled,
- *          restricted, billing, signing, bad_marker, unknown
+ *          key_restricted, restricted, billing, signing, bad_marker, unknown
  */
 function travelMapVerdict_(code, body) {
   var b = String(body == null ? '' : body).toLowerCase();
@@ -2863,6 +2863,38 @@ function travelMapVerdict_(code, body) {
       '  Fix: Cloud Console -> APIs & Services -> enable "Maps Static API".',
     ] };
   }
+
+  // THE API IS ON AND THIS KEY MAY NOT CALL IT — a different fault from the one above,
+  // with a different fix, and the two read almost identically to anyone who has not hit
+  // both. Observed 12 Oct:
+  //
+  //   "This API key is not authorized to use this service or API. Please check the
+  //    API restrictions settings of your API key in the Google Cloud Console..."
+  //
+  // It reached the catch-all because googleApiNotEnabled_ looks for "not authorized to
+  // use this api" and the body says "not authorized to use this SERVICE OR api". Three
+  // words apart — the same near-miss that sent the 10 Oct body to "unrecognised".
+  //
+  // Deliberately NOT added to googleApiNotEnabled_: that predicate is shared with the
+  // Calendar advanced service, and this wording is about one Maps key's restriction
+  // list, not about an API being switched off for the project. Naming the wrong remedy
+  // sends you to a Library page that already says Enabled.
+  //
+  // Checked BEFORE the referrer/IP branch below. Both are restrictions, their fixes are
+  // incompatible, and this is the gate the request actually hit.
+  if (b.indexOf('not authorized to use this service or api') !== -1 ||
+      b.indexOf('api restrictions settings') !== -1) {
+    return { kind: 'key_restricted', lines: [
+      'DIAGNOSIS — the API is reachable but THIS KEY is not allowed to call it.',
+      "  The key's API restriction list does not include Maps Static API. It almost",
+      '  certainly lists Distance Matrix, which is why travel times work.',
+      '  Fix: Cloud Console -> APIs & Services -> CREDENTIALS -> open the key ->',
+      '  API restrictions -> add "Maps Static API" to the allowed list.',
+      '  This is NOT the Library "Enable" button: that switches the API on for the',
+      '  whole project, which is a different gate from what one key may call.',
+    ] };
+  }
+
   if (b.indexOf('referer') !== -1 || b.indexOf('referrer') !== -1 || b.indexOf('ip address') !== -1) {
     return { kind: 'restricted', lines: [
       'DIAGNOSIS — the key is RESTRICTED in a way that excludes this call.',
