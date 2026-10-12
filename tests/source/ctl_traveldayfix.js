@@ -87,6 +87,54 @@ const CONTROLS = {
     'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
       '      \'  Fix: Cloud Console -> APIs & Services -> enable "Maps Static API".\',\n', ''),
   }),
+
+  // ---- the key probe --------------------------------------------------------
+  // Each of these keeps the probe compiling and makes it answer wrongly, which is the
+  // only failure mode that matters in a function whose entire output is a yes or a no.
+  'the probe fetches even with no key': b => ({
+    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
+      "    return { ok: false, code: 0, contentType: '', body: '', verdict: null, reason: 'no key' };",
+      '    ;'),
+  }),
+  'the probe stops classifying the failure': b => ({
+    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
+      '    verdict:     ok ? null : travelMapVerdict_(code, body),',
+      '    verdict:     null,'),
+  }),
+  'the probe passes the STATUS instead of the body to the verdict': b => ({
+    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
+      '    verdict:     ok ? null : travelMapVerdict_(code, body),',
+      "    verdict:     ok ? null : travelMapVerdict_(code, ''),"),
+  }),
+  // Addresses reintroduce geocoding, so a 400 for an unresolvable place looks exactly
+  // like the API being off — the ambiguity the coordinates exist to remove.
+  'the probe markers go back to addresses': b => ({
+    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
+      "var STATIC_MAP_PROBE_MARKERS_ = ['38.9072,-77.0369', '41.8781,-87.6298'];",
+      "var STATIC_MAP_PROBE_MARKERS_ = ['Washington DC', 'Chicago IL'];"),
+  }),
+  'a one-marker probe, which no real map is': b => ({
+    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
+      "var STATIC_MAP_PROBE_MARKERS_ = ['38.9072,-77.0369', '41.8781,-87.6298'];",
+      "var STATIC_MAP_PROBE_MARKERS_ = ['38.9072,-77.0369'];"),
+  }),
+  'any 200 counts as a working map': b => ({
+    'TravelDayBriefing.js': b['TravelDayBriefing.js'].replace(
+      "  var ok = code === 200 && ctype.toLowerCase().indexOf('image') === 0;",
+      '  var ok = code === 200;'),
+  }),
+  'a thrown request escapes the probe': b => {
+    const s2 = b['TravelDayBriefing.js'];
+    const anchor = "    return { ok: false, code: 0, contentType: '', body: String(e.message || e),\n" +
+                   "             verdict: null, reason: 'fetch threw' };";
+    if (s2.indexOf(anchor) === -1) throw new Error('the throw guard moved');
+    return { 'TravelDayBriefing.js': s2.replace(anchor, '    throw e;') };
+  },
+  'the TestBench entry needs a knob again': b => ({
+    'TestBench.js': b['TestBench.js'].replace(
+      '  var r = probeStaticMapsKey_();',
+      '  var r = probeStaticMapsKey_(TB_DATE);'),
+  }),
 };
 
 let allBit = true;

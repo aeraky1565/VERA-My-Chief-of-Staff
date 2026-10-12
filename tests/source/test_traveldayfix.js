@@ -33,6 +33,21 @@ function extractFn(src, name) {
   throw new Error('unbalanced: ' + name);
 }
 
+/** A top-level `var NAME = …;` lifted whole, for the fixtures a function reads. */
+function extractVar(src, name) {
+  const re = new RegExp('^var ' + name + '\\s*=', 'm');
+  const m = re.exec(src);
+  if (!m) throw new Error('not found: var ' + name);
+  let depth = 0;
+  for (let j = m.index; j < src.length; j++) {
+    const c = src[j];
+    if (c === '[' || c === '{') depth++;
+    else if (c === ']' || c === '}') depth--;
+    else if (c === ';' && depth === 0) return src.slice(m.index, j + 1);
+  }
+  throw new Error('unterminated: var ' + name);
+}
+
 // ============ the markers ==================================================
 
 function mapCtx() {
@@ -287,6 +302,126 @@ console.log('\nthe verdict is decided by Google’s actual words');
         'without the status gate any body mentioning it would be misread');
   check('…and on a 200 either',
         verdict(200, 'not activated') === 'unknown');
+}
+
+// THE KEY PROBE — the question the diagnostic above cannot answer on demand.
+//
+// diagnoseTravelDayMap_ refuses to fetch without a travel day carrying two mappable
+// stops, so "is the Maps Static API on?" meant guessing a date and waiting on the
+// enrichment's web searches. probeStaticMapsKey_ needs neither, and this drives the real
+// one over a stubbed UrlFetchApp.
+console.log('\nthe Maps Static key probe');
+{
+  function probeCtx(opts) {
+    opts = opts || {};
+    const fetched = [];
+    const ctx = {
+      String, Object, Array, Number, console, encodeURIComponent,
+      PropertiesService: { getScriptProperties: () => ({
+        getProperty: () => (opts.key === undefined ? 'AIzaTESTKEY0000000000' : opts.key),
+      }) },
+      UrlFetchApp: { fetch: (url) => {
+        fetched.push(url);
+        if (opts.throws) throw new Error('DNS failure');
+        return {
+          getResponseCode: () => opts.code,
+          getHeaders:      () => ({ 'Content-Type': opts.ctype || '' }),
+          getContentText:  () => opts.body || '',
+        };
+      } },
+      _fetched: fetched,
+    };
+    vm.createContext(ctx);
+    vm.runInContext(extractFn(AH, 'googleApiNotEnabled_'), ctx);
+    vm.runInContext(extractFn(TDB, 'travelMapVerdict_'), ctx);
+    vm.runInContext(extractVar(TDB, 'STATIC_MAP_PROBE_MARKERS_'), ctx);
+    vm.runInContext(extractFn(TDB, 'probeStaticMapsKey_'), ctx);
+    return ctx;
+  }
+  const probe = c => vm.runInContext('probeStaticMapsKey_()', c);
+
+  // No key: it must not fetch AT ALL. Asserted on the call count, because "it returned
+  // something sensible" is true of a version that fetches and then gives up.
+  {
+    const c = probeCtx({ key: '' });
+    const r = probe(c);
+    check('with no key it stops before fetching',
+          r.reason === 'no key' && c._fetched.length === 0,
+          JSON.stringify(r) + ' fetches: ' + c._fetched.length);
+  }
+
+  {
+    const c = probeCtx({ code: 200, ctype: 'image/png' });
+    const r = probe(c);
+    check('an image is a pass', r.ok === true && r.code === 200, JSON.stringify(r.ok));
+    check('…and carries no verdict to print', r.verdict === null);
+
+    const url = c._fetched[0];
+    check('it calls the same endpoint the email does',
+          url.indexOf('https://maps.googleapis.com/maps/api/staticmap?') === 0, url);
+    // Coordinates, not addresses: geocoding is the only other thing that can 400 this
+    // request, and a probe that can fail two ways answers neither.
+    check('…with coordinate markers, so geocoding cannot confound it',
+          /markers=[-0-9.]+%2C[-0-9.]+/.test(url) && !/[A-Za-z]{3,}\+/.test(url), url);
+    check('…two of them, as a real map has', (url.split('markers=').length - 1) === 2, url);
+  }
+
+  // A 200 that is not an image is Google answering with something other than a map.
+  {
+    const c = probeCtx({ code: 200, ctype: 'text/html', body: '<html>nope</html>' });
+    check('a non-image 200 is NOT a pass', probe(c).ok === false,
+          'calling that success is how a probe lies');
+  }
+
+  // The regression fixture: the body from the live 403 on 10 Oct.
+  {
+    const c = probeCtx({ code: 403, ctype: 'text/html',
+      body: 'The Google Maps Platform server rejected your request. This API is not ' +
+            'activated on your API project.' });
+    const r = probe(c);
+    check('the real 403 is reported as a failure', r.ok === false && r.code === 403);
+    check('…and NAMED as not-enabled', r.verdict && r.verdict.kind === 'not_enabled',
+          JSON.stringify(r.verdict && r.verdict.kind));
+    check('…pointing at the Cloud Console',
+          /enable "Maps Static API"/.test((r.verdict.lines || []).join('|')),
+          (r.verdict.lines || []).join('|'));
+  }
+
+  // The trap a referrer-restricted key can never escape in email.
+  {
+    const c = probeCtx({ code: 403, ctype: 'text/html',
+      body: 'The provided API key has referer restrictions that do not match.' });
+    const r = probe(c);
+    check('a referrer restriction is named as such',
+          r.verdict && r.verdict.kind === 'restricted',
+          JSON.stringify(r.verdict && r.verdict.kind) +
+          ' — Gmail sends no referrer, so that key can never work here');
+  }
+
+  {
+    // Run through a catch: the probe must SWALLOW a thrown request, and a version that
+    // rethrows would otherwise take this file down instead of failing the assertion
+    // that says so.
+    const c = probeCtx({ throws: true });
+    let r = null, threw = null;
+    try { r = probe(c); } catch (e) { threw = e.message; }
+    check('a thrown request is caught, not propagated',
+          threw === null && r && r.reason === 'fetch threw',
+          threw ? 'it escaped: ' + threw : JSON.stringify(r));
+  }
+
+  // The TestBench entry, and the promise it makes.
+  const tb = extractFn(TB, 'tbMapsStaticKey');
+  check('TestBench exposes it', /function tbMapsStaticKey\(\)/.test(TB));
+  check('…and never logs the key itself', !/apiKey/.test(tb) && !/GOOGLE_STATIC_MAPS_API_KEY.{0,40}Logger/.test(tb));
+  check('…it reads no knobs', !/TB_DATE|TB_TRIP_LABEL|TB_AIRPORTS/.test(tb),
+        'needing a knob is the whole thing this exists to avoid');
+  check('…it never sends mail', !/sendVeraEmail_|MailApp/.test(tb));
+  check('…nor writes a sheet', !/setValue|appendRow/.test(tb));
+  const pr = extractFn(TDB, 'probeStaticMapsKey_');
+  check('the probe reuses the verdict rather than its own matchers',
+        /travelMapVerdict_\(/.test(pr) && !/not activated/.test(pr),
+        'a private wording list here is exactly what 4dd60cc removed');
 }
 
 console.log('\nthe diagnostic’s own shape');

@@ -2754,6 +2754,81 @@ function diagnoseTravelDayMap_(dateStr) {
   }
 }
 
+// Two fixed points, as COORDINATES rather than addresses.
+//
+// Geocoding is the only other thing that can 400 a Static Maps request, and a probe
+// that can fail for two reasons answers neither — "is the API on?" would be
+// indistinguishable from "that address did not resolve". Coordinates take geocoding out
+// of the question entirely, which is the whole difference between this and
+// diagnoseTravelDayMap_, whose job IS the addresses.
+//
+// Two of them, because the real email never builds a one-marker map.
+var STATIC_MAP_PROBE_MARKERS_ = ['38.9072,-77.0369', '41.8781,-87.6298'];
+
+/**
+ * Does the Static Maps key actually work against the Maps Static API?
+ *
+ * The one question diagnoseTravelDayMap_ cannot answer on demand: that one refuses to
+ * fetch without a travel day carrying two mappable stops, so checking the API means
+ * guessing a date, editing TB_DATE, and waiting on enrichTravelItems_'s web searches.
+ * This needs no itinerary and no knobs, which matters because the answer is wanted from
+ * a phone.
+ *
+ * It cannot be inferred any other way. Nothing server-side fetches the map in normal
+ * operation — Gmail's proxy does, when the mail is opened — so the failure happens on
+ * Google's infrastructure, no health source records it, and the reader just sees a blank
+ * box. A deliberate probe is the only instrument there can be.
+ *
+ * Costs one Static Maps load per run. Billable, trivially so, and worth saying out loud
+ * in a function built to be run repeatedly.
+ *
+ * @returns {{ok: boolean, code: number, contentType: string, body: string,
+ *            verdict: Object, reason: string}} reason is set only when it never fetched
+ */
+function probeStaticMapsKey_() {
+  var apiKey = PropertiesService.getScriptProperties()
+                 .getProperty('GOOGLE_STATIC_MAPS_API_KEY') || '';
+  if (!apiKey) {
+    return { ok: false, code: 0, contentType: '', body: '', verdict: null, reason: 'no key' };
+  }
+
+  var url = 'https://maps.googleapis.com/maps/api/staticmap?size=120x120&' +
+    STATIC_MAP_PROBE_MARKERS_.map(function(m) { return 'markers=' + encodeURIComponent(m); }).join('&') +
+    '&key=' + encodeURIComponent(apiKey);
+
+  var resp;
+  try {
+    resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+  } catch (e) {
+    return { ok: false, code: 0, contentType: '', body: String(e.message || e),
+             verdict: null, reason: 'fetch threw' };
+  }
+
+  var code  = resp.getResponseCode();
+  var ctype = '';
+  try {
+    var h = resp.getHeaders() || {};
+    ctype = String(h['Content-Type'] || h['content-type'] || '');
+  } catch (he) {}
+  var body = '';
+  try { body = String(resp.getContentText() || ''); } catch (be) {}
+
+  // An image is the only pass. A 200 that is not an image means Google answered with
+  // something other than a map, and calling that success is how a probe lies.
+  var ok = code === 200 && ctype.toLowerCase().indexOf('image') === 0;
+
+  return {
+    ok:          ok,
+    code:        code,
+    contentType: ctype,
+    body:        body,
+    // The same classifier the email's diagnostic uses, so both name a failure the same
+    // way and neither can drift into its own private wording list.
+    verdict:     ok ? null : travelMapVerdict_(code, body),
+    reason:      '',
+  };
+}
+
 /**
  * Turns Google's HTTP status and response body into a named verdict.
  *

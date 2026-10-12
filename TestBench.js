@@ -260,6 +260,46 @@ function tbTravelDayMap() {
 }
 
 /**
+ * Is the Maps Static API switched on, and does the key reach it?
+ *
+ * NO KNOBS, NO ITINERARY. tbTravelDayMap above needs a travel day carrying two
+ * mappable stops before it will fetch anything, so using it to check the API means
+ * guessing a date, setting TB_DATE, and waiting on the enrichment's web searches —
+ * and a day with fewer than two stops answers nothing at all. This runs any day, in
+ * about a second, which is what you want when the question is yes or no.
+ *
+ * Fetches one small two-marker map. Reads only; costs a single Static Maps load.
+ */
+function tbMapsStaticKey() {
+  tbBanner_('Maps Static API key');
+  var r = probeStaticMapsKey_();
+
+  if (r.reason === 'no key') {
+    Logger.log('STOP — GOOGLE_STATIC_MAPS_API_KEY is not set.');
+    Logger.log('  Set it in Project Settings -> Script Properties. Without it the');
+    Logger.log('  travel email hides the whole "Today\'s Route" block.');
+    return;
+  }
+  if (r.reason === 'fetch threw') {
+    Logger.log('FAIL — the request threw: ' + r.body);
+    return;
+  }
+
+  Logger.log('HTTP ' + r.code + '   Content-Type: ' + (r.contentType || '(none)'));
+  if (r.ok) {
+    Logger.log('PASS — Google returned an image, so the API is enabled and the key reaches it.');
+    Logger.log('  If a real travel email still shows a blank box, the cause is the markers,');
+    Logger.log('  not the API: run tbTravelDayMap() on that trip day.');
+    return;
+  }
+
+  Logger.log('Google said:');
+  String(r.body || '(empty body)').split('\n').slice(0, 6)
+    .forEach(function(line) { Logger.log('  ' + line); });
+  if (r.verdict) r.verdict.lines.forEach(function(line) { Logger.log(line); });
+}
+
+/**
  * Why LOUNGE ACCESS is empty. Walks the five gates in order and stops at the
  * first that fails, printing every Card Perks row and whether it matched.
  *
