@@ -26,6 +26,7 @@ const CODE  = fs.readFileSync(ROOT + '/Code.js', 'utf8');
 const REM   = fs.readFileSync(ROOT + '/Reminders.js', 'utf8');
 const WX    = fs.readFileSync(ROOT + '/Weather.js', 'utf8');
 const TRIPS = fs.readFileSync(ROOT + '/Trips.js', 'utf8');
+const FIN   = fs.readFileSync(ROOT + '/Finance.js', 'utf8');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -193,6 +194,10 @@ function harness(opts) {
    // Real, not a fake: summing a tally across the alias set is the whole of what the
    // packing lookup now does, so a stub here would leave the count untested.
    extractFn(TRIPS, 'countForTripKeys_'),
+   // The bills block formats through fmtMoney_ and skips Income rows via
+   // isIncomeBillRow_. Both live in Finance.js; one global scope in Apps Script.
+   extractFn(FIN, 'fmtMoney_'),
+   extractFn(FIN, 'isIncomeBillRow_'),
    extractFn(REM,  'findNextFreeWindow_'),
    extractFn(CODE, 'buildCalPlanHtml_'),
    extractFn(CODE, 'getDaySequencingAnalysis_'),
