@@ -450,6 +450,49 @@ function fmtCurrency_(n) {
   return '$' + Number(Math.abs(n)).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+/**
+ * A money amount with its SIGN, for anywhere the sign carries meaning.
+ *
+ * -$310.00, $1,430.00, $49.99 — minus before the dollar, two decimals, separators.
+ *
+ * Not fmtCurrency_ above: that one takes Math.abs and rounds to whole dollars, because
+ * its callers (the Simple Ass Tracker rollups, the monthly spend comparison) convey
+ * direction in the surrounding words. Handing a credit to it prints "$310", which reads
+ * as money owed. Two formatters on purpose; neither is a bug.
+ *
+ * Replaces `' ($' + amount + ')'` at the bill call sites, which glued the dollar sign in
+ * front of a raw number and so rendered a -310 credit as "$-310" in the morning email.
+ *
+ * @param {*} n  anything numeric; '' / null / NaN return '' so callers can test truthiness
+ * @returns {string}
+ */
+function fmtMoney_(n) {
+  if (n === '' || n === null || n === undefined) return '';
+  var v = Number(n);
+  if (!isFinite(v)) return '';
+  return (v < 0 ? '-$' : '$') +
+    Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Is this Bills row money coming IN rather than a bill to pay?
+ *
+ * The Bills tab's Type column is 'Expense' | 'Income' (blank means Expense — see
+ * addBillTypeColumn in Code.js, which added the column to existing sheets). The
+ * cash-flow projection has always honoured it; every surface that shows a bill to a
+ * person or to Claude ignored it, so an Income row — a paycheck, per that function's
+ * own docstring — was announced as a bill due today.
+ *
+ * One predicate rather than the literal repeated at four call sites: the same reason
+ * dateCellToIso_ and googleApiNotEnabled_ are single implementations.
+ *
+ * @param {*} typeCell  the raw Type cell (BILL_HEADERS index 8)
+ * @returns {boolean}
+ */
+function isIncomeBillRow_(typeCell) {
+  return String(typeCell == null ? '' : typeCell).trim().toLowerCase() === 'income';
+}
+
 function toTitleCase_(str) {
   return str.replace(/\w\S*/g, function(w) {
     return w.charAt(0).toUpperCase() + w.substr(1).toLowerCase();

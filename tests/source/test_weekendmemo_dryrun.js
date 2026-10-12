@@ -191,5 +191,66 @@ console.log('\ntestWeekendMemo is reachable from the editor');
         /function runWeekendPlanner_\(/.test(WP));
 }
 
+// ============ the memo's calendar event, for real ==========================
+//
+// The planner test above stubs createWeekendMemoEvent_ out, which is right for a dry
+// run and meant this path had no coverage at all. It uses the ADVANCED service on
+// purpose — Calendar.Events.insert returns htmlLink, which the email links back to,
+// and CalendarApp.createAllDayEvent returns none. With the Google Calendar API switched
+// off that insert threw every week, the catch returned null, the memo went out with no
+// event and no link, and nothing anywhere recorded it.
+console.log('\nThe memo event records whether it was actually created');
+{
+  function memoCtx(insert) {
+    const health = [];
+    const logs   = [];
+    const ctx = {
+      String, Number, Date, Object, Array, JSON, Error, console,
+      Logger: { log: m => logs.push(String(m)) },
+      Session: { getScriptTimeZone: () => 'America/New_York' },
+      Utilities: { formatDate: (d, tz, pat) => {
+        const D = new Date(d), p2 = n => String(n).padStart(2, '0');
+        if (pat === 'yyyy-MM-dd') return D.getFullYear() + '-' + p2(D.getMonth()+1) + '-' + p2(D.getDate());
+        throw new Error('unhandled pattern ' + pat);
+      } },
+      readPTOConfig_:  () => ({ veraCalendarName: 'VERA' }),
+      getCalendarByName_: () => ({ getId: () => 'vera@group', getEvents: () => [] }),
+      clearOldWeekendMemoEvents_: () => {},
+      recordApiHealth_: (source, ok, detail) => health.push({ source, ok, detail }),
+      Calendar: { Events: { insert: insert } },
+      _health: health, _logs: logs,
+    };
+    vm.createContext(ctx);
+    vm.runInContext(extractFn(WP, 'createWeekendMemoEvent_'), ctx);
+    return ctx;
+  }
+  const SAT = new Date(2026, 9, 17);
+
+  const okCtx = memoCtx(() => ({ htmlLink: 'https://calendar.google.com/evt' }));
+  const link  = vm.runInContext('createWeekendMemoEvent_(SAT, "memo")',
+                                Object.assign(okCtx, { SAT: SAT }));
+  check('a created event returns its link', link === 'https://calendar.google.com/evt', link);
+  check('…and is recorded as healthy',
+        okCtx._health.length === 1 && okCtx._health[0].source === 'googlecalendar-advanced' &&
+        okCtx._health[0].ok === true, JSON.stringify(okCtx._health));
+
+  const badCtx = memoCtx(() => {
+    throw new Error('API call to calendar.events.insert failed with error: Google Calendar ' +
+                    'API has not been used in project 402807757311 before or it is disabled.');
+  });
+  const none = vm.runInContext('createWeekendMemoEvent_(SAT, "memo")',
+                               Object.assign(badCtx, { SAT: SAT }));
+  check('a failed insert still returns null, so the memo sends', none === null, JSON.stringify(none));
+  check('…and the failure is RECORDED, not just logged',
+        badCtx._health.length === 1 && badCtx._health[0].ok === false,
+        JSON.stringify(badCtx._health) + ' — this threw every week and said nothing');
+  check('…against the same source the timezone pass uses',
+        (badCtx._health[0] || {}).source === 'googlecalendar-advanced',
+        'one source for one API, or the banner reports half the story');
+  check('…carrying Google’s own message',
+        /has not been used in project/.test((badCtx._health[0] || {}).detail || ''),
+        (badCtx._health[0] || {}).detail);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

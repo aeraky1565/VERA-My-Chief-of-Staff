@@ -35,6 +35,83 @@ function invalidateUpcomingEvents_() { _upcomingEventsCache_ = {}; }
 function invalidateCalendarAdvanced_() { _calendarAdvancedUnavailable_ = false; }
 
 /**
+ * Per-event timezones for a set of calendars, via the Calendar Advanced Service.
+ *
+ * CalendarApp does not expose a per-event timezone; Calendar.Events.list does — it is
+ * what makes a flight read "11:30 PST" instead of in the script timezone.
+ *
+ * THE ONE COPY. getUpcomingEvents had this loop inline and webGetItinerary_ (WebApp.js)
+ * had a second one, so the same failure was reported by one and swallowed by the other:
+ * eleven silent throws per itinerary request. Callers differ only in which calendars
+ * they pass.
+ *
+ * The pass is PURE COST when the service is switched off, so the first "you have not
+ * enabled this API" answer is taken as final for the rest of the execution — the
+ * remaining calendars skip the call and keep an empty map, which is exactly the state
+ * the catch already produced, so every caller's `tz || scriptTz` fallback is unchanged.
+ *
+ * A TRANSIENT failure is deliberately NOT taken as final. One calendar timing out must
+ * not silence the other ten; only Google saying the API is off does that.
+ *
+ * ONE health record per call, not one per calendar: recordApiHealth_ writes Script
+ * Properties and can send an alert. ok = "at least one call worked" — a single flaky
+ * calendar among ten good ones is partial data, already logged, and not worth a daily
+ * banner line. It is skipped entirely when the service was already known down earlier
+ * in this execution, since re-recording would inflate consecutiveFailures and overwrite
+ * the real error message with an empty one.
+ *
+ * @param {Array<{id:string,name:string}>} calendars
+ * @param {Date} from
+ * @param {Date} to
+ * @returns {Object} calendarId → { eventId/iCalUID: { startTz, endTz } }
+ */
+function fetchEventTimezoneMap_(calendars, from, to) {
+  var maps = {};
+  var list = calendars || [];
+  var advAlreadyDown = _calendarAdvancedUnavailable_;
+  var tzOk = false, tzErrText = '';
+
+  list.forEach(function(c) {
+    var map = {};
+    if (_calendarAdvancedUnavailable_) { maps[c.id] = map; return; }
+    try {
+      var result = Calendar.Events.list(c.id, {
+        singleEvents: true,
+        maxResults:   500,
+        timeMin:      from.toISOString(),
+        timeMax:      to.toISOString(),
+        fields:       'items(id,iCalUID,start/timeZone,end/timeZone)',
+      });
+      (result.items || []).forEach(function(item) {
+        var entry = {
+          startTz: (item.start && item.start.timeZone) || null,
+          endTz:   (item.end   && item.end.timeZone)   || null,
+        };
+        if (item.id)      map[item.id]      = entry;
+        if (item.iCalUID) map[item.iCalUID] = entry;
+      });
+      tzOk = true;
+    } catch (tzErr) {
+      tzErrText = tzErr.message;
+      Logger.log('Calendar: timezone fetch failed for "' + (c.name || c.id) + '" — ' + tzErr.message);
+      if (googleApiNotEnabled_(tzErr.message)) {
+        _calendarAdvancedUnavailable_ = true;
+        Logger.log('Calendar: the Calendar advanced service is NOT ENABLED. Skipping the ' +
+                   'per-event timezone pass for the rest of this execution — every event ' +
+                   'falls back to the script timezone until the Google Calendar API is ' +
+                   'enabled on the Cloud project.');
+      }
+    }
+    maps[c.id] = map;
+  });
+
+  if (list.length && !advAlreadyDown) {
+    recordApiHealth_('googlecalendar-advanced', tzOk, tzErrText, 0);
+  }
+  return maps;
+}
+
+/**
  * Fetches all calendar events across all of the user's calendars
  * for the next CALENDAR_DAYS_AHEAD days.
  *
@@ -113,75 +190,12 @@ function getUpcomingEvents(daysAheadOverride) {
       activeCalendars.push({ calendar: calendar, calNameRaw: calNameRaw, calLabel: calLabel });
     });
 
-    // ---- Phase 2: Fetch per-event timezone info via Calendar Advanced Service --
-    // Each event may have its own timezone (e.g. a flight arriving in PST).
-    // CalendarApp doesn't expose per-event timezone; Calendar.Events.list() does.
-    //
-    // This pass is PURE COST when the advanced service is switched off, which it is
-    // on this project: it threw for every one of 11 calendars, and the only trace was
-    // a Logger.log line nobody reads. So the first "you have not enabled this API"
-    // answer is taken as final for the rest of the execution — the remaining calendars
-    // skip the call and keep an empty map, which is exactly the state the catch already
-    // produced, so Phase 3's `tzInfo.startTz || tz` fallback needs no change.
-    //
-    // A TRANSIENT failure is deliberately not taken as final. One calendar timing out
-    // must not silence the other ten; only Google saying the API is off does that.
-    var calTzMaps = {};   // calendarId → { eventId/iCalUID: { startTz, endTz } }
-    var advAlreadyDown = _calendarAdvancedUnavailable_;
-    var tzOk = false, tzErrText = '';
-    activeCalendars.forEach(function(c) {
-      const map = {};
-      if (_calendarAdvancedUnavailable_) {
-        calTzMaps[c.calendar.getId()] = map;
-        return;
-      }
-      try {
-        const result = Calendar.Events.list(c.calendar.getId(), {
-          singleEvents: true,
-          maxResults:   500,
-          timeMin:      now.toISOString(),
-          timeMax:      endDate.toISOString(),
-          fields:       'items(id,iCalUID,start/timeZone,end/timeZone)',
-        });
-        (result.items || []).forEach(function(item) {
-          const entry = {
-            startTz: (item.start && item.start.timeZone) || null,
-            endTz:   (item.end   && item.end.timeZone)   || null,
-          };
-          if (item.id)      map[item.id]      = entry;
-          if (item.iCalUID) map[item.iCalUID] = entry;
-        });
-        tzOk = true;
-      } catch (tzErr) {
-        tzErrText = tzErr.message;
-        Logger.log('Calendar: timezone fetch failed for "' + c.calNameRaw + '" — ' + tzErr.message);
-        if (googleApiNotEnabled_(tzErr.message)) {
-          _calendarAdvancedUnavailable_ = true;
-          Logger.log('Calendar: the Calendar advanced service is NOT ENABLED. Skipping the ' +
-                     'per-event timezone pass for the rest of this execution — every event ' +
-                     'falls back to the script timezone until the Google Calendar API is ' +
-                     'enabled on the Cloud project.');
-        }
-      }
-      calTzMaps[c.calendar.getId()] = map;
-    });
-
-    // ONE health record per scan, not one per calendar: recordApiHealth_ writes Script
-    // Properties and can send an alert (ApiHealth.js). Nothing recorded this at all
-    // before, which is why a whole night of timezone fallbacks never reached the
-    // morning banner — the symptom (every event on the script timezone) was visible
-    // and its cause was not.
-    //
-    // ok = "at least one call worked". A single flaky calendar alongside ten good ones
-    // is partial timezone data, already logged above, and not worth a daily banner line;
-    // the API being off is, and that is the case this catches.
-    //
-    // Skipped entirely when the service was already known down earlier in this
-    // execution: re-recording would inflate consecutiveFailures and overwrite the real
-    // error message with an empty one.
-    if (activeCalendars.length && !advAlreadyDown) {
-      recordApiHealth_('googlecalendar-advanced', tzOk, tzErrText, 0);
-    }
+    // ---- Phase 2: Per-event timezones via the Calendar Advanced Service -----
+    // Shared with webGetItinerary_ (WebApp.js), which carried its own copy of this
+    // loop and so failed silently once per calendar while this one reported.
+    var calTzMaps = fetchEventTimezoneMap_(
+      activeCalendars.map(function(c) { return { id: c.calendar.getId(), name: c.calNameRaw }; }),
+      now, endDate);
 
     // ---- Phase 3: Fetch events and format with per-event timezone -----------
     const events = [];

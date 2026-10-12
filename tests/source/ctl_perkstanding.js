@@ -32,8 +32,12 @@ const CONTROLS = {
       "    if (isAutopay) return;             // on autopay — fully excluded from tracking\n    if (freq === 'Standing') return;\n\n    var results;"),
   }),
   'the prompt hardcodes a bare "amount $" again': b => ({
+    // The replacement goes through a FUNCTION. As a string, String.replace expands
+    // `$'` to "everything after the match", so this wrote a Code.js that did not parse
+    // — the control still showed as biting, on a SyntaxError rather than on the bare
+    // "amount $" it claims to restore.
     'Code.js': b['Code.js'].replace(/\(amount === '' \|\| amount === null[\s\S]*?: ', amount \$' \+ amount\) \+/,
-                                    "', amount $' + amount +"),
+                                    function() { return "', amount $' + amount +"; }),
   }),
   'period fields are not null-guarded': b => ({
     'WebApp.js': b['WebApp.js']

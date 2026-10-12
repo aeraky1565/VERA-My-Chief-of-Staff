@@ -2098,13 +2098,18 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
       billsData.forEach(function(r) {
         var name   = String(r[0] || '').trim();
         if (!name) return;
+        // Income is not a bill. The Bills tab holds both — a paycheck row is what
+        // addBillTypeColumn's docstring suggests putting there — and this section
+        // listed them as "DUE TODAY" alongside the money going out.
+        if (isIncomeBillRow_(r[8])) return;
         var dueDay = r[2] !== '' ? Number(r[2]) : null;
         var paid   = String(r[6] || '').trim() === currMonth;
         if (paid || dueDay === null) return;
         var daysUntil = dueDay - dayOfMon;
         if (daysUntil < 0) daysUntil += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
         if (daysUntil > 5) return;
-        var amtStr = r[1] !== '' ? ' ($' + Number(r[1]) + ')' : '';
+        var money  = fmtMoney_(r[1]);
+        var amtStr = money ? ' (' + money + ')' : '';
         var dueStr = daysUntil === 0 ? 'DUE TODAY' : 'due in ' + daysUntil + ' day' + (daysUntil === 1 ? '' : 's');
         focusRows.push('<p style="margin:0 0 4px;font-size:14px;color:#444444;">• <strong>' +
           escapeHtml_(name) + amtStr + '</strong> <span style="color:#e65100;font-size:13px;">— ' + dueStr + '</span></p>');

@@ -4371,36 +4371,29 @@ function webGetItinerary_(e, opts) {
         return cal.getId() === itinUserEmail || !!itinTrustedSet[cal.getName()];
       });
 
-      // Fetch per-event timezone via Calendar Advanced Service.
-      // CalendarApp doesn't expose per-event timezone; Calendar.Events.list() does.
-      // Keys stored as both resource id and iCalUID since ev.getId() returns iCalUID.
+      // Per-event timezones, so the Travel tab can render a flight's departure and
+      // arrival in their own local times.
       //
-      // Skippable: this is one extra API call per trusted calendar, and it only
-      // exists so the Travel tab can render a flight's departure and arrival in
-      // their own local times. Callers that just need dates, types and
-      // locations (the generators) pass skipEventTz and save the whole pass.
+      // This used to be its own copy of the loop in Calendar.js, with a catch that only
+      // logged — so when the advanced service is off it threw once per trusted calendar
+      // and nothing was recorded, while the identical failure in the morning scan was
+      // reaching the banner. One implementation now: fetchEventTimezoneMap_ carries the
+      // short-circuit and the single health record for both callers.
+      //
+      // Skippable: callers that just need dates, types and locations (the generators)
+      // pass skipEventTz and save the whole pass.
       var eventTzMap = {};  // eventId/iCalUID → { startTz, endTz }
-      if (!skipEventTz) itinTrustedCals.forEach(function(cal) {
-        try {
-          var result = Calendar.Events.list(cal.getId(), {
-            singleEvents: true,
-            maxResults:   500,
-            timeMin:      startDt.toISOString(),
-            timeMax:      endDt.toISOString(),
-            fields:       'items(id,iCalUID,start/timeZone,end/timeZone)',
-          });
-          (result.items || []).forEach(function(item) {
-            var entry = {
-              startTz: (item.start && item.start.timeZone) || null,
-              endTz:   (item.end   && item.end.timeZone)   || null,
-            };
-            if (item.id)      eventTzMap[item.id]      = entry;
-            if (item.iCalUID) eventTzMap[item.iCalUID] = entry;
-          });
-        } catch (tzErr) {
-          Logger.log('Itinerary: TZ fetch failed for ' + cal.getId() + ' — ' + tzErr.message);
-        }
-      });
+      if (!skipEventTz) {
+        var tzByCal = fetchEventTimezoneMap_(
+          itinTrustedCals.map(function(cal) { return { id: cal.getId(), name: cal.getName() }; }),
+          startDt, endDt);
+        // Flattened: this caller looks events up without knowing which calendar they
+        // came from, and ev.getId() returns the iCalUID, which the map also keys on.
+        Object.keys(tzByCal).forEach(function(calId) {
+          var m = tzByCal[calId];
+          Object.keys(m).forEach(function(k) { eventTzMap[k] = m[k]; });
+        });
+      }
 
       // Collected separately from `items` so the same real-world event added to
       // multiple trusted calendars (e.g. a flight on both the personal calendar

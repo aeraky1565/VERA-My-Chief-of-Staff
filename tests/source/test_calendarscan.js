@@ -27,6 +27,7 @@ const WX   = fs.readFileSync(ROOT + '/Weather.js', 'utf8');
 const CHAT = fs.readFileSync(ROOT + '/Chat.js', 'utf8');
 const WP   = fs.readFileSync(ROOT + '/WeekendPlanner.js', 'utf8');
 const TB   = fs.readFileSync(ROOT + '/TestBench.js', 'utf8');
+const WEB  = fs.readFileSync(ROOT + '/WebApp.js', 'utf8');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -175,6 +176,8 @@ function harness(opts) {
                             CAL.indexOf('};', CAL.indexOf('const EVENT_COLOR_NAMES')) + 2), ctx);
   vm.runInContext('var _upcomingEventsCache_ = {}; var _calendarAdvancedUnavailable_ = false;', ctx);
   [extractFn(AH,  'googleApiNotEnabled_'),
+   // The timezone pass is its own function now, shared with webGetItinerary_.
+   extractFn(CAL, 'fetchEventTimezoneMap_'),
    extractFn(CAL, 'getUpcomingEvents'),
    extractFn(CAL, 'getUpcomingEventsCached_'),
    extractFn(CAL, 'invalidateUpcomingEvents_'),
@@ -402,6 +405,25 @@ console.log('\nThe four duplicate consumers read the memo');
   check('Chat reads live too', CHAT.indexOf('getUpcomingEventsCached_') === -1,
         'a chat answer about the calendar must not be served from a memo filled before ' +
         'the user’s own edit');
+}
+
+console.log('\nThe timezone pass has exactly one implementation');
+{
+  // webGetItinerary_ carried its own copy of this loop, with a catch that only logged.
+  // So with the advanced service off it threw once per trusted calendar and recorded
+  // nothing, while the identical failure in the morning scan reached the banner — the
+  // same fault reported by one caller and swallowed by the other.
+  check('webGetItinerary_ no longer calls the advanced service itself',
+        WEB.indexOf('Calendar.Events.list') === -1,
+        'a second copy is a second failure mode nobody is told about');
+  check('…it calls the shared pass instead', /fetchEventTimezoneMap_\(/.test(WEB));
+  check('…and still honours skipEventTz',
+        /if \(!skipEventTz\) \{/.test(WEB),
+        'the generators skip the whole pass; that saving must survive the extraction');
+  check('the morning scan calls it too', /fetchEventTimezoneMap_\(/.test(CAL));
+  check('the helper is the only place that lists events',
+        (CAL.split('Calendar.Events.list(').length - 1) === 1,
+        'one call site, so the short-circuit and the health record cannot diverge');
 }
 
 console.log('\nTestBench can show both numbers');

@@ -211,13 +211,16 @@ function computeProactiveInsights_(context) {
     if (context.bills) {
       var dayOfMonth = today.getDate();
       context.bills.forEach(function(b) {
+        // Income is not a bill due — a paycheck row would have read "Bill due in 2 days".
+        if (b.isIncome) return;
         if (b.paid || b.dueDay === null) return;
         var daysUntilDue = b.dueDay - dayOfMonth;
         // Handle month-wrap: if dueDay < today, bill is due next month — only flag if close
         if (daysUntilDue < 0) daysUntilDue += new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
         if (daysUntilDue <= 7) {
           var urgency = daysUntilDue <= 2 ? 'HIGH' : (daysUntilDue <= 5 ? 'MEDIUM' : 'LOW');
-          var amtStr  = b.amount !== null ? ' ($' + b.amount + ')' : '';
+          var money   = fmtMoney_(b.amount);
+          var amtStr  = money ? ' (' + money + ')' : '';
           notices.push({ urgency: urgency, text: '💰 Bill due in ' + daysUntilDue + ' days: ' + b.bill + amtStr });
         }
       });
@@ -411,7 +414,8 @@ function buildChatSystemPrompt_(context) {
     ? '  (none)'
     : context.bills.map(function(b) {
         return '  [row:' + b.row + '] ' + b.bill +
-               (b.amount ? ' $' + b.amount : '') +
+               (b.isIncome ? ' [INCOME, not a bill]' : '') +
+               (b.amount ? ' ' + fmtMoney_(b.amount) : '') +
                ' (' + b.frequency + ')' +
                (b.dueDay ? ' due day ' + b.dueDay : '') +
                (b.paid ? ' ✓ PAID this month' : ' — UNPAID');
@@ -1188,14 +1192,20 @@ function buildChatContext_() {
       var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
       var tzB       = Session.getScriptTimeZone();
       var currMonth = Utilities.formatDate(new Date(), tzB, 'yyyy-MM');
-      bills = billData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+      // rowNum BEFORE the filter: these row numbers go to Claude as [row:N] and come
+      // back through ACTION:mark_bill_paid, which writes to that row. Indexed after
+      // the filter, one blank-name row above marks the WRONG bill paid.
+      bills = billData.map(function(r, i) { return { r: r, rowNum: i + 2 }; })
+        .filter(function(x) { return String(x.r[0]).trim(); }).map(function(x) {
+        var r = x.r;
         return {
-          row:       idx + 2,
+          row:       x.rowNum,
           bill:      String(r[0] || '').trim(),
           amount:    r[1] !== '' ? Number(r[1]) : null,
           dueDay:    r[2] !== '' ? Number(r[2]) : null,
           frequency: String(r[3] || 'Monthly').trim(),
           paid:      String(r[6] || '').trim() === currMonth,
+          isIncome:  isIncomeBillRow_(r[8]),
         };
       });
     }
@@ -1207,9 +1217,11 @@ function buildChatContext_() {
     var recSheet = ss.getSheetByName(TABS.RECIPES);
     if (recSheet && recSheet.getLastRow() >= 2) {
       var recData = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, RECIPE_HEADERS.length).getValues();
-      recipes = recData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+      recipes = recData.map(function(r, i) { return { r: r, rowNum: i + 2 }; })
+        .filter(function(x) { return String(x.r[0]).trim(); }).map(function(x) {
+        var r = x.r;
         return {
-          row:         idx + 2,
+          row:         x.rowNum,
           name:        String(r[0] || '').trim(),
           cuisine:     String(r[1] || '').trim(),
           ingredients: String(r[5] || '').trim(),
@@ -1226,13 +1238,15 @@ function buildChatContext_() {
     if (hiSheet && hiSheet.getLastRow() >= 2) {
       var hiData   = hiSheet.getRange(2, 1, hiSheet.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues();
       var todayHI  = new Date(); todayHI.setHours(0, 0, 0, 0);
-      homeItems = hiData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
+      homeItems = hiData.map(function(r, i) { return { r: r, rowNum: i + 2 }; })
+        .filter(function(x) { return String(x.r[0]).trim(); }).map(function(x) {
+        var r = x.r;
         var svcDays = null;
         if (r[5]) {
           try { svcDays = Math.round((new Date(r[5]) - todayHI) / 86400000); } catch (ex) {}
         }
         return {
-          row:            idx + 2,
+          row:            x.rowNum,
           item:           String(r[0] || '').trim(),
           category:       String(r[1] || '').trim(),
           nextService:    r[5] ? String(r[5]).substring(0, 10) : '',
@@ -1254,8 +1268,10 @@ function buildChatContext_() {
     var ideaSheet = ss.getSheetByName(TABS.IDEAS);
     if (ideaSheet && ideaSheet.getLastRow() >= 2) {
       var ideaData = ideaSheet.getRange(2, 1, ideaSheet.getLastRow() - 1, IDEA_HEADERS.length).getValues();
-      ideas = ideaData.filter(function(r) { return String(r[0]).trim(); }).map(function(r, idx) {
-        return { row: idx + 2,
+      ideas = ideaData.map(function(r, i) { return { r: r, rowNum: i + 2 }; })
+        .filter(function(x) { return String(x.r[0]).trim(); }).map(function(x) {
+        var r = x.r;
+        return { row: x.rowNum,
                  id:        String(r[0]||'').trim(),
                  dateAdded: String(r[1]||'').trim(),
                  idea:      String(r[2]||'').trim(),

@@ -306,10 +306,19 @@ console.log('\nWeek arithmetic');
 
 console.log('\nHistory reads past weeks, not future ones');
 {
-  const c = harness(weekRows('2026-09-21', { Mon:'Stew' })
-            .concat(weekRows('2026-09-28', { Tue:'Fish' }))
-            .concat(weekRows(WS,           { Wed:'Now'  }))
-            .concat(weekRows(WS2,          { Thu:'Later'})));
+  // Built relative to the REAL current Monday, by asking the real helpers for it.
+  // The fixed WS above is fine for arithmetic, and was wrong here: it hard-coded the
+  // week of 5 Oct as "this week", so the test passed on the 11th and failed on the
+  // 12th when that week became history. getMealPlanHistory_ compares against today.
+  const probe = harness([]);
+  const CUR   = run(probe, 'getCurrentWeekStart_()');
+  const PREV1 = run(probe, 'addWeeksToStart_(' + JSON.stringify(CUR) + ', -1)');
+  const PREV2 = run(probe, 'addWeeksToStart_(' + JSON.stringify(CUR) + ', -2)');
+  const NEXT  = run(probe, 'addWeeksToStart_(' + JSON.stringify(CUR) + ', 1)');
+  const c = harness(weekRows(PREV2, { Mon:'Stew' })
+            .concat(weekRows(PREV1, { Tue:'Fish' }))
+            .concat(weekRows(CUR,   { Wed:'Now'  }))
+            .concat(weekRows(NEXT,  { Thu:'Later'})));
   const hist = run(c, 'getMealPlanHistory_(3)').map(r => r.mealName).filter(Boolean);
   check('past dinners come back', hist.indexOf('Stew') !== -1 && hist.indexOf('Fish') !== -1,
         JSON.stringify(hist) + ' — with an unnormalised Date the `weekStart < current` ' +

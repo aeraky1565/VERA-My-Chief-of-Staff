@@ -353,6 +353,8 @@ function checkBillsDue_(now, hour, cfg) {
   data.forEach(function(row) {
     var billName = String(row[0] || '').trim();
     if (!billName) return;
+    // Income is not a bill — nudging about a paycheck as though it were due is noise.
+    if (isIncomeBillRow_(row[8])) return;
 
     var dueDay   = row[2] !== '' ? Number(row[2]) : null;
     var amount   = row[1] !== '' ? Number(row[1]) : null;
@@ -374,7 +376,8 @@ function checkBillsDue_(now, hour, cfg) {
     }
     if (wasRecentlySent_(ruleKey, 1440)) return; // Once per day per bill
 
-    var amtStr = amount !== null ? ' ($' + amount + ')' : '';
+    var money  = fmtMoney_(amount);
+    var amtStr = money ? ' (' + money + ')' : '';
     var dayStr = daysUntilDue === 0 ? 'DUE TODAY' : 'due in ' + daysUntilDue + ' day' + (daysUntilDue === 1 ? '' : 's');
 
     sendNudge_(

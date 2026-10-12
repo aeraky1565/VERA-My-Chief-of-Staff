@@ -158,6 +158,7 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
           frequency: String(r[3] || 'Monthly').trim(),
           paid:      paidVal === currMonth,
           notes:     String(r[7] || '').trim(),
+          isIncome:  isIncomeBillRow_(r[8]),
         });
       });
     }
@@ -165,7 +166,11 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
       ? 'No bills tracked.'
       : billsForPrompt.map(function(b) {
           var line = '- ' + b.bill;
-          if (b.amount !== null) line += ' ($' + b.amount + ')';
+          // Labelled rather than dropped: the day plan is better for knowing money is
+          // coming in, and worse for being told a paycheck is a bill to pay.
+          if (b.isIncome) line += ' [INCOME]';
+          var money = fmtMoney_(b.amount);
+          if (money) line += ' (' + money + ')';
           if (b.dueDay !== null) line += ' due day ' + b.dueDay;
           line += b.paid ? ' [PAID this month]' : ' [UNPAID]';
           if (b.frequency !== 'Monthly') line += ' [' + b.frequency + ']';

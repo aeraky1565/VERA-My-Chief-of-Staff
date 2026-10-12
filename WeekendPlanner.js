@@ -1008,9 +1008,16 @@ function createWeekendMemoEvent_(saturdayDate, memo) {
     }, cal.getId());
 
     Logger.log('createWeekendMemoEvent_: event created in "' + ptoCfg.veraCalendarName + '" on ' + dateStr);
+    recordApiHealth_('googlecalendar-advanced', true, '', 0);
     return created.htmlLink || null;
   } catch (e) {
+    // RECORDED, not just logged. This is a WRITE on the advanced service, and the catch
+    // below has always swallowed it: with the Google Calendar API switched off the
+    // insert threw every week, the memo went out with no event and no link back to it,
+    // and nothing anywhere said so. Returning null still keeps the memo sending — the
+    // point is that the failure is now visible, not that it becomes fatal.
     Logger.log('createWeekendMemoEvent_ error: ' + e.message);
+    recordApiHealth_('googlecalendar-advanced', false, 'weekend memo event insert: ' + e.message, 0);
     return null;
   }
 }
