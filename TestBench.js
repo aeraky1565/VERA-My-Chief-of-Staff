@@ -660,9 +660,65 @@ function tbProjectHealth() {
 }
 
 
+/**
+ * Can VERA read the planner sheet for the Net Worth tab (issue #126)? No knobs.
+ *
+ * Prints which sections were FOUND and how many rows each has — never an amount, a
+ * balance or a CD name. Logs outlive the moment; balances shouldn't sit in them.
+ *
+ * Also writes the bucket mapping into VERA's Config tab if that has never happened,
+ * so the tab's Asset class and Tax views work straight away.
+ */
+function tbNetWorth() {
+  tbBanner_('Net Worth (planner sheet)');
+  var cfg = getConfigValues();
+  var sheetId = String(cfg['planner_sheet_id'] || '').trim();
+  if (!sheetId) {
+    Logger.log('NOT SET UP — add a planner_sheet_id row to VERA’s Config tab, with the');
+    Logger.log('planner sheet’s ID as its value (the long part of its URL between /d/ and /edit).');
+    return;
+  }
+
+  var added = seedNetWorthMappingConfig_();
+  Logger.log(added ? 'Mapping: wrote ' + added + ' row(s) into Config.' : 'Mapping: already written before (left alone).');
+
+  var data;
+  try {
+    data = readPlannerSheet_(sheetId, nwMappingFromConfig_(getConfigValues()));
+  } catch (e) {
+    Logger.log('FAILED to open the planner sheet: ' + e.message);
+    Logger.log('Check the ID, and that this account can open the sheet.');
+    return;
+  }
+
+  var b = data.balances;
+  tbNetWorthLine_('Balances',          b, b.status === 'ok' ? (b.rows.length / b.owners.length) + ' bucket(s) × ' + b.owners.length + ' owner(s)' : undefined);
+  tbNetWorthLine_('Planner net worth', data.planner);
+  tbNetWorthLine_('Balances as of',    data.asOf, data.asOf.status === 'ok' ? data.asOf.iso : undefined);
+  tbNetWorthLine_('CDs',               data.cds,   data.cds.status   === 'ok' ? data.cds.items.length   + ' row(s)' : undefined);
+  tbNetWorthLine_('RSUs',              data.rsus,  data.rsus.status  === 'ok' ? data.rsus.items.length  + ' row(s)' : undefined);
+  tbNetWorthLine_('Planned spends',    data.plans, data.plans.status === 'ok' ? data.plans.items.length + ' row(s)' : undefined);
+
+  if (b.status === 'ok' && b.unmapped.length) {
+    Logger.log('Unmapped bucket(s): ' + b.unmapped.join(', ') +
+               ' — add networth_class:<key> and networth_tax:<key> rows in Config.');
+  }
+  if (data.cds.status === 'ok') {
+    var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    Logger.log('CDs maturing within 30 days (would flag tonight): ' + nwCdFlagsDue_(data.cds.items, today).length);
+  }
+}
+
+
 // ============================================================
 // HELPERS — private, not part of the index
 // ============================================================
+
+/** One tbNetWorth() line: found, or MISSING with the reason. Never an amount. */
+function tbNetWorthLine_(name, section, count) {
+  Logger.log((section.status === 'ok' ? '  found    ' : '  MISSING  ') + name +
+             (section.status === 'ok' ? (count !== undefined ? ' — ' + count : '') : ' — ' + section.reason));
+}
 
 function tbBanner_(what) {
   Logger.log('========================================');

@@ -1512,7 +1512,7 @@ the files they belong to, and nothing is reimplemented here.
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
 | 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbMapsStaticKey`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbFlightStatus` |
-| 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbProjects`, `tbProjectHealth` |
+| 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbNetWorth`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs
 

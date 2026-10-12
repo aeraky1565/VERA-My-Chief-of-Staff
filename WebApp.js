@@ -174,6 +174,7 @@ function doGet(e) {
       case 'add_bank_account':      return jsonOut_(webAddBankAccount_(e));
       case 'update_bank_account':   return jsonOut_(webUpdateBankAccount_(e));
       case 'delete_bank_account':   return jsonOut_(webDeleteBankAccount_(e));
+      case 'net_worth':             return jsonOut_(webGetNetWorth_());   // NetWorth.js — reads the planner sheet, never writes it
       case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
       case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
