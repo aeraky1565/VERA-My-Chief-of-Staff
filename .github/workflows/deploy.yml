@@ -7,7 +7,25 @@ on:
       - '*.js'
       - 'appsscript.json'
       - '!playwright.config.js'
+      # A change to the cadence should exercise the cadence. Without these two, the
+      # commit that rewrites the decision logic is the one commit that never runs it,
+      # and the first real test is an unrelated push days later. Such a run pushes
+      # (free, idempotent) and reports; it mints nothing unless it is marked.
+      - '.github/workflows/deploy.yml'
+      - 'scripts/clasp-parse.js'
+  # The weekly reconcile. It lives in THIS file so it inherits the concurrency group
+  # below and can never race regression.yml for the live /exec. Sunday 13:37 ET —
+  # regression.yml has no schedule, so nothing else in the group wakes then, and
+  # minute 37 keeps it out of the on-the-hour queue every other cron in the world
+  # joins.
+  schedule:
+    - cron: '37 17 * * 0'
   workflow_dispatch:
+
+# Read by the deploy and by the drift check. It was inline in one place until the
+# drift check needed it too, and two copies of a deployment id is one too many.
+env:
+  DEPLOYMENT_ID: AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta
 
 # Shares a group with regression.yml so the two never hold the live /exec at once —
 # see the comment there for what it cost. Queue, never cancel: a deploy interrupted
@@ -48,6 +66,24 @@ jobs:
       - name: Run tests
         run: node tests/run.js --node --controls
 
+  # A PUSH IS FREE; A DEPLOY SPENDS ONE OF 200 NON-DELETABLE VERSIONS.
+  #
+  # `clasp push` updates the project, and that is what time-driven triggers and the
+  # Apps Script editor run — nightlyRun, the morning email, every tb* testbench
+  # function is live the moment the push lands. `clasp deploy` mints a VERSION, and
+  # only the /exec web app that both dashboards call serves it. Google caps a project
+  # at 200 versions and offers no API to delete one; they are cleared by hand in the
+  # editor, and the ceiling blocked a deploy once already.
+  #
+  # So this job ALWAYS pushes and only sometimes deploys:
+  #
+  #   commit marked [deploy]   a change /exec serves       → version
+  #   workflow_dispatch        the manual escape hatch     → version
+  #   Sunday reconcile         only if /exec fell behind   → version, or nothing
+  #   anything else            trigger/editor-only change  → push only
+  #
+  # The reconcile is what makes opt-in safe. A forgotten marker costs at most a week
+  # of /exec lag, and costs no version at all when nothing drifted.
   deploy:
     needs: [fast]
     runs-on: ubuntu-latest
@@ -84,14 +120,80 @@ jobs:
       - name: Push to Apps Script
         run: clasp push --force
 
+      - name: Decide whether to deploy
+        id: decide
+        env:
+          # The marker is read off the pushed commits, not just the tip, so a push of
+          # several commits deploys if ANY of them warrants it.
+          MARKER: ${{ contains(toJSON(github.event.commits.*.message), '[deploy]') }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          HEAD_SHA=$(git rev-parse --short=7 HEAD)
+
+          SHOULD=false
+          REASON=skip
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            SHOULD=true; REASON=manual
+          elif [ "$MARKER" = "true" ]; then
+            SHOULD=true; REASON=marker
+          fi
+
+          # Read what /exec is actually serving. Needed for the drift decision on a
+          # scheduled run, and for the skip report on every other run — "deploy
+          # skipped" without the two shas beside it is how divergence turns into a
+          # mystery. A clasp that cannot answer must not fail the job, hence `|| true`.
+          OUT=$(clasp deployments 2>&1) || true
+          DEPLOYED=$(printf '%s' "$OUT" | node "$GITHUB_WORKSPACE/scripts/clasp-parse.js" deployed-sha "$DEPLOYMENT_ID" | cut -c1-7)
+
+          if [ "$EVENT" = "schedule" ] && [ "$SHOULD" != "true" ]; then
+            if [ -z "$DEPLOYED" ]; then
+              # FAIL OPEN. An unreadable description costs at most one version a week;
+              # failing closed would mean /exec lags forever and the log says nothing.
+              SHOULD=true; REASON=drift-unknown
+            elif [ "$DEPLOYED" != "$HEAD_SHA" ]; then
+              SHOULD=true; REASON=drift
+            fi
+          fi
+
+          echo "head=$HEAD_SHA"       >> "$GITHUB_OUTPUT"
+          echo "deployed=$DEPLOYED"   >> "$GITHUB_OUTPUT"
+          echo "should=$SHOULD"       >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON"       >> "$GITHUB_OUTPUT"
+          echo "event=$EVENT, marker=$MARKER, head=$HEAD_SHA, deployed=${DEPLOYED:-unreadable} -> deploy=$SHOULD ($REASON)"
+
+      # THIS STEP MUST NEVER FAIL THE JOB. It reports headroom; a clasp whose output
+      # shifts shape would otherwise be able to block a deploy on the strength of a
+      # warning nobody asked for.
+      - name: Warn near the version ceiling
+        continue-on-error: true
+        run: |
+          OUT=$(clasp versions 2>&1) || true
+          N=$(printf '%s' "$OUT" | node "$GITHUB_WORKSPACE/scripts/clasp-parse.js" version-count)
+          if [ -z "$N" ]; then
+            echo "::notice::Could not read the version count from clasp. Headroom below 200 is unknown."
+          elif [ "$N" -ge 180 ]; then
+            echo "::warning::$N of 200 Apps Script versions used. There is no API to delete one — open the Apps Script editor (Deploy > Manage deployments / project history) and clear old versions before the ceiling blocks a deploy."
+          else
+            echo "$N of 200 versions used."
+          fi
+
       - name: Deploy new version
+        if: steps.decide.outputs.should == 'true'
+        env:
+          REASON: ${{ steps.decide.outputs.reason }}
         run: |
           # Push has already succeeded by this point. If the deploy fails, head
           # and /exec have silently diverged — the new code is in the project but
           # the web app both dashboards call is still serving the old version.
           # That is the fact worth surfacing, and a bare non-zero exit hides it.
+          #
+          # The DESCRIPTION IS LOAD-BEARING: the weekly reconcile reads the sha back
+          # out of it to decide whether /exec has fallen behind. "Auto-deploy <sha>"
+          # is the contract, parsed by scripts/clasp-parse.js and asserted by
+          # tests/source/test_deploycadence.js. Prettify it and the reconcile
+          # silently stops reconciling.
           set +e
-          OUT=$(clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta \
+          OUT=$(clasp deploy --deploymentId "$DEPLOYMENT_ID" \
             --description "Auto-deploy $(git rev-parse --short HEAD)" 2>&1)
           CODE=$?
           echo "$OUT"
@@ -102,6 +204,33 @@ jobs:
               echo "::error::Meanwhile, functions run from the Apps Script EDITOR use the pushed head code, so manual runs already have this change."
             fi
             exit $CODE
+          fi
+          echo "Deployed $(git rev-parse --short HEAD) to /exec (reason: $REASON)."
+
+      - name: Report skipped deploy
+        if: steps.decide.outputs.should != 'true'
+        env:
+          HEAD_SHA: ${{ steps.decide.outputs.head }}
+          DEPLOYED: ${{ steps.decide.outputs.deployed }}
+          # WebApp.js is the only doGet/doPost file and its switch is every dashboard
+          # action, so a change to it is the likeliest forgotten marker. This is a
+          # warning, not reachability analysis — a dashboard-served change in any
+          # other file still needs the marker.
+          WEBAPP_TOUCHED: ${{ contains(toJSON(github.event.commits.*.modified), 'WebApp.js') || contains(toJSON(github.event.commits.*.added), 'WebApp.js') }}
+        run: |
+          MSG="Pushed $HEAD_SHA to Apps Script; no version minted. /exec is serving ${DEPLOYED:-an unreadable version}."
+          echo "::notice::$MSG"
+          {
+            echo "### Deploy skipped"
+            echo ""
+            echo "$MSG"
+            echo ""
+            echo "Triggers and the Apps Script editor already run this code. To put it on /exec:"
+            echo "mark a commit \`[deploy]\`, or run this workflow by hand. The Sunday reconcile"
+            echo "will deploy it anyway if it is still behind."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$WEBAPP_TOUCHED" = "true" ]; then
+            echo "::warning::This push changed WebApp.js — the /exec entry point — but was not marked [deploy], so the dashboards are still calling the old version."
           fi
 
       - name: Notify Slack on failure

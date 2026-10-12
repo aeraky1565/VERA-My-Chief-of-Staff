@@ -2957,3 +2957,37 @@ Run `push.ps1` — it handles everything automatically:
 4. Commits and pushes to GitHub (GitHub Pages redeploys within 2–5 minutes)
 
 The Web App URL never changes. Chat history is preserved in Script Properties across redeploys.
+
+### Step 10 — Deploy cadence in CI (why most pushes do not mint a version)
+
+A push to `main` touching a root `.js` file always runs `clasp push`. It does **not**
+always run `clasp deploy`, because those two cost different things:
+
+| | serves | cost |
+|---|---|---|
+| `clasp push` | time-driven triggers, the Apps Script editor, every `tb*` testbench function | free |
+| `clasp deploy` | `/exec` — the web app both dashboards call | one of **200** versions |
+
+Google caps a project at 200 versions and offers **no API to delete one**; they are
+cleared by hand in the editor, and the ceiling has already blocked a deploy once. So
+`.github/workflows/deploy.yml` mints a version only when one is needed:
+
+- **a commit message containing `[deploy]`** — mark it when the change is reachable from
+  `WebApp.js`'s `doGet`/`doPost` switch: a dashboard action, a reader behind one, or
+  `docs/` work that calls a new action. Leave it off when the change is reached only
+  from `nightlyRun`, an email, or `TestBench.js` — those run pushed head code and are
+  live the moment the push lands.
+- **running the workflow by hand** (Actions → Deploy to Apps Script → Run workflow) —
+  the escape hatch, and how to deploy a commit whose marker was forgotten.
+- **the Sunday reconcile** (`37 17 * * 0`) — it reads the sha out of the live
+  deployment's description and deploys only if `/exec` has fallen behind `main`. A
+  forgotten marker therefore costs at most a week of lag, and nothing at all when
+  nothing drifted.
+
+Every skipped deploy prints a notice naming both shas — what was pushed, and what
+`/exec` is still serving — so the gap is never silent. The workflow also warns once the
+project passes 180 versions; the warning can never fail the job.
+
+The description `Auto-deploy <short sha>` is **load-bearing**: the reconcile parses it
+(`scripts/clasp-parse.js`, tested by `tests/source/test_deploycadence.js`). `push.ps1`
+writes the same format for the same reason.

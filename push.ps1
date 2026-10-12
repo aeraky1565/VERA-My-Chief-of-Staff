@@ -54,7 +54,16 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host 'Deploying new version to live web app...' -ForegroundColor Yellow
-npx clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta --description "Auto-deployed" 2>&1 | Out-Host
+# The description carries the sha on purpose. CI's weekly reconcile reads it back to
+# decide whether /exec has fallen behind main, and "Auto-deployed" with no sha reads as
+# unknown — which makes EVERY Sunday spend a version until CI next deploys. Same format
+# as .github/workflows/deploy.yml, asserted by tests/source/test_deploycadence.js.
+#
+# This names the commit the deploy was made FROM: step 2 below commits afterwards, so
+# the sha is one behind the code now live. The reconcile then sees drift once and spends
+# one version re-deploying code /exec already has. One version, not one a week.
+$sha = (git rev-parse --short HEAD).Trim()
+npx clasp deploy --deploymentId AKfycbx1PHRWmKbmHcVoVx0l-sVaCwWvaXceq-h55Xi-MA06zfUNDdfipM7B0HL4Gzm0IMta --description "Auto-deploy $sha" 2>&1 | Out-Host
 
 Write-Host 'Apps Script: done.' -ForegroundColor Green
 Write-Host ''
