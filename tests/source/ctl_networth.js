@@ -70,7 +70,7 @@ const CONTROLS = {
     [NW]: swap(b[NW], '    if (days < 0 || days > NW_CD_FLAG_DAYS_) return;', '    if (days < 0 || days >= NW_CD_FLAG_DAYS_) return;'),
   }),
   'a CD flag is raised again every night': b => ({
-    [NW]: swap(b[NW], '    if (keys[f.key]) return;\n', ''),
+    ['Code.js']: swap(b['Code.js'], '    if (!f.key || keys[f.key]) return;\n', '    if (!f.key) return;\n'),
   }),
   'the flag key drops the maturity date, so a rolled-over CD never flags again': b => ({
     [NW]: swap(b[NW], "  return NW_CD_FLAG_PREFIX_ + slug + '_' + cd.matures;", '  return NW_CD_FLAG_PREFIX_ + slug;'),

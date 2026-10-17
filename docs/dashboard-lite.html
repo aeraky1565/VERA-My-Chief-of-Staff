@@ -6105,6 +6105,92 @@ const[simGoal,setSimGoal]=React.useState(null);// goal being simulated
 const[projections,setProjections]=React.useState({});// Compute projections client-side for display
 React.useEffect(function(){if(!goals||goals.length===0)return;var now=new Date();var projs={};goals.forEach(function(g){var remaining=g.targetAmount-g.currentAmount;if(remaining<=0){projs[g.id]={achieved:true};return;}if(!g.monthlyContribution){projs[g.id]={noContribution:true};return;}var r=(g.apy||0)/100/12;var months;if(r>0){var lo=0,hi=1200,mid=0;for(var iter=0;iter<80;iter++){mid=(lo+hi)/2;var fv=g.currentAmount*Math.pow(1+r,mid)+g.monthlyContribution*(Math.pow(1+r,mid)-1)/r;if(fv<g.targetAmount)lo=mid;else hi=mid;}months=mid;}else{months=remaining/g.monthlyContribution;}var projDate=new Date(now.getTime()+months*30.4375*86400000);var targetDate=g.targetDate?new Date(g.targetDate+'T12:00:00'):null;var daysEarlyOrLate=targetDate?Math.ceil((targetDate-projDate)/86400000):null;projs[g.id]={projectedDate:projDate.toISOString().slice(0,10),monthsRemaining:Math.round(months*10)/10,onTrack:targetDate?projDate<=targetDate:true,daysEarlyOrLate:daysEarlyOrLate};});setProjections(projs);},[goals]);React.useEffect(function(){if(goals===null&&onLoad)onLoad();},[]);if(goalsLoading||goals===null)return/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading financial goals…");var active=(goals||[]).filter(function(g){return g.status==='Active';});var achieved=(goals||[]).filter(function(g){return g.status==='Achieved';});var other=(goals||[]).filter(function(g){return g.status!=='Active'&&g.status!=='Achieved';});var totalTarget=active.reduce(function(s,g){return s+g.targetAmount;},0);var totalCurrent=active.reduce(function(s,g){return s+g.currentAmount;},0);var totalMonthly=active.reduce(function(s,g){return s+(g.monthlyContribution||0);},0);return/*#__PURE__*/React.createElement("div",null,active.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:20}},[{label:'Active Goals',value:active.length},{label:'Total Saved',value:fmtMoney(totalCurrent)+' / '+fmtMoney(totalTarget)},{label:'Monthly Committed',value:fmtMoney(totalMonthly)+'/mo'}].map(function(s){return/*#__PURE__*/React.createElement("div",{key:s.label,style:{background:'#141826',border:'1px solid #2a3050',borderRadius:10,padding:'12px 16px'}},/*#__PURE__*/React.createElement("div",{style:{fontSize:10,color:'#5c7080',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:4}},s.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:15,fontWeight:700,color:'#dde1f0'}},s.value));})),/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},/*#__PURE__*/React.createElement("div",{style:{fontSize:16,fontWeight:700,color:'#dde1f0'}},"🎯 Financial Goals"),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",onClick:()=>setModal('add')},"+ Add Goal")),goals.length===0&&/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:10}},"🎯"),/*#__PURE__*/React.createElement("div",null,"No financial goals yet."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:6}},"Add goals like House Down Payment or Travel Fund, then simulate what-if scenarios."),/*#__PURE__*/React.createElement("button",{className:"btn btn-primary",style:{marginTop:14},onClick:()=>apiGet(apiUrl,apiToken,{action:'seed_financial_goals'}).then(onLoad)},"Seed from Life Plan Doc")),active.map(function(g){return/*#__PURE__*/React.createElement(GoalCard,{key:g.id,goal:g,projection:projections[g.id],onEdit:setModal,onDelete:onDelete,onSimulate:setSimGoal,busy:busy});}),achieved.length>0&&/*#__PURE__*/React.createElement("div",{style:{marginTop:8}},/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4ade80',fontWeight:700,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.05em'}},"✓ Achieved"),achieved.map(function(g){return/*#__PURE__*/React.createElement(GoalCard,{key:g.id,goal:g,projection:projections[g.id],onEdit:setModal,onDelete:onDelete,onSimulate:setSimGoal,busy:busy});})),other.map(function(g){return/*#__PURE__*/React.createElement(GoalCard,{key:g.id,goal:g,projection:projections[g.id],onEdit:setModal,onDelete:onDelete,onSimulate:setSimGoal,busy:busy});}),modal&&/*#__PURE__*/React.createElement(GoalFormModal,{goal:modal==='add'?null:modal,busy:busy,onClose:()=>setModal(null),onSave:async function(form){if(modal==='add')await onAdd(form);else await onUpdate(modal.id,form);setModal(null);}}),simGoal&&/*#__PURE__*/React.createElement(ScenarioSimulatorModal,{goal:simGoal,apiUrl:apiUrl,apiToken:apiToken,busy:busy,onClose:()=>setSimGoal(null)}));}
 
+// ---- GenInputsBanner — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// What a packing list or a set of Discover picks was actually built from: the weather,
+// the destination, the time of year and the rest, each marked used / weak / missing.
+// Both dashboards carry this block byte-for-byte; test_geninputs_ui.js fails if they
+// drift. Plain React.createElement, so the same text runs in both pages.
+//
+// It fetches its own record (action generation_inputs) and refetches whenever `watch`
+// changes — pass the trip's list data, which is a new object after every generate.
+// apiUrl/apiToken are optional: the full dashboard's panels don't receive them, and
+// both pages keep them in localStorage under the same names.
+function genInputsDaysUntil_(tripKey) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(tripKey || ''));
+  if (!m) return null;
+  var t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((new Date(+m[1], +m[2] - 1, +m[3]) - t) / 86400000);
+}
+
+function GenInputsBanner(props) {
+  var e = React.createElement;
+  var kind = props.kind, tripKey = props.tripKey;
+  var url = props.apiUrl || (typeof localStorage !== 'undefined' && localStorage.getItem('vera_url')) || '';
+  var tok = props.apiToken || (typeof localStorage !== 'undefined' && localStorage.getItem('vera_token')) || '';
+  var s1 = React.useState(undefined), record = s1[0], setRecord = s1[1];   // undefined = loading, null = none
+  var s2 = React.useState(false), failed = s2[0], setFailed = s2[1];
+  var s3 = React.useState(null), open = s3[0], setOpen = s3[1];            // null = default for the state
+
+  React.useEffect(function() {
+    if (!url || !tok || !tripKey) return undefined;
+    var live = true;
+    setFailed(false);
+    apiGet(url, tok, { action: 'generation_inputs', tripKey: tripKey, kind: kind })
+      .then(function(d) { if (live) setRecord(d.record || null); })
+      .catch(function() { if (live) setFailed(true); });
+    return function() { live = false; };
+  }, [url, tok, tripKey, kind, props.watch]);
+
+  var box = { border: '1px solid #2a3a50', borderRadius: 8, padding: '10px 12px', marginBottom: 12, background: '#0b1626', fontSize: 12.5, color: '#c8d4e8' };
+
+  if (failed) return e('div', { className: 'gi-banner gi-failed', style: Object.assign({}, box, { color: '#6b7fa8' }) },
+    'Couldn’t load what ' + (kind === 'packing' ? 'this list was' : 'these picks were') + ' built from.');
+  if (record === undefined) return null;
+  if (record === null) {
+    if (!props.hasList) return null;
+    return e('div', { className: 'gi-banner gi-unknown', style: Object.assign({}, box, { borderColor: '#6b5a20' }) },
+      e('span', { style: { color: '#f0b429', fontWeight: 600 } }, '⚠ Built before VERA recorded its inputs. '),
+      'Regenerate to see what the ' + (kind === 'packing' ? 'list' : 'picks') + ' were built from' + (kind === 'packing' ? '. Your checked items are kept.' : '.'));
+  }
+
+  var factors  = record.factors || [];
+  var problems = factors.filter(function(f) { return f.status === 'weak' || f.status === 'missing'; });
+  var days     = genInputsDaysUntil_(tripKey);
+  var forecastNow = record.weatherMode === 'last_year' && days !== null && days >= 0 && days <= 14;
+  var isOpen   = open === null ? problems.length > 0 || forecastNow : open;
+  var when     = String(record.generatedAt || '').replace('T', ' ').slice(0, 16);
+  var icon = { used: '✓', weak: '⚠', missing: '⚠', none: '–' };
+  var tone = { used: '#4caf82', weak: '#f0b429', missing: '#ef5350', none: '#6b7fa8' };
+
+  var summary = problems.length
+    ? e('span', { style: { color: '#f0b429', fontWeight: 600 } }, '⚠ ' + problems.length + ' of ' + factors.length + ' inputs need attention')
+    : e('span', { style: { color: '#4caf82', fontWeight: 600 } }, '✓ Built from all ' + factors.length + ' inputs');
+
+  return e('div', { className: 'gi-banner' + (problems.length ? ' gi-has-problems' : ' gi-all-good'), style: Object.assign({}, box, problems.length ? { borderColor: '#6b5a20' } : null) },
+    e('button', {
+        className: 'gi-toggle', type: 'button', 'aria-expanded': isOpen ? 'true' : 'false',
+        onClick: function() { setOpen(!isOpen); },
+        style: { display: 'flex', width: '100%', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' } },
+      summary,
+      e('span', { style: { color: '#6b7fa8', fontSize: 11.5 } }, 'Generated ' + when + ' · ' + (isOpen ? 'hide' : 'show') + ' what it used')),
+    forecastNow ? e('div', { className: 'gi-forecast', style: { marginTop: 8, padding: '7px 9px', borderRadius: 6, background: 'rgba(92,158,255,.12)', color: '#8ab4f8' } },
+      'A real forecast is now available. Regenerate to use it' + (kind === 'packing' ? '. Your checked items are kept.' : '.')) : null,
+    isOpen ? e('div', { className: 'gi-factors', style: { display: 'grid', gap: 6, marginTop: 9 } }, factors.map(function(f) {
+      return e('div', { key: f.id, className: 'gi-factor gi-' + f.status, 'data-factor': f.id, style: { display: 'grid', gridTemplateColumns: '1.2em minmax(0,1fr)', gap: '0 6px' } },
+        e('span', { style: { color: tone[f.status] || '#6b7fa8', fontWeight: 700 } }, icon[f.status] || '–'),
+        e('div', { style: { minWidth: 0, overflowWrap: 'anywhere' } },
+          e('span', { style: { fontWeight: 600, color: '#dde1f0' } }, f.label + ': '),
+          e('span', { style: { color: f.status === 'used' ? '#c8d4e8' : (tone[f.status] || '#c8d4e8') } }, f.detail),
+          (f.status === 'weak' || f.status === 'missing') && f.hint
+            ? e('div', { style: { color: '#8a9abf', fontSize: 11.5, marginTop: 1 } }, f.hint) : null));
+    })) : null,
+    isOpen && record.kept && record.kept.length ? e('div', { className: 'gi-kept', style: { marginTop: 9, color: '#8a9abf', fontSize: 11.5 } },
+      'Kept from the previous list because you’d checked them: ' + record.kept.map(function(k) {
+        return (k.person ? k.person.charAt(0).toUpperCase() + k.person.slice(1) + ': ' : '') + k.item;
+      }).join(', ') + '.') : null);
+}
+// ---- /GenInputsBanner ----
+
 // ---- NetWorthTab (issue #126) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Both dashboards carry this block byte-for-byte; test_networth_ui.js fails if they
 // drift. Change it in one file, then paste the whole block into the other.
@@ -6496,7 +6582,7 @@ var knownCountries=React.useMemo(function(){var seen={};(entries||[]).forEach(fu
 function RecommendationsPanel({trips,recommendations,busy,onLoadRecs,onGenerateRecs,onAcceptRec,onDismissRec,onGoToItinerary}){const[expanded,setExpanded]=React.useState({});const[showDismissed,setShowDismissed]=React.useState({});const[filter,setFilter]=React.useState({});// { [tripKey]: 'all'|'dining'|'activities'|'added' }
 const DINING_TYPES={dining:1,reservation:1,coffee:1,nightlife:1,winery:1};const ACTIVITY_TYPES={city_tour:1,museum:1,beach:1,mountain:1,camera:1,show:1,spa:1,skiing:1,snorkeling:1,theme_park:1,shopping:1,market:1};function getFilter(tripKey){return filter[tripKey]||'all';}function setTripFilter(tk,val){setFilter(function(p){return Object.assign({},p,{[tk]:val});});}return/*#__PURE__*/React.createElement("div",null,trips.length===0&&/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:12}},"✨"),/*#__PURE__*/React.createElement("div",null,"No upcoming trips found.")),trips.map(function(t){const tripKey=t.startDate+'|'+t.label;const recData=recommendations[tripKey];const isLoading=recData==='loading';const recs=recData&&recData!=='loading'?recData:[];const isOpen=!!expanded[tripKey];const hasAiRecs=recs.some(function(r){return r.source==='ai';});// Filter recs for display
 const curFilter=getFilter(tripKey);const visibleRecs=recs.filter(function(r){if(r.status==='dismissed'&&!showDismissed[tripKey])return false;if(curFilter==='dining')return!!DINING_TYPES[r.type];if(curFilter==='activities')return!!ACTIVITY_TYPES[r.type];if(curFilter==='added')return r.status==='added';return true;// 'all'
-});const pendingCount=recs.filter(function(r){return r.status==='pending';}).length;const dismissedCount=recs.filter(function(r){return r.status==='dismissed';}).length;return/*#__PURE__*/React.createElement("div",{key:tripKey,style:{marginBottom:12,background:'#0e1e35',border:'1px solid #1e3a5f',borderRadius:10}},/*#__PURE__*/React.createElement("div",{style:{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10},onClick:function(){setExpanded(function(p){return Object.assign({},p,{[tripKey]:!p[tripKey]});});if(!recData&&!isLoading)onLoadRecs(tripKey);}},/*#__PURE__*/React.createElement("span",{style:{fontSize:18}},"✨"),/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,color:'#dde1f0',fontSize:15}},t.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8'}},t.startDate," – ",t.endDate)),pendingCount>0&&/*#__PURE__*/React.createElement("span",{style:{background:'#1a3a6e',color:'#8ab4f8',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:10}},pendingCount," pick",pendingCount!==1?'s':''),/*#__PURE__*/React.createElement("span",{style:{color:'#4d6080',fontSize:12}},isOpen?'▲':'▼')),isOpen&&/*#__PURE__*/React.createElement("div",{style:{padding:'0 16px 16px'}},/*#__PURE__*/React.createElement("div",{style:{marginBottom:14,display:'flex',alignItems:'center',gap:10}},/*#__PURE__*/React.createElement("button",{disabled:busy||isLoading,onClick:function(){onGenerateRecs(tripKey,t.startDate,t.endDate);},style:{background:'#1a3a6e',color:'#8ab4f8',border:'1px solid #2a4a7e',borderRadius:8,padding:'7px 14px',fontSize:13,cursor:'pointer',fontWeight:600}},isLoading?'⏳ Generating…':hasAiRecs?'✨ Regenerate':'✨ Get VERA\'s Picks'),recs.length>0&&/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#6b7fa8'}},recs.filter(function(r){return r.status==='added';}).length," added ·",' ',recs.filter(function(r){return r.status==='pending';}).length," pending")),recs.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}},['all','dining','activities','added'].map(function(f){return/*#__PURE__*/React.createElement("button",{key:f,onClick:function(){setTripFilter(tripKey,f);},style:{background:curFilter===f?'#1a3a6e':'transparent',color:curFilter===f?'#8ab4f8':'#4d6080',border:'1px solid '+(curFilter===f?'#2a4a7e':'#1e3a5f'),borderRadius:20,padding:'3px 10px',fontSize:11,cursor:'pointer',textTransform:'capitalize'}},f==='all'?'All':f==='dining'?'🍽 Dining':f==='activities'?'🏛 Activities':'✅ Added');})),isLoading&&/*#__PURE__*/React.createElement("div",{style:{color:'#4d6080',fontSize:13,padding:'8px 0'}},"Searching for the best picks…"),!isLoading&&recs.length===0&&/*#__PURE__*/React.createElement("div",{style:{color:'#4d6080',fontSize:13,padding:'8px 0'}},"Click \"Get VERA's Picks\" to generate personalized recommendations for this trip."),!isLoading&&visibleRecs.map(function(rec){const isDismissed=rec.status==='dismissed';const isAdded=rec.status==='added';return/*#__PURE__*/React.createElement("div",{key:rec.id,style:{background:isDismissed?'#080f1a':isAdded?'#0a1a14':'#0a1a2e',border:'1px solid '+(isDismissed?'#111a2a':isAdded?'#1a4a2e':'#1e3a5f'),borderRadius:8,padding:'11px 14px',marginBottom:10,opacity:isDismissed?0.5:1}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'flex-start',gap:8,marginBottom:6}},/*#__PURE__*/React.createElement("span",{style:{fontSize:16,flexShrink:0}},ITIN_TYPE_ICON[rec.type]||'📝'),/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,color:isDismissed?'#4d6080':isAdded?'#4caf50':'#dde1f0',fontSize:14,lineHeight:'1.2'}},isAdded&&'✅ ',rec.title),/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginTop:2}},rec.date&&formatAgendaDate&&formatAgendaDate(rec.date)+' · ',rec.type&&rec.type.replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}),rec.priceRange&&' · '+rec.priceRange)),!isAdded&&!isDismissed&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:5,flexShrink:0}},/*#__PURE__*/React.createElement("button",{disabled:busy,onClick:function(){onAcceptRec(rec.id,tripKey);},title:"Add to Itinerary",style:{background:'#0a3a1a',color:'#4caf50',border:'1px solid #1a5a2e',borderRadius:6,padding:'4px 9px',fontSize:12,cursor:'pointer',fontWeight:600}},"+ Add"),/*#__PURE__*/React.createElement("button",{disabled:busy,onClick:function(){onDismissRec(rec.id);},title:"Dismiss",style:{background:'transparent',color:'#4d6080',border:'1px solid #1e3a5f',borderRadius:6,padding:'4px 8px',fontSize:12,cursor:'pointer'}},"✕")),isAdded&&/*#__PURE__*/React.createElement("button",{onClick:function(){onGoToItinerary(tripKey);},style:{background:'transparent',color:'#4caf50',border:'1px solid #1a5a2e',borderRadius:6,padding:'4px 9px',fontSize:11,cursor:'pointer'}},"View →")),rec.description&&/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#9ab4d8',marginBottom:5,lineHeight:'1.4'}},rec.description),rec.rationale&&/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#5c7a9a',fontStyle:'italic',marginBottom:5}},"💡 ",rec.rationale),rec.link&&!isDismissed&&/*#__PURE__*/React.createElement("a",{href:rec.link,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,color:'#5c9eff',textDecoration:'none'}},"🔗 ",rec.link.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]));}),!isLoading&&dismissedCount>0&&/*#__PURE__*/React.createElement("button",{onClick:function(){setShowDismissed(function(p){return Object.assign({},p,{[tripKey]:!p[tripKey]});});},style:{background:'transparent',color:'#4d6080',border:'none',fontSize:11,cursor:'pointer',padding:'4px 0'}},showDismissed[tripKey]?'▲ Hide dismissed':'▼ Show '+dismissedCount+' dismissed')));}));}
+});const pendingCount=recs.filter(function(r){return r.status==='pending';}).length;const dismissedCount=recs.filter(function(r){return r.status==='dismissed';}).length;return/*#__PURE__*/React.createElement("div",{key:tripKey,style:{marginBottom:12,background:'#0e1e35',border:'1px solid #1e3a5f',borderRadius:10}},/*#__PURE__*/React.createElement("div",{style:{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10},onClick:function(){setExpanded(function(p){return Object.assign({},p,{[tripKey]:!p[tripKey]});});if(!recData&&!isLoading)onLoadRecs(tripKey);}},/*#__PURE__*/React.createElement("span",{style:{fontSize:18}},"✨"),/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,color:'#dde1f0',fontSize:15}},t.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8'}},t.startDate," – ",t.endDate)),pendingCount>0&&/*#__PURE__*/React.createElement("span",{style:{background:'#1a3a6e',color:'#8ab4f8',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:10}},pendingCount," pick",pendingCount!==1?'s':''),/*#__PURE__*/React.createElement("span",{style:{color:'#4d6080',fontSize:12}},isOpen?'▲':'▼')),isOpen&&/*#__PURE__*/React.createElement("div",{style:{padding:'0 16px 16px'}},/*#__PURE__*/React.createElement("div",{style:{marginBottom:14,display:'flex',alignItems:'center',gap:10}},/*#__PURE__*/React.createElement("button",{disabled:busy||isLoading,onClick:function(){onGenerateRecs(tripKey,t.startDate,t.endDate);},style:{background:'#1a3a6e',color:'#8ab4f8',border:'1px solid #2a4a7e',borderRadius:8,padding:'7px 14px',fontSize:13,cursor:'pointer',fontWeight:600}},isLoading?'⏳ Generating…':hasAiRecs?'✨ Regenerate':'✨ Get VERA\'s Picks'),recs.length>0&&/*#__PURE__*/React.createElement("span",{style:{fontSize:12,color:'#6b7fa8'}},recs.filter(function(r){return r.status==='added';}).length," added ·",' ',recs.filter(function(r){return r.status==='pending';}).length," pending")),/*#__PURE__*/React.createElement(GenInputsBanner,{kind:'discover',tripKey:tripKey,watch:recData,hasList:hasAiRecs}),recs.length>0&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}},['all','dining','activities','added'].map(function(f){return/*#__PURE__*/React.createElement("button",{key:f,onClick:function(){setTripFilter(tripKey,f);},style:{background:curFilter===f?'#1a3a6e':'transparent',color:curFilter===f?'#8ab4f8':'#4d6080',border:'1px solid '+(curFilter===f?'#2a4a7e':'#1e3a5f'),borderRadius:20,padding:'3px 10px',fontSize:11,cursor:'pointer',textTransform:'capitalize'}},f==='all'?'All':f==='dining'?'🍽 Dining':f==='activities'?'🏛 Activities':'✅ Added');})),isLoading&&/*#__PURE__*/React.createElement("div",{style:{color:'#4d6080',fontSize:13,padding:'8px 0'}},"Searching for the best picks…"),!isLoading&&recs.length===0&&/*#__PURE__*/React.createElement("div",{style:{color:'#4d6080',fontSize:13,padding:'8px 0'}},"Click \"Get VERA's Picks\" to generate personalized recommendations for this trip."),!isLoading&&visibleRecs.map(function(rec){const isDismissed=rec.status==='dismissed';const isAdded=rec.status==='added';return/*#__PURE__*/React.createElement("div",{key:rec.id,style:{background:isDismissed?'#080f1a':isAdded?'#0a1a14':'#0a1a2e',border:'1px solid '+(isDismissed?'#111a2a':isAdded?'#1a4a2e':'#1e3a5f'),borderRadius:8,padding:'11px 14px',marginBottom:10,opacity:isDismissed?0.5:1}},/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'flex-start',gap:8,marginBottom:6}},/*#__PURE__*/React.createElement("span",{style:{fontSize:16,flexShrink:0}},ITIN_TYPE_ICON[rec.type]||'📝'),/*#__PURE__*/React.createElement("div",{style:{flex:1}},/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,color:isDismissed?'#4d6080':isAdded?'#4caf50':'#dde1f0',fontSize:14,lineHeight:'1.2'}},isAdded&&'✅ ',rec.title),/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#4d6080',marginTop:2}},rec.date&&formatAgendaDate&&formatAgendaDate(rec.date)+' · ',rec.type&&rec.type.replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}),rec.priceRange&&' · '+rec.priceRange)),!isAdded&&!isDismissed&&/*#__PURE__*/React.createElement("div",{style:{display:'flex',gap:5,flexShrink:0}},/*#__PURE__*/React.createElement("button",{disabled:busy,onClick:function(){onAcceptRec(rec.id,tripKey);},title:"Add to Itinerary",style:{background:'#0a3a1a',color:'#4caf50',border:'1px solid #1a5a2e',borderRadius:6,padding:'4px 9px',fontSize:12,cursor:'pointer',fontWeight:600}},"+ Add"),/*#__PURE__*/React.createElement("button",{disabled:busy,onClick:function(){onDismissRec(rec.id);},title:"Dismiss",style:{background:'transparent',color:'#4d6080',border:'1px solid #1e3a5f',borderRadius:6,padding:'4px 8px',fontSize:12,cursor:'pointer'}},"✕")),isAdded&&/*#__PURE__*/React.createElement("button",{onClick:function(){onGoToItinerary(tripKey);},style:{background:'transparent',color:'#4caf50',border:'1px solid #1a5a2e',borderRadius:6,padding:'4px 9px',fontSize:11,cursor:'pointer'}},"View →")),rec.description&&/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#9ab4d8',marginBottom:5,lineHeight:'1.4'}},rec.description),rec.rationale&&/*#__PURE__*/React.createElement("div",{style:{fontSize:11,color:'#5c7a9a',fontStyle:'italic',marginBottom:5}},"💡 ",rec.rationale),rec.link&&!isDismissed&&/*#__PURE__*/React.createElement("a",{href:rec.link,target:"_blank",rel:"noopener noreferrer",style:{fontSize:11,color:'#5c9eff',textDecoration:'none'}},"🔗 ",rec.link.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]));}),!isLoading&&dismissedCount>0&&/*#__PURE__*/React.createElement("button",{onClick:function(){setShowDismissed(function(p){return Object.assign({},p,{[tripKey]:!p[tripKey]});});},style:{background:'transparent',color:'#4d6080',border:'none',fontSize:11,cursor:'pointer',padding:'4px 0'}},showDismissed[tripKey]?'▲ Hide dismissed':'▼ Show '+dismissedCount+' dismissed')));}));}
 
 function CountriesVisitedPanel({entries,upcomingTravel,busy,loaded,onLoad,onAdd,onDelete,onGoToItinerary}){var[filterYear,setFilterYear]=React.useState('all');var[filterTraveller,setFilterTraveller]=React.useState('all');var[expanded,setExpanded]=React.useState(new Set());var[showModal,setShowModal]=React.useState(false);// Lazy-load on first mount
 React.useEffect(function(){if(!loaded&&onLoad)onLoad();},[]);// eslint-disable-line react-hooks/exhaustive-deps
@@ -7003,7 +7089,7 @@ function SummaryLitePanel({ trip, itinerary, travelerFilter, legs }) {
 }
 
 // --- PackingLitePanel --------------------------------------------------------
-function PackingLitePanel({ tripKey, packingData, apiUrl, apiToken, onReload }) {
+function PackingLitePanel({ tripKey, endDate, packingData, apiUrl, apiToken, onReload }) {
   const [personFilter, setPersonFilter] = useState('all');
   const [adding, setAdding]     = useState(false);
   const [newPerson, setNewPerson]   = useState('shared');
@@ -7044,13 +7130,16 @@ function PackingLitePanel({ tripKey, packingData, apiUrl, apiToken, onReload }) 
     } catch(e) {} finally { setPackBusy(false); }
   }
   async function generatePacking() {
-    if (!window.confirm('Generate AI packing list? Existing AI suggestions will be replaced.')) return;
+    if (!window.confirm('Generate AI packing list? VERA\'s unchecked suggestions will be replaced. Checked items and items you added are kept.')) return;
     setGenerating(true);
     try {
       const startDate = tripKey.split('|')[0];
-      await apiGet(apiUrl,apiToken,{action:'generate_packing',tripKey,startDate});
+      await apiGet(apiUrl,apiToken,{action:'generate_packing',tripKey,startDate,endDate});
       await onReload();
-    } catch(e) {} finally { setGenerating(false); }
+    } catch(e) {
+      // This used to be an empty catch, so a failed generation looked like nothing happened.
+      window.alert('Couldn\u2019t generate the packing list: ' + (e && e.message ? e.message : e));
+    } finally { setGenerating(false); }
   }
 
   const personTabs=[{id:'all',label:'All',color:'#8ab4f8'},{id:'ahmed',label:'Ahmed',color:'#5c9eff'},
@@ -7058,6 +7147,8 @@ function PackingLitePanel({ tripKey, packingData, apiUrl, apiToken, onReload }) 
 
   return (
     <div style={{paddingTop:8}}>
+      <GenInputsBanner kind="packing" tripKey={tripKey} watch={packingData}
+        hasList={allItems.some(i => i.source === 'ai')} apiUrl={apiUrl} apiToken={apiToken} />
       <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:10}}>
         <div style={{display:'flex',gap:4,flex:1,flexWrap:'wrap'}}>
           {personTabs.map(p => (
@@ -7987,6 +8078,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                   {activeTab === 'packing' ? (
                     <PackingLitePanel
                       tripKey={tripKey}
+                      endDate={t.endDate}
                       packingData={packingData[tripKey]}
                       apiUrl={apiUrl} apiToken={apiToken}
                       onReload={()=>loadPacking(tripKey)}

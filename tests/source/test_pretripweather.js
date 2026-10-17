@@ -71,7 +71,8 @@ function build(opts) {
     } }) };
   }
   vm.createContext(ctx);
-  ['inferTripDestination_', 'geocodePackingDestination_', 'getPackingWeather_']
+  // getPackingWeather_ is a wrapper now; the lookup itself is getPackingWeatherDetail_.
+  ['inferTripDestination_', 'geocodePackingDestination_', 'getPackingWeatherDetail_', 'getPackingWeather_']
     .forEach(fn => vm.runInContext(extract(WEB, fn), ctx));
   return ctx;
 }

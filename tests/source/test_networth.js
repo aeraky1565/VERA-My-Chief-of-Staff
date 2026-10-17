@@ -70,6 +70,8 @@ function sandbox(over) {
   vm.createContext(S);
   vm.runInContext(extractFn(TRIP, 'dateCellToIso_'), S);
   vm.runInContext(NW, S);
+  // The CD flag writer is the shared exact-key helper now (Code.js), not a copy in NetWorth.js.
+  vm.runInContext(extractFn(CODE, 'appendExactKeyFlags_'), S);
   return S;
 }
 

@@ -1293,6 +1293,9 @@ function nightlyRun() {
     // sheet (NetWorth.js). The mapping seed is a no-op after its first run.
     nightlyStep_(ctx, 'seedNetWorthMappingConfig_', seedNetWorthMappingConfig_);
     nightlyStep_(ctx, 'checkPlannerCdMaturity_', checkPlannerCdMaturity_);
+    // Packing lists and Discover runs: flag a list built before VERA recorded its
+    // inputs, and one built on last year's weather once a forecast exists (GenerationInputs.js).
+    nightlyStep_(ctx, 'checkGenerationInputs_', checkGenerationInputs_);
     nightlyStep_(ctx, 'checkTripDecisions_', checkTripDecisions_);
     nightlyStep_(ctx, 'checkTripDecisionPremises_', checkTripDecisionPremises_);
 
@@ -1633,6 +1636,70 @@ function keysAreSimilar_(newKey, existingFingerprints) {
     if (minLen > 0 && matches.length / minLen >= 0.6) similar = true;
   });
   return similar;
+}
+
+/**
+ * Appends flags whose keys are EXACT identities — each one at most once, ever.
+ *
+ * writeFlags() is the wrong tool for these. Besides an exact fingerprint check it
+ * skips any key sharing 60% of its words with an existing one, after stripping
+ * numbers and month names. That suits Claude's free-text flags, where it catches
+ * "verizon_bill_march_13" vs "_14". It is wrong for keys that are real identities:
+ * "Capital One CD 1" and "Capital One CD 2 (14-month)" both reduce to
+ * maturity/capital/one, so the second CD would never flag, and two trips named
+ * "Chicago trip" and "Chicago weekend" would share one packing warning.
+ *
+ * Here a key already present in ANY state (open, acknowledged, snoozed, resolved)
+ * is skipped, so a flag you have resolved stays resolved. Same row shape as
+ * writeFlags, same colouring. Used by NetWorth.js and GenerationInputs.js.
+ *
+ * @returns {number} flags written
+ */
+function appendExactKeyFlags_(flagSheet, flags, dateStr) {
+  var lastRow = flagSheet.getLastRow();
+  var keys = {};
+  if (lastRow >= 2) {
+    flagSheet.getRange(2, 10, lastRow - 1, 1).getValues().forEach(function(r) {
+      keys[String(r[0] || '').trim()] = true;
+    });
+  }
+  var written = 0;
+  (flags || []).forEach(function(f) {
+    if (!f.key || keys[f.key]) return;
+    var rand2 = String(Math.floor(Math.random() * 90) + 10);
+    flagSheet.appendRow([
+      'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
+      dateStr, f.source, f.flag, f.reason, f.urgency,
+      'No', '', 'No', f.key, '',
+    ]);
+    keys[f.key] = true;
+    written++;
+  });
+  if (written > 0) { try { colorCodeFlags(flagSheet); } catch (e) {} }
+  return written;
+}
+
+/**
+ * Marks open flags resolved, by key: every key starting with `prefix` (or, with
+ * `exact`, equal to it), except `exceptKey`. Used when a newer generation of
+ * something supersedes the flags an older one raised.
+ *
+ * @returns {number} flags resolved
+ */
+function resolveFlagsWithPrefix_(flagSheet, prefix, exceptKey, exact) {
+  var lastRow = flagSheet.getLastRow();
+  if (lastRow < 2 || !prefix) return 0;
+  var rows = flagSheet.getRange(2, 9, lastRow - 1, 2).getValues();   // Resolved, Key
+  var n = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var key = String(rows[i][1] || '').trim();
+    if (!key || key === exceptKey) continue;
+    if (exact ? key !== prefix : key.indexOf(prefix) !== 0) continue;
+    if (String(rows[i][0] || '').trim().toLowerCase() === 'yes') continue;
+    flagSheet.getRange(i + 2, 9).setValue('Yes');
+    n++;
+  }
+  return n;
 }
 
 function writeFlags(flags) {

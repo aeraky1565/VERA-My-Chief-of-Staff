@@ -285,13 +285,19 @@ console.log('\nopen-meteo is still load-bearing elsewhere — and still watched'
   // kind of "still there somewhere" that let me report four call sites as one.
   const body = (src, name) => { try { return extractFn(src, name); } catch (e) { return ''; } };
   const trip   = body(TRIP, 'tripDailyForecast_');
-  const pack   = body(WEB,  'getPackingWeather_');
+  // The lookup moved into getPackingWeatherDetail_ (it now reports WHY there is no
+  // weather); getPackingWeather_ is a wrapper over it. The check follows the fetch, and
+  // a second one holds the wrapper to delegating rather than drifting into a copy.
+  const pack   = body(WEB,  'getPackingWeatherDetail_');
+  const packW  = body(WEB,  'getPackingWeather_');
   const geo    = body(WEB,  'geocodePackingDestination_');
 
   check('tripDailyForecast_ still fetches open-meteo',
         /fetchWithHealth_\('open-meteo'/.test(trip), 'TripDecisions.js: ' + trip.length + ' chars');
-  check('getPackingWeather_ still does',
+  check('the packing weather lookup still does',
         /fetchWithHealth_\('open-meteo'/.test(pack), 'WebApp.js: ' + pack.length + ' chars');
+  check('…and getPackingWeather_ still goes through it',
+        /return getPackingWeatherDetail_\(destination, startDate, endDate\)\.summary;/.test(packW), packW.slice(0, 120));
   check('geocodePackingDestination_ still does',
         /fetchTracked_\('open-meteo'/.test(geo), 'WebApp.js: ' + geo.length + ' chars');
   check('…and it is still cached for 6h',

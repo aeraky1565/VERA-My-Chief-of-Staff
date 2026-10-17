@@ -100,8 +100,10 @@ const CONTROLS = {
   },
   'the packing lookup is not guarded': b => ({
     'WebApp.js': b['WebApp.js'].replace(
-      /  var packingLessons = '';\n  try \{\n([\s\S]*?)\n  \} catch \(lsErr\) \{\n[^\n]*\n  \}/,
-      "  var packingLessons = '';\n$1"),
+      // The catch has two lines now: it also records the error for the "built from"
+      // banner (GenerationInputs.js), so a lessons failure is shown rather than hidden.
+      /  var packingLessons = '', packingLessonsError = '';\n  try \{\n([\s\S]*?)\n  \} catch \(lsErr\) \{\n[^\n]*\n[^\n]*\n  \}/,
+      "  var packingLessons = '', packingLessonsError = '';\n$1"),
   }),
   'the beach hint loses the hat and the water bottle': b => ({
     'WebApp.js': b['WebApp.js'].replace(

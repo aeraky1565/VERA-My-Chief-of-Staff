@@ -420,30 +420,11 @@ function nwCdFlagsDue_(cds, todayIso) {
  * sharing 60% of its words with an existing key, after stripping numbers and month
  * names — so "Capital One CD 1" and "Capital One CD 2 (14-month)" both reduce to
  * maturity/capital/one and the second CD would never be flagged, and a rolled-over CD
- * (same name, new date) would never flag again. Same row shape, exact keys only.
+ * (same name, new date) would never flag again. appendExactKeyFlags_ (Code.js) does
+ * this for every exact-identity flag; it began as this function.
  */
 function nwWriteCdFlags_(flagSheet, due, dateStr) {
-  var lastRow = flagSheet.getLastRow();
-  var keys = {};
-  if (lastRow >= 2) {
-    flagSheet.getRange(2, 10, lastRow - 1, 1).getValues().forEach(function(r) {
-      keys[String(r[0] || '').trim()] = true;
-    });
-  }
-  var written = 0;
-  due.forEach(function(f) {
-    if (keys[f.key]) return;
-    var rand2 = String(Math.floor(Math.random() * 90) + 10);
-    flagSheet.appendRow([
-      'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
-      dateStr, f.source, f.flag, f.reason, f.urgency,
-      'No', '', 'No', f.key, '',
-    ]);
-    keys[f.key] = true;
-    written++;
-  });
-  if (written > 0) { try { colorCodeFlags(flagSheet); } catch (e) {} }
-  return written;
+  return appendExactKeyFlags_(flagSheet, due, dateStr);   // Code.js — the exact-key writer, shared
 }
 
 /** Nightly step. Reads only the CDs tab. */

@@ -175,6 +175,7 @@ function doGet(e) {
       case 'update_bank_account':   return jsonOut_(webUpdateBankAccount_(e));
       case 'delete_bank_account':   return jsonOut_(webDeleteBankAccount_(e));
       case 'net_worth':             return jsonOut_(webGetNetWorth_());   // NetWorth.js — reads the planner sheet, never writes it
+      case 'generation_inputs':     return jsonOut_(webGetGenerationInputs_(e));   // GenerationInputs.js — what a packing list / Discover run was built from
       case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
       case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
       case 'add_home_item':         return jsonOut_(webAddHomeItem_(e));
@@ -5300,22 +5301,47 @@ function geocodePackingDestination_(destination) {
 /**
  * Fetch weather summary for packing. Uses Open-Meteo forecast (≤14 days)
  * or prior-year archive (>14 days). Returns plain-English string or ''.
+ *
+ * Kept as a thin wrapper so the pre-trip briefings, which only want the text, are
+ * unchanged. The packing and Discover generators call getPackingWeatherDetail_
+ * instead, because they have to SAY what the weather was based on — or why there
+ * was none.
  */
 function getPackingWeather_(destination, startDate, endDate) {
-  if (!destination) return '';
+  return getPackingWeatherDetail_(destination, startDate, endDate).summary;
+}
+
+/**
+ * The weather for a trip, and what it rests on.
+ *
+ *   summary  plain-English text for the prompt, or ''
+ *   mode     'forecast' (trip within 14 days) | 'last_year' (the same dates a year
+ *            earlier — NOT a seasonal average, whatever older text called it) | ''
+ *   reason   why there is no weather, when there isn't: said, never silent
+ *   lat      the destination's latitude, which is what tells VERA the hemisphere
+ *
+ * The "no trip dates" check is new and deliberate. dashboard-lite sent no end date
+ * for as long as it has generated packing lists; the request then went out with
+ * end_date= and failed at the weather service, which read exactly like an outage.
+ */
+function getPackingWeatherDetail_(destination, startDate, endDate) {
+  var out = { summary: '', mode: '', reason: '', lat: null };
+  if (!destination) { out.reason = 'no destination to look up'; return out; }
+  if (!startDate || !endDate) { out.reason = 'no trip dates (' + (startDate ? 'end date' : 'start date') + ' missing)'; return out; }
   // Cache weather results for 6 hours (CacheService maximum TTL).
   // Prevents redundant fetches when nightlyRun and the dashboard request
   // weather for the same trip within the same timeframe.
-  var wCacheKey = 'weather_' + (destination + '_' + startDate + '_' + endDate)
+  var wCacheKey = 'weatherd_' + (destination + '_' + startDate + '_' + endDate)
     .toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
   try {
     var wCached = CacheService.getScriptCache().get(wCacheKey);
-    if (wCached) return wCached;
+    if (wCached) return JSON.parse(wCached);
   } catch(e_) {}
   try {
     const geo = geocodePackingDestination_(destination);
-    if (!geo) return '';
+    if (!geo) { out.reason = 'couldn’t find "' + destination + '" on the map'; return out; }
     const lat = geo.lat, lon = geo.lon;
+    out.lat = lat;
 
     const today      = new Date();
     const tripStart  = new Date(startDate + 'T00:00:00');
@@ -5348,14 +5374,14 @@ function getPackingWeather_(destination, startDate, endDate) {
     // code, so an error page would throw inside JSON.parse. fetchWithHealth_
     // returns null on any non-200 and records the reason.
     const wResp = fetchWithHealth_('open-meteo', weatherUrl);
-    if (!wResp) return '';
+    if (!wResp) { out.reason = 'the weather service didn’t answer'; return out; }
     const wData = JSON.parse(wResp.getContentText());
-    if (!wData.daily) return '';
+    if (!wData.daily) { out.reason = 'no weather data for these dates'; return out; }
 
     const maxTemps  = wData.daily.temperature_2m_max  || [];
     const minTemps  = wData.daily.temperature_2m_min  || [];
     const rainSums  = wData.daily.precipitation_sum   || [];
-    if (maxTemps.length === 0) return '';
+    if (maxTemps.length === 0) { out.reason = 'no weather data for these dates'; return out; }
 
     const maxTemp  = Math.round(Math.max.apply(null, maxTemps.filter(function(x) { return x != null; })));
     const minTemp  = Math.round(Math.min.apply(null, minTemps.filter(function(x) { return x != null; })));
@@ -5375,14 +5401,19 @@ function getPackingWeather_(destination, startDate, endDate) {
     else if (minTemp < 40)  tempNote = 'Cold — pack warm layers and a coat.';
     else                    tempNote = 'Mild — a light jacket should suffice.';
 
-    let summary = (isArchive ? '(Seasonal average) ' : '') +
+    // Not a seasonal average: it is ONE year's actual weather on these dates, and
+    // saying so lets Claude (and you) weigh it as a single sample rather than a norm.
+    let summary = (isArchive ? '(Last year\u2019s weather on these dates) ' : '') +
                   'Expected: ' + minTemp + '\u2013' + maxTemp + '\u00b0F, ' + rainDesc + '. ' + tempNote;
     Logger.log('Packing weather for ' + destination + ': ' + summary);
-    try { CacheService.getScriptCache().put(wCacheKey, summary, 21600); } catch(e_) {}
-    return summary;
+    out.summary = summary;
+    out.mode    = isArchive ? 'last_year' : 'forecast';
+    try { CacheService.getScriptCache().put(wCacheKey, JSON.stringify(out), 21600); } catch(e_) {}
+    return out;
   } catch(err) {
     Logger.log('getPackingWeather_ error: ' + err.message);
-    return '';
+    out.reason = 'weather lookup failed: ' + err.message;
+    return out;
   }
 }
 
@@ -5528,9 +5559,12 @@ function parsePackingResponse_(rawContent) {
 function webGeneratePacking_(e) {
   const p         = (e && e.parameter) ? e.parameter : {};
   const tripKey   = (p.tripKey   || '').trim();
-  const startDate = (p.startDate || '').trim();
-  const endDate   = (p.endDate   || '').trim();
   if (!tripKey) throw new Error('tripKey is required');
+  // A missing end date is filled from the trip, not generated around: dashboard-lite
+  // never sent one, and every list it made had no weather because of it.
+  const _dates    = genTripDates_(tripKey, (p.startDate || '').trim(), (p.endDate || '').trim());
+  const startDate = _dates.startDate;
+  const endDate   = _dates.endDate;
 
   // Step 1 — Parse trip label from tripKey ("YYYY-MM-DD|Label")
   const pipeIdx  = tripKey.indexOf('|');
@@ -5563,6 +5597,9 @@ function webGeneratePacking_(e) {
   } catch (itinErr) {
     Logger.log('webGeneratePacking_: itinerary load failed — ' + itinErr.message);
   }
+
+  // How many itinerary items this trip has, for the "built from" record.
+  var itinCount = itinData.filter(function(row) { return String(row[1]).trim() === tripKey; }).length;
 
   let itinerarySummary = '';
   var activityTypes = {};  // e.g. { beach: true, dining: true, flight: true }
@@ -5625,26 +5662,23 @@ function webGeneratePacking_(e) {
   // in recommendations): a wrong guess just means getPackingWeather_ finds no
   // forecast, which it already handles, and for labels that do name a place it's
   // the only weather signal available.
-  const destination = inferTripDestination_(itinData, tripKey, tripLabel).value;
+  // Its source is kept now: a destination guessed from the trip's name is worth
+  // using for the weather, but the banner has to say it was a guess.
+  const destInfo    = inferTripDestination_(itinData, tripKey, tripLabel);
+  const destination = destInfo.value;
 
-  // Step 4b — Derive season from startDate month
-  var season = '';
-  if (startDate) {
-    var mo = parseInt(startDate.substring(5, 7), 10);
-    season = (mo <= 2 || mo === 12) ? 'Winter'
-           : mo <= 5  ? 'Spring'
-           : mo <= 8  ? 'Summer'
-           : 'Fall';
-  }
-
-  // Step 5 — Weather
-  const weatherSummary = getPackingWeather_(destination, startDate || '', endDate || '');
+  // Step 4b/5 — Weather, then season. Weather first because its geocode gives the
+  // latitude, and the latitude is what makes the season right: from the month alone,
+  // December in Sydney was "Winter". tripSeason_ is in GenerationInputs.js.
+  const weather        = getPackingWeatherDetail_(destination, startDate || '', endDate || '');
+  const weatherSummary = weather.summary;
+  var season = tripSeason_(startDate, weather.lat).season;
 
   // Step 6 — Build prompt with full enriched context
   // What earlier trips taught, narrowed to the ones that apply to this one.
   // Non-fatal: a packing list generated without the lessons is the old behaviour,
   // and losing the whole list because the Memory Log is unreadable is worse.
-  var packingLessons = '';
+  var packingLessons = '', packingLessonsError = '';
   try {
     packingLessons = tripLessonsPromptBlock_(
       { destination: destination, context: context, activityTypes: activityTypes, traits: traits },
@@ -5652,6 +5686,7 @@ function webGeneratePacking_(e) {
     );
   } catch (lsErr) {
     Logger.log('webGeneratePacking_: trip lessons unavailable (non-fatal) — ' + lsErr.message);
+    packingLessonsError = lsErr.message;
   }
 
   const prompt = buildPackingPrompt_(
@@ -5687,20 +5722,36 @@ function webGeneratePacking_(e) {
   // Step 8 — Parse response
   const packingData = parsePackingResponse_(rawText);
 
-  // Step 9 — Clear existing AI items for this trip (bottom-to-top to avoid row shifting)
+  // Step 9 — Replace VERA's UNCHECKED suggestions. A checked item is never deleted:
+  // regenerating used to wipe every checkmark, which made "regenerate now that there's
+  // a forecast" cost you your packing. planPackingRegeneration_ (GenerationInputs.js)
+  // decides; bottom-to-top deletion keeps the row numbers valid.
   const packSheet = ss.getSheetByName(TABS.PACKING_ITEMS);
   if (!packSheet) throw new Error('PackingItems tab not found. Run setupVERA() to create it.');
+  var tripRows = [];
   if (packSheet.getLastRow() >= 2) {
     const allRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
-    const rowsToDelete = [];
     for (let i = 0; i < allRows.length; i++) {
-      if (String(allRows[i][1]).trim() === tripKey && String(allRows[i][6]).trim() === 'ai') {
-        rowsToDelete.push(i + 2); // 1-based row number
-      }
+      if (String(allRows[i][1]).trim() !== tripKey) continue;
+      tripRows.push({
+        rowNum:  i + 2,
+        id:      String(allRows[i][0]).trim(),
+        person:  String(allRows[i][2]).trim(),
+        item:    String(allRows[i][4]).trim(),
+        checked: String(allRows[i][5]).toUpperCase() === 'TRUE',
+        source:  String(allRows[i][6]).trim(),
+      });
     }
-    rowsToDelete.sort(function(a, b) { return b - a; }); // descending
-    rowsToDelete.forEach(function(rowNum) { packSheet.deleteRow(rowNum); });
   }
+  var proposed = [];
+  [['ahmed', packingData.ahmed], ['victoria', packingData.victoria], ['shared', packingData.shared]]
+    .forEach(function(pair) {
+      (pair[1] || []).forEach(function(entry) {
+        if (entry.item) proposed.push({ person: pair[0], category: entry.category || 'General', item: entry.item });
+      });
+    });
+  const regen = planPackingRegeneration_(tripRows, proposed);
+  regen.deleteRows.forEach(function(rowNum) { packSheet.deleteRow(rowNum); });
 
   // Step 10 — Batch-append new AI items
   const tz      = Session.getScriptTimeZone();
@@ -5713,25 +5764,19 @@ function webGeneratePacking_(e) {
     });
   }
 
-  const allNewItems = [];
-  [['ahmed', packingData.ahmed], ['victoria', packingData.victoria], ['shared', packingData.shared]]
-    .forEach(function(pair) {
-      const person = pair[0];
-      const list   = pair[1];
-      list.forEach(function(entry) {
-        if (!entry.item) return;
-        allNewItems.push([
-          'PACK-' + dateKey + '-' + String(seq++).padStart(2, '0'),
-          tripKey,
-          person,
-          entry.category || 'General',
-          entry.item,
-          'FALSE',
-          'ai',
-          addedDate,
-        ]);
-      });
-    });
+  // Only what isn't already kept as a checked item.
+  const allNewItems = regen.append.map(function(entry) {
+    return [
+      'PACK-' + dateKey + '-' + String(seq++).padStart(2, '0'),
+      tripKey,
+      entry.person,
+      entry.category,
+      entry.item,
+      'FALSE',
+      'ai',
+      addedDate,
+    ];
+  });
 
   if (allNewItems.length > 0) {
     const startRow = packSheet.getLastRow() + 1;
@@ -5745,6 +5790,22 @@ function webGeneratePacking_(e) {
   // set. A blank field reads exactly like "not a beach trip" and would reproduce the
   // original failure in silence, so it is reported rather than left to be inferred —
   // along with what the briefing suggests, which is the actionable half.
+  // Step 11 — Record what this list was built from (GenerationInputs.js). Never
+  // fails the generation: the list is already written.
+  recordGenerationInputs_('packing', tripKey, packingInputFactors_({
+    destination:   destInfo,
+    startDate:     startDate,
+    endDate:       endDate,
+    weather:       weather,
+    activityTypes: activityTypes,
+    itinCount:     itinCount,
+    traits:        traits,
+    traveler:      traveler,
+    dressCodes:    dressCodes,
+    lessons:       packingLessons,
+    lessonsError:  packingLessonsError,
+  }), { weatherMode: weather.mode, kept: regen.keptDropped });
+
   var packResult = webGetPacking_(e);
   packResult.characteristics        = traits;
   packResult.characteristicsMissing = !traits;
@@ -5909,7 +5970,8 @@ function buildRecsSystemPrompt_() {
 /**
  * Builds the user message for trip recommendations.
  */
-function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, lessonsBlock) {
+function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, lessonsBlock,
+                              weatherSummary, season, traits) {
   return (
     'Trip: ' + tripLabel + '\n' +
     'Dates: ' + startDate + ' to ' + endDate + ' (' + durationNights + ' nights)\n' +
@@ -5922,7 +5984,13 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     // No fallback to tripLabel here. A label is a name, not a place — telling
     // Claude to "search for top attractions in Vacation: First Anniversary Trip"
     // is what produced a week of recommendations in France for a Caribbean cruise.
-    'Destination: ' + (destination || '(unknown — infer it from the planned itinerary below)') + '\n\n' +
+    'Destination: ' + (destination || '(unknown — infer it from the planned itinerary below)') + '\n' +
+    // Time of year, the trip's own characteristics and the weather. Discover never
+    // saw any of these, so it would cheerfully suggest a beach day in a downpour.
+    // Each is omitted when there's nothing to say, rather than sent as an empty line.
+    (season ? 'Time of year at the destination: ' + season + '\n' : '') +
+    (traits ? 'Trip characteristics: ' + traits + '\n' : '') +
+    (weatherSummary ? 'Weather: ' + weatherSummary + '\n' : '') + '\n' +
     '=== PLANNED ITINERARY ===\n' + (itinerarySummary || '(No items planned yet)') + '\n\n' +
     '=== DAY-BY-DAY GAP ANALYSIS ===\n' + gapSummary + '\n\n' +
     // Before the search instruction, so what he has already told us not to
@@ -5962,6 +6030,10 @@ function buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, con
     'Prefer venues within roughly 20 minutes; if you suggest something further, say so in the rationale ' +
     'so they can judge whether the journey fits the gap.\n' +
     '- Include a mix of: dining, activities, coffee/morning spots, and hidden gems.\n' +
+    (weatherSummary
+      ? '- Fit the weather above: on rainy, very hot or very cold days lean towards indoor options; save outdoor ones for good days. If the weather is last year\u2019s rather than a forecast, treat it as a guide, not a certainty.\n'
+      : '') +
+    (traits ? '- Fit the trip characteristics above: they say what this trip is about.\n' : '') +
     '- Use real venue names and real details from your web search.\n\n' +
     'CRITICAL — RESPONSE FORMAT:\n' +
     'Return ONLY a raw JSON array. No markdown. No code fences. No explanation. Start with [ and end with ].\n' +
@@ -6202,9 +6274,10 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
 function webGenerateRecommendations_(e) {
   const p         = (e && e.parameter) ? e.parameter : {};
   const tripKey   = (p.tripKey   || '').trim();
-  const startDate = (p.startDate || '').trim();
-  const endDate   = (p.endDate   || '').trim();
   if (!tripKey) throw new Error('tripKey is required');
+  const _dates    = genTripDates_(tripKey, (p.startDate || '').trim(), (p.endDate || '').trim());
+  const startDate = _dates.startDate;
+  const endDate   = _dates.endDate;
 
   // Trip label
   const pipeIdx  = tripKey.indexOf('|');
@@ -6256,6 +6329,7 @@ function webGenerateRecommendations_(e) {
     lines.push(line);
   });
   const itinerarySummary = lines.join('\n');
+  const itinCount        = lines.length;
 
   // Gap analysis string
   const gapSummary = buildRecsGapSummary_(tripKey, startDate, endDate, itinData);
@@ -6281,6 +6355,12 @@ function webGenerateRecommendations_(e) {
   const destInfo    = inferTripDestination_(itinData, tripKey, tripLabel);
   const destination = destInfo.source === 'label' ? '' : destInfo.value;
 
+  // Weather and time of year, which Discover never used to see. A guess from the
+  // trip's name IS used for the weather lookup — the worst a wrong guess does there is
+  // find no forecast — while staying out of the search, as above.
+  const weather    = getPackingWeatherDetail_(destInfo.value, startDate || '', endDate || '');
+  const recsSeason = tripSeason_(startDate, weather.lat).season;
+
   // Build prompts
   const sysPrompt  = buildRecsSystemPrompt_();
   // Recommendations see Dining and Activities lessons — "we'd skip the aquarium",
@@ -6288,7 +6368,7 @@ function webGenerateRecommendations_(e) {
   // Packing lessons are deliberately excluded: they say nothing about where to go.
   // No activityTypes here; recommendations run to FILL empty days, so matching on
   // what is already scheduled would drop exactly the lessons worth applying.
-  var recsLessons = '';
+  var recsLessons = '', recsLessonsError = '';
   try {
     recsLessons = tripLessonsPromptBlock_(
       { destination: destination, context: context, activityTypes: {}, traits: recTraits },
@@ -6296,9 +6376,11 @@ function webGenerateRecommendations_(e) {
     );
   } catch (lsErr) {
     Logger.log('webGenerateRecommendations_: trip lessons unavailable (non-fatal) — ' + lsErr.message);
+    recsLessonsError = lsErr.message;
   }
 
-  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, recsLessons);
+  const userMsg    = buildRecsUserPrompt_(tripLabel, startDate, endDate, durationNights, context, destination, itinerarySummary, gapSummary, briefing, recsLessons,
+                                          weather.summary, recsSeason, recTraits);
   const apiKey     = getApiKey();
   const tools      = getSearchTools_(); // from Chat.js — empty if no VERA_SEARCH_API_KEY
 
@@ -6409,6 +6491,18 @@ function webGenerateRecommendations_(e) {
     const startRow = recSheet.getLastRow() + 1;
     recSheet.getRange(startRow, 1, newRows.length, TRIP_RECS_HEADERS.length).setValues(newRows);
   }
+
+  // What these suggestions were built from (GenerationInputs.js). Never fails the run.
+  recordGenerationInputs_('discover', tripKey, discoverInputFactors_({
+    destination:  destInfo,
+    startDate:    startDate,
+    endDate:      endDate,
+    weather:      weather,
+    traits:       recTraits,
+    itinCount:    itinCount,
+    lessons:      recsLessons,
+    lessonsError: recsLessonsError,
+  }), { weatherMode: weather.mode });
 
   return webGetRecommendations_({ parameter: { tripKey: tripKey } });
 }
