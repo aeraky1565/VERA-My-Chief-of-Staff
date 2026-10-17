@@ -122,6 +122,9 @@ const CONTROLS = {
   'packing never resolves the travellers': b => ({
     [WEB]: swap(b[WEB], '  traveler = travellers.value;\n', ''),
   }),
+  'an airport code is searched as a place name again (ORD → Ord, Nebraska)': b => ({
+    [WEB]: swap(b[WEB], '    if (isAirportCode) {', '    if (false) {'),
+  }),
   'packing goes back to the hotel’s raw address': b => ({
     [WEB]: swap(b[WEB], '  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);\n', '  const places      = { base: inferTripDestination_(itinData, tripKey, tripLabel), ports: [] };\n'),
   }),

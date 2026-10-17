@@ -423,6 +423,10 @@ const PLACES_DB = {
   // The trap a careless title fallback falls into: an excursion's name is a real place
   // 700 km away.
   'stingray city':     [{ name: 'Stingray City', latitude: 19.37, longitude: -81.30, admin1: '', country: 'Cayman Islands', country_code: 'KY' }],
+  // THE CHICAGO TRIP: its flight stores the destination as "ORD", and Open-Meteo
+  // answers a search for "ORD" with this town.
+  'ord':               [{ name: 'Ord', latitude: 41.6, longitude: -98.93, admin1: 'Nebraska', country: 'United States', country_code: 'US' }],
+  'chicago':           [{ name: 'Chicago', latitude: 41.85, longitude: -87.65, admin1: 'Illinois', country: 'United States', country_code: 'US', timezone: 'America/Chicago' }],
   'washington':        [{ name: 'Washington', latitude: 38.9, longitude: -77.04, admin1: 'District of Columbia', country: 'United States', country_code: 'US' }],
   'düsseldorf':        [{ name: 'Düsseldorf', latitude: 51.22, longitude: 6.78, admin1: 'North Rhine-Westphalia', country: 'Germany', country_code: 'DE' }],
 };
@@ -431,6 +435,8 @@ function geoWorld() {
   const S = {
     CacheService: { getScriptCache: () => ({ get: k => store[k] || null, put: (k, v) => { store[k] = v; } }) },
     Logger: { log() {} }, JSON, Math, encodeURIComponent, decodeURIComponent,
+    // AirportGap, as VERA already uses it for the arrival-weather card.
+    resolveIataToCity_: code => ({ ORD: 'Chicago', MIA: 'Miami' }[code] || null),
     fetchTracked_: (svc, url) => {
       const q = /[?&]name=([^&]*)/.exec(url), cc = /[?&]countryCode=([A-Z]{2})/.exec(url), n = /[?&]count=(\d+)/.exec(url);
       const name = decodeURIComponent(q[1]).toLowerCase();
@@ -488,6 +494,16 @@ console.log('\ngeocodePackingDestination_: tries each candidate until one is fou
   check('a city the geocoder doesn’t know falls through to the ZIP', g2 && g2.name === 'Miami Beach' && S2.asked[0] === 'nowhereville[US]' && S2.asked[1] === '33139[US]', S2.asked.join(', '));
   S2.d = 'Atlantis';
   check('nothing found anywhere → null', vm.runInContext('geocodePackingDestination_(d)', S2) === null);
+
+  // THE CHICAGO TRIP: "ORD" was searched as a name and landed in Nebraska.
+  const S4 = geoWorld();
+  const ord = vm.runInContext('geocodePackingDestination_("ORD")', S4);
+  check('an airport code resolves through the airport lookup: ORD → Chicago, Illinois', ord && ord.name === 'Chicago' && ord.admin1 === 'Illinois', JSON.stringify(ord));
+  check('…and the bare code is never searched (no Ord, Nebraska)', S4.asked.indexOf('ord') === -1, S4.asked.join(', '));
+  check('an airport code the lookup doesn’t know finds nothing, rather than a town that shares its letters',
+        vm.runInContext('geocodePackingDestination_("ZZZ")', S4) === null && S4.asked.indexOf('zzz') === -1);
+  check('"Miami MIA" (city + code) still works as before', vm.runInContext('geocodePackingDestination_("Miami MIA")', S4).name === 'Miami');
+  check('a three-letter place in lower case is still a place', vm.runInContext('geocodePackingDestination_("ord")', S4).name === 'Ord');
 
   const S3 = geoWorld();
   const st = vm.runInContext('geocodePackingDestination_("Saint Thomas", "St Thomas, US Virgin Islands Saint Thomas")', S3);

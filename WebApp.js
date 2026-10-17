@@ -5375,7 +5375,11 @@ function geocodePackingDestination_(destination, hint) {
   if (!destination || typeof destination !== 'string') return null;
   // Cache geocoding results for 6 hours — coordinates don't change. The hint is part
   // of the key: the same name can rightly resolve differently with different context.
-  var cacheKey = 'geocode_' + (destination + (hint ? '|' + hint : '')).toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+  // geocode2_: results cached under the old key include "ORD" → Ord, Nebraska.
+  // An airport code gets its own key: the key is lower-cased, and "ORD" (Chicago)
+  // must not share an entry with "ord".
+  var isAirportCode = /^[A-Z]{3}$/.test(String(destination).trim());
+  var cacheKey = (isAirportCode ? 'geocode2_iata_' : 'geocode2_') + (destination + (hint ? '|' + hint : '')).toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
   try {
     var cached = CacheService.getScriptCache().get(cacheKey);
     if (cached) {
@@ -5384,6 +5388,15 @@ function geocodePackingDestination_(destination, hint) {
   } catch(e_) {}
   try {
     var cands = geocodeCandidates_(destination);
+    // A bare airport code is not a place name: a flight's destination is stored as
+    // "ORD", and Open-Meteo matched the town of Ord, Nebraska — weather and all.
+    // Resolve it to its city first (as webGetDestWeather_ and travelAirportGeo_ do),
+    // and never search the code itself.
+    if (isAirportCode) {
+      var iataCity = typeof resolveIataToCity_ === 'function' ? resolveIataToCity_(String(destination).trim()) : null;
+      if (!iataCity) return null;
+      cands = geocodeCandidates_(iataCity);
+    }
     for (var c = 0; c < cands.length; c++) {
       const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
                   encodeURIComponent(cands[c].name) + '&count=' + (hint ? 5 : 1) + '&language=en&format=json' +
@@ -5445,7 +5458,8 @@ function getPackingWeatherDetail_(destination, startDate, endDate, preGeo) {
   // Cache weather results for 6 hours (CacheService maximum TTL).
   // Prevents redundant fetches when nightlyRun and the dashboard request
   // weather for the same trip within the same timeframe.
-  var wCacheKey = 'weatherd_' + (destination + '_' + startDate + '_' + endDate)
+  // weatherd2_: the old key holds weather fetched for Ord, Nebraska under "ORD".
+  var wCacheKey = 'weatherd2_' + (destination + '_' + startDate + '_' + endDate)
     .toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
   try {
     var wCached = CacheService.getScriptCache().get(wCacheKey);
