@@ -29,6 +29,8 @@ var GEN_INPUTS_HEADERS_ = ['Trip Key', 'Kind', 'Generated At', 'Inputs'];
 var GEN_KINDS_          = { packing: 'Packing list', discover: 'Discover suggestions' };
 var GEN_UPCOMING_DAYS_  = 60;   // nightly checks look at trips starting within this
 var GEN_FORECAST_DAYS_  = 14;   // the weather lookup switches to a forecast here
+var GEN_TROPICS_LAT_    = 23.44; // the Tropics of Cancer and Capricorn
+var GEN_PORT_RADIUS_KM_ = 50;    // a "port" this close to the base is the home port
 
 // ============================================================
 // TIME OF YEAR — now hemisphere-aware
@@ -39,9 +41,10 @@ var GEN_FORECAST_DAYS_  = 14;   // the weather lookup switches to a forecast her
  *
  * It used to come from the month alone, so December in Sydney was "Winter". The
  * latitude is free — the weather lookup already geocodes the destination — and it
- * settles it: south of 15°S the seasons flip, within 15° of the equator there isn't a
- * season worth naming. With no latitude the northern answer is given, marked as an
- * assumption rather than presented as fact.
+ * settles it: south of the Tropics the seasons flip, and inside them (23.44° either
+ * side of the equator) there isn't a season worth naming. That cut-off was 15° at
+ * first, which would have called November in Puerto Plata (19.8°N) "Fall". With no
+ * latitude the northern answer is given, marked as an assumption, not presented as fact.
  */
 function tripSeason_(startDate, lat) {
   var m = parseInt(String(startDate || '').substring(5, 7), 10);
@@ -49,7 +52,7 @@ function tripSeason_(startDate, lat) {
   var north = (m === 12 || m <= 2) ? 'Winter' : m <= 5 ? 'Spring' : m <= 8 ? 'Summer' : 'Fall';
   var flip  = { Winter: 'Summer', Spring: 'Fall', Summer: 'Winter', Fall: 'Spring' };
   if (lat === null || lat === undefined || !isFinite(lat)) return { season: north, basis: 'assumed-north' };
-  if (Math.abs(lat) < 15) return { season: 'Tropical (no real seasons)', basis: 'tropical' };
+  if (Math.abs(lat) < GEN_TROPICS_LAT_) return { season: 'Tropical (no real seasons)', basis: 'tropical' };
   if (lat < 0) return { season: flip[north], basis: 'south' };
   return { season: north, basis: 'north' };
 }
@@ -64,7 +67,9 @@ function genFactor_(id, label, status, detail, hint) {
 
 var GEN_DEST_SOURCE_ = { flight: 'from the flight', hotel: 'from where you’re staying', locations: 'from the itinerary’s places' };
 
-function genDestinationFactor_(dest, labelIsUnusable) {
+function genDestinationFactor_(dest, labelIsUnusable, ports) {
+  var stops = (ports || []).map(function(p) { return p.label; }).filter(Boolean);
+  var stopText = stops.length ? ' \u00b7 cruise stops: ' + stops.join(', ') : '';
   if (!dest || !dest.value) {
     return genFactor_('destination', 'Destination', 'missing', 'Not known',
       'Add a flight or a hotel to the itinerary so VERA knows where you’re going.');
@@ -75,7 +80,8 @@ function genDestinationFactor_(dest, labelIsUnusable) {
                       : '“' + dest.value + '”, guessed from the trip’s name',
       'Add a flight or a hotel to the itinerary so the destination is certain.');
   }
-  return genFactor_('destination', 'Destination', 'used', dest.value + ' (' + (GEN_DEST_SOURCE_[dest.source] || dest.source) + ')');
+  return genFactor_('destination', 'Destination', 'used',
+    (dest.label || dest.value) + ' (' + (GEN_DEST_SOURCE_[dest.source] || dest.source) + ')' + stopText);
 }
 
 function genDatesFactor_(startDate, endDate, season) {
@@ -128,16 +134,16 @@ function packingInputFactors_(g) {
   var types  = Object.keys(g.activityTypes || {}).filter(Boolean);
   var codes  = (g.dressCodes || []).filter(function(c, i, a) { return c && a.indexOf(c) === i; });
   return [
-    genDestinationFactor_(g.destination, false),
+    genDestinationFactor_(g.destination, false, g.ports),
     genDatesFactor_(g.startDate, g.endDate, season),
     genWeatherFactor_(g.weather),
     g.itinCount
       ? genFactor_('activities', 'Itinerary activities', 'used', g.itinCount + ' item' + (g.itinCount === 1 ? '' : 's') + (types.length ? ': ' + types.join(', ') : ''))
       : genFactor_('activities', 'Itinerary activities', 'missing', 'Nothing on the itinerary yet', 'Add the trip’s flights, stays and plans to the itinerary.'),
     genCharacteristicsFactor_(g.traits),
-    g.traveler
-      ? genFactor_('travellers', 'Travellers', 'used', g.traveler)
-      : genFactor_('travellers', 'Travellers', 'missing', 'Not set', 'Set who’s travelling on the trip.'),
+    // Blank is not "unset": both dashboards show it as Both, and the packing prompt
+    // says "Ahmed and Victoria". The banner was the only thing calling it missing.
+    genFactor_('travellers', 'Travellers', 'used', g.traveler || 'Ahmed and Victoria (the default)'),
     codes.length
       ? genFactor_('dresscodes', 'Dress codes', 'used', codes.join(', '))
       : genFactor_('dresscodes', 'Dress codes', 'none', 'None on the itinerary'),
@@ -154,7 +160,7 @@ function packingInputFactors_(g) {
 function discoverInputFactors_(g) {
   var season = tripSeason_(g.startDate, g.weather ? g.weather.lat : null);
   return [
-    genDestinationFactor_(g.destination, true),
+    genDestinationFactor_(g.destination, true, g.ports),
     genDatesFactor_(g.startDate, g.endDate, season),
     genWeatherFactor_(g.weather),
     genCharacteristicsFactor_(g.traits),
@@ -449,4 +455,136 @@ function genTripDates_(tripKey, startDate, endDate) {
     }
   }
   return { startDate: s || '', endDate: e || '' };
+}
+
+// ============================================================
+// A TRIP'S PLACES — the base, and every cruise stop
+// ============================================================
+
+/** Great-circle distance in km between two {lat, lon}. */
+function genKm_(a, b) {
+  var R = 6371, rad = Math.PI / 180;
+  var dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** "Miami Beach, Florida" / "Puerto Plata, Dominican Republic" from a geocode result. */
+function genPlaceLabel_(g) {
+  if (!g) return '';
+  var tail = g.countryCode === 'US' ? g.admin1 : g.country;
+  return g.name + (tail && tail !== g.name ? ', ' + tail : '');
+}
+
+/**
+ * Which itinerary rows could be cruise port days — pure, so a fixture can hold it to
+ * the real November trip.
+ *
+ * Only when the trip has a cruise. Then: rows dated inside the cruise stay (its date to
+ * its checkoutDate, else the trip's end) that carry a location, except flights (whose
+ * location is the DEPARTURE airport — "Washington IAD") and the cruise row itself.
+ * An event that merely spans the trip ("Eraky Family in Germany", from Oct 22) starts
+ * outside the window and never qualifies. Activities with a location ("Swim With The
+ * Pigs") do qualify here; tripPlaces_ drops whatever doesn't resolve on the map.
+ */
+function cruisePortRows_(itinData, tripKey, endDate) {
+  // The same alias set inferTripDestination_ matches on, so a renamed trip's rows count.
+  var keys = typeof tripKeysFor_ === 'function' ? tripKeysFor_(tripKey) : [tripKey];
+  var rows = (itinData || []).filter(function(r) { return keys.indexOf(String(r[1]).trim()) !== -1; });
+  var windows = [];
+  rows.forEach(function(r) {
+    if (String(r[2]).trim() !== 'cruise' || !r[4]) return;
+    var until = '';
+    try { until = (JSON.parse(String(r[9] || '{}')) || {}).checkoutDate || ''; } catch (e) {}
+    windows.push({ from: String(r[4]).slice(0, 10), to: String(until || endDate || r[4]).slice(0, 10) });
+  });
+  if (!windows.length) return [];
+  var out = [];
+  rows.forEach(function(r) {
+    var type = String(r[2]).trim(), loc = String(r[7] || '').trim(), date = String(r[4] || '').slice(0, 10);
+    if (!loc || !date || type === 'flight' || type === 'cruise') return;
+    if (typeof isVirtualMeetingLocation_ === 'function' && isVirtualMeetingLocation_(loc)) return;
+    var inside = windows.some(function(w) { return date >= w.from && date <= w.to; });
+    if (inside) out.push({ location: loc, title: String(r[3] || '').trim(), date: date });
+  });
+  return out;
+}
+
+/**
+ * The trip's base, resolved on the map, plus each cruise stop that resolves.
+ *
+ * base   inferTripDestination_ as before (flight destination, then where you're
+ *        staying, then the itinerary's places, then the trip's name) — now geocoded,
+ *        and labelled by what it resolved to rather than by a raw street address.
+ * ports  cruisePortRows_, each geocoded with its own event's words as a hint (so
+ *        "St Thomas, US Virgin Islands" picks the Virgin Islands over Ontario), minus
+ *        anything within 50 km of the base (the home port) and duplicates.
+ */
+function tripPlaces_(itinData, tripKey, tripLabel, endDate) {
+  var dest = inferTripDestination_(itinData, tripKey, tripLabel);
+  var base = { value: dest.value, source: dest.source, label: dest.value, geo: null };
+  if (dest.value) {
+    base.geo = geocodePackingDestination_(dest.value);
+    if (base.geo) base.label = genPlaceLabel_(base.geo);
+  }
+  var ports = [], seen = {};
+  cruisePortRows_(itinData, tripKey, endDate).forEach(function(c) {
+    var g = geocodePackingDestination_(c.location, c.title + ' ' + c.location);
+    if (!g) return;
+    if (base.geo && genKm_(base.geo, g) < GEN_PORT_RADIUS_KM_) return;
+    var label = genPlaceLabel_(g);
+    if (seen[label]) return;
+    seen[label] = true;
+    ports.push({ label: label, date: c.date, geo: g, from: c.location });
+  });
+  return { base: base, ports: ports };
+}
+
+/** What the prompts see: the base, then the stops. Never a street address. */
+function genPlacesText_(places) {
+  var b = places.base.label || places.base.value || '';
+  var stops = places.ports.map(function(p) { return p.label; });
+  return b + (stops.length ? (b ? '; ' : '') + 'cruise stops: ' + stops.join(', ') : '');
+}
+
+/**
+ * Several weather lookups as one, pure.
+ *
+ *   summary  "Miami Beach, Florida: Expected …; Puerto Plata, …: Expected …"
+ *            (just the base's text when there are no stops — unchanged)
+ *   mode     the WEAKEST part that has weather: any last-year part makes the whole
+ *            last_year, so the nightly "a forecast is now available" still fires
+ *   reason   the base's reason when nothing at all came back
+ *   lat      the base's latitude (the hemisphere is where you're based), else a stop's
+ */
+function genCombineWeather_(parts) {
+  var got = parts.filter(function(p) { return p.w && p.w.summary; });
+  var anyLast = got.some(function(p) { return p.w.mode === 'last_year'; });
+  var strip = function(t) { return String(t).replace(/^\([^)]*\)\s*/, ''); };
+  var summary = '';
+  if (got.length === 1 && parts.length === 1) summary = got[0].w.summary;
+  else if (got.length) {
+    summary = (anyLast ? '(Last year\u2019s weather on these dates) ' : '') +
+      got.map(function(p) { return p.where + ': ' + strip(p.w.summary); }).join('; ');
+    var missed = parts.filter(function(p) { return !(p.w && p.w.summary); }).map(function(p) { return p.where; });
+    if (missed.length) summary += ' (no weather found for ' + missed.join(', ') + ')';
+  }
+  var latSrc = parts.filter(function(p) { return p.w && p.w.lat !== null && p.w.lat !== undefined; })[0];
+  return {
+    summary: summary,
+    mode:    got.length ? (anyLast ? 'last_year' : 'forecast') : '',
+    reason:  got.length ? '' : ((parts[0] && parts[0].w && parts[0].w.reason) || 'no weather found'),
+    lat:     latSrc ? latSrc.w.lat : null,
+  };
+}
+
+/** The base for the whole trip; each stop for its own day. */
+function genTripWeather_(places, startDate, endDate) {
+  var parts = [{ where: places.base.label || places.base.value,
+                 w: getPackingWeatherDetail_(places.base.value, startDate, endDate, places.base.geo) }];
+  places.ports.forEach(function(p) {
+    parts.push({ where: p.label, w: getPackingWeatherDetail_(p.label, p.date, p.date, p.geo) });
+  });
+  return genCombineWeather_(parts);
 }

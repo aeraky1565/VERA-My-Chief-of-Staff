@@ -12,7 +12,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_geninpt');
 
-const FILES = ['GenerationInputs.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html'];
+const FILES = ['GenerationInputs.js', 'Code.js', 'WebApp.js', 'Trips.js', 'TravelDayBriefing.js', 'docs/app.js', 'docs/dashboard-lite.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -47,7 +47,49 @@ const CONTROLS = {
 
   // ---- the factors -------------------------------------------------------
   'the equator gets a season name': b => ({
-    [GI]: swap(b[GI], "  if (Math.abs(lat) < 15) return { season: 'Tropical (no real seasons)', basis: 'tropical' };\n", ''),
+    [GI]: swap(b[GI], "  if (Math.abs(lat) < GEN_TROPICS_LAT_) return { season: 'Tropical (no real seasons)', basis: 'tropical' };\n", ''),
+  }),
+  'the tropical cut-off goes back to 15° (Puerto Plata in November is "Fall")': b => ({
+    [GI]: swap(b[GI], 'var GEN_TROPICS_LAT_    = 23.44;', 'var GEN_TROPICS_LAT_    = 15;'),
+  }),
+  'blank travellers is "Not set" again': b => ({
+    [GI]: swap(b[GI], "    genFactor_('travellers', 'Travellers', 'used', g.traveler || 'Ahmed and Victoria (the default)'),",
+                      "    g.traveler ? genFactor_('travellers', 'Travellers', 'used', g.traveler) : genFactor_('travellers', 'Travellers', 'missing', 'Not set'),"),
+  }),
+
+  // ---- the November cruise: geocoding and places -------------------------
+  'the geocoder is sent the full string only (the hotel’s address finds nothing)': b => ({
+    [WEB]: swap(b[WEB], '    var cands = geocodeCandidates_(destination);', "    var cands = [{ name: destination, countryCode: '' }];"),
+  }),
+  'the event’s words are ignored (Saint Thomas lands in Ontario)': b => ({
+    [WEB]: swap(b[WEB], '      const r = geoPickResult_(data.results, hint);', "      const r = geoPickResult_(data.results, '');"),
+  }),
+  '"U.S." and "US" no longer read alike': b => ({
+    [WEB]: swap(b[WEB], "      var t = String(w || '').toLowerCase().replace(/\\./g, '').replace(", "      var t = String(w || '').toLowerCase().replace("),
+  }),
+  'every located event on the trip becomes a port, cruise or not': b => ({
+    [GI]: swap(b[GI], '    if (inside) out.push(', '    out.push('),
+  }),
+  'flight origins are counted as ports': b => ({
+    [GI]: swap(b[GI], "if (!loc || !date || type === 'flight' || type === 'cruise') return;", "if (!loc || !date || type === 'cruise') return;"),
+  }),
+  'no 50 km filter: the home port is a "stop"': b => ({
+    [GI]: swap(b[GI], '    if (base.geo && genKm_(base.geo, g) < GEN_PORT_RADIUS_KM_) return;\n', ''),
+  }),
+  'a stop that doesn’t resolve is kept anyway ("Swim With The Pigs")': b => ({
+    [GI]: swap(b[GI], '    if (!g) return;\n    if (base.geo', "    if (!g) g = { lat: 0, lon: 0, name: c.location, country: '' };\n    if (base.geo"),
+  }),
+  'a renamed trip’s rows stop counting as ports': b => ({
+    [GI]: swap(b[GI], "typeof tripKeysFor_ === 'function' ? tripKeysFor_(tripKey) : [tripKey];", '[tripKey];'),
+  }),
+  'every stop is looked up for the whole trip, not its own day': b => ({
+    [GI]: swap(b[GI], 'getPackingWeatherDetail_(p.label, p.date, p.date, p.geo)', 'getPackingWeatherDetail_(p.label, startDate, endDate, p.geo)'),
+  }),
+  'a stop on last year’s weather lets the whole pass for a forecast': b => ({
+    [GI]: swap(b[GI], "    mode:    got.length ? (anyLast ? 'last_year' : 'forecast') : '',", "    mode:    got.length ? 'forecast' : '',"),
+  }),
+  'packing goes back to the hotel’s raw address': b => ({
+    [WEB]: swap(b[WEB], '  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);\n', '  const places      = { base: inferTripDestination_(itinData, tripKey, tripLabel), ports: [] };\n'),
   }),
   'a destination guessed from the trip’s name counts as solid': b => ({
     [GI]: swap(b[GI], "  if (dest.source === 'label') {", '  if (false) {'),

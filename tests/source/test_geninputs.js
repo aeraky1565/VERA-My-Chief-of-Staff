@@ -92,6 +92,12 @@ console.log('tripSeason_: the hemisphere is the destination’s, not assumed');
   check('December in Sydney is Summer', s('2026-12-20', -33.9).season === 'Summer', s('2026-12-20', -33.9).season);
   check('July in Cape Town is Winter', s('2027-07-10', -33.9).season === 'Winter');
   check('near the equator there’s no season to name', /Tropical/.test(s('2027-03-01', 1.3).season), s('2027-03-01', 1.3).season);
+  // The November cruise: its ports sit at 18–19°N. A 15° cut-off called them "Fall".
+  check('Puerto Plata (19.8°N) in November is tropical', /Tropical/.test(s('2026-11-10', 19.8).season), s('2026-11-10', 19.8).season);
+  check('Saint Thomas (18.3°N) too', /Tropical/.test(s('2026-11-11', 18.3).season));
+  check('Miami (25.8°N), just outside the Tropics, is Fall', s('2026-11-06', 25.8).season === 'Fall', s('2026-11-06', 25.8).season);
+  check('…and the far south is still flipped (Rio, 22.9°S, is tropical; Buenos Aires, 34.6°S, is Spring in November)',
+        /Tropical/.test(s('2026-11-06', -22.9).season) && s('2026-11-06', -34.6).season === 'Spring');
   check('no latitude: northern, and SAID to be an assumption', s('2026-12-20', null).basis === 'assumed-north' && s('2026-12-20', null).season === 'Winter');
   check('no date: no season', s('', 40).season === '');
 }
@@ -138,7 +144,14 @@ console.log('\npacking factors: all eight, each in every state');
         one({ weather: { summary: 'x', mode: 'forecast', lat: null } }, 'dates').status === 'weak');
   check('empty itinerary → missing', one({ itinCount: 0 }, 'activities').status === 'missing');
   check('no characteristics → missing', one({ traits: '' }, 'characteristics').status === 'missing');
-  check('no travellers → missing', one({ traveler: '' }, 'travellers').status === 'missing');
+  // Blank is the default (Both), as both dashboards and the packing prompt treat it —
+  // the banner on the November cruise wrongly called it "Not set".
+  const tv = one({ traveler: '' }, 'travellers');
+  check('blank travellers is the default, not missing: used, "Ahmed and Victoria"', tv.status === 'used' && /Ahmed and Victoria/.test(tv.detail), JSON.stringify(tv));
+  const ports = [{ label: 'Puerto Plata, Dominican Republic' }, { label: 'Tortola, British Virgin Islands' }];
+  const dst = one({ destination: { value: 'Miami MIA', label: 'Miami, Florida', source: 'flight' }, ports }, 'destination');
+  check('the destination shows the resolved place and the cruise stops',
+        dst.detail === 'Miami, Florida (from the flight) · cruise stops: Puerto Plata, Dominican Republic, Tortola, British Virgin Islands', dst.detail);
   check('no dress codes is normal: NONE, not a warning', one({ dressCodes: [] }, 'dresscodes').status === 'none');
   check('no lessons that apply is normal: NONE', one({ lessons: '' }, 'lessons').status === 'none');
   check('lessons that couldn’t be read ARE a problem', one({ lessonsError: 'Memory Log not found' }, 'lessons').status === 'missing');
@@ -352,13 +365,219 @@ console.log('\nDiscover now sees the weather, the time of year and the trip char
   check('nothing said when there’s nothing to say', !/Time of year|Trip characteristics|Weather:|Fit the weather/.test(bare));
 }
 
+// ============ the geocoder: what Open-Meteo can actually find ===============
+//
+// The strings below are the November cruise's REAL itinerary locations. Open-Meteo's
+// geocoder matches place names and postal codes, never a street address — so the
+// hotel's address found nothing, and the trip lost its weather and its hemisphere.
+
+const KIMPTON = 'Kimpton Surfcomber Hotel\n1717 Collins Ave, Miami Beach, FL  33139, United States';
+
+// A stand-in for Open-Meteo's geocoder that behaves like the real one: it finds a
+// NAME (or a postal code), honours countryCode, and finds nothing for an address.
+const PLACES_DB = {
+  'miami':             [{ name: 'Miami', latitude: 25.77, longitude: -80.19, admin1: 'Florida', country: 'United States', country_code: 'US', timezone: 'America/New_York' }],
+  'miami beach':       [{ name: 'Miami Beach', latitude: 25.79, longitude: -80.13, admin1: 'Florida', country: 'United States', country_code: 'US', timezone: 'America/New_York' }],
+  '33139':             [{ name: 'Miami Beach', latitude: 25.79, longitude: -80.13, admin1: 'Florida', country: 'United States', country_code: 'US', timezone: 'America/New_York' }],
+  'puerto plata':      [{ name: 'Puerto Plata', latitude: 19.79, longitude: -70.69, admin1: 'Puerto Plata', country: 'Dominican Republic', country_code: 'DO' }],
+  // By population, Ontario's comes first — the trap the hint exists for.
+  'saint thomas':      [{ name: 'St. Thomas', latitude: 42.78, longitude: -81.19, admin1: 'Ontario', country: 'Canada', country_code: 'CA' },
+                        { name: 'Saint Thomas', latitude: 18.34, longitude: -64.93, admin1: 'Saint Thomas Island', country: 'U.S. Virgin Islands', country_code: 'VI' }],
+  'tortola':           [{ name: 'Tortola', latitude: 18.43, longitude: -64.62, admin1: '', country: 'British Virgin Islands', country_code: 'VG' }],
+  'great stirrup cay': [{ name: 'Great Stirrup Cay', latitude: 25.82, longitude: -77.92, admin1: 'Berry Islands', country: 'Bahamas', country_code: 'BS' }],
+  'washington':        [{ name: 'Washington', latitude: 38.9, longitude: -77.04, admin1: 'District of Columbia', country: 'United States', country_code: 'US' }],
+  'düsseldorf':        [{ name: 'Düsseldorf', latitude: 51.22, longitude: 6.78, admin1: 'North Rhine-Westphalia', country: 'Germany', country_code: 'DE' }],
+};
+function geoWorld() {
+  const store = {}, asked = [];
+  const S = {
+    CacheService: { getScriptCache: () => ({ get: k => store[k] || null, put: (k, v) => { store[k] = v; } }) },
+    Logger: { log() {} }, JSON, Math, encodeURIComponent, decodeURIComponent,
+    fetchTracked_: (svc, url) => {
+      const q = /[?&]name=([^&]*)/.exec(url), cc = /[?&]countryCode=([A-Z]{2})/.exec(url), n = /[?&]count=(\d+)/.exec(url);
+      const name = decodeURIComponent(q[1]).toLowerCase();
+      asked.push(name + (cc ? '[' + cc[1] + ']' : ''));
+      let hits = (PLACES_DB[name] || []).filter(r => !cc || r.country_code === cc[1]);
+      hits = hits.slice(0, n ? +n[1] : 10);
+      return { getContentText: () => JSON.stringify(hits.length ? { results: hits } : {}) };
+    },
+  };
+  vm.createContext(S);
+  ['geocodeCandidates_', 'geoPickResult_', 'geocodePackingDestination_'].forEach(f => vm.runInContext(extractFn(WEB, f), S));
+  S.store = store; S.asked = asked;
+  return S;
+}
+
+console.log('\ngeocodeCandidates_: an address broken into what can be found');
+{
+  const S = geoWorld();
+  const c = raw => { S.raw = raw; return vm.runInContext('geocodeCandidates_(raw)', S).map(x => x.name + (x.countryCode ? '[' + x.countryCode + ']' : '')); };
+  const k = c(KIMPTON);
+  check('the hotel: the city in the US first, then the ZIP, then the old full string',
+        k.slice(0, 3).join(' | ') === 'Miami Beach[US] | 33139[US] | Kimpton Surfcomber Hotel, 1717 Collins Ave, Miami Beach, FL 33139, United States', k.join(' | '));
+  check('…never the street line, the hotel’s name, the country or "FL" alone',
+        !k.filter((x, i) => i !== 2).some(x => /Collins|^Kimpton Surfcomber Hotel$|^United States$|^FL$/.test(x)), k.join(' | '));
+  check('"Port of Miami" → Miami', c('Port of Miami')[0] === 'Miami', c('Port of Miami').join(' | '));
+  check('"Miami MIA" (a flight’s airport) → Miami', c('Miami MIA')[0] === 'Miami', c('Miami MIA').join(' | '));
+  check('"Chicago, IL" → Chicago first, never "IL"', c('Chicago, IL')[0] === 'Chicago' && c('Chicago, IL').indexOf('IL') === -1, c('Chicago, IL').join(' | '));
+  check('"75001 Paris" → Paris', c('Rue de Rivoli, 75001 Paris, France').indexOf('Paris') !== -1, c('Rue de Rivoli, 75001 Paris, France').join(' | '));
+  check('a plain place is tried as itself', c('Puerto Plata')[0] === 'Puerto Plata');
+  check('nothing → nothing', c('').length === 0 && c(null).length === 0);
+}
+
+console.log('\ngeocodePackingDestination_: tries each candidate until one is found');
+{
+  const S = geoWorld();
+  S.d = KIMPTON;
+  const g = vm.runInContext('geocodePackingDestination_(d)', S);
+  check('THE HOTEL’S ADDRESS NOW RESOLVES — to Miami Beach, Florida', g && g.name === 'Miami Beach' && g.admin1 === 'Florida' && Math.abs(g.lat - 25.79) < 0.01, JSON.stringify(g));
+  check('…restricted to the US, on the first try', S.asked[0] === 'miami beach[US]' && S.asked.length === 1, S.asked.join(', '));
+  check('…keeping the timezone the travel-day briefing needs', g.timezone === 'America/New_York');
+  const before = S.asked.length;
+  vm.runInContext('geocodePackingDestination_(d)', S);
+  check('…and cached: the second ask costs no call', S.asked.length === before);
+
+  // When the first candidate finds nothing, the next is tried.
+  const S2 = geoWorld();
+  S2.d = 'Somewhere Hotel\n1 Ocean Dr, Nowhereville, FL 33139, United States';
+  const g2 = vm.runInContext('geocodePackingDestination_(d)', S2);
+  check('a city the geocoder doesn’t know falls through to the ZIP', g2 && g2.name === 'Miami Beach' && S2.asked[0] === 'nowhereville[US]' && S2.asked[1] === '33139[US]', S2.asked.join(', '));
+  S2.d = 'Atlantis';
+  check('nothing found anywhere → null', vm.runInContext('geocodePackingDestination_(d)', S2) === null);
+
+  const S3 = geoWorld();
+  const st = vm.runInContext('geocodePackingDestination_("Saint Thomas", "St Thomas, US Virgin Islands Saint Thomas")', S3);
+  check('"Saint Thomas" with its event’s words: the Virgin Islands, not Ontario', st && st.country === 'U.S. Virgin Islands', JSON.stringify(st));
+  const on = vm.runInContext('geocodePackingDestination_("Saint Thomas")', S3);
+  check('…and with no hint, the geocoder’s own order stands (as before)', on && on.country === 'Canada');
+}
+
+// ============ a trip's places =================================================
+//
+// Shaped exactly like the November anniversary cruise on the joint calendar: flights
+// that carry the DEPARTURE airport, a hotel stored as a street address, the cruise, a
+// port day in the home port, four real stops, an activity with a place-like location,
+// and a family trip in Germany on the same calendar.
+
+const TK = '2026-11-06|Anniversary';
+const I = (id, type, title, date, loc, meta, key) => [id, key || TK, type, title, date, '', '', loc, '', meta ? JSON.stringify(meta) : ''];
+const CRUISE_TRIP = [
+  I('f1', 'flight',   'UA 1234 IAD → MIA',            '2026-11-06', 'Washington IAD', { dest: 'Miami MIA' }),
+  I('h1', 'hotel',    'Kimpton Surfcomber Hotel',     '2026-11-06', KIMPTON, { checkoutDate: '2026-11-08' }),
+  I('c1', 'cruise',   'Cruise Stay: Norwegian Aqua',  '2026-11-08', 'Port of Miami', { checkoutDate: '2026-11-15' }),
+  I('p0', 'activity', 'Embarkation',                  '2026-11-08', 'Port of Miami'),
+  I('p1', 'activity', 'Puerto Plata',                 '2026-11-10', 'Puerto Plata'),
+  I('p2', 'activity', 'St Thomas, US Virgin Islands', '2026-11-11', 'Saint Thomas'),
+  I('p3', 'activity', 'Tortola',                      '2026-11-12', 'Tortola'),
+  I('p4', 'activity', 'Great Stirrup Cay',            '2026-11-14', 'Great Stirrup Cay'),
+  I('a1', 'activity', 'Swim With The Pigs',           '2026-11-14', 'Swim With The Pigs'),
+  I('z1', 'activity', 'Team sync',                    '2026-11-12', 'https://meet.google.com/abc-defg-hij'),
+  I('f2', 'flight',   'UA 4321 MIA → IAD',            '2026-11-15', 'Miami MIA', { dest: 'Washington IAD' }),
+  I('g1', 'activity', 'Eraky Family in Germany',      '2026-10-22', 'Düsseldorf'),
+  I('g2', 'activity', 'Eraky Family in Germany',      '2026-11-09', 'Düsseldorf', null, '2026-10-22|Germany'),
+];
+
+function placesWorld() {
+  const S = geoWorld();
+  vm.runInContext(GI, S);
+  vm.runInContext(extractFn(WEB, 'inferTripDestination_'), S);
+  vm.runInContext(extractFn(read('Trips.js'), 'tripRowMatches_'), S);
+  vm.runInContext(extractFn(read('TravelDayBriefing.js'), 'isVirtualMeetingLocation_'), S);
+  vm.runInContext(extractFn(WEB, 'itinKeywordHit_'), S);
+  S.tripKeysFor_ = k => [k];
+  return S;
+}
+
+console.log('\ncruisePortRows_: the days inside the cruise that have a place');
+{
+  const S = placesWorld();
+  S.itin = CRUISE_TRIP;
+  const rows = vm.runInContext('cruisePortRows_(itin, ' + JSON.stringify(TK) + ', "2026-11-15")', S);
+  const locs = rows.map(r => r.location);
+  check('the four stops are candidates', ['Puerto Plata', 'Saint Thomas', 'Tortola', 'Great Stirrup Cay'].every(l => locs.indexOf(l) !== -1), locs.join(' | '));
+  check('flights never are — their location is where they LEAVE from', locs.indexOf('Washington IAD') === -1 && locs.indexOf('Miami MIA') === -1);
+  check('nor the cruise row itself, nor the hotel before boarding', !rows.some(r => r.title === 'Cruise Stay: Norwegian Aqua') && locs.indexOf(KIMPTON) === -1);
+  check('a video call isn’t a port', !locs.some(l => /meet\.google/.test(l)));
+  check('Germany never is: one row is before the cruise, the other is another trip', locs.indexOf('Düsseldorf') === -1);
+  check('each keeps its own day', rows.find(r => r.location === 'Tortola').date === '2026-11-12');
+  S.noCruise = CRUISE_TRIP.filter(r => r[2] !== 'cruise');
+  check('no cruise → no ports at all', vm.runInContext('cruisePortRows_(noCruise, ' + JSON.stringify(TK) + ', "2026-11-15")', S).length === 0);
+  S.renamed = CRUISE_TRIP.map(r => r.slice());
+  S.renamed.forEach(r => { if (r[0] === 'p3') r[1] = '2026-11-06|First Anniversary'; });
+  S.tripKeysFor_ = k => [k, '2026-11-06|First Anniversary'];
+  check('a row under the trip’s old name still counts', vm.runInContext('cruisePortRows_(renamed, ' + JSON.stringify(TK) + ', "2026-11-15")', S).some(r => r.location === 'Tortola'));
+}
+
+console.log('\ntripPlaces_: the November cruise, as the banner should have shown it');
+{
+  const S = placesWorld();
+  S.itin = CRUISE_TRIP;
+  const p = vm.runInContext('tripPlaces_(itin, ' + JSON.stringify(TK) + ', "Vacation: First Anniversary Trip", "2026-11-15")', S);
+  check('the base is Miami, from the flight, resolved on the map', p.base.source === 'flight' && p.base.label === 'Miami, Florida' && p.base.geo && Math.abs(p.base.geo.lat - 25.77) < 0.01, JSON.stringify(p.base));
+  const labels = p.ports.map(x => x.label);
+  check('EXACTLY the four stops, in order',
+        labels.join(' | ') === 'Puerto Plata, Dominican Republic | Saint Thomas, U.S. Virgin Islands | Tortola, British Virgin Islands | Great Stirrup Cay, Bahamas', labels.join(' | '));
+  check('the home port is dropped: Port of Miami is within 50 km of the base', !labels.some(l => /^Miami/.test(l)));
+  check('"Swim With The Pigs" isn’t a place, so it’s dropped', !labels.some(l => /Pigs/.test(l)));
+  check('each stop keeps its day and its own coordinates', p.ports[1].date === '2026-11-11' && Math.abs(p.ports[1].geo.lat - 18.34) < 0.01);
+  check('the prompts see places, never a street address',
+        vm.runInContext('genPlacesText_(p)', Object.assign(S, { p })) === 'Miami, Florida; cruise stops: Puerto Plata, Dominican Republic, Saint Thomas, U.S. Virgin Islands, Tortola, British Virgin Islands, Great Stirrup Cay, Bahamas');
+
+  // With no flight, the base is the hotel's ADDRESS — which now resolves.
+  S.noFlights = CRUISE_TRIP.filter(r => r[2] !== 'flight');
+  const h = vm.runInContext('tripPlaces_(noFlights, ' + JSON.stringify(TK) + ', "Anniversary", "2026-11-15")', S);
+  check('no flight: the hotel’s address resolves to Miami Beach, Florida', h.base.source === 'hotel' && h.base.label === 'Miami Beach, Florida' && h.base.geo && h.base.geo.lat > 23.44, JSON.stringify(h.base));
+  check('…and the same four stops', h.ports.length === 4, h.ports.map(x => x.label).join(' | '));
+  check('…and the season from its latitude is Fall, northern', vm.runInContext('tripSeason_("2026-11-06", ' + h.base.geo.lat + ')', S).season === 'Fall');
+
+  // Two events at the same stop are one stop.
+  S.dup = CRUISE_TRIP.concat([I('p5', 'activity', 'Beach day', '2026-11-12', 'Tortola')]);
+  check('the same stop twice is listed once', vm.runInContext('tripPlaces_(dup, ' + JSON.stringify(TK) + ', "", "2026-11-15")', S).ports.length === 4);
+}
+
+console.log('\ngenCombineWeather_: the base and every stop, as one');
+{
+  const S = sandbox();
+  const W = (summary, mode, lat) => ({ summary, mode, reason: summary ? '' : 'none', lat });
+  S.parts = [
+    { where: 'Miami, Florida', w: W('(Last year’s weather on these dates) Expected: 72–84°F', 'last_year', 25.77) },
+    { where: 'Tortola, British Virgin Islands', w: W('Expected: 78–86°F, some rain.', 'forecast', 18.43) },
+    { where: 'Great Stirrup Cay, Bahamas', w: W('', '', null) },
+  ];
+  const c = vm.runInContext('genCombineWeather_(parts)', S);
+  check('any stop on last year’s weather makes the whole last year’s (so the forecast nudge still fires)', c.mode === 'last_year', c.mode);
+  check('…said once, up front', /^\(Last year’s weather on these dates\) Miami, Florida: Expected: 72–84°F; Tortola, British Virgin Islands: Expected: 78–86°F/.test(c.summary) &&
+        c.summary.split('Last year’s').length === 2, c.summary);
+  check('a stop with no weather is named, not dropped silently', /no weather found for Great Stirrup Cay, Bahamas/.test(c.summary), c.summary);
+  check('the latitude is the base’s', c.lat === 25.77);
+  S.parts = [{ where: 'A', w: W('Expected: 1', 'forecast', 1) }, { where: 'B', w: W('Expected: 2', 'forecast', 2) }];
+  check('all forecasts → forecast', vm.runInContext('genCombineWeather_(parts)', S).mode === 'forecast');
+  S.parts = [{ where: 'Chicago', w: W('Expected: 48–61°F', 'forecast', 41.9) }];
+  check('no stops: exactly the base’s text, as before', vm.runInContext('genCombineWeather_(parts)', S).summary === 'Expected: 48–61°F');
+  S.parts = [{ where: 'X', w: { summary: '', mode: '', reason: 'couldn’t find "X" on the map', lat: null } }];
+  const none = vm.runInContext('genCombineWeather_(parts)', S);
+  check('nothing at all: the base’s reason', none.mode === '' && /couldn’t find "X"/.test(none.reason));
+
+  // Each stop is looked up for ITS day, with the place already resolved.
+  const calls = [];
+  S.getPackingWeatherDetail_ = (d, a, b, g) => { calls.push([d, a, b, g && g.lat]); return W('Expected: x', 'forecast', g ? g.lat : 25); };
+  S.places = { base: { value: 'Miami MIA', label: 'Miami, Florida', geo: { lat: 25.77 } }, ports: [{ label: 'Tortola, British Virgin Islands', date: '2026-11-12', geo: { lat: 18.43 } }] };
+  vm.runInContext('genTripWeather_(places, "2026-11-06", "2026-11-15")', S);
+  check('the base for the whole trip, each stop for its own day, with its own coordinates',
+        JSON.stringify(calls) === JSON.stringify([['Miami MIA', '2026-11-06', '2026-11-15', 25.77], ['Tortola, British Virgin Islands', '2026-11-12', '2026-11-12', 18.43]]), JSON.stringify(calls));
+}
+
 // ============ wiring ========================================================
 
 console.log('\nwiring');
 {
   const pack = extractFn(WEB, 'webGeneratePacking_'), recs = extractFn(WEB, 'webGenerateRecommendations_');
   check('packing fills a missing end date from the trip', /genTripDates_\(tripKey/.test(pack));
-  check('…uses the weather detail and the hemisphere-aware season', /getPackingWeatherDetail_\(destination/.test(pack) && /tripSeason_\(startDate, weather\.lat\)/.test(pack));
+  check('…works from the trip’s places, cruise stops included', /tripPlaces_\(itinData, tripKey, tripLabel, endDate\)/.test(pack) && /genTripWeather_\(places/.test(pack));
+  check('…and the hemisphere-aware season', /tripSeason_\(startDate, weather\.lat\)/.test(pack));
+  check('…recording the ports it used', /ports:\s+places\.ports/.test(pack));
+  check('Discover works from the places too', /tripPlaces_\(itinData, tripKey, tripLabel, endDate\)/.test(recs) && /genTripWeather_\(places/.test(recs) && /ports:\s+places\.ports/.test(recs));
+  check('the weather lookup takes an already-resolved place', /const geo = preGeo \|\| geocodePackingDestination_\(destination\);/.test(WEB));
   check('…the month-only season is gone', !/var mo = parseInt\(startDate\.substring\(5, 7\), 10\);/.test(pack));
   check('…keeps checkmarks via the plan', /planPackingRegeneration_\(tripRows, proposed\)/.test(pack));
   check('…and records what it used', /recordGenerationInputs_\('packing', tripKey, packingInputFactors_\(/.test(pack));

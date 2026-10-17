@@ -497,6 +497,38 @@ function tbGenerateDiscoveries() {
   Logger.log('Generated ' + ((res && res.recs && res.recs.length) || 0) + ' recommendation(s).');
 }
 
+/**
+ * Where VERA thinks a trip goes, as the packing list and Discover now see it: the base,
+ * resolved on the map, and each cruise stop. Uses TB_TRIP_LABEL. No knobs otherwise.
+ *
+ * Prints what each place RESOLVED to — name, region, country, latitude — because a
+ * place that resolves to the wrong one (St. Thomas, Ontario for the Virgin Islands) is
+ * only visible this way, and it decides both the weather and the hemisphere.
+ */
+function tbTripPlaces() {
+  tbBanner_('Trip places (destination + cruise stops)');
+  var trip = tbPickTrip_();
+  if (!trip) return;
+  var key = trip.startDate + '|' + trip.label;
+  var itin = webGetItinerary_({ parameter: { tripKey: key, startDate: trip.startDate, endDate: trip.endDate } }, { skipEventTz: true }) || {};
+  var rows = (itin.items || []).map(function(it) {
+    return [it.id, it.tripKey, it.type, it.title, it.date, it.startTime, it.endTime, it.location, it.notes, it.metadata];
+  });
+  var places = tripPlaces_(rows, key, trip.label, trip.endDate);
+  var b = places.base;
+  Logger.log('Base (' + (b.source || 'none') + '): ' + (b.value || '(nothing)').replace(/\s*\n\s*/g, ', '));
+  Logger.log('   → ' + tbPlaceLine_(b.geo));
+  Logger.log('Season: ' + tripSeason_(trip.startDate, b.geo ? b.geo.lat : null).season);
+  var cands = cruisePortRows_(rows, key, trip.endDate);
+  Logger.log('Cruise stop candidates: ' + cands.length + '; kept as stops: ' + places.ports.length);
+  places.ports.forEach(function(p) { Logger.log('   ' + p.date + '  "' + p.from + '" → ' + tbPlaceLine_(p.geo)); });
+  var kept = {}; places.ports.forEach(function(p) { kept[p.from] = true; });
+  cands.filter(function(c) { return !kept[c.location]; }).forEach(function(c) {
+    Logger.log('   dropped: ' + c.date + '  "' + c.location + '" (not on the map, near the base, or a repeat)');
+  });
+  Logger.log('Prompt sees: ' + genPlacesText_(places));
+}
+
 /** What VERA thinks each upcoming trip is and where it goes. */
 function tbTripContext() {
   tbBanner_('Trip context');
@@ -718,6 +750,12 @@ function tbNetWorth() {
 function tbNetWorthLine_(name, section, count) {
   Logger.log((section.status === 'ok' ? '  found    ' : '  MISSING  ') + name +
              (section.status === 'ok' ? (count !== undefined ? ' — ' + count : '') : ' — ' + section.reason));
+}
+
+/** One resolved place, for tbTripPlaces(): name | region | country | latitude, and the search that found it. */
+function tbPlaceLine_(g) {
+  return g ? g.name + ' | ' + (g.admin1 || '-') + ' | ' + (g.country || '-') + ' | lat ' + g.lat + '  (searched as "' + g.matched + '")'
+           : 'NOT FOUND on the map';
 }
 
 function tbBanner_(what) {

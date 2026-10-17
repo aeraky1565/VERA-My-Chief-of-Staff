@@ -5267,10 +5267,94 @@ function webDeletePackingItem_(e) {
  * Geocode a destination string via Open-Meteo geocoding API.
  * Returns { lat, lon, name } or null on failure.
  */
-function geocodePackingDestination_(destination) {
-  if (!destination) return null;
-  // Cache geocoding results for 6 hours — coordinates don't change
-  var cacheKey = 'geocode_' + destination.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
+/**
+ * What Open-Meteo's geocoder can actually find, in the order worth trying.
+ *
+ * It matches place NAMES and postal codes; a street address finds nothing. The hotel
+ * on the November cruise is stored as
+ *   "Kimpton Surfcomber Hotel\n1717 Collins Ave, Miami Beach, FL  33139, United States"
+ * and that one miss cost the trip its weather AND its hemisphere, both of which need
+ * the latitude this returns. So the string is broken into what can be found:
+ *
+ *   1. a US "City, ST 12345" address → the city, restricted to the US; then the ZIP
+ *   2. "Port of Miami" → Miami;  "Miami MIA" (city + airport code) → Miami
+ *   3. "75001 Paris" style parts → Paris — but not "1717 Collins Ave", where the
+ *      number is a street number: a part with a street word is never a postal city
+ *   4. the whole string, as it always was
+ *   5. any remaining part without digits (no street lines), right to left — skipping,
+ *      in a 3+ part address, the first (a business name) and the last (the country)
+ *
+ * @returns {Array<{name: string, countryCode: string}>}
+ */
+function geocodeCandidates_(raw) {
+  var s = String(raw == null ? '' : raw).replace(/\s*\n\s*/g, ', ').replace(/\s{2,}/g, ' ').trim();
+  var out = [], seen = {};
+  function add(name, cc) {
+    var n = String(name || '').replace(/^[\s,]+|[\s,]+$/g, '');
+    if (n.length < 2) return;
+    var k = n.toLowerCase() + '|' + (cc || '');
+    if (seen[k]) return;
+    seen[k] = true;
+    out.push({ name: n, countryCode: cc || '' });
+  }
+  if (!s) return out;
+  var parts = s.split(',').map(function(p) { return p.trim(); }).filter(Boolean);
+
+  for (var i = 1; i < parts.length; i++) {
+    var us = /^([A-Z]{2})\s+(\d{5})(?:-\d{4})?$/.exec(parts[i]);
+    if (us) { add(parts[i - 1], 'US'); add(us[2], 'US'); }
+    // "Chicago, IL" / "Paris, FR": a bare two-letter code marks the part before it as
+    // the place. The code itself is never searched — two letters is an exact-match
+    // query, and "IL" finds nothing useful.
+    else if (/^[A-Z]{2}$/.test(parts[i])) add(parts[i - 1]);
+  }
+  var port = /^port of\s+(.+)$/i.exec(s);
+  if (port) add(port[1]);
+  var airport = /^(.+?)\s+([A-Z]{3})$/.exec(s);
+  if (airport && parts.length === 1) add(airport[1]);
+  var STREET = /\b(ave|avenue|st|street|rd|road|blvd|boulevard|dr|drive|ln|lane|way|ct|court|pl|place|hwy|highway|pkwy|parkway|rue|via|calle|strasse|str)\b\.?/i;
+  parts.forEach(function(p) {
+    var pc = /^(\d{4,6})\s+([^\d]+)$/.exec(p);
+    if (pc && !STREET.test(pc[2])) add(pc[2]);
+  });
+  add(s);
+  var lo = parts.length >= 3 ? 1 : 0, hi = parts.length >= 3 ? parts.length - 2 : parts.length - 1;
+  for (var j = hi; j >= lo; j--) {
+    if (!/\d/.test(parts[j]) && !STREET.test(parts[j]) && !/^[A-Z]{2}$/.test(parts[j])) add(parts[j]);
+  }
+  return out;
+}
+
+/**
+ * Of several geocoder matches, the one the surrounding words point at. "Saint Thomas"
+ * alone is St. Thomas, Ontario as readily as the Virgin Islands; an event titled
+ * "St Thomas, US Virgin Islands" says which. With no hint, or no match to it, the
+ * geocoder's own order (by population) stands — exactly the old behaviour.
+ */
+function geoPickResult_(results, hint) {
+  if (!results || !results.length) return null;
+  // Periods go first, so "U.S. Virgin Islands" and "US Virgin Islands" read alike.
+  var h = ' ' + String(hint || '').toLowerCase().replace(/\./g, '').replace(/[^a-z0-9]+/g, ' ') + ' ';
+  if (h.trim() === '') return results[0];
+  var best = results[0], bestScore = 0;
+  results.forEach(function(r) {
+    var score = 0;
+    [r.country, r.admin1].forEach(function(w, i) {
+      var t = String(w || '').toLowerCase().replace(/\./g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+      if (t && h.indexOf(' ' + t + ' ') !== -1) score += i === 0 ? 2 : 1;
+    });
+    if (score > bestScore) { best = r; bestScore = score; }
+  });
+  return best;
+}
+
+function geocodePackingDestination_(destination, hint) {
+  // A name only: an object here (inferTripDestination_'s {value, source}) once came
+  // from a caller with the wrong contract, and would now be searched as "[object Object]".
+  if (!destination || typeof destination !== 'string') return null;
+  // Cache geocoding results for 6 hours — coordinates don't change. The hint is part
+  // of the key: the same name can rightly resolve differently with different context.
+  var cacheKey = 'geocode_' + (destination + (hint ? '|' + hint : '')).toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
   try {
     var cached = CacheService.getScriptCache().get(cacheKey);
     if (cached) {
@@ -5278,20 +5362,27 @@ function geocodePackingDestination_(destination) {
     }
   } catch(e_) {}
   try {
-    const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
-                encodeURIComponent(destination) + '&count=1&language=en&format=json';
-    const resp = fetchTracked_('open-meteo', url, { muteHttpExceptions: true });
-    const data = JSON.parse(resp.getContentText());
-    if (!data.results || data.results.length === 0) return null;
-    const r = data.results[0];
-    // timezone comes back on every Open-Meteo geocoding result and used to be
-    // discarded here. It is an IANA name, which is exactly what the travel-day
-    // briefing needs to state a real timezone offset instead of asking a model
-    // to guess one — and it costs nothing, since this response is already
-    // fetched and already cached for six hours.
-    var result = { lat: r.latitude, lon: r.longitude, name: r.name, timezone: r.timezone || '' };
-    try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 21600); } catch(e_) {}
-    return result;
+    var cands = geocodeCandidates_(destination);
+    for (var c = 0; c < cands.length; c++) {
+      const url = 'https://geocoding-api.open-meteo.com/v1/search?name=' +
+                  encodeURIComponent(cands[c].name) + '&count=' + (hint ? 5 : 1) + '&language=en&format=json' +
+                  (cands[c].countryCode ? '&countryCode=' + cands[c].countryCode : '');
+      const resp = fetchTracked_('open-meteo', url, { muteHttpExceptions: true });
+      const data = JSON.parse(resp.getContentText());
+      const r = geoPickResult_(data.results, hint);
+      if (!r) continue;
+      // timezone comes back on every Open-Meteo geocoding result and used to be
+      // discarded here. It is an IANA name, which is exactly what the travel-day
+      // briefing needs to state a real timezone offset instead of asking a model
+      // to guess one — and it costs nothing, since this response is already
+      // fetched and already cached for six hours.
+      var result = { lat: r.latitude, lon: r.longitude, name: r.name, timezone: r.timezone || '',
+                     admin1: r.admin1 || '', country: r.country || '', countryCode: r.country_code || '',
+                     matched: cands[c].name };
+      try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 21600); } catch(e_) {}
+      return result;
+    }
+    return null;
   } catch(err) {
     Logger.log('Packing geocode error: ' + err.message);
     return null;
@@ -5324,7 +5415,9 @@ function getPackingWeather_(destination, startDate, endDate) {
  * for as long as it has generated packing lists; the request then went out with
  * end_date= and failed at the weather service, which read exactly like an outage.
  */
-function getPackingWeatherDetail_(destination, startDate, endDate) {
+// preGeo: an already-resolved place (tripPlaces_ geocodes each cruise stop with its
+// event's own words as a hint). Re-geocoding the bare name here could land elsewhere.
+function getPackingWeatherDetail_(destination, startDate, endDate, preGeo) {
   var out = { summary: '', mode: '', reason: '', lat: null };
   if (!destination) { out.reason = 'no destination to look up'; return out; }
   if (!startDate || !endDate) { out.reason = 'no trip dates (' + (startDate ? 'end date' : 'start date') + ' missing)'; return out; }
@@ -5338,7 +5431,7 @@ function getPackingWeatherDetail_(destination, startDate, endDate) {
     if (wCached) return JSON.parse(wCached);
   } catch(e_) {}
   try {
-    const geo = geocodePackingDestination_(destination);
+    const geo = preGeo || geocodePackingDestination_(destination);
     if (!geo) { out.reason = 'couldn’t find "' + destination + '" on the map'; return out; }
     const lat = geo.lat, lon = geo.lon;
     out.lat = lat;
@@ -5664,13 +5757,16 @@ function webGeneratePacking_(e) {
   // the only weather signal available.
   // Its source is kept now: a destination guessed from the trip's name is worth
   // using for the weather, but the banner has to say it was a guess.
-  const destInfo    = inferTripDestination_(itinData, tripKey, tripLabel);
-  const destination = destInfo.value;
+  // The base and every cruise stop, resolved on the map (GenerationInputs.js). The
+  // prompt sees "Miami Beach, Florida; cruise stops: …", never a hotel's street address.
+  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);
+  const destInfo    = places.base;
+  const destination = genPlacesText_(places);
 
   // Step 4b/5 — Weather, then season. Weather first because its geocode gives the
   // latitude, and the latitude is what makes the season right: from the month alone,
   // December in Sydney was "Winter". tripSeason_ is in GenerationInputs.js.
-  const weather        = getPackingWeatherDetail_(destination, startDate || '', endDate || '');
+  const weather        = genTripWeather_(places, startDate || '', endDate || '');
   const weatherSummary = weather.summary;
   var season = tripSeason_(startDate, weather.lat).season;
 
@@ -5794,6 +5890,7 @@ function webGeneratePacking_(e) {
   // fails the generation: the list is already written.
   recordGenerationInputs_('packing', tripKey, packingInputFactors_({
     destination:   destInfo,
+    ports:         places.ports,
     startDate:     startDate,
     endDate:       endDate,
     weather:       weather,
@@ -6352,13 +6449,18 @@ function webGenerateRecommendations_(e) {
   // is a trip's name, not somewhere you can search for restaurants. Handing it
   // over as a destination is what sent Claude looking for a country that fit.
   // The label still reaches the prompt on its own "Trip:" line, as a name.
-  const destInfo    = inferTripDestination_(itinData, tripKey, tripLabel);
-  const destination = destInfo.source === 'label' ? '' : destInfo.value;
+  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);
+  const destInfo    = places.base;
+  // The ports are searched too: they're where the free days are.
+  // A name-only base still isn't searched as a place, but real stops still are.
+  const destination = destInfo.source === 'label'
+    ? (places.ports.length ? genPlacesText_({ base: { label: '', value: '' }, ports: places.ports }) : '')
+    : genPlacesText_(places);
 
   // Weather and time of year, which Discover never used to see. A guess from the
   // trip's name IS used for the weather lookup — the worst a wrong guess does there is
   // find no forecast — while staying out of the search, as above.
-  const weather    = getPackingWeatherDetail_(destInfo.value, startDate || '', endDate || '');
+  const weather    = genTripWeather_(places, startDate || '', endDate || '');
   const recsSeason = tripSeason_(startDate, weather.lat).season;
 
   // Build prompts
@@ -6495,6 +6597,7 @@ function webGenerateRecommendations_(e) {
   // What these suggestions were built from (GenerationInputs.js). Never fails the run.
   recordGenerationInputs_('discover', tripKey, discoverInputFactors_({
     destination:  destInfo,
+    ports:        places.ports,
     startDate:    startDate,
     endDate:      endDate,
     weather:      weather,
