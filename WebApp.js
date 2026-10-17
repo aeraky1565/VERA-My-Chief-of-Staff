@@ -5771,6 +5771,10 @@ function webGeneratePacking_(e) {
     briefing = String(metaResult.notes || '').trim();
     traits   = String(metaResult.characteristics || '').trim();
   } catch(err) { /* graceful */ }
+  // Read who's going before assuming it: the trip's setting, then the itinerary's
+  // own traveller tags, then the default (GenerationInputs.js).
+  const travellers = genTravellers_(traveler, itinData);
+  traveler = travellers.value;
 
   // Step 4 — Infer destination for weather. The label guess is kept here (unlike
   // in recommendations): a wrong guess just means getPackingWeather_ finds no
@@ -5919,6 +5923,7 @@ function webGeneratePacking_(e) {
     itinCount:     itinCount,
     traits:        traits,
     traveler:      traveler,
+    travellerSource: travellers.source,
     dressCodes:    dressCodes,
     lessons:       packingLessons,
     lessonsError:  packingLessonsError,

@@ -152,8 +152,12 @@ console.log('\npacking factors: all eight, each in every state');
   check('no characteristics → missing', one({ traits: '' }, 'characteristics').status === 'missing');
   // Blank is the default (Both), as both dashboards and the packing prompt treat it —
   // the banner on the November cruise wrongly called it "Not set".
-  const tv = one({ traveler: '' }, 'travellers');
-  check('blank travellers is the default, not missing: used, "Ahmed and Victoria"', tv.status === 'used' && /Ahmed and Victoria/.test(tv.detail), JSON.stringify(tv));
+  const tv = one({ traveler: '', travellerSource: 'assumed' }, 'travellers');
+  check('an assumed traveller list is used, and SAYS it was assumed', tv.status === 'used' && tv.detail === 'Ahmed and Victoria (assumed: not set on the trip or its items)', JSON.stringify(tv));
+  const tvt = one({ traveler: 'Ahmed and Victoria', travellerSource: 'trip' }, 'travellers');
+  check('a traveller list read from the trip says so', tvt.detail === 'Ahmed and Victoria (set on the trip)', tvt.detail);
+  const tvi = one({ traveler: 'Victoria', travellerSource: 'itinerary' }, 'travellers');
+  check('…and from the itinerary’s tags', tvi.detail === 'Victoria (from the itinerary’s traveller tags)', tvi.detail);
   const ports = [{ label: 'Puerto Plata, Dominican Republic' }, { label: 'Tortola, British Virgin Islands' }];
   const dst = one({ destination: { value: 'Miami MIA', label: 'Miami, Florida', source: 'flight' }, ports }, 'destination');
   const cd = one({ ports: [{ label: 'Tortola, British Virgin Islands', geo: { lat: 18.43 } }] }, 'dates');
@@ -163,6 +167,25 @@ console.log('\npacking factors: all eight, each in every state');
   check('no dress codes is normal: NONE, not a warning', one({ dressCodes: [] }, 'dresscodes').status === 'none');
   check('no lessons that apply is normal: NONE', one({ lessons: '' }, 'lessons').status === 'none');
   check('lessons that couldn’t be read ARE a problem', one({ lessonsError: 'Memory Log not found' }, 'lessons').status === 'missing');
+}
+
+console.log('\ngenTravellers_: read who’s going before assuming it');
+{
+  const S = sandbox();
+  const tag = t => ['x', 'k', 'activity', 'x', '2026-11-08', '', '', '', '', t === null ? '' : JSON.stringify({ traveler: t })];
+  const tv = (stored, rows) => { S.st = stored; S.rows = rows; return vm.runInContext('genTravellers_(st, rows)', S); };
+  const both = tv('Both', []);
+  check('"Both" on the trip is Ahmed and Victoria, read from the trip', both.value === 'Ahmed and Victoria' && both.source === 'trip', JSON.stringify(both));
+  check('…case and spaces don’t matter', tv(' both ', []).source === 'trip');
+  check('one name on the trip is that name', tv('Victoria', [tag('Both')]).value === 'Victoria');
+  check('the trip’s setting wins over the items’ tags', tv('Ahmed', [tag('Victoria')]).value === 'Ahmed');
+  const it = tv('', [tag(null), tag('Ahmed'), tag('Victoria')]);
+  check('blank on the trip: the items’ tags are read (Ahmed + Victoria → both)', it.value === 'Ahmed and Victoria' && it.source === 'itinerary', JSON.stringify(it));
+  check('…a "Both" tag counts as both', tv('', [tag('Both')]).value === 'Ahmed and Victoria');
+  check('…only one name tagged: that name', tv('', [tag('Victoria'), tag(null)]).value === 'Victoria');
+  const none = tv('', [tag(null), ['x', 'k', 'flight', 'x', '', '', '', '', '', '{not json']]);
+  check('nothing anywhere: Ahmed and Victoria, ASSUMED', none.value === 'Ahmed and Victoria' && none.source === 'assumed', JSON.stringify(none));
+  check('…and junk on the trip is not read as a name', tv('maybe', []).source === 'assumed');
 }
 
 console.log('\nDiscover factors');
@@ -620,6 +643,8 @@ console.log('\nwiring');
   check('…and records what it used', /recordGenerationInputs_\('packing', tripKey, packingInputFactors_\(/.test(pack));
   check('Discover does the same', /genTripDates_\(tripKey/.test(recs) && /recordGenerationInputs_\('discover', tripKey, discoverInputFactors_\(/.test(recs) &&
         /weather\.summary, recsSeason, recTraits\)/.test(recs));
+  check('packing reads the travellers before assuming them, and records where they came from',
+        /const travellers = genTravellers_\(traveler, itinData\);\s+traveler = travellers\.value;/.test(pack) && /travellerSource: travellers\.source/.test(pack));
   check('generation_inputs is a doGet action', /case 'generation_inputs':\s+return jsonOut_\(webGetGenerationInputs_\(e\)\);/.test(WEB));
   check('the nightly check runs', /nightlyStep_\(ctx, 'checkGenerationInputs_', checkGenerationInputs_\);/.test(CODE));
 

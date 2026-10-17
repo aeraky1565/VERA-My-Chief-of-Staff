@@ -527,6 +527,10 @@ function tbTripPlaces() {
     Logger.log('   dropped: ' + c.date + '  "' + c.location + '" (not on the map, near the base, near another stop that day, or a repeat)');
   });
   Logger.log('Prompt sees: ' + genPlacesText_(places));
+  var stored = '';
+  try { stored = (webGetTripMeta_({ parameter: { tripKey: key } }) || {}).traveler || ''; } catch (e) {}
+  var tv = genTravellers_(stored, rows);
+  Logger.log('Travellers: ' + tv.value + ' (' + GEN_TRAVELLER_SOURCE_[tv.source] + '); saved on the trip: "' + stored + '"');
 }
 
 /** What VERA thinks each upcoming trip is and where it goes. */

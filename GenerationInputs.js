@@ -75,6 +75,45 @@ function tripSeasonWithStops_(startDate, lat, ports) {
   return tropicalStop ? { season: s.season + '; tropical at the cruise stops', basis: s.basis } : s;
 }
 
+var GEN_TRAVELLER_SOURCE_ = {
+  trip:      'set on the trip',
+  itinerary: 'from the itinerary’s traveller tags',
+  assumed:   'assumed: not set on the trip or its items',
+};
+
+/**
+ * Who's travelling, READ before assumed:
+ *   1. the trip's own setting (TripMeta Traveler). "Both" is Ahmed and Victoria,
+ *      as it is everywhere in VERA;
+ *   2. otherwise the traveller tags on the trip's itinerary items (metadata.traveler);
+ *   3. otherwise Ahmed and Victoria — said to be an assumption.
+ * The itinerary's switch shows "Both" while nothing is saved, which is why a list
+ * could look set and still have been built on the fallback.
+ *
+ * @returns {{value: string, source: 'trip'|'itinerary'|'assumed'}}
+ */
+function genTravellers_(stored, itinData) {
+  var names = function(set) {
+    if (set.Both || (set.Ahmed && set.Victoria)) return 'Ahmed and Victoria';
+    return set.Ahmed ? 'Ahmed' : set.Victoria ? 'Victoria' : '';
+  };
+  var norm = function(v) {
+    var t = String(v || '').trim().toLowerCase();
+    return t === 'both' ? 'Both' : t === 'ahmed' ? 'Ahmed' : t === 'victoria' ? 'Victoria' : '';
+  };
+  var own = {}; own[norm(stored)] = true;
+  if (names(own)) return { value: names(own), source: 'trip' };
+  var tags = {};
+  (itinData || []).forEach(function(r) {
+    var m = {};
+    try { m = JSON.parse(String(r[9] || '{}')) || {}; } catch (e) {}
+    var t = norm(m.traveler);
+    if (t) tags[t] = true;
+  });
+  if (names(tags)) return { value: names(tags), source: 'itinerary' };
+  return { value: 'Ahmed and Victoria', source: 'assumed' };
+}
+
 function genFactor_(id, label, status, detail, hint) {
   return { id: id, label: label, status: status, detail: detail || '', hint: hint || '' };
 }
@@ -155,9 +194,8 @@ function packingInputFactors_(g) {
       ? genFactor_('activities', 'Itinerary activities', 'used', g.itinCount + ' item' + (g.itinCount === 1 ? '' : 's') + (types.length ? ': ' + types.join(', ') : ''))
       : genFactor_('activities', 'Itinerary activities', 'missing', 'Nothing on the itinerary yet', 'Add the trip’s flights, stays and plans to the itinerary.'),
     genCharacteristicsFactor_(g.traits),
-    // Blank is not "unset": both dashboards show it as Both, and the packing prompt
-    // says "Ahmed and Victoria". The banner was the only thing calling it missing.
-    genFactor_('travellers', 'Travellers', 'used', g.traveler || 'Ahmed and Victoria (the default)'),
+    genFactor_('travellers', 'Travellers', 'used',
+      (g.traveler || 'Ahmed and Victoria') + ' (' + (GEN_TRAVELLER_SOURCE_[g.travellerSource] || GEN_TRAVELLER_SOURCE_.assumed) + ')'),
     codes.length
       ? genFactor_('dresscodes', 'Dress codes', 'used', codes.join(', '))
       : genFactor_('dresscodes', 'Dress codes', 'none', 'None on the itinerary'),

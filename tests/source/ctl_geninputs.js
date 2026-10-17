@@ -52,9 +52,9 @@ const CONTROLS = {
   'the tropical cut-off goes back to 15° (Puerto Plata in November is "Fall")': b => ({
     [GI]: swap(b[GI], 'var GEN_TROPICS_LAT_    = 23.44;', 'var GEN_TROPICS_LAT_    = 15;'),
   }),
-  'blank travellers is "Not set" again': b => ({
-    [GI]: swap(b[GI], "    genFactor_('travellers', 'Travellers', 'used', g.traveler || 'Ahmed and Victoria (the default)'),",
-                      "    g.traveler ? genFactor_('travellers', 'Travellers', 'used', g.traveler) : genFactor_('travellers', 'Travellers', 'missing', 'Not set'),"),
+  'an assumed traveller list is flagged as missing again': b => ({
+    [GI]: swap(b[GI], "    genFactor_('travellers', 'Travellers', 'used',\n",
+                      "    genFactor_('travellers', 'Travellers', g.travellerSource === 'assumed' ? 'missing' : 'used',\n"),
   }),
 
   // ---- the November cruise: geocoding and places -------------------------
@@ -109,6 +109,18 @@ const CONTROLS = {
   }),
   'the season ignores the tropical stops': b => ({
     [GI]: swap(b[GI], "  return tropicalStop ? { season: s.season + '; tropical at the cruise stops', basis: s.basis } : s;", '  return s;'),
+  }),
+  'the itinerary’s traveller tags are never read': b => ({
+    [GI]: swap(b[GI], "  if (names(tags)) return { value: names(tags), source: 'itinerary' };\n", ''),
+  }),
+  'the trip’s own "Both" is ignored (always assumed)': b => ({
+    [GI]: swap(b[GI], "  if (names(own)) return { value: names(own), source: 'trip' };\n", ''),
+  }),
+  'the banner hides that the travellers were assumed': b => ({
+    [GI]: swap(b[GI], "(GEN_TRAVELLER_SOURCE_[g.travellerSource] || GEN_TRAVELLER_SOURCE_.assumed)", "'set on the trip'"),
+  }),
+  'packing never resolves the travellers': b => ({
+    [WEB]: swap(b[WEB], '  traveler = travellers.value;\n', ''),
   }),
   'packing goes back to the hotel’s raw address': b => ({
     [WEB]: swap(b[WEB], '  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);\n', '  const places      = { base: inferTripDestination_(itinData, tripKey, tripLabel), ports: [] };\n'),
