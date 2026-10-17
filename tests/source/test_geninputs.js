@@ -96,6 +96,12 @@ console.log('tripSeason_: the hemisphere is the destination’s, not assumed');
   check('Puerto Plata (19.8°N) in November is tropical', /Tropical/.test(s('2026-11-10', 19.8).season), s('2026-11-10', 19.8).season);
   check('Saint Thomas (18.3°N) too', /Tropical/.test(s('2026-11-11', 18.3).season));
   check('Miami (25.8°N), just outside the Tropics, is Fall', s('2026-11-06', 25.8).season === 'Fall', s('2026-11-06', 25.8).season);
+  S.ports = [{ label: 'Puerto Plata', geo: { lat: 19.79 } }];
+  const ws = (lat, ports) => { S.ports = ports; return vm.runInContext('tripSeasonWithStops_("2026-11-06", ' + lat + ', ports)', S).season; };
+  check('a Miami cruise into the Caribbean: "Fall; tropical at the cruise stops"', ws(25.8, [{ geo: { lat: 19.79 } }]) === 'Fall; tropical at the cruise stops', ws(25.8, [{ geo: { lat: 19.79 } }]));
+  check('…no stops: just Fall', ws(25.8, []) === 'Fall' && ws(25.8, undefined) === 'Fall');
+  check('…stops outside the Tropics add nothing (an Alaska cruise)', ws(47.6, [{ geo: { lat: 58.3 } }]) === 'Fall');
+  check('…a tropical base says so once, not twice', ws(18.4, [{ geo: { lat: 19.79 } }]) === 'Tropical (no real seasons)');
   check('…and the far south is still flipped (Rio, 22.9°S, is tropical; Buenos Aires, 34.6°S, is Spring in November)',
         /Tropical/.test(s('2026-11-06', -22.9).season) && s('2026-11-06', -34.6).season === 'Spring');
   check('no latitude: northern, and SAID to be an assumption', s('2026-12-20', null).basis === 'assumed-north' && s('2026-12-20', null).season === 'Winter');
@@ -150,6 +156,8 @@ console.log('\npacking factors: all eight, each in every state');
   check('blank travellers is the default, not missing: used, "Ahmed and Victoria"', tv.status === 'used' && /Ahmed and Victoria/.test(tv.detail), JSON.stringify(tv));
   const ports = [{ label: 'Puerto Plata, Dominican Republic' }, { label: 'Tortola, British Virgin Islands' }];
   const dst = one({ destination: { value: 'Miami MIA', label: 'Miami, Florida', source: 'flight' }, ports }, 'destination');
+  const cd = one({ ports: [{ label: 'Tortola, British Virgin Islands', geo: { lat: 18.43 } }] }, 'dates');
+  check('time of year notes the tropical stops', /Fall; tropical at the cruise stops/.test(cd.detail), cd.detail);
   check('the destination shows the resolved place and the cruise stops',
         dst.detail === 'Miami, Florida (from the flight) · cruise stops: Puerto Plata, Dominican Republic, Tortola, British Virgin Islands', dst.detail);
   check('no dress codes is normal: NONE, not a warning', one({ dressCodes: [] }, 'dresscodes').status === 'none');
@@ -381,10 +389,17 @@ const PLACES_DB = {
   '33139':             [{ name: 'Miami Beach', latitude: 25.79, longitude: -80.13, admin1: 'Florida', country: 'United States', country_code: 'US', timezone: 'America/New_York' }],
   'puerto plata':      [{ name: 'Puerto Plata', latitude: 19.79, longitude: -70.69, admin1: 'Puerto Plata', country: 'Dominican Republic', country_code: 'DO' }],
   // By population, Ontario's comes first — the trap the hint exists for.
-  'saint thomas':      [{ name: 'St. Thomas', latitude: 42.78, longitude: -81.19, admin1: 'Ontario', country: 'Canada', country_code: 'CA' },
+  // Listed as "St. Thomas" ONLY: the calendar's "Saint Thomas" finds nothing, which
+  // is what dropped it from the first regenerate.
+  'st. thomas':        [{ name: 'St. Thomas', latitude: 42.78, longitude: -81.19, admin1: 'Ontario', country: 'Canada', country_code: 'CA' },
                         { name: 'Saint Thomas', latitude: 18.34, longitude: -64.93, admin1: 'Saint Thomas Island', country: 'U.S. Virgin Islands', country_code: 'VI' }],
   'tortola':           [{ name: 'Tortola', latitude: 18.43, longitude: -64.62, admin1: '', country: 'British Virgin Islands', country_code: 'VG' }],
   'great stirrup cay': [{ name: 'Great Stirrup Cay', latitude: 25.82, longitude: -77.92, admin1: 'Berry Islands', country: 'Bahamas', country_code: 'BS' }],
+  // A few km from Great Stirrup Cay: the pig-beach excursion on the same day.
+  'goat cay':          [{ name: 'Goat Cay', latitude: 25.80, longitude: -77.89, admin1: 'Berry Islands', country: 'Bahamas', country_code: 'BS' }],
+  // The trap a careless title fallback falls into: an excursion's name is a real place
+  // 700 km away.
+  'stingray city':     [{ name: 'Stingray City', latitude: 19.37, longitude: -81.30, admin1: '', country: 'Cayman Islands', country_code: 'KY' }],
   'washington':        [{ name: 'Washington', latitude: 38.9, longitude: -77.04, admin1: 'District of Columbia', country: 'United States', country_code: 'US' }],
   'düsseldorf':        [{ name: 'Düsseldorf', latitude: 51.22, longitude: 6.78, admin1: 'North Rhine-Westphalia', country: 'Germany', country_code: 'DE' }],
 };
@@ -423,6 +438,12 @@ console.log('\ngeocodeCandidates_: an address broken into what can be found');
   check('"75001 Paris" → Paris', c('Rue de Rivoli, 75001 Paris, France').indexOf('Paris') !== -1, c('Rue de Rivoli, 75001 Paris, France').join(' | '));
   check('a plain place is tried as itself', c('Puerto Plata')[0] === 'Puerto Plata');
   check('nothing → nothing', c('').length === 0 && c(null).length === 0);
+  const st = c('Saint Thomas');
+  check('"Saint Thomas" is also tried as "St. Thomas" and "St Thomas", right after', st.join(' | ') === 'Saint Thomas | St. Thomas | St Thomas', st.join(' | '));
+  check('…and the reverse', c('St. Lucia').slice(0, 2).join(' | ') === 'St. Lucia | Saint Lucia', c('St. Lucia').join(' | '));
+  const ti = c('St Thomas, US Virgin Islands');
+  check('a leading "St" is a saint, not a street: "St Thomas" is tried', ti.indexOf('St Thomas') !== -1 && ti.indexOf('St. Thomas') !== -1, ti.join(' | '));
+  check('…while "Collins Ave" is still a street', !c(KIMPTON).some(x => /^1717|^Collins/.test(x)));
 }
 
 console.log('\ngeocodePackingDestination_: tries each candidate until one is found');
@@ -470,7 +491,9 @@ const CRUISE_TRIP = [
   I('p2', 'activity', 'St Thomas, US Virgin Islands', '2026-11-11', 'Saint Thomas'),
   I('p3', 'activity', 'Tortola',                      '2026-11-12', 'Tortola'),
   I('p4', 'activity', 'Great Stirrup Cay',            '2026-11-14', 'Great Stirrup Cay'),
-  I('a1', 'activity', 'Swim With The Pigs',           '2026-11-14', 'Swim With The Pigs'),
+  I('a1', 'activity', 'Stingray City & Swimming with the pigs', '2026-11-14', 'Swim With The Pigs'),
+  I('a2', 'manual',   'Pig beach',                    '2026-11-14', 'Goat Cay'),
+  I('a3', 'manual',   'Stingray City, snorkel stop',  '2026-11-14', 'Snorkel excursion'),
   I('z1', 'activity', 'Team sync',                    '2026-11-12', 'https://meet.google.com/abc-defg-hij'),
   I('f2', 'flight',   'UA 4321 MIA → IAD',            '2026-11-15', 'Miami MIA', { dest: 'Washington IAD' }),
   I('g1', 'activity', 'Eraky Family in Germany',      '2026-10-22', 'Düsseldorf'),
@@ -533,6 +556,17 @@ console.log('\ntripPlaces_: the November cruise, as the banner should have shown
   // Two events at the same stop are one stop.
   S.dup = CRUISE_TRIP.concat([I('p5', 'activity', 'Beach day', '2026-11-12', 'Tortola')]);
   check('the same stop twice is listed once', vm.runInContext('tripPlaces_(dup, ' + JSON.stringify(TK) + ', "", "2026-11-15")', S).ports.length === 4);
+  check('Goat Cay, a few km from Great Stirrup Cay the same day, is the same stop', !labels.some(l => /Goat Cay/.test(l)));
+  check('an excursion’s name is never searched as a place (no Cayman Islands)', !labels.some(l => /Cayman/.test(l)));
+
+  // A location that finds nothing, under a title that names the place.
+  S.pier = CRUISE_TRIP.map(r => r[0] === 'p2' ? I('p2', 'activity', 'St Thomas, US Virgin Islands', '2026-11-11', 'Thomas cruise pier') : r);
+  const pier = vm.runInContext('tripPlaces_(pier, ' + JSON.stringify(TK) + ', "", "2026-11-15")', S).ports.map(x => x.label);
+  check('a location the map doesn’t know falls back to a place-like title', pier.indexOf('Saint Thomas, U.S. Virgin Islands') !== -1, pier.join(' | '));
+  const tn = (t, l) => { S.t = t; S.l = l; return vm.runInContext('genTitleNamesPlace_(t, l)', S); };
+  check('"St Thomas, US Virgin Islands" names its place; an excursion title doesn’t',
+        tn('St Thomas, US Virgin Islands', 'Saint Thomas') && !tn('Stingray City & Swimming with the pigs', 'Swim With The Pigs') &&
+        !tn('Stingray City, snorkel stop', 'Snorkel excursion') && !tn('Dinner: Le Bistro', 'Le Bistro'));
 }
 
 console.log('\ngenCombineWeather_: the base and every stop, as one');
@@ -540,14 +574,16 @@ console.log('\ngenCombineWeather_: the base and every stop, as one');
   const S = sandbox();
   const W = (summary, mode, lat) => ({ summary, mode, reason: summary ? '' : 'none', lat });
   S.parts = [
-    { where: 'Miami, Florida', w: W('(Last year’s weather on these dates) Expected: 72–84°F', 'last_year', 25.77) },
-    { where: 'Tortola, British Virgin Islands', w: W('Expected: 78–86°F, some rain.', 'forecast', 18.43) },
-    { where: 'Great Stirrup Cay, Bahamas', w: W('', '', null) },
+    // Exactly what getPackingWeatherDetail_ writes, advice and all.
+    { where: 'Miami, Florida', short: 'Miami', w: W('(Last year’s weather on these dates) Expected: 72–84°F, minimal rain. Warm — light layers recommended.', 'last_year', 25.77) },
+    { where: 'Tortola, British Virgin Islands', short: 'Tortola', w: W('Expected: 78–86°F, some rain. Hot — pack light breathable clothing.', 'forecast', 18.43) },
+    { where: 'Great Stirrup Cay, Bahamas', short: 'Great Stirrup Cay', w: W('', '', null) },
   ];
   const c = vm.runInContext('genCombineWeather_(parts)', S);
   check('any stop on last year’s weather makes the whole last year’s (so the forecast nudge still fires)', c.mode === 'last_year', c.mode);
-  check('…said once, up front', /^\(Last year’s weather on these dates\) Miami, Florida: Expected: 72–84°F; Tortola, British Virgin Islands: Expected: 78–86°F/.test(c.summary) &&
+  check('one short reading per place, said once up front', c.summary.indexOf('(Last year’s weather on these dates) Miami 72–84°F, minimal rain · Tortola 78–86°F, some rain') === 0 &&
         c.summary.split('Last year’s').length === 2, c.summary);
+  check('no packing advice repeated per place, and no ".;"', !/pack|layers|\.;/.test(c.summary), c.summary);
   check('a stop with no weather is named, not dropped silently', /no weather found for Great Stirrup Cay, Bahamas/.test(c.summary), c.summary);
   check('the latitude is the base’s', c.lat === 25.77);
   S.parts = [{ where: 'A', w: W('Expected: 1', 'forecast', 1) }, { where: 'B', w: W('Expected: 2', 'forecast', 2) }];
@@ -574,7 +610,8 @@ console.log('\nwiring');
   const pack = extractFn(WEB, 'webGeneratePacking_'), recs = extractFn(WEB, 'webGenerateRecommendations_');
   check('packing fills a missing end date from the trip', /genTripDates_\(tripKey/.test(pack));
   check('…works from the trip’s places, cruise stops included', /tripPlaces_\(itinData, tripKey, tripLabel, endDate\)/.test(pack) && /genTripWeather_\(places/.test(pack));
-  check('…and the hemisphere-aware season', /tripSeason_\(startDate, weather\.lat\)/.test(pack));
+  check('…and the hemisphere-aware season, cruise stops included', /tripSeasonWithStops_\(startDate, weather\.lat, places\.ports\)/.test(pack));
+  check('Discover’s season too', /tripSeasonWithStops_\(startDate, weather\.lat, places\.ports\)/.test(recs));
   check('…recording the ports it used', /ports:\s+places\.ports/.test(pack));
   check('Discover works from the places too', /tripPlaces_\(itinData, tripKey, tripLabel, endDate\)/.test(recs) && /genTripWeather_\(places/.test(recs) && /ports:\s+places\.ports/.test(recs));
   check('the weather lookup takes an already-resolved place', /const geo = preGeo \|\| geocodePackingDestination_\(destination\);/.test(WEB));

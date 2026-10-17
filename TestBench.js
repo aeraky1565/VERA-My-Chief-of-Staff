@@ -518,13 +518,13 @@ function tbTripPlaces() {
   var b = places.base;
   Logger.log('Base (' + (b.source || 'none') + '): ' + (b.value || '(nothing)').replace(/\s*\n\s*/g, ', '));
   Logger.log('   → ' + tbPlaceLine_(b.geo));
-  Logger.log('Season: ' + tripSeason_(trip.startDate, b.geo ? b.geo.lat : null).season);
+  Logger.log('Season: ' + tripSeasonWithStops_(trip.startDate, b.geo ? b.geo.lat : null, places.ports).season);
   var cands = cruisePortRows_(rows, key, trip.endDate);
   Logger.log('Cruise stop candidates: ' + cands.length + '; kept as stops: ' + places.ports.length);
   places.ports.forEach(function(p) { Logger.log('   ' + p.date + '  "' + p.from + '" → ' + tbPlaceLine_(p.geo)); });
   var kept = {}; places.ports.forEach(function(p) { kept[p.from] = true; });
   cands.filter(function(c) { return !kept[c.location]; }).forEach(function(c) {
-    Logger.log('   dropped: ' + c.date + '  "' + c.location + '" (not on the map, near the base, or a repeat)');
+    Logger.log('   dropped: ' + c.date + '  "' + c.location + '" (not on the map, near the base, near another stop that day, or a repeat)');
   });
   Logger.log('Prompt sees: ' + genPlacesText_(places));
 }

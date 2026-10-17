@@ -61,6 +61,20 @@ function tripSeason_(startDate, lat) {
 // THE FACTORS — pure, so the tests can drive every state
 // ============================================================
 
+/**
+ * The base's season, plus a note when the cruise spends its days in the Tropics:
+ * "Fall; tropical at the cruise stops". Miami in November is Fall; Puerto Plata and
+ * Tortola aren't, and the list should know both.
+ */
+function tripSeasonWithStops_(startDate, lat, ports) {
+  var s = tripSeason_(startDate, lat);
+  if (!s.season || s.basis === 'tropical') return s;
+  var tropicalStop = (ports || []).some(function(p) {
+    return p.geo && isFinite(p.geo.lat) && Math.abs(p.geo.lat) < GEN_TROPICS_LAT_;
+  });
+  return tropicalStop ? { season: s.season + '; tropical at the cruise stops', basis: s.basis } : s;
+}
+
 function genFactor_(id, label, status, detail, hint) {
   return { id: id, label: label, status: status, detail: detail || '', hint: hint || '' };
 }
@@ -130,7 +144,7 @@ function genLessonsFactor_(block, error) {
  *   activityTypes {type: true}, itinCount, traits, traveler, dressCodes [], lessons, lessonsError
  */
 function packingInputFactors_(g) {
-  var season = tripSeason_(g.startDate, g.weather ? g.weather.lat : null);
+  var season = tripSeasonWithStops_(g.startDate, g.weather ? g.weather.lat : null, g.ports);
   var types  = Object.keys(g.activityTypes || {}).filter(Boolean);
   var codes  = (g.dressCodes || []).filter(function(c, i, a) { return c && a.indexOf(c) === i; });
   return [
@@ -158,7 +172,7 @@ function packingInputFactors_(g) {
  * Caribbean cruise), so for Discover a label-only destination is weak and says why.
  */
 function discoverInputFactors_(g) {
-  var season = tripSeason_(g.startDate, g.weather ? g.weather.lat : null);
+  var season = tripSeasonWithStops_(g.startDate, g.weather ? g.weather.lat : null, g.ports);
   return [
     genDestinationFactor_(g.destination, true, g.ports),
     genDatesFactor_(g.startDate, g.endDate, season),
@@ -530,15 +544,34 @@ function tripPlaces_(itinData, tripKey, tripLabel, endDate) {
   }
   var ports = [], seen = {};
   cruisePortRows_(itinData, tripKey, endDate).forEach(function(c) {
-    var g = geocodePackingDestination_(c.location, c.title + ' ' + c.location);
+    var hint = c.title + ' ' + c.location;
+    var g = geocodePackingDestination_(c.location, hint);
+    if (!g && genTitleNamesPlace_(c.title, c.location)) g = geocodePackingDestination_(c.title, hint);
     if (!g) return;
     if (base.geo && genKm_(base.geo, g) < GEN_PORT_RADIUS_KM_) return;
+    // Two places the same day, close together, are one stop: the pig-beach excursion
+    // at Goat Cay is part of the Great Stirrup Cay day, not a fifth port.
+    if (ports.some(function(p) { return p.date === c.date && genKm_(p.geo, g) < GEN_PORT_RADIUS_KM_; })) return;
     var label = genPlaceLabel_(g);
     if (seen[label]) return;
     seen[label] = true;
     ports.push({ label: label, date: c.date, geo: g, from: c.location });
   });
   return { base: base, ports: ports };
+}
+
+/**
+ * Whether an event's TITLE can stand in for a location that found nothing. Only when
+ * it reads like a place — "St Thomas, US Virgin Islands": a comma, and a first part
+ * sharing a real word with the location. "Stingray City & Swimming with the pigs" is
+ * an excursion, and searching it would land in the Cayman Islands.
+ */
+function genTitleNamesPlace_(title, location) {
+  var t = String(title || '');
+  if (t.indexOf(',') === -1) return false;
+  var words = function(x) { return String(x).toLowerCase().match(/[a-z\u00c0-\u024f]{4,}/g) || []; };
+  var loc = words(location);
+  return words(t.split(',')[0]).some(function(w) { return loc.indexOf(w) !== -1; });
 }
 
 /** What the prompts see: the base, then the stops. Never a street address. */
@@ -561,12 +594,19 @@ function genPlacesText_(places) {
 function genCombineWeather_(parts) {
   var got = parts.filter(function(p) { return p.w && p.w.summary; });
   var anyLast = got.some(function(p) { return p.w.mode === 'last_year'; });
-  var strip = function(t) { return String(t).replace(/^\([^)]*\)\s*/, ''); };
+  // One short reading per place: "Puerto Plata 75–88°F, frequent rain". The packing
+  // advice each lookup appends ("Hot — pack light breathable clothing.") repeated for
+  // every stop and buried the numbers; the list itself is the advice.
+  var brief = function(t) {
+    var x = String(t).replace(/^\([^)]*\)\s*/, '');
+    var m = /Expected:\s*([^.]+)/.exec(x);
+    return m ? m[1].trim() : x.replace(/\.\s*$/, '');
+  };
   var summary = '';
   if (got.length === 1 && parts.length === 1) summary = got[0].w.summary;
   else if (got.length) {
     summary = (anyLast ? '(Last year\u2019s weather on these dates) ' : '') +
-      got.map(function(p) { return p.where + ': ' + strip(p.w.summary); }).join('; ');
+      got.map(function(p) { return (p.short || p.where) + ' ' + brief(p.w.summary); }).join(' \u00b7 ');
     var missed = parts.filter(function(p) { return !(p.w && p.w.summary); }).map(function(p) { return p.where; });
     if (missed.length) summary += ' (no weather found for ' + missed.join(', ') + ')';
   }
@@ -582,9 +622,11 @@ function genCombineWeather_(parts) {
 /** The base for the whole trip; each stop for its own day. */
 function genTripWeather_(places, startDate, endDate) {
   var parts = [{ where: places.base.label || places.base.value,
+                 short: places.base.geo ? places.base.geo.name : '',
                  w: getPackingWeatherDetail_(places.base.value, startDate, endDate, places.base.geo) }];
   places.ports.forEach(function(p) {
-    parts.push({ where: p.label, w: getPackingWeatherDetail_(p.label, p.date, p.date, p.geo) });
+    parts.push({ where: p.label, short: p.geo ? p.geo.name : '',
+                 w: getPackingWeatherDetail_(p.label, p.date, p.date, p.geo) });
   });
   return genCombineWeather_(parts);
 }

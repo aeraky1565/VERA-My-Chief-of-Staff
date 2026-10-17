@@ -88,6 +88,28 @@ const CONTROLS = {
   'a stop on last year’s weather lets the whole pass for a forecast': b => ({
     [GI]: swap(b[GI], "    mode:    got.length ? (anyLast ? 'last_year' : 'forecast') : '',", "    mode:    got.length ? 'forecast' : '',"),
   }),
+  'only one spelling of a saint is tried (Saint Thomas is lost again)': b => ({
+    [WEB]: swap(b[WEB], '  return spelled;\n', '  return out;\n'),
+  }),
+  'a leading "St" reads as a street again': b => ({
+    [WEB]: swap(b[WEB], "  function isStreet(p) { return STREET.test(String(p).replace(/^(st\\.?|saint)\\s+/i, '')); }",
+                        '  function isStreet(p) { return STREET.test(p); }'),
+  }),
+  'no title fallback when the location finds nothing': b => ({
+    [GI]: swap(b[GI], '    if (!g && genTitleNamesPlace_(c.title, c.location)) g = geocodePackingDestination_(c.title, hint);\n', ''),
+  }),
+  'every title is searched as a place (an excursion lands in the Caymans)': b => ({
+    [GI]: swap(b[GI], '    if (!g && genTitleNamesPlace_(c.title, c.location)) g =', '    if (!g) g ='),
+  }),
+  'same-day neighbours are separate stops (Goat Cay is a fifth port)': b => ({
+    [GI]: swap(b[GI], '    if (ports.some(function(p) { return p.date === c.date && genKm_(p.geo, g) < GEN_PORT_RADIUS_KM_; })) return;\n', ''),
+  }),
+  'each place repeats its packing advice in the combined weather': b => ({
+    [GI]: swap(b[GI], '    return m ? m[1].trim() : x.replace(', '    return x; return m ? m[1].trim() : x.replace('),
+  }),
+  'the season ignores the tropical stops': b => ({
+    [GI]: swap(b[GI], "  return tropicalStop ? { season: s.season + '; tropical at the cruise stops', basis: s.basis } : s;", '  return s;'),
+  }),
   'packing goes back to the hotel’s raw address': b => ({
     [WEB]: swap(b[WEB], '  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);\n', '  const places      = { base: inferTripDestination_(itinData, tripKey, tripLabel), ports: [] };\n'),
   }),

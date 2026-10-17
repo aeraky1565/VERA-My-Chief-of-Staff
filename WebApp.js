@@ -5283,6 +5283,7 @@ function webDeletePackingItem_(e) {
  *   4. the whole string, as it always was
  *   5. any remaining part without digits (no street lines), right to left — skipping,
  *      in a 3+ part address, the first (a business name) and the last (the country)
+ *   6. each "Saint X" also as "St. X" / "St X", and the reverse, right after it
  *
  * @returns {Array<{name: string, countryCode: string}>}
  */
@@ -5313,16 +5314,36 @@ function geocodeCandidates_(raw) {
   var airport = /^(.+?)\s+([A-Z]{3})$/.exec(s);
   if (airport && parts.length === 1) add(airport[1]);
   var STREET = /\b(ave|avenue|st|street|rd|road|blvd|boulevard|dr|drive|ln|lane|way|ct|court|pl|place|hwy|highway|pkwy|parkway|rue|via|calle|strasse|str)\b\.?/i;
+  // A LEADING "St" is a saint, not a street: "St Thomas" is a place, "1717 Collins
+  // Ave" is not. The street words that matter come after the name.
+  function isStreet(p) { return STREET.test(String(p).replace(/^(st\.?|saint)\s+/i, '')); }
   parts.forEach(function(p) {
     var pc = /^(\d{4,6})\s+([^\d]+)$/.exec(p);
-    if (pc && !STREET.test(pc[2])) add(pc[2]);
+    if (pc && !isStreet(pc[2])) add(pc[2]);
   });
   add(s);
   var lo = parts.length >= 3 ? 1 : 0, hi = parts.length >= 3 ? parts.length - 2 : parts.length - 1;
   for (var j = hi; j >= lo; j--) {
-    if (!/\d/.test(parts[j]) && !STREET.test(parts[j]) && !/^[A-Z]{2}$/.test(parts[j])) add(parts[j]);
+    if (!/\d/.test(parts[j]) && !isStreet(parts[j]) && !/^[A-Z]{2}$/.test(parts[j])) add(parts[j]);
   }
-  return out;
+  // Saint <-> St: the geocoder knows a place by one spelling only. The cruise's
+  // "Saint Thomas" found nothing; it's listed as "St. Thomas". Each spelling goes in
+  // right after the one it came from, so the order of preference holds.
+  var spelled = [];
+  out.forEach(function(c) {
+    spelled.push(c);
+    var m = /^(saint|st\.?)\s+(.+)$/i.exec(c.name);
+    if (!m) return;
+    var rest = m[2];
+    (/^saint$/i.test(m[1]) ? ['St. ' + rest, 'St ' + rest] : ['Saint ' + rest, 'St. ' + rest, 'St ' + rest])
+      .forEach(function(n) {
+        var k = n.toLowerCase() + '|' + c.countryCode;
+        if (seen[k]) return;
+        seen[k] = true;
+        spelled.push({ name: n, countryCode: c.countryCode });
+      });
+  });
+  return spelled;
 }
 
 /**
@@ -5768,7 +5789,7 @@ function webGeneratePacking_(e) {
   // December in Sydney was "Winter". tripSeason_ is in GenerationInputs.js.
   const weather        = genTripWeather_(places, startDate || '', endDate || '');
   const weatherSummary = weather.summary;
-  var season = tripSeason_(startDate, weather.lat).season;
+  var season = tripSeasonWithStops_(startDate, weather.lat, places.ports).season;
 
   // Step 6 — Build prompt with full enriched context
   // What earlier trips taught, narrowed to the ones that apply to this one.
@@ -6461,7 +6482,7 @@ function webGenerateRecommendations_(e) {
   // trip's name IS used for the weather lookup — the worst a wrong guess does there is
   // find no forecast — while staying out of the search, as above.
   const weather    = genTripWeather_(places, startDate || '', endDate || '');
-  const recsSeason = tripSeason_(startDate, weather.lat).season;
+  const recsSeason = tripSeasonWithStops_(startDate, weather.lat, places.ports).season;
 
   // Build prompts
   const sysPrompt  = buildRecsSystemPrompt_();
