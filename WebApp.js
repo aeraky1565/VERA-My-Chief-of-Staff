@@ -5171,7 +5171,7 @@ function webGetPacking_(e) {
   });
 
   // Also fetch trip meta (context, notes, traveler, travel modes, budget)
-  let meta = { context: '', notes: '', traveler: '', outboundMode: '', returnMode: '' };
+  let meta = { context: '', notes: '', traveler: '', outboundMode: '', returnMode: '', characteristics: '' };
   try {
     const metaResult = webGetTripMeta_(e);
     meta = {
@@ -5182,6 +5182,10 @@ function webGetPacking_(e) {
       tripTravellers: metaResult.tripTravellers !== undefined ? metaResult.tripTravellers : 2,
       outboundMode:   metaResult.outboundMode   || '',
       returnMode:     metaResult.returnMode     || '',
+      // The dashboard rebuilds its copy of the trip's details from this. Leaving
+      // the characteristics out showed every trip as "not set" — and a chip tapped
+      // from that empty view saved only itself, erasing what was there.
+      characteristics: metaResult.characteristics || '',
     };
   } catch(err) { /* graceful */ }
 
@@ -5936,6 +5940,7 @@ function webGeneratePacking_(e) {
     activityTypes: activityTypes,
     itinCount:     itinCount,
     traits:        traits,
+    briefing:      briefing,
     traveler:      traveler,
     travellerSource: travellers.source,
     dressCodes:    dressCodes,
@@ -6642,6 +6647,7 @@ function webGenerateRecommendations_(e) {
     endDate:      endDate,
     weather:      weather,
     traits:       recTraits,
+    briefing:     briefing,
     itinCount:    itinCount,
     lessons:      recsLessons,
     lessonsError: recsLessonsError,

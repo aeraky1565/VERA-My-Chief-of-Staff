@@ -169,6 +169,18 @@ function genCharacteristicsFactor_(traits) {
         'Say what the trip involves (beach, hiking, formal dinners…) in the trip’s characteristics.');
 }
 
+/**
+ * What the trip is for, in your words ("Visiting Angelina and Farai for the new
+ * baby…"). Both prompts get it; the banner never said so. Blank isn't a problem —
+ * plenty of trips need no explaining — so it's "none", like dress codes.
+ */
+function genNotesFactor_(notes) {
+  var t = String(notes || '').replace(/\s+/g, ' ').trim();
+  return t
+    ? genFactor_('notes', 'Trip notes', 'used', t.length > 160 ? t.slice(0, 157) + '…' : t)
+    : genFactor_('notes', 'Trip notes', 'none', 'None written');
+}
+
 function genLessonsFactor_(block, error) {
   if (error) return genFactor_('lessons', 'Lessons from past trips', 'missing', 'Couldn’t read them: ' + error);
   var n = (String(block || '').match(/^\s*[-•*]/gm) || []).length;
@@ -194,6 +206,7 @@ function packingInputFactors_(g) {
       ? genFactor_('activities', 'Itinerary activities', 'used', g.itinCount + ' item' + (g.itinCount === 1 ? '' : 's') + (types.length ? ': ' + types.join(', ') : ''))
       : genFactor_('activities', 'Itinerary activities', 'missing', 'Nothing on the itinerary yet', 'Add the trip’s flights, stays and plans to the itinerary.'),
     genCharacteristicsFactor_(g.traits),
+    genNotesFactor_(g.briefing),
     genFactor_('travellers', 'Travellers', 'used',
       (g.traveler || 'Ahmed and Victoria') + ' (' + (GEN_TRAVELLER_SOURCE_[g.travellerSource] || GEN_TRAVELLER_SOURCE_.assumed) + ')'),
     codes.length
@@ -216,6 +229,7 @@ function discoverInputFactors_(g) {
     genDatesFactor_(g.startDate, g.endDate, season),
     genWeatherFactor_(g.weather),
     genCharacteristicsFactor_(g.traits),
+    genNotesFactor_(g.briefing),
     g.itinCount
       ? genFactor_('itinerary', 'Itinerary and free time', 'used', g.itinCount + ' planned item' + (g.itinCount === 1 ? '' : 's') + ', gaps found from it')
       : genFactor_('itinerary', 'Itinerary and free time', 'missing', 'Nothing on the itinerary yet', 'Add what’s already planned so suggestions fill the gaps.'),

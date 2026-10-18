@@ -125,6 +125,15 @@ const CONTROLS = {
   'an airport code is searched as a place name again (ORD → Ord, Nebraska)': b => ({
     [WEB]: swap(b[WEB], '    if (isAirportCode) {', '    if (false) {'),
   }),
+  'the trip notes drop off the banner': b => ({
+    [GI]: swap(b[GI], '    genNotesFactor_(g.briefing),\n    genFactor_(\'travellers\'', '    genFactor_(\'travellers\''),
+  }),
+  'blank trip notes become a warning': b => ({
+    [GI]: swap(b[GI], "genFactor_('notes', 'Trip notes', 'none', 'None written')", "genFactor_('notes', 'Trip notes', 'missing', 'None written')"),
+  }),
+  'packing stops recording the trip notes': b => ({
+    [WEB]: swap(b[WEB], '    traits:        traits,\n    briefing:      briefing,\n', '    traits:        traits,\n'),
+  }),
   'packing goes back to the hotel’s raw address': b => ({
     [WEB]: swap(b[WEB], '  const places      = tripPlaces_(itinData, tripKey, tripLabel, endDate);\n', '  const places      = { base: inferTripDestination_(itinData, tripKey, tripLabel), ports: [] };\n'),
   }),

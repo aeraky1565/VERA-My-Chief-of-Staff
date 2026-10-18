@@ -117,15 +117,17 @@ const GOOD = {
   activityTypes: { flight: true, hotel: true, dining: true },
   itinCount: 6, traits: 'city, museums', traveler: 'both',
   dressCodes: ['smart casual'], lessons: '- Pack an umbrella\n- Skip the heavy coat', lessonsError: '',
+  briefing: 'Visiting family for the new baby, here to help before it arrives',
 };
 const fx = (S, fn, g) => { S.g = g; return vm.runInContext(fn + '(g)', S); };
 const by = (fs_, id) => fs_.find(f => f.id === id);
 
-console.log('\npacking factors: all eight, each in every state');
+console.log('\npacking factors: all nine, each in every state');
 {
   const S = sandbox();
   const f = fx(S, 'packingInputFactors_', GOOD);
-  check('eight factors', f.length === 8, f.map(x => x.id).join(','));
+  check('nine factors, the trip notes included', f.length === 9 && !!by(f, 'notes'), f.map(x => x.id).join(','));
+  check('the trip notes say what was used, in your words', by(f, 'notes').status === 'used' && by(f, 'notes').detail === GOOD.briefing, JSON.stringify(by(f, 'notes')));
   check('a well-grounded list: every factor used', f.every(x => x.status === 'used'), f.filter(x => x.status !== 'used').map(x => x.id + ':' + x.status).join(', '));
   check('the destination says where it came from', /Chicago, IL \(from the flight\)/.test(by(f, 'destination').detail), by(f, 'destination').detail);
   check('time of year comes from the destination’s hemisphere', /Fall/.test(by(f, 'dates').detail), by(f, 'dates').detail);
@@ -164,6 +166,10 @@ console.log('\npacking factors: all eight, each in every state');
   check('time of year notes the tropical stops', /Fall; tropical at the cruise stops/.test(cd.detail), cd.detail);
   check('the destination shows the resolved place and the cruise stops',
         dst.detail === 'Miami, Florida (from the flight) · cruise stops: Puerto Plata, Dominican Republic, Tortola, British Virgin Islands', dst.detail);
+  const nn = one({ briefing: '' }, 'notes');
+  check('no trip notes is normal: NONE, "None written", not a warning', nn.status === 'none' && nn.detail === 'None written', JSON.stringify(nn));
+  const long = one({ briefing: 'x'.repeat(400) }, 'notes').detail;
+  check('…and long notes are shortened for the banner (the prompt gets them whole)', long.length === 158 && /…$/.test(long), long.length);
   check('no dress codes is normal: NONE, not a warning', one({ dressCodes: [] }, 'dresscodes').status === 'none');
   check('no lessons that apply is normal: NONE', one({ lessons: '' }, 'lessons').status === 'none');
   check('lessons that couldn’t be read ARE a problem', one({ lessonsError: 'Memory Log not found' }, 'lessons').status === 'missing');
@@ -192,8 +198,8 @@ console.log('\nDiscover factors');
 {
   const S = sandbox();
   const f = fx(S, 'discoverInputFactors_', GOOD);
-  check('Discover’s six: destination, dates, weather, characteristics, itinerary, lessons',
-        f.map(x => x.id).join(',') === 'destination,dates,weather,characteristics,itinerary,lessons', f.map(x => x.id).join(','));
+  check('Discover’s seven: destination, dates, weather, characteristics, trip notes, itinerary, lessons',
+        f.map(x => x.id).join(',') === 'destination,dates,weather,characteristics,notes,itinerary,lessons', f.map(x => x.id).join(','));
   const lbl = by(fx(S, 'discoverInputFactors_', Object.assign({}, GOOD, { destination: { value: 'First Anniversary', source: 'label' } })), 'destination');
   check('a name-only destination is weak, and says it isn’t searched as a place', lbl.status === 'weak' && /isn’t used as a place/.test(lbl.detail), lbl.detail);
 }
@@ -302,7 +308,7 @@ console.log('\nrecordGenerationInputs_: one record per trip and kind, one flag p
 
   const r1 = vm.runInContext('recordGenerationInputs_("packing", trip, bad, { weatherMode: "forecast", kept: [] })', S);
   check('the record is saved, and creates its tab', !!r1 && S.inputs.length === 1 && S.inputs[0][1] === 'packing', JSON.stringify(S.inputs[0] && S.inputs[0].slice(0, 3)));
-  check('…and reads back', vm.runInContext('readGenerationInputs_(trip, "packing")', S).factors.length === 8);
+  check('…and reads back', vm.runInContext('readGenerationInputs_(trip, "packing")', S).factors.length === 9);
   check('a weak or missing factor raises one flag', open(S).length === 1 && /Packing list for Chicago trip may be off: no trip characteristics/.test(open(S)[0][3]), open(S).map(r => r[3]).join(' | '));
   check('…keyed exactly to this generation', open(S)[0][9] === 'gen_inputs__packing__' + vm.runInContext('genSlug_(trip)', S) + '__' + r1.stamp, open(S)[0][9]);
   check('…Low, since the trip is weeks away', open(S)[0][5] === 'Low');
@@ -661,6 +667,9 @@ console.log('\nwiring');
         /weather\.summary, recsSeason, recTraits\)/.test(recs));
   check('packing reads the travellers before assuming them, and records where they came from',
         /const travellers = genTravellers_\(traveler, itinData\);\s+traveler = travellers\.value;/.test(pack) && /travellerSource: travellers\.source/.test(pack));
+  check('both record the trip notes they were given',
+        /briefing:\s+briefing,/.test(pack) && /briefing:\s+briefing,/.test(recs));
+  check('…and both prompts still get them', /context, traveler, destination, season,[\s\S]*?briefing,/.test(pack) && /gapSummary, briefing, recsLessons/.test(recs));
   check('generation_inputs is a doGet action', /case 'generation_inputs':\s+return jsonOut_\(webGetGenerationInputs_\(e\)\);/.test(WEB));
   check('the nightly check runs', /nightlyStep_\(ctx, 'checkGenerationInputs_', checkGenerationInputs_\);/.test(CODE));
 

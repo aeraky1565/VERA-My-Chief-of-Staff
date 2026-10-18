@@ -181,6 +181,17 @@ const CONTROLS = {
     'docs/app.js':     b['docs/app.js'].replace(/not set, so beach\/ski lessons and hints won't fire/g, ''),
     'docs/index.html': b['docs/index.html'].replace(/not set, so beach\/ski lessons and hints won't fire/g, ''),
   }),
+  'the dashboard drops the characteristics when it reloads a trip again': b => ({
+    'docs/app.js':     b['docs/app.js'].split(",characteristics:data.meta.characteristics||''").join(''),
+    'docs/index.html': b['docs/index.html'].split(",characteristics:data.meta.characteristics||''").join(''),
+  }),
+  'the chips build on whatever view they were handed again': b => ({
+    'docs/app.js':     b['docs/app.js'].replace('setSel(parse(d.characteristics))', 'void 0'),
+    'docs/index.html': b['docs/index.html'].replace('setSel(parse(d.characteristics))', 'void 0'),
+  }),
+  'the packing response leaves the characteristics out again': b => ({
+    'WebApp.js': b['WebApp.js'].replace("      characteristics: metaResult.characteristics || '',\n    };", '    };'),
+  }),
   'the Scope and Category columns are removed from the schema': b => ({
     'Code.js': b['Code.js'].replace(
       "const MEMORY_LOG_HEADERS         = ['ID', 'Timestamp', 'Type', 'Who', 'Title', 'Detail', 'Context', 'Scope', 'Category']; // Issue #9",

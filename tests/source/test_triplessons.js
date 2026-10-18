@@ -454,6 +454,8 @@ console.log('\nTrip characteristics: the field a trait scope matches against');
         /\(p\.characteristics \|\| ''\)\.trim\(\),/.test(set),
         'setValues sizes from TRIP_META_HEADERS.length and throws on a short row');
   check('the reader returns it', /characteristics: String\(data\[i\]\[10\]/.test(get));
+  check('…and so does the packing response the dashboard rebuilds from',
+        /characteristics: metaResult\.characteristics \|\| ''/.test(extractFn(SRC.Web, 'webGetPacking_')));
   check('…and defaults it to blank when there is no row',
         (get.match(/characteristics: ''/g) || []).length >= 2);
   check('the tab self-heals its header', /TRIP_META_HEADERS\.forEach/.test(ensure));
@@ -548,6 +550,15 @@ console.log('\nThe dashboard can set them');
           /characteristics='\+encodeURIComponent/.test(src) &&
           !/action=set_trip_meta[^)]*context=/.test(src),
           'sending context or notes too would clear whichever it got wrong');
+    // Every place the dashboard rebuilds a trip's details from a response must keep
+    // the characteristics: dropping them showed every trip as "not set", and a chip
+    // tapped from that view saved only itself.
+    check(label + ': keeps the characteristics whenever it reloads a trip’s details',
+          (src.match(/returnMode:data(\.meta)?\.returnMode\|\|''/g) || []).length === 3 &&
+          !/returnMode:data(\.meta)?\.returnMode\|\|''\}/.test(src),
+          (src.match(/returnMode:data(\.meta)?\.returnMode\|\|''./g) || []).join(' '));
+    check(label + ': the chips read what’s saved before a tap builds on it',
+          /'action=get_trip_meta','tripKey='\+encodeURIComponent\(tripKey\)/.test(src) && /setSel\(parse\(d\.characteristics\)\)/.test(src));
     check(label + ': says so when nothing is set',
           /not set, so beach\/ski lessons and hints won't fire/.test(src),
           'blank is the silent failure — it has to be visible in the UI too');
