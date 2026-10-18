@@ -6191,6 +6191,171 @@ function GenInputsBanner(props) {
 }
 // ---- /GenInputsBanner ----
 
+// ---- WishListsView — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Both dashboards carry this block byte-for-byte; test_wishlists_ui.js fails if they
+// drift. Change it in one file, then paste the whole block into the other.
+//
+// Plain React.createElement, no JSX, so the same text runs in app.js and inside
+// dashboard-lite's Babel script. It loads its own data (get_wish_lists); with no
+// URL or token passed it uses the ones the dashboard stored.
+//
+// The server (WishLists.js) reads each family Christmas doc by its structure and
+// returns every year. This opens on the upcoming Christmas; earlier years sit behind
+// the picker. Cards show one person each; the table shows every gift at once.
+var WL_C_ = { card: '#161926', line: '#2a2f45', fg: '#dde1f0', muted: '#8a9abf', faint: '#6b7fa8',
+              accent: '#5c9eff', gold: '#e8d9b0', warn: '#f0b429', ok: '#4caf82', ours: 'rgba(92,158,255,0.10)' };
+
+function wlConn_(props) {
+  var url = props.apiUrl, tok = props.apiToken;
+  try { url = url || localStorage.getItem('vera_url'); tok = tok || localStorage.getItem('vera_token'); } catch (e) {}
+  return { url: url, tok: tok };
+}
+
+function wlWho_(g) {
+  return (g.names && g.names.length ? g.names.join(' & ') : '—') + (g.stocking ? ' · stocking' : '');
+}
+
+function WishListsView(props) {
+  var e = React.createElement, C = WL_C_;
+  var st = React.useState(null), data = st[0], setData = st[1];
+  var yr = React.useState(null), year = yr[0], setYear = yr[1];
+  var vw = React.useState('cards'), view = vw[0], setView = vw[1];
+  var fp = React.useState('all'), fPerson = fp[0], setFPerson = fp[1];
+  var fb = React.useState('all'), fBuyer = fb[0], setFBuyer = fb[1];
+
+  function load() {
+    var c = wlConn_(props);
+    if (!c.url || !c.tok) { setData({ failed: 'Set the VERA URL and token in settings first.' }); return; }
+    setData(null);
+    apiGet(c.url, c.tok, { action: 'get_wish_lists' })
+      .then(function(d) { setData(d); setYear(function(y) { return y || d.upcomingYear; }); })
+      .catch(function() { setData({ failed: 'Couldn’t load the wish lists.' }); });
+  }
+  React.useEffect(load, []);
+
+  var box = function(kids) { return e('div', { className: 'wl-view', style: { color: C.fg } }, kids); };
+  if (!data) return box(e('div', { style: { fontSize: 13, color: C.faint, padding: 16 } }, 'Loading wish lists…'));
+  if (data.failed) return box(e('div', { className: 'wl-failed', style: { fontSize: 13, color: C.warn, padding: 16 } }, data.failed));
+  if (data.note) {
+    return box(e('div', { className: 'wl-note', style: { padding: '12px 14px', borderRadius: 8, border: '1px solid rgba(240,180,41,0.3)', color: C.warn, fontSize: 13 } },
+      data.note, e('div', { style: { color: C.muted, fontSize: 12, marginTop: 6 } },
+        'Add a Config row like wishlist_mom with the Google Doc’s ID as its value.')));
+  }
+
+  var people = data.people || [];
+  var upcoming = data.upcomingYear;
+  var years = [upcoming];
+  people.forEach(function(p) { (p.years || []).forEach(function(y) { if (years.indexOf(y) === -1) years.push(y); }); });
+  years.sort(function(a, b) { return b - a; });
+  var shown = year || upcoming;
+  var sec = function(p) { return p.sections && p.sections[shown]; };
+  var empty = function(s) { return !s || (!s.wishlist.length && !s.gifts.length && !s.ideas.length); };
+
+  var btn = function(on, label, onClick, cls) {
+    return e('button', { className: cls, onClick: onClick, style: { padding: '5px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+      fontWeight: 600, border: '1px solid ' + (on ? '#2a5aa0' : C.line), background: on ? '#1a3a6e' : 'transparent', color: on ? '#8ab4f8' : C.muted } }, label);
+  };
+  var chip = function(on, label) {
+    return e('span', { className: on ? 'wl-on' : 'wl-off', style: { fontSize: 11, padding: '1px 7px', borderRadius: 10, whiteSpace: 'nowrap',
+      color: on ? C.ok : C.faint, border: '1px solid ' + (on ? 'rgba(76,175,130,0.4)' : C.line) } }, (on ? '✓ ' : '') + label);
+  };
+  var label = function(t) {
+    return e('div', { style: { fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: C.faint, margin: '12px 0 6px' } }, t);
+  };
+
+  var header = e('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 14 } },
+    e('div', { style: { fontSize: 15, fontWeight: 700, color: C.gold, flex: '1 1 auto' } },
+      '🎄 Christmas ' + shown, shown !== upcoming ? e('span', { style: { fontSize: 12, color: C.faint, fontWeight: 400, marginLeft: 8 } }, 'past year') : null),
+    e('select', { className: 'wl-year', value: shown, onChange: function(ev) { setYear(Number(ev.target.value)); },
+      style: { background: '#0d1b3e', color: C.fg, border: '1px solid ' + C.line, borderRadius: 7, padding: '5px 8px', fontSize: 12 } },
+      years.map(function(y) { return e('option', { key: y, value: y }, y === upcoming ? y + ' (upcoming)' : String(y)); })),
+    btn(view === 'cards', 'Cards', function() { setView('cards'); }, 'wl-toggle wl-to-cards'),
+    btn(view === 'table', 'Table', function() { setView('table'); }, 'wl-toggle wl-to-table'),
+    btn(false, '↻', load, 'wl-refresh'));
+
+  var unmapped = (data.unmappedInitials || []).length
+    ? e('div', { className: 'wl-unmapped', style: { fontSize: 12, color: C.muted, marginBottom: 12 } },
+        'Initials with no name yet: ' + data.unmappedInitials.join(', ') + '. Add Config rows like gift_initials_' +
+        data.unmappedInitials[0] + ' = <name> to show names instead.')
+    : null;
+
+  function card(p) {
+    var s = sec(p), kids = [e('div', { key: 'h', style: { fontWeight: 700, fontSize: 15, color: C.gold } }, '🎁 ' + p.person)];
+    if (p.error) kids.push(e('div', { key: 'err', style: { fontSize: 12, color: C.warn, marginTop: 6 } }, p.error));
+    else if (empty(s)) {
+      kids.push(e('div', { key: 'ns', className: 'wl-notstarted', style: { fontSize: 13, color: C.faint, marginTop: 8 } },
+        shown === upcoming ? 'Not started yet' : 'Nothing for ' + shown));
+    } else {
+      if (s.wishlist.length) {
+        kids.push(e('div', { key: 'wl' }, label('Asked for'), s.wishlist.map(function(w, i) {
+          return e('div', { key: i, className: 'wl-wish', style: { fontSize: 13, padding: '3px 0', display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' } },
+            e('span', { style: { textDecoration: w.done ? 'line-through' : 'none', color: w.done ? C.faint : C.fg } }, w.text),
+            !w.claimed ? e('span', { className: 'wl-unclaimed', style: { fontSize: 11, color: C.warn } }, 'not claimed') : null);
+        })));
+      }
+      if (s.gifts.length) {
+        kids.push(e('div', { key: 'g' }, label('Gifts'), s.gifts.map(function(g, i) {
+          return e('div', { key: i, className: 'wl-gift' + (g.ours ? ' wl-ours' : ''), style: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+            padding: '5px 6px', borderRadius: 6, background: g.ours ? C.ours : 'transparent', fontSize: 13 } },
+            e('span', { style: { flex: '1 1 140px', minWidth: 0, overflowWrap: 'anywhere' } }, g.item),
+            e('span', { style: { fontSize: 12, color: g.ours ? '#8ab4f8' : C.muted } }, wlWho_(g)),
+            chip(g.purchased, 'bought'), chip(g.wrapped, 'wrapped'));
+        })));
+      }
+      if (s.ideas.length) {
+        kids.push(e('div', { key: 'i' }, label('Ideas for next year'), s.ideas.map(function(t, i) {
+          return e('div', { key: i, className: 'wl-idea', style: { fontSize: 13, color: C.muted, padding: '2px 0' } }, '· ' + t);
+        })));
+      }
+    }
+    return e('div', { key: p.person, className: 'wl-card', style: { background: C.card, border: '1px solid ' + C.line, borderRadius: 12,
+      padding: 16, flex: '1 1 260px', minWidth: 0, maxWidth: '100%' } }, kids);
+  }
+
+  function table() {
+    var rows = [];
+    people.forEach(function(p) {
+      if (fPerson !== 'all' && p.person !== fPerson) return;
+      var s = sec(p);
+      (s ? s.gifts : []).forEach(function(g) {
+        var names = g.names || [];
+        if (fBuyer === 'ours' && !g.ours) return;
+        if (fBuyer !== 'all' && fBuyer !== 'ours' && names.indexOf(fBuyer) === -1) return;
+        rows.push({ p: p.person, g: g });
+      });
+    });
+    var th = function(t) { return e('th', { style: { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.faint, fontWeight: 700, whiteSpace: 'nowrap' } }, t); };
+    var td = function(k, v) { return e('td', { key: k, style: { padding: '6px 8px', fontSize: 13, borderTop: '1px solid ' + C.line, verticalAlign: 'top' } }, v); };
+    return e('div', null,
+      e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, alignItems: 'center' } },
+        e('select', { className: 'wl-fperson', value: fPerson, onChange: function(ev) { setFPerson(ev.target.value); },
+          style: { background: '#0d1b3e', color: C.fg, border: '1px solid ' + C.line, borderRadius: 7, padding: '5px 8px', fontSize: 12 } },
+          [e('option', { key: 'all', value: 'all' }, 'Everyone')].concat(people.map(function(p) { return e('option', { key: p.person, value: p.person }, p.person); }))),
+        [['all', 'All buyers'], ['ours', 'Ours'], ['Ahmed', 'Ahmed'], ['Victoria', 'Victoria']].map(function(o) {
+          return e('span', { key: o[0] }, btn(fBuyer === o[0], o[1], function() { setFBuyer(o[0]); }, 'wl-fbuyer wl-fbuyer-' + o[0]));
+        })),
+      rows.length
+        ? e('div', { style: { overflowX: 'auto' } },
+            e('table', { className: 'wl-table', style: { width: '100%', borderCollapse: 'collapse' } },
+              e('thead', null, e('tr', null, th('For'), th('Gift'), th('Buying'), th('Bought'), th('Wrapped'))),
+              e('tbody', null, rows.map(function(r, i) {
+                return e('tr', { key: i, className: 'wl-row' + (r.g.ours ? ' wl-ours' : ''), style: { background: r.g.ours ? C.ours : 'transparent' } },
+                  td('p', r.p), td('g', r.g.item), td('w', wlWho_(r.g)), td('b', r.g.purchased ? '✓' : ''), td('x', r.g.wrapped ? '✓' : ''));
+              }))))
+        : e('div', { className: 'wl-none', style: { fontSize: 13, color: C.faint, padding: '8px 0' } },
+            'No gifts for ' + shown + (fPerson !== 'all' || fBuyer !== 'all' ? ' with these filters.' : ' yet.')));
+  }
+
+  return box([
+    e('div', { key: 'h' }, header),
+    e('div', { key: 'u' }, unmapped),
+    view === 'cards'
+      ? e('div', { key: 'c', className: 'wl-cards', style: { display: 'flex', flexWrap: 'wrap', gap: 14 } }, people.map(card))
+      : e('div', { key: 't' }, table()),
+  ]);
+}
+// ---- /WishListsView ----
+
 // ---- NetWorthTab (issue #126) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Both dashboards carry this block byte-for-byte; test_networth_ui.js fails if they
 // drift. Change it in one file, then paste the whole block into the other.
@@ -9304,6 +9469,7 @@ const TOP_TABS = [
   { id: 'finances',      label: '💰 Finances'       },
   { id: 'home_front',    label: '🏡 Home Front'     },
   { id: 'people',        label: '📒 Address Book'   },
+  { id: 'wishlists',     label: '🎄 Wish Lists'     },
 ];
 
 const FINANCE_TABS = [
@@ -9801,6 +9967,10 @@ function App() {
 
         {activeTab === 'people' && (
           <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'wishlists' && (
+          <WishListsView apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
         {activeTab === 'chat' && (

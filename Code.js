@@ -1296,6 +1296,10 @@ function nightlyRun() {
     // Packing lists and Discover runs: flag a list built before VERA recorded its
     // inputs, and one built on last year's weather once a forecast exists (GenerationInputs.js).
     nightlyStep_(ctx, 'checkGenerationInputs_', checkGenerationInputs_);
+    // Christmas lists: in December, flag gifts Ahmed or Victoria haven't bought (and,
+    // from Dec 20, wrapped). The initials seed is a no-op after its first run (WishLists.js).
+    nightlyStep_(ctx, 'seedWishListInitialsConfig_', seedWishListInitialsConfig_);
+    nightlyStep_(ctx, 'checkWishListGifts_', checkWishListGifts_);
     nightlyStep_(ctx, 'checkTripDecisions_', checkTripDecisions_);
     nightlyStep_(ctx, 'checkTripDecisionPremises_', checkTripDecisionPremises_);
 

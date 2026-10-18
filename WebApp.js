@@ -10217,65 +10217,7 @@ function webFetchResourceContent_(e) {
   }
 }
 
-// ============================================================
-// Family / Christmas Wish Lists (Issue #106)
-// Config keys: wishlist_<person> = <Google Doc ID>
-// Parses each Doc and returns unpurchased (non-strikethrough) items
-// ============================================================
-
-function webGetFamilyWishLists_() {
-  var ss     = getSpreadsheet();
-  var config = ss.getSheetByName(TABS.CONFIG);
-  if (!config) return { ok: true, wishlists: [] };
-
-  // Collect all wishlist_* config entries
-  var rows    = config.getDataRange().getValues();
-  var entries = [];
-  rows.forEach(function(row) {
-    var key = String(row[0] || '').trim().toLowerCase();
-    var val = String(row[1] || '').trim();
-    if (key.indexOf('wishlist_') === 0 && val) {
-      var personRaw = key.replace('wishlist_', '');
-      var person    = personRaw.split('_').map(function(w) {
-        return w ? w.charAt(0).toUpperCase() + w.slice(1) : '';
-      }).join(' ').trim();
-      entries.push({ person: person, docId: val });
-    }
-  });
-
-  if (entries.length === 0) return { ok: true, wishlists: [], note: 'No wishlist_* keys found in Config tab.' };
-
-  var wishlists = entries.map(function(entry) {
-    try {
-      var doc   = DocumentApp.openById(entry.docId);
-      var paras = doc.getBody().getParagraphs();
-      var items = [];
-
-      paras.forEach(function(para) {
-        var text = para.getText().trim();
-        if (!text) return;
-
-        // Skip crossed-out lines: if first character is strikethrough, the whole line is struck
-        try {
-          if (para.editAsText().isStrikethrough(0)) return;
-        } catch (e) { return; } // non-text element — skip
-
-        // Skip lines where someone has claimed the item by adding their name/initials.
-        // Must start with a capital letter to avoid false-positives like "(hardcover)" or "- size".
-        // Patterns: "Item - Ahmed", "Item - V", "Item (Victoria)", "Item [AE]"
-        if (/(?:[-–—]\s*[A-Z][A-Za-z]{0,19}|[\(\[]\s*[A-Z][A-Za-z.]{0,19}\s*[\)\]])\s*$/.test(text)) return;
-
-        items.push(text);
-      });
-
-      return { person: entry.person, items: items, error: null };
-    } catch (err) {
-      return { person: entry.person, items: [], error: 'Could not open doc: ' + err.message };
-    }
-  });
-
-  return { ok: true, wishlists: wishlists };
-}
+// Family / Christmas Wish Lists (Issue #106) — read by structure in WishLists.js.
 
 // ============================================================
 // Health Appointments (Issue #85) — Calendar-based

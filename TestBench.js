@@ -705,6 +705,39 @@ function tbProjectHealth() {
  * Also writes the bucket mapping into VERA's Config tab if that has never happened,
  * so the tab's Asset class and Tax views work straight away.
  */
+/**
+ * The family Christmas lists, as VERA now reads them (WishLists.js). Counts only —
+ * no item text — and mainly here to confirm, on the real docs, that ticked
+ * Purchased / Wrapped boxes are detected: Apps Script has no checklist API, so it
+ * reads the strikethrough a ticked box carries.
+ */
+function tbWishLists() {
+  tbBanner_('Family wish lists (Christmas docs)');
+  var added = seedWishListInitialsConfig_();
+  Logger.log(added ? 'Initials: wrote ' + added + ' row(s) into Config.' : 'Initials: already written before (left alone).');
+  var r = webGetFamilyWishLists_();
+  if (r.note) { Logger.log(r.note); return; }
+  Logger.log('Upcoming Christmas: ' + r.upcomingYear);
+  r.people.forEach(function(p) {
+    if (p.error) { Logger.log('· ' + p.person + ' — ' + p.error); return; }
+    Logger.log('· ' + p.person + ' — years: ' + (p.years.join(', ') || '(none)'));
+    p.years.slice(0, 2).forEach(function(y) {
+      var s = p.sections[y];
+      Logger.log('    ' + y + ': ' + s.wishlist.length + ' wish(es), ' +
+                 s.wishlist.filter(function(w) { return !w.claimed; }).length + ' unclaimed · ' +
+                 s.gifts.length + ' gift(s), ' + s.gifts.filter(function(g) { return g.purchased; }).length + ' purchased, ' +
+                 s.gifts.filter(function(g) { return g.wrapped; }).length + ' wrapped, ' +
+                 s.gifts.filter(function(g) { return g.ours; }).length + ' ours · ' +
+                 s.ideas.length + ' idea(s)');
+    });
+    if (p.notStarted) Logger.log('    ' + r.upcomingYear + ': not started yet');
+  });
+  if (r.unmappedInitials.length) {
+    Logger.log('Initials with no name yet: ' + r.unmappedInitials.join(', ') +
+               ' — add Config rows like gift_initials_' + r.unmappedInitials[0] + ' = <name>.');
+  }
+}
+
 function tbNetWorth() {
   tbBanner_('Net Worth (planner sheet)');
   var cfg = getConfigValues();
