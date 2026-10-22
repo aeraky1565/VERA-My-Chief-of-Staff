@@ -6202,6 +6202,8 @@ function GenInputsBanner(props) {
 // The server (WishLists.js) reads each family Christmas doc by its structure and
 // returns every year. This opens on the upcoming Christmas; earlier years sit behind
 // the picker. Cards show one person each; the table shows every gift at once.
+// props.viewer ('ahmed' on the full dashboard, 'victoria' on dashboard-lite) tells the
+// server whose list to leave out: you never see the list you're being gifted from.
 var WL_C_ = { card: '#161926', line: '#2a2f45', fg: '#dde1f0', muted: '#8a9abf', faint: '#6b7fa8',
               accent: '#5c9eff', gold: '#e8d9b0', warn: '#f0b429', ok: '#4caf82', ours: 'rgba(92,158,255,0.10)' };
 
@@ -6227,7 +6229,9 @@ function WishListsView(props) {
     var c = wlConn_(props);
     if (!c.url || !c.tok) { setData({ failed: 'Set the VERA URL and token in settings first.' }); return; }
     setData(null);
-    apiGet(c.url, c.tok, { action: 'get_wish_lists' })
+    var q = { action: 'get_wish_lists' };
+    if (props.viewer) q.viewer = props.viewer;   // the server leaves out this person's own list
+    apiGet(c.url, c.tok, q)
       .then(function(d) { setData(d); setYear(function(y) { return y || d.upcomingYear; }); })
       .catch(function() { setData({ failed: 'Couldn’t load the wish lists.' }); });
   }
@@ -9976,7 +9980,7 @@ function App() {
         )}
 
         {activeTab === 'wishlists' && (
-          <WishListsView apiUrl={apiUrl} apiToken={apiToken} />
+          <WishListsView apiUrl={apiUrl} apiToken={apiToken} viewer="victoria" />
         )}
 
         {activeTab === 'chat' && (

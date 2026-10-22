@@ -2416,7 +2416,7 @@ All requests must include `?token=YOUR_VERA_WEB_TOKEN`. All mutations use GET to
 | `add_experiment_checkin` | `experimentId`, `note` | Log experiment check-in |
 | `get_resources` / `add_resource` / `update_resource` / `delete_resource` | (resource fields) | Manage resource library |
 | `fetch_resource_content` | `id` | Fetch and summarise a resource URL |
-| `get_wish_lists` | — | Family/Christmas wish lists |
+| `get_wish_lists` | `viewer` (optional: `ahmed`, `victoria`) | Family/Christmas wish lists, minus the viewer's own list (full dashboard sends `ahmed`, dashboard-lite sends `victoria`; no viewer = every list) |
 | `get_wish_list` | — | Personal wish list |
 | `add_wish_item` / `update_wish_item` / `mark_wish_purchased` / `delete_wish_item` | (item fields) | Manage wish list |
 | `add_bucket_activity` / `toggle_bucket_activity` / `delete_bucket_activity` | `bucketId`, `activity` | Manage bucket list activities |

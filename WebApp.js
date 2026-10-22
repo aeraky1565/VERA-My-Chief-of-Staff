@@ -381,7 +381,7 @@ function doGet(e) {
       case 'delete_resource':       return jsonOut_(webDeleteResource_(e));
       case 'fetch_resource_content':return jsonOut_(webFetchResourceContent_(e));
       // Family Wish Lists / Christmas Wish List Integration (Issue #106)
-      case 'get_wish_lists':        return jsonOut_(webGetFamilyWishLists_());
+      case 'get_wish_lists':        return jsonOut_(webGetFamilyWishLists_(e));
       // Wish List (Issue #131)
       case 'get_wish_list':         return jsonOut_(webGetWishList_());
       case 'add_wish_item':         return jsonOut_(webAddWishItem_(e));

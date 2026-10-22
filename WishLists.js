@@ -244,7 +244,7 @@ function wishNotStarted_(sec) {
 }
 
 // ============================================================
-// ENDPOINT  (action get_wish_lists)
+// ENDPOINT  (action get_wish_lists, optional viewer=)
 // ============================================================
 
 /** The wishlist_<person> Config rows, as [{ person, docId }]. */
@@ -259,6 +259,26 @@ function wishListEntries_(cfg) {
     out.push({ person: person, docId: val });
   });
   return out;
+}
+
+/**
+ * Who is looking, from ?viewer= — "ahmed", "victoria" — lower-cased. '' when the caller
+ * didn't say (the nightly flag check, an old cached dashboard): then nothing is hidden.
+ */
+function wishViewerOf_(e) {
+  return String((e && e.parameter && e.parameter.viewer) || '').trim().toLowerCase();
+}
+
+/**
+ * Drops the viewer's own list — the one the others are buying from, so seeing it
+ * (and who has bought what) would spoil it. Exact match on the person, so
+ * "victoria" never hides "Victoria Mom". Pure.
+ */
+function wishEntriesForViewer_(entries, viewer) {
+  if (!viewer) return entries || [];
+  return (entries || []).filter(function(en) {
+    return String(en.person || '').trim().toLowerCase() !== viewer;
+  });
 }
 
 /** One person's doc, shaped for the dashboard. Pure apart from the blocks passed in. */
@@ -282,13 +302,21 @@ function wishPersonView_(person, blocks, initials, upcoming) {
   };
 }
 
-function webGetFamilyWishLists_() {
+/**
+ * Every family list, except the viewer's own (?viewer=ahmed on the full dashboard,
+ * ?viewer=victoria on dashboard-lite). The hidden list is filtered out BEFORE its doc is
+ * opened, so its gifts, purchasers and any unmapped initials never leave the server.
+ * With no viewer — the nightly flag check calls it bare — every list comes back.
+ * This keeps surprises, it is not access control: the viewer is whatever the caller says.
+ */
+function webGetFamilyWishLists_(e) {
   var cfg = getConfigValues();
-  var entries = wishListEntries_(cfg);
+  var all = wishListEntries_(cfg);
   var upcoming = upcomingChristmasYear_(new Date());
-  if (!entries.length) {
+  if (!all.length) {
     return { ok: true, upcomingYear: upcoming, people: [], note: 'No wishlist_* keys found in Config tab.' };
   }
+  var entries = wishEntriesForViewer_(all, wishViewerOf_(e));
   var initials = wishInitialsMap_(cfg), unmapped = {};
   var people = entries.map(function(entry) {
     try {

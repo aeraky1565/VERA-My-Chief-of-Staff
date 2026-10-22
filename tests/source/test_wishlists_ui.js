@@ -30,17 +30,17 @@ const DATA = {
   ],
 };
 
-async function mount(page, resp) {
-  await page.evaluate(resp => {
+async function mount(page, resp, viewer) {
+  await page.evaluate(([resp, viewer]) => {
     document.querySelectorAll('#wlprobe').forEach(n => n.remove());
     const host = document.createElement('div'); host.id = 'wlprobe'; document.body.appendChild(host);
     window.__wlCalls = 0;
     window.apiGet = function(url, tok, params) {
-      window.__wlCalls++;
+      window.__wlCalls++; window.__wlParams = params;
       return resp === 'fail' ? Promise.reject(new Error('down')) : Promise.resolve(JSON.parse(JSON.stringify(resp)));
     };
-    ReactDOM.createRoot(host).render(React.createElement(WishListsView, { apiUrl: 'https://vera.test/exec', apiToken: 't' }));
-  }, resp);
+    ReactDOM.createRoot(host).render(React.createElement(WishListsView, { apiUrl: 'https://vera.test/exec', apiToken: 't', viewer: viewer }));
+  }, [resp, viewer]);
   await page.waitForTimeout(250);
 }
 const text = page => page.$eval('#wlprobe', n => n.innerText);
@@ -74,7 +74,13 @@ const click = (page, sel) => page.$eval('#wlprobe ' + sel, b => b.click());
       }
       check('WishListsView is defined on the page', await page.evaluate(() => typeof WishListsView === 'function'));
 
+      // Each dashboard asks the server to leave out its own wearer's list.
+      const wearer = kind === 'lite' ? 'victoria' : 'ahmed';
+      await mount(page, DATA, wearer);
+      check('it asks for get_wish_lists with the viewer, so their own list is left out',
+            await page.evaluate(w => window.__wlParams.action === 'get_wish_lists' && window.__wlParams.viewer === w, wearer));
       await mount(page, DATA);
+      check('with no viewer given, none is sent (nothing hidden)', await page.evaluate(() => !('viewer' in window.__wlParams)));
       let t = await text(page);
       check('opens on the upcoming Christmas', /Christmas 2026/.test(t) && !/past year/.test(t), t.split('\n')[0]);
       check('…with earlier years behind the picker', (await page.$eval('#wlprobe .wl-year', s => Array.from(s.options).map(o => o.value).join(','))) === '2026,2025');
