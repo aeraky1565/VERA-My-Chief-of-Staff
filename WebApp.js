@@ -7028,6 +7028,7 @@ function webGetFlightStatuses_(e) {
   var statuses = {};
   var tz       = Session.getScriptTimeZone();
   var now      = Date.now();
+  var gapMin   = flightPollGapMin_(getConfigValues());   // FlightStatus.js
 
   /**
    * Issue #138: attaches freshness so the client can render "Not live" rather
@@ -7037,7 +7038,7 @@ function webGetFlightStatuses_(e) {
    */
   function withFreshness(statusObj, depMs) {
     var minsUntilDep = isNaN(depMs) ? 9999 : (depMs - now) / 60000;
-    var staleAfter   = flightStaleAfterMin_(minsUntilDep);
+    var staleAfter   = flightStaleAfterMin_(minsUntilDep, gapMin);
     var fresh        = freshnessOf_(statusObj.lastChecked, staleAfter);
     return Object.assign({}, statusObj, {
       freshness:     fresh.state,      // 'live' | 'aging' | 'stale'

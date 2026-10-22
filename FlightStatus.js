@@ -7,7 +7,8 @@
 //   1. A 15-minute Apps Script trigger calls checkFlightStatuses_()
 //   2. Phase 1: scans Itinerary sheet for flight rows with a flightNum
 //   3. Phase 2: scans Google Calendar for flight events (airline code + number in title)
-//   4. For flights within 24h of departure, each phase polls AviationStack API
+//   4. Only flights due are looked up: from 6h before departure until departure
+//      (or, from the dashboard, flights departing today). See checkFlightStatuses_.
 //   5. Sheet flights: status stored in col J metadata JSON (flight_status key)
 //      Calendar flights: status stored in Script Properties (FLIGHT_STATUS_CACHE)
 //   6. The dashboard reads status via ?action=flight_statuses&tripKey=...
@@ -19,10 +20,10 @@
 //   Paid tier: $9.99/mo for 10,000 req/month
 //
 // POLLING INTERVALS (applied via rate-limiting in metadata):
-//   Departure > 6h away  (6–24h window):  every 3 hours
 //   Departure 1–6h away:                  every 60 minutes
 //   Departure < 1h away:                  every 15 minutes
-//   Departure > 24h away or already done: skip
+//   Departure > 6h away or already gone:  no lookup at all
+//   Config flight_status_poll_minutes, when longer, spaces them further.
 // ============================================================
 
 // ---- Config -----------------------------------------------------------------
@@ -37,24 +38,19 @@ function getAviationStackKey_() {
 
 var AS_BACKOFF_KEY_ = 'AVIATIONSTACK_BACKOFF_UNTIL';
 
-// ---- How often to poll (Config flight_status_poll_minutes) -------------------
-var FLIGHT_LAST_POLL_PROP_    = 'FLIGHT_LAST_POLL_AT';
+// ---- How often to check a flight (Config flight_status_poll_minutes) ---------
 var FLIGHT_POLL_MIN_MINUTES_  = 15;   // the trigger's own cadence: nothing finer is possible
 var FLIGHT_POLL_SEEDED_PROP_  = 'FLIGHT_POLL_CONFIG_SEEDED';
 
-/** The configured gap in minutes: a whole number, 15 or more. Anything else reads as 15. */
-function flightPollIntervalMin_(cfg) {
+/**
+ * The configured gap between checks of one flight, in minutes: a whole number, 15 or
+ * more. Anything else reads as 15. (This was first named flightPollIntervalMin_ —
+ * the name of the built-in cadence below — and in one global scope the later
+ * declaration won, so the setting never took effect.)
+ */
+function flightPollGapMin_(cfg) {
   var n = parseInt(String((cfg || {})['flight_status_poll_minutes'] || '').trim(), 10);
   return isFinite(n) && n >= FLIGHT_POLL_MIN_MINUTES_ ? n : FLIGHT_POLL_MIN_MINUTES_;
-}
-
-/**
- * Whether a poll is due. A minute of slack, because the 15-minute trigger drifts by
- * seconds and a gap of exactly 15 must not skip every other run.
- */
-function flightPollDue_(nowMs, lastMs, gapMin) {
-  if (!lastMs) return true;
-  return nowMs - lastMs >= (gapMin - 1) * 60000;
 }
 
 /** Adds flight_status_poll_minutes = 15 to Config, once, so the settings modal lists it. */
@@ -295,8 +291,10 @@ function flightPollIntervalMin_(minutesUntilDep) {
  * @param {number} minutesUntilDep  Minutes until scheduled departure
  * @returns {number} Age in minutes past which the status is "Not live"
  */
-function flightStaleAfterMin_(minutesUntilDep) {
-  return flightPollIntervalMin_(minutesUntilDep) * 2;
+function flightStaleAfterMin_(minutesUntilDep, gapMin) {
+  // With a longer configured gap, a status is not stale until a check at THAT spacing
+  // has been missed — or every status would read "Not live" between checks.
+  return flightCheckIntervalMin_(minutesUntilDep, gapMin) * 2;
 }
 
 /**
@@ -332,15 +330,30 @@ function updateFlightStatusInSheet_(sheet, rowIndex, metaJson) {
 // ---- Main polling function (called by 15-min trigger) ----------------------
 
 /**
- * Scans the Itinerary sheet for flight items with a flightNum,
- * applies rate-limited polling, and updates status in metadata.
- * Safe to call manually for testing.
+ * Looks up flights — and only flights that are due. Nothing else touches the API.
  *
- * @param {boolean} [forceRefresh]   Skip rate-limiting and window guards (for on-demand refresh)
- * @param {string}  [targetTripKey]  If set, only process flights for this trip
+ * WHICH FLIGHTS, FROM A LIST. The flights for the next two weeks — Itinerary rows AND
+ * calendar events — are listed by refreshFlightDays_ (at most every 6 hours, a few
+ * calendar reads). A run with no flight due returns before reading the sheet or the
+ * calendar again. The old version stopped as soon as the Itinerary tab had no flight
+ * rows, so a trip whose flights live only on the calendar (Chicago, Oct 21) was never
+ * polled on schedule at all.
+ *
+ * WHEN A FLIGHT IS DUE.
+ *   scheduled  from 6 hours before departure until departure, at most every
+ *              flightCheckIntervalMin_ (the built-in spacing, or the Config gap
+ *              flight_status_poll_minutes if that is longer)
+ *   forced     (the dashboard, or its ↺) only a flight departing TODAY. Opening the
+ *              dashboard used to force a lookup of every flight on the trip, days
+ *              out; the free plan has no data that far ahead, so the cache stayed
+ *              empty and every visit forced again. That is what spent the quota.
+ *
+ * @param {boolean} [forceRefresh]   On-demand refresh: today's flights, ignoring spacing
+ * @param {string}  [targetTripKey]  If set, only flights on this trip
  */
 function checkFlightStatuses_(forceRefresh, targetTripKey) {
   var _fsStart = Date.now();
+  var checked = 0, skipped = 0, errors = 0;
   try {
   // Short-circuit if we received a 429 recently — don't waste requests
   if (!forceRefresh && isAviationStackRateLimited_()) {
@@ -352,268 +365,93 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     return { polled: 0, skipped: 0, errors: 0 };
   }
 
-  // The configured gap between polls (Config flight_status_poll_minutes). The trigger
-  // still fires every 15 minutes; a run inside the gap skips the API entirely. A poll
-  // every 15 minutes spent the free aviationstack quota halfway through the Chicago
-  // trip. A refresh from the dashboard always polls.
-  var _props = PropertiesService.getScriptProperties();
-  if (!forceRefresh) {
-    var _gapMin = flightPollIntervalMin_(getConfigValues());
-    var _last   = parseInt(_props.getProperty(FLIGHT_LAST_POLL_PROP_) || '0', 10);
-    if (!flightPollDue_(Date.now(), _last, _gapMin)) {
-      Logger.log('FlightStatus: skipping — last poll ' + Math.round((Date.now() - _last) / 60000) +
-                 ' min ago, gap is ' + _gapMin + ' min (flight_status_poll_minutes).');
-      checkStaleFlightStatus_();
-      return { polled: 0, skipped: 0, errors: 0, gated: true };
-    }
-  }
-  try { _props.setProperty(FLIGHT_LAST_POLL_PROP_, String(Date.now())); } catch (lpErr) {}
+  var now   = Date.now();
+  var tz    = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(now), tz, 'yyyy-MM-dd');
+  var gap   = flightPollGapMin_(getConfigValues());
+  // A forced refresh accepts a list up to an hour old, so a flight added this morning
+  // is picked up when you look; the trigger accepts six.
+  var list  = refreshFlightDays_(forceRefresh ? 60 * 60000 : FLIGHT_DAYS_MAX_AGE_MS_);
 
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.ITINERARY);
-  if (!sheet) {
-    Logger.log('FlightStatus: Itinerary tab not found');
-    return;
+  var due = list.flights.filter(function(f) {
+    // An unkeyed calendar flight goes with the trip asking, as it always has.
+    if (targetTripKey && f.tripKey && f.tripKey !== targetTripKey) return false;
+    return flightDueForCheck_((f.dep - now) / 60000, !!forceRefresh, f.date, today);
+  });
+  skipped = list.flights.length - due.length;
+  if (!due.length) {
+    Logger.log('FlightStatus: no flight due (' + list.flights.length + ' listed) — no lookup.');
+    if (!forceRefresh) checkStaleFlightStatus_();
+    return { polled: 0, skipped: skipped, errors: 0 };
   }
 
-  var now  = Date.now();
-  var tz   = Session.getScriptTimeZone();        // hoisted — also used in Phase 2
-  var rows = sheet.getDataRange().getValues();
-  var checked = 0, skipped = 0, errors = 0;
-  var hasUpcomingFlights = false; // true if any sheet flight is still in the 0–1440 min window
+  // ---- Itinerary-sheet flights: status lives in the row's metadata ----------
+  var sheetDue = due.filter(function(f) { return f.src === 'sheet'; });
+  if (sheetDue.length) {
+    var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+    var rows  = sheet ? sheet.getDataRange().getValues() : [];
+    sheetDue.forEach(function(f) {
+      var i = -1;
+      for (var r = 1; r < rows.length; r++) if (String(rows[r][0] || '') === f.id) { i = r; break; }
+      if (i === -1) { skipped++; return; }
+      var meta = {};
+      try { meta = JSON.parse(String(rows[i][9] || '{}') || '{}'); } catch (e) { meta = {}; }
+      var prev = meta.flight_status || {};
+      var mins = (f.dep - now) / 60000;
+      if (!forceRefresh && (prev.status === 'landed' || prev.status === 'cancelled')) { skipped++; return; }
+      if (!forceRefresh && (now - (prev.lastChecked || 0)) < flightCheckIntervalMin_(mins, gap) * 60000) { skipped++; return; }
 
-  for (var i = 1; i < rows.length; i++) {
-    var row  = rows[i];
-    var type = String(row[2] || '').trim();      // col C
-    if (type !== 'flight') continue;
-
-    // When called for a specific trip (force refresh from dashboard), skip other trips
-    if (targetTripKey && String(row[1] || '').trim() !== targetTripKey) continue;
-
-    var id       = String(row[0] || '');         // col A
-
-    // Google Sheets auto-converts date/time strings to Date objects.
-    // String(dateObj) gives a locale string that new Date() can't re-parse,
-    // causing isNaN(depMs) → flight silently skipped → AviationStack never called.
-    // Use Utilities.formatDate() to get the canonical string form.
-    var dateRaw   = row[4];
-    var date      = (dateRaw instanceof Date)
-      ? Utilities.formatDate(dateRaw, tz, 'yyyy-MM-dd')
-      : String(dateRaw || '').trim();            // col E  (YYYY-MM-DD)
-
-    var timeRaw   = row[5];
-    var startTime = (timeRaw instanceof Date)
-      ? Utilities.formatDate(timeRaw, tz, 'HH:mm')
-      : String(timeRaw || '').trim();            // col F  (HH:MM)
-
-    // Parse metadata
-    var meta = {};
-    try { meta = JSON.parse(String(row[9] || '{}') || '{}'); } catch(e) { meta = {}; }
-
-    // flightKeyFor_ (WebApp.js) prefers metadata.flightNum and falls back to
-    // reading the number out of the title, which is what calendar-imported
-    // flights need ("Flight to Tampa (UA 1140)" → "UA1140"). That logic used to
-    // live here; it moved when the itinerary dedupe needed the same key, and one
-    // global scope means this is the same function rather than a second copy.
-    var flightNum = flightKeyFor_({
-      type: 'flight', title: String(row[3] || ''), metadata: String(row[9] || ''),
-    });
-    if (flightNum && !(meta.flightNum || '').trim()) {
-      Logger.log('FlightStatus: extracted flight number "' + flightNum +
-                 '" from title "' + String(row[3] || '') + '"');
-    }
-
-    if (!flightNum || !date) {
-      skipped++;
-      continue;
-    }
-
-    // Build departure datetime (use startTime if set, else midnight)
-    var depStr = date + 'T' + (startTime || '00:00') + ':00';
-    var depMs  = new Date(depStr).getTime();
-    if (isNaN(depMs)) { skipped++; continue; }
-
-    var minutesUntilDep = (depMs - now) / 60000;
-
-    // Skip flights not yet in polling window (>24h out)
-    if (!forceRefresh && minutesUntilDep > 1440) { skipped++; continue; }
-
-    // Stop polling once the flight has landed or been cancelled — no time condition needed
-    var existingStatus = (meta.flight_status || {}).status;
-    if (!forceRefresh && (existingStatus === 'landed' || existingStatus === 'cancelled')) { skipped++; continue; }
-    // Stop polling once departure time has passed — nothing actionable after the flight has left
-    if (!forceRefresh && minutesUntilDep < 0) { skipped++; continue; }
-
-    // Flight is genuinely upcoming (0–1440 min window, not terminal, not departed)
-    if (!forceRefresh) hasUpcomingFlights = true;
-
-    // Determine required poll interval (minutes)
-    var intervalMin = flightPollIntervalMin_(minutesUntilDep);
-
-    // Rate-limit check
-    var lastChecked = (meta.flight_status || {}).lastChecked || 0;
-    if (!forceRefresh && (now - lastChecked) < intervalMin * 60000) { skipped++; continue; }
-
-    // Poll AviationStack
-    Logger.log('FlightStatus: checking ' + flightNum + ' on ' + date + ' (row ' + (i+1) + ')');
-    var statusObj = fetchFlightStatus_(flightNum, date);
-    if (!statusObj) {
-      errors++;
-      // Issue #138: the refresh failed but a previous status is still cached.
-      // Stamp it so downstream renders "Not live" instead of the stale value.
-      if (meta.flight_status) {
-        stampFlightFetchFailure_(meta.flight_status);
-        try {
-          updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta));
-        } catch (stampErr) {
-          Logger.log('FlightStatus: could not stamp stale status on row ' + (i+1) + ' — ' + stampErr.message);
+      Logger.log('FlightStatus: checking ' + f.num + ' on ' + f.date + ' (row ' + (i + 1) + ')');
+      var statusObj = fetchFlightStatus_(f.num, f.date);
+      if (!statusObj) {
+        errors++;
+        // Issue #138: the refresh failed but a previous status is still cached.
+        // Stamp it so downstream renders "Not live" instead of the stale value.
+        if (meta.flight_status) {
+          stampFlightFetchFailure_(meta.flight_status);
+          try { updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta)); }
+          catch (stampErr) { Logger.log('FlightStatus: could not stamp stale status on row ' + (i + 1) + ' — ' + stampErr.message); }
         }
+        return;
       }
-      continue;
-    }
-
-    // Merge into metadata and write back
-    meta.flight_status = statusObj;
-    try {
-      updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta));
-      checked++;
-      Logger.log('FlightStatus: updated ' + flightNum + ' → ' + statusObj.status
-        + (statusObj.delay_min ? ' (' + statusObj.delay_min + 'min delay)' : ''));
-    } catch(writeErr) {
-      Logger.log('FlightStatus: write error for row ' + (i+1) + ' — ' + writeErr.message);
-      errors++;
-    }
-  }
-
-  // ---- Early exit: no upcoming flights in Itinerary sheet --------------------
-  // If every sheet flight is either past departure, terminal, or outside the 24h window,
-  // skip Phase 2 entirely — no Calendar API calls, no AviationStack exposure.
-  if (!forceRefresh && !hasUpcomingFlights) {
-    Logger.log('FlightStatus: no upcoming flights in window — skipping Phase 2 calendar scan');
-    // Calendar-sourced flights live only in the cache, so they still need
-    // a staleness pass even when the sheet has nothing upcoming.
-    checkStaleFlightStatus_();
-    return { polled: checked, skipped: skipped, errors: errors };
-  }
-
-  // ---- Phase 2: Calendar-sourced flight events --------------------------------
-  // Calendar flights have no Itinerary sheet row, so we scan Google Calendar events
-  // and store statuses in Script Properties (FLIGHT_STATUS_CACHE), keyed by CAL-xxx ID
-  // (the same ID format assigned by webGetItinerary_() for calendar-derived items).
-
-  var calCache = getCalFlightStatusCache_();
-
-  // Build a date→tripKey map from the sheet rows already read,
-  // so we can infer which trip a calendar event belongs to when no targetTripKey is given.
-  var dateToTripKey = {};
-  for (var r = 1; r < rows.length; r++) {
-    var rDate    = (rows[r][4] instanceof Date)
-      ? Utilities.formatDate(rows[r][4], tz, 'yyyy-MM-dd')
-      : String(rows[r][4] || '').trim();
-    var rTripKey = String(rows[r][1] || '').trim();
-    if (rDate && rTripKey && !dateToTripKey[rDate]) dateToTripKey[rDate] = rTripKey;
-  }
-
-  // Scan all calendars for flight events in the polling window.
-  // For force refresh: look back 24h (covers flights that already departed today).
-  // For normal trigger: look back 1h and ahead 24h.
-  var scanStart = new Date(now - (forceRefresh ? 24 : 1) * 60 * 60000);  // 24h or 1h ago
-  var scanEnd   = new Date(now + (forceRefresh ? 48 : 24) * 60 * 60000); // 48h or 24h ahead
-  var allCals   = CalendarApp.getAllCalendars();
-  Logger.log('FlightStatus Phase2: scanning ' + allCals.length + ' calendar(s) from '
-    + Utilities.formatDate(scanStart, tz, 'yyyy-MM-dd HH:mm') + ' to '
-    + Utilities.formatDate(scanEnd,   tz, 'yyyy-MM-dd HH:mm'));
-
-  for (var ci = 0; ci < allCals.length; ci++) {
-    try {
-      var calEvents = allCals[ci].getEvents(scanStart, scanEnd);
-      Logger.log('FlightStatus Phase2: cal "' + allCals[ci].getName() + '" → ' + calEvents.length + ' event(s) in window');
-      for (var ei = 0; ei < calEvents.length; ei++) {
-        var ev      = calEvents[ei];
-        var evTitle = (ev.getTitle()    || '').trim();
-        var evLoc   = (ev.getLocation() || '').trim();
-
-        // Use the same classification function as webGetItinerary_() for consistency —
-        // if that function classifies an event as 'flight', we should poll it here too.
-        var relevance = isItineraryCalendarRelevant_(evTitle, evLoc, '');
-        if (!relevance.include || relevance.type !== 'flight') {
-          Logger.log('FlightStatus Phase2: skip "' + evTitle + '" → not classified as flight (type=' + relevance.type + ', include=' + relevance.include + ')');
-          continue;
-        }
-
-        // flightKeyFor_ (WebApp.js) — one extractor, shared, so the itinerary
-        // dedupe and flight-status lookup can never disagree about what flight
-        // a title names.
-        var calFlightNum = flightKeyFor_({ type: 'flight', title: evTitle });
-        if (!calFlightNum) {
-          Logger.log('FlightStatus Phase2: skip "' + evTitle + '" → classified as flight but no IATA code+number found in title');
-          continue;
-        }
-
-        // Compute CAL-xxx ID using the IDENTICAL formula used in webGetItinerary_()
-        var calId  = 'CAL-' + ev.getId().replace(/[^a-z0-9]/gi, '').substring(0, 16);
-        var evDate = Utilities.formatDate(ev.getStartTime(), tz, 'yyyy-MM-dd');
-        var evTime = ev.isAllDayEvent() ? '00:00'
-                   : Utilities.formatDate(ev.getStartTime(), tz, 'HH:mm');
-
-        // Determine tripKey: explicit param > existing cache entry > date lookup from sheet
-        var evTripKey = targetTripKey
-          || (calCache[calId] && calCache[calId].tripKey)
-          || dateToTripKey[evDate]
-          || '';
-
-        // When targeting a specific trip, skip events from other trips
-        if (targetTripKey && evTripKey !== targetTripKey) continue;
-
-        // Rate-limiting (mirrors Phase 1 sheet-based logic)
-        var evDepMs     = new Date(evDate + 'T' + evTime + ':00').getTime();
-        var minsUntilEv = (evDepMs - now) / 60000;
-
-        if (!forceRefresh && minsUntilEv > 1440) { skipped++; continue; }
-
-        var cachedEntry  = calCache[calId] || {};
-        var cachedStatus = cachedEntry.status || {};
-        // Stop polling once landed or cancelled — no time condition needed
-        if (!forceRefresh && (cachedStatus.status === 'landed' || cachedStatus.status === 'cancelled')) { skipped++; continue; }
-        // Stop polling once departure time has passed — nothing actionable after the flight has left
-        if (!forceRefresh && minsUntilEv < 0) { skipped++; continue; }
-
-        var calInterval = flightPollIntervalMin_(minsUntilEv);
-        if (!forceRefresh && (now - (cachedStatus.lastChecked || 0)) < calInterval * 60000) { skipped++; continue; }
-
-        // Poll AviationStack
-        Logger.log('FlightStatus: checking calendar flight ' + calFlightNum + ' on ' + evDate + ' (' + calId + ')');
-        var calStatusObj = fetchFlightStatus_(calFlightNum, evDate);
-        if (!calStatusObj) {
-          errors++;
-          // Issue #138: stamp the cached calendar status so it stops reading as live.
-          if (cachedEntry.status) {
-            stampFlightFetchFailure_(cachedEntry.status);
-            calCache[calId] = cachedEntry;
-          }
-          continue;
-        }
-
-        // `date` is stored so checkStaleFlightStatus_() can reconstruct the
-        // departure time without re-scanning every calendar.
-        calCache[calId] = {
-          tripKey:   evTripKey,
-          flightNum: calFlightNum,
-          date:      evDate,
-          time:      evTime,
-          status:    calStatusObj,
-        };
+      meta.flight_status = statusObj;
+      try {
+        updateFlightStatusInSheet_(sheet, i + 1, JSON.stringify(meta));
         checked++;
-        Logger.log('FlightStatus: updated calendar ' + calFlightNum + ' → ' + calStatusObj.status
-          + (calStatusObj.delay_min ? ' (' + calStatusObj.delay_min + 'min delay)' : ''));
+      } catch (writeErr) {
+        Logger.log('FlightStatus: write error for row ' + (i + 1) + ' — ' + writeErr.message);
+        errors++;
       }
-    } catch (calScanErr) {
-      Logger.log('FlightStatus: calendar scan error — ' + calScanErr.message);
-    }
+    });
   }
 
-  setCalFlightStatusCache_(calCache);
-  // ---- end Phase 2 -----------------------------------------------------------
+  // ---- Calendar flights: status lives in the Script Properties cache --------
+  var calDue = due.filter(function(f) { return f.src === 'calendar'; });
+  if (calDue.length) {
+    var calCache = getCalFlightStatusCache_();
+    calDue.forEach(function(f) {
+      var entry = calCache[f.calId] || {};
+      var prev  = entry.status || {};
+      var mins  = (f.dep - now) / 60000;
+      if (!forceRefresh && (prev.status === 'landed' || prev.status === 'cancelled')) { skipped++; return; }
+      if (!forceRefresh && (now - (prev.lastChecked || 0)) < flightCheckIntervalMin_(mins, gap) * 60000) { skipped++; return; }
+
+      Logger.log('FlightStatus: checking calendar flight ' + f.num + ' on ' + f.date + ' (' + f.calId + ')');
+      var statusObj = fetchFlightStatus_(f.num, f.date);
+      if (!statusObj) {
+        errors++;
+        // Issue #138: stamp the cached calendar status so it stops reading as live.
+        if (entry.status) { stampFlightFetchFailure_(entry.status); calCache[f.calId] = entry; }
+        return;
+      }
+      // `date` is stored so checkStaleFlightStatus_() can reconstruct the
+      // departure time without re-scanning every calendar.
+      calCache[f.calId] = { tripKey: f.tripKey || entry.tripKey || targetTripKey || '', flightNum: f.num,
+                            date: f.date, time: f.time, status: statusObj };
+      checked++;
+    });
+    setCalFlightStatusCache_(calCache);
+  }
 
   // Issue #138: alert on anything that is departing soon but no longer refreshing.
   // Skipped on force-refresh — the user is looking at the dashboard and will see
@@ -621,12 +459,11 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
   if (!forceRefresh) checkStaleFlightStatus_();
 
   Logger.log('FlightStatus: done. checked=' + checked + ' skipped=' + skipped + ' errors=' + errors);
-  if (errors > 0) {
-    veraLog_('checkFlightStatuses', 'Travel', 'Partial',
-      'checked=' + checked + ' skipped=' + skipped + ' errors=' + errors, Date.now() - _fsStart);
-  } else {
-    veraLog_('checkFlightStatuses', 'Travel', 'Success',
-      'checked=' + checked + ' skipped=' + skipped, Date.now() - _fsStart);
+  // Logged only when something was looked up: a no-op run every 15 minutes is the
+  // heartbeat's business, not the System Log's.
+  if (checked || errors) {
+    veraLog_('checkFlightStatuses', 'Travel', errors ? 'Partial' : 'Success',
+      'checked=' + checked + ' skipped=' + skipped + (errors ? ' errors=' + errors : ''), Date.now() - _fsStart);
   }
   return { polled: checked, skipped: skipped, errors: errors };
   } catch (err) {
@@ -639,6 +476,103 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     try { recordHeartbeat_('checkFlightStatuses_'); } catch (hbErr) {}
     try { flushSystemLog_(); } catch (flErr) {}
   }
+}
+
+// ---- Which flights exist, and which are due ---------------------------------
+
+var FLIGHT_WINDOW_MIN_      = 360;              // checks start 6 hours before departure
+var FLIGHT_DAYS_PROP_       = 'FLIGHT_DAYS';
+var FLIGHT_DAYS_MAX_AGE_MS_ = 6 * 60 * 60000;   // the list is rebuilt at most this often
+var FLIGHT_DAYS_AHEAD_      = 14;
+
+/**
+ * Whether a flight should be looked up now. Pure.
+ *   scheduled  0–360 minutes before departure — the flight's own day, from 6 hours out
+ *   forced     departing today, whatever the time (the dashboard's ↺ and its first load)
+ */
+function flightDueForCheck_(minutesUntilDep, forced, depDate, today) {
+  if (forced) return depDate === today;
+  return minutesUntilDep >= 0 && minutesUntilDep <= FLIGHT_WINDOW_MIN_;
+}
+
+/** The spacing between checks of one flight: the built-in cadence, or the Config gap if longer. */
+function flightCheckIntervalMin_(minutesUntilDep, gapMin) {
+  return Math.max(flightPollIntervalMin_(minutesUntilDep), gapMin || 0);
+}
+
+/**
+ * Every flight in the window, from the Itinerary rows and the calendar events
+ * given. Pure — the reading is refreshFlightDays_'s.
+ *
+ * @param {Array<Array>} sheetRows   Itinerary getValues(), header row first
+ * @param {Array<Object>} calEvents  { id, title, location, start (ms), allDay }
+ * @param {Array<Object>} [trips]    { tripKey, startDate, endDate } — a calendar flight takes
+ *                                   the trip whose dates hold it, else the sheet's trip that day
+ * @returns {Array<Object>} { src, id|calId, num, date, time, dep, tripKey }
+ */
+function buildFlightDays_(sheetRows, calEvents, tz, nowMs, trips) {
+  var from = nowMs - 24 * 60 * 60000, to = nowMs + FLIGHT_DAYS_AHEAD_ * 24 * 60 * 60000;
+  var asDate = function(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v || '').trim(); };
+  var asTime = function(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'HH:mm') : String(v || '').trim(); };
+  var dateToTripKey = {}, out = [];
+  (sheetRows || []).slice(1).forEach(function(r) {
+    var d = asDate(r[4]), k = String(r[1] || '').trim();
+    if (d && k && !dateToTripKey[d]) dateToTripKey[d] = k;
+  });
+  (sheetRows || []).slice(1).forEach(function(r) {
+    if (String(r[2] || '').trim() !== 'flight') return;
+    var num = flightKeyFor_({ type: 'flight', title: String(r[3] || ''), metadata: String(r[9] || '') });
+    var date = asDate(r[4]), time = asTime(r[5]);
+    var dep = new Date(date + 'T' + (time || '00:00') + ':00').getTime();
+    if (!num || !date || isNaN(dep) || dep < from || dep > to) return;
+    out.push({ src: 'sheet', id: String(r[0] || ''), num: num, date: date, time: time, dep: dep,
+               tripKey: String(r[1] || '').trim() });
+  });
+  (calEvents || []).forEach(function(ev) {
+    var rel = isItineraryCalendarRelevant_(ev.title || '', ev.location || '', '');
+    if (!rel.include || rel.type !== 'flight') return;
+    var num = flightKeyFor_({ type: 'flight', title: ev.title || '' });
+    if (!num || ev.start < from || ev.start > to) return;
+    var date = Utilities.formatDate(new Date(ev.start), tz, 'yyyy-MM-dd');
+    var time = ev.allDay ? '00:00' : Utilities.formatDate(new Date(ev.start), tz, 'HH:mm');
+    var trip = (trips || []).filter(function(t) { return t.startDate <= date && date <= t.endDate; })[0];
+    // The IDENTICAL formula webGetItinerary_() uses, so the dashboard finds the status.
+    out.push({ src: 'calendar', calId: 'CAL-' + String(ev.id).replace(/[^a-z0-9]/gi, '').substring(0, 16),
+               num: num, date: date, time: time, dep: ev.start,
+               tripKey: (trip && trip.tripKey) || dateToTripKey[date] || '' });
+  });
+  out.sort(function(a, b) { return a.dep - b.dep; });
+  return out;
+}
+
+/**
+ * The flight list, rebuilt when older than maxAgeMs: one read of the Itinerary tab
+ * and of the calendars over the next two weeks. Kept in a Script Property so the
+ * 15-minute trigger can decide in one read that there is nothing to do.
+ */
+function refreshFlightDays_(maxAgeMs) {
+  var props = PropertiesService.getScriptProperties();
+  var saved = null;
+  try { saved = JSON.parse(props.getProperty(FLIGHT_DAYS_PROP_) || 'null'); } catch (e) {}
+  if (saved && saved.flights && Date.now() - (saved.at || 0) < maxAgeMs) return saved;
+
+  var now = Date.now(), tz = Session.getScriptTimeZone();
+  var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  var rows = sheet ? sheet.getDataRange().getValues() : [];
+  var events = [];
+  var from = new Date(now - 24 * 60 * 60000), to = new Date(now + FLIGHT_DAYS_AHEAD_ * 24 * 60 * 60000);
+  CalendarApp.getAllCalendars().forEach(function(cal) {
+    try {
+      cal.getEvents(from, to).forEach(function(ev) {
+        events.push({ id: ev.getId(), title: ev.getTitle() || '', location: ev.getLocation() || '',
+                      start: ev.getStartTime().getTime(), allDay: ev.isAllDayEvent() });
+      });
+    } catch (calErr) { Logger.log('refreshFlightDays_: calendar read failed — ' + calErr.message); }
+  });
+  var list = { at: now, flights: buildFlightDays_(rows, events, tz, now, getUpcomingTripsForLegs_()) };   // TravelLegs.js
+  try { props.setProperty(FLIGHT_DAYS_PROP_, JSON.stringify(list)); } catch (e) {}
+  Logger.log('refreshFlightDays_: ' + list.flights.length + ' flight(s) in the next ' + FLIGHT_DAYS_AHEAD_ + ' days.');
+  return list;
 }
 
 // ---- Travel-day staleness alert (Issue #138) --------------------------------
@@ -660,6 +594,7 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
 function checkStaleFlightStatus_(withinHours) {
   var horizonH = withinHours || 6;
   var now      = Date.now();
+  var gapMin   = flightPollGapMin_(getConfigValues());
   var tz       = Session.getScriptTimeZone();
   var checked  = 0;
   var alerted  = 0;
@@ -684,7 +619,7 @@ function checkStaleFlightStatus_(withinHours) {
 
     checked++;
 
-    var staleAfter = flightStaleAfterMin_(minsUntilDep);
+    var staleAfter = flightStaleAfterMin_(minsUntilDep, gapMin);
     var fresh      = freshnessOf_((statusObj || {}).lastChecked, staleAfter);
     if (fresh.state !== 'stale') return;
 

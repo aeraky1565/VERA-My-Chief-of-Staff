@@ -45,6 +45,24 @@ console.log('\nno name is declared in two files');
 check(dupes.length + ' duplicate global name(s)', dupes.length === 0,
       dupes.length ? '\n' + dupes.map(d => '         ' + d + '  →  ' + seen[d].join(', ')).join('\n') : undefined);
 
+// The same file counts too: the LATER declaration wins there as well. A second
+// flightPollIntervalMin_ in FlightStatus.js left the flight-poll setting dead in
+// production while a test that extracted the first one passed.
+const fnSeen = {};
+files.forEach(f => {
+  const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+  DECL.lastIndex = 0;
+  let m;
+  while ((m = DECL.exec(src)) !== null) {
+    const line = src.slice(0, m.index).split('\n').length;
+    (fnSeen[f + ' ' + m[1]] = fnSeen[f + ' ' + m[1]] || []).push(line);
+  }
+});
+const sameFile = Object.keys(fnSeen).filter(k => fnSeen[k].length > 1).sort();
+console.log('\nno function is declared twice in one file');
+check(sameFile.length + ' function(s) declared twice in one file', sameFile.length === 0,
+      sameFile.length ? '\n' + sameFile.map(k => '         ' + k + '  →  lines ' + fnSeen[k].join(', ')).join('\n') : undefined);
+
 // The specific ones this feature depends on resolving correctly.
 console.log('\nthe names phase 3 relies on are unique');
 ['inferTripDestination_', 'todayStr_', 'tripDailyForecast_', 'weatherVerdictFor_',

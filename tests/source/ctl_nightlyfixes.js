@@ -6,7 +6,8 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_nfix');
 
-const FILES = ['VERALog.js', 'Code.js', 'FlightStatus.js', 'ApiHealth.js', 'Slack.js', 'Watchdog.js', 'docs/app.js', 'docs/index.html'];
+const FILES = ['VERALog.js', 'Code.js', 'FlightStatus.js', 'ApiHealth.js', 'Slack.js', 'Watchdog.js', 'WebApp.js',
+               'docs/app.js', 'docs/index.html', 'docs/dashboard-lite.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -14,7 +15,7 @@ const swap = (src, from, to) => {
   if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70));
   return src.replace(from, function() { return to; });
 };
-const FIX = 'test_nightlyfixes.js', FLAGS = 'test_flags.js';
+const FIX = 'test_nightlyfixes.js', FLAGS = 'test_flags.js', GLOBALS = 'test_globals.js';
 
 const CONTROLS = [
   // ---- credentials in logs ---------------------------------------------------
@@ -51,11 +52,38 @@ const CONTROLS = [
   ['a value below 15 is honoured', FIX, b => ({
     'FlightStatus.js': swap(b['FlightStatus.js'], 'return isFinite(n) && n >= FLIGHT_POLL_MIN_MINUTES_ ? n', 'return isFinite(n) && n > 0 ? n'),
   })],
-  ['a dashboard refresh is held back by the gap', FIX, b => ({
-    'FlightStatus.js': swap(b['FlightStatus.js'], '  if (!forceRefresh) {\n    var _gapMin', '  if (true) {\n    var _gapMin'),
+  ['checks start 12 hours out, not 6', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], 'var FLIGHT_WINDOW_MIN_      = 360;', 'var FLIGHT_WINDOW_MIN_      = 720;'),
   })],
-  ['no slack for trigger drift: a 15-min gap skips every other run', FIX, b => ({
-    'FlightStatus.js': swap(b['FlightStatus.js'], 'return nowMs - lastMs >= (gapMin - 1) * 60000;', 'return nowMs - lastMs >= gapMin * 60000;'),
+  ['checks carry on after departure', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], 'return minutesUntilDep >= 0 && minutesUntilDep <= FLIGHT_WINDOW_MIN_;', 'return minutesUntilDep <= FLIGHT_WINDOW_MIN_;'),
+  })],
+  ['↺ looks up flights on any day again', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], 'if (forced) return depDate === today;', 'if (forced) return true;'),
+  })],
+  ['each flight ignores the gap', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], 'return Math.max(flightPollIntervalMin_(minutesUntilDep), gapMin || 0);', 'return flightPollIntervalMin_(minutesUntilDep);'),
+  })],
+  ['calendar-only flights are never listed', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], '  (calEvents || []).forEach(function(ev) {', '  ([]).forEach(function(ev) {'),
+  })],
+  ['a calendar flight takes no trip from the trip’s dates', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], "tripKey: (trip && trip.tripKey) || dateToTripKey[date] || '' });", "tripKey: dateToTripKey[date] || '' });"),
+  })],
+  ['the card forces a lookup on every visit again (lite)', FIX, b => ({
+    'docs/dashboard-lite.html': swap(b['docs/dashboard-lite.html'], 'length===0&&flightInWindowNow(itemsRef.current)){', 'length===0){'),
+  })],
+  ['the card seeds at any time of day', FIX, b => ({
+    'docs/app.js': swap(b['docs/app.js'], 'return!isNaN(dep)&&dep>=now&&dep-now<=6*3600000;', 'return!isNaN(dep);'),
+  })],
+  ['no note on when live status starts', FIX, b => ({
+    'docs/app.js': swap(b['docs/app.js'], `flightLiveFromText(fl)?' · '+flightLiveFromText(fl):" · tap ↺ to load status"`, '" · tap ↺ to load status"'),
+  })],
+  ['the note leaves out the date of a later day', FIX, b => ({
+    'docs/app.js': swap(b['docs/app.js'], "(sameDay?'':", "(true?'':"),
+  })],
+  ['a second declaration of a function in the same file (the bug that hid the setting)', GLOBALS, b => ({
+    'FlightStatus.js': b['FlightStatus.js'] + '\nfunction flightPollGapMin_(cfg) { return 15; }\n',
   })],
   ['the seed overwrites a value you set', FIX, b => ({
     'FlightStatus.js': swap(b['FlightStatus.js'], "  if (!have) sheet.appendRow(['flight_status_poll_minutes', String(FLIGHT_POLL_MIN_MINUTES_)]);",
