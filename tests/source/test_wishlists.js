@@ -195,6 +195,40 @@ console.log('\nget_wish_lists');
   check('a doc that won’t open says so, per person', /Couldn’t open the doc: no access/.test(bad.error) && bad.notStarted);
 }
 
+// ============ whose list is hidden ==========================================
+console.log('\nviewer: you never see the list you are being gifted from');
+{
+  const cfg = { wishlist_ahmed: 'DOC_A', wishlist_victoria: 'DOC_V', wishlist_victoria_mom: 'DOC_M',
+                gift_initials_AE: 'Ahmed', gift_initials_VV: 'Victoria' };
+  const run = (viewer, over) => {
+    const opened = [];
+    const S9 = sandbox(Object.assign({
+      getConfigValues: () => cfg,
+      DocumentApp: { ElementType: T, Attribute: ATTR, openById: id => { opened.push(id); return { getBody: () => DOC }; } },
+    }, over || {}));
+    S9.e = viewer === undefined ? undefined : { parameter: { viewer } };
+    const r = vm.runInContext('webGetFamilyWishLists_(e)', S9);
+    return { r, opened, names: r.people.map(p => p.person) };
+  };
+  const all = run(undefined);
+  check('no viewer (the nightly flag check): every list comes back', all.names.join() === 'Ahmed,Victoria,Victoria Mom', all.names.join());
+  const asAhmed = run('ahmed');
+  check('Ahmed’s dashboard: not Ahmed’s list, but Victoria’s and her family’s',
+        asAhmed.names.join() === 'Victoria,Victoria Mom', asAhmed.names.join());
+  const asVic = run('victoria');
+  check('Victoria’s dashboard: not hers, but Ahmed’s — and "victoria" never hides "Victoria Mom"',
+        asVic.names.join() === 'Ahmed,Victoria Mom', asVic.names.join());
+  check('the viewer is case- and space-insensitive', run('  Victoria ').names.join() === 'Ahmed,Victoria Mom');
+  check('the hidden doc is never even opened (nothing about it leaves the server)',
+        asAhmed.opened.indexOf('DOC_A') === -1 && asVic.opened.indexOf('DOC_V') === -1 && asAhmed.opened.length === 2, asAhmed.opened.join());
+  const withUnmapped = run('ahmed', { getConfigValues: () => ({ wishlist_ahmed: 'DOC_A' }) });
+  check('hiding the only list leaves people empty, not the "add a key" note',
+        withUnmapped.names.length === 0 && !withUnmapped.r.note && withUnmapped.r.ok === true);
+  check('an unknown viewer hides nothing', run('someone').names.length === 3);
+  const doorway = vm.runInContext('wishEntriesForViewer_([{person:"Ahmed"},{person:"Victoria"}], "")', sandbox()).length;
+  check('an empty viewer hides nothing', doorway === 2);
+}
+
 // ============ flags ==========================================================
 console.log('\nflags: our unbought gifts, Dec 1–25');
 {
@@ -240,7 +274,7 @@ console.log('\nflags: our unbought gifts, Dec 1–25');
 
 // ============ wiring =========================================================
 console.log('\nwiring');
-check('get_wish_lists is served by the new reader', /case 'get_wish_lists':\s+return jsonOut_\(webGetFamilyWishLists_\(\)\);/.test(WEB) && !/function webGetFamilyWishLists_/.test(WEB));
+check('get_wish_lists is served by the new reader', /case 'get_wish_lists':\s+return jsonOut_\(webGetFamilyWishLists_\(e\)\);/.test(WEB) && !/function webGetFamilyWishLists_/.test(WEB));
 check('the old paragraph reader is gone', !/\.getParagraphs\(/.test(WL));
 check('the nightly steps run', /nightlyStep_\(ctx, 'seedWishListInitialsConfig_', seedWishListInitialsConfig_\);/.test(CODE) && /nightlyStep_\(ctx, 'checkWishListGifts_', checkWishListGifts_\);/.test(CODE));
 check('the docs are never written to', !/\.(setText|appendParagraph|insert\w+|replaceText|clear)\(/.test(WL));
@@ -251,8 +285,8 @@ const block = t => { const i = t.indexOf(START), j = t.indexOf(END); return i < 
 check('the view is one block, identical in both dashboards', block(APP).length > 2000 && block(APP) === block(LITE),
       block(APP) === block(LITE) ? '' : 'the two copies have drifted — paste the whole block across');
 check('the full dashboard hands it the API settings, and no longer pre-loads every doc',
-      /React\.createElement\(WishListsView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP) && !/loadWishListsData\(apiUrl,apiToken\);\}/.test(APP));
-check('dashboard-lite has a Wish Lists tab', /\{ id: 'wishlists',\s+label: '🎄 Wish Lists'\s+\}/.test(LITE) && /activeTab === 'wishlists' && \(\s+<WishListsView apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
+      /React\.createElement\(WishListsView,\{apiUrl:apiUrl,apiToken:apiToken,viewer:'ahmed'\}\)/.test(APP) && !/loadWishListsData\(apiUrl,apiToken\);\}/.test(APP));
+check('dashboard-lite has a Wish Lists tab', /\{ id: 'wishlists',\s+label: '🎄 Wish Lists'\s+\}/.test(LITE) && /activeTab === 'wishlists' && \(\s+<WishListsView apiUrl=\{apiUrl\} apiToken=\{apiToken\} viewer="victoria" \/>/.test(LITE));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
