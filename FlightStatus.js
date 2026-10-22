@@ -75,6 +75,43 @@ function seedFlightPollConfig_() {
   return have ? 0 : 1;
 }
 
+/**
+ * What an aviationstack error actually was, in words — instead of the old catch-all
+ * "rate limited / quota exhausted". Pure.
+ *
+ *   quota       the plan's monthly requests are spent: nothing refreshes until it resets
+ *   rate        too many requests in a short window: passes in a couple of hours
+ *   key         the access key was rejected or is missing
+ *   restricted  the request needs a higher plan than this key has
+ *   other       anything else, with the service's own message
+ *
+ * aviationstack names the cause in its body ({"error":{"code":"usage_limit_reached",…}}),
+ * and may send that with HTTP 200, so the body is read whatever the status.
+ *
+ * @returns {{kind: string, code: string, text: string}|null}  null = not an error
+ */
+function classifyAviationStackError_(httpCode, body) {
+  var err = null;
+  try { var j = JSON.parse(String(body || '')); err = j && j.error ? j.error : null; } catch (e) {}
+  if (httpCode === 200 && !err) return null;
+  var code = String((err && (err.code || err.type)) || '').toLowerCase();
+  var msg  = String((err && (err.message || err.info)) || '').replace(/\s+/g, ' ').trim();
+  var raw  = String(body || '');
+  if (code === 'usage_limit_reached' || /usage_limit|monthly|exceeded/i.test(code + ' ' + raw)) {
+    return { kind: 'quota', code: code || 'usage_limit_reached', text: 'monthly quota used up — this plan’s requests for the month are spent' };
+  }
+  if (code === 'rate_limit_reached' || httpCode === 429) {
+    return { kind: 'rate', code: code || 'rate_limit_reached', text: 'too many requests in a short time' };
+  }
+  if (/invalid_access_key|missing_access_key|inactive_user/.test(code) || httpCode === 401) {
+    return { kind: 'key', code: code || 'unauthorized', text: 'the API key was rejected (' + (code || 'HTTP 401') + ') — check the AVIATIONSTACK_KEY Script Property' };
+  }
+  if (/restricted/.test(code) || httpCode === 403) {
+    return { kind: 'restricted', code: code || 'forbidden', text: 'this request isn’t included in the current plan (' + (code || 'HTTP 403') + ')' };
+  }
+  return { kind: 'other', code: code, text: 'HTTP ' + httpCode + (msg ? ': ' + msg : (code ? ': ' + code : '')) };
+}
+
 /** Returns true if we are currently inside a rate-limit backoff window. */
 function isAviationStackRateLimited_() {
   var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
@@ -88,13 +125,13 @@ function isAviationStackRateLimited_() {
  * @param {string} responseBody  Raw response text from AviationStack
  */
 function setAviationStackBackoff_(responseBody) {
-  var isQuota = responseBody && (responseBody.indexOf('usage_limit') !== -1 ||
-                                  responseBody.indexOf('monthly')     !== -1 ||
-                                  responseBody.indexOf('exceeded')    !== -1);
+  var c = classifyAviationStackError_(429, responseBody);
+  var isQuota = !!c && c.kind === 'quota';
   var backoffMs = isQuota ? 30 * 24 * 60 * 60 * 1000   // 30 days — monthly quota
                           :  2 *       60 * 60 * 1000;  //  2 hours — per-rate limit
   var until = Date.now() + backoffMs;
   PropertiesService.getScriptProperties().setProperty(AS_BACKOFF_KEY_, String(until));
+  return until;
   Logger.log('FlightStatus: 429 received — ' +
              (isQuota ? 'monthly quota exhausted, backing off 30 days'
                       : 'rate limited, backing off 2 hours') +
@@ -147,17 +184,32 @@ function fetchFlightStatus_(flightIata, flightDate) {
   try {
     var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     var code = resp.getResponseCode();
-    if (code === 429) {
-      setAviationStackBackoff_(resp.getContentText());
-      recordApiHealth_('aviationstack', false, 'rate limited / quota exhausted', 429);
+    var body = resp.getContentText();
+    // Read the cause from the body whatever the status: the limit can arrive as an
+    // "error" object on a 200, which used to read as "no live data yet" — a success.
+    var problem = classifyAviationStackError_(code, body);
+    if (problem) {
+      Logger.log('FlightStatus: aviationstack ' + problem.kind + ' (' + problem.code + ') for ' + flightIata);
+      if (problem.kind === 'quota' || problem.kind === 'rate') {
+        var until = setAviationStackBackoff_(body);
+        var when = Utilities.formatDate(new Date(until), Session.getScriptTimeZone(),
+                                        problem.kind === 'quota' ? 'MMM d' : 'h:mm a');
+        if (problem.kind === 'rate') {
+          // Passes on its own: the transient 429 path in recordApiHealth_ (a Warning,
+          // never a degraded source).
+          recordApiHealth_('aviationstack', false, problem.text + ' — flight checks paused until ' + when, 429);
+        } else {
+          // NOT transient: nothing refreshes for weeks, so this is a real outage and
+          // says so, with what to do. Recorded without the 429 code for that reason.
+          recordApiHealth_('aviationstack', false, problem.text + ' — flight checks paused until ' + when +
+            '. Raise flight_status_poll_minutes, or upgrade the aviationstack plan.', 0);
+        }
+      } else {
+        recordApiHealth_('aviationstack', false, problem.text, code === 200 ? 0 : code);
+      }
       return null;
     }
-    if (code !== 200) {
-      Logger.log('FlightStatus: AviationStack HTTP ' + code + ' for ' + flightIata);
-      recordApiHealth_('aviationstack', false, 'HTTP error for ' + flightIata, code);
-      return null;
-    }
-    var json = JSON.parse(resp.getContentText());
+    var json = JSON.parse(body);
     if (!json.data || json.data.length === 0) {
       // NOT an API failure. The free tier only carries current/upcoming flights —
       // see the note above the URL — so a flight booked weeks out legitimately
@@ -215,7 +267,7 @@ function fetchFlightStatus_(flightIata, flightDate) {
     };
   } catch (err) {
     Logger.log('FlightStatus: fetch error for ' + flightIata + ' — ' + err.message);
-    recordApiHealth_('aviationstack', false, 'fetch error for ' + flightIata + ': ' + err.message, 0);
+    recordApiHealth_('aviationstack', false, 'couldn’t reach aviationstack for ' + flightIata + ' (network): ' + err.message, 0);
     return null;
   }
 }

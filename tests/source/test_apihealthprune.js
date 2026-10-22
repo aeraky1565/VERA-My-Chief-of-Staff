@@ -196,10 +196,11 @@ console.log('\naviationstack: an empty 200 is not an outage');
         return { getResponseCode: () => code, getContentText: () => body };
       } },
       Utilities: { formatDate: () => '' },
+      Session: { getScriptTimeZone: () => 'America/New_York' },
       _recorded: recorded,
     };
     vm.createContext(ctx);
-    vm.runInContext(fn, ctx);
+    vm.runInContext(extractFn(SRC.Flight, 'classifyAviationStackError_') + '\n' + fn, ctx);
     let out = null;
     try { out = ctx.fetchFlightStatus_('AA102', '2026-12-20'); } catch (e) { out = 'THREW'; }
     return { out, recorded };
@@ -220,7 +221,7 @@ console.log('\naviationstack: an empty 200 is not an outage');
   const rate = fetchWith(429, '{}');
   check('a 429 is still a failure', rate.recorded[0].ok === false && rate.out === null,
         JSON.stringify(rate.recorded));
-  check('…named as rate limiting', /rate limited|quota/.test(rate.recorded[0].detail));
+  check('…named as rate limiting', /too many requests/.test(rate.recorded[0].detail), rate.recorded[0].detail);
 
   const http500 = fetchWith(500, '{}');
   check('a 500 is still a failure', http500.recorded[0].ok === false && http500.out === null);

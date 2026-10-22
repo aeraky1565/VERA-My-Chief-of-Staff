@@ -171,5 +171,52 @@ console.log('\nthe flight poll interval');
   check('…and a value you set is never overwritten', rows2.length === 1 && rows2[0][1] === '90');
 }
 
+// ============ aviationstack errors, named ======================================
+console.log('\naviationstack errors say what they were');
+{
+  const C = {};
+  vm.createContext(C);
+  vm.runInContext(extractFn(FLIGHT, 'classifyAviationStackError_'), C);
+  const cls = (code, body) => { C.c = code; C.b = body; return vm.runInContext('classifyAviationStackError_(c, b)', C); };
+  const quotaBody = JSON.stringify({ error: { code: 'usage_limit_reached', message: 'Your monthly usage limit has been reached.' } });
+  check('usage_limit_reached → quota', cls(429, quotaBody).kind === 'quota');
+  check('…even on HTTP 200 (it used to read as "no live data yet", a success)', cls(200, quotaBody).kind === 'quota');
+  check('rate_limit_reached → rate', cls(429, JSON.stringify({ error: { code: 'rate_limit_reached' } })).kind === 'rate');
+  check('a bare 429 → rate', cls(429, '{}').kind === 'rate');
+  check('invalid_access_key → key, naming the Script Property', cls(401, JSON.stringify({ error: { code: 'invalid_access_key' } })).kind === 'key' &&
+        /AVIATIONSTACK_KEY/.test(cls(401, JSON.stringify({ error: { code: 'invalid_access_key' } })).text));
+  check('function_access_restricted → restricted', cls(403, JSON.stringify({ error: { code: 'function_access_restricted' } })).kind === 'restricted');
+  check('anything else carries the service’s own message', cls(500, JSON.stringify({ error: { message: 'Internal error' } })).text === 'HTTP 500: Internal error');
+  check('a good 200 is not an error', cls(200, JSON.stringify({ data: [] })) === null);
+
+  // The real fetchFlightStatus_, against stubbed responses.
+  const fn = extractFn(FLIGHT, 'fetchFlightStatus_');
+  function fetchWith(code, body, throwOn) {
+    const recorded = [], backoffs = [];
+    const ctx = { String, Number, Object, Array, Math, JSON, Date, Error, encodeURIComponent, Logger: { log() {} },
+      getAviationStackKey_: () => 'KEY', setAviationStackBackoff_: b => { backoffs.push(b); return Date.parse('2026-11-21T12:00:00Z'); },
+      recordApiHealth_: (source, ok, detail, httpCode) => recorded.push({ ok, detail, httpCode }),
+      UrlFetchApp: { fetch: () => { if (throwOn) throw new Error(throwOn); return { getResponseCode: () => code, getContentText: () => body }; } },
+      Utilities: { formatDate: (d, tz, f) => f === 'MMM d' ? 'Nov 21' : '2:00 PM' }, Session: { getScriptTimeZone: () => 'America/New_York' } };
+    vm.createContext(ctx);
+    vm.runInContext(extractFn(FLIGHT, 'classifyAviationStackError_') + '\n' + fn, ctx);
+    const out = ctx.fetchFlightStatus_('UA590', '2026-10-21');
+    return { out, r: recorded[0] || {}, backoffs };
+  }
+  const q = fetchWith(429, quotaBody);
+  check('quota: says so, and when checks resume', q.r.ok === false && /^monthly quota used up — this plan’s requests for the month are spent — flight checks paused until Nov 21\./.test(q.r.detail), q.r.detail);
+  check('…and what to do about it', /Raise flight_status_poll_minutes, or upgrade the aviationstack plan\./.test(q.r.detail));
+  check('…recorded as a real outage, not the passing-429 warning', q.r.httpCode === 0 && q.backoffs.length === 1);
+  const q200 = fetchWith(200, quotaBody);
+  check('quota on a 200 is a failure too, never a success', q200.r.ok === false && /monthly quota/.test(q200.r.detail) && q200.out === null);
+  const rl = fetchWith(429, JSON.stringify({ error: { code: 'rate_limit_reached' } }));
+  check('rate limit: named, with when it resumes, as the passing 429 warning', rl.r.ok === false && rl.r.httpCode === 429 &&
+        rl.r.detail === 'too many requests in a short time — flight checks paused until 2:00 PM', rl.r.detail);
+  const key = fetchWith(401, JSON.stringify({ error: { code: 'invalid_access_key' } }));
+  check('a rejected key says to check the key', /the API key was rejected \(invalid_access_key\)/.test(key.r.detail) && key.r.httpCode === 401);
+  const net = fetchWith(0, '', 'Address unavailable: http://api.aviationstack.com/v1/flights?access_key=X');
+  check('a network failure is called one', /^couldn’t reach aviationstack for UA590 \(network\): Address unavailable/.test(net.r.detail), net.r.detail);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

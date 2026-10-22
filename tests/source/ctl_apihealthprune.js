@@ -81,13 +81,13 @@ const CONTROLS = {
   }),
   'a 429 is now treated as success too': b => ({
     'FlightStatus.js': b['FlightStatus.js'].replace(
-      "      recordApiHealth_('aviationstack', false, 'rate limited / quota exhausted', 429);",
-      "      recordApiHealth_('aviationstack', true, '', 429);"),
+      "          recordApiHealth_('aviationstack', false, problem.text + ' — flight checks paused until ' + when, 429);",
+      "          recordApiHealth_('aviationstack', true, '', 429);"),
   }),
   'a non-200 is now treated as success too': b => ({
     'FlightStatus.js': b['FlightStatus.js'].replace(
-      "      recordApiHealth_('aviationstack', false, 'HTTP error for ' + flightIata, code);",
-      "      recordApiHealth_('aviationstack', true, '', code);"),
+      "        recordApiHealth_('aviationstack', false, problem.text, code === 200 ? 0 : code);",
+      "        recordApiHealth_('aviationstack', true, '', code);"),
   }),
   'a missing key is no longer recorded': b => ({
     'FlightStatus.js': b['FlightStatus.js'].replace(
@@ -95,7 +95,7 @@ const CONTROLS = {
   }),
   'a fetch error is no longer recorded': b => ({
     'FlightStatus.js': b['FlightStatus.js'].replace(
-      "    recordApiHealth_('aviationstack', false, 'fetch error for ' + flightIata + ': ' + err.message, 0);\n", ''),
+      "    recordApiHealth_('aviationstack', false, 'couldn’t reach aviationstack for ' + flightIata + ' (network): ' + err.message, 0);\n", ''),
   }),
 
   // ---- the docs ------------------------------------------------------------

@@ -65,6 +65,20 @@ const CONTROLS = [
     'docs/app.js': swap(b['docs/app.js'], "'home_country','flight_status_poll_minutes',", "'home_country',"),
   })],
 
+  // ---- aviationstack errors, named --------------------------------------------
+  ['quota and rate limits are lumped together again', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], "  if (code === 'usage_limit_reached' || /usage_limit|monthly|exceeded/i.test(code + ' ' + raw)) {", '  if (false) {'),
+  })],
+  ['a quota error on a 200 reads as success again', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], '    var problem = classifyAviationStackError_(code, body);', '    var problem = code === 200 ? null : classifyAviationStackError_(code, body);'),
+  })],
+  ['a spent quota is shrugged off as a passing 429', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], "            '. Raise flight_status_poll_minutes, or upgrade the aviationstack plan.', 0);", "            '. Raise flight_status_poll_minutes, or upgrade the aviationstack plan.', 429);"),
+  })],
+  ['the error no longer says when checks resume', FIX, b => ({
+    'FlightStatus.js': swap(b['FlightStatus.js'], "recordApiHealth_('aviationstack', false, problem.text + ' — flight checks paused until ' + when, 429);", "recordApiHealth_('aviationstack', false, problem.text, 429);"),
+  })],
+
   // ---- the watchdog's incidents ----------------------------------------------
   ['a restore is never logged', FLAGS, b => ({
     'Watchdog.js': swap(b['Watchdog.js'], "    if (rowOf(restoredKey) === -1) {", '    if (false) {'),
