@@ -132,7 +132,7 @@ const CONTROLS = {
   }),
   'the step is not shown on the flag': b => ({
     'Watchdog.js': b['Watchdog.js'].replace(
-      /\n *\(j\.diedAt \? ' \\u2014 died during ' \+ j\.diedAt : ''\),/, ','),
+      /\n *\(j\.diedAt \? ' \\u2014 died during ' \+ j\.diedAt : ''\);/, ';'),
   }),
   // ---- the reserve, and the split -----------------------------------------
   // THE BUG, put back: a step may start with a millisecond of budget left and then

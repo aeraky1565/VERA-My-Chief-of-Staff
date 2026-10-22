@@ -44,29 +44,47 @@ function fakeSheet(rows) {
   };
 }
 
-function loadFlagSync(sheet, notifEnabled) {
+// props: a shared Script Properties store, so several runs can be played as nights.
+// lastRuns: the heartbeat map those runs see (a restore reports the job's last run).
+function loadFlagSync(sheet, notifEnabled, props, lastRuns) {
+  props = props || {};
+  const logged = [];
   const ctx = {
     console, Logger: { log: () => {} },
     FLAG_HEADERS,
     TABS: { FLAGS: 'Flags' },
     getSpreadsheet: () => ({ getSheetByName: () => sheet }),
-    isNotifEnabled_: k => (notifEnabled === undefined ? true : !!notifEnabled[k]),
+    isNotifEnabled_: k => (notifEnabled === undefined || notifEnabled === null ? true : !!notifEnabled[k]),
     colorCodeFlags: () => {},
+    veraLog_: (...a) => logged.push(a),
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: k => (k === 'SYSTEM_HEARTBEATS' ? JSON.stringify(lastRuns || {}) : (k in props ? props[k] : null)),
+      setProperty: (k, v) => { props[k] = v; }, deleteProperty: k => { delete props[k]; } }) },
     Session: { getScriptTimeZone: () => 'America/New_York' },
     Utilities: {
       formatDate: (d, tz, fmt) => {
-        const dt = new Date(d);
-        if (fmt === 'yyyy-MM-dd') return dt.toISOString().slice(0, 10);
-        return dt.toISOString();
+        const dt = new Date(d), iso = dt.toISOString();
+        if (fmt === 'yyyy-MM-dd') return iso.slice(0, 10);
+        if (fmt === 'yyyyMMddHHmm') return iso.slice(0, 16).replace(/[-T:]/g, '');
+        if (fmt === 'EEE MMM d') return iso.slice(0, 10);
+        if (fmt === 'EEE MMM d, h:mm a') return iso.slice(0, 16).replace('T', ' ');
+        return iso;
       },
     },
     Math, Date, String, Object, JSON,
   };
   vm.createContext(ctx);
+  const W = fs.readFileSync(path.join(ROOT, 'Watchdog.js'), 'utf8');
   vm.runInContext(
     "var WATCHDOG_FLAG_SOURCE_='System'; var WATCHDOG_FLAG_PREFIX_='watchdog_';\n" +
-    extractFn('Watchdog.js', 'describeHours_') +
-    extractFn('Watchdog.js', 'syncWatchdogFlags_'), ctx);
+    "var WATCHDOG_INCIDENTS_KEY_='WATCHDOG_INCIDENTS'; var WATCHDOG_RESTORED_PREFIX_='watchdog_restored_';\n" +
+    "var _heartbeatCache_ = null; var HEARTBEAT_KEY_='SYSTEM_HEARTBEATS';\n" +
+    W.match(/var HEARTBEAT_REGISTRY = \[[\s\S]*?^\];/m)[0] + '\n' +
+    W.match(/var FEED_REGISTRY = \[[\s\S]*?^\];/m)[0] + '\n' +
+    ['describeHours_', 'syncWatchdogFlags_', 'watchdogSlug_', 'getWatchdogIncidents_',
+     'setWatchdogIncidents_', 'watchdogRestoredText_', 'getHeartbeatState_'].map(n => extractFn('Watchdog.js', n)).join(''), ctx);
+  ctx._logged = logged;
+  ctx._props = props;
   return ctx;
 }
 
@@ -105,7 +123,7 @@ const NOTICE = (function () {
   return { jobs: jobs, feeds: [], lines: [], hasAlerts: true };
 })();
 
-console.log('\nsyncWatchdogFlags_ — opening');
+console.log('\nsyncWatchdogFlags_ — opening an incident');
 {
   const sheet = fakeSheet([]);
   const ctx = loadFlagSync(sheet);
@@ -120,73 +138,102 @@ console.log('\nsyncWatchdogFlags_ — opening');
   check('reason points at the real cause', /Google disables triggers/.test(row[4]));
   check('High urgency', row[5] === 'High');
   check('unresolved', row[8] === 'No');
-  check('key is namespaced', row[9] === 'watchdog_nightlyrun', row[9]);
+  check('the key is this incident’s own: watchdog_<job>__<when first seen>', /^watchdog_nightlyrun__\d{12}$/.test(row[9]), row[9]);
+  const inc = JSON.parse(ctx._props.WATCHDOG_INCIDENTS || '{}');
+  check('…and the incident is remembered', inc.nightlyRun && inc.nightlyRun.key === row[9], JSON.stringify(inc));
 }
 
-console.log('\nsyncWatchdogFlags_ — still broken on the next run');
+console.log('\nsyncWatchdogFlags_ — still broken on the next check');
 {
-  // Seeded from a real first run, so "unchanged" means unchanged by the code's
-  // own standard rather than by mine.
-  const first = fakeSheet([]);
-  const c0 = loadFlagSync(first); c0.NOTICE = NOTICE;
+  const props = {};
+  const sheet = fakeSheet([]);
+  const c0 = loadFlagSync(sheet, null, props); c0.NOTICE = NOTICE;
   vm.runInContext('syncWatchdogFlags_(NOTICE)', c0);
+  const c1 = loadFlagSync(sheet, null, props); c1.NOTICE = NOTICE;
+  vm.runInContext('syncWatchdogFlags_(NOTICE)', c1);
 
-  const sheet = fakeSheet([first._appended[0]]);
-  const ctx = loadFlagSync(sheet);
-  ctx.NOTICE = NOTICE;
-  vm.runInContext('syncWatchdogFlags_(NOTICE)', ctx);
-
-  check('does not open a duplicate', sheet._appended.length === 0);
+  check('does not open a duplicate', sheet._appended.length === 1);
   const textWrites = sheet._sets.filter(s => s.col === 4);
   check('does not rewrite identical flag text', textWrites.length === 0,
         'runs hourly — an unchanged row should cost no writes');
 }
 
-console.log('\nsyncWatchdogFlags_ — wording moved on');
+console.log('\nsyncWatchdogFlags_ — a flag from before incidents is adopted');
 {
-  const existing = [['FLAG-1','2026-09-14','System','Nightly run has not run in 1d 3h',
+  const existing = [['FLAG-1','2026-10-21','System','Nightly run has not run in 1d 3h',
                      'old reason','High','No','','No','watchdog_nightlyrun','']];
   const sheet = fakeSheet(existing);
   const ctx = loadFlagSync(sheet);
   ctx.NOTICE = NOTICE;
   vm.runInContext('syncWatchdogFlags_(NOTICE)', ctx);
 
-  check('refreshes the flag text',
+  check('refreshes the existing flag’s text',
         sheet._sets.some(s => s.col === 4 && s.v.indexOf(NOTICE.jobs[0].ageText) !== -1));
   check('refreshes the reason', sheet._sets.some(s => s.col === 5));
-  check('still no duplicate row', sheet._appended.length === 0);
+  check('no duplicate row', sheet._appended.length === 0);
+  check('…it is now that job’s incident', JSON.parse(ctx._props.WATCHDOG_INCIDENTS).nightlyRun.key === 'watchdog_nightlyrun');
 }
 
-console.log('\nsyncWatchdogFlags_ — recovered');
+console.log('\nMonday fails, Tuesday restores, Wednesday says nothing');
 {
-  const existing = [['FLAG-1','2026-09-14','System','Nightly run has not run in 9d',
+  const QUIET = { jobs: [], feeds: [], lines: [], hasAlerts: false };
+  const props = {}, sheet = fakeSheet([]);
+  const tueRun = Date.parse('2026-10-22T03:31:00Z');
+
+  const mon = loadFlagSync(sheet, null, props); mon.NOTICE = NOTICE;
+  vm.runInContext('syncWatchdogFlags_(NOTICE)', mon);
+  const failKey = sheet._appended[0][9];
+
+  const tue = loadFlagSync(sheet, null, props, { nightlyRun: { lastRun: tueRun } }); tue.QUIET = QUIET;
+  vm.runInContext('syncWatchdogFlags_(QUIET)', tue);
+  const failRow = sheet._data.find(r => r[9] === failKey);
+  check('Tuesday: Monday’s failure flag is resolved', failRow[8] === 'Yes');
+  const restored = sheet._appended.filter(r => /^watchdog_restored_nightlyrun__/.test(r[9]));
+  check('…ONE "restored" flag is added, Low', restored.length === 1 && restored[0][5] === 'Low', JSON.stringify(restored.map(r => r[9])));
+  check('…saying when it came back, and when it failed',
+        /^Nightly run restored — first good run 2026-10-22 03:31, after the failure flagged /.test(restored[0][3]), restored[0][3]);
+  check('…with the same incident stamp as the failure', restored[0][9] === 'watchdog_restored_' + failKey.slice('watchdog_'.length));
+  check('…and one System Log row', tue._logged.length === 1 && tue._logged[0][0] === 'watchdog' && tue._logged[0][2] === 'Success' && /Nightly run restored/.test(tue._logged[0][3]));
+  check('…the incident is closed', !JSON.parse(props.WATCHDOG_INCIDENTS).nightlyRun);
+
+  const before = sheet._appended.length;
+  const wed = loadFlagSync(sheet, null, props, { nightlyRun: { lastRun: tueRun + 86400000 } }); wed.QUIET = QUIET;
+  vm.runInContext('syncWatchdogFlags_(QUIET)', wed);
+  check('Wednesday: nothing new — no flag, no log row', sheet._appended.length === before && wed._logged.length === 0);
+
+  // Thursday it fails again: a NEW incident, Monday's flag left exactly as it was.
+  const monRowBefore = JSON.stringify(sheet._data.find(r => r[9] === failKey));
+  const thu = loadFlagSync(sheet, null, props); thu.NOTICE = NOTICE;
+  vm.runInContext('syncWatchdogFlags_(NOTICE)', thu);
+  const fresh = sheet._appended.filter(r => /^watchdog_nightlyrun__/.test(r[9]));
+  check('a later failure opens a NEW flag', fresh.length === 2, fresh.map(r => r[9]).join(', '));
+  check('…and Monday’s flag is not touched', JSON.stringify(sheet._data.find(r => r[9] === failKey)) === monRowBefore);
+}
+
+console.log('\nthe pre-incident flag on the sheet today gets its restore');
+{
+  const existing = [['FLAG-1','2026-10-21','System','Nightly run started but did not finish; last completed run was 1d 14h',
                      'r','High','No','','No','watchdog_nightlyrun','']];
   const sheet = fakeSheet(existing);
-  const ctx = loadFlagSync(sheet);
+  const ctx = loadFlagSync(sheet, null, {}, { nightlyRun: { lastRun: Date.parse('2026-10-22T03:31:00Z') } });
   ctx.QUIET = { jobs: [], feeds: [], lines: [], hasAlerts: false };
   vm.runInContext('syncWatchdogFlags_(QUIET)', ctx);
-
-  check('auto-resolves the stale alarm',
-        sheet._sets.some(s => s.col === 9 && s.v === 'Yes'),
-        'a watchdog flag nobody has to close by hand');
+  check('it is resolved', sheet._data[0][8] === 'Yes');
+  check('…and a restored flag is logged once', sheet._appended.length === 1 && /^watchdog_restored_nightlyrun__/.test(sheet._appended[0][9]) && ctx._logged.length === 1, JSON.stringify(sheet._appended.map(r => r[9])));
 }
 
-console.log('\nsyncWatchdogFlags_ — recurrence after a fix');
+console.log('\nfeeds keep their old lifecycle');
 {
-  // This is the case writeFlags() could never handle: the same problem, again,
-  // months later, with a resolved row already on the sheet.
-  const existing = [['FLAG-1','2026-06-01','System','Nightly run has not run in 2d',
-                     'r','High','Yes','','Yes','watchdog_nightlyrun','7d']];
+  const F = { jobs: [], feeds: [{ feed: 'gmail:usps', label: 'USPS Informed Delivery', ageText: '9d', droughtDays: 7, hint: 'x' }], lines: ['x'], hasAlerts: true };
+  const existing = [['FLAG-1','2026-06-01','System','USPS Informed Delivery has found nothing in 8d',
+                     'r','Medium','Yes','','Yes','watchdog_gmailusps','7d']];
   const sheet = fakeSheet(existing);
-  const ctx = loadFlagSync(sheet);
-  ctx.NOTICE = NOTICE;
-  vm.runInContext('syncWatchdogFlags_(NOTICE)', ctx);
-
-  check('reopens rather than staying silent', sheet._sets.some(s => s.col === 9 && s.v === 'No'));
-  check('clears the acknowledgement', sheet._sets.some(s => s.col === 7 && s.v === 'No'));
-  check('clears the escalation marker', sheet._sets.some(s => s.col === 11 && s.v === ''));
-  check('re-dates it so escalateAgedFlags_ ages it afresh', sheet._sets.some(s => s.col === 2));
-  check('and does not append a second row', sheet._appended.length === 0);
+  const ctx = loadFlagSync(sheet); ctx.F = F;
+  vm.runInContext('syncWatchdogFlags_(F)', ctx);
+  check('a returning drought reopens its one row', sheet._sets.some(s => s.col === 9 && s.v === 'No') && sheet._appended.length === 0);
+  const c2 = loadFlagSync(sheet); c2.QUIET = { jobs: [], feeds: [], lines: [], hasAlerts: false };
+  vm.runInContext('syncWatchdogFlags_(QUIET)', c2);
+  check('…closes when it ends, with no "restored" flag or log row', sheet._data[0][8] === 'Yes' && sheet._appended.length === 0 && c2._logged.length === 0);
 }
 
 console.log('\nsyncWatchdogFlags_ — toggle off');

@@ -38,6 +38,10 @@
  * @param {string} [error]     Error message if status is Failed or Partial
  */
 function veraLog_(routine, category, status, summary, durationMs, error) {
+  // Keys never reach a log. A failed aviationstack call once wrote its full request
+  // URL, access_key and all, into the Error column — and from there into Slack too.
+  summary = redactSecrets_(summary);
+  error   = redactSecrets_(error);
   try {
     var emoji = { Success: '✅', Partial: '⚠️', Failed: '❌', Skipped: '⏭️' }[status] || '🔹';
     var parts = [emoji + ' *' + routine + '* [' + category + '] — ' + status];
@@ -79,9 +83,9 @@ function bufferSystemLogRow_(routine, category, status, summary, durationMs, err
     routine  || '',
     category || '',
     status   || '',
-    summary  || '',
+    redactSecrets_(summary) || '',
     (durationMs != null && durationMs > 0) ? Math.round(durationMs / 1000) : '',
-    error    || '',
+    redactSecrets_(error)   || '',
   ]);
 
   if (_systemLogBuffer_.length >= SYSTEM_LOG_AUTOFLUSH_ROWS_) flushSystemLog_();
@@ -158,4 +162,63 @@ function pruneSystemLog_() {
     Logger.log('pruneSystemLog_: deleted ' + expired + ' entries older than ' + retainDays + ' days.');
   }
   return expired;
+}
+
+// ---- Secrets never reach a log ------------------------------------------------
+
+/**
+ * Text with credentials masked: "…?access_key=[redacted]&flight_iata=UA590".
+ * Anything that isn't a string goes back untouched, so callers needn't check.
+ *
+ * URL parameters whose VALUE is a credential are matched by whole parameter name, so
+ * "monkey=" or "keyword=" are left alone. The patterns live inside the function so it
+ * stands alone wherever it's lifted.
+ */
+function redactSecrets_(text) {
+  if (typeof text !== 'string' || !text) return text;
+  return text
+    .replace(/([?&;](?:access_key|api_key|apikey|key|appid|app_id|token|access_token|secret|client_secret|password|pwd|sig|signature)=)[^&#\s"'<>]+/gi, '$1[redacted]')
+    .replace(/(\bBearer\s+)[A-Za-z0-9._~+\/-]{8,}=*/g, '$1[redacted]');
+}
+
+var SECRETS_SCRUBBED_PROPERTY_ = 'LOG_SECRETS_SCRUBBED';
+
+/**
+ * Once: rewrites what VERA already logged before redaction existed — the System
+ * Log's Summary and Error columns, and the errors kept in API-health state.
+ * One read and, only if something changed, one write. A no-op after its first run.
+ *
+ * @returns {number} cells rewritten (-1 when it had already run)
+ */
+function scrubLoggedSecrets_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(SECRETS_SCRUBBED_PROPERTY_)) return -1;
+  var changed = 0;
+
+  var sheet = getSpreadsheet().getSheetByName(TABS.SYSTEM_LOG);
+  if (sheet && sheet.getLastRow() >= 2) {
+    var range = sheet.getRange(2, 1, sheet.getLastRow() - 1, SYSTEM_LOG_HEADERS.length);
+    var rows = range.getValues();
+    rows.forEach(function(r) {
+      [4, 6].forEach(function(c) {
+        var clean = redactSecrets_(r[c]);
+        if (clean !== r[c]) { r[c] = clean; changed++; }
+      });
+    });
+    if (changed) range.setValues(rows);
+  }
+
+  try {
+    var state = getApiHealthState_();
+    var touched = false;
+    Object.keys(state).forEach(function(k) {
+      var clean = redactSecrets_(state[k] && state[k].lastError);
+      if (state[k] && clean !== state[k].lastError) { state[k].lastError = clean; touched = true; changed++; }
+    });
+    if (touched) setApiHealthState_(state);
+  } catch (e) { Logger.log('scrubLoggedSecrets_: API health state — ' + e.message); }
+
+  props.setProperty(SECRETS_SCRUBBED_PROPERTY_, new Date().toISOString());
+  Logger.log('scrubLoggedSecrets_: ' + changed + ' logged value(s) had a credential masked.');
+  return changed;
 }

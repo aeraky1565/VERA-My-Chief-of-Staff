@@ -459,7 +459,7 @@ console.log('\nflushSystemLog_ (VERALog.js)');
   vm.createContext(ctx);
   vm.runInContext(extract('VERALog.js', [
     '_systemLogBuffer_', '_systemLogSheet_', 'SYSTEM_LOG_AUTOFLUSH_ROWS_',
-    'bufferSystemLogRow_', 'getSystemLogSheet_', 'flushSystemLog_',
+    'bufferSystemLogRow_', 'getSystemLogSheet_', 'flushSystemLog_', 'redactSecrets_',
   ]), ctx);
 
   for (let i = 0; i < 7; i++) {
@@ -503,7 +503,7 @@ console.log('\nflushSystemLog_ failure handling');
   vm.createContext(ctx);
   vm.runInContext(extract('VERALog.js', [
     '_systemLogBuffer_', '_systemLogSheet_', 'SYSTEM_LOG_AUTOFLUSH_ROWS_',
-    'bufferSystemLogRow_', 'getSystemLogSheet_', 'flushSystemLog_',
+    'bufferSystemLogRow_', 'getSystemLogSheet_', 'flushSystemLog_', 'redactSecrets_',
   ]), ctx);
 
   vm.runInContext("bufferSystemLogRow_('r','Nightly','Success','x',0)", ctx);

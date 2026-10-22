@@ -37,6 +37,44 @@ function getAviationStackKey_() {
 
 var AS_BACKOFF_KEY_ = 'AVIATIONSTACK_BACKOFF_UNTIL';
 
+// ---- How often to poll (Config flight_status_poll_minutes) -------------------
+var FLIGHT_LAST_POLL_PROP_    = 'FLIGHT_LAST_POLL_AT';
+var FLIGHT_POLL_MIN_MINUTES_  = 15;   // the trigger's own cadence: nothing finer is possible
+var FLIGHT_POLL_SEEDED_PROP_  = 'FLIGHT_POLL_CONFIG_SEEDED';
+
+/** The configured gap in minutes: a whole number, 15 or more. Anything else reads as 15. */
+function flightPollIntervalMin_(cfg) {
+  var n = parseInt(String((cfg || {})['flight_status_poll_minutes'] || '').trim(), 10);
+  return isFinite(n) && n >= FLIGHT_POLL_MIN_MINUTES_ ? n : FLIGHT_POLL_MIN_MINUTES_;
+}
+
+/**
+ * Whether a poll is due. A minute of slack, because the 15-minute trigger drifts by
+ * seconds and a gap of exactly 15 must not skip every other run.
+ */
+function flightPollDue_(nowMs, lastMs, gapMin) {
+  if (!lastMs) return true;
+  return nowMs - lastMs >= (gapMin - 1) * 60000;
+}
+
+/** Adds flight_status_poll_minutes = 15 to Config, once, so the settings modal lists it. */
+function seedFlightPollConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(FLIGHT_POLL_SEEDED_PROP_)) return 0;
+  var sheet = getSpreadsheet().getSheetByName(TABS.CONFIG);
+  if (!sheet) return 0;
+  var have = false;
+  if (sheet.getLastRow() >= 2) {
+    have = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().some(function(r) {
+      return String(r[0] || '').trim().toLowerCase() === 'flight_status_poll_minutes';
+    });
+  }
+  if (!have) sheet.appendRow(['flight_status_poll_minutes', String(FLIGHT_POLL_MIN_MINUTES_)]);
+  props.setProperty(FLIGHT_POLL_SEEDED_PROP_, new Date().toISOString());
+  _configCache_ = null;
+  return have ? 0 : 1;
+}
+
 /** Returns true if we are currently inside a rate-limit backoff window. */
 function isAviationStackRateLimited_() {
   var until = parseInt(PropertiesService.getScriptProperties().getProperty(AS_BACKOFF_KEY_) || '0', 10);
@@ -261,6 +299,23 @@ function checkFlightStatuses_(forceRefresh, targetTripKey) {
     checkStaleFlightStatus_();
     return { polled: 0, skipped: 0, errors: 0 };
   }
+
+  // The configured gap between polls (Config flight_status_poll_minutes). The trigger
+  // still fires every 15 minutes; a run inside the gap skips the API entirely. A poll
+  // every 15 minutes spent the free aviationstack quota halfway through the Chicago
+  // trip. A refresh from the dashboard always polls.
+  var _props = PropertiesService.getScriptProperties();
+  if (!forceRefresh) {
+    var _gapMin = flightPollIntervalMin_(getConfigValues());
+    var _last   = parseInt(_props.getProperty(FLIGHT_LAST_POLL_PROP_) || '0', 10);
+    if (!flightPollDue_(Date.now(), _last, _gapMin)) {
+      Logger.log('FlightStatus: skipping — last poll ' + Math.round((Date.now() - _last) / 60000) +
+                 ' min ago, gap is ' + _gapMin + ' min (flight_status_poll_minutes).');
+      checkStaleFlightStatus_();
+      return { polled: 0, skipped: 0, errors: 0, gated: true };
+    }
+  }
+  try { _props.setProperty(FLIGHT_LAST_POLL_PROP_, String(Date.now())); } catch (lpErr) {}
 
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.ITINERARY);

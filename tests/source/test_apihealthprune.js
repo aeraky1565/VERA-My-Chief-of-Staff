@@ -275,6 +275,7 @@ console.log('\nRecovery: the banner actually clears');
     extractFn(SRC.Health, 'getApiHealthState_'),
     extractFn(SRC.Health, 'setApiHealthState_'),
     extractFn(SRC.Health, 'recordApiHealth_'),
+    extractFn(fs.readFileSync(ROOT + '/VERALog.js', 'utf8'), 'redactSecrets_'),
     extractFn(SRC.Health, 'getDegradedSources_'),
     extractFn(SRC.Health, 'formatAge_'),
   ].join('\n'), ctx);

@@ -542,93 +542,167 @@ function syncWatchdogFlags_(notices) {
   if (!sheet) return;
 
   var tz      = Session.getScriptTimeZone();
-  var dateStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var now     = new Date();
+  var dateStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
 
-  // What should be open right now, keyed by flag key.
-  var wanted = {};
+  var lastRow = sheet.getLastRow();
+  var rows    = lastRow >= 2
+    ? sheet.getRange(2, 1, lastRow - 1, FLAG_HEADERS.length).getValues()
+    : [];
+  var rowOf = function(key) {
+    for (var i = 0; i < rows.length; i++) if (String(rows[i][9] || '').trim() === key) return i;
+    return -1;
+  };
+  var isResolved = function(i) { return String(rows[i][8] || '').trim().toLowerCase() === 'yes'; };
+  var appended = 0;
+  var append = function(key, flag, reason, urgency) {
+    var rand2 = String(Math.floor(Math.random() * 90) + 10);
+    var row = ['FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2, dateStr, WATCHDOG_FLAG_SOURCE_,
+               flag, reason, urgency, 'No', '', 'No', key, ''];
+    sheet.appendRow(row);
+    rows.push(row);
+    appended++;
+  };
+
+  // ---- JOBS: one flag per incident, and one "restored" on the first good run ----
+  //
+  // A job that goes overdue opens an INCIDENT with its own key, stamped with when it
+  // was first seen. The flag is kept up to date while the job stays down. On the
+  // first check after it is back inside its window, that flag is resolved and ONE
+  // Low "restored" flag plus one System Log row record the recovery; the incident is
+  // then closed, so every later good run says nothing. A new failure opens a new
+  // incident — Monday's flag is never rewritten by Thursday's.
+  var incidents = getWatchdogIncidents_();
+  var jobsDown  = {};
+  notices.jobs.forEach(function(j) { jobsDown[j.job] = j; });
+
+  // Flags raised before incidents existed carry the bare key watchdog_<job>. An open
+  // one is adopted as that job's incident, so its recovery is still logged.
+  HEARTBEAT_REGISTRY.forEach(function(r) {
+    if (incidents[r.job]) return;
+    var i = rowOf(WATCHDOG_FLAG_PREFIX_ + watchdogSlug_(r.job));
+    if (i !== -1 && !isResolved(i)) {
+      var opened = rows[i][1] instanceof Date ? rows[i][1] : new Date(String(rows[i][1]) + 'T12:00:00');
+      incidents[r.job] = { key: String(rows[i][9]).trim(), openedAt: isNaN(opened) ? now.getTime() : opened.getTime() };
+    }
+  });
+
   notices.jobs.forEach(function(j) {
-    wanted[WATCHDOG_FLAG_PREFIX_ + j.job.toLowerCase().replace(/[^a-z0-9]/g, '')] = {
-      flag:    j.label + ' ' + j.verb + ' ' + j.ageText +
+    var flag = j.label + ' ' + j.verb + ' ' + j.ageText +
                (j.suffix ? ' ' + j.suffix : '') +
-               (j.diedAt ? ' \u2014 died during ' + j.diedAt : ''),
-      reason:  'Expected every ' + describeHours_(j.maxAgeHours) + '. ' +
+               (j.diedAt ? ' \u2014 died during ' + j.diedAt : '');
+    var reason = 'Expected every ' + describeHours_(j.maxAgeHours) + '. ' +
                // lastRun is 0 for a job that has NEVER run, and formatting that gives
                // "Dec 31, 7:00 PM" — 1969, stated as fact. The flag has to say it has
                // never run, which is also the more useful thing to read.
                (j.neverRan
                  ? 'It has never run since being registered.'
                  : 'Last run ' + Utilities.formatDate(new Date(j.lastRun), tz, 'MMM d, h:mm a') + '.') +
-               ' Check the Apps Script trigger — Google disables triggers after repeated failures.',
-      urgency: 'High',
-    };
+               ' Check the Apps Script trigger — Google disables triggers after repeated failures.';
+    var inc = incidents[j.job];
+    if (!inc) {
+      // A new incident never reuses an earlier one's key, even within the same minute.
+      var base = WATCHDOG_FLAG_PREFIX_ + watchdogSlug_(j.job) + '__' + Utilities.formatDate(now, tz, 'yyyyMMddHHmm');
+      var key = base, n = 1;
+      while (rowOf(key) !== -1) key = base + '-' + (++n);
+      inc = incidents[j.job] = { key: key, openedAt: now.getTime() };
+    }
+    var i = rowOf(inc.key);
+    if (i === -1) { append(inc.key, flag, reason, 'High'); return; }
+    // Only rewrite when the wording actually moved on. This runs hourly. A flag you
+    // resolved yourself while the job was still down stays resolved.
+    if (String(rows[i][3]) !== flag) sheet.getRange(i + 2, 4).setValue(flag);
+    if (String(rows[i][4]) !== reason) sheet.getRange(i + 2, 5).setValue(reason);
   });
+
+  Object.keys(incidents).forEach(function(job) {
+    if (jobsDown[job]) return;
+    var inc = incidents[job];
+    var reg = HEARTBEAT_REGISTRY.filter(function(r) { return r.job === job; })[0];
+    var label = reg ? reg.label : job;
+    var i = rowOf(inc.key);
+    if (i !== -1 && !isResolved(i)) sheet.getRange(i + 2, 9).setValue('Yes');
+    var hb = getHeartbeatState_()[job] || {};
+    var text = watchdogRestoredText_(label, hb.lastRun || now.getTime(), inc.openedAt, tz);
+    var stamp = inc.key.indexOf('__') !== -1 ? inc.key.slice(inc.key.indexOf('__') + 2)
+                                              : Utilities.formatDate(new Date(inc.openedAt), tz, 'yyyyMMddHHmm');
+    var restoredKey = WATCHDOG_RESTORED_PREFIX_ + watchdogSlug_(job) + '__' + stamp;
+    if (rowOf(restoredKey) === -1) {
+      append(restoredKey, text, 'Logged once, on the first good run after the failure. Later good runs add nothing.', 'Low');
+      try { veraLog_('watchdog', 'System', 'Success', text); } catch (e) {}
+    }
+    delete incidents[job];
+  });
+  setWatchdogIncidents_(incidents);
+
+  // ---- FEEDS: unchanged — one flag per feed, reopened if the drought returns ----
+  var feedKeys = {};
+  FEED_REGISTRY.forEach(function(r) { feedKeys[WATCHDOG_FLAG_PREFIX_ + watchdogSlug_(r.feed)] = true; });
+  var wanted = {};
   notices.feeds.forEach(function(f) {
-    wanted[WATCHDOG_FLAG_PREFIX_ + f.feed.toLowerCase().replace(/[^a-z0-9]/g, '')] = {
+    wanted[WATCHDOG_FLAG_PREFIX_ + watchdogSlug_(f.feed)] = {
       flag:    f.label + ' has found nothing in ' + f.ageText,
       reason:  'It is still running, so this may simply be quiet — but ' + f.droughtDays +
                ' days is long enough to be worth checking' + (f.hint ? ': ' + f.hint : '') + '.',
       urgency: 'Medium',
     };
   });
-
-  var lastRow = sheet.getLastRow();
-  var rows    = lastRow >= 2
-    ? sheet.getRange(2, 1, lastRow - 1, FLAG_HEADERS.length).getValues()
-    : [];
-
-  // Pass 1 — update or resolve the watchdog flags already on the sheet.
-  var seen = {};
-  for (var i = 0; i < rows.length; i++) {
-    var key = String(rows[i][9] || '').trim();
-    if (key.indexOf(WATCHDOG_FLAG_PREFIX_) !== 0) continue;
-
-    var rowNum   = i + 2;
-    var resolved = String(rows[i][8] || '').trim().toLowerCase() === 'yes';
-
+  Object.keys(feedKeys).forEach(function(key) {
+    var i = rowOf(key);
+    if (i === -1) {
+      if (wanted[key]) append(key, wanted[key].flag, wanted[key].reason, wanted[key].urgency);
+      return;
+    }
+    var rowNum = i + 2;
     if (wanted[key]) {
-      seen[key] = true;
-      if (resolved) {
-        // Recurrence of a problem that was previously fixed — reopen it.
+      if (isResolved(i)) {
+        // Recurrence of a drought that was previously over — reopen it.
         sheet.getRange(rowNum, 9).setValue('No');
         sheet.getRange(rowNum, 7).setValue('No');
         sheet.getRange(rowNum, 2).setValue(dateStr);
         sheet.getRange(rowNum, 11).setValue('');
       }
-      // Only rewrite when the wording actually moved on. This runs hourly, and
-      // touching the row every hour would reset nothing useful while spending a
-      // write each time.
       if (String(rows[i][3]) !== wanted[key].flag) sheet.getRange(rowNum, 4).setValue(wanted[key].flag);
       if (String(rows[i][4]) !== wanted[key].reason) sheet.getRange(rowNum, 5).setValue(wanted[key].reason);
-    } else if (!resolved) {
-      // Recovered on its own — close it out rather than leaving a stale alarm.
+    } else if (!isResolved(i)) {
       sheet.getRange(rowNum, 9).setValue('Yes');
       Logger.log('syncWatchdogFlags_: auto-resolved ' + key + ' (recovered)');
     }
-  }
-
-  // Pass 2 — open flags for problems with no row yet.
-  var appended = 0;
-  Object.keys(wanted).forEach(function(key) {
-    if (seen[key]) return;
-    var rand2 = String(Math.floor(Math.random() * 90) + 10);
-    sheet.appendRow([
-      'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
-      dateStr,
-      WATCHDOG_FLAG_SOURCE_,
-      wanted[key].flag,
-      wanted[key].reason,
-      wanted[key].urgency,
-      'No', '', 'No',
-      key,
-      '',
-    ]);
-    appended++;
   });
 
   if (appended > 0) {
     try { colorCodeFlags(sheet); } catch (e) {}
-    Logger.log('syncWatchdogFlags_: opened ' + appended + ' watchdog flag(s)');
+    Logger.log('syncWatchdogFlags_: wrote ' + appended + ' watchdog flag(s)');
   }
+}
+
+// ---- Incidents ---------------------------------------------------------------
+
+var WATCHDOG_INCIDENTS_KEY_    = 'WATCHDOG_INCIDENTS';
+var WATCHDOG_RESTORED_PREFIX_  = 'watchdog_restored_';
+
+/** 'checkFlightStatuses_' → 'checkflightstatuses' — the key fragment for a job or feed. */
+function watchdogSlug_(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** The open incident per job, { job: { key, openedAt } }. */
+function getWatchdogIncidents_() {
+  try {
+    var map = JSON.parse(PropertiesService.getScriptProperties().getProperty(WATCHDOG_INCIDENTS_KEY_) || '{}');
+    return map && typeof map === 'object' ? map : {};
+  } catch (e) { return {}; }
+}
+
+function setWatchdogIncidents_(map) {
+  PropertiesService.getScriptProperties().setProperty(WATCHDOG_INCIDENTS_KEY_, JSON.stringify(map || {}));
+}
+
+/** "Nightly run restored — first good run Wed Oct 22, 11:31 PM, after the failure flagged Tue Oct 21." */
+function watchdogRestoredText_(label, lastRunMs, openedAtMs, tz) {
+  return label + ' restored \u2014 first good run ' +
+    Utilities.formatDate(new Date(lastRunMs), tz, 'EEE MMM d, h:mm a') +
+    ', after the failure flagged ' + Utilities.formatDate(new Date(openedAtMs), tz, 'EEE MMM d') + '.';
 }
 
 // ---- Debug helper (run manually from the Apps Script editor) ----------------

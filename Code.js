@@ -1197,9 +1197,11 @@ function nightlyRun() {
 
     // === SUPPLEMENTARY STEPS — run after critical path ===
 
-    // Step 0: Auto-populate Summaries tab from live data (Phase 5)
-    // Was a bare call with no try/catch at all — a throw here took the whole run down.
-    nightlyStep_(ctx, 'writeSummarySnapshot', writeSummarySnapshot);
+    // Step 0 (writeSummarySnapshot) moved to the second half, nightlyRunTail. It opens
+    // the external budget sheet, and on a slow Google night (Oct 20) that one step ran
+    // from 1m to the 6-minute kill and took ~45 later steps with it. Nothing here
+    // reads what it writes: 'collect' above reads the Summaries tab BEFORE this point,
+    // so every night already used the previous night's snapshot.
 
     // Step 0a: Sync upcoming birthdays from Joint Chaos calendar to Important Dates (Issue #80)
     nightlyStep_(ctx, 'syncCalendarBirthdaysToImportantDates_', syncCalendarBirthdaysToImportantDates_);
@@ -1299,6 +1301,7 @@ function nightlyRun() {
     // Christmas lists: in December, flag gifts Ahmed or Victoria haven't bought (and,
     // from Dec 20, wrapped). The initials seed is a no-op after its first run (WishLists.js).
     nightlyStep_(ctx, 'seedWishListInitialsConfig_', seedWishListInitialsConfig_);
+    nightlyStep_(ctx, 'seedFlightPollConfig_', seedFlightPollConfig_);   // FlightStatus.js — once
     nightlyStep_(ctx, 'checkWishListGifts_', checkWishListGifts_);
     nightlyStep_(ctx, 'checkTripDecisions_', checkTripDecisions_);
     nightlyStep_(ctx, 'checkTripDecisionPremises_', checkTripDecisionPremises_);
@@ -1367,7 +1370,10 @@ function nightlyRun() {
         flagCount + ' new flag' + (flagCount !== 1 ? 's' : '') + ' written' +
           (flagCount > 0 ? ' (' + highCount + 'H ' + medCount + 'M ' + lowCount + 'L)' : '') +
           (deduped > 0 ? ' · ' + deduped + ' deduplicated' : '') +
-          (stepFailures.length ? ' · ' + stepFailures.length + ' step warning(s)' : ''),
+          (stepFailures.length ? ' · ' + stepFailures.length + ' step warning(s)' : '') +
+          // These two were once a separate argument — the DURATION slot — so the
+          // slowest steps never reached the System Log, and the Oct 20 kill could not
+          // say how long anything had taken.
           (stepSkipped.length ? ' · ' + stepSkipped.length + ' skipped (time budget)' : '') +
           (slowest.length ? ' · slowest: ' + slowest.join(', ') : ''),
         elapsed * 1000,
@@ -1516,6 +1522,15 @@ function nightlyRunTail() {
 
     // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
     nightlyStep_(ctx, 'runExplorer_', runExplorer_);
+
+    // Summaries + Metrics snapshot, moved here from the first half: it reads external
+    // sheets, so it is the step most able to stall, and last is where a stall costs
+    // nothing else. Tomorrow's 'collect' reads what it writes, as it always has.
+    nightlyStep_(ctx, 'writeSummarySnapshot', writeSummarySnapshot);
+
+    // Old System Log rows and API-health errors, rewritten once with keys masked
+    // (VERALog.js). A no-op after its first run.
+    nightlyStep_(ctx, 'scrubLoggedSecrets_', scrubLoggedSecrets_);
 
     Logger.log('=== VERA nightly tail complete: ' + new Date() + ' ===');
 

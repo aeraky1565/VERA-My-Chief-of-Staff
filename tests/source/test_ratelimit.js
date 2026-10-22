@@ -61,7 +61,8 @@ function harness(initialState) {
   vm.createContext(ctx);
   vm.runInContext(
     /^var API_ALERT_COOLDOWN_MS_\s*=.*?;/m.exec(API)[0] + '\n' +
-    extractFn(API, 'recordApiHealth_'), ctx);
+    extractFn(API, 'recordApiHealth_') + '\n' +
+    extractFn(fs.readFileSync(ROOT + '/VERALog.js', 'utf8'), 'redactSecrets_'), ctx);
   return ctx;
 }
 

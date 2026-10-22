@@ -186,7 +186,7 @@ function sendSlackNotification_(text, blocks, urgency) {
  */
 function sendSlackLog_(text) {
   var channelId = getSlackChannelId_('logs');
-  if (channelId) sendSlackMessage_(channelId, text);
+  if (channelId) sendSlackMessage_(channelId, redactSecrets_(text));   // VERALog.js
 }
 
 /**

@@ -103,6 +103,9 @@ function googleApiNotEnabled_(text) {
  * @param {number}  [httpCode] HTTP status, when there was one
  */
 function recordApiHealth_(source, ok, detail, httpCode) {
+  // The error it keeps is shown in the morning email, Slack and the System Log: a
+  // failed fetch's message carries the request URL, credentials included.
+  detail = redactSecrets_(detail);   // VERALog.js
   try {
     var state = getApiHealthState_();
     var now   = Date.now();
