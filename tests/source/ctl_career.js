@@ -18,6 +18,10 @@ const C = 'Career.js';
 const TEST = 'test_career.js';
 
 const CONTROLS = [
+  // The UI test loads the built index.html, so both files carry the same change.
+  ['rung details are always open', b => ({ 'docs/app.js': swap(b['docs/app.js'], 'var[open,setOpen]=React.useState(false);\n  var hasDetails', 'var[open,setOpen]=React.useState(true);\n  var hasDetails'),
+                                           'docs/index.html': swap(b['docs/index.html'], 'var[open,setOpen]=React.useState(false);\n  var hasDetails', 'var[open,setOpen]=React.useState(true);\n  var hasDetails') }), 'test_career_ui.js'],
+  ['a rung’s typical pay is not saved', b => ({ [C]: swap(b[C], "              'Pay Target': String(r.payTarget || '').slice(0, 300) };", "              'Pay Target': '' };") })],
   ['the ladder sorts by when a rung was added', b => ({ [C]: swap(b[C], '  }).sort(carRungCompare_);', '  }).sort(function(a, b) { return a.order - b.order; });') })],
   // ---- readiness rules ---------------------------------------------------------
   ['Proven counts evidence of any age', b => ({ [C]: swap(b[C], 'var CAR_PROVEN_WINDOW_MONTHS_ = 36;', 'var CAR_PROVEN_WINDOW_MONTHS_ = 1200;') })],
@@ -72,11 +76,12 @@ CONTROLS.forEach(function(c) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, files[f]);
   });
-  const r = cp.spawnSync('node', [TEST], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT }) });
+  const test = c[2] || TEST;   // a control may name the test that should catch it (the UI test for dashboard behaviour)
+  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_PAGES_ROOT: OUT }) });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).map(s => s.replace(/^  FAIL /, '').trim().split('  — ')[0]);
   const crashed = r.status !== 0 && fails.length === 0;
-  console.log('\n=== CONTROL: ' + name + '  (' + TEST + ')');
+  console.log('\n=== CONTROL: ' + name + '  (' + test + ')');
   if (!changed.length) { console.log('  !! MUTATION DID NOT APPLY — vacuous'); allBit = false; return; }
   if (crashed)         { console.log('  !! CRASHED with no clean assertion failure'); console.log(out.split('\n').slice(-6).join('\n')); allBit = false; return; }
   if (!fails.length)   { console.log('  !! NOTHING BIT (patched: ' + changed.join(', ') + ')'); allBit = false; return; }

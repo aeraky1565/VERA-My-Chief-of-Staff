@@ -29,7 +29,7 @@ async function mount(page) {
       ladder: [
         { id: 'r1', status: 'reached', title: 'Engineer', company: 'Firstco', track: '', start: '2010', end: '2015' },
         { id: 'r2', status: 'current', title: 'Senior Manager, Planning', company: 'Exampleco', moveType: 'internal', track: 'fpa', start: '2025' },
-        { id: 'n1', status: 'next', title: 'Associate Director, FP&A', track: 'fpa', moveType: 'either' },
+        { id: 'n1', status: 'next', title: 'Associate Director, FP&A', track: 'fpa', moveType: 'either', targetDate: '2027-10', whatChanges: 'Owns an invented plan and budget', payTarget: 'Base ~$185–230K' },
         { id: 'n2', status: 'next', title: 'Associate Director, Program & Project Management', track: 'pmo', moveType: 'either' },
         { id: 'f1', status: 'future', title: 'Director', track: '', moveType: 'either' },
       ],
@@ -93,6 +93,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     let t = await text(page);
     check('the four phase-1 subtabs', ['North Star', 'Readiness', 'Evidence', 'Network'].every(s => t.includes(s)), t.slice(0, 200));
     check('both next steps show, each with its verdict', t.includes('Associate Director, FP&A') && t.includes('Stretch · 75%') && t.includes('Not ready · 50%'));
+    check('a rung’s details start folded, its target date showing', t.includes('Target 2027-10') && t.includes('Details ▸') && !t.includes('Owns an invented plan'));
+    await page.evaluate(() => { const c = Array.from(document.querySelectorAll('#carprobe .car-rung')).find(n => n.textContent.includes('Associate Director, FP&A')); c.querySelector('.car-details-btn').click(); });
+    await wait(60);
+    const det = await text(page);
+    check('…and expand to what changes and the typical pay', det.includes('Owns an invented plan') && det.includes('Base ~$185–230K') && det.includes('Details ▾'));
+    t = await text(page);
     check('reached roles are folded behind Earlier', t.includes('Earlier · 1 role') && !t.includes('Firstco'));
     await clickText(page, 'button', 'Earlier · 1 role');
     await wait(80);

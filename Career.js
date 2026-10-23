@@ -22,7 +22,7 @@
 
 // ---- Tabs ------------------------------------------------------------------
 
-var CAR_LADDER_HEADERS_   = ['ID', 'Track', 'Order', 'Title', 'Level', 'Company', 'Move Type', 'Status', 'Start', 'End', 'Target Date', 'What Changes', 'Criteria Preview', 'Notes'];
+var CAR_LADDER_HEADERS_   = ['ID', 'Track', 'Order', 'Title', 'Level', 'Company', 'Move Type', 'Status', 'Start', 'End', 'Target Date', 'What Changes', 'Criteria Preview', 'Notes', 'Pay Target'];
 var CAR_CRITERIA_HEADERS_ = ['ID', 'Group', 'Name', 'Meaning', 'Status Override', 'Override Note', 'Source', 'Active', 'Added'];
 var CAR_EVIDENCE_HEADERS_ = ['ID', 'Month', 'Statement', 'Scale', 'AD Scale', 'Criterion IDs', 'Source', 'Added', 'Wins Bank Sent'];
 var CAR_INTENT_HEADERS_   = ['ID', 'Intent', 'Track', 'Status', 'Order', 'Set Quarter', 'Updated'];
@@ -332,7 +332,7 @@ function carReadLadder_() {
              moveType: String(r['Move Type'] || ''), status: String(r.Status || ''),
              start: carDateText_(r.Start), end: carDateText_(r.End), targetDate: carDateText_(r['Target Date']),
              whatChanges: String(r['What Changes'] || ''), criteriaPreview: String(r['Criteria Preview'] || ''),
-             notes: String(r.Notes || '') };
+             notes: String(r.Notes || ''), payTarget: String(r['Pay Target'] || '') };
   }).sort(carRungCompare_);
 }
 
@@ -757,7 +757,8 @@ function webCareerSaveRung_(body) {
   var rec = { Track: r.track || '', Title: String(r.title).trim(), Level: r.level || '', Company: r.company || '',
               'Move Type': r.moveType || '', Status: r.status || 'future', Start: r.start || '', End: r.end || '',
               'Target Date': r.targetDate || '', 'What Changes': r.whatChanges || '',
-              'Criteria Preview': r.criteriaPreview || '', Notes: r.notes || '' };
+              'Criteria Preview': r.criteriaPreview || '', Notes: r.notes || '',
+              'Pay Target': String(r.payTarget || '').slice(0, 300) };
   if (r.id) rec.ID = r.id;
   else rec.Order = carReadLadder_().reduce(function(m, x) { return Math.max(m, x.order); }, 0) + 1;
   if (r.order !== undefined && r.order !== '') rec.Order = Number(r.order) || 0;

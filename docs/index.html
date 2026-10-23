@@ -5262,7 +5262,7 @@ function carModal(title,onClose,children){return carH("div",{className:"modal-ov
 function carActions(busy,onSave,onClose,onDelete,saveLabel){return carH("div",{className:"modal-actions",style:{display:'flex',gap:8,flexWrap:'wrap'}},onDelete&&carH("button",{className:"btn btn-ghost",style:{color:'#f28b89',marginRight:'auto'},disabled:busy,onClick:onDelete},"Delete"),carH("button",{className:"btn btn-ghost",onClick:onClose},"Cancel"),carH("button",{className:"btn btn-primary",disabled:busy,onClick:onSave},busy?'Saving…':(saveLabel||'Save')));}
 
 function CarRungModal({rung,busy,onSave,onDelete,onClose}){
-  var[f,setF]=React.useState(Object.assign({title:'',level:'',track:'',company:'',moveType:'',status:'future',start:'',end:'',targetDate:'',whatChanges:'',notes:''},rung||{}));
+  var[f,setF]=React.useState(Object.assign({title:'',level:'',track:'',company:'',moveType:'',status:'future',start:'',end:'',targetDate:'',whatChanges:'',payTarget:'',notes:''},rung||{}));
   function set(k){return function(v){setF(Object.assign({},f,{[k]:v}));};}
   function sel(k,opts){return carH("select",{className:"form-input",value:f[k]||'',onChange:function(e){set(k)(e.target.value);}},opts.map(function(o){return carH("option",{key:o[0],value:o[0]},o[1]);}));}
   return carModal(rung&&rung.id?'Edit rung':'Add rung',onClose,carH(React.Fragment,null,
@@ -5276,7 +5276,8 @@ function CarRungModal({rung,busy,onSave,onDelete,onClose}){
       carH("div",{style:{flex:'1 1 140px'}},carField('Start',carInput(f.start,set('start'),{placeholder:'2025 or 2025-01'}))),
       carH("div",{style:{flex:'1 1 140px'}},carField('End',carInput(f.end,set('end'),{placeholder:'blank if current'}))),
       carH("div",{style:{flex:'1 1 140px'}},carField('Target (optional)',carInput(f.targetDate,set('targetDate'),{placeholder:'YYYY-MM'})))),
-    carField('What changes at this level',carInput(f.whatChanges,set('whatChanges'))),
+    carField('What changes at this level',carH("textarea",{className:"form-input",rows:3,value:f.whatChanges||'',onChange:function(e){set('whatChanges')(e.target.value);}})),
+    carField('Typical pay',carInput(f.payTarget,set('payTarget'),{placeholder:'e.g. Base ~$185–230K · bonus 20–25% · total ~$225–290K'})),
     carField('Notes',carInput(f.notes,set('notes'))),
     carActions(busy||!f.title,function(){onSave(f);},onClose,rung&&rung.id?function(){onDelete(rung.id);}:null)));
 }
@@ -5303,6 +5304,8 @@ function CarIntentModal({intent,busy,onSave,onDelete,onClose}){
 }
 
 function CarRungCard({r,verdict,onEdit,onAdvance,busy}){
+  var[open,setOpen]=React.useState(false);
+  var hasDetails=!!(r.whatChanges||r.payTarget);
   var isNext=r.status==='next',isCurrent=r.status==='current',isFuture=r.status==='future';
   var border=isNext?'2px solid #5c9eff':isCurrent?'1px solid #2a4a85':isFuture?'1px dashed #2a3a50':'1px solid #1e3060';
   var statusWord={reached:'Reached',current:'Current',next:'Next step',future:'Future'}[r.status]||r.status;
@@ -5312,7 +5315,10 @@ function CarRungCard({r,verdict,onEdit,onAdvance,busy}){
     carH("div",{style:{display:'flex',gap:6,flexWrap:'wrap'}},carChip(r.company||(isNext||isFuture?'Open':'—'),{background:'#1a2c52',color:'#dde1f0',border:'1px solid #34508a'}),r.moveType&&carChip(CAR_MOVE_WORD[r.moveType]||r.moveType,r.moveType==='internal'?{background:'#0f2f3a',color:'#7fd0e6',border:'1px solid #2a6475'}:r.moveType==='external'?{background:'#3a2410',color:'#f0b27a',border:'1px solid #7a4a1f'}:{border:'1px dashed #4d6080',color:'#c9cfe3'})),
     carH("span",{style:CAR_MUTED},isNext||isFuture?(r.targetDate?'Target '+r.targetDate:'Target optional'):((r.start||'?')+'–'+(r.end||(isCurrent?'present':'?')))),
     verdict&&carH("div",null,carChip((CAR_VERDICT_WORD[verdict.verdict]||verdict.verdict)+' · '+verdict.pct+'%',CAR_STATUS_STYLE[CAR_VERDICT_STATUS[verdict.verdict]])),
-    r.whatChanges&&carH("span",{style:CAR_MUTED},r.whatChanges),
+    hasDetails&&carH("button",{className:'car-details-btn','aria-expanded':open?'true':'false',onClick:function(){setOpen(!open);},style:{background:'none',border:'none',padding:0,color:'#8ab4f8',fontSize:12,cursor:'pointer',textAlign:'left'}},open?'Details ▾':'Details ▸'),
+    hasDetails&&open&&carH("div",{className:'car-details',style:{display:'flex',flexDirection:'column',gap:8,borderTop:'1px solid #1e3060',paddingTop:8}},
+      r.whatChanges&&carH("div",null,carH("p",{style:Object.assign({},CAR_LABEL,{margin:'0 0 3px'})},"What changes at this level"),carH("div",{style:{fontSize:13,lineHeight:1.5,color:'#c9cfe3'}},r.whatChanges)),
+      r.payTarget&&carH("div",null,carH("p",{style:Object.assign({},CAR_LABEL,{margin:'0 0 3px'})},"Typical pay"),carH("div",{style:{fontSize:13,lineHeight:1.5,color:'#4ade80'}},r.payTarget))),
     carH("div",{style:{display:'flex',gap:6,flexWrap:'wrap',marginTop:'auto'}},
       carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){onEdit(r);}},"Edit"),
       isNext&&carH("button",{className:"btn btn-ghost",style:{fontSize:12},disabled:busy,onClick:function(){onAdvance(r);}},"Mark reached")));

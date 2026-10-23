@@ -166,6 +166,19 @@ console.log('\nthe baseline import');
   check('with no Wins bank doc configured it waits, and says so', run(N, 'carImportBaseline_()').pending === true);
 }
 
+console.log('\na rung’s typical pay');
+{
+  const S = sandbox();
+  // A Ladder tab from before the Pay Target column.
+  S.ss.sheets['Career Ladder'] = new FakeSheet('Career Ladder', [['ID', 'Track', 'Order', 'Title', 'Level', 'Company', 'Move Type', 'Status', 'Start', 'End', 'Target Date', 'What Changes', 'Criteria Preview', 'Notes'],
+    ['CR-1', 'fpa', 1, 'Invented AD', 'Associate Director', '', 'either', 'next', '', '', '', '', '', '']]);
+  run(S, 'webCareerSaveRung_({ rung: { id: "CR-1", title: "Invented AD", status: "next", track: "fpa", targetDate: "2027-10", whatChanges: "Owns a plan", payTarget: "Base ~$185–230K" } })');
+  const head = S.ss.sheets['Career Ladder'].rows[0];
+  const r = run(S, 'carReadLadder_()').find(x => x.id === 'CR-1');
+  check('an older Ladder tab gains a Pay Target column, at the end', head[head.length - 1] === 'Pay Target' && head.length === 15, JSON.stringify(head));
+  check('a rung keeps its target date, what changes and typical pay', r.targetDate === '2027-10' && r.whatChanges === 'Owns a plan' && r.payTarget === 'Base ~$185–230K', JSON.stringify(r));
+}
+
 console.log('\nrole history is in the order it happened');
 {
   const S = sandbox();
