@@ -618,7 +618,7 @@ function webGetStatus_() {
 
   if (!sheet || sheet.getLastRow() < 2) {
     return { ok: true, totalFlags: 0, activeFlags: 0, high: 0, medium: 0, low: 0, lastRun: null,
-             travelConfig: travelConfig };
+             travelConfig: travelConfig, rosterLinks: rosterLinks_(getConfigValues()) };
   }
 
   const numRows = sheet.getLastRow() - 1;
@@ -663,7 +663,22 @@ function webGetStatus_() {
     lastRun:      formatDateVal_(lastRun),
     travelConfig: travelConfig,
     features:     features,
+    rosterLinks:  rosterLinks_(featureCfg),
   };
+}
+
+/**
+ * Links for the Home roster ("Your assistants"): WILLA is the planner sheet and
+ * TESS the job agent's Settings sheet, both from their Config ids. Built here,
+ * at run time, because the repo is public: no sheet id is ever written in code.
+ * A blank or malformed id gives '', and the dashboard shows the name unlinked.
+ */
+function rosterLinks_(cfg) {
+  var url = function(id) {
+    id = String(id || '').trim();
+    return /^[A-Za-z0-9_-]{20,}$/.test(id) ? 'https://docs.google.com/spreadsheets/d/' + id + '/edit' : '';
+  };
+  return { WILLA: url((cfg || {}).planner_sheet_id), TESS: url((cfg || {}).career_alert_sheet_id) };
 }
 
 // ---- Flags -----------------------------------------------------------------

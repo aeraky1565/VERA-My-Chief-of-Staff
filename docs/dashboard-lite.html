@@ -9556,6 +9556,35 @@ var cardStyle={gridColumn:'1 / -1',background:'#181200',border:'1px solid #3a2e0
 
 // ---- Overview: FamilyWall-style homepage of module summary tiles --------
 
+// ---- Your assistants (the roster) -------------------------------------------
+// SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html; test_roster.js
+// checks the two copies match, from this line to the closing marker.
+// Sheet links come from status.rosterLinks, built from Config by the backend, so no
+// sheet id is ever written here.
+var VERA_ROSTER=[
+  {name:'PIES',breakdown:'Personal Intelligence & Execution System',purpose:'Processes work signal feeds into prioritized actions',state:'live',link:'none',note:'Work machine only'},
+  {name:'VERA',breakdown:'Virtual Executive & Reminder Assistant',purpose:'Chief of staff',state:'live',link:'vera'},
+  {name:'WILLA',breakdown:'Work-optional Income & Lifestyle Longevity Analyzer',purpose:'Work-optional retirement planner (the “Our Work-Optional Planner” tool)',state:'live',link:'WILLA',missing:'Add planner_sheet_id to Config to link it'},
+  {name:'TESS',breakdown:'Tailored Employment Search Scout',purpose:'Runs LinkedIn job alerts on Claude scheduled tasks and tailors materials; you submit applications yourself',state:'live',link:'TESS',missing:'Add career_alert_sheet_id to Config to link it'},
+  {name:'HAILEY',breakdown:'Home Alerts, Inventory & Listings Evaluator, Yours',purpose:'Searches Zillow against your buy box and flags new listings and price drops',state:'planned',link:'none',note:'Waiting on the Zillow connection and your buy box'},
+  {name:'ARIA',breakdown:'Airfare Radar & Itinerary Alerts',purpose:'Watches fares for a planned trip or destination; you book yourself',state:'planned',link:'none',note:'Waiting on trip details'}];
+function VeraRoster({links,veraHref}){
+  var h=React.createElement;var L=links||{};
+  return h("div",{className:"bento-card vera-roster",style:{cursor:'default'}},
+    h("div",{className:"bento-card-title"},"🤖 Your assistants"),
+    h("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:10}},VERA_ROSTER.map(function(r){
+      var href=r.link==='vera'?veraHref:r.link==='none'?'':(L[r.link]||'');
+      var planned=r.state==='planned';
+      return h("li",{key:r.name,className:'roster-row',style:{display:'flex',flexDirection:'column',gap:2,paddingBottom:8,borderBottom:'1px solid #1e3060',opacity:planned?0.75:1}},
+        h("div",{style:{display:'flex',gap:8,alignItems:'baseline',flexWrap:'wrap'}},
+          href?h("a",{href:href,target:'_blank',rel:'noopener',className:'roster-link',style:{fontWeight:700,fontSize:15,color:'#8ab4f8'}},r.name):h("strong",{className:'roster-name',style:{fontSize:15,color:'#dde1f0'}},r.name),
+          h("span",{className:'roster-state',style:{fontSize:11,fontWeight:600,padding:'1px 8px',borderRadius:999,background:planned?'rgba(226,196,107,.12)':'rgba(102,187,106,.1)',color:planned?'#e2c46b':'#4d9f6a',border:'1px solid '+(planned?'rgba(226,196,107,.35)':'rgba(102,187,106,.3)')}},planned?'Not built yet':'Live')),
+        h("div",{style:{fontSize:11,color:'#8a9abf',letterSpacing:'.02em'}},r.breakdown),
+        h("div",{style:{fontSize:13,color:'#c9cfe3',lineHeight:1.45}},r.purpose),
+        (r.note||(!href&&r.missing))&&h("div",{className:'roster-note',style:{fontSize:12,color:planned?'#e2c46b':'#6b7fa8'}},r.note||r.missing));})));
+}
+// ---- /Your assistants ----
+
 function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
   // Each key resolves independently (no Promise.all) so tiles reveal their
   // stat as soon as their own fetch lands, instead of all waiting on the
@@ -9744,6 +9773,11 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
             <div className="bento-card-sub">{tile.hasStat && tile.loading ? 'Loading…' : tile.sub}</div>
           </div>
         ))}
+      </div>
+
+      {/* The roster: VERA's link here goes to the full dashboard. */}
+      <div style={{ marginTop: 20 }}>
+        <VeraRoster links={status && status.rosterLinks} veraHref="./" />
       </div>
     </div>
   );
