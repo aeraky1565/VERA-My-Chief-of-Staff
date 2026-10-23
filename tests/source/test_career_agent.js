@@ -119,22 +119,22 @@ console.log('\nkeeping the agent’s Settings in step');
         run(S, 'carSwapExclusion_("Bigco, Oldco, Staffing Inc", "oldco", "Newco")') === 'Bigco, Staffing Inc, Newco');
   check('…and never duplicates', run(S, 'carSwapExclusion_("Bigco, Newco", "", "newco")') === 'Bigco, Newco');
   S.A.writes.length = 0;
-  run(S, 'webCareerSaveNorthStar_({ northstar: { compFloor: { base: "185000" }, dealbreakers: "Full onsite" } })');
+  run(S, 'webCareerSyncAgent_()');
   const firstSave = S.A.writes.filter(x => x[0] === 'Settings');
   const ladder = run(S, 'carReadLadder_()');
   S.L = ladder;
-  const plan = run(S, 'carAgentSettingsCells_(L, carStateGet_("northstar"), { "Companies to exclude": "Bigco" }, "", "https://vera.example/")');
+  const plan = run(S, 'carAgentSettingsCells_(L, { "Companies to exclude": "Bigco" }, "", "https://vera.example/")');
   const cell = l => (plan.cells.find(c => c.label === l) || {}).value;
   check('Target level is the next step’s level', cell('Target level') === 'Associate Director', JSON.stringify(plan.cells));
   check('Levels to consider runs current → next → the first future level', cell('Levels to consider') === 'Senior Manager, Associate Director, Director', cell('Levels to consider'));
-  check('a floor VERA has no value for is left out, so the agent’s own stands', cell('Minimum base salary (USD)') === '185000' && cell('Minimum total compensation (USD)') === undefined);
+  check('a sync never pushes the floors or deal-breakers: those are edited in place', ['Minimum base salary (USD)', 'Minimum total compensation (USD)', 'Deal-breakers', 'Work mode'].every(l => cell(l) === undefined), JSON.stringify(plan.cells));
   check('the Inbox link is the dashboard deep link, with no token', cell('VERA Inbox link') === 'https://vera.example/?tab=career&sub=pipeline' && !/token/i.test(cell('VERA Inbox link')));
   check('every cell is one VERA owns', plan.cells.every(c => run(S, 'CAR_AGENT_OWNED_LABELS_').includes(c.label)));
   const w = firstSave;
-  check('saving North Star writes the Settings value column only, nothing appended', w.length > 0 && w.every(x => x[2] === 2 && x[1] !== 'append'), JSON.stringify(w));
+  check('a sync writes the Settings value column only, nothing appended', w.length > 0 && w.every(x => x[2] === 2 && x[1] !== 'append'), JSON.stringify(w));
   const settings = S.A.ss.sheets.Settings.rows;
   const val = l => (settings.find(r => r[0] === l) || [])[1];
-  check('Target level, floor and deal-breakers land in the agent’s sheet', val('Target level') === 'Associate Director' && val('Minimum base salary (USD)') === '185000' && val('Deal-breakers') === 'Full onsite');
+  check('Target level lands in the agent’s sheet; its floors are left as they were', val('Target level') === 'Associate Director' && val('Minimum base salary (USD)') === '180000');
   check('the current employer is added to the exclusions', /Exampleco/.test(val('Companies to exclude')) && /Bigco/.test(val('Companies to exclude')));
   check('a label with no row is reported, never added', settings.length === SETTINGS().length && run(S, 'carStateGet_("agent_sync_last").missing').includes('VERA Inbox link'));
   check('rows VERA does not own are untouched', val('Work mode') === 'Hybrid' && val('Max matches per daily digest') === '5');
@@ -167,6 +167,45 @@ console.log('\na blank company never strands the old employer');
   run(S, 'webCareerSaveRung_({ rung: Object.assign({}, cur, { company: "Newco" }) })');
   const ex = S.A.ss.sheets.Settings.rows.find(x => x[0] === 'Companies to exclude')[1];
   check('…so the next employer still replaces it', /Newco/.test(ex) && !/Exampleco/.test(ex), ex);
+}
+
+// ============ constraints: read from and written to the agent's Settings ==========
+console.log('\nconstraints live in the agent’s Settings');
+{
+  const S = agentSandbox();
+  const c = run(S, 'carReadConstraints_()');
+  check('they are read from the Settings sheet by label', c.configured && c.values.baseFloor === '180000' && c.values.workMode === 'Hybrid' &&
+        c.values.excludeCompanies === 'Bigco, Oldco, Staffing Inc', JSON.stringify(c.values));
+  check('a label the sheet lacks is named, not guessed', c.missing.includes('Home location') && c.missing.includes('Minimum total compensation (USD)') && c.values.homeLocation === '');
+  S.G = [['Your value', 'Notes', 'Setting'], ['165000', '', 'Minimum base salary (USD)'], ['Remote only', '', 'work mode']];
+  const moved = run(S, 'carConstraintsFromSettings_(G)');
+  check('columns and rows in any order, labels in any case', moved.values.baseFloor === '165000' && moved.values.workMode === 'Remote only');
+  check('GET career carries them', run(S, 'webGetCareer_()').constraints.values.baseFloor === '180000');
+
+  S.A.writes.length = 0;
+  const r = run(S, 'webCareerSaveConstraints_({ constraints: { baseFloor: "$185,000", dealbreakers: "security clearance", workMode: "Hybrid" } })');
+  const sw = S.A.writes.filter(x => x[0] === 'Settings');
+  const val = l => (S.A.ss.sheets.Settings.rows.find(x => x[0] === l) || [])[1];
+  check('a save writes the changed cells in place', r.ok && val('Minimum base salary (USD)') === '185000' && val('Deal-breakers') === 'security clearance', JSON.stringify(r));
+  check('…the value column only, an unchanged value not at all, nothing appended', sw.length === 2 && sw.every(x => x[2] === 2) && S.A.ss.sheets.Settings.rows.length === SETTINGS().length, JSON.stringify(sw));
+  check('…and the read-back shows the new values', r.constraints.values.baseFloor === '185000');
+  const miss = run(S, 'webCareerSaveConstraints_({ constraints: { homeLocation: "Invented City" } })');
+  check('a constraint whose row is missing is reported, never added', miss.ok && miss.missing.includes('Home location') && S.A.ss.sheets.Settings.rows.length === SETTINGS().length);
+  check('Companies to exclude can’t be edited here', /doesn’t edit Companies to exclude/.test(run(S, 'webCareerSaveConstraints_({ constraints: { excludeCompanies: "" } })').error) && val('Companies to exclude') === 'Bigco, Oldco, Staffing Inc');
+  check('an unknown key is refused', run(S, 'webCareerSaveConstraints_({ constraints: { targetLevel: "VP" } })').ok === false && val('Target level') === 'Senior Manager');
+  check('a floor must be a whole number', /whole number/.test(run(S, 'webCareerSaveConstraints_({ constraints: { totalFloor: "lots" } })').error));
+  check('VERA’s writer refuses a row it doesn’t own', (() => { try { run(S, 'carWriteAgentSettings_(carOpenAgentTab_("AGENT", "Settings"), [{ label: "Max matches per daily digest", value: "50" }])'); return false; } catch (e) { return /does not own/.test(e.message); } })() && val('Max matches per daily digest') === '5');
+
+  run(S, 'webCareerSaveConstraints_({ constraints: { baseFloor: "195000" } })');
+  run(S, 'webCareerSavePackage_({ package: { asOf: "2026-10", base: "150000" } })');
+  const m = run(S, 'webGetCareerPipeline_()').rows.find(x => x.company === 'Invented Corp').market;
+  check('the Pipeline judges each range against the floor in Settings', m && m.hi === 190000 && m.clearsFloor === false && m.verdict === 'below-floor', JSON.stringify(m));
+  run(S, 'webCareerSaveConstraints_({ constraints: { baseFloor: "185000" } })');
+  S.SpreadsheetApp.openById = () => { throw new Error('offline'); };
+  const stale = run(S, 'carReadConstraints_()');
+  check('the sheet unreachable: the last read comes back, marked stale', stale.stale === true && stale.values.baseFloor === '185000' && /offline/.test(stale.error));
+  check('without the Config row it says so', run(sandbox(), 'carReadConstraints_()').configured === false &&
+        /career_alert_sheet_id/.test(run(sandbox(), 'webCareerSaveConstraints_({ constraints: { baseFloor: "1" } })').error));
 }
 
 // ============ the Wins bank ===================================================
@@ -251,7 +290,8 @@ console.log('\nwiring');
 {
   check('GET career_pipeline is routed', /case 'career_pipeline':\s+return jsonOut_\(webGetCareerPipeline_\(\)\);/.test(WEB));
   [['career_set_status', 'webCareerSetStatus_\\(body\\)'], ['career_sync_agent', 'webCareerSyncAgent_\\(\\)'],
-   ['career_wins_bank', 'webCareerWinsBank_\\(\\)'], ['career_resolve_suggestion', 'webCareerResolveSuggestion_\\(body\\)']].forEach(([a, fn]) => {
+   ['career_wins_bank', 'webCareerWinsBank_\\(\\)'], ['career_resolve_suggestion', 'webCareerResolveSuggestion_\\(body\\)'],
+   ['career_save_constraints', 'webCareerSaveConstraints_\\(body\\)']].forEach(([a, fn]) => {
     check('POST ' + a + ' is routed', new RegExp("case '" + a + "':\\s+return jsonOut_\\(" + fn + "\\);").test(WEB));
     check('…and the dashboard uses it', APP.includes("'" + a + "'"));
   });

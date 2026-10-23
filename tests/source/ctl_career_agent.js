@@ -34,6 +34,15 @@ const CONTROLS = [
       "  carUpsert_(carSheet_(TABS.CAREER_LADDER, CAR_LADDER_HEADERS_),\n             { ID: next.id, Company: match.company, 'Move Type': 'external', Title: match.title || next.title }, 'CR');\n  webCareerAdvance_({ id: next.id });",
       "  webCareerAdvance_({ id: next.id });\n  carUpsert_(carSheet_(TABS.CAREER_LADDER, CAR_LADDER_HEADERS_),\n             { ID: next.id, Company: match.company, 'Move Type': 'external', Title: match.title || next.title }, 'CR');") })],
   ['the last employer is forgotten when a rung has none', b => ({ [C]: swap(b[C], "employer: plan.employer || prev.employer || '' };", 'employer: plan.employer };') })],
+  // ---- constraints in the agent's Settings ----------------------------------------------
+  ['saving a constraint appends a missing row', b => ({ [C]: swap(b[C], '    if (r === -1) { missing.push(c.label); return; }', '    if (r === -1) { sheet.appendRow([c.label, c.value]); missing.push(c.label); return; }') })],
+  ['Companies to exclude becomes editable', b => ({ [C]: swap(b[C], "    if (!f || f.readOnly) return { ok: false, error:", "    if (!f) return { ok: false, error:") })],
+  ['a floor need not be a number', b => ({ [C]: swap(b[C], "      if (v && !/^\\d+$/.test(v)) return { ok: false, error: f.label + ' must be a whole number.' };\n", '') })],
+  ['the writer accepts a row VERA doesn’t own', b => ({ [C]: swap(b[C], "    if (CAR_AGENT_OWNED_LABELS_.indexOf(c.label) === -1) throw new Error('VERA does not own ' + c.label);\n", '') })],
+  ['an unreachable sheet shows nothing instead of the last read', b => ({ [C]: swap(b[C], 'values: cache ? cache.values : {}, missing: []', 'values: {}, missing: []') })],
+  ['a sync pushes the floors from VERA’s state again', b => ({ [C]: swap(b[C], "  put('Levels to consider', levels.join(', '));\n", "  put('Levels to consider', levels.join(', '));\n  put('Minimum base salary (USD)', '1');\n") })],
+  ['the Pipeline ignores the Settings floor', b => ({ [C]: swap(b[C], "  var floor = { base: (carStateGet_('agent_constraints') || { values: {} }).values.baseFloor };", '  var floor = {};') })],
+  ['the save route is missing', b => ({ 'WebApp.js': swap(b['WebApp.js'], "      case 'career_save_constraints':    return jsonOut_(webCareerSaveConstraints_(body));\n", '') })],
   // ---- the Wins bank ------------------------------------------------------------------
   ['an existing month’s tab is written to again', b => ({ [C]: swap(b[C], "  if (exists) return { skipped: 'exists' };\n", '') })],
   ['baseline wins are sent again', b => ({ [C]: swap(b[C], "return ev.source !== 'baseline' && !ev.winsBankSent;", 'return !ev.winsBankSent;') })],

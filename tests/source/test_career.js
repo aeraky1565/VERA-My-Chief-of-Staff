@@ -247,7 +247,7 @@ console.log('\nchecking a specific role');
 console.log('\nwiring');
 {
   check('GET career reads the v2 model', /case 'career':\s+return jsonOut_\(webGetCareer_\(\)\);/.test(WEB));
-  ['career_save_northstar','career_save_rung','career_delete_rung','career_advance','career_save_intent','career_delete_intent',
+  ['career_save_constraints','career_save_rung','career_delete_rung','career_advance','career_save_intent','career_delete_intent',
    'career_save_evidence','career_delete_evidence','career_set_override','career_save_criterion','career_check_role'].forEach(a => {
     check('POST ' + a + ' is routed', new RegExp("case '" + a + "':\\s+return jsonOut_\\(webCareer\\w+_\\(body\\)\\);").test(WEB));
     check('…and the dashboard posts it', APP.includes("'" + a + "'"));

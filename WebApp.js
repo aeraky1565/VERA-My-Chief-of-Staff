@@ -537,7 +537,7 @@ function doPost(e) {
       // makeUrl drops falsy values from a query string, so a blank would never
       // arrive. A JSON body carries '' faithfully. See the note above the handlers.
       // Career tab v2 (issue #216, Career.js) — POST: free text and blanks survive a JSON body.
-      case 'career_save_northstar':      return jsonOut_(webCareerSaveNorthStar_(body));
+      case 'career_save_constraints':    return jsonOut_(webCareerSaveConstraints_(body));
       case 'career_save_rung':           return jsonOut_(webCareerSaveRung_(body));
       case 'career_delete_rung':         return jsonOut_(webCareerDeleteRung_(body));
       case 'career_advance':             return jsonOut_(webCareerAdvance_(body));

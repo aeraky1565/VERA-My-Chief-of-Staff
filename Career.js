@@ -500,9 +500,10 @@ function carMigrationPlan_(v1, todayYm) {
              notes: String(r.Notes || '') };
   });
 
-  var northstar = { compFloor: { base: '', baseOutsideDC: '', total: '' },
-                    locationStance: '', dealbreakers: '',
-                    profile: { department: String(pos.Department || ''), workStyle: String(pos['Work Style'] || ''),
+  // The constraints (floors, location, deal-breakers) live in the job agent's
+  // Settings sheet, read and written there (carReadConstraints_); North Star keeps
+  // only the profile.
+  var northstar = { profile: { department: String(pos.Department || ''), workStyle: String(pos['Work Style'] || ''),
                                focusAreas: String(pos['Focus Areas'] || ''), notes: String(pos.Notes || '') } };
 
   return { ladder: ladder, criteria: criteria, evidence: evidence, intents: intents,
@@ -582,6 +583,7 @@ function webGetCareer_() {
     intents: intents, package: pkg, northstar: northstar, readiness: readiness,
     development: carStateGet_('development') || [],
     baseline: carStateGet_('baseline_imported'),
+    constraints: carReadConstraints_(),
     agentSync: carStateGet_('agent_sync_last'), winsBank: carStateGet_('winsbank_last'),
     agentConfigured: !!carAgentSheetId_(),
     winsBankConfigured: !!String(getConfigValues()['career_wins_bank_doc_id'] || '').trim(),
@@ -660,18 +662,6 @@ function webUpdateCareerPosition_(e) {
 }
 
 // ---- Write endpoints (POST body.action) ------------------------------------------
-
-function webCareerSaveNorthStar_(body) {
-  var ns = carStateGet_('northstar') || {};
-  var b = body.northstar || {};
-  var floor = b.compFloor || {};
-  ns.compFloor = { base: String(floor.base || ''), baseOutsideDC: String(floor.baseOutsideDC || ''),
-                   total: String(floor.total || '') };
-  ns.locationStance = String(b.locationStance || '');
-  ns.dealbreakers = String(b.dealbreakers || '');
-  carStateSet_('northstar', ns);
-  return { ok: true, sync: carAutoSync_() };
-}
 
 function webCareerSaveRung_(body) {
   var r = body.rung || {};
@@ -836,7 +826,25 @@ var CAR_AGENT_STALE_KEY_  = 'career-agent-stale';
 /** The only Settings rows VERA ever writes. Everything else is the agent's own. */
 var CAR_AGENT_OWNED_LABELS_ = ['Target level', 'Levels to consider', 'Minimum base salary (USD)',
   'Minimum base salary outside the DC area (USD)', 'Minimum total compensation (USD)',
+  'Work mode', 'Home location', 'Willing to relocate', 'Max days onsite per week', 'Target relocation areas',
   'Deal-breakers', 'Companies to exclude', 'VERA Inbox link'];
+/**
+ * North Star's constraints. They live in the agent's Settings sheet, the one
+ * source of truth: VERA shows what is there and writes edits straight back.
+ * Companies to exclude is shown but never edited here (the employer swap keeps it).
+ */
+var CAR_CONSTRAINT_FIELDS_ = [
+  { key: 'baseFloor',          label: 'Minimum base salary (USD)',                     kind: 'number' },
+  { key: 'baseFloorOutsideDC', label: 'Minimum base salary outside the DC area (USD)', kind: 'number' },
+  { key: 'totalFloor',         label: 'Minimum total compensation (USD)',              kind: 'number' },
+  { key: 'workMode',           label: 'Work mode',                                     kind: 'text' },
+  { key: 'homeLocation',       label: 'Home location',                                 kind: 'text' },
+  { key: 'relocate',           label: 'Willing to relocate',                           kind: 'text' },
+  { key: 'maxOnsiteDays',      label: 'Max days onsite per week',                      kind: 'number' },
+  { key: 'relocationAreas',    label: 'Target relocation areas',                       kind: 'text' },
+  { key: 'dealbreakers',       label: 'Deal-breakers',                                 kind: 'text' },
+  { key: 'excludeCompanies',   label: 'Companies to exclude',                          kind: 'text', readOnly: true },
+];
 var CAR_DEFAULT_DASHBOARD_ = 'https://aeraky1565.github.io/VERA-My-Chief-of-Staff/';
 
 function carLabel_(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
@@ -971,7 +979,7 @@ function webGetCareerPipeline_() {
   var sheetId = carAgentSheetId_();
   var extra = carReadRoleMatches_();
   var pkg = carReadPackage_();
-  var floor = (carStateGet_('northstar') || {}).compFloor || {};
+  var floor = { base: (carStateGet_('agent_constraints') || { values: {} }).values.baseFloor };
   var calibration = carStateGet_('pies_calibration');
   if (!sheetId && !extra.length) return { ok: true, configured: false, calibration: calibration, package: pkg };
   var rows = [], out = { ok: true, configured: !!sheetId, statuses: CAR_TRACKER_STATUSES_ };
@@ -1069,10 +1077,12 @@ function carSwapExclusion_(csv, oldEmp, newEmp) {
 }
 
 /**
- * Pure: the Settings cells VERA owns, from the ladder and North Star. A cell is
- * left out when VERA has nothing to say, so the agent's own value stands.
+ * Pure: the Settings cells the ladder decides (levels, the employer exclusion,
+ * the Inbox link). A cell is left out when VERA has nothing to say, so the
+ * agent's own value stands. The constraints are not here: they are edited in
+ * place (webCareerSaveConstraints_), never pushed from a copy.
  */
-function carAgentSettingsCells_(ladder, northstar, current, prevEmployer, dashboardUrl) {
+function carAgentSettingsCells_(ladder, current, prevEmployer, dashboardUrl) {
   var cells = [];
   var put = function(label, value) {
     if (CAR_AGENT_OWNED_LABELS_.indexOf(label) === -1) throw new Error('VERA does not own ' + label);
@@ -1087,11 +1097,6 @@ function carAgentSettingsCells_(ladder, northstar, current, prevEmployer, dashbo
   var levels = [carLevelOf_(cur)].concat(next.map(carLevelOf_)).concat(future.length ? [carLevelOf_(future[0])] : [])
     .filter(String).filter(function(x, i, a) { return a.indexOf(x) === i; });
   put('Levels to consider', levels.join(', '));
-  var floor = (northstar && northstar.compFloor) || {};
-  put('Minimum base salary (USD)', floor.base);
-  put('Minimum base salary outside the DC area (USD)', floor.baseOutsideDC);
-  put('Minimum total compensation (USD)', floor.total);
-  put('Deal-breakers', northstar && northstar.dealbreakers);
   if (cur && cur.company) put('Companies to exclude', carSwapExclusion_(current['Companies to exclude'], prevEmployer, cur.company));
   if (dashboardUrl) put('VERA Inbox link', String(dashboardUrl).replace(/\/?$/, '/') + '?tab=career&sub=pipeline');
   return { cells: cells, employer: cur ? cur.company : '' };
@@ -1108,6 +1113,7 @@ function carWriteAgentSettings_(sheet, cells) {
   if (keyCol === -1 || valCol === -1) throw new Error('the Settings tab has no Setting / Your value columns');
   var written = [], missing = [], same = [];
   cells.forEach(function(c) {
+    if (CAR_AGENT_OWNED_LABELS_.indexOf(c.label) === -1) throw new Error('VERA does not own ' + c.label);
     var r = -1;
     for (var i = 1; i < grid.length; i++) if (carLabel_(grid[i][keyCol]) === carLabel_(c.label)) { r = i; break; }
     if (r === -1) { missing.push(c.label); return; }
@@ -1129,7 +1135,7 @@ function webCareerSyncAgent_() {
   grid.slice(1).forEach(function(r) { current[String(r[head.indexOf('setting')]).trim()] = r[head.indexOf('your value')]; });
   var prev = carStateGet_('agent_sync_last') || {};
   var dash = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || CAR_DEFAULT_DASHBOARD_;
-  var plan = carAgentSettingsCells_(carReadLadder_(), carStateGet_('northstar') || {}, current, prev.employer, dash);
+  var plan = carAgentSettingsCells_(carReadLadder_(), current, prev.employer, dash);
   var res = carWriteAgentSettings_(sheet, plan.cells);
   // The employer last written stays remembered until a rung names a new one, so a
   // blank company can never strand the old employer in the exclusions.
@@ -1222,6 +1228,75 @@ function carAutoSync_() {
   if (!carAgentSheetId_()) return null;
   try { return webCareerSyncAgent_().sync; }
   catch (e) { Logger.log('Career agent sync: ' + e.message); return { error: e.message }; }
+}
+
+// ---- Constraints: read from and written to the agent's Settings ---------------
+
+/** Pure: the constraint values in a Settings grid, by label; `missing` names labels the sheet lacks. */
+function carConstraintsFromSettings_(grid) {
+  var head = (grid[0] || []).map(carLabel_);
+  var keyCol = head.indexOf('setting'), valCol = head.indexOf('your value');
+  if (keyCol === -1 || valCol === -1) throw new Error('the Settings tab has no Setting / Your value columns');
+  var byLabel = {};
+  grid.slice(1).forEach(function(r) { byLabel[carLabel_(r[keyCol])] = String(r[valCol] == null ? '' : r[valCol]).trim(); });
+  var values = {}, missing = [];
+  CAR_CONSTRAINT_FIELDS_.forEach(function(f) {
+    var k = carLabel_(f.label);
+    if (byLabel[k] === undefined) { missing.push(f.label); values[f.key] = ''; }
+    else values[f.key] = byLabel[k];
+  });
+  return { values: values, missing: missing };
+}
+
+/**
+ * The constraints as the agent's Settings has them now. The last good read is
+ * kept, so a sheet that can't be reached shows that copy, marked stale.
+ */
+function carReadConstraints_() {
+  var sheetId = carAgentSheetId_();
+  if (!sheetId) return { configured: false, values: {}, missing: [] };
+  try {
+    var res = carConstraintsFromSettings_(carOpenAgentTab_(sheetId, 'Settings').getDataRange().getValues());
+    var at = new Date().toISOString();
+    carStateSet_('agent_constraints', { at: at, values: res.values });
+    return { configured: true, values: res.values, missing: res.missing, at: at, stale: false };
+  } catch (e) {
+    var cache = carStateGet_('agent_constraints');
+    return { configured: true, values: cache ? cache.values : {}, missing: [], at: cache ? cache.at : null,
+             stale: true, error: 'Couldn’t read the job agent’s Settings: ' + e.message };
+  }
+}
+
+/**
+ * Edit constraints in place: each changed value goes into its row of the agent's
+ * Settings (value cell only, never a new row). Companies to exclude is refused.
+ */
+function webCareerSaveConstraints_(body) {
+  var sheetId = carAgentSheetId_();
+  if (!sheetId) return { ok: false, error: 'Add a career_alert_sheet_id row to Config first.' };
+  var input = body.constraints || {};
+  var cells = [];
+  for (var key in input) {
+    var f = CAR_CONSTRAINT_FIELDS_.filter(function(x) { return x.key === key; })[0];
+    if (!f || f.readOnly) return { ok: false, error: 'VERA doesn’t edit ' + (f ? f.label : key) + '.' };
+    var v = String(input[key] == null ? '' : input[key]).trim();
+    if (f.kind === 'number') {
+      v = v.replace(/[$,\s]/g, '');
+      if (v && !/^\d+$/.test(v)) return { ok: false, error: f.label + ' must be a whole number.' };
+    } else if (v.length > 1000) {
+      return { ok: false, error: f.label + ' is too long.' };
+    }
+    cells.push({ label: f.label, value: v });
+  }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { ok: false, error: 'Another update is running — try again.' };
+  var res;
+  try {
+    res = carWriteAgentSettings_(carOpenAgentTab_(sheetId, 'Settings'), cells);
+  } finally {
+    lock.releaseLock();
+  }
+  return { ok: true, written: res.written, missing: res.missing, constraints: carReadConstraints_() };
 }
 
 // ---- Quarterly criteria suggestions (issue #216 §2.2) -------------------------
@@ -1836,7 +1911,7 @@ function carBuildMatcherContext_(d) {
   var ladder = d.ladder || [];
   var hist = ladder.filter(function(r) { return r.status === 'reached' || r.status === 'current'; });
   var next = ladder.filter(function(r) { return r.status === 'next'; });
-  var ns = d.northstar || {}, floor = ns.compFloor || {};
+  var cv = (d.constraints && d.constraints.values) || {};
   var trackName = function(id) { var t = tracks.filter(function(x) { return x.id === id; })[0]; return t ? t.name : (id || 'any track'); };
   var since = carMonthKey_(new Date(d.today.getFullYear(), d.today.getMonth() - 2, 1));
   var recent = (d.evidence || []).filter(function(e) { return e.month >= since; });
@@ -1848,9 +1923,10 @@ function carBuildMatcherContext_(d) {
     })).concat(['', 'NEXT STEP AND TRACKS']).concat(next.map(function(r) {
       return '- ' + r.title + ' (' + trackName(r.track) + ')';
     })).concat(['', 'CONSTRAINTS',
-      '- Minimum base: ' + (floor.base || 'not set') + '; outside the DC area: ' + (floor.baseOutsideDC || 'not set') + '; minimum total: ' + (floor.total || 'not set'),
-      '- Location: ' + (ns.locationStance || 'not set'),
-      '- Deal-breakers: ' + (ns.dealbreakers || 'none'), '', 'READINESS']).concat(tracks.map(function(t) {
+      '- Minimum base: ' + (cv.baseFloor || 'not set') + '; outside the DC area: ' + (cv.baseFloorOutsideDC || 'not set') + '; minimum total: ' + (cv.totalFloor || 'not set'),
+      '- Work mode: ' + (cv.workMode || 'not set') + '; max days onsite: ' + (cv.maxOnsiteDays || 'not set'),
+      '- Home: ' + (cv.homeLocation || 'not set') + '; relocation: ' + (cv.relocate || 'not set') + (cv.relocationAreas ? ' (' + cv.relocationAreas + ')' : ''),
+      '- Deal-breakers: ' + (cv.dealbreakers || 'none'), '', 'READINESS']).concat(tracks.map(function(t) {
       var v = (d.readiness || {})[t.id];
       if (!v) return '- ' + t.name + ': not assessed';
       return '- ' + t.name + ': ' + v.verdict + ', ' + v.pct + '%. ' + v.criteria.map(function(c) { return c.name + ' ' + c.status; }).join('; ');
@@ -1878,7 +1954,7 @@ function webCareerExchangeExport_(body) {
   }
   if (body.kind === 'matcher') {
     var g = webGetCareer_();
-    var ctx = carBuildMatcherContext_({ tracks: g.tracks, ladder: g.ladder, northstar: g.northstar, readiness: g.readiness,
+    var ctx = carBuildMatcherContext_({ tracks: g.tracks, ladder: g.ladder, constraints: g.constraints, readiness: g.readiness,
                                         evidence: g.evidence, staticProfile: (g.brand || {}).staticProfile, today: now });
     carLogExchange_('out', CAR_PAYLOADS_.matcher, Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd'), 'context');
     return { ok: true, text: ctx };

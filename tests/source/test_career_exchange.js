@@ -28,7 +28,9 @@ const TRACKER = () => [['Date found', 'Company', 'Title', 'Tier', 'Score', 'Job 
 
 // A migrated sandbox with the job agent's sheet; every write to that sheet is recorded.
 function full(over) {
-  const agent = new FakeSS({ Tracker: TRACKER() });
+  const agent = new FakeSS({ Tracker: TRACKER(), Settings: [['Setting', 'Your value'], ['Minimum base salary (USD)', '175000'],
+    ['Minimum base salary outside the DC area (USD)', '165000'], ['Work mode', 'Hybrid OK'], ['Home location', 'Invented City'],
+    ['Willing to relocate', 'Yes, selectively'], ['Deal-breakers', 'none'], ['Companies to exclude', 'Exampleco']] });
   const agentWrites = [];
   const tr = agent.sheets.Tracker;
   const gr = tr.getRange.bind(tr);
@@ -246,13 +248,13 @@ console.log('\nExchange: copy out');
   check('copying intents logs it and records the quarter', exp.ok && /^VERA-INTENTS v1 \| 2026-Q4/.test(exp.text) && (run(S, 'carStateGet_("intents_exported")') || {}).quarter === '2026-Q4' &&
         run(S, 'carReadExchangeLog_()').some(l => l.direction === 'out' && l.payload === 'VERA-INTENTS' && l.period === '2026-Q4'));
   run(S, 'webCareerSavePackage_({ package: { asOf: "2026-10", base: "151234" } })');
-  run(S, 'webCareerSaveNorthStar_({ northstar: { compFloor: { base: "175000" }, locationStance: "DC metro", dealbreakers: "none" } })');
   run(S, 'webCareerSaveBrand_({ brand: { staticProfile: "Invented arc: engineer to planning lead" } })');
   run(S, 'webCareerSaveEvidence_({ evidence: { month: "2026-09", statement: "Recent invented win" } })');
   run(S, 'webCareerSaveEvidence_({ evidence: { month: "2025-01", statement: "Old invented win" } })');
   const m = run(S, 'webCareerExchangeExport_({ kind: "matcher" })').text;
   check('MATCHER-CONTEXT opens with its header', /^MATCHER-CONTEXT v1 \| 2026-10-23\n/.test(m));
-  check('…carries the static profile, role history, tracks and floors', /Invented arc/.test(m) && /Senior Manager, Planning, Exampleco/.test(m) && /Program & Project Management/.test(m) && /175000/.test(m));
+  check('…carries the static profile, role history, tracks and the agent’s constraints', /Invented arc/.test(m) && /Senior Manager, Planning, Exampleco/.test(m) && /Program & Project Management/.test(m) &&
+        /Minimum base: 175000; outside the DC area: 165000/.test(m) && /Work mode: Hybrid OK/.test(m) && /Home: Invented City; relocation: Yes, selectively/.test(m));
   check('…only the last 3 months of evidence', /Recent invented win/.test(m) && !/Old invented win/.test(m));
   check('…the rubric, and asks for ROLE-MATCH v1 JSON only', /4 dimensions × 25 points/.test(m) && /ROLE-MATCH v1 \| YYYY-MM-DD/.test(m) && /never a name/.test(m));
   check('…and never the current package', !/151234|151,234/.test(m));

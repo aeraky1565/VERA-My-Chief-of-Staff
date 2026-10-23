@@ -28,7 +28,8 @@ const FX = {
   },
   piesReadiness: { period: '2026-10', updates: [{ criterionId: 'core-people', status: 'partial', reason: 'Two direct reports' }] },
   evidence: [], intents: [], suggestions: [], development: [],
-  northstar: { compFloor: { base: '175000', baseOutsideDC: '', total: '220000' } },
+  northstar: { profile: {} },
+  constraints: { configured: true, missing: [], values: { baseFloor: '175000', baseFloorOutsideDC: '', totalFloor: '220000' } },
   contacts: [
     { id: 'c1', name: 'Pat Example', title: 'VP Finance', org: 'Exampleco', role: 'sponsor', tracks: ['fpa'], canDo: 'Speaks for me at planning reviews', warmth: 'strong', lastTouch: '2026-10-01', nextIntent: 'Coffee in November', source: 'v1' },
     { id: 'c2', name: 'Talent partner', title: '', org: 'Madeup LLC', role: 'recruiter', tracks: [], warmth: 'cold', lastTouch: '', source: 'agent' },

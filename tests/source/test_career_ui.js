@@ -47,7 +47,10 @@ async function mount(page) {
       },
       evidence: [{ id: 'e1', month: '2024-05', statement: 'Shipped the forecast model', scale: 'Cut close by 2 days', adScale: true, criterionIds: ['core-exec'], source: 'baseline' }],
       intents: [{ id: 'i1', text: 'Lead a planning function', track: 'fpa', status: 'active' }],
-      northstar: { compFloor: { base: '150000', baseOutsideDC: '', total: '' }, locationStance: 'Remote or nearby', dealbreakers: 'Full onsite' },
+      northstar: { profile: {} },
+      constraints: { configured: true, at: '2026-10-23T12:00:00.000Z', missing: [], stale: false,
+        values: { baseFloor: '150000', baseFloorOutsideDC: '140000', totalFloor: '', workMode: 'Hybrid OK', homeLocation: 'Invented City', relocate: 'Yes, selectively',
+                  maxOnsiteDays: '3', relocationAreas: 'Elsewhere, TX', dealbreakers: 'Full onsite', excludeCompanies: 'Exampleco, Staffing Inc' } },
       development: [{ item: 'Public speaking', status: 'Planned' }],
       baseline: { count: 1 }, contacts: [], sponsorGap: {},
     };
@@ -94,7 +97,23 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await clickText(page, 'button', 'Earlier · 1 role');
     await wait(80);
     check('…and unfold', (await text(page)).includes('Firstco'));
-    check('the constraints and intents show', t.includes('$150,000') && t.includes('Lead a planning function') && t.includes('Add 2 more'));
+    check('the constraints show, from the agent’s Settings', t.includes('$150,000') && t.includes('Outside DC: $140,000') && t.includes('Hybrid OK · Invented City') &&
+          t.includes('max 3 days onsite') && t.includes('Full onsite') && t.includes('Exampleco, Staffing Inc') && t.includes('From the job agent’s Settings sheet'));
+    check('…and the intents', t.includes('Lead a planning function') && t.includes('Add 2 more'));
+    await page.evaluate(() => { const sec = document.querySelector('#carprobe .car-constraints'); Array.from(sec.querySelectorAll('button')).find(b => b.textContent === 'Edit').click(); });
+    await wait(80);
+    check('the dialog edits the floors and location, never the exclusions', await page.evaluate(() => {
+      const labels = Array.from(document.querySelectorAll('#carprobe .modal .form-label')).map(l => l.textContent);
+      return labels.some(l => /Minimum base salary/.test(l)) && labels.some(l => /Home location/.test(l)) && !labels.some(l => /exclude/i.test(l));
+    }));
+    await page.evaluate(() => {
+      const g = Array.from(document.querySelectorAll('#carprobe .modal .form-group')).find(n => n.querySelector('label').textContent === 'Minimum base salary');
+      const el = g.querySelector('input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '155000'); el.dispatchEvent(new Event('input', { bubbles: true }));
+      Array.from(document.querySelectorAll('#carprobe .modal button')).find(b => b.textContent === 'Save').click();
+    });
+    await wait(120);
+    const cp = (await posts(page)).find(x => x.action === 'career_save_constraints');
+    check('saving posts only what changed', cp && JSON.stringify(cp.constraints) === '{"baseFloor":"155000"}', JSON.stringify(cp));
 
     const marked = await page.evaluate(() => {
       const card = Array.from(document.querySelectorAll('#carprobe .car-rung')).find(n => n.textContent.includes('Associate Director, FP&A'));

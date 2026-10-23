@@ -2372,7 +2372,7 @@ All requests must include `?token=YOUR_VERA_WEB_TOKEN`. All mutations use GET to
 | `career` | — | The whole Career tab (ladder, readiness, evidence, intents, contacts, package, brand, exchange) |
 | `career_pipeline` | — | The job agent's matches plus Exchange roles, health, pattern read, market comparison, benchmarks |
 
-Career writes are POST actions (`body.action`): `career_save_northstar`, `career_save_rung`, `career_delete_rung`, `career_advance`, `career_save_intent`, `career_delete_intent`, `career_save_evidence`, `career_delete_evidence`, `career_set_override`, `career_save_criterion`, `career_check_role`, `career_set_status`, `career_sync_agent`, `career_wins_bank`, `career_resolve_suggestion`, `career_save_contact`, `career_delete_contact`, `career_touch_contact`, `career_save_package`, `career_save_brand`, `career_exchange_preview`, `career_exchange_import`, `career_exchange_export`.
+Career writes are POST actions (`body.action`): `career_save_constraints` (writes the job agent’s Settings rows in place), `career_save_rung`, `career_delete_rung`, `career_advance`, `career_save_intent`, `career_delete_intent`, `career_save_evidence`, `career_delete_evidence`, `career_set_override`, `career_save_criterion`, `career_check_role`, `career_set_status`, `career_sync_agent`, `career_wins_bank`, `career_resolve_suggestion`, `career_save_contact`, `career_delete_contact`, `career_touch_contact`, `career_save_package`, `career_save_brand`, `career_exchange_preview`, `career_exchange_import`, `career_exchange_export`.
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|

@@ -5278,17 +5278,16 @@ function CarRungModal({rung,busy,onSave,onDelete,onClose}){
     carActions(busy||!f.title,function(){onSave(f);},onClose,rung&&rung.id?function(){onDelete(rung.id);}:null)));
 }
 
-function CarNorthStarModal({ns,busy,onSave,onClose}){
-  var floor=(ns&&ns.compFloor)||{};
-  var[f,setF]=React.useState({base:floor.base||'',baseOutsideDC:floor.baseOutsideDC||'',total:floor.total||'',locationStance:(ns&&ns.locationStance)||'',dealbreakers:(ns&&ns.dealbreakers)||''});
-  function set(k){return function(v){setF(Object.assign({},f,{[k]:v}));};}
+// The constraints live in the job agent's Settings sheet; this edits those rows in place.
+var CAR_CONSTRAINT_UI=[['baseFloor','Minimum base salary','number'],['baseFloorOutsideDC','Minimum base outside the DC area','number'],['totalFloor','Minimum total compensation','number'],['workMode','Work mode (Remote only, Hybrid OK or Onsite OK)','text'],['homeLocation','Home location','text'],['relocate','Willing to relocate','text'],['maxOnsiteDays','Max days onsite per week','number'],['relocationAreas','Target relocation areas (semicolon-separated)','text'],['dealbreakers','Deal-breakers (comma-separated)','text']];
+function CarConstraintsModal({values,busy,onSave,onClose}){
+  var start={};CAR_CONSTRAINT_UI.forEach(function(x){start[x[0]]=(values||{})[x[0]]||'';});
+  var[f,setF]=React.useState(start);
+  function changed(){var out={};CAR_CONSTRAINT_UI.forEach(function(x){if(String(f[x[0]])!==String(start[x[0]]))out[x[0]]=f[x[0]];});return out;}
   return carModal('Constraints',onClose,carH(React.Fragment,null,
-    carField('Minimum base salary',carInput(f.base,set('base'),{inputMode:'numeric'})),
-    carField('Minimum base outside the DC area',carInput(f.baseOutsideDC,set('baseOutsideDC'),{inputMode:'numeric'})),
-    carField('Minimum total compensation',carInput(f.total,set('total'),{inputMode:'numeric'})),
-    carField('Location stance',carInput(f.locationStance,set('locationStance'),{placeholder:'e.g. DC metro; remote; selective relocation'})),
-    carField('Deal-breakers',carInput(f.dealbreakers,set('dealbreakers'),{placeholder:'comma-separated'})),
-    carActions(busy,function(){onSave({compFloor:{base:f.base,baseOutsideDC:f.baseOutsideDC,total:f.total},locationStance:f.locationStance,dealbreakers:f.dealbreakers});},onClose)));
+    carH("p",{style:Object.assign({},CAR_MUTED,{margin:'0 0 10px'})},"Saved straight into the job agent’s Settings sheet, the one place these live."),
+    CAR_CONSTRAINT_UI.map(function(x){return carH(React.Fragment,{key:x[0]},carField(x[1],carInput(f[x[0]],function(v){setF(Object.assign({},f,{[x[0]]:v}));},x[2]==='number'?{inputMode:'numeric'}:null)));}),
+    carActions(busy,function(){var c=changed();if(!Object.keys(c).length){onClose();return;}onSave(c);},onClose)));
 }
 
 function CarIntentModal({intent,busy,onSave,onDelete,onClose}){
@@ -5324,7 +5323,7 @@ function CarNorthStar({data,post,busy}){
   var ladder=data.ladder||[];
   var reached=ladder.filter(function(r){return r.status==='reached';});
   var shown=ladder.filter(function(r){return r.status!=='reached';});
-  var ns=data.northstar||{};var floor=ns.compFloor||{};
+  var con=data.constraints||{values:{}};var cv=con.values||{};
   var intents=(data.intents||[]).filter(function(i){return i.status!=='retired';});
   function money(v){var n=parseFloat(String(v||'').replace(/[^0-9.]/g,''));return isNaN(n)?'—':'$'+n.toLocaleString();}
   function rungList(rows){return carH("ol",{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,210px),1fr))',gap:12,margin:0,padding:0,listStyle:'none'}},rows.map(function(r){return carH(CarRungCard,{key:r.id,r:r,busy:busy,verdict:r.status==='next'?(data.readiness||{})[r.track]:null,onEdit:setEditRung,onAdvance:function(x){if(confirm('Mark '+x.title+' reached? It becomes your current role and the ladder moves up.'))post('career_advance',{id:x.id});}});}));}
@@ -5335,19 +5334,24 @@ function CarNorthStar({data,post,busy}){
       reached.length>0&&carH("button",{className:"btn btn-ghost",style:{fontSize:12,marginBottom:12},'aria-expanded':showEarlier?'true':'false',onClick:function(){setShowEarlier(!showEarlier);}},showEarlier?'Hide earlier roles':'Earlier · '+reached.length+' role'+(reached.length===1?'':'s')),
       showEarlier&&carH("div",{style:{marginBottom:12}},rungList(reached)),
       shown.length?rungList(shown):carH("div",{style:CAR_MUTED},"No rungs yet. Add your current role and your next step.")),
-    carH("section",{style:CAR_CARD},
-      carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}},carH("h3",{style:{margin:0,fontSize:16}},"Constraints"),carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setEditNs(true);}},"Edit")),
-      carH("div",{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,200px),1fr))',gap:12}},
-        carH("div",null,carH("p",{style:CAR_LABEL},"Base floor"),carH("div",{className:'car-num',style:{fontSize:18}},money(floor.base)),carH("div",{style:CAR_MUTED},"Outside DC: "+money(floor.baseOutsideDC)+" · Total: "+money(floor.total))),
-        carH("div",null,carH("p",{style:CAR_LABEL},"Location stance"),carH("div",{style:{fontSize:14,lineHeight:1.5}},ns.locationStance||'—')),
-        carH("div",null,carH("p",{style:CAR_LABEL},"Deal-breakers"),carH("div",{style:{fontSize:14,lineHeight:1.5}},ns.dealbreakers||'—')))),
+    carH("section",{className:'car-constraints',style:CAR_CARD},
+      carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}},carH("h3",{style:{margin:0,fontSize:16}},"Constraints"),con.configured&&carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setEditNs(true);}},"Edit")),
+      !con.configured?carH("div",{style:CAR_MUTED},"Connect the job agent (Config: career_alert_sheet_id) to see and edit your constraints. They live in its Settings sheet."):carH(React.Fragment,null,
+        carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12,marginBottom:10})},"From the job agent’s Settings sheet"+(con.at?' · read '+String(con.at).slice(0,16).replace('T',' '):'')),
+        con.stale&&carH("div",{className:"error-banner",role:'alert',style:{marginBottom:10}},(con.error||'Couldn’t read the Settings sheet.')+(con.at?' Showing the copy from '+String(con.at).slice(0,10)+'.':'')),
+        (con.missing||[]).length>0&&carH("div",{style:{color:'#e2c46b',fontSize:13,marginBottom:10}},"Not in the agent’s sheet: "+con.missing.join(', ')),
+        carH("div",{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,200px),1fr))',gap:12}},
+          carH("div",null,carH("p",{style:CAR_LABEL},"Base floor"),carH("div",{className:'car-num',style:{fontSize:18}},money(cv.baseFloor)),carH("div",{style:CAR_MUTED},"Outside DC: "+money(cv.baseFloorOutsideDC)+" · Total: "+money(cv.totalFloor))),
+          carH("div",null,carH("p",{style:CAR_LABEL},"Location"),carH("div",{style:{fontSize:14,lineHeight:1.5}},[cv.workMode,cv.homeLocation].filter(Boolean).join(' · ')||'—'),carH("div",{style:CAR_MUTED},"Relocate: "+(cv.relocate||'—')+(cv.maxOnsiteDays?' · max '+cv.maxOnsiteDays+' days onsite':'')),cv.relocationAreas&&carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12})},cv.relocationAreas)),
+          carH("div",null,carH("p",{style:CAR_LABEL},"Deal-breakers"),carH("div",{style:{fontSize:14,lineHeight:1.5}},cv.dealbreakers||'—'))),
+        carH("div",{style:{marginTop:10}},carH("p",{style:CAR_LABEL},"Companies to exclude"),carH("div",{style:{fontSize:13,lineHeight:1.5,color:'#c9cfe3'}},cv.excludeCompanies||'—'),carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12})},"Edited in the agent’s sheet; your current employer is kept here automatically.")))),
     carH("section",{className:'car-sync',style:Object.assign({},CAR_CARD,{background:'#0d1b3e'})},
       carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},carH("div",{style:{flex:'1 1 280px'}},carH("p",{style:CAR_LABEL},"The job agent"),carH("div",{style:{fontSize:13,lineHeight:1.6,color:'#c9cfe3'}},!data.agentConfigured?'Not connected. Add a Config row career_alert_sheet_id, and saving here keeps the agent\u2019s settings in step.':data.agentSync?(data.agentSync.error?'Last sync failed: '+data.agentSync.error:'Synced '+String(data.agentSync.at||'').slice(0,10)+(data.agentSync.written&&data.agentSync.written.length?' · updated '+data.agentSync.written.join(', '):' · already up to date')+(data.agentSync.missing&&data.agentSync.missing.length?' · not in its sheet: '+data.agentSync.missing.join(', '):'')):'Not synced yet.')),data.agentConfigured&&carH("button",{className:"btn btn-ghost",style:{fontSize:12},disabled:busy,onClick:function(){post('career_sync_agent',{});}},"Sync now"))),
     carH("section",{style:CAR_CARD},
       carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}},carH("h3",{style:{margin:0,fontSize:16}},"Career intents"),carH("div",{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},(intents.length<3||intents.length>5)&&carChip(intents.length<3?'Add '+(3-intents.length)+' more':'Keep to 5',CAR_STATUS_STYLE.partial),carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setEditIntent({});}},"+ Add"))),
       intents.length?carH("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:8}},intents.map(function(i){return carH("li",{key:i.id,style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start',padding:'10px 12px',border:'1px solid #1e3060',borderRadius:8,background:'#0d1b3e',flexWrap:'wrap'}},carH("span",{style:{flex:'1 1 260px',fontSize:14,lineHeight:1.5}},i.text),carH("div",{style:{display:'flex',gap:6}},carChip(i.track?CAR_TRACK_SHORT[i.track]:'Both tracks'),carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setEditIntent(i);}},"Edit")));})):carH("div",{style:CAR_MUTED},"3–5 intents, exported to PIES each quarter.")),
     editRung&&carH(CarRungModal,{rung:editRung,busy:busy,onClose:function(){setEditRung(null);},onSave:function(f){post('career_save_rung',{rung:f}).then(function(ok){if(ok)setEditRung(null);});},onDelete:function(id){if(confirm('Delete this rung?'))post('career_delete_rung',{id:id}).then(function(ok){if(ok)setEditRung(null);});}}),
-    editNs&&carH(CarNorthStarModal,{ns:ns,busy:busy,onClose:function(){setEditNs(false);},onSave:function(v){post('career_save_northstar',{northstar:v}).then(function(ok){if(ok)setEditNs(false);});}}),
+    editNs&&carH(CarConstraintsModal,{values:cv,busy:busy,onClose:function(){setEditNs(false);},onSave:function(v){post('career_save_constraints',{constraints:v}).then(function(ok){if(ok)setEditNs(false);});}}),
     editIntent&&carH(CarIntentModal,{intent:editIntent,busy:busy,onClose:function(){setEditIntent(null);},onSave:function(f){post('career_save_intent',{intent:f}).then(function(ok){if(ok)setEditIntent(null);});},onDelete:function(id){if(confirm('Delete this intent?'))post('career_delete_intent',{id:id}).then(function(ok){if(ok)setEditIntent(null);});}}));
 }
 
@@ -5540,7 +5544,7 @@ function CarMarket({data,post,busy,apiUrl,apiToken}){
   var[err,setErr]=React.useState('');
   React.useEffect(function(){apiGet(apiUrl,apiToken,{action:'career_pipeline'}).then(setPipe).catch(function(e){setErr(e.message);});},[data.package&&data.package.id,data.package&&data.package.base]);// eslint-disable-line react-hooks/exhaustive-deps
   var pkg=data.package,est=data.packageEst;
-  var floor=(data.northstar||{}).compFloor||{};
+  var cv=(data.constraints||{}).values||{};
   var bench=(pipe&&pipe.benchmarks)||[];
   var priced=((pipe&&pipe.rows)||[]).filter(function(r){return r.market;}).slice().reverse().slice(0,15);
   function fig(label,v){return carH("div",{key:label},carH("p",{style:CAR_LABEL},label),carH("div",{className:'car-num',style:{fontSize:16}},v));}
@@ -5550,7 +5554,7 @@ function CarMarket({data,post,busy,apiUrl,apiToken}){
     carH("section",{className:'car-package',style:CAR_CARD},
       carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}},carH("h3",{style:{margin:0,fontSize:16}},"Current package"+(pkg&&pkg.asOf?' · as of '+pkg.asOf:'')),carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setEdit(true);}},pkg?'Update':'+ Add')),
       est?carH("div",{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,140px),1fr))',gap:12}},fig('Base',carMoney(est.base)),fig('Bonus target',carMoney(est.bonus)),fig('Equity / yr',carMoney(est.equity)),fig('401(k) match',carMoney(est.match401k)),fig('Benefits',carMoney(est.benefits)),fig('Estimated total',carMoney(est.total)),fig('Unvested, forfeited',carMoney(est.forfeited))):carH("div",{style:CAR_MUTED},"Add your package: it is the baseline every match is compared with."),
-      carH("div",{style:Object.assign({},CAR_MUTED,{marginTop:10})},"Your floors: base "+carMoney(floor.base)+" · outside DC "+carMoney(floor.baseOutsideDC)+" · total "+carMoney(floor.total)+" (set in North Star)")),
+      carH("div",{style:Object.assign({},CAR_MUTED,{marginTop:10})},"Your floors: base "+carMoney(cv.baseFloor)+" · outside DC "+carMoney(cv.baseFloorOutsideDC)+" · total "+carMoney(cv.totalFloor)+" (from the job agent’s Settings)")),
     carH("section",{style:CAR_CARD},carH("h3",{style:{margin:'0 0 6px',fontSize:16}},"Matches against your package"),carH("p",{style:Object.assign({},CAR_MUTED,{margin:'0 0 10px'})},"The posted midpoint with your bonus target, match and benefits, and no equity. The first year also loses unvested equity and this year’s bonus."),
       !pipe&&!err?carH("div",{className:"loading-text"},"Loading matches…"):priced.length?carH("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:8}},priced.map(function(m){var mk=m.market;return carH("li",{key:m.row,className:'car-priced',style:{display:'flex',gap:10,justifyContent:'space-between',alignItems:'flex-start',padding:'10px 12px',border:'1px solid #1e3060',borderRadius:8,background:'#0d1b3e',flexWrap:'wrap'}},carH("div",{style:{flex:'1 1 280px',minWidth:0}},carH("strong",null,m.title),carH("span",{style:CAR_MUTED},' · '+m.company),carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12,marginTop:4})},m.salaryRange+' · '+carMarketLine(mk)+(mk.firstYearVsTotal!==undefined?' · first year '+carSigned(mk.firstYearVsTotal):''))),carChip(CAR_MARKET_WORD[mk.verdict]||mk.verdict,CAR_STATUS_STYLE[CAR_MARKET_STATUS[mk.verdict]]));})):carH("div",{style:CAR_MUTED},"No match with a stated salary range yet.")),
     carH("section",{style:CAR_CARD},carH("h3",{style:{margin:'0 0 6px',fontSize:16}},"Benchmarks by level and track"),carH("p",{style:Object.assign({},CAR_MUTED,{margin:'0 0 10px'})},"Median posted ranges from every match with stated pay, recomputed each time you open this."),
