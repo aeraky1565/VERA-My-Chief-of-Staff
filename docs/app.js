@@ -4165,7 +4165,7 @@ function CarPackageModal({pkg,busy,onSave,onClose}){
     carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},carH("div",{style:{flex:'1 1 150px'}},carField('As of',carInput(f.asOf,set('asOf'),{type:'month'}))),carH("div",{style:{flex:'1 1 150px'}},carField('Employer',carInput(f.employer,set('employer')))),carH("div",{style:{flex:'1 1 150px'}},carField('Title',carInput(f.title,set('title'))))),
     carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('Base','base'),num('Bonus target %','bonusPct'),num('Bonus target $','bonusAmt')),
     carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('Equity per year','equityPerYr'),num('Unvested, forfeited on leaving','unvestedForfeited')),
-    carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('401(k) match per year','match401k'),num('Benefits value per year','benefitsValue')),
+    carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('401(k) match (% of base, or $ a year)','match401k'),num('Benefits value per year','benefitsValue')),
     carField('Key benefits (comma-separated)',carInput(f.keyBenefits,set('keyBenefits'),{placeholder:'e.g. Medical, Vision, 401K 6% Match, HSA Contribution $1,400'})),
     carField('Notes',carInput(f.notes,set('notes'))),
     carActions(busy||!String(f.base).trim(),function(){onSave(f);},onClose)));
@@ -4194,7 +4194,7 @@ function CarMarket({data,post,busy,apiUrl,apiToken}){
           tile('Base',carK(est.base),'#4ade80',carMoney(est.base)),
           tile('Bonus',isFinite(bonusPct)&&bonusPct>0?bonusPct+'%':carK(est.bonus),'#e2b54a',isFinite(bonusPct)&&bonusPct>0?carK(est.bonus)+' target':'target'),
           tile('Equity / yr',carK(est.equity),'#b48cf0'),
-          tile('401(k) match',carK(est.match401k),'#7cb8ff'),
+          tile('401(k) match',est.matchPct?est.matchPct+'%':carK(est.match401k),'#7cb8ff',est.matchPct?carK(est.match401k)+' a year':null),
           tile('Benefits value',carK(est.benefits),'#7fd0e6'),
           tile('Unvested',carK(est.forfeited),'#f28b89','forfeited on leaving')),
         (pkg.keyBenefits||[]).length>0&&carH("div",{style:{marginTop:12}},carH("p",{style:CAR_LABEL},"Key benefits"),carH("div",{className:'car-benefits',style:{display:'flex',gap:6,flexWrap:'wrap'}},pkg.keyBenefits.map(function(b,ix){return carH("span",{key:ix,className:'car-benefit',style:{display:'inline-flex',alignItems:'center',padding:'4px 12px',borderRadius:999,fontSize:13,background:'#16264a',border:'1px solid #2a3f73',color:'#c9cfe3'}},b);})))):carH("div",{style:CAR_MUTED},"Add your package: it is the baseline every match is compared with."),

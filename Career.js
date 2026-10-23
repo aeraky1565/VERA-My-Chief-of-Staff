@@ -1561,8 +1561,12 @@ function carEstTotal_(pkg) {
   if (base === null) return null;
   var bonusAmt = carNum_(pkg.bonusAmt);
   var bonus = bonusAmt !== null ? bonusAmt : base * (carNum_(pkg.bonusPct) || 0) / 100;
-  var equity = carNum_(pkg.equityPerYr) || 0, match = carNum_(pkg.match401k) || 0, benefits = carNum_(pkg.benefitsValue) || 0;
-  return { base: base, bonus: bonus, equity: equity, match401k: match, benefits: benefits,
+  var equity = carNum_(pkg.equityPerYr) || 0, benefits = carNum_(pkg.benefitsValue) || 0;
+  // A 401(k) match of 100 or less is a percentage of base (the usual "6%"); above that, dollars a year.
+  var matchRaw = carNum_(pkg.match401k) || 0;
+  var matchPct = matchRaw > 0 && matchRaw <= 100 ? matchRaw : null;
+  var match = matchPct !== null ? base * matchPct / 100 : matchRaw;
+  return { base: base, bonus: bonus, equity: equity, match401k: match, matchPct: matchPct, benefits: benefits,
            forfeited: carNum_(pkg.unvestedForfeited) || 0, total: base + bonus + equity + match + benefits };
 }
 

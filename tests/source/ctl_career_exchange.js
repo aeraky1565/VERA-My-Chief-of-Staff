@@ -27,6 +27,7 @@ const CONTROLS = [
   ['a bonus amount is ignored', b => ({ [C]: swap(b[C], 'var bonus = bonusAmt !== null ? bonusAmt : base', 'var bonus = base') })],
   ['the first year forgets the forfeited equity', b => ({ [C]: swap(b[C], 'out.estTotalMid - est.forfeited - Math.round(est.bonus)', 'out.estTotalMid - Math.round(est.bonus)') })],
   ['benchmarks count matches with no stated pay', b => ({ [C]: swap(b[C], '    if (!range) return;\n    var level', '    if (!range) range = [0, 0];\n    var level') })],
+  ['a 401(k) % is read as dollars', b => ({ [C]: swap(b[C], 'var matchPct = matchRaw > 0 && matchRaw <= 100 ? matchRaw : null;', 'var matchPct = null;') })],
   ['key benefits split on every comma', b => ({ [C]: swap(b[C], ".split(/,(?!\\d{3}\\b)/)", ".split(/,/)") })],
   ['an older Package tab never gains the new column', b => ({ [C]: swap(b[C], '    if (add.length) sheet.getRange(1, sheet.getLastColumn() + 1, 1, add.length).setValues([add]);\n', '') })],
   ['any notes are moved into Key Benefits', b => ({ [C]: swap(b[C], "!pkg.keyBenefits.length && pkg.notes.trim() === v1)", "!pkg.keyBenefits.length && pkg.notes.trim())") })],

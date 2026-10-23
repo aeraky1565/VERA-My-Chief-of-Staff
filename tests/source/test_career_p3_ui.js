@@ -36,7 +36,7 @@ const FX = {
   ],
   sponsorGap: { fpa: false, pmo: true },
   package: { id: 'p1', asOf: '2026-10', employer: 'Exampleco', base: 150000, bonusPct: 10, keyBenefits: ['Medical', 'Vision', 'HSA Contribution $1,400'] },
-  packageEst: { base: 150000, bonus: 15000, equity: 20000, match401k: 6000, benefits: 14000, forfeited: 30000, total: 205000 },
+  packageEst: { base: 150000, bonus: 15000, equity: 20000, match401k: 6000, matchPct: 4, benefits: 14000, forfeited: 30000, total: 205000 },
   brand: { positioning: { core: 'Finance leader who runs portfolios', fpa: '', pmo: '' }, linkedin: [], resumes: [], staticProfile: '' },
   exchange: {
     log: [{ id: 'x1', date: '2026-10-02', direction: 'in', payload: 'PIES-BRIEF', version: 'v1', period: '2026-09', summary: '3 evidence, 1 readiness, 1 calibration' }],
@@ -142,6 +142,7 @@ const saveModal = page => page.evaluate(() => Array.from(document.querySelectorA
       const col = l => { const t = Array.from(document.querySelectorAll('#carprobe .car-tile')).find(n => n.querySelector('p').textContent === l); return getComputedStyle(t.querySelector('.car-num')).color; };
       return col('Base') === 'rgb(74, 222, 128)' && col('Bonus') === 'rgb(226, 181, 74)' && col('Equity / yr') === 'rgb(180, 140, 240)';
     }));
+    check('a 401(k) match entered as a % shows as one, with its dollars under it', await page.evaluate(() => { const t = Array.from(document.querySelectorAll('#carprobe .car-tile')).find(n => n.querySelector('p').textContent === '401(k) match'); return t && t.querySelector('.car-num').textContent === '4%' && /\$6k a year/.test(t.textContent); }));
     check('key benefits show as pills', J(await page.$$eval('#carprobe .car-benefit', n => n.map(x => x.textContent))) === J(['Medical', 'Vision', 'HSA Contribution $1,400']));
     check('each priced match shows its verdict and first-year cost', t.includes('Invented Corp') && t.includes('Step up') && t.includes('first year −$21,000'));
     check('benchmarks show median ranges by track and level', t.includes('$160,000') && t.includes('$185,000') && t.includes('Associate Director'));
