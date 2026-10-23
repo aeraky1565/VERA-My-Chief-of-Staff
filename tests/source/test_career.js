@@ -176,6 +176,9 @@ console.log('\na rung’s typical pay');
   const head = S.ss.sheets['Career Ladder'].rows[0];
   const r = run(S, 'carReadLadder_()').find(x => x.id === 'CR-1');
   check('an older Ladder tab gains a Pay Target column, at the end', head[head.length - 1] === 'Pay Target' && head.length === 15, JSON.stringify(head));
+  // Controls run without a browser in CI, so the folded default is checked in the source too
+  // (test_career_ui drives the toggle itself).
+  check('a rung’s details start folded on the dashboard', /function CarRungCard\(\{[^)]*\}\)\{\n  var\[open,setOpen\]=React\.useState\(false\);/.test(read('docs/app.js')));
   check('a rung keeps its target date, what changes and typical pay', r.targetDate === '2027-10' && r.whatChanges === 'Owns a plan' && r.payTarget === 'Base ~$185–230K', JSON.stringify(r));
 }
 
