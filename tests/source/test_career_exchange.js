@@ -144,6 +144,34 @@ console.log('\nMarket');
   check('the Pipeline carries the benchmarks', p.benchmarks.length >= 2 && p.packageEst.base === 170000);
 }
 
+console.log('\nthe current work arrangement');
+{
+  const S = full();
+  run(S, 'webCareerSavePackage_({ package: { asOf: "2026-10", base: "150000", workMode: "Hybrid", officeDays: "3", commuteMinutes: "45" } })');
+  const pk = run(S, 'carReadPackage_()');
+  check('work mode, office days and commute are saved and read back', pk.workMode === 'Hybrid' && pk.officeDays === 3 && pk.commuteMinutes === 45, J(pk));
+  check('the weekly commute is both ways on every office day, to the half hour', run(S, 'carCommuteWeek_(carReadPackage_())') === 4.5 &&
+        run(S, 'carCommuteWeek_({ commuteMinutes: 40, officeDays: 3 })') === 4 && run(S, 'carCommuteWeek_({ commuteMinutes: 45 })') === null);
+  check('an unknown work mode is refused', /Remote, Hybrid or Onsite/.test(run(S, 'webCareerSavePackage_({ package: { base: "1", workMode: "Sometimes" } })').error));
+  check('office days must be 0–7', /0 to 7/.test(run(S, 'webCareerSavePackage_({ package: { base: "1", officeDays: "9" } })').error));
+  check('commute must be whole minutes', /whole minutes/.test(run(S, 'webCareerSavePackage_({ package: { base: "1", commuteMinutes: "about an hour" } })').error));
+  const g = run(S, 'webGetCareer_()');
+  check('Chat’s work style shows the mode and office days', g.position.workStyle === 'Hybrid · 3 days in office', g.position.workStyle);
+  check('GET career carries the weekly commute', g.commuteWeek === 4.5);
+}
+{
+  // The v1 Work Style seeds the work mode once, and never over a value already set.
+  const S = sandbox({ Date: FixedDate });
+  run(S, 'carMigrateV1_()'); run(S, 'carEnsureMigrated_()');
+  check('the v1 Work Style seeds the package work mode', run(S, 'carReadPackage_()').workMode === 'Hybrid', J(run(S, 'carReadPackage_()')));
+  const T = sandbox({ Date: FixedDate });
+  run(T, 'carMigrateV1_()');
+  run(T, 'webCareerSavePackage_({ package: { asOf: carTodayYm_(), base: "150000", workMode: "Onsite" } })');
+  run(T, 'carEnsureMigrated_()');
+  check('…but never over a work mode already set', run(T, 'carReadPackage_()').workMode === 'Onsite');
+  check('…and only once', run(T, 'carSeedWorkMode_()').skipped === true);
+}
+
 console.log('\nkey benefits: the new column and the v1 Benefits');
 {
   // A Package tab from before the Key Benefits column, holding the v1 Benefits in Notes.
@@ -154,7 +182,7 @@ console.log('\nkey benefits: the new column and the v1 Benefits');
   run(S, 'carMigrateV1_()');
   run(S, 'carEnsureMigrated_()');
   const head = S.ss.sheets['Career Package'].rows[0];
-  check('an older Package tab gains the Key Benefits column, at the end', head[head.length - 1] === 'Key Benefits' && head.length === 13, J(head));
+  check('an older Package tab gains the new columns, at the end', head.slice(12).join() === 'Key Benefits,Work Mode,Office Days,Commute Minutes' && head.length === 16, J(head));
   const pk = run(S, 'carReadPackage_()');
   check('the v1 Benefits move from Notes into Key Benefits', J(pk.keyBenefits) === '["Health"]' && pk.notes === '', J(pk));
   check('…once', run(S, 'carMigrateKeyBenefits_()').skipped === true);

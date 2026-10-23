@@ -35,7 +35,8 @@ const FX = {
     { id: 'c2', name: 'Talent partner', title: '', org: 'Madeup LLC', role: 'recruiter', tracks: [], warmth: 'cold', lastTouch: '', source: 'agent' },
   ],
   sponsorGap: { fpa: false, pmo: true },
-  package: { id: 'p1', asOf: '2026-10', employer: 'Exampleco', base: 150000, bonusPct: 10, keyBenefits: ['Medical', 'Vision', 'HSA Contribution $1,400'] },
+  package: { id: 'p1', asOf: '2026-10', employer: 'Exampleco', base: 150000, bonusPct: 10, keyBenefits: ['Medical', 'Vision', 'HSA Contribution $1,400'], workMode: 'Hybrid', officeDays: 3, commuteMinutes: 45 },
+  commuteWeek: 4.5,
   packageEst: { base: 150000, bonus: 15000, equity: 20000, match401k: 6000, matchPct: 4, benefits: 14000, forfeited: 30000, total: 205000 },
   brand: { positioning: { core: 'Finance leader who runs portfolios', fpa: '', pmo: '' }, linkedin: [], resumes: [], staticProfile: '' },
   exchange: {
@@ -143,6 +144,7 @@ const saveModal = page => page.evaluate(() => Array.from(document.querySelectorA
       return col('Base') === 'rgb(74, 222, 128)' && col('Bonus') === 'rgb(226, 181, 74)' && col('Equity / yr') === 'rgb(180, 140, 240)';
     }));
     check('a 401(k) match entered as a % shows as one, with its dollars under it', await page.evaluate(() => { const t = Array.from(document.querySelectorAll('#carprobe .car-tile')).find(n => n.querySelector('p').textContent === '401(k) match'); return t && t.querySelector('.car-num').textContent === '4%' && /\$6k a year/.test(t.textContent); }));
+    check('the work arrangement shows as pills, with the weekly commute', J(await page.$$eval('#carprobe .car-work-pill', n => n.map(x => x.textContent))) === J(['Hybrid', '3 days in office', '45 min commute each way · 4.5 h a week']));
     check('key benefits show as pills', J(await page.$$eval('#carprobe .car-benefit', n => n.map(x => x.textContent))) === J(['Medical', 'Vision', 'HSA Contribution $1,400']));
     check('each priced match shows its verdict and first-year cost', t.includes('Invented Corp') && t.includes('Step up') && t.includes('first year −$21,000'));
     check('benchmarks show median ranges by track and level', t.includes('$160,000') && t.includes('$185,000') && t.includes('Associate Director'));
@@ -152,10 +154,12 @@ const saveModal = page => page.evaluate(() => Array.from(document.querySelectorA
     await modalField(page, 'Unvested, forfeited on leaving', '25000');
     check('the dialog shows the key benefits as a list to edit', await page.evaluate(() => { const g = Array.from(document.querySelectorAll('#carprobe .modal .form-group')).find(n => /Key benefits/.test(n.querySelector('label').textContent)); return g && g.querySelector('input').value === 'Medical, Vision, HSA Contribution $1,400'; }));
     await modalField(page, 'Key benefits (comma-separated)', 'Medical, Dental');
+    await modalField(page, 'Days in office per week', '2');
+    await modalField(page, 'Commute, one way (minutes)', '50');
     await saveModal(page);
     await wait(120);
     const pk = ((await posts(page)).find(x => x.action === 'career_save_package') || {}).package || {};
-    check('updating the package posts its figures and benefits', pk.base === '158000' && pk.unvestedForfeited === '25000' && pk.asOf === '2026-10' && pk.keyBenefits === 'Medical, Dental', JSON.stringify(pk));
+    check('updating the package posts its figures and benefits', pk.base === '158000' && pk.unvestedForfeited === '25000' && pk.asOf === '2026-10' && pk.keyBenefits === 'Medical, Dental' && pk.workMode === 'Hybrid' && pk.officeDays === '2' && pk.commuteMinutes === '50', JSON.stringify(pk));
     check('Market: no sideways scroll', await noScroll(page));
 
     // ---- Brand

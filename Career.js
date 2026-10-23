@@ -26,7 +26,9 @@ var CAR_LADDER_HEADERS_   = ['ID', 'Track', 'Order', 'Title', 'Level', 'Company'
 var CAR_CRITERIA_HEADERS_ = ['ID', 'Group', 'Name', 'Meaning', 'Status Override', 'Override Note', 'Source', 'Active', 'Added'];
 var CAR_EVIDENCE_HEADERS_ = ['ID', 'Month', 'Statement', 'Scale', 'AD Scale', 'Criterion IDs', 'Source', 'Added', 'Wins Bank Sent'];
 var CAR_INTENT_HEADERS_   = ['ID', 'Intent', 'Track', 'Status', 'Order', 'Set Quarter', 'Updated'];
-var CAR_PACKAGE_HEADERS_  = ['ID', 'As Of', 'Employer', 'Title', 'Base', 'Bonus Pct', 'Bonus Amt', 'Equity Per Yr', 'Unvested Forfeited', 'Match 401k', 'Benefits Value', 'Notes', 'Key Benefits'];
+var CAR_PACKAGE_HEADERS_  = ['ID', 'As Of', 'Employer', 'Title', 'Base', 'Bonus Pct', 'Bonus Amt', 'Equity Per Yr', 'Unvested Forfeited', 'Match 401k', 'Benefits Value', 'Notes', 'Key Benefits',
+  'Work Mode', 'Office Days', 'Commute Minutes'];
+var CAR_WORK_MODES_ = ['Remote', 'Hybrid', 'Onsite'];
 var CAR_STATE_HEADERS_    = ['Key', 'Value', 'Updated'];
 
 var CAR_TRACKS_ = [
@@ -396,7 +398,8 @@ function carReadPackage_() {
            title: String(r.Title || ''), base: r.Base, bonusPct: r['Bonus Pct'], bonusAmt: r['Bonus Amt'],
            equityPerYr: r['Equity Per Yr'], unvestedForfeited: r['Unvested Forfeited'],
            match401k: r['Match 401k'], benefitsValue: r['Benefits Value'], notes: String(r.Notes || ''),
-           keyBenefits: carSplitBenefits_(r['Key Benefits']) };
+           keyBenefits: carSplitBenefits_(r['Key Benefits']), workMode: String(r['Work Mode'] || ''),
+           officeDays: carNum_(r['Office Days']), commuteMinutes: carNum_(r['Commute Minutes']) };
 }
 
 /** The v1 Career Network, read once by carMigrateContacts_. */
@@ -613,11 +616,30 @@ function carMigrateKeyBenefits_() {
   return { moved: moved };
 }
 
+/**
+ * Once: the v1 Position's Work Style (kept in the North Star profile) names the
+ * current work mode; it seeds the package's Work Mode if that is blank.
+ */
+function carSeedWorkMode_() {
+  if (carStateGet_('work_mode_v1')) return { skipped: true };
+  var ws = String(((carStateGet_('northstar') || {}).profile || {}).workStyle || '').toLowerCase();
+  var mode = /hybrid/.test(ws) ? 'Hybrid' : /remote/.test(ws) ? 'Remote' : /onsite|on-site|office/.test(ws) ? 'Onsite' : '';
+  var pkg = carReadPackage_();
+  var seeded = 0;
+  if (mode && pkg && !pkg.workMode) {
+    carUpsert_(carSheet_(TABS.CAREER_PACKAGE, CAR_PACKAGE_HEADERS_), { ID: pkg.id, 'Work Mode': mode }, 'CP');
+    seeded = 1;
+  }
+  carStateSet_('work_mode_v1', { at: new Date().toISOString(), seeded: seeded });
+  return { seeded: seeded };
+}
+
 /** Migration, then the baseline import once its doc is configured. Safe to call often. */
 function carEnsureMigrated_() {
   var res = carMigrateV1_();
   carMigrateContacts_();
   carMigrateKeyBenefits_();
+  carSeedWorkMode_();
   try { carImportBaseline_(); } catch (e) { Logger.log('Career baseline import: ' + e.message); }
   return res;
 }
@@ -651,14 +673,15 @@ function webGetCareer_() {
     winsBankConfigured: !!String(getConfigValues()['career_wins_bank_doc_id'] || '').trim(),
     suggestions: carReadSuggestions_(),
     contacts: contacts, sponsorGap: carSponsorGap_(contacts, CAR_TRACKS_),
-    packageEst: carEstTotal_(pkg),
+    packageEst: carEstTotal_(pkg), commuteWeek: carCommuteWeek_(pkg),
     brand: Object.assign(carBrandDefaults_(), carStateGet_('brand') || {}),
     exchange: { log: xlog.slice(-20).reverse(), overdue: carExchangeOverdue_(xlog, new Date()),
                 briefLast: carStateGet_('pies_brief_last') },
     piesReadiness: carStateGet_('pies_readiness'),
     // v1 fields Chat.js reads
     position: { title: current.title || '', company: current.company || '', startDate: current.start || '',
-                department: profile.department || '', workStyle: profile.workStyle || '',
+                department: profile.department || '',
+                workStyle: (pkg && pkg.workMode ? pkg.workMode + (pkg.officeDays !== null ? ' · ' + pkg.officeDays + ' days in office' : '') : '') || profile.workStyle || '',
                 focusAreas: profile.focusAreas || '', notes: profile.notes || '' },
     goals: intents.map(function(i) {
       return { id: i.id, title: i.text, horizon: i.track || 'intent', category: i.track || '',
@@ -1650,11 +1673,24 @@ function carBenchmarks_(rows) {
   });
 }
 
+/** Pure: hours a week spent commuting (both ways, every office day), to the half hour; null when unknown. */
+function carCommuteWeek_(pkg) {
+  var m = pkg && carNum_(pkg.commuteMinutes), d = pkg && carNum_(pkg.officeDays);
+  if (m === null || m === undefined || d === null || d === undefined) return null;
+  return Math.round(m * 2 * d / 60 * 2) / 2;
+}
+
 /** Save the package. A new "as of" month adds a row (the history); the same month updates it. */
 function webCareerSavePackage_(body) {
   var p = body.package || {};
   var asOf = carMonthKey_(p.asOf) || carTodayYm_();
   if (carNum_(p.base) === null) return { ok: false, error: 'The package needs a base salary.' };
+  var mode = String(p.workMode || '').trim();
+  if (mode && CAR_WORK_MODES_.indexOf(mode) === -1) return { ok: false, error: 'Work mode is Remote, Hybrid or Onsite.' };
+  var whole = function(v, max) { var s = String(v == null ? '' : v).trim(); return s === '' ? '' : /^\d+$/.test(s) && Number(s) <= max ? Number(s) : null; };
+  var days = whole(p.officeDays, 7), commute = whole(p.commuteMinutes, 300);
+  if (days === null) return { ok: false, error: 'Days in office is a whole number from 0 to 7.' };
+  if (commute === null) return { ok: false, error: 'Commute is whole minutes, one way, up to 300.' };
   var sheet = carSheet_(TABS.CAREER_PACKAGE, CAR_PACKAGE_HEADERS_);
   var last = carReadPackage_();
   var rec = { 'As Of': asOf, Employer: p.employer || '', Title: p.title || '', Base: carNum_(p.base),
@@ -1665,7 +1701,8 @@ function webCareerSavePackage_(body) {
               'Match 401k': carNum_(p.match401k) === null ? '' : carNum_(p.match401k),
               'Benefits Value': carNum_(p.benefitsValue) === null ? '' : carNum_(p.benefitsValue), Notes: p.notes || '',
               'Key Benefits': (Array.isArray(p.keyBenefits) ? p.keyBenefits : carSplitBenefits_(p.keyBenefits))
-                .map(function(x) { return String(x).trim().slice(0, 80); }).filter(String).slice(0, 20).join(', ') };
+                .map(function(x) { return String(x).trim().slice(0, 80); }).filter(String).slice(0, 20).join(', '),
+              'Work Mode': mode, 'Office Days': days, 'Commute Minutes': commute };
   if (last && last.asOf === asOf) rec.ID = last.id;
   return { ok: true, id: carUpsert_(sheet, rec, 'CP') };
 }
