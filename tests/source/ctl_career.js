@@ -18,6 +18,7 @@ const C = 'Career.js';
 const TEST = 'test_career.js';
 
 const CONTROLS = [
+  ['the ladder sorts by when a rung was added', b => ({ [C]: swap(b[C], '  }).sort(carRungCompare_);', '  }).sort(function(a, b) { return a.order - b.order; });') })],
   // ---- readiness rules ---------------------------------------------------------
   ['Proven counts evidence of any age', b => ({ [C]: swap(b[C], 'var CAR_PROVEN_WINDOW_MONTHS_ = 36;', 'var CAR_PROVEN_WINDOW_MONTHS_ = 1200;') })],
   ['Proven no longer needs Associate Director scale', b => ({ [C]: swap(b[C], '    if (!ev.adScale) return false;\n', '') })],

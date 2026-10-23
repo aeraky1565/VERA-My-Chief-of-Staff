@@ -166,6 +166,23 @@ console.log('\nthe baseline import');
   check('with no Wins bank doc configured it waits, and says so', run(N, 'carImportBaseline_()').pending === true);
 }
 
+console.log('\nrole history is in the order it happened');
+{
+  const S = sandbox();
+  run(S, 'carMigrateV1_()');
+  // Two earlier roles added after the ladder already had a next step and a future one.
+  run(S, 'webCareerSaveRung_({ rung: { title: "Invented Manager", company: "Priorco", status: "reached", start: "2016", end: "2022" } })');
+  run(S, 'webCareerSaveRung_({ rung: { title: "Invented Intern", company: "Priorco", status: "reached", start: "2014", end: "2015" } })');
+  const L = run(S, 'carReadLadder_()');
+  const titles = L.map(r => r.title);
+  const hist = L.filter(r => r.status === 'reached').map(r => r.title);
+  check('reached roles sort by start date, whenever they were added', JSON.stringify(hist) === JSON.stringify(['Engineer', 'Invented Intern', 'Planning Manager', 'Invented Manager']), JSON.stringify(hist));
+  check('…then the current role, then the steps ahead in their own order', titles.indexOf('Senior Manager, Planning') > titles.indexOf('Planning Manager') &&
+        L.slice(-3).map(r => r.status).join() === 'next,next,future', JSON.stringify(L.map(r => r.status)));
+  check('a start like "Q4 2024" or "2025-01" is read by its year and month', run(S, 'carRungStartKey_("Q4 2024")') > run(S, 'carRungStartKey_("2024-03")') &&
+        run(S, 'carRungStartKey_("2024-03")') > run(S, 'carRungStartKey_("2024")') && run(S, 'carRungStartKey_("")') === null);
+}
+
 // ============ what Chat and the dashboard read ===================================
 console.log('\nGET career, and the fields Chat reads');
 {

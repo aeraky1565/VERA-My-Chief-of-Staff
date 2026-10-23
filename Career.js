@@ -331,7 +331,35 @@ function carReadLadder_() {
              start: carDateText_(r.Start), end: carDateText_(r.End), targetDate: carDateText_(r['Target Date']),
              whatChanges: String(r['What Changes'] || ''), criteriaPreview: String(r['Criteria Preview'] || ''),
              notes: String(r.Notes || '') };
-  }).sort(function(a, b) { return a.order - b.order; });
+  }).sort(carRungCompare_);
+}
+
+var CAR_RUNG_RANK_ = { reached: 0, current: 1, next: 2, future: 3 };
+
+/** "2015", "2025-01", "Q4 2024", "present" → a sortable number (year + fraction); null when there's no year. */
+function carRungStartKey_(s) {
+  var t = String(s || '');
+  var y = t.match(/(19|20)\d{2}/);
+  if (!y) return null;
+  var m = t.match(/(?:19|20)\d{2}-(\d{1,2})/), q = t.match(/Q([1-4])/i);
+  var month = m ? Number(m[1]) : q ? (Number(q[1]) - 1) * 3 + 1 : 1;
+  return Number(y[0]) + (month - 1) / 12;
+}
+
+/**
+ * Pure: role history in the order it happened, then the current role, then the
+ * steps ahead in their own order. A role added later but started earlier sorts
+ * where it belongs; one with no start date keeps its place by Order.
+ */
+function carRungCompare_(a, b) {
+  var ra = CAR_RUNG_RANK_[a.status], rb = CAR_RUNG_RANK_[b.status];
+  ra = ra === undefined ? 4 : ra; rb = rb === undefined ? 4 : rb;
+  if (ra !== rb) return ra - rb;
+  if (a.status === 'reached') {
+    var ka = carRungStartKey_(a.start), kb = carRungStartKey_(b.start);
+    if (ka !== null && kb !== null && ka !== kb) return ka - kb;
+  }
+  return a.order - b.order;
 }
 
 function carReadCriteria_() {
