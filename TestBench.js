@@ -773,6 +773,12 @@ function tbCareer() {
     var v = data.readiness[t];
     Logger.log('Readiness ' + t + ': ' + v.verdict + ' ' + v.pct + '% (' + v.gaps + ' gap(s), ' + v.partials + ' partial)');
   });
+  var gap = Object.keys(data.sponsorGap).filter(function(t) { return data.sponsorGap[t]; });
+  Logger.log('Network: ' + data.contacts.length + ' contact(s); no sponsor on: ' + (gap.join(', ') || 'none'));
+  Logger.log('Package: ' + (data.packageEst ? 'set, as of ' + data.package.asOf : 'not set'));
+  Logger.log('Exchange: ' + data.exchange.log.length + ' logged; brief ' +
+             (data.exchange.overdue.brief.overdue ? 'OVERDUE' : 'ok') + ', intents ' +
+             (data.exchange.overdue.intents.overdue ? 'OVERDUE' : 'ok'));
 }
 
 function tbNetWorth() {

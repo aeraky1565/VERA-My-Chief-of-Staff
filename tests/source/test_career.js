@@ -176,7 +176,9 @@ console.log('\nGET career, and the fields Chat reads');
   check('Chat’s position: the current role', g.position.title === 'Senior Manager, Planning' && g.position.company === 'Exampleco' && g.position.workStyle === 'Hybrid');
   check('Chat’s goals: the intents, with a status', g.goals.length === 2 && g.goals.every(x => x.title && x.status));
   check('Chat’s wins: recent evidence', g.wins.length === 1 && g.wins[0].win === 'Shipped the forecast model');
-  check('the v1 Network is still read', g.network.length === 1 && g.network[0].name === 'Pat Example');
+  check('the v1 Network becomes contacts, with its relationship as a role', g.contacts.length === 1 && g.contacts[0].name === 'Pat Example' &&
+        g.contacts[0].role === 'mentor' && g.contacts[0].title === 'VP' && g.contacts[0].org === 'Exampleco');
+  check('…and the v1 Network tab is then hidden, never deleted', S.ss.getSheetByName('Career Network').hidden && S.ss.deleted.length === 0);
 }
 
 console.log('\nthe writers Chat calls keep their names and parameters');

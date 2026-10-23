@@ -122,12 +122,14 @@ The React dashboard groups functionality into tabs and sub-tabs. All data is fet
 | **People** | Important Dates | Birthdays, anniversaries, meaningful dates with lead-time flagging |
 | **People** | Gift Ideas | Per-person gift idea lists |
 | **People** | Interests | Shared Interest Ledger (Ahmed + Victoria preferences) |
-| **Career** | Profile | Current role snapshot, work style, focus areas |
-| **Career** | Goals | Long-horizon career targets (1yr/3yr/5yr/10yr) |
-| **Career** | Wins | Achievement log with impact notes |
-| **Career** | Development | Skills, courses, focus areas |
-| **Career** | Network | Professional relationships + last contact |
-| **Career** | Progression | Career timeline |
+| **Career** | North Star | A career ladder with tracks (FP&A, PMO): role history, current role, next steps; comp floors, deal-breakers, 3–5 intents |
+| **Career** | Readiness | 13 evidence-backed criteria (shared core + per track), a verdict per track, a role check against a pasted JD |
+| **Career** | Evidence | What can be proved, tagged to criteria; new items go to a dated Wins bank tab monthly |
+| **Career** | Pipeline | The job agent's matches, read live from its Tracker; triage writes the Status cell |
+| **Career** | Network | Contacts with a role (sponsor, mentor …), tracks, warmth, last touch; no-sponsor gap per track |
+| **Career** | Market | The current package and estimated total; each match against it; median ranges by level and track |
+| **Career** | Brand | Positioning per track, LinkedIn versions, resume links, the static profile |
+| **Career** | Exchange | The only PIES ↔ VERA bridge: paste PIES-BRIEF / ROLE-MATCH in, copy VERA-INTENTS / MATCHER-CONTEXT out |
 | **Explore** | Goals | Yearly goals Kanban (To Do / In Progress / Done) |
 | **Explore** | Ideas | Braindump repo with Thought Inbox and Shelve-to-idea pipeline |
 | **Explore** | Experiments | Personal experiment tracker with check-in log |
@@ -1923,16 +1925,22 @@ The `Gift People` tab holds one row per person (default: Ahmed, Victoria). The `
 
 ## Career Module
 
-The Career tab in the dashboard surfaces six sub-sections, each backed by a dedicated sheet tab:
+The Career tab (issue #216, `Career.js`) answers one question per subtab: North Star, Readiness, Evidence, Pipeline, Network, Market, Brand and Exchange, plus a **How it connects** view of the three systems (PIES, VERA, the job agent) and every crossing between them. Its data lives in VERA's sheet:
 
 | Tab | Purpose |
 |-----|---------|
-| `Career Position` | Current role snapshot: title, company, department, start date, work style, focus areas |
-| `Career Goals` | Long-horizon targets with horizon (1yr/3yr/5yr/10yr), category, and status |
-| `Career Progression` | Career timeline: all prior roles with highlights |
-| `Career Development` | Skills, courses, and focus areas with target dates |
-| `Career Wins` | Achievement log: win description, impact, category, date |
-| `Career Network` | Professional contacts with relationship type and last-contact date |
+| `Career Ladder` | Rungs per track: reached / current / next / future, with company and move type |
+| `Career Criteria` | Readiness criteria: shared core + per track, with marked overrides |
+| `Career Evidence` | Evidence items tagged to criteria (manual, baseline, PIES-BRIEF) |
+| `Career Intents` | 3–5 intents, exported to PIES each quarter |
+| `Career Package` | The current comp package, one row per "as of" month |
+| `Career State` | Key/value JSON: North Star, brand, sync and import state |
+| `Career Suggestions` | Quarterly criteria suggestions from the job agent's matches |
+| `Career Contacts` | Network contacts (replaces `Career Network`) |
+| `Career Exchange Log` | Every payload pasted in or copied out |
+| `Career Role Matches` | Roles found outside the alerts, in through Exchange |
+
+The six v1 tabs (`Career Position`, `Goals`, `Progression`, `Development`, `Wins`, `Network`) were copied once and are hidden, never deleted. The job agent's sheet and the Wins bank doc are reached through the Config rows `career_alert_sheet_id` and `career_wins_bank_doc_id`; VERA writes only its own Settings cells, the Tracker's Status cell and new dated Wins bank tabs.
 
 VERA's chat interface auto-captures career wins when Ahmed mentions launches, recognitions, or positive outcomes mid-conversation. Career context (current position, active goals, recent wins) is injected into the chat system prompt for proactive coaching.
 
@@ -2036,12 +2044,17 @@ with `set_trip_briefing`; `dashboard-lite` shows it read-only.
 | Morning Routine | `MORNING_ROUTINE` | Daily checklist | Reset nightly; user + AI managed |
 | Gym Log | `GYM_LOG` | Gym session attendance | Auto-populated by GymTracker |
 | Purchase History | `PURCHASE_HISTORY` | Grocery/household purchase log | User + chat managed; AI predictions |
-| Career Position | `CAREER_POSITION` | Current role snapshot | User + chat managed |
-| Career Goals | `CAREER_GOALS` | Long-horizon career targets | User + chat managed |
-| Career Progression | `CAREER_PROGRESSION` | Career timeline | User managed |
-| Career Development | `CAREER_DEVELOPMENT` | Skills/courses/focus areas | User + chat managed |
-| Career Wins | `CAREER_WINS` | Achievement log | User + chat managed (auto-captured) |
-| Career Network | `CAREER_NETWORK` | Professional contacts | User managed |
+| Career Position … Network (v1) | `CAREER_POSITION` … `CAREER_NETWORK` | The six v1 Career tabs | Hidden after the one-time migration |
+| Career Ladder | `CAREER_LADDER` | Career ladder with tracks | Dashboard + chat managed |
+| Career Criteria | `CAREER_CRITERIA` | Readiness criteria | Dashboard managed |
+| Career Evidence | `CAREER_EVIDENCE` | Evidence items | Dashboard + chat + Exchange |
+| Career Intents | `CAREER_INTENTS` | Career intents | Dashboard + chat managed |
+| Career Package | `CAREER_PACKAGE` | Comp package history | Dashboard managed |
+| Career State | `CAREER_STATE` | Career key/value state | Auto-managed |
+| Career Suggestions | `CAREER_SUGGESTIONS` | Quarterly criteria suggestions | Nightly (Claude); adopted in the dashboard |
+| Career Contacts | `CAREER_CONTACTS` | Network contacts | Dashboard managed |
+| Career Exchange Log | `CAREER_EXCHANGE_LOG` | PIES ↔ VERA payload log | Auto-managed by Exchange |
+| Career Role Matches | `CAREER_ROLE_MATCHES` | Roles in through ROLE-MATCH | Exchange; status from the Pipeline |
 | Prescriptions | `PRESCRIPTIONS` | Medication tracker (Ahmed + Victoria) | User + chat managed |
 | Credit Cards | `CREDIT_CARDS` | Card metadata + ownership | User managed; seeded by `populateCreditCardHub()` |
 | Card Rewards | `CARD_REWARDS` | Per-card category reward rates | User managed; seeded by `populateCreditCardHub()` |
@@ -2356,21 +2369,13 @@ All requests must include `?token=YOUR_VERA_WEB_TOKEN`. All mutations use GET to
 | `purchase_history` | — | Purchase history + consumption predictions |
 | `log_purchase_run` | `items` (JSON) | Log a grocery run |
 | `purchase_suggestions` | — | Pantry auto-restock suggestions |
-| `career` | — | Full career profile (position, goals, wins, development, network, progression) |
-| `update_career_position` | `field`, `value` | Update career position field |
-| `add_career_goal` | `title`, `horizon`, `category`, `notes` | Add career goal |
-| `update_career_goal` | `id`, `field`, `value` | Update career goal |
-| `delete_career_goal` | `id` | Remove career goal |
-| `add_career_progression` | `title`, `company`, `startYear`, `endYear`, `type`, `highlights` | Add career history entry |
-| `delete_career_progression` | `id` | Remove career progression entry |
-| `add_career_development` | `item`, `type`, `targetDate`, `notes` | Add development item |
-| `update_career_development` | `id`, `field`, `value` | Update development item |
-| `delete_career_development` | `id` | Remove development item |
-| `add_career_win` | `win`, `impact`, `category`, `date` | Log a career win |
-| `delete_career_win` | `id` | Remove career win |
-| `add_career_network` | `name`, `role`, `company`, `relationship`, `notes` | Add network contact |
-| `update_career_network` | `id`, `field`, `value` | Update network contact |
-| `delete_career_network` | `id` | Remove network contact |
+| `career` | — | The whole Career tab (ladder, readiness, evidence, intents, contacts, package, brand, exchange) |
+| `career_pipeline` | — | The job agent's matches plus Exchange roles, health, pattern read, market comparison, benchmarks |
+
+Career writes are POST actions (`body.action`): `career_save_northstar`, `career_save_rung`, `career_delete_rung`, `career_advance`, `career_save_intent`, `career_delete_intent`, `career_save_evidence`, `career_delete_evidence`, `career_set_override`, `career_save_criterion`, `career_check_role`, `career_set_status`, `career_sync_agent`, `career_wins_bank`, `career_resolve_suggestion`, `career_save_contact`, `career_delete_contact`, `career_touch_contact`, `career_save_package`, `career_save_brand`, `career_exchange_preview`, `career_exchange_import`, `career_exchange_export`.
+
+| Action | Parameters | Description |
+|--------|-----------|-------------|
 | `prescriptions` | — | All active prescriptions |
 | `add_prescription` | `person`, `medication`, `dosage`, `frequency`, `refillDate`, `notes` | Add prescription |
 | `update_prescription` | `id`, `field`, `value` | Update prescription field |

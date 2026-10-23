@@ -235,14 +235,13 @@ console.log('\nthe deep link');
 {
   const D = {};
   vm.createContext(D);
-  vm.runInContext('var CAR_SUBS;' + APP.match(/var CAR_SUBS=\[[^\]]*\];/)[0] + extractFn(APP, 'carParseDeepLink') + extractFn(APP, 'carRange') + extractFn(APP, 'carVsBase'), Object.assign(D, { URLSearchParams }));
+  vm.runInContext('var CAR_SUBS;' + APP.match(/var CAR_SUBS=\[[^\]]*\];/)[0] + extractFn(APP, 'carParseDeepLink'), Object.assign(D, { URLSearchParams }));
   const dl = q => JSON.stringify(vm.runInContext('carParseDeepLink(' + JSON.stringify(q) + ')', D));
   check('?tab=career&sub=pipeline opens the Pipeline', dl('?tab=career&sub=pipeline') === '{"tab":"career","sub":"pipeline"}');
   check('an unknown subtab opens Career at its default', dl('?tab=career&sub=evil') === '{"tab":"career","sub":null}');
   check('other tabs are not deep-linkable', dl('?tab=finances') === 'null');
   check('a token in the link is never read', !/t0ken/.test(dl('?tab=career&sub=pipeline&token=t0ken')));
-  check('a salary range parses to its ends', JSON.stringify(vm.runInContext('carRange("Base $108.5K–$185K")', D)) === '[108500,185000]');
-  check('…and compares with the package base', vm.runInContext('carVsBase("$108.5K–$185K", { base: 160000 })', D) === 'top $185K vs your base: +16%');
+  check('every subtab can be deep-linked', ['market', 'brand', 'exchange', 'network'].every(s => JSON.parse(dl('?tab=career&sub=' + s)).sub === s));
   check('the app strips the link after reading it', /history\.replaceState\(null,'',window\.location\.pathname\+window\.location\.hash\)/.test(APP));
   check('the page opens on Career when deep-linked, and loads it', /useState\(careerDeepLink\?'career':'home'\)/.test(APP) && /if\(apiUrl&&apiToken\)loadCareer\(apiUrl,apiToken\);\},\[apiUrl,apiToken\]\)/.test(APP));
 }

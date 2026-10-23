@@ -52,7 +52,7 @@ const CONTROLS = [
   ['made-up criterion ids from Claude are kept', b => ({ [C]: swap(b[C], 'return m && known.indexOf(m.criterionId) !== -1;', 'return m;') })],
   // ---- wiring ---------------------------------------------------------------------
   ['the nightly migration step is dropped', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'carNightly_', carNightly_);\n", '') })],
-  ['the Career tab stops reloading after a write', b => ({ 'docs/app.js': swap(b['docs/app.js'], 'onReload:function(){return loadCareer(apiUrl,apiToken);},', '') })],
+  ['the Career tab stops reloading after a write', b => ({ 'docs/app.js': swap(b['docs/app.js'], ',onReload:function(){return loadCareer(apiUrl,apiToken);}}', '}') })],
   ['a POST route is missing', b => ({ 'WebApp.js': swap(b['WebApp.js'], "      case 'career_set_override':        return jsonOut_(webCareerSetOverride_(body));\n", '') })],
 ];
 

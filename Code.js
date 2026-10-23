@@ -66,8 +66,8 @@ const TABS = {
   CAREER_DEVELOPMENT: 'Career Development',   // Skills, courses, focus areas (Career tab)
   CAREER_WINS:        'Career Wins',          // Achievement log (Career tab)
   CAREER_NETWORK:     'Career Network',       // Professional relationships (Career tab)
-  // Career tab v2 (issue #216, Career.js). The five v1 tabs above (all but Network)
-  // are copied into these once and hidden, never deleted.
+  // Career tab v2 (issue #216, Career.js). The six v1 tabs above are copied into
+  // these once and hidden, never deleted.
   CAREER_LADDER:      'Career Ladder',        // Rungs per track: reached / current / next / future
   CAREER_CRITERIA:    'Career Criteria',      // Readiness criteria: shared core + per-track
   CAREER_EVIDENCE:    'Career Evidence',      // What can be proved, tagged to criteria
@@ -75,6 +75,9 @@ const TABS = {
   CAREER_PACKAGE:     'Career Package',       // Current comp package, the baseline for matches
   CAREER_STATE:       'Career State',         // Key/value JSON: north star, migration, sync state
   CAREER_SUGGESTIONS: 'Career Suggestions',   // Quarterly criteria suggestions from the job agent's matches
+  CAREER_CONTACTS:    'Career Contacts',      // Network: role, tracks, warmth, last touch (replaces Career Network)
+  CAREER_EXCHANGE_LOG:'Career Exchange Log',  // Every PIES ↔ VERA payload pasted in or copied out
+  CAREER_ROLE_MATCHES:'Career Role Matches',  // Roles found outside the alerts, in through Exchange (ROLE-MATCH)
   PRESCRIPTIONS:      'Prescriptions',        // Medication tracker for Ahmed + Victoria (Issue #116)
   CREDIT_CARDS:       'Credit Cards',         // Card metadata + ownership (Issues #115/#117)
   CARD_REWARDS:       'Card Rewards',         // Per-card category reward rates
@@ -1538,6 +1541,9 @@ function nightlyRunTail() {
     nightlyStep_(ctx, 'carCheckAgentHealth_', carCheckAgentHealth_);
     nightlyStep_(ctx, 'carMonthlyWinsBank_', carMonthlyWinsBank_);
     nightlyStep_(ctx, 'carSuggestCriteria_', carSuggestCriteria_);
+    // Phase 3: a track with no sponsor, a PIES brief that hasn't arrived, and
+    // intents not sent to PIES this quarter each raise one flag, cleared once fixed.
+    nightlyStep_(ctx, 'carCareerFlags_', carCareerFlags_);
 
     // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
     nightlyStep_(ctx, 'runExplorer_', runExplorer_);

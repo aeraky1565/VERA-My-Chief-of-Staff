@@ -49,7 +49,7 @@ async function mount(page) {
       intents: [{ id: 'i1', text: 'Lead a planning function', track: 'fpa', status: 'active' }],
       northstar: { compFloor: { base: '150000', baseOutsideDC: '', total: '' }, locationStance: 'Remote or nearby', dealbreakers: 'Full onsite' },
       development: [{ item: 'Public speaking', status: 'Planned' }],
-      baseline: { count: 1 }, network: [],
+      baseline: { count: 1 }, contacts: [], sponsorGap: {},
     };
     window.__posts = []; window.__reloads = 0;
     window.confirm = () => true;
@@ -175,9 +175,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     health: { lastFound: '2026-10-20', weekdays: 3, stale: true },
     pattern: { fpa: { count: 2, avgScore: 78, handedOff: 1, applied: 0, offers: 0, hired: 0 }, pmo: { count: 1, avgScore: 88, handedOff: 0, applied: 0, offers: 0, hired: 0 } },
     package: { base: 160000 },
+    calibration: { period: '2026-10', lines: [{ track: 'fpa', level: 'AD', fn: 'FP&A', score: 76, keyGap: 'P&L ownership' }] },
     rows: [
-      { row: 2, status: 'New', company: 'Invented Corp', title: 'Associate Director, FP&A', track: 'fpa', scoreText: '82/100', tier: '1', dateFound: '2026-10-20', salaryRange: '$150K–$200K', breakdown: 'L 25 · F 20 · S 18 · T 19', suggestedPerson: 'Finance director', jobLink: 'https://jobs.example/a', materials: 'https://drive.example/f' },
-      { row: 3, status: 'New', company: 'Madeup LLC', title: 'Associate Director, PMO', track: 'pmo', scoreText: '88/100', tier: '1', dateFound: '2026-10-20', jobLink: 'https://jobs.example/b' },
+      { row: 2, status: 'New', company: 'Invented Corp', title: 'Associate Director, FP&A', track: 'fpa', scoreText: '82/100', tier: '1', dateFound: '2026-10-20', salaryRange: '$150K–$200K', breakdown: 'L 25 · F 20 · S 18 · T 19', suggestedPerson: 'Finance director', jobLink: 'https://jobs.example/a', materials: 'https://drive.example/f', source: 'agent',
+        market: { lo: 150000, hi: 200000, mid: 175000, pctMid: 9, pctTop: 25, estTotalMid: 210000, vsTotal: 12000, firstYearVsTotal: -20000, verdict: 'lateral', clearsFloor: true } },
+      { row: 3, status: 'New', company: 'Madeup LLC', title: 'Associate Director, PMO', track: 'pmo', scoreText: '88/100', tier: '1', dateFound: '2026-10-20', jobLink: 'https://jobs.example/b', source: 'agent' },
+      { row: 'X:CM-1', id: 'CM-1', source: 'exchange', status: 'New', company: 'Elsewhere Co', title: 'Associate Director, Transformation', track: 'pmo', scoreText: '81/100', dateFound: '2026-10-21', jobLink: 'https://jobs.example/x', suggestedPerson: 'Talent partner' },
       { row: 4, status: 'Handoff', company: 'Other Co', title: 'Senior Manager, FP&A', track: 'fpa', scoreText: '8/10 (old scale)', tier: '1', dateFound: '2026-10-19', jobLink: 'https://jobs.example/c' },
       { row: 5, status: 'Passed', company: 'Closed Co', title: 'Director, Finance', track: 'fpa', scoreText: '70/100', dateFound: '2026-10-18', jobLink: 'https://jobs.example/d' },
     ],
@@ -198,7 +201,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     let t = await text(page);
     check('the stale agent is called out, with what to check', t.includes('found nothing for 3 weekdays') && t.includes('Daily job search digest'));
     check('the pattern read shows each track', t.includes('2 matches') && t.includes('avg 78/100') && t.includes('avg 88/100'));
-    check('the Inbox lists the new matches with score, track, pay vs base and links', t.includes('Inbox · 2 new') && t.includes('Track: FP&A') && t.includes('82/100') && t.includes('top $200K vs your base: +25%') && t.includes('Tailored resume'));
+    check('the Inbox lists the new matches with score, track, pay vs the package and links', t.includes('Inbox · 3 new') && t.includes('Track: FP&A') && t.includes('82/100') && t.includes('mid $175,000 · +9% vs your base · est. total +$12,000') && t.includes('Lateral') && t.includes('Tailored resume'));
+    check('a role pasted into Exchange shows, marked as such', t.includes('Elsewhere Co') && t.includes('From Exchange'));
+    check('PIES calibration lines show, sanitized', t.includes('Internal calibration · PIES, 2026-10') && t.includes('key gap: P&L ownership'));
     check('an old 1–10 score says so', t.includes('8/10 (old scale)'));
     check('closed matches are folded away', t.includes('Show closed · 1') && !t.includes('Closed Co'));
     await page.evaluate(() => {
@@ -208,6 +213,22 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await wait(150);
     let p = await posts(page);
     check('Handoff posts that match\u2019s status, keyed by its posting link', p.some(x => x.action === 'career_set_status' && x.status === 'Handoff' && x.jobLink === 'https://jobs.example/b' && x.company === 'Madeup LLC'), JSON.stringify(p));
+    await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Elsewhere Co'));
+      Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Pass').click();
+    });
+    await wait(150);
+    p = await posts(page);
+    check('an Exchange role’s status posts with its source and id', p.some(x => x.action === 'career_set_status' && x.status === 'Passed' && x.source === 'exchange' && x.id === 'CM-1'), JSON.stringify(p.slice(-1)));
+    await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Invented Corp'));
+      Array.from(row.querySelectorAll('button')).find(b => b.textContent === '+ Network').click();
+    });
+    await wait(150);
+    p = await posts(page);
+    const c = (p.find(x => x.action === 'career_save_contact') || {}).contact || {};
+    check('“+ Network” adds the suggested person as a cold contact from the agent', c.name === 'Finance director' && c.org === 'Invented Corp' && c.warmth === 'cold' && c.source === 'agent' && c.tracks.join() === 'fpa', JSON.stringify(c));
+    check('…and says so', (await text(page)).includes('Added Finance director (Invented Corp) to Network.'));
     await page.selectOption('#carprobe select[aria-label="Status of Senior Manager, FP&A"]', 'Applied');
     await wait(150);
     p = await posts(page);
@@ -246,7 +267,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       activeSub: (document.querySelector('.career-v2 .subtab-btn.active') || {}).textContent || '',
       body: document.body.innerText,
     }));
-    check('the link opens Career on the Pipeline', /Pipeline/.test(st.activeSub) && st.body.includes('Inbox · 2 new'), JSON.stringify({ sub: st.activeSub }));
+    check('the link opens Career on the Pipeline', /Pipeline/.test(st.activeSub) && st.body.includes('Inbox · 3 new'), JSON.stringify({ sub: st.activeSub }));
     check('…and is stripped from the address bar', st.search === '', st.search);
     await page.close();
   }

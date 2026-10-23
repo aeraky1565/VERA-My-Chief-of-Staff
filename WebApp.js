@@ -233,12 +233,7 @@ function doGet(e) {
       // Career tab
       case 'career':                     return jsonOut_(webGetCareer_());
       case 'career_pipeline':            return jsonOut_(webGetCareerPipeline_());
-      // v1 writers for position, goals, progression, development and wins are gone:
-      // those live in the v2 tabs now and are written by POST (career_* below).
-      case 'update_career_network_full':  return jsonOut_(webUpdateCareerNetworkFull_(e));
-      case 'add_career_network':          return jsonOut_(webAddCareerNetwork_(e));
-      case 'update_career_network':       return jsonOut_(webUpdateCareerNetwork_(e));
-      case 'delete_career_network':       return jsonOut_(webDeleteCareerNetwork_(e));
+      // Every career write is a POST (career_* below); the v1 GET writers are gone.
       // Prescriptions tab (Issue #116)
       case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
       case 'add_prescription':           return jsonOut_(webAddPrescription_(e));
@@ -558,6 +553,15 @@ function doPost(e) {
       case 'career_sync_agent':          return jsonOut_(webCareerSyncAgent_());
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
+      // Phase 3: Network, Market, Brand, Exchange.
+      case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));
+      case 'career_delete_contact':      return jsonOut_(webCareerDeleteContact_(body));
+      case 'career_touch_contact':       return jsonOut_(webCareerTouchContact_(body));
+      case 'career_save_package':        return jsonOut_(webCareerSavePackage_(body));
+      case 'career_save_brand':          return jsonOut_(webCareerSaveBrand_(body));
+      case 'career_exchange_preview':    return jsonOut_(webCareerExchangePreview_(body));
+      case 'career_exchange_import':     return jsonOut_(webCareerExchangeImport_(body));
+      case 'career_exchange_export':     return jsonOut_(webCareerExchangeExport_(body));
       case 'save_household':             return jsonOut_(webSaveHousehold_(body));
       case 'delete_household':           return jsonOut_(webDeleteHousehold_(body));
       case 'save_contact':               return jsonOut_(webSaveContact_(body));
@@ -3476,66 +3480,8 @@ function webDeleteTakeoutItem_(body) {
 
 // ---- Career Tab ------------------------------------------------------------
 
-// webGetCareer_ and the v1 career writers moved to Career.js (issue #216). The
-// Network functions below stay until the Network subtab is rebuilt.
-
-function webUpdateCareerNetworkFull_(e) {
-  var p = e.parameter || {};
-  var id = (p.id||'').trim();
-  if (!id) throw new Error('id is required');
-  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_NETWORK);
-  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() !== id) continue;
-    sheet.getRange(i+2, 1, 1, CAREER_NETWORK_HEADERS.length).setValues([[
-      id, (p.name||'').trim(), (p.role||'').trim(), (p.company||'').trim(),
-      (p.relationship||'').trim(), (p.lastContact||'').trim(), (p.notes||'').trim(),
-    ]]);
-    return { ok: true };
-  }
-  throw new Error('Contact not found: ' + id);
-}
-
-function webAddCareerNetwork_(e) {
-  var p    = e.parameter || {};
-  var name = (p.name||'').trim();
-  if (!name) throw new Error('name is required');
-  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_NETWORK);
-  var id    = 'CN-' + Date.now();
-  sheet.getRange(sheet.getLastRow()+1, 1, 1, CAREER_NETWORK_HEADERS.length).setValues([[
-    id, name, (p.role||'').trim(), (p.company||'').trim(),
-    (p.relationship||'Colleague').trim(), (p.lastContact||'').trim(), (p.notes||'').trim(),
-  ]]);
-  return { ok: true, action: 'created', id: id };
-}
-
-function webUpdateCareerNetwork_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id||'').trim();
-  var field = (p.field||'').trim();
-  var value = (p.value||'').trim();
-  if (!id || !field) throw new Error('id and field are required');
-  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_NETWORK);
-  var colMap = { name:2, role:3, company:4, relationship:5, lastContact:6, notes:7 };
-  var col = colMap[field];
-  if (!col) throw new Error('Unknown field: ' + field);
-  var data = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
-  for (var i=0; i<data.length; i++) {
-    if (String(data[i][0]).trim() === id) { sheet.getRange(i+2, col).setValue(value); return { ok: true }; }
-  }
-  throw new Error('Contact not found: ' + id);
-}
-
-function webDeleteCareerNetwork_(e) {
-  var id = ((e.parameter||{}).id||'').trim();
-  if (!id) throw new Error('id is required');
-  var sheet = getSpreadsheet().getSheetByName(TABS.CAREER_NETWORK);
-  var data  = sheet.getRange(2, 1, sheet.getLastRow()-1, 1).getValues();
-  for (var i=data.length-1; i>=0; i--) {
-    if (String(data[i][0]).trim() === id) { sheet.deleteRow(i+2); return { ok: true, action: 'deleted' }; }
-  }
-  throw new Error('Contact not found: ' + id);
-}
+// The whole Career tab lives in Career.js (issue #216): GET career and
+// career_pipeline, every write a POST career_* action.
 
 // ---- Home Steward (Issue #21) ----------------------------------------------
 
