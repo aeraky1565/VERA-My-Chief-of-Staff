@@ -570,6 +570,9 @@ console.log('\nEvery step belongs to exactly one half');
     // Career tab v2 (issue #216): the one-time migration, then the Wins bank baseline
     // import once configured; a no-op otherwise, so it costs the tail nothing.
     'carNightly_',
+    // The job agent link (phase 2): the health flag, this month's Wins bank tab and
+    // the quarterly criteria suggestions — each a no-op until configured or due.
+    'carCheckAgentHealth_', 'carMonthlyWinsBank_', 'carSuggestCriteria_',
     'runExplorer_',
     // Moved from the head after it ran to the 6-minute kill on Oct 20: it opens the
     // external budget sheet. Last in the tail, where a stall costs nothing else.

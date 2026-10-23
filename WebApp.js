@@ -232,6 +232,7 @@ function doGet(e) {
       case 'purchase_suggestions':     return jsonOut_(webGetPurchaseSuggestions_());
       // Career tab
       case 'career':                     return jsonOut_(webGetCareer_());
+      case 'career_pipeline':            return jsonOut_(webGetCareerPipeline_());
       // v1 writers for position, goals, progression, development and wins are gone:
       // those live in the v2 tabs now and are written by POST (career_* below).
       case 'update_career_network_full':  return jsonOut_(webUpdateCareerNetworkFull_(e));
@@ -552,6 +553,11 @@ function doPost(e) {
       case 'career_set_override':        return jsonOut_(webCareerSetOverride_(body));
       case 'career_save_criterion':      return jsonOut_(webCareerSaveCriterion_(body));
       case 'career_check_role':          return jsonOut_(webCareerCheckRole_(body));
+      // The job agent link (phase 2): Tracker status, Settings sync, Wins bank, suggestions.
+      case 'career_set_status':          return jsonOut_(webCareerSetStatus_(body));
+      case 'career_sync_agent':          return jsonOut_(webCareerSyncAgent_());
+      case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());
+      case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       case 'save_household':             return jsonOut_(webSaveHousehold_(body));
       case 'delete_household':           return jsonOut_(webDeleteHousehold_(body));
       case 'save_contact':               return jsonOut_(webSaveContact_(body));

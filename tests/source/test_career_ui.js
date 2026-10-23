@@ -168,6 +168,88 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     check('a failed save keeps the dialog open and shows the error', !!(await page.$('#carprobe .modal')) && (await text(page)).includes('Sheet is busy'));
     await page.close();
   }
+
+  // ---- Pipeline (phase 2) ------------------------------------------------------
+  const PIPE = {
+    ok: true, configured: true, statuses: ['New', 'Passed', 'Handoff', 'Applied', 'Ignored', 'Not offered', 'Offer', 'Hired', 'Declined'],
+    health: { lastFound: '2026-10-20', weekdays: 3, stale: true },
+    pattern: { fpa: { count: 2, avgScore: 78, handedOff: 1, applied: 0, offers: 0, hired: 0 }, pmo: { count: 1, avgScore: 88, handedOff: 0, applied: 0, offers: 0, hired: 0 } },
+    package: { base: 160000 },
+    rows: [
+      { row: 2, status: 'New', company: 'Invented Corp', title: 'Associate Director, FP&A', track: 'fpa', scoreText: '82/100', tier: '1', dateFound: '2026-10-20', salaryRange: '$150K–$200K', breakdown: 'L 25 · F 20 · S 18 · T 19', suggestedPerson: 'Finance director', jobLink: 'https://jobs.example/a', materials: 'https://drive.example/f' },
+      { row: 3, status: 'New', company: 'Madeup LLC', title: 'Associate Director, PMO', track: 'pmo', scoreText: '88/100', tier: '1', dateFound: '2026-10-20', jobLink: 'https://jobs.example/b' },
+      { row: 4, status: 'Handoff', company: 'Other Co', title: 'Senior Manager, FP&A', track: 'fpa', scoreText: '8/10 (old scale)', tier: '1', dateFound: '2026-10-19', jobLink: 'https://jobs.example/c' },
+      { row: 5, status: 'Passed', company: 'Closed Co', title: 'Director, Finance', track: 'fpa', scoreText: '70/100', dateFound: '2026-10-18', jobLink: 'https://jobs.example/d' },
+    ],
+  };
+  for (const width of [390, 1280]) {
+    console.log('\nPipeline @ ' + width + 'px');
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
+    await page.evaluate((pipe) => {
+      window.__pipe = pipe; window.__posts = [];
+      window.apiGet = (u, t, p) => Promise.resolve(p.action === 'career_pipeline' ? window.__pipe : { ok: true });
+      window.apiPost = (u, t, b) => { window.__posts.push(b); return Promise.resolve({ ok: true }); };
+      window.confirm = () => true;
+      const host = document.createElement('div'); host.id = 'carprobe'; document.body.appendChild(host);
+      ReactDOM.createRoot(host).render(React.createElement(CarPipeline, { apiUrl: 'https://vera.test/exec', apiToken: 't', onReload: () => Promise.resolve() }));
+      return new Promise(r => setTimeout(r, 250));
+    }, PIPE);
+    let t = await text(page);
+    check('the stale agent is called out, with what to check', t.includes('found nothing for 3 weekdays') && t.includes('Daily job search digest'));
+    check('the pattern read shows each track', t.includes('2 matches') && t.includes('avg 78/100') && t.includes('avg 88/100'));
+    check('the Inbox lists the new matches with score, track, pay vs base and links', t.includes('Inbox · 2 new') && t.includes('Track: FP&A') && t.includes('82/100') && t.includes('top $200K vs your base: +25%') && t.includes('Tailored resume'));
+    check('an old 1–10 score says so', t.includes('8/10 (old scale)'));
+    check('closed matches are folded away', t.includes('Show closed · 1') && !t.includes('Closed Co'));
+    await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#carprobe .car-match')).find(n => n.textContent.includes('Madeup LLC'));
+      Array.from(row.querySelectorAll('button')).find(b => b.textContent === 'Handoff').click();
+    });
+    await wait(150);
+    let p = await posts(page);
+    check('Handoff posts that match\u2019s status, keyed by its posting link', p.some(x => x.action === 'career_set_status' && x.status === 'Handoff' && x.jobLink === 'https://jobs.example/b' && x.company === 'Madeup LLC'), JSON.stringify(p));
+    await page.selectOption('#carprobe select[aria-label="Status of Senior Manager, FP&A"]', 'Applied');
+    await wait(150);
+    p = await posts(page);
+    check('a pursued match\u2019s status can move on', p.some(x => x.action === 'career_set_status' && x.status === 'Applied' && x.title === 'Senior Manager, FP&A'));
+    await clickText(page, 'button', 'PMO');
+    await wait(80);
+    t = await text(page);
+    check('the track filter narrows the list', t.includes('Madeup LLC') && !t.includes('Invented Corp'));
+    const over = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    check('no sideways scroll', over.scroll <= over.client + 1, JSON.stringify(over));
+    await page.evaluate(() => {
+      document.getElementById('carprobe').remove();
+      window.apiGet = () => Promise.resolve({ ok: true, configured: false });
+      const host = document.createElement('div'); host.id = 'carprobe'; document.body.appendChild(host);
+      ReactDOM.createRoot(host).render(React.createElement(CarPipeline, { apiUrl: 'x', apiToken: 't' }));
+      return new Promise(r => setTimeout(r, 200));
+    });
+    check('not connected: it says which Config row to add', (await text(page)).includes('career_alert_sheet_id'));
+    await page.close();
+  }
+
+  // ---- the digest's deep link opens the Pipeline -------------------------------
+  {
+    console.log('\ndeep link');
+    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+    await page.addInitScript(() => { try { localStorage.setItem('vera_url', 'https://vera.test/exec'); localStorage.setItem('vera_token', 't'); } catch (e) {} });
+    await page.route('https://vera.test/**', route => {
+      const action = new URL(route.request().url()).searchParams.get('action');
+      const body = action === 'career_pipeline' ? PIPE : action === 'career' ? { ok: true, ladder: [], criteria: [], evidence: [], intents: [], readiness: {}, tracks: [] } : { ok: true };
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.goto('file://' + path.resolve(ROOT, 'docs/index.html') + '?tab=career&sub=pipeline', { waitUntil: 'domcontentloaded' });
+    await wait(1500);
+    const st = await page.evaluate(() => ({
+      search: window.location.search,
+      activeSub: (document.querySelector('.career-v2 .subtab-btn.active') || {}).textContent || '',
+      body: document.body.innerText,
+    }));
+    check('the link opens Career on the Pipeline', /Pipeline/.test(st.activeSub) && st.body.includes('Inbox · 2 new'), JSON.stringify({ sub: st.activeSub }));
+    check('…and is stripped from the address bar', st.search === '', st.search);
+    await page.close();
+  }
   await browser.close();
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

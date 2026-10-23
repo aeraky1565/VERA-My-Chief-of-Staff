@@ -74,6 +74,7 @@ const TABS = {
   CAREER_INTENTS:     'Career Intents',       // 3–5 career intents, exported quarterly to PIES
   CAREER_PACKAGE:     'Career Package',       // Current comp package, the baseline for matches
   CAREER_STATE:       'Career State',         // Key/value JSON: north star, migration, sync state
+  CAREER_SUGGESTIONS: 'Career Suggestions',   // Quarterly criteria suggestions from the job agent's matches
   PRESCRIPTIONS:      'Prescriptions',        // Medication tracker for Ahmed + Victoria (Issue #116)
   CREDIT_CARDS:       'Credit Cards',         // Card metadata + ownership (Issues #115/#117)
   CARD_REWARDS:       'Card Rewards',         // Per-card category reward rates
@@ -1531,6 +1532,12 @@ function nightlyRunTail() {
     // Career tab v2 (Career.js): the one-time v1 migration, then the Wins bank
     // baseline import once its doc is configured. A no-op every other night.
     nightlyStep_(ctx, 'carNightly_', carNightly_);
+    // The job agent link (issue #216 phase 2): flag an agent that has stopped
+    // finding matches, append this month's Wins bank tab once there is new
+    // evidence, and once a quarter suggest criteria from the matches (Claude).
+    nightlyStep_(ctx, 'carCheckAgentHealth_', carCheckAgentHealth_);
+    nightlyStep_(ctx, 'carMonthlyWinsBank_', carMonthlyWinsBank_);
+    nightlyStep_(ctx, 'carSuggestCriteria_', carSuggestCriteria_);
 
     // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
     nightlyStep_(ctx, 'runExplorer_', runExplorer_);
