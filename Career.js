@@ -22,6 +22,9 @@
 
 // ---- Tabs ------------------------------------------------------------------
 
+// Columns added after a tab first shipped (the Ladder's Pay Target, the Package's
+// Key Benefits, Work Mode, Office Days and Commute Minutes) go on the end of each
+// list: carSheet_ appends any that an existing tab is missing.
 var CAR_LADDER_HEADERS_   = ['ID', 'Track', 'Order', 'Title', 'Level', 'Company', 'Move Type', 'Status', 'Start', 'End', 'Target Date', 'What Changes', 'Criteria Preview', 'Notes', 'Pay Target'];
 var CAR_CRITERIA_HEADERS_ = ['ID', 'Group', 'Name', 'Meaning', 'Status Override', 'Override Note', 'Source', 'Active', 'Added'];
 var CAR_EVIDENCE_HEADERS_ = ['ID', 'Month', 'Statement', 'Scale', 'AD Scale', 'Criterion IDs', 'Source', 'Added', 'Wins Bank Sent'];
