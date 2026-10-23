@@ -1512,7 +1512,7 @@ the files they belong to, and nothing is reimplemented here.
 | 1. Health & connections | `tbApiHealth`, `tbSystemHealth`, `tbWeather`, `tbClaude`, `tbSheetIntegrity`, `tbCalendarAccess` |
 | 2. Daily & weekly emails | `tbNightlyRun`, `tbMorningNudge`, `tbWeekendMemoDryRun`, `tbWeekendMemoSend`, `tbWeeklyTrendReview`, `tbHourlyCheck`, `tbDailyDiscovery` |
 | 3. Travel | `tbTripIdentity`, `tbAdoptTripKeys`, `tbSeedTripLatches`, `tbPreTripBriefing`, `tbTravelDayBriefing`, `tbTravelDayMap`, `tbMapsStaticKey`, `tbLoungeAccess`, `tbPostTripCapture`, `tbTripLessons`, `tbTripDecisions`, `tbGeneratePacking`, `tbGenerateDiscoveries`, `tbTripContext`, `tbTripPlaces`, `tbFlightStatus` |
-| 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbNetWorth`, `tbWishLists`, `tbProjects`, `tbProjectHealth` |
+| 4. Data & trackers | `tbMealPlan`, `tbMealPlanCleanupPreview`, `tbMealPlanCleanupRun`, `tbPerkEventPurgePreview`, `tbPerkEventPurgeRun`, `tbPTO`, `tbGym`, `tbFitness`, `tbPantry`, `tbShopping`, `tbImportantDates`, `tbFinancialGoals`, `tbNetWorth`, `tbCareer`, `tbWishLists`, `tbProjects`, `tbProjectHealth` |
 
 ### Knobs
 
@@ -1524,6 +1524,7 @@ it, save, then run.
 |------|--------|
 | `TB_DATE` | `'yyyy-MM-dd'` — the travel-day briefing treats this as today, so you can preview a trip day that is not today. Blank = the real today. |
 | `TB_PRETRIP_HOURS` | Widens the pre-trip departure window, in hours, to reach a trip further out than the configured 48. `0` = use `pretrip_briefing_hours`. |
+| `TB_CAREER_DRY_RUN` | `true` makes `tbCareer` only preview what the one-time Career migration would copy, writing nothing. Counts only. |
 | `TB_TRIP_LABEL` | Which trip `tbGeneratePacking` / `tbGenerateDiscoveries` target. Blank = the next upcoming one. |
 | `TB_AIRPORTS` | `'TPA,IAD'` — airports for `tbLoungeAccess`, first treated as the departure. Set it to check lounge matching on a day with no trip; blank = scan the itinerary. |
 | `TB_LESSON_TRIP` | `'Orlando, Florida\|Family\|beach'` — a made-up trip for `tbTripLessons` to match lessons against, as `destination\|context\|activities`. Any part may be blank. Blank overall = list every lesson without matching. |

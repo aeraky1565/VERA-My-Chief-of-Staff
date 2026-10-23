@@ -738,6 +738,43 @@ function tbWishLists() {
   }
 }
 
+/**
+ * Career tab v2 (issue #216, Career.js). Set TB_CAREER_DRY_RUN to true first to see
+ * what the one-time migration would copy, without writing anything. Counts only:
+ * never a title, statement, company or figure.
+ */
+var TB_CAREER_DRY_RUN = false;
+
+function tbCareer() {
+  tbBanner_('Career tab v2');
+  if (TB_CAREER_DRY_RUN) {
+    var dry = carMigrateV1_({ dryRun: true });
+    Logger.log(dry.skipped ? 'Migration: already done — nothing to preview.'
+                           : 'Migration would copy: ' + JSON.stringify(dry.counts));
+    return;
+  }
+  var res = carEnsureMigrated_();
+  Logger.log('Migration: ' + (res.skipped ? 'done before' : 'ran now — ' + JSON.stringify(res.counts)));
+  var base = carStateGet_('baseline_imported');
+  Logger.log('Wins bank baseline: ' + (base ? 'imported (' + base.count + ' item(s))'
+    : 'not imported — add a Config row career_wins_bank_doc_id with the Wins bank doc id'));
+  var data = webGetCareer_();
+  var byStatus = {};
+  data.ladder.forEach(function(r) { byStatus[r.status] = (byStatus[r.status] || 0) + 1; });
+  Logger.log('Ladder: ' + JSON.stringify(byStatus));
+  var byGroup = {};
+  data.criteria.forEach(function(c) { byGroup[c.group] = (byGroup[c.group] || 0) + 1; });
+  Logger.log('Criteria: ' + JSON.stringify(byGroup));
+  Logger.log('Evidence: ' + data.evidence.length + ' item(s), ' +
+             data.evidence.filter(function(e) { return e.adScale; }).length + ' at AD scale, ' +
+             data.evidence.filter(function(e) { return !e.criterionIds.length; }).length + ' untagged');
+  Logger.log('Intents: ' + data.intents.filter(function(i) { return i.status !== 'retired'; }).length + ' active');
+  Object.keys(data.readiness).forEach(function(t) {
+    var v = data.readiness[t];
+    Logger.log('Readiness ' + t + ': ' + v.verdict + ' ' + v.pct + '% (' + v.gaps + ' gap(s), ' + v.partials + ' partial)');
+  });
+}
+
 function tbNetWorth() {
   tbBanner_('Net Worth (planner sheet)');
   var cfg = getConfigValues();

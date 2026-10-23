@@ -66,6 +66,14 @@ const TABS = {
   CAREER_DEVELOPMENT: 'Career Development',   // Skills, courses, focus areas (Career tab)
   CAREER_WINS:        'Career Wins',          // Achievement log (Career tab)
   CAREER_NETWORK:     'Career Network',       // Professional relationships (Career tab)
+  // Career tab v2 (issue #216, Career.js). The five v1 tabs above (all but Network)
+  // are copied into these once and hidden, never deleted.
+  CAREER_LADDER:      'Career Ladder',        // Rungs per track: reached / current / next / future
+  CAREER_CRITERIA:    'Career Criteria',      // Readiness criteria: shared core + per-track
+  CAREER_EVIDENCE:    'Career Evidence',      // What can be proved, tagged to criteria
+  CAREER_INTENTS:     'Career Intents',       // 3–5 career intents, exported quarterly to PIES
+  CAREER_PACKAGE:     'Career Package',       // Current comp package, the baseline for matches
+  CAREER_STATE:       'Career State',         // Key/value JSON: north star, migration, sync state
   PRESCRIPTIONS:      'Prescriptions',        // Medication tracker for Ahmed + Victoria (Issue #116)
   CREDIT_CARDS:       'Credit Cards',         // Card metadata + ownership (Issues #115/#117)
   CARD_REWARDS:       'Card Rewards',         // Per-card category reward rates
@@ -1519,6 +1527,10 @@ function nightlyRunTail() {
     // and has no side effect, and state smuggled between two executions through a
     // script property is a third thing that can be stale.
     nightlyStep_(ctx, 'suggestDueDates', function() { suggestDueDates(getOpenTasks()); });
+
+    // Career tab v2 (Career.js): the one-time v1 migration, then the Wins bank
+    // baseline import once its doc is configured. A no-op every other night.
+    nightlyStep_(ctx, 'carNightly_', carNightly_);
 
     // Step 0c: Explorer — daily AI discovery bulletin — budget-guarded, runs last (Reminders.js)
     nightlyStep_(ctx, 'runExplorer_', runExplorer_);

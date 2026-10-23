@@ -566,7 +566,11 @@ console.log('\nEvery step belongs to exactly one half');
   const EXPECTED_TAIL = ['checkHealthAppointments_', 'checkMonthlyReview_',
     'sendHealthPerformanceInsightMonthly_',
     'checkCrossPatternFlags_', 'purgePastPerkReminderEvents_',
-    'suggestDueDates', 'runExplorer_',
+    'suggestDueDates',
+    // Career tab v2 (issue #216): the one-time migration, then the Wins bank baseline
+    // import once configured; a no-op otherwise, so it costs the tail nothing.
+    'carNightly_',
+    'runExplorer_',
     // Moved from the head after it ran to the 6-minute kill on Oct 20: it opens the
     // external budget sheet. Last in the tail, where a stall costs nothing else.
     'writeSummarySnapshot', 'scrubLoggedSecrets_'];

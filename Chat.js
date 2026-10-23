@@ -477,8 +477,16 @@ function buildChatSystemPrompt_(context) {
       if (c.position.workStyle) lines += '  Work style: ' + c.position.workStyle + '\n';
       if (c.position.focusAreas) lines += '  Focus areas: ' + c.position.focusAreas + '\n';
     }
+    // Career tab v2 (Career.js): the next steps per track and their readiness verdicts.
+    var VERDICT_WORDS = { ready: 'Ready', stretch: 'Stretch', 'not-ready': 'Not ready' };
+    (c.ladder || []).filter(function(r) { return r.status === 'next'; }).forEach(function(r) {
+      var v = (c.readiness || {})[r.track];
+      lines += '  Next step: ' + r.title + (r.targetDate ? ' (target ' + r.targetDate + ')' : '') +
+               (v ? ' — readiness ' + (VERDICT_WORDS[v.verdict] || v.verdict) + ', ' + v.pct + '%' +
+                    (v.gaps ? ' (' + v.gaps + ' gap' + (v.gaps === 1 ? '' : 's') + ')' : '') : '') + '\n';
+    });
     if (c.goals && c.goals.length > 0) {
-      lines += '  Goals (' + c.goals.length + '):\n';
+      lines += '  Career intents (' + c.goals.length + '):\n';
       c.goals.filter(function(g) { return g.status !== 'Achieved' && g.status !== 'Paused'; })
         .forEach(function(g) {
           lines += '    [' + g.id + '] ' + g.title + ' [' + g.horizon + '] — ' + g.status + '\n';
