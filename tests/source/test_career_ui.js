@@ -157,6 +157,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     check('evidence shows its tags, month, scale and AD-scale chip', t.includes('Shipped the forecast model') && t.includes('Executive visibility') && t.includes('2024-05') && t.includes('AD scale'));
     await clickText(page, 'button', '+ Add evidence');
     await wait(80);
+    check('the evidence dialog says what counts as Associate Director scale, at the Director / Senior Director bar', await page.evaluate(() => {
+      const d = document.querySelector('#carprobe .modal details.car-ad-test');
+      return !!d && /Director or Senior Director relies on it/.test(d.textContent) && /VP or above is a plus/.test(d.textContent);
+    }));
     await page.fill('#carprobe .modal textarea', 'Ran the quarterly portfolio review');
     await page.evaluate(() => {
       const lab = Array.from(document.querySelectorAll('#carprobe .modal label')).find(l => l.textContent.trim() === 'P&L / budget accountability');

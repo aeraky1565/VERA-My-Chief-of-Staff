@@ -39,7 +39,7 @@ var CAR_TRACKS_ = [
 /** The 13 starter criteria (issue #216 §2.2): a shared core plus four per track. */
 var CAR_STARTER_CRITERIA_ = [
   ['core-people',     'core', 'People leadership',                'Leads a team or managers directly, not only matrixed'],
-  ['core-exec',       'core', 'Executive visibility',             'Regularly informs VP or C-suite decisions'],
+  ['core-exec',       'core', 'Executive visibility',             'Regularly informs Director and Senior Director decisions; VP or above is a plus, not the bar'],
   ['core-scope',      'core', 'Org scope',                        'Accountable for outcomes across several teams or a portfolio'],
   ['core-direction',  'core', 'Strategic direction',              'Sets a multi-year direction or roadmap, not only executes one'],
   ['core-influence',  'core', 'Influence without authority',      'Aligns cross-functional stakeholders'],
