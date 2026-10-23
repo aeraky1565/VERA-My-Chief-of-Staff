@@ -35,7 +35,7 @@ const FX = {
     { id: 'c2', name: 'Talent partner', title: '', org: 'Madeup LLC', role: 'recruiter', tracks: [], warmth: 'cold', lastTouch: '', source: 'agent' },
   ],
   sponsorGap: { fpa: false, pmo: true },
-  package: { id: 'p1', asOf: '2026-10', employer: 'Exampleco', base: 150000, bonusPct: 10 },
+  package: { id: 'p1', asOf: '2026-10', employer: 'Exampleco', base: 150000, bonusPct: 10, keyBenefits: ['Medical', 'Vision', 'HSA Contribution $1,400'] },
   packageEst: { base: 150000, bonus: 15000, equity: 20000, match401k: 6000, benefits: 14000, forfeited: 30000, total: 205000 },
   brand: { positioning: { core: 'Finance leader who runs portfolios', fpa: '', pmo: '' }, linkedin: [], resumes: [], staticProfile: '' },
   exchange: {
@@ -83,6 +83,7 @@ const clickText = (page, sel, t) => page.evaluate(([sel, t]) => {
   if (!el) return false; el.click(); return true;
 }, [sel, t]);
 const posts = page => page.evaluate(() => window.__posts);
+const J = v => JSON.stringify(v);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const noScroll = page => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
 const modalField = (page, label, value) => page.evaluate(([label, value]) => {
@@ -134,17 +135,26 @@ const saveModal = page => page.evaluate(() => Array.from(document.querySelectorA
     await clickText(page, '.subtab-btn', '💵 Market');
     await wait(200);
     t = await text(page);
-    check('the package shows with its estimated total and the floors', t.includes('$205,000') && t.includes('$30,000') && t.toLowerCase().includes('as of 2026-10') && t.includes('base $175,000'));
+    check('the estimated total leads the package, then a tile per figure', t.includes('~$205k') && t.includes('$205,000 a year') && t.includes('$150k') && t.includes('10%') && t.includes('$15k target') && t.includes('$20k') && t.includes('$30k') &&
+          t.toLowerCase().includes('as of 2026-10') && t.includes('base $175,000'));
+    check('the total sits above the tiles', await page.evaluate(() => { const a = document.querySelector('#carprobe .car-total'), b = document.querySelector('#carprobe .car-tile'); return !!a && !!b && a.getBoundingClientRect().top < b.getBoundingClientRect().top; }));
+    check('base, bonus and equity in their colours', await page.evaluate(() => {
+      const col = l => { const t = Array.from(document.querySelectorAll('#carprobe .car-tile')).find(n => n.querySelector('p').textContent === l); return getComputedStyle(t.querySelector('.car-num')).color; };
+      return col('Base') === 'rgb(74, 222, 128)' && col('Bonus') === 'rgb(226, 181, 74)' && col('Equity / yr') === 'rgb(180, 140, 240)';
+    }));
+    check('key benefits show as pills', J(await page.$$eval('#carprobe .car-benefit', n => n.map(x => x.textContent))) === J(['Medical', 'Vision', 'HSA Contribution $1,400']));
     check('each priced match shows its verdict and first-year cost', t.includes('Invented Corp') && t.includes('Step up') && t.includes('first year −$21,000'));
     check('benchmarks show median ranges by track and level', t.includes('$160,000') && t.includes('$185,000') && t.includes('Associate Director'));
     await clickText(page, 'button', 'Update');
     await wait(60);
     await modalField(page, 'Base', '158000');
     await modalField(page, 'Unvested, forfeited on leaving', '25000');
+    check('the dialog shows the key benefits as a list to edit', await page.evaluate(() => { const g = Array.from(document.querySelectorAll('#carprobe .modal .form-group')).find(n => /Key benefits/.test(n.querySelector('label').textContent)); return g && g.querySelector('input').value === 'Medical, Vision, HSA Contribution $1,400'; }));
+    await modalField(page, 'Key benefits (comma-separated)', 'Medical, Dental');
     await saveModal(page);
     await wait(120);
     const pk = ((await posts(page)).find(x => x.action === 'career_save_package') || {}).package || {};
-    check('updating the package posts its figures', pk.base === '158000' && pk.unvestedForfeited === '25000' && pk.asOf === '2026-10', JSON.stringify(pk));
+    check('updating the package posts its figures and benefits', pk.base === '158000' && pk.unvestedForfeited === '25000' && pk.asOf === '2026-10' && pk.keyBenefits === 'Medical, Dental', JSON.stringify(pk));
     check('Market: no sideways scroll', await noScroll(page));
 
     // ---- Brand

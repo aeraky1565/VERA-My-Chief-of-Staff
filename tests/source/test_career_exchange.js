@@ -133,9 +133,34 @@ console.log('\nMarket');
   run(S, 'webCareerSavePackage_({ package: { asOf: "2027-01", base: "170000" } })');
   check('a new month adds a row, keeping the history', rows(S, 'Career Package').length === 2 && run(S, 'carReadPackage_()').base === 170000);
 
+  check('key benefits split into items; a comma inside a figure doesn’t split', J(run(S, 'carSplitBenefits_("Medical, Vision,401K 6% Match, HSA Contribution $1,400")')) === J(['Medical', 'Vision', '401K 6% Match', 'HSA Contribution $1,400']));
+  run(S, 'webCareerSavePackage_({ package: { asOf: "2027-01", base: "170000", keyBenefits: "Medical, HSA Contribution $1,400" } })');
+  check('saved key benefits come back as a list', J(run(S, 'carReadPackage_()').keyBenefits) === J(['Medical', 'HSA Contribution $1,400']));
   const p = run(S, 'webGetCareerPipeline_()');
   check('each match is compared with the package', p.rows.find(r => r.company === 'Invented Corp').market.verdict !== undefined && p.rows.find(r => r.company === 'No Pay Inc').market === null);
   check('the Pipeline carries the benchmarks', p.benchmarks.length >= 2 && p.packageEst.base === 170000);
+}
+
+console.log('\nkey benefits: the new column and the v1 Benefits');
+{
+  // A Package tab from before the Key Benefits column, holding the v1 Benefits in Notes.
+  const S = sandbox({ Date: FixedDate });
+  S.ss.sheets['Career Package'] = new FakeSheet('Career Package', [
+    ['ID', 'As Of', 'Employer', 'Title', 'Base', 'Bonus Pct', 'Bonus Amt', 'Equity Per Yr', 'Unvested Forfeited', 'Match 401k', 'Benefits Value', 'Notes'],
+    ['CP-1', '2026-10', 'Exampleco', 'Senior Manager, Planning', 150000, 12, '', '', '', '', '', 'Health']]);
+  run(S, 'carMigrateV1_()');
+  run(S, 'carEnsureMigrated_()');
+  const head = S.ss.sheets['Career Package'].rows[0];
+  check('an older Package tab gains the Key Benefits column, at the end', head[head.length - 1] === 'Key Benefits' && head.length === 13, J(head));
+  const pk = run(S, 'carReadPackage_()');
+  check('the v1 Benefits move from Notes into Key Benefits', J(pk.keyBenefits) === '["Health"]' && pk.notes === '', J(pk));
+  check('…once', run(S, 'carMigrateKeyBenefits_()').skipped === true);
+  const T = sandbox({ Date: FixedDate });
+  T.ss.sheets['Career Package'] = new FakeSheet('Career Package', [
+    ['ID', 'As Of', 'Employer', 'Title', 'Base', 'Bonus Pct', 'Bonus Amt', 'Equity Per Yr', 'Unvested Forfeited', 'Match 401k', 'Benefits Value', 'Notes'],
+    ['CP-1', '2026-10', 'Exampleco', '', 150000, '', '', '', '', '', '', 'Something I typed']]);
+  run(T, 'carMigrateV1_()'); run(T, 'carEnsureMigrated_()');
+  check('notes that aren’t the v1 Benefits are left alone', run(T, 'carReadPackage_()').notes === 'Something I typed' && run(T, 'carReadPackage_()').keyBenefits.length === 0);
 }
 
 // ============ Brand ============================================================

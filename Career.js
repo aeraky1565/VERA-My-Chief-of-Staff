@@ -26,7 +26,7 @@ var CAR_LADDER_HEADERS_   = ['ID', 'Track', 'Order', 'Title', 'Level', 'Company'
 var CAR_CRITERIA_HEADERS_ = ['ID', 'Group', 'Name', 'Meaning', 'Status Override', 'Override Note', 'Source', 'Active', 'Added'];
 var CAR_EVIDENCE_HEADERS_ = ['ID', 'Month', 'Statement', 'Scale', 'AD Scale', 'Criterion IDs', 'Source', 'Added', 'Wins Bank Sent'];
 var CAR_INTENT_HEADERS_   = ['ID', 'Intent', 'Track', 'Status', 'Order', 'Set Quarter', 'Updated'];
-var CAR_PACKAGE_HEADERS_  = ['ID', 'As Of', 'Employer', 'Title', 'Base', 'Bonus Pct', 'Bonus Amt', 'Equity Per Yr', 'Unvested Forfeited', 'Match 401k', 'Benefits Value', 'Notes'];
+var CAR_PACKAGE_HEADERS_  = ['ID', 'As Of', 'Employer', 'Title', 'Base', 'Bonus Pct', 'Bonus Amt', 'Equity Per Yr', 'Unvested Forfeited', 'Match 401k', 'Benefits Value', 'Notes', 'Key Benefits'];
 var CAR_STATE_HEADERS_    = ['Key', 'Value', 'Updated'];
 
 var CAR_TRACKS_ = [
@@ -216,7 +216,20 @@ function carParseBaseline_(blocks, existing, todayYm) {
 // ---- Sheet helpers -----------------------------------------------------------
 
 function carSheet_(name, headers) {
-  return ensureSheet(getSpreadsheet(), name, headers);
+  var sheet = ensureSheet(getSpreadsheet(), name, headers);
+  // A column added in a later version goes on the end of an existing tab's header row.
+  if (sheet.getLastColumn() < headers.length) {
+    var have = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
+      .map(function(h) { return String(h).trim(); });
+    var add = headers.filter(function(h) { return have.indexOf(h) === -1; });
+    if (add.length) sheet.getRange(1, sheet.getLastColumn() + 1, 1, add.length).setValues([add]);
+  }
+  return sheet;
+}
+
+/** "Medical, Vision, HSA Contribution $1,400" → three items: a comma inside a number doesn't split. */
+function carSplitBenefits_(v) {
+  return String(v == null ? '' : v).split(/,(?!\d{3}\b)/).map(function(x) { return x.trim(); }).filter(String);
 }
 
 /** Rows as objects keyed by the header labels actually in row 1, plus _row. */
@@ -354,7 +367,8 @@ function carReadPackage_() {
   return { id: String(r.ID), asOf: carMonthKey_(r['As Of']), employer: String(r.Employer || ''),
            title: String(r.Title || ''), base: r.Base, bonusPct: r['Bonus Pct'], bonusAmt: r['Bonus Amt'],
            equityPerYr: r['Equity Per Yr'], unvestedForfeited: r['Unvested Forfeited'],
-           match401k: r['Match 401k'], benefitsValue: r['Benefits Value'], notes: String(r.Notes || '') };
+           match401k: r['Match 401k'], benefitsValue: r['Benefits Value'], notes: String(r.Notes || ''),
+           keyBenefits: carSplitBenefits_(r['Key Benefits']) };
 }
 
 /** The v1 Career Network, read once by carMigrateContacts_. */
@@ -492,7 +506,7 @@ function carMigrationPlan_(v1, todayYm) {
   if (pos.Title || pos['Base Salary'] || pos['Bonus Pct']) {
     packages.push({ ID: id('CP'), 'As Of': todayYm, Employer: String(pos.Company || ''), Title: posTitle,
                     Base: pos['Base Salary'] || '', 'Bonus Pct': pos['Bonus Pct'] || '',
-                    'Equity Per Yr': pos.Equity || '', Notes: String(pos.Benefits || '') });
+                    'Equity Per Yr': pos.Equity || '', 'Key Benefits': String(pos.Benefits || '') });
   }
 
   var development = (v1.development || []).map(function(r) {
@@ -552,10 +566,30 @@ function carDocBlocks_(body) {
   return out;
 }
 
+/**
+ * Once: the v1 Position's Benefits went into the first package's Notes before
+ * the package had a Key Benefits column. Moved across only where Notes still
+ * holds exactly that v1 text, so nothing typed since is touched.
+ */
+function carMigrateKeyBenefits_() {
+  if (carStateGet_('key_benefits_v1')) return { skipped: true };
+  var pos = carReadRows_(getSpreadsheet().getSheetByName(TABS.CAREER_POSITION))[0] || {};
+  var v1 = String(pos.Benefits || '').trim();
+  var moved = 0;
+  var pkg = carReadPackage_();
+  if (v1 && pkg && !pkg.keyBenefits.length && pkg.notes.trim() === v1) {
+    carUpsert_(carSheet_(TABS.CAREER_PACKAGE, CAR_PACKAGE_HEADERS_), { ID: pkg.id, 'Key Benefits': v1, Notes: '' }, 'CP');
+    moved = 1;
+  }
+  carStateSet_('key_benefits_v1', { at: new Date().toISOString(), moved: moved });
+  return { moved: moved };
+}
+
 /** Migration, then the baseline import once its doc is configured. Safe to call often. */
 function carEnsureMigrated_() {
   var res = carMigrateV1_();
   carMigrateContacts_();
+  carMigrateKeyBenefits_();
   try { carImportBaseline_(); } catch (e) { Logger.log('Career baseline import: ' + e.message); }
   return res;
 }
@@ -1597,7 +1631,9 @@ function webCareerSavePackage_(body) {
               'Equity Per Yr': carNum_(p.equityPerYr) === null ? '' : carNum_(p.equityPerYr),
               'Unvested Forfeited': carNum_(p.unvestedForfeited) === null ? '' : carNum_(p.unvestedForfeited),
               'Match 401k': carNum_(p.match401k) === null ? '' : carNum_(p.match401k),
-              'Benefits Value': carNum_(p.benefitsValue) === null ? '' : carNum_(p.benefitsValue), Notes: p.notes || '' };
+              'Benefits Value': carNum_(p.benefitsValue) === null ? '' : carNum_(p.benefitsValue), Notes: p.notes || '',
+              'Key Benefits': (Array.isArray(p.keyBenefits) ? p.keyBenefits : carSplitBenefits_(p.keyBenefits))
+                .map(function(x) { return String(x).trim().slice(0, 80); }).filter(String).slice(0, 20).join(', ') };
   if (last && last.asOf === asOf) rec.ID = last.id;
   return { ok: true, id: carUpsert_(sheet, rec, 'CP') };
 }

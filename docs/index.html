@@ -5483,6 +5483,8 @@ function CarPipeline({apiUrl,apiToken,onReload}){
 var CAR_ROLE_WORD={sponsor:'Sponsor',mentor:'Mentor',peer:'Peer',recruiter:'Recruiter','hiring-manager':'Hiring manager'};
 var CAR_ROLE_ORDER=['sponsor','mentor','hiring-manager','recruiter','peer'];
 var CAR_WARMTH_STYLE={cold:CAR_STATUS_STYLE.gap,warm:CAR_STATUS_STYLE.partial,strong:CAR_STATUS_STYLE.proven};
+// $178,000 → "$178k"; $214,500 → "$214.5k"; under $1,000 shown in full.
+function carK(n){if(n===null||n===undefined||n===''||isNaN(Number(n)))return '—';n=Number(n);if(Math.abs(n)<1000)return '$'+Math.round(n);var k=Math.round(n/100)/10;return '$'+(k%1?k.toFixed(1):k.toFixed(0))+'k';}
 function carMoney(n){if(n===null||n===undefined||n===''||isNaN(Number(n)))return '—';return '$'+Math.round(Number(n)).toLocaleString();}
 function carSigned(n){if(n===null||n===undefined||isNaN(Number(n)))return '—';return (n>=0?'+':'−')+carMoney(Math.abs(n));}
 var CAR_MARKET_WORD={'step-up':'Step up',lateral:'Lateral','step-down':'Step down','below-floor':'Below your floor','no-package':'No package to compare'};
@@ -5525,7 +5527,7 @@ function CarNetwork({data,post,busy}){
 }
 
 function CarPackageModal({pkg,busy,onSave,onClose}){
-  var[f,setF]=React.useState(Object.assign({asOf:new Date().toISOString().slice(0,7),employer:'',title:'',base:'',bonusPct:'',bonusAmt:'',equityPerYr:'',unvestedForfeited:'',match401k:'',benefitsValue:'',notes:''},pkg||{}));
+  var[f,setF]=React.useState(Object.assign({asOf:new Date().toISOString().slice(0,7),employer:'',title:'',base:'',bonusPct:'',bonusAmt:'',equityPerYr:'',unvestedForfeited:'',match401k:'',benefitsValue:'',notes:''},pkg||{},{keyBenefits:((pkg&&pkg.keyBenefits)||[]).join(', ')}));
   function set(k){return function(v){setF(Object.assign({},f,{[k]:v}));};}
   function num(label,k){return carH("div",{style:{flex:'1 1 150px'}},carField(label,carInput(f[k],set(k),{inputMode:'decimal'})));}
   return carModal('Current package',onClose,carH(React.Fragment,null,
@@ -5534,6 +5536,7 @@ function CarPackageModal({pkg,busy,onSave,onClose}){
     carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('Base','base'),num('Bonus target %','bonusPct'),num('Bonus target $','bonusAmt')),
     carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('Equity per year','equityPerYr'),num('Unvested, forfeited on leaving','unvestedForfeited')),
     carH("div",{style:{display:'flex',gap:10,flexWrap:'wrap'}},num('401(k) match per year','match401k'),num('Benefits value per year','benefitsValue')),
+    carField('Key benefits (comma-separated)',carInput(f.keyBenefits,set('keyBenefits'),{placeholder:'e.g. Medical, Vision, 401K 6% Match, HSA Contribution $1,400'})),
     carField('Notes',carInput(f.notes,set('notes'))),
     carActions(busy||!String(f.base).trim(),function(){onSave(f);},onClose)));
 }
@@ -5547,13 +5550,24 @@ function CarMarket({data,post,busy,apiUrl,apiToken}){
   var cv=(data.constraints||{}).values||{};
   var bench=(pipe&&pipe.benchmarks)||[];
   var priced=((pipe&&pipe.rows)||[]).filter(function(r){return r.market;}).slice().reverse().slice(0,15);
-  function fig(label,v){return carH("div",{key:label},carH("p",{style:CAR_LABEL},label),carH("div",{className:'car-num',style:{fontSize:16}},v));}
+  // One figure per tile, coloured by kind (as the v1 Position card was), easy to scan.
+  function tile(label,v,color,sub){return carH("div",{key:label,className:'car-tile',style:{background:'#0f1d3d',border:'1px solid #2a3f73',borderRadius:10,padding:'12px 14px',minWidth:0}},carH("p",{style:Object.assign({},CAR_LABEL,{margin:'0 0 6px'})},label),carH("div",{className:'car-num',style:{fontSize:22,fontWeight:700,color:color}},v),sub&&carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12,marginTop:2})},sub));}
+  var bonusPct=pkg?parseFloat(String(pkg.bonusPct==null?'':pkg.bonusPct).replace(/[^0-9.]/g,'')):NaN;
   return carH("div",null,
     carH("p",{style:Object.assign({},CAR_MUTED,{margin:'0 0 12px'})},"What is the next move worth, and what is each match worth against what I have now?"),
     err&&carH("div",{className:"error-banner",role:'alert',style:{marginBottom:12}},err),
     carH("section",{className:'car-package',style:CAR_CARD},
       carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}},carH("h3",{style:{margin:0,fontSize:16}},"Current package"+(pkg&&pkg.asOf?' · as of '+pkg.asOf:'')),carH("button",{className:"btn btn-ghost",style:{fontSize:12},onClick:function(){setEdit(true);}},pkg?'Update':'+ Add')),
-      est?carH("div",{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,140px),1fr))',gap:12}},fig('Base',carMoney(est.base)),fig('Bonus target',carMoney(est.bonus)),fig('Equity / yr',carMoney(est.equity)),fig('401(k) match',carMoney(est.match401k)),fig('Benefits',carMoney(est.benefits)),fig('Estimated total',carMoney(est.total)),fig('Unvested, forfeited',carMoney(est.forfeited))):carH("div",{style:CAR_MUTED},"Add your package: it is the baseline every match is compared with."),
+      est?carH(React.Fragment,null,
+        carH("div",{className:'car-total',style:{background:'#13284f',border:'1px solid #34508a',borderRadius:10,padding:'14px 16px',marginBottom:12}},carH("p",{style:Object.assign({},CAR_LABEL,{margin:'0 0 4px'})},"Estimated total compensation"),carH("div",{className:'car-num',style:{fontSize:30,fontWeight:700,color:'#f2f4fb'}},'~'+carK(est.total)),carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12})},carMoney(est.total)+" a year · base + bonus + equity + 401(k) match + benefits")),
+        carH("div",{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,140px),1fr))',gap:10}},
+          tile('Base',carK(est.base),'#4ade80',carMoney(est.base)),
+          tile('Bonus',isFinite(bonusPct)&&bonusPct>0?bonusPct+'%':carK(est.bonus),'#e2b54a',isFinite(bonusPct)&&bonusPct>0?carK(est.bonus)+' target':'target'),
+          tile('Equity / yr',carK(est.equity),'#b48cf0'),
+          tile('401(k) match',carK(est.match401k),'#7cb8ff'),
+          tile('Benefits value',carK(est.benefits),'#7fd0e6'),
+          tile('Unvested',carK(est.forfeited),'#f28b89','forfeited on leaving')),
+        (pkg.keyBenefits||[]).length>0&&carH("div",{style:{marginTop:12}},carH("p",{style:CAR_LABEL},"Key benefits"),carH("div",{className:'car-benefits',style:{display:'flex',gap:6,flexWrap:'wrap'}},pkg.keyBenefits.map(function(b,ix){return carH("span",{key:ix,className:'car-benefit',style:{display:'inline-flex',alignItems:'center',padding:'4px 12px',borderRadius:999,fontSize:13,background:'#16264a',border:'1px solid #2a3f73',color:'#c9cfe3'}},b);})))):carH("div",{style:CAR_MUTED},"Add your package: it is the baseline every match is compared with."),
       carH("div",{style:Object.assign({},CAR_MUTED,{marginTop:10})},"Your floors: base "+carMoney(cv.baseFloor)+" · outside DC "+carMoney(cv.baseFloorOutsideDC)+" · total "+carMoney(cv.totalFloor)+" (from the job agent’s Settings)")),
     carH("section",{style:CAR_CARD},carH("h3",{style:{margin:'0 0 6px',fontSize:16}},"Matches against your package"),carH("p",{style:Object.assign({},CAR_MUTED,{margin:'0 0 10px'})},"The posted midpoint with your bonus target, match and benefits, and no equity. The first year also loses unvested equity and this year’s bonus."),
       !pipe&&!err?carH("div",{className:"loading-text"},"Loading matches…"):priced.length?carH("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:8}},priced.map(function(m){var mk=m.market;return carH("li",{key:m.row,className:'car-priced',style:{display:'flex',gap:10,justifyContent:'space-between',alignItems:'flex-start',padding:'10px 12px',border:'1px solid #1e3060',borderRadius:8,background:'#0d1b3e',flexWrap:'wrap'}},carH("div",{style:{flex:'1 1 280px',minWidth:0}},carH("strong",null,m.title),carH("span",{style:CAR_MUTED},' · '+m.company),carH("div",{style:Object.assign({},CAR_MUTED,{fontSize:12,marginTop:4})},m.salaryRange+' · '+carMarketLine(mk)+(mk.firstYearVsTotal!==undefined?' · first year '+carSigned(mk.firstYearVsTotal):''))),carChip(CAR_MARKET_WORD[mk.verdict]||mk.verdict,CAR_STATUS_STYLE[CAR_MARKET_STATUS[mk.verdict]]));})):carH("div",{style:CAR_MUTED},"No match with a stated salary range yet.")),
