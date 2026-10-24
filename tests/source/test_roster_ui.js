@@ -1,7 +1,7 @@
 // Renders the REAL "Your assistants" roster card in both dashboards at phone and
 // desktop widths, over a stubbed status: six rows, the right links opening in a new
-// tab, PIES unlinked, HAILEY and ARIA "Not built yet", a blank Config row shown as a
-// hint, and no sideways scroll. Invented sheet ids only.
+// tab, every link from status (one Config row each), HAILEY and ARIA "Not built
+// yet", a blank Config row shown as a hint naming the row, and no sideways scroll. Invented sheet ids only.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -36,17 +36,17 @@ function probe(page, links, veraHref) {
 }
 
 async function assertPage(page, veraHref) {
-  let r = await probe(page, { WILLA, TESS }, veraHref);
+  let r = await probe(page, { PIES: '', VERA: '', WILLA, TESS, HAILEY: '', ARIA: '' }, veraHref);
   check('the roster is available', !r.error, r.error);
   if (r.error) return;
   const by = n => r.rows.find(x => x.name === n) || {};
   check('titled "Your assistants"', /Your assistants/.test(r.title), r.title);
   check('six rows, in order', JSON.stringify(r.rows.map(x => x.name)) === '["PIES","VERA","WILLA","TESS","HAILEY","ARIA"]', JSON.stringify(r.rows.map(x => x.name)));
-  check('VERA links to ' + veraHref, by('VERA').href === veraHref, by('VERA').href);
+  check('VERA with a blank row links to ' + veraHref, by('VERA').href === veraHref, by('VERA').href);
   check('WILLA links to the planner sheet', by('WILLA').href === WILLA, by('WILLA').href);
   check('TESS links to the job agent sheet', by('TESS').href === TESS, by('TESS').href);
   check('every link opens in a new tab with noopener', ['VERA', 'WILLA', 'TESS'].every(n => by(n).target === '_blank' && by(n).rel === 'noopener'));
-  check('PIES, HAILEY and ARIA are not links', ['PIES', 'HAILEY', 'ARIA'].every(n => by(n).href === ''));
+  check('PIES, HAILEY and ARIA with blank rows are not links', ['PIES', 'HAILEY', 'ARIA'].every(n => by(n).href === ''));
   check('PIES says it lives on the work machine', /Work machine only/.test(by('PIES').note), by('PIES').note);
   check('HAILEY: Not built yet, waiting on Zillow and the buy box', by('HAILEY').state === 'Not built yet' && /Zillow connection and your buy box/.test(by('HAILEY').note));
   check('ARIA: Not built yet, waiting on trip details', by('ARIA').state === 'Not built yet' && /trip details/.test(by('ARIA').note));
@@ -57,7 +57,12 @@ async function assertPage(page, veraHref) {
   r = await probe(page, { WILLA: '', TESS: '' }, veraHref);
   const by2 = n => r.rows.find(x => x.name === n) || {};
   check('a blank Config row: the name unlinked, with what to add',
-        by2('WILLA').href === '' && /planner_sheet_id/.test(by2('WILLA').note) && by2('TESS').href === '' && /career_alert_sheet_id/.test(by2('TESS').note));
+        by2('WILLA').href === '' && /roster_link_willa/.test(by2('WILLA').note) && by2('TESS').href === '' && /roster_link_tess/.test(by2('TESS').note));
+  const ALL = { PIES: 'https://pies.example.test/', VERA: 'https://dash.example.test/', WILLA, TESS, HAILEY: 'https://hailey.example.test/', ARIA: 'https://aria.example.test/' };
+  r = await probe(page, ALL, veraHref);
+  check('with every row filled, all six names are links to their rows', r.rows.length === 6 && r.rows.every(x => x.href === ALL[x.name] && x.target === '_blank' && x.rel === 'noopener'),
+        JSON.stringify(r.rows.map(x => [x.name, x.href])));
+  check('…and the notes still say where PIES lives and what HAILEY waits on', /Work machine only/.test((r.rows.find(x => x.name === 'PIES') || {}).note) && /Zillow/.test((r.rows.find(x => x.name === 'HAILEY') || {}).note));
   r = await probe(page, undefined, veraHref);
   check('no status yet: still renders, VERA still linked', r.rows && r.rows.length === 6 && (r.rows.find(x => x.name === 'VERA') || {}).href === veraHref);
 }

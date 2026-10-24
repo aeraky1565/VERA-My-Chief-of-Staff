@@ -667,18 +667,31 @@ function webGetStatus_() {
   };
 }
 
+var ROSTER_NAMES_ = ['PIES', 'VERA', 'WILLA', 'TESS', 'HAILEY', 'ARIA'];
+
 /**
- * Links for the Home roster ("Your assistants"): WILLA is the planner sheet and
- * TESS the job agent's Settings sheet, both from their Config ids. Built here,
- * at run time, because the repo is public: no sheet id is ever written in code.
- * A blank or malformed id gives '', and the dashboard shows the name unlinked.
+ * Links for the Home roster ("Your assistants"), one Config row each:
+ * roster_link_pies … roster_link_aria. A row holds a full http(s) link, or a bare
+ * Google Sheets id, which becomes that sheet's link. Read here, at run time,
+ * because the repo is public: no link or sheet id is ever written in code.
+ *
+ * WILLA and TESS fall back to the sheets VERA already knows (planner_sheet_id,
+ * career_alert_sheet_id) while their row is blank. Anything else gives '', and
+ * the dashboard shows the name unlinked.
  */
 function rosterLinks_(cfg) {
-  var url = function(id) {
-    id = String(id || '').trim();
-    return /^[A-Za-z0-9_-]{20,}$/.test(id) ? 'https://docs.google.com/spreadsheets/d/' + id + '/edit' : '';
+  cfg = cfg || {};
+  var url = function(v) {
+    v = String(v || '').trim();
+    if (/^https?:\/\/[^\s"'<>]+$/i.test(v)) return v;
+    return /^[A-Za-z0-9_-]{20,}$/.test(v) ? 'https://docs.google.com/spreadsheets/d/' + v + '/edit' : '';
   };
-  return { WILLA: url((cfg || {}).planner_sheet_id), TESS: url((cfg || {}).career_alert_sheet_id) };
+  var fallback = { WILLA: cfg.planner_sheet_id, TESS: cfg.career_alert_sheet_id };
+  var out = {};
+  ROSTER_NAMES_.forEach(function(n) {
+    out[n] = url(cfg['roster_link_' + n.toLowerCase()]) || url(fallback[n]);
+  });
+  return out;
 }
 
 // ---- Flags -----------------------------------------------------------------

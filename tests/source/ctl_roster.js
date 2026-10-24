@@ -17,14 +17,18 @@ const W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
 const TEST = 'test_roster.js';
 
 const CONTROLS = [
-  ['a blank id still builds a link', b => ({ [W]: swap(b[W], "return /^[A-Za-z0-9_-]{20,}$/.test(id) ? 'https", "return true ? 'https") })],
-  ['the id is not trimmed', b => ({ [W]: swap(b[W], "id = String(id || '').trim();", "id = String(id || '');") })],
-  ['WILLA links to the job agent sheet', b => ({ [W]: swap(b[W], 'WILLA: url((cfg || {}).planner_sheet_id)', 'WILLA: url((cfg || {}).career_alert_sheet_id)') })],
+  ['a short junk value still builds a link', b => ({ [W]: swap(b[W], "return /^[A-Za-z0-9_-]{20,}$/.test(v) ? 'https", "return v ? 'https") })],
+  ['any scheme is accepted as a link', b => ({ [W]: swap(b[W], "if (/^https?:\\/\\/[^\\s\"'<>]+$/i.test(v)) return v;", "if (/^[a-z]+:/i.test(v)) return v;") })],
+  ['the value is not trimmed', b => ({ [W]: swap(b[W], "v = String(v || '').trim();", "v = String(v || '');") })],
+  ['WILLA no longer falls back to the planner sheet', b => ({ [W]: swap(b[W], 'WILLA: cfg.planner_sheet_id, ', '') })],
+  ['the fallback beats the roster row', b => ({ [W]: swap(b[W], "out[n] = url(cfg['roster_link_' + n.toLowerCase()]) || url(fallback[n]);", "out[n] = url(fallback[n]) || url(cfg['roster_link_' + n.toLowerCase()]);") })],
+  ['ARIA is not read from Config', b => ({ [W]: swap(b[W], "'HAILEY', 'ARIA'];", "'HAILEY'];") })],
   ['status drops rosterLinks', b => ({ [W]: swap(b[W], '    rosterLinks:  rosterLinks_(featureCfg),\n', '') })],
   ['lite is missing ARIA', b => ({ [L]: swap(b[L], "  {name:'ARIA',", "  {nome:'ARIA',") })],
-  ['HAILEY shows as live', b => { const f = s => swap(s, "Yours',purpose:'Searches Zillow against your buy box and flags new listings and price drops',state:'planned'", "Yours',purpose:'Searches Zillow against your buy box and flags new listings and price drops',state:'live'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
+  ['HAILEY shows as live', b => { const f = s => swap(s, "price drops',state:'planned'", "price drops',state:'live'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['links hand over the opener', b => { const f = s => swap(s, "target:'_blank',rel:'noopener'", "target:'_blank'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
-  ['a sheet id is written into the roster', b => { const f = s => swap(s, "link:'WILLA',", "link:'WILLA',id:'InventedPlannerId_0123456789abcdefgh',"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
+  ['VERA ignores its Config row', b => { const f = s => swap(s, "var href=L[r.name]||(r.name==='VERA'?veraHref:'');", "var href=r.name==='VERA'?veraHref:(L[r.name]||'');"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
+  ['a sheet id is written into the roster', b => { const f = s => swap(s, "{name:'WILLA',", "{name:'WILLA',id:'InventedPlannerId_0123456789abcdefgh',"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['Home stops rendering the roster', b => ({ [A]: swap(b[A], '/*#__PURE__*/React.createElement(VeraRoster,{links:status&&status.rosterLinks,veraHref:window.location.origin+window.location.pathname}),', '') })],
   ['lite’s VERA links back to itself', b => ({ [L]: swap(b[L], 'veraHref="./"', 'veraHref=""') })],
 ];

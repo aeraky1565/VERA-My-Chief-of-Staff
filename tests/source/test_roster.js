@@ -28,19 +28,32 @@ function extractFn(src, name) {
 console.log('rosterLinks_');
 {
   const S = vm.createContext({});
-  vm.runInContext(extractFn(WEB, 'rosterLinks_'), S);
+  vm.runInContext(WEB.match(/var ROSTER_NAMES_ = [^\n]*/)[0] + '\n' + extractFn(WEB, 'rosterLinks_'), S);
   const links = cfg => { S.cfg = cfg; return vm.runInContext('rosterLinks_(cfg)', S); };
   const PLAN = 'InventedPlannerId_0123456789-abcdefgh', AGENT = 'InventedAgentSheet_9876543210-zyxwvut';
+  const sheet = id => 'https://docs.google.com/spreadsheets/d/' + id + '/edit';
 
-  const l = links({ planner_sheet_id: PLAN, career_alert_sheet_id: '  ' + AGENT + '  ' });
-  check('WILLA links to the planner sheet', l.WILLA === 'https://docs.google.com/spreadsheets/d/' + PLAN + '/edit', l.WILLA);
-  check('TESS links to the job agent sheet, the id trimmed', l.TESS === 'https://docs.google.com/spreadsheets/d/' + AGENT + '/edit', l.TESS);
-  check('a blank Config row gives no link', links({ planner_sheet_id: '', career_alert_sheet_id: '' }).WILLA === '');
-  check('a missing Config row gives no link', links({}).TESS === '');
-  check('no Config at all gives no links', JSON.stringify(links(undefined)) === '{"WILLA":"","TESS":""}');
-  check('a pasted URL instead of an id gives no link', links({ planner_sheet_id: 'https://docs.google.com/spreadsheets/d/' + PLAN }).WILLA === '');
-  check('a short junk value gives no link', links({ career_alert_sheet_id: 'TBD' }).TESS === '');
-  check('only WILLA and TESS are linked from Config', JSON.stringify(Object.keys(l)) === '["WILLA","TESS"]');
+  const all = links({
+    roster_link_pies: 'https://pies.example.test/home', roster_link_vera: 'https://dash.example.test/',
+    roster_link_willa: sheet(PLAN), roster_link_tess: '  ' + AGENT + '  ',
+    roster_link_hailey: 'http://hailey.example.test', roster_link_aria: 'https://aria.example.test/trip?x=1',
+  });
+  check('every assistant has a link from its own Config row', JSON.stringify(Object.keys(all)) === '["PIES","VERA","WILLA","TESS","HAILEY","ARIA"]'
+        && all.PIES === 'https://pies.example.test/home' && all.VERA === 'https://dash.example.test/'
+        && all.HAILEY === 'http://hailey.example.test' && all.ARIA === 'https://aria.example.test/trip?x=1', JSON.stringify(all));
+  check('a full link is kept as is', all.WILLA === sheet(PLAN), all.WILLA);
+  check('a bare sheet id becomes its link, trimmed', all.TESS === sheet(AGENT), all.TESS);
+  check('the roster row wins over the fallback', links({ roster_link_willa: 'https://w.example.test/', planner_sheet_id: PLAN }).WILLA === 'https://w.example.test/');
+
+  const fb = links({ planner_sheet_id: PLAN, career_alert_sheet_id: AGENT });
+  check('WILLA falls back to planner_sheet_id', fb.WILLA === sheet(PLAN), fb.WILLA);
+  check('TESS falls back to career_alert_sheet_id', fb.TESS === sheet(AGENT), fb.TESS);
+  check('the others have no fallback', fb.PIES === '' && fb.VERA === '' && fb.HAILEY === '' && fb.ARIA === '');
+  check('blank rows give no link', Object.values(links({ roster_link_pies: '', planner_sheet_id: '' })).every(v => v === ''));
+  check('no Config at all gives no links', Object.values(links(undefined)).every(v => v === '') && Object.keys(links(undefined)).length === 6);
+  check('a non-web link gives no link', links({ roster_link_aria: 'javascript:alert(1)' }).ARIA === '' && links({ roster_link_pies: 'file:///C:/pies' }).PIES === '');
+  check('a short junk value gives no link', links({ roster_link_tess: 'TBD' }).TESS === '');
+  check('a link with a space or quote gives no link', links({ roster_link_vera: 'https://a.test/x y' }).VERA === '' && links({ roster_link_vera: 'https://a.test/"x' }).VERA === '');
 }
 
 // ============ the status payload ===============================================
@@ -85,8 +98,9 @@ check('HAILEY and ARIA are not built yet, and say what they wait on',
       by('HAILEY').state === 'planned' && /Zillow connection and your buy box/.test(by('HAILEY').note)
       && by('ARIA').state === 'planned' && /trip details/.test(by('ARIA').note));
 check('the other four are live', ['PIES', 'VERA', 'WILLA', 'TESS'].every(n => by(n).state === 'live'));
-check('PIES has no link and says why', by('PIES').link === 'none' && /work machine/i.test(by('PIES').note));
-check('WILLA and TESS take their links from status', by('WILLA').link === 'WILLA' && by('TESS').link === 'TESS');
+check('PIES says it lives on the work machine', /work machine/i.test(by('PIES').note));
+check('every link comes from status, VERA falling back to the page', A && /var href=L\[r\.name\]\|\|\(r\.name==='VERA'\?veraHref:''\);/.test(A));
+check('an unlinked name says which Config row to fill', A && /'Add roster_link_'\+r\.name\.toLowerCase\(\)\+' to Config to link it'/.test(A));
 check('links open in a new tab without handing over the opener', A && /target:'_blank',rel:'noopener'/.test(A));
 check('no sheet id is written in the block', A && !/(?=[A-Za-z0-9_-]*[A-Za-z0-9])[A-Za-z0-9_-]{25,}/.test(A.replace(/-{4,}/g, '')));
 
