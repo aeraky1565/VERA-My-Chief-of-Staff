@@ -45,6 +45,11 @@ const CONTROLS = [
   ['the save route is missing', b => ({ 'WebApp.js': swap(b['WebApp.js'], "      case 'career_save_constraints':    return jsonOut_(webCareerSaveConstraints_(body));\n", '') })],
   // ---- the Wins bank ------------------------------------------------------------------
   ['an existing month’s tab is written to again', b => ({ [C]: swap(b[C], "  if (exists) return { skipped: 'exists' };\n", '') })],
+  ['the tab is made with DocumentApp’s missing addTab again', b => ({ [C]: swap(b[C], "  var tab = createTab ? createTab(title) : null;", "  var tab = doc.addTab({ title: title });") })],
+  ['a refused tab is an error, not a section', b => ({ [C]: swap(b[C], "  var body = (tab || tabs[0]).asDocumentTab().getBody();", "  if (!tab) throw new Error('could not add the tab');\n  var body = tab.asDocumentTab().getBody();") })],
+  ['a section with this month’s title is not seen as sent', b => ({ [C]: swap(b[C], "    return t.asDocumentTab().getBody().getParagraphs().some(function(p) { return String(p.getText()).trim() === title; });", "    return false;") })],
+  ['a thrown request is not caught', b => ({ [C]: swap(b[C], "  } catch (e) {\n    Logger.log('Wins bank: tab not added (request failed)');\n    return null;\n  }", "  } finally {}") })],
+  ['the send passes no tab creator', b => ({ [C]: swap(b[C], ",\n                                  function(title) { return carCreateDocTab_(docId, title); });", ");") })],
   ['baseline wins are sent again', b => ({ [C]: swap(b[C], "return ev.source !== 'baseline' && !ev.winsBankSent;", 'return !ev.winsBankSent;') })],
   // ---- nightly ------------------------------------------------------------------------
   ['the stale flag repeats every night', b => ({ [C]: swap(b[C], "key: CAR_AGENT_STALE_KEY_ + '__' + (h.lastFound || 'none'),", "key: CAR_AGENT_STALE_KEY_ + '__' + Math.random(),") })],

@@ -1241,15 +1241,25 @@ function carWinsBankPlan_(evidence, todayYm) {
 }
 
 /**
- * Append one dated tab to the Wins bank (touch 3). Earlier tabs are never edited
- * or deleted; if this month's tab exists, nothing is written and the items wait
- * for next month's.
+ * Append this month's update to the Wins bank (touch 3): a new dated tab, made by
+ * createTab(title). Apps Script's DocumentApp can read tabs but cannot add one, so
+ * the real creator goes through the Docs API (carCreateDocTab_). If that refuses,
+ * the same dated section goes at the end of the doc's first tab instead, so a send
+ * never fails for want of a tab. Earlier tabs and sections are never edited or
+ * deleted; if this month's update exists in either form, nothing is written and
+ * the items wait for next month's.
  */
-function carAppendWinsBankTab_(doc, title, items, critNames) {
-  var exists = doc.getTabs().some(function(t) { return t.getTitle() === title; });
+function carAppendWinsBankTab_(doc, title, items, critNames, createTab) {
+  var tabs = carAllDocTabs_(doc.getTabs());
+  var exists = tabs.some(function(t) {
+    if (t.getTitle() === title) return true;
+    return t.asDocumentTab().getBody().getParagraphs().some(function(p) { return String(p.getText()).trim() === title; });
+  });
   if (exists) return { skipped: 'exists' };
   if (!items.length) return { skipped: 'nothing new' };
-  var body = doc.addTab({ title: title }).asDocumentTab().getBody();
+  var tab = createTab ? createTab(title) : null;
+  var mode = tab ? 'tab' : 'section';
+  var body = (tab || tabs[0]).asDocumentTab().getBody();
   body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.TITLE);
   body.appendParagraph('Added by VERA from Career → Evidence. Same format as the baseline: the win | the proof | when.');
   var groups = {};
@@ -1264,7 +1274,37 @@ function carAppendWinsBankTab_(doc, title, items, critNames) {
         .setGlyphType(DocumentApp.GlyphType.BULLET);
     });
   });
-  return { added: items.length };
+  return { added: items.length, mode: mode };
+}
+
+/** Every tab in a doc, child tabs included. */
+function carAllDocTabs_(tabs) {
+  var out = [];
+  (tabs || []).forEach(function(t) {
+    out.push(t);
+    if (t.getChildTabs) out = out.concat(carAllDocTabs_(t.getChildTabs()));
+  });
+  return out;
+}
+
+/**
+ * Add a tab titled `title` to the doc through the Docs API (addDocumentTab), then
+ * return it as DocumentApp sees it. Null on any refusal, and the caller falls back
+ * to a section. Logs the HTTP status only, never the doc id.
+ */
+function carCreateDocTab_(docId, title) {
+  try {
+    var res = UrlFetchApp.fetch('https://docs.googleapis.com/v1/documents/' + encodeURIComponent(docId) + ':batchUpdate', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      payload: JSON.stringify({ requests: [{ addDocumentTab: { tabProperties: { title: title } } }] }),
+    });
+    if (res.getResponseCode() !== 200) { Logger.log('Wins bank: tab not added, HTTP ' + res.getResponseCode()); return null; }
+    return carAllDocTabs_(DocumentApp.openById(docId).getTabs()).filter(function(t) { return t.getTitle() === title; })[0] || null;
+  } catch (e) {
+    Logger.log('Wins bank: tab not added (request failed)');
+    return null;
+  }
 }
 
 function webCareerWinsBank_() {
@@ -1273,11 +1313,12 @@ function webCareerWinsBank_() {
   var plan = carWinsBankPlan_(carReadEvidence_(), carTodayYm_());
   var names = {};
   carReadCriteria_().forEach(function(c) { names[c.id] = c.name; });
-  var res = carAppendWinsBankTab_(DocumentApp.openById(docId), plan.title, plan.items, names);
+  var res = carAppendWinsBankTab_(DocumentApp.openById(docId), plan.title, plan.items, names,
+                                  function(title) { return carCreateDocTab_(docId, title); });
   if (res.added) {
     var sheet = carSheet_(TABS.CAREER_EVIDENCE, CAR_EVIDENCE_HEADERS_);
     plan.items.forEach(function(ev) { carUpsert_(sheet, { ID: ev.id, 'Wins Bank Sent': plan.title }, 'CE'); });
-    carStateSet_('winsbank_last', { at: new Date().toISOString(), title: plan.title, count: res.added });
+    carStateSet_('winsbank_last', { at: new Date().toISOString(), title: plan.title, count: res.added, mode: res.mode });
   }
   return { ok: true, result: res, title: plan.title };
 }

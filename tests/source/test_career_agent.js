@@ -8,7 +8,7 @@ const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
 const { extractFn, FakeSheet, FakeSS, sandbox, run } = require('./career_fixtures.js')(read);
-const CODE = read('Code.js'), WEB = read('WebApp.js'), APP = read('docs/app.js'), INDEX = read('docs/index.html');
+const CODE = read('Code.js'), WEB = read('WebApp.js'), APP = read('docs/app.js'), INDEX = read('docs/index.html'), CAR = read('Career.js');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -209,31 +209,70 @@ console.log('\nconstraints live in the agent’s Settings');
 }
 
 // ============ the Wins bank ===================================================
+// The fake doc has no addTab, like the real DocumentApp: a tab can only be made
+// through the Docs API, which the tests stand in for with UrlFetchApp.
 console.log('\nthe Wins bank');
 {
-  const calls = [];
-  const mkTab = title => ({ getTitle: () => title, asDocumentTab: () => ({ getBody: () => ({
-    appendParagraph: t => { calls.push(['para', title, t]); return { setHeading: h => calls.push(['heading', h]) }; },
-    appendListItem: t => { calls.push(['item', title, t]); return { setGlyphType: () => {} }; } }) }) });
-  const tabs = [mkTab('2026-10 Baseline (Master Resume)')];
-  const doc = { getTabs: () => tabs.slice(), addTab: o => { calls.push(['addTab', o.title]); const t = mkTab(o.title); tabs.push(t); return t; },
-                removeTab: () => calls.push(['REMOVED']) };
-  const S = agentSandbox({ DocumentApp: { openById: () => doc, ParagraphHeading: { TITLE: 'TITLE', HEADING2: 'H2', NORMAL: 'NORMAL' }, GlyphType: { BULLET: 'B' },
-    ElementType: { LIST_ITEM: 'LIST_ITEM', PARAGRAPH: 'PARAGRAPH' } } });
+  // A send that throws reads as a failed send, not a crashed test.
+  const send = S => { try { return run(S, 'webCareerWinsBank_()'); } catch (e) { return { ok: false, thrown: e.message, result: {} }; } };
+  const mk = () => {
+    const calls = [];
+    const mkTab = (title, paras) => { const ps = (paras || []).slice(); return { getTitle: () => title, getChildTabs: () => [], asDocumentTab: () => ({ getBody: () => ({
+      getParagraphs: () => ps.map(t => ({ getText: () => t })),
+      appendParagraph: t => { calls.push(['para', title, t]); ps.push(t); return { setHeading: h => calls.push(['heading', h]) }; },
+      appendListItem: t => { calls.push(['item', title, t]); return { setGlyphType: () => {} }; } }) }) }; };
+    const tabs = [mkTab('2026-10 Baseline (Master Resume)', ['Baseline'])];
+    const doc = { getTabs: () => tabs.slice(), removeTab: () => calls.push(['REMOVED']) };
+    return { calls, tabs, doc, mkTab };
+  };
+  const DA = doc => ({ openById: () => doc, ParagraphHeading: { TITLE: 'TITLE', HEADING2: 'H2', NORMAL: 'NORMAL' }, GlyphType: { BULLET: 'B' },
+    ElementType: { LIST_ITEM: 'LIST_ITEM', PARAGRAPH: 'PARAGRAPH' } });
+  const api = (w, code) => ({ fetch: (url, o) => { w.fetches.push({ url, body: JSON.parse(o.payload), auth: o.headers.Authorization });
+    if (code === 200) w.tabs.push(w.mkTab(JSON.parse(o.payload).requests[0].addDocumentTab.tabProperties.title));
+    return { getResponseCode: () => code }; } });
+
+  // ---- the API adds the tab
+  const W = mk(); W.fetches = [];
+  const S = agentSandbox({ DocumentApp: DA(W.doc), UrlFetchApp: api(W, 200), ScriptApp: { getOAuthToken: () => 'tok' } });
   run(S, 'webCareerSaveEvidence_({ evidence: { statement: "Ran the portfolio review", month: "2026-10", scale: "12 programs", criterionIds: ["pmo-portfolio"] } })');
   S.ym = run(S, 'carTodayYm_()');
   const plan = run(S, 'carWinsBankPlan_(carReadEvidence_(), ym)');
   check('the plan takes new manual evidence, never the baseline (the migrated v1 win is baseline)', plan.items.length === 1 && plan.items.every(i => i.source !== 'baseline') && plan.title === S.ym + ' update', JSON.stringify(plan.items.map(i => i.source)));
-  const r = run(S, 'webCareerWinsBank_()');
-  check('a dated tab is added, grouped by criterion, in the baseline’s format', r.result.added === 1 &&
-        calls.some(c => c[0] === 'addTab' && c[1] === S.ym + ' update') &&
-        calls.some(c => c[0] === 'item' && c[2] === 'Ran the portfolio review | Proof: 12 programs | 2026-10'), JSON.stringify(calls));
-  check('earlier tabs are never written to or removed', !calls.some(c => c[1] === '2026-10 Baseline (Master Resume)' || c[0] === 'REMOVED'));
-  check('sent items are stamped with the tab', run(S, 'carReadEvidence_()').filter(e => e.winsBankSent === S.ym + ' update').length === 1);
-  calls.length = 0;
+  const r = send(S);
+  check('the tab is made through the Docs API, with the token and the dated title',
+        W.fetches.length === 1 && /docs\.googleapis\.com\/v1\/documents\/.+:batchUpdate$/.test(W.fetches[0].url) && W.fetches[0].auth === 'Bearer tok'
+        && W.fetches[0].body.requests[0].addDocumentTab.tabProperties.title === S.ym + ' update', JSON.stringify(W.fetches));
+  check('a dated tab is filled, grouped by criterion, in the baseline’s format', r.ok && r.result.added === 1 && r.result.mode === 'tab' &&
+        W.calls.some(c => c[0] === 'item' && c[1] === S.ym + ' update' && c[2] === 'Ran the portfolio review | Proof: 12 programs | 2026-10'), JSON.stringify(W.calls));
+  check('earlier tabs are never written to or removed', !W.calls.some(c => c[1] === '2026-10 Baseline (Master Resume)' || c[0] === 'REMOVED'));
+  check('sent items are stamped with the update', run(S, 'carReadEvidence_()').filter(e => e.winsBankSent === S.ym + ' update').length === 1);
+  W.calls.length = 0; W.fetches.length = 0;
   run(S, 'webCareerSaveEvidence_({ evidence: { statement: "Later win", month: "2026-10" } })');
-  const again = run(S, 'webCareerWinsBank_()');
-  check('this month’s tab already exists: nothing is written, the item waits for next month', again.result.skipped === 'exists' && calls.length === 0);
+  const again = send(S);
+  check('this month’s tab already exists: nothing is written or requested, the item waits', again.result.skipped === 'exists' && W.calls.length === 0 && W.fetches.length === 0);
+
+  // ---- the API refuses: a section at the end of the first tab
+  const F = mk(); F.fetches = [];
+  const T = agentSandbox({ DocumentApp: DA(F.doc), UrlFetchApp: api(F, 403), ScriptApp: { getOAuthToken: () => 'tok' } });
+  run(T, 'webCareerSaveEvidence_({ evidence: { statement: "Closed the reforecast", month: "2026-10" } })');
+  T.ym = run(T, 'carTodayYm_()');
+  const fr = send(T);
+  check('the API refuses: the update goes in as a section at the end of the first tab, no error',
+        fr.ok && fr.result.mode === 'section' && fr.result.added === 1 && F.tabs.length === 1 &&
+        F.calls.some(c => c[0] === 'para' && c[1] === '2026-10 Baseline (Master Resume)' && c[2] === T.ym + ' update') &&
+        F.calls.some(c => c[0] === 'item' && /Closed the reforecast/.test(c[2])), JSON.stringify(F.calls));
+  F.calls.length = 0; F.fetches.length = 0;
+  run(T, 'webCareerSaveEvidence_({ evidence: { statement: "Another", month: "2026-10" } })');
+  check('a section with this month’s title counts as already sent', send(T).result.skipped === 'exists' && F.calls.length === 0 && F.fetches.length === 0);
+
+  // ---- a thrown fetch also falls back
+  const X = mk();
+  const U = agentSandbox({ DocumentApp: DA(X.doc), UrlFetchApp: { fetch: () => { throw new Error('boom https://docs.googleapis.com/v1/documents/SECRETID'); } }, ScriptApp: { getOAuthToken: () => 'tok' } });
+  run(U, 'webCareerSaveEvidence_({ evidence: { statement: "A win", month: "2026-10" } })');
+  check('a failed request falls back to a section too', send(U).result.mode === 'section');
+
+  check('nothing calls DocumentApp’s missing addTab', !/\.addTab\(/.test(CAR));
+  check('the fetch failure is logged without its message (which can carry the doc id)', !/Logger\.log\('Wins bank[^;]*e\.message/.test(CAR));
 }
 
 // ============ nightly: health flag and suggestions ===============================
