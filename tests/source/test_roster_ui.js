@@ -1,6 +1,6 @@
 // Renders the REAL "Your assistants" roster card in both dashboards at phone and
 // desktop widths, over a stubbed status: six rows, the right links opening in a new
-// tab, every link from status (one Config row each), HAILEY and ARIA "Not built
+// tab, every link from status (one Config row each), ARIA "Not built
 // yet", a blank Config row shown as a hint naming the row, and no sideways scroll. Invented sheet ids only.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -13,6 +13,7 @@ const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
                              : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
 
 const WILLA = 'https://docs.google.com/spreadsheets/d/InventedPlannerId_0123456789/edit';
+const HAILEY_URL = 'https://docs.google.com/spreadsheets/d/InventedHaileyId_0123456789/edit';
 const TESS = 'https://docs.google.com/spreadsheets/d/InventedAgentId_9876543210/edit';
 
 function probe(page, links, veraHref) {
@@ -36,7 +37,7 @@ function probe(page, links, veraHref) {
 }
 
 async function assertPage(page, veraHref) {
-  let r = await probe(page, { PIES: '', VERA: '', WILLA, TESS, HAILEY: '', ARIA: '' }, veraHref);
+  let r = await probe(page, { PIES: '', VERA: '', WILLA, TESS, HAILEY: HAILEY_URL, ARIA: '' }, veraHref);
   check('the roster is available', !r.error, r.error);
   if (r.error) return;
   const by = n => r.rows.find(x => x.name === n) || {};
@@ -46,11 +47,11 @@ async function assertPage(page, veraHref) {
   check('WILLA links to the planner sheet', by('WILLA').href === WILLA, by('WILLA').href);
   check('TESS links to the job agent sheet', by('TESS').href === TESS, by('TESS').href);
   check('every link opens in a new tab with noopener', ['VERA', 'WILLA', 'TESS'].every(n => by(n).target === '_blank' && by(n).rel === 'noopener'));
-  check('PIES, HAILEY and ARIA with blank rows are not links', ['PIES', 'HAILEY', 'ARIA'].every(n => by(n).href === ''));
-  check('PIES says it lives on the work machine', /Work machine only/.test(by('PIES').note), by('PIES').note);
-  check('HAILEY: Not built yet, waiting on Zillow and the buy box', by('HAILEY').state === 'Not built yet' && /Zillow connection and your buy box/.test(by('HAILEY').note));
+  check('HAILEY links to its tracker', by('HAILEY').href === HAILEY_URL && by('HAILEY').target === '_blank', by('HAILEY').href);
+  check('PIES and ARIA with blank rows are not links', ['PIES', 'ARIA'].every(n => by(n).href === ''));
+  check('PIES says it lives in the work environment', /Lives in Ahmed’s work environment/.test(by('PIES').note) && /professional workflow/.test(by('PIES').text), by('PIES').note);
   check('ARIA: Not built yet, waiting on trip details', by('ARIA').state === 'Not built yet' && /trip details/.test(by('ARIA').note));
-  check('the four built ones read Live', ['PIES', 'VERA', 'WILLA', 'TESS'].every(n => by(n).state === 'Live'));
+  check('the five built ones read Live, HAILEY included, with no waiting note', ['PIES', 'VERA', 'WILLA', 'TESS', 'HAILEY'].every(n => by(n).state === 'Live') && by('HAILEY').note === '');
   check('each row spells out the acronym and its job', /Work-optional Income & Lifestyle Longevity Analyzer/.test(by('WILLA').text) && /you submit applications yourself/.test(by('TESS').text));
   check('no sideways scroll', r.noScroll);
 
@@ -62,7 +63,7 @@ async function assertPage(page, veraHref) {
   r = await probe(page, ALL, veraHref);
   check('with every row filled, all six names are links to their rows', r.rows.length === 6 && r.rows.every(x => x.href === ALL[x.name] && x.target === '_blank' && x.rel === 'noopener'),
         JSON.stringify(r.rows.map(x => [x.name, x.href])));
-  check('…and the notes still say where PIES lives and what HAILEY waits on', /Work machine only/.test((r.rows.find(x => x.name === 'PIES') || {}).note) && /Zillow/.test((r.rows.find(x => x.name === 'HAILEY') || {}).note));
+  check('…and the notes still say where PIES lives and what ARIA waits on', /work environment/.test((r.rows.find(x => x.name === 'PIES') || {}).note) && /trip details/.test((r.rows.find(x => x.name === 'ARIA') || {}).note));
   r = await probe(page, undefined, veraHref);
   check('no status yet: still renders, VERA still linked', r.rows && r.rows.length === 6 && (r.rows.find(x => x.name === 'VERA') || {}).href === veraHref);
 }
