@@ -1990,8 +1990,21 @@ function buildTripSummary_(o){
   // else the day before's; else the place the trip's label names.
   var dayCity={};var place=tsLabelPlace_(trip.label);var prev='';
   var movesOn=function(d){return (byDay[d]||[]).filter(function(it){return TS_MOVE_TYPES[it.type];}).sort(function(a,b){return (a.startTime||'').localeCompare(b.startTime||'');});};
+  // A cruise is the stay for every night aboard, but its location is the home port.
+  // On a cruise day the day's own place is the port of call: any located item that
+  // is not the ship or a flight, a bare "Cozumel" included, as Packing reads it.
+  // A day aboard with none is at sea; the boarding day keeps the ship's port.
+  var portOf=function(d){var p=(byDay[d]||[]).filter(function(it){var l=String(it.location||'').trim();
+      return l&&it.type!=='cruise'&&it.type!=='flight'&&!/zoom\.us|meet\.google|teams\.microsoft|https?:/i.test(l);})[0];
+    // A port is named first: "Roatan, Honduras" is Roatan, "Port of Nassau" is Nassau.
+    return p?String(p.location).split(',')[0].replace(/^port of\s+/i,'').replace(/\d+/g,'').trim():'';};
+  var disembark={};items.forEach(function(it){if(it.type==='cruise'){var co=tsMeta_(it).checkoutDate;if(co)disembark[co]=it;}});
   days.forEach(function(d,i){
-    var c=stayOf[d]?tsCity_(stayOf[d].location):'';
+    var ship=stayOf[d]&&(stayOf[d].type==='cruise'||stayOf[d]===board);
+    var c=ship?portOf(d):'';
+    if(!c&&ship&&d!==stayOf[d].date)c='At sea';
+    if(!c)c=stayOf[d]?tsCity_(stayOf[d].location):'';
+    if(!c&&disembark[d])c=tsCity_(disembark[d].location);
     if(!c){var mv=movesOn(d);for(var k=mv.length-1;k>=0&&!c;k--)c=tsMoveDest_(mv[k]);}
     if(!c){var counts={};(byDay[d]||[]).forEach(function(it){if(String(it.location||'').indexOf(',')===-1)return;var x=tsCity_(it.location);if(x)counts[x]=(counts[x]||0)+1;});
       c=Object.keys(counts).sort(function(x,y){return counts[y]-counts[x];})[0]||'';}

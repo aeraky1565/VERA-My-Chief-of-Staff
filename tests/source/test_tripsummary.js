@@ -88,6 +88,16 @@ console.log('\nnights and the red days');
   const cruise = sum({ trip: { startDate: '2026-06-27', endDate: '2026-07-04', label: 'Cruise' }, today: '2026-01-01', items: [
     { id: 'b', type: 'cruise', title: 'Board the ship', date: '2026-06-27', location: 'Whittier, AK' },
     { id: 'o', type: 'cruise', title: 'Disembark at Vancouver', date: '2026-07-04', location: 'Vancouver, BC, Canada' }] });
+  // One cruise stay from the home port; the ports are all-day calendar events named
+  // by place alone. The pills follow the ports, not the ship's home port.
+  const ports = sum({ trip: { startDate: '2026-12-01', endDate: '2026-12-06', label: 'Anniversary Trip' }, today: '2026-01-01', items: [
+    { id: 'c', type: 'cruise', title: 'Cruise Stay: Anniversary', date: '2026-12-01', location: 'Port Canaveral, FL', metadata: JSON.stringify({ checkoutDate: '2026-12-06' }) },
+    { id: 'p1', type: 'calendar', title: 'Cozumel', date: '2026-12-03', location: 'Cozumel' },
+    { id: 'p0', type: 'calendar', title: 'Nassau', date: '2026-12-02', location: 'Port of Nassau' },
+    { id: 'p2', type: 'calendar', title: 'Roatan', date: '2026-12-04', location: 'Roatan, Honduras' },
+    { id: 'x', type: 'calendar', title: 'Team call', date: '2026-12-05', location: 'https://zoom.us/j/1' }] });
+  check('cruise days read the port of call, a bare name included', ports.days.map(d => d.city).join() === 'Port Canaveral,Nassau,Cozumel,Roatan,At sea,Port Canaveral', ports.days.map(d => d.city).join());
+  check('…and the cruise still covers every night', ports.nights.missing.length === 0, JSON.stringify(ports.nights));
   check('a cruise booked as Board … Disembark covers every night between', cruise.nights.missing.length === 0 && cruise.nights.total === 7, JSON.stringify(cruise.nights));
 }
 
