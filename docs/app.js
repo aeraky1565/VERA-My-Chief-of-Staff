@@ -1141,6 +1141,276 @@ function TsTodayCard(props){var h=React.createElement;var trip=props.trip||{};
       props.onViewItinerary&&h('button',{type:'button',onClick:props.onViewItinerary,style:{minHeight:32,padding:'0 10px',borderRadius:8,border:'1px solid #e05a5a',background:'transparent',color:'#ffc2c2',fontSize:12,fontWeight:600,cursor:'pointer'}},'Add a stay')));
 }
 // ---- /TripSummaryView ----
+// ---- TripIdeasView (Trip Ideas, stage 1) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Trips with no dates yet: a board of ideas, each a loose brief with options under
+// it. An option is an ordered list of legs from home and back (stops with nights,
+// moves by plane, train, car, ship…) with a cost by category and for/against.
+// Nothing here touches a calendar. The ti*_ builders are pure; test_tripideas.js
+// runs them in node and checks the two copies of this block match.
+var TI_MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var TI_MODES=[['fly','FLY','Fly'],['train','TRAIN','Train'],['car','CAR','Drive'],['ship','SHIP','Cruise'],['ferry','FERRY','Ferry'],['bus','BUS','Bus'],['other','MOVE','Move']];
+var TI_COSTS=[['flights','Flights'],['stays','Stays'],['cruise','Cruise'],['ground','Getting around'],['daily','Daily spend']];
+var TI_STATUS=[['brainstorming','Brainstorming'],['shortlisted','Shortlisted'],['settled','Settled'],['archived','Archived']];
+var TI_OPEN=[['stay','Fly in, stay put'],['train','Train hops'],['cruise','Cruise'],['road','Road trip']];
+var TI_SOURCE=[['manual','By hand'],['vera','VERA'],['chatgpt','ChatGPT'],['claude','Claude'],['gemini','Gemini'],['aria','ARIA'],['other','Other']];
+function tiModeOf_(m){for(var i=0;i<TI_MODES.length;i++)if(TI_MODES[i][0]===m)return TI_MODES[i];return TI_MODES[TI_MODES.length-1];}
+// "Mar – May 2027", "Mar, Jun 2027", "Dec 2026 – Feb 2027", or "Any time".
+function tiMonthsText_(months){var ms=(months||[]).filter(function(m){return /^\d{4}-\d{2}$/.test(m);}).slice().sort();if(!ms.length)return 'Any time';
+  var idx=function(m){return Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;};var name=function(m){return TI_MONTHS[Number(m.slice(5,7))-1];};
+  var runs=[];ms.forEach(function(m){var r=runs[runs.length-1];if(r&&idx(m)===idx(r[1])+1)r[1]=m;else runs.push([m,m]);});
+  var oneYear=ms[0].slice(0,4)===ms[ms.length-1].slice(0,4);
+  var part=function(r){if(r[0]===r[1])return name(r[0])+(oneYear?'':' '+r[0].slice(0,4));
+    return r[0].slice(0,4)===r[1].slice(0,4)&&oneYear?name(r[0])+' – '+name(r[1]):name(r[0])+' '+r[0].slice(0,4)+' – '+name(r[1])+' '+r[1].slice(0,4);};
+  return runs.map(part).join(', ')+(oneYear?' '+ms[0].slice(0,4):'');}
+function tiNightsText_(lo,hi){if(lo==null&&hi==null)return 'Any length';if(lo==null||hi==null||lo===hi)return (lo!=null?lo:hi)+' nights';return lo+'–'+hi+' nights';}
+function tiLegNights_(legs){return (legs||[]).reduce(function(n,l){return n+(l&&l.kind==='stop'?Number(l.nights)||0:0);},0);}
+// "Fly · train · fly": every move in order. Back-to-back moves of one mode (two
+// drives with no stop between) read once; a flight in and a flight out read twice.
+function tiModesText_(legs){var out=[],prev=null;(legs||[]).forEach(function(l){if(!l)return;if(l.kind!=='move'){prev=null;return;}var w=tiModeOf_(l.mode)[2];if(w!==prev)out.push(w);prev=w;});
+  if(!out.length)return 'Stay put';return out.map(function(w,i){return i?w.toLowerCase():w;}).join(' · ');}
+function tiCostTotal_(cost){var lo=0,hi=0,n=0;TI_COSTS.forEach(function(c){var v=cost&&cost[c[0]];if(!v)return;lo+=Number(v.low)||0;hi+=Number(v.high)||0;n++;});return n?{low:lo,high:hi,count:n}:null;}
+function tiMoney_(n){n=Number(n)||0;if(n>=10000)return '$'+Math.round(n/1000)+'k';if(n>=1000)return '$'+(Math.round(n/100)/10)+'k';return '$'+Math.round(n);}
+function tiRange_(lo,hi){return lo===hi?tiMoney_(lo):tiMoney_(lo)+' – '+tiMoney_(hi);}
+// Against the budget WILLA gave: within when even the high end fits, over when even the low end doesn't.
+function tiBudgetFit_(total,budget){if(!total||budget==null||budget==='')return '';var b=Number(budget);if(!isFinite(b)||b<=0)return '';
+  if(total.high<=b)return 'within';if(total.low>b)return 'over';return 'close';}
+function tiGroupIdeas_(ideas){var g={};TI_STATUS.forEach(function(s){g[s[0]]=[];});(ideas||[]).forEach(function(i){(g[i.status]||g.brainstorming).push(i);});
+  Object.keys(g).forEach(function(k){g[k].sort(function(a,b){return String(b.updated||'').localeCompare(String(a.updated||''));});});return g;}
+// What an idea's card shows: how many options, the favourite, and the spread of nights and cost.
+function tiIdeaSummary_(idea,options){var mine=(options||[]).filter(function(o){return o.ideaId===idea.id&&o.flag!=='out';});
+  var star=mine.filter(function(o){return o.flag==='star';})[0]||null;var nights=mine.map(function(o){return tiLegNights_(o.legs);}).filter(function(n){return n>0;});
+  var totals=mine.map(function(o){return tiCostTotal_(o.cost);}).filter(Boolean);
+  return {count:mine.length,star:star?star.name:'',nights:nights.length?{lo:Math.min.apply(null,nights),hi:Math.max.apply(null,nights)}:null,
+    cost:totals.length?{low:Math.min.apply(null,totals.map(function(t){return t.low;})),high:Math.max.apply(null,totals.map(function(t){return t.high;}))}:null};}
+function tiBlankIdea_(){return {title:'',where:'',months:[],nightsMin:null,nightsMax:null,travelers:'',budget:null,pace:'balanced',openTo:[],mustHaves:'',status:'brainstorming'};}
+function tiBlankOption_(ideaId){return {ideaId:ideaId,name:'',source:'manual',flag:'',legs:[],cost:{},pros:[],cons:[]};}
+// A quick start for an option's route: one flight in, one stop, one flight home.
+function tiSimpleLegs_(){return [{kind:'move',mode:'fly',from:'Home',to:'',note:''},{kind:'stop',place:'',nights:7,note:''},{kind:'move',mode:'fly',from:'',to:'Home',note:''}];}
+
+var TI={bg:'#0a1428',card:'#0d1b3e',br:'#1e3060',deep:'#0a1530',pill:'#13264d',txt:'#dde1f0',hi:'#eef1fb',mute:'#9aa9cc',soft:'#b8c3e0',acc:'#8ab4f8',gold:'#c9a84c',ok:'#8fe0a8',warn:'#f6d27a'};
+function tiBtn_(kind){var base={minHeight:44,padding:'0 14px',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'};
+  if(kind==='primary')return Object.assign(base,{border:'none',background:TI.acc,color:TI.bg,fontWeight:700});
+  if(kind==='good')return Object.assign(base,{border:'1px solid #4d9f6a',background:'#173a24',color:TI.ok,fontWeight:700});
+  if(kind==='danger')return Object.assign(base,{border:'1px solid #6a2a2a',background:'transparent',color:'#ffb0b0'});
+  return Object.assign(base,{border:'1px solid #24386a',background:'transparent',color:'#cfe0ff'});}
+var TI_INPUT={minHeight:44,padding:'0 12px',borderRadius:8,border:'1px solid #2a3f6f',background:'#06112a',color:TI.hi,fontSize:15,boxSizing:'border-box',width:'100%',minWidth:0};
+var TI_LABEL={display:'flex',flexDirection:'column',gap:6,fontSize:12,fontWeight:600,color:TI.mute,minWidth:0};
+var TI_EYEBROW={fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:TI.mute};
+function tiChip_(h,key,label,on,onClick){return h('button',{key:key,type:'button',onClick:onClick,'aria-pressed':!!on,className:'ti-chip'+(on?' on':''),
+  style:{minHeight:36,padding:'0 12px',borderRadius:999,border:'1px solid '+(on?TI.acc:'#24386a'),background:on?'#1a2c55':'transparent',color:on?TI.hi:'#cfe0ff',fontSize:13,fontWeight:on?700:500,cursor:'pointer'}},label);}
+
+function TiRoute(props){var h=React.createElement;var legs=props.legs||[];
+  var home=function(k,t){return h('div',{key:k,style:{padding:'4px 10px',borderRadius:8,border:'1px dashed #2a3f6f',fontSize:12,color:TI.mute}},t);};
+  return h('div',{className:'ti-route',style:{display:'flex',flexDirection:'column',gap:5}},home('h0','Home'),
+    legs.map(function(l,i){if(l.kind==='stop')return h('div',{key:i,className:'ti-stop',style:{display:'flex',justifyContent:'space-between',gap:8,padding:'7px 10px',borderRadius:8,background:TI.pill,fontSize:13,color:TI.hi,fontWeight:600}},
+        h('span',{style:{minWidth:0}},l.place),h('span',{style:{fontWeight:500,color:TI.soft,flex:'none'}},(l.nights||0)+(l.nights===1?' night':' nights')));
+      var m=tiModeOf_(l.mode);var path=[l.from,l.to].filter(Boolean).join(' → ');
+      return h('div',{key:i,className:'ti-move',style:{display:'flex',alignItems:'center',gap:8,fontSize:12,color:TI.mute,paddingLeft:4}},
+        h('span',{style:{fontSize:10,fontWeight:800,letterSpacing:'.06em',padding:'3px 6px',borderRadius:5,background:'#24386a',color:'#cfe0ff',minWidth:40,textAlign:'center',flex:'none'}},m[1]),
+        h('span',{style:{minWidth:0}},[path,l.note].filter(Boolean).join(' · ')||m[2]));}),home('h1','Home'));}
+
+function TiCost(props){var h=React.createElement;var cost=props.cost||{};var total=tiCostTotal_(cost);var fit=tiBudgetFit_(total,props.budget);
+  var rows=TI_COSTS.filter(function(c){return cost[c[0]];});
+  return h('div',{className:'ti-cost',style:{display:'flex',flexDirection:'column',gap:8,padding:'10px 12px',borderRadius:10,background:TI.deep}},
+    h('span',{style:TI_EYEBROW},'Cost'),
+    !rows.length?h('span',{style:{fontSize:13,color:TI.mute}},'No cost yet. Edit the option to add a range per category.'):
+    h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:'4px 10px',fontSize:13,alignItems:'baseline',fontVariantNumeric:'tabular-nums'}},
+      rows.map(function(c){var v=cost[c[0]];return [h('span',{key:c[0]+'n'},c[1],v.basis?h('span',{style:{display:'block',fontSize:11,color:TI.mute}},v.basis):null),h('span',{key:c[0]+'v',style:{textAlign:'right'}},tiRange_(v.low,v.high))];}),
+      h('span',{style:{fontWeight:700,borderTop:'1px solid '+TI.br,paddingTop:6}},'Total'),
+      h('span',{className:'ti-total',style:{fontWeight:700,borderTop:'1px solid '+TI.br,paddingTop:6,textAlign:'right'}},tiRange_(total.low,total.high))),
+    fit&&h('span',{className:'ti-fit ti-fit-'+fit,style:{fontSize:12,fontWeight:600,color:fit==='within'?TI.ok:fit==='over'?'#ffb0b0':TI.warn}},
+      fit==='within'?'Within the '+tiMoney_(props.budget)+' budget':fit==='over'?'Over the '+tiMoney_(props.budget)+' budget':'Could go over the '+tiMoney_(props.budget)+' budget'));}
+
+function TiOptionCard(props){var h=React.createElement;var o=props.option;var star=o.flag==='star',out=o.flag==='out';var nights=tiLegNights_(o.legs);
+  var src=(TI_SOURCE.filter(function(s){return s[0]===o.source;})[0]||TI_SOURCE[0])[1];
+  var list=function(t,c,arr){return arr.length?h('div',{style:{display:'flex',flexDirection:'column',gap:3,minWidth:0}},h('span',{style:{fontSize:11,fontWeight:700,color:c}},t),arr.map(function(x,i){return h('span',{key:i,style:{fontSize:13,lineHeight:1.4}},x);})):null;};
+  return h('div',{className:'ti-option'+(star?' ti-star':''),style:{display:'flex',flexDirection:'column',gap:12,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(star?TI.gold:TI.br),opacity:out?0.7:1,minWidth:0}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}},
+      h('div',{style:{display:'flex',flexDirection:'column',gap:4,minWidth:0}},h('span',{className:'ti-option-name',style:{fontSize:16,fontWeight:700,color:TI.hi}},o.name),
+        h('span',{style:{fontSize:12,color:TI.mute}},(nights?nights+' nights · ':'')+tiModesText_(o.legs)+' · '+(o.source==='manual'?'added by hand':'from '+src))),
+      h('div',{style:{display:'flex',gap:4,flex:'none'}},
+        h('button',{type:'button',className:'ti-star-btn','aria-label':star?'Remove favourite':'Favourite','aria-pressed':star,disabled:props.busy,onClick:function(){props.onFlag(star?'':'star');},
+          style:{width:44,height:44,borderRadius:10,border:'1px solid '+(star?TI.gold:'#24386a'),background:star?'#33280f':'transparent',color:star?'#f6dc97':TI.mute,fontSize:18,cursor:'pointer'}},star?'★':'☆'),
+        h('button',{type:'button',className:'ti-out-btn','aria-label':out?'Bring back':'Rule out','aria-pressed':out,disabled:props.busy,onClick:function(){props.onFlag(out?'':'out');},
+          style:{width:44,height:44,borderRadius:10,border:'1px solid #24386a',background:out?'#3a1218':'transparent',color:out?'#ffb0b0':TI.mute,fontSize:16,cursor:'pointer'}},'✕'))),
+    o.legs.length?h(TiRoute,{legs:o.legs}):h('span',{style:{fontSize:13,color:TI.mute}},'No route yet.'),
+    h(TiCost,{cost:o.cost,budget:props.budget}),
+    (o.pros.length||o.cons.length)?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},list('FOR',TI.ok,o.pros),list('AGAINST',TI.warn,o.cons)):null,
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'ti-edit-option',onClick:props.onEdit,disabled:props.busy,style:tiBtn_()},'Edit')));}
+
+function TiOptionEditor(props){var h=React.createElement;
+  var _s=React.useState(function(){var o=JSON.parse(JSON.stringify(props.option));o.prosText=(o.pros||[]).join('\n');o.consText=(o.cons||[]).join('\n');return o;}),o=_s[0],setO=_s[1];
+  var set=function(k,v){setO(function(p){var n=Object.assign({},p);n[k]=v;return n;});};
+  var setLeg=function(i,k,v){setO(function(p){var legs=p.legs.slice();legs[i]=Object.assign({},legs[i]);legs[i][k]=v;return Object.assign({},p,{legs:legs});});};
+  var moveLeg=function(i,d){setO(function(p){var legs=p.legs.slice();var j=i+d;if(j<0||j>=legs.length)return p;var t=legs[i];legs[i]=legs[j];legs[j]=t;return Object.assign({},p,{legs:legs});});};
+  var dropLeg=function(i){setO(function(p){var legs=p.legs.slice();legs.splice(i,1);return Object.assign({},p,{legs:legs});});};
+  var addLeg=function(l){setO(function(p){return Object.assign({},p,{legs:p.legs.concat([l])});});};
+  var setCost=function(k,f,v){setO(function(p){var c=Object.assign({},p.cost);c[k]=Object.assign({low:'',high:'',basis:''},c[k]);c[k][f]=v;return Object.assign({},p,{cost:c});});};
+  var small=Object.assign({},TI_INPUT,{minHeight:40,fontSize:14,padding:'0 8px'});
+  var iconBtn=function(label,txt,fn,dis){return h('button',{type:'button','aria-label':label,onClick:fn,disabled:dis,style:{width:40,height:40,flex:'none',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#cfe0ff',cursor:dis?'default':'pointer',opacity:dis?0.4:1}},txt);};
+  var save=function(){var c={};Object.keys(o.cost||{}).forEach(function(k){c[k]=o.cost[k];});
+    props.onSave(Object.assign({},o,{cost:c,pros:o.prosText.split('\n'),cons:o.consText.split('\n')}));};
+  return h('div',{className:'ti-option-editor',style:{display:'flex',flexDirection:'column',gap:14,padding:14,borderRadius:12,background:TI.card,border:'1px solid #2f5ea8'}},
+    h('span',{style:{fontSize:17,fontWeight:700,color:TI.hi}},o.id?'Edit option':'New option'),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',gap:10}},
+      h('label',{style:TI_LABEL},'Name',h('input',{type:'text',className:'ti-opt-name',value:o.name,placeholder:'10 nights: Lisbon + Porto',onChange:function(e){set('name',e.target.value);},style:TI_INPUT})),
+      h('label',{style:TI_LABEL},'Where it came from',h('select',{value:o.source,onChange:function(e){set('source',e.target.value);},style:TI_INPUT},TI_SOURCE.map(function(s){return h('option',{key:s[0],value:s[0]},s[1]);})))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:TI_EYEBROW},'Route, in order · home to home'),
+      !o.legs.length&&h('button',{type:'button',className:'ti-simple-route',onClick:function(){set('legs',tiSimpleLegs_());},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},'Start with: fly in, stay, fly out'),
+      o.legs.map(function(l,i){var ctl=h('div',{style:{display:'flex',gap:4,flex:'none'}},iconBtn('Move up','↑',function(){moveLeg(i,-1);},i===0),iconBtn('Move down','↓',function(){moveLeg(i,1);},i===o.legs.length-1),iconBtn('Remove','✕',function(){dropLeg(i);}));
+        if(l.kind==='stop')return h('div',{key:i,className:'ti-leg-stop',style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',padding:8,borderRadius:8,background:TI.pill}},
+          h('input',{type:'text','aria-label':'Place',placeholder:'Place',value:l.place,onChange:function(e){setLeg(i,'place',e.target.value);},style:Object.assign({},small,{flex:'1 1 140px',width:'auto'})}),
+          h('input',{type:'number','aria-label':'Nights',min:0,max:60,value:l.nights,onChange:function(e){setLeg(i,'nights',e.target.value===''?'':Number(e.target.value));},style:Object.assign({},small,{width:72,flex:'none'})}),
+          h('span',{style:{fontSize:12,color:TI.mute}},'nights'),ctl);
+        return h('div',{key:i,className:'ti-leg-move',style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',padding:8,borderRadius:8,border:'1px solid #24386a'}},
+          h('select',{'aria-label':'How',value:l.mode,onChange:function(e){setLeg(i,'mode',e.target.value);},style:Object.assign({},small,{width:96,flex:'none'})},TI_MODES.map(function(m){return h('option',{key:m[0],value:m[0]},m[2]);})),
+          h('input',{type:'text','aria-label':'From',placeholder:'From',value:l.from,onChange:function(e){setLeg(i,'from',e.target.value);},style:Object.assign({},small,{flex:'1 1 90px',width:'auto'})}),
+          h('input',{type:'text','aria-label':'To',placeholder:'To',value:l.to,onChange:function(e){setLeg(i,'to',e.target.value);},style:Object.assign({},small,{flex:'1 1 90px',width:'auto'})}),
+          h('input',{type:'text','aria-label':'Note',placeholder:'Note (~3h, overnight…)',value:l.note,onChange:function(e){setLeg(i,'note',e.target.value);},style:Object.assign({},small,{flex:'1 1 140px',width:'auto'})}),ctl);}),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('button',{type:'button',className:'ti-add-stop',onClick:function(){addLeg({kind:'stop',place:'',nights:2,note:''});},style:tiBtn_()},'+ Stop'),
+        h('button',{type:'button',className:'ti-add-move',onClick:function(){addLeg({kind:'move',mode:'train',from:'',to:'',note:''});},style:tiBtn_()},'+ Move'))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:TI_EYEBROW},'Cost for the trip, a range per category'),
+      TI_COSTS.map(function(c){var v=(o.cost||{})[c[0]]||{};return h('div',{key:c[0],className:'ti-cost-row',style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},
+        h('span',{style:{fontSize:13,flex:'1 1 110px',color:TI.txt}},c[1]),
+        h('input',{type:'number','aria-label':c[1]+' low',placeholder:'Low',min:0,value:v.low==null?'':v.low,onChange:function(e){setCost(c[0],'low',e.target.value);},style:Object.assign({},small,{width:92,flex:'none'})}),
+        h('input',{type:'number','aria-label':c[1]+' high',placeholder:'High',min:0,value:v.high==null?'':v.high,onChange:function(e){setCost(c[0],'high',e.target.value);},style:Object.assign({},small,{width:92,flex:'none'})}),
+        h('input',{type:'text','aria-label':c[1]+' basis',placeholder:'estimate',value:v.basis||'',onChange:function(e){setCost(c[0],'basis',e.target.value);},style:Object.assign({},small,{flex:'1 1 110px',width:'auto'})}));})),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',gap:10}},
+      h('label',{style:TI_LABEL},'For (one per line)',h('textarea',{rows:3,value:o.prosText,onChange:function(e){set('prosText',e.target.value);},style:Object.assign({},TI_INPUT,{padding:'8px 10px',fontFamily:'inherit',fontSize:14})})),
+      h('label',{style:TI_LABEL},'Against (one per line)',h('textarea',{rows:3,value:o.consText,onChange:function(e){set('consText',e.target.value);},style:Object.assign({},TI_INPUT,{padding:'8px 10px',fontFamily:'inherit',fontSize:14})}))),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'ti-save-option',onClick:save,disabled:props.busy||!String(o.name||'').trim(),style:tiBtn_('primary')},props.busy?'Saving…':'Save option'),
+      h('button',{type:'button',onClick:props.onCancel,disabled:props.busy,style:tiBtn_()},'Cancel'),
+      o.id&&h('button',{type:'button',className:'ti-delete-option',onClick:function(){props.onDelete(o);},disabled:props.busy,style:Object.assign(tiBtn_('danger'),{marginLeft:'auto'})},'Delete')));}
+
+function TiBriefEditor(props){var h=React.createElement;
+  var _s=React.useState(function(){return JSON.parse(JSON.stringify(props.idea));}),d=_s[0],setD=_s[1];
+  var thisYear=new Date().getFullYear();
+  var _y=React.useState(function(){var m=(props.idea.months||[])[0];return m?Number(m.slice(0,4)):thisYear+1;}),year=_y[0],setYear=_y[1];
+  var set=function(k,v){setD(function(p){var n=Object.assign({},p);n[k]=v;return n;});};
+  // From the latest state, not this render's: two quick taps must both count.
+  var toggleIn=function(field,v,sort){setD(function(p){var cur=p[field]||[];var next=cur.indexOf(v)!==-1?cur.filter(function(x){return x!==v;}):cur.concat([v]);
+    if(sort)next.sort();var n=Object.assign({},p);n[field]=next;return n;});};
+  var toggleMonth=function(key){toggleIn('months',key,true);};
+  var toggleOpen=function(k){toggleIn('openTo',k,false);};
+  var preset=function(lo,hi){setD(function(p){return Object.assign({},p,{nightsMin:lo,nightsMax:hi});});};
+  var num=function(v){return v===''||v==null?null:Number(v);};
+  return h('div',{className:'ti-brief',style:{display:'flex',flexDirection:'column',gap:16,maxWidth:640}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:{fontSize:20,fontWeight:700,color:TI.hi}},d.id?'Edit the brief':'New trip idea'),
+      h('button',{type:'button',onClick:props.onCancel,style:Object.assign(tiBtn_(),{minHeight:40})},'Cancel')),
+    !d.id&&h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.mute,marginTop:-8}},'Rough is fine. Every answer can be a range or "not sure", and you can change it later.'),
+    h('label',{style:TI_LABEL},'Call it',h('input',{type:'text',className:'ti-title',value:d.title,placeholder:'Spring in Europe',onChange:function(e){set('title',e.target.value);},style:TI_INPUT})),
+    h('label',{style:TI_LABEL},'Where, roughly',h('input',{type:'text',className:'ti-where',value:d.where,placeholder:'Western Europe: Portugal, Spain, France, Italy',onChange:function(e){set('where',e.target.value);},style:TI_INPUT})),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:TI_LABEL},'When · '+tiMonthsText_(d.months)),
+        h('select',{'aria-label':'Year',value:year,onChange:function(e){setYear(Number(e.target.value));},style:Object.assign({},TI_INPUT,{width:100,minHeight:36,fontSize:14})},
+          [thisYear,thisYear+1,thisYear+2].map(function(y){return h('option',{key:y,value:y},y);}))),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(6, minmax(0, 1fr))',gap:4}},TI_MONTHS.map(function(m,i){var key=year+'-'+('0'+(i+1)).slice(-2);var on=d.months.indexOf(key)!==-1;
+        return h('button',{key:key,type:'button',className:'ti-month'+(on?' on':''),'aria-pressed':on,onClick:function(){toggleMonth(key);},
+          style:{minHeight:40,borderRadius:8,border:'1px solid '+(on?TI.acc:'#24386a'),background:on?'#1a2c55':'transparent',color:on?TI.hi:TI.mute,fontSize:12,fontWeight:on?700:500,cursor:'pointer'}},m);})),
+      h('div',{},tiChip_(h,'any','Any time / not sure',!d.months.length,function(){set('months',[]);}))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:TI_LABEL},'How long · '+tiNightsText_(d.nightsMin,d.nightsMax)),
+      h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+        h('input',{type:'number','aria-label':'Fewest nights',className:'ti-nmin',min:1,max:90,value:d.nightsMin==null?'':d.nightsMin,placeholder:'from',onChange:function(e){set('nightsMin',num(e.target.value));},style:Object.assign({},TI_INPUT,{width:96})}),
+        h('span',{style:{color:TI.mute}},'to'),
+        h('input',{type:'number','aria-label':'Most nights',className:'ti-nmax',min:1,max:90,value:d.nightsMax==null?'':d.nightsMax,placeholder:'to',onChange:function(e){set('nightsMax',num(e.target.value));},style:Object.assign({},TI_INPUT,{width:96})}),
+        h('span',{style:{color:TI.mute}},'nights')),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+        tiChip_(h,'w1','About a week',d.nightsMin===5&&d.nightsMax===9,function(){preset(5,9);}),
+        tiChip_(h,'w2','Two weeks',d.nightsMin===12&&d.nightsMax===16,function(){preset(12,16);}),
+        tiChip_(h,'w3','Three weeks',d.nightsMin===19&&d.nightsMax===23,function(){preset(19,23);}),
+        tiChip_(h,'wx','Help me decide',d.nightsMin===7&&d.nightsMax===21,function(){preset(7,21);}))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_LABEL},'Open to'),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},TI_OPEN.map(function(x){return tiChip_(h,x[0],x[1],d.openTo.indexOf(x[0])!==-1,function(){toggleOpen(x[0]);});}))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_LABEL},'Pace'),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},[['slow','Slow'],['balanced','Balanced'],['packed','See a lot']].map(function(x){return tiChip_(h,x[0],x[1],d.pace===x[0],function(){set('pace',x[0]);});}))),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',gap:10}},
+      h('label',{style:TI_LABEL},"Who's going",h('input',{type:'text',value:d.travelers,placeholder:'Ahmed, Victoria',onChange:function(e){set('travelers',e.target.value);},style:TI_INPUT})),
+      h('label',{style:TI_LABEL},'Budget (from WILLA)',h('input',{type:'number',className:'ti-budget',min:0,value:d.budget==null?'':d.budget,placeholder:'Total for the trip',onChange:function(e){set('budget',num(e.target.value));},style:TI_INPUT}))),
+    h('label',{style:TI_LABEL},'Must-haves, vibe, things to avoid',h('textarea',{rows:4,value:d.mustHaves,onChange:function(e){set('mustHaves',e.target.value);},
+      style:Object.assign({},TI_INPUT,{padding:'10px 12px',fontFamily:'inherit',fontSize:14,lineHeight:1.45})})),
+    props.error&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},props.error),
+    h('button',{type:'button',className:'ti-save-idea',onClick:function(){props.onSave(d);},disabled:props.busy||!String(d.title||'').trim(),style:tiBtn_('primary')},props.busy?'Saving…':d.id?'Save the brief':'Save the idea'));}
+
+function TiIdeaCard(props){var h=React.createElement;var i=props.idea;var s=tiIdeaSummary_(i,props.options);
+  var pill=function(k,t,bg,fg){return h('span',{key:k,style:{fontSize:12,fontWeight:600,padding:'4px 9px',borderRadius:999,background:bg,color:fg}},t);};
+  return h('button',{type:'button',className:'ti-idea-card',onClick:props.onOpen,
+    style:{textAlign:'left',display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(i.status==='brainstorming'?'#2f5ea8':TI.br),color:TI.txt,cursor:'pointer',font:'inherit',width:'100%'}},
+    h('span',{style:{fontSize:17,fontWeight:700,color:TI.hi}},i.title),
+    h('span',{style:{fontSize:13,color:TI.soft}},[tiMonthsText_(i.months),tiNightsText_(i.nightsMin,i.nightsMax),i.travelers].filter(Boolean).join(' · ')),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},pill('n',s.count+(s.count===1?' option':' options'),TI.pill,'#cfe0ff'),
+      s.star&&pill('s','★ '+s.star,'#33280f','#f6dc97'),
+      s.nights&&pill('ni',s.nights.lo===s.nights.hi?s.nights.lo+' nights':s.nights.lo+'–'+s.nights.hi+' nights',TI.pill,'#cfe0ff'),
+      s.cost&&pill('c',tiRange_(s.cost.low,s.cost.high),TI.pill,'#cfe0ff')));}
+
+function TripIdeasView(props){var h=React.createElement;
+  var _d=React.useState({loading:true,ideas:[],options:[]}),data=_d[0],setData=_d[1];
+  var _v=React.useState({mode:'board'}),view=_v[0],setView=_v[1];
+  var _e=React.useState(null),editing=_e[0],setEditing=_e[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _m=React.useState(''),err=_m[0],setErr=_m[1];
+  var _a=React.useState(false),showArchived=_a[0],setShowArchived=_a[1];
+  var _o=React.useState(false),showOut=_o[0],setShowOut=_o[1];
+  var load=function(){if(!props.apiUrl||!props.apiToken){setData({loading:false,ideas:[],options:[],error:'Connect VERA first.'});return;}
+    apiGet(props.apiUrl,props.apiToken,{action:'trip_ideas'}).then(function(r){setData({loading:false,ideas:r.ideas||[],options:r.options||[]});})
+      .catch(function(e){setData({loading:false,ideas:[],options:[],error:e.message});});};
+  React.useEffect(load,[props.apiUrl,props.apiToken]);
+  var post=function(body,then){setBusy(true);setErr('');return apiPost(props.apiUrl,props.apiToken,body).then(function(r){setBusy(false);then(r);})
+    .catch(function(e){setBusy(false);setErr(e.message||'Could not save');});};
+  var putIdea=function(i){setData(function(p){return Object.assign({},p,{ideas:p.ideas.filter(function(x){return x.id!==i.id;}).concat([i])});});};
+  var putOption=function(o){setData(function(p){return Object.assign({},p,{options:p.options.filter(function(x){return x.id!==o.id;}).concat([o])});});};
+  var saveIdea=function(d){post({action:'trip_idea_save',idea:d},function(r){putIdea(r.idea);setView({mode:'idea',id:r.idea.id});});};
+  var saveOption=function(o){post({action:'trip_option_save',option:o},function(r){putOption(r.option);setEditing(null);});};
+  var flagOption=function(o,flag){post({action:'trip_option_save',option:Object.assign({},o,{flag:flag})},function(r){putOption(r.option);});};
+  var deleteOption=function(o){if(!window.confirm('Delete "'+o.name+'"?'))return;post({action:'trip_option_delete',id:o.id},function(){setData(function(p){return Object.assign({},p,{options:p.options.filter(function(x){return x.id!==o.id;})});});setEditing(null);});};
+  var deleteIdea=function(i){if(!window.confirm('Delete "'+i.title+'" and all of its options?'))return;post({action:'trip_idea_delete',id:i.id},function(){setData(function(p){return Object.assign({},p,{ideas:p.ideas.filter(function(x){return x.id!==i.id;}),options:p.options.filter(function(x){return x.ideaId!==i.id;})});});setView({mode:'board'});});};
+  var setStatus=function(i,s){post({action:'trip_idea_save',idea:Object.assign({},i,{status:s})},function(r){putIdea(r.idea);});};
+  var wrap={className:'trip-ideas',style:{display:'flex',flexDirection:'column',gap:14,padding:'4px 0 16px',color:TI.txt}};
+  if(data.loading)return h('div',wrap,h('span',{style:{color:TI.mute,fontSize:14}},'Loading trip ideas…'));
+  if(data.error)return h('div',wrap,h('span',{role:'alert',style:{color:'#ffb0b0',fontSize:14}},"Couldn't load trip ideas: "+data.error),h('button',{type:'button',onClick:load,style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},'Try again'));
+  if(view.mode==='brief')return h('div',wrap,h(TiBriefEditor,{key:view.id||'new',idea:view.id?data.ideas.filter(function(x){return x.id===view.id;})[0]:tiBlankIdea_(),busy:busy,error:err,
+    onSave:saveIdea,onCancel:function(){setErr('');setView(view.id?{mode:'idea',id:view.id}:{mode:'board'});}}));
+  if(view.mode==='idea'){var idea=data.ideas.filter(function(x){return x.id===view.id;})[0];
+    if(!idea)return h('div',wrap,h('button',{type:'button',onClick:function(){setView({mode:'board'});},style:tiBtn_()},'← Trip ideas'));
+    var opts=data.options.filter(function(o){return o.ideaId===idea.id;}).sort(function(a,b){return (a.flag==='star'?0:1)-(b.flag==='star'?0:1)||String(a.created||'').localeCompare(String(b.created||''));});
+    var live=opts.filter(function(o){return o.flag!=='out';}),out=opts.filter(function(o){return o.flag==='out';});
+    var card=function(o){return editing&&editing.id===o.id?h(TiOptionEditor,{key:o.id+'e',option:o,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption})
+      :h(TiOptionCard,{key:o.id,option:o,budget:idea.budget,busy:busy,onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
+    return h('div',wrap,
+      h('button',{type:'button',className:'ti-back',onClick:function(){setEditing(null);setView({mode:'board'});},style:{alignSelf:'flex-start',background:'none',border:'none',color:TI.acc,fontSize:14,fontWeight:600,cursor:'pointer',minHeight:40,padding:0}},'← Trip ideas'),
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:6,minWidth:0,flex:'1 1 280px'}},
+          h('span',{className:'ti-idea-title',style:{fontSize:22,fontWeight:700,color:TI.hi}},idea.title),
+          h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.soft}},[idea.where,tiMonthsText_(idea.months),tiNightsText_(idea.nightsMin,idea.nightsMax),idea.travelers,idea.budget!=null?'budget '+tiMoney_(idea.budget):'',idea.mustHaves].filter(Boolean).join(' · '))),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+          h('select',{'aria-label':'Status',className:'ti-status',value:idea.status,disabled:busy,onChange:function(e){setStatus(idea,e.target.value);},style:Object.assign({},TI_INPUT,{width:'auto',minHeight:40,fontSize:14})},
+            TI_STATUS.map(function(s){return h('option',{key:s[0],value:s[0]},s[1]);})),
+          h('button',{type:'button',className:'ti-edit-brief',onClick:function(){setView({mode:'brief',id:idea.id});},style:Object.assign(tiBtn_(),{minHeight:40})},'Edit the brief'))),
+      err&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},err),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'ti-add-option',disabled:busy||!!editing,onClick:function(){setEditing(tiBlankOption_(idea.id));},style:tiBtn_('primary')},'+ Add an option')),
+      editing&&!editing.id&&h(TiOptionEditor,{key:'new',option:editing,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption}),
+      !live.length&&!editing&&h('span',{style:{fontSize:14,color:TI.mute}},'No options yet. Add one for each shape the trip could take: a simple fly-in, fly-out, or a mix of flights, drives, cruises and trains.'),
+      h('div',{className:'ti-options',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',gap:12,alignItems:'start'}},live.map(card)),
+      out.length>0&&h('button',{type:'button',className:'ti-show-out',onClick:function(){setShowOut(!showOut);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},(showOut?'Hide ':'Show ')+out.length+' ruled-out option'+(out.length===1?'':'s')),
+      showOut&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',gap:12,alignItems:'start'}},out.map(card)),
+      h('button',{type:'button',className:'ti-delete-idea',onClick:function(){deleteIdea(idea);},disabled:busy,style:Object.assign(tiBtn_('danger'),{alignSelf:'flex-start',marginTop:8})},'Delete this idea'));}
+  var groups=tiGroupIdeas_(data.ideas);
+  var section=function(key,label){var list=groups[key];if(!list.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},list.map(function(i){return h(TiIdeaCard,{key:i.id,idea:i,options:data.options,onOpen:function(){setView({mode:'idea',id:i.id});}});})));};
+  return h('div',wrap,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:12,flexWrap:'wrap'}},
+      h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('span',{style:{fontSize:20,fontWeight:700,color:TI.hi}},'Trip ideas'),
+        h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.mute}},'Trips with no dates yet. Nothing here touches your calendar.')),
+      h('button',{type:'button',className:'ti-new-idea',onClick:function(){setErr('');setView({mode:'brief'});},style:tiBtn_('primary')},'+ New idea')),
+    !data.ideas.length&&h('span',{className:'ti-empty',style:{fontSize:14,color:TI.mute}},'No trip ideas yet. Start one for a trip you’re only thinking about: "Spring in Europe", "Japan in the fall".'),
+    section('brainstorming','Brainstorming'),section('shortlisted','Shortlisted'),section('settled','Settled'),
+    groups.archived.length>0&&h('button',{type:'button',className:'ti-show-archived',onClick:function(){setShowArchived(!showArchived);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},(showArchived?'Hide ':'Show ')+groups.archived.length+' archived'),
+    showArchived&&section('archived','Archived'));}
+// ---- /TripIdeasView ----
 function ItineraryView({trip,itinerary,loading,busy,tripContext,onSetContext,onSetBriefing,onSetTraveler,onSetMode,onLoadContext,onGoToPacking,renderPacking,onAdd,onEdit,onDelete,onDecideOption,onReopenDecision,apiUrl,apiToken}){if(loading)return/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading itinerary…");const items=itinerary&&itinerary.items||[];const notices=computeItineraryNotices(items);const[viewMode,setViewMode]=React.useState('summary');const[travelLegs,setTravelLegs]=React.useState(null);
 // Travel times are precomputed nightly and cached per location pair, so this is
 // a plain sheet read — no routing API is touched by rendering the dashboard,
@@ -1255,7 +1525,7 @@ React.useEffect(function(){if(!packingFocusTripKey)return;setSub('itinerary');se
 React.useEffect(function(){if(!itineraryFocusTripKey||!upcomingTravel.length)return;setSub('itinerary');setAutoExpandKey(itineraryFocusTripKey);var t=upcomingTravel.find(function(t){return t.startDate+'|'+t.label===itineraryFocusTripKey;});if(t)onSelectTrip({...t,tripKey:itineraryFocusTripKey});},[itineraryFocusTripKey,upcomingTravel.length]);// eslint-disable-line
 function handleTripClick(t){const tripKey=`${t.startDate}|${t.label}`;onSelectTrip({...t,tripKey});// triggers loadItinerary if not cached
 setAutoExpandKey(tripKey);// tells accordion to open this trip
-setSub('itinerary');}const subTabs=[{id:'trips',label:'✈️ My Trips',hint:'Pulled from calendars listed in Config &rarr; <code>gap_calendars</code>. Multi-day events are grouped into trips automatically.'},{id:'itinerary',label:'🗺️ My Itinerary'},{id:'discover',label:'✨ Discover'},{id:'budget',label:'💰 Budget',hint:'Manual entry linked to each trip. Import line items from your itinerary with the &ldquo;Import from Itinerary&rdquo; button.'},{id:'countries',label:'🌍 Countries'},{id:'bucketlist',label:'🪣 Bucket List'},{id:'gifts',label:'🎁 Gifts'},{id:'profiles',label:'👤 Profiles'}];const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"subtab-row",style:{display:'flex',alignItems:'center'}},subTabs.map(s=>/*#__PURE__*/React.createElement("button",{key:s.id,className:`subtab-btn${sub===s.id?' active':''}`,onClick:()=>setSub(s.id)},s.label)),/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='trips'&&(upcomingTravel.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:12}},"✈️"),/*#__PURE__*/React.createElement("div",null,"No upcoming travel found."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:8}},"Travel events are pulled from your shared \"AE&VV - Our Joint Chaos\" calendar.")):/*#__PURE__*/React.createElement("div",null,upcomingTravel.map((t,i)=>{const tripKey=`${t.startDate}|${t.label}`;const meta=tripMeta&&tripMeta[tripKey]&&tripMeta[tripKey]!=='loading'?tripMeta[tripKey]:null;// Read-only traveler badge from persisted tripMeta
+setSub('itinerary');}const subTabs=[{id:'ideas',label:'💡 Trip Ideas',hint:'Trips with no dates yet: a loose brief and the shapes the trip could take. Nothing here touches your calendar.'},{id:'trips',label:'✈️ My Trips',hint:'Pulled from calendars listed in Config &rarr; <code>gap_calendars</code>. Multi-day events are grouped into trips automatically.'},{id:'itinerary',label:'🗺️ My Itinerary'},{id:'discover',label:'✨ Discover'},{id:'budget',label:'💰 Budget',hint:'Manual entry linked to each trip. Import line items from your itinerary with the &ldquo;Import from Itinerary&rdquo; button.'},{id:'countries',label:'🌍 Countries'},{id:'bucketlist',label:'🪣 Bucket List'},{id:'gifts',label:'🎁 Gifts'},{id:'profiles',label:'👤 Profiles'}];const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"subtab-row",style:{display:'flex',alignItems:'center'}},subTabs.map(s=>/*#__PURE__*/React.createElement("button",{key:s.id,className:`subtab-btn${sub===s.id?' active':''}`,onClick:()=>setSub(s.id)},s.label)),/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='ideas'&&/*#__PURE__*/React.createElement(TripIdeasView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='trips'&&(upcomingTravel.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:12}},"✈️"),/*#__PURE__*/React.createElement("div",null,"No upcoming travel found."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:8}},"Travel events are pulled from your shared \"AE&VV - Our Joint Chaos\" calendar.")):/*#__PURE__*/React.createElement("div",null,upcomingTravel.map((t,i)=>{const tripKey=`${t.startDate}|${t.label}`;const meta=tripMeta&&tripMeta[tripKey]&&tripMeta[tripKey]!=='loading'?tripMeta[tripKey]:null;// Read-only traveler badge from persisted tripMeta
 const traveler=meta&&meta.traveler||'Both';const tvColor=traveler==='Ahmed'?'#5c9eff':traveler==='Victoria'?'#b87cff':'#4a9060';const tvBg=traveler==='Ahmed'?'#0d2040':traveler==='Victoria'?'#1a0d30':'#0d1a10';// Read-only context chip
 const ctx=meta&&meta.context;const ctxColor=CONTEXT_COLORS&&CONTEXT_COLORS[ctx]||'#5c9eff';return/*#__PURE__*/React.createElement("div",{key:i,className:"bento-card",style:{cursor:'pointer',transition:'border-color .15s'},onClick:()=>handleTripClick(t)},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:4}},t.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',marginBottom:8}},t.startDate," – ",t.endDate),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:6}},ctx?/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:600,color:ctxColor,background:ctxColor+'22',borderRadius:20,padding:'2px 9px',border:'1px solid '+ctxColor+'44'}},ctx):/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#3a4a60',fontStyle:'italic'}},"No context"),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:600,color:tvColor,background:tvBg,borderRadius:10,padding:'2px 8px',border:'1px solid '+tvColor+'33'}},traveler))),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:12}},/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#5c9eff',fontWeight:600,whiteSpace:'nowrap'}},/*#__PURE__*/React.createElement(DaysAway,{n:t.daysAway})),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#8ab4f8'}},"View Itinerary →"))));}))),sub==='itinerary'&&/*#__PURE__*/React.createElement("div",null,function(){var totalPending=0;upcomingTravel.forEach(function(t){var recs=recommendations&&recommendations[t.startDate+'|'+t.label];if(Array.isArray(recs))totalPending+=recs.filter(function(r){return r.status==='pending';}).length;});if(!totalPending)return null;return/*#__PURE__*/React.createElement("div",{style:{background:'#0d2040',border:'1px solid #1a3a6e',borderRadius:8,padding:'8px 14px',marginBottom:12,cursor:'pointer',display:'flex',alignItems:'center',gap:8},onClick:function(){setSub('discover');}},/*#__PURE__*/React.createElement("span",{style:{fontSize:15}},"✨"),/*#__PURE__*/React.createElement("span",{style:{fontSize:13,color:'#8ab4f8',fontWeight:600}},totalPending," VERA pick",totalPending!==1?'s':''," available →"),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#4d6080'}},"See Discover tab"));}(),/*#__PURE__*/React.createElement(TravelItineraryPanel,{trips:upcomingTravel,itineraries:itineraries,tripMeta:tripMeta,busy:busy,autoExpandKey:autoExpandKey,onExpandTrip:onExpandTrip,onAddItinItem:onAddItinItem,onEditItinItem:onEditItinItem,onDeleteItinItem:onDeleteItinItem,onSetTripMeta:onSetTripMeta,onSetTripBriefing:onSetTripBriefing,onLoadTripMeta:onLoadTripMeta,onGoToPacking:onGoToPacking,renderPacking:function(t){// Packing lives inside each trip's itinerary now, as its fourth view.
 return/*#__PURE__*/React.createElement(PackingPanel,{trips:[t],packingItems:packingItems,tripMeta:tripMeta,busy:busy,focusTripKey:t.startDate+'|'+t.label,onLoadPacking:onLoadPacking,onSetTripMeta:onSetTripMeta,onSetTripBriefing:onSetTripBriefing,onGeneratePacking:onGeneratePacking,onToggleItem:onTogglePackingItem,onAddItem:onAddPackingItem,onDeleteItem:onDeletePackingItem});},apiUrl:apiUrl,apiToken:apiToken})),sub==='discover'&&/*#__PURE__*/React.createElement(RecommendationsPanel,{trips:upcomingTravel,recommendations:recommendations||{},busy:busy,onLoadRecs:onLoadRecs,onGenerateRecs:onGenerateRecs,onAcceptRec:onAcceptRec,onDismissRec:onDismissRec,onGoToItinerary:function(tripKey){var trip=upcomingTravel.find(function(tt){return tt.startDate+'|'+tt.label===tripKey;});if(trip){onSelectTrip(Object.assign({},trip,{tripKey:tripKey}));setAutoExpandKey(tripKey);}setSub('itinerary');}}),sub==='countries'&&/*#__PURE__*/React.createElement(CountriesVisitedPanel,{entries:countries,upcomingTravel:upcomingTravel,busy:busy,loaded:countriesLoaded,onLoad:onLoadCountries,onAdd:onAddCountry,onDelete:onDeleteCountry,onGoToItinerary:function(tripKey){var trip=upcomingTravel.find(function(t){return t.startDate+'|'+t.label===tripKey;});if(trip){onSelectTrip(Object.assign({},trip,{tripKey:tripKey}));setAutoExpandKey(tripKey);}setSub('itinerary');}}),sub==='bucketlist'&&/*#__PURE__*/React.createElement(BucketListPanel,{entries:bucketList,trips:upcomingTravel,busy:busy,onLoad:onLoadBucketList,onAdd:onAddBucketItem,onMarkVisited:onMarkBucketVisited,onDelete:onDeleteBucketItem,onAddActivity:onAddBucketActivity,onToggleActivity:onToggleBucketActivity,onDeleteActivity:onDeleteBucketActivity,apiUrl:apiUrl,apiToken:apiToken}),sub==='budget'&&/*#__PURE__*/React.createElement(TripBudgetPanel,{trips:upcomingTravel,apiUrl:apiUrl,apiToken:apiToken}),sub==='gifts'&&/*#__PURE__*/React.createElement(TripGiftsPanel,{trips:upcomingTravel,apiUrl:apiUrl,apiToken:apiToken}),sub==='profiles'&&/*#__PURE__*/React.createElement(ProfilesView,{profiles:profiles||[],loading:profilesLoading,busy:busy,onSave:onSaveProfile,onDelete:onDeleteProfile}));}// ---- Financial Goals Tab (Issue #127) ----------------------------------------

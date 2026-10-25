@@ -56,6 +56,8 @@ const TABS = {
   TRAVEL_LEGS:      'TravelLegs',      // Cached point-to-point travel times between itinerary stops
   TRIP_DECISIONS:   'Trip Decisions',  // Resolutions for tentative holds competing for one slot (Issue #187)
   TRIPS:            'Trips',            // Trip registry — immutable Trip ID per trip
+  TRIP_IDEAS:       'Trip Ideas',       // Trips with no dates yet: a loose brief per idea
+  TRIP_IDEA_OPTIONS: 'Trip Idea Options', // Candidate shapes for an idea: legs, cost by category, for/against
   PROCESSED_EMAILS:     'Processed Emails',     // Email parser dedup + outcome log (Issue #98)
   MORNING_ROUTINE:      'Morning Routine',       // Daily routine checklist — sheet-backed, nightly reset
   GYM_LOG:             'Gym Log',              // Gym session attendance log (Issue #97)
@@ -237,6 +239,10 @@ const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', '
 // client or an un-migrated row still resolves. Status carries 'merged:<TRIP-...>'
 // forwarding, so anything still holding a losing id resolves instead of vanishing.
 const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status'];
+// Trip Ideas (TripIdeas.js). Months is a JSON list of 'yyyy-MM'; empty means any time.
+const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated'];
+// Legs and Cost are JSON (see tiCleanLegs_ / tiCleanCost_); Pros and Cons are newline lists.
+const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated'];
 const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];
