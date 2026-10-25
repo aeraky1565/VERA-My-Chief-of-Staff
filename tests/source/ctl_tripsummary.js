@@ -70,8 +70,11 @@ const CONTROLS = [
   ['a required visa is only amber in Needs attention', both("visas.push({level:p.color==='red'?'red':'amber',", "visas.push({level:'amber',")],
   ['grey country chips say Unknown again', both("grey:'No visa data'};", "grey:'Unknown'};")],
   ['cards to carry starts open', both("var _o=React.useState(false),open=_o[0],setOpen=_o[1];\n  var box={display:'flex',flexDirection:'column',gap:8,padding:'4px 12px'", "var _o=React.useState(true),open=_o[0],setOpen=_o[1];\n  var box={display:'flex',flexDirection:'column',gap:8,padding:'4px 12px'")],
+  ['a spare passport still raises a visa line', both("var used=ps.filter(function(p){return p.use;});(used.length?used:ps).forEach(function(p){", "var used=[];(used.length?used:ps).forEach(function(p){")],
+  ['jet-lag tips stay on a trip within an hour of home', both("var calm=!!(reach&&reach.shift&&Math.abs(reach.shift.hours)<TS_JETLAG_HOURS);", "var calm=false;")],
+  ['the trip\'s reach is not shown', both("    if(reach.shift)tripTiles.push(", "    if(false)tripTiles.push(")],
   ['full: the views are back in the old order', b => ({ [A]: swap(b[A], "['summary','map','agenda'].concat(", "['summary','agenda','map'].concat(") })],
-  ['full: Agenda keeps the old Useful to know', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&/*#__PURE__*/React.createElement(TsUsefulToKnow,{ins:itinInsights,collapsible:true})", "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&null") })],
+  ['full: Agenda keeps the old Useful to know', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&/*#__PURE__*/React.createElement(TsUsefulToKnow,{ins:itinInsights,collapsible:true,trip:trip,apiUrl:apiUrl,apiToken:apiToken})", "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&null") })],
   ['lite: Agenda stays the default', b => ({ [L]: swap(b[L], "tripTabs[tripKey] || 'summary'", "tripTabs[tripKey] || 'agenda'") })],
 ];
 

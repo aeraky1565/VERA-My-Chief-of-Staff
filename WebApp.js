@@ -382,6 +382,7 @@ function doGet(e) {
       // Visa requirements (Issue #123)
       case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
       case 'trip_documents':        return jsonOut_(webGetTripDocuments_(e.parameter));
+      case 'trip_reach':            return jsonOut_(webTripReach_(e.parameter));
       case 'trip_weather':          return jsonOut_(webTripWeather_(e.parameter));
       case 'trip_sheet':            return jsonOut_(webTripSheet_(e.parameter));
       case 'trip_ics':              return jsonOut_(webTripIcs_(e.parameter));
@@ -9899,15 +9900,41 @@ function tripPassportCheck_(expiry, tripEnd, country) {
   return { status: 'ok', months: months, label: 'Valid until ' + expiry, ruleMonths: ruleMonths, ruleKnown: ruleKnown };
 }
 
-/** Pure: the worst of a country's results, for its chip: red, amber, green or grey. */
-function tripDocWorst_(travelers) {
-  var rank = { red: 3, amber: 2, grey: 1, green: 0 }, worst = 'green', any = false;
+/** Pure: one passport's tone for a country: its visa and its validity, the worse of the two. */
+var TRIP_DOC_RANK_ = { red: 3, amber: 2, grey: 1, green: 0 };
+function tripPassportTone_(p) {
+  var v = p.color === 'red' ? 'red' : p.color === 'yellow' ? 'amber' : p.color === 'grey' ? 'grey' : 'green';
+  var pp = p.passport ? (p.passport.status === 'expires' ? 'red' : p.passport.status === 'short' ? 'amber' : p.passport.status === 'unknown' ? 'grey' : 'green') : 'green';
+  return TRIP_DOC_RANK_[pp] > TRIP_DOC_RANK_[v] ? pp : v;
+}
+
+/**
+ * Pure: mark the passport each traveler would use for a country (use: true):
+ * the one that gets them in most easily. A traveler with a visa-free passport
+ * is fine even when their other passport needs a visa.
+ */
+function tripPickPassports_(travelers) {
   (travelers || []).forEach(function(t) {
+    var best = null;
     (t.passports || []).forEach(function(p) {
+      p.use = false;
+      if (!best || TRIP_DOC_RANK_[tripPassportTone_(p)] < TRIP_DOC_RANK_[tripPassportTone_(best)]) best = p;
+    });
+    if (best) best.use = true;
+  });
+  return travelers;
+}
+
+/** Pure: the worst of a country's results, for its chip: red, amber, green or grey. Only the passport each traveler would use counts. */
+function tripDocWorst_(travelers) {
+  var worst = 'green', any = false;
+  (travelers || []).forEach(function(t) {
+    var ps = t.passports || [];
+    var used = ps.filter(function(p) { return p.use; });
+    (used.length ? used : ps).forEach(function(p) {
       any = true;
-      var v = p.color === 'red' ? 'red' : p.color === 'yellow' ? 'amber' : p.color === 'grey' ? 'grey' : 'green';
-      var pp = p.passport ? (p.passport.status === 'expires' ? 'red' : p.passport.status === 'short' ? 'amber' : p.passport.status === 'unknown' ? 'grey' : 'green') : 'green';
-      [v, pp].forEach(function(x) { if (rank[x] > rank[worst]) worst = x; });
+      var x = tripPassportTone_(p);
+      if (TRIP_DOC_RANK_[x] > TRIP_DOC_RANK_[worst]) worst = x;
     });
   });
   return any ? worst : 'grey';
@@ -9944,22 +9971,88 @@ function webTripWeather_(params) {
   return { ok: true, days: out };
 }
 
-/** GET ?action=trip_documents&tripKey=…&startDate=…&endDate=… */
-function webGetTripDocuments_(params) {
+/**
+ * Pure: how far a trip reaches from home. places: [{name, lat, lon, timezone,
+ * date}]; home: {lat, lon} or null; offsetOn(zone, date) → hours from UTC or
+ * null; miles(a, b) → great-circle miles. The biggest clock change is measured
+ * on each place's own date, so daylight saving is right; a place whose zone is
+ * unknown is left out of it, never counted as zero.
+ * Returns { shift: {name, hours, label} | null, farthest: {name, miles} | null }.
+ */
+function tripReach_(places, home, homeTz, offsetOn, miles) {
+  var shift = null, far = null;
+  (places || []).forEach(function(p) {
+    if (!p) return;
+    var po = offsetOn(p.timezone, p.date), ho = offsetOn(homeTz, p.date);
+    if (typeof po === 'number' && typeof ho === 'number') {
+      var h = Math.round((po - ho) * 100) / 100;
+      if (!shift || Math.abs(h) > Math.abs(shift.hours)) shift = { name: p.name, hours: h };
+    }
+    if (home && typeof p.lat === 'number' && typeof p.lon === 'number') {
+      var m = miles(home, p);
+      if (typeof m === 'number' && (!far || m > far.miles)) far = { name: p.name, miles: m };
+    }
+  });
+  if (shift) shift.label = shift.hours === 0 ? 'Same as home' : tzOffsetLabel_(shift.hours);
+  return { shift: shift, farthest: far };
+}
+
+/**
+ * GET ?action=trip_reach&tripKey=…&startDate=…&endDate=…
+ * The trip as a whole, for Useful to know: its biggest clock change from home
+ * and its farthest place. Every airport a flight touches and every located item
+ * is looked up (at most 25, cached six hours); a place lookup counts only when
+ * the location names the matched place. Home is Config weather_location and the
+ * script's own timezone.
+ */
+function webTripReach_(params) {
   var tripKey = String(params.tripKey || '').trim();
-  var endDate = String(params.endDate || '').trim();
   if (!tripKey) return { ok: false, error: 'tripKey required' };
+  var items = tripItemsFor_(tripKey, String(params.startDate || ''), String(params.endDate || ''), 'trip_reach');
+  var places = [], seen = {}, looked = 0;
+  var add = function(key, date, lookup, name) {
+    if (!key || seen[key] || looked >= 25) return;
+    seen[key] = true; looked++;
+    var g = null;
+    try { g = lookup(); } catch (e) {}
+    if (g && typeof g.lat === 'number') places.push({ name: name || g.name || key, lat: g.lat, lon: g.lon, timezone: g.timezone || '', date: date });
+  };
+  items.forEach(function(it) {
+    if (it.type === 'flight') {
+      tripFlightRoute_(it).forEach(function(code) {
+        add('iata:' + code, it.date, function() { return travelAirportGeo_(code); }, code);
+      });
+      return;
+    }
+    var loc = String(it.location || '').trim();
+    if (!loc || TRIP_NOT_A_PLACE_.test(loc)) return;
+    add('loc:' + loc.toLowerCase(), it.date, function() {
+      var g = geocodePackingDestination_(loc, null);
+      return g && tripPlaceMatches_(loc, g.name) ? g : null;
+    });
+  });
+  var homeCity = String(getConfigValues()['weather_location'] || '').trim();
+  var home = null;
+  try { home = homeCity ? geocodePackingDestination_(homeCity, null) : null; } catch (e) {}
+  var reach = tripReach_(places, home, Session.getScriptTimeZone(), tzOffsetHoursOn_, haversineMiles_);
+  Logger.log('trip_reach: ' + items.length + ' items, ' + looked + ' lookups, ' + places.length + ' places');
+  return { ok: true, shift: reach.shift, farthest: reach.farthest, home: home ? home.name : '' };
+}
+
+/** GET ?action=trip_documents&tripKey=…&startDate=…&endDate=… */
+/** The items a trip's checks read: what the itinerary shows, or the sheet's rows. */
+function tripItemsFor_(tripKey, startDate, endDate, logTag) {
   // The same items the itinerary shows: stored rows plus the calendar events in
   // the trip's dates, where a cruise's ports usually live. The sheet alone is the
   // fallback if that read fails.
   var items = null;
   try {
-    var merged = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: String(params.startDate || ''), endDate: endDate } }, { skipEventTz: true });
+    var merged = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: startDate, endDate: endDate } }, { skipEventTz: true });
     if (merged && merged.items) items = merged.items.map(function(it) {
       var d = it.date instanceof Date ? Utilities.formatDate(it.date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(it.date || '').trim();
       return { type: String(it.type || ''), title: String(it.title || ''), date: d, location: String(it.location || ''), metadata: String(it.metadata || '') };
     });
-  } catch (err) { Logger.log('trip_documents: itinerary read failed, using sheet rows'); }
+  } catch (err) { Logger.log(logTag + ': itinerary read failed, using sheet rows'); }
   var sheet = items ? null : getSpreadsheet().getSheetByName(TABS.ITINERARY);
   items = items || [];
   if (sheet && sheet.getLastRow() >= 2) {
@@ -9971,6 +10064,14 @@ function webGetTripDocuments_(params) {
         location: String(r[7] || ''), metadata: String(r[9] || '') });
     });
   }
+  return items;
+}
+
+function webGetTripDocuments_(params) {
+  var tripKey = String(params.tripKey || '').trim();
+  var endDate = String(params.endDate || '').trim();
+  if (!tripKey) return { ok: false, error: 'tripKey required' };
+  var items = tripItemsFor_(tripKey, String(params.startDate || ''), endDate, 'trip_documents');
   var profiles = webGetProfiles_().profiles.filter(function(p) { return p.passportCountry; });
   var csv;
   try { csv = passportIndexCsv_(); }
@@ -10005,6 +10106,7 @@ function webGetTripDocuments_(params) {
         return Object.assign({}, p, { passport: tripPassportCheck_(p.passportExpiry, endDate, c.country) });
       }) };
     });
+    tripPickPassports_(travelers);
     return Object.assign({}, c, { travelers: travelers, worst: tripDocWorst_(travelers), note: v.note || '' });
   });
   Logger.log('trip_documents: ' + items.length + ' items, ' + looked + ' place lookups, ' + countries.length + ' countries');

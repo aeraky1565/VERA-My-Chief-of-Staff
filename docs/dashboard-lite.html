@@ -7025,9 +7025,9 @@ function tripDateRange(startDate, endDate) {
 }
 
 // --- UsefulToKnowCard --------------------------------------------------------
-function UsefulToKnowCard({ insights }) {
+function UsefulToKnowCard({ insights, trip, apiUrl, apiToken }) {
   // The same laid-out card the full dashboard and Summary use (TsUsefulToKnow).
-  return <TsUsefulToKnow ins={insights} collapsible={true} />;
+  return <TsUsefulToKnow ins={insights} collapsible={true} trip={trip} apiUrl={apiUrl} apiToken={apiToken} />;
 }
 
 // ---- TripSummaryView (itinerary redesign) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
@@ -7186,7 +7186,9 @@ function buildTripSummary_(o){
 // before you're back is red; one short of a country's rule, or a visa or eTA to
 // arrange, is amber. A passport is listed once, with the countries it falls short for.
 function tsDocAttention_(docs,date){var out=[];if(!docs||!docs.countries)return out;var pp={};var visas=[];
-  docs.countries.forEach(function(c){(c.travelers||[]).forEach(function(t){(t.passports||[]).forEach(function(p){
+  // Only the passport each traveler would use counts (the server marks it use:true):
+  // a visa-free US passport makes the visa an Egyptian one needs beside the point.
+  docs.countries.forEach(function(c){(c.travelers||[]).forEach(function(t){var ps=t.passports||[];var used=ps.filter(function(p){return p.use;});(used.length?used:ps).forEach(function(p){
     var who=t.name+(p.passportCountry?' ('+p.passportCountry+' passport)':'');var st=p.passport&&p.passport.status;
     if(st==='expires'||st==='short'){var k=who;var e=pp[k]||(pp[k]={who:who,red:false,where:[],label:p.passport.label});if(st==='expires')e.red=true;if(e.where.indexOf(c.country)===-1)e.where.push(c.country);}
     // Visa required or no admission is red, as its pill is; an e-Visa, eTA or visa on arrival is amber.
@@ -7224,9 +7226,11 @@ function TsDocuments(props){var h=React.createElement;var d=props.docs;
     :h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',gap:8}},cur.travelers.map(function(t){
       return h('div',{key:t.name,className:'ts-doc-traveler',style:{display:'flex',flexDirection:'column',gap:6,padding:10,borderRadius:8,border:'1px solid #1e3060',background:'#0a1530'}},
         h('span',{style:{fontSize:12,fontWeight:700,color:'#cfe0ff'}},t.name),
-        (t.passports||[]).map(function(p,i){var tone=tsDocTone_(p);
-          return h('div',{key:i,style:{display:'flex',flexDirection:'column',gap:4,fontSize:13}},
-            h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',null,(p.passportCountry||'')+' passport · visa'),chip(tone.visa,p.label||'No data','v')),
+        (function(){var u=(t.passports||[]).filter(function(p){return p.use;})[0];
+          return (t.passports||[]).length>1&&u?h('span',{className:'ts-doc-use',style:{fontSize:12,color:'#a8c5f5'}},'Use your '+u.passportCountry+' passport'):null;})(),
+        (t.passports||[]).map(function(p,i){var tone=tsDocTone_(p);var spare=(t.passports||[]).length>1&&p.use===false;
+          return h('div',{key:i,className:spare?'ts-doc-spare':'ts-doc-used',style:{display:'flex',flexDirection:'column',gap:4,fontSize:13,opacity:spare?0.55:1}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',null,(p.passportCountry||'')+' passport · visa'+(spare?' (not needed)':'')),chip(tone.visa,p.label||'No data','v')),
             h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',{style:{color:'#b8c3e0',fontSize:12}},p.passport?p.passport.label:''),
               chip(tone.passport,tone.passport==='green'?'Valid for trip':tone.passport==='amber'?'Renew soon':tone.passport==='red'?'Expires':'No expiry on file','p')));}));})),
     h('div',{style:{fontSize:12,color:'#9aa9cc'}},(function(){var p=((cur.travelers||[])[0]||{}).passports;var r=p&&p[0]&&p[0].passport;
@@ -7245,11 +7249,24 @@ function tsWx_(code){var c=Number(code);
 var TS_UTK_TONES={
   blue:{card:'#0d1b3e',cardBr:'#1e3060',head:'#8ab4f8',tile:'#0a1530',tileBr:'#1e3060',lab:'#9aa9cc',val:'#eef1fb',sub:'#b8c3e0',track:'#24386a',tip:'#13264d',tipBr:'#2f5ea8',tipLab:'#a8c5f5',tipText:'#dde1f0'},
   amber:{card:'#1a1000',cardBr:'#3a2e00',head:'#e8b44a',tile:'#221804',tileBr:'#3d3008',lab:'#c8a86a',val:'#f8ecc8',sub:'#dcc890',track:'#4a3a10',tip:'#2a1f05',tipBr:'#6a5216',tipLab:'#f0c96a',tipText:'#efe3c2'}};
+// The trip as a whole (trip_reach): its biggest clock change from home and its
+// farthest place. With it, the flight's own facts are labelled as the first
+// flight's, and jet-lag tips are left out when every stop is within an hour of home.
+var TS_JETLAG_HOURS=2;
 function TsUsefulToKnow(props){var h=React.createElement;var ins=props.ins;
   var _o=React.useState(!props.collapsible),ownOpen=_o[0],setOwnOpen=_o[1];
   var open=props.open!==undefined?props.open:ownOpen;
   var toggle=props.onToggle||function(){setOwnOpen(!ownOpen);};
-  if(!ins)return null;
+  var trip=props.trip||{};
+  var _r=React.useState(null),gotReach=_r[0],setGotReach=_r[1];
+  React.useEffect(function(){if(props.reach!==undefined||props.recovery||!props.apiUrl||!props.apiToken||!trip.tripKey)return;var dead=false;
+    apiGet(props.apiUrl,props.apiToken,{action:'trip_reach',tripKey:trip.tripKey,startDate:trip.startDate||'',endDate:trip.endDate||''})
+      .then(function(r){if(!dead&&r&&r.ok)setGotReach(r);}).catch(function(){});
+    return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey]);
+  var reach=props.reach!==undefined?props.reach:gotReach;
+  if(reach&&!reach.shift&&!reach.farthest)reach=null;
+  if(!ins&&!reach)return null;
+  ins=ins||{};
   var T=TS_UTK_TONES[props.tone]||TS_UTK_TONES.blue;
   var tile=function(key,icon,label,value,sub,extra){return h('div',{key:key,className:'ts-utk-tile',style:{display:'flex',flexDirection:'column',gap:3,padding:'10px 12px',borderRadius:10,background:T.tile,border:'1px solid '+T.tileBr,minWidth:0}},
     h('span',{style:{display:'flex',alignItems:'center',gap:6,fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',color:T.lab}},h('span',{'aria-hidden':'true'},icon),label),
@@ -7259,29 +7276,42 @@ function TsUsefulToKnow(props){var h=React.createElement;var ins=props.ins;
     h('span',{'aria-hidden':'true',style:{fontSize:16,lineHeight:1.3}},icon),
     h('span',{style:{display:'flex',flexDirection:'column',gap:2,fontSize:13,color:T.tipText,lineHeight:1.45}},h('strong',{style:{fontSize:11,letterSpacing:'.06em',textTransform:'uppercase',color:T.tipLab}},label),text||null));};
   var codes=ins.origin_code&&ins.dest_code?ins.origin_code+' → '+ins.dest_code:'';
-  var tiles=[],tips=[];var rec=props.recovery;
+  var tiles=[],tips=[];var rec=props.recovery;var tripTiles=[];
+  var calm=!!(reach&&reach.shift&&Math.abs(reach.shift.hours)<TS_JETLAG_HOURS);
+  if(reach&&!rec){
+    if(reach.shift)tripTiles.push(tile('shift','🕐','Biggest time change',reach.shift.label,reach.shift.hours===0?'Every stop is on home time':'at '+reach.shift.name));
+    if(reach.farthest)tripTiles.push(tile('far','🧭','Farthest from home','~'+Number(reach.farthest.miles).toLocaleString()+' mi',reach.farthest.name));
+  }
   if(rec){
     tiles.push(rec.tzKnown
       ?tile('tz','🕐','Time difference',ins.tz_offset_label,codes?'Body clock still adjusting':(ins.origin_code||'origin')+' → '+(ins.dest_code||'destination')+' · body clock still adjusting')
       :tile('tz','🕐','Time difference','Unknown','Timezone shift unknown — body clock may still be adjusting'));
     tips.push(tip('rec','💤','Recovery day '+rec.day+(rec.of?' of '+rec.of:''),ins.arrival_tip||ins.sleep_tip||''));
   }else{
-    if(codes)tiles.push(tile('tz','🕐','Time difference',ins.tz_offset_label||'Unknown',codes));
-    if(ins.distance_miles)tiles.push(tile('mi','📏','Distance','~'+Number(ins.distance_miles).toLocaleString()+' mi',ins.haul_category||''));
+    // The trip's own tiles supersede the first flight's clock change and distance.
+    if(codes&&!reach)tiles.push(tile('tz','🕐','Time difference',ins.tz_offset_label||'Unknown',codes));
+    if(ins.distance_miles&&!reach)tiles.push(tile('mi','📏','Distance','~'+Number(ins.distance_miles).toLocaleString()+' mi',ins.haul_category||''));
     if(ins.daynight_pct_day!=null){var pct=Math.max(0,Math.min(100,Number(ins.daynight_pct_day)||0));
       tiles.push(tile('dl','🌗','Daylight',pct+'%','of the flight in daylight',h('span',{'aria-hidden':'true',style:{display:'block',height:6,borderRadius:3,marginTop:4,background:'linear-gradient(90deg,#f0d78a '+pct+'%,'+T.track+' '+pct+'%)'}})));}
     // A known half survives an unknown one, and the missing half is named, not blanked.
     if(ins.dep_local||ins.arr_local)tiles.push(tile('lt','🛫','Local times',(ins.dep_local||'departure unknown')+' → '+(ins.arr_local||'arrival unknown'),'Departure → arrival'));
-    if(ins.pre_trip_tip)tips.push(tip('pre','📅','Before you go',ins.pre_trip_tip));
-    if(ins.arrival_tip||ins.sleep_tip)tips.push(tip('arr','💤','When you land',ins.arrival_tip||ins.sleep_tip));
+    if(calm)tips.push(tip('calm','🙂','No jet lag to plan for',reach.shift.hours===0?'Every stop is on home time.':'Every stop is within an hour of home time.'));
+    else{
+      if(ins.pre_trip_tip)tips.push(tip('pre','📅','Before you go',ins.pre_trip_tip));
+      if(ins.arrival_tip||ins.sleep_tip)tips.push(tip('arr','💤','When you land',ins.arrival_tip||ins.sleep_tip));
+    }
   }
+  var grid=function(key,list){return h('div',{key:key,style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',gap:8}},list);};
+  var sub=function(text){return h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:T.lab}},text);};
   var body=h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
-    tiles.length>0&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',gap:8}},tiles),tips);
+    tripTiles.length>0&&sub('The trip'),tripTiles.length>0&&grid('trip',tripTiles),
+    tiles.length>0&&tripTiles.length>0&&sub('Your first flight'+(ins.origin_code?' · '+ins.origin_code+(ins.dest_code?' → '+ins.dest_code:''):'')),
+    tiles.length>0&&grid('fl',tiles),tips);
   if(!props.collapsible)return h('div',{className:'ts-useful'},body);
   return h('div',{className:'ts-useful',style:Object.assign({background:T.card,border:'1px solid '+T.cardBr,borderRadius:12,padding:'4px 12px',marginBottom:12},props.style||{})},
     h('button',{type:'button',className:'ts-utk-toggle',onClick:toggle,'aria-expanded':open,
       style:{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',minHeight:40,padding:0,background:'none',border:'none',color:T.head,fontSize:13,fontWeight:700,cursor:'pointer'}},
-      h('span',null,'Useful to know'+(codes?' · '+codes:'')),h('span',{'aria-hidden':'true'},open?'▴':'▾')),
+      h('span',null,'Useful to know'+(codes&&!reach?' · '+codes:'')),h('span',{'aria-hidden':'true'},open?'▴':'▾')),
     open&&h('div',{style:{paddingBottom:12}},body));}
 // Cards to carry abroad: the active cards marked No FX fee, best for spending
 // abroad first, ranked as the cheat sheet's International Travel row ranks them:
@@ -7436,7 +7466,7 @@ function TripSummaryView(props){
     documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
     (ins||props.onGoToPacking||abroad)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:10}},
-        ins&&h('div',{style:{gridColumn:'1 / -1'}},h(TsUsefulToKnow,{ins:ins})),
+        (ins||props.reach)&&h('div',{style:{gridColumn:'1 / -1'}},h(TsUsefulToKnow,{ins:ins,trip:trip,reach:props.reach,apiUrl:props.apiUrl,apiToken:props.apiToken})),
         abroad&&h(TsCardsToCarry,{data:cards}),
         props.onGoToPacking&&h('div',{style:{display:'flex',flexDirection:'column',gap:6,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
           h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Packing'),
@@ -8615,7 +8645,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                       onOpenDay={d=>{setTripTab(tripKey,'agenda');setTimeout(()=>{const el=document.getElementById(tsDayId_(tripKey,d));if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},80);}} />
                   ) : (
                     <>
-                      <UsefulToKnowCard insights={flightInsights[tripKey]} />
+                      <UsefulToKnowCard insights={flightInsights[tripKey]} trip={{...t,tripKey}} apiUrl={apiUrl} apiToken={apiToken} />
                       <ItineraryDayView
                         trip={{...t,tripKey}} itinerary={filteredItin} busy={busy} legs={travelLegs[tripKey]} meta={meta||{}} who={traveler} apiUrl={apiUrl} apiToken={apiToken}
                         onAdd={defaults=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate,defaults:defaults||null})}

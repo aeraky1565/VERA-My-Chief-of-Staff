@@ -31,9 +31,9 @@ const CSV = ['Passport,Portugal,Germany,Italy,France,Egypt,United States,Japan',
 const AIRPORTS = { IAD: 'United States', LIS: 'Portugal', OPO: 'Portugal', FRA: 'Germany', FCO: 'Italy', CDG: 'France', JFK: 'United States' };
 
 const S = vm.createContext({ console });
-vm.runInContext([extractVar(WEB, 'VISA_ALIASES_'), extractVar(WEB, 'SCHENGEN_'), WEB.match(/var TRIP_NOT_A_PLACE_ = .*;/)[0],
+vm.runInContext([extractVar(WEB, 'VISA_ALIASES_'), extractVar(WEB, 'SCHENGEN_'), WEB.match(/var TRIP_NOT_A_PLACE_ = .*;/)[0], extractVar(WEB, 'TRIP_DOC_RANK_'),
   ...['tripPlaceMatches_', 'visaNorm_', 'visaResultsFor_', 'visaStatusKey_', 'visaStatusLabel_', 'visaStatusColor_', 'tripFlightRoute_', 'tripAddressCountry_', 'tripCountries_',
-      'tripPassportCheck_', 'tripDocWorst_', 'webGetTripDocuments_', 'webGetVisaRequirements_'].map(n => extractFn(WEB, n))].join('\n'), S);
+      'tripPassportCheck_', 'tripPassportTone_', 'tripPickPassports_', 'tripDocWorst_', 'tripReach_', 'tripItemsFor_', 'webGetTripDocuments_', 'webGetVisaRequirements_'].map(n => extractFn(WEB, n))].join('\n'), S);
 const run = code => vm.runInContext(code, S);
 S.CSV = CSV;
 S.names = {}; CSV.split('\n')[0].split(',').slice(1).forEach(h => { S.names[h.toLowerCase().replace(/[^a-z0-9]/g, '')] = h; });
@@ -156,7 +156,18 @@ console.log('\nthe whole check');
   const ahmedEg = pt.travelers[0].passports.find(p => p.passportCountry === 'Egypt');
   check('each passport carries its visa status…', ahmedEg.label === 'Visa Required' && ahmedEg.color === 'red');
   check('…and whether it lasts the trip', ahmedEg.passport.status === 'expires' && pt.travelers[1].passports[0].passport.status === 'short');
-  check('a country\'s chip shows its worst result', pt.worst === 'red' && r.countries[1].worst === 'red');
+  check('Ahmed would use his US passport, not the Egyptian one that needs a visa', pt.travelers[0].passports.find(p => p.use).passportCountry === 'United States' && !ahmedEg.use);
+  check('so a country is not red for a passport nobody would use: Victoria\'s short passport makes it amber', pt.worst === 'amber' && r.countries[1].worst === 'amber', pt.worst + ',' + r.countries[1].worst);
+  S.T = [{ name: 'Ahmed', passports: [{ passportCountry: 'Egypt', color: 'red', passport: { status: 'ok' } }, { passportCountry: 'United States', color: 'green', passport: { status: 'ok' } }] }];
+  run('tripPickPassports_(T)');
+  check('the visa-free passport is picked even when listed second', S.T[0].passports[1].use === true && S.T[0].passports[0].use === false);
+  check('…and the country is green', run('tripDocWorst_(T)') === 'green');
+  S.T2 = [{ name: 'Ahmed', passports: [{ passportCountry: 'Egypt', color: 'red', passport: { status: 'ok' } }, { passportCountry: 'United States', color: 'green', passport: { status: 'expires' } }] }];
+  run('tripPickPassports_(T2)');
+  check('a passport that runs out is no better than one that needs a visa: still red', run('tripDocWorst_(T2)') === 'red');
+  S.T3 = [{ name: 'Ahmed', passports: [{ passportCountry: 'Egypt', color: 'yellow', passport: { status: 'ok' } }, { passportCountry: 'United States', color: 'green', passport: { status: 'short' } }] }];
+  run('tripPickPassports_(T3)');
+  check('with only amber choices, the result is amber', run('tripDocWorst_(T3)') === 'amber');
   check('a clear visa with a short passport is amber', run("tripDocWorst_([{passports:[{color:'green',passport:{status:'short'}}]}])") === 'amber' && run("tripDocWorst_([{passports:[{color:'green',passport:{status:'ok'}}]}])") === 'green');
   check('each airport is looked up once', fetched.filter(c => c === 'IAD').length === 1, JSON.stringify(fetched));
   check('without a tripKey it says so', run('webGetTripDocuments_({})').ok === false);
@@ -185,6 +196,31 @@ console.log('\nthe whole check reads what the itinerary shows');
   check('"At sea" is never looked up', !geo.includes('At sea'), JSON.stringify(geo));
   check('the route is wired', /case 'trip_documents':\s+return jsonOut_\(webGetTripDocuments_\(e\.parameter\)\);/.test(WEB));
   delete S.webGetItinerary_;
+}
+
+// ============ how far the trip reaches ==========================================
+console.log('\nhow far the trip reaches');
+{
+  // Offsets by zone, with one zone that changes on a date (daylight saving).
+  S.off = (z, d) => ({ 'America/New_York': d >= '2026-11-01' ? -5 : -4, 'America/Cancun': -5, 'America/Tegucigalpa': -6, 'America/Puerto_Rico': -4 })[z] ?? null;
+  S.mi = (a, b) => Math.round(Math.hypot(a.lat - b.lat, a.lon - b.lon) * 69);
+  S.tzOffsetLabel_ = h => (h > 0 ? '+' : '-') + Math.abs(h) + 'h';
+  vm.runInContext('var tzOffsetLabel_ = this.tzOffsetLabel_;', S);
+  S.P = [
+    { name: 'Miami', lat: 25.8, lon: -80.2, timezone: 'America/New_York', date: '2026-11-06' },
+    { name: 'Cozumel', lat: 20.4, lon: -86.9, timezone: 'America/Cancun', date: '2026-11-09' },
+    { name: 'Roatan', lat: 16.3, lon: -86.5, timezone: 'America/Tegucigalpa', date: '2026-11-10' },
+    { name: 'Somewhere', lat: 10, lon: -60, timezone: '', date: '2026-11-11' }];
+  S.H = { lat: 38.9, lon: -77.0 };
+  const r = run('tripReach_(P, H, "America/New_York", off, mi)');
+  check('the biggest clock change, measured on its own date', r.shift.name === 'Roatan' && r.shift.hours === -1 && r.shift.label === '-1h', JSON.stringify(r.shift));
+  S.P3 = [S.P[3]];
+  check('a place with no known zone is left out, not counted as zero', r.shift.name !== 'Somewhere' && run('tripReach_(P3, H, "America/New_York", off, mi)').shift === null);
+  check('the farthest place from home', r.farthest.name === 'Somewhere' && r.farthest.miles > 0, JSON.stringify(r.farthest));
+  S.P2 = [{ name: 'Miami', lat: 25.8, lon: -80.2, timezone: 'America/New_York', date: '2026-11-06' }, { name: 'Cozumel', lat: 20.4, lon: -86.9, timezone: 'America/Cancun', date: '2026-11-09' }];
+  check('every stop on home time reads Same as home', run('tripReach_(P2, H, "America/New_York", off, mi)').shift.label === 'Same as home');
+  check('no home, no distance; still a shift', run('tripReach_(P2, null, "America/New_York", off, mi)').farthest === null && run('tripReach_(P2, null, "America/New_York", off, mi)').shift !== null);
+  check('the route is wired', /case 'trip_reach':\s+return jsonOut_\(webTripReach_\(e\.parameter\)\);/.test(WEB));
 }
 
 // ============ the matrix is cached in pieces ====================================

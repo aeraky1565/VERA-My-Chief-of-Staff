@@ -386,6 +386,7 @@ console.log('\n…and the dashboard renders what it knows');
   function renderCard(body, state, src) {
     const React = {
       useState: function (v) { return [v, function () {}]; },
+      useEffect: function () {},
       createElement: function (tag, props) {
         const kids = Array.prototype.slice.call(arguments, 2);
         if (typeof tag === 'function') return tag(Object.assign({}, props, { children: kids }));

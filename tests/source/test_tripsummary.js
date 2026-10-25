@@ -171,6 +171,26 @@ console.log('\npassports and visas in Needs attention');
     return run('tsDocAttention_(D2, "2026-12-01")')[0]; };
   check('an e-Visa or visa on arrival is amber', lvl('yellow', 'e-Visa').level === 'amber' && lvl('yellow', 'e-Visa').title === 'e-Visa for Mexico' && lvl('yellow', 'Visa on Arrival').level === 'amber');
   check('no admission is red and says so', lvl('red', 'No Admission').level === 'red' && lvl('red', 'No Admission').title === 'No admission to Mexico');
+  S.D3 = { countries: [{ country: 'Mexico', role: 'stay', from: '2026-11-09', travelers: [{ name: 'Ahmed', passports: [
+    { passportCountry: 'United States', color: 'green', label: 'Visa Free (180 days)', use: true, passport: { status: 'ok' } },
+    { passportCountry: 'Egypt', color: 'red', label: 'Visa Required', use: false, passport: { status: 'expires', label: 'Expires soon' } }] }] }] };
+  check('a passport he would not use raises nothing: no visa line, no expiry line', run('tsDocAttention_(D3, "2026-11-06")').length === 0, JSON.stringify(run('tsDocAttention_(D3, "2026-11-06")')));
+  // Useful to know rendered for real, with a React that records and calls components.
+  const R = vm.createContext({ console, Math, Number, String, Object, Array, JSON, Date, isNaN, apiGet: () => new Promise(() => {}) });
+  R.React = { useState: v => [v, () => {}], useEffect: () => {},
+    createElement: function (tag, props) { const kids = Array.prototype.slice.call(arguments, 2); return typeof tag === 'function' ? tag(Object.assign({}, props, { children: kids })) : { kids }; } };
+  vm.runInContext("var MONTH_ABBR_=[];\n" + A, R);
+  const txt = n => { const out = []; (function w(x) { if (x == null || x === false) return; if (Array.isArray(x)) return x.forEach(w); if (typeof x === 'object') return w(x.kids); out.push(String(x)); })(n); return out.join(' '); };
+  const utk = (ins, reach) => { R.a = { ins, reach }; return txt(vm.runInContext('TsUsefulToKnow({ins:a.ins,reach:a.reach})', R)); };
+  const INS = { origin_code: 'IAD', dest_code: null, tz_offset_label: null, distance_miles: null, daynight_pct_day: 90, dep_local: '8:40 AM (IAD)', arr_local: '11:33 AM',
+    pre_trip_tip: 'Shift your bedtime later for your westward destination.', arrival_tip: 'Stay awake until 10 PM.' };
+  const near = utk(INS, { shift: { name: 'Roatan', hours: -1, label: '-1h' }, farthest: { name: 'Roatan', miles: 1650 } });
+  check('the trip: its biggest time change and farthest place', /The trip/.test(near) && /Biggest time change -1h at Roatan/.test(near) && /Farthest from home ~1,650 mi Roatan/.test(near), near);
+  check('…the flight\'s own facts labelled as the first flight\'s', /Your first flight · IAD/.test(near) && /8:40 AM \(IAD\)/.test(near));
+  check('…and within an hour of home, no invented jet-lag tips', /No jet lag to plan for/.test(near) && !/westward/.test(near), near);
+  const far = utk(INS, { shift: { name: 'Lisbon', hours: 5, label: '+5h' }, farthest: null });
+  check('a real clock change keeps the tips', /westward/.test(far) && !/No jet lag/.test(far));
+  check('without reach, the card is as it was', /Useful to know|DAYLIGHT|Daylight/i.test(utk(INS, null)) && !/The trip/.test(utk(INS, null)));
   check('cards to carry starts folded', /function TsCardsToCarry\(props\)\{var h=React\.createElement;var d=props\.data;\n  var _o=React\.useState\(false\)/.test(A));
   check('the chips say what grey means, never "Unknown"', /grey:'No visa data'/.test(A) && /'No expiry on file','p'\)/.test(A) && !/'Unknown'/.test(A.slice(A.indexOf('function TsDocuments('), A.indexOf('function tsWx_('))));
   check('a clear visa adds nothing', !docs.some(a => /Visa Free/.test(a.title)));
@@ -228,9 +248,10 @@ console.log('\nweather and Useful to know');
   const wx = c => { S.c = c; return run('tsWx_(c)'); };
   check('weather codes read as a symbol and a word', wx(0).label === 'Sunny' && wx(3).label === 'Cloudy' && wx(61).label === 'Rain' && wx(81).label === 'Rain' && wx(73).label === 'Snow' && wx(95).label === 'Storms' && wx(45).label === 'Fog');
   check('Useful to know is one shared card, in Summary and in both Agendas',
-        /ins&&h\('div',\{style:\{gridColumn:'1 \/ -1'\}\},h\(TsUsefulToKnow,\{ins:ins\}\)\)/.test(A)
-        && /viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true\}\)/.test(APP)
-        && /return <TsUsefulToKnow ins=\{insights\} collapsible=\{true\} \/>;/.test(LITE));
+        /\(ins\|\|props\.reach\)&&h\('div',\{style:\{gridColumn:'1 \/ -1'\}\},h\(TsUsefulToKnow,\{ins:ins,trip:trip,reach:props\.reach,apiUrl:props\.apiUrl,apiToken:props\.apiToken\}\)\)/.test(A)
+        && /viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true,trip:trip,apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP)
+        && /return <TsUsefulToKnow ins=\{insights\} collapsible=\{true\} trip=\{trip\} apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>;/.test(LITE)
+        && /<UsefulToKnowCard insights=\{flightInsights\[tripKey\]\} trip=\{\{\.\.\.t,tripKey\}\} apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
   check('Documents shows only for a trip that leaves home (or while checking, or to report an error)', /documents&&\(documents\.loading\|\|documents\.error\|\|\(documents\.countries\|\|\[\]\)\.length>0\)&&h\('section'/.test(A));
 }
 
