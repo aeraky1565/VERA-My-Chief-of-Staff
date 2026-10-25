@@ -161,6 +161,35 @@ console.log('\npassports and visas in Needs attention');
   check('red still comes first with documents in', s.attention.map(a => a.level).join().replace(/(red,)+/, '') .indexOf('red') === -1 && s.attention[0].level === 'red', s.attention.map(a => a.level).join());
 }
 
+console.log('\nhome: the active travel card\'s today');
+{
+  const T = { label: 'Lisbon & Porto', startDate: '2026-11-12', endDate: '2026-11-19' };
+  const items = [
+    { id: 'h1', type: 'hotel', title: 'Alfama hotel', date: '2026-11-13', location: 'Rua X 12, Lisboa, Portugal', metadata: '{"checkoutDate":"2026-11-16"}' },
+    { id: 'c1', type: 'car', title: 'Taxi', date: '2026-11-16', startTime: '10:30', endTime: '10:40', location: 'Rua X 12, Lisboa, Portugal' },
+    { id: 't1', type: 'train', title: 'Train to Porto', date: '2026-11-16', startTime: '11:09', location: 'Santa Apolonia' },
+    { id: 'f9', type: 'flight', title: 'Hop', date: '2026-11-16', startTime: '12:00' },
+    { id: 'a1', type: 'dining', title: 'Dinner', date: '2026-11-16', startTime: '20:00', location: 'Ribeira, Porto, Portugal' },
+    { id: 'a2', type: 'activity', title: 'Walk', date: '2026-11-16' },
+    { id: 'h2', type: 'hotel', title: 'Ribeira hotel', date: '2026-11-18', location: 'Porto, Portugal', metadata: '{"checkoutDate":"2026-11-19"}' },
+    { id: 'n1', type: 'flight', title: 'Night flight', date: '2026-11-17', startTime: '23:00', endTime: '06:00' } ];
+  const LEGS = [{ from: 'Rua X 12, Lisboa, Portugal', to: 'Santa Apolonia', driveMins: 35 }];
+  const card = (day, nowMins, legs) => { S.c = { trip: T, items, legs: legs || LEGS, day, nowMins }; return run('buildTodayCard_(c)'); };
+  const c = card('2026-11-16', 9 * 60);
+  check('next up: what is left of today, untimed first, not flights or stays', c.next.map(n => n.title).join() === 'Walk,Taxi,Train to Porto,Dinner', c.next.map(n => n.title).join());
+  check('…and items already past drop off', card('2026-11-16', 12 * 60).next.map(n => n.title).join() === 'Walk,Dinner');
+  check('leave by: the first stop ahead with a cached drive, from the stop before', c.leaveBy && c.leaveBy.time === '10:34' && c.leaveBy.title === 'Train to Porto' && c.leaveBy.driveMins === 35 && c.leaveBy.from === 'Taxi', JSON.stringify(c.leaveBy));
+  check('no leave-by once its time has passed', card('2026-11-16', 10 * 60 + 40).leaveBy === null);
+  check('no leave-by without a cached drive', card('2026-11-16', 9 * 60, []).leaveBy === null);
+  check('the first stop of the day leaves from last night\'s stay', (() => { S.c = { trip: T, items: [items[0], { id: 'm', type: 'museum', title: 'Museum', date: '2026-11-14', startTime: '10:00', location: 'Museu, Lisboa, Portugal' }],
+      legs: [{ from: 'Rua X 12, Lisboa, Portugal', to: 'Museu, Lisboa, Portugal', driveMins: 15 }], day: '2026-11-14', nowMins: 8 * 60 }; const r = run('buildTodayCard_(c)'); return r.leaveBy && r.leaveBy.time === '09:45' && r.leaveBy.from === 'Alfama hotel'; })());
+  check('tonight with a stay', card('2026-11-14', 0).tonight.kind === 'stay' && card('2026-11-14', 0).tonight.title === 'Alfama hotel');
+  check('tonight with nothing booked', card('2026-11-16', 0).tonight.kind === 'none');
+  check('tonight on a night flight', card('2026-11-17', 0).tonight.kind === 'air');
+  check('the last day of the trip is home, not a gap', card('2026-11-19', 0).tonight.kind === 'home');
+  check('more than four left: the rest are counted', (() => { S.c = { trip: T, items: [1, 2, 3, 4, 5, 6].map(i => ({ id: 'x' + i, type: 'activity', title: 'A' + i, date: '2026-11-15', startTime: '1' + i + ':00' })), day: '2026-11-15', nowMins: 0 }; const r = run('buildTodayCard_(c)'); return r.next.length === 4 && r.more === 2; })());
+}
+
 console.log('\nagenda: between and after the items');
 {
   const day = [
@@ -200,6 +229,13 @@ check('lite: the same toolbar, breaks, header colours and end slots', /<TsAgenda
       && /\.\.\.tsDayHeadStyle_\(agendaSum, date\)/.test(LITE) && /<TsDayEnd date=\{date\} summary=\{agendaSum\} onAdd=\{onAdd\} busy=\{busy\} \/>/.test(LITE));
 check('lite: the add form takes a date and type', /defaults\?\.date\|\|tripStartDate/.test(LITE) && /defaults\?\.type\|\|'manual'/.test(LITE) && /defaults=\{modal\.defaults\}/.test(LITE));
 check('lite: the top-of-Agenda notices card is no longer shown', !/<VERANoticesCard /.test(LITE));
+['docs/app.js', 'docs/dashboard-lite.html'].forEach(f => {
+  const src = f === 'docs/app.js' ? APP : LITE;
+  const card = src.slice(src.indexOf('function ActiveTravelCard('), src.indexOf('// ---- Mail/Package Counter card', src.indexOf('function ActiveTravelCard(')));
+  check(f + ': the active travel card carries the today pieces, before "Staying at"', /React\.createElement\(TsTodayCard,\{trip:trip,items:items,day:displayDay,departing:departing,apiUrl:apiUrl,apiToken:apiToken,onViewItinerary:/.test(card)
+        && card.indexOf('TsTodayCard') < card.indexOf('"Staying at"'));
+  check(f + ': "No itinerary items" only when the day really has none', /!\(items\|\|\[\]\)\.some\(function\(i\)\{return i\.date===displayDay&&!i\._synthetic;\}\)&&/.test(card));
+});
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -49,6 +49,12 @@ const CONTROLS = [
   ['a visa to arrange is not flagged', both("if(p.color==='red'||p.color==='yellow')visas.push(", "if(false)visas.push(")],
   ['red no longer comes first', both("  attention=attention.filter(function(a){return a.level==='red';}).concat(attention.filter(function(a){return a.level!=='red';}));\n", '')],
   ['full: the Visa view is back', b => ({ [A]: swap(b[A], "['summary','agenda','map'].map(function(mode)", "['summary','agenda','map','visa'].map(function(mode)") })],
+  // ---- Home travel card (stage 4) ----
+  ['leave-by gives up at the first stop without a drive', both("    if(!leg||leg.driveMins==null)continue;// no cached drive for this stop: try the next", "    if(!leg||leg.driveMins==null)break;")],
+  ['a leave-by time already past still shows', both("var t=tsMins_(b.startTime)-leg.driveMins;if(t<now)continue;", "var t=tsMins_(b.startTime)-leg.driveMins;")],
+  ['the trip\'s last night is a gap, not home', both("lastNight?{kind:'home',title:''}:", '')],
+  ['flights repeat in Next up', both("return it.type!=='flight'&&!TS_STAY_TYPES[it.type]&&(!it.startTime", "return !TS_STAY_TYPES[it.type]&&(!it.startTime")],
+  ['lite: the travel card lacks the today pieces', b => ({ [L]: swap(b[L], "/*#__PURE__*/React.createElement(TsTodayCard,{trip:trip,items:items,day:displayDay,departing:departing,apiUrl:apiUrl,apiToken:apiToken,onViewItinerary:function(){if(onViewItinerary)onViewItinerary(trip);}}),", '') })],
   ['lite: Agenda stays the default', b => ({ [L]: swap(b[L], "tripTabs[tripKey] || 'summary'", "tripTabs[tripKey] || 'agenda'") })],
 ];
 

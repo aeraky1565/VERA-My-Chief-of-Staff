@@ -128,6 +128,34 @@ async function assertAgenda(page, root, withLegs) {
   check('no sideways scroll in Agenda', await noScroll(page));
 }
 
+// The real ActiveTravelCard on Home, mid-trip, with the API stubbed: the today
+// pieces (leave-by, Next up, tonight) render inside it.
+async function assertHomeCard(page) {
+  const pad = n => String(n).padStart(2, '0');
+  const r = await page.evaluate(([iso0, isoM2, isoM3, isoP3]) => new Promise(done => {
+    // Pin the page's clock to 09:00 today, so "an hour from now" never runs past midnight.
+    const RealDate = window.__RealDate || (window.__RealDate = Date);
+    const nine = new RealDate(); nine.setHours(9, 0, 0, 0);
+    window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(nine.getTime()); } static now() { return nine.getTime(); } };
+    const now = new Date(); const at = m => { const t = now.getHours() * 60 + now.getMinutes() + m; return String(Math.floor(t / 60) % 24).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+    const items = [
+      { id: 'h1', type: 'hotel', title: 'Alfama hotel', date: isoM2, location: 'Rua X 12, Lisboa, Portugal', metadata: JSON.stringify({ checkoutDate: iso0 }) },
+      { id: 'c1', type: 'car', title: 'Taxi to the station', date: iso0, startTime: at(60), endTime: at(70), location: 'Rua X 12, Lisboa, Portugal' },
+      { id: 't1', type: 'train', title: 'Train to Porto', date: iso0, startTime: at(100), location: 'Santa Apolonia' },
+      { id: 'a1', type: 'dining', title: 'Dinner in Ribeira', date: iso0, startTime: at(400), location: 'Ribeira, Porto' } ];
+    window.apiGet = (u, t, q) => Promise.resolve(q.action === 'itinerary' ? { ok: true, items } : q.action === 'travel_legs' ? { legs: [{ from: 'Rua X 12, Lisboa, Portugal', to: 'Santa Apolonia', driveMins: 35 }] } : { ok: false });
+    const host = document.createElement('div'); host.id = 'homeprobe'; host.style.display = 'grid'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(ActiveTravelCard, { trip: { label: 'Lisbon & Porto', startDate: isoM3, endDate: isoP3 }, apiUrl: 'https://vera.test/exec', apiToken: 't', onViewItinerary: () => {}, travelConfig: {} }));
+    setTimeout(() => { window.Date = RealDate; }, 900);
+    setTimeout(() => done({ text: host.innerText, leave: !!host.querySelector('.ts-leaveby'), next: !!host.querySelector('.ts-nextup'), none: !!host.querySelector('.ts-tonight-none') }), 600);
+  }), [iso(0), iso(-2), iso(-3), iso(3)]);
+  check('the travel card shows when to leave for the next stop', r.leave && /Leave by \d\d:\d\d/i.test(r.text) && /For Train to Porto at/.test(r.text) && /About 35 min by car/.test(r.text), r.text.slice(0, 300));
+  check('…what is left of today', r.next && /Next up today/i.test(r.text) && /Taxi to the station/.test(r.text) && /Dinner in Ribeira/.test(r.text));
+  check('…and that tonight has nowhere to sleep', r.none && /Tonight: no place to sleep booked/.test(r.text));
+  check('…without also saying the day is empty', !/No itinerary items for today/.test(r.text));
+  check('no sideways scroll with the travel card', await noScroll(page));
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -168,6 +196,7 @@ async function assertAgenda(page, root, withLegs) {
       await page.evaluate((a) => tsDayId_(a[0], a[1]), [FX.trip.tripKey, D(4)]));
     check('tapping a red day switches to Agenda, where that day is', landed);
     await assertAgenda(page, '#ivprobe', false);
+    await assertHomeCard(page);
     check('no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
 
@@ -191,6 +220,7 @@ async function assertAgenda(page, root, withLegs) {
     }, FX);
     await new Promise(r => setTimeout(r, 300));
     await assertAgenda(page, '#agprobe', true);
+    await assertHomeCard(page);
     await page.close();
   }
   await browser.close();
