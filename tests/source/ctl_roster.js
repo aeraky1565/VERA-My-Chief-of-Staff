@@ -24,7 +24,7 @@ const CONTROLS = [
   ['the fallback beats the roster row', b => ({ [W]: swap(b[W], "out[n] = url(cfg['roster_link_' + n.toLowerCase()]) || url(fallback[n]);", "out[n] = url(fallback[n]) || url(cfg['roster_link_' + n.toLowerCase()]);") })],
   ['ARIA is not read from Config', b => ({ [W]: swap(b[W], "'HAILEY', 'ARIA'];", "'HAILEY'];") })],
   ['status drops rosterLinks', b => ({ [W]: swap(b[W], '    rosterLinks:  rosterLinks_(featureCfg),\n', '') })],
-  ['ARIA shows as live', b => { const f = s => swap(s, "you book yourself',state:'planned'", "you book yourself',state:'live'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
+  ['ARIA shows as not built', b => { const f = s => swap(s, "you book yourself',state:'live'}];", "you book yourself',state:'planned'}];"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['lite is missing ARIA', b => ({ [L]: swap(b[L], "  {name:'ARIA',", "  {nome:'ARIA',") })],
   ['HAILEY shows as not built', b => { const f = s => swap(s, "price drops',state:'live'", "price drops',state:'planned'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['links hand over the opener', b => { const f = s => swap(s, "target:'_blank',rel:'noopener'", "target:'_blank'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],

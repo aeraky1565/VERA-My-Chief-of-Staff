@@ -121,9 +121,9 @@ console.log('\nthe endpoint');
 {
   const nc0 = run('webAriaStatus_({})');
   check('with no sheet ID it says so, and opens nothing', nc0.ok === true && nc0.configured === false && Array.isArray(nc0.requests) && opens === 0);
-  props.ARIA_SHEET_ID = 'sheet-test-id'; openFails = true;
+  props.ARIA_SHEET_ID = 'InventedTrackerId_0123456789'; openFails = true;
   const bad = run('webAriaStatus_({})');
-  check('a sheet it can\'t open says what to check', bad.ok === false && /ARIA_SHEET_ID/.test(bad.error) && /shared with the account/.test(bad.error));
+  check('a sheet it can\'t open says what to check', bad.ok === false && /roster_link_aria/.test(bad.error) && /shared with the account/.test(bad.error));
   openFails = false; S.Date = class extends Date { constructor(...a) { if (a.length) super(...a); else super('2027-02-20T12:00:00Z'); } static UTC(...a) { return Date.UTC(...a); } };
   vm.runInContext('Date = this.Date', S);
   const r = run('webAriaStatus_({})');
@@ -138,6 +138,14 @@ console.log('\nthe endpoint');
   const ariaPart = SRC.slice(0, SRC.indexOf('// ---- ARIA Requests'));
   check('nothing that reads ARIA\'s sheet writes anything', ariaPart.length > 1000 && !/\.(setValue|setValues|appendRow|deleteRow|insertSheet|clear)\(/.test(ariaPart));
   check('the sheet ID is never in the code', !/1[A-Za-z0-9_-]{40,}/.test(SRC));
+  check('a link or a bare ID both give the sheet ID; anything else gives none', run('ariaSheetIdFrom_("https://docs.google.com/spreadsheets/d/InventedAriaTracker_0123456789/edit#gid=0")') === 'InventedAriaTracker_0123456789'
+    && run('ariaSheetIdFrom_(" InventedAriaTracker_0123456789 ")') === 'InventedAriaTracker_0123456789' && run('ariaSheetIdFrom_("https://example.test/x")') === '' && run('ariaSheetIdFrom_("")') === '');
+  const keepProp = props.ARIA_SHEET_ID; delete props.ARIA_SHEET_ID;
+  S.getConfigValues = () => ({ roster_link_aria: 'https://docs.google.com/spreadsheets/d/InventedAriaTracker_0123456789/edit' });
+  check('with no Script Property, the Config tab\'s roster_link_aria is used', run('ariaSheetId_()') === 'InventedAriaTracker_0123456789');
+  props.ARIA_SHEET_ID = 'InventedOverride_abcdefghij0123';
+  check('…and a Script Property, when set, wins', run('ariaSheetId_()') === 'InventedOverride_abcdefghij0123');
+  S.getConfigValues = () => ({}); props.ARIA_SHEET_ID = keepProp;
 }
 
 console.log('\nasking ARIA to scout an option');
@@ -275,7 +283,7 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   const flagTab = { getLastRow: () => FL.length, getRange: (r, c, nr, nc) => ({ getValues: () => FL.slice(r - 1, r - 1 + nr).map(x => x.slice(c - 1, c - 1 + nc)), setValue: v => { FL[r - 1][c - 1] = v; } }), appendRow: v => FL.push(v.slice()) };
   S.getSpreadsheet = () => ({ getSheetByName: n => n === 'Flags' ? flagTab : null });
   S.TABS.FLAGS = 'Flags';
-  props.ARIA_SHEET_ID = 'sheet-test-id';
+  props.ARIA_SHEET_ID = 'InventedTrackerId_0123456789';
   const tracker = { Watchlist: S.WV, 'Fare Log': FARES, 'Run Log': S.RL, Settings: S.SET };
   S.SpreadsheetApp = { openById: () => ({ getSheetByName: n => tracker[n] ? tab(tracker[n]) : null }) };
   S.Date = Date; vm.runInContext('Date = this.Date', S);

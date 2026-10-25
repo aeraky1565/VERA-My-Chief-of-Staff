@@ -1,7 +1,7 @@
 // Renders the REAL "Your assistants" roster card in both dashboards at phone and
 // desktop widths, over a stubbed status: six rows, the right links opening in a new
-// tab, every link from status (one Config row each), ARIA "Not built
-// yet", a blank Config row shown as a hint naming the row, and no sideways scroll. Invented sheet ids only.
+// tab, every link from status (one Config row each), all six live, a blank Config
+// row shown as a hint naming the row, and no sideways scroll. Invented sheet ids only.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -50,8 +50,9 @@ async function assertPage(page, veraHref) {
   check('HAILEY links to its tracker', by('HAILEY').href === HAILEY_URL && by('HAILEY').target === '_blank', by('HAILEY').href);
   check('PIES and ARIA with blank rows are not links', ['PIES', 'ARIA'].every(n => by(n).href === ''));
   check('PIES says it lives in the work environment', /Lives in Ahmed’s work environment/.test(by('PIES').note) && /professional workflow/.test(by('PIES').text), by('PIES').note);
-  check('ARIA: Not built yet, waiting on trip details', by('ARIA').state === 'Not built yet' && /trip details/.test(by('ARIA').note));
-  check('the five built ones read Live, HAILEY included, with no waiting note', ['PIES', 'VERA', 'WILLA', 'TESS', 'HAILEY'].every(n => by(n).state === 'Live') && by('HAILEY').note === '');
+  check('all six read Live, ARIA included', ['PIES', 'VERA', 'WILLA', 'TESS', 'HAILEY', 'ARIA'].every(n => by(n).state === 'Live'), JSON.stringify(r.rows.map(x => [x.name, x.state])));
+  check('…and the linked ones carry no waiting note', by('HAILEY').note === '');
+  check('a blank ARIA row says which Config row links it', /roster_link_aria/.test(by('ARIA').note));
   check('each row spells out the acronym and its job', /Work-optional Income & Lifestyle Longevity Analyzer/.test(by('WILLA').text) && /you submit applications yourself/.test(by('TESS').text));
   check('no sideways scroll', r.noScroll);
 
@@ -63,7 +64,7 @@ async function assertPage(page, veraHref) {
   r = await probe(page, ALL, veraHref);
   check('with every row filled, all six names are links to their rows', r.rows.length === 6 && r.rows.every(x => x.href === ALL[x.name] && x.target === '_blank' && x.rel === 'noopener'),
         JSON.stringify(r.rows.map(x => [x.name, x.href])));
-  check('…and the notes still say where PIES lives and what ARIA waits on', /work environment/.test((r.rows.find(x => x.name === 'PIES') || {}).note) && /trip details/.test((r.rows.find(x => x.name === 'ARIA') || {}).note));
+  check('…and the notes still say where PIES lives; a linked ARIA has no note', /work environment/.test((r.rows.find(x => x.name === 'PIES') || {}).note) && !(r.rows.find(x => x.name === 'ARIA') || {}).note);
   r = await probe(page, undefined, veraHref);
   check('no status yet: still renders, VERA still linked', r.rows && r.rows.length === 6 && (r.rows.find(x => x.name === 'VERA') || {}).href === veraHref);
 }

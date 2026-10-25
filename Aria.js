@@ -6,8 +6,9 @@
 // ARIA runs as a scheduled Claude task outside this project. It keeps its own
 // sheet, the ARIA Travel Tracker: a Watchlist (one row per trip it watches or
 // scouts) and a Fare Log (every fare it has seen). VERA only READS that sheet;
-// nothing here writes to it. The sheet's ID lives in the Script Property
-// ARIA_SHEET_ID, never in code: this repository is public.
+// nothing here writes to it. The sheet's ID is read at run time, from the Script
+// Property ARIA_SHEET_ID or else Config's roster_link_aria; never from code: this
+// repository is public.
 //
 // ARIA owns its columns and may add more, so every read goes by header name,
 // never by position.
@@ -326,7 +327,24 @@ function ariaRecentFares_(fares, today) {
 
 // ---- the reads -----------------------------------------------------------------
 
-function ariaSheetId_() { return String(PropertiesService.getScriptProperties().getProperty('ARIA_SHEET_ID') || '').trim(); }
+/**
+ * Pure: a Google Sheets id from a link (".../spreadsheets/d/<id>/edit…") or a bare id; else ''.
+ */
+function ariaSheetIdFrom_(v) {
+  var t = String(v == null ? '' : v).trim(), m = t.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/);
+  return m ? m[1] : /^[A-Za-z0-9_-]{20,}$/.test(t) ? t : '';
+}
+
+/**
+ * ARIA's tracker: the Script Property ARIA_SHEET_ID if set, else the link in the
+ * Config tab's roster_link_aria row (the one the Home roster already links to).
+ * Read at run time; the repo is public, so no id is ever written in code.
+ */
+function ariaSheetId_() {
+  var prop = ariaSheetIdFrom_(PropertiesService.getScriptProperties().getProperty('ARIA_SHEET_ID'));
+  if (prop) return prop;
+  try { return ariaSheetIdFrom_(getConfigValues()['roster_link_aria']); } catch (e) { return ''; }
+}
 
 function ariaTabValues_(ss, name) {
   var sh = ss.getSheetByName(name);
@@ -392,7 +410,7 @@ function webAriaStatus_(p) {
   if (!(p && p.refresh)) { try { var hit = cache.get(ARIA_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) {} }
   var ss;
   try { ss = SpreadsheetApp.openById(id); }
-  catch (e) { return { ok: false, configured: true, error: 'VERA couldn’t open the ARIA Travel Tracker. Check ARIA_SHEET_ID, and that the sheet is shared with the account VERA runs as.' }; }
+  catch (e) { return { ok: false, configured: true, error: 'VERA couldn’t open the ARIA Travel Tracker. Check the link in Config → roster_link_aria, and that the sheet is shared with the account VERA runs as.' }; }
   var tz = Session.getScriptTimeZone();
   var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var t = ariaReadTracker_(ss);
@@ -580,7 +598,7 @@ function syncAriaFlags_() {
   try { t = ariaReadTracker_(SpreadsheetApp.openById(id)); } catch (e) { why = 'VERA couldn’t open the ARIA Travel Tracker'; }
   if (t && t.missing.indexOf('Watchlist') !== -1) { why = 'The ARIA Travel Tracker has no Watchlist tab'; t = null; }
   if (!t) {
-    upsertKeyedFlags_(flagSheet, 'ARIA|RUN_HEALTH', 'ARIA', { 'ARIA|RUN_HEALTH': { flag: '🧭 VERA can’t read ARIA', reason: why + '. Check ARIA_SHEET_ID and the sheet’s sharing.', urgency: 'High' } }, dateStr);
+    upsertKeyedFlags_(flagSheet, 'ARIA|RUN_HEALTH', 'ARIA', { 'ARIA|RUN_HEALTH': { flag: '🧭 VERA can’t read ARIA', reason: why + '. Check the link in Config → roster_link_aria and the sheet’s sharing.', urgency: 'High' } }, dateStr);
     Logger.log('aria flags: tracker unreadable');
     return { ok: false, error: why };
   }

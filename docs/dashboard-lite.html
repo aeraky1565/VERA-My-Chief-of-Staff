@@ -8336,8 +8336,8 @@ function AriaView(props){var h=React.createElement;
   if(data.error)return h('div',wrap,head,h('span',{role:'alert',style:{color:'#ffb0b0',fontSize:14,lineHeight:1.45}},data.error),h('button',{type:'button',onClick:function(){load(true);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},'Try again'));
   if(data.configured===false)return h('div',wrap,head,h('div',{className:'aria-setup',style:{display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:TI.card,border:'1px dashed #4a6aa8',fontSize:14,lineHeight:1.5}},
     h('b',{style:{color:TI.hi}},'Connect ARIA’s sheet'),
-    h('span',null,'In Apps Script, open Project Settings → Script Properties and add ARIA_SHEET_ID with the ARIA Travel Tracker’s ID (the long part of its URL, between /d/ and /edit).'),
-    h('span',{style:{color:TI.mute}},'VERA only reads it. The ID stays in your script, not in the dashboard’s code.')));
+    h('span',null,'In the Config tab, put the ARIA Travel Tracker’s link in the roster_link_aria row (the same link the Home roster uses).'),
+    h('span',{style:{color:TI.mute}},'VERA only reads it. The link stays in your sheet, not in the dashboard’s code.')));
   var g=ariaGroup_(data.watchlist,data.ideas),gaps=data.gaps||{};
   var section=function(key,label,rows){if(!rows.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label+' · '+rows.length),
     h('div',{className:'aria-grid',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10,alignItems:'start'}},
@@ -10663,7 +10663,7 @@ var VERA_ROSTER=[
   {name:'WILLA',breakdown:'Work-optional Income & Lifestyle Longevity Analyzer',purpose:'Work-optional retirement planner (the “Our Work-Optional Planner” tool)',state:'live'},
   {name:'TESS',breakdown:'Tailored Employment Search Scout',purpose:'Runs LinkedIn job alerts on Claude scheduled tasks and tailors materials; you submit applications yourself',state:'live'},
   {name:'HAILEY',breakdown:'Home Alerts, Inventory & Listings Evaluator, Yours',purpose:'Searches Zillow against your buy box and flags new listings and price drops',state:'live'},
-  {name:'ARIA',breakdown:'Airfare Radar & Itinerary Alerts',purpose:'Watches fares for a planned trip or destination; you book yourself',state:'planned',note:'Waiting on trip details'}];
+  {name:'ARIA',breakdown:'Arrangements, Reservations & Itinerary Assistant',purpose:'Travel agent on a daily Claude scheduled task: watches and scouts fares, and says when to book; you book yourself',state:'live'}];
 function VeraRoster({links,veraHref}){
   var h=React.createElement;var L=links||{};
   return h("div",{className:"bento-card vera-roster",style:{cursor:'default'}},

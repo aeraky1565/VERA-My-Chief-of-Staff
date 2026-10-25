@@ -93,9 +93,9 @@ check('each acronym is spelled out', by('PIES').breakdown === 'Personal Intellig
       && by('WILLA').breakdown === 'Work-optional Income & Lifestyle Longevity Analyzer'
       && by('TESS').breakdown === 'Tailored Employment Search Scout'
       && by('HAILEY').breakdown === 'Home Alerts, Inventory & Listings Evaluator, Yours'
-      && by('ARIA').breakdown === 'Airfare Radar & Itinerary Alerts');
-check('ARIA is not built yet, and says what it waits on', by('ARIA').state === 'planned' && /trip details/.test(by('ARIA').note));
-check('the other five are live, HAILEY included', ['PIES', 'VERA', 'WILLA', 'TESS', 'HAILEY'].every(n => by(n).state === 'live'));
+      && by('ARIA').breakdown === 'Arrangements, Reservations & Itinerary Assistant');
+check('all six are live, ARIA included, with no waiting note', ['PIES', 'VERA', 'WILLA', 'TESS', 'HAILEY', 'ARIA'].every(n => by(n).state === 'live') && !by('ARIA').note);
+check('ARIA says it is the travel agent and that you book yourself', /Travel agent/.test(by('ARIA').purpose) && /you book yourself/.test(by('ARIA').purpose));
 check('PIES says it lives in the work environment and tracks the professional workflow', /work environment/.test(by('PIES').note) && /professional workflow/.test(by('PIES').purpose));
 check('every link comes from status, VERA falling back to the page', A && /var href=L\[r\.name\]\|\|\(r\.name==='VERA'\?veraHref:''\);/.test(A));
 check('an unlinked name says which Config row to fill', A && /'Add roster_link_'\+r\.name\.toLowerCase\(\)\+' to Config to link it'/.test(A));

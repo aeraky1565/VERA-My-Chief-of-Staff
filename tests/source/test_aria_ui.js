@@ -59,7 +59,7 @@ const noScroll = page => page.evaluate(() => document.documentElement.scrollWidt
 async function scenario(page, label, width) {
   await mount(page, { ok: true, configured: false });
   let t = await text(page);
-  check(label + ': with no sheet connected it says how to connect one', /Connect ARIA’s sheet/.test(t) && /ARIA_SHEET_ID/.test(t) && /Project Settings → Script Properties/.test(t), t.slice(0, 300));
+  check(label + ': with no sheet connected it says how to connect one', /Connect ARIA’s sheet/.test(t) && /roster_link_aria/.test(t) && /Config tab/.test(t), t.slice(0, 300));
   check(label + ': …and offers no "Read again"', !(await page.$('#ariaprobe .aria-refresh')));
 
   await mount(page, { ok: false, configured: true, error: 'VERA couldn’t open the ARIA Travel Tracker.' });

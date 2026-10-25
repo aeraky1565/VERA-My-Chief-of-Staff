@@ -18,6 +18,8 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['the Config row is not read', b => ({ [T]: swap(b[T], "  try { return ariaSheetIdFrom_(getConfigValues()['roster_link_aria']); } catch (e) { return ''; }", "  return '';") })],
+  ['a link is taken as the ID', b => ({ [T]: swap(b[T], "return m ? m[1] : /^[A-Za-z0-9_-]{20,}$/.test(t) ? t : '';", "return m ? m[1] : t;") })],
   ['an unknown action type raises a flag', b => ({ [T]: swap(b[T], "    if (!ARIA_ACTIONS_[out.actionType]) out.actionType = '';\n", "") })],
   ['the last row is taken as the newest run', b => ({ [T]: swap(b[T], "(runs || []).forEach(function(r) { if (r.runTime && (!best || r.runTime > best.runTime)) best = r; });", "(runs || []).forEach(function(r) { if (r.runTime) best = r; });") })],
   ['a status with a reason reads as unknown', b => ({ [T]: swap(b[T], "status = /^ok\\b/i.test(status) ? 'OK' : /^partial/i.test(status) ? 'Partial'", "status = /^ok$/i.test(status) ? 'OK' : /^partial$/i.test(status) ? 'Partial'") })],
