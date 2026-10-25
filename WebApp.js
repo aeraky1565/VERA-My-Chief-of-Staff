@@ -568,6 +568,8 @@ function doPost(e) {
       case 'trip_option_delete':         return jsonOut_(webDeleteTripIdeaOption_(body));
       case 'trip_idea_ask':              return jsonOut_(webAskVeraTripIdea_(body));
       case 'trip_option_parse':          return jsonOut_(webParseTripIdeaOptions_(body));
+      case 'aria_request_save':          return jsonOut_(webSaveAriaRequest_(body));
+      case 'aria_request_withdraw':      return jsonOut_(webWithdrawAriaRequest_(body));
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       // Phase 3: Network, Market, Brand, Exchange.
       case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));

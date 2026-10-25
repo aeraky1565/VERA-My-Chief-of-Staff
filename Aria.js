@@ -12,9 +12,15 @@
 // ARIA owns its columns and may add more, so every read goes by header name,
 // never by position.
 //
+// What VERA asks of ARIA goes the other way, through a tab of VERA's own,
+// "ARIA Requests" (VERA writes it; ARIA reads it on its morning run). A starred
+// option of a shortlisted trip idea can be scouted: ARIA prices its flights
+// across the idea's months and logs the cheapest date pairs under the option's
+// ID. At most three are scouted at once.
+//
 // Two layers, so the tests need no Google:
-//   aria*_ (pure)   header maps, row cleaning, the gaps
-//   webAriaStatus_  the sheet reads, cached for ten minutes
+//   aria*_ (pure)   header maps, row cleaning, the gaps, a request from an option
+//   web*Aria*_      the sheet reads (cached for ten minutes) and the request writes
 // ============================================================
 
 var ARIA_STATUSES_ = ['draft', 'scouting', 'watching', 'booked', 'dropped'];
@@ -231,7 +237,8 @@ function ariaIdeaNames_() {
  */
 function webAriaStatus_(p) {
   var id = ariaSheetId_();
-  if (!id) return { ok: true, configured: false };
+  // The requests are VERA's own tab: they show (and ARIA reads them) even before VERA can read ARIA's sheet.
+  if (!id) return { ok: true, configured: false, requests: ariaReadRequests_() };
   var cache = CacheService.getScriptCache();
   if (!(p && p.refresh)) { try { var hit = cache.get(ARIA_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) {} }
   var ss;
@@ -242,7 +249,7 @@ function webAriaStatus_(p) {
   var dateText = function(v) { return v instanceof Date && !isNaN(v.getTime()) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : v; };
   var watch = ariaReadRows_(ariaTabValues_(ss, 'Watchlist'), ARIA_WATCH_FIELDS_, dateText);
   var fares = ariaReadRows_(ariaTabValues_(ss, 'Fare Log'), ARIA_FARE_FIELDS_, dateText);
-  var requests = typeof ariaReadRequests_ === 'function' ? ariaReadRequests_() : [];
+  var requests = ariaReadRequests_();
   var gaps = ariaGaps_(ariaVeraTrips_(today), watch, fares, requests, today);
   var out = { ok: true, configured: true, today: today, read: new Date().toISOString(), watchlist: watch,
     fares: ariaRecentFares_(fares, today), requests: requests, gaps: gaps, ideas: ariaIdeaNames_() };
@@ -250,3 +257,153 @@ function webAriaStatus_(p) {
   try { cache.put(ARIA_CACHE_KEY_, JSON.stringify(out), 600); } catch (e) {}
   return out;
 }
+
+// ---- ARIA Requests (VERA's tab; ARIA reads it) -----------------------------------
+
+var ARIA_SCOUT_CAP_ = 3;
+var ARIA_REQUEST_STATUSES_ = ['active', 'withdrawn', 'booked'];
+
+/** Pure: a 3-letter airport code as written, else the place name ("Home" means the home airports). */
+function ariaAirport_(s) {
+  var t = String(s == null ? '' : s).trim();
+  return /^home$/i.test(t) ? '' : /^[A-Za-z]{3}$/.test(t) ? t.toUpperCase() : t.slice(0, 60);
+}
+
+/** Pure: the last day of a 'yyyy-MM' month. */
+function ariaMonthEnd_(m) {
+  var p = m.split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1], 0)).toISOString().slice(0, 10);
+}
+
+/** Pure: a traveler count from the brief's words ("2 adults", "4"), else null. */
+function ariaTravelers_(s) {
+  var m = String(s == null ? '' : s).match(/\d+/);
+  var n = m ? Number(m[0]) : NaN;
+  return n >= 1 && n <= 12 ? n : null;
+}
+
+/**
+ * Pure: a scout request for one option of a trip idea, or {error} when it can't
+ * be scouted. The flights are the option's FLY legs: the first one's end is
+ * where to fly to; the last one's start, when it differs, is where to fly home
+ * from (an open jaw). The window is the idea's months; the nights the brief's
+ * range, else the route's own. The ceiling per person is the option's flights
+ * estimate (its high end) shared by the travelers, when both are known.
+ */
+function ariaRequestFromOption_(idea, option, homeAirports) {
+  idea = idea || {}; option = option || {};
+  var flights = (option.legs || []).filter(function(l) { return l && l.kind === 'move' && l.mode === 'fly'; });
+  if (!flights.length) return { error: 'This option has no flights for ARIA to price.' };
+  var months = (idea.months || []).filter(function(m) { return /^\d{4}-\d{2}$/.test(m); }).slice().sort();
+  if (!months.length) return { error: 'Pick the months in the brief first: ARIA scouts across them.' };
+  var first = flights[0], last = flights[flights.length - 1];
+  var out = ariaAirport_(first.from), to = ariaAirport_(first.to);
+  var back = flights.length > 1 ? ariaAirport_(last.from) : '';
+  if (!to) return { error: 'The first flight needs a destination.' };
+  var own = (option.legs || []).reduce(function(n, l) { return n + (l && l.kind === 'stop' ? Number(l.nights) || 0 : 0); }, 0) || null;
+  var lo = idea.nightsMin != null ? idea.nightsMin : own, hi = idea.nightsMax != null ? idea.nightsMax : own;
+  var travelers = ariaTravelers_(idea.travelers);
+  var fl = option.cost && option.cost.flights;
+  return {
+    kind: 'scout', ref: String(option.id || '').toUpperCase(), tripId: '', tripKey: '',
+    label: String((idea.title || 'Trip idea') + ' · ' + (option.name || '')).slice(0, 120),
+    origins: out || String(homeAirports || ''), dests: to, returnFrom: back && back !== to ? back : '',
+    earliest: months[0] + '-01', latest: ariaMonthEnd_(months[months.length - 1]),
+    nightsMin: lo, nightsMax: hi, travelers: travelers, bags: '',
+    ceiling: fl && fl.high && travelers ? Math.round(fl.high / travelers) : null,
+  };
+}
+
+function ariaRequestsSheet_() { return ensureSheet(getSpreadsheet(), TABS.ARIA_REQUESTS, ARIA_REQUESTS_HEADERS); }
+
+/** Pure: a request → its row. */
+function ariaRequestToRow_(r) {
+  var v = function(x) { return x == null ? '' : x; };
+  return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
+    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), r.status, r.created, r.updated];
+}
+
+/** Pure: a row → a request. */
+function ariaRequestFromRow_(row) {
+  var n = function(x) { var k = parseInt(x, 10); return isFinite(k) ? k : null; };
+  var d = function(x) { return ariaYmd_(dateCellToIso_(x)); };   // a date written as text comes back a Date cell
+  var st = String(row[16] || '').trim().toLowerCase();
+  return { id: String(row[0] || '').trim(), kind: String(row[1] || '').trim().toLowerCase(), ref: String(row[2] || '').trim().toUpperCase(),
+    tripId: String(row[3] || '').trim(), tripKey: String(row[4] || '').trim(), label: String(row[5] || '').trim(),
+    origins: String(row[6] || '').trim(), dests: String(row[7] || '').trim(), returnFrom: String(row[8] || '').trim(),
+    earliest: d(row[9]), latest: d(row[10]), nightsMin: n(row[11]), nightsMax: n(row[12]), travelers: n(row[13]),
+    bags: String(row[14] || '').trim(), ceiling: ariaMoney_(row[15]),
+    status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || '') };
+}
+
+/** Every request, from VERA's tab ([] when there is none yet). */
+function ariaReadRequests_() {
+  try {
+    var sh = getSpreadsheet().getSheetByName(TABS.ARIA_REQUESTS);
+    if (!sh || sh.getLastRow() < 2) return [];
+    return sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues()
+      .filter(function(r) { return String(r[0] || '').trim(); }).map(ariaRequestFromRow_);
+  } catch (e) { Logger.log('aria: ARIA Requests unavailable'); return []; }
+}
+
+/** The idea and the option, or null. */
+function ariaIdeaOption_(ideaId, optionId) {
+  var idea = tiGetIdea_(ideaId);
+  if (!idea) return null;
+  var option = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_)
+    .filter(function(o) { return o.id === optionId && o.ideaId === ideaId; })[0];
+  return option ? { idea: idea, option: option } : null;
+}
+
+/**
+ * POST {action:'aria_request_save', ideaId, optionId} → asks ARIA to scout one
+ * option's fares. Only a starred option of a shortlisted idea, and at most three
+ * at once. Asking again for the same option refreshes its request (from the
+ * option as it is now) rather than adding a second.
+ */
+function webSaveAriaRequest_(body) {
+  var ideaId = String((body && body.ideaId) || '').trim(), optionId = String((body && body.optionId) || '').trim();
+  if (!ideaId || !optionId) return { ok: false, error: 'ideaId and optionId required' };
+  var io = ariaIdeaOption_(ideaId, optionId);
+  if (!io) return { ok: false, error: 'That option no longer exists' };
+  if (io.idea.status !== 'shortlisted') return { ok: false, error: 'Shortlist the idea first: ARIA scouts shortlisted ideas only.' };
+  if (io.option.flag !== 'star') return { ok: false, error: 'Star this option first: ARIA scouts starred options only.' };
+  var req = ariaRequestFromOption_(io.idea, io.option, String(getConfigValues()['home_airports'] || 'IAD, DCA, BWI'));
+  if (req.error) return { ok: false, error: req.error };
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_();
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    var all = rows.map(ariaRequestFromRow_), at = -1;
+    all.forEach(function(r, i) { if (r.ref === req.ref && r.kind === 'scout' && at === -1) at = i; });
+    var others = all.filter(function(r, i) { return i !== at && r.kind === 'scout' && r.status === 'active'; }).length;
+    if (others >= ARIA_SCOUT_CAP_) return { ok: false, error: 'ARIA is already scouting ' + ARIA_SCOUT_CAP_ + ' options. Stop one first.' };
+    req.status = 'active'; req.updated = now;
+    if (at === -1) { req.id = tiMintId_('REQ-'); req.created = now; sh.appendRow(ariaRequestToRow_(req)); }
+    else { req.id = all[at].id; req.created = all[at].created || now; sh.getRange(at + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(req)]); }
+    ariaForget_();
+    Logger.log('aria_request_save: scout request ' + (at === -1 ? 'added' : 'refreshed'));
+    return { ok: true, request: req };
+  });
+}
+
+/** POST {action:'aria_request_withdraw', ref} → ARIA stops scouting it (its row goes to Dropped). */
+function webWithdrawAriaRequest_(body) {
+  var ref = String((body && body.ref) || '').trim().toUpperCase();
+  if (!ref) return { ok: false, error: 'ref required' };
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_(), n = 0, last = null;
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    rows.forEach(function(row, i) {
+      var r = ariaRequestFromRow_(row);
+      if (r.ref !== ref || r.status !== 'active') return;
+      r.status = 'withdrawn'; r.updated = now;
+      sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++; last = r;
+    });
+    if (!n) return { ok: false, error: 'ARIA isn’t scouting that option' };
+    ariaForget_();
+    return { ok: true, request: last };
+  });
+}
+
+/** The next aria_status reads afresh, so a new or withdrawn request shows at once. */
+function ariaForget_() { try { CacheService.getScriptCache().remove(ARIA_CACHE_KEY_); } catch (e) {} }

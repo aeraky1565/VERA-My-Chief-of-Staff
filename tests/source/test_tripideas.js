@@ -412,6 +412,35 @@ console.log('\nhand-offs: WILLA and ARIA');
   check('the formats are written down for the other bots', fs.existsSync(path.join(ROOT, 'docs/trip-handoffs.md')) && /=== VERA option v1 ===/.test(fs.readFileSync(path.join(ROOT, 'docs/trip-handoffs.md'), 'utf8')) && /Fare: \$1,840 · checked/.test(fs.readFileSync(path.join(ROOT, 'docs/trip-handoffs.md'), 'utf8')));
 }
 
+console.log('\nARIA in Trip Ideas: scouting an option\'s fares');
+{
+  C.ar = { requests: [{ ref: 'OPT-1', kind: 'scout', status: 'active', created: '2027-02-10T09:00:00Z' }, { ref: 'OPT-2', kind: 'scout', status: 'withdrawn' }],
+    watchlist: [{ ref: 'OPT-1', status: 'scouting', verdict: 'wait', travelers: 2 }],
+    fares: [{ tripId: 'OPT-1', dateSeen: '2027-02-15', depart: '2027-05-28', ret: '2027-06-10', total: 1300, flags: [] }, { tripId: 'OPT-1', dateSeen: '2027-02-15', depart: '2027-05-30', ret: '2027-06-12', total: 1240, flags: ['excl. bags'] },
+      { tripId: 'OPT-1', dateSeen: '2027-02-08', depart: '2027-05-29', ret: '2027-06-11', total: 1100, flags: [] }, { tripId: 'OPT-9', dateSeen: '2027-02-16', depart: '2027-05-29', ret: '2027-06-11', total: 900 }] };
+  const a1 = cr('tiAriaFor_(ar, "opt-1")');
+  check('an option\'s ARIA: its active request, its row and its fares', a1.request && a1.row && a1.fares.length === 3, JSON.stringify(a1).slice(0, 200));
+  check('…a withdrawn request is not active', cr('tiAriaFor_(ar, "OPT-2")').request === null);
+  check('the best fare is the cheapest from the latest day ARIA looked', cr('tiAriaBest_(tiAriaFor_(ar, "OPT-1").fares).total') === 1240);
+  C.shortlisted = { status: 'shortlisted' }; C.star = { flag: 'star', legs: [{ kind: 'move', mode: 'fly' }] };
+  check('only a starred option with flights, of a shortlisted idea, can be scouted', cr('tiCanScout_(shortlisted, star)') === true && cr('tiCanScout_({status:"brainstorming"}, star)') === false
+    && cr('tiCanScout_(shortlisted, {flag:"", legs: star.legs})') === false && cr('tiCanScout_(shortlisted, {flag:"star", legs:[{kind:"move",mode:"train"}]})') === false);
+  C.w = { start: '2027-05-29', nights: 13 };
+  const wf = cr('tiWindowFare_(tiAriaFor_(ar, "OPT-1").fares, w)');
+  check('a PTO window gets ARIA\'s fare of the same length leaving closest to it', wf && wf.depart === '2027-05-29' && wf.total === 1100 && wf.off === 0, JSON.stringify(wf));
+  C.w2 = { start: '2027-05-29', nights: 7 };
+  check('…a different length is no match', cr('tiWindowFare_(tiAriaFor_(ar, "OPT-1").fares, w2)') === null);
+  C.w3 = { start: '2027-06-04', nights: 13 };
+  check('…nor more than 3 days away', cr('tiWindowFare_(tiAriaFor_(ar, "OPT-1").fares, w3)') === null);
+  C.wins = [{ start: '2027-05-01', nights: 13, clash: '', people: [{ days: 9 }, { days: 9 }] }, { start: '2027-05-29', nights: 13, clash: '', people: [{ days: 9 }, { days: 9 }] },
+    { start: '2027-05-15', nights: 13, clash: '', people: [{ days: 8 }, { days: 9 }] }];
+  C.wf = [{ depart: '2027-05-01', ret: '2027-05-14', total: 1500 }, { depart: '2027-05-29', ret: '2027-06-11', total: 1100 }, { depart: '2027-05-15', ret: '2027-05-28', total: 2400 }];
+  const rk = cr('tiRankWindows_(wins, wf).map(function(w){return w.start;}).join()');
+  check('windows stay ranked by PTO, and a fare only breaks a tie', rk === '2027-05-15,2027-05-29,2027-05-01', rk);
+  check('…with no fares the order is the server\'s', cr('tiRankWindows_(wins, []).map(function(w){return w.start;}).join()') === '2027-05-15,2027-05-01,2027-05-29');
+  check('fares read in whole dollars', cr('tiUsd_(1240)') === '$1,240');
+}
+
 console.log('\nwiring');
 check('the deciders are wired', /case 'trip_idea_decide':\s+return jsonOut_\(webTripIdeaDecide_\(e\.parameter\)\);/.test(WEB));
 check('pasting options back is wired', /case 'trip_option_parse':\s+return jsonOut_\(webParseTripIdeaOptions_\(body\)\);/.test(WEB));

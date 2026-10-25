@@ -19,6 +19,11 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripideas.js';
 
 const CONTROLS = [
+  ['a fare outranks PTO', both("for(var j=0;j<3;j++)if(a.k[j]!==b.k[j])return a.k[j]-b.k[j];", "")],
+  ['a fare of any length matches a window', both("if(tiDayNum_(f.ret)-d!==w.nights||Math.abs(d-s)>3)return;", "if(Math.abs(d-s)>3)return;")],
+  ['a withdrawn scout reads as active', both("r.kind==='scout'&&r.status==='active';", "r.kind==='scout';")],
+  ['any option offers scouting', both("idea.status==='shortlisted'&&option.flag==='star'&&", "")],
+  ['the best fare is from the oldest day', both("var day=(fares||[]).filter(function(f){return f.dateSeen===last;}).sort(function(a,b){return tiFareTotal_(a)-tiFareTotal_(b);});return day[0]||null;}", "var day=(fares||[]).slice().sort(function(a,b){return tiFareTotal_(a)-tiFareTotal_(b);});return day[0]||null;}")],
   ['a note with a dot is cut at the dot', b => ({ [T]: swap(b[T], "cur.legs.push({ kind: 'move', mode: TI_V1_MODES_[m[1].toUpperCase()], from: end(m[2]), to: end(m[3]), note: parts.slice(1).join(' · ') });", "cur.legs.push({ kind: 'move', mode: TI_V1_MODES_[m[1].toUpperCase()], from: end(m[2]), to: end(m[3]), note: parts[1] || '' });") })],
   ['a cost with no basis has none', b => ({ [T]: swap(b[T], "basis: parts.slice(1).join(' · ') || 'their estimate' };", "basis: parts.slice(1).join(' · ') };") })],
   ['markdown breaks the format', b => ({ [T]: swap(b[T], "var t = line.replace(/\\*\\*|__|`/g, '').trim(), m;", "var t = line.trim(), m;") })],

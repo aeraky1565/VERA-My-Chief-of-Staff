@@ -21,7 +21,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 async function setup(page) {
   await page.evaluate(() => {
     document.querySelectorAll('#tiprobe').forEach(n => n.remove());
-    const store = { ideas: [], options: [] }; let n = 0; window.__posts = [];
+    const store = { ideas: [], options: [], requests: [] }; let n = 0; window.__posts = []; window.__ariaRan = '';
     window.__gets = [];
     const plus = (ymd, n) => { const d = new Date(ymd + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
     window.apiGet = (u, t, q) => { window.__gets.push(Object.assign({}, q));
@@ -35,6 +35,9 @@ async function setup(page) {
           people: [{ name: 'Ann', found: true, holidayYears: [2027], remaining: { 2027: 10 } }, { name: 'Bea', found: false, remaining: {}, holidayYears: [] }],
           stops: [{ place: 'Lisbon', name: 'Lisbon', found: true, normals }, { place: 'Algarve', found: false }] }), 300));
       }
+      if (q.action === 'aria_status') return Promise.resolve({ ok: true, configured: true, watchlist: window.__ariaRan ? [{ ref: window.__ariaRan, status: 'scouting', verdict: 'wait', travelers: 2 }] : [],
+        fares: window.__ariaRan ? [{ tripId: window.__ariaRan, dateSeen: '2027-02-15', depart: '2027-05-28', ret: '2027-06-10', total: 1840, flags: [] }, { tripId: window.__ariaRan, dateSeen: '2027-02-15', depart: '2027-04-10', ret: '2027-04-23', total: 2100, flags: [] }] : [],
+        requests: store.requests.slice(), gaps: {}, ideas: {} });
       return Promise.resolve(q.action === 'trip_ideas' ? { ok: true, ideas: store.ideas.slice(), options: store.options.slice() } : { ok: false }); };
     window.apiPost = (u, t, b) => {
       window.__posts.push(JSON.parse(JSON.stringify(b)));
@@ -58,6 +61,8 @@ async function setup(page) {
         idea.alsoPossible = b.focus ? [] : [{ name: 'Road trip → Cruise A', why: 'Marseille is one of its ports.' }];
         return Promise.resolve({ ok: true, options: opts, idea: Object.assign({}, idea) });
       }
+      if (b.action === 'aria_request_save') { store.requests = store.requests.filter(r => r.ref !== b.optionId.toUpperCase()).concat([{ ref: b.optionId.toUpperCase(), kind: 'scout', status: 'active', created: '2026-10-25T12:00:00Z' }]); return Promise.resolve({ ok: true }); }
+      if (b.action === 'aria_request_withdraw') { store.requests.forEach(r => { if (r.ref === b.ref.toUpperCase()) r.status = 'withdrawn'; }); return Promise.resolve({ ok: true }); }
       if (b.action === 'trip_option_parse') {
         if (!/VERA option v1/.test(b.text)) return Promise.resolve({ ok: false, error: 'No trip options found in that text.' });
         return Promise.resolve({ ok: true, how: 'format', options: [{ ideaId: b.ideaId, name: 'Porto by train', source: b.source, flag: '', pros: [], cons: [],
@@ -269,6 +274,36 @@ async function scenario(page, label, width) {
   check(label + ': …and replaces the flights estimate, keeping the date', fare && fare.option.name === 'Lisbon → Algarve → cruise' && JSON.stringify(fare.option.cost.flights) === '{"low":2050,"high":2050,"basis":"ARIA · checked 2026-10-24"}' && fare.option.cost.cruise.low === 4000, JSON.stringify(fare && fare.option.cost));
   check(label + ': no sideways scroll with the hand-offs', await noScroll(page));
   if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-handoff-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+
+  // ARIA: a starred option of a shortlisted idea can be scouted; its fares come back on the card and in the date windows
+  const ariaCard = () => Array.from(document.querySelectorAll('#tiprobe .ti-option')).find(n => /Lisbon → Algarve → cruise/.test(n.querySelector('.ti-option-name').innerText));
+  const inCard = async (sel) => page.evaluate((a) => { const c = eval(a.f)(); const el = c && c.querySelector(a.sel); return el ? el.innerText : null; }, { f: ariaCard.toString(), sel });
+  check(label + ': while the idea is brainstorming, ARIA isn\'t offered', (await inCard('.ti-aria-scout')) === null);
+  await page.evaluate(() => window.__set(window.__q('.ti-status'), 'shortlisted')); await wait(150);
+  check(label + ': once shortlisted, its starred option can be scouted', /Scout fares with ARIA/.test((await inCard('.ti-aria-scout')) || ''));
+  const notStar = await page.$$eval('#tiprobe .ti-option', ns => ns.filter(n => !n.classList.contains('ti-star')).some(n => n.querySelector('.ti-aria-scout')));
+  check(label + ': …and only the starred one', notStar === false);
+  await page.evaluate((f) => eval(f)().querySelector('.ti-aria-scout').click(), ariaCard.toString()); await wait(200);
+  const sreq = await page.evaluate(() => window.__posts.filter(p => p.action === 'aria_request_save').pop());
+  check(label + ': Scout asks ARIA for this option of this idea', sreq && /^IDEA-/.test(sreq.ideaId) && /^OPT-/.test(sreq.optionId), JSON.stringify(sreq));
+  let ac = (await inCard('.ti-aria')) || '';
+  check(label + ': …then says when ARIA will pick it up, and offers to stop', /ARIA · SCOUTING/i.test(ac) && /Asked 2026-10-25\. ARIA picks this up on its next morning run/.test(ac) && /Stop scouting/.test(ac), ac);
+  // ARIA's morning run: it picks the request up and logs fares under the option's ID.
+  await page.evaluate(() => { window.__ariaRan = window.__posts.filter(p => p.action === 'aria_request_save').pop().optionId.toUpperCase(); });
+  await page.evaluate(() => window.__q('.ti-back').click()); await wait(80);
+  await page.evaluate(() => window.__q('.ti-idea-card').click()); await wait(200);
+  ac = (await inCard('.ti-aria')) || '';
+  check(label + ': after ARIA\'s run, its best fare shows beside your estimate', /\$1,840 for 2 · Fri, May 28 → Thu, Jun 10 · checked 2027-02-15 · wait · your flights estimate \$2\.1k/.test(ac), ac);
+  await page.evaluate((f) => eval(f)().querySelector('.ti-decide-btn').click(), ariaCard.toString()); await wait(450);
+  const wtxt = await page.evaluate((f) => { const d = eval(f)().querySelector('.ti-decide'); return d ? d.innerText : ''; }, ariaCard.toString());
+  check(label + ': a date window shows ARIA\'s fare for leaving near it', /Sat, May 29 → Fri, Jun 11[^\n]*\n[\s\S]*?🧭 ARIA: \$1,840 leaving Fri, May 28 · checked 2027-02-15/.test(wtxt), wtxt.slice(0, 500));
+  await page.evaluate((f) => eval(f)().querySelector('.ti-decide-btn').click(), ariaCard.toString()); await wait(80);
+  await page.evaluate((f) => eval(f)().querySelector('.ti-aria-stop').click(), ariaCard.toString()); await wait(200);
+  const wd = await page.evaluate(() => window.__posts.filter(p => p.action === 'aria_request_withdraw').pop());
+  check(label + ': Stop scouting withdraws the request', wd && wd.ref.toUpperCase() === (await page.evaluate(() => window.__ariaRan)));
+  check(label + ': …and the card offers to scout again', /Scout again with ARIA/.test((await inCard('.ti-aria-scout')) || ''));
+  check(label + ': no sideways scroll with ARIA on the card', await noScroll(page));
+  if (process.env.SHOT_DIR) { await page.evaluate((f) => { eval(f)().id = 'aria-card-shot'; }, ariaCard.toString()); const ce = await page.$('#aria-card-shot'); if (ce) try { await ce.screenshot({ path: process.env.SHOT_DIR + '/tripideas-aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-ask-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 }
 

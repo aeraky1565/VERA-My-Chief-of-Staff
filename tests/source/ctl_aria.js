@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_aria');
 
-const FILES = ['Aria.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
+const FILES = ['Aria.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -13,11 +13,23 @@ const swap = (src, from, to) => {
   if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70));
   return src.replace(from, function() { return to; });
 };
-const T = 'Aria.js', W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
+const T = 'Aria.js', K = 'Code.js', W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
 const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], from, to) });
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['the requests tab loses a column ARIA reads', b => ({ [K]: swap(b[K], "'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min'", "'Earliest Depart', 'Latest Return', 'Nights Min'") })],
+  ['an open jaw is lost', b => ({ [T]: swap(b[T], "returnFrom: back && back !== to ? back : '',", "returnFrom: '',") })],
+  ['"Home" is sent as a place', b => ({ [T]: swap(b[T], "return /^home$/i.test(t) ? '' :", "return false ? '' :") })],
+  ['the window ends on the first of the last month', b => ({ [T]: swap(b[T], "latest: ariaMonthEnd_(months[months.length - 1]),", "latest: months[months.length - 1] + '-01',") })],
+  ['the ceiling is not shared by the travelers', b => ({ [T]: swap(b[T], "Math.round(fl.high / travelers)", "Math.round(fl.high)") })],
+  ['no cap on scouting', b => ({ [T]: swap(b[T], "if (others >= ARIA_SCOUT_CAP_) return", "if (false) return") })],
+  ['asking again adds a second request', b => ({ [T]: swap(b[T], "all.forEach(function(r, i) { if (r.ref === req.ref && r.kind === 'scout' && at === -1) at = i; });", "") })],
+  ['a new request waits for the cache', b => ({ [T]: swap(b[T], "    ariaForget_();\n    Logger.log('aria_request_save", "    Logger.log('aria_request_save") })],
+  ['any idea can be scouted', b => ({ [T]: swap(b[T], "  if (io.idea.status !== 'shortlisted') return", "  if (false) return") })],
+  ['any option can be scouted', b => ({ [T]: swap(b[T], "  if (io.option.flag !== 'star') return", "  if (false) return") })],
+  ['requests hide until ARIA\'s sheet is connected', b => ({ [T]: swap(b[T], "if (!id) return { ok: true, configured: false, requests: ariaReadRequests_() };", "if (!id) return { ok: true, configured: false };") })],
+  ['the withdraw route is missing', b => ({ [W]: swap(b[W], "      case 'aria_request_withdraw':      return jsonOut_(webWithdrawAriaRequest_(body));\n", '') })],
   ['headers are read by position', b => ({ [T]: swap(b[T], "var i = map[ariaKey_(fields[f])], v = i == null ? '' : row[i];", "var i = Object.keys(fields).indexOf(f), v = row[i];") })],
   ['a bracketed note hides a header', b => ({ [T]: swap(b[T], "var k = ariaKey_(String(h == null ? '' : h).replace(/\\([^)]*\\)/g, ''));", "var k = ariaKey_(h);") })],
   ['a blank figure reads as zero', b => ({ [T]: swap(b[T], "if (v === '' || v == null) return null;\n  var n = typeof v", "if (v === '' || v == null) return 0;\n  var n = typeof v") })],

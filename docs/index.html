@@ -2635,6 +2635,30 @@ function tiParseBudget_(text){var t=String(text||''),m=t.match(/budget[^$\d\n]{0
   if(!m)return null;var n=tiNum_(m[1]);if(n==null)return null;return Math.round(m[2]?n*1000:n);}
 function tiTodayYmd_(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 
+// ---- ARIA, the travel agent (aria_status / aria_request_save): scouting an option's fares ----
+function tiUsd_(n){return '$'+String(Math.round(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function tiFareTotal_(f){return f.total!=null?f.total:f.farePP;}
+// What ARIA has for one option: the active scout request, its Watchlist row, and its fares (logged under the option's ID).
+function tiAriaFor_(aria,optionId){var id=String(optionId||'').toUpperCase();if(!aria||!id)return {request:null,row:null,fares:[]};
+  return {request:(aria.requests||[]).filter(function(r){return r.ref===id&&r.kind==='scout'&&r.status==='active';})[0]||null,
+    row:(aria.watchlist||[]).filter(function(w){return w.ref===id||w.tripId===id;})[0]||null,
+    fares:(aria.fares||[]).filter(function(f){return f.tripId===id&&tiFareTotal_(f)!=null;})};}
+// The cheapest fare from the latest day ARIA looked.
+function tiAriaBest_(fares){var last='';(fares||[]).forEach(function(f){if(f.dateSeen>last)last=f.dateSeen;});
+  var day=(fares||[]).filter(function(f){return f.dateSeen===last;}).sort(function(a,b){return tiFareTotal_(a)-tiFareTotal_(b);});return day[0]||null;}
+function tiCanScout_(idea,option){return !!idea&&!!option&&idea.status==='shortlisted'&&option.flag==='star'&&(option.legs||[]).some(function(l){return l.kind==='move'&&l.mode==='fly';});}
+function tiDayNum_(ymd){var p=String(ymd).split('-').map(Number);return Math.round(Date.UTC(p[0],p[1]-1,p[2])/864e5);}
+// ARIA's fare for a PTO window: the same length, leaving within 3 days of it; the closest start, then the cheapest.
+function tiWindowFare_(fares,w){var s=tiDayNum_(w.start),best=null;
+  (fares||[]).forEach(function(f){if(!f.depart||!f.ret)return;var d=tiDayNum_(f.depart);if(tiDayNum_(f.ret)-d!==w.nights||Math.abs(d-s)>3)return;
+    var off=Math.abs(d-s);if(!best||off<best.off||(off===best.off&&tiFareTotal_(f)<best.total))best={off:off,total:tiFareTotal_(f),depart:f.depart,ret:f.ret,dateSeen:f.dateSeen,flags:f.flags||[]};});
+  return best;}
+// Windows stay ranked by PTO (clear first, then the most-spending person, then the two of you); a fare only breaks a tie.
+function tiRankWindows_(windows,fares){var key=function(w){var d=(w.people||[]).map(function(p){return p.days;});return [w.clash?1:0,d.length?Math.max.apply(null,d):0,d.reduce(function(a,b){return a+b;},0)];};
+  return (windows||[]).map(function(w,i){return {w:w,i:i,k:key(w),f:tiWindowFare_(fares,w)};}).sort(function(a,b){
+    for(var j=0;j<3;j++)if(a.k[j]!==b.k[j])return a.k[j]-b.k[j];if(a.f&&b.f&&a.f.total!==b.f.total)return a.f.total-b.f.total;return a.i-b.i;})
+    .map(function(x){return Object.assign({},x.w,{fare:x.f});});}
+
 var TI={bg:'#0a1428',card:'#0d1b3e',br:'#1e3060',deep:'#0a1530',pill:'#13264d',txt:'#dde1f0',hi:'#eef1fb',mute:'#9aa9cc',soft:'#b8c3e0',acc:'#8ab4f8',gold:'#c9a84c',ok:'#8fe0a8',warn:'#f6d27a'};
 function tiBtn_(kind){var base={minHeight:44,padding:'0 14px',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'};
   if(kind==='primary')return Object.assign(base,{border:'none',background:TI.acc,color:TI.bg,fontWeight:700});
@@ -2698,8 +2722,9 @@ function TiOptionCard(props){var h=React.createElement;var o=props.option;var _d
       o.wishes.fit.length>0&&h('span',{style:{color:TI.ok}},o.wishes.fit.map(function(w){return '✓ '+w;}).join(' · ')),
       o.wishes.left.map(function(w,i){return h('span',{key:i,style:{color:TI.warn}},'✕ '+w.name+(w.why?': '+w.why:''));})):null,
     h(TiCost,{cost:o.cost,budget:props.budget}),
+    props.aria&&h(TiAriaPanel,{idea:props.idea,option:o,aria:props.aria,busy:props.busy,onScout:props.onScout,onUnscout:props.onUnscout}),
     (o.pros.length||o.cons.length)?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},list('FOR',TI.ok,o.pros),list('AGAINST',TI.warn,o.cons)):null,
-    deciding&&props.idea&&h(TiDecide,{apiUrl:props.apiUrl,apiToken:props.apiToken,idea:props.idea,option:o}),
+    deciding&&props.idea&&h(TiDecide,{apiUrl:props.apiUrl,apiToken:props.apiToken,idea:props.idea,option:o,fares:props.aria?props.aria.fares:[]}),
     handing&&props.idea&&h('div',{className:'ti-handoff',style:{display:'flex',gap:8,flexWrap:'wrap'}},
       h('button',{type:'button',className:'ti-to-willa',onClick:function(){props.onHand('willa');},style:Object.assign(tiBtn_(),{minHeight:40})},'Copy for WILLA'),
       tiFlights_(o).length>0&&h('button',{type:'button',className:'ti-to-aria',onClick:function(){props.onHand('aria');},style:Object.assign(tiBtn_(),{minHeight:40})},'Fare request for ARIA'),
@@ -2709,6 +2734,19 @@ function TiOptionCard(props){var h=React.createElement;var o=props.option;var _d
       props.idea&&o.id&&h('button',{type:'button',className:'ti-decide-btn','aria-expanded':deciding,onClick:function(){setDeciding(!deciding);},style:tiBtn_(deciding?'primary':'')},deciding?'Hide dates & weather':'📅 Dates, PTO & weather'),
       props.idea&&o.id&&h('button',{type:'button',className:'ti-handoff-btn','aria-expanded':handing,onClick:function(){if(handing&&props.onHand)props.onHand('');setHanding(!handing);},style:tiBtn_()},handing?'Hide hand-offs':'↗ Hand off'),
       h('button',{type:'button',className:'ti-edit-option',onClick:props.onEdit,disabled:props.busy,style:tiBtn_()},'Edit')));}
+
+// ARIA on an option: its fares when it has some, whether it is being scouted, and the button to start or stop.
+function TiAriaPanel(props){var h=React.createElement;var a=props.aria,o=props.option,best=tiAriaBest_(a.fares),fl=(o.cost||{}).flights;
+  var can=tiCanScout_(props.idea,o);if(!a.request&&!best&&!can)return null;
+  return h('div',{className:'ti-aria',style:{display:'flex',flexDirection:'column',gap:6,padding:'10px 12px',borderRadius:10,background:TI.deep,border:'1px solid '+(a.request?'#2f5ea8':TI.br)}},
+    h('span',{style:Object.assign({},TI_EYEBROW,{color:TI.acc})},'🧭 ARIA'+(a.request?' · scouting':'')),
+    best&&h('span',{className:'ti-aria-fare',style:{fontSize:13,lineHeight:1.45,color:TI.txt}},h('b',{style:{color:TI.hi,fontSize:15}},tiUsd_(tiFareTotal_(best))),' for '+(a.row&&a.row.travelers?a.row.travelers:'all of you')+' · '+tiDayText_(best.depart)+(best.ret?' → '+tiDayText_(best.ret):'')+' · checked '+best.dateSeen
+      +(a.row&&a.row.verdict?' · '+({book:'book now',wait:'wait',skip:'skip'})[a.row.verdict]:'')+(fl?' · your flights estimate '+tiRange_(fl.low,fl.high):'')),
+    best&&(best.flags||[]).length>0&&h('span',{style:{fontSize:12,color:TI.warn}},'⚠ '+best.flags.join(', ')),
+    a.request&&!best&&h('span',{className:'ti-aria-waiting',style:{fontSize:12,lineHeight:1.45,color:TI.soft}},'Asked '+String(a.request.created||'').slice(0,10)+'. ARIA picks this up on its next morning run, then checks weekly across '+tiMonthsText_(props.idea.months)+'.'),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      a.request?h('button',{type:'button',className:'ti-aria-stop',disabled:props.busy,onClick:props.onUnscout,style:Object.assign(tiBtn_(),{minHeight:40})},'Stop scouting')
+      :can&&h('button',{type:'button',className:'ti-aria-scout',disabled:props.busy,onClick:props.onScout,style:Object.assign(tiBtn_(),{minHeight:40})},best?'🧭 Scout again with ARIA':'🧭 Scout fares with ARIA')));}
 
 function TiDecide(props){var h=React.createElement;var lengths=tiDecideLengths_(props.option,props.idea);
   var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];
@@ -2720,6 +2758,7 @@ function TiDecide(props){var h=React.createElement;var lengths=tiDecideLengths_(
   if(data.loading)return h('div',box,h('span',{role:'status',className:'ti-decide-loading',style:{fontSize:13,color:TI.soft}},'Working out dates, PTO and weather… The first look at a place can take a little while.'));
   if(data.error)return h('div',box,h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},"Couldn't work this out: "+data.error),h('button',{type:'button',onClick:load,style:Object.assign(tiBtn_(),{alignSelf:'flex-start',minHeight:40})},'Try again'));
   var len=(data.lengths||[]).filter(function(l){return l.nights===sel;})[0]||(data.lengths||[])[0]||{windows:[]};
+  var ranked=tiRankWindows_(len.windows,props.fares);
   var caveats=tiPtoCaveats_(data,len.windows),cols=tiWeatherCols_(data.months||props.idea.months);
   var cell={padding:'6px 8px',textAlign:'center',borderTop:'1px solid '+TI.br,whiteSpace:'nowrap'};
   return h('div',box,
@@ -2728,12 +2767,13 @@ function TiDecide(props){var h=React.createElement;var lengths=tiDecideLengths_(
       h('div',{role:'group','aria-label':'Trip length',style:{display:'flex',gap:6,flexWrap:'wrap'}},lengths.map(function(n){return tiChip_(h,'n'+n,n+' nights'+(n===own?' (this route)':''),n===sel,function(){setSel(n);});})),
       h('span',{style:{fontSize:12,color:TI.mute}},((props.idea.months||[]).length?'Leaving in '+tiMonthsText_(props.idea.months):'Leaving any time in the next year')+'. Counts every weekday from the day you leave to the day you’re back, less holidays.'),
       !len.windows.length?h('span',{className:'ti-no-windows',style:{fontSize:13,color:TI.warn}},len.considered?'Every window clashes or overlaps; nothing to suggest.':'No days left to leave on: the brief’s months have passed. Change them in the brief.')
-      :h('div',{className:'ti-windows',style:{display:'flex',flexDirection:'column',gap:8}},len.windows.map(function(w,i){
+      :h('div',{className:'ti-windows',style:{display:'flex',flexDirection:'column',gap:8}},ranked.map(function(w,i){
         return h('div',{key:w.start,className:'ti-window',style:{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',borderRadius:8,background:TI.card,border:'1px solid '+(w.clash?'#a8862f':i===0?'#4d9f6a':TI.br)}},
           h('span',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}},h('b',{className:'ti-window-dates',style:{fontSize:14,color:TI.hi}},tiWindowText_(w)),
             i===0&&!w.clash&&h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.06em',color:TI.ok}},'CHEAPEST')),
           h('span',{style:{display:'flex',gap:'4px 12px',flexWrap:'wrap',fontSize:13}},w.people.map(function(p,j){return h('span',{key:j,className:'ti-window-pto',style:{color:p.left!=null&&p.left<0?'#ffb0b0':TI.soft}},tiPtoWords_(p));})),
           w.holidays.length>0&&h('span',{className:'ti-window-holidays',style:{fontSize:12,color:'#f6dc97'}},'Bridges '+w.holidays.join(', ')),
+          w.fare&&h('span',{className:'ti-window-fare',style:{fontSize:12,color:TI.acc}},'🧭 ARIA: '+tiUsd_(w.fare.total)+(w.fare.off?' leaving '+tiDayText_(w.fare.depart):'')+' · checked '+w.fare.dateSeen+((w.fare.flags||[]).length?' · '+w.fare.flags.join(', '):'')),
           w.clash&&h('span',{className:'ti-window-clash',style:{fontSize:12,color:TI.warn}},'⚠ Clashes with '+w.clash));})),
       caveats.map(function(c,i){return h('span',{key:i,className:'ti-pto-caveat',style:{fontSize:12,color:TI.mute}},c);})),
     h('div',{style:{display:'flex',flexDirection:'column',gap:8,minWidth:0}},
@@ -2947,10 +2987,15 @@ function TripIdeasView(props){var h=React.createElement;
   var _o=React.useState(false),showOut=_o[0],setShowOut=_o[1];
   var _k=React.useState(''),asking=_k[0],setAsking=_k[1];
   var _h=React.useState(null),hand=_h[0],setHand=_h[1];
+  var _ar=React.useState(null),aria=_ar[0],setAria=_ar[1];
   var load=function(){if(!props.apiUrl||!props.apiToken){setData({loading:false,ideas:[],options:[],error:'Connect VERA first.'});return;}
     apiGet(props.apiUrl,props.apiToken,{action:'trip_ideas'}).then(function(r){setData({loading:false,ideas:r.ideas||[],options:r.options||[]});})
       .catch(function(e){setData({loading:false,ideas:[],options:[],error:e.message});});};
-  React.useEffect(load,[props.apiUrl,props.apiToken]);
+  // ARIA is optional: if its status can't be read, Trip Ideas works as before.
+  var loadAria=function(){if(!props.apiUrl||!props.apiToken)return;apiGet(props.apiUrl,props.apiToken,{action:'aria_status'}).then(function(r){setAria(r&&r.ok?r:null);}).catch(function(){setAria(null);});};
+  React.useEffect(function(){load();loadAria();},[props.apiUrl,props.apiToken]);
+  // Opening an idea reads ARIA again: its morning run may have logged new fares since the page loaded.
+  React.useEffect(function(){if(view.mode==='idea')loadAria();},[view.mode,view.id]);
   var post=function(body,then){setBusy(true);setErr('');return apiPost(props.apiUrl,props.apiToken,body).then(function(r){setBusy(false);then(r);})
     .catch(function(e){setBusy(false);setErr(e.message||'Could not save');});};
   var putIdea=function(i){setData(function(p){return Object.assign({},p,{ideas:p.ideas.filter(function(x){return x.id!==i.id;}).concat([i])});});};
@@ -2970,6 +3015,8 @@ function TripIdeasView(props){var h=React.createElement;
   var useFare=function(o,f){var cost=Object.assign({},o.cost,{flights:{low:f.low,high:f.high,basis:'ARIA · checked '+f.checked}});
     post({action:'trip_option_save',option:Object.assign({},o,{cost:cost})},function(r){if(r&&r.option)putOption(r.option);setHand(null);});};
   var useBudget=function(i,n){post({action:'trip_idea_save',idea:Object.assign({},i,{budget:n})},function(r){if(r&&r.idea)putIdea(r.idea);setHand(null);});};
+  var scout=function(i,o){post({action:'aria_request_save',ideaId:i.id,optionId:o.id},function(){loadAria();});};
+  var unscout=function(o){post({action:'aria_request_withdraw',ref:o.id},function(){loadAria();});};
   var setStatus=function(i,s){post({action:'trip_idea_save',idea:Object.assign({},i,{status:s})},function(r){putIdea(r.idea);});};
   var wrap={className:'trip-ideas',style:{display:'flex',flexDirection:'column',gap:14,padding:'4px 0 16px',color:TI.txt}};
   if(data.loading)return h('div',wrap,h('span',{style:{color:TI.mute,fontSize:14}},'Loading trip ideas…'));
@@ -2988,7 +3035,7 @@ function TripIdeasView(props){var h=React.createElement;
         describe:function(f){return 'Flights: '+tiRange_(f.low,f.high)+' · ARIA · checked '+f.checked+(was?' (was '+tiRange_(was.low,was.high)+(was.basis?', '+was.basis:'')+')':'');},onUse:function(f){useFare(o,f);}});}
       return null;};
     var card=function(o){return editing&&editing.id===o.id?h(TiOptionEditor,{key:o.id+'e',option:o,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption})
-      :h(TiOptionCard,{key:o.id,option:o,idea:idea,apiUrl:props.apiUrl,apiToken:props.apiToken,budget:idea.budget,busy:busy,panel:optionPanel(o),onHand:function(k){setHand(function(x){return k?{kind:k,id:o.id}:x&&x.id===o.id?null:x;});},onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
+      :h(TiOptionCard,{key:o.id,option:o,idea:idea,apiUrl:props.apiUrl,apiToken:props.apiToken,budget:idea.budget,busy:busy,aria:aria?tiAriaFor_(aria,o.id):null,onScout:function(){scout(idea,o);},onUnscout:function(){unscout(o);},panel:optionPanel(o),onHand:function(k){setHand(function(x){return k?{kind:k,id:o.id}:x&&x.id===o.id?null:x;});},onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
     return h('div',wrap,
       h('button',{type:'button',className:'ti-back',onClick:function(){setEditing(null);setHand(null);setView({mode:'board'});},style:{alignSelf:'flex-start',background:'none',border:'none',color:TI.acc,fontSize:14,fontWeight:600,cursor:'pointer',minHeight:40,padding:0}},'← Trip ideas'),
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}},

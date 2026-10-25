@@ -7,6 +7,7 @@ const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC = fs.readFileSync(path.join(ROOT, 'Aria.js'), 'utf8');
 const WEB = fs.readFileSync(path.join(ROOT, 'WebApp.js'), 'utf8');
+const CODE = fs.readFileSync(path.join(ROOT, 'Code.js'), 'utf8');
 const APP = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
 const LITE = fs.readFileSync(path.join(ROOT, 'docs/dashboard-lite.html'), 'utf8');
 
@@ -43,14 +44,14 @@ let props = {}, cache = {}, opens = 0, openFails = false;
 const S = vm.createContext({
   console, JSON, Math, Number, String, Array, Date, Object, isFinite, parseInt,
   PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null }) },
-  CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; } }) },
+  CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },
   SpreadsheetApp: { openById: id => { opens++; if (openFails) throw new Error('no access'); return { getSheetByName: n => n === 'Watchlist' ? tab(WATCH) : n === 'Fare Log' ? tab(FARES) : null }; } },
   Session: { getScriptTimeZone: () => 'UTC' },
   Utilities: { formatDate: (d, tz, f) => d.toISOString().slice(0, 10) },
   Logger: { log: m => { S.logs.push(String(m)); } },
   logs: [],
-  TABS: { TRIP_META: 'TripMeta' }, TRIP_META_HEADERS: new Array(11).fill(''),
-  TRIP_IDEAS_HEADERS: new Array(18).fill(''), TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
+  TABS: { TRIP_META: 'TripMeta', ARIA_REQUESTS: 'ARIA Requests' }, TRIP_META_HEADERS: new Array(11).fill(''),
+  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
 });
 S.getSpreadsheet = () => ({ getSheetByName: () => tab([new Array(11).fill('h'), ['2027-07-01|Beach drive', '', '', '', '', '', '', 'Driving', '', '', '']]) });
 S.readTripRegistry_ = () => ({ rows: [
@@ -118,7 +119,8 @@ console.log('\nwhat needs a look');
 
 console.log('\nthe endpoint');
 {
-  check('with no sheet ID it says so, and opens nothing', JSON.stringify(run('webAriaStatus_({})')) === '{"ok":true,"configured":false}' && opens === 0);
+  const nc0 = run('webAriaStatus_({})');
+  check('with no sheet ID it says so, and opens nothing', nc0.ok === true && nc0.configured === false && Array.isArray(nc0.requests) && opens === 0);
   props.ARIA_SHEET_ID = 'sheet-test-id'; openFails = true;
   const bad = run('webAriaStatus_({})');
   check('a sheet it can\'t open says what to check', bad.ok === false && /ARIA_SHEET_ID/.test(bad.error) && /shared with the account/.test(bad.error));
@@ -133,8 +135,74 @@ console.log('\nthe endpoint');
   run('webAriaStatus_({ refresh: "1" })');
   check('…unless asked to read again', opens === n + 1);
   check('the log holds counts only, no names or fares', S.logs.every(l => !/Lake|Coast|612|IAD/.test(l)), S.logs.join(' | '));
-  check('nothing here writes to ARIA\'s sheet', !/\.(setValue|setValues|appendRow|deleteRow|insertSheet|clear)\(/.test(SRC));
+  const ariaPart = SRC.slice(0, SRC.indexOf('// ---- ARIA Requests'));
+  check('nothing that reads ARIA\'s sheet writes anything', ariaPart.length > 1000 && !/\.(setValue|setValues|appendRow|deleteRow|insertSheet|clear)\(/.test(ariaPart));
   check('the sheet ID is never in the code', !/1[A-Za-z0-9_-]{40,}/.test(SRC));
+}
+
+console.log('\nasking ARIA to scout an option');
+{
+  S.idea = { id: 'IDEA-1', title: 'Spring in Europe', status: 'shortlisted', months: ['2027-05', '2027-03', '2027-04'], nightsMin: 7, nightsMax: 10, travelers: '2 adults' };
+  S.opt = { id: 'opt-abc', ideaId: 'IDEA-1', name: 'Lisbon → Algarve → cruise', flag: 'star', cost: { flights: { low: 1400, high: 1800 } },
+    legs: [{ kind: 'move', mode: 'fly', from: 'Home', to: 'lis' }, { kind: 'stop', place: 'Lisbon', nights: 6 }, { kind: 'move', mode: 'car', from: 'Lisbon', to: 'Lagos' },
+      { kind: 'stop', place: 'Cruise', nights: 7 }, { kind: 'move', mode: 'fly', from: 'BCN', to: 'Home' }] };
+  const r = run('ariaRequestFromOption_(idea, opt, "IAD, DCA, BWI")');
+  check('the first flight\'s end is where to fly; "Home" means the home airports', r.origins === 'IAD, DCA, BWI' && r.dests === 'LIS', JSON.stringify(r));
+  check('…flying home from somewhere else is an open jaw', r.returnFrom === 'BCN');
+  check('the window is the idea\'s months, first day to last', r.earliest === '2027-03-01' && r.latest === '2027-05-31');
+  check('the nights are the brief\'s range', r.nightsMin === 7 && r.nightsMax === 10);
+  check('the ceiling per person is the flights estimate\'s high end, shared', r.travelers === 2 && r.ceiling === 900);
+  check('it is a scout request, keyed by the option, upper case', r.kind === 'scout' && r.ref === 'OPT-ABC' && r.label === 'Spring in Europe · Lisbon → Algarve → cruise');
+  S.opt2 = Object.assign({}, S.opt, { legs: [{ kind: 'move', mode: 'fly', from: 'IAD', to: 'NCE' }, { kind: 'stop', place: 'Nice', nights: 5 }, { kind: 'move', mode: 'fly', from: 'NCE', to: 'IAD' }], cost: {} });
+  S.idea2 = Object.assign({}, S.idea, { nightsMin: null, nightsMax: null, travelers: 'the two of us' });
+  const r2 = run('ariaRequestFromOption_(idea2, opt2, "IAD")');
+  check('a round trip has no return-from; the route\'s own nights stand in for the brief\'s', r2.returnFrom === '' && r2.origins === 'IAD' && r2.nightsMin === 5 && r2.nightsMax === 5, JSON.stringify(r2));
+  check('no traveler count or flights estimate: no ceiling, not a guess', r2.travelers === null && r2.ceiling === null);
+  check('an option with no flights can\'t be scouted', /no flights/.test(run('ariaRequestFromOption_(idea, {legs:[{kind:"move",mode:"train",from:"A",to:"B"}]}, "IAD")').error));
+  check('…nor an idea with no months', /Pick the months/.test(run('ariaRequestFromOption_(Object.assign({}, idea, {months: []}), opt, "IAD")').error));
+
+  // The endpoints, over VERA's own fake sheet
+  const ARQ = [run('ARIA_REQUESTS_HEADERS').slice()];
+  const rqTab = { getLastRow: () => ARQ.length, getRange: (r, c, nr, nc) => ({ getValues: () => ARQ.slice(r - 1, r - 1 + nr).map(x => x.slice(c - 1, c - 1 + nc)), setValues: v => v.forEach((x, i) => { ARQ[r - 1 + i] = x.slice(); }) }), appendRow: v => ARQ.push(v.slice()) };
+  S.getSpreadsheet = () => ({ getSheetByName: n => n === 'ARIA Requests' ? rqTab : null });
+  S.ensureSheet = (ss, n) => n === 'ARIA Requests' ? rqTab : null;
+  S.getConfigValues = () => ({});
+  S.tiLocked_ = fn => fn(); S.tiNow_ = () => '2027-02-20T12:00:00.000Z'; let mint = 0; S.tiMintId_ = p => p + (++mint);
+  S.dateCellToIso_ = v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').trim();
+  const opts = { 'OPT-ABC': S.opt };
+  S.ariaIdeaOption_ = (i, o) => (S.ideasById[i] && opts[o.toUpperCase()]) ? { idea: S.ideasById[i], option: opts[o.toUpperCase()] } : null;
+  S.ideasById = { 'IDEA-1': S.idea };
+  cache[run('ARIA_CACHE_KEY_')] = 'stale';
+  const a = run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-ABC" })');
+  check('a starred option of a shortlisted idea is asked for', a.ok && ARQ.length === 2 && ARQ[1][1] === 'scout' && ARQ[1][2] === 'OPT-ABC' && ARQ[1][16] === 'active', JSON.stringify(ARQ[1]));
+  check('…with the home airports from VERA\'s default when Config has none', ARQ[1][6] === 'IAD, DCA, BWI');
+  check('…and the next status read is fresh', !cache[run('ARIA_CACHE_KEY_')]);
+  S.opt.cost = { flights: { low: 1000, high: 1200 } };
+  run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-ABC" })');
+  check('asking again refreshes the one request, not a second', ARQ.length === 2 && ARQ[1][15] === 600 && ARQ[1][0] === 'REQ-1', JSON.stringify(ARQ[1]));
+  ['OPT-B', 'OPT-C', 'OPT-D'].forEach(id => { opts[id] = Object.assign({}, S.opt, { id }); });
+  run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-B" })'); run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-C" })');
+  const capped = run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-D" })');
+  check('no more than three scouted at once', capped.ok === false && /already scouting 3/.test(capped.error) && ARQ.length === 4, ARQ.length);
+  check('…refreshing one of the three is still fine', run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-B" })').ok === true);
+  const w = run('webWithdrawAriaRequest_({ ref: "opt-c" })');
+  check('stopping a scout withdraws it; ARIA drops its row', w.ok && ARQ[3][16] === 'withdrawn');
+  check('…which frees a place', run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-D" })').ok === true && ARQ.length === 5);
+  check('…and a withdrawn one can be asked for again, reusing its row', run('webWithdrawAriaRequest_({ ref: "OPT-D" })').ok && run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-C" })').ok && ARQ[3][16] === 'active' && ARQ.length === 5);
+  check('stopping what isn\'t scouted says so', run('webWithdrawAriaRequest_({ ref: "OPT-ZZZ" })').ok === false);
+  S.idea.status = 'brainstorming';
+  check('an idea not yet shortlisted is refused, with why', /Shortlist the idea first/.test(run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-ABC" })').error));
+  S.idea.status = 'shortlisted'; S.opt.flag = '';
+  check('…and so is an option not starred', /Star this option first/.test(run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-ABC" })').error));
+  S.opt.flag = 'star';
+  check('…and an option that doesn\'t exist', run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-NOPE" })').ok === false);
+  ARQ[1][9] = new Date(Date.UTC(2027, 2, 1)); ARQ[1][15] = '$600';
+  const rq = run('ariaReadRequests_()');
+  check('requests read back, a date cell and a money cell included', rq.length === 4 && rq[0].earliest === '2027-03-01' && rq[0].ceiling === 600 && rq[0].ref === 'OPT-ABC', JSON.stringify(rq[0]));
+  delete props.ARIA_SHEET_ID;
+  const nc = run('webAriaStatus_({})');
+  check('with ARIA\'s sheet not connected, the requests still show', nc.configured === false && nc.requests.length === 4);
+  check('requests are written only to VERA\'s own tab', !/openById\([^)]*\)\.[^;]*(appendRow|setValues)/.test(SRC) && /function ariaRequestsSheet_\(\) \{ return ensureSheet\(getSpreadsheet\(\), TABS\.ARIA_REQUESTS/.test(SRC));
 }
 
 // ============ the dashboard block ===================================================
@@ -165,6 +233,8 @@ const cr = code => vm.runInContext(code, C);
 }
 
 console.log('\nwiring');
+check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated'];") !== -1);
+check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));
 check('full: ARIA is a Travel tab, and renders the view', /\{id:'aria',label:'🧭 ARIA'/.test(APP) && /sub==='aria'&&\/\*#__PURE__\*\/React\.createElement\(AriaView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
 check('lite: ARIA is a Travel tab, and renders the view', /\['aria','🧭 ARIA'\]/.test(LITE) && /\{travSub === 'aria' && <AriaView apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>\}/.test(LITE));
