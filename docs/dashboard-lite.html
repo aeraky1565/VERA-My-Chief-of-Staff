@@ -7182,82 +7182,248 @@ function UsefulToKnowCard({ insights }) {
   );
 }
 
-// --- SummaryLitePanel --------------------------------------------------------
-function SummaryLitePanel({ trip, itinerary, travelerFilter, legs }) {
-  const allItems = itinerary?.items || [];
-  const items = allItems.filter(item => {
-    if (travelerFilter === 'Both') return true;
-    try { const m=JSON.parse(item.metadata||'{}'); const tv=m.traveler||'Both'; return tv==='Both'||tv===travelerFilter; }
-    catch(e) { return true; }
-  });
-  const byDate = {};
-  items.forEach(item => {
-    const d = item.date || '_undated';
-    if (!byDate[d]) byDate[d] = [];
-    byDate[d].push(item);
-  });
-  const dates = (trip.startDate && trip.endDate) ? tripDateRange(trip.startDate, trip.endDate) : [];
-  // Same date assembly the Agenda tab does (ItineraryDayView): an item dated
-  // just outside the trip range, or with no date at all, still has to appear
-  // somewhere. Summary was rendering only the in-range days, so those vanished.
-  Object.keys(byDate).forEach(d => { if (d !== '_undated' && !dates.includes(d)) dates.push(d); });
-  dates.sort();
-  if (byDate['_undated']) dates.push('_undated');
-  const lmap = legMapLite_(legs);
-  if (!dates.length) return <div style={{color:'#4d6080',padding:'24px 0',textAlign:'center',fontSize:12}}>No date range</div>;
-  return (
-    <div style={{paddingTop:8}}>
-      {dates.map((date, idx) => {
-        // All-day items sort first — (a.startTime||'') makes them empty strings,
-        // which localeCompare orders ahead of any HH:mm. Same all-day-first
-        // convention as the full dashboard.
-        const dayItems = (byDate[date]||[]).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
-        return (
-          <div key={date} style={{background:'#0a1628',border:'1px solid #1a2a40',
-            borderRadius:8,padding:'9px 12px',marginBottom:7}}>
-            <div style={{fontWeight:700,color:'#8ab4f8',fontSize:12,marginBottom:3}}>
-              {fmtDayHeader(date, idx+1)}
-            </div>
-            <div style={{fontSize:11,color:'#4d6080',marginBottom:5}}>
-              {dayItems.length} event{dayItems.length!==1?'s':''} scheduled
-            </div>
-            {/* Every item, not just the timed ones. Filtering to i.startTime hid
-                hotel stays, cruise stays and sea days — all all-day calendar
-                events — while still counting them in the line above, so a day
-                could read "3 events scheduled" over "No events scheduled". */}
-            {dayItems.length===0 ? (
-              <div style={{fontSize:12,color:'#4d6080',fontStyle:'italic'}}>No events scheduled</div>
-            ) : dayItems.map((item, ii) => {
-              // Journey from the PREVIOUS item to this one, drawn above it.
-              // Only when it is far enough to plan around — see LITE_MIN_SHOWN_DRIVE.
-              const prev = ii > 0 ? dayItems[ii-1] : null;
-              const leg  = prev ? legBetweenLite_(lmap, prev, item) : null;
-              const show = leg && leg.driveMins >= LITE_MIN_SHOWN_DRIVE;
-              return (
-                <React.Fragment key={item.id}>
-                  {show && (
-                    <div style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:11,color:'#3f5a6e'}}>
-                      <span style={{minWidth:42}} />
-                      <span>↓</span>
-                      <span>~{leg.driveMins}m drive{leg.walkMins != null && leg.walkMins <= 25 ? ' / ' + leg.walkMins + 'm walk' : ''}</span>
-                    </div>
-                  )}
-                  <div style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2,fontSize:12}}>
-                    <span style={{color:item.startTime?'#4d6080':'#3a4a60',minWidth:42,fontSize:11,fontVariantNumeric:'tabular-nums'}}>
-                      {item.startTime || '·'}
-                    </span>
-                    <span>{ITIN_TYPE_ICON[item.type]||'📌'}</span>
-                    <span style={{color:'#c8d4e8'}}>{item.title}</span>
-                  </div>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-  );
+// ---- TripSummaryView (itinerary redesign) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// The trip at a glance: a pill per day (red = a night with nowhere to sleep,
+// amber = a missing or tight transfer or an open decision), what is booked,
+// what needs attention, where you sleep each night and how you get around.
+// buildTripSummary_ is pure, so test_tripsummary.js runs it in node; the same
+// test checks the two copies of this block match, marker to marker.
+var TS_STAY_TYPES={hotel:1,arranged_stay:1,cruise:1};
+var TS_MOVE_TYPES={flight:1,train:1,bus:1,ferry:1,car:1};
+var TS_SELF_TRANSPORT={road_trip:1};
+var TS_TIGHT_RATIO=0.7;// free-flow drive times carry no traffic, so flag at 70% of the gap
+function tsMeta_(it){try{return JSON.parse((it&&it.metadata)||'{}')||{};}catch(e){return{};}}
+function tsAddDays_(iso,n){var d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function tsDays_(a,b){var out=[];if(!a||!b||b<a)return out;for(var d=a;d<=b&&out.length<120;d=tsAddDays_(d,1))out.push(d);return out;}
+function tsMins_(t){if(!t)return null;var p=String(t).split(':');var h=parseInt(p[0],10),m=parseInt(p[1]||'0',10);return isNaN(h)?null:h*60+(isNaN(m)?0:m);}
+function tsDayId_(tripKey,date){return 'itin-day-'+String(tripKey||'').replace(/[^A-Za-z0-9_-]/g,'_')+'-'+date;}
+function tsLegKey_(a,b){var n=function(s){return String(s||'').replace(/\s+/g,' ').trim().toLowerCase();};return n(a)+'|'+n(b);}
+// A city from a free-text location: "Little Havana, Miami, FL" → Miami,
+// "Rua X 12, 1100-001 Lisboa, Portugal" → Lisboa, "Vancouver, BC, Canada" → Vancouver.
+function tsCity_(loc){
+  var parts=String(loc||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  if(!parts.length)return '';
+  if(parts.length>=3&&!/\d/.test(parts[parts.length-1])&&parts[parts.length-1].length>2)parts.pop();// a country
+  if(parts.length>=2&&/^[A-Z]{2}(\s+[A-Z0-9]{2,4}\s*[A-Z0-9]{0,4}|\s+\d{5}(-\d{4})?)?$/.test(parts[parts.length-1]))parts.pop();// a state, province or country code
+  for(var i=parts.length-1;i>=0;i--){
+    var city=parts[i].split(/\s+/).filter(function(w){return !/\d/.test(w);}).join(' ').trim();
+    if(city&&!(parts.length===1&&city.length>28))return city;
+  }
+  return '';
 }
+// The place a trip's label names: "Vacation: Alaska Cruise" → Alaska Cruise, "Road Trip - Toledo, OH" → Toledo.
+function tsLabelPlace_(label){
+  var s=String(label||'').replace(/^(vacation|trip|travel|holiday|visit|road trip|potential)\s*[:\-–]?\s*(to\s+)?/i,'')
+    .replace(/\s*\b(trip|vacation|getaway)$/i,'').replace(/^\S+'s\s+/,'').trim();
+  return tsCity_(s)||s;
+}
+// Where a move ends, from its title: "Train · Lisbon → Porto" → Porto.
+function tsMoveDest_(it){var parts=String((it&&it.title)||'').split(/\s*(?:→|->)\s*|\s+to\s+/);return parts.length>1?tsCity_(parts[parts.length-1].replace(/[()]/g,'')):'';}
+function tsShort_(d){return new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+function tsDecisionText_(rep){var n=tsMeta_(rep).optionCount||0;var by=tsMeta_(rep).decideBy||'';var late=isOverdueDecision(rep);
+  return 'Still deciding — '+n+' options'+(by?' · decide by '+fmtDate(by)+(late?' · overdue':''):'');}
+// Online check-in usually opens a day before departure. Empty once the flight has gone.
+function tsCheckinText_(it,nowMs){var dep=new Date((it.date||'')+'T'+(it.startTime||'00:00')+':00').getTime();if(isNaN(dep)||dep<=nowMs)return '';
+  var opens=dep-24*3600000;if(opens<=nowMs)return 'Online check-in is open';
+  var d=new Date(opens);return 'Online check-in usually opens 24 h before: '+d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
+/**
+ * Everything the Summary shows, from the trip's items. Pure.
+ * o = { trip:{startDate,endDate,label,tripKey}, items, legs:[{from,to,driveMins}],
+ *       outboundMode, returnMode, today:'yyyy-MM-dd' }
+ */
+function buildTripSummary_(o){
+  var trip=o.trip||{};var days=tsDays_(trip.startDate,trip.endDate);var today=o.today||'';
+  var items=(o.items||[]).filter(function(it){if(!it||it._synthetic||!it.date)return false;var m=tsMeta_(it);return !m.optionGroup||m.isRepresentative===true;});
+  var byDay={};items.forEach(function(it){(byDay[it.date]=byDay[it.date]||[]).push(it);});
+  // ── nights: each night from the first day to the night before the last ──
+  var nights=days.slice(0,-1);var stayOf={};var inAir={};
+  items.forEach(function(it){
+    if(TS_STAY_TYPES[it.type]){var out=tsMeta_(it).checkoutDate||tsAddDays_(it.date,1);
+      for(var d=it.date;d<out&&d<=trip.endDate;d=tsAddDays_(d,1))if(!stayOf[d])stayOf[d]=it;}
+    if(it.type==='flight'){var m=tsMeta_(it);if((m.endDate&&m.endDate>it.date)||(it.startTime&&it.endTime&&it.endTime<it.startTime))inAir[it.date]=it;}
+  });
+  // A cruise booked as "Board …" and "Disembark …" covers every night between.
+  var board=null,off=null;items.forEach(function(it){var t=String(it.title||'').toLowerCase();
+    if(t.indexOf('board')!==-1&&(!board||it.date<board.date))board=it;if(t.indexOf('disembark')!==-1&&(!off||it.date>off.date))off=it;});
+  if(board&&off&&board.date<off.date)for(var cd=board.date;cd<off.date;cd=tsAddDays_(cd,1))if(!stayOf[cd])stayOf[cd]=board;
+  var needNights=nights.filter(function(d){return !(inAir[d]&&!stayOf[d]);});
+  var missingNights=needNights.filter(function(d){return !stayOf[d];});
+  // ── getting there and back ──
+  var hasMove=function(d){return (byDay[d]||[]).some(function(it){return TS_MOVE_TYPES[it.type]||it.type==='cruise';});};
+  var first=days[0],last=days[days.length-1];
+  var needArr=days.length>1&&!TS_SELF_TRANSPORT[o.outboundMode||''],needDep=days.length>1&&!TS_SELF_TRANSPORT[o.returnMode||''];
+  var missArr=needArr&&!hasMove(first),missDep=needDep&&!hasMove(last);
+  // ── tight connections: the drive eats most of the gap ──
+  var legMap={};(o.legs||[]).forEach(function(l){legMap[tsLegKey_(l.from,l.to)]=l;});
+  var tight=[];Object.keys(byDay).forEach(function(d){
+    var timed=byDay[d].filter(function(it){return it.startTime;}).sort(function(a,b){return a.startTime<b.startTime?-1:a.startTime>b.startTime?1:0;});
+    for(var k=0;k<timed.length-1;k++){var a=timed[k],b=timed[k+1];var leg=legMap[tsLegKey_(a.location,b.location)];if(!leg||leg.driveMins==null)continue;
+      var gap=tsMins_(b.startTime)-tsMins_(a.endTime||a.startTime);if(gap>0&&leg.driveMins>gap*TS_TIGHT_RATIO)tight.push({date:d,from:a,to:b,gapMins:gap,driveMins:leg.driveMins});}
+  });
+  // ── open decisions ──
+  var decisions=items.filter(function(it){var m=tsMeta_(it);return m.tentative===true&&m.decisionStatus!=='decided';});
+  // ── where each day is ──
+  // A day's city: where you sleep that night; on a travel day, where the last move
+  // ends; else the commonest city among the day's addresses (a bare name like
+  // "Alfama hotel" is not an address, so only "…, City, …" locations count);
+  // else the day before's; else the place the trip's label names.
+  var dayCity={};var place=tsLabelPlace_(trip.label);var prev='';
+  var movesOn=function(d){return (byDay[d]||[]).filter(function(it){return TS_MOVE_TYPES[it.type];}).sort(function(a,b){return (a.startTime||'').localeCompare(b.startTime||'');});};
+  days.forEach(function(d,i){
+    var c=stayOf[d]?tsCity_(stayOf[d].location):'';
+    if(!c){var mv=movesOn(d);for(var k=mv.length-1;k>=0&&!c;k--)c=tsMoveDest_(mv[k]);}
+    if(!c){var counts={};(byDay[d]||[]).forEach(function(it){if(String(it.location||'').indexOf(',')===-1)return;var x=tsCity_(it.location);if(x)counts[x]=(counts[x]||0)+1;});
+      c=Object.keys(counts).sort(function(x,y){return counts[y]-counts[x];})[0]||'';}
+    if(!c&&board&&off&&d>board.date&&d<off.date)c='At sea';
+    dayCity[d]=c||prev||place;prev=dayCity[d];
+  });
+  // A flight's title names airports ("IAD → LIS"); the next day's city reads better.
+  days.forEach(function(d,i){if(/^[A-Z]{3}$/.test(dayCity[d])&&i+1<days.length&&!/^[A-Z]{3}$/.test(dayCity[days[i+1]]))dayCity[d]=dayCity[days[i+1]];});
+  var nowMs=o.nowMs||Date.now();
+  var dayList=days.map(function(d,i){
+    var moves=(byDay[d]||[]).filter(function(it){return TS_MOVE_TYPES[it.type];});
+    var travel=moves.some(function(it){return it.type==='flight';})?'flight':moves.some(function(it){return it.type==='train';})?'train':moves.length?'ground':'';
+    var reasons=[];var health='ok';
+    if(nights.indexOf(d)!==-1&&missingNights.indexOf(d)!==-1){health='red';reasons.push('no place to sleep');}
+    if((d===first&&missArr)||(d===last&&missDep)){if(health!=='red')health='amber';reasons.push(d===first?'no arrival transport':'no departure transport');}
+    if(tight.some(function(t){return t.date===d;})){if(health!=='red')health='amber';reasons.push('a tight connection');}
+    if(decisions.some(function(x){return x.date===d;})){if(health!=='red')health='amber';reasons.push('a decision to make');}
+    var city=dayCity[d];
+    if(travel&&i===days.length-1)city='→ Home';
+    else if(travel)city='→ '+city;
+    var dt=new Date(d+'T12:00:00');
+    return {date:d,dow:dt.toLocaleDateString('en-US',{weekday:'short'}),num:String(dt.getDate()),mon:dt.toLocaleDateString('en-US',{month:'short'}),
+      city:city,travel:travel,health:health,reasons:reasons,isToday:d===today,dayNum:i+1};
+  });
+  // ── needs attention: red first, then amber ──
+  var attention=[];
+  var runs=[];missingNights.forEach(function(d){var r=runs[runs.length-1];if(r&&tsAddDays_(r.to,1)===d)r.to=d;else runs.push({from:d,to:d});});
+  runs.forEach(function(r){var n=tsDays_(r.from,r.to).length;var where=dayCity[r.from]&&dayCity[r.from]!=='At sea'?' in '+dayCity[r.from]:'';
+    attention.push({level:'red',date:r.from,title:'No place to sleep'+where,detail:n===1?'The night of '+tsShort_(r.from):n+' nights, '+tsShort_(r.from)+' – '+tsShort_(r.to)});});
+  if(missArr)attention.push({level:'amber',date:first,title:'No arrival transport planned',detail:tsShort_(first)});
+  if(missDep)attention.push({level:'amber',date:last,title:'No departure transport planned',detail:tsShort_(last)});
+  tight.forEach(function(t){attention.push({level:'amber',date:t.date,title:'Tight: '+(t.to.title||'next stop'),detail:'~'+t.driveMins+' min away with '+t.gapMins+' min to get there'});});
+  decisions.forEach(function(x){attention.push({level:'amber',date:x.date,title:'Decide: '+(x.title||'an option'),detail:tsDecisionText_(x)});});
+  // ── where you sleep: one band per stay, gaps hatched ──
+  var stays=[];nights.forEach(function(d){var s=stayOf[d];var kind=s?'stay':inAir[d]?'air':'gap';var key=s?'s'+(s.id||s.title):kind;var cur=stays[stays.length-1];
+    if(cur&&cur.key===key)cur.nights++;else stays.push({key:key,kind:kind,from:d,nights:1,
+      name:s?(s.title||'Stay'):kind==='air'?'In the air':'Nothing booked',city:s?tsCity_(s.location):kind==='gap'?dayCity[d]:''});});
+  // ── getting around ──
+  var moves=items.filter(function(it){return TS_MOVE_TYPES[it.type];}).sort(function(a,b){return (a.date+(a.startTime||'')).localeCompare(b.date+(b.startTime||''));})
+    .map(function(it){return {item:it,date:it.date,title:it.title,times:(it.startTime||'')+(it.endTime?' → '+it.endTime:''),isFlight:it.type==='flight',
+      checkin:it.type==='flight'?tsCheckinText_(it,nowMs):''};});
+  var countdown='';if(days.length){var n=tsDays_(today,trip.startDate).length-1;
+    countdown=today<trip.startDate?(n===1?'Leaves tomorrow':'Leaves in '+n+' days'):today>trip.endDate?'Trip ended':'Day '+(days.indexOf(today)+1)+' of '+days.length;}
+  return {days:dayList,countdown:countdown,
+    nights:{total:needNights.length,have:needNights.length-missingNights.length,missing:missingNights},
+    ends:{arrival:needArr?!missArr:null,departure:needDep?!missDep:null},
+    attention:attention,stays:stays,moves:moves,decisions:decisions.length,tight:tight};
+}
+function TripSummaryView(props){
+  var h=React.createElement;var trip=props.trip||{};
+  var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];
+  var _d=React.useState(false),detailsOpen=_d[0],setDetailsOpen=_d[1];
+  var today=new Date();var todayIso=today.getFullYear()+'-'+('0'+(today.getMonth()+1)).slice(-2)+'-'+('0'+today.getDate()).slice(-2);
+  var s=buildTripSummary_({trip:trip,items:props.items,legs:props.legs,outboundMode:(props.meta||{}).outboundMode,returnMode:(props.meta||{}).returnMode,today:todayIso});
+  var statuses=props.statuses||{};var ins=props.insights;
+  var card={background:'#0d1b3e',border:'1px solid #1e3060',borderRadius:12,padding:14,display:'flex',flexDirection:'column',gap:10,minWidth:0};
+  var label={fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'#9aa9cc'};
+  var HEALTH={ok:{bg:'#0d1b3e',br:'#24386a',num:'#dde1f0'},red:{bg:'#3a1218',br:'#e05a5a',num:'#ffb4b4'},amber:{bg:'#33280f',br:'#e2b54a',num:'#f6dc97'}};
+  var GLYPH={flight:'✈',train:'🚆',ground:'🚌'};
+  var open=function(d){if(props.onOpenDay)props.onOpenDay(d);};
+  var boxes=function(have,total){var out=[];for(var i=0;i<Math.min(total,31);i++)out.push(h('span',{key:i,style:{width:16,height:10,borderRadius:3,boxSizing:'border-box',
+    background:i<have?'#4d9f6a':'transparent',border:i<have?'none':'1.5px solid #e05a5a'}}));return h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},out);};
+  return h('div',{className:'trip-summary',style:{display:'flex',flexDirection:'column',gap:14,padding:'12px 0'}},
+    s.countdown&&h('div',{className:'ts-countdown',style:{fontSize:13,color:'#b9d2ff',fontVariantNumeric:'tabular-nums'}},s.countdown),
+    props.details&&h('div',{style:card},
+      h('button',{type:'button',className:'ts-details-btn',onClick:function(){setDetailsOpen(!detailsOpen);},'aria-expanded':detailsOpen,
+        style:{display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:40,padding:'0 4px',background:'none',border:'none',color:'#cfe0ff',fontSize:13,fontWeight:600,cursor:'pointer'}},
+        h('span',null,'Trip details'),h('span',null,detailsOpen?'▴':'▾')),
+      detailsOpen&&h('div',{style:{display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'}},props.details)),
+    // Day strip
+    h('section',{style:card,'aria-label':'Days'},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',alignItems:'baseline'}},
+        h('span',{style:label},'Every day at a glance'),h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Tap a day to open it in Agenda')),
+      h('div',{className:'ts-strip',style:{display:'flex',gap:8,overflowX:'auto',paddingBottom:4}},
+        s.days.map(function(d){var c=HEALTH[d.health];
+          return h('button',{key:d.date,type:'button',className:'ts-pill ts-'+d.health,onClick:function(){open(d.date);},
+            'aria-label':fmtDate(d.date)+', '+d.city+(d.reasons.length?': '+d.reasons.join(', '):''),title:d.reasons.join(', '),
+            style:{flex:'0 0 auto',width:78,minHeight:88,borderRadius:12,border:'1px solid '+c.br,background:c.bg,color:'#dde1f0',cursor:'pointer',position:'relative',
+              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,padding:'8px 4px',
+              boxShadow:d.isToday?'0 0 0 2px #f0d78a':'none'}},
+            d.travel&&h('span',{'aria-hidden':'true',style:{position:'absolute',top:5,right:6,fontSize:11}},GLYPH[d.travel]),
+            h('span',{style:{fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',color:'#9aa9cc'}},d.dow),
+            h('span',{style:{fontSize:22,fontWeight:700,lineHeight:1.1,color:c.num,fontVariantNumeric:'tabular-nums'}},d.num),
+            h('span',{className:'ts-city',style:{fontSize:11,color:'#b8c3e0',maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},d.city));})),
+      h('div',{style:{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:'#9aa9cc'}},
+        h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#e05a5a',marginRight:6}}),'No place to sleep'),
+        h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#e2b54a',marginRight:6}}),'Transfer or decision to sort'),
+        h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#24386a',marginRight:6}}),'All set'))),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',gap:14}},
+      // Booked so far
+      h('section',{style:card,'aria-label':'Booked so far'},h('span',{style:label},'Booked so far'),
+        s.nights.total>0&&h('div',{className:'ts-ready-nights',style:{display:'flex',flexDirection:'column',gap:6}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:13}},h('span',null,'Nights with a place to sleep'),
+            h('span',{style:{color:'#b9d2ff',fontVariantNumeric:'tabular-nums'}},s.nights.have+' of '+s.nights.total)),boxes(s.nights.have,s.nights.total)),
+        (s.ends.arrival!==null||s.ends.departure!==null)&&h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:13}},h('span',null,'Getting there and back'),
+            h('span',{style:{color:'#b9d2ff'}},[s.ends.arrival,s.ends.departure].filter(function(x){return x===true;}).length+' of '+[s.ends.arrival,s.ends.departure].filter(function(x){return x!==null;}).length)),
+          boxes([s.ends.arrival,s.ends.departure].filter(function(x){return x===true;}).length,[s.ends.arrival,s.ends.departure].filter(function(x){return x!==null;}).length)),
+        h('div',{style:{fontSize:13,color:'#b8c3e0'}},'Flights, trains and transfers: '+s.moves.length+' · '+(s.decisions?s.decisions+' decision'+(s.decisions===1?'':'s')+' open':'no open decisions'))),
+      // Needs attention
+      h('section',{style:card,'aria-label':'Needs attention'},h('span',{style:label},'Needs attention · '+s.attention.length),
+        s.attention.length===0?h('span',{style:{fontSize:13,color:'#8fe0a8'}},'Nothing to sort: every night and transfer is covered.')
+        :s.attention.map(function(a,i){var red=a.level==='red';
+          return h('button',{key:i,type:'button',className:'ts-attn ts-attn-'+a.level,onClick:function(){open(a.date);},
+            style:{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',borderRadius:10,background:'#0a1530',border:'1px solid '+(red?'#7a2a33':'#6e5420'),
+              color:'#dde1f0',textAlign:'left',cursor:'pointer',fontSize:13,lineHeight:1.45,width:'100%'}},
+            h('span',{style:{flex:'0 0 auto',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999,background:red?'#e05a5a':'#e2b54a',color:red?'#1a0508':'#1f1604'}},
+              new Date(a.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})),
+            h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('strong',{style:{fontWeight:600}},a.title),h('span',{style:{fontSize:12,color:'#b8c3e0'}},a.detail)));}))),
+    // Where you sleep
+    s.stays.length>0&&h('section',{style:card,'aria-label':'Where you sleep'},
+      h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',alignItems:'baseline'}},
+        h('span',{style:label},'Where you sleep'),h('span',{style:{fontSize:12,color:'#9aa9cc'}},s.stays.reduce(function(n,x){return n+x.nights;},0)+' nights · hatched = nothing booked')),
+      h('div',{style:{overflowX:'auto'}},h('div',{className:'ts-stays',style:{display:'grid',gridTemplateColumns:'repeat('+s.stays.reduce(function(n,x){return n+x.nights;},0)+', minmax(76px, 1fr))',gap:4}},
+        s.stays.map(function(x,i){var st=x.kind==='stay'?{background:'#16391f',color:'#c9f0d3',border:'1px solid #2f6b3e'}
+            :x.kind==='air'?{background:'#13264d',color:'#cfe0ff',border:'1px dashed #3b5fa0'}
+            :{background:'repeating-linear-gradient(135deg,#3a1218 0 6px,#2a0d12 6px 12px)',color:'#ffc2c2',border:'1px solid #e05a5a',fontWeight:600};
+          return h('div',{key:i,className:'ts-stay ts-stay-'+x.kind,style:Object.assign({gridColumn:'span '+x.nights,borderRadius:8,padding:8,fontSize:12,lineHeight:1.3,minHeight:44,boxSizing:'border-box',overflow:'hidden'},st)},
+            h('div',{style:{fontWeight:600,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},x.name),
+            h('div',{style:{opacity:.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},(x.city?x.city+' · ':'')+x.nights+' night'+(x.nights===1?'':'s')));})))),
+    // Getting around
+    s.moves.length>0&&h('section',{style:card,'aria-label':'Getting around'},h('span',{style:label},'Getting around'),
+      h('div',null,s.moves.map(function(m,i){var fs=statuses[m.item.id];var live=m.isFlight&&!fs?flightLiveFromText(m.item):'';var isOpen=openMove===m.item.id;
+        return h('div',{key:m.item.id||i,className:'ts-move',style:{padding:'10px 0',borderTop:i?'1px solid #1a2a52':'none'}},
+          h('div',{style:{display:'grid',gridTemplateColumns:'56px minmax(0,1fr) auto',gap:10,alignItems:'start'}},
+            h('span',{style:{fontSize:12,color:'#9aa9cc',fontVariantNumeric:'tabular-nums'}},new Date(m.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})),
+            h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},
+              h('span',{style:{fontSize:14,fontWeight:600,color:'#eef1fb'}},m.title),
+              m.times&&h('span',{style:{fontSize:12,color:'#9aa9cc',fontVariantNumeric:'tabular-nums'}},m.times),
+              live&&h('span',{className:'flight-live-from',style:{fontSize:11,color:'#6b7fa8'}},live),
+              m.checkin&&h('span',{className:'ts-checkin',style:{fontSize:12,color:'#f0d78a'}},'🔔 '+m.checkin)),
+            fs?h('button',{type:'button',onClick:function(){setOpenMove(isOpen?null:m.item.id);},'aria-expanded':isOpen,style:{background:'none',border:'none',padding:0,cursor:'pointer'}},
+              h(FlightStatusBadge,{status:fs})):null),
+          isOpen&&fs&&h('div',{className:'ts-flight-detail',style:{display:'grid',gridTemplateColumns:'minmax(0,120px) minmax(0,1fr)',gap:'4px 10px',marginTop:8,padding:'10px 12px',
+            borderRadius:8,background:'#0a1530',border:'1px solid #24386a',fontSize:12,color:'#c8d2ea'}},
+            h('span',{style:{color:'#9aa9cc'}},'Departure'),h('span',null,[fs.dep_scheduled&&'Sched '+fs.dep_scheduled,fs.dep_estimated&&fs.dep_estimated!==fs.dep_scheduled&&'Est '+fs.dep_estimated+(fs.delay_min>0?' (+'+fs.delay_min+'min)':''),fs.dep_actual&&'Actual '+fs.dep_actual].filter(Boolean).join(' · ')||'—'),
+            h('span',{style:{color:'#9aa9cc'}},'Arrival'),h('span',null,[fs.arr_scheduled&&'Sched '+fs.arr_scheduled,fs.arr_estimated&&fs.arr_estimated!==fs.arr_scheduled&&'Est '+fs.arr_estimated,fs.arr_actual&&'Actual '+fs.arr_actual].filter(Boolean).join(' · ')||'—'),
+            h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
+    // Before you go
+    (ins||props.onGoToPacking)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:10}},
+        ins&&h('div',{className:'ts-useful',style:{display:'flex',flexDirection:'column',gap:4,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',fontSize:12,color:'#c8d2ea'}},
+          h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Useful to know'),
+          ins.origin_code&&ins.dest_code&&h('span',{style:{fontSize:14,fontWeight:600,color:'#eef1fb'}},ins.origin_code+' → '+ins.dest_code+(ins.tz_offset_label?' · '+ins.tz_offset_label:'')),
+          ins.distance_miles?h('span',null,'~'+Number(ins.distance_miles).toLocaleString()+' miles'+(ins.haul_category?' · '+ins.haul_category:'')):null,
+          ins.daynight_pct_day!=null?h('span',null,ins.daynight_pct_day+'% of the flight in daylight'):null,
+          ins.pre_trip_tip?h('span',{style:{color:'#8ab4f8'}},ins.pre_trip_tip):null,
+          (ins.arrival_tip||ins.sleep_tip)?h('span',{style:{color:'#8ab4f8'}},ins.arrival_tip||ins.sleep_tip):null),
+        props.onGoToPacking&&h('div',{style:{display:'flex',flexDirection:'column',gap:6,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
+          h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Packing'),
+          h('button',{type:'button',className:'ts-packing',onClick:props.onGoToPacking,style:{alignSelf:'flex-start',minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#8ab4f8',fontWeight:600,fontSize:13,cursor:'pointer'}},'Open the packing list')))));
+}
+// ---- /TripSummaryView ----
 
 // --- PackingLitePanel --------------------------------------------------------
 function PackingLitePanel({ tripKey, endDate, packingData, apiUrl, apiToken, onReload }) {
@@ -7456,7 +7622,7 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDe
           .sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
         const dayNum = date === '_undated' ? '' : idx + 1;
         return (
-          <div key={date} style={{marginBottom:12}}>
+          <div key={date} id={tsDayId_(trip.tripKey, date)} style={{marginBottom:12,scrollMarginTop:12}}>
             <div style={{fontSize:12,fontWeight:700,color:'#8ab4f8',padding:'6px 8px',
               background:'#0a1628',borderRadius:6,marginBottom:4,letterSpacing:'0.03em'}}>
               {fmtDayHeader(date, dayNum)}
@@ -8150,7 +8316,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
         const tripData = itineraries[tripKey];
         const isItinLoading = !tripData || tripData === 'loading';
         const meta = (tripMetas[tripKey] && tripMetas[tripKey]!=='loading') ? tripMetas[tripKey] : null;
-        const activeTab = tripTabs[tripKey] || 'agenda';
+        const activeTab = tripTabs[tripKey] || 'summary';
         const traveler  = travelerFilters[tripKey] || 'Both';
         const ctxColor  = (meta?.context && CONTEXT_COLORS[meta.context]) || null;
 
@@ -8232,7 +8398,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
 
                 {/* Subtab buttons */}
                 <div style={{padding:'8px 16px',display:'flex',gap:6,borderBottom:'1px solid #1a2a40'}}>
-                  {[['agenda','📅 Agenda'],['summary','📋 Summary'],['packing','🎒 Packing']].map(([tab,label]) => (
+                  {[['summary','📋 Summary'],['agenda','📅 Agenda'],['packing','🎒 Packing']].map(([tab,label]) => (
                     <button key={tab}
                       onClick={e=>{e.stopPropagation();setTripTab(tripKey,tab);}}
                       style={{padding:'5px 12px',borderRadius:7,cursor:'pointer',fontSize:12,fontWeight:600,
@@ -8259,7 +8425,9 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                       Loading itinerary…
                     </div>
                   ) : activeTab === 'summary' ? (
-                    <SummaryLitePanel trip={{...t,tripKey}} itinerary={filteredItin} travelerFilter={traveler} legs={travelLegs[tripKey]} />
+                    <TripSummaryView trip={{...t,tripKey}} items={filteredItin.items} legs={travelLegs[tripKey]} meta={meta||{}}
+                      insights={flightInsights[tripKey]} onGoToPacking={()=>setTripTab(tripKey,'packing')}
+                      onOpenDay={d=>{setTripTab(tripKey,'agenda');setTimeout(()=>{const el=document.getElementById(tsDayId_(tripKey,d));if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},80);}} />
                   ) : (
                     <>
                       <VERANoticesCard trip={t} itinerary={tripData} tripMeta={meta} legs={travelLegs[tripKey]} />
