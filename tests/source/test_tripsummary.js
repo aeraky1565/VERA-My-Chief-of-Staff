@@ -142,6 +142,22 @@ console.log('\ngetting around and the countdown');
   check('after: "Trip ended"', sum(base({ today: '2026-12-01' })).countdown === 'Trip ended');
 }
 
+console.log('\nagenda: between and after the items');
+{
+  const day = [
+    { id: 'co', title: 'Check out', startTime: '10:00', location: 'Alfama hotel' },
+    { id: 'tx', title: 'Taxi', startTime: '10:30', endTime: '10:40', location: 'Alfama hotel' },
+    { id: 'tr', title: 'Train to Porto', startTime: '11:09', endTime: '14:05', location: 'Santa Apolonia' },
+    { id: 'dn', title: 'Dinner', startTime: '20:00', location: 'Ribeira' },
+    { id: 'ad', title: 'All day thing' } ];
+  S.day = day; S.legs = [{ from: 'Alfama hotel', to: 'Santa Apolonia', driveMins: 35 }, { from: 'Santa Apolonia', to: 'Ribeira', driveMins: 15, walkMins: 20 }];
+  const b = run('tsDayBreaks_(day, legs)');
+  check('a drive over 70% of the gap is a tight connection after the item before it', b.tx && b.tx[0].kind === 'tight' && /"Train to Porto" is ~35 min away, with 29 min to get there/.test(b.tx[0].text), JSON.stringify(b.tx));
+  check('free time takes the drive off the gap, and names the walk', b.tr && b.tr[0].kind === 'free' && b.tr[0].text === '5h 40m free · ~15 min drive / 20 min walk', JSON.stringify(b.tr));
+  check('under an hour free is not worth a line', !b.co);
+  check('an untimed item makes no break', Object.keys(b).length === 2);
+  check('minutes under ten are padded: 1h 05m', run("tsDayBreaks_([{id:'a',startTime:'09:00'},{id:'b',startTime:'10:05'}],[])").a[0].text === '1h 05m free');
+}
 console.log('\nwiring');
 // ItineraryView has nested top-level-looking functions, so take it up to the panel that follows it.
 const itin = APP.slice(APP.indexOf('function ItineraryView('), APP.indexOf('// Accordion panel: all trips', APP.indexOf('function ItineraryView(')));
@@ -153,6 +169,16 @@ check('full: VERA Notices and Useful to know stand down on Summary', /viewMode!=
 check('lite: Summary first and default', /tripTabs\[tripKey\] \|\| 'summary'/.test(LITE) && /\[\['summary','📋 Summary'\],\['agenda','📅 Agenda'\],\['packing','🎒 Packing'\]\]/.test(LITE));
 check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummaryView trip=\{\{\.\.\.t,tripKey\}\} items=\{filteredItin\.items\}/.test(LITE) && /id=\{tsDayId_\(trip\.tripKey, date\)\}/.test(LITE));
 check('lite: the old SummaryLitePanel is gone', !/SummaryLitePanel/.test(LITE));
+check('full: + Add Item left the header for Agenda\'s toolbar', !/"\+ Add Item"/.test(itin) && /viewMode==='agenda'&&\/\*#__PURE__\*\/React\.createElement\(TsAgendaToolbar,\{onAdd:onAdd,busy:busy\}\)/.test(itin));
+check('full: each day gets its breaks, its coloured header and its end slots', /const dayBreaks=tsDayBreaks_\(groupItineraryOptions\(dayItems\),travelLegs\)/.test(itin)
+      && /tsDayHeadStyle_\(agendaSum,day\)/.test(itin) && /return tsWithBreaks_\(dayBreaks\[item\.id\]/.test(itin) && /React\.createElement\(TsDayEnd,\{date:day,summary:agendaSum,onAdd:onAdd,busy:busy\}\)/.test(itin));
+check('full: VERA Notices drops what now sits inside each day', /var allNotices=notices\.concat\(gaps\)\.filter\(function\(n\)\{return n\.type!=='timeline_gap'&&n\.type!=='missing_hotel'&&n\.type!=='missing_transport';\}\)/.test(itin));
+check('full: the add form takes a date and type', /function AddItineraryItemModal\(\{tripKey,item,defaults,onSave,onClose,busy\}\)/.test(APP) && /defaults&&defaults\.date\|\|''/.test(APP) && /defaults:itinItemModal\.defaults/.test(APP)
+      && /onAdd:function\(defaults\)\{onAddItinItem\(tripKey,t\.startDate,t\.endDate,defaults\);\}/.test(APP));
+check('lite: the same toolbar, breaks, header colours and end slots', /<TsAgendaToolbar onAdd=\{onAdd\} busy=\{busy\} \/>/.test(LITE) && /rows\.map\(item => tsWithBreaks_\(dayBreaks\[item\.id\]/.test(LITE)
+      && /\.\.\.tsDayHeadStyle_\(agendaSum, date\)/.test(LITE) && /<TsDayEnd date=\{date\} summary=\{agendaSum\} onAdd=\{onAdd\} busy=\{busy\} \/>/.test(LITE));
+check('lite: the add form takes a date and type', /defaults\?\.date\|\|tripStartDate/.test(LITE) && /defaults\?\.type\|\|'manual'/.test(LITE) && /defaults=\{modal\.defaults\}/.test(LITE));
+check('lite: the top-of-Agenda notices card is no longer shown', !/<VERANoticesCard /.test(LITE));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

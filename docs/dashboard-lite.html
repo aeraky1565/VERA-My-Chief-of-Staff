@@ -7006,9 +7006,6 @@ const CONTEXT_COLORS = {
   'Visiting Friends':'#f7c948',"Girls Trip":'#c084fc','Group Trip':'#94a3b8',
   'Solo Adventure':'#fb923c',
 };
-const SELF_TRANSPORT = new Set(['road_trip','rental_car']);
-const TRANSPORT_TYPES_SET = new Set(['flight','train','bus','ferry','cruise','rental_car','driving']);
-const HOTEL_TYPES_SET = new Set(['hotel','arranged_stay','cruise']);
 const TRAVEL_MODE_LABELS = {
   flight:'✈️ Flight', road_trip:'🚗 Road Trip', train:'🚆 Train',
   rental_car:'🚙 Rental Car', bus:'🚌 Bus', cruise:'🛳️ Cruise', ferry:'⛴️ Ferry',
@@ -7025,106 +7022,6 @@ function tripDateRange(startDate, endDate) {
   const end = new Date(endDate + 'T12:00:00');
   while (cur <= end) { dates.push(cur.toISOString().slice(0,10)); cur.setDate(cur.getDate()+1); }
   return dates;
-}
-
-// --- VERANoticesCard ---------------------------------------------------------
-// Travel legs are keyed on the location pair, matching how they are cached
-// server-side, so the same normalisation has to be applied here.
-function legKeyLite_(a, b) {
-  return String(a||'').replace(/\s+/g,' ').trim().toLowerCase() + '|' +
-         String(b||'').replace(/\s+/g,' ').trim().toLowerCase();
-}
-function legMapLite_(legs) {
-  const m = {};
-  (legs || []).forEach(l => { m[legKeyLite_(l.from, l.to)] = l; });
-  return m;
-}
-function legBetweenLite_(map, a, b) {
-  const l = map[legKeyLite_(a && a.location, b && b.location)];
-  return (l && l.driveMins != null) ? l : null;
-}
-function minsToMinsLite_(t) {
-  const m = String(t||'').match(/(\d{1,2}):(\d{2})/);
-  return m ? (+m[1])*60 + (+m[2]) : 0;
-}
-// Free-flow times carry no traffic, so flag at 70% of the gap rather than 100% —
-// the margin absorbs traffic instead of saying you are fine until you are not.
-// Same threshold as the full dashboard.
-const LITE_TIGHT_RATIO = 0.7;
-// Lite is the condensed view. A "~3m drive" line on every pair is noise in
-// something meant to be skimmed, so only journeys worth planning around show.
-const LITE_MIN_SHOWN_DRIVE = 10;
-
-function VERANoticesCard({ trip, itinerary, tripMeta, legs }) {
-  if (!itinerary || !itinerary.items || !trip.startDate || !trip.endDate) return null;
-  // Collapsed, or three competing holds make a day look full and suppress the
-  // very notices ("no accommodation planned") this card exists to raise.
-  const items = collapseOptionGroups(itinerary.items);
-  const dates = tripDateRange(trip.startDate, trip.endDate);
-  if (dates.length < 2) return null;
-  const notices = [];
-  const out = tripMeta?.outboundMode || '';
-  const ret = tripMeta?.returnMode || '';
-
-  if (!SELF_TRANSPORT.has(out)) {
-    const arrDay = dates[0];
-    if (!items.some(i => i.date === arrDay && TRANSPORT_TYPES_SET.has(i.type)))
-      notices.push({ icon:'✈', date: arrDay, msg:'No arrival transport planned' });
-  }
-  if (!SELF_TRANSPORT.has(ret)) {
-    const depDay = dates[dates.length-1];
-    if (!items.some(i => i.date === depDay && TRANSPORT_TYPES_SET.has(i.type)))
-      notices.push({ icon:'✈', date: depDay, msg:'No departure transport planned' });
-  }
-  for (const date of dates.slice(1, -1)) {
-    const has = items.some(i => {
-      if (!HOTEL_TYPES_SET.has(i.type)) return false;
-      if (i.date === date) return true;
-      try {
-        const m = JSON.parse(i.metadata||'{}');
-        return m.checkoutDate && i.date <= date && m.checkoutDate > date;
-      } catch(e) { return false; }
-    });
-    if (!has) notices.push({ icon:'🏨', date, msg:'No accommodation planned' });
-  }
-
-  // Tight connections: a leg that eats most of the gap is the same class of
-  // problem as a missing hotel — something to act on — so it belongs in this
-  // list rather than in a decorative panel of its own.
-  {
-    const lmap = legMapLite_(legs);
-    const byDay = {};
-    items.forEach(i => {
-      if (!i.date || !i.startTime) return;
-      (byDay[i.date] = byDay[i.date] || []).push(i);
-    });
-    Object.keys(byDay).forEach(d => {
-      const day = byDay[d].slice().sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
-      for (let k = 0; k < day.length - 1; k++) {
-        const leg = legBetweenLite_(lmap, day[k], day[k+1]);
-        if (!leg) continue;
-        const gap = minsToMinsLite_(day[k+1].startTime) - minsToMinsLite_(day[k].endTime || day[k].startTime);
-        if (gap <= 0 || leg.driveMins <= gap * LITE_TIGHT_RATIO) continue;
-        notices.push({ icon:'⚠', date: d,
-          msg: '"' + day[k+1].title + '" is ~' + leg.driveMins + 'm away — only ' + gap + 'm after "' + day[k].title + '"' });
-      }
-    });
-  }
-  if (!notices.length) return null;
-  return (
-    <div style={{background:'#0a1628',border:'1px solid #1e3a5a',borderRadius:8,
-      padding:'11px 14px',marginBottom:12}}>
-      <div style={{fontWeight:600,color:'#8ab4f8',fontSize:12,marginBottom:6}}>💡 VERA Notices</div>
-      {notices.map((n,i) => {
-        const label = new Date(n.date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
-        return (
-          <div key={i} style={{fontSize:12,color:'#e05a5a',display:'flex',gap:6,marginBottom:3}}>
-            <span>{n.icon}</span><span>{label}: {n.msg}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 // --- UsefulToKnowCard --------------------------------------------------------
@@ -7189,8 +7086,8 @@ function UsefulToKnowCard({ insights }) {
 // buildTripSummary_ is pure, so test_tripsummary.js runs it in node; the same
 // test checks the two copies of this block match, marker to marker.
 var TS_STAY_TYPES={hotel:1,arranged_stay:1,cruise:1};
-var TS_MOVE_TYPES={flight:1,train:1,bus:1,ferry:1,car:1};
-var TS_SELF_TRANSPORT={road_trip:1};
+var TS_MOVE_TYPES={flight:1,train:1,bus:1,ferry:1,car:1,transport:1,rental_car:1,driving:1};
+var TS_SELF_TRANSPORT={road_trip:1,rental_car:1};// you drive yourself: nothing to book to get there
 var TS_TIGHT_RATIO=0.7;// free-flow drive times carry no traffic, so flag at 70% of the gap
 function tsMeta_(it){try{return JSON.parse((it&&it.metadata)||'{}')||{};}catch(e){return{};}}
 function tsAddDays_(iso,n){var d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
@@ -7423,6 +7320,49 @@ function TripSummaryView(props){
           h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Packing'),
           h('button',{type:'button',className:'ts-packing',onClick:props.onGoToPacking,style:{alignSelf:'flex-start',minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#8ab4f8',fontWeight:600,fontSize:13,cursor:'pointer'}},'Open the packing list')))));
 }
+// ── Agenda parts: what sits between and after a day's items ──
+// Free time and tight connections between consecutive timed items, keyed by the
+// item they follow. Getting there is not free time: the cached drive is taken
+// off the gap, and a drive over 70% of the gap is a tight connection instead.
+function tsDayBreaks_(dayItems,legs){
+  var legMap={};(legs||[]).forEach(function(l){legMap[tsLegKey_(l.from,l.to)]=l;});
+  var timed=(dayItems||[]).filter(function(it){return it&&it.startTime;});var out={};
+  for(var k=0;k<timed.length-1;k++){var a=timed[k],b=timed[k+1];
+    var gap=tsMins_(b.startTime)-tsMins_(a.endTime||a.startTime);if(!(gap>0))continue;
+    var leg=legMap[tsLegKey_(a.location,b.location)];var drive=leg&&leg.driveMins!=null?leg.driveMins:0;
+    var hm=function(m){var h=Math.floor(m/60),r=m%60;return (h?h+'h':'')+(h&&r?' ':'')+(r?(h&&r<10?'0':'')+r+'m':'')||'0m';};
+    if(drive>0&&drive>gap*TS_TIGHT_RATIO){(out[a.id]=out[a.id]||[]).push({kind:'tight',text:'Tight connection: "'+(b.title||'next stop')+'" is ~'+drive+' min away, with '+gap+' min to get there'});continue;}
+    var free=gap-drive;if(free>=60)(out[a.id]=out[a.id]||[]).push({kind:'free',text:hm(free)+' free'+(drive?' · ~'+drive+' min drive'+(leg.walkMins!=null&&leg.walkMins<=25?' / '+leg.walkMins+' min walk':''):'')});
+  }
+  return out;
+}
+function TsBreak(props){var b=props.b;var tight=b.kind==='tight';
+  return React.createElement('div',{className:'ts-break ts-break-'+b.kind,style:tight
+    ?{margin:'4px 0',padding:'7px 10px',borderRadius:8,background:'#33280f',border:'1px solid #6e5420',color:'#f6dc97',fontSize:12}
+    :{margin:'2px 0 2px 64px',padding:'3px 10px',borderLeft:'2px dotted #2f6b3e',color:'#8fc9a0',fontSize:12}},b.text);}
+function tsWithBreaks_(breaks,row){if(!breaks||!breaks.length)return row;
+  return React.createElement(React.Fragment,{key:row.key},row,breaks.map(function(b,i){return React.createElement(TsBreak,{key:i,b:b});}));}
+// A day header takes its pill's colour, and stays in view while the day scrolls.
+function tsDayHeadStyle_(summary,date){var d=((summary&&summary.days)||[]).filter(function(x){return x.date===date;})[0];var hl=d?d.health:'ok';
+  return Object.assign({position:'sticky',top:0,zIndex:2,background:'#0d1628',borderRadius:6,padding:'6px 8px'},
+    hl==='red'?{background:'#3a1218',boxShadow:'inset 0 0 0 1px #e05a5a'}:hl==='amber'?{background:'#33280f',boxShadow:'inset 0 0 0 1px #e2b54a'}:{});}
+function TsAgendaToolbar(props){return React.createElement('div',{className:'ts-agenda-toolbar',style:{display:'flex',justifyContent:'flex-end',gap:8,flexWrap:'wrap',margin:'8px 0 12px'}},
+  React.createElement('button',{type:'button',className:'ts-add-item',onClick:function(){props.onAdd();},disabled:props.busy,
+    style:{minHeight:40,padding:'0 16px',borderRadius:8,border:'none',background:'#8ab4f8',color:'#0a1428',fontWeight:700,fontSize:13,cursor:'pointer'}},'+ Add item'));}
+// The end of a day: a red slot for a night with nowhere to sleep, amber for a
+// missing arrival or departure, then "+ Add to <day>". Each fills in the form.
+function TsDayEnd(props){var h=React.createElement;var s=props.summary||{};var d=props.date;var days=s.days||[];if(!days.length)return null;
+  var first=days[0].date,last=days[days.length-1].date;var add=function(x){return function(){props.onAdd(x);};};
+  var slot=function(cls,style,text,btn,defaults){return h('div',{className:'ts-slot '+cls,style:Object.assign({margin:'8px 0 4px',padding:'10px 12px',borderRadius:10,fontSize:13,display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',flexWrap:'wrap'},style)},
+    h('span',null,text),h('button',{type:'button',onClick:add(defaults),disabled:props.busy,style:{minHeight:36,padding:'0 12px',borderRadius:8,background:'transparent',border:'1px solid currentColor',color:'inherit',fontWeight:600,fontSize:12,cursor:'pointer'}},btn));};
+  var noStay=((s.nights||{}).missing||[]).indexOf(d)!==-1;
+  return h(React.Fragment,null,
+    noStay&&slot('ts-slot-nostay',{border:'1.5px dashed #e05a5a',background:'#2a0d12',color:'#ffc2c2'},'No place to sleep tonight.','Add a stay',{date:d,type:'hotel'}),
+    d===first&&(s.ends||{}).arrival===false&&slot('ts-slot-noarrival',{border:'1px solid #6e5420',background:'#221a08',color:'#f6dc97'},'No arrival transport planned.','Add transport',{date:d,type:'flight'}),
+    d===last&&(s.ends||{}).departure===false&&slot('ts-slot-nodeparture',{border:'1px solid #6e5420',background:'#221a08',color:'#f6dc97'},'No departure transport planned.','Add transport',{date:d,type:'flight'}),
+    h('button',{type:'button',className:'ts-add-day',onClick:add({date:d}),disabled:props.busy,
+      style:{alignSelf:'flex-start',minHeight:36,margin:'6px 0 2px',padding:'0 12px',borderRadius:8,border:'1px dashed #3b5fa0',background:'transparent',color:'#b9d2ff',fontWeight:600,fontSize:12,cursor:'pointer'}},
+      '+ Add to '+new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})));}
 // ---- /TripSummaryView ----
 
 // --- PackingLitePanel --------------------------------------------------------
@@ -7574,8 +7514,10 @@ function PackingLitePanel({ tripKey, endDate, packingData, apiUrl, apiToken, onR
 }
 
 // --- ItineraryDayView --------------------------------------------------------
-function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDecide, onReopen }) {
+function ItineraryDayView({ trip, itinerary, legs, meta, busy, onAdd, onEdit, onDelete, onDecide, onReopen }) {
   const items = itinerary?.items || [];
+  // One summary drives the day colours and the end-of-day slots, as in the full dashboard.
+  const agendaSum = buildTripSummary_({ trip, items, legs, outboundMode: meta?.outboundMode, returnMode: meta?.returnMode });
   const byDate = {};
   items.forEach(item => {
     const d = item.date || '_undated';
@@ -7603,11 +7545,7 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDe
 
   return (
     <div style={{paddingTop:8}}>
-      <button onClick={onAdd}
-        style={{margin:'0 0 12px 0',padding:'6px 14px',background:'#0d2040',border:'1px solid #3d6fa0',
-          borderRadius:7,color:'#5c9eff',fontSize:13,fontWeight:600,cursor:'pointer',width:'100%'}}>
-        + Add Itinerary Item
-      </button>
+      <TsAgendaToolbar onAdd={onAdd} busy={busy} />
       {dates.length === 0 && (
         <div style={{textAlign:'center',color:'#4d6080',padding:'24px 0',fontSize:13}}>
           No itinerary items yet.
@@ -7621,17 +7559,19 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDe
         const dayItems = (byDate[date] || []).slice()
           .sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
         const dayNum = date === '_undated' ? '' : idx + 1;
+        const rows = groupItineraryOptions(dayItems);
+        const dayBreaks = tsDayBreaks_(rows, legs);
         return (
           <div key={date} id={tsDayId_(trip.tripKey, date)} style={{marginBottom:12,scrollMarginTop:12}}>
-            <div style={{fontSize:12,fontWeight:700,color:'#8ab4f8',padding:'6px 8px',
-              background:'#0a1628',borderRadius:6,marginBottom:4,letterSpacing:'0.03em'}}>
+            <div className="ts-dayhead" style={{fontSize:12,fontWeight:700,color:'#8ab4f8',padding:'6px 8px',
+              background:'#0a1628',borderRadius:6,marginBottom:4,letterSpacing:'0.03em',...tsDayHeadStyle_(agendaSum, date)}}>
               {fmtDayHeader(date, dayNum)}
             </div>
             {dayItems.length === 0 ? (
               <div style={{textAlign:'center',color:'#4d6080',padding:'10px 0',
                 fontSize:12,fontStyle:'italic'}}>No events scheduled</div>
             ) : (
-              groupItineraryOptions(dayItems).map(item => (
+              rows.map(item => tsWithBreaks_(dayBreaks[item.id],
                 <ItinItemRow key={item.id} item={item}
                   onEdit={() => onEdit(item)}
                   onDelete={() => onDelete(item.id)}
@@ -7639,6 +7579,7 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDe
                   onReopen={onReopen} />
               ))
             )}
+            {date !== '_undated' && <TsDayEnd date={date} summary={agendaSum} onAdd={onAdd} busy={busy} />}
           </div>
         );
       })}
@@ -7646,14 +7587,14 @@ function ItineraryDayView({ trip, itinerary, busy, onAdd, onEdit, onDelete, onDe
   );
 }
 
-function AddItineraryItemLiteModal({ mode, item, tripKey, tripStartDate, tripEndDate, onSave, onClose, busy }) {
+function AddItineraryItemLiteModal({ mode, item, tripKey, tripStartDate, tripEndDate, defaults, onSave, onClose, busy }) {
   const isEdit = mode === 'edit';
   let initMeta = {};
   try { if (isEdit && item?.metadata) initMeta = JSON.parse(item.metadata); } catch(e) {}
 
-  const [type, setType]         = useState(isEdit ? (item?.type||'manual') : 'manual');
+  const [type, setType]         = useState(isEdit ? (item?.type||'manual') : (defaults?.type||'manual'));
   const [title, setTitle]       = useState(isEdit ? (item?.title||'') : '');
-  const [date, setDate]         = useState(isEdit ? (item?.date||tripStartDate||'') : (tripStartDate||''));
+  const [date, setDate]         = useState(isEdit ? (item?.date||tripStartDate||'') : (defaults?.date||tripStartDate||''));
   const [startTime, setStart]   = useState(isEdit ? (item?.startTime||'') : '');
   const [endTime, setEnd]       = useState(isEdit ? (item?.endTime||'') : '');
   const [location, setLocation] = useState(isEdit ? (item?.location||'') : '');
@@ -8430,11 +8371,10 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                       onOpenDay={d=>{setTripTab(tripKey,'agenda');setTimeout(()=>{const el=document.getElementById(tsDayId_(tripKey,d));if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},80);}} />
                   ) : (
                     <>
-                      <VERANoticesCard trip={t} itinerary={tripData} tripMeta={meta} legs={travelLegs[tripKey]} />
                       <UsefulToKnowCard insights={flightInsights[tripKey]} />
                       <ItineraryDayView
-                        trip={{...t,tripKey}} itinerary={filteredItin} busy={busy}
-                        onAdd={()=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
+                        trip={{...t,tripKey}} itinerary={filteredItin} busy={busy} legs={travelLegs[tripKey]} meta={meta||{}}
+                        onAdd={defaults=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate,defaults:defaults||null})}
                         onEdit={item=>setModal({mode:'edit',item,tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
                         onDelete={id=>handleDelete(id,tripKey)}
                         onDecide={opt=>handleDecideTripOption(tripKey,opt)}
@@ -8452,7 +8392,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
       {modal && (
         <AddItineraryItemLiteModal
           mode={modal.mode} item={modal.item} tripKey={modal.tripKey}
-          tripStartDate={modal.tripStartDate} tripEndDate={modal.tripEndDate}
+          tripStartDate={modal.tripStartDate} tripEndDate={modal.tripEndDate} defaults={modal.defaults}
           onSave={handleSave} onClose={()=>setModal(null)} busy={busy}
         />
       )}

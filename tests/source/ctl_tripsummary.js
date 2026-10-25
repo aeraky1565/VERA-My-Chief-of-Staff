@@ -36,6 +36,14 @@ const CONTROLS = [
   ['the lite copy drifts', b => ({ [L]: swap(b[L], "'Nothing booked'", "'Not booked'") })],
   ['full: Agenda stays the default', b => ({ [A]: swap(b[A], "React.useState('summary');", "React.useState('agenda');") })],
   ['full: VERA Notices shows on Summary too', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&allNotices.length>0", 'allNotices.length>0') })],
+  // ---- Agenda (stage 2) ----
+  ['any gap counts as free time', both('if(free>=60)(out[a.id]', 'if(free>=0)(out[a.id]')],
+  ['the drive is not taken off free time', both('var free=gap-drive;', 'var free=gap;')],
+  ['full: + Add item is missing from Agenda', b => ({ [A]: swap(b[A], ",viewMode==='agenda'&&/*#__PURE__*/React.createElement(TsAgendaToolbar,{onAdd:onAdd,busy:busy})", '') })],
+  ['full: the add form ignores the day it was opened for', b => ({ [A]: swap(b[A], "React.useState(isEdit?item.date||'':defaults&&defaults.date||'');", "React.useState(isEdit?item.date||'':'');") })],
+  ['full: VERA Notices repeats what each day now shows', b => ({ [A]: swap(b[A], ".filter(function(n){return n.type!=='timeline_gap'&&n.type!=='missing_hotel'&&n.type!=='missing_transport';});", ';') })],
+  ['lite: the add form ignores the day it was opened for', b => ({ [L]: swap(b[L], "(defaults?.date||tripStartDate||'')", "(tripStartDate||'')") })],
+  ['lite: the end-of-day slots are missing', b => ({ [L]: swap(b[L], "{date !== '_undated' && <TsDayEnd date={date} summary={agendaSum} onAdd={onAdd} busy={busy} />}", '') })],
   ['lite: Agenda stays the default', b => ({ [L]: swap(b[L], "tripTabs[tripKey] || 'summary'", "tripTabs[tripKey] || 'agenda'") })],
 ];
 

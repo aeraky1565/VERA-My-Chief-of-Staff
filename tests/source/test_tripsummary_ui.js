@@ -24,6 +24,8 @@ const FX = {
   items: [
     { id: 'f1', type: 'flight', title: 'TP 204 · IAD → LIS', date: D(0), startTime: '18:05', endTime: '06:40', location: 'IAD', metadata: '{}' },
     { id: 'h1', type: 'hotel', title: 'Alfama hotel', date: D(1), location: 'Rua X 12, 1100-001 Lisboa, Portugal', metadata: JSON.stringify({ checkoutDate: D(4) }) },
+    { id: 's1', type: 'city_tour', title: 'Sintra', date: D(2), startTime: '09:00', endTime: '12:00', location: 'Sintra, Portugal' },
+    { id: 's2', type: 'museum', title: 'Tile museum', date: D(2), startTime: '15:00', location: 'Lisbon, Portugal' },
     { id: 'c1', type: 'car', title: 'Taxi to the station', date: D(4), startTime: '10:30', endTime: '10:40', location: 'Alfama hotel' },
     { id: 't1', type: 'train', title: 'Train · Lisbon → Porto', date: D(4), startTime: '11:09', endTime: '14:05', location: 'Santa Apolonia' },
     { id: 'd1', type: 'dining', title: 'Fado tavern', date: D(3), startTime: '20:00', metadata: JSON.stringify({ tentative: true, optionGroup: 'g1', isRepresentative: true, optionCount: 2, decisionStatus: 'open', decideBy: iso(-1) }) },
@@ -89,6 +91,24 @@ async function assertSummary(page) {
   check('…and open on tap, showing the editors', !!(await page.$('#tsprobe .probe-editors')));
 }
 
+async function assertAgenda(page, root, withLegs) {
+  const heads = await page.$$eval(root + ' .ts-dayhead', ns => ns.map(n => getComputedStyle(n).backgroundColor + '|' + getComputedStyle(n).position));
+  check('a header per day, sticky', heads.length === 8 && heads.every(h => /\|sticky$/.test(h)), JSON.stringify(heads));
+  check('headers take their pill\'s colour: red on the empty nights, amber on the decision day', heads[4].startsWith('rgb(58, 18, 24)') && heads[5].startsWith('rgb(58, 18, 24)') && heads[3].startsWith('rgb(51, 40, 15)') && !heads[1].startsWith('rgb(58'), JSON.stringify(heads));
+  check('a red "No place to sleep tonight" slot on each empty night', (await page.$$(root + ' .ts-slot-nostay')).length === 2);
+  check('"+ Add to <day>" after every day', (await page.$$(root + ' .ts-add-day')).length === 8);
+  const t = await page.$eval(root, n => n.innerText);
+  check('free time sits inside its day', /\d+h( \d+m)? free/.test(t));
+  if (withLegs) check('a tight connection sits between the two items it squeezes', /Tight connection: "Train · Lisbon → Porto" is ~35 min away, with 29 min to get there/.test(t), t.slice(0, 200));
+  await tap(page, root + ' .ts-add-item');
+  await page.evaluate((r) => document.querySelector(r + ' .ts-slot-nostay button').click(), root);
+  await page.evaluate((r) => document.querySelectorAll(r + ' .ts-add-day')[2].click(), root);
+  const adds = await page.evaluate(() => window.__adds);
+  check('+ Add item opens a blank form; Add a stay opens a hotel on that night; + Add to <day> sets the date',
+        adds[0] === 'blank' && adds[1].date === D(4) && adds[1].type === 'hotel' && adds[2].date === D(2) && !adds[2].type, JSON.stringify(adds));
+  check('no sideways scroll in Agenda', await noScroll(page));
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -108,9 +128,9 @@ async function assertSummary(page) {
     await page.evaluate((fx) => {
       document.querySelectorAll('#ivprobe').forEach(n => n.remove());
       const host = document.createElement('div'); host.id = 'ivprobe'; document.body.appendChild(host);
-      const noop = () => {};
+      const noop = () => {}; window.__adds = [];
       ReactDOM.createRoot(host).render(React.createElement(ItineraryView, { trip: fx.trip, itinerary: { items: fx.items }, loading: false, busy: false,
-        tripContext: fx.meta, onAdd: noop, onEdit: noop, onDelete: noop, onSetContext: noop, onSetBriefing: noop, onSetTraveler: noop, onSetMode: noop,
+        tripContext: fx.meta, onAdd: d => { window.__adds.push(d === undefined ? 'blank' : d); }, onEdit: noop, onDelete: noop, onSetContext: noop, onSetBriefing: noop, onSetTraveler: noop, onSetMode: noop,
         onLoadContext: noop, onGoToPacking: noop, apiUrl: '', apiToken: '' }));
     }, FX);
     await new Promise(r => setTimeout(r, 300));
@@ -121,6 +141,7 @@ async function assertSummary(page) {
     const landed = await page.evaluate((id) => { const el = document.getElementById(id); return !!el && !document.querySelector('#ivprobe .trip-summary'); },
       await page.evaluate((a) => tsDayId_(a[0], a[1]), [FX.trip.tripKey, D(4)]));
     check('tapping a red day switches to Agenda, where that day is', landed);
+    await assertAgenda(page, '#ivprobe', false);
     check('no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
 
@@ -135,6 +156,15 @@ async function assertSummary(page) {
     await page.addInitScript(() => { localStorage.setItem('vera_url', 'https://vera.test/exec'); localStorage.setItem('vera_token', 'test-token'); });
     await page.goto('https://vera.test/dashboard-lite.html', { waitUntil: 'networkidle' });
     await assertSummary(page);
+    // lite's real Agenda, given the cached drive times
+    await page.evaluate((fx) => {
+      const host = document.createElement('div'); host.id = 'agprobe'; document.body.appendChild(host); window.__adds = [];
+      const noop = () => {};
+      ReactDOM.createRoot(host).render(React.createElement(ItineraryDayView, { trip: fx.trip, itinerary: { items: fx.items }, legs: fx.legs, meta: fx.meta, busy: false,
+        onAdd: d => { window.__adds.push(d === undefined ? 'blank' : d); }, onEdit: noop, onDelete: noop, onDecide: noop, onReopen: noop }));
+    }, FX);
+    await new Promise(r => setTimeout(r, 300));
+    await assertAgenda(page, '#agprobe', true);
     await page.close();
   }
   await browser.close();
