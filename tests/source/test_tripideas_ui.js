@@ -2,7 +2,8 @@
 // over an in-page fake of the trip_ideas API: start an idea from nothing, fill
 // the loose brief, add a simple option (fly in, stay, fly out) and a mixed one
 // (fly → drive → cruise → fly), see each route and its cost against the WILLA
-// budget, favourite one, rule one out, and find it all on the board. Options sit
+// budget, see the cheapest dates in PTO and the typical weather for one,
+// favourite one, rule one out, and find it all on the board. Options sit
 // side by side on a desktop and stack on a phone, with no sideways scroll.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -20,7 +21,20 @@ async function setup(page) {
   await page.evaluate(() => {
     document.querySelectorAll('#tiprobe').forEach(n => n.remove());
     const store = { ideas: [], options: [] }; let n = 0; window.__posts = [];
-    window.apiGet = (u, t, q) => Promise.resolve(q.action === 'trip_ideas' ? { ok: true, ideas: store.ideas.slice(), options: store.options.slice() } : { ok: false });
+    window.__gets = [];
+    const plus = (ymd, n) => { const d = new Date(ymd + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    window.apiGet = (u, t, q) => { window.__gets.push(Object.assign({}, q));
+      if (q.action === 'trip_idea_decide') {
+        const idea = store.ideas.find(x => x.id === q.ideaId) || {};
+        const lengths = String(q.nights).split(',').map(Number).map(n => ({ nights: n, considered: 31, windows: [
+          { start: '2027-05-29', end: plus('2027-05-29', n), nights: n, people: [{ name: 'Ann', days: 4, left: 6 }, { name: 'Bea', days: 4, left: -1 }], holidays: ['Memorial Day'], clash: '' },
+          { start: '2027-05-01', end: plus('2027-05-01', n), nights: n, people: [{ name: 'Ann', days: 5, left: 5 }, { name: 'Bea', days: 5, left: -2 }], holidays: [], clash: 'Beach week' }] }));
+        const normals = Array.from({ length: 12 }, (x, i) => ({ hi: 55 + i, lo: 45 + i, wet: 12 - i }));
+        return new Promise(r => setTimeout(() => r({ ok: true, today: '2027-02-20', months: idea.months, lengths,
+          people: [{ name: 'Ann', found: true, holidayYears: [2027], remaining: { 2027: 10 } }, { name: 'Bea', found: false, remaining: {}, holidayYears: [] }],
+          stops: [{ place: 'Lisbon', name: 'Lisbon', found: true, normals }, { place: 'Algarve', found: false }] }), 300));
+      }
+      return Promise.resolve(q.action === 'trip_ideas' ? { ok: true, ideas: store.ideas.slice(), options: store.options.slice() } : { ok: false }); };
     window.apiPost = (u, t, b) => {
       window.__posts.push(JSON.parse(JSON.stringify(b)));
       const now = new Date(2026, 9, 25, 12, 0, n).toISOString();
@@ -126,6 +140,28 @@ async function scenario(page, label, width) {
   else check(label + ': options stack on a phone', cards[1].top >= cards[0].bottom, JSON.stringify(cards.map(c => [c.top, c.bottom])));
   check(label + ': no sideways scroll with the options', await noScroll(page));
   if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+
+  // The deciders: dates in PTO and typical weather, for the simple option
+  const simpleCard = () => Array.from(document.querySelectorAll('#tiprobe .ti-option')).find(n => /fly in and out/.test(n.innerText));
+  await act(page, (f) => eval(f)().querySelector('.ti-decide-btn').click(), simpleCard.toString());
+  check(label + ': the deciders say they are working', /Working out dates, PTO and weather/.test(await text(page)));
+  const dq = await page.evaluate(() => window.__gets.filter(g => g.action === 'trip_idea_decide').pop());
+  check(label + ': …asking for this option at the lengths worth comparing', dq && dq.ideaId && /^OPT-/.test(dq.optionId) && dq.nights === '7,10,14,21', JSON.stringify(dq));
+  await wait(400);
+  let dt = await page.$eval('#tiprobe .ti-decide', n => n.innerText).catch(() => '');
+  check(label + ': the route\'s own length is picked', await page.$eval('#tiprobe .ti-decide .ti-chip.on', n => n.innerText).catch(() => '') === '10 nights (this route)');
+  check(label + ': the cheapest window first, with what it costs each of you', /Sat, May 29 → Tue, Jun 8/.test(dt) && /CHEAPEST/.test(dt) && /Ann: 4 days off · 6 left/.test(dt) && /Bea: 4 days off · over by 1/.test(dt), dt.slice(0, 500));
+  check(label + ': …the holiday it bridges, and a clash named', /Bridges Memorial Day/.test(dt) && /⚠ Clashes with Beach week/.test(dt));
+  check(label + ': it says whose count is less sure', /Bea's work calendar couldn't be read/.test(dt));
+  check(label + ': typical weather for the brief\'s months, per stop', /Mar\s+Apr\s+May/.test(dt) && /57°\s*\/\s*47°/.test(dt) && /10 rainy d/.test(dt) && /Not a place VERA could find/.test(dt), dt.slice(-600));
+  check(label + ': …and where it comes from', /averages of 2015–2024, as measured/.test(dt));
+  await act(page, () => Array.from(document.querySelectorAll('#tiprobe .ti-decide .ti-chip')).find(b => b.innerText === '14 nights').click());
+  dt = await page.$eval('#tiprobe .ti-decide', n => n.innerText).catch(() => '');
+  check(label + ': another length shows its own windows, with no new request', /Sat, May 29 → Sat, Jun 12/.test(dt) && (await page.evaluate(() => window.__gets.filter(g => g.action === 'trip_idea_decide').length)) === 1, dt.slice(0, 200));
+  check(label + ': no sideways scroll with the deciders open', await noScroll(page));
+  if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe .ti-decide'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-decide-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+  await act(page, (f) => eval(f)().querySelector('.ti-decide-btn').click(), simpleCard.toString());
+  check(label + ': …and they fold away', !(await page.$('#tiprobe .ti-decide')));
 
   // Favourite the mixed one, rule the simple one out
   await act(page, () => Array.from(document.querySelectorAll('#tiprobe .ti-option')).find(n => /Algarve → cruise/.test(n.innerText)).querySelector('.ti-star-btn').click());

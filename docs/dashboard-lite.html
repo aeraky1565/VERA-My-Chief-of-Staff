@@ -7698,6 +7698,26 @@ function tiBlankOption_(ideaId){return {ideaId:ideaId,name:'',source:'manual',fl
 // A quick start for an option's route: one flight in, one stop, one flight home.
 function tiSimpleLegs_(){return [{kind:'move',mode:'fly',from:'Home',to:'',note:''},{kind:'stop',place:'',nights:7,note:''},{kind:'move',mode:'fly',from:'',to:'Home',note:''}];}
 
+// ---- the deciders (trip_idea_decide): PTO windows and typical weather ----
+// Lengths to compare: the option's own nights first, then the brief's ends and the usual 7/10/14 inside its range.
+function tiDecideLengths_(option,idea){var own=tiLegNights_(option&&option.legs),lo=idea&&idea.nightsMin,hi=idea&&idea.nightsMax,out=[];
+  var ok=function(n){return n>0&&n<=60&&(lo==null||n>=lo)&&(hi==null||n<=hi);};
+  if(own>0&&own<=60)out.push(own);[lo,hi,7,10,14].forEach(function(n){if(n!=null&&ok(n)&&out.indexOf(n)===-1)out.push(n);});
+  if(!out.length)out.push(7);return out.slice(0,4).sort(function(a,b){return a-b;});}
+var TI_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function tiDayText_(ymd){var p=String(ymd||'').split('-').map(Number);if(p.length!==3||!p[0])return '';var d=new Date(Date.UTC(p[0],p[1]-1,p[2]));return TI_DAYS[d.getUTCDay()]+', '+TI_MONTHS[p[1]-1]+' '+p[2];}
+function tiWindowText_(w){return tiDayText_(w.start)+' → '+tiDayText_(w.end)+(w.start.slice(0,4)!==w.end.slice(0,4)||w.start.slice(0,4)!==String(new Date().getFullYear())?' '+w.end.slice(0,4):'');}
+// Weather columns: the brief's months (Jan = 0), or the whole year when it has none.
+function tiWeatherCols_(months){var out=[];(months||[]).forEach(function(m){var i=Number(String(m).slice(5,7))-1;if(i>=0&&i<12&&out.indexOf(i)===-1)out.push(i);});
+  return out.length?out.sort(function(a,b){return a-b;}):[0,1,2,3,4,5,6,7,8,9,10,11];}
+function tiPtoWords_(p){var w=(p.name?p.name+': ':'')+p.days+' day'+(p.days===1?'':'s')+' off';if(p.left==null)return w;return w+(p.left<0?' · over by '+(-p.left):' · '+p.left+' left');}
+// Who the counts are less sure for: no work calendar, or no holidays on it yet for that year.
+function tiPtoCaveats_(data,windows){var out=[];(data.people||[]).forEach(function(p){
+    if(!p.found){out.push(p.name+"'s work calendar couldn't be read, so "+p.name+"'s days count every weekday and there is no balance.");return;}
+    var yrs=[];(windows||[]).forEach(function(w){var y=Number(w.start.slice(0,4));if((p.holidayYears||[]).indexOf(y)===-1&&yrs.indexOf(y)===-1)yrs.push(y);});
+    if(yrs.length)out.push('No holidays on '+p.name+"'s work calendar for "+yrs.join(' and ')+' yet, so none are counted.');});return out;}
+function tiTempColor_(f){return f==null?TI.mute:f>=86?'#f6b27a':f>=68?TI.warn:f>=50?TI.ok:TI.acc;}
+
 var TI={bg:'#0a1428',card:'#0d1b3e',br:'#1e3060',deep:'#0a1530',pill:'#13264d',txt:'#dde1f0',hi:'#eef1fb',mute:'#9aa9cc',soft:'#b8c3e0',acc:'#8ab4f8',gold:'#c9a84c',ok:'#8fe0a8',warn:'#f6d27a'};
 function tiBtn_(kind){var base={minHeight:44,padding:'0 14px',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'};
   if(kind==='primary')return Object.assign(base,{border:'none',background:TI.acc,color:TI.bg,fontWeight:700});
@@ -7740,7 +7760,7 @@ function TiCost(props){var h=React.createElement;var cost=props.cost||{};var tot
     fit&&h('span',{className:'ti-fit ti-fit-'+fit,style:{fontSize:12,fontWeight:600,color:fit==='within'?TI.ok:fit==='over'?'#ffb0b0':TI.warn}},
       fit==='within'?'Within the '+tiMoney_(props.budget)+' budget':fit==='over'?'Over the '+tiMoney_(props.budget)+' budget':'Could go over the '+tiMoney_(props.budget)+' budget'));}
 
-function TiOptionCard(props){var h=React.createElement;var o=props.option;var star=o.flag==='star',out=o.flag==='out';var nights=tiLegNights_(o.legs);
+function TiOptionCard(props){var h=React.createElement;var o=props.option;var _dc=React.useState(false),deciding=_dc[0],setDeciding=_dc[1];var star=o.flag==='star',out=o.flag==='out';var nights=tiLegNights_(o.legs);
   var src=(TI_SOURCE.filter(function(s){return s[0]===o.source;})[0]||TI_SOURCE[0])[1];
   var list=function(t,c,arr){return arr.length?h('div',{style:{display:'flex',flexDirection:'column',gap:3,minWidth:0}},h('span',{style:{fontSize:11,fontWeight:700,color:c}},t),arr.map(function(x,i){return h('span',{key:i,style:{fontSize:13,lineHeight:1.4}},x);})):null;};
   return h('div',{className:'ti-option'+(star?' ti-star':''),style:{display:'flex',flexDirection:'column',gap:12,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(star?TI.gold:TI.br),opacity:out?0.7:1,minWidth:0}},
@@ -7762,7 +7782,49 @@ function TiOptionCard(props){var h=React.createElement;var o=props.option;var st
       o.wishes.left.map(function(w,i){return h('span',{key:i,style:{color:TI.warn}},'✕ '+w.name+(w.why?': '+w.why:''));})):null,
     h(TiCost,{cost:o.cost,budget:props.budget}),
     (o.pros.length||o.cons.length)?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},list('FOR',TI.ok,o.pros),list('AGAINST',TI.warn,o.cons)):null,
-    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'ti-edit-option',onClick:props.onEdit,disabled:props.busy,style:tiBtn_()},'Edit')));}
+    deciding&&props.idea&&h(TiDecide,{apiUrl:props.apiUrl,apiToken:props.apiToken,idea:props.idea,option:o}),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      props.idea&&o.id&&h('button',{type:'button',className:'ti-decide-btn','aria-expanded':deciding,onClick:function(){setDeciding(!deciding);},style:tiBtn_(deciding?'primary':'')},deciding?'Hide dates & weather':'📅 Dates, PTO & weather'),
+      h('button',{type:'button',className:'ti-edit-option',onClick:props.onEdit,disabled:props.busy,style:tiBtn_()},'Edit')));}
+
+function TiDecide(props){var h=React.createElement;var lengths=tiDecideLengths_(props.option,props.idea);
+  var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];
+  var own=tiLegNights_(props.option.legs);var _n=React.useState(lengths.indexOf(own)!==-1?own:lengths[0]),sel=_n[0],setSel=_n[1];
+  var load=function(){setData({loading:true});apiGet(props.apiUrl,props.apiToken,{action:'trip_idea_decide',ideaId:props.idea.id,optionId:props.option.id,nights:lengths.join(',')})
+    .then(function(r){setData(r&&r.ok?r:{error:(r&&r.error)||'VERA could not work this out'});}).catch(function(e){setData({error:e.message});});};
+  React.useEffect(load,[props.option.id,lengths.join(',')]);
+  var box={className:'ti-decide',style:{display:'flex',flexDirection:'column',gap:12,padding:12,borderRadius:10,background:TI.deep,border:'1px solid '+TI.br,minWidth:0}};
+  if(data.loading)return h('div',box,h('span',{role:'status',className:'ti-decide-loading',style:{fontSize:13,color:TI.soft}},'Working out dates, PTO and weather… The first look at a place can take a little while.'));
+  if(data.error)return h('div',box,h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},"Couldn't work this out: "+data.error),h('button',{type:'button',onClick:load,style:Object.assign(tiBtn_(),{alignSelf:'flex-start',minHeight:40})},'Try again'));
+  var len=(data.lengths||[]).filter(function(l){return l.nights===sel;})[0]||(data.lengths||[])[0]||{windows:[]};
+  var caveats=tiPtoCaveats_(data,len.windows),cols=tiWeatherCols_(data.months||props.idea.months);
+  var cell={padding:'6px 8px',textAlign:'center',borderTop:'1px solid '+TI.br,whiteSpace:'nowrap'};
+  return h('div',box,
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:TI_EYEBROW},'Cheapest dates in PTO'),
+      h('div',{role:'group','aria-label':'Trip length',style:{display:'flex',gap:6,flexWrap:'wrap'}},lengths.map(function(n){return tiChip_(h,'n'+n,n+' nights'+(n===own?' (this route)':''),n===sel,function(){setSel(n);});})),
+      h('span',{style:{fontSize:12,color:TI.mute}},((props.idea.months||[]).length?'Leaving in '+tiMonthsText_(props.idea.months):'Leaving any time in the next year')+'. Counts every weekday from the day you leave to the day you’re back, less holidays.'),
+      !len.windows.length?h('span',{className:'ti-no-windows',style:{fontSize:13,color:TI.warn}},len.considered?'Every window clashes or overlaps; nothing to suggest.':'No days left to leave on: the brief’s months have passed. Change them in the brief.')
+      :h('div',{className:'ti-windows',style:{display:'flex',flexDirection:'column',gap:8}},len.windows.map(function(w,i){
+        return h('div',{key:w.start,className:'ti-window',style:{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',borderRadius:8,background:TI.card,border:'1px solid '+(w.clash?'#a8862f':i===0?'#4d9f6a':TI.br)}},
+          h('span',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}},h('b',{className:'ti-window-dates',style:{fontSize:14,color:TI.hi}},tiWindowText_(w)),
+            i===0&&!w.clash&&h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.06em',color:TI.ok}},'CHEAPEST')),
+          h('span',{style:{display:'flex',gap:'4px 12px',flexWrap:'wrap',fontSize:13}},w.people.map(function(p,j){return h('span',{key:j,className:'ti-window-pto',style:{color:p.left!=null&&p.left<0?'#ffb0b0':TI.soft}},tiPtoWords_(p));})),
+          w.holidays.length>0&&h('span',{className:'ti-window-holidays',style:{fontSize:12,color:'#f6dc97'}},'Bridges '+w.holidays.join(', ')),
+          w.clash&&h('span',{className:'ti-window-clash',style:{fontSize:12,color:TI.warn}},'⚠ Clashes with '+w.clash));})),
+      caveats.map(function(c,i){return h('span',{key:i,className:'ti-pto-caveat',style:{fontSize:12,color:TI.mute}},c);})),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8,minWidth:0}},
+      h('span',{style:TI_EYEBROW},'Typical weather'),
+      !(data.stops||[]).length?h('span',{style:{fontSize:13,color:TI.mute}},'No stops with a place to look up yet.')
+      :h('div',{className:'ti-weather',style:{overflowX:'auto',minWidth:0}},h('table',{style:{borderCollapse:'collapse',fontSize:12,fontVariantNumeric:'tabular-nums',width:'100%'}},
+        h('thead',null,h('tr',null,h('th',{style:{textAlign:'left',padding:'4px 8px 6px 0',color:TI.mute,fontWeight:600}},'Stop'),cols.map(function(m){return h('th',{key:m,style:{padding:'4px 8px 6px',color:TI.mute,fontWeight:600}},TI_MONTHS[m]);}))),
+        h('tbody',null,data.stops.map(function(s,i){return h('tr',{key:i,className:'ti-weather-row'},
+          h('td',{style:Object.assign({},cell,{textAlign:'left',padding:'6px 8px 6px 0',whiteSpace:'normal',color:TI.hi,fontWeight:600,minWidth:90})},s.place),
+          !s.found?h('td',{colSpan:cols.length,style:Object.assign({},cell,{color:TI.mute,fontStyle:'italic',textAlign:'left'})},'Not a place VERA could find'):
+          cols.map(function(m){var n=s.normals&&s.normals[m];return h('td',{key:m,style:cell},n?h('span',{style:{display:'flex',flexDirection:'column',gap:1}},
+            h('span',null,h('b',{style:{color:tiTempColor_(n.hi)}},n.hi+'°'),h('span',{style:{color:TI.mute}},' / '+n.lo+'°')),
+            n.wet!=null&&h('span',{style:{fontSize:11,color:TI.mute}},n.wet+' rainy d')):'—');}));})))),
+      (data.stops||[]).length>0&&h('span',{style:{fontSize:11,color:TI.mute}},'High / low in °F and rainy days in a typical month: averages of 2015–2024, as measured (Open-Meteo).')));}
 
 function TiOptionEditor(props){var h=React.createElement;
   var _s=React.useState(function(){var o=JSON.parse(JSON.stringify(props.option));o.prosText=(o.pros||[]).join('\n');o.consText=(o.cons||[]).join('\n');return o;}),o=_s[0],setO=_s[1];
@@ -7945,7 +8007,7 @@ function TripIdeasView(props){var h=React.createElement;
     var opts=data.options.filter(function(o){return o.ideaId===idea.id;}).sort(function(a,b){return (a.flag==='star'?0:1)-(b.flag==='star'?0:1)||String(a.created||'').localeCompare(String(b.created||''));});
     var live=opts.filter(function(o){return o.flag!=='out';}),out=opts.filter(function(o){return o.flag==='out';});
     var card=function(o){return editing&&editing.id===o.id?h(TiOptionEditor,{key:o.id+'e',option:o,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption})
-      :h(TiOptionCard,{key:o.id,option:o,budget:idea.budget,busy:busy,onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
+      :h(TiOptionCard,{key:o.id,option:o,idea:idea,apiUrl:props.apiUrl,apiToken:props.apiToken,budget:idea.budget,busy:busy,onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
     return h('div',wrap,
       h('button',{type:'button',className:'ti-back',onClick:function(){setEditing(null);setView({mode:'board'});},style:{alignSelf:'flex-start',background:'none',border:'none',color:TI.acc,fontSize:14,fontWeight:600,cursor:'pointer',minHeight:40,padding:0}},'← Trip ideas'),
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}},

@@ -193,6 +193,94 @@ console.log('\nAsk VERA, end to end');
   check('an idea that does not exist is refused', run('webAskVeraTripIdea_({ ideaId: "IDEA-NOPE" })').ok === false);
 }
 
+console.log('\nthe deciders: PTO windows');
+{
+  const MEM = { '2027-05-31': 'Memorial Day' };
+  S.MEM = MEM;
+  const c1 = run('tiPtoCost_("2027-05-29", 7, MEM)');
+  check('a week from Saturday to Saturday costs its five weekdays, less a holiday it bridges', c1.days === 4 && c1.bridged.join() === 'Memorial Day', JSON.stringify(c1));
+  check('the day you leave and the day you are back both count', run('tiPtoCost_("2027-05-14", 7, {})').days === 6);
+  check('a weekend away costs nothing', run('tiPtoCost_("2027-05-15", 1, {})').days === 0);
+  S.o = { months: ['2027-05'], nights: 7, today: '2027-02-20',
+    people: [{ name: 'Ann', holidays: MEM, remaining: { 2027: 10 } }, { name: 'Bea', holidays: MEM, remaining: { 2027: 3 } }],
+    busy: [{ label: 'Beach week', start: '2027-05-01', end: '2027-05-09' }] };
+  const w = run('tiPtoWindows_(o)');
+  check('every departure day in the months is costed', w.considered === 31, w.considered);
+  check('the cheapest window comes first: the one that bridges the holiday', w.windows[0].start === '2027-05-29' && w.windows[0].end === '2027-06-05' && w.windows[0].holidays.join() === 'Memorial Day', JSON.stringify(w.windows[0]));
+  check('…with what it costs each of you and what you would have left', w.windows[0].people[0].days === 4 && w.windows[0].people[0].left === 6 && w.windows[0].people[1].left === -1, JSON.stringify(w.windows[0].people));
+  check('the next pick does not overlap the first', w.windows[1].start === '2027-05-15', w.windows[1].start);
+  check('a window that clashes with a trip on the calendar comes after the clear ones, and names it', w.windows[2].start === '2027-05-01' && w.windows[2].clash === 'Beach week', JSON.stringify(w.windows[2]));
+  check('the picks never overlap one another', w.windows.every((a, i) => w.windows.every((b, j) => i === j || a.end < b.start || b.end < a.start)));
+  check('no more than three picks', w.windows.length === 3);
+  S.o2 = Object.assign({}, S.o, { months: [] });
+  check('no months means any day in the next year', run('tiPtoWindows_(o2)').considered === 366);
+  S.o3 = Object.assign({}, S.o, { months: ['2026-05'] });
+  check('months already past leave nothing to suggest', run('tiPtoWindows_(o3)').windows.length === 0);
+  S.o4 = Object.assign({}, S.o, { people: [] });
+  check('with no one\'s calendar it still counts the weekdays', run('tiPtoWindows_(o4)').windows[0].people[0].days === 5);
+}
+
+console.log('\nthe deciders: typical weather');
+{
+  const time = [], hi = [], lo = [], pr = [];
+  for (let d = 1; d <= 10; d++) { time.push('2015-01-' + String(d).padStart(2, '0')); hi.push(40 + (d % 2 ? 1 : -1)); lo.push(30); pr.push(d % 2 ? 2 : 0); }
+  time.push('2016-01-01'); hi.push(null); lo.push(null); pr.push(0.5);
+  S.daily = { time, temperature_2m_max: hi, temperature_2m_min: lo, precipitation_sum: pr };
+  const n = run('tiClimateNormals_(daily)');
+  check('twelve months, January first', n.length === 12);
+  check('a month\'s high and low are the averages of its days', n[0].hi === 40 && n[0].lo === 30, JSON.stringify(n[0]));
+  check('rainy days (1 mm or more) are scaled to a typical month', n[0].wet === 14, n[0].wet);
+  check('a month with no data is null, not zero', n[6] === null);
+  S.opt = { legs: [{ kind: 'move', mode: 'fly' }, { kind: 'stop', place: 'Lisbon', nights: 3 }, { kind: 'stop', place: 'lisbon', nights: 1 }, { kind: 'stop', place: 'Cruise A · Genoa round trip', nights: 7 },
+    { kind: 'stop', place: 'At sea', nights: 1 }, { kind: 'stop', place: 'Porto', nights: 2 }, { kind: 'stop', place: '', nights: 1 }] };
+  check('the stops to look up: once each, in order, no cruise or sea days', JSON.stringify(run('tiOptionStops_(opt)')) === '["Lisbon","Porto"]', JSON.stringify(run('tiOptionStops_(opt)')));
+  check('lengths asked for: whole nights 1–60, once each, at most four', JSON.stringify(run('tiDecideLengths_("14, 10,14,abc,0,99,7.5,21,5,9")')) === '[14,10,21,5]', JSON.stringify(run('tiDecideLengths_("14, 10,14,abc,0,99,7.5,21,5,9")')));
+}
+
+console.log('\nthe deciders: the endpoint');
+{
+  const made = run('webSaveTripIdea_({ idea: { title: "Lisbon in May", months: ["2027-05"], nightsMin: 5, nightsMax: 10 } })').idea;
+  S.did = made.id;
+  const opt = run('webSaveTripIdeaOption_({ option: { ideaId: did, name: "Lisbon and Porto", legs: [{kind:"move",mode:"fly",from:"Home",to:"LIS"},{kind:"stop",place:"Lisbon",nights:4},{kind:"stop",place:"Porto",nights:3},{kind:"stop",place:"Atlantis",nights:1},{kind:"move",mode:"fly",from:"OPO",to:"Home"}] } })').option;
+  S.oid = opt.id;
+  let fetches = 0, cacheStore = {}, props = {};
+  S.Session = { getScriptTimeZone: () => 'America/New_York' };
+  S.Utilities.formatDate = () => '2027-02-20';
+  S.CacheService = { getScriptCache: () => ({ get: k => cacheStore[k] || null, put: (k, v) => { cacheStore[k] = v; }, remove: k => { delete cacheStore[k]; } }) };
+  S.PropertiesService = { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) };
+  S.readPTOConfig_ = () => ({ calendarName: 'Work A', vacationDays: 20, rolloverDays: 0 });
+  S.readVictoriaPTOConfig_ = () => ({ calendarName: 'Work B', vacationDays: 15, rolloverDays: 0 });   // a calendar this account cannot open
+  S.getCalendarByName_ = n => n === 'Work A' ? {} : null;
+  let ptoReads = 0;
+  S.getPTOEvents_ = c => { ptoReads++; return { events: [], holidays: c.year === 2027 ? [{ label: 'Memorial Day', date: '2027-05-31' }] : [] }; };
+  S.computePTOStats_ = (res, c) => ({ remaining: { vacationDays: c.year === 2027 ? 12 : 4 } });
+  S.getUpcomingTravel_ = () => [{ label: 'Beach week', startDate: '2027-05-01', endDate: '2027-05-09' }];
+  S.geocodePackingDestination_ = p => p === 'Atlantis' ? { lat: 1, lon: 1, name: 'Somewhere Else' } : { lat: p === 'Lisbon' ? 38.72 : 41.15, lon: -9.1, name: p, country: 'Portugal' };
+  S.tripPlaceMatches_ = (loc, name) => String(loc).indexOf(name) !== -1;
+  S.fetchWithHealth_ = (svc, url) => { fetches++; return { getContentText: () => JSON.stringify({ daily: S.daily }) }; };
+  const r = run('webTripIdeaDecide_({ ideaId: did, optionId: oid })');
+  check('it answers for the option', r.ok === true, JSON.stringify(r).slice(0, 200));
+  check('with no length asked for, the route\'s own nights', r.lengths.length === 1 && r.lengths[0].nights === 8, JSON.stringify(r.lengths.map(l => l.nights)));
+  check('the cheapest window bridges a holiday on the work calendar', r.lengths[0].windows[0].holidays.join() === 'Memorial Day', JSON.stringify(r.lengths[0].windows[0]));
+  check('…and avoids the trip already on the calendars', r.lengths[0].windows.filter(w => !w.clash).every(w => w.end < '2027-05-01' || w.start > '2027-05-09'));
+  check('the balance is the one for the year you would go', r.people[0].remaining[2027] === 12 && r.lengths[0].windows[0].people[0].left === 12 - r.lengths[0].windows[0].people[0].days);
+  check('a partner whose PTO cannot be read is marked so, not given a made-up balance', r.people[1].found === false && Object.keys(r.people[1].remaining).length === 0, JSON.stringify(r.people[1]));
+  check('the years with holidays on the calendar are said', r.people[0].holidayYears.join() === '2027', JSON.stringify(r.people[0].holidayYears));
+  check('each stop gets its typical weather', r.stops.length === 3 && r.stops[0].found && r.stops[0].normals[0].hi === 40 && r.stops[1].found, JSON.stringify(r.stops.map(s => s.found)));
+  check('a stop the geocoder answers with somewhere else is not looked up', r.stops[2].found === false && fetches === 2, fetches);
+  const before = ptoReads;
+  const r2 = run('webTripIdeaDecide_({ ideaId: did, optionId: oid, nights: "7,10" })');
+  check('two lengths asked for, two answers', r2.lengths.map(l => l.nights).join() === '7,10');
+  check('a place\'s weather is kept, not fetched again', fetches === 2, fetches);
+  check('…and the work calendars are not read again within hours', ptoReads === before, ptoReads - before);
+  props = {}; S.fetchWithHealth_ = () => null; S.readVictoriaPTOConfig_ = () => { throw new Error('no config'); };
+  const r3 = run('webTripIdeaDecide_({ ideaId: did, optionId: oid })');
+  check('no answer from the weather service: no weather, not made-up weather', r3.ok && r3.stops.every(s => !s.found));
+  check('no PTO settings at all for a partner: marked so', r3.people[1].found === false);
+  check('an option that does not exist is refused', run('webTripIdeaDecide_({ ideaId: did, optionId: "OPT-NOPE" })').ok === false);
+  check('…and so is a missing id', run('webTripIdeaDecide_({ ideaId: did })').ok === false);
+}
+
 // ============ the dashboard block ===================================================
 const START = '// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM', END = '// ---- /TripIdeasView ----';
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
@@ -239,10 +327,20 @@ const cr = code => vm.runInContext(code, C);
   check('the plan says what VERA will do with them', cr('tiAskPlan_(pz)') === 'VERA will build around A Med cruise, one option per choice for which cruise (Cruise A or Cruise B), fit your 2 wishes where they make sense, and say which it left out.', cr('tiAskPlan_(pz)'));
   check('…and with none, that it builds from the brief', /three different shapes from the brief/.test(cr('tiAskPlan_([])')));
   check('each ask gets its own id', cr('tiAskId_()') !== cr('tiAskId_()'));
+  C.dopt = { legs: [{ kind: 'stop', nights: 8 }] };
+  check('lengths to compare: the route\'s own, then the brief\'s ends and 7/10/14 inside its range, in order', JSON.stringify(cr('tiDecideLengths_(dopt, {nightsMin:7, nightsMax:12})')) === '[7,8,10,12]', JSON.stringify(cr('tiDecideLengths_(dopt, {nightsMin:7, nightsMax:12})')));
+  check('…and a route with no nights falls back to a week', JSON.stringify(cr('tiDecideLengths_({legs:[]}, {})')) === '[7,10,14]', JSON.stringify(cr('tiDecideLengths_({legs:[]}, {})')));
+  check('a date reads with its weekday', cr('tiDayText_("2027-05-29")') === 'Sat, May 29');
+  check('weather columns are the brief\'s months, in order', cr('tiWeatherCols_(["2027-05","2026-12","2027-05"]).join()') === '4,11' && cr('tiWeatherCols_([]).length') === 12);
+  check('PTO reads as days off and what is left', cr('tiPtoWords_({name:"Ann",days:4,left:6})') === 'Ann: 4 days off · 6 left' && cr('tiPtoWords_({name:"Bea",days:4,left:-1})') === 'Bea: 4 days off · over by 1');
+  C.dd = { people: [{ name: 'Ann', found: true, holidayYears: [2027] }, { name: 'Bea', found: false }, { name: 'Cy', found: true, holidayYears: [] }] };
+  const cv = cr('tiPtoCaveats_(dd, [{start:"2027-05-29"}])');
+  check('it says whose counts are less sure, and why', cv.length === 2 && /Bea's work calendar couldn't be read/.test(cv[0]) && /No holidays on Cy's work calendar for 2027/.test(cv[1]), JSON.stringify(cv));
   check('the quick route is fly in, stay, fly out', cr('tiSimpleLegs_().map(function(l){return l.kind==="stop"?"stop":l.mode;}).join()') === 'fly,stop,fly');
 }
 
 console.log('\nwiring');
+check('the deciders are wired', /case 'trip_idea_decide':\s+return jsonOut_\(webTripIdeaDecide_\(e\.parameter\)\);/.test(WEB));
 check('Ask VERA is wired', /case 'trip_idea_ask':\s+return jsonOut_\(webAskVeraTripIdea_\(body\)\);/.test(WEB));
 check('the five routes are wired', /case 'trip_ideas':\s+return jsonOut_\(webGetTripIdeas_\(\)\);/.test(WEB)
   && /case 'trip_idea_save':\s+return jsonOut_\(webSaveTripIdea_\(body\)\);/.test(WEB) && /case 'trip_idea_delete':\s+return jsonOut_\(webDeleteTripIdea_\(body\)\);/.test(WEB)

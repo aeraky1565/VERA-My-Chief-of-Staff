@@ -1,4 +1,4 @@
-// Negative controls for Trip Ideas, stage 1 (TripIdeas.js and the shared
+// Negative controls for Trip Ideas, stages 1–3 (TripIdeas.js and the shared
 // TripIdeasView block): revert ONE rule at a time and confirm test_tripideas.js
 // catches it.
 const fs = require('fs'), path = require('path'), cp = require('child_process');
@@ -19,6 +19,23 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripideas.js';
 
 const CONTROLS = [
+  ['a holiday still costs a PTO day', b => ({ [T]: swap(b[T], "if (holidays && holidays[ymd]) bridged.push(holidays[ymd]); else days++;", "if (holidays && holidays[ymd]) bridged.push(holidays[ymd]); days++;") })],
+  ['the day you are back is not counted', b => ({ [T]: swap(b[T], "for (var d = d0; d <= d0 + nights; d++) {", "for (var d = d0; d < d0 + nights; d++) {") })],
+  ['a clash ranks like a clear window', b => ({ [T]: swap(b[T], "return (a.clash ? 1 : 0) - (b.clash ? 1 : 0) || a.most", "return a.most") })],
+  ['the picks may overlap', b => ({ [T]: swap(b[T], "if (picks.some(function(p) { return c.day <= p.day + nights && p.day <= c.day + nights; })) continue;", "") })],
+  ['the months are ignored', b => ({ [T]: swap(b[T], "if (months.length && months.indexOf(start.slice(0, 7)) === -1) continue;", "") })],
+  ['the balance ignores this trip', b => ({ [T]: swap(b[T], "left: left == null ? null : left - c.days", "left: left == null ? null : left") })],
+  ['an unreadable work calendar gets a full allowance', b => ({ [T]: swap(b[T], "  try { if (!getCalendarByName_(cfg.calendarName)) { out.found = false; return out; } } catch (e) { out.found = false; return out; }\n", "") })],
+  ['rainy days are a raw count', b => ({ [T]: swap(b[T], "wet: a.np ? Math.round(a.wet / a.np * LEN[m]) : null", "wet: a.wet") })],
+  ['a month with no data reads as zero', b => ({ [T]: swap(b[T], "if (!a.nh || !a.nl) return null;", "if (!a.nh || !a.nl) return { hi: 0, lo: 0, wet: 0 };") })],
+  ['a cruise is looked up as a place', b => ({ [T]: swap(b[T], "var TI_NOT_A_STOP_ = /\\b(at sea|sea days?|cruise|on ?board|aboard)\\b/i;", "var TI_NOT_A_STOP_ = /\\b(at sea|sea days?|on ?board|aboard)\\b/i;") })],
+  ['the geocoder\'s guess is trusted', b => ({ [T]: swap(b[T], "if (!g || g.lat == null || !tripPlaceMatches_(place, g.name))", "if (!g || g.lat == null)") })],
+  ['the weather is fetched every time', b => ({ [T]: swap(b[T], "var fresh = kept && kept.at &&", "var fresh = false &&") })],
+  ['the work calendars are read every time', b => ({ [T]: swap(b[T], "try { got = JSON.parse(cache.get(key) || 'null'); } catch (e) {}", "") })],
+  ['the decide route is missing', b => ({ [W]: swap(b[W], "      case 'trip_idea_decide':      return jsonOut_(webTripIdeaDecide_(e.parameter));\n", '') })],
+  ['the route\'s own length is not compared', both("if(own>0&&own<=60)out.push(own);", "")],
+  ['every month is a weather column', both("return out.length?out.sort(function(a,b){return a-b;}):[0,1,2,3,4,5,6,7,8,9,10,11];}", "return [0,1,2,3,4,5,6,7,8,9,10,11];}")],
+  ['an unread calendar goes unsaid', both("if(!p.found){out.push(", "if(!p.found){return;out.push(")],
   ['an unknown mode drops the leg', b => ({ [T]: swap(b[T], "return { kind: 'move', mode: tiOneOf_(l.mode, TI_MODES_, 'other'),", "if (TI_MODES_.indexOf(l.mode) === -1) return null; return { kind: 'move', mode: l.mode,") })],
   ['a backwards nights range is kept', b => ({ [T]: swap(b[T], "if (lo != null && hi != null && lo > hi) { var t = lo; lo = hi; hi = t; }\n  var budget", "var budget") })],
   ['a backwards cost range is kept', b => ({ [T]: swap(b[T], "    if (lo > hi) { var t = lo; lo = hi; hi = t; }\n    out[k]", "    out[k]") })],

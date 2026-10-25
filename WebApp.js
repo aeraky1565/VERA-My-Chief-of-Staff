@@ -384,6 +384,7 @@ function doGet(e) {
       case 'trip_documents':        return jsonOut_(webGetTripDocuments_(e.parameter));
       case 'trip_reach':            return jsonOut_(webTripReach_(e.parameter));
       case 'trip_ideas':            return jsonOut_(webGetTripIdeas_());
+      case 'trip_idea_decide':      return jsonOut_(webTripIdeaDecide_(e.parameter));
       case 'trip_weather':          return jsonOut_(webTripWeather_(e.parameter));
       case 'trip_sheet':            return jsonOut_(webTripSheet_(e.parameter));
       case 'trip_ics':              return jsonOut_(webTripIcs_(e.parameter));

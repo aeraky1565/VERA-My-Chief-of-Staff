@@ -498,3 +498,210 @@ function tiAsk_(body) {
     return { ok: true, options: saved, idea: idea };
   });
 }
+
+// ---- The deciders: PTO windows and typical weather ----------------------------
+//
+// GET trip_idea_decide answers the two questions a dateless option leaves open,
+// from what VERA can measure rather than what a model would guess:
+//   when:    the cheapest windows in PTO for each length, for both of you, with
+//            the holidays they bridge, what each would have left, and any trip
+//            already on the calendars that they would clash with;
+//   weather: each stop's typical high, low and rainy days per month, from ten
+//            years of measured daily weather (Open-Meteo's archive).
+// The budget answer (within / over WILLA's number) is the dashboard's own.
+
+var TI_DECIDE_MAX_LENGTHS_ = 4;
+var TI_DECIDE_MAX_STOPS_   = 8;
+var TI_DECIDE_WINDOWS_     = 3;
+var TI_CLIMATE_FROM_ = '2015-01-01', TI_CLIMATE_TO_ = '2024-12-31';   // ten full years
+var TI_CLIMATE_KEEP_DAYS_  = 180;
+
+/** Pure: 'yyyy-MM-dd' ↔ a day number (days since 1970-01-01, UTC, so no clock shifts). */
+function tiDay_(ymd) { var p = String(ymd).split('-').map(Number); return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 864e5); }
+function tiYmd_(day) { return new Date(day * 864e5).toISOString().slice(0, 10); }
+
+/**
+ * Pure: the PTO one person spends on a trip leaving on `start` and home `nights`
+ * later: every weekday from the day you leave to the day you are back, less the
+ * holidays on their work calendar ({ymd: label}), which the trip bridges.
+ */
+function tiPtoCost_(start, nights, holidays) {
+  var d0 = tiDay_(start), days = 0, bridged = [];
+  for (var d = d0; d <= d0 + nights; d++) {
+    var dow = (d + 4) % 7;   // 1970-01-01 was a Thursday
+    if (dow === 0 || dow === 6) continue;
+    var ymd = tiYmd_(d);
+    if (holidays && holidays[ymd]) bridged.push(holidays[ymd]); else days++;
+  }
+  return { days: days, bridged: bridged };
+}
+
+/**
+ * Pure: the cheapest windows for one length.
+ * o = {months: ['yyyy-MM'] (none = the next year), nights, today: 'yyyy-MM-dd',
+ *      people: [{name, holidays: {ymd: label}, remaining: {yyyy: days}}],
+ *      busy: [{label, start, end}], max}
+ * Every departure day from tomorrow on, inside the months, is costed. The best
+ * clear no clash, then cost the most-spending person least, then cost the two of
+ * you least, then come soonest; the picks never overlap one another.
+ */
+function tiPtoWindows_(o) {
+  var nights = Math.max(1, Math.min(60, Number(o.nights) || 7)), today = tiDay_(o.today);
+  var months = (o.months || []).filter(function(m) { return /^\d{4}-\d{2}$/.test(m); });
+  var people = (o.people || []).length ? o.people : [{ name: '', holidays: {}, remaining: {} }];
+  var cands = [];
+  for (var d = today + 1; d <= today + 366; d++) {
+    var start = tiYmd_(d);
+    if (months.length && months.indexOf(start.slice(0, 7)) === -1) continue;
+    var end = tiYmd_(d + nights), seen = {}, holidays = [];
+    var cost = people.map(function(p) {
+      var c = tiPtoCost_(start, nights, p.holidays);
+      c.bridged.forEach(function(h) { if (!seen[h]) { seen[h] = 1; holidays.push(h); } });
+      var left = p.remaining && p.remaining[start.slice(0, 4)];
+      return { name: p.name, days: c.days, left: left == null ? null : left - c.days };
+    });
+    var clash = (o.busy || []).filter(function(b) { return b.start <= end && b.end >= start; })[0];
+    cands.push({ start: start, end: end, nights: nights, day: d, people: cost, holidays: holidays, clash: clash ? clash.label : '',
+      most: Math.max.apply(null, cost.map(function(c) { return c.days; })), sum: cost.reduce(function(n, c) { return n + c.days; }, 0) });
+  }
+  cands.sort(function(a, b) { return (a.clash ? 1 : 0) - (b.clash ? 1 : 0) || a.most - b.most || a.sum - b.sum || a.day - b.day; });
+  var picks = [];
+  for (var k = 0; k < cands.length && picks.length < (o.max || TI_DECIDE_WINDOWS_); k++) {
+    var c = cands[k];
+    if (picks.some(function(p) { return c.day <= p.day + nights && p.day <= c.day + nights; })) continue;
+    delete c.most; delete c.sum; picks.push(c);
+  }
+  picks.forEach(function(p) { delete p.day; });
+  return { windows: picks, considered: cands.length };
+}
+
+/**
+ * Pure: Open-Meteo's daily history → twelve monthly normals, January first:
+ * {hi, lo} (°F, the average daily high and low) and wet (the rainy days, 1 mm or
+ * more, in a typical month), or null for a month with no data.
+ */
+function tiClimateNormals_(daily) {
+  daily = daily || {};
+  var t = daily.time || [], hi = daily.temperature_2m_max || [], lo = daily.temperature_2m_min || [], pr = daily.precipitation_sum || [];
+  var acc = []; for (var m = 0; m < 12; m++) acc.push({ hi: 0, nh: 0, lo: 0, nl: 0, wet: 0, np: 0 });
+  for (var i = 0; i < t.length; i++) {
+    var a = acc[Number(String(t[i]).slice(5, 7)) - 1]; if (!a) continue;
+    if (hi[i] != null) { a.hi += hi[i]; a.nh++; }
+    if (lo[i] != null) { a.lo += lo[i]; a.nl++; }
+    if (pr[i] != null) { a.np++; if (pr[i] >= 1) a.wet++; }
+  }
+  var LEN = [31, 28.25, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return acc.map(function(a, m) {
+    if (!a.nh || !a.nl) return null;
+    return { hi: Math.round(a.hi / a.nh), lo: Math.round(a.lo / a.nl), wet: a.np ? Math.round(a.wet / a.np * LEN[m]) : null };
+  });
+}
+
+/** Pure: the stops of an option worth looking up, once each, in route order. */
+function tiOptionStops_(option) {
+  var seen = {}, out = [];
+  ((option && option.legs) || []).forEach(function(l) {
+    if (!l || l.kind !== 'stop') return;
+    var place = tiStr_(l.place, 120), key = place.toLowerCase();
+    if (!place || seen[key] || TI_NOT_A_STOP_.test(place)) return;
+    seen[key] = 1; out.push(place);
+  });
+  return out.slice(0, TI_DECIDE_MAX_STOPS_);
+}
+// A cruise or a day at sea is a stop on the route but not a place with weather.
+var TI_NOT_A_STOP_ = /\b(at sea|sea days?|cruise|on ?board|aboard)\b/i;
+
+/** Pure: the lengths asked for: whole nights 1–60, once each, at most four. */
+function tiDecideLengths_(raw) {
+  var out = [];
+  String(raw == null ? '' : raw).split(',').forEach(function(s) {
+    var n = Number(String(s).trim());
+    if (String(s).trim() && n === Math.floor(n) && n >= 1 && n <= 60 && out.indexOf(n) === -1) out.push(n);
+  });
+  return out.slice(0, TI_DECIDE_MAX_LENGTHS_);
+}
+
+/** One person's holidays and PTO left, per year, from their work calendar (cached for 6 hours). */
+function tiPtoPerson_(name, readCfg, years) {
+  var out = { name: name, holidays: {}, remaining: {}, holidayYears: [], found: true };
+  var cfg;
+  try { cfg = readCfg(); } catch (e) { out.found = false; return out; }
+  // No work calendar to read means no holidays and no balance: say so, rather than
+  // show a full year's allowance that nobody checked.
+  try { if (!getCalendarByName_(cfg.calendarName)) { out.found = false; return out; } } catch (e) { out.found = false; return out; }
+  var cache = CacheService.getScriptCache();
+  years.forEach(function(y) {
+    var key = 'ti_pto_' + name.toLowerCase().replace(/[^a-z]/g, '') + '_' + y, got = null;
+    try { got = JSON.parse(cache.get(key) || 'null'); } catch (e) {}
+    if (!got) {
+      try {
+        var c = Object.assign({}, cfg, { year: y }), res = getPTOEvents_(c), h = {};
+        (res.holidays || []).forEach(function(x) { h[x.date] = x.label; });
+        got = { h: h, rem: computePTOStats_(res, c, new Date()).remaining.vacationDays };
+        cache.put(key, JSON.stringify(got), 21600);
+      } catch (e) { Logger.log('trip_idea_decide: PTO for one person, one year, unavailable'); return; }
+    }
+    Object.keys(got.h).forEach(function(d) { out.holidays[d] = got.h[d]; });
+    if (Object.keys(got.h).length) out.holidayYears.push(y);
+    out.remaining[y] = got.rem;
+  });
+  return out;
+}
+
+/** A place's monthly normals, kept in script properties for half a year: they barely move. */
+function tiClimate_(place) {
+  var g = null;
+  try { g = geocodePackingDestination_(place); } catch (e) {}
+  if (!g || g.lat == null || !tripPlaceMatches_(place, g.name)) return { place: place, found: false };
+  var key = 'TI_CLIMATE_' + Number(g.lat).toFixed(1) + '_' + Number(g.lon).toFixed(1);
+  var props = PropertiesService.getScriptProperties(), kept = null;
+  try { kept = JSON.parse(props.getProperty(key) || 'null'); } catch (e) {}
+  var fresh = kept && kept.at && (Date.now() - new Date(kept.at).getTime()) < TI_CLIMATE_KEEP_DAYS_ * 864e5;
+  if (!fresh) {
+    var resp = fetchWithHealth_('open-meteo', 'https://archive-api.open-meteo.com/v1/archive?latitude=' + g.lat + '&longitude=' + g.lon +
+      '&start_date=' + TI_CLIMATE_FROM_ + '&end_date=' + TI_CLIMATE_TO_ + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&temperature_unit=fahrenheit');
+    var normals = null;
+    if (resp) { try { normals = tiClimateNormals_(JSON.parse(resp.getContentText()).daily); } catch (e) {} }
+    if (!normals || !normals.some(Boolean)) return kept ? { place: place, name: g.name, found: true, normals: kept.m } : { place: place, name: g.name, found: false };
+    kept = { at: new Date().toISOString(), m: normals };
+    try { props.setProperty(key, JSON.stringify(kept)); } catch (e) {}
+  }
+  return { place: place, name: g.name, country: g.country || '', found: true, normals: kept.m };
+}
+
+/**
+ * GET trip_idea_decide?ideaId&optionId&nights=10,14 → for one option:
+ * {ok, today, people: [{name, remaining, holidayYears, found}],
+ *  lengths: [{nights, windows, considered}], stops: [{place, name, found, normals}]}
+ */
+function webTripIdeaDecide_(p) {
+  p = p || {};
+  var id = tiStr_(p.ideaId, 40), optId = tiStr_(p.optionId, 40);
+  if (!id || !optId) return { ok: false, error: 'ideaId and optionId required' };
+  var idea = tiGetIdea_(id);
+  if (!idea) return { ok: false, error: 'That idea no longer exists' };
+  var option = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_).filter(function(o) { return o.id === optId && o.ideaId === id; })[0];
+  if (!option) return { ok: false, error: 'That option no longer exists' };
+  var lengths = tiDecideLengths_(p.nights);
+  if (!lengths.length) lengths = [tiInt_(tiOptionNights_(option), 1, 60) || idea.nightsMin || 7];
+  var today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var ty = Number(today.slice(0, 4)), years = [ty, ty + 1];
+  var people = [tiPtoPerson_('Ahmed', readPTOConfig_, years), tiPtoPerson_('Victoria', readVictoriaPTOConfig_, years)];
+  var busy = [];
+  try { busy = (getUpcomingTravel_(readPTOConfig_()) || []).map(function(t) { return { label: t.label, start: t.startDate, end: t.endDate }; }); }
+  catch (e) { Logger.log('trip_idea_decide: upcoming trips unavailable'); }
+  var out = lengths.map(function(n) {
+    var w = tiPtoWindows_({ months: idea.months, nights: n, today: today, people: people, busy: busy });
+    return { nights: n, windows: w.windows, considered: w.considered };
+  });
+  var stops = tiOptionStops_(option).map(tiClimate_);
+  Logger.log('trip_idea_decide: ' + out.length + ' lengths, ' + stops.length + ' stops, ' + busy.length + ' trips on the calendars');
+  return { ok: true, today: today, months: idea.months,
+    people: people.map(function(x) { return { name: x.name, remaining: x.remaining, holidayYears: x.holidayYears, found: x.found }; }),
+    lengths: out, stops: stops };
+}
+
+/** Pure: the nights an option's stops add up to. */
+function tiOptionNights_(option) {
+  return ((option && option.legs) || []).reduce(function(n, l) { return n + (l && l.kind === 'stop' ? Number(l.nights) || 0 : 0); }, 0);
+}
