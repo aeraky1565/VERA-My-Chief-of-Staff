@@ -156,6 +156,63 @@ async function assertHomeCard(page) {
   check('no sideways scroll with the travel card', await noScroll(page));
 }
 
+// Share or export, opened from Agenda's toolbar, with the API, new windows and
+// downloads all recorded instead of done.
+async function assertShare(page, lite) {
+  await page.evaluate(([fx, lite]) => new Promise(done => {
+    window.__get = []; window.__post = []; window.__win = null; window.__blob = null;
+    window.apiGet = (u, t, q) => { window.__get.push(q); return Promise.resolve(q.action === 'trip_sheet' ? { ok: true, title: 'Lisbon & Porto', html: '<div><b>Trip sheet</b></div>' }
+      : q.action === 'trip_ics' ? { ok: true, filename: 'lisbon-porto.ics', ics: 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n' } : { ok: false }); };
+    window.apiPost = (u, t, b) => { window.__post.push(b); return Promise.resolve({ ok: true, sent: 2 }); };
+    window.open = () => { const w = { written: '', printed: false, closed: false, document: { open() {}, close() {}, write(x) { w.written += x; } }, focus() {}, print() { w.printed = true; }, close() { w.closed = true; } }; window.__win = w; return w; };
+    URL.createObjectURL = b => { window.__blob = b; return 'blob:x'; }; URL.revokeObjectURL = () => {};
+    const host = document.createElement('div'); host.id = 'shprobe'; document.body.appendChild(host); const noop = () => {};
+    const el = lite ? React.createElement(ItineraryDayView, { trip: fx.trip, itinerary: { items: fx.items }, legs: [], meta: fx.meta, who: 'Both', apiUrl: 'https://vera.test/exec', apiToken: 't', busy: false, onAdd: noop, onEdit: noop, onDelete: noop, onDecide: noop, onReopen: noop })
+      : React.createElement(ItineraryView, { trip: fx.trip, itinerary: { items: fx.items }, loading: false, busy: false, tripContext: fx.meta, onAdd: noop, onEdit: noop, onDelete: noop, onSetContext: noop, onSetBriefing: noop, onSetTraveler: noop, onSetMode: noop, onLoadContext: noop, onGoToPacking: noop, apiUrl: 'https://vera.test/exec', apiToken: 't' });
+    ReactDOM.createRoot(host).render(el);
+    setTimeout(() => { if (!lite) Array.from(host.querySelectorAll('button')).find(b => /Agenda/.test(b.innerText)).click(); setTimeout(done, 200); }, 300);
+  }), [FX, lite]);
+  check('Agenda\'s toolbar has Share or export', !!(await page.$('#shprobe .ts-share-open')));
+  await tap(page, '#shprobe .ts-share-open');
+  await new Promise(r => setTimeout(r, 100));
+  check('it opens the share window on Email', !!(await page.$('#shprobe .ts-share')) && /Send to/.test(await page.$eval('#shprobe .ts-share', n => n.innerText)));
+  check('no sideways scroll with it open', await noScroll(page));
+  const setVal = (sel, v) => page.evaluate(([sel, v]) => { const el = document.querySelector(sel); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); }, [sel, v]);
+  await setVal('#shprobe .ts-share-to', 'mom@example.test, dad@example.test');
+  await setVal('#shprobe .ts-share-note', 'Here we are');
+  await tap(page, '#shprobe .ts-share-send');
+  await new Promise(r => setTimeout(r, 150));
+  let st = await page.evaluate(() => ({ post: window.__post, msg: (document.querySelector('#shprobe .ts-share-msg') || {}).innerText }));
+  const pb = st.post[0] || {};
+  check('Send posts the trip, the addresses, the note and the defaults: no confirmations, no notes, calendar file attached',
+        pb.action === 'trip_share_email' && String(pb.to).replace(/\s/g, '') === 'mom@example.test,dad@example.test' && pb.note === 'Here we are' && pb.tripKey === FX.trip.tripKey
+        && pb.include.stays === true && pb.include.confirmations === false && pb.include.notes === false && pb.attachIcs === true && pb.who === 'Both', JSON.stringify(pb));
+  check('…and says who it went to', /Sent to 2 people\. You got a copy\./.test(st.msg || ''), st.msg);
+  await page.evaluate(() => Array.from(document.querySelectorAll('#shprobe .ts-share-mode')).find(b => /Calendar file/.test(b.innerText)).click());
+  await new Promise(r => setTimeout(r, 60));
+  await tap(page, '#shprobe .ts-share-ics');
+  await new Promise(r => setTimeout(r, 150));
+  st = await page.evaluate(() => ({ get: window.__get.filter(q => q.action === 'trip_ics'), blob: window.__blob && window.__blob.type, msg: (document.querySelector('#shprobe .ts-share-msg') || {}).innerText }));
+  check('Calendar file downloads one .ics for the trip', st.get.length === 1 && st.get[0].tripKey === FX.trip.tripKey && st.blob === 'text/calendar' && /Downloaded lisbon-porto\.ics/.test(st.msg || ''), JSON.stringify(st));
+  await page.evaluate(() => Array.from(document.querySelectorAll('#shprobe .ts-share-mode')).find(b => /Print/.test(b.innerText)).click());
+  await new Promise(r => setTimeout(r, 60));
+  await tap(page, '#shprobe .ts-share-print');
+  await new Promise(r => setTimeout(r, 500));
+  st = await page.evaluate(() => ({ get: window.__get.filter(q => q.action === 'trip_sheet'), win: window.__win && { printed: window.__win.printed, written: window.__win.written } }));
+  check('Print opens the trip sheet in its own window and prints it, without confirmations', st.get.length === 1 && st.get[0].conf === '0' && st.win.printed && /Trip sheet/.test(st.win.written), JSON.stringify(st.get));
+  await page.evaluate(() => Array.from(document.querySelectorAll('#shprobe .ts-share-mode')).find(b => /Save offline/.test(b.innerText)).click());
+  await new Promise(r => setTimeout(r, 60));
+  await tap(page, '#shprobe .ts-share-pdf');
+  await new Promise(r => setTimeout(r, 500));
+  st = await page.evaluate(() => window.__get.filter(q => q.action === 'trip_sheet'));
+  check('Save offline asks for the copy with confirmations and notes', st.length === 2 && st[1].conf === '1' && st[1].notes === '1', JSON.stringify(st));
+  await tap(page, '#shprobe .ts-share-close');
+  await new Promise(r => setTimeout(r, 60));
+  check('Close closes it', !(await page.$('#shprobe .ts-share')));
+  await page.evaluate(() => document.getElementById('shprobe').remove());
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -197,6 +254,7 @@ async function assertHomeCard(page) {
     check('tapping a red day switches to Agenda, where that day is', landed);
     await assertAgenda(page, '#ivprobe', false);
     await assertHomeCard(page);
+    await assertShare(page, false);
     check('no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
 
@@ -221,6 +279,7 @@ async function assertHomeCard(page) {
     await new Promise(r => setTimeout(r, 300));
     await assertAgenda(page, '#agprobe', true);
     await assertHomeCard(page);
+    await assertShare(page, true);
     await page.close();
   }
   await browser.close();

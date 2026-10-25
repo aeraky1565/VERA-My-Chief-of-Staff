@@ -219,13 +219,13 @@ check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummar
 check('lite: the old SummaryLitePanel is gone', !/SummaryLitePanel/.test(LITE));
 check('full: the Visa view and its state are gone', !/viewMode==='visa'/.test(itin) && !/handleVisaCheck/.test(itin));
 check('lite: Summary gets the API to load documents', /items=\{filteredItin\.items\} legs=\{travelLegs\[tripKey\]\} meta=\{meta\|\|\{\}\} apiUrl=\{apiUrl\} apiToken=\{apiToken\}/.test(LITE));
-check('full: + Add Item left the header for Agenda\'s toolbar', !/"\+ Add Item"/.test(itin) && /viewMode==='agenda'&&\/\*#__PURE__\*\/React\.createElement\(TsAgendaToolbar,\{onAdd:onAdd,busy:busy\}\)/.test(itin));
+check('full: + Add Item left the header for Agenda\'s toolbar', !/"\+ Add Item"/.test(itin) && /viewMode==='agenda'&&\/\*#__PURE__\*\/React\.createElement\(TsAgendaToolbar,\{onAdd:onAdd,busy:busy,trip:trip,who:travelerFilter,apiUrl:apiUrl,apiToken:apiToken\}\)/.test(itin));
 check('full: each day gets its breaks, its coloured header and its end slots', /const dayBreaks=tsDayBreaks_\(groupItineraryOptions\(dayItems\),travelLegs\)/.test(itin)
       && /tsDayHeadStyle_\(agendaSum,day\)/.test(itin) && /return tsWithBreaks_\(dayBreaks\[item\.id\]/.test(itin) && /React\.createElement\(TsDayEnd,\{date:day,summary:agendaSum,onAdd:onAdd,busy:busy\}\)/.test(itin));
 check('full: VERA Notices drops what now sits inside each day', /var allNotices=notices\.concat\(gaps\)\.filter\(function\(n\)\{return n\.type!=='timeline_gap'&&n\.type!=='missing_hotel'&&n\.type!=='missing_transport';\}\)/.test(itin));
 check('full: the add form takes a date and type', /function AddItineraryItemModal\(\{tripKey,item,defaults,onSave,onClose,busy\}\)/.test(APP) && /defaults&&defaults\.date\|\|''/.test(APP) && /defaults:itinItemModal\.defaults/.test(APP)
       && /onAdd:function\(defaults\)\{onAddItinItem\(tripKey,t\.startDate,t\.endDate,defaults\);\}/.test(APP));
-check('lite: the same toolbar, breaks, header colours and end slots', /<TsAgendaToolbar onAdd=\{onAdd\} busy=\{busy\} \/>/.test(LITE) && /rows\.map\(item => tsWithBreaks_\(dayBreaks\[item\.id\]/.test(LITE)
+check('lite: the same toolbar, breaks, header colours and end slots', /<TsAgendaToolbar onAdd=\{onAdd\} busy=\{busy\} trip=\{trip\} who=\{who\} apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE) && /who=\{traveler\} apiUrl=\{apiUrl\} apiToken=\{apiToken\}/.test(LITE) && /rows\.map\(item => tsWithBreaks_\(dayBreaks\[item\.id\]/.test(LITE)
       && /\.\.\.tsDayHeadStyle_\(agendaSum, date\)/.test(LITE) && /<TsDayEnd date=\{date\} summary=\{agendaSum\} onAdd=\{onAdd\} busy=\{busy\} \/>/.test(LITE));
 check('lite: the add form takes a date and type', /defaults\?\.date\|\|tripStartDate/.test(LITE) && /defaults\?\.type\|\|'manual'/.test(LITE) && /defaults=\{modal\.defaults\}/.test(LITE));
 check('lite: the top-of-Agenda notices card is no longer shown', !/<VERANoticesCard /.test(LITE));

@@ -382,6 +382,8 @@ function doGet(e) {
       // Visa requirements (Issue #123)
       case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
       case 'trip_documents':        return jsonOut_(webGetTripDocuments_(e.parameter));
+      case 'trip_sheet':            return jsonOut_(webTripSheet_(e.parameter));
+      case 'trip_ics':              return jsonOut_(webTripIcs_(e.parameter));
       // Victoria PTO buffer
       case 'victoria_pto_trigger_buffer': return jsonOut_(webTriggerVictoriaBuffer_(e));
       // Skills — alias used by dashboard
@@ -553,6 +555,7 @@ function doPost(e) {
       case 'career_set_status':          return jsonOut_(webCareerSetStatus_(body));
       case 'career_sync_agent':          return jsonOut_(webCareerSyncAgent_());
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());
+      case 'trip_share_email':           return jsonOut_(webTripShareEmail_(body));
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       // Phase 3: Network, Market, Brand, Exchange.
       case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));

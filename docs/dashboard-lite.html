@@ -7403,9 +7403,79 @@ function tsWithBreaks_(breaks,row){if(!breaks||!breaks.length)return row;
 function tsDayHeadStyle_(summary,date){var d=((summary&&summary.days)||[]).filter(function(x){return x.date===date;})[0];var hl=d?d.health:'ok';
   return Object.assign({position:'sticky',top:0,zIndex:2,background:'#0d1628',borderRadius:6,padding:'6px 8px'},
     hl==='red'?{background:'#3a1218',boxShadow:'inset 0 0 0 1px #e05a5a'}:hl==='amber'?{background:'#33280f',boxShadow:'inset 0 0 0 1px #e2b54a'}:{});}
-function TsAgendaToolbar(props){return React.createElement('div',{className:'ts-agenda-toolbar',style:{display:'flex',justifyContent:'flex-end',gap:8,flexWrap:'wrap',margin:'8px 0 12px'}},
-  React.createElement('button',{type:'button',className:'ts-add-item',onClick:function(){props.onAdd();},disabled:props.busy,
-    style:{minHeight:40,padding:'0 16px',borderRadius:8,border:'none',background:'#8ab4f8',color:'#0a1428',fontWeight:700,fontSize:13,cursor:'pointer'}},'+ Add item'));}
+function TsAgendaToolbar(props){var h=React.createElement;var _o=React.useState(false),open=_o[0],setOpen=_o[1];
+  return h('div',{className:'ts-agenda-toolbar',style:{display:'flex',justifyContent:'flex-end',gap:8,flexWrap:'wrap',margin:'8px 0 12px'}},
+    props.trip&&props.apiUrl&&h('button',{type:'button',className:'ts-share-open',onClick:function(){setOpen(true);},
+      style:{minHeight:40,padding:'0 14px',borderRadius:8,border:'1px solid #24386a',background:'#0d1b3e',color:'#cfe0ff',fontWeight:600,fontSize:13,cursor:'pointer'}},'Share or export'),
+    h('button',{type:'button',className:'ts-add-item',onClick:function(){props.onAdd();},disabled:props.busy,
+      style:{minHeight:40,padding:'0 16px',borderRadius:8,border:'none',background:'#8ab4f8',color:'#0a1428',fontWeight:700,fontSize:13,cursor:'pointer'}},'+ Add item'),
+    open&&h(TsShareModal,{trip:props.trip,who:props.who,apiUrl:props.apiUrl,apiToken:props.apiToken,onClose:function(){setOpen(false);}}));}
+// ── Share or export (stage 5) ──
+// Email a clean copy, download a calendar file, print a trip sheet, or keep a
+// PDF. The backend (TripShare.js) builds every one from the trip's own items.
+function tsShareParams_(trip,f){return {tripKey:trip.tripKey||(trip.startDate+'|'+trip.label),label:trip.label||'',startDate:trip.startDate||'',endDate:trip.endDate||'',
+  who:f.who||'Both',stays:f.stays?'1':'0',moves:f.moves?'1':'0',conf:f.confirmations?'1':'0',notes:f.notes?'1':'0'};}
+// A sheet opens in its own window, which must be opened inside the tap or the browser blocks it.
+function tsOpenSheet_(apiUrl,apiToken,params,print,onError){var w=window.open('','_blank');if(!w){onError('Your browser blocked the new window. Allow pop-ups for this page and try again.');return;}
+  w.document.write('<p style="font-family:sans-serif;padding:24px">Preparing the trip sheet…</p>');
+  apiGet(apiUrl,apiToken,Object.assign({action:'trip_sheet'},params)).then(function(r){if(!r||!r.ok){w.close();onError((r&&r.error)||'The sheet could not be made.');return;}
+    w.document.open();w.document.write('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+String(r.title||'Trip').replace(/</g,'&lt;')+'</title><style>body{margin:0}@media print{body>div{background:#fff!important;padding:0!important}}</style></head><body>'+r.html+'</body></html>');
+    w.document.close();if(print)setTimeout(function(){w.focus();w.print();},300);}).catch(function(e){w.close();onError(e.message);});}
+function TsShareModal(props){var h=React.createElement;var trip=props.trip||{};
+  var _m=React.useState('email'),mode=_m[0],setMode=_m[1];
+  var _f=React.useState({to:'',who:props.who||'Both',stays:true,moves:true,confirmations:false,notes:false,ics:true,note:''}),f=_f[0],setF=_f[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];var _s=React.useState(null),msg=_s[0],setMsg=_s[1];
+  var set=function(k,v){var n=Object.assign({},f);n[k]=v;setF(n);setMsg(null);};
+  var err=function(t){setBusy(false);setMsg({bad:true,text:t});};
+  var send=function(){setBusy(true);setMsg(null);
+    apiPost(props.apiUrl,props.apiToken,Object.assign({action:'trip_share_email',to:f.to,note:f.note,attachIcs:f.ics,include:{stays:f.stays,moves:f.moves,confirmations:f.confirmations,notes:f.notes}},tsShareParams_(trip,f)))
+      .then(function(r){setBusy(false);if(r&&r.ok)setMsg({text:'Sent to '+r.sent+' '+(r.sent===1?'person':'people')+'. You got a copy.'});else err((r&&r.error)||'Not sent.');}).catch(function(e){err(e.message);});};
+  var ics=function(){setBusy(true);setMsg(null);
+    apiGet(props.apiUrl,props.apiToken,Object.assign({action:'trip_ics'},tsShareParams_(trip,f))).then(function(r){setBusy(false);if(!r||!r.ok)return err((r&&r.error)||'No file made.');
+      var url=URL.createObjectURL(new Blob([r.ics],{type:'text/calendar'}));var a=document.createElement('a');a.href=url;a.download=r.filename||'trip.ics';document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},1000);setMsg({text:'Downloaded '+(r.filename||'trip.ics')+'. Open it, or import it into any calendar, a new shared one included.'});}).catch(function(e){err(e.message);});};
+  var sheet=function(print,withConf){tsOpenSheet_(props.apiUrl,props.apiToken,tsShareParams_(trip,Object.assign({},f,withConf?{confirmations:true,notes:true}:{})),print,err);};
+  var MODES=[['email','Email it','A clean copy to anyone'],['cal','Calendar file','Every item, one .ics'],['print','Print','A trip sheet'],['pdf','Save offline','A PDF for your phone']];
+  var chk=function(k,label,sub){return h('label',{className:'ts-share-chk',style:{display:'flex',gap:10,alignItems:'flex-start',fontSize:13,color:'#dde1f0',minHeight:32}},
+    h('input',{type:'checkbox',checked:!!f[k],onChange:function(e){set(k,e.target.checked);},style:{width:18,height:18,margin:'1px 0 0',accentColor:'#c9a84c'}}),
+    h('span',null,label,h('span',{style:{display:'block',fontSize:12,color:'#9aa9cc'}},sub)));};
+  var btn=function(text,onClick,cls){return h('button',{type:'button',className:cls,onClick:onClick,disabled:busy,style:{minHeight:44,padding:'0 18px',borderRadius:10,border:'none',background:'#8ab4f8',color:'#0a1428',fontWeight:700,fontSize:14,cursor:busy?'wait':'pointer',alignSelf:'flex-end'}},text);};
+  var field={minHeight:40,boxSizing:'border-box',padding:'8px 10px',borderRadius:8,border:'1px solid #2a3f6f',background:'#06112a',color:'#dde1f0',fontSize:14,width:'100%'};
+  var whoRow=h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Whose plans'),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},['Both','Ahmed','Victoria'].map(function(w){var on=f.who===w;return h('button',{key:w,type:'button',onClick:function(){set('who',w);},'aria-pressed':on,
+      style:{minHeight:36,padding:'0 12px',borderRadius:999,border:'1px solid '+(on?'#8ab4f8':'#24386a'),background:on?'#13264d':'#0d1b3e',color:on?'#cfe0ff':'#9aa9cc',fontSize:12,fontWeight:600,cursor:'pointer'}},w);})));
+  return h('div',{className:'ts-share-overlay',onClick:function(e){if(e.target===e.currentTarget)props.onClose();},
+      style:{position:'fixed',inset:0,background:'rgba(4,9,20,.8)',zIndex:1000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:16,overflowY:'auto',boxSizing:'border-box'}},
+    h('div',{role:'dialog','aria-label':'Share or export',className:'ts-share',style:{width:'100%',maxWidth:460,boxSizing:'border-box',padding:18,borderRadius:16,background:'#0d1b3e',border:'1px solid #2a3f6f',display:'flex',flexDirection:'column',gap:14,color:'#dde1f0'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'#c9a84c'}},'Share or export'),
+          h('span',{style:{fontSize:17,fontWeight:700,color:'#f2f4fb'}},String(trip.label||'').replace(/^(vacation|trip|travel)\s*:\s*/i,''))),
+        h('button',{type:'button',className:'ts-share-close',onClick:props.onClose,style:{minHeight:36,padding:'0 10px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#cfe0ff',fontWeight:600,cursor:'pointer'}},'Close')),
+      h('div',{role:'group','aria-label':'How to share',style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:8}},MODES.map(function(x){var on=mode===x[0];
+        return h('button',{key:x[0],type:'button',className:'ts-share-mode'+(on?' on':''),onClick:function(){setMode(x[0]);setMsg(null);},'aria-pressed':on,
+          style:{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:2,minHeight:48,padding:'10px 12px',borderRadius:10,border:'1px solid '+(on?'#c9a84c':'#24386a'),background:on?'#1a2c55':'#0a1530',color:'#eef1fb',fontWeight:600,fontSize:14,cursor:'pointer',textAlign:'left'}},
+          x[1],h('span',{style:{fontWeight:400,fontSize:12,color:'#b8c3e0'}},x[2]));})),
+      mode==='email'&&h(React.Fragment,null,
+        h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#9aa9cc'}},'Send to',
+          h('input',{type:'email',multiple:true,className:'ts-share-to',value:f.to,onChange:function(e){set('to',e.target.value);},placeholder:'name@example.com, another@example.com',style:field})),
+        whoRow,
+        h('div',{style:{display:'flex',flexDirection:'column',gap:6}},chk('stays','Where we’re staying','Hotel names and addresses'),chk('moves','Flights, trains and transfers','Numbers and times'),
+          chk('confirmations','Confirmation numbers','Off by default: only for people who’ll manage bookings'),chk('notes','Notes and open decisions','Off by default: the plan, not the planning'),
+          chk('ics','Attach a calendar file (.ics)','So they can add every day in one go')),
+        h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#9aa9cc'}},'A note at the top (optional)',
+          h('textarea',{rows:2,className:'ts-share-note',value:f.note,onChange:function(e){set('note',e.target.value);},placeholder:'Here’s where we’ll be.',style:field})),
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},
+          h('button',{type:'button',className:'ts-share-preview',onClick:function(){sheet(false,false);},style:{minHeight:44,padding:0,border:'none',background:'none',color:'#8ab4f8',fontWeight:600,fontSize:13,cursor:'pointer'}},'Preview'),
+          btn(busy?'Sending…':'Send itinerary',send,'ts-share-send')),
+        h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Sent from your Gmail. You get a copy.')),
+      mode==='cal'&&h(React.Fragment,null,whoRow,
+        h('span',{style:{fontSize:13,color:'#c8d2ea'}},'One file with every item, in local times. Open it to add the trip to your calendar, or import it into a new shared calendar for family. It’s a snapshot: after changes, download it again.'),
+        btn(busy?'Making the file…':'Download .ics',ics,'ts-share-ics')),
+      mode==='print'&&h(React.Fragment,null,whoRow,h('span',{style:{fontSize:13,color:'#c8d2ea'}},'Each day’s plan, where you sleep, flights and trains. Opens in a new window and prints from there.'),
+        btn('Print trip sheet',function(){sheet(true,false);},'ts-share-print')),
+      mode==='pdf'&&h(React.Fragment,null,h('span',{style:{fontSize:13,color:'#c8d2ea'}},'The trip sheet with confirmation numbers and notes, to keep on your phone for when there’s no signal. In the print window, choose Save as PDF.'),
+        btn('Open for PDF',function(){sheet(true,true);},'ts-share-pdf')),
+      msg&&h('div',{role:'status',className:'ts-share-msg'+(msg.bad?' bad':''),style:{fontSize:13,padding:'8px 10px',borderRadius:8,background:msg.bad?'#3a1218':'#173a24',color:msg.bad?'#ffb0b0':'#8fe0a8'}},msg.text)));}
 // The end of a day: a red slot for a night with nowhere to sleep, amber for a
 // missing arrival or departure, then "+ Add to <day>". Each fills in the form.
 function TsDayEnd(props){var h=React.createElement;var s=props.summary||{};var d=props.date;var days=s.days||[];if(!days.length)return null;
@@ -7623,7 +7693,7 @@ function PackingLitePanel({ tripKey, endDate, packingData, apiUrl, apiToken, onR
 }
 
 // --- ItineraryDayView --------------------------------------------------------
-function ItineraryDayView({ trip, itinerary, legs, meta, busy, onAdd, onEdit, onDelete, onDecide, onReopen }) {
+function ItineraryDayView({ trip, itinerary, legs, meta, who, apiUrl, apiToken, busy, onAdd, onEdit, onDelete, onDecide, onReopen }) {
   const items = itinerary?.items || [];
   // One summary drives the day colours and the end-of-day slots, as in the full dashboard.
   const agendaSum = buildTripSummary_({ trip, items, legs, outboundMode: meta?.outboundMode, returnMode: meta?.returnMode });
@@ -7654,7 +7724,7 @@ function ItineraryDayView({ trip, itinerary, legs, meta, busy, onAdd, onEdit, on
 
   return (
     <div style={{paddingTop:8}}>
-      <TsAgendaToolbar onAdd={onAdd} busy={busy} />
+      <TsAgendaToolbar onAdd={onAdd} busy={busy} trip={trip} who={who} apiUrl={apiUrl} apiToken={apiToken} />
       {dates.length === 0 && (
         <div style={{textAlign:'center',color:'#4d6080',padding:'24px 0',fontSize:13}}>
           No itinerary items yet.
@@ -8482,7 +8552,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                     <>
                       <UsefulToKnowCard insights={flightInsights[tripKey]} />
                       <ItineraryDayView
-                        trip={{...t,tripKey}} itinerary={filteredItin} busy={busy} legs={travelLegs[tripKey]} meta={meta||{}}
+                        trip={{...t,tripKey}} itinerary={filteredItin} busy={busy} legs={travelLegs[tripKey]} meta={meta||{}} who={traveler} apiUrl={apiUrl} apiToken={apiToken}
                         onAdd={defaults=>setModal({mode:'add',tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate,defaults:defaults||null})}
                         onEdit={item=>setModal({mode:'edit',item,tripKey,tripStartDate:t.startDate,tripEndDate:t.endDate})}
                         onDelete={id=>handleDelete(id,tripKey)}
