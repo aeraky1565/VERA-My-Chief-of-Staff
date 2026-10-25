@@ -7718,6 +7718,52 @@ function tiPtoCaveats_(data,windows){var out=[];(data.people||[]).forEach(functi
     if(yrs.length)out.push('No holidays on '+p.name+"'s work calendar for "+yrs.join(' and ')+' yet, so none are counted.');});return out;}
 function tiTempColor_(f){return f==null?TI.mute:f>=86?'#f6b27a':f>=68?TI.warn:f>=50?TI.ok:TI.acc;}
 
+// ---- hand-offs: copy out, paste back (formats in docs/trip-handoffs.md) ----
+var TI_V1_MODE={fly:'FLY',train:'TRAIN',car:'DRIVE',ship:'CRUISE',ferry:'FERRY',bus:'BUS',other:'MOVE'};
+// One option in the "VERA option v1" format: what a chat is asked to reply in, and what VERA reads back exactly.
+function tiOptionV1_(o){var L=['=== VERA option v1 ===','Name: '+(o.name||'Untitled'),'Route:'];
+  (o.legs||[]).forEach(function(l){if(l.kind==='stop')L.push('- STAY '+l.place+' · '+(Number(l.nights)||0)+' night'+(Number(l.nights)===1?'':'s')+(l.note?' · '+l.note:''));
+    else L.push('- '+(TI_V1_MODE[l.mode]||'MOVE')+' '+(l.from||'?')+' → '+(l.to||'?')+(l.note?' · '+l.note:''));});
+  var cost=o.cost||{},keys=TI_COSTS.filter(function(c){return cost[c[0]];});
+  if(keys.length){L.push('Cost (USD, all travelers):');keys.forEach(function(c){var v=cost[c[0]];L.push('- '+(c[0]==='ground'?'Getting around':c[0]==='daily'?'Daily spend':c[1])+': '+v.low+(v.high!==v.low?'–'+v.high:'')+(v.basis?' · '+v.basis:''));});}
+  if((o.pros||[]).length){L.push('For:');o.pros.forEach(function(x){L.push('- '+x);});}
+  if((o.cons||[]).length){L.push('Against:');o.cons.forEach(function(x){L.push('- '+x);});}
+  L.push('=== end ===');return L.join('\n');}
+function tiBriefLines_(idea){var p=idea.pieces||[],L=['Trip: '+(idea.title||'untitled'),'Where, roughly: '+(idea.where||'open'),'When: '+tiMonthsText_(idea.months)+' (no dates yet)','Length: '+tiNightsText_(idea.nightsMin,idea.nightsMax),
+  'Travelers: '+(idea.travelers||'2 adults'),'Budget for the whole trip: '+(idea.budget!=null?'$'+idea.budget:'not set'),'Pace: '+(idea.pace||'balanced'),'Open to: '+((idea.openTo||[]).join(', ')||'anything')];
+  if(idea.mustHaves)L.push('Must-haves and things to avoid: '+idea.mustHaves);
+  p.forEach(function(x){L.push((x.kind==='anchor'?'Has to happen: ':x.kind==='choice'?'Either/or ('+x.group+'): ':'Nice to have: ')+x.name+(x.detail?' ('+x.detail+')':''));});return L;}
+// The brief for an outside AI chat, with the options so far and the format to answer in.
+function tiChatBrief_(idea,options){var live=(options||[]).filter(function(o){return o.flag!=='out';});
+  var L=['I’m planning a trip that has no dates yet. Suggest trip options as routes from home and back.',''].concat(tiBriefLines_(idea));
+  if(live.length){L.push('','Options I already have (don’t repeat them; improve on them if you can):','');live.forEach(function(o){L.push(tiOptionV1_(o),'');});}
+  L.push('','Reply with each option in exactly this format, one block per option, so I can paste it back into my planner:','',
+    tiOptionV1_({name:'14 nights: Lisbon → Porto by train',legs:[{kind:'move',mode:'fly',from:'Home',to:'LIS'},{kind:'stop',place:'Lisbon',nights:5},{kind:'move',mode:'train',from:'Lisbon',to:'Porto',note:'3h'},{kind:'stop',place:'Porto',nights:4},{kind:'move',mode:'fly',from:'OPO',to:'Home'}],
+      cost:{flights:{low:1400,high:1900,basis:'your estimate'},stays:{low:2500,high:3500,basis:'your estimate'}},pros:['…'],cons:['…']}),
+    '','Moves are FLY, TRAIN, DRIVE, CRUISE, FERRY, BUS or MOVE. Costs are rough USD ranges for all of us together. Don’t invent flight numbers, sailings or dates.');
+  return L.join('\n');}
+function tiCostLine_(cost){var t=tiCostTotal_(cost);if(!t)return 'no cost yet';var parts=TI_COSTS.filter(function(c){return cost[c[0]];}).map(function(c){return c[1].toLowerCase()+' '+tiRange_(cost[c[0]].low,cost[c[0]].high);});
+  return 'estimated '+tiRange_(t.low,t.high)+' total ('+parts.join(', ')+')';}
+// One line for WILLA: the option, its length and when, and the money.
+function tiWillaLine_(idea,o){var n=tiLegNights_(o.legs),fit=tiBudgetFit_(tiCostTotal_(o.cost),idea.budget);
+  return 'VERA → WILLA · Trip idea "'+idea.title+'": '+o.name+' · '+(n?n+' nights · ':'')+tiMonthsText_(idea.months)+' · '+tiCostLine_(o.cost||{})
+    +(idea.budget!=null?' · budget '+tiMoney_(idea.budget)+(fit==='within'?' (within)':fit==='over'?' (over)':fit==='close'?' (could go over)':''):'')+'. Can we afford it, and what should the budget be?';}
+function tiFlights_(o){return (o.legs||[]).filter(function(l){return l.kind==='move'&&l.mode==='fly';});}
+// A fare request for ARIA: every flight on the route, and the one-line answer VERA reads back.
+function tiAriaRequest_(idea,o){var n=tiLegNights_(o.legs);
+  return ['=== VERA fare request v1 ===','Trip: '+idea.title+' · '+o.name,'Travelers: '+(idea.travelers||'2 adults'),'When: '+tiMonthsText_(idea.months)+(n?' · '+n+' nights':''),'Flights:']
+    .concat(tiFlights_(o).map(function(l){return '- '+(l.from||'?')+' → '+(l.to||'?')+(l.note?' · '+l.note:'');}))
+    .concat(['Reply with one line:','Fare: $<total for all travelers, all these flights> · checked <yyyy-mm-dd>','=== end ===']).join('\n');}
+function tiNum_(s){var n=Number(String(s||'').replace(/[,\s]/g,''));return isFinite(n)&&n>0?n:null;}
+// Pasted from ARIA: "Fare: $1,840 · checked 2026-10-24", or a range; else the first dollar figure.
+function tiParseFare_(text,today){var t=String(text||''),m=t.match(/fares?\s*[:=]?\s*\$?\s*([\d,]+(?:\.\d+)?)(?:\s*(?:–|-|to)\s*\$?\s*([\d,]+(?:\.\d+)?))?/i)||t.match(/\$\s*([\d,]+(?:\.\d+)?)(?:\s*(?:–|-|to)\s*\$?\s*([\d,]+(?:\.\d+)?))?/);
+  if(!m)return null;var lo=tiNum_(m[1]),hi=m[2]?tiNum_(m[2]):lo;if(lo==null||hi==null)return null;if(lo>hi){var x=lo;lo=hi;hi=x;}
+  var c=t.match(/checked\s*(?:on\s*)?(\d{4}-\d{2}-\d{2})/i);return {low:Math.round(lo),high:Math.round(hi),checked:c?c[1]:today};}
+// Pasted from WILLA: the budget figure ("Budget: $9,500", "$9.5k"); else the first dollar figure.
+function tiParseBudget_(text){var t=String(text||''),m=t.match(/budget[^$\d\n]{0,24}\$?\s*([\d,]+(?:\.\d+)?)\s*(k\b)?/i)||t.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(k\b)?/i);
+  if(!m)return null;var n=tiNum_(m[1]);if(n==null)return null;return Math.round(m[2]?n*1000:n);}
+function tiTodayYmd_(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
 var TI={bg:'#0a1428',card:'#0d1b3e',br:'#1e3060',deep:'#0a1530',pill:'#13264d',txt:'#dde1f0',hi:'#eef1fb',mute:'#9aa9cc',soft:'#b8c3e0',acc:'#8ab4f8',gold:'#c9a84c',ok:'#8fe0a8',warn:'#f6d27a'};
 function tiBtn_(kind){var base={minHeight:44,padding:'0 14px',borderRadius:10,fontSize:14,fontWeight:600,cursor:'pointer'};
   if(kind==='primary')return Object.assign(base,{border:'none',background:TI.acc,color:TI.bg,fontWeight:700});
@@ -7760,7 +7806,7 @@ function TiCost(props){var h=React.createElement;var cost=props.cost||{};var tot
     fit&&h('span',{className:'ti-fit ti-fit-'+fit,style:{fontSize:12,fontWeight:600,color:fit==='within'?TI.ok:fit==='over'?'#ffb0b0':TI.warn}},
       fit==='within'?'Within the '+tiMoney_(props.budget)+' budget':fit==='over'?'Over the '+tiMoney_(props.budget)+' budget':'Could go over the '+tiMoney_(props.budget)+' budget'));}
 
-function TiOptionCard(props){var h=React.createElement;var o=props.option;var _dc=React.useState(false),deciding=_dc[0],setDeciding=_dc[1];var star=o.flag==='star',out=o.flag==='out';var nights=tiLegNights_(o.legs);
+function TiOptionCard(props){var h=React.createElement;var o=props.option;var _dc=React.useState(false),deciding=_dc[0],setDeciding=_dc[1];var _ho=React.useState(false),handing=_ho[0],setHanding=_ho[1];var star=o.flag==='star',out=o.flag==='out';var nights=tiLegNights_(o.legs);
   var src=(TI_SOURCE.filter(function(s){return s[0]===o.source;})[0]||TI_SOURCE[0])[1];
   var list=function(t,c,arr){return arr.length?h('div',{style:{display:'flex',flexDirection:'column',gap:3,minWidth:0}},h('span',{style:{fontSize:11,fontWeight:700,color:c}},t),arr.map(function(x,i){return h('span',{key:i,style:{fontSize:13,lineHeight:1.4}},x);})):null;};
   return h('div',{className:'ti-option'+(star?' ti-star':''),style:{display:'flex',flexDirection:'column',gap:12,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(star?TI.gold:TI.br),opacity:out?0.7:1,minWidth:0}},
@@ -7783,8 +7829,14 @@ function TiOptionCard(props){var h=React.createElement;var o=props.option;var _d
     h(TiCost,{cost:o.cost,budget:props.budget}),
     (o.pros.length||o.cons.length)?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},list('FOR',TI.ok,o.pros),list('AGAINST',TI.warn,o.cons)):null,
     deciding&&props.idea&&h(TiDecide,{apiUrl:props.apiUrl,apiToken:props.apiToken,idea:props.idea,option:o}),
+    handing&&props.idea&&h('div',{className:'ti-handoff',style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'ti-to-willa',onClick:function(){props.onHand('willa');},style:Object.assign(tiBtn_(),{minHeight:40})},'Copy for WILLA'),
+      tiFlights_(o).length>0&&h('button',{type:'button',className:'ti-to-aria',onClick:function(){props.onHand('aria');},style:Object.assign(tiBtn_(),{minHeight:40})},'Fare request for ARIA'),
+      tiFlights_(o).length>0&&h('button',{type:'button',className:'ti-from-aria',onClick:function(){props.onHand('fare');},style:Object.assign(tiBtn_(),{minHeight:40})},'Paste ARIA’s fare')),
+    props.panel,
     h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
       props.idea&&o.id&&h('button',{type:'button',className:'ti-decide-btn','aria-expanded':deciding,onClick:function(){setDeciding(!deciding);},style:tiBtn_(deciding?'primary':'')},deciding?'Hide dates & weather':'📅 Dates, PTO & weather'),
+      props.idea&&o.id&&h('button',{type:'button',className:'ti-handoff-btn','aria-expanded':handing,onClick:function(){if(handing&&props.onHand)props.onHand('');setHanding(!handing);},style:tiBtn_()},handing?'Hide hand-offs':'↗ Hand off'),
       h('button',{type:'button',className:'ti-edit-option',onClick:props.onEdit,disabled:props.busy,style:tiBtn_()},'Edit')));}
 
 function TiDecide(props){var h=React.createElement;var lengths=tiDecideLengths_(props.option,props.idea);
@@ -7825,6 +7877,50 @@ function TiDecide(props){var h=React.createElement;var lengths=tiDecideLengths_(
             h('span',null,h('b',{style:{color:tiTempColor_(n.hi)}},n.hi+'°'),h('span',{style:{color:TI.mute}},' / '+n.lo+'°')),
             n.wet!=null&&h('span',{style:{fontSize:11,color:TI.mute}},n.wet+' rainy d')):'—');}));})))),
       (data.stops||[]).length>0&&h('span',{style:{fontSize:11,color:TI.mute}},'High / low in °F and rainy days in a typical month: averages of 2015–2024, as measured (Open-Meteo).')));}
+
+// Copy out: the text in full (so it can be checked, and copied by hand where the clipboard is blocked) and a Copy button.
+function TiCopyOut(props){var h=React.createElement;var _c=React.useState(''),said=_c[0],setSaid=_c[1];
+  var copy=function(){var done=function(){setSaid('Copied. Paste it into '+props.to+'.');},hand=function(){setSaid('Select the text above and copy it.');};
+    try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(props.text).then(done,hand);else hand();}catch(e){hand();}};
+  return h('div',{className:'ti-copyout',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:TI.deep,border:'1px solid '+TI.br,minWidth:0}},
+    h('span',{style:TI_EYEBROW},props.title),props.hint&&h('span',{style:{fontSize:12,lineHeight:1.45,color:TI.soft}},props.hint),
+    h('textarea',{readOnly:true,value:props.text,'aria-label':props.title,rows:Math.min(12,props.text.split('\n').length+1),onFocus:function(e){e.target.select();},
+      style:Object.assign({},TI_INPUT,{minHeight:80,padding:10,fontSize:12,lineHeight:1.45,fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace',resize:'vertical'})}),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},h('button',{type:'button',className:'ti-copy',onClick:copy,style:tiBtn_('primary')},'Copy'),
+      h('button',{type:'button',onClick:props.onClose,style:tiBtn_()},'Done'),said&&h('span',{role:'status',style:{fontSize:13,color:TI.ok}},said)));}
+
+// Paste back: a box for their answer, what VERA read from it, and the one button that keeps it.
+function TiPasteIn(props){var h=React.createElement;
+  return h('div',{className:'ti-pastein',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:TI.deep,border:'1px solid '+TI.br,minWidth:0}},
+    h('span',{style:TI_EYEBROW},props.title),props.hint&&h('span',{style:{fontSize:12,lineHeight:1.45,color:TI.soft}},props.hint),props.extra,
+    h('textarea',{value:props.text,'aria-label':props.title,rows:5,placeholder:props.placeholder,onChange:function(e){props.onText(e.target.value);},
+      style:Object.assign({},TI_INPUT,{minHeight:96,padding:10,fontSize:13,lineHeight:1.45,resize:'vertical'})}),
+    props.preview,
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},props.actions,h('button',{type:'button',onClick:props.onClose,disabled:props.busy,style:tiBtn_()},'Cancel')));}
+
+// Paste a chat's options: read (exactly, or by VERA's AI), see them, keep them.
+function TiPasteOptions(props){var h=React.createElement;
+  var _t=React.useState(''),text=_t[0],setText=_t[1];var _s=React.useState('chatgpt'),src=_s[0],setSrc=_s[1];
+  var _r=React.useState(null),read=_r[0],setRead=_r[1];var _w=React.useState(false),reading=_w[0],setReading=_w[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var go=function(){setReading(true);setErr('');setRead(null);apiPost(props.apiUrl,props.apiToken,{action:'trip_option_parse',ideaId:props.idea.id,text:text,source:src})
+    .then(function(r){setReading(false);if(r&&r.ok)setRead(r);else setErr((r&&r.error)||'Could not read that');}).catch(function(e){setReading(false);setErr(e.message||'Could not read that');});};
+  var preview=read?h('div',{className:'ti-paste-preview',style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:{fontSize:12,color:TI.soft}},'Found '+read.options.length+' option'+(read.options.length===1?'':'s')+(read.how==='format'?', read exactly from the format.':', read by VERA from the chat’s own words: check them.')),
+      read.options.map(function(o,i){var t=tiCostTotal_(o.cost);return h('div',{key:i,className:'ti-paste-option',style:{display:'flex',flexDirection:'column',gap:6,padding:10,borderRadius:8,background:TI.card,border:'1px solid '+TI.br}},
+        h('b',{style:{fontSize:14,color:TI.hi}},o.name),h('span',{style:{fontSize:12,color:TI.mute}},(tiLegNights_(o.legs)?tiLegNights_(o.legs)+' nights · ':'')+tiModesText_(o.legs)+(t?' · '+tiRange_(t.low,t.high):'')),h(TiRoute,{legs:o.legs}));}))
+    :err?h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},err):null;
+  return h(TiPasteIn,{title:'Paste options from a chat',hint:'Paste the chat’s whole answer. Options in the VERA format are read exactly; anything else, VERA reads for you. Nothing is saved until you say so.',
+    text:text,onText:function(v){setText(v);setRead(null);setErr('');},placeholder:'=== VERA option v1 ===\nName: …',busy:props.busy||reading,onClose:props.onClose,preview:preview,
+    extra:h('label',{style:Object.assign({},TI_LABEL,{maxWidth:220})},'From',h('select',{className:'ti-paste-source',value:src,onChange:function(e){setSrc(e.target.value);},style:TI_INPUT},
+      TI_SOURCE.filter(function(x){return ['chatgpt','claude','gemini','other'].indexOf(x[0])!==-1;}).map(function(x){return h('option',{key:x[0],value:x[0]},x[1]);}))),
+    actions:read?h('button',{type:'button',className:'ti-paste-save',disabled:props.busy,onClick:function(){props.onSave(read.options);},style:tiBtn_('primary')},props.busy?'Saving…':'Save '+(read.options.length===1?'this option':'these '+read.options.length+' options'))
+      :h('button',{type:'button',className:'ti-paste-read',disabled:reading||!text.trim(),onClick:go,style:tiBtn_('primary')},reading?'Reading…':'Read it')});}
+
+// Paste WILLA's budget, or ARIA's fare: read in the page, shown before it is used.
+function TiPasteFigure(props){var h=React.createElement;var _t=React.useState(''),text=_t[0],setText=_t[1];var got=text.trim()?props.parse(text):null;
+  return h(TiPasteIn,{title:props.title,hint:props.hint,text:text,onText:setText,placeholder:props.placeholder,busy:props.busy,onClose:props.onClose,
+    preview:text.trim()?h('span',{className:'ti-figure-preview',role:'status',style:{fontSize:13,color:got!=null?TI.ok:TI.warn}},got!=null?props.describe(got):props.none):null,
+    actions:h('button',{type:'button',className:'ti-figure-use',disabled:props.busy||got==null,onClick:function(){props.onUse(got);},style:tiBtn_('primary')},props.busy?'Saving…':props.useLabel)});}
 
 function TiOptionEditor(props){var h=React.createElement;
   var _s=React.useState(function(){var o=JSON.parse(JSON.stringify(props.option));o.prosText=(o.pros||[]).join('\n');o.consText=(o.cons||[]).join('\n');return o;}),o=_s[0],setO=_s[1];
@@ -7979,6 +8075,7 @@ function TripIdeasView(props){var h=React.createElement;
   var _a=React.useState(false),showArchived=_a[0],setShowArchived=_a[1];
   var _o=React.useState(false),showOut=_o[0],setShowOut=_o[1];
   var _k=React.useState(''),asking=_k[0],setAsking=_k[1];
+  var _h=React.useState(null),hand=_h[0],setHand=_h[1];
   var load=function(){if(!props.apiUrl||!props.apiToken){setData({loading:false,ideas:[],options:[],error:'Connect VERA first.'});return;}
     apiGet(props.apiUrl,props.apiToken,{action:'trip_ideas'}).then(function(r){setData({loading:false,ideas:r.ideas||[],options:r.options||[]});})
       .catch(function(e){setData({loading:false,ideas:[],options:[],error:e.message});});};
@@ -7996,6 +8093,12 @@ function TripIdeasView(props){var h=React.createElement;
   // One ask id per press: a retried request returns this ask's options instead of building a second set.
   var askVera=function(i,focus){setAsking(focus||'all');post({action:'trip_idea_ask',ideaId:i.id,focus:focus||'',askId:tiAskId_()},function(r){setAsking('');
       (r.options||[]).forEach(putOption);if(r.idea)putIdea(r.idea);}).then(function(){setAsking('');});};
+  // Pasted options are saved one after another, in the order the chat gave them.
+  var savePasted=function(list){var chain=Promise.resolve();list.forEach(function(o){chain=chain.then(function(){return post({action:'trip_option_save',option:o},function(r){if(r&&r.option)putOption(r.option);});});});
+    chain.then(function(){setHand(null);});};
+  var useFare=function(o,f){var cost=Object.assign({},o.cost,{flights:{low:f.low,high:f.high,basis:'ARIA · checked '+f.checked}});
+    post({action:'trip_option_save',option:Object.assign({},o,{cost:cost})},function(r){if(r&&r.option)putOption(r.option);setHand(null);});};
+  var useBudget=function(i,n){post({action:'trip_idea_save',idea:Object.assign({},i,{budget:n})},function(r){if(r&&r.idea)putIdea(r.idea);setHand(null);});};
   var setStatus=function(i,s){post({action:'trip_idea_save',idea:Object.assign({},i,{status:s})},function(r){putIdea(r.idea);});};
   var wrap={className:'trip-ideas',style:{display:'flex',flexDirection:'column',gap:14,padding:'4px 0 16px',color:TI.txt}};
   if(data.loading)return h('div',wrap,h('span',{style:{color:TI.mute,fontSize:14}},'Loading trip ideas…'));
@@ -8006,10 +8109,17 @@ function TripIdeasView(props){var h=React.createElement;
     if(!idea)return h('div',wrap,h('button',{type:'button',onClick:function(){setView({mode:'board'});},style:tiBtn_()},'← Trip ideas'));
     var opts=data.options.filter(function(o){return o.ideaId===idea.id;}).sort(function(a,b){return (a.flag==='star'?0:1)-(b.flag==='star'?0:1)||String(a.created||'').localeCompare(String(b.created||''));});
     var live=opts.filter(function(o){return o.flag!=='out';}),out=opts.filter(function(o){return o.flag==='out';});
+    var optionPanel=function(o){if(!hand||hand.id!==o.id)return null;var close=function(){setHand(null);};
+      if(hand.kind==='willa')return h(TiCopyOut,{title:'For WILLA',to:'WILLA',text:tiWillaLine_(idea,o),hint:'One line with this option and its cost. WILLA answers with what you can afford; paste that back with "Budget from WILLA".',onClose:close});
+      if(hand.kind==='aria')return h(TiCopyOut,{title:'Fare request for ARIA',to:'ARIA',text:tiAriaRequest_(idea,o),hint:'Every flight on this route. Paste ARIA’s one-line answer back with "Paste ARIA’s fare".',onClose:close});
+      if(hand.kind==='fare'){var was=(o.cost||{}).flights;return h(TiPasteFigure,{title:'Paste ARIA’s fare',hint:'It replaces the flights estimate, and keeps the date ARIA checked it.',placeholder:'Fare: $1,840 · checked '+tiTodayYmd_(),busy:busy,onClose:close,
+        parse:function(t){return tiParseFare_(t,tiTodayYmd_());},none:'No fare found in that. ARIA’s answer should have a line like "Fare: $1,840".',useLabel:'Use this fare',
+        describe:function(f){return 'Flights: '+tiRange_(f.low,f.high)+' · ARIA · checked '+f.checked+(was?' (was '+tiRange_(was.low,was.high)+(was.basis?', '+was.basis:'')+')':'');},onUse:function(f){useFare(o,f);}});}
+      return null;};
     var card=function(o){return editing&&editing.id===o.id?h(TiOptionEditor,{key:o.id+'e',option:o,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption})
-      :h(TiOptionCard,{key:o.id,option:o,idea:idea,apiUrl:props.apiUrl,apiToken:props.apiToken,budget:idea.budget,busy:busy,onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
+      :h(TiOptionCard,{key:o.id,option:o,idea:idea,apiUrl:props.apiUrl,apiToken:props.apiToken,budget:idea.budget,busy:busy,panel:optionPanel(o),onHand:function(k){setHand(function(x){return k?{kind:k,id:o.id}:x&&x.id===o.id?null:x;});},onFlag:function(f){flagOption(o,f);},onEdit:function(){setEditing(o);}});};
     return h('div',wrap,
-      h('button',{type:'button',className:'ti-back',onClick:function(){setEditing(null);setView({mode:'board'});},style:{alignSelf:'flex-start',background:'none',border:'none',color:TI.acc,fontSize:14,fontWeight:600,cursor:'pointer',minHeight:40,padding:0}},'← Trip ideas'),
+      h('button',{type:'button',className:'ti-back',onClick:function(){setEditing(null);setHand(null);setView({mode:'board'});},style:{alignSelf:'flex-start',background:'none',border:'none',color:TI.acc,fontSize:14,fontWeight:600,cursor:'pointer',minHeight:40,padding:0}},'← Trip ideas'),
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,flexWrap:'wrap'}},
         h('div',{style:{display:'flex',flexDirection:'column',gap:6,minWidth:0,flex:'1 1 280px'}},
           h('span',{className:'ti-idea-title',style:{fontSize:22,fontWeight:700,color:TI.hi}},idea.title),
@@ -8023,6 +8133,14 @@ function TripIdeasView(props){var h=React.createElement;
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
         h('button',{type:'button',className:'ti-ask',disabled:busy||!!editing,onClick:function(){askVera(idea);},style:tiBtn_('primary')},asking?'VERA is building…':'✨ Ask VERA for options'),
         h('button',{type:'button',className:'ti-add-option',disabled:busy||!!editing,onClick:function(){setEditing(tiBlankOption_(idea.id));},style:tiBtn_()},'+ Add an option')),
+      h('div',{className:'ti-idea-handoffs',style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('button',{type:'button',className:'ti-to-chat','aria-pressed':!!(hand&&hand.kind==='chat'),onClick:function(){setHand(hand&&hand.kind==='chat'?null:{kind:'chat'});},style:Object.assign(tiBtn_(),{minHeight:40})},'📋 Copy for an AI chat'),
+        h('button',{type:'button',className:'ti-from-chat','aria-pressed':!!(hand&&hand.kind==='paste'),onClick:function(){setHand(hand&&hand.kind==='paste'?null:{kind:'paste'});},style:Object.assign(tiBtn_(),{minHeight:40})},'📥 Paste options'),
+        h('button',{type:'button',className:'ti-from-willa','aria-pressed':!!(hand&&hand.kind==='budget'),onClick:function(){setHand(hand&&hand.kind==='budget'?null:{kind:'budget'});},style:Object.assign(tiBtn_(),{minHeight:40})},'💰 Budget from WILLA')),
+      hand&&hand.kind==='chat'&&h(TiCopyOut,{title:'For an AI chat',to:'ChatGPT, Claude or Gemini',text:tiChatBrief_(idea,opts),hint:'The brief, your pieces and the options so far, with the format to answer in. Paste the chat’s answer back with "Paste options".',onClose:function(){setHand(null);}}),
+      hand&&hand.kind==='paste'&&h(TiPasteOptions,{apiUrl:props.apiUrl,apiToken:props.apiToken,idea:idea,busy:busy,onSave:savePasted,onClose:function(){setHand(null);}}),
+      hand&&hand.kind==='budget'&&h(TiPasteFigure,{title:'Budget from WILLA',hint:'Paste WILLA’s answer. VERA takes the budget figure from it, and every option is checked against it.',placeholder:'Budget: $9,500',busy:busy,onClose:function(){setHand(null);},
+        parse:tiParseBudget_,none:'No dollar figure found in that.',useLabel:'Use this budget',describe:function(n){return 'Budget: '+tiMoney_(n)+(idea.budget!=null?' (was '+tiMoney_(idea.budget)+')':'');},onUse:function(n){useBudget(idea,n);}}),
       asking&&h('span',{className:'ti-asking',role:'status',style:{fontSize:13,color:TI.soft}},'VERA is building '+(asking==='all'?'options':'"'+asking+'"')+'. This can take a minute.'),
       editing&&!editing.id&&h(TiOptionEditor,{key:'new',option:editing,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption}),
       !live.length&&!editing&&h('span',{style:{fontSize:14,color:TI.mute}},'No options yet. Add one for each shape the trip could take: a simple fly-in, fly-out, or a mix of flights, drives, cruises and trains.'),

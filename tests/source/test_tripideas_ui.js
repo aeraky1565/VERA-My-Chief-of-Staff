@@ -3,7 +3,8 @@
 // the loose brief, add a simple option (fly in, stay, fly out) and a mixed one
 // (fly → drive → cruise → fly), see each route and its cost against the WILLA
 // budget, see the cheapest dates in PTO and the typical weather for one,
-// favourite one, rule one out, and find it all on the board. Options sit
+// favourite one, rule one out, and find it all on the board. Then the
+// hand-offs: a brief out to a chat and its options back, WILLA's budget and ARIA's fare. Options sit
 // side by side on a desktop and stack on a phone, with no sideways scroll.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -57,8 +58,16 @@ async function setup(page) {
         idea.alsoPossible = b.focus ? [] : [{ name: 'Road trip → Cruise A', why: 'Marseille is one of its ports.' }];
         return Promise.resolve({ ok: true, options: opts, idea: Object.assign({}, idea) });
       }
+      if (b.action === 'trip_option_parse') {
+        if (!/VERA option v1/.test(b.text)) return Promise.resolve({ ok: false, error: 'No trip options found in that text.' });
+        return Promise.resolve({ ok: true, how: 'format', options: [{ ideaId: b.ideaId, name: 'Porto by train', source: b.source, flag: '', pros: [], cons: [],
+          legs: [{ kind: 'move', mode: 'fly', from: 'Home', to: 'LIS' }, { kind: 'move', mode: 'train', from: 'Lisbon', to: 'Porto' }, { kind: 'stop', place: 'Porto', nights: 5 }, { kind: 'move', mode: 'fly', from: 'OPO', to: 'Home' }],
+          cost: { flights: { low: 1300, high: 1700, basis: 'their estimate' } } }] });
+      }
       return Promise.resolve({ ok: true });
     };
+    window.__clip = null;
+    try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__clip = t; return Promise.resolve(); } } }); } catch (e) {}
     window.confirm = () => true;
     window.__set = (el, v) => { const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
       Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); };
@@ -217,6 +226,49 @@ async function scenario(page, label, width) {
   check(label + ': "Build this one too" asks for just that one', focus && focus.focus === 'Road trip → Cruise A' && focus.askId !== ask.askId);
   check(label + ': …which then leaves the list', !(await page.$('#tiprobe .ti-also')) && /Road trip → Cruise A/.test((await page.$$eval('#tiprobe .ti-option-name', ns => ns.map(n => n.innerText))).join('|')));
   check(label + ': no sideways scroll with VERA\'s options', await noScroll(page));
+
+  // Hand-offs: a brief out to an AI chat, its options back; a line to WILLA and a budget back; a fare request to ARIA and a fare back
+  await act(page, () => window.__q('.ti-to-chat').click());
+  let box = await page.$eval('#tiprobe .ti-copyout textarea', n => n.value).catch(() => '');
+  check(label + ': the chat brief has the brief, the options so far and the format to answer in', /When: Mar – May 20\d\d \(no dates yet\)/.test(box) && /Name: Lisbon → Algarve → cruise/.test(box) && /Reply with each option in exactly this format/.test(box) && !/fly in and out/.test(box), box.slice(0, 300));
+  await act(page, () => window.__q('.ti-copy').click());
+  check(label + ': Copy puts it on the clipboard, and says so', (await page.evaluate(() => window.__clip)) === box && /Copied\. Paste it into ChatGPT, Claude or Gemini/.test(await text(page)));
+  await act(page, () => window.__q('.ti-from-chat').click());
+  check(label + ': one hand-off at a time', !(await page.$('#tiprobe .ti-copyout')) && !!(await page.$('#tiprobe .ti-pastein')));
+  await act(page, () => { window.__set(window.__q('.ti-paste-source'), 'claude'); window.__set(window.__q('.ti-pastein textarea'), 'Here you go!\n=== VERA option v1 ===\nName: Porto by train\n=== end ==='); });
+  await act(page, () => window.__q('.ti-paste-read').click());
+  t = await page.$eval('#tiprobe .ti-pastein', n => n.innerText);
+  check(label + ': the pasted options show before anything is saved', /Found 1 option, read exactly from the format/.test(t) && /Porto by train/.test(t) && (await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_option_save' && p.option.name === 'Porto by train').length)) === 0, t.slice(0, 300));
+  const parseReq = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_option_parse').pop());
+  check(label + ': …read for this idea, from the chat it came from', parseReq && parseReq.ideaId && parseReq.source === 'claude');
+  await act(page, () => window.__q('.ti-paste-save').click());
+  await wait(100);
+  const porto = await page.$$eval('#tiprobe .ti-option', ns => (ns.find(n => /Porto by train/.test(n.innerText)) || { innerText: '' }).innerText);
+  check(label + ': Save keeps them as options, marked as from that chat', /from Claude/.test(porto) && !(await page.$('#tiprobe .ti-pastein')), porto.slice(0, 200));
+
+  await act(page, () => window.__q('.ti-from-willa').click());
+  await act(page, () => window.__set(window.__q('.ti-pastein textarea'), 'Looks doable. Budget: $12,500 for the whole trip.'));
+  check(label + ': WILLA\'s budget is read and shown against the old one', /Budget: \$13k \(was \$9k\)/.test(await page.$eval('#tiprobe .ti-figure-preview', n => n.innerText).catch(() => '')));
+  await act(page, () => window.__q('.ti-figure-use').click());
+  const bud = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_idea_save').pop());
+  check(label + ': …and becomes the idea\'s budget', bud && bud.idea.budget === 12500 && /budget \$13k/.test(await text(page)));
+
+  const mixedCard = () => Array.from(document.querySelectorAll('#tiprobe .ti-option')).find(n => /Lisbon → Algarve → cruise/.test(n.querySelector('.ti-option-name').innerText));
+  await act(page, (f) => eval(f)().querySelector('.ti-handoff-btn').click(), mixedCard.toString());
+  await act(page, (f) => eval(f)().querySelector('.ti-to-willa').click(), mixedCard.toString());
+  box = await page.evaluate((f) => { const c = eval(f)().querySelector('.ti-copyout textarea'); return c ? c.value : ''; }, mixedCard.toString());
+  check(label + ': WILLA gets one line with the option and its money', /^VERA → WILLA · Trip idea "Spring in Europe": Lisbon → Algarve → cruise · 13 nights · Mar – May 20\d\d · estimated \$5\.4k – \$7\.8k total/.test(box) && /budget \$13k \(within\)/.test(box), box);
+  await act(page, (f) => eval(f)().querySelector('.ti-to-aria').click(), mixedCard.toString());
+  box = await page.evaluate((f) => { const c = eval(f)().querySelector('.ti-copyout textarea'); return c ? c.value : ''; }, mixedCard.toString());
+  check(label + ': ARIA gets the route\'s flights and the answer to give', /=== VERA fare request v1 ===/.test(box) && /- Home → LIS\n- BCN → Home\n/.test(box) && /Fare: \$<total/.test(box), box);
+  await act(page, (f) => eval(f)().querySelector('.ti-from-aria').click(), mixedCard.toString());
+  await act(page, () => window.__set(window.__q('.ti-pastein textarea'), 'Fare: $2,050 · checked 2026-10-24'));
+  check(label + ': ARIA\'s fare is read and shown against the estimate', /Flights: \$2\.1k · ARIA · checked 2026-10-24 \(was \$1\.4k – \$1\.8k/.test(await page.$eval('#tiprobe .ti-figure-preview', n => n.innerText).catch(() => '')));
+  await act(page, () => window.__q('.ti-figure-use').click());
+  const fare = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_option_save').pop());
+  check(label + ': …and replaces the flights estimate, keeping the date', fare && fare.option.name === 'Lisbon → Algarve → cruise' && JSON.stringify(fare.option.cost.flights) === '{"low":2050,"high":2050,"basis":"ARIA · checked 2026-10-24"}' && fare.option.cost.cruise.low === 4000, JSON.stringify(fare && fare.option.cost));
+  check(label + ': no sideways scroll with the hand-offs', await noScroll(page));
+  if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-handoff-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-ask-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 }
 
