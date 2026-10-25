@@ -35,7 +35,7 @@ const CONTROLS = [
   ['a tight connection waits for the whole gap', both('var TS_TIGHT_RATIO=0.7;', 'var TS_TIGHT_RATIO=1.5;')],
   ['the lite copy drifts', b => ({ [L]: swap(b[L], "'Nothing booked'", "'Not booked'") })],
   ['full: Agenda stays the default', b => ({ [A]: swap(b[A], "React.useState('summary');", "React.useState('agenda');") })],
-  ['full: VERA Notices shows on Summary too', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&allNotices.length>0", 'allNotices.length>0') })],
+  ['full: VERA Notices shows on Summary too', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&viewMode!=='packing'&&allNotices.length>0", 'allNotices.length>0') })],
   // ---- Agenda (stage 2) ----
   ['any gap counts as free time', both('if(free>=60)(out[a.id]', 'if(free>=0)(out[a.id]')],
   ['the drive is not taken off free time', both('var free=gap-drive;', 'var free=gap;')],
@@ -48,7 +48,7 @@ const CONTROLS = [
   ['a passport that runs out is only amber', both("if(st==='expires')e.red=true;", '')],
   ['a visa to arrange is not flagged', both("if(p.color==='red'||p.color==='yellow')visas.push(", "if(false)visas.push(")],
   ['red no longer comes first', both("  attention=attention.filter(function(a){return a.level==='red';}).concat(attention.filter(function(a){return a.level!=='red';}));\n", '')],
-  ['full: the Visa view is back', b => ({ [A]: swap(b[A], "['summary','map','agenda'].map(function(mode)", "['summary','map','agenda','visa'].map(function(mode)") })],
+  ['full: the Visa view is back', b => ({ [A]: swap(b[A], "['summary','map','agenda'].concat(renderPacking?['packing']:[]).map(function(mode)", "['summary','map','agenda','visa'].concat(renderPacking?['packing']:[]).map(function(mode)") })],
   // ---- Home travel card (stage 4) ----
   ['leave-by gives up at the first stop without a drive', both("    if(!leg||leg.driveMins==null)continue;// no cached drive for this stop: try the next", "    if(!leg||leg.driveMins==null)break;")],
   ['a leave-by time already past still shows', both("var t=tsMins_(b.startTime)-leg.driveMins;if(t<now)continue;", "var t=tsMins_(b.startTime)-leg.driveMins;")],
@@ -58,9 +58,14 @@ const CONTROLS = [
   // ---- weather, documents gate, Useful to know ----
   ['the forecast is asked for the trip home too', both("var place=travel&&i===days.length-1?'':dayCity[d];", 'var place=dayCity[d];')],
   ['rain reads as sunny', both("if((c>=51&&c<=67)||(c>=80&&c<=82))return {icon:'🌧️',label:'Rain'};", '')],
-  ['a domestic trip shows an empty Documents section', both("documents&&(documents.error||(documents.countries||[]).length>0)&&h('section'", "documents&&h('section'")],
-  ['full: the views are back in the old order', b => ({ [A]: swap(b[A], "['summary','map','agenda'].map(", "['summary','agenda','map'].map(") })],
-  ['full: Agenda keeps the old Useful to know', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&itinInsights&&/*#__PURE__*/React.createElement(TsUsefulToKnow,{ins:itinInsights,collapsible:true})", "viewMode!=='summary'&&itinInsights&&null") })],
+  ['a domestic trip shows an empty Documents section', both("documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section'", "documents&&h('section'")],
+  ['full: Packing is a Travel sub-tab again', b => ({ [A]: swap(b[A], "{id:'itinerary',label:'🗺️ My Itinerary'},", "{id:'itinerary',label:'🗺️ My Itinerary'},{id:'packing',label:'🎒 Packing'},") })],
+  ['full: Packing is not a view inside the itinerary', b => ({ [A]: swap(b[A], "viewMode==='packing'&&renderPacking&&renderPacking(trip),", '') })],
+  ['a card with a foreign fee is offered abroad', both("return (cards||[]).filter(function(c){return c&&c.active==='Yes'&&c.noFxFee;})", "return (cards||[]).filter(function(c){return c&&c.active==='Yes';})")],
+  ['travel perks are not carried', both("&&TS_TRAVEL_PERK.test(String(p.perk||'')+' '+String(p.category||''));", "&&false;")],
+  ['cards to carry shows on a domestic trip', both("abroad&&h(TsCardsToCarry,{data:cards}),", "h(TsCardsToCarry,{data:cards}),")],
+  ['full: the views are back in the old order', b => ({ [A]: swap(b[A], "['summary','map','agenda'].concat(", "['summary','agenda','map'].concat(") })],
+  ['full: Agenda keeps the old Useful to know', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&/*#__PURE__*/React.createElement(TsUsefulToKnow,{ins:itinInsights,collapsible:true})", "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&null") })],
   ['lite: Agenda stays the default', b => ({ [L]: swap(b[L], "tripTabs[tripKey] || 'summary'", "tripTabs[tripKey] || 'agenda'") })],
 ];
 

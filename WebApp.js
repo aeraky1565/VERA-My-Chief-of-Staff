@@ -9825,10 +9825,12 @@ function tripAddressCountry_(location, countryNames) {
  * Pure: the non-home countries a trip touches.
  * items: itinerary rows ({type,title,date,location,metadata}); countryNames:
  * normalized name → display name; airportCountry(code) → country name or '';
- * home: the home country's name. Returns [{country, role, from, to, via}] where
- * role is 'stay' (you are there) or 'layover' (a flight only connects there).
+ * home: the home country's name. placeCountry(location), optional, names the
+ * country of a place an address leaves unsaid ("Cozumel", "Port of Nassau").
+ * Returns [{country, role, from, to, via}] where role is 'stay' (you are
+ * there) or 'layover' (a flight only connects there).
  */
-function tripCountries_(items, countryNames, airportCountry, home) {
+function tripCountries_(items, countryNames, airportCountry, home, placeCountry) {
   var homeN = visaNorm_(home || 'United States');
   var byN = {};
   function add(country, role, date, via) {
@@ -9853,10 +9855,26 @@ function tripCountries_(items, countryNames, airportCountry, home) {
       });
       return;
     }
-    add(tripAddressCountry_(it.location, countryNames), 'stay', it.date, '');
+    var named = tripAddressCountry_(it.location, countryNames);
+    if (!named && placeCountry && String(it.location || '').trim()) named = placeCountry(String(it.location).trim()) || '';
+    add(named, 'stay', it.date, '');
   });
   return Object.keys(byN).map(function(k) { return byN[k]; })
     .sort(function(a, b) { return (a.from || '').localeCompare(b.from || '') || a.country.localeCompare(b.country); });
+}
+
+/**
+ * Pure: is a geocoder's answer really the place this location names? Its best
+ * match for an unknown word is some town somewhere, so the matched name must
+ * appear in the location as a whole word. Ship-board and online locations are
+ * never places.
+ */
+var TRIP_NOT_A_PLACE_ = /\b(at sea|sea day|on ?board|aboard|ship|cabin|deck|zoom|online|virtual|teams|meet)\b|https?:|www\./i;
+function tripPlaceMatches_(location, name) {
+  var loc = String(location || ''), n = String(name || '').trim();
+  if (!loc || n.length < 3 || TRIP_NOT_A_PLACE_.test(loc)) return false;
+  var norm = function(x) { return ' ' + String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim() + ' '; };
+  return norm(loc).indexOf(norm(n)) !== -1;
 }
 
 /** Pure: does a passport last long enough for this country? */
@@ -9923,8 +9941,19 @@ function webGetTripDocuments_(params) {
   var tripKey = String(params.tripKey || '').trim();
   var endDate = String(params.endDate || '').trim();
   if (!tripKey) return { ok: false, error: 'tripKey required' };
-  var items = [];
-  var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  // The same items the itinerary shows: stored rows plus the calendar events in
+  // the trip's dates, where a cruise's ports usually live. The sheet alone is the
+  // fallback if that read fails.
+  var items = null;
+  try {
+    var merged = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: String(params.startDate || ''), endDate: endDate } }, { skipEventTz: true });
+    if (merged && merged.items) items = merged.items.map(function(it) {
+      var d = it.date instanceof Date ? Utilities.formatDate(it.date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(it.date || '').trim();
+      return { type: String(it.type || ''), title: String(it.title || ''), date: d, location: String(it.location || ''), metadata: String(it.metadata || '') };
+    });
+  } catch (err) { Logger.log('trip_documents: itinerary read failed, using sheet rows'); }
+  var sheet = items ? null : getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  items = items || [];
   if (sheet && sheet.getLastRow() >= 2) {
     var tz = Session.getScriptTimeZone();
     sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
@@ -9949,8 +9978,19 @@ function webGetTripDocuments_(params) {
     if (hit === null) { hit = resolveIataCountry_(code, null) || ''; cache.put('iata_country_' + code, hit, 21600); }
     return (memo[code] = hit);
   };
+  // A place an address leaves unnamed is looked up by name, at most 20 per trip,
+  // through the packing geocoder (cached six hours, cruise ports understood).
+  var looked = 0, placeMemo = {};
+  var placeCountry = function(location) {
+    if (placeMemo[location] !== undefined) return placeMemo[location];
+    if (TRIP_NOT_A_PLACE_.test(location) || looked >= 20) return (placeMemo[location] = '');
+    looked++;
+    var g = null;
+    try { g = geocodePackingDestination_(location, null); } catch (e) {}
+    return (placeMemo[location] = g && g.country && tripPlaceMatches_(location, g.name) ? g.country : '');
+  };
   var home = String(getConfigValues()['home_country'] || 'United States');
-  var countries = tripCountries_(items, countryNames, airportCountry, home).map(function(c) {
+  var countries = tripCountries_(items, countryNames, airportCountry, home, placeCountry).map(function(c) {
     var v = profiles.length ? visaResultsFor_(csv, c.country, profiles) : { results: [] };
     var travelers = (v.results || []).map(function(t) {
       return { name: t.name, passports: (t.passports || []).map(function(p) {
@@ -9959,6 +9999,7 @@ function webGetTripDocuments_(params) {
     });
     return Object.assign({}, c, { travelers: travelers, worst: tripDocWorst_(travelers), note: v.note || '' });
   });
+  Logger.log('trip_documents: ' + items.length + ' items, ' + looked + ' place lookups, ' + countries.length + ' countries');
   return { ok: true, home: home, countries: countries, profiles: profiles.length };
 }
 

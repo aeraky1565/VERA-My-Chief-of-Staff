@@ -7268,6 +7268,38 @@ function TsUsefulToKnow(props){var h=React.createElement;var ins=props.ins;
       style:{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',minHeight:40,padding:0,background:'none',border:'none',color:T.head,fontSize:13,fontWeight:700,cursor:'pointer'}},
       h('span',null,'Useful to know'+(codes?' · '+codes:'')),h('span',{'aria-hidden':'true'},open?'▴':'▾')),
     open&&h('div',{style:{paddingBottom:12}},body));}
+// Cards to carry abroad: the active cards marked No FX fee, best for spending
+// abroad first, ranked as the cheat sheet's International Travel row ranks them:
+// an International Travel rate, then a general-spend rate, then a travel-ish one.
+// A card not marked No FX fee is never offered (blank means no, on purpose).
+var TS_ABROAD_HINTS=['travel','hotel','flight','airfare','dining','restaurant','transit'];
+var TS_TRAVEL_PERK=/lounge|priority pass|travel|trip|delay|baggage|luggage|rental|global entry|tsa|precheck|insurance|airline|hotel/i;
+function tsCardsToCarry_(cards,rewards,perks){
+  var GENERAL={'general spend':1,'everything else':1};
+  var tierOf=function(cat){var c=String(cat||'').trim().toLowerCase();if(c==='international travel')return 1;if(GENERAL[c])return 2;
+    return TS_ABROAD_HINTS.some(function(x){return c.indexOf(x)!==-1;})?3:0;};
+  return (cards||[]).filter(function(c){return c&&c.active==='Yes'&&c.noFxFee;}).map(function(c){
+    var pick=null;(rewards||[]).forEach(function(r){if(r.cardName!==c.cardName)return;var t=tierOf(r.category);if(!t)return;
+      if(!pick||t<pick.tier||(t===pick.tier&&parseFloat(r.rate)>parseFloat(pick.r.rate)))pick={tier:t,r:r};});
+    var rt=pick?String(pick.r.rateType||'').trim():'';var reward=pick?String(pick.r.rate||'')+(rt?(/^(x|%)$/i.test(rt)?rt:' '+rt):'')+(pick.tier===1?' abroad':pick.tier===2?' on everything':' on '+String(pick.r.category).trim().toLowerCase()):'';
+    var travelPerks=(perks||[]).filter(function(p){return p.cardName===c.cardName&&TS_TRAVEL_PERK.test(String(p.perk||'')+' '+String(p.category||''));}).map(function(p){return String(p.perk);}).slice(0,3);
+    return {cardName:c.cardName,owner:c.owner||'',last4:c.last4||'',reward:reward.trim(),tier:pick?pick.tier:4,rate:pick?parseFloat(pick.r.rate):NaN,perks:travelPerks};
+  }).sort(function(x,y){if(x.tier!==y.tier)return x.tier-y.tier;var xr=isNaN(x.rate)?-1:x.rate,yr=isNaN(y.rate)?-1:y.rate;return yr-xr||x.cardName.localeCompare(y.cardName);});}
+function TsCardsToCarry(props){var h=React.createElement;var d=props.data;
+  var box={display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',gridColumn:'1 / -1'};
+  var head=h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Cards to carry · no foreign transaction fee');
+  var muted={fontSize:13,color:'#9aa9cc'};
+  if(!d||d.loading)return h('div',{className:'ts-cards',style:box},head,h('div',{style:muted},'Checking your cards…'));
+  if(d.error)return h('div',{className:'ts-cards',style:box},head,h('div',{style:muted},'Couldn’t load your cards: '+d.error));
+  var list=tsCardsToCarry_(d.cards,d.rewards,d.perks);
+  if(!list.length)return h('div',{className:'ts-cards',style:box},head,h('div',{style:{fontSize:13,color:'#f6dc97'}},'No active card is marked No FX fee. Set it on the card in Cards, or expect about 3% on every purchase abroad.'));
+  return h('div',{className:'ts-cards',style:box},head,
+    list.map(function(c,i){return h('div',{key:c.cardName,className:'ts-card-row',style:{display:'flex',gap:10,alignItems:'flex-start',padding:'8px 10px',borderRadius:8,background:i===0?'#13264d':'transparent',border:'1px solid '+(i===0?'#2f5ea8':'#1e3060')}},
+      h('span',{'aria-hidden':'true',style:{fontSize:16,lineHeight:1.3}},'💳'),
+      h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},
+        h('span',{style:{fontSize:14,fontWeight:700,color:'#eef1fb'}},c.cardName+(c.last4?' ·· '+c.last4:'')+(c.owner?' · '+c.owner:'')),
+        c.reward&&h('span',{style:{fontSize:12,color:'#b8c3e0'}},c.reward),
+        c.perks.length>0&&h('span',{style:{fontSize:12,color:'#a8c5f5'}},c.perks.join(' · '))));}));}
 function TripSummaryView(props){
   var h=React.createElement;var trip=props.trip||{};
   var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];
@@ -7279,6 +7311,12 @@ function TripSummaryView(props){
       .then(function(r){if(!dead)setDocs(r&&r.ok?r:{error:(r&&r.error)||'no answer'});}).catch(function(e){if(!dead)setDocs({error:e.message});});
     return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey]);
   var documents=props.documents!==undefined?props.documents:docs;
+  var abroad=!!(documents&&(documents.countries||[]).length>0);
+  var _c=React.useState(null),cardsData=_c[0],setCardsData=_c[1];
+  React.useEffect(function(){if(!abroad||props.cards!==undefined||!props.apiUrl||!props.apiToken)return;var dead=false;setCardsData({loading:true});
+    apiGet(props.apiUrl,props.apiToken,{action:'cards'}).then(function(r){if(!dead)setCardsData(r&&r.cards?r:{error:(r&&r.error)||'no answer'});}).catch(function(e){if(!dead)setCardsData({error:e.message});});
+    return function(){dead=true;};},[abroad,props.apiUrl,props.apiToken]);
+  var cards=props.cards!==undefined?props.cards:cardsData;
   var _w=React.useState(null),wx=_w[0],setWx=_w[1];
   var s=buildTripSummary_({trip:trip,items:props.items,legs:props.legs,outboundMode:(props.meta||{}).outboundMode,returnMode:(props.meta||{}).returnMode,today:todayIso,documents:documents});
   var statuses=props.statuses||{};var ins=props.insights;
@@ -7375,10 +7413,11 @@ function TripSummaryView(props){
             h('span',{style:{color:'#9aa9cc'}},'Arrival'),h('span',null,[fs.arr_scheduled&&'Sched '+fs.arr_scheduled,fs.arr_estimated&&fs.arr_estimated!==fs.arr_scheduled&&'Est '+fs.arr_estimated,fs.arr_actual&&'Actual '+fs.arr_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
     // Before you go
-    documents&&(documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
-    (ins||props.onGoToPacking)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
+    documents&&(documents.loading||documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
+    (ins||props.onGoToPacking||abroad)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:10}},
         ins&&h('div',{style:{gridColumn:'1 / -1'}},h(TsUsefulToKnow,{ins:ins})),
+        abroad&&h(TsCardsToCarry,{data:cards}),
         props.onGoToPacking&&h('div',{style:{display:'flex',flexDirection:'column',gap:6,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
           h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Packing'),
           h('button',{type:'button',className:'ts-packing',onClick:props.onGoToPacking,style:{alignSelf:'flex-start',minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#8ab4f8',fontWeight:600,fontSize:13,cursor:'pointer'}},'Open the packing list')))));

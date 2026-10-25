@@ -31,8 +31,8 @@ const CSV = ['Passport,Portugal,Germany,Italy,France,Egypt,United States,Japan',
 const AIRPORTS = { IAD: 'United States', LIS: 'Portugal', OPO: 'Portugal', FRA: 'Germany', FCO: 'Italy', CDG: 'France', JFK: 'United States' };
 
 const S = vm.createContext({ console });
-vm.runInContext([extractVar(WEB, 'VISA_ALIASES_'), extractVar(WEB, 'SCHENGEN_'),
-  ...['visaNorm_', 'visaResultsFor_', 'visaStatusLabel_', 'visaStatusColor_', 'tripFlightRoute_', 'tripAddressCountry_', 'tripCountries_',
+vm.runInContext([extractVar(WEB, 'VISA_ALIASES_'), extractVar(WEB, 'SCHENGEN_'), WEB.match(/var TRIP_NOT_A_PLACE_ = .*;/)[0],
+  ...['tripPlaceMatches_', 'visaNorm_', 'visaResultsFor_', 'visaStatusLabel_', 'visaStatusColor_', 'tripFlightRoute_', 'tripAddressCountry_', 'tripCountries_',
       'tripPassportCheck_', 'tripDocWorst_', 'webGetTripDocuments_', 'webGetVisaRequirements_'].map(n => extractFn(WEB, n))].join('\n'), S);
 const run = code => vm.runInContext(code, S);
 S.CSV = CSV;
@@ -74,6 +74,30 @@ check('each country keeps its first and last date', cs.find(c => c.country === '
 check('an unknown airport is skipped, not guessed', run('tripCountries_([{type:"flight",title:"XYZ → QQQ",date:"2026-01-01"}], names, airport, "United States")').length === 0);
 check('a different home country is the one left out', run('tripCountries_(items, names, airport, "Portugal")').some(c => c.country === 'United States'));
 
+// ============ a place an address leaves unnamed ================================
+console.log('\na place an address leaves unnamed');
+{
+  // A cruise: it leaves from home, and its ports are calendar events named by place only.
+  S.cruise = [
+    { type: 'cruise', title: 'Anniversary cruise', date: '2026-12-01', location: 'Port Canaveral, FL' },
+    { type: 'activity', title: 'Port day', date: '2026-12-03', location: 'Cozumel' },
+    { type: 'activity', title: 'Port day', date: '2026-12-04', location: 'Port of Roatan' },
+    { type: 'activity', title: 'Sea day', date: '2026-12-05', location: 'At sea' },
+    { type: 'activity', title: 'Port day', date: '2026-12-06', location: 'George Town, Cayman' },
+  ];
+  const asked = [];
+  S.place = l => { asked.push(l); return { 'Port Canaveral, FL': 'United States', 'Cozumel': 'Mexico', 'Port of Roatan': 'Honduras' }[l] || ''; };
+  const cc = run('tripCountries_(cruise, names, airport, "United States", place)');
+  check('ports named by place alone are found, in date order', cc.map(c => c.country + ':' + c.role).join() === 'Mexico:stay,Honduras:stay', cc.map(c => c.country + ':' + c.role).join());
+  check('…with the day you are there', cc[0].from === '2026-12-03' && cc[1].from === '2026-12-04');
+  check('a place at home is still left out', !cc.some(c => c.country === 'United States'));
+  check('an address that names its country is not looked up', !asked.includes('Rua X 12, 1100-001 Lisboa, Portugal') && (S.items2 = [{ type: 'hotel', date: '2026-01-01', location: 'Rua X 12, 1100-001 Lisboa, Portugal' }], run('tripCountries_(items2, names, airport, "United States", place)').length === 1) && !asked.includes('Rua X 12, 1100-001 Lisboa, Portugal'));
+  check('without a resolver, a bare place is still skipped', run('tripCountries_(cruise, names, airport, "United States")').length === 0);
+  const pm = (l, n) => { S.a = [l, n]; return run('tripPlaceMatches_.apply(null, a)'); };
+  check('a geocoder answer counts only when the location names it', pm('Port of Roatan', 'Roatán') && pm('Cozumel', 'Cozumel') && !pm('Main dining room', 'Roma') && !pm('Cozumel', 'Coz'));
+  check('ship-board and online locations are never places', !pm('At sea', 'Sea') && !pm('Deck 5, ship', 'Deck') && !pm('https://zoom.us/j/1', 'Zoom'));
+}
+
 // ============ is the passport good for the trip ================================
 console.log('\nis the passport good for the trip');
 const pc = (e, end, c) => { S.a = [e, end, c]; return run('tripPassportCheck_.apply(null, a)'); };
@@ -106,6 +130,7 @@ console.log('\nthe whole check');
     CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
     resolveIataCountry_: c => { fetched.push(c); return AIRPORTS[c] || null; },
     getConfigValues: () => ({}),
+    Logger: { log: () => {} },
   });
   const r = run('webGetTripDocuments_({ tripKey: "fx|trip", endDate: "2026-11-19" })');
   check('answers ok, with home', r.ok && r.home === 'United States', JSON.stringify(r).slice(0, 200));
@@ -119,6 +144,31 @@ console.log('\nthe whole check');
   check('a clear visa with a short passport is amber', run("tripDocWorst_([{passports:[{color:'green',passport:{status:'short'}}]}])") === 'amber' && run("tripDocWorst_([{passports:[{color:'green',passport:{status:'ok'}}]}])") === 'green');
   check('each airport is looked up once', fetched.filter(c => c === 'IAD').length === 1, JSON.stringify(fetched));
   check('without a tripKey it says so', run('webGetTripDocuments_({})').ok === false);
+  check('when the itinerary read fails, the sheet rows are used', r.countries.length === 2);
+}
+
+// ============ the whole check reads what the itinerary shows ====================
+console.log('\nthe whole check reads what the itinerary shows');
+{
+  const geo = [];
+  Object.assign(S, {
+    // Stored rows plus calendar events, as the Travel tab gets them.
+    webGetItinerary_: (e, opts) => { S.itinArgs = [e.parameter, opts]; return { items: [
+      { type: 'cruise', title: 'Anniversary cruise', date: '2026-12-01', location: 'Port Canaveral, FL', metadata: '' },
+      { type: 'calendar', title: 'Cozumel', date: '2026-12-03', location: 'Cozumel', metadata: '' },
+      { type: 'calendar', title: 'Sea day', date: '2026-12-05', location: 'At sea', metadata: '' },
+      { type: 'calendar', title: 'Dinner', date: '2026-12-06', location: 'Main dining room', metadata: '' }] }; },
+    geocodePackingDestination_: (l) => { geo.push(l); return { 'Port Canaveral, FL': { name: 'Port Canaveral', country: 'United States' },
+      'Cozumel': { name: 'Cozumel', country: 'Mexico' }, 'Main dining room': { name: 'Roma', country: 'Italy' } }[l] || null; },
+    Logger: { log: () => {} },
+  });
+  const r = run('webGetTripDocuments_({ tripKey: "fx|cruise", startDate: "2026-12-01", endDate: "2026-12-08" })');
+  check('calendar ports count: Mexico is found', r.ok && r.countries.map(c => c.country).join() === 'Mexico', JSON.stringify(r.countries && r.countries.map(c => c.country)));
+  check('…read for this trip\'s dates, without the per-event timezone pass', S.itinArgs[0].tripKey === 'fx|cruise' && S.itinArgs[0].startDate === '2026-12-01' && S.itinArgs[0].endDate === '2026-12-08' && S.itinArgs[1].skipEventTz === true);
+  check('a geocoder guess the location does not name is dropped', !r.countries.some(c => c.country === 'Italy'));
+  check('"At sea" is never looked up', !geo.includes('At sea'), JSON.stringify(geo));
+  check('the route is wired', /case 'trip_documents':\s+return jsonOut_\(webGetTripDocuments_\(e\.parameter\)\);/.test(WEB));
+  delete S.webGetItinerary_;
 }
 
 // ============ the matrix is cached in pieces ====================================

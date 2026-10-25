@@ -213,19 +213,51 @@ console.log('\nweather and Useful to know');
   check('weather codes read as a symbol and a word', wx(0).label === 'Sunny' && wx(3).label === 'Cloudy' && wx(61).label === 'Rain' && wx(81).label === 'Rain' && wx(73).label === 'Snow' && wx(95).label === 'Storms' && wx(45).label === 'Fog');
   check('Useful to know is one shared card, in Summary and in both Agendas',
         /ins&&h\('div',\{style:\{gridColumn:'1 \/ -1'\}\},h\(TsUsefulToKnow,\{ins:ins\}\)\)/.test(A)
-        && /viewMode!=='summary'&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true\}\)/.test(APP)
+        && /viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true\}\)/.test(APP)
         && /return <TsUsefulToKnow ins=\{insights\} collapsible=\{true\} \/>;/.test(LITE));
-  check('Documents shows only for a trip that leaves home (or to report an error)', /documents&&\(documents\.error\|\|\(documents\.countries\|\|\[\]\)\.length>0\)&&h\('section'/.test(A));
+  check('Documents shows only for a trip that leaves home (or while checking, or to report an error)', /documents&&\(documents\.loading\|\|documents\.error\|\|\(documents\.countries\|\|\[\]\)\.length>0\)&&h\('section'/.test(A));
+}
+
+console.log('\ncards to carry');
+{
+  S.cards = [
+    { cardName: 'Blue Travel', owner: 'Ahmed', last4: '1111', active: 'Yes', noFxFee: true },
+    { cardName: 'Cash Back', owner: 'Ahmed', last4: '2222', active: 'Yes', noFxFee: false },
+    { cardName: 'Green Everyday', owner: 'Victoria', last4: '3333', active: 'Yes', noFxFee: true },
+    { cardName: 'Old Gold', owner: 'Ahmed', last4: '4444', active: 'No', noFxFee: true },
+    { cardName: 'Plain Card', owner: 'Victoria', last4: '5555', active: 'Yes', noFxFee: true }];
+  S.rewards = [
+    { cardName: 'Green Everyday', category: 'Everything Else', rate: '2', rateType: '%' },
+    { cardName: 'Blue Travel', category: 'Dining', rate: '3', rateType: 'x' },
+    { cardName: 'Blue Travel', category: 'International Travel', rate: '2', rateType: 'x' },
+    { cardName: 'Cash Back', category: 'International Travel', rate: '5', rateType: '%' }];
+  S.perks = [
+    { cardName: 'Blue Travel', perk: 'Priority Pass lounge access', category: 'Travel' },
+    { cardName: 'Blue Travel', perk: 'Streaming credit', category: 'Entertainment' },
+    { cardName: 'Blue Travel', perk: 'Trip delay insurance', category: '' }];
+  const c = run('tsCardsToCarry_(cards, rewards, perks)');
+  check('only active cards marked No FX fee', c.map(x => x.cardName).join() === 'Blue Travel,Green Everyday,Plain Card', c.map(x => x.cardName).join());
+  check('an International Travel rate ranks first, then general spend, then none', c[0].reward === '2x abroad' && c[1].reward === '2% on everything' && c[2].reward === '', JSON.stringify(c.map(x => x.reward)));
+  check('travel perks come along; others do not', c[0].perks.join() === 'Priority Pass lounge access,Trip delay insurance', c[0].perks.join());
+  check('owner and last four are kept', c[0].owner === 'Ahmed' && c[0].last4 === '1111');
+  check('no cards is an empty list, not a crash', run('tsCardsToCarry_(null, null, null)').length === 0);
+  check('the card shows only on a trip abroad, and loads the cards only then', /\(ins\|\|props\.onGoToPacking\|\|abroad\)&&h\('section'/.test(A) && /abroad&&h\(TsCardsToCarry,\{data:cards\}\)/.test(A)
+        && /if\(!abroad\|\|props\.cards!==undefined/.test(A) && /\{action:'cards'\}/.test(A));
 }
 
 console.log('\nwiring');
 // ItineraryView has nested top-level-looking functions, so take it up to the panel that follows it.
 const itin = APP.slice(APP.indexOf('function ItineraryView('), APP.indexOf('// Accordion panel: all trips', APP.indexOf('function ItineraryView(')));
-check('full: views read Summary, Map, Agenda, then Packing; Summary is the default; Visa is not a view of its own', /React\.useState\('summary'\)/.test(itin) && /\['summary','map','agenda'\]/.test(itin) && /labels\[mode\]\);\}\),onGoToPacking&&/.test(itin));
-check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
+check('full: views read Summary, Map, Agenda, then Packing; Summary is the default; Visa is not a view of its own', /React\.useState\('summary'\)/.test(itin) && /\['summary','map','agenda'\]\.concat\(renderPacking\?\['packing'\]:\[\]\)/.test(itin) && /labels\[mode\]\);\}\),!renderPacking&&onGoToPacking&&/.test(itin));
+check('full: Packing is the fourth view, rendered inside the itinerary', /viewMode==='packing'&&renderPacking&&renderPacking\(trip\)/.test(itin) && /onGoToPacking:renderPacking\?function\(\)\{setViewMode\('packing'\);\}:onGoToPacking/.test(itin));
+check('full: Travel has no Packing sub-tab; each trip gets its own packing list', !/\{id:'packing',label:'🎒 Packing'\}/.test(APP) && !/sub==='packing'&&/.test(APP)
+      && /renderPacking:function\(t\)\{[^]*?React\.createElement\(PackingPanel,\{trips:\[t\],[^]*?focusTripKey:t\.startDate\+'\|'\+t\.label,/.test(APP)
+      && /renderPacking:renderPacking\?function\(\)\{return renderPacking\(t\);\}:null,/.test(APP));
+check('full: a jump to packing opens the itinerary, not a removed tab', /if\(!packingFocusTripKey\)return;setSub\('itinerary'\);/.test(APP));
+check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:renderPacking\?function\(\)\{setViewMode\('packing'\);\}:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
 check('full: the old per-day summary is gone', !/viewMode==='summary'&&orderedDays/.test(itin));
 check('full: tapping a day opens Agenda at that day', /onOpenDay:function\(d\)\{setViewMode\('agenda'\);/.test(itin) && /id:tsDayId_\(trip\.tripKey,day\)/.test(itin));
-check('full: VERA Notices and Useful to know stand down on Summary', /viewMode!=='summary'&&allNotices\.length>0/.test(itin) && /viewMode!=='summary'&&itinInsights&&/.test(itin));
+check('full: VERA Notices and Useful to know stand down on Summary', /viewMode!=='summary'&&viewMode!=='packing'&&allNotices\.length>0/.test(itin) && /viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&/.test(itin));
 check('lite: Summary first and default', /tripTabs\[tripKey\] \|\| 'summary'/.test(LITE) && /\[\['summary','📋 Summary'\],\['agenda','📅 Agenda'\],\['packing','🎒 Packing'\]\]/.test(LITE));
 check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummaryView trip=\{\{\.\.\.t,tripKey\}\} items=\{filteredItin\.items\}/.test(LITE) && /id=\{tsDayId_\(trip\.tripKey, date\)\}/.test(LITE));
 check('lite: the old SummaryLitePanel is gone', !/SummaryLitePanel/.test(LITE));

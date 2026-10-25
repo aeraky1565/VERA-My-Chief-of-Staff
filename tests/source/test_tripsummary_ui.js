@@ -39,6 +39,11 @@ const FX = {
       { name: 'Victoria', passports: [{ passportCountry: 'United States', color: 'green', label: 'Visa Free (90 days)', passport: { status: 'short', label: 'Valid until 2027-01-21: 2 months after you\'re back, Portugal asks for 3', ruleMonths: 3, ruleKnown: true } }] }] },
     { country: 'Germany', role: 'layover', from: D(7), via: ['FRA'], worst: 'red', travelers: [
       { name: 'Ahmed', passports: [{ passportCountry: 'Egypt', color: 'red', label: 'Visa Required', passport: { status: 'ok', label: 'Valid until 2030-01-01', ruleMonths: 3, ruleKnown: true } }] }] }] },
+  cards: { cards: [
+    { cardName: 'Blue Travel', owner: 'Ahmed', last4: '1111', active: 'Yes', noFxFee: true },
+    { cardName: 'Cash Back', owner: 'Ahmed', last4: '2222', active: 'Yes', noFxFee: false }],
+    rewards: [{ cardName: 'Blue Travel', category: 'International Travel', rate: '2', rateType: 'x' }],
+    perks: [{ cardName: 'Blue Travel', perk: 'Priority Pass lounge access', category: 'Travel' }] },
   statuses: { f1: { status: 'scheduled', delay_min: 45, dep_scheduled: '18:05', dep_estimated: '18:50', gate: 'B12', terminal: '1' } },
 };
 
@@ -51,7 +56,7 @@ async function mount(page) {
     ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, legs: fx.legs, meta: fx.meta, statuses: fx.statuses,
       insights: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_label: '+5h', distance_miles: 3600, haul_category: 'Long-haul', daynight_pct_day: 30, dep_local: '6:05 PM', arr_local: '6:40 AM', pre_trip_tip: 'Shift sleep an hour earlier', arrival_tip: 'Stay up until 9 PM local' },
       weather: { [fx.trip.startDate]: { hi: 64, lo: 52, code: 0 }, [fx.trip.endDate]: { hi: 60, lo: null, code: 61 } }, onGoToPacking: () => { window.__opened.push('packing'); },
-      documents: fx.docs, onOpenDay: d => { window.__opened.push(d); }, details: React.createElement('span', { className: 'probe-editors' }, 'Trip editors') }));
+      documents: fx.docs, cards: fx.cards, onOpenDay: d => { window.__opened.push(d); }, details: React.createElement('span', { className: 'probe-editors' }, 'Trip editors') }));
     return new Promise(r => setTimeout(() => r({}), 300));
   }, FX);
 }
@@ -103,7 +108,19 @@ async function assertSummary(page) {
     ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, documents: { ok: true, home: 'United States', countries: [] } })); }, FX);
   await new Promise(r => setTimeout(r, 200));
   check('a domestic trip shows no Documents section', !(await page.$('#domprobe section[aria-label="Documents"]')));
+  check('…and no cards to carry', !(await page.$('#domprobe .ts-cards')));
   await page.evaluate(() => document.getElementById('domprobe').remove());
+  // Abroad, the cards with no foreign fee come along, best first.
+  const ct = await page.$eval('#tsprobe .ts-cards', n => n.innerText).catch(() => '');
+  check('abroad, Before you go lists the cards to carry', /Cards to carry/i.test(ct) && /Blue Travel/.test(ct) && /2x abroad/.test(ct) && /Priority Pass lounge access/.test(ct) && !/Cash Back/.test(ct), ct);
+  if (process.env.SHOT_DIR) { const el = await page.$('#tsprobe section[aria-label="Before you go"]'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/before-you-go-' + page.viewportSize().width + '.png' }); } catch (e) {} }
+  // While the check runs, the section says so instead of being missing.
+  await page.evaluate((fx) => { const host = document.createElement('div'); host.id = 'ldprobe'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, documents: { loading: true } })); }, FX);
+  await new Promise(r => setTimeout(r, 150));
+  const ld = await page.$eval('#ldprobe', n => n.innerText);
+  check('while documents are checked, the section says so', /Documents: passports and visas/i.test(ld) && /Checking passports and visas/.test(ld), ld.slice(0, 200));
+  await page.evaluate(() => document.getElementById('ldprobe').remove());
   // In Agenda, Useful to know folds
   await page.evaluate(() => { const host = document.createElement('div'); host.id = 'utkprobe'; document.body.appendChild(host);
     ReactDOM.createRoot(host).render(React.createElement(TsUsefulToKnow, { ins: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_label: '+5h' }, collapsible: true })); });
@@ -292,13 +309,23 @@ async function assertShare(page, lite) {
       const noop = () => {}; window.__adds = [];
       ReactDOM.createRoot(host).render(React.createElement(ItineraryView, { trip: fx.trip, itinerary: { items: fx.items }, loading: false, busy: false,
         tripContext: fx.meta, onAdd: d => { window.__adds.push(d === undefined ? 'blank' : d); }, onEdit: noop, onDelete: noop, onSetContext: noop, onSetBriefing: noop, onSetTraveler: noop, onSetMode: noop,
-        onLoadContext: noop, onGoToPacking: noop, apiUrl: '', apiToken: '' }));
+        onLoadContext: noop, onGoToPacking: noop, renderPacking: t => React.createElement('div', { className: 'probe-packing' }, 'Packing for ' + t.label), apiUrl: '', apiToken: '' }));
     }, FX);
     await new Promise(r => setTimeout(r, 300));
     check('ItineraryView opens on Summary', !!(await page.$('#ivprobe .trip-summary')));
     const order = await page.$$eval('#ivprobe .trip-actions button', ns => ns.map(n => n.innerText.replace(/[^A-Za-z]/g, '')));
     check('the views read Summary, Map, Agenda, Packing', order.join() === 'Summary,Map,Agenda,Packing', order.join());
     check('the trip editors live in Summary\'s Trip details, not the header', !!(await page.$('#ivprobe .ts-details-btn')));
+    await page.evaluate(() => Array.from(document.querySelectorAll('#ivprobe .trip-actions button')).find(b => /Packing/.test(b.innerText)).click());
+    await new Promise(r => setTimeout(r, 150));
+    check('Packing opens inside the itinerary, as its fourth view', !!(await page.$('#ivprobe .probe-packing')) && !(await page.$('#ivprobe .trip-summary')));
+    await page.evaluate(() => Array.from(document.querySelectorAll('#ivprobe .trip-actions button')).find(b => /Summary/.test(b.innerText)).click());
+    await new Promise(r => setTimeout(r, 150));
+    await tap(page, '#ivprobe .ts-packing');
+    await new Promise(r => setTimeout(r, 150));
+    check('…and Summary\'s packing link opens it there too', !!(await page.$('#ivprobe .probe-packing')));
+    await page.evaluate(() => Array.from(document.querySelectorAll('#ivprobe .trip-actions button')).find(b => /Summary/.test(b.innerText)).click());
+    await new Promise(r => setTimeout(r, 150));
     await tap(page, '#ivprobe .ts-red');
     await new Promise(r => setTimeout(r, 300));
     const landed = await page.evaluate((id) => { const el = document.getElementById(id); return !!el && !document.querySelector('#ivprobe .trip-summary'); },
