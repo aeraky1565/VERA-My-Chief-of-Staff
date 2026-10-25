@@ -44,6 +44,11 @@ const CONTROLS = [
   ['full: VERA Notices repeats what each day now shows', b => ({ [A]: swap(b[A], ".filter(function(n){return n.type!=='timeline_gap'&&n.type!=='missing_hotel'&&n.type!=='missing_transport';});", ';') })],
   ['lite: the add form ignores the day it was opened for', b => ({ [L]: swap(b[L], "(defaults?.date||tripStartDate||'')", "(tripStartDate||'')") })],
   ['lite: the end-of-day slots are missing', b => ({ [L]: swap(b[L], "{date !== '_undated' && <TsDayEnd date={date} summary={agendaSum} onAdd={onAdd} busy={busy} />}", '') })],
+  // ---- documents (stage 3) ----
+  ['a passport that runs out is only amber', both("if(st==='expires')e.red=true;", '')],
+  ['a visa to arrange is not flagged', both("if(p.color==='red'||p.color==='yellow')visas.push(", "if(false)visas.push(")],
+  ['red no longer comes first', both("  attention=attention.filter(function(a){return a.level==='red';}).concat(attention.filter(function(a){return a.level!=='red';}));\n", '')],
+  ['full: the Visa view is back', b => ({ [A]: swap(b[A], "['summary','agenda','map'].map(function(mode)", "['summary','agenda','map','visa'].map(function(mode)") })],
   ['lite: Agenda stays the default', b => ({ [L]: swap(b[L], "tripTabs[tripKey] || 'summary'", "tripTabs[tripKey] || 'agenda'") })],
 ];
 

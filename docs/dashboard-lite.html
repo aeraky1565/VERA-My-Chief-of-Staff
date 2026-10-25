@@ -7201,6 +7201,8 @@ function buildTripSummary_(o){
   if(missDep)attention.push({level:'amber',date:last,title:'No departure transport planned',detail:tsShort_(last)});
   tight.forEach(function(t){attention.push({level:'amber',date:t.date,title:'Tight: '+(t.to.title||'next stop'),detail:'~'+t.driveMins+' min away with '+t.gapMins+' min to get there'});});
   decisions.forEach(function(x){attention.push({level:'amber',date:x.date,title:'Decide: '+(x.title||'an option'),detail:tsDecisionText_(x)});});
+  tsDocAttention_(o.documents,first).forEach(function(a){attention.push(a);});
+  attention=attention.filter(function(a){return a.level==='red';}).concat(attention.filter(function(a){return a.level!=='red';}));
   // ── where you sleep: one band per stay, gaps hatched ──
   var stays=[];nights.forEach(function(d){var s=stayOf[d];var kind=s?'stay':inAir[d]?'air':'gap';var key=s?'s'+(s.id||s.title):kind;var cur=stays[stays.length-1];
     if(cur&&cur.key===key)cur.nights++;else stays.push({key:key,kind:kind,from:d,nights:1,
@@ -7216,12 +7218,66 @@ function buildTripSummary_(o){
     ends:{arrival:needArr?!missArr:null,departure:needDep?!missDep:null},
     attention:attention,stays:stays,moves:moves,decisions:decisions.length,tight:tight};
 }
+// Passport and visa problems for Needs attention: a passport that runs out
+// before you're back is red; one short of a country's rule, or a visa or eTA to
+// arrange, is amber. A passport is listed once, with the countries it falls short for.
+function tsDocAttention_(docs,date){var out=[];if(!docs||!docs.countries)return out;var pp={};var visas=[];
+  docs.countries.forEach(function(c){(c.travelers||[]).forEach(function(t){(t.passports||[]).forEach(function(p){
+    var who=t.name+(p.passportCountry?' ('+p.passportCountry+' passport)':'');var st=p.passport&&p.passport.status;
+    if(st==='expires'||st==='short'){var k=who;var e=pp[k]||(pp[k]={who:who,red:false,where:[],label:p.passport.label});if(st==='expires')e.red=true;if(e.where.indexOf(c.country)===-1)e.where.push(c.country);}
+    if(p.color==='red'||p.color==='yellow')visas.push({level:'amber',date:c.from||date,title:(p.color==='red'?'Visa required for ':p.label+' for ')+c.country+(c.role==='layover'?' (layover)':''),detail:who});
+  });});});
+  Object.keys(pp).forEach(function(k){var e=pp[k];out.push({level:e.red?'red':'amber',date:date,title:(e.red?'Passport runs out: ':'Passport: renew soon: ')+e.who,detail:e.label+' · '+e.where.join(', ')});});
+  return out.concat(visas);}
+// Documents: every non-home country on the trip, stays and layovers, each with
+// every traveler's visa status and passport validity. Loaded from trip_documents.
+var TS_DOC_COLOR={green:{bg:'#173a24',fg:'#8fe0a8'},amber:{bg:'#3d2e0c',fg:'#f6d27a'},red:{bg:'#3a1218',fg:'#ffb0b0'},grey:{bg:'#1a2c55',fg:'#b9d2ff'}};
+function tsDocTone_(p){return {visa:p.color==='red'?'red':p.color==='yellow'?'amber':p.color==='grey'?'grey':'green',
+  passport:!p.passport?'grey':p.passport.status==='expires'?'red':p.passport.status==='short'?'amber':p.passport.status==='unknown'?'grey':'green'};}
+function TsDocuments(props){var h=React.createElement;var d=props.docs;
+  var _s=React.useState(''),pick=_s[0],setPick=_s[1];
+  var chip=function(tone,text,key){var c=TS_DOC_COLOR[tone]||TS_DOC_COLOR.grey;return h('span',{key:key,className:'ts-doc-chip ts-doc-'+tone,style:{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:999,background:c.bg,color:c.fg,whiteSpace:'nowrap'}},text);};
+  var muted={fontSize:13,color:'#9aa9cc'};
+  if(!d||d.loading)return h('div',{style:muted},'Checking passports and visas…');
+  if(d.error)return h('div',{style:{fontSize:13,color:'#ffb0b0'}},'Couldn’t check documents: '+d.error);
+  var cs=d.countries||[];
+  if(!cs.length)return h('div',{style:muted},'No countries outside '+(d.home||'home')+' on this trip.');
+  var cur=cs.filter(function(c){return c.country===pick;})[0]||cs[0];
+  var roleText=function(c){return c.role==='layover'?'Layover'+(c.via&&c.via.length?' · '+c.via.join(', '):''):'Stay';};
+  var worstText={green:'All clear',amber:'Check',red:'Action needed',grey:'Unknown'};
+  return h('div',{className:'ts-docs',style:{display:'flex',flexDirection:'column',gap:10}},
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},cs.map(function(c){var on=c===cur;
+      return h('button',{key:c.country,type:'button',className:'ts-doc-country'+(on?' on':''),onClick:function(){setPick(c.country);},'aria-pressed':on,
+        style:{display:'inline-flex',alignItems:'center',gap:8,minHeight:40,padding:'0 12px',borderRadius:999,border:'1px solid '+(on?'#c9a84c':'#1e3060'),background:on?'#1a2c55':'#0d1b3e',color:'#dde1f0',fontSize:13,fontWeight:600,cursor:'pointer'}},
+        h('span',null,c.country),h('span',{style:{fontWeight:400,fontSize:11,color:'#9aa9cc'}},roleText(c)),chip(c.worst||'grey',worstText[c.worst||'grey']));})),
+    h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#9aa9cc',maxWidth:320}},'Show the check for',
+      h('select',{className:'ts-doc-select',value:cur.country,onChange:function(e){setPick(e.target.value);},
+        style:{minHeight:40,padding:'0 10px',borderRadius:8,border:'1px solid #2a3f6f',background:'#06112a',color:'#dde1f0',fontSize:14}},
+        cs.map(function(c){return h('option',{key:c.country,value:c.country},c.country+' ('+(c.role==='layover'?'layover':'stay')+')');}))),
+    (cur.travelers||[]).length===0?h('div',{style:muted},cur.note||'Add a passport country in Traveler Profiles to check visas.')
+    :h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',gap:8}},cur.travelers.map(function(t){
+      return h('div',{key:t.name,className:'ts-doc-traveler',style:{display:'flex',flexDirection:'column',gap:6,padding:10,borderRadius:8,border:'1px solid #1e3060',background:'#0a1530'}},
+        h('span',{style:{fontSize:12,fontWeight:700,color:'#cfe0ff'}},t.name),
+        (t.passports||[]).map(function(p,i){var tone=tsDocTone_(p);
+          return h('div',{key:i,style:{display:'flex',flexDirection:'column',gap:4,fontSize:13}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',null,(p.passportCountry||'')+' passport · visa'),chip(tone.visa,p.label||'No data','v')),
+            h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',{style:{color:'#b8c3e0',fontSize:12}},p.passport?p.passport.label:''),
+              chip(tone.passport,tone.passport==='green'?'Valid for trip':tone.passport==='amber'?'Renew soon':tone.passport==='red'?'Expires':'Unknown','p')));}));})),
+    h('div',{style:{fontSize:12,color:'#9aa9cc'}},(function(){var p=((cur.travelers||[])[0]||{}).passports;var r=p&&p[0]&&p[0].passport;
+      return (r&&r.ruleKnown?'Passport rule for '+cur.country+': valid '+r.ruleMonths+' months past the day you leave the Schengen area. ':'Many countries ask for 6 months left on a passport; confirm '+cur.country+'\u2019s rule. ')
+        +'Visa data: Passport Index. Always confirm with the embassy before you travel.';})()));}
 function TripSummaryView(props){
   var h=React.createElement;var trip=props.trip||{};
   var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];
   var _d=React.useState(false),detailsOpen=_d[0],setDetailsOpen=_d[1];
   var today=new Date();var todayIso=today.getFullYear()+'-'+('0'+(today.getMonth()+1)).slice(-2)+'-'+('0'+today.getDate()).slice(-2);
-  var s=buildTripSummary_({trip:trip,items:props.items,legs:props.legs,outboundMode:(props.meta||{}).outboundMode,returnMode:(props.meta||{}).returnMode,today:todayIso});
+  var _doc=React.useState(null),docs=_doc[0],setDocs=_doc[1];
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken||!trip.tripKey)return;var dead=false;setDocs({loading:true});
+    apiGet(props.apiUrl,props.apiToken,{action:'trip_documents',tripKey:trip.tripKey,startDate:trip.startDate||'',endDate:trip.endDate||''})
+      .then(function(r){if(!dead)setDocs(r&&r.ok?r:{error:(r&&r.error)||'no answer'});}).catch(function(e){if(!dead)setDocs({error:e.message});});
+    return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey]);
+  var documents=props.documents!==undefined?props.documents:docs;
+  var s=buildTripSummary_({trip:trip,items:props.items,legs:props.legs,outboundMode:(props.meta||{}).outboundMode,returnMode:(props.meta||{}).returnMode,today:todayIso,documents:documents});
   var statuses=props.statuses||{};var ins=props.insights;
   var card={background:'#0d1b3e',border:'1px solid #1e3060',borderRadius:12,padding:14,display:'flex',flexDirection:'column',gap:10,minWidth:0};
   var label={fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'#9aa9cc'};
@@ -7307,6 +7363,7 @@ function TripSummaryView(props){
             h('span',{style:{color:'#9aa9cc'}},'Arrival'),h('span',null,[fs.arr_scheduled&&'Sched '+fs.arr_scheduled,fs.arr_estimated&&fs.arr_estimated!==fs.arr_scheduled&&'Est '+fs.arr_estimated,fs.arr_actual&&'Actual '+fs.arr_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
     // Before you go
+    documents!==null&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
     (ins||props.onGoToPacking)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:10}},
         ins&&h('div',{className:'ts-useful',style:{display:'flex',flexDirection:'column',gap:4,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',fontSize:12,color:'#c8d2ea'}},
@@ -8366,7 +8423,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
                       Loading itinerary…
                     </div>
                   ) : activeTab === 'summary' ? (
-                    <TripSummaryView trip={{...t,tripKey}} items={filteredItin.items} legs={travelLegs[tripKey]} meta={meta||{}}
+                    <TripSummaryView trip={{...t,tripKey}} items={filteredItin.items} legs={travelLegs[tripKey]} meta={meta||{}} apiUrl={apiUrl} apiToken={apiToken}
                       insights={flightInsights[tripKey]} onGoToPacking={()=>setTripTab(tripKey,'packing')}
                       onOpenDay={d=>{setTripTab(tripKey,'agenda');setTimeout(()=>{const el=document.getElementById(tsDayId_(tripKey,d));if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},80);}} />
                   ) : (

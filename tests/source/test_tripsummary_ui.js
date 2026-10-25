@@ -33,6 +33,12 @@ const FX = {
     { id: 'f2', type: 'flight', title: 'LH 1179 · OPO → FRA → IAD', date: D(7), startTime: '11:20', endTime: '18:55', location: 'OPO', metadata: '{}' },
   ],
   legs: [{ from: 'Alfama hotel', to: 'Santa Apolonia', driveMins: 35 }],
+  docs: { ok: true, home: 'United States', countries: [
+    { country: 'Portugal', role: 'stay', from: D(0), via: [], worst: 'amber', travelers: [
+      { name: 'Ahmed', passports: [{ passportCountry: 'United States', color: 'green', label: 'Visa Free (90 days)', passport: { status: 'ok', label: 'Valid until 2030-01-01', ruleMonths: 3, ruleKnown: true } }] },
+      { name: 'Victoria', passports: [{ passportCountry: 'United States', color: 'green', label: 'Visa Free (90 days)', passport: { status: 'short', label: 'Valid until 2027-01-21: 2 months after you\'re back, Portugal asks for 3', ruleMonths: 3, ruleKnown: true } }] }] },
+    { country: 'Germany', role: 'layover', from: D(7), via: ['FRA'], worst: 'red', travelers: [
+      { name: 'Ahmed', passports: [{ passportCountry: 'Egypt', color: 'red', label: 'Visa Required', passport: { status: 'ok', label: 'Valid until 2030-01-01', ruleMonths: 3, ruleKnown: true } }] }] }] },
   statuses: { f1: { status: 'scheduled', delay_min: 45, dep_scheduled: '18:05', dep_estimated: '18:50', gate: 'B12', terminal: '1' } },
 };
 
@@ -44,7 +50,7 @@ async function mount(page) {
     window.__opened = [];
     ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, legs: fx.legs, meta: fx.meta, statuses: fx.statuses,
       insights: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_label: '+5h' }, onGoToPacking: () => { window.__opened.push('packing'); },
-      onOpenDay: d => { window.__opened.push(d); }, details: React.createElement('span', { className: 'probe-editors' }, 'Trip editors') }));
+      documents: fx.docs, onOpenDay: d => { window.__opened.push(d); }, details: React.createElement('span', { className: 'probe-editors' }, 'Trip editors') }));
     return new Promise(r => setTimeout(() => r({}), 300));
   }, FX);
 }
@@ -66,13 +72,26 @@ async function assertSummary(page) {
   check('the countdown', /Leaves in 20 days/.test(t), t.slice(0, 80));
   check('booked so far: 4 of 6 nights', /Nights with a place to sleep\s*4 of 6/.test(t));
   const attn = await page.$$eval('#tsprobe .ts-attn', ns => ns.map(n => n.className + ' | ' + n.innerText.replace(/\s+/g, ' ')));
-  check('needs attention: red, then amber', attn.length === 3 && /ts-attn-red/.test(attn[0]) && /No place to sleep in Porto/.test(attn[0]) && /ts-attn-amber/.test(attn[1]), JSON.stringify(attn));
+  check('needs attention: red, then amber (documents included)', attn.length === 5 && /ts-attn-red/.test(attn[0]) && /No place to sleep in Porto/.test(attn[0]) && /ts-attn-amber/.test(attn[1]), JSON.stringify(attn));
   check('the decision keeps today\'s wording', attn.some(a => /Still deciding — 2 options · decide by .+ · overdue/.test(a)), JSON.stringify(attn));
   check('sleep bands: in the air, a stay, nothing booked, a stay', (await page.$$eval('#tsprobe .ts-stay', ns => ns.map(n => n.className.split(' ').pop()))).join() === 'ts-stay-air,ts-stay-stay,ts-stay-gap,ts-stay-stay');
   check('a flight not yet live says when it will be', /Live status from/.test(t));
   check('a check-in reminder under the flight', /Online check-in usually opens 24 h before/.test(t));
   check('Useful to know and Packing are under Before you go', /Useful to know/.test(t) && /IAD → LIS · \+5h/.test(t));
   check('no sideways scroll', await noScroll(page));
+
+  // Documents
+  const chips = await page.$$eval('#tsprobe .ts-doc-country', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+  check('a chip per country: role and worst status', chips.length === 2 && /Portugal Stay Check/.test(chips[0]) && /Germany Layover · FRA Action needed/.test(chips[1]), JSON.stringify(chips));
+  let dt = await page.$eval('#tsprobe .ts-docs', n => n.innerText);
+  check('the first country\'s check shows each traveler\'s visa and passport', /Ahmed/.test(dt) && /Victoria/.test(dt) && /Visa Free \(90 days\)/.test(dt) && /Renew soon/.test(dt) && /Valid for trip/.test(dt), dt.slice(0, 300));
+  check('the Schengen rule is named', /Passport rule for Portugal: valid 3 months past the day you leave the Schengen area/.test(dt));
+  await page.evaluate(() => { const sel = document.querySelector('#tsprobe .ts-doc-select'); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(sel, 'Germany'); sel.dispatchEvent(new Event('change', { bubbles: true })); });
+  await new Promise(r => setTimeout(r, 80));
+  dt = await page.$eval('#tsprobe .ts-docs', n => n.innerText);
+  check('the dropdown switches to another country', /Visa Required/.test(dt) && /Egypt passport/.test(dt) && !/Victoria/.test(dt), dt.slice(0, 300));
+  const at = await page.$$eval('#tsprobe .ts-attn', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ')));
+  check('passport and visa problems are in Needs attention', at.some(a => /Passport: renew soon: Victoria \(United States passport\)/.test(a)) && at.some(a => /Visa required for Germany \(layover\)/.test(a)), JSON.stringify(at));
 
   await tap(page, '#tsprobe .ts-red');
   await tap(page, '#tsprobe .ts-attn-amber');
@@ -123,6 +142,13 @@ async function assertAgenda(page, root, withLegs) {
     const errs = []; page.on('pageerror', e => errs.push(e.message));
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
     await assertSummary(page);
+    const calls = await page.evaluate((fx) => new Promise(r => {
+      window.__calls = []; window.apiGet = (u, t, p) => { window.__calls.push(p); return Promise.resolve(fx.docs); };
+      const host = document.createElement('div'); document.body.appendChild(host);
+      ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, apiUrl: 'https://vera.test/exec', apiToken: 't' }));
+      setTimeout(() => { r({ calls: window.__calls, text: host.innerText }); host.remove(); }, 300);
+    }), FX);
+    check('Summary loads the trip\'s documents itself, once', calls.calls.length === 1 && calls.calls[0].action === 'trip_documents' && calls.calls[0].tripKey === FX.trip.tripKey && calls.calls[0].endDate === FX.trip.endDate && /Documents: passports and visas/i.test(calls.text), JSON.stringify(calls.calls));
 
     // The real ItineraryView: Summary first; a red day opens Agenda at that day.
     await page.evaluate((fx) => {

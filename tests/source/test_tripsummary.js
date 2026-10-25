@@ -142,6 +142,25 @@ console.log('\ngetting around and the countdown');
   check('after: "Trip ended"', sum(base({ today: '2026-12-01' })).countdown === 'Trip ended');
 }
 
+console.log('\npassports and visas in Needs attention');
+{
+  const DOCS = { home: 'United States', countries: [
+    { country: 'Portugal', role: 'stay', from: '2026-11-13', via: [], travelers: [
+      { name: 'Ahmed', passports: [{ passportCountry: 'United States', color: 'green', label: 'Visa Free (90 days)', passport: { status: 'ok', label: 'Valid until 2030-01-01' } }] },
+      { name: 'Victoria', passports: [{ passportCountry: 'United States', color: 'green', label: 'Visa Free (90 days)', passport: { status: 'short', label: 'Valid until 2027-01-10: 1 month after you\'re back, Portugal asks for 3' } }] }] },
+    { country: 'Germany', role: 'layover', from: '2026-11-19', via: ['FRA'], travelers: [
+      { name: 'Ahmed', passports: [{ passportCountry: 'Egypt', color: 'red', label: 'Visa Required', passport: { status: 'expires', label: 'Expires 2026-11-15, before you\'re back' } }] },
+      { name: 'Victoria', passports: [{ passportCountry: 'United States', color: 'green', label: 'Visa Free', passport: { status: 'short', label: 'Valid until 2027-01-10: …' } }] }] }] };
+  const s = sum(base({ documents: DOCS }));
+  const docs = s.attention.filter(a => /Passport|Visa/.test(a.title));
+  check('a passport that runs out before you\'re back is red', docs.some(a => a.level === 'red' && /^Passport runs out: Ahmed \(Egypt passport\)$/.test(a.title)), JSON.stringify(docs));
+  check('a passport short of a rule is amber, listed once with every country it falls short for', docs.filter(a => /renew soon: Victoria/.test(a.title)).length === 1 && /Portugal, Germany/.test(docs.find(a => /Victoria/.test(a.title)).detail), JSON.stringify(docs));
+  check('a visa to arrange is amber, naming the country, the layover and the traveler', docs.some(a => a.level === 'amber' && a.title === 'Visa required for Germany (layover)' && /Ahmed \(Egypt passport\)/.test(a.detail)));
+  check('a clear visa adds nothing', !docs.some(a => /Visa Free/.test(a.title)));
+  check('no documents yet adds nothing', sum(base()).attention.every(a => !/Passport|Visa/.test(a.title)));
+  check('red still comes first with documents in', s.attention.map(a => a.level).join().replace(/(red,)+/, '') .indexOf('red') === -1 && s.attention[0].level === 'red', s.attention.map(a => a.level).join());
+}
+
 console.log('\nagenda: between and after the items');
 {
   const day = [
@@ -161,14 +180,16 @@ console.log('\nagenda: between and after the items');
 console.log('\nwiring');
 // ItineraryView has nested top-level-looking functions, so take it up to the panel that follows it.
 const itin = APP.slice(APP.indexOf('function ItineraryView('), APP.indexOf('// Accordion panel: all trips', APP.indexOf('function ItineraryView(')));
-check('full: Summary is the first and default view', /React\.useState\('summary'\)/.test(itin) && /\['summary','agenda','map','visa'\]/.test(itin));
-check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,onGoToPacking:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
+check('full: Summary is the first and default view; Visa is no longer a view of its own', /React\.useState\('summary'\)/.test(itin) && /\['summary','agenda','map'\]/.test(itin));
+check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
 check('full: the old per-day summary is gone', !/viewMode==='summary'&&orderedDays/.test(itin));
 check('full: tapping a day opens Agenda at that day', /onOpenDay:function\(d\)\{setViewMode\('agenda'\);/.test(itin) && /id:tsDayId_\(trip\.tripKey,day\)/.test(itin));
 check('full: VERA Notices and Useful to know stand down on Summary', /viewMode!=='summary'&&allNotices\.length>0/.test(itin) && /viewMode!=='summary'&&itinInsights&&/.test(itin));
 check('lite: Summary first and default', /tripTabs\[tripKey\] \|\| 'summary'/.test(LITE) && /\[\['summary','📋 Summary'\],\['agenda','📅 Agenda'\],\['packing','🎒 Packing'\]\]/.test(LITE));
 check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummaryView trip=\{\{\.\.\.t,tripKey\}\} items=\{filteredItin\.items\}/.test(LITE) && /id=\{tsDayId_\(trip\.tripKey, date\)\}/.test(LITE));
 check('lite: the old SummaryLitePanel is gone', !/SummaryLitePanel/.test(LITE));
+check('full: the Visa view and its state are gone', !/viewMode==='visa'/.test(itin) && !/handleVisaCheck/.test(itin));
+check('lite: Summary gets the API to load documents', /items=\{filteredItin\.items\} legs=\{travelLegs\[tripKey\]\} meta=\{meta\|\|\{\}\} apiUrl=\{apiUrl\} apiToken=\{apiToken\}/.test(LITE));
 check('full: + Add Item left the header for Agenda\'s toolbar', !/"\+ Add Item"/.test(itin) && /viewMode==='agenda'&&\/\*#__PURE__\*\/React\.createElement\(TsAgendaToolbar,\{onAdd:onAdd,busy:busy\}\)/.test(itin));
 check('full: each day gets its breaks, its coloured header and its end slots', /const dayBreaks=tsDayBreaks_\(groupItineraryOptions\(dayItems\),travelLegs\)/.test(itin)
       && /tsDayHeadStyle_\(agendaSum,day\)/.test(itin) && /return tsWithBreaks_\(dayBreaks\[item\.id\]/.test(itin) && /React\.createElement\(TsDayEnd,\{date:day,summary:agendaSum,onAdd:onAdd,busy:busy\}\)/.test(itin));

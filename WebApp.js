@@ -381,6 +381,7 @@ function doGet(e) {
       case 'gym_backfill':          return jsonOut_(webGymBackfill_(e));
       // Visa requirements (Issue #123)
       case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
+      case 'trip_documents':        return jsonOut_(webGetTripDocuments_(e.parameter));
       // Victoria PTO buffer
       case 'victoria_pto_trigger_buffer': return jsonOut_(webTriggerVictoriaBuffer_(e));
       // Skills — alias used by dashboard
@@ -9666,25 +9667,29 @@ function webGetVisaRequirements_(params) {
   var profilesResult = webGetProfiles_();
   var profiles = profilesResult.profiles.filter(function(p) { return p.passportCountry; });
   if (profiles.length === 0) return { ok: true, results: [], note: 'No passport countries set in profiles.' };
+  var csv;
+  try { csv = passportIndexCsv_(); }
+  catch (err) { return { ok: false, error: 'Could not fetch visa data: ' + err.message }; }
+  return visaResultsFor_(csv, destination, profiles);
+}
+
+/** The Passport Index matrix (passport × destination), cached six hours. */
+function passportIndexCsv_() {
   var cacheKey = 'passport_index_csv';
   var cache    = CacheService.getScriptCache();
   var csv      = cache.get(cacheKey);
   if (!csv) {
-    try {
-      var resp = fetchTracked_('passport-index',
-        'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
-        { muteHttpExceptions: true }
-      );
-      csv = resp.getContentText();
-      cache.put(cacheKey, csv, 21600);
-    } catch (err) {
-      return { ok: false, error: 'Could not fetch visa data: ' + err.message };
-    }
+    var resp = fetchTracked_('passport-index',
+      'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
+      { muteHttpExceptions: true }
+    );
+    csv = resp.getContentText();
+    cache.put(cacheKey, csv, 21600);
   }
-  var lines   = csv.split('\n');
-  var headers = lines[0].split(',');
-  function norm(s) { return String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
-  var aliases = {
+  return csv;
+}
+
+var VISA_ALIASES_ = {
     'usa':'united states','us':'united states','unitedstatesofamerica':'united states',
     'uk':'united kingdom','gb':'united kingdom','greatbritain':'united kingdom',
     'uae':'united arab emirates','drc':'democratic republic of the congo',
@@ -9692,7 +9697,14 @@ function webGetVisaRequirements_(params) {
     'czechia':'czech republic','turkiye':'turkey',
     'taiwan':'taiwan','russia':'russia','egypt':'egypt',
     'canada':'canada','jordan':'jordan','france':'france','japan':'japan','germany':'germany'
-  };
+};
+function visaNorm_(s) { return String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+/** Pure: each profile's visa status for one destination, from the matrix. */
+function visaResultsFor_(csv, destination, profiles) {
+  var lines   = csv.split('\n');
+  var headers = lines[0].split(',');
+  var norm = visaNorm_, aliases = VISA_ALIASES_;
   var destNorm   = norm(destination);
   var destLookup = aliases[destNorm] ? norm(aliases[destNorm]) : destNorm;
   var destIdx = -1;
@@ -9717,7 +9729,7 @@ function webGetVisaRequirements_(params) {
         var cols = lines[j].split(',');
         if (cols[0] && norm(cols[0]) === passLookup) { status = (cols[destIdx] || '').trim(); break; }
       }
-      return { passportCountry: prof.passportCountry, status: status, label: visaStatusLabel_(status), color: visaStatusColor_(status) };
+      return { passportCountry: prof.passportCountry, passportExpiry: prof.passportExpiry || '', status: status, label: visaStatusLabel_(status), color: visaStatusColor_(status) };
     });
     prs.sort(function(a, b) { return (order[a.color] || 3) - (order[b.color] || 3); });
     results.push({ name: name, passports: prs });
@@ -9742,6 +9754,152 @@ function visaStatusColor_(status) {
   if (status === 'VOA' || status === 'ETA') return 'yellow';
   if (status === 'VF' || /^\d+$/.test(status) || status === 'CB') return 'green';
   return 'grey';
+}
+
+// ============================================================
+// Trip documents (itinerary redesign, stage 3)
+// ============================================================
+// Every non-home country a trip touches — where you stay, and where a flight
+// only connects — each with every traveler's visa status and whether their
+// passport lasts long enough. Summary's "Before you go" shows it; a problem
+// also lands in Needs attention.
+
+// Schengen states ask for a passport valid 3 months past the day you leave the
+// area. Elsewhere 6 months is the common rule, shown as a rule to confirm.
+var SCHENGEN_ = ['austria', 'belgium', 'bulgaria', 'croatia', 'czechrepublic', 'czechia', 'denmark', 'estonia', 'finland',
+  'france', 'germany', 'greece', 'hungary', 'iceland', 'italy', 'latvia', 'liechtenstein', 'lithuania', 'luxembourg',
+  'malta', 'netherlands', 'norway', 'poland', 'portugal', 'romania', 'slovakia', 'slovenia', 'spain', 'sweden', 'switzerland'];
+
+/** Pure: the airport codes a flight passes through, in order. */
+function tripFlightRoute_(item) {
+  var m = {};
+  try { m = JSON.parse(item.metadata || '{}') || {}; } catch (e) {}
+  var o = String(m.origin || '').trim().toUpperCase(), d = String(m.dest || '').trim().toUpperCase();
+  var route = (String(item.title || '').match(/\b[A-Z]{3}\b/g) || []).slice();
+  if (o && route[0] !== o) route.unshift(o);
+  if (d && route[route.length - 1] !== d) route.push(d);
+  return route.filter(function(c, i) { return c && route.indexOf(c) === i; });
+}
+
+/** Pure: the country an address names, matched against the dataset's names. */
+function tripAddressCountry_(location, countryNames) {
+  var parts = String(location || '').split(',').map(function(x) { return x.trim(); }).filter(Boolean);
+  for (var i = parts.length - 1; i >= Math.max(0, parts.length - 2); i--) {
+    var n = visaNorm_(parts[i]);
+    var hit = countryNames[VISA_ALIASES_[n] ? visaNorm_(VISA_ALIASES_[n]) : n];
+    if (hit) return hit;
+  }
+  return '';
+}
+
+/**
+ * Pure: the non-home countries a trip touches.
+ * items: itinerary rows ({type,title,date,location,metadata}); countryNames:
+ * normalized name → display name; airportCountry(code) → country name or '';
+ * home: the home country's name. Returns [{country, role, from, to, via}] where
+ * role is 'stay' (you are there) or 'layover' (a flight only connects there).
+ */
+function tripCountries_(items, countryNames, airportCountry, home) {
+  var homeN = visaNorm_(home || 'United States');
+  var byN = {};
+  function add(country, role, date, via) {
+    if (!country) return;
+    var n = visaNorm_(country);
+    var aliasN = VISA_ALIASES_[n] ? visaNorm_(VISA_ALIASES_[n]) : n;
+    if (aliasN === homeN || n === homeN) return;
+    var c = byN[aliasN];
+    if (!c) c = byN[aliasN] = { country: countryNames[aliasN] || country, role: role, from: date || '', to: date || '', via: [] };
+    if (role === 'stay') c.role = 'stay';
+    if (date && (!c.from || date < c.from)) c.from = date;
+    if (date && (!c.to || date > c.to)) c.to = date;
+    if (via && c.via.indexOf(via) === -1) c.via.push(via);
+  }
+  (items || []).forEach(function(it) {
+    if (!it) return;
+    if (it.type === 'flight') {
+      var route = tripFlightRoute_(it);
+      route.forEach(function(code, i) {
+        var end = i === 0 || i === route.length - 1;
+        add(airportCountry(code), end ? 'stay' : 'layover', it.date, end ? '' : code);
+      });
+      return;
+    }
+    add(tripAddressCountry_(it.location, countryNames), 'stay', it.date, '');
+  });
+  return Object.keys(byN).map(function(k) { return byN[k]; })
+    .sort(function(a, b) { return (a.from || '').localeCompare(b.from || '') || a.country.localeCompare(b.country); });
+}
+
+/** Pure: does a passport last long enough for this country? */
+function tripPassportCheck_(expiry, tripEnd, country) {
+  var ruleKnown = SCHENGEN_.indexOf(visaNorm_(country)) !== -1;
+  var ruleMonths = ruleKnown ? 3 : 6;
+  if (!expiry) return { status: 'unknown', label: 'No expiry date in Traveler Profiles', ruleMonths: ruleMonths, ruleKnown: ruleKnown };
+  if (!tripEnd || expiry < tripEnd) return { status: 'expires', label: 'Expires ' + expiry + ', before you\'re back', ruleMonths: ruleMonths, ruleKnown: ruleKnown };
+  var a = tripEnd.split('-').map(Number), b = expiry.split('-').map(Number);
+  var months = (b[0] - a[0]) * 12 + (b[1] - a[1]) - (b[2] < a[2] ? 1 : 0);
+  if (months < ruleMonths) return { status: 'short', months: months,
+    label: 'Valid until ' + expiry + ': ' + months + ' month' + (months === 1 ? '' : 's') + ' after you\'re back, '
+      + (ruleKnown ? country + ' asks for ' + ruleMonths : 'many countries ask for ' + ruleMonths), ruleMonths: ruleMonths, ruleKnown: ruleKnown };
+  return { status: 'ok', months: months, label: 'Valid until ' + expiry, ruleMonths: ruleMonths, ruleKnown: ruleKnown };
+}
+
+/** Pure: the worst of a country's results, for its chip: red, amber, green or grey. */
+function tripDocWorst_(travelers) {
+  var rank = { red: 3, amber: 2, grey: 1, green: 0 }, worst = 'green', any = false;
+  (travelers || []).forEach(function(t) {
+    (t.passports || []).forEach(function(p) {
+      any = true;
+      var v = p.color === 'red' ? 'red' : p.color === 'yellow' ? 'amber' : p.color === 'grey' ? 'grey' : 'green';
+      var pp = p.passport ? (p.passport.status === 'expires' ? 'red' : p.passport.status === 'short' ? 'amber' : p.passport.status === 'unknown' ? 'grey' : 'green') : 'green';
+      [v, pp].forEach(function(x) { if (rank[x] > rank[worst]) worst = x; });
+    });
+  });
+  return any ? worst : 'grey';
+}
+
+/** GET ?action=trip_documents&tripKey=…&startDate=…&endDate=… */
+function webGetTripDocuments_(params) {
+  var tripKey = String(params.tripKey || '').trim();
+  var endDate = String(params.endDate || '').trim();
+  if (!tripKey) return { ok: false, error: 'tripKey required' };
+  var items = [];
+  var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  if (sheet && sheet.getLastRow() >= 2) {
+    var tz = Session.getScriptTimeZone();
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
+      if (String(r[1]).trim() !== tripKey) return;
+      items.push({ type: String(r[2] || ''), title: String(r[3] || ''),
+        date: r[4] instanceof Date ? Utilities.formatDate(r[4], tz, 'yyyy-MM-dd') : String(r[4] || '').trim(),
+        location: String(r[7] || ''), metadata: String(r[9] || '') });
+    });
+  }
+  var profiles = webGetProfiles_().profiles.filter(function(p) { return p.passportCountry; });
+  var csv;
+  try { csv = passportIndexCsv_(); }
+  catch (err) { return { ok: false, error: 'Could not fetch visa data: ' + err.message }; }
+  var countryNames = {};
+  csv.split('\n')[0].split(',').slice(1).forEach(function(h) { if (h.trim()) countryNames[visaNorm_(h)] = h.trim(); });
+  // An airport's country never changes, so it is cached as long as the cache allows.
+  var memo = {}, cache = CacheService.getScriptCache();
+  var airportCountry = function(code) {
+    if (!/^[A-Z]{3}$/.test(code || '')) return '';
+    if (memo[code] !== undefined) return memo[code];
+    var hit = cache.get('iata_country_' + code);
+    if (hit === null) { hit = resolveIataCountry_(code, null) || ''; cache.put('iata_country_' + code, hit, 21600); }
+    return (memo[code] = hit);
+  };
+  var home = String(getConfigValues()['home_country'] || 'United States');
+  var countries = tripCountries_(items, countryNames, airportCountry, home).map(function(c) {
+    var v = profiles.length ? visaResultsFor_(csv, c.country, profiles) : { results: [] };
+    var travelers = (v.results || []).map(function(t) {
+      return { name: t.name, passports: (t.passports || []).map(function(p) {
+        return Object.assign({}, p, { passport: tripPassportCheck_(p.passportExpiry, endDate, c.country) });
+      }) };
+    });
+    return Object.assign({}, c, { travelers: travelers, worst: tripDocWorst_(travelers), note: v.note || '' });
+  });
+  return { ok: true, home: home, countries: countries, profiles: profiles.length };
 }
 
 // ============================================================
