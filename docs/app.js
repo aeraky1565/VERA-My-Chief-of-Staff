@@ -1667,6 +1667,106 @@ function TripIdeasView(props){var h=React.createElement;
     groups.archived.length>0&&h('button',{type:'button',className:'ti-show-archived',onClick:function(){setShowArchived(!showArchived);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},(showArchived?'Hide ':'Show ')+groups.archived.length+' archived'),
     showArchived&&section('archived','Archived'));}
 // ---- /TripIdeasView ----
+// ---- AriaView (ARIA) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Travel → ARIA: what ARIA, the travel agent, has found (aria_status). Read only:
+// ARIA keeps its own sheet, and watches are changed there, never from here.
+// Uses the Trip Ideas block's palette and buttons (TI, tiBtn_, TI_EYEBROW, tiDayText_).
+var ARIA_VERDICT={book:['BOOK NOW','#173a24','#4d9f6a','#8fe0a8'],wait:['WAIT','#33280f','#a8862f','#f6d27a'],skip:['SKIP','#1d2438','#4a5578','#b8c3e0']};
+var ARIA_STATUS={draft:['Draft','#9aa9cc'],scouting:['Scouting','#8ab4f8'],watching:['Watching','#8fe0a8'],booked:['Booked','#c9a84c'],dropped:['Dropped','#6f7c9c'],other:['Other','#9aa9cc']};
+var ARIA_GAPS=[['incomplete','ARIA can’t price these'],['stale','No new fares'],['dateChanged','Dates changed in VERA'],['noRow','Trips ARIA isn’t watching'],['draft','Still drafts'],['waiting','Asked, not picked up']];
+var ARIA_FLAG_WORDS={'excl. bags':'without bag fees','fare type unknown':'fare type unknown','est.':'estimate','no forecast':'no forecast'};
+// The fares for one Watchlist row: its Trip ID, and its Ref (an idea's option, while it was scouted).
+function ariaFaresFor_(fares,w){var ids=[w.tripId,w.ref].filter(Boolean);return (fares||[]).filter(function(f){return ids.indexOf(f.tripId)!==-1;});}
+// Fares in whole dollars, not rounded to $1.2k: the exact figure is the point.
+function ariaUsd_(n){return '$'+String(Math.round(Number(n)||0)).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function ariaFareTotal_(f){return f.total!=null?f.total:f.farePP;}
+// The cheapest fare seen on each day, oldest first: the line on the card.
+function ariaHistory_(fares){var by={};(fares||[]).forEach(function(f){var v=ariaFareTotal_(f);if(v==null||!f.dateSeen)return;if(by[f.dateSeen]==null||v<by[f.dateSeen])by[f.dateSeen]=v;});
+  return Object.keys(by).sort().map(function(d){return {date:d,value:by[d]};});}
+// The best fare from the latest day ARIA looked: what the card leads with.
+function ariaLatest_(fares){var last='';(fares||[]).forEach(function(f){if(f.dateSeen>last)last=f.dateSeen;});
+  var day=(fares||[]).filter(function(f){return f.dateSeen===last&&ariaFareTotal_(f)!=null;});day.sort(function(a,b){return ariaFareTotal_(a)-ariaFareTotal_(b);});return day[0]||null;}
+// A fare is firm only when no flag says otherwise.
+function ariaFirm_(f){return !!f&&!(f.flags||[]).length;}
+function ariaWhen_(w){if(w.status==='scouting'){var span=w.earliest&&w.latest?tiDayText_(w.earliest).replace(/^\w+, /,'')+' – '+tiDayText_(w.latest).replace(/^\w+, /,''):'';
+    var n=w.nightsMin!=null||w.nightsMax!=null?(w.nightsMin===w.nightsMax||w.nightsMax==null?w.nightsMin:w.nightsMin==null?w.nightsMax:w.nightsMin+'–'+w.nightsMax)+' nights':'';return ['Leaving '+(span||'any time'),n].filter(Boolean).join(' · ');}
+  return w.earliest?tiDayText_(w.earliest)+(w.latest?' → '+tiDayText_(w.latest):''):'No dates yet';}
+// Rows by status; scouted rows under the idea they came from.
+function ariaGroup_(watch,ideas){var g={watching:[],scouting:{},draft:[],booked:[],dropped:[],other:[]};
+  (watch||[]).forEach(function(w){if(w.status==='scouting'){var i=(ideas||{})[w.ref]||{};var k=i.idea||'Scouted';(g.scouting[k]=g.scouting[k]||[]).push(w);}else (g[w.status]||g.other).push(w);});
+  ['watching','draft','booked','dropped','other'].forEach(function(k){g[k].sort(function(a,b){return String(a.earliest||'9').localeCompare(String(b.earliest||'9'));});});return g;}
+
+function AriaSpark(props){var h=React.createElement;var pts=props.points||[];if(pts.length<2)return null;
+  var vs=pts.map(function(p){return p.value;}),lo=Math.min.apply(null,vs),hi=Math.max.apply(null,vs),span=hi-lo||1;
+  var xy=pts.map(function(p,i){return [Math.round(i/(pts.length-1)*1000)/10,Math.round((26-(p.value-lo)/span*22)*10)/10];});
+  var line=xy.map(function(p){return p.join(',');}).join(' '),end=xy[xy.length-1];
+  return h('div',{className:'aria-spark',style:{display:'flex',alignItems:'center',gap:8,minWidth:0}},
+    h('svg',{viewBox:'0 0 100 30',preserveAspectRatio:'none',role:'img','aria-label':'Fares seen: from '+ariaUsd_(vs[0])+' to '+ariaUsd_(vs[vs.length-1]),style:{flex:'1 1 auto',height:34,minWidth:0}},
+      h('polygon',{points:'0,30 '+line+' 100,30',fill:'rgba(138,180,248,.12)'}),
+      h('polyline',{points:line,fill:'none',stroke:TI.acc,strokeWidth:1.5,vectorEffect:'non-scaling-stroke'}),
+      h('circle',{cx:end[0],cy:end[1],r:2.2,fill:TI.hi})),
+    h('span',{style:{fontSize:11,color:TI.mute,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}},ariaUsd_(lo)+'–'+ariaUsd_(hi)));}
+
+function AriaCard(props){var h=React.createElement;var w=props.row;var fares=ariaFaresFor_(props.fares,w),latest=ariaLatest_(fares),hist=ariaHistory_(fares);
+  var st=ARIA_STATUS[w.status]||ARIA_STATUS.other,v=ARIA_VERDICT[w.verdict];var idea=(props.ideas||{})[w.ref];
+  var chip=function(t,c,bg,cls){return h('span',{className:cls,style:{fontSize:11,fontWeight:700,letterSpacing:'.05em',padding:'3px 8px',borderRadius:999,color:c,background:bg||'transparent',border:'1px solid '+c,whiteSpace:'nowrap'}},t);};
+  return h('div',{className:'aria-card aria-'+w.status,style:{display:'flex',flexDirection:'column',gap:10,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(w.verdict==='book'?'#4d9f6a':TI.br),minWidth:0}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}},
+      h('div',{style:{display:'flex',flexDirection:'column',gap:3,minWidth:0}},
+        h('span',{className:'aria-label',style:{fontSize:15,fontWeight:700,color:TI.hi}},idea&&idea.option?idea.option:(w.label||w.tripId||w.ref)),
+        h('span',{style:{fontSize:12,color:TI.soft}},ariaWhen_(w)+(w.origins||w.dests?' · '+(w.origins||'?')+' → '+(w.dests||'?')+(w.returnFrom?', home from '+w.returnFrom:''):''))),
+      h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end',flex:'none'}},chip(st[0],st[1],null,'aria-status'),v&&chip(v[0],v[3],v[1],'aria-verdict'))),
+    h('div',{style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
+      w.bestFare!=null?h('span',{className:'aria-best',style:{fontSize:22,fontWeight:700,color:TI.hi,fontVariantNumeric:'tabular-nums'}},ariaUsd_(w.bestFare)):h('span',{style:{fontSize:14,color:TI.mute}},'No fare yet'),
+      w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'best seen'+(w.bestSource?' · '+w.bestSource:'')),
+      w.ceiling!=null&&h('span',{style:{fontSize:12,color:w.bestFare!=null&&w.bestFare<=w.ceiling?TI.ok:TI.mute}},'ceiling '+ariaUsd_(w.ceiling)+' pp')),
+    latest&&h('span',{className:'aria-latest',style:{fontSize:12,color:TI.soft,lineHeight:1.45}},'Latest, '+latest.dateSeen+': '+ariaUsd_(ariaFareTotal_(latest))+(latest.total!=null&&latest.farePP!=null?' total ('+ariaUsd_(latest.farePP)+' pp)':'')
+      +(latest.airline?' · '+latest.airline:'')+(latest.stops!==''&&latest.stops!=null?' · '+(String(latest.stops)==='0'?'nonstop':latest.stops+' stop'+(String(latest.stops)==='1'?'':'s')):'')
+      +(latest.depart?' · '+tiDayText_(latest.depart)+(latest.ret?' → '+tiDayText_(latest.ret):''):'')),
+    latest&&(latest.flags||[]).length>0&&h('div',{className:'aria-flags',style:{display:'flex',gap:6,flexWrap:'wrap'}},latest.flags.map(function(f){return h('span',{key:f,style:{fontSize:11,color:TI.warn,border:'1px dashed #a8862f',borderRadius:6,padding:'2px 6px'}},'⚠ '+(ARIA_FLAG_WORDS[f]||f));})),
+    hist.length>1&&h(AriaSpark,{points:hist}),
+    h('span',{style:{fontSize:12,color:TI.mute}},[w.tier,w.nextCheck?'next check '+w.nextCheck:'',w.lastChecked?'checked '+w.lastChecked:'',w.forecast?'forecast: '+w.forecast:''].filter(Boolean).join(' · ')),
+    w.dateChange&&h('span',{className:'aria-date-change',style:{fontSize:12,color:TI.warn}},'⚠ The dates changed in VERA since ARIA set this up.'),
+    idea&&idea.idea&&h('span',{style:{fontSize:12,color:TI.acc}},'From the trip idea "'+idea.idea+'"'),
+    w.notes&&h('span',{style:{fontSize:12,lineHeight:1.45,color:TI.mute}},w.notes),
+    latest&&latest.link&&h('a',{href:latest.link,target:'_blank',rel:'noopener noreferrer',className:'aria-link',style:{fontSize:13,fontWeight:600,color:TI.acc,alignSelf:'flex-start',minHeight:32,display:'inline-flex',alignItems:'center'}},'Open this fare ↗'));}
+
+function AriaView(props){var h=React.createElement;
+  var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];var _o=React.useState(false),showOld=_o[0],setShowOld=_o[1];
+  var load=function(refresh){if(!props.apiUrl||!props.apiToken){setData({error:'Connect VERA first.'});return;}setData(function(d){return Object.assign({},d,{loading:true});});
+    var q={action:'aria_status'};if(refresh)q.refresh='1';
+    apiGet(props.apiUrl,props.apiToken,q).then(function(r){setData(r&&(r.ok||r.configured===false)?r:{error:(r&&r.error)||'ARIA’s sheet could not be read'});}).catch(function(e){setData({error:e.message});});};
+  React.useEffect(function(){load(false);},[props.apiUrl,props.apiToken]);
+  var wrap={className:'aria-view',style:{display:'flex',flexDirection:'column',gap:14,padding:'4px 0 16px',color:TI.txt}};
+  var head=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:12,flexWrap:'wrap'}},
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('span',{style:{fontSize:20,fontWeight:700,color:TI.hi}},'ARIA'),
+      h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.mute}},'The fares ARIA, your travel agent, has found. Read only: watches are set up in the ARIA Travel Tracker.')),
+    data.configured&&h('button',{type:'button',className:'aria-refresh',disabled:!!data.loading,onClick:function(){load(true);},style:tiBtn_()},data.loading?'Reading…':'Read again'));
+  if(data.loading&&!data.watchlist)return h('div',wrap,head,h('span',{style:{color:TI.mute,fontSize:14}},'Reading ARIA’s sheet…'));
+  if(data.error)return h('div',wrap,head,h('span',{role:'alert',style:{color:'#ffb0b0',fontSize:14,lineHeight:1.45}},data.error),h('button',{type:'button',onClick:function(){load(true);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},'Try again'));
+  if(data.configured===false)return h('div',wrap,head,h('div',{className:'aria-setup',style:{display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:TI.card,border:'1px dashed #4a6aa8',fontSize:14,lineHeight:1.5}},
+    h('b',{style:{color:TI.hi}},'Connect ARIA’s sheet'),
+    h('span',null,'In Apps Script, open Project Settings → Script Properties and add ARIA_SHEET_ID with the ARIA Travel Tracker’s ID (the long part of its URL, between /d/ and /edit).'),
+    h('span',{style:{color:TI.mute}},'VERA only reads it. The ID stays in your script, not in the dashboard’s code.')));
+  var g=ariaGroup_(data.watchlist,data.ideas),gaps=data.gaps||{};
+  var section=function(key,label,rows){if(!rows.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label+' · '+rows.length),
+    h('div',{className:'aria-grid',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10,alignItems:'start'}},
+      rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas});})));};
+  var gapLists=ARIA_GAPS.filter(function(x){return (gaps[x[0]]||[]).length;});
+  return h('div',wrap,head,
+    gapLists.length>0&&h('div',{className:'aria-gaps',style:{display:'flex',flexDirection:'column',gap:10,padding:12,borderRadius:12,border:'1px solid #a8862f',background:'#1d1a10'}},
+      h('span',{style:Object.assign({},TI_EYEBROW,{color:TI.warn})},'Needs a look · '+gaps.count),
+      gapLists.map(function(x){return h('div',{key:x[0],className:'aria-gap-'+x[0],style:{display:'flex',flexDirection:'column',gap:4}},
+        h('span',{style:{fontSize:13,fontWeight:700,color:TI.hi}},x[1]),
+        gaps[x[0]].map(function(it,i){return h('span',{key:i,style:{fontSize:13,lineHeight:1.45,color:TI.soft}},h('b',{style:{color:TI.txt}},it.label||it.id),(it.start?' ('+it.start+')':'')+': '+it.why);}));})),
+    !(data.watchlist||[]).length&&h('span',{className:'aria-empty',style:{fontSize:14,color:TI.mute}},'ARIA’s Watchlist is empty. Its daily run adds your calendar trips as drafts.'),
+    section('watching','Watching',g.watching),
+    Object.keys(g.scouting).sort().map(function(k){return section('s-'+k,'Scouting · '+k,g.scouting[k]);}),
+    section('draft','Drafts',g.draft),section('booked','Booked',g.booked),section('other','Other',g.other),
+    g.dropped.length>0&&h('button',{type:'button',className:'aria-show-dropped',onClick:function(){setShowOld(!showOld);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},(showOld?'Hide ':'Show ')+g.dropped.length+' dropped'),
+    showOld&&section('dropped','Dropped',g.dropped),
+    data.read&&h('span',{style:{fontSize:11,color:TI.mute}},'Read from ARIA’s sheet '+String(data.read).slice(0,16).replace('T',' ')+' UTC. It refreshes every 10 minutes.'));}
+// ---- /AriaView ----
 function ItineraryView({trip,itinerary,loading,busy,tripContext,onSetContext,onSetBriefing,onSetTraveler,onSetMode,onLoadContext,onGoToPacking,renderPacking,renderDiscover,renderBudget,onAdd,onEdit,onDelete,onDecideOption,onReopenDecision,apiUrl,apiToken}){if(loading)return/*#__PURE__*/React.createElement("div",{className:"loading-text"},"Loading itinerary…");const items=itinerary&&itinerary.items||[];const notices=computeItineraryNotices(items);const[viewMode,setViewMode]=React.useState('summary');const[travelLegs,setTravelLegs]=React.useState(null);
 // Travel times are precomputed nightly and cached per location pair, so this is
 // a plain sheet read — no routing API is touched by rendering the dashboard,
@@ -1784,7 +1884,7 @@ React.useEffect(function(){if(!packingFocusTripKey)return;setSub('itinerary');se
 React.useEffect(function(){if(!itineraryFocusTripKey||!upcomingTravel.length)return;setSub('itinerary');setAutoExpandKey(itineraryFocusTripKey);var t=upcomingTravel.find(function(t){return t.startDate+'|'+t.label===itineraryFocusTripKey;});if(t)onSelectTrip({...t,tripKey:itineraryFocusTripKey});},[itineraryFocusTripKey,upcomingTravel.length]);// eslint-disable-line
 function handleTripClick(t){const tripKey=`${t.startDate}|${t.label}`;onSelectTrip({...t,tripKey});// triggers loadItinerary if not cached
 setAutoExpandKey(tripKey);// tells accordion to open this trip
-setSub('itinerary');}const subTabs=[{id:'ideas',label:'💡 Trip Ideas',hint:'Trips with no dates yet: a loose brief and the shapes the trip could take. Nothing here touches your calendar.'},{id:'trips',label:'✈️ My Trips',hint:'Pulled from calendars listed in Config &rarr; <code>gap_calendars</code>. Multi-day events are grouped into trips automatically.'},{id:'itinerary',label:'🗺️ My Itinerary'},{id:'countries',label:'🌍 Countries'},{id:'bucketlist',label:'🪣 Bucket List'},{id:'gifts',label:'🎁 Gifts'},{id:'profiles',label:'👤 Profiles'}];const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"subtab-row",style:{display:'flex',alignItems:'center'}},subTabs.map(s=>/*#__PURE__*/React.createElement("button",{key:s.id,className:`subtab-btn${sub===s.id?' active':''}`,onClick:()=>setSub(s.id)},s.label)),/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='ideas'&&/*#__PURE__*/React.createElement(TripIdeasView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='trips'&&(upcomingTravel.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:12}},"✈️"),/*#__PURE__*/React.createElement("div",null,"No upcoming travel found."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:8}},"Travel events are pulled from your shared \"AE&VV - Our Joint Chaos\" calendar.")):/*#__PURE__*/React.createElement("div",null,upcomingTravel.map((t,i)=>{const tripKey=`${t.startDate}|${t.label}`;const meta=tripMeta&&tripMeta[tripKey]&&tripMeta[tripKey]!=='loading'?tripMeta[tripKey]:null;// Read-only traveler badge from persisted tripMeta
+setSub('itinerary');}const subTabs=[{id:'ideas',label:'💡 Trip Ideas',hint:'Trips with no dates yet: a loose brief and the shapes the trip could take. Nothing here touches your calendar.'},{id:'trips',label:'✈️ My Trips',hint:'Pulled from calendars listed in Config &rarr; <code>gap_calendars</code>. Multi-day events are grouped into trips automatically.'},{id:'itinerary',label:'🗺️ My Itinerary'},{id:'aria',label:'🧭 ARIA',hint:'What ARIA, your travel agent, has found: fares, verdicts and what needs a look. Read only; set ARIA_SHEET_ID in Script Properties to connect it.'},{id:'countries',label:'🌍 Countries'},{id:'bucketlist',label:'🪣 Bucket List'},{id:'gifts',label:'🎁 Gifts'},{id:'profiles',label:'👤 Profiles'}];const[hintOpen,setHintOpen]=React.useState(false);React.useEffect(function(){setHintOpen(false);},[sub]);var activeHint=(subTabs.find(function(t){return t.id===sub;})||{}).hint||'';return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{className:"subtab-row",style:{display:'flex',alignItems:'center'}},subTabs.map(s=>/*#__PURE__*/React.createElement("button",{key:s.id,className:`subtab-btn${sub===s.id?' active':''}`,onClick:()=>setSub(s.id)},s.label)),/*#__PURE__*/React.createElement(InfoTip,{text:activeHint,open:hintOpen,onToggle:()=>setHintOpen(function(o){return!o;})})),/*#__PURE__*/React.createElement(InfoTipBar,{text:activeHint&&hintOpen?activeHint:'',onClose:()=>setHintOpen(false)}),sub==='ideas'&&/*#__PURE__*/React.createElement(TripIdeasView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='aria'&&/*#__PURE__*/React.createElement(AriaView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='trips'&&(upcomingTravel.length===0?/*#__PURE__*/React.createElement("div",{className:"empty-state"},/*#__PURE__*/React.createElement("div",{style:{fontSize:36,marginBottom:12}},"✈️"),/*#__PURE__*/React.createElement("div",null,"No upcoming travel found."),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#4d6080',marginTop:8}},"Travel events are pulled from your shared \"AE&VV - Our Joint Chaos\" calendar.")):/*#__PURE__*/React.createElement("div",null,upcomingTravel.map((t,i)=>{const tripKey=`${t.startDate}|${t.label}`;const meta=tripMeta&&tripMeta[tripKey]&&tripMeta[tripKey]!=='loading'?tripMeta[tripKey]:null;// Read-only traveler badge from persisted tripMeta
 const traveler=meta&&meta.traveler||'Both';const tvColor=traveler==='Ahmed'?'#5c9eff':traveler==='Victoria'?'#b87cff':'#4a9060';const tvBg=traveler==='Ahmed'?'#0d2040':traveler==='Victoria'?'#1a0d30':'#0d1a10';// Read-only context chip
 const ctx=meta&&meta.context;const ctxColor=CONTEXT_COLORS&&CONTEXT_COLORS[ctx]||'#5c9eff';return/*#__PURE__*/React.createElement("div",{key:i,className:"bento-card",style:{cursor:'pointer',transition:'border-color .15s'},onClick:()=>handleTripClick(t)},/*#__PURE__*/React.createElement("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement("div",{style:{fontWeight:700,fontSize:15,color:'#dde1f0',marginBottom:4}},t.label),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',marginBottom:8}},t.startDate," – ",t.endDate),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:6}},ctx?/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:600,color:ctxColor,background:ctxColor+'22',borderRadius:20,padding:'2px 9px',border:'1px solid '+ctxColor+'44'}},ctx):/*#__PURE__*/React.createElement("span",{style:{fontSize:11,color:'#3a4a60',fontStyle:'italic'}},"No context"),/*#__PURE__*/React.createElement("span",{style:{fontSize:11,fontWeight:600,color:tvColor,background:tvBg,borderRadius:10,padding:'2px 8px',border:'1px solid '+tvColor+'33'}},traveler))),/*#__PURE__*/React.createElement("div",{style:{display:'flex',alignItems:'center',gap:12}},/*#__PURE__*/React.createElement("div",{style:{fontSize:13,color:'#5c9eff',fontWeight:600,whiteSpace:'nowrap'}},/*#__PURE__*/React.createElement(DaysAway,{n:t.daysAway})),/*#__PURE__*/React.createElement("div",{style:{fontSize:12,color:'#8ab4f8'}},"View Itinerary →"))));}))),sub==='itinerary'&&/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement(TravelItineraryPanel,{trips:upcomingTravel,itineraries:itineraries,tripMeta:tripMeta,busy:busy,autoExpandKey:autoExpandKey,onExpandTrip:onExpandTrip,onAddItinItem:onAddItinItem,onEditItinItem:onEditItinItem,onDeleteItinItem:onDeleteItinItem,onSetTripMeta:onSetTripMeta,onSetTripBriefing:onSetTripBriefing,onLoadTripMeta:onLoadTripMeta,onGoToPacking:onGoToPacking,renderPacking:function(t){// Packing lives inside each trip's itinerary now, as its fourth view.
 return/*#__PURE__*/React.createElement(PackingPanel,{trips:[t],packingItems:packingItems,tripMeta:tripMeta,busy:busy,focusTripKey:t.startDate+'|'+t.label,onLoadPacking:onLoadPacking,onSetTripMeta:onSetTripMeta,onSetTripBriefing:onSetTripBriefing,onGeneratePacking:onGeneratePacking,onToggleItem:onTogglePackingItem,onAddItem:onAddPackingItem,onDeleteItem:onDeletePackingItem});},renderDiscover:function(t,go){// Discover and Budget live inside each trip's itinerary now, like Packing.
