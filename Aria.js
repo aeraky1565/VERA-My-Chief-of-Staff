@@ -38,13 +38,32 @@ var ARIA_WATCH_FIELDS_ = {
   lastChecked: 'Last Checked', nextCheck: 'Next Check', bestFare: 'Best Fare Seen', bestSource: 'Best Fare Source',
   verdict: 'Verdict', notes: 'Notes', ref: 'Ref', tripKey: 'Trip Key', nightsMin: 'Nights Min', nightsMax: 'Nights Max',
   watchId: 'SlickTrip Watch ID', forecast: 'Expedia Forecast', hotelEstimate: 'Hotel Estimate', dateChange: 'Date Change Flag',
+  actionNeeded: 'Action Needed', actionType: 'Action Type', actionUrgency: 'Action Urgency', actionKey: 'Action Key',
+  actionSince: 'Action Since', bestLink: 'Best Fare Link',
 };
+// The Run Log: one row per ARIA run.
+var ARIA_RUN_FIELDS_ = {
+  runTime: 'Run Time', status: 'Status', tripsSynced: 'Trips Synced', rowsPriced: 'Rows Priced', searches: 'Searches Used',
+  bookNow: 'Book Now', actions: 'Action Needed', failures: 'Failures', notes: 'Notes', runId: 'Run ID', emailSent: 'Email Sent',
+};
+// Action types ARIA writes on a Watchlist row (v3.1 contract), with VERA's wording and their default urgency.
+var ARIA_ACTIONS_ = {
+  BOOK_NOW:          ['✈️ Book now', 'High'],
+  UNDER_CEILING:     ['💸 Under your ceiling', 'High'],
+  DATE_CHANGED:      ['📅 Trip dates changed', 'Medium'],
+  CHECK_FAILED:      ['⚠️ ARIA couldn’t price', 'Medium'],
+  STOP_WATCH:        ['🛑 Stop the SlickTrip watch', 'Low'],
+  NEEDS_WATCH_SETUP: ['👀 Set up a SlickTrip watch', 'Low'],
+  CEILING_NOT_SET:   ['💲 Set a price ceiling', 'Low'],
+  NEEDS_AIRPORTS:    ['🛫 Add airports', 'Low'],
+};
+var ARIA_STALE_HOURS_ = 26;   // ARIA runs daily; a day and two hours without a run means it didn't
 var ARIA_FARE_FIELDS_ = {
   dateSeen: 'Date Seen', tripId: 'Trip ID', route: 'Route', depart: 'Depart', ret: 'Return', airline: 'Airline', stops: 'Stops',
   farePP: 'Fare Per Person', fees: 'Est. Fees', total: 'True Total', vsCeiling: 'vs Ceiling', source: 'Source',
   verdict: 'Verdict', link: 'Booking Link', flags: 'Flags',
 };
-var ARIA_DATE_FIELDS_ = ['earliest', 'latest', 'lastChecked', 'nextCheck', 'dateSeen', 'depart', 'ret'];
+var ARIA_DATE_FIELDS_ = ['earliest', 'latest', 'lastChecked', 'nextCheck', 'dateSeen', 'depart', 'ret', 'actionSince'];
 var ARIA_MONEY_FIELDS_ = ['ceiling', 'bestFare', 'farePP', 'fees', 'total', 'hotelEstimate'];
 
 // ---- pure ----------------------------------------------------------------------
@@ -86,6 +105,20 @@ function ariaLink_(v) {
   return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s.slice(0, 600) : '';
 }
 
+/** Pure: a timestamp cell (text or, already turned to text, a Date) → an ISO string, or ''. */
+function ariaIso_(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : v.toISOString();
+  var t = String(v == null ? '' : v).trim(), d = t ? new Date(/^\d{4}-\d{2}-\d{2} \d/.test(t) ? t.replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(t) ? '' : 'Z') : t) : null;
+  return d && !isNaN(d.getTime()) ? d.toISOString() : '';
+}
+
+/** Pure: High / Medium / Low, whatever the case; else the action type's own. */
+function ariaUrgency_(v, type) {
+  var t = String(v == null ? '' : v).trim().toLowerCase();
+  if (t === 'high' || t === 'medium' || t === 'low') return t.charAt(0).toUpperCase() + t.slice(1);
+  return ARIA_ACTIONS_[type] ? ARIA_ACTIONS_[type][1] : '';
+}
+
 /**
  * Pure: one sheet row → a clean record, by header. dateText turns a cell into
  * text first (a Date cell in Apps Script; the tests pass strings).
@@ -96,7 +129,8 @@ function ariaCleanRow_(map, row, fields, dateText) {
     var i = map[ariaKey_(fields[f])], v = i == null ? '' : row[i];
     if (ARIA_DATE_FIELDS_.indexOf(f) !== -1) out[f] = ariaYmd_(dateText ? dateText(v) : v);
     else if (ARIA_MONEY_FIELDS_.indexOf(f) !== -1) out[f] = ariaMoney_(v);
-    else if (f === 'link') out[f] = ariaLink_(v);
+    else if (f === 'link' || f === 'bestLink') out[f] = ariaLink_(v);
+    else if (f === 'runTime') out[f] = ariaIso_(v);
     else out[f] = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, f === 'notes' ? 400 : 160);
   });
   if (fields === ARIA_WATCH_FIELDS_) {
@@ -107,6 +141,13 @@ function ariaCleanRow_(map, row, fields, dateText) {
     out.verdict = ARIA_VERDICTS_[out.verdict.toLowerCase()] || '';
     out.dateChange = /^(yes|true|y|1|changed)$/i.test(out.dateChange);
     ['travelers', 'nightsMin', 'nightsMax', 'flexDays', 'maxStops'].forEach(function(f) { var n = parseInt(out[f], 10); out[f] = isFinite(n) ? n : null; });
+    out.actionType = out.actionType.toUpperCase().replace(/[^A-Z_]/g, '');
+    if (!ARIA_ACTIONS_[out.actionType]) out.actionType = '';
+    out.actionUrgency = ariaUrgency_(out.actionUrgency, out.actionType);
+    out.actionKey = out.actionType ? out.actionKey.replace(/\s+/g, '') : '';
+  } else if (fields === ARIA_RUN_FIELDS_) {
+    out.status = /^ok$/i.test(out.status) ? 'OK' : /^partial$/i.test(out.status) ? 'Partial' : /^fail/i.test(out.status) ? 'Failed' : out.status;
+    ['tripsSynced', 'rowsPriced', 'searches', 'bookNow', 'actions'].forEach(function(f) { var n = parseInt(out[f], 10); out[f] = isFinite(n) ? n : null; });
   } else {
     out.tripId = out.tripId.toUpperCase();
     out.verdict = ARIA_VERDICTS_[out.verdict.toLowerCase()] || '';
@@ -120,7 +161,7 @@ function ariaReadRows_(values, fields, dateText) {
   if (!values || values.length < 2) return [];
   var map = ariaHeaderMap_(values[0]);
   return values.slice(1).map(function(r) { return ariaCleanRow_(map, r, fields, dateText); })
-    .filter(function(o) { return fields === ARIA_FARE_FIELDS_ ? (o.tripId && (o.total != null || o.farePP != null)) : (o.tripId || o.ref || o.label); });
+    .filter(function(o) { return fields === ARIA_FARE_FIELDS_ ? (o.tripId && (o.total != null || o.farePP != null)) : fields === ARIA_RUN_FIELDS_ ? !!o.runTime : (o.tripId || o.ref || o.label); });
 }
 
 /** Pure: label + start date, the way two rows are known to be the same trip. */
@@ -165,7 +206,9 @@ function ariaGaps_(veraTrips, watch, fares, requests, today) {
   var gaps = {
     noRow: noRow,
     draft: (watch || []).filter(function(w) { return w.status === 'draft'; }).map(function(w) { return item(w, 'Still a draft: set it to Watching in the tracker when it’s ready'); }),
-    incomplete: live.filter(function(w) { return !w.origins || !w.dests || w.ceiling == null; }).map(function(w) {
+    // Watching rows ARIA can't price or judge: what it says itself (NEEDS_*, CEILING_NOT_SET), else what VERA can see missing.
+    incomplete: live.filter(function(w) { return /^(NEEDS_|CEILING_NOT_SET)/.test(w.actionType || '') || !w.origins || !w.dests || w.ceiling == null; }).map(function(w) {
+      if (/^(NEEDS_|CEILING_NOT_SET)/.test(w.actionType || '')) return item(w, w.actionNeeded || w.actionType.replace(/_/g, ' ').toLowerCase());
       var miss = [!w.origins && 'origin airports', !w.dests && 'destination airports', w.ceiling == null && 'a price ceiling'].filter(Boolean);
       return item(w, 'Missing ' + miss.join(', ') + ': ARIA can’t judge it');
     }),
@@ -183,6 +226,98 @@ function ariaGaps_(veraTrips, watch, fares, requests, today) {
   return gaps;
 }
 
+/** Pure: the Settings tab (key in column A, value in B) → {key: value}. Section titles have no key match. */
+function ariaSettings_(values) {
+  var out = {};
+  (values || []).forEach(function(r) {
+    var k = String(r[0] == null ? '' : r[0]).trim().toLowerCase();
+    if (/^[a-z0-9_]+$/.test(k) && out[k] == null) out[k] = r[1] instanceof Date ? r[1].toISOString() : String(r[1] == null ? '' : r[1]).trim();
+  });
+  return out;
+}
+
+/** Pure: "Sent (2 trips)" → sent; "Draft (send failed: …)" or "Failed: …" → failed; "None"/blank → none. */
+function ariaEmailState_(text) {
+  var t = String(text == null ? '' : text).trim();
+  return /^sent/i.test(t) ? 'sent' : /^(draft|failed)/i.test(t) ? 'failed' : 'none';
+}
+
+/** Pure: the newest run in the Run Log, or null. */
+function ariaLatestRun_(runs) {
+  var best = null;
+  (runs || []).forEach(function(r) { if (r.runTime && (!best || r.runTime > best.runTime)) best = r; });
+  return best;
+}
+
+/**
+ * Pure: is ARIA running? From Settings (last_run_utc, last_run_status), else the
+ * newest Run Log row. level: ok | partial | failed | stale (no run logged, or none in 26 hours).
+ */
+function ariaRunHealth_(runs, settings, nowIso) {
+  var latest = ariaLatestRun_(runs), st = settings || {};
+  var last = ariaIso_(st.last_run_utc) || (latest && latest.runTime) || '';
+  var status = String(st.last_run_status || (latest && latest.status) || '').trim();
+  var said = status;   // last_run_status is "status + short reason"
+  status = /^ok\b/i.test(status) ? 'OK' : /^partial/i.test(status) ? 'Partial' : /^fail/i.test(status) ? 'Failed' : status;
+  if (!last) return { level: 'stale', lastRun: '', status: '', text: 'ARIA did not run: no run is logged' };
+  var hours = (new Date(nowIso).getTime() - new Date(last).getTime()) / 36e5;
+  var detail = latest && latest.runTime === last ? [latest.failures, latest.runId].filter(Boolean).join(' · ') : said.replace(/^(ok|partial|failed?)\W*/i, '');
+  if (hours > ARIA_STALE_HOURS_) return { level: 'stale', lastRun: last, status: status, hours: Math.round(hours), text: 'ARIA did not run: its last run was ' + Math.round(hours) + ' hours ago' };
+  if (status === 'Failed') return { level: 'failed', lastRun: last, status: status, text: 'ARIA’s last run failed' + (detail ? ': ' + detail : '') };
+  if (status === 'Partial') return { level: 'partial', lastRun: last, status: status, text: 'ARIA’s last run was partial' + (detail ? ': ' + detail : '') };
+  return { level: 'ok', lastRun: last, status: status || 'OK', text: 'ARIA ran ' + last.slice(0, 16).replace('T', ' ') + ' UTC' };
+}
+
+/**
+ * Pure: did the Book now email go out for this trip? ARIA emails once, on the
+ * run that first put the trip at BOOK_NOW, which is the run on its Action Since
+ * day. → {state: sent | failed, date, text}, or null when no run that day says.
+ */
+function ariaEmailFor_(row, runs) {
+  if (!row || row.actionType !== 'BOOK_NOW' || !row.actionSince) return null;
+  var day = (runs || []).filter(function(r) { return r.runTime && r.runTime.slice(0, 10) === row.actionSince && ariaEmailState_(r.emailSent) !== 'none'; });
+  if (!day.length) return null;
+  day.sort(function(a, b) { return a.runTime < b.runTime ? 1 : -1; });
+  return { state: ariaEmailState_(day[0].emailSent), date: day[0].runTime.slice(0, 10), text: day[0].emailSent };
+}
+
+/**
+ * Pure: the flags VERA should hold for ARIA, keyed (v3.1 contract):
+ *  A) one per Watchlist action: Key = its Action Key ("ARIA|<id>|<type>"); Flag = ARIA's
+ *     Action Needed; Reason "<Label> (<from>–<to>): <action>. Verdict …, best $…."; Date = Action Since;
+ *  B) one rolling run-health flag, ARIA|RUN_HEALTH, unless the latest run is OK and fresh;
+ *  C) ARIA|EMAIL_FAILED|<Run ID> when the latest run's Book now email didn't send.
+ * Everything else under "ARIA|" is resolved by the caller (upsertKeyedFlags_).
+ */
+function ariaWantedFlags_(watch, runs, settings, nowIso) {
+  var wanted = {};
+  var verdictWords = { book: 'Book now', wait: 'Wait', skip: 'Skip' };
+  (watch || []).forEach(function(w) {
+    if (!w.actionType) return;
+    var id = w.tripId || w.ref;
+    var key = /^ARIA\|[^|]+\|[A-Z_]+$/.test(w.actionKey) && w.actionKey.split('|')[2] === w.actionType ? w.actionKey : 'ARIA|' + id + '|' + w.actionType;
+    if (/^ARIA\|(RUN_HEALTH|EMAIL_FAILED)/.test(key)) return;
+    var said = w.actionNeeded || ARIA_ACTIONS_[w.actionType][0].replace(/^\S+\s/, '');
+    wanted[key] = {
+      flag: said.slice(0, 200),
+      reason: (w.label || id) + (w.earliest ? ' (' + w.earliest + (w.latest ? '–' + w.latest : '') + ')' : '') + ': ' + said + '.'
+        + (w.verdict || w.bestFare != null ? ' ' + [w.verdict ? 'Verdict ' + verdictWords[w.verdict] : '', w.bestFare != null ? 'best $' + w.bestFare : ''].filter(Boolean).join(', ') + '.' : ''),
+      urgency: w.actionUrgency || ARIA_ACTIONS_[w.actionType][1],
+      date: w.actionSince || '',
+    };
+  });
+  var h = ariaRunHealth_(runs, settings, nowIso);
+  if (h.level !== 'ok') {
+    wanted['ARIA|RUN_HEALTH'] = { flag: h.level === 'stale' ? 'ARIA did not run' : h.level === 'failed' ? 'ARIA run failed' : 'ARIA run partially failed',
+      reason: h.text, urgency: h.level === 'partial' ? 'Medium' : 'High' };
+  }
+  var latest = ariaLatestRun_(runs);
+  if (latest && ariaEmailState_(latest.emailSent) === 'failed') {
+    wanted['ARIA|EMAIL_FAILED|' + (latest.runId || latest.runTime.slice(0, 16))] = { flag: 'ARIA Book now email did not send', reason: latest.emailSent, urgency: 'Medium' };
+  }
+  return wanted;
+}
+
 /** Pure: the Fare Log to send: the last 90 days, newest first, capped. */
 function ariaRecentFares_(fares, today) {
   return (fares || []).filter(function(f) { return f.dateSeen && ariaDays_(f.dateSeen, today) <= ARIA_FARE_DAYS_; })
@@ -197,6 +332,20 @@ function ariaTabValues_(ss, name) {
   var sh = ss.getSheetByName(name);
   if (!sh || sh.getLastRow() < 1) return [];
   return sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+}
+
+/** Every tab VERA reads from ARIA's tracker, by name. A missing tab reads empty; `missing` names it. */
+function ariaReadTracker_(ss) {
+  var tz = Session.getScriptTimeZone();
+  var dateText = function(v) { return v instanceof Date && !isNaN(v.getTime()) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : v; };
+  var missing = ['Watchlist', 'Fare Log', 'Run Log', 'Settings'].filter(function(n) { return !ss.getSheetByName(n); });
+  return {
+    watch: ariaReadRows_(ariaTabValues_(ss, 'Watchlist'), ARIA_WATCH_FIELDS_, dateText),
+    fares: ariaReadRows_(ariaTabValues_(ss, 'Fare Log'), ARIA_FARE_FIELDS_, dateText),
+    runs: ariaReadRows_(ariaTabValues_(ss, 'Run Log'), ARIA_RUN_FIELDS_, null),
+    settings: ariaSettings_(ariaTabValues_(ss, 'Settings')),
+    missing: missing,
+  };
 }
 
 /** VERA's future trips, with whether you drive there (TripMeta Outbound Mode). */
@@ -246,13 +395,15 @@ function webAriaStatus_(p) {
   catch (e) { return { ok: false, configured: true, error: 'VERA couldn’t open the ARIA Travel Tracker. Check ARIA_SHEET_ID, and that the sheet is shared with the account VERA runs as.' }; }
   var tz = Session.getScriptTimeZone();
   var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  var dateText = function(v) { return v instanceof Date && !isNaN(v.getTime()) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : v; };
-  var watch = ariaReadRows_(ariaTabValues_(ss, 'Watchlist'), ARIA_WATCH_FIELDS_, dateText);
-  var fares = ariaReadRows_(ariaTabValues_(ss, 'Fare Log'), ARIA_FARE_FIELDS_, dateText);
+  var t = ariaReadTracker_(ss);
+  var watch = t.watch, fares = t.fares;
   var requests = ariaReadRequests_();
   var gaps = ariaGaps_(ariaVeraTrips_(today), watch, fares, requests, today);
-  var out = { ok: true, configured: true, today: today, read: new Date().toISOString(), watchlist: watch,
-    fares: ariaRecentFares_(fares, today), requests: requests, gaps: gaps, ideas: ariaIdeaNames_() };
+  var now = new Date().toISOString();
+  watch.forEach(function(w) { var e = ariaEmailFor_(w, t.runs); if (e) w.email = e; });
+  var out = { ok: true, configured: true, today: today, read: now, watchlist: watch,
+    fares: ariaRecentFares_(fares, today), requests: requests, gaps: gaps, ideas: ariaIdeaNames_(),
+    health: ariaRunHealth_(t.runs, t.settings, now), runs: t.runs.slice().sort(function(a, b) { return a.runTime < b.runTime ? 1 : -1; }).slice(0, 7) };
   Logger.log('aria_status: ' + watch.length + ' watchlist rows, ' + out.fares.length + ' fares, ' + gaps.count + ' gaps');
   try { cache.put(ARIA_CACHE_KEY_, JSON.stringify(out), 600); } catch (e) {}
   return out;
@@ -407,3 +558,60 @@ function webWithdrawAriaRequest_(body) {
 
 /** The next aria_status reads afresh, so a new or withdrawn request shows at once. */
 function ariaForget_() { try { CacheService.getScriptCache().remove(ARIA_CACHE_KEY_); } catch (e) {} }
+
+// ---- ARIA → VERA Flags (v3.1): actions, run health, a Book now email that didn't send ----
+
+var ARIA_FLAG_PREFIX_ = 'ARIA|';
+var ARIA_FLAG_EVERY_HOURS_ = 3;    // after the first read of the day, every three hours is enough
+
+/**
+ * Syncs VERA's Flags with ARIA's tracker: one flag per Watchlist action (keyed by
+ * its Action Key, closed when the key leaves the Watchlist), one rolling run-health
+ * flag, and one for a Book now email that didn't send. If the tracker can't be
+ * read, only the health flag changes: nothing ARIA raised is closed on a failed read.
+ */
+function syncAriaFlags_() {
+  var id = ariaSheetId_();
+  if (!id) return { ok: true, skipped: 'not configured' };
+  var flagSheet = getSpreadsheet().getSheetByName(TABS.FLAGS);
+  if (!flagSheet) return { ok: false, error: 'no Flags tab' };
+  var tz = Session.getScriptTimeZone(), dateStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var t = null, why = '';
+  try { t = ariaReadTracker_(SpreadsheetApp.openById(id)); } catch (e) { why = 'VERA couldn’t open the ARIA Travel Tracker'; }
+  if (t && t.missing.indexOf('Watchlist') !== -1) { why = 'The ARIA Travel Tracker has no Watchlist tab'; t = null; }
+  if (!t) {
+    upsertKeyedFlags_(flagSheet, 'ARIA|RUN_HEALTH', 'ARIA', { 'ARIA|RUN_HEALTH': { flag: '🧭 VERA can’t read ARIA', reason: why + '. Check ARIA_SHEET_ID and the sheet’s sharing.', urgency: 'High' } }, dateStr);
+    Logger.log('aria flags: tracker unreadable');
+    return { ok: false, error: why };
+  }
+  var wanted = ariaWantedFlags_(t.watch, t.runs, t.settings, new Date().toISOString());
+  var opened = upsertKeyedFlags_(flagSheet, ARIA_FLAG_PREFIX_, 'ARIA', wanted, dateStr);
+  ariaForget_();
+  Logger.log('aria flags: ' + Object.keys(wanted).length + ' wanted, ' + opened + ' opened');
+  return { ok: true, wanted: Object.keys(wanted).length, opened: opened };
+}
+
+/**
+ * Pure: is it time to sync? ARIA runs at 06:52 ET; VERA reads it from 07:30 local,
+ * then every three hours until 22:00. lastIso is the previous sync.
+ */
+function ariaSyncDue_(now, lastIso) {
+  var mins = now.getHours() * 60 + now.getMinutes();
+  if (mins < 7 * 60 + 30 || now.getHours() >= 22) return false;
+  if (!lastIso) return true;
+  var last = new Date(lastIso);
+  if (isNaN(last.getTime())) return true;
+  var morning = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7, 30);
+  return last < morning || (now.getTime() - last.getTime()) >= ARIA_FLAG_EVERY_HOURS_ * 36e5 - 5 * 6e4;
+}
+
+/** Called from hourlyCheck: syncs ARIA's flags when due. Never throws. */
+function maybeSyncAriaFlags_(now) {
+  try {
+    if (!ariaSheetId_()) return;
+    var props = PropertiesService.getScriptProperties();
+    if (!ariaSyncDue_(now || new Date(), props.getProperty('ARIA_FLAGS_SYNCED_AT'))) return;
+    props.setProperty('ARIA_FLAGS_SYNCED_AT', new Date().toISOString());
+    syncAriaFlags_();
+  } catch (e) { Logger.log('aria flags: sync failed: ' + e.message); }
+}

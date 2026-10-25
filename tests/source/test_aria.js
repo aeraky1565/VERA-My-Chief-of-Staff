@@ -205,6 +205,109 @@ console.log('\nasking ARIA to scout an option');
   check('requests are written only to VERA\'s own tab', !/openById\([^)]*\)\.[^;]*(appendRow|setValues)/.test(SRC) && /function ariaRequestsSheet_\(\) \{ return ensureSheet\(getSpreadsheet\(\), TABS\.ARIA_REQUESTS/.test(SRC));
 }
 
+console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
+{
+  const WH = ['Trip ID', 'Label', 'Watch Status', 'Earliest Depart', 'Latest Return', 'Best Fare Seen', 'Best Fare Source', 'Verdict', 'Price Ceiling Per Person', 'Origin Airports', 'Destination Airports',
+    'Action Needed', 'Action Type', 'Action Urgency', 'Action Key', 'Action Since', 'Best Fare Link'];
+  S.WV = [WH,
+    ['TRIP-0001', 'Chicago Trip', 'Watching', '2027-04-05', '2027-04-13', 704, 'Expedia', 'Book now', 360, 'IAD', 'ORD', 'Book now: $704 on UA 2027-04-05–2027-04-13', 'book_now', 'high', 'ARIA|TRIP-0001|BOOK_NOW', '2027-02-18', 'https://fares.example/x'],
+    ['TRIP-0002', 'Coast hop', 'Watching', '2027-05-01', '2027-05-08', '', '', '', '', '', 'SFO', 'Needs airports', 'NEEDS_AIRPORTS', '', 'ARIA|TRIP-0002|NEEDS_AIRPORTS', '2027-02-10', 'javascript:x'],
+    ['TRIP-0003', 'Old plan', 'Draft', '2027-06-01', '', '', '', '', '', '', '', 'Date changed: check trip', 'DATE_CHANGED', 'Medium', 'ARIA|TRIP-0003|DATE_CHANGED', '2027-02-19', ''],
+    ['TRIP-0004', 'Quiet', 'Watching', '2027-07-01', '', '', '', 'Wait', 400, 'IAD', 'LAX', '', '', '', '', '', ''],
+    ['TRIP-0005', 'Odd', 'Watching', '2027-08-01', '', '', '', '', '', '', '', 'Something', 'TELEPORT', 'High', 'ARIA|TRIP-0005|TELEPORT', '', '']];
+  const w = run('ariaReadRows_(WV, ARIA_WATCH_FIELDS_, dateText)');
+  check('an action reads with its type, urgency, key, since and link', w[0].actionType === 'BOOK_NOW' && w[0].actionUrgency === 'High' && w[0].actionKey === 'ARIA|TRIP-0001|BOOK_NOW' && w[0].actionSince === '2027-02-18' && w[0].bestLink === 'https://fares.example/x', JSON.stringify(w[0]));
+  check('…a blank urgency takes the type\'s own, and a bad link is dropped', w[1].actionUrgency === 'Low' && w[1].bestLink === '');
+  check('an unknown action type is no action', w[4].actionType === '' && w[4].actionKey === '');
+  S.RL = [['Run Time (UTC)', 'Status (OK / Partial / Failed)', 'Trips Synced', 'Rows Priced', 'Searches Used', 'Book Now', 'Action Needed', 'Failures', 'Notes', 'Run ID', 'Email Sent'],
+    ['2027-02-18 11:52', 'OK', 3, 2, 6, 1, 2, '', '', 'ARIA-RUN-20270218-1152', 'Sent (1 trips)'],
+    ['2027-02-20 11:52', 'Partial', 3, 1, 4, 0, 2, 'Expedia timed out', '', 'ARIA-RUN-20270220-1152', 'None'],
+    ['2027-02-19 11:52', 'ok', 3, 2, 6, 0, 2, '', '', 'ARIA-RUN-20270219-1152', 'Draft (send failed: quota)'],
+    ['', '', '', '', '', '', '', '', '', '', '']];
+  const runs = run('ariaReadRows_(RL, ARIA_RUN_FIELDS_, null)');
+  S.runs = runs;
+  check('the Run Log reads by header, its times as UTC', runs.length === 3 && runs[0].runTime === '2027-02-18T11:52:00.000Z' && runs[0].status === 'OK' && runs[2].status === 'OK' && runs[0].bookNow === 1, JSON.stringify(runs[0]));
+  check('the newest run is the latest Run Time, not the last row', run('ariaLatestRun_(runs).runId') === 'ARIA-RUN-20270220-1152');
+  S.SET = [['WHERE YOU FLY FROM', ''], ['home_airports', 'IAD, DCA, BWI'], ['RUN STATUS (written by ARIA)', ''], ['last_run_utc', '2027-02-20T11:52:00Z'], ['last_run_status', 'Partial: Expedia timed out'], ['book_now_email', true], ['', 'x']];
+  const set = run('ariaSettings_(SET)');
+  check('Settings read by key; section titles are not settings', set.home_airports === 'IAD, DCA, BWI' && set.last_run_status === 'Partial: Expedia timed out' && set.book_now_email === 'true' && !('where you fly from' in set), JSON.stringify(set));
+  S.set = set;
+  const hp = run('ariaRunHealth_(runs, set, "2027-02-20T15:00:00Z")');
+  check('a partial run (status plus reason) is amber, with what failed', hp.level === 'partial' && /Expedia timed out/.test(hp.text) && /ARIA-RUN-20270220-1152/.test(hp.text), JSON.stringify(hp));
+  check('a failed run is red', run('ariaRunHealth_([], {last_run_utc:"2027-02-20T11:52:00Z", last_run_status:"Failed: Sheets error"}, "2027-02-20T15:00:00Z").level') === 'failed');
+  check('an OK run is green', run('ariaRunHealth_([], {last_run_utc:"2027-02-20T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z").level') === 'ok');
+  check('no run in 26 hours: ARIA did not run', run('ariaRunHealth_([], {last_run_utc:"2027-02-19T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z").level') === 'stale');
+  check('…and no run logged at all is the same', run('ariaRunHealth_([], {}, "2027-02-20T15:00:00Z").level') === 'stale');
+  check('email states read from the Run Log words', run('[ariaEmailState_("Sent (2 trips)"), ariaEmailState_("Draft (send failed: x)"), ariaEmailState_("Failed: x"), ariaEmailState_("None"), ariaEmailState_("")].join()') === 'sent,failed,failed,none,none');
+  S.w = w;
+  const e = run('ariaEmailFor_(w[0], runs)');
+  check('the Book now card knows the email went out the morning it began', e && e.state === 'sent' && e.date === '2027-02-18', JSON.stringify(e));
+  S.w0b = Object.assign({}, w[0], { actionSince: '2027-02-19' });
+  check('…or that it failed', run('ariaEmailFor_(w0b, runs).state') === 'failed');
+  S.w0c = Object.assign({}, w[0], { actionSince: '2027-02-20' });
+  check('…and says nothing when that run sent none', run('ariaEmailFor_(w0c, runs)') === null);
+
+  const want = run('ariaWantedFlags_(w, runs, set, "2027-02-20T15:00:00Z")');
+  const bk = want['ARIA|TRIP-0001|BOOK_NOW'];
+  check('a trip action becomes a flag keyed by its Action Key, worded as ARIA said it', bk && bk.flag === 'Book now: $704 on UA 2027-04-05–2027-04-13' && bk.urgency === 'High' && bk.date === '2027-02-18', JSON.stringify(bk));
+  check('…its reason in the agreed shape', bk.reason === 'Chicago Trip (2027-04-05–2027-04-13): Book now: $704 on UA 2027-04-05–2027-04-13. Verdict Book now, best $704.', bk.reason);
+  check('a Draft row\'s date change is a flag too', want['ARIA|TRIP-0003|DATE_CHANGED'] && want['ARIA|TRIP-0003|DATE_CHANGED'].urgency === 'Medium');
+  check('a row with no action, or an unknown one, raises nothing', !Object.keys(want).some(k => /TRIP-0004|TRIP-0005/.test(k)));
+  check('a partial run raises the rolling health flag, Medium', want['ARIA|RUN_HEALTH'] && want['ARIA|RUN_HEALTH'].flag === 'ARIA run partially failed' && want['ARIA|RUN_HEALTH'].urgency === 'Medium');
+  check('the latest run sent no email, so no email flag', !Object.keys(want).some(k => /EMAIL_FAILED/.test(k)));
+  S.runs2 = runs.concat([{ runTime: '2027-02-21T11:52:00.000Z', status: 'OK', runId: 'ARIA-RUN-20270221-1152', emailSent: 'Failed: auth' }]);
+  const want2 = run('ariaWantedFlags_(w, runs2, {}, "2027-02-21T13:00:00Z")');
+  check('a Book now email that didn\'t send raises its own flag, by run', want2['ARIA|EMAIL_FAILED|ARIA-RUN-20270221-1152'] && want2['ARIA|EMAIL_FAILED|ARIA-RUN-20270221-1152'].reason === 'Failed: auth' && want2['ARIA|EMAIL_FAILED|ARIA-RUN-20270221-1152'].urgency === 'Medium');
+  check('…and an OK, fresh run raises no health flag', !want2['ARIA|RUN_HEALTH']);
+  S.wbad = [Object.assign({}, w[0], { actionKey: 'ARIA|TRIP-0001|UNDER_CEILING' })];
+  check('a key that doesn\'t match its type is rebuilt from the row', Object.keys(run('ariaWantedFlags_(wbad, [], {last_run_utc:"2027-02-20T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z")')).join() === 'ARIA|TRIP-0001|BOOK_NOW');
+  const g = run('ariaGaps_([], w, [], [], "2027-02-20")');
+  check('the gaps list what ARIA says it can\'t price, in its words', g.incomplete.some(x => x.id === 'TRIP-0002' && x.why === 'Needs airports'), JSON.stringify(g.incomplete));
+
+  // The sync, through VERA's real upsertKeyedFlags_.
+  const CODE_SRC = fs.readFileSync(path.join(ROOT, 'Code.js'), 'utf8');
+  const at = CODE_SRC.indexOf('function upsertKeyedFlags_'); const end = CODE_SRC.indexOf('\n}\n', at) + 3;
+  vm.runInContext(CODE_SRC.slice(at, end), S);
+  S.FLAG_HEADERS = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
+  S.colorCodeFlags = () => {};
+  const FL = [S.FLAG_HEADERS.slice(), ['FLAG-OLD', '2027-02-01', 'ARIA', 'Ceiling not set', 'x', 'Low', 'No', '', 'No', 'ARIA|TRIP-0009|CEILING_NOT_SET', ''],
+    ['FLAG-OTHER', '2027-02-01', 'Watchdog', 'Other', 'x', 'Low', 'No', '', 'No', 'watchdog_x', '']];
+  const flagTab = { getLastRow: () => FL.length, getRange: (r, c, nr, nc) => ({ getValues: () => FL.slice(r - 1, r - 1 + nr).map(x => x.slice(c - 1, c - 1 + nc)), setValue: v => { FL[r - 1][c - 1] = v; } }), appendRow: v => FL.push(v.slice()) };
+  S.getSpreadsheet = () => ({ getSheetByName: n => n === 'Flags' ? flagTab : null });
+  S.TABS.FLAGS = 'Flags';
+  props.ARIA_SHEET_ID = 'sheet-test-id';
+  const tracker = { Watchlist: S.WV, 'Fare Log': FARES, 'Run Log': S.RL, Settings: S.SET };
+  S.SpreadsheetApp = { openById: () => ({ getSheetByName: n => tracker[n] ? tab(tracker[n]) : null }) };
+  S.Date = Date; vm.runInContext('Date = this.Date', S);
+  const r1 = run('syncAriaFlags_()');
+  const open = () => FL.filter(x => x[2] === 'ARIA' && x[8] === 'No').map(x => x[9]).sort().join();
+  check('a sync opens one flag per action and the health flag', r1.ok && open() === 'ARIA|RUN_HEALTH,ARIA|TRIP-0001|BOOK_NOW,ARIA|TRIP-0002|NEEDS_AIRPORTS,ARIA|TRIP-0003|DATE_CHANGED', open());
+  const bookRow = FL.find(x => x[9] === 'ARIA|TRIP-0001|BOOK_NOW');
+  check('…dated when the action began, sourced ARIA', bookRow[1] === '2027-02-18' && bookRow[2] === 'ARIA' && bookRow[3] === 'Book now: $704 on UA 2027-04-05–2027-04-13');
+  check('…an ARIA flag whose key left the Watchlist is resolved', FL.find(x => x[9] === 'ARIA|TRIP-0009|CEILING_NOT_SET')[8] === 'Yes');
+  check('…and other sources\' flags are untouched', FL.find(x => x[9] === 'watchdog_x')[8] === 'No');
+  const n = FL.length; run('syncAriaFlags_()');
+  check('syncing again duplicates nothing', FL.length === n);
+  S.WV[1][12] = ''; S.WV[1][14] = ''; S.WV[1][11] = '';
+  run('syncAriaFlags_()');
+  check('Book now cleared on the Watchlist: its flag resolves', FL.find(x => x[9] === 'ARIA|TRIP-0001|BOOK_NOW')[8] === 'Yes');
+  S.SpreadsheetApp = { openById: () => { throw new Error('denied'); } };
+  const r3 = run('syncAriaFlags_()');
+  check('a tracker VERA can\'t read raises only the health flag, and closes nothing ARIA raised', r3.ok === false && FL.find(x => x[9] === 'ARIA|TRIP-0002|NEEDS_AIRPORTS')[8] === 'No'
+    && FL.find(x => x[9] === 'ARIA|RUN_HEALTH')[3] === '🧭 VERA can’t read ARIA' && FL.find(x => x[9] === 'ARIA|RUN_HEALTH')[5] === 'High');
+  S.SpreadsheetApp = { openById: () => ({ getSheetByName: n => n === 'Watchlist' ? null : tab(tracker[n]) }) };
+  run('syncAriaFlags_()');
+  check('…and so does one with no Watchlist tab', FL.find(x => x[9] === 'ARIA|TRIP-0002|NEEDS_AIRPORTS')[8] === 'No');
+  delete props.ARIA_SHEET_ID;
+  check('not connected: nothing to sync', run('syncAriaFlags_()').skipped === 'not configured');
+
+  const due = (h, m, last) => { S.nowD = new Date(2027, 1, 20, h, m); S.lastI = last; return run('ariaSyncDue_(nowD, lastI)'); };
+  check('VERA reads ARIA from 07:30, after its 06:52 run, not before', due(7, 20, '') === false && due(7, 35, '') === true);
+  check('…then every three hours', due(9, 0, new Date(2027, 1, 20, 7, 35).toISOString()) === false && due(10, 35, new Date(2027, 1, 20, 7, 35).toISOString()) === true);
+  check('…the first sync of a morning doesn\'t wait on last night\'s', due(7, 40, new Date(2027, 1, 19, 21, 0).toISOString()) === true);
+  check('…and not after 22:00', due(22, 10, '') === false);
+}
+
 // ============ the dashboard block ===================================================
 const block = (s, a, b) => { const i = s.indexOf(a), j = s.indexOf(b); return i === -1 || j === -1 ? '' : s.slice(i, j + b.length); };
 const TS = '// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM', TE = '// ---- /TripIdeasView ----';
@@ -234,6 +337,7 @@ const cr = code => vm.runInContext(code, C);
 
 console.log('\nwiring');
 check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated'];") !== -1);
+check('ARIA\'s flags ride on the hourly trigger, ahead of the reminders switch', (() => { const R = fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8'); const i = R.indexOf('function hourlyCheck() {'), a = R.indexOf('maybeSyncAriaFlags_(new Date());', i), b = R.indexOf("reminders_enabled", i); return i !== -1 && a !== -1 && a < b; })());
 check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));
 check('full: ARIA is a Travel tab, and renders the view', /\{id:'aria',label:'🧭 ARIA'/.test(APP) && /sub==='aria'&&\/\*#__PURE__\*\/React\.createElement\(AriaView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));

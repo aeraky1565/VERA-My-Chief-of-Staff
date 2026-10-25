@@ -2816,7 +2816,8 @@ function checkWarrantiesExpiring_() {
  * Upserts a set of flags that share a key prefix: opens what is missing, keeps
  * wording current, reopens one that recurs after being resolved, and closes any
  * that no longer apply. Extracted from syncWatchdogFlags_ so the warranty engine
- * and the watchdog cannot drift apart.
+ * and the watchdog cannot drift apart. A wanted flag may carry its own `date`
+ * (ARIA's dates its flags by when the action began); else dateStr.
  */
 function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
   var lastRow = sheet.getLastRow();
@@ -2835,7 +2836,7 @@ function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
       if (resolved) {
         sheet.getRange(rowNum, 9).setValue('No');
         sheet.getRange(rowNum, 7).setValue('No');
-        sheet.getRange(rowNum, 2).setValue(dateStr);
+        sheet.getRange(rowNum, 2).setValue(wanted[key].date || dateStr);
         sheet.getRange(rowNum, 11).setValue('');
       }
       // Only write when the wording actually moved on — this runs nightly, and
@@ -2854,7 +2855,7 @@ function upsertKeyedFlags_(sheet, prefix, source, wanted, dateStr) {
     var rand2 = String(Math.floor(Math.random() * 90) + 10);
     sheet.appendRow([
       'FLAG-' + dateStr.replace(/-/g, '') + '-' + rand2,
-      dateStr, source,
+      wanted[key].date || dateStr, source,
       wanted[key].flag, wanted[key].reason, wanted[key].urgency,
       'No', '', 'No', key, '',
     ]);

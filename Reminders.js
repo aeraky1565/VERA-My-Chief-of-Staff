@@ -39,6 +39,9 @@
  * Apps Script everyHours() doesn't support conditional hour ranges.
  */
 function hourlyCheck() {
+  // ARIA's flags (Aria.js) ride on this trigger, ahead of the reminders switch: turning
+  // reminders off must not silence a Book now. It never throws.
+  maybeSyncAriaFlags_(new Date());
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {

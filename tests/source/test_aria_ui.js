@@ -18,8 +18,12 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const STATUS = {
   ok: true, configured: true, today: '2027-02-20', read: '2027-02-20T12:00:00.000Z',
   watchlist: [
-    { tripId: 'TRIP-0001', label: 'Lake week', status: 'watching', origins: 'IAD', dests: 'ORD', returnFrom: '', earliest: '2027-04-05', latest: '2027-04-13', ceiling: 450, bestFare: 612, bestSource: 'SlickTrip', verdict: 'book', tier: 'Booking window', nextCheck: '2027-02-21', lastChecked: '2027-02-18', notes: 'Nonstop preferred', ref: '', dateChange: false },
-    { tripId: 'TRIP-0002', label: 'Coast hop', status: 'watching', origins: '', dests: 'SFO', earliest: '2027-05-01', latest: '2027-05-08', ceiling: null, bestFare: null, verdict: 'wait', tier: 'Weekly', ref: '', dateChange: true, notes: '' },
+    { tripId: 'TRIP-0001', label: 'Lake week', status: 'watching', origins: 'IAD', dests: 'ORD', returnFrom: '', earliest: '2027-04-05', latest: '2027-04-13', ceiling: 450, bestFare: 612, travelers: 2, bestSource: 'SlickTrip', verdict: 'book', tier: 'Booking window', nextCheck: '2027-02-21', lastChecked: '2027-02-18', notes: 'Nonstop preferred', ref: '', dateChange: false,
+      actionType: 'BOOK_NOW', actionUrgency: 'High', actionKey: 'ARIA|TRIP-0001|BOOK_NOW', actionSince: '2027-02-18', actionNeeded: 'Book now: $612 on UA 2027-04-05–2027-04-13', bestLink: 'https://fares.example/best', email: { state: 'sent', date: '2027-02-18', text: 'Sent (1 trips)' } },
+    { tripId: 'TRIP-0002', label: 'Coast hop', status: 'watching', origins: '', dests: 'SFO', earliest: '2027-05-01', latest: '2027-05-08', ceiling: null, bestFare: null, verdict: 'wait', tier: 'Weekly', ref: '', dateChange: true, notes: '',
+      actionType: 'DATE_CHANGED', actionUrgency: 'Medium', actionNeeded: 'Date changed: check trip' },
+    { tripId: 'TRIP-0006', label: 'Desert weekend', status: 'watching', origins: 'IAD', dests: 'PHX', earliest: '2027-03-12', latest: '2027-03-15', ceiling: 300, bestFare: 520, bestSource: 'Expedia', verdict: 'wait', tier: 'Daily', ref: '', dateChange: false, notes: '',
+      actionType: 'UNDER_CEILING', actionUrgency: 'High', actionNeeded: 'Under ceiling: $520', actionSince: '2027-02-19', email: { state: 'failed', date: '2027-02-19', text: 'Draft (send failed: quota)' } },
     { tripId: '', ref: 'OPT-ABC', label: 'Spring idea', status: 'scouting', origins: 'IAD', dests: 'LIS', returnFrom: 'BCN', earliest: '2027-03-01', latest: '2027-05-31', nightsMin: 7, nightsMax: 10, bestFare: 1240, bestSource: 'SlickTrip', verdict: 'wait', tier: 'Weekly', dateChange: false, notes: '' },
     { tripId: 'TRIP-0003', label: 'Old plan', status: 'dropped', earliest: '2027-01-02', ref: '', dateChange: false, notes: '' },
   ],
@@ -34,6 +38,7 @@ const STATUS = {
     incomplete: [{ id: 'TRIP-0002', label: 'Coast hop', start: '2027-05-01', why: 'Missing origin airports, a price ceiling: ARIA can’t judge it' }],
     stale: [], dateChanged: [{ id: 'TRIP-0002', label: 'Coast hop', start: '2027-05-01', why: 'The dates changed in VERA: check the airports and the window' }], waiting: [], count: 3 },
   ideas: { 'OPT-ABC': { ideaId: 'IDEA-1', idea: 'Spring in Europe', option: 'Lisbon → Algarve → cruise' } },
+  health: { level: 'partial', text: 'ARIA’s last run was partial: Expedia timed out', lastRun: '2027-02-20T11:52:00.000Z' },
 };
 
 async function mount(page, reply) {
@@ -62,11 +67,21 @@ async function scenario(page, label, width) {
 
   await mount(page, STATUS);
   t = await text(page);
-  check(label + ': what needs a look comes first, with the count', /Needs a look · 3/i.test(t) && t.indexOf('Needs a look') < t.indexOf('Lake week'), t.slice(0, 300));
+  check(label + ': what needs a look comes before the trip list', /Needs a look · 3/i.test(t) && t.indexOf('Needs a look') < t.indexOf('WATCHING'), t.slice(0, 300));
   check(label + ': …each with why', /ARIA can’t price these/.test(t) && /Coast hop \(2027-05-01\): Missing origin airports, a price ceiling/.test(t) && /Trips ARIA isn’t watching/.test(t) && /Girls weekend/.test(t) && /Dates changed in VERA/.test(t), t.slice(0, 600));
-  check(label + ': trips group by status, scouted ones under their idea', /Watching · 2/i.test(t) && /Scouting · Spring in Europe · 1/i.test(t) && t.indexOf('Watching') < t.indexOf('Scouting'), t);
+  check(label + ': trips group by status, scouted ones under their idea', /Watching · 3/i.test(t) && /Scouting · Spring in Europe · 1/i.test(t) && t.indexOf('Watching') < t.indexOf('Scouting'), t);
+  const books = await page.$$eval('#ariaprobe .aria-book', ns => ns.map(n => n.innerText));
+  check(label + ': Book now comes first, then under your ceiling', books.length === 2 && /BOOK NOW/.test(books[0]) && /UNDER YOUR CEILING/.test(books[1]) && t.toUpperCase().indexOf('BOOK NOW') < t.toUpperCase().indexOf('NEEDS A LOOK'), JSON.stringify(books));
+  check(label + ': the Book now card has the trip, dates, airline, since, fare and ARIA\'s words', /Lake week/.test(books[0]) && /Mon, Apr 5 → Tue, Apr 13 · UA · since 2027-02-18/.test(books[0]) && /\$612/.test(books[0]) && /Book now: \$612 on UA/.test(books[0]), books[0]);
+  check(label + ': …and says the email went out', /Emailed 2027-02-18/.test(books[0]));
+  check(label + ': the total is for everyone, set per person beside the per-person ceiling', /\$612\s+for 2 · \$306 pp\s+ceiling \$450 pp/.test(books[0]) && /\$520\s+total\s+ceiling \$300 pp/.test(books[1]), books.join(' | '));
+  const bookHref = await page.$eval('#ariaprobe .aria-book-now .aria-book-btn', a => [a.getAttribute('href'), a.getAttribute('rel'), a.innerText]).catch(() => []);
+  check(label + ': Book goes to ARIA\'s best fare link, safely', bookHref[0] === 'https://fares.example/best' && bookHref[1] === 'noopener noreferrer' && /Book/.test(bookHref[2]), JSON.stringify(bookHref));
+  check(label + ': an email that didn\'t send is amber, and says the card still carries it', /Email failed/.test(books[1]) && /ARIA’s email didn’t send \(Draft \(send failed: quota\)\)/.test(books[1]), books[1]);
+  check(label + ': the health chip says how ARIA\'s last run went', /ARIA’s last run was partial: Expedia timed out/.test(await page.$eval('#ariaprobe .aria-health-partial', n => n.innerText).catch(() => '')));
+  check(label + ': a quieter action shows on its trip card', /→ Date changed: check trip/.test(await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Coast hop/.test(n.innerText)) || { innerText: '' }).innerText)));
   const lake = await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Lake week/.test(n.innerText)) || { innerText: '' }).innerText);
-  check(label + ': a watched trip shows its dates, airports, verdict and best fare', /Mon, Apr 5 → Tue, Apr 13 · IAD → ORD/.test(lake) && /BOOK NOW/i.test(lake) && /\$612/.test(lake) && /ceiling \$450 pp/.test(lake), lake);
+  check(label + ': a watched trip shows its dates, airports, verdict and best fare', /Mon, Apr 5 → Tue, Apr 13 · IAD → ORD/.test(lake) && /BOOK NOW/i.test(lake) && /\$612\s+best seen for 2 \(\$306 pp\) · SlickTrip/.test(lake) && /ceiling \$450 pp/.test(lake), lake);
   check(label + ': …the latest fare in full', /Latest, 2027-02-18: \$612 total \(\$280 pp\) · UA · nonstop · Mon, Apr 5 → Tue, Apr 13/.test(lake), lake);
   check(label + ': …and the line of fares seen', !!(await page.$('#ariaprobe .aria-card .aria-spark')) && /\$612–\$692/.test(lake));
   const href = await page.$eval('#ariaprobe .aria-link', a => [a.getAttribute('href'), a.getAttribute('target'), a.getAttribute('rel')]).catch(() => []);
@@ -88,6 +103,28 @@ async function scenario(page, label, width) {
     check(label + ': cards sit side by side on a desktop', tops[0] === tops[1], JSON.stringify(tops)); }
   check(label + ': no sideways scroll', await noScroll(page));
   if (process.env.SHOT_DIR) { const el = await page.$('#ariaprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+
+  // Home: the banner shows what to book, and nothing at all otherwise
+  const banner = async (reply) => { await page.evaluate((reply) => {
+      document.querySelectorAll('#ariaprobe').forEach(n => n.remove()); window.__nav = '';
+      window.apiGet = () => Promise.resolve(JSON.parse(JSON.stringify(reply)));
+      const host = document.createElement('div'); host.id = 'ariaprobe'; document.body.appendChild(host);
+      ReactDOM.createRoot(host).render(React.createElement(AriaBookBanner, { apiUrl: 'https://vera.test/exec', apiToken: 't', onNavigate: t => { window.__nav = t; } }));
+    }, reply); await wait(200); return page.$eval('#ariaprobe', n => n.innerText); };
+  t = await banner(STATUS);
+  check(label + ': Home leads with ARIA\'s fares to book', /ARIA · 2 fares to look at/i.test(t) && /BOOK NOW/.test(t) && /Lake week/.test(t) && /Desert weekend/.test(t), t.slice(0, 300));
+  await page.evaluate(() => window.__q('.aria-banner-open').click()); await wait(50);
+  check(label + ': …and opens Travel', (await page.evaluate(() => window.__nav)) === 'travel');
+  check(label + ': no sideways scroll with the Home banner', await noScroll(page));
+  if (process.env.SHOT_DIR) { const el = await page.$('#ariaprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-home-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+  const quiet = JSON.parse(JSON.stringify(STATUS)); quiet.watchlist.forEach(w => { w.actionType = ''; });
+  check(label + ': nothing to book: no banner at all', (await banner(quiet)).trim() === '');
+  check(label + ': ARIA not connected: no banner', (await banner({ ok: true, configured: false })).trim() === '');
+  check(label + ': ARIA unreadable: no banner, and Home doesn\'t break', (await banner({ ok: false, error: 'x' })).trim() === '');
+  await page.evaluate(() => { document.querySelectorAll('#ariaprobe').forEach(n => n.remove()); window.apiGet = () => { throw new Error('offline'); };
+    const host = document.createElement('div'); host.id = 'ariaprobe'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(AriaBookBanner, { apiUrl: 'https://vera.test/exec', apiToken: 't' })); }); await wait(150);
+  check(label + ': …even when the request itself throws', (await page.$eval('#ariaprobe', n => n.innerText)).trim() === '');
 }
 
 (async () => {

@@ -8222,6 +8222,15 @@ var ARIA_VERDICT={book:['BOOK NOW','#173a24','#4d9f6a','#8fe0a8'],wait:['WAIT','
 var ARIA_STATUS={draft:['Draft','#9aa9cc'],scouting:['Scouting','#8ab4f8'],watching:['Watching','#8fe0a8'],booked:['Booked','#8ab4f8'],dropped:['Dropped','#6f7c9c'],other:['Other','#9aa9cc']};
 var ARIA_GAPS=[['incomplete','ARIA can’t price these'],['stale','No new fares'],['dateChanged','Dates changed in VERA'],['noRow','Trips ARIA isn’t watching'],['draft','Still drafts'],['waiting','Asked, not picked up']];
 var ARIA_FLAG_WORDS={'excl. bags':'without bag fees','fare type unknown':'fare type unknown','est.':'estimate','no forecast':'no forecast'};
+var ARIA_HEALTH={ok:['#8fe0a8','#173a24'],partial:['#f6d27a','#33280f'],failed:['#ffb0b0','#3a1218'],stale:['#ffb0b0','#3a1218'],none:['#9aa9cc','#1d2438']};
+// The trips ARIA says to act on now: Book now first, then under your ceiling; soonest first within each.
+function ariaUrgent_(watch){return (watch||[]).filter(function(w){return (w.actionType==='BOOK_NOW'||w.actionType==='UNDER_CEILING')&&w.status!=='dropped';})
+  .sort(function(a,b){return (a.actionType==='BOOK_NOW'?0:1)-(b.actionType==='BOOK_NOW'?0:1)||String(a.earliest||'9').localeCompare(String(b.earliest||'9'));});}
+// Where Book goes: ARIA's Best Fare Link, else the latest fare's link.
+// Best Fare Seen is the total for everyone; per person (to set beside the per-person ceiling) needs the traveler count.
+function ariaPerPerson_(w){return w.bestFare!=null&&w.travelers>0?Math.round(w.bestFare/w.travelers):null;}
+function ariaBookLink_(w,latest){return w.bestLink||(latest&&latest.link)||'';}
+function ariaEmailWords_(e){if(!e)return null;return e.state==='sent'?['Emailed '+e.date,TI.ok]:e.state==='failed'?['Email failed',TI.warn]:null;}
 // The fares for one Watchlist row: its Trip ID, and its Ref (an idea's option, while it was scouted).
 function ariaFaresFor_(fares,w){var ids=[w.tripId,w.ref].filter(Boolean);return (fares||[]).filter(function(f){return ids.indexOf(f.tripId)!==-1;});}
 // Fares in whole dollars, not rounded to $1.2k: the exact figure is the point.
@@ -8265,18 +8274,50 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var fares=ari
       h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end',flex:'none'}},chip(st[0],st[1],null,'aria-status'),v&&chip(v[0],v[3],v[1],'aria-verdict'))),
     h('div',{style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
       w.bestFare!=null?h('span',{className:'aria-best',style:{fontSize:22,fontWeight:700,color:TI.hi,fontVariantNumeric:'tabular-nums'}},ariaUsd_(w.bestFare)):h('span',{style:{fontSize:14,color:TI.mute}},'No fare yet'),
-      w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'best seen'+(w.bestSource?' · '+w.bestSource:'')),
-      w.ceiling!=null&&h('span',{style:{fontSize:12,color:w.bestFare!=null&&w.bestFare<=w.ceiling?TI.ok:TI.mute}},'ceiling '+ariaUsd_(w.ceiling)+' pp')),
+      w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'best seen'+(w.travelers>0?' for '+w.travelers+' ('+ariaUsd_(ariaPerPerson_(w))+' pp)':', total')+(w.bestSource?' · '+w.bestSource:'')),
+      w.ceiling!=null&&h('span',{style:{fontSize:12,color:ariaPerPerson_(w)!=null&&ariaPerPerson_(w)<=w.ceiling?TI.ok:TI.mute}},'ceiling '+ariaUsd_(w.ceiling)+' pp')),
     latest&&h('span',{className:'aria-latest',style:{fontSize:12,color:TI.soft,lineHeight:1.45}},'Latest, '+latest.dateSeen+': '+ariaUsd_(ariaFareTotal_(latest))+(latest.total!=null&&latest.farePP!=null?' total ('+ariaUsd_(latest.farePP)+' pp)':'')
       +(latest.airline?' · '+latest.airline:'')+(latest.stops!==''&&latest.stops!=null?' · '+(String(latest.stops)==='0'?'nonstop':latest.stops+' stop'+(String(latest.stops)==='1'?'':'s')):'')
       +(latest.depart?' · '+tiDayText_(latest.depart)+(latest.ret?' → '+tiDayText_(latest.ret):''):'')),
     latest&&(latest.flags||[]).length>0&&h('div',{className:'aria-flags',style:{display:'flex',gap:6,flexWrap:'wrap'}},latest.flags.map(function(f){return h('span',{key:f,style:{fontSize:11,color:TI.warn,border:'1px dashed #a8862f',borderRadius:6,padding:'2px 6px'}},'⚠ '+(ARIA_FLAG_WORDS[f]||f));})),
     hist.length>1&&h(AriaSpark,{points:hist}),
     h('span',{style:{fontSize:12,color:TI.mute}},[w.tier,w.nextCheck?'next check '+w.nextCheck:'',w.lastChecked?'checked '+w.lastChecked:'',w.forecast?'forecast: '+w.forecast:''].filter(Boolean).join(' · ')),
+    w.actionType&&w.actionType!=='BOOK_NOW'&&w.actionType!=='UNDER_CEILING'&&h('span',{className:'aria-action',style:{fontSize:12,lineHeight:1.45,color:w.actionUrgency==='High'?'#ffb0b0':w.actionUrgency==='Medium'?TI.warn:TI.soft}},'→ '+(w.actionNeeded||w.actionType.replace(/_/g,' ').toLowerCase())),
     w.dateChange&&h('span',{className:'aria-date-change',style:{fontSize:12,color:TI.warn}},'⚠ The dates changed in VERA since ARIA set this up.'),
     idea&&idea.idea&&h('span',{style:{fontSize:12,color:TI.acc}},'From the trip idea "'+idea.idea+'"'),
     w.notes&&h('span',{style:{fontSize:12,lineHeight:1.45,color:TI.mute}},w.notes),
     latest&&latest.link&&h('a',{href:latest.link,target:'_blank',rel:'noopener noreferrer',className:'aria-link',style:{fontSize:13,fontWeight:600,color:TI.acc,alignSelf:'flex-start',minHeight:32,display:'inline-flex',alignItems:'center'}},'Open this fare ↗'));}
+
+function AriaBookCard(props){var h=React.createElement;var w=props.row,book=w.actionType==='BOOK_NOW';var fares=ariaFaresFor_(props.fares,w),latest=ariaLatest_(fares);
+  var link=ariaBookLink_(w,latest),em=ariaEmailWords_(w.email),idea=(props.ideas||{})[w.ref];
+  return h('div',{className:'aria-book aria-book-'+(book?'now':'under'),style:{display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:book?'#123020':TI.card,border:(book?'2px':'1px')+' solid '+(book?'#4d9f6a':'#2f5ea8'),minWidth:0}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start',flexWrap:'wrap'}},
+      h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:book?'#8fe0a8':TI.acc}},book?'✈️ BOOK NOW':'💸 UNDER YOUR CEILING'),
+      em&&h('span',{className:'aria-email',style:{fontSize:11,fontWeight:700,color:em[1],border:'1px solid '+em[1],borderRadius:999,padding:'2px 8px'}},em[0])),
+    h('span',{className:'aria-book-label',style:{fontSize:17,fontWeight:700,color:TI.hi}},idea&&idea.option?idea.option:(w.label||w.tripId||w.ref)),
+    h('span',{style:{fontSize:13,color:TI.soft}},ariaWhen_(w)+(latest&&latest.airline?' · '+latest.airline:'')+(w.actionSince?' · since '+w.actionSince:'')),
+    h('div',{style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
+      w.bestFare!=null&&h('span',{style:{fontSize:24,fontWeight:700,color:TI.hi,fontVariantNumeric:'tabular-nums'}},ariaUsd_(w.bestFare)),
+      w.bestFare!=null&&h('span',{className:'aria-pp',style:{fontSize:12,color:TI.soft}},w.travelers>0?'for '+w.travelers+' · '+ariaUsd_(ariaPerPerson_(w))+' pp':'total'),
+      w.ceiling!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'ceiling '+ariaUsd_(w.ceiling)+' pp'),
+      w.bestSource&&h('span',{style:{fontSize:12,color:TI.mute}},'from '+w.bestSource)),
+    w.actionNeeded&&h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.txt}},w.actionNeeded),
+    w.email&&w.email.state==='failed'&&h('span',{style:{fontSize:12,color:TI.warn,lineHeight:1.45}},'ARIA’s email didn’t send ('+w.email.text+'). This card and the flag on Home still carry it.'),
+    link?h('a',{href:link,target:'_blank',rel:'noopener noreferrer',className:'aria-book-btn',style:Object.assign(tiBtn_(book?'good':''),{display:'inline-flex',alignItems:'center',justifyContent:'center',textDecoration:'none',alignSelf:'flex-start'})},'Book ↗')
+      :h('span',{style:{fontSize:12,color:TI.mute}},'No booking link from ARIA yet.'),
+    h('span',{style:{fontSize:11,color:TI.mute}},'You book it yourself; ARIA never books or pays.'));}
+
+// Home: what ARIA says to book, at the top of the dashboard. Nothing at all when there is nothing to book,
+// when ARIA isn't connected, or when its sheet can't be read: Home never waits on ARIA.
+function AriaBookBanner(props){var h=React.createElement;var _d=React.useState(null),data=_d[0],setData=_d[1];
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken)return;try{var pr=apiGet(props.apiUrl,props.apiToken,{action:'aria_status'});
+    if(pr&&pr.then)pr.then(function(r){setData(r&&r.ok&&r.configured?r:null);}).catch(function(){setData(null);});}catch(e){setData(null);}},[props.apiUrl,props.apiToken]);
+  var urgent=data?ariaUrgent_(data.watchlist):[];if(!urgent.length)return null;
+  return h('div',{className:'aria-banner',style:{display:'flex',flexDirection:'column',gap:10,marginBottom:20}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},
+      h('span',{style:Object.assign({},TI_EYEBROW,{color:'#8fe0a8'})},'🧭 ARIA · '+urgent.length+' fare'+(urgent.length===1?'':'s')+' to look at'),
+      props.onNavigate&&h('button',{type:'button',className:'aria-banner-open',onClick:function(){props.onNavigate('travel');},style:Object.assign(tiBtn_(),{minHeight:36})},'Open Travel →')),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas});})));}
 
 function AriaView(props){var h=React.createElement;
   var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];var _o=React.useState(false),showOld=_o[0],setShowOld=_o[1];
@@ -8288,7 +8329,9 @@ function AriaView(props){var h=React.createElement;
   var head=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:12,flexWrap:'wrap'}},
     h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('span',{style:{fontSize:20,fontWeight:700,color:TI.hi}},'ARIA'),
       h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.mute}},'The fares ARIA, your travel agent, has found. Read only: watches are set up in the ARIA Travel Tracker.')),
-    data.configured&&h('button',{type:'button',className:'aria-refresh',disabled:!!data.loading,onClick:function(){load(true);},style:tiBtn_()},data.loading?'Reading…':'Read again'));
+    h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+      data.health&&h('span',{className:'aria-health aria-health-'+data.health.level,title:data.health.text,style:{fontSize:12,fontWeight:600,padding:'6px 10px',borderRadius:999,color:(ARIA_HEALTH[data.health.level]||ARIA_HEALTH.none)[0],background:(ARIA_HEALTH[data.health.level]||ARIA_HEALTH.none)[1]}},data.health.level==='ok'?'● '+data.health.text:'● '+data.health.text),
+      data.configured&&h('button',{type:'button',className:'aria-refresh',disabled:!!data.loading,onClick:function(){load(true);},style:tiBtn_()},data.loading?'Reading…':'Read again')));
   if(data.loading&&!data.watchlist)return h('div',wrap,head,h('span',{style:{color:TI.mute,fontSize:14}},'Reading ARIA’s sheet…'));
   if(data.error)return h('div',wrap,head,h('span',{role:'alert',style:{color:'#ffb0b0',fontSize:14,lineHeight:1.45}},data.error),h('button',{type:'button',onClick:function(){load(true);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},'Try again'));
   if(data.configured===false)return h('div',wrap,head,h('div',{className:'aria-setup',style:{display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:TI.card,border:'1px dashed #4a6aa8',fontSize:14,lineHeight:1.5}},
@@ -8299,8 +8342,9 @@ function AriaView(props){var h=React.createElement;
   var section=function(key,label,rows){if(!rows.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label+' · '+rows.length),
     h('div',{className:'aria-grid',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10,alignItems:'start'}},
       rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas});})));};
-  var gapLists=ARIA_GAPS.filter(function(x){return (gaps[x[0]]||[]).length;});
+  var gapLists=ARIA_GAPS.filter(function(x){return (gaps[x[0]]||[]).length;}),urgent=ariaUrgent_(data.watchlist);
   return h('div',wrap,head,
+    urgent.length>0&&h('div',{className:'aria-urgent',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas});})),
     gapLists.length>0&&h('div',{className:'aria-gaps',style:{display:'flex',flexDirection:'column',gap:10,padding:12,borderRadius:12,border:'1px solid #a8862f',background:'#1d1a10'}},
       h('span',{style:Object.assign({},TI_EYEBROW,{color:TI.warn})},'Needs a look · '+gaps.count),
       gapLists.map(function(x){return h('div',{key:x[0],className:'aria-gap-'+x[0],style:{display:'flex',flexDirection:'column',gap:4}},
@@ -10766,6 +10810,8 @@ function OverviewLiteTab({ apiUrl, apiToken, shopping, status, onNavigate }) {
         <div style={{ fontSize: 20, fontWeight: 800, color: '#dde1f0' }}>{greeting}</div>
         <div style={{ fontSize: 13, color: '#6b7fa8' }}>{dateLabel}</div>
       </div>
+
+      <AriaBookBanner apiUrl={apiUrl} apiToken={apiToken} onNavigate={onNavigate} />
 
       {displayTrip && (
         <div style={{ marginBottom: 20 }}>

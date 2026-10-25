@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_aria');
 
-const FILES = ['Aria.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
+const FILES = ['Aria.js', 'Code.js', 'Reminders.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -13,11 +13,28 @@ const swap = (src, from, to) => {
   if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70));
   return src.replace(from, function() { return to; });
 };
-const T = 'Aria.js', K = 'Code.js', W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
+const T = 'Aria.js', K = 'Code.js', R = 'Reminders.js', W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
 const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], from, to) });
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['an unknown action type raises a flag', b => ({ [T]: swap(b[T], "    if (!ARIA_ACTIONS_[out.actionType]) out.actionType = '';\n", "") })],
+  ['the last row is taken as the newest run', b => ({ [T]: swap(b[T], "(runs || []).forEach(function(r) { if (r.runTime && (!best || r.runTime > best.runTime)) best = r; });", "(runs || []).forEach(function(r) { if (r.runTime) best = r; });") })],
+  ['a status with a reason reads as unknown', b => ({ [T]: swap(b[T], "status = /^ok\\b/i.test(status) ? 'OK' : /^partial/i.test(status) ? 'Partial'", "status = /^ok$/i.test(status) ? 'OK' : /^partial$/i.test(status) ? 'Partial'") })],
+  ['a stale run reads as fine', b => ({ [T]: swap(b[T], "if (hours > ARIA_STALE_HOURS_) return", "if (false) return") })],
+  ['no run logged reads as fine', b => ({ [T]: swap(b[T], "if (!last) return { level: 'stale',", "if (!last) return { level: 'ok',") })],
+  ['a draft email reads as sent', b => ({ [T]: swap(b[T], ": /^(draft|failed)/i.test(t) ? 'failed' : 'none';", ": /^(failed)/i.test(t) ? 'failed' : 'none';") })],
+  ['the email is read from any run', b => ({ [T]: swap(b[T], "return r.runTime && r.runTime.slice(0, 10) === row.actionSince && ariaEmailState_(r.emailSent) !== 'none';", "return r.runTime && ariaEmailState_(r.emailSent) !== 'none';") })],
+  ['the flag is VERA\'s wording, not ARIA\'s', b => ({ [T]: swap(b[T], "      flag: said.slice(0, 200),", "      flag: ARIA_ACTIONS_[w.actionType][0],") })],
+  ['the flag is dated today, not when the action began', b => ({ [T]: swap(b[T], "      date: w.actionSince || '',\n", "") })],
+  ['a mismatched key is trusted', b => ({ [T]: swap(b[T], "&& w.actionKey.split('|')[2] === w.actionType ? w.actionKey", "? w.actionKey") })],
+  ['a failed email raises nothing', b => ({ [T]: swap(b[T], "  if (latest && ariaEmailState_(latest.emailSent) === 'failed') {\n    wanted['ARIA|EMAIL_FAILED|'", "  if (false) {\n    wanted['ARIA|EMAIL_FAILED|'") })],
+  ['an unreadable tracker closes ARIA\'s flags', b => ({ [T]: swap(b[T], "    upsertKeyedFlags_(flagSheet, 'ARIA|RUN_HEALTH', 'ARIA',", "    upsertKeyedFlags_(flagSheet, 'ARIA|', 'ARIA',") })],
+  ['a missing Watchlist reads as empty', b => ({ [T]: swap(b[T], "  if (t && t.missing.indexOf('Watchlist') !== -1) { why = 'The ARIA Travel Tracker has no Watchlist tab'; t = null; }\n", "") })],
+  ['VERA reads ARIA before its morning run', b => ({ [T]: swap(b[T], "if (mins < 7 * 60 + 30 || now.getHours() >= 22) return false;", "if (now.getHours() >= 22) return false;") })],
+  ['VERA reads ARIA every hour', b => ({ [T]: swap(b[T], "(now.getTime() - last.getTime()) >= ARIA_FLAG_EVERY_HOURS_ * 36e5 - 5 * 6e4", "true") })],
+  ['the flag date override is ignored', b => ({ [K]: swap(b[K], "      wanted[key].date || dateStr, source,", "      dateStr, source,") })],
+  ['the reminders switch silences ARIA', b => ({ [R]: swap(b[R], "  maybeSyncAriaFlags_(new Date());\n  try {\n    var cfg = getConfigValues();", "  try {\n    var cfg = getConfigValues();") })],
   ['the requests tab loses a column ARIA reads', b => ({ [K]: swap(b[K], "'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min'", "'Earliest Depart', 'Latest Return', 'Nights Min'") })],
   ['an open jaw is lost', b => ({ [T]: swap(b[T], "returnFrom: back && back !== to ? back : '',", "returnFrom: '',") })],
   ['"Home" is sent as a place', b => ({ [T]: swap(b[T], "return /^home$/i.test(t) ? '' :", "return false ? '' :") })],
@@ -38,7 +55,7 @@ const CONTROLS = [
   ['a duplicated hold counts twice', b => ({ [T]: swap(b[T], "if (seen[k] || t.drive) return; seen[k] = 1;", "if (t.drive) return;") })],
   ['a drive needs fares', b => ({ [T]: swap(b[T], "if (seen[k] || t.drive) return; seen[k] = 1;", "if (seen[k]) return; seen[k] = 1;") })],
   ['a row is matched only by Trip ID', b => ({ [T]: swap(b[T], "if (has['id:' + String(t.tripId || '').toUpperCase()] || has['lk:' + k]) return;", "if (has['id:' + String(t.tripId || '').toUpperCase()]) return;") })],
-  ['a ceiling is not needed to judge', b => ({ [T]: swap(b[T], "return !w.origins || !w.dests || w.ceiling == null; }).map", "return !w.origins || !w.dests; }).map") })],
+  ['a ceiling is not needed to judge', b => ({ [T]: swap(b[T], "|| !w.origins || !w.dests || w.ceiling == null; }).map", "|| !w.origins || !w.dests; }).map") })],
   ['too early counts as stale', b => ({ [T]: swap(b[T], "      if (/too early/i.test(w.tier)) return false;\n", "") })],
   ['a fresh request is already waiting', b => ({ [T]: swap(b[T], "ariaDays_(r.created.slice(0, 10), today) >= 2;", "true;") })],
   ['every old fare is sent', b => ({ [T]: swap(b[T], "return f.dateSeen && ariaDays_(f.dateSeen, today) <= ARIA_FARE_DAYS_; })", "return true; })") })],
