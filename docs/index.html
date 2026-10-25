@@ -2062,7 +2062,9 @@ function tsDocAttention_(docs,date){var out=[];if(!docs||!docs.countries)return 
   docs.countries.forEach(function(c){(c.travelers||[]).forEach(function(t){(t.passports||[]).forEach(function(p){
     var who=t.name+(p.passportCountry?' ('+p.passportCountry+' passport)':'');var st=p.passport&&p.passport.status;
     if(st==='expires'||st==='short'){var k=who;var e=pp[k]||(pp[k]={who:who,red:false,where:[],label:p.passport.label});if(st==='expires')e.red=true;if(e.where.indexOf(c.country)===-1)e.where.push(c.country);}
-    if(p.color==='red'||p.color==='yellow')visas.push({level:'amber',date:c.from||date,title:(p.color==='red'?'Visa required for ':p.label+' for ')+c.country+(c.role==='layover'?' (layover)':''),detail:who});
+    // Visa required or no admission is red, as its pill is; an e-Visa, eTA or visa on arrival is amber.
+    if(p.color==='red'||p.color==='yellow')visas.push({level:p.color==='red'?'red':'amber',date:c.from||date,
+      title:(p.label==='No Admission'?'No admission to ':p.color==='red'?'Visa required for ':p.label+' for ')+c.country+(c.role==='layover'?' (layover)':''),detail:who});
   });});});
   Object.keys(pp).forEach(function(k){var e=pp[k];out.push({level:e.red?'red':'amber',date:date,title:(e.red?'Passport runs out: ':'Passport: renew soon: ')+e.who,detail:e.label+' · '+e.where.join(', ')});});
   return out.concat(visas);}
@@ -2081,7 +2083,7 @@ function TsDocuments(props){var h=React.createElement;var d=props.docs;
   if(!cs.length)return h('div',{style:muted},'No countries outside '+(d.home||'home')+' on this trip.');
   var cur=cs.filter(function(c){return c.country===pick;})[0]||cs[0];
   var roleText=function(c){return c.role==='layover'?'Layover'+(c.via&&c.via.length?' · '+c.via.join(', '):''):'Stay';};
-  var worstText={green:'All clear',amber:'Check',red:'Action needed',grey:'Unknown'};
+  var worstText={green:'All clear',amber:'Check',red:'Action needed',grey:'No visa data'};
   return h('div',{className:'ts-docs',style:{display:'flex',flexDirection:'column',gap:10}},
     h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},cs.map(function(c){var on=c===cur;
       return h('button',{key:c.country,type:'button',className:'ts-doc-country'+(on?' on':''),onClick:function(){setPick(c.country);},'aria-pressed':on,
@@ -2099,7 +2101,7 @@ function TsDocuments(props){var h=React.createElement;var d=props.docs;
           return h('div',{key:i,style:{display:'flex',flexDirection:'column',gap:4,fontSize:13}},
             h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',null,(p.passportCountry||'')+' passport · visa'),chip(tone.visa,p.label||'No data','v')),
             h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}},h('span',{style:{color:'#b8c3e0',fontSize:12}},p.passport?p.passport.label:''),
-              chip(tone.passport,tone.passport==='green'?'Valid for trip':tone.passport==='amber'?'Renew soon':tone.passport==='red'?'Expires':'Unknown','p')));}));})),
+              chip(tone.passport,tone.passport==='green'?'Valid for trip':tone.passport==='amber'?'Renew soon':tone.passport==='red'?'Expires':'No expiry on file','p')));}));})),
     h('div',{style:{fontSize:12,color:'#9aa9cc'}},(function(){var p=((cur.travelers||[])[0]||{}).passports;var r=p&&p[0]&&p[0].passport;
       return (r&&r.ruleKnown?'Passport rule for '+cur.country+': valid '+r.ruleMonths+' months past the day you leave the Schengen area. ':'Many countries ask for 6 months left on a passport; confirm '+cur.country+'\u2019s rule. ')
         +'Visa data: Passport Index. Always confirm with the embassy before you travel.';})()));}
@@ -2172,20 +2174,25 @@ function tsCardsToCarry_(cards,rewards,perks){
     return {cardName:c.cardName,owner:c.owner||'',last4:c.last4||'',reward:reward.trim(),tier:pick?pick.tier:4,rate:pick?parseFloat(pick.r.rate):NaN,perks:travelPerks};
   }).sort(function(x,y){if(x.tier!==y.tier)return x.tier-y.tier;var xr=isNaN(x.rate)?-1:x.rate,yr=isNaN(y.rate)?-1:y.rate;return yr-xr||x.cardName.localeCompare(y.cardName);});}
 function TsCardsToCarry(props){var h=React.createElement;var d=props.data;
-  var box={display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',gridColumn:'1 / -1'};
-  var head=h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Cards to carry · no foreign transaction fee');
+  var _o=React.useState(false),open=_o[0],setOpen=_o[1];
+  var box={display:'flex',flexDirection:'column',gap:8,padding:'4px 12px',borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',gridColumn:'1 / -1'};
   var muted={fontSize:13,color:'#9aa9cc'};
-  if(!d||d.loading)return h('div',{className:'ts-cards',style:box},head,h('div',{style:muted},'Checking your cards…'));
-  if(d.error)return h('div',{className:'ts-cards',style:box},head,h('div',{style:muted},'Couldn’t load your cards: '+d.error));
-  var list=tsCardsToCarry_(d.cards,d.rewards,d.perks);
-  if(!list.length)return h('div',{className:'ts-cards',style:box},head,h('div',{style:{fontSize:13,color:'#f6dc97'}},'No active card is marked No FX fee. Set it on the card in Cards, or expect about 3% on every purchase abroad.'));
-  return h('div',{className:'ts-cards',style:box},head,
-    list.map(function(c,i){return h('div',{key:c.cardName,className:'ts-card-row',style:{display:'flex',gap:10,alignItems:'flex-start',padding:'8px 10px',borderRadius:8,background:i===0?'#13264d':'transparent',border:'1px solid '+(i===0?'#2f5ea8':'#1e3060')}},
+  var list=d&&!d.loading&&!d.error?tsCardsToCarry_(d.cards,d.rewards,d.perks):[];
+  var summary=!d||d.loading?'checking your cards…':d.error?'couldn’t load':list.length===0?'none marked No FX fee':list.length+' with no foreign fee';
+  var body=!d||d.loading?h('div',{style:muted},'Checking your cards…')
+    :d.error?h('div',{style:muted},'Couldn’t load your cards: '+d.error)
+    :!list.length?h('div',{style:{fontSize:13,color:'#f6dc97'}},'No active card is marked No FX fee. Set it on the card in Cards, or expect about 3% on every purchase abroad.')
+    :list.map(function(c,i){return h('div',{key:c.cardName,className:'ts-card-row',style:{display:'flex',gap:10,alignItems:'flex-start',padding:'8px 10px',borderRadius:8,background:i===0?'#13264d':'transparent',border:'1px solid '+(i===0?'#2f5ea8':'#1e3060')}},
       h('span',{'aria-hidden':'true',style:{fontSize:16,lineHeight:1.3}},'💳'),
       h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},
         h('span',{style:{fontSize:14,fontWeight:700,color:'#eef1fb'}},c.cardName+(c.last4?' ·· '+c.last4:'')+(c.owner?' · '+c.owner:'')),
         c.reward&&h('span',{style:{fontSize:12,color:'#b8c3e0'}},c.reward),
-        c.perks.length>0&&h('span',{style:{fontSize:12,color:'#a8c5f5'}},c.perks.join(' · '))));}));}
+        c.perks.length>0&&h('span',{style:{fontSize:12,color:'#a8c5f5'}},c.perks.join(' · '))));});
+  return h('div',{className:'ts-cards',style:box},
+    h('button',{type:'button',className:'ts-cards-toggle',onClick:function(){setOpen(!open);},'aria-expanded':open,
+      style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,width:'100%',minHeight:40,padding:0,background:'none',border:'none',color:'#cfe0ff',fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}},
+      h('span',null,'Cards to carry · '+summary),h('span',{'aria-hidden':'true'},open?'▴':'▾')),
+    open&&h('div',{style:{display:'flex',flexDirection:'column',gap:8,paddingBottom:12}},body));}
 function TripSummaryView(props){
   var h=React.createElement;var trip=props.trip||{};
   var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];

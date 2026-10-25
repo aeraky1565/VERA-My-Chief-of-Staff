@@ -32,12 +32,28 @@ const AIRPORTS = { IAD: 'United States', LIS: 'Portugal', OPO: 'Portugal', FRA: 
 
 const S = vm.createContext({ console });
 vm.runInContext([extractVar(WEB, 'VISA_ALIASES_'), extractVar(WEB, 'SCHENGEN_'), WEB.match(/var TRIP_NOT_A_PLACE_ = .*;/)[0],
-  ...['tripPlaceMatches_', 'visaNorm_', 'visaResultsFor_', 'visaStatusLabel_', 'visaStatusColor_', 'tripFlightRoute_', 'tripAddressCountry_', 'tripCountries_',
+  ...['tripPlaceMatches_', 'visaNorm_', 'visaResultsFor_', 'visaStatusKey_', 'visaStatusLabel_', 'visaStatusColor_', 'tripFlightRoute_', 'tripAddressCountry_', 'tripCountries_',
       'tripPassportCheck_', 'tripDocWorst_', 'webGetTripDocuments_', 'webGetVisaRequirements_'].map(n => extractFn(WEB, n))].join('\n'), S);
 const run = code => vm.runInContext(code, S);
 S.CSV = CSV;
 S.names = {}; CSV.split('\n')[0].split(',').slice(1).forEach(h => { S.names[h.toLowerCase().replace(/[^a-z0-9]/g, '')] = h; });
 S.airport = c => AIRPORTS[c] || '';
+
+// ============ the matrix's statuses ===========================================
+// The live matrix writes words; older copies wrote codes. Both must read right.
+console.log('the matrix\'s statuses');
+{
+  const st = v => { S.v = v; return run('visaStatusLabel_(v) + "|" + visaStatusColor_(v)'); };
+  const want = { 'visa required': 'Visa Required|red', 'VR': 'Visa Required|red', 'no admission': 'No Admission|red',
+    'e-visa': 'e-Visa|yellow', 'eta': 'eTA|yellow', 'ETA': 'eTA|yellow', 'visa on arrival': 'Visa on Arrival|yellow', 'VOA': 'Visa on Arrival|yellow',
+    'visa free': 'Visa Free|green', 'VF': 'Visa Free|green', '90': 'Visa Free (90 days)|green', '-1': 'Your passport country|green',
+    '': 'No Data|grey', 'something new': 'No Data|grey' };
+  Object.keys(want).forEach(k => check('"' + k + '" reads ' + want[k], st(k) === want[k], st(k)));
+  check('case and spaces do not matter', st(' Visa Required ') === 'Visa Required|red');
+  S.WCSV = ['Passport,Mexico,Honduras,Bahamas', 'Egypt,visa required,visa required,e-visa', 'United States,180,90,240'].join('\n');
+  const r = run('visaResultsFor_(WCSV, "Mexico", [{name:"Ahmed",passportCountry:"Egypt"},{name:"Ahmed",passportCountry:"United States"}])');
+  check('a word-format matrix gives a red Visa Required, not grey', r.results[0].passports.some(p => p.label === 'Visa Required' && p.color === 'red'), JSON.stringify(r.results));
+}
 
 // ============ a flight's route =================================================
 console.log('a flight\'s route');

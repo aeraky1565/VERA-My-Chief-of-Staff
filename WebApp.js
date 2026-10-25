@@ -9766,22 +9766,30 @@ function visaResultsFor_(csv, destination, profiles) {
   return { ok: true, results: results, destination: destName };
 }
 
+// The Passport Index matrix writes statuses as words ("visa required", "e-visa",
+// "visa on arrival", "eta", "visa free", "no admission"), a number of visa-free
+// days, or -1 for your own country. Older copies used codes (VR, VOA, ETA, VF,
+// CB); both are read. An unrecognised value is "No Data", never a guess.
+function visaStatusKey_(status) {
+  var s = String(status == null ? '' : status).trim().toLowerCase();
+  if (s === '-1') return 'own';
+  if (/^\d+$/.test(s)) return 'days';
+  return { 'vr': 'vr', 'visa required': 'vr', 'no admission': 'na', 'voa': 'voa', 'visa on arrival': 'voa',
+    'eta': 'eta', 'e-visa': 'evisa', 'evisa': 'evisa', 'vf': 'vf', 'visa free': 'vf', 'cb': 'cb' }[s] || '';
+}
+
 function visaStatusLabel_(status) {
-  if (!status || status === '' || status === '-1') return 'No Data';
-  if (status === 'VR')  return 'Visa Required';
-  if (status === 'VOA') return 'Visa on Arrival';
-  if (status === 'ETA') return 'eTA / e-Visa';
-  if (status === 'CB')  return 'No Passport Control';
-  if (status === 'VF')  return 'Visa Free';
-  if (/^\d+$/.test(status)) return 'Visa Free (' + status + ' days)';
-  return status;
+  var k = visaStatusKey_(status);
+  if (k === 'days') return 'Visa Free (' + String(status).trim() + ' days)';
+  return { own: 'Your passport country', vr: 'Visa Required', na: 'No Admission', voa: 'Visa on Arrival',
+    eta: 'eTA', evisa: 'e-Visa', vf: 'Visa Free', cb: 'No Passport Control' }[k] || 'No Data';
 }
 
 function visaStatusColor_(status) {
-  if (!status || status === '' || status === '-1') return 'grey';
-  if (status === 'VR') return 'red';
-  if (status === 'VOA' || status === 'ETA') return 'yellow';
-  if (status === 'VF' || /^\d+$/.test(status) || status === 'CB') return 'green';
+  var k = visaStatusKey_(status);
+  if (k === 'vr' || k === 'na') return 'red';
+  if (k === 'voa' || k === 'eta' || k === 'evisa') return 'yellow';
+  if (k === 'vf' || k === 'days' || k === 'cb' || k === 'own') return 'green';
   return 'grey';
 }
 

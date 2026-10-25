@@ -25,6 +25,8 @@ const CONTROLS = [
   ['a bare place is never looked up', b => ({ [W]: swap(b[W], "    if (!named && placeCountry && String(it.location || '').trim()) named = placeCountry(String(it.location).trim()) || '';\n", '') })],
   ['any geocoder answer is believed', b => ({ [W]: swap(b[W], "  return norm(loc).indexOf(norm(n)) !== -1;", "  return true;") })],
   ['calendar events are not read', b => ({ [W]: swap(b[W], "    if (merged && merged.items) items = merged.items.map(", "    if (false) items = merged.items.map(") })],
+  ['the matrix\'s words are not understood', b => ({ [W]: swap(b[W], "    'eta': 'eta', 'e-visa': 'evisa', 'evisa': 'evisa', 'vf': 'vf', 'visa free': 'vf', 'cb': 'cb' }[s] || '';", "    'eta': 'eta', 'vf': 'vf', 'cb': 'cb' }[s] || '';").replace("{ 'vr': 'vr', 'visa required': 'vr', 'no admission': 'na', 'voa': 'voa', 'visa on arrival': 'voa',", "{ 'vr': 'vr', 'voa': 'voa',") })],
+  ['visa required is amber', b => ({ [W]: swap(b[W], "  if (k === 'vr' || k === 'na') return 'red';", "  if (k === 'vr' || k === 'na') return 'yellow';") })],
   ['every country asks for 6 months', b => ({ [W]: swap(b[W], 'var ruleMonths = ruleKnown ? 3 : 6;', 'var ruleMonths = 6;') })],
   ['an expired passport only counts as short', b => ({ [W]: swap(b[W], "if (!tripEnd || expiry < tripEnd) return { status: 'expires'", "if (false) return { status: 'expires'") })],
   ['a partial month counts as a full one', b => ({ [W]: swap(b[W], " - (b[2] < a[2] ? 1 : 0);", ";") })],

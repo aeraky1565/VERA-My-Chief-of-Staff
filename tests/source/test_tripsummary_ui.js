@@ -78,7 +78,7 @@ async function assertSummary(page) {
   check('the countdown', /Leaves in 20 days/.test(t), t.slice(0, 80));
   check('booked so far: 4 of 6 nights', /Nights with a place to sleep\s*4 of 6/.test(t));
   const attn = await page.$$eval('#tsprobe .ts-attn', ns => ns.map(n => n.className + ' | ' + n.innerText.replace(/\s+/g, ' ')));
-  check('needs attention: red, then amber (documents included)', attn.length === 5 && /ts-attn-red/.test(attn[0]) && /No place to sleep in Porto/.test(attn[0]) && /ts-attn-amber/.test(attn[1]), JSON.stringify(attn));
+  check('needs attention: red, then amber (documents included)', attn.length === 5 && /ts-attn-red/.test(attn[0]) && /No place to sleep in Porto/.test(attn[0]) && /ts-attn-red/.test(attn[1]) && /Visa required for Germany/.test(attn[1]) && /ts-attn-amber/.test(attn[2]), JSON.stringify(attn));
   check('the decision keeps today\'s wording', attn.some(a => /Still deciding — 2 options · decide by .+ · overdue/.test(a)), JSON.stringify(attn));
   check('sleep bands: in the air, a stay, nothing booked, a stay', (await page.$$eval('#tsprobe .ts-stay', ns => ns.map(n => n.className.split(' ').pop()))).join() === 'ts-stay-air,ts-stay-stay,ts-stay-gap,ts-stay-stay');
   check('a flight not yet live says when it will be', /Live status from/.test(t));
@@ -111,6 +111,9 @@ async function assertSummary(page) {
   check('…and no cards to carry', !(await page.$('#domprobe .ts-cards')));
   await page.evaluate(() => document.getElementById('domprobe').remove());
   // Abroad, the cards with no foreign fee come along, best first.
+  const shut = await page.$eval('#tsprobe .ts-cards', n => n.innerText).catch(() => '');
+  check('cards to carry starts folded, its header counting the cards', /Cards to carry · 1 with no foreign fee/.test(shut) && !(await page.$('#tsprobe .ts-card-row')), shut);
+  await tap(page, '#tsprobe .ts-cards-toggle'); await new Promise(r => setTimeout(r, 80));
   const ct = await page.$eval('#tsprobe .ts-cards', n => n.innerText).catch(() => '');
   check('abroad, Before you go lists the cards to carry', /Cards to carry/i.test(ct) && /Blue Travel/.test(ct) && /2x abroad/.test(ct) && /Priority Pass lounge access/.test(ct) && !/Cash Back/.test(ct), ct);
   if (process.env.SHOT_DIR) { const el = await page.$('#tsprobe section[aria-label="Before you go"]'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/before-you-go-' + page.viewportSize().width + '.png' }); } catch (e) {} }
