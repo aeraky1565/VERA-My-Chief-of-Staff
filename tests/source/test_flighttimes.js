@@ -362,13 +362,39 @@ console.log('\n…and the dashboard renders what it knows');
     throw new Error('unbalanced card in ' + label);
   }
 
-  // A React that records. Text is everything the card would put on screen.
-  function renderCard(body, state) {
+  // The card now draws through the shared TsUsefulToKnow, lifted from the same
+  // file, so the text checked below is what that component really renders.
+  function liftFn(src, name) {
+    const at = src.indexOf('function ' + name + '(');
+    if (at === -1) throw new Error(name + ' not found');
+    const open = src.indexOf('{', src.indexOf(')', at));
+    let depth = 0;
+    for (let j = open; j < src.length; j++) {
+      if (src[j] === '{') depth++;
+      else if (src[j] === '}') { depth--; if (depth === 0) return src.slice(at, j + 1); }
+    }
+    throw new Error('unbalanced ' + name);
+  }
+  function liftVar(src, name) {
+    const at = src.indexOf('var ' + name + '=');
+    if (at === -1) throw new Error(name + ' not found');
+    return src.slice(at, src.indexOf('};', at) + 2);
+  }
+
+  // A React that records, and calls function components so they render for
+  // real. Text is everything the card would put on screen.
+  function renderCard(body, state, src) {
+    const React = {
+      useState: function (v) { return [v, function () {}]; },
+      createElement: function (tag, props) {
+        const kids = Array.prototype.slice.call(arguments, 2);
+        if (typeof tag === 'function') return tag(Object.assign({}, props, { children: kids }));
+        return { children: kids };
+      },
+    };
     const ctx = vm.createContext({
-      Math: Math, Number: Number, String: String, Date: Date, console: console,
-      React: { createElement: function (tag, props) {
-        return { children: Array.prototype.slice.call(arguments, 2) };
-      } },
+      Math: Math, Number: Number, String: String, Date: Date, Object: Object, console: console,
+      React: React,
       flightInsights: state.flightInsights,
       todayFlights:   state.todayFlights || [],
       items:          state.items || [],
@@ -377,6 +403,7 @@ console.log('\n…and the dashboard renders what it knows');
       insightsOpen:   true,
       setInsightsOpen: function () {},
     });
+    new vm.Script(liftVar(src, 'TS_UTK_TONES') + '\n' + liftFn(src, 'TsUsefulToKnow')).runInContext(ctx);
     const tree = new vm.Script('(function()' + body + ')()').runInContext(ctx);
     if (tree === null) return null;
     const out = [];
@@ -403,7 +430,7 @@ console.log('\n…and the dashboard renders what it knows');
     const unknown = renderCard(body, Object.assign({}, FLEW_YESTERDAY, {
       flightInsights: { tz_offset_hours: null, tz_offset_label: null,
                         origin_code: null, dest_code: null, arrival_tip: 'Get morning light.' },
-    }));
+    }), COPIES[label]);
     check(label + ': an unknown offset still shows the panel', unknown !== null,
           'panel hidden — tz_offset_hours null collapsed _recoverDays to 0');
     check(label + ': …and says the shift is unknown',
@@ -416,7 +443,7 @@ console.log('\n…and the dashboard renders what it knows');
     const west = renderCard(body, Object.assign({}, FLEW_YESTERDAY, {
       flightInsights: { tz_offset_hours: -3, tz_offset_label: '-3h',
                         origin_code: 'IAD', dest_code: 'LAX', arrival_tip: 'Stay up.' },
-    }));
+    }), COPIES[label]);
     check(label + ': a westbound shift is not called "ahead of home"',
           west !== null && !/ahead of home/.test(west), west);
     check(label + ': …and names both airports it was given',
@@ -428,7 +455,7 @@ console.log('\n…and the dashboard renders what it knows');
     const same = renderCard(body, Object.assign({}, FLEW_YESTERDAY, {
       flightInsights: { tz_offset_hours: 0, tz_offset_label: 'same timezone',
                         origin_code: 'TPA', dest_code: 'IAD' },
-    }));
+    }), COPIES[label]);
     check(label + ': a same-timezone flight shows no recovery panel', same === null, same);
 
     // On the flight day itself the fact rows render, and a known departure must
@@ -440,7 +467,7 @@ console.log('\n…and the dashboard renders what it knows');
       flightInsights: { tz_offset_hours: null, tz_offset_label: null,
                         origin_code: 'TPA', dest_code: null,
                         dep_local: '6:47 PM (TPA)', arr_local: null, distance_miles: 842 },
-    });
+    }, COPIES[label]);
     check(label + ': a known departure survives an unknown arrival',
           flightDay !== null && /6:47 PM \(TPA\)/.test(flightDay), flightDay);
     check(label + ': …and the missing half is named, not blanked',

@@ -177,6 +177,33 @@ async function assertHomeCard(page) {
   check('no sideways scroll with the travel card', await noScroll(page));
 }
 
+// The Home card's Useful to know, the day after the flight: the shared tiles in
+// the card's amber, in recovery mode, opened and closed by the card's own state.
+async function assertHomeUseful(page, shot) {
+  const r = await page.evaluate(([isoM1, isoM2, isoP3]) => new Promise(done => {
+    const items = [
+      { id: 'f1', type: 'flight', title: 'TP 204 IAD to LIS', date: isoM1, startTime: '06:00', endTime: '14:00', location: 'IAD', metadata: JSON.stringify({ origin: 'IAD', dest: 'LIS' }) },
+      { id: 'h1', type: 'hotel', title: 'Alfama hotel', date: isoM1, location: 'Rua X 12, Lisboa, Portugal', metadata: JSON.stringify({ checkoutDate: isoP3 }) } ];
+    window.apiGet = (u, t, q) => Promise.resolve(q.action === 'itinerary' ? { ok: true, items }
+      : q.action === 'get_flight_insights' ? { ok: true, insights: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_hours: 5, tz_offset_label: '+5h', arrival_tip: 'Get morning light' } } : { ok: false });
+    const host = document.createElement('div'); host.id = 'homeuseful'; host.style.display = 'grid'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(ActiveTravelCard, { trip: { label: 'Lisbon', startDate: isoM2, endDate: isoP3 }, apiUrl: 'https://vera.test/exec', apiToken: 't', onViewItinerary: () => {}, travelConfig: {} }));
+    setTimeout(() => {
+      const u = host.querySelector('.ts-useful'); const closed = u && !u.querySelector('.ts-utk-tile');
+      const btn = u && u.querySelector('.ts-utk-toggle'); if (btn) btn.click();
+      setTimeout(() => { const u2 = host.querySelector('.ts-useful');
+        done({ has: !!u, closed, text: u2 ? u2.innerText : '', bg: u2 ? getComputedStyle(u2).backgroundColor : '', tiles: u2 ? u2.querySelectorAll('.ts-utk-tile').length : 0, tips: u2 ? u2.querySelectorAll('.ts-utk-tip').length : 0 }); }, 150);
+    }, 600);
+  }), [iso(-1), iso(-2), iso(3)]);
+  check('Home: Useful to know is the shared panel, closed until tapped', r.has && r.closed, JSON.stringify(r));
+  check('…in the travel card\'s amber', r.bg === 'rgb(26, 16, 0)', r.bg);
+  check('…the day after the flight, a time-difference tile and a recovery tip', r.tiles === 1 && r.tips === 1 && /\+5h/.test(r.text) && /body clock still adjusting/i.test(r.text), r.text);
+  check('…with the recovery count it can back', /Recovery day 1 of 3/i.test(r.text) && /Get morning light/.test(r.text), r.text);
+  check('no sideways scroll with it open', await noScroll(page));
+  if (shot) { const el = await page.$('#homeuseful'); if (el) try { await el.screenshot({ path: shot }); } catch (e) {} }
+  await page.evaluate(() => { const n = document.getElementById('homeuseful'); if (n) n.remove(); });
+}
+
 // Share or export, opened from Agenda's toolbar, with the API, new windows and
 // downloads all recorded instead of done.
 async function assertShare(page, lite) {
@@ -279,6 +306,7 @@ async function assertShare(page, lite) {
     check('tapping a red day switches to Agenda, where that day is', landed);
     await assertAgenda(page, '#ivprobe', false);
     await assertHomeCard(page);
+    await assertHomeUseful(page, process.env.SHOT_DIR ? process.env.SHOT_DIR + '/home-useful-full-' + width + '.png' : null);
     await assertShare(page, false);
     check('no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
@@ -304,6 +332,7 @@ async function assertShare(page, lite) {
     await new Promise(r => setTimeout(r, 300));
     await assertAgenda(page, '#agprobe', true);
     await assertHomeCard(page);
+    await assertHomeUseful(page, process.env.SHOT_DIR ? process.env.SHOT_DIR + '/home-useful-lite-' + width + '.png' : null);
     await assertShare(page, true);
     await page.close();
   }
