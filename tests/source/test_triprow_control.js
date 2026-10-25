@@ -117,7 +117,10 @@ function check(name, cond, detail) {
     }
 
     if (width === 390) {
-      await page.screenshot({ path: require('path').join(require('os').tmpdir(), 'trip-row-390-CONTROL-BROKEN.png'), clip: { x: 0, y: 0, width: 390, height: 260 } });
+      // A picture for a human to look at, not an assertion. A failed capture took the
+      // whole run down in CI once, so it is best-effort.
+      try { await page.screenshot({ path: require('path').join(require('os').tmpdir(), 'trip-row-390-CONTROL-BROKEN.png'), clip: { x: 0, y: 0, width: 390, height: 260 }, timeout: 15000 }); }
+      catch (e) { console.log('  (screenshot skipped: ' + String(e && e.message || e).split('\n')[0] + ')'); }
     }
     await page.close();
   }
@@ -125,4 +128,4 @@ function check(name, cond, detail) {
   await browser.close();
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
-})();
+})().catch(e => { console.log('  FAIL crashed: ' + (e && e.stack || e)); process.exit(2); });
