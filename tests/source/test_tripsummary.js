@@ -116,6 +116,7 @@ console.log('\nwhere each day is');
   check('a night flight takes the next day\'s city, not an airport code', c[0] === '→ Lisboa', c[0]);
   check('the day after a move carries the new city; a bare place name is not a city', c[5] === 'Porto', c[5]);
   check('the last travel day goes home', c[7] === '→ Home');
+  check('each day carries its plain city for the forecast, none for the trip home', s.days[1].place === 'Lisboa' && s.days[4].place === 'Porto' && s.days[7].place === '', JSON.stringify(s.days.map(d => d.place)));
   check('travel days carry their mode', s.days[0].travel === 'flight' && s.days[4].travel === 'train' && s.days[2].travel === '');
 }
 
@@ -206,10 +207,21 @@ console.log('\nagenda: between and after the items');
   check('an untimed item makes no break', Object.keys(b).length === 2);
   check('minutes under ten are padded: 1h 05m', run("tsDayBreaks_([{id:'a',startTime:'09:00'},{id:'b',startTime:'10:05'}],[])").a[0].text === '1h 05m free');
 }
+console.log('\nweather and Useful to know');
+{
+  const wx = c => { S.c = c; return run('tsWx_(c)'); };
+  check('weather codes read as a symbol and a word', wx(0).label === 'Sunny' && wx(3).label === 'Cloudy' && wx(61).label === 'Rain' && wx(81).label === 'Rain' && wx(73).label === 'Snow' && wx(95).label === 'Storms' && wx(45).label === 'Fog');
+  check('Useful to know is one shared card, in Summary and in both Agendas',
+        /ins&&h\('div',\{style:\{gridColumn:'1 \/ -1'\}\},h\(TsUsefulToKnow,\{ins:ins\}\)\)/.test(A)
+        && /viewMode!=='summary'&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true\}\)/.test(APP)
+        && /return <TsUsefulToKnow ins=\{insights\} collapsible=\{true\} \/>;/.test(LITE));
+  check('Documents shows only for a trip that leaves home (or to report an error)', /documents&&\(documents\.error\|\|\(documents\.countries\|\|\[\]\)\.length>0\)&&h\('section'/.test(A));
+}
+
 console.log('\nwiring');
 // ItineraryView has nested top-level-looking functions, so take it up to the panel that follows it.
 const itin = APP.slice(APP.indexOf('function ItineraryView('), APP.indexOf('// Accordion panel: all trips', APP.indexOf('function ItineraryView(')));
-check('full: Summary is the first and default view; Visa is no longer a view of its own', /React\.useState\('summary'\)/.test(itin) && /\['summary','agenda','map'\]/.test(itin));
+check('full: views read Summary, Map, Agenda, then Packing; Summary is the default; Visa is not a view of its own', /React\.useState\('summary'\)/.test(itin) && /\['summary','map','agenda'\]/.test(itin) && /labels\[mode\]\);\}\),onGoToPacking&&/.test(itin));
 check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
 check('full: the old per-day summary is gone', !/viewMode==='summary'&&orderedDays/.test(itin));
 check('full: tapping a day opens Agenda at that day', /onOpenDay:function\(d\)\{setViewMode\('agenda'\);/.test(itin) && /id:tsDayId_\(trip\.tripKey,day\)/.test(itin));

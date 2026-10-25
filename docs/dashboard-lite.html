@@ -7026,57 +7026,8 @@ function tripDateRange(startDate, endDate) {
 
 // --- UsefulToKnowCard --------------------------------------------------------
 function UsefulToKnowCard({ insights }) {
-  const [open, setOpen] = useState(false);
-  if (!insights) return null;
-  return (
-    <div style={{background:'#0a1a2e',border:'1px solid #1e3a5f',borderRadius:8,
-      padding:'10px 14px',marginBottom:12}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
-        cursor:'pointer',marginBottom:open?8:0}} onClick={()=>setOpen(o=>!o)}>
-        <div style={{fontWeight:700,color:'#8ab4f8',fontSize:12}}>🧠 Useful to Know</div>
-        <span style={{fontSize:11,color:'#6b7fa8'}}>{open?'▲':'▼'}</span>
-      </div>
-      {open && (
-        <div style={{display:'flex',flexDirection:'column',gap:4}}>
-          {(insights.origin_code && insights.dest_code) && (
-            <div style={{fontSize:12,color:'#c8d8f0'}}>
-              ⏰ {insights.origin_code} → {insights.dest_code}
-              {'  '+(insights.tz_offset_label || 'timezone shift unknown')}
-            </div>
-          )}
-          {insights.distance_miles && (
-            <div style={{fontSize:12,color:'#c8d8f0'}}>
-              📏 ~{Number(insights.distance_miles).toLocaleString()} miles
-              {insights.haul_category ? ' · '+insights.haul_category : ''}
-            </div>
-          )}
-          {insights.daynight_pct_day != null && (() => {
-            const f = Math.round((insights.daynight_pct_day||0)/10);
-            return (
-              <div style={{fontSize:12,color:'#c8d8f0',fontFamily:'monospace'}}>
-                🌗 {'█'.repeat(Math.max(0,f))}{'░'.repeat(Math.max(0,10-f))}  {insights.daynight_pct_day}% daytime
-              </div>
-            );
-          })()}
-          {(insights.dep_local || insights.arr_local) && (
-            <div style={{fontSize:12,color:'#c8d8f0'}}>
-              🛫 {insights.dep_local || 'departure unknown'} → {insights.arr_local || 'arrival unknown'}
-            </div>
-          )}
-          {insights.pre_trip_tip && (
-            <div style={{fontSize:11,color:'#8ab4f8',fontStyle:'italic',marginTop:2}}>
-              📅 {insights.pre_trip_tip}
-            </div>
-          )}
-          {(insights.arrival_tip || insights.sleep_tip) && (
-            <div style={{fontSize:11,color:'#8ab4f8',fontStyle:'italic',marginTop:1}}>
-              💤 {insights.arrival_tip || insights.sleep_tip}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  // The same laid-out card the full dashboard and Summary use (TsUsefulToKnow).
+  return <TsUsefulToKnow ins={insights} collapsible={true} />;
 }
 
 // ---- TripSummaryView (itinerary redesign) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
@@ -7185,12 +7136,12 @@ function buildTripSummary_(o){
     if((d===first&&missArr)||(d===last&&missDep)){if(health!=='red')health='amber';reasons.push(d===first?'no arrival transport':'no departure transport');}
     if(tight.some(function(t){return t.date===d;})){if(health!=='red')health='amber';reasons.push('a tight connection');}
     if(decisions.some(function(x){return x.date===d;})){if(health!=='red')health='amber';reasons.push('a decision to make');}
-    var city=dayCity[d];
+    var city=dayCity[d];var place=travel&&i===days.length-1?'':dayCity[d];
     if(travel&&i===days.length-1)city='→ Home';
     else if(travel)city='→ '+city;
     var dt=new Date(d+'T12:00:00');
     return {date:d,dow:dt.toLocaleDateString('en-US',{weekday:'short'}),num:String(dt.getDate()),mon:dt.toLocaleDateString('en-US',{month:'short'}),
-      city:city,travel:travel,health:health,reasons:reasons,isToday:d===today,dayNum:i+1};
+      city:city,place:place,travel:travel,health:health,reasons:reasons,isToday:d===today,dayNum:i+1};
   });
   // ── needs attention: red first, then amber ──
   var attention=[];
@@ -7266,6 +7217,40 @@ function TsDocuments(props){var h=React.createElement;var d=props.docs;
     h('div',{style:{fontSize:12,color:'#9aa9cc'}},(function(){var p=((cur.travelers||[])[0]||{}).passports;var r=p&&p[0]&&p[0].passport;
       return (r&&r.ruleKnown?'Passport rule for '+cur.country+': valid '+r.ruleMonths+' months past the day you leave the Schengen area. ':'Many countries ask for 6 months left on a passport; confirm '+cur.country+'\u2019s rule. ')
         +'Visa data: Passport Index. Always confirm with the embassy before you travel.';})()));}
+// A WMO weather code as a symbol and a word, for the day pills.
+function tsWx_(code){var c=Number(code);
+  if(c===0||c===1)return {icon:'☀️',label:'Sunny'};if(c===2)return {icon:'⛅',label:'Partly cloudy'};if(c===3)return {icon:'☁️',label:'Cloudy'};
+  if(c===45||c===48)return {icon:'🌫️',label:'Fog'};if(c>=95)return {icon:'⛈️',label:'Storms'};if((c>=71&&c<=77)||c===85||c===86)return {icon:'❄️',label:'Snow'};
+  if((c>=51&&c<=67)||(c>=80&&c<=82))return {icon:'🌧️',label:'Rain'};return {icon:'🌡️',label:'Forecast'};}
+// Useful to know, laid out to read at a glance: the four facts as tiles, the
+// two tips as labelled lines. The same information the old list carried.
+function TsUsefulToKnow(props){var h=React.createElement;var ins=props.ins;
+  var _o=React.useState(!props.collapsible),open=_o[0],setOpen=_o[1];
+  if(!ins)return null;
+  var tile=function(key,icon,label,value,sub,extra){return h('div',{key:key,className:'ts-utk-tile',style:{display:'flex',flexDirection:'column',gap:3,padding:'10px 12px',borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',minWidth:0}},
+    h('span',{style:{display:'flex',alignItems:'center',gap:6,fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',color:'#9aa9cc'}},h('span',{'aria-hidden':'true'},icon),label),
+    h('span',{style:{fontSize:17,fontWeight:700,color:'#eef1fb',fontVariantNumeric:'tabular-nums',lineHeight:1.2}},value),
+    sub&&h('span',{style:{fontSize:12,color:'#b8c3e0'}},sub),extra||null);};
+  var tiles=[];
+  if(ins.origin_code&&ins.dest_code)tiles.push(tile('tz','🕐','Time difference',ins.tz_offset_label||'Unknown',ins.origin_code+' → '+ins.dest_code));
+  if(ins.distance_miles)tiles.push(tile('mi','📏','Distance','~'+Number(ins.distance_miles).toLocaleString()+' mi',ins.haul_category||''));
+  if(ins.daynight_pct_day!=null){var pct=Math.max(0,Math.min(100,Number(ins.daynight_pct_day)||0));
+    tiles.push(tile('dl','🌗','Daylight',pct+'%','of the flight in daylight',h('span',{'aria-hidden':'true',style:{display:'block',height:6,borderRadius:3,marginTop:4,background:'linear-gradient(90deg,#f0d78a '+pct+'%,#24386a '+pct+'%)'}})));}
+  // A known half survives an unknown one, and the missing half is named, not blanked.
+  if(ins.dep_local||ins.arr_local)tiles.push(tile('lt','🛫','Local times',(ins.dep_local||'departure unknown')+' → '+(ins.arr_local||'arrival unknown'),'Departure → arrival'));
+  var tip=function(key,icon,label,text){return h('div',{key:key,className:'ts-utk-tip',style:{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',borderRadius:10,background:'#13264d',border:'1px solid #2f5ea8'}},
+    h('span',{'aria-hidden':'true',style:{fontSize:16,lineHeight:1.3}},icon),
+    h('span',{style:{display:'flex',flexDirection:'column',gap:2,fontSize:13,color:'#dde1f0',lineHeight:1.45}},h('strong',{style:{fontSize:11,letterSpacing:'.06em',textTransform:'uppercase',color:'#a8c5f5'}},label),text));};
+  var tips=[];if(ins.pre_trip_tip)tips.push(tip('pre','📅','Before you go',ins.pre_trip_tip));
+  if(ins.arrival_tip||ins.sleep_tip)tips.push(tip('arr','💤','When you land',ins.arrival_tip||ins.sleep_tip));
+  var body=h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+    tiles.length>0&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 140px), 1fr))',gap:8}},tiles),tips);
+  if(!props.collapsible)return h('div',{className:'ts-useful'},body);
+  return h('div',{className:'ts-useful',style:{background:'#0d1b3e',border:'1px solid #1e3060',borderRadius:12,padding:'4px 12px',marginBottom:12}},
+    h('button',{type:'button',className:'ts-utk-toggle',onClick:function(){setOpen(!open);},'aria-expanded':open,
+      style:{display:'flex',justifyContent:'space-between',alignItems:'center',width:'100%',minHeight:40,padding:0,background:'none',border:'none',color:'#8ab4f8',fontSize:13,fontWeight:700,cursor:'pointer'}},
+      h('span',null,'Useful to know'+(ins.origin_code&&ins.dest_code?' · '+ins.origin_code+' → '+ins.dest_code:'')),h('span',{'aria-hidden':'true'},open?'▴':'▾')),
+    open&&h('div',{style:{paddingBottom:12}},body));}
 function TripSummaryView(props){
   var h=React.createElement;var trip=props.trip||{};
   var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];
@@ -7277,8 +7262,14 @@ function TripSummaryView(props){
       .then(function(r){if(!dead)setDocs(r&&r.ok?r:{error:(r&&r.error)||'no answer'});}).catch(function(e){if(!dead)setDocs({error:e.message});});
     return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey]);
   var documents=props.documents!==undefined?props.documents:docs;
+  var _w=React.useState(null),wx=_w[0],setWx=_w[1];
   var s=buildTripSummary_({trip:trip,items:props.items,legs:props.legs,outboundMode:(props.meta||{}).outboundMode,returnMode:(props.meta||{}).returnMode,today:todayIso,documents:documents});
   var statuses=props.statuses||{};var ins=props.insights;
+  var placeKey=JSON.stringify(s.days.map(function(d){return [d.date,d.place];}));
+  React.useEffect(function(){if(!props.apiUrl||!props.apiToken||!s.days.length)return;var dead=false;var map={};s.days.forEach(function(d){if(d.place)map[d.date]=d.place;});
+    apiGet(props.apiUrl,props.apiToken,{action:'trip_weather',days:JSON.stringify(map)}).then(function(r){if(!dead&&r&&r.ok)setWx(r.days||{});}).catch(function(){});
+    return function(){dead=true;};},[props.apiUrl,props.apiToken,placeKey]);
+  var weather=props.weather!==undefined?props.weather:(wx||{});
   var card={background:'#0d1b3e',border:'1px solid #1e3060',borderRadius:12,padding:14,display:'flex',flexDirection:'column',gap:10,minWidth:0};
   var label={fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase',color:'#9aa9cc'};
   var HEALTH={ok:{bg:'#0d1b3e',br:'#24386a',num:'#dde1f0'},red:{bg:'#3a1218',br:'#e05a5a',num:'#ffb4b4'},amber:{bg:'#33280f',br:'#e2b54a',num:'#f6dc97'}};
@@ -7301,17 +7292,21 @@ function TripSummaryView(props){
         s.days.map(function(d){var c=HEALTH[d.health];
           return h('button',{key:d.date,type:'button',className:'ts-pill ts-'+d.health,onClick:function(){open(d.date);},
             'aria-label':fmtDate(d.date)+', '+d.city+(d.reasons.length?': '+d.reasons.join(', '):''),title:d.reasons.join(', '),
-            style:{flex:'0 0 auto',width:78,minHeight:88,borderRadius:12,border:'1px solid '+c.br,background:c.bg,color:'#dde1f0',cursor:'pointer',position:'relative',
+            style:{flex:'0 0 auto',width:78,minHeight:104,borderRadius:12,border:'1px solid '+c.br,background:c.bg,color:'#dde1f0',cursor:'pointer',position:'relative',
               display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,padding:'8px 4px',
               boxShadow:d.isToday?'0 0 0 2px #f0d78a':'none'}},
             d.travel&&h('span',{'aria-hidden':'true',style:{position:'absolute',top:5,right:6,fontSize:11}},GLYPH[d.travel]),
             h('span',{style:{fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',color:'#9aa9cc'}},d.dow),
             h('span',{style:{fontSize:22,fontWeight:700,lineHeight:1.1,color:c.num,fontVariantNumeric:'tabular-nums'}},d.num),
-            h('span',{className:'ts-city',style:{fontSize:11,color:'#b8c3e0',maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},d.city));})),
+            h('span',{className:'ts-city',style:{fontSize:11,color:'#b8c3e0',maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},d.city),
+            weather[d.date]&&h('span',{className:'ts-wx',title:tsWx_(weather[d.date].code).label,style:{display:'flex',alignItems:'center',gap:3,marginTop:3,paddingTop:3,borderTop:'1px solid rgba(154,169,204,.25)',fontSize:11,color:'#cfd8ee',fontVariantNumeric:'tabular-nums'}},
+              h('span',{'aria-hidden':'true',style:{fontSize:12}},tsWx_(weather[d.date].code).icon),
+              weather[d.date].hi+'°'+(weather[d.date].lo!=null?'/'+weather[d.date].lo+'°':'')));})),
       h('div',{style:{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:'#9aa9cc'}},
         h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#e05a5a',marginRight:6}}),'No place to sleep'),
         h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#e2b54a',marginRight:6}}),'Transfer or decision to sort'),
-        h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#24386a',marginRight:6}}),'All set'))),
+        h('span',null,h('span',{style:{display:'inline-block',width:10,height:10,borderRadius:3,background:'#24386a',marginRight:6}}),'All set'),
+        h('span',null,'Highs and lows in °F · the forecast fills in about two weeks out'))),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',gap:14}},
       // Booked so far
       h('section',{style:card,'aria-label':'Booked so far'},h('span',{style:label},'Booked so far'),
@@ -7363,16 +7358,10 @@ function TripSummaryView(props){
             h('span',{style:{color:'#9aa9cc'}},'Arrival'),h('span',null,[fs.arr_scheduled&&'Sched '+fs.arr_scheduled,fs.arr_estimated&&fs.arr_estimated!==fs.arr_scheduled&&'Est '+fs.arr_estimated,fs.arr_actual&&'Actual '+fs.arr_actual].filter(Boolean).join(' · ')||'—'),
             h('span',{style:{color:'#9aa9cc'}},'Gate / Terminal'),h('span',null,(fs.gate||'—')+' / '+(fs.terminal||'—'))));}))),
     // Before you go
-    documents!==null&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
+    documents&&(documents.error||(documents.countries||[]).length>0)&&h('section',{style:card,'aria-label':'Documents'},h('span',{style:label},'Documents: passports and visas'),h(TsDocuments,{docs:documents})),
     (ins||props.onGoToPacking)&&h('section',{style:card,'aria-label':'Before you go'},h('span',{style:label},'Before you go'),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',gap:10}},
-        ins&&h('div',{className:'ts-useful',style:{display:'flex',flexDirection:'column',gap:4,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060',fontSize:12,color:'#c8d2ea'}},
-          h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Useful to know'),
-          ins.origin_code&&ins.dest_code&&h('span',{style:{fontSize:14,fontWeight:600,color:'#eef1fb'}},ins.origin_code+' → '+ins.dest_code+(ins.tz_offset_label?' · '+ins.tz_offset_label:'')),
-          ins.distance_miles?h('span',null,'~'+Number(ins.distance_miles).toLocaleString()+' miles'+(ins.haul_category?' · '+ins.haul_category:'')):null,
-          ins.daynight_pct_day!=null?h('span',null,ins.daynight_pct_day+'% of the flight in daylight'):null,
-          ins.pre_trip_tip?h('span',{style:{color:'#8ab4f8'}},ins.pre_trip_tip):null,
-          (ins.arrival_tip||ins.sleep_tip)?h('span',{style:{color:'#8ab4f8'}},ins.arrival_tip||ins.sleep_tip):null),
+        ins&&h('div',{style:{gridColumn:'1 / -1'}},h(TsUsefulToKnow,{ins:ins})),
         props.onGoToPacking&&h('div',{style:{display:'flex',flexDirection:'column',gap:6,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
           h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Packing'),
           h('button',{type:'button',className:'ts-packing',onClick:props.onGoToPacking,style:{alignSelf:'flex-start',minHeight:36,padding:'0 12px',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#8ab4f8',fontWeight:600,fontSize:13,cursor:'pointer'}},'Open the packing list')))));

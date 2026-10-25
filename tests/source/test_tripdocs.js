@@ -121,6 +121,43 @@ console.log('\nthe whole check');
   check('without a tripKey it says so', run('webGetTripDocuments_({})').ok === false);
 }
 
+// ============ the matrix is cached in pieces ====================================
+console.log('\nthe visa matrix in the cache');
+{
+  const W = vm.createContext({});
+  vm.runInContext([WEB.match(/var CACHE_CHUNK_ = \d+;/)[0], extractFn(WEB, 'cachePutChunked_'), extractFn(WEB, 'cacheGetChunked_')].join('\n'), W);
+  const store = {};
+  W.cache = { putAll: (o) => { Object.keys(o).forEach(k => { if (o[k].length > 100000) throw new Error('Argument too large: value'); store[k] = o[k]; }); },
+              get: k => (k in store ? store[k] : null), getAll: ks => { const o = {}; ks.forEach(k => { if (k in store) o[k] = store[k]; }); return o; } };
+  W.big = 'x'.repeat(250000) + 'END';
+  vm.runInContext('cachePutChunked_(cache, "m", big, 60)', W);
+  check('a value over the 100 KB limit is stored in pieces, each under it', Object.keys(store).length === 4 && Object.values(store).every(v => v.length <= 100000));
+  check('…and read back whole', vm.runInContext('cacheGetChunked_(cache, "m")', W) === W.big);
+  delete store.m_1;
+  check('a missing piece reads as nothing cached, not half a matrix', vm.runInContext('cacheGetChunked_(cache, "m")', W) === null);
+  check('the fetch is not lost when caching fails', /try \{ cachePutChunked_\(cache, 'passport_index_csv', csv, 21600\); \}\s*catch/.test(WEB));
+}
+
+// ============ the forecast for each day =========================================
+console.log('\nthe forecast for each day');
+{
+  const calls = [];
+  const W = vm.createContext({ JSON, Math, Date, Session: { getScriptTimeZone: () => 'UTC' },
+    Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
+    tripDailyForecast_: (city, from, to) => { calls.push([city, from, to]); return [
+      { date: from, tMax: 64.4, tMin: 52.1, code: 3, precipMm: 0 }, { date: to, tMax: 60, tMin: null, code: 61, precipMm: 4 }]; } });
+  vm.runInContext(extractFn(WEB, 'webTripWeather_'), W);
+  const iso = n => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  W.p = { days: JSON.stringify({ [iso(1)]: 'Lisboa', [iso(2)]: 'Lisboa', [iso(3)]: 'Porto', [iso(4)]: 'Home', [iso(30)]: 'Porto' }) };
+  const r = vm.runInContext('webTripWeather_(p)', W);
+  check('one forecast per city, not per day', calls.length === 2 && calls[0][0] === 'Lisboa' && calls[0][1] === iso(1) && calls[0][2] === iso(2), JSON.stringify(calls));
+  check('highs and lows rounded, with the weather code', r.ok && r.days[iso(1)].hi === 64 && r.days[iso(1)].lo === 52 && r.days[iso(1)].code === 3, JSON.stringify(r.days));
+  check('beyond the forecast window, nothing is asked for', calls.every(c => c[2] <= iso(16)));
+  check('home is not forecast', !Object.keys(r.days).includes(iso(4)));
+  check('bad input is refused', vm.runInContext('webTripWeather_({ days: "{" })', W).ok === false);
+  check('the route is wired', /case 'trip_weather':\s+return jsonOut_\(webTripWeather_\(e\.parameter\)\);/.test(WEB));
+}
+
 // ============ the old visa check is unchanged ===================================
 console.log('\nthe Visa check it grew from');
 {

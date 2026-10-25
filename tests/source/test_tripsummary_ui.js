@@ -49,7 +49,8 @@ async function mount(page) {
     const host = document.createElement('div'); host.id = 'tsprobe'; document.body.appendChild(host);
     window.__opened = [];
     ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, legs: fx.legs, meta: fx.meta, statuses: fx.statuses,
-      insights: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_label: '+5h' }, onGoToPacking: () => { window.__opened.push('packing'); },
+      insights: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_label: '+5h', distance_miles: 3600, haul_category: 'Long-haul', daynight_pct_day: 30, dep_local: '6:05 PM', arr_local: '6:40 AM', pre_trip_tip: 'Shift sleep an hour earlier', arrival_tip: 'Stay up until 9 PM local' },
+      weather: { [fx.trip.startDate]: { hi: 64, lo: 52, code: 0 }, [fx.trip.endDate]: { hi: 60, lo: null, code: 61 } }, onGoToPacking: () => { window.__opened.push('packing'); },
       documents: fx.docs, onOpenDay: d => { window.__opened.push(d); }, details: React.createElement('span', { className: 'probe-editors' }, 'Trip editors') }));
     return new Promise(r => setTimeout(() => r({}), 300));
   }, FX);
@@ -77,7 +78,13 @@ async function assertSummary(page) {
   check('sleep bands: in the air, a stay, nothing booked, a stay', (await page.$$eval('#tsprobe .ts-stay', ns => ns.map(n => n.className.split(' ').pop()))).join() === 'ts-stay-air,ts-stay-stay,ts-stay-gap,ts-stay-stay');
   check('a flight not yet live says when it will be', /Live status from/.test(t));
   check('a check-in reminder under the flight', /Online check-in usually opens 24 h before/.test(t));
-  check('Useful to know and Packing are under Before you go', /Useful to know/.test(t) && /IAD → LIS · \+5h/.test(t));
+  const tiles = await page.$$eval('#tsprobe .ts-utk-tile', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+  check('Useful to know: four tiles — time difference, distance, daylight, local times', tiles.length === 4 && /TIME DIFFERENCE \+5h IAD → LIS/i.test(tiles[0]) && /~3,600 mi Long-haul/.test(tiles[1]) && /30% of the flight in daylight/.test(tiles[2]) && /6:05 PM → 6:40 AM/.test(tiles[3]), JSON.stringify(tiles));
+  const tips = await page.$$eval('#tsprobe .ts-utk-tip', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+  check('…and the two tips, labelled', tips.length === 2 && /BEFORE YOU GO Shift sleep/i.test(tips[0]) && /WHEN YOU LAND Stay up/i.test(tips[1]), JSON.stringify(tips));
+  const wxs = await page.$$eval('#tsprobe .ts-pill', ns => ns.map(n => { const w = n.querySelector('.ts-wx'); return w ? w.innerText.replace(/\s+/g, ' ').trim() : ''; }));
+  check('the forecast sits on its day\'s pill: high/low, or just the high', /64°\/52°/.test(wxs[0]) && /60°$/.test(wxs[7]) && wxs.slice(1, 7).every(w => w === ''), JSON.stringify(wxs));
+  check('with a symbol for the weather', /☀️/.test(wxs[0]) && /🌧️/.test(wxs[7]));
   check('no sideways scroll', await noScroll(page));
 
   // Documents
@@ -91,6 +98,20 @@ async function assertSummary(page) {
   dt = await page.$eval('#tsprobe .ts-docs', n => n.innerText);
   check('the dropdown switches to another country', /Visa Required/.test(dt) && /Egypt passport/.test(dt) && !/Victoria/.test(dt), dt.slice(0, 300));
   const at = await page.$$eval('#tsprobe .ts-attn', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ')));
+  // A trip that never leaves home has no Documents section at all.
+  await page.evaluate((fx) => { const host = document.createElement('div'); host.id = 'domprobe'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, documents: { ok: true, home: 'United States', countries: [] } })); }, FX);
+  await new Promise(r => setTimeout(r, 200));
+  check('a domestic trip shows no Documents section', !(await page.$('#domprobe section[aria-label="Documents"]')));
+  await page.evaluate(() => document.getElementById('domprobe').remove());
+  // In Agenda, Useful to know folds
+  await page.evaluate(() => { const host = document.createElement('div'); host.id = 'utkprobe'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(TsUsefulToKnow, { ins: { origin_code: 'IAD', dest_code: 'LIS', tz_offset_label: '+5h' }, collapsible: true })); });
+  await new Promise(r => setTimeout(r, 100));
+  const folded = !(await page.$('#utkprobe .ts-utk-tile'));
+  await tap(page, '#utkprobe .ts-utk-toggle'); await new Promise(r => setTimeout(r, 80));
+  check('in Agenda, Useful to know starts folded and opens to the same tiles', folded && !!(await page.$('#utkprobe .ts-utk-tile')) && /Useful to know · IAD → LIS/.test(await page.$eval('#utkprobe', n => n.innerText)));
+  await page.evaluate(() => document.getElementById('utkprobe').remove());
   check('passport and visa problems are in Needs attention', at.some(a => /Passport: renew soon: Victoria \(United States passport\)/.test(a)) && at.some(a => /Visa required for Germany \(layover\)/.test(a)), JSON.stringify(at));
 
   await tap(page, '#tsprobe .ts-red');
@@ -233,7 +254,9 @@ async function assertShare(page, lite) {
       ReactDOM.createRoot(host).render(React.createElement(TripSummaryView, { trip: fx.trip, items: fx.items, apiUrl: 'https://vera.test/exec', apiToken: 't' }));
       setTimeout(() => { r({ calls: window.__calls, text: host.innerText }); host.remove(); }, 300);
     }), FX);
-    check('Summary loads the trip\'s documents itself, once', calls.calls.length === 1 && calls.calls[0].action === 'trip_documents' && calls.calls[0].tripKey === FX.trip.tripKey && calls.calls[0].endDate === FX.trip.endDate && /Documents: passports and visas/i.test(calls.text), JSON.stringify(calls.calls));
+    const docCalls = calls.calls.filter(c => c.action === 'trip_documents'), wxCalls = calls.calls.filter(c => c.action === 'trip_weather');
+    check('Summary loads the forecast once, for each day\'s city (not the trip home)', wxCalls.length === 1 && JSON.parse(wxCalls[0].days)[D(1)] === 'Lisboa' && JSON.parse(wxCalls[0].days)[D(5)] === 'Porto' && !(D(7) in JSON.parse(wxCalls[0].days)), JSON.stringify(wxCalls));
+    check('Summary loads the trip\'s documents itself, once', docCalls.length === 1 && docCalls[0].tripKey === FX.trip.tripKey && docCalls[0].endDate === FX.trip.endDate && /Documents: passports and visas/i.test(calls.text), JSON.stringify(calls.calls));
 
     // The real ItineraryView: Summary first; a red day opens Agenda at that day.
     await page.evaluate((fx) => {
@@ -246,6 +269,8 @@ async function assertShare(page, lite) {
     }, FX);
     await new Promise(r => setTimeout(r, 300));
     check('ItineraryView opens on Summary', !!(await page.$('#ivprobe .trip-summary')));
+    const order = await page.$$eval('#ivprobe .trip-actions button', ns => ns.map(n => n.innerText.replace(/[^A-Za-z]/g, '')));
+    check('the views read Summary, Map, Agenda, Packing', order.join() === 'Summary,Map,Agenda,Packing', order.join());
     check('the trip editors live in Summary\'s Trip details, not the header', !!(await page.$('#ivprobe .ts-details-btn')));
     await tap(page, '#ivprobe .ts-red');
     await new Promise(r => setTimeout(r, 300));

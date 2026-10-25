@@ -28,6 +28,10 @@ const CONTROLS = [
   ['another trip\'s rows are read', b => ({ [W]: swap(b[W], "      if (String(r[1]).trim() !== tripKey) return;\n      items.push({ type:", "      items.push({ type:") })],
   ['a country\'s chip ignores the passport', b => ({ [W]: swap(b[W], "      [v, pp].forEach(function(x) { if (rank[x] > rank[worst]) worst = x; });", "      [v].forEach(function(x) { if (rank[x] > rank[worst]) worst = x; });") })],
   ['an airport is looked up every time', b => ({ [W]: swap(b[W], '    if (memo[code] !== undefined) return memo[code];\n', '') })],
+  ['the matrix is cached in one piece again', b => ({ [W]: swap(b[W], "try { cachePutChunked_(cache, 'passport_index_csv', csv, 21600); }", "try { cache.put('passport_index_csv', csv, 21600); }") })],
+  ['a missing piece reads as half a matrix', b => ({ [W]: swap(b[W], "if (got[keys[j]] == null) return null; out += got[keys[j]];", "out += got[keys[j]] || '';") })],
+  ['the forecast is asked per day', b => ({ [W]: swap(b[W], "var fc = tripDailyForecast_(city, ds[0], to) || [];", "var fc = [].concat.apply([], ds.map(function(d) { return tripDailyForecast_(city, d, d) || []; }));") })],
+  ['home is forecast', b => ({ [W]: swap(b[W], "|| c === 'Home' || c === 'At sea') return;", ") return;") })],
   ['the route is missing', b => ({ [W]: swap(b[W], "      case 'trip_documents':        return jsonOut_(webGetTripDocuments_(e.parameter));\n", '') })],
 ];
 

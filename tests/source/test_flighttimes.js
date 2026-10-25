@@ -462,11 +462,12 @@ console.log('\n…and the dashboard renders what it knows');
       transformed = Babel.transform(jsx[1], { presets: ['react'] }).code;
     } catch (e) { /* reported below */ }
     check('dashboard-lite JSX still transforms', !!transformed);
+    // Its itinerary card is now the shared TsUsefulToKnow, which the babel block carries.
     check('…and its itinerary times gate is an OR',
-          /insights\.dep_local \|\| insights\.arr_local/.test(jsx[1]));
+          /ins\.dep_local\|\|ins\.arr_local/.test(jsx[1]));
     check('…showing the half it has',
-          /insights\.dep_local \|\| 'departure unknown'/.test(jsx[1]) &&
-          /insights\.arr_local \|\| 'arrival unknown'/.test(jsx[1]));
+          /ins\.dep_local\|\|'departure unknown'/.test(jsx[1]) &&
+          /ins\.arr_local\|\|'arrival unknown'/.test(jsx[1]));
   }
 
   // index.html is generated; drift between it and app.js has shipped a dead

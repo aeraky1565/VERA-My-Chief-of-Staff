@@ -382,6 +382,7 @@ function doGet(e) {
       // Visa requirements (Issue #123)
       case 'get_visa_requirements': return jsonOut_(webGetVisaRequirements_(e.parameter));
       case 'trip_documents':        return jsonOut_(webGetTripDocuments_(e.parameter));
+      case 'trip_weather':          return jsonOut_(webTripWeather_(e.parameter));
       case 'trip_sheet':            return jsonOut_(webTripSheet_(e.parameter));
       case 'trip_ics':              return jsonOut_(webTripIcs_(e.parameter));
       // Victoria PTO buffer
@@ -9676,20 +9677,45 @@ function webGetVisaRequirements_(params) {
   return visaResultsFor_(csv, destination, profiles);
 }
 
-/** The Passport Index matrix (passport × destination), cached six hours. */
+/**
+ * The Passport Index matrix (passport × destination), cached six hours.
+ *
+ * The matrix is larger than one cache value may be (100 KB), and a single put
+ * threw "Argument too large", failing the whole check. It is cached in pieces;
+ * if caching fails anyway the fetched copy is still returned.
+ */
 function passportIndexCsv_() {
-  var cacheKey = 'passport_index_csv';
-  var cache    = CacheService.getScriptCache();
-  var csv      = cache.get(cacheKey);
+  var cache = CacheService.getScriptCache();
+  var csv = cacheGetChunked_(cache, 'passport_index_csv');
   if (!csv) {
     var resp = fetchTracked_('passport-index',
       'https://raw.githubusercontent.com/ilyankou/passport-index-dataset/master/passport-index-matrix.csv',
       { muteHttpExceptions: true }
     );
+    if (resp.getResponseCode() !== 200) throw new Error('the visa dataset answered HTTP ' + resp.getResponseCode());
     csv = resp.getContentText();
-    cache.put(cacheKey, csv, 21600);
+    try { cachePutChunked_(cache, 'passport_index_csv', csv, 21600); }
+    catch (e) { Logger.log('passportIndexCsv_: not cached (' + e.message + ')'); }
   }
   return csv;
+}
+
+/** Pure-ish: stores a long string as numbered pieces under one key. */
+var CACHE_CHUNK_ = 90000;
+function cachePutChunked_(cache, key, value, ttl) {
+  var parts = {}, n = 0;
+  for (var i = 0; i < value.length; i += CACHE_CHUNK_) parts[key + '_' + (n++)] = value.slice(i, i + CACHE_CHUNK_);
+  parts[key + '_n'] = String(n);
+  cache.putAll(parts, ttl);
+}
+/** Reads what cachePutChunked_ stored, or null when any piece is missing. */
+function cacheGetChunked_(cache, key) {
+  var n = parseInt(cache.get(key + '_n'), 10);
+  if (!(n > 0)) return null;
+  var keys = []; for (var i = 0; i < n; i++) keys.push(key + '_' + i);
+  var got = cache.getAll(keys), out = '';
+  for (var j = 0; j < n; j++) { if (got[keys[j]] == null) return null; out += got[keys[j]]; }
+  return out;
 }
 
 var VISA_ALIASES_ = {
@@ -9859,6 +9885,37 @@ function tripDocWorst_(travelers) {
     });
   });
   return any ? worst : 'grey';
+}
+
+/**
+ * GET ?action=trip_weather&days={"2026-11-13":"Lisboa",…}
+ * A forecast high, low and WMO code for each day, in the city the dashboard
+ * places that day. One forecast per city, through tripDailyForecast_ (cached,
+ * and honest: nothing beyond its window). Days it cannot forecast are left out.
+ */
+function webTripWeather_(params) {
+  var days = {};
+  try { days = JSON.parse(params.days || '{}') || {}; } catch (e) { return { ok: false, error: 'days must be JSON' }; }
+  var byCity = {};
+  Object.keys(days).forEach(function(d) {
+    var c = String(days[d] || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !c || c === 'Home' || c === 'At sea') return;
+    (byCity[c] = byCity[c] || []).push(d);
+  });
+  var tz = Session.getScriptTimeZone();
+  var last = Utilities.formatDate(new Date(Date.now() + 15 * 86400000), tz, 'yyyy-MM-dd');
+  var out = {};
+  Object.keys(byCity).slice(0, 8).forEach(function(city) {
+    var ds = byCity[city].sort();
+    var to = ds[ds.length - 1] < last ? ds[ds.length - 1] : last;
+    if (ds[0] > to) return;
+    var fc = tripDailyForecast_(city, ds[0], to) || [];
+    fc.forEach(function(f) {
+      if (ds.indexOf(f.date) === -1 || f.tMax == null) return;
+      out[f.date] = { hi: Math.round(f.tMax), lo: f.tMin == null ? null : Math.round(f.tMin), code: f.code, precipMm: f.precipMm };
+    });
+  });
+  return { ok: true, days: out };
 }
 
 /** GET ?action=trip_documents&tripKey=…&startDate=…&endDate=… */
