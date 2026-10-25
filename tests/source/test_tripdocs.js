@@ -33,7 +33,7 @@ const AIRPORTS = { IAD: 'United States', LIS: 'Portugal', OPO: 'Portugal', FRA: 
 const S = vm.createContext({ console });
 vm.runInContext([extractVar(WEB, 'VISA_ALIASES_'), extractVar(WEB, 'SCHENGEN_'), WEB.match(/var TRIP_NOT_A_PLACE_ = .*;/)[0], extractVar(WEB, 'TRIP_DOC_RANK_'),
   ...['tripPlaceMatches_', 'visaNorm_', 'visaResultsFor_', 'visaStatusKey_', 'visaStatusLabel_', 'visaStatusColor_', 'tripFlightRoute_', 'tripAddressCountry_', 'tripCountries_',
-      'tripPassportCheck_', 'tripPassportTone_', 'tripPickPassports_', 'tripDocWorst_', 'tripReach_', 'tripItemsFor_', 'webGetTripDocuments_', 'webGetVisaRequirements_'].map(n => extractFn(WEB, n))].join('\n'), S);
+      'tripPassportCheck_', 'tripPassportTone_', 'tripPickPassports_', 'tripDocWorst_', 'tripReach_', 'tripPlaceZone_', 'tripItemsFor_', 'webGetTripDocuments_', 'webGetVisaRequirements_'].map(n => extractFn(WEB, n))].join('\n'), S);
 const run = code => vm.runInContext(code, S);
 S.CSV = CSV;
 S.names = {}; CSV.split('\n')[0].split(',').slice(1).forEach(h => { S.names[h.toLowerCase().replace(/[^a-z0-9]/g, '')] = h; });
@@ -220,6 +220,11 @@ console.log('\nhow far the trip reaches');
   S.P2 = [{ name: 'Miami', lat: 25.8, lon: -80.2, timezone: 'America/New_York', date: '2026-11-06' }, { name: 'Cozumel', lat: 20.4, lon: -86.9, timezone: 'America/Cancun', date: '2026-11-09' }];
   check('every stop on home time reads Same as home', run('tripReach_(P2, H, "America/New_York", off, mi)').shift.label === 'Same as home');
   check('no home, no distance; still a shift', run('tripReach_(P2, null, "America/New_York", off, mi)').farthest === null && run('tripReach_(P2, null, "America/New_York", off, mi)').shift !== null);
+  const pz = (m, g) => { S.a = [m, g]; return run('tripPlaceZone_.apply(null, a)'); };
+  check('the calendar event\'s own zone wins over a lookup', pz('{"startTz":"America/Puerto_Rico"}', 'Europe/London') === 'America/Puerto_Rico');
+  check('a looked-up zone is used when the event has none', pz('{}', 'America/Nassau') === 'America/Nassau' && pz('', 'America/Nassau') === 'America/Nassau');
+  check('a bare GMT/UTC from the geocoder is unknown, never "+5h"', pz('{}', 'GMT') === '' && pz('{}', 'UTC') === '' && pz('{}', 'Etc/GMT') === '');
+  check('the reach reads events with their own timezones', /tripItemsFor_\(tripKey, String\(params\.startDate \|\| ''\), String\(params\.endDate \|\| ''\), 'trip_reach', true\)/.test(WEB));
   check('the route is wired', /case 'trip_reach':\s+return jsonOut_\(webTripReach_\(e\.parameter\)\);/.test(WEB));
 }
 

@@ -2167,7 +2167,7 @@ function TsUsefulToKnow(props){var h=React.createElement;var ins=props.ins;
     if(ins.daynight_pct_day!=null){var pct=Math.max(0,Math.min(100,Number(ins.daynight_pct_day)||0));
       tiles.push(tile('dl','🌗','Daylight',pct+'%','of the flight in daylight',h('span',{'aria-hidden':'true',style:{display:'block',height:6,borderRadius:3,marginTop:4,background:'linear-gradient(90deg,#f0d78a '+pct+'%,'+T.track+' '+pct+'%)'}})));}
     // A known half survives an unknown one, and the missing half is named, not blanked.
-    if(ins.dep_local||ins.arr_local)tiles.push(tile('lt','🛫','Local times',(ins.dep_local||'departure unknown')+' → '+(ins.arr_local||'arrival unknown'),'Departure → arrival'));
+    if(ins.dep_local||ins.arr_local)tiles.push(tile('lt','🛫','Local times',(ins.dep_local||'departure unknown')+' → '+(ins.arr_local||'arrival unknown'),'Clock at take-off → at landing, each in its own airport’s time'));
     if(calm)tips.push(tip('calm','🙂','No jet lag to plan for',reach.shift.hours===0?'Every stop is on home time.':'Every stop is within an hour of home time.'));
     else{
       if(ins.pre_trip_tip)tips.push(tip('pre','📅','Before you go',ins.pre_trip_tip));

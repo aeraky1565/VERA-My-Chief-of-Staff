@@ -9998,6 +9998,21 @@ function tripReach_(places, home, homeTz, offsetOn, miles) {
 }
 
 /**
+ * Pure: the timezone to measure a place by. The calendar event's own zone wins
+ * (you set it on the event; a cruise port's is exact). A geocoder's zone comes
+ * next, unless it is a bare GMT/UTC/Etc zone: those come back for small islands
+ * with no zone on record, and read as "+5h" from New York. Unknown is ''.
+ */
+function tripPlaceZone_(metadata, geoTz) {
+  var m = {};
+  try { m = JSON.parse(metadata || '{}') || {}; } catch (e) {}
+  var own = String(m.startTz || m.timezone || '').trim();
+  if (own) return own;
+  var g = String(geoTz || '').trim();
+  return /^(gmt|utc|z|etc\/.*)$/i.test(g) ? '' : g;
+}
+
+/**
  * GET ?action=trip_reach&tripKey=…&startDate=…&endDate=…
  * The trip as a whole, for Useful to know: its biggest clock change from home
  * and its farthest place. Every airport a flight touches and every located item
@@ -10008,19 +10023,25 @@ function tripReach_(places, home, homeTz, offsetOn, miles) {
 function webTripReach_(params) {
   var tripKey = String(params.tripKey || '').trim();
   if (!tripKey) return { ok: false, error: 'tripKey required' };
-  var items = tripItemsFor_(tripKey, String(params.startDate || ''), String(params.endDate || ''), 'trip_reach');
+  // With each calendar event's own timezone: the most reliable zone a port has.
+  var items = tripItemsFor_(tripKey, String(params.startDate || ''), String(params.endDate || ''), 'trip_reach', true);
   var places = [], seen = {}, looked = 0;
-  var add = function(key, date, lookup, name) {
+  var add = function(key, date, lookup, name, metadata) {
     if (!key || seen[key] || looked >= 25) return;
     seen[key] = true; looked++;
     var g = null;
     try { g = lookup(); } catch (e) {}
-    if (g && typeof g.lat === 'number') places.push({ name: name || g.name || key, lat: g.lat, lon: g.lon, timezone: g.timezone || '', date: date });
+    if (g && typeof g.lat === 'number') places.push({ name: name || g.name || key, lat: g.lat, lon: g.lon, timezone: tripPlaceZone_(metadata, g.timezone), date: date });
   };
   items.forEach(function(it) {
     if (it.type === 'flight') {
-      tripFlightRoute_(it).forEach(function(code) {
-        add('iata:' + code, it.date, function() { return travelAirportGeo_(code); }, code);
+      var fm = {};
+      try { fm = JSON.parse(it.metadata || '{}') || {}; } catch (e) {}
+      var route = tripFlightRoute_(it);
+      route.forEach(function(code, i) {
+        // The flight event's own zones: departure for its first airport, arrival for its last.
+        var z = i === 0 ? fm.startTz : i === route.length - 1 ? (fm.endTz || fm.startTz) : '';
+        add('iata:' + code, it.date, function() { return travelAirportGeo_(code); }, code, JSON.stringify({ startTz: z || '' }));
       });
       return;
     }
@@ -10029,7 +10050,7 @@ function webTripReach_(params) {
     add('loc:' + loc.toLowerCase(), it.date, function() {
       var g = geocodePackingDestination_(loc, null);
       return g && tripPlaceMatches_(loc, g.name) ? g : null;
-    });
+    }, null, it.metadata);
   });
   var homeCity = String(getConfigValues()['weather_location'] || '').trim();
   var home = null;
@@ -10041,13 +10062,13 @@ function webTripReach_(params) {
 
 /** GET ?action=trip_documents&tripKey=…&startDate=…&endDate=… */
 /** The items a trip's checks read: what the itinerary shows, or the sheet's rows. */
-function tripItemsFor_(tripKey, startDate, endDate, logTag) {
+function tripItemsFor_(tripKey, startDate, endDate, logTag, withEventTz) {
   // The same items the itinerary shows: stored rows plus the calendar events in
   // the trip's dates, where a cruise's ports usually live. The sheet alone is the
   // fallback if that read fails.
   var items = null;
   try {
-    var merged = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: startDate, endDate: endDate } }, { skipEventTz: true });
+    var merged = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: startDate, endDate: endDate } }, { skipEventTz: !withEventTz });
     if (merged && merged.items) items = merged.items.map(function(it) {
       var d = it.date instanceof Date ? Utilities.formatDate(it.date, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(it.date || '').trim();
       return { type: String(it.type || ''), title: String(it.title || ''), date: d, location: String(it.location || ''), metadata: String(it.metadata || '') };
