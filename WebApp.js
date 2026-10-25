@@ -9767,7 +9767,9 @@ function visaResultsFor_(csv, destination, profiles) {
       }
       return { passportCountry: prof.passportCountry, passportExpiry: prof.passportExpiry || '', status: status, label: visaStatusLabel_(status), color: visaStatusColor_(status) };
     });
-    prs.sort(function(a, b) { return (order[a.color] || 3) - (order[b.color] || 3); });
+    // Best first: the one to travel on. (order[...] || 3 ranked green, which is 0, as grey.)
+    var rank = function(p) { return order[p.color] != null ? order[p.color] : 3; };
+    prs.sort(function(a, b) { return rank(a) - rank(b); });
     results.push({ name: name, passports: prs });
   });
   return { ok: true, results: results, destination: destName };

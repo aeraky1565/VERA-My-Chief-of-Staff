@@ -224,6 +224,25 @@ async function assertHomeUseful(page, shot) {
   await page.evaluate(() => { const n = document.getElementById('homeuseful'); if (n) n.remove(); });
 }
 
+// Discover and Budget, each opened on one trip inside its itinerary: the trip is
+// loaded straight away and there is no trip to pick.
+async function assertTripPanels(page, label) {
+  const r = await page.evaluate(() => new Promise(done => {
+    const t = { label: 'Lisbon & Porto', startDate: '2027-05-21', endDate: '2027-05-31' }, tk = t.startDate + '|' + t.label;
+    const loads = [], urls = [];
+    const realFetch = window.fetch;
+    window.fetch = (u) => { urls.push(String(u)); return Promise.resolve({ json: () => Promise.resolve({ ok: true, items: [], summary: {} }) }); };
+    const a = document.createElement('div'); a.id = 'recprobe'; document.body.appendChild(a);
+    const b = document.createElement('div'); b.id = 'budprobe'; document.body.appendChild(b);
+    const noop = () => {};
+    ReactDOM.createRoot(a).render(React.createElement(RecommendationsPanel, { trips: [t], focusTripKey: tk, recommendations: {}, busy: false, onLoadRecs: k => loads.push(k), onGenerateRecs: noop, onAcceptRec: noop, onDismissRec: noop, onGoToItinerary: noop }));
+    ReactDOM.createRoot(b).render(React.createElement(TripBudgetPanel, { trips: [t], focusTripKey: tk, apiUrl: 'https://vera.test/exec', apiToken: 't' }));
+    setTimeout(() => { window.fetch = realFetch; done({ loads, urls, budget: b.innerText, tk }); a.remove(); b.remove(); }, 400);
+  }));
+  check(label + ': Discover opened on a trip loads its picks once', r.loads.length === 1 && r.loads[0] === r.tk, JSON.stringify(r.loads));
+  check(label + ': Budget opened on a trip loads that trip, with no trip picker', r.urls.some(u => /action=get_trip_budget/.test(u) && u.indexOf(encodeURIComponent(r.tk)) !== -1) && !/Select Trip/i.test(r.budget) && /No budget set up for this trip yet/.test(r.budget), r.budget.slice(0, 200) + ' ' + JSON.stringify(r.urls));
+}
+
 // Share or export, opened from Agenda's toolbar, with the API, new windows and
 // downloads all recorded instead of done.
 async function assertShare(page, lite) {
@@ -312,12 +331,20 @@ async function assertShare(page, lite) {
       const noop = () => {}; window.__adds = [];
       ReactDOM.createRoot(host).render(React.createElement(ItineraryView, { trip: fx.trip, itinerary: { items: fx.items }, loading: false, busy: false,
         tripContext: fx.meta, onAdd: d => { window.__adds.push(d === undefined ? 'blank' : d); }, onEdit: noop, onDelete: noop, onSetContext: noop, onSetBriefing: noop, onSetTraveler: noop, onSetMode: noop,
-        onLoadContext: noop, onGoToPacking: noop, renderPacking: t => React.createElement('div', { className: 'probe-packing' }, 'Packing for ' + t.label), apiUrl: '', apiToken: '' }));
+        onLoadContext: noop, onGoToPacking: noop, renderPacking: t => React.createElement('div', { className: 'probe-packing' }, 'Packing for ' + t.label),
+        renderDiscover: t => React.createElement('div', { className: 'probe-discover' }, 'Discover for ' + t.label), renderBudget: t => React.createElement('div', { className: 'probe-budget' }, 'Budget for ' + t.label), apiUrl: '', apiToken: '' }));
     }, FX);
     await new Promise(r => setTimeout(r, 300));
     check('ItineraryView opens on Summary', !!(await page.$('#ivprobe .trip-summary')));
     const order = await page.$$eval('#ivprobe .trip-actions button', ns => ns.map(n => n.innerText.replace(/[^A-Za-z]/g, '')));
-    check('the views read Summary, Map, Agenda, Packing', order.join() === 'Summary,Map,Agenda,Packing', order.join());
+    check('the views read Summary, Map, Agenda, Packing, Discover, Budget', order.join() === 'Summary,Map,Agenda,Packing,Discover,Budget', order.join());
+    for (const v of ['Discover', 'Budget']) {
+      await page.evaluate((v) => Array.from(document.querySelectorAll('#ivprobe .trip-actions button')).find(b => b.innerText.replace(/[^A-Za-z]/g, '') === v).click(), v);
+      await new Promise(r => setTimeout(r, 120));
+      check(v + ' opens inside the itinerary, as its own view', !!(await page.$('#ivprobe .probe-' + v.toLowerCase())) && !(await page.$('#ivprobe .trip-summary')));
+    }
+    await page.evaluate(() => Array.from(document.querySelectorAll('#ivprobe .trip-actions button')).find(b => /Summary/.test(b.innerText)).click());
+    await new Promise(r => setTimeout(r, 120));
     check('the trip editors live in Summary\'s Trip details, not the header', !!(await page.$('#ivprobe .ts-details-btn')));
     await page.evaluate(() => Array.from(document.querySelectorAll('#ivprobe .trip-actions button')).find(b => /Packing/.test(b.innerText)).click());
     await new Promise(r => setTimeout(r, 150));
@@ -338,6 +365,7 @@ async function assertShare(page, lite) {
     await assertHomeCard(page);
     await assertHomeUseful(page, process.env.SHOT_DIR ? process.env.SHOT_DIR + '/home-useful-full-' + width + '.png' : null);
     await assertShare(page, false);
+    await assertTripPanels(page, 'full ' + width);
     check('no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
 
@@ -364,6 +392,7 @@ async function assertShare(page, lite) {
     await assertHomeCard(page);
     await assertHomeUseful(page, process.env.SHOT_DIR ? process.env.SHOT_DIR + '/home-useful-lite-' + width + '.png' : null);
     await assertShare(page, true);
+    await assertTripPanels(page, 'lite ' + width);
     await page.close();
   }
   await browser.close();

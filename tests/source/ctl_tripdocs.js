@@ -35,6 +35,7 @@ const CONTROLS = [
   ['the geocoder\'s GMT is believed', b => ({ [W]: swap(b[W], "  return /^(gmt|utc|z|etc\\/.*)$/i.test(g) ? '' : g;", "  return g;") })],
   ['the event\'s own zone is ignored', b => ({ [W]: swap(b[W], "  if (own) return own;\n", '') })],
   ['the reach reads events without their zones', b => ({ [W]: swap(b[W], "'trip_reach', true);", "'trip_reach', false);") })],
+  ['green ranks as no data again', b => ({ [W]: swap(b[W], "var rank = function(p) { return order[p.color] != null ? order[p.color] : 3; };", "var rank = function(p) { return order[p.color] || 3; };") })],
   ['every country asks for 6 months', b => ({ [W]: swap(b[W], 'var ruleMonths = ruleKnown ? 3 : 6;', 'var ruleMonths = 6;') })],
   ['an expired passport only counts as short', b => ({ [W]: swap(b[W], "if (!tripEnd || expiry < tripEnd) return { status: 'expires'", "if (false) return { status: 'expires'") })],
   ['a partial month counts as a full one', b => ({ [W]: swap(b[W], " - (b[2] < a[2] ? 1 : 0);", ";") })],

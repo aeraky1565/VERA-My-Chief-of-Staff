@@ -52,6 +52,8 @@ console.log('the matrix\'s statuses');
   check('case and spaces do not matter', st(' Visa Required ') === 'Visa Required|red');
   S.WCSV = ['Passport,Mexico,Honduras,Bahamas', 'Egypt,visa required,visa required,e-visa', 'United States,180,90,240'].join('\n');
   const r = run('visaResultsFor_(WCSV, "Mexico", [{name:"Ahmed",passportCountry:"Egypt"},{name:"Ahmed",passportCountry:"United States"}])');
+  const two = run('visaResultsFor_(WCSV, "Mexico", [{name:"Ahmed",passportCountry:"Egypt"},{name:"Ahmed",passportCountry:"United States"}])');
+  check('the visa-free passport comes first, the one to travel on', two.results[0].passports[0].passportCountry === 'United States' && two.results[0].passports[0].color === 'green', JSON.stringify(two.results[0].passports.map(p => p.passportCountry + ':' + p.color)));
   check('a word-format matrix gives a red Visa Required, not grey', r.results[0].passports.some(p => p.label === 'Visa Required' && p.color === 'red'), JSON.stringify(r.results));
 }
 
@@ -273,6 +275,13 @@ console.log('\nthe Visa check it grew from');
   check('…with the visa label it always had', r.results[1].passports[0].label === 'Visa Free (90 days)');
   check('an unknown destination still says so', /not found/.test(run('webGetVisaRequirements_({ destination: "Atlantis" })').note));
   check('the route is wired', /case 'trip_documents':\s+return jsonOut_\(webGetTripDocuments_\(e\.parameter\)\);/.test(WEB));
+}
+
+console.log('\nthe Bucket List pills');
+{
+  const pill = '"🛂 ",person.name," · ",best.label,person.passports.length>1&&best.passportCountry?" · "+best.passportCountry+" passport":"")';
+  check('both dashboards show the best passport, and name it when there are two',
+    ['docs/app.js', 'docs/dashboard-lite.html'].every(f => { const src = fs.readFileSync(path.join(ROOT, f), 'utf8'); return src.indexOf('var best=(person.passports||[])[0];') !== -1 && src.indexOf(pill) !== -1; }));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

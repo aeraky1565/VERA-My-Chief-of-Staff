@@ -35,7 +35,7 @@ const CONTROLS = [
   ['a tight connection waits for the whole gap', both('var TS_TIGHT_RATIO=0.7;', 'var TS_TIGHT_RATIO=1.5;')],
   ['the lite copy drifts', b => ({ [L]: swap(b[L], "'Nothing booked'", "'Not booked'") })],
   ['full: Agenda stays the default', b => ({ [A]: swap(b[A], "React.useState('summary');", "React.useState('agenda');") })],
-  ['full: VERA Notices shows on Summary too', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&viewMode!=='packing'&&allNotices.length>0", 'allNotices.length>0') })],
+  ['full: VERA Notices shows on Summary too', b => ({ [A]: swap(b[A], "(viewMode==='agenda'||viewMode==='map')&&allNotices.length>0", 'allNotices.length>0') })],
   // ---- Agenda (stage 2) ----
   ['any gap counts as free time', both('if(free>=60)(out[a.id]', 'if(free>=0)(out[a.id]')],
   ['the drive is not taken off free time', both('var free=gap-drive;', 'var free=gap;')],
@@ -48,7 +48,7 @@ const CONTROLS = [
   ['a passport that runs out is only amber', both("if(st==='expires')e.red=true;", '')],
   ['a visa to arrange is not flagged', both("if(p.color==='red'||p.color==='yellow')visas.push(", "if(false)visas.push(")],
   ['red no longer comes first', both("  attention=attention.filter(function(a){return a.level==='red';}).concat(attention.filter(function(a){return a.level!=='red';}));\n", '')],
-  ['full: the Visa view is back', b => ({ [A]: swap(b[A], "['summary','map','agenda'].concat(renderPacking?['packing']:[]).map(function(mode)", "['summary','map','agenda','visa'].concat(renderPacking?['packing']:[]).map(function(mode)") })],
+  ['full: the Visa view is back', b => ({ [A]: swap(b[A], "['summary','map','agenda'].concat(renderPacking?['packing']:[])", "['summary','map','agenda','visa'].concat(renderPacking?['packing']:[])") })],
   // ---- Home travel card (stage 4) ----
   ['leave-by gives up at the first stop without a drive', both("    if(!leg||leg.driveMins==null)continue;// no cached drive for this stop: try the next", "    if(!leg||leg.driveMins==null)break;")],
   ['a leave-by time already past still shows', both("var t=tsMins_(b.startTime)-leg.driveMins;if(t<now)continue;", "var t=tsMins_(b.startTime)-leg.driveMins;")],
@@ -73,8 +73,12 @@ const CONTROLS = [
   ['a spare passport still raises a visa line', both("var used=ps.filter(function(p){return p.use;});(used.length?used:ps).forEach(function(p){", "var used=[];(used.length?used:ps).forEach(function(p){")],
   ['jet-lag tips stay on a trip within an hour of home', both("var calm=!!(reach&&reach.shift&&Math.abs(reach.shift.hours)<TS_JETLAG_HOURS);", "var calm=false;")],
   ['the trip\'s reach is not shown', both("    if(reach.shift)tripTiles.push(", "    if(false)tripTiles.push(")],
+  ['full: Discover is still a Travel tab', b => ({ [A]: swap(b[A], "{id:'countries',", "{id:'discover',label:'✨ Discover'},{id:'countries',") })],
+  ['full: Budget is not a view inside the trip', b => ({ [A]: swap(b[A], "viewMode==='budget'&&renderBudget&&renderBudget(trip),", '') })],
+  ['a budget opened on one trip still shows the picker', both('return/*#__PURE__*/React.createElement("div",null,!focusTripKey&&', 'return/*#__PURE__*/React.createElement("div",null,')],
+  ['Discover opened on one trip does not load it', both("React.useEffect(function(){if(focusTripKey&&!recommendations[focusTripKey])onLoadRecs(focusTripKey);},[focusTripKey]);", '')],
   ['full: the views are back in the old order', b => ({ [A]: swap(b[A], "['summary','map','agenda'].concat(", "['summary','agenda','map'].concat(") })],
-  ['full: Agenda keeps the old Useful to know', b => ({ [A]: swap(b[A], "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&/*#__PURE__*/React.createElement(TsUsefulToKnow,{ins:itinInsights,collapsible:true,trip:trip,apiUrl:apiUrl,apiToken:apiToken})", "viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&null") })],
+  ['full: Agenda keeps the old Useful to know', b => ({ [A]: swap(b[A], "(viewMode==='agenda'||viewMode==='map')&&itinInsights&&/*#__PURE__*/React.createElement(TsUsefulToKnow,{ins:itinInsights,collapsible:true,trip:trip,apiUrl:apiUrl,apiToken:apiToken})", "(viewMode==='agenda'||viewMode==='map')&&itinInsights&&null") })],
   ['lite: Agenda stays the default', b => ({ [L]: swap(b[L], "tripTabs[tripKey] || 'summary'", "tripTabs[tripKey] || 'agenda'") })],
 ];
 

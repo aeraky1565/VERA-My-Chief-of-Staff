@@ -249,7 +249,7 @@ console.log('\nweather and Useful to know');
   check('weather codes read as a symbol and a word', wx(0).label === 'Sunny' && wx(3).label === 'Cloudy' && wx(61).label === 'Rain' && wx(81).label === 'Rain' && wx(73).label === 'Snow' && wx(95).label === 'Storms' && wx(45).label === 'Fog');
   check('Useful to know is one shared card, in Summary and in both Agendas',
         /\(ins\|\|props\.reach\)&&h\('div',\{style:\{gridColumn:'1 \/ -1'\}\},h\(TsUsefulToKnow,\{ins:ins,trip:trip,reach:props\.reach,apiUrl:props\.apiUrl,apiToken:props\.apiToken\}\)\)/.test(A)
-        && /viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true,trip:trip,apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP)
+        && /\(viewMode==='agenda'\|\|viewMode==='map'\)&&itinInsights&&\/\*#__PURE__\*\/React\.createElement\(TsUsefulToKnow,\{ins:itinInsights,collapsible:true,trip:trip,apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP)
         && /return <TsUsefulToKnow ins=\{insights\} collapsible=\{true\} trip=\{trip\} apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>;/.test(LITE)
         && /<UsefulToKnowCard insights=\{flightInsights\[tripKey\]\} trip=\{\{\.\.\.t,tripKey\}\} apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
   check('Documents shows only for a trip that leaves home (or while checking, or to report an error)', /documents&&\(documents\.loading\|\|documents\.error\|\|\(documents\.countries\|\|\[\]\)\.length>0\)&&h\('section'/.test(A));
@@ -294,8 +294,16 @@ check('full: a jump to packing opens the itinerary, not a removed tab', /if\(!pa
 check('full: Summary renders TripSummaryView with the trip editors inside', /viewMode==='summary'&&\/\*#__PURE__\*\/React\.createElement\(TripSummaryView,\{trip:trip,items:displayItems,legs:travelLegs,meta:ctxMeta,statuses:flightStatuses,insights:itinInsights,apiUrl:apiUrl,apiToken:apiToken,onGoToPacking:renderPacking\?function\(\)\{setViewMode\('packing'\);\}:onGoToPacking,details:\/\*#__PURE__\*\/React\.createElement\(React\.Fragment,null,\/\*#__PURE__\*\/React\.createElement\(TripContextBadge/.test(itin));
 check('full: the old per-day summary is gone', !/viewMode==='summary'&&orderedDays/.test(itin));
 check('full: tapping a day opens Agenda at that day', /onOpenDay:function\(d\)\{setViewMode\('agenda'\);/.test(itin) && /id:tsDayId_\(trip\.tripKey,day\)/.test(itin));
-check('full: VERA Notices and Useful to know stand down on Summary', /viewMode!=='summary'&&viewMode!=='packing'&&allNotices\.length>0/.test(itin) && /viewMode!=='summary'&&viewMode!=='packing'&&itinInsights&&/.test(itin));
-check('lite: Summary first and default', /tripTabs\[tripKey\] \|\| 'summary'/.test(LITE) && /\[\['summary','📋 Summary'\],\['agenda','📅 Agenda'\],\['packing','🎒 Packing'\]\]/.test(LITE));
+check('full: VERA Notices and Useful to know stand down on Summary', /\(viewMode==='agenda'\|\|viewMode==='map'\)&&allNotices\.length>0/.test(itin) && /\(viewMode==='agenda'\|\|viewMode==='map'\)&&itinInsights&&/.test(itin));
+check('full: Discover and Budget are views inside each trip, after Packing', /\.concat\(renderDiscover\?\['discover'\]:\[\]\)\.concat\(renderBudget\?\['budget'\]:\[\]\)/.test(itin)
+      && /viewMode==='discover'&&renderDiscover&&renderDiscover\(trip,function\(\)\{setViewMode\('agenda'\);\}\),viewMode==='budget'&&renderBudget&&renderBudget\(trip\),/.test(itin));
+check('full: Travel has no Discover or Budget tab; each trip gets its own, opened on it', !/\{id:'discover',label:'✨ Discover'\}/.test(APP) && !/sub==='discover'&&/.test(APP) && !/sub==='budget'&&\/\*#__PURE__\*\/React\.createElement\(TripBudgetPanel/.test(APP)
+      && /React\.createElement\(RecommendationsPanel,\{trips:\[t\],focusTripKey:tk,/.test(APP) && /React\.createElement\(TripBudgetPanel,\{trips:\[t\],focusTripKey:t\.startDate\+'\|'\+t\.label,/.test(APP));
+check('both: a panel opened on one trip loads it and skips the picker', [APP, LITE].every(src => /focusTripKey\)o\[focusTripKey\]=true;/.test(src) && /if\(focusTripKey&&!recommendations\[focusTripKey\]\)onLoadRecs\(focusTripKey\);/.test(src)
+      && /var\[selectedKey,setSelectedKey\]=React\.useState\(focusTripKey\|\|null\);/.test(src) && /return\/\*#__PURE__\*\/React\.createElement\("div",null,!focusTripKey&&/.test(src)));
+check('lite: no Discover or Budget in the Travel menu; they are trip tabs', !/\['discover','✨ Discover'\],\['countries'/.test(LITE) && !/travSub === 'discover'/.test(LITE) && !/travSub === 'budget'/.test(LITE)
+      && /<RecommendationsPanel trips=\{\[t\]\} focusTripKey=\{tripKey\}/.test(LITE) && /<TripBudgetPanel trips=\{\[t\]\} focusTripKey=\{tripKey\}/.test(LITE));
+check('lite: Summary first and default', /tripTabs\[tripKey\] \|\| 'summary'/.test(LITE) && /\[\['summary','📋 Summary'\],\['agenda','📅 Agenda'\],\['packing','🎒 Packing'\],\['discover','✨ Discover'\],\['budget','💰 Budget'\]\]/.test(LITE));
 check('lite: Summary renders TripSummaryView and jumps to the day', /<TripSummaryView trip=\{\{\.\.\.t,tripKey\}\} items=\{filteredItin\.items\}/.test(LITE) && /id=\{tsDayId_\(trip\.tripKey, date\)\}/.test(LITE));
 check('lite: the old SummaryLitePanel is gone', !/SummaryLitePanel/.test(LITE));
 check('full: the Visa view and its state are gone', !/viewMode==='visa'/.test(itin) && !/handleVisaCheck/.test(itin));
