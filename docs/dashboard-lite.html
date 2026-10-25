@@ -8171,7 +8171,8 @@ function TripIdeasView(props){var h=React.createElement;
 // ARIA keeps its own sheet, and watches are changed there, never from here.
 // Uses the Trip Ideas block's palette and buttons (TI, tiBtn_, TI_EYEBROW, tiDayText_).
 var ARIA_VERDICT={book:['BOOK NOW','#173a24','#4d9f6a','#8fe0a8'],wait:['WAIT','#33280f','#a8862f','#f6d27a'],skip:['SKIP','#1d2438','#4a5578','#b8c3e0']};
-var ARIA_STATUS={draft:['Draft','#9aa9cc'],scouting:['Scouting','#8ab4f8'],watching:['Watching','#8fe0a8'],booked:['Booked','#c9a84c'],dropped:['Dropped','#6f7c9c'],other:['Other','#9aa9cc']};
+// Status colours follow the tracker's own: green watching, blue scouting and booked, grey drafts and dropped.
+var ARIA_STATUS={draft:['Draft','#9aa9cc'],scouting:['Scouting','#8ab4f8'],watching:['Watching','#8fe0a8'],booked:['Booked','#8ab4f8'],dropped:['Dropped','#6f7c9c'],other:['Other','#9aa9cc']};
 var ARIA_GAPS=[['incomplete','ARIA can’t price these'],['stale','No new fares'],['dateChanged','Dates changed in VERA'],['noRow','Trips ARIA isn’t watching'],['draft','Still drafts'],['waiting','Asked, not picked up']];
 var ARIA_FLAG_WORDS={'excl. bags':'without bag fees','fare type unknown':'fare type unknown','est.':'estimate','no forecast':'no forecast'};
 // The fares for one Watchlist row: its Trip ID, and its Ref (an idea's option, while it was scouted).

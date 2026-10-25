@@ -15,12 +15,13 @@ const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
                              : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
 
 // ============ a fake ARIA Travel Tracker ============================================
-// The Watchlist's columns are deliberately out of the spec's order, with the
-// spec's bracketed notes left in two headers and a column VERA doesn't know.
+// The Watchlist's columns are deliberately out of the tracker's order, with the
+// as-built bracketed notes in its headers ("Ref (OPT-…)", "Est. Fees (bags/seats)")
+// and a column VERA doesn't know.
 const WATCH = [
   ['Label', 'Trip ID', 'Watch Status (Draft/Watching/Booked/Dropped)', 'Mystery Column', 'Origin Airports', 'Destination Airports', 'Earliest Depart', 'Latest Return',
    'Price Ceiling Per Person', 'Travelers', 'Window Tier (Too early/Weekly/Booking window/Daily)', 'Last Checked', 'Next Check', 'Best Fare Seen', 'Best Fare Source',
-   'Verdict', 'Notes', 'Ref', 'Nights Min', 'Nights Max', 'Return-From Airports', 'Date Change Flag'],
+   'Verdict (Book now/Wait/Skip, dropdown)', 'Notes', 'Ref (OPT-…)', 'Nights Min', 'Nights Max', 'Return-From Airports', 'Date Change Flag'],
   ['Lake week', 'trip-0001', 'Watching', 'x', 'IAD', 'ORD', new Date(Date.UTC(2027, 3, 5, 12)), '2027-04-13', '$450', 2, 'Booking window', '2027-02-18', '2027-02-21', '$612', 'SlickTrip', 'Book now', 'Nonstop preferred', '', '', '', '', ''],
   ['Coast hop', 'TRIP-0002', 'watching', '', '', 'SFO', '2027-05-01', '2027-05-08', '', '2', 'Weekly', '2027-02-01', '', '', '', 'Wait', '', '', '', '', '', 'yes'],
   ['Spring idea', '', 'Scouting', '', 'IAD', 'LIS', '2027-03-01', '2027-05-31', '', '2', 'Weekly', '', '', '1240', 'SlickTrip', 'Wait', '', 'opt-abc', '7', '10', 'BCN', ''],
@@ -29,7 +30,7 @@ const WATCH = [
   ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
 ];
 const FARES = [
-  ['Trip ID', 'Date Seen', 'Route', 'Depart', 'Return', 'Airline', 'Stops', 'Fare Per Person', 'Est. Fees', 'True Total', 'vs Ceiling', 'Source', 'Verdict', 'Booking Link', 'Flags'],
+  ['Trip ID', 'Date Seen', 'Route', 'Depart', 'Return', 'Airline', 'Stops', 'Fare Per Person', 'Est. Fees (bags/seats)', 'True Total', 'vs Ceiling', 'Source', 'Verdict', 'Booking Link', 'Flags'],
   ['TRIP-0001', '2027-02-18', 'IAD-ORD', '2027-04-05', '2027-04-13', 'UA', 0, 280, 52, 612, '-', 'SlickTrip', 'Book now', 'https://fares.example/abc', ''],
   ['TRIP-0001', '2027-02-18', 'IAD-ORD', '2027-04-06', '2027-04-13', 'AA', 1, 300, 52, 652, '', 'Expedia', 'Wait', 'javascript:alert(1)', 'excl. bags; fare type unknown'],
   ['TRIP-0001', '2027-02-10', 'IAD-ORD', '2027-04-05', '2027-04-13', 'UA', 0, 320, 52, 692, '', 'SlickTrip', 'Wait', 'http://plain.example', ''],
@@ -84,6 +85,7 @@ console.log('reading by header name');
   check('flags read as a list', JSON.stringify(f[1].flags) === '["excl. bags","fare type unknown"]', JSON.stringify(f[1].flags));
   check('a booking link must be https: a javascript: link and a plain http one are dropped', f[0].link === 'https://fares.example/abc' && f[1].link === '' && f[2].link === '');
   check('nonstop reads as 0, not blank', String(f[0].stops) === '0');
+  check('the as-built headers with notes are read: Ref (OPT-…), Est. Fees (bags/seats), Verdict (…)', w[2].ref === 'OPT-ABC' && f[0].fees === 52 && w[1].verdict === 'wait');
 }
 
 console.log('\nwhat needs a look');
