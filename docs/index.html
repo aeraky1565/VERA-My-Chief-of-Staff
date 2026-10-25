@@ -2511,7 +2511,7 @@ function TsTodayCard(props){var h=React.createElement;var trip=props.trip||{};
       props.onViewItinerary&&h('button',{type:'button',onClick:props.onViewItinerary,style:{minHeight:32,padding:'0 10px',borderRadius:8,border:'1px solid #e05a5a',background:'transparent',color:'#ffc2c2',fontSize:12,fontWeight:600,cursor:'pointer'}},'Add a stay')));
 }
 // ---- /TripSummaryView ----
-// ---- TripIdeasView (Trip Ideas, stage 1) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Trips with no dates yet: a board of ideas, each a loose brief with options under
 // it. An option is an ordered list of legs from home and back (stops with nights,
 // moves by plane, train, car, ship…) with a cost by category and for/against.
@@ -2522,6 +2522,8 @@ var TI_MODES=[['fly','FLY','Fly'],['train','TRAIN','Train'],['car','CAR','Drive'
 var TI_COSTS=[['flights','Flights'],['stays','Stays'],['cruise','Cruise'],['ground','Getting around'],['daily','Daily spend']];
 var TI_STATUS=[['brainstorming','Brainstorming'],['shortlisted','Shortlisted'],['settled','Settled'],['archived','Archived']];
 var TI_OPEN=[['stay','Fly in, stay put'],['train','Train hops'],['cruise','Cruise'],['road','Road trip']];
+var TI_PIECES=[['anchor','ANCHOR','Has to happen','#c9a84c','#0a1428'],['choice','EITHER / OR','VERA builds one option per choice','#2f5ea8','#eef1fb'],['wish','WISH','Nice to have; VERA says which fit','#24386a','#cfe0ff']];
+var TI_VERDICT={fits:['FITS WELL','#173a24','#4d9f6a','#8fe0a8','#d7f2df'],cost:['WORKS, WITH A COST','#33280f','#a8862f','#f6d27a','#f3e6c4'],awkward:['AWKWARD JOIN','#3a1e12','#a8562f','#f6b27a','#f3d6c4']};
 var TI_SOURCE=[['manual','By hand'],['vera','VERA'],['chatgpt','ChatGPT'],['claude','Claude'],['gemini','Gemini'],['aria','ARIA'],['other','Other']];
 function tiModeOf_(m){for(var i=0;i<TI_MODES.length;i++)if(TI_MODES[i][0]===m)return TI_MODES[i];return TI_MODES[TI_MODES.length-1];}
 // "Mar – May 2027", "Mar, Jun 2027", "Dec 2026 – Feb 2027", or "Any time".
@@ -2552,7 +2554,17 @@ function tiIdeaSummary_(idea,options){var mine=(options||[]).filter(function(o){
   var totals=mine.map(function(o){return tiCostTotal_(o.cost);}).filter(Boolean);
   return {count:mine.length,star:star?star.name:'',nights:nights.length?{lo:Math.min.apply(null,nights),hi:Math.max.apply(null,nights)}:null,
     cost:totals.length?{low:Math.min.apply(null,totals.map(function(t){return t.low;})),high:Math.max.apply(null,totals.map(function(t){return t.high;}))}:null};}
-function tiBlankIdea_(){return {title:'',where:'',months:[],nightsMin:null,nightsMax:null,travelers:'',budget:null,pace:'balanced',openTo:[],mustHaves:'',status:'brainstorming'};}
+// An idea's pieces by kind, the either/or ones by the slot they fill.
+function tiPiecesByKind_(pieces){var out={anchor:[],choice:{},wish:[],count:0};(pieces||[]).forEach(function(p){if(!p||!p.name)return;out.count++;
+  if(p.kind==='anchor')out.anchor.push(p);else if(p.kind==='choice'){var g=p.group||'Choice';(out.choice[g]=out.choice[g]||[]).push(p);}else out.wish.push(p);});return out;}
+// What Ask VERA will do with what it has, in a sentence.
+function tiAskPlan_(pieces){var k=tiPiecesByKind_(pieces);if(!k.count)return 'VERA builds three different shapes from the brief alone.';
+  var groups=Object.keys(k.choice);var bits=[];if(k.anchor.length)bits.push('build around '+k.anchor.map(function(p){return p.name;}).join(' and '));
+  groups.forEach(function(g){bits.push('one option per choice for '+g.toLowerCase()+' ('+k.choice[g].map(function(p){return p.name;}).join(' or ')+')');});
+  if(k.wish.length)bits.push('fit your '+k.wish.length+(k.wish.length===1?' wish':' wishes')+' where they make sense, and say which it left out');
+  var t=bits.join(', ');return 'VERA will '+t+'.';}
+function tiAskId_(){return 'ask'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+function tiBlankIdea_(){return {title:'',where:'',months:[],nightsMin:null,nightsMax:null,travelers:'',budget:null,pace:'balanced',openTo:[],mustHaves:'',status:'brainstorming',pieces:[],alsoPossible:[]};}
 function tiBlankOption_(ideaId){return {ideaId:ideaId,name:'',source:'manual',flag:'',legs:[],cost:{},pros:[],cons:[]};}
 // A quick start for an option's route: one flight in, one stop, one flight home.
 function tiSimpleLegs_(){return [{kind:'move',mode:'fly',from:'Home',to:'',note:''},{kind:'stop',place:'',nights:7,note:''},{kind:'move',mode:'fly',from:'',to:'Home',note:''}];}
@@ -2569,15 +2581,23 @@ var TI_EYEBROW={fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'
 function tiChip_(h,key,label,on,onClick){return h('button',{key:key,type:'button',onClick:onClick,'aria-pressed':!!on,className:'ti-chip'+(on?' on':''),
   style:{minHeight:36,padding:'0 12px',borderRadius:999,border:'1px solid '+(on?TI.acc:'#24386a'),background:on?'#1a2c55':'transparent',color:on?TI.hi:'#cfe0ff',fontSize:13,fontWeight:on?700:500,cursor:'pointer'}},label);}
 
-function TiRoute(props){var h=React.createElement;var legs=props.legs||[];
+function TiRoute(props){var h=React.createElement;var legs=props.legs||[];var marked=legs.some(function(l){return l.vera||l.piece;});
   var home=function(k,t){return h('div',{key:k,style:{padding:'4px 10px',borderRadius:8,border:'1px dashed #2a3f6f',fontSize:12,color:TI.mute}},t);};
-  return h('div',{className:'ti-route',style:{display:'flex',flexDirection:'column',gap:5}},home('h0','Home'),
-    legs.map(function(l,i){if(l.kind==='stop')return h('div',{key:i,className:'ti-stop',style:{display:'flex',justifyContent:'space-between',gap:8,padding:'7px 10px',borderRadius:8,background:TI.pill,fontSize:13,color:TI.hi,fontWeight:600}},
-        h('span',{style:{minWidth:0}},l.place),h('span',{style:{fontWeight:500,color:TI.soft,flex:'none'}},(l.nights||0)+(l.nights===1?' night':' nights')));
+  // Marked routes: your pieces solid with a gold edge, what VERA filled in dashed.
+  var edge=function(l){return !marked?{}:l.vera?{border:'1px dashed #4a6aa8',background:'transparent'}:{border:'1px solid '+TI.gold};};
+  var tag=function(l){if(!marked||!(l.vera||l.piece))return null;var t=l.vera?'VERA':l.piece==='anchor'?'anchor':l.piece==='wish'?'wish':'yours';
+    return h('span',{className:l.vera?'ti-tag-vera':'ti-tag-yours',style:{fontSize:10,fontWeight:800,letterSpacing:'.06em',color:l.vera?TI.acc:'#e5c56d',flex:'none',textTransform:'uppercase'}},t);};
+  return h('div',{className:'ti-route',style:{display:'flex',flexDirection:'column',gap:5}},
+    marked&&h('div',{style:{display:'flex',gap:12,flexWrap:'wrap',fontSize:11,color:TI.mute}},
+      h('span',{style:{display:'inline-flex',alignItems:'center',gap:5}},h('span',{style:{width:18,height:10,borderRadius:3,border:'1px solid '+TI.gold}}),'Your pieces'),
+      h('span',{style:{display:'inline-flex',alignItems:'center',gap:5}},h('span',{style:{width:18,height:10,borderRadius:3,border:'1px dashed #4a6aa8'}}),'VERA filled in')),
+    home('h0','Home'),
+    legs.map(function(l,i){if(l.kind==='stop')return h('div',{key:i,className:'ti-stop'+(l.vera?' ti-vera':'')+(l.piece?' ti-piece':''),style:Object.assign({display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'7px 10px',borderRadius:8,background:TI.pill,fontSize:13,color:TI.hi,fontWeight:600},edge(l))},
+        h('span',{style:{minWidth:0}},l.place),h('span',{style:{display:'flex',gap:8,alignItems:'center',fontWeight:500,color:TI.soft,flex:'none'}},(l.nights||0)+(l.nights===1?' night':' nights'),tag(l)));
       var m=tiModeOf_(l.mode);var path=[l.from,l.to].filter(Boolean).join(' → ');
-      return h('div',{key:i,className:'ti-move',style:{display:'flex',alignItems:'center',gap:8,fontSize:12,color:TI.mute,paddingLeft:4}},
+      return h('div',{key:i,className:'ti-move'+(l.vera?' ti-vera':'')+(l.piece?' ti-piece':''),style:Object.assign({display:'flex',alignItems:'center',gap:8,fontSize:12,color:TI.mute,padding:marked?'5px 8px':'0 0 0 4px',borderRadius:8},edge(l))},
         h('span',{style:{fontSize:10,fontWeight:800,letterSpacing:'.06em',padding:'3px 6px',borderRadius:5,background:'#24386a',color:'#cfe0ff',minWidth:40,textAlign:'center',flex:'none'}},m[1]),
-        h('span',{style:{minWidth:0}},[path,l.note].filter(Boolean).join(' · ')||m[2]));}),home('h1','Home'));}
+        h('span',{style:{minWidth:0,flex:1}},[path,l.note].filter(Boolean).join(' · ')||m[2]),tag(l));}),home('h1','Home'));}
 
 function TiCost(props){var h=React.createElement;var cost=props.cost||{};var total=tiCostTotal_(cost);var fit=tiBudgetFit_(total,props.budget);
   var rows=TI_COSTS.filter(function(c){return cost[c[0]];});
@@ -2603,7 +2623,14 @@ function TiOptionCard(props){var h=React.createElement;var o=props.option;var st
           style:{width:44,height:44,borderRadius:10,border:'1px solid '+(star?TI.gold:'#24386a'),background:star?'#33280f':'transparent',color:star?'#f6dc97':TI.mute,fontSize:18,cursor:'pointer'}},star?'★':'☆'),
         h('button',{type:'button',className:'ti-out-btn','aria-label':out?'Bring back':'Rule out','aria-pressed':out,disabled:props.busy,onClick:function(){props.onFlag(out?'':'out');},
           style:{width:44,height:44,borderRadius:10,border:'1px solid #24386a',background:out?'#3a1218':'transparent',color:out?'#ffb0b0':TI.mute,fontSize:16,cursor:'pointer'}},'✕'))),
+    o.verdict&&TI_VERDICT[o.verdict.level]&&h('div',{className:'ti-verdict ti-verdict-'+o.verdict.level,style:{display:'flex',flexDirection:'column',gap:4,padding:'10px 12px',borderRadius:10,background:TI_VERDICT[o.verdict.level][1],border:'1px solid '+TI_VERDICT[o.verdict.level][2]}},
+      h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.06em',color:TI_VERDICT[o.verdict.level][3]}},"VERA'S TAKE · "+TI_VERDICT[o.verdict.level][0]),
+      h('span',{style:{fontSize:13,lineHeight:1.45,color:TI_VERDICT[o.verdict.level][4]}},o.verdict.text)),
     o.legs.length?h(TiRoute,{legs:o.legs}):h('span',{style:{fontSize:13,color:TI.mute}},'No route yet.'),
+    o.wishes&&(o.wishes.fit.length||o.wishes.left.length)?h('div',{className:'ti-wishes',style:{display:'flex',flexDirection:'column',gap:4,fontSize:13,lineHeight:1.4}},
+      h('span',{style:TI_EYEBROW},'Your wishes'),
+      o.wishes.fit.length>0&&h('span',{style:{color:TI.ok}},o.wishes.fit.map(function(w){return '✓ '+w;}).join(' · ')),
+      o.wishes.left.map(function(w,i){return h('span',{key:i,style:{color:TI.warn}},'✕ '+w.name+(w.why?': '+w.why:''));})):null,
     h(TiCost,{cost:o.cost,budget:props.budget}),
     (o.pros.length||o.cons.length)?h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},list('FOR',TI.ok,o.pros),list('AGAINST',TI.warn,o.cons)):null,
     h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'ti-edit-option',onClick:props.onEdit,disabled:props.busy,style:tiBtn_()},'Edit')));}
@@ -2655,6 +2682,41 @@ function TiOptionEditor(props){var h=React.createElement;
       h('button',{type:'button',className:'ti-save-option',onClick:save,disabled:props.busy||!String(o.name||'').trim(),style:tiBtn_('primary')},props.busy?'Saving…':'Save option'),
       h('button',{type:'button',onClick:props.onCancel,disabled:props.busy,style:tiBtn_()},'Cancel'),
       o.id&&h('button',{type:'button',className:'ti-delete-option',onClick:function(){props.onDelete(o);},disabled:props.busy,style:Object.assign(tiBtn_('danger'),{marginLeft:'auto'})},'Delete')));}
+
+function TiPieces(props){var h=React.createElement;var _e=React.useState(false),editing=_e[0],setEditing=_e[1];
+  var _d=React.useState([]),draft=_d[0],setDraft=_d[1];var k=tiPiecesByKind_(props.pieces);
+  var start=function(){setDraft(JSON.parse(JSON.stringify(props.pieces||[])));setEditing(true);};
+  var add=function(kind){setDraft(function(p){var g=kind==='choice'?((p.filter(function(x){return x.kind==='choice';}).slice(-1)[0]||{}).group||'Which one'):'';return p.concat([{kind:kind,group:g,name:'',detail:''}]);});};
+  var set=function(i,f,v){setDraft(function(p){var n=p.slice();n[i]=Object.assign({},n[i]);n[i][f]=v;return n;});};
+  var drop=function(i){setDraft(function(p){var n=p.slice();n.splice(i,1);return n;});};
+  var small=Object.assign({},TI_INPUT,{minHeight:40,fontSize:14,padding:'0 8px'});
+  var tagOf=function(kind){var t=TI_PIECES.filter(function(x){return x[0]===kind;})[0];return h('span',{style:{fontSize:10,fontWeight:800,letterSpacing:'.07em',padding:'3px 7px',borderRadius:5,background:t[3],color:t[4],flex:'none'}},t[1]);};
+  var box={display:'flex',flexDirection:'column',gap:10,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+TI.br};
+  if(editing)return h('div',{className:'ti-pieces-editor',style:box},
+    h('span',{style:{fontSize:16,fontWeight:700,color:TI.hi}},'Your pieces'),
+    h('span',{style:{fontSize:13,color:TI.mute,lineHeight:1.45}},'Add what you already know, as loosely as you know it. Either/or pieces with the same slot name are alternatives.'),
+    draft.map(function(p,i){return h('div',{key:i,className:'ti-piece-row',style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',padding:8,borderRadius:8,border:'1px solid #24386a'}},
+      h('select',{'aria-label':'Kind',value:p.kind,onChange:function(e){set(i,'kind',e.target.value);},style:Object.assign({},small,{width:120,flex:'none'})},TI_PIECES.map(function(t){return h('option',{key:t[0],value:t[0]},t[0]==='choice'?'Either/or':t[0]==='anchor'?'Anchor':'Wish');})),
+      p.kind==='choice'&&h('input',{type:'text','aria-label':'Slot',placeholder:'Which cruise',value:p.group,onChange:function(e){set(i,'group',e.target.value);},style:Object.assign({},small,{flex:'1 1 110px',width:'auto'})}),
+      h('input',{type:'text','aria-label':'Piece',placeholder:p.kind==='anchor'?'A Mediterranean cruise, ~7 nights':p.kind==='wish'?'Lake Como':'Cruise A: Genoa round trip',value:p.name,onChange:function(e){set(i,'name',e.target.value);},style:Object.assign({},small,{flex:'2 1 180px',width:'auto'})}),
+      h('input',{type:'text','aria-label':'Detail',placeholder:'Dates, ports, how firm',value:p.detail,onChange:function(e){set(i,'detail',e.target.value);},style:Object.assign({},small,{flex:'2 1 160px',width:'auto'})}),
+      h('button',{type:'button','aria-label':'Remove',onClick:function(){drop(i);},style:{width:40,height:40,flex:'none',borderRadius:8,border:'1px solid #24386a',background:'transparent',color:'#cfe0ff',cursor:'pointer'}},'✕'));}),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'ti-add-anchor',onClick:function(){add('anchor');},style:Object.assign(tiBtn_(),{border:'1px dashed '+TI.gold,color:'#e5c56d'})},'+ Anchor'),
+      h('button',{type:'button',className:'ti-add-choice',onClick:function(){add('choice');},style:Object.assign(tiBtn_(),{border:'1px dashed #2f5ea8',color:'#a8c5f5'})},'+ Either/or'),
+      h('button',{type:'button',className:'ti-add-wish',onClick:function(){add('wish');},style:Object.assign(tiBtn_(),{border:'1px dashed #24386a'})},'+ Wish')),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'ti-save-pieces',disabled:props.busy,onClick:function(){props.onSave(draft.filter(function(p){return String(p.name||'').trim();}));setEditing(false);},style:tiBtn_('primary')},'Save pieces'),
+      h('button',{type:'button',onClick:function(){setEditing(false);},style:tiBtn_()},'Cancel')));
+  return h('div',{className:'ti-pieces',style:box},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:TI_EYEBROW},'Your pieces'),
+      h('button',{type:'button',className:'ti-edit-pieces',onClick:start,disabled:props.busy,style:Object.assign(tiBtn_(),{minHeight:36})},k.count?'Edit pieces':'+ Add what you know')),
+    !k.count&&h('span',{style:{fontSize:13,color:TI.mute,lineHeight:1.45}},'Optional. Already set on a cruise? Torn between two? Have a wish list? Add them and VERA builds around them.'),
+    k.anchor.map(function(p,i){return h('div',{key:'a'+i,style:{display:'flex',gap:8,alignItems:'baseline',flexWrap:'wrap',fontSize:13}},tagOf('anchor'),h('b',{style:{color:TI.hi}},p.name),p.detail&&h('span',{style:{color:TI.soft}},p.detail));}),
+    Object.keys(k.choice).map(function(g){return h('div',{key:'c'+g,style:{display:'flex',gap:8,alignItems:'baseline',flexWrap:'wrap',fontSize:13}},tagOf('choice'),h('span',{style:{color:'#a8c5f5',fontWeight:700}},g+':'),
+      h('span',{style:{color:TI.hi}},k.choice[g].map(function(p){return p.name+(p.detail?' ('+p.detail+')':'');}).join('  or  ')));}),
+    k.wish.length>0&&h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',fontSize:13}},tagOf('wish'),k.wish.map(function(p,i){return h('span',{key:i,style:{padding:'4px 10px',borderRadius:999,background:TI.pill,color:TI.hi}},p.name);})),
+    h('span',{className:'ti-ask-plan',style:{fontSize:12,lineHeight:1.45,color:TI.soft}},tiAskPlan_(props.pieces)));}
 
 function TiBriefEditor(props){var h=React.createElement;
   var _s=React.useState(function(){return JSON.parse(JSON.stringify(props.idea));}),d=_s[0],setD=_s[1];
@@ -2725,6 +2787,7 @@ function TripIdeasView(props){var h=React.createElement;
   var _m=React.useState(''),err=_m[0],setErr=_m[1];
   var _a=React.useState(false),showArchived=_a[0],setShowArchived=_a[1];
   var _o=React.useState(false),showOut=_o[0],setShowOut=_o[1];
+  var _k=React.useState(''),asking=_k[0],setAsking=_k[1];
   var load=function(){if(!props.apiUrl||!props.apiToken){setData({loading:false,ideas:[],options:[],error:'Connect VERA first.'});return;}
     apiGet(props.apiUrl,props.apiToken,{action:'trip_ideas'}).then(function(r){setData({loading:false,ideas:r.ideas||[],options:r.options||[]});})
       .catch(function(e){setData({loading:false,ideas:[],options:[],error:e.message});});};
@@ -2738,6 +2801,10 @@ function TripIdeasView(props){var h=React.createElement;
   var flagOption=function(o,flag){post({action:'trip_option_save',option:Object.assign({},o,{flag:flag})},function(r){putOption(r.option);});};
   var deleteOption=function(o){if(!window.confirm('Delete "'+o.name+'"?'))return;post({action:'trip_option_delete',id:o.id},function(){setData(function(p){return Object.assign({},p,{options:p.options.filter(function(x){return x.id!==o.id;})});});setEditing(null);});};
   var deleteIdea=function(i){if(!window.confirm('Delete "'+i.title+'" and all of its options?'))return;post({action:'trip_idea_delete',id:i.id},function(){setData(function(p){return Object.assign({},p,{ideas:p.ideas.filter(function(x){return x.id!==i.id;}),options:p.options.filter(function(x){return x.ideaId!==i.id;})});});setView({mode:'board'});});};
+  var savePieces=function(i,pieces){post({action:'trip_idea_save',idea:Object.assign({},i,{pieces:pieces})},function(r){putIdea(r.idea);});};
+  // One ask id per press: a retried request returns this ask's options instead of building a second set.
+  var askVera=function(i,focus){setAsking(focus||'all');post({action:'trip_idea_ask',ideaId:i.id,focus:focus||'',askId:tiAskId_()},function(r){setAsking('');
+      (r.options||[]).forEach(putOption);if(r.idea)putIdea(r.idea);}).then(function(){setAsking('');});};
   var setStatus=function(i,s){post({action:'trip_idea_save',idea:Object.assign({},i,{status:s})},function(r){putIdea(r.idea);});};
   var wrap={className:'trip-ideas',style:{display:'flex',flexDirection:'column',gap:14,padding:'4px 0 16px',color:TI.txt}};
   if(data.loading)return h('div',wrap,h('span',{style:{color:TI.mute,fontSize:14}},'Loading trip ideas…'));
@@ -2760,13 +2827,22 @@ function TripIdeasView(props){var h=React.createElement;
           h('select',{'aria-label':'Status',className:'ti-status',value:idea.status,disabled:busy,onChange:function(e){setStatus(idea,e.target.value);},style:Object.assign({},TI_INPUT,{width:'auto',minHeight:40,fontSize:14})},
             TI_STATUS.map(function(s){return h('option',{key:s[0],value:s[0]},s[1]);})),
           h('button',{type:'button',className:'ti-edit-brief',onClick:function(){setView({mode:'brief',id:idea.id});},style:Object.assign(tiBtn_(),{minHeight:40})},'Edit the brief'))),
+      h(TiPieces,{key:idea.id+'p',pieces:idea.pieces||[],busy:busy,onSave:function(p){savePieces(idea,p);}}),
       err&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},err),
-      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},h('button',{type:'button',className:'ti-add-option',disabled:busy||!!editing,onClick:function(){setEditing(tiBlankOption_(idea.id));},style:tiBtn_('primary')},'+ Add an option')),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+        h('button',{type:'button',className:'ti-ask',disabled:busy||!!editing,onClick:function(){askVera(idea);},style:tiBtn_('primary')},asking?'VERA is building…':'✨ Ask VERA for options'),
+        h('button',{type:'button',className:'ti-add-option',disabled:busy||!!editing,onClick:function(){setEditing(tiBlankOption_(idea.id));},style:tiBtn_()},'+ Add an option')),
+      asking&&h('span',{className:'ti-asking',role:'status',style:{fontSize:13,color:TI.soft}},'VERA is building '+(asking==='all'?'options':'"'+asking+'"')+'. This can take a minute.'),
       editing&&!editing.id&&h(TiOptionEditor,{key:'new',option:editing,busy:busy,onSave:saveOption,onCancel:function(){setEditing(null);},onDelete:deleteOption}),
       !live.length&&!editing&&h('span',{style:{fontSize:14,color:TI.mute}},'No options yet. Add one for each shape the trip could take: a simple fly-in, fly-out, or a mix of flights, drives, cruises and trains.'),
       h('div',{className:'ti-options',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',gap:12,alignItems:'start'}},live.map(card)),
       out.length>0&&h('button',{type:'button',className:'ti-show-out',onClick:function(){setShowOut(!showOut);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start'})},(showOut?'Hide ':'Show ')+out.length+' ruled-out option'+(out.length===1?'':'s')),
       showOut&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',gap:12,alignItems:'start'}},out.map(card)),
+      (idea.alsoPossible||[]).length>0&&h('div',{className:'ti-also',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,border:'1px dashed #4a6aa8'}},
+        h('span',{style:Object.assign({},TI_EYEBROW,{color:TI.acc})},'Also possible · not built'),
+        idea.alsoPossible.map(function(a,i){return h('div',{key:i,style:{display:'flex',flexDirection:'column',gap:6,fontSize:13,lineHeight:1.45}},
+          h('span',null,h('b',{style:{color:TI.hi}},a.name),a.why?' · '+a.why:''),
+          h('button',{type:'button',className:'ti-build-also',disabled:busy,onClick:function(){askVera(idea,a.name);},style:Object.assign(tiBtn_(),{alignSelf:'flex-start',minHeight:40})},'Build this one too'));})),
       h('button',{type:'button',className:'ti-delete-idea',onClick:function(){deleteIdea(idea);},disabled:busy,style:Object.assign(tiBtn_('danger'),{alignSelf:'flex-start',marginTop:8})},'Delete this idea'));}
   var groups=tiGroupIdeas_(data.ideas);
   var section=function(key,label){var list=groups[key];if(!list.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label),

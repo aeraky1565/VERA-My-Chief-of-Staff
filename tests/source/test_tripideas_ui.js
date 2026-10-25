@@ -29,6 +29,20 @@ async function setup(page) {
         o.pros = (o.pros || []).filter(Boolean); o.cons = (o.cons || []).filter(Boolean);
         Object.keys(o.cost || {}).forEach(k => { const c = o.cost[k]; if (c.low === '' && c.high === '') delete o.cost[k]; else { c.low = Number(c.low || c.high); c.high = Number(c.high || c.low); } });
         store.options = store.options.filter(x => x.id !== o.id).concat([o]); return Promise.resolve({ ok: true, option: o }); }
+      if (b.action === 'trip_idea_ask') {
+        const idea = store.ideas.find(x => x.id === b.ideaId);
+        const mk = (name, extra) => Object.assign({ id: 'OPT-' + (++n), ideaId: b.ideaId, name, source: 'vera', flag: '', created: now, pros: [], cons: [], cost: { flights: { low: 1500, high: 2000, basis: 'VERA estimate' } } }, extra);
+        const opts = b.focus ? [mk(b.focus, { legs: [{ kind: 'stop', place: 'Provence', nights: 4, piece: 'choice', vera: false }] })] : [
+          mk('Swiss train → Cruise A', { legs: [{ kind: 'move', mode: 'fly', from: 'Home', to: 'ZRH', vera: true }, { kind: 'stop', place: 'Zermatt', nights: 2, vera: true },
+              { kind: 'move', mode: 'train', from: 'Zermatt', to: 'St. Moritz', note: 'Glacier Express', piece: 'choice' }, { kind: 'stop', place: 'Lake Como', nights: 3, piece: 'wish' },
+              { kind: 'stop', place: 'Cruise A · Genoa round trip', nights: 7, piece: 'anchor' }, { kind: 'move', mode: 'fly', from: 'MXP', to: 'Home', vera: true }],
+            verdict: { level: 'fits', text: 'Every join is a train.' }, wishes: { fit: ['Lake Como'], left: [{ name: 'Beach days', why: 'only the port days' }] } }),
+          mk('Road trip → Cruise B', { legs: [{ kind: 'move', mode: 'car', from: 'Nice', to: 'Barcelona', piece: 'choice' }, { kind: 'stop', place: 'Cruise B', nights: 7, piece: 'anchor' }],
+            verdict: { level: 'cost', text: 'A one-way car fee.' }, wishes: { fit: [], left: [] } })];
+        store.options = store.options.concat(opts);
+        idea.alsoPossible = b.focus ? [] : [{ name: 'Road trip → Cruise A', why: 'Marseille is one of its ports.' }];
+        return Promise.resolve({ ok: true, options: opts, idea: Object.assign({}, idea) });
+      }
       return Promise.resolve({ ok: true });
     };
     window.confirm = () => true;
@@ -132,6 +146,42 @@ async function scenario(page, label, width) {
   check(label + ': the board shows the idea under Brainstorming', /Brainstorming/i.test(t) && /Spring in Europe/.test(t), t.slice(0, 300));
   check(label + ': …with what is in play: one option, the favourite, its nights and cost', /1 option/.test(t) && /★ Lisbon → Algarve → cruise/.test(t) && /13 nights/.test(t) && /\$5\.4k – \$7\.8k/.test(t), t);
   check(label + ': no sideways scroll on the board', await noScroll(page));
+
+  // Pieces, then Ask VERA
+  await act(page, () => window.__q('.ti-idea-card').click());
+  await act(page, () => window.__q('.ti-edit-pieces').click());
+  await act(page, () => { window.__q('.ti-add-anchor').click(); });
+  await act(page, () => { window.__q('.ti-add-choice').click(); });
+  await act(page, () => { window.__q('.ti-add-choice').click(); });
+  await act(page, () => { window.__q('.ti-add-wish').click(); });
+  await act(page, () => {
+    const rows = Array.from(document.querySelectorAll('#tiprobe .ti-piece-row'));
+    ['A Med cruise, ~7 nights', 'Cruise A', 'Cruise B', 'Lake Como'].forEach((v, i) => window.__set(rows[i].querySelector('input[aria-label="Piece"]'), v));
+    rows.filter(r => r.querySelector('input[aria-label="Slot"]')).forEach(r => window.__set(r.querySelector('input[aria-label="Slot"]'), 'Which cruise'));
+  });
+  await act(page, () => window.__q('.ti-save-pieces').click());
+  const pz = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_idea_save').pop());
+  check(label + ': pieces save with the idea: an anchor, a two-way either/or, a wish', pz && pz.idea.pieces.map(p => p.kind + ':' + p.name + (p.group ? '@' + p.group : '')).join('|') === 'anchor:A Med cruise, ~7 nights|choice:Cruise A@Which cruise|choice:Cruise B@Which cruise|wish:Lake Como', JSON.stringify(pz && pz.idea.pieces));
+  t = await text(page);
+  check(label + ': the pieces show, with what VERA will do', /A Med cruise, ~7 nights/.test(t) && /Which cruise:\s*Cruise A\s+or\s+Cruise B/.test(t) && /one option per choice for which cruise \(Cruise A or Cruise B\)/.test(t), t.slice(0, 600));
+  await act(page, () => window.__q('.ti-ask').click());
+  await wait(150);
+  const ask = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_idea_ask').pop());
+  check(label + ': Ask VERA sends the idea and a one-time ask id', ask && ask.ideaId && /^ask/.test(ask.askId) && !ask.focus, JSON.stringify(ask));
+  const vc = await page.$$eval('#tiprobe .ti-option', ns => ns.map(n => ({ text: n.innerText, vera: n.querySelectorAll('.ti-vera').length, piece: n.querySelectorAll('.ti-piece').length })));
+  const sw = vc.find(c => /Swiss train → Cruise A/.test(c.text)) || { text: '', vera: 0, piece: 0 };
+  check(label + ': VERA\'s options arrive, with its take', /VERA'S TAKE · FITS WELL/i.test(sw.text) && /Every join is a train/.test(sw.text) && vc.some(c => /WORKS, WITH A COST/i.test(c.text)), sw.text.slice(0, 300));
+  check(label + ': your pieces and VERA\'s joins are told apart', sw.vera === 3 && sw.piece === 3 && /Your pieces/.test(sw.text) && /VERA filled in/.test(sw.text), JSON.stringify({ vera: sw.vera, piece: sw.piece }));
+  check(label + ': wishes fitted and left out, with why', /✓ Lake Como/.test(sw.text) && /✕ Beach days: only the port days/.test(sw.text));
+  t = await text(page);
+  check(label + ': what VERA saw but did not build is offered', /Also possible · not built/i.test(t) && /Road trip → Cruise A/.test(t) && !!(await page.$('#tiprobe .ti-build-also')));
+  await act(page, () => window.__q('.ti-build-also').click());
+  await wait(150);
+  const focus = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_idea_ask').pop());
+  check(label + ': "Build this one too" asks for just that one', focus && focus.focus === 'Road trip → Cruise A' && focus.askId !== ask.askId);
+  check(label + ': …which then leaves the list', !(await page.$('#tiprobe .ti-also')) && /Road trip → Cruise A/.test((await page.$$eval('#tiprobe .ti-option-name', ns => ns.map(n => n.innerText))).join('|')));
+  check(label + ': no sideways scroll with VERA\'s options', await noScroll(page));
+  if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-ask-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 }
 
 (async () => {

@@ -240,9 +240,10 @@ const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', '
 // forwarding, so anything still holding a losing id resolves instead of vanishing.
 const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status'];
 // Trip Ideas (TripIdeas.js). Months is a JSON list of 'yyyy-MM'; empty means any time.
-const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated'];
-// Legs and Cost are JSON (see tiCleanLegs_ / tiCleanCost_); Pros and Cons are newline lists.
-const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated'];
+// Pieces (anchors, either/or, wishes) and Also Possible are JSON lists.
+const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated', 'Pieces', 'Also Possible'];
+// Legs, Cost, Verdict and Wishes are JSON (see tiCleanOption_); Pros and Cons are newline lists.
+const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated', 'Verdict', 'Wishes'];
 const SYSTEM_LOG_HEADERS        = ['Timestamp', 'Routine', 'Category', 'Status', 'Summary', 'Duration (s)', 'Error'];
 const PROCESSED_EMAILS_HEADERS  = ['Message ID', 'Processed At', 'Subject', 'Mode', 'Outcome', 'Pending Data'];
 const MORNING_ROUTINE_HEADERS   = ['ID', 'Item', 'Source', 'Sort', 'Checked', 'Checked At', 'Added Date'];

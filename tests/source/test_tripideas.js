@@ -36,7 +36,8 @@ const S = vm.createContext({
   console, JSON, Math, Number, String, Array, Date, isFinite,
   TABS: { TRIP_IDEAS: 'Trip Ideas', TRIP_IDEA_OPTIONS: 'Trip Idea Options' },
   TRIP_IDEAS_HEADERS: headers('TRIP_IDEAS_HEADERS'), TRIP_IDEA_OPTIONS_HEADERS: headers('TRIP_IDEA_OPTIONS_HEADERS'),
-  Utilities: { getUuid: () => (++uuid).toString(16).padStart(12, 'a') + '-0000-0000-0000-000000000000' },
+  Utilities: { getUuid: () => (++uuid).toString(16).padStart(12, 'a') + '-0000-0000-0000-000000000000', sleep: () => {} },
+  Logger: { log: () => {} },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
 });
 S.sheets = { 'Trip Ideas': fakeSheet(S.TRIP_IDEAS_HEADERS), 'Trip Idea Options': fakeSheet(S.TRIP_IDEA_OPTIONS_HEADERS) };
@@ -118,8 +119,82 @@ console.log('\nthe endpoints');
   check('deleting an idea removes it and its options', del.ok && del.optionsRemoved === 1 && S.sheets['Trip Ideas'].rows.length === 1 && S.sheets['Trip Idea Options'].rows.length === 1);
 }
 
+console.log('\npieces, and VERA\'s marks on an option');
+{
+  S.rp = [{ kind: 'anchor', name: 'A Med cruise, ~7 nights', detail: 'any sailing Jun 1–20' }, { kind: 'choice', group: 'Which cruise', name: 'Cruise A', detail: 'Genoa round trip' },
+    { kind: 'choice', name: 'Cruise B' }, { kind: 'wish', name: 'Lake Como', group: 'ignored' }, { kind: 'bogus', name: 'No car' }, { kind: 'wish', name: '  ' }];
+  const ps = run('tiCleanPieces_(rp)');
+  check('pieces keep their kind; an unknown kind is a wish; a nameless piece is dropped', ps.map(p => p.kind).join() === 'anchor,choice,choice,wish,wish', ps.map(p => p.kind).join());
+  check('an either/or names its slot (a default when missing); others have none', ps[1].group === 'Which cruise' && ps[2].group === 'Choice' && ps[3].group === '');
+  S.vl = [{ kind: 'move', mode: 'fly', from: 'Home', to: 'ZRH', vera: true }, { kind: 'stop', place: 'Genoa cruise', nights: 7, piece: 'anchor', vera: 'yes' }];
+  const vl = run('tiCleanLegs_(vl)');
+  check('a leg VERA filled in is marked; only a true vera counts', vl[0].vera === true && vl[1].vera === false && vl[1].piece === 'anchor' && vl[0].piece === '');
+  check('a verdict needs a known level and words', run('tiCleanVerdict_({level:"fits",text:"All trains."})').level === 'fits' && run('tiCleanVerdict_({level:"great",text:"x"})') === null && run('tiCleanVerdict_({level:"cost"})') === null);
+  const w = run('tiCleanWishes_({fit:["Lake Como",""],left:[{name:"Beach days",why:"Only port days"},{why:"no name"}]})');
+  check('wishes: fitted names, and what was left out with why', w.fit.join() === 'Lake Como' && w.left.length === 1 && w.left[0].why === 'Only port days');
+  const fake = fakeSheet(['Idea ID', 'Title']);
+  run('tiSchema_')(fake, S.TRIP_IDEAS_HEADERS);
+  check('a tab made before the new columns gets their headers', fake.rows[0].join() === S.TRIP_IDEAS_HEADERS.join(), fake.rows[0].join());
+}
+
+console.log('\nwhat VERA is asked');
+{
+  S.ideaP = run('tiCleanIdea_({ title: "Alps & the Med", where: "Switzerland, Italy", months: ["2027-06"], nightsMin: 12, nightsMax: 16, budget: 12000, pieces: rp })');
+  S.ex = [{ name: 'Swiss train → Cruise A' }];
+  const pr = run('tiAskPrompt_(ideaP, ex, "Washington, DC")');
+  check('the brief is there: where, when, length, budget, home', /Where, roughly: Switzerland, Italy/.test(pr) && /When: Jun 2027/.test(pr) && /Length: 12–16 nights/.test(pr) && /\$12000/.test(pr) && /Home: Washington, DC/.test(pr));
+  check('anchors must be in every option', /Anchors \(must be in every option\):\n- A Med cruise, ~7 nights \(any sailing Jun 1–20\)/.test(pr), pr.slice(0, 900));
+  check('an either/or gets one option per choice', /Either\/or "Which cruise" \(exactly one per option; build one option per choice\):\n- Cruise A \(Genoa round trip\)/.test(pr));
+  check('wishes are fitted where they make sense, the rest explained', /Wishes \(fit them where they make sense; say which you left out and why\):\n- Lake Como/.test(pr));
+  check('VERA marks its own joins and does not repeat options', /vera = true/.test(pr) && /do not repeat them\): Swiss train → Cruise A/.test(pr));
+  check('no invented sailings, flight numbers or dates; costs are estimates', /Do not invent specific sailings, flight numbers/.test(pr) && /basis "VERA estimate"/.test(pr));
+  check('measured facts are not asked for', !/PTO|vacation days|forecast/i.test(pr));
+  S.ideaN = run('tiCleanIdea_({ title: "Spring in Europe" })');
+  const pn = run('tiAskPrompt_(ideaN, [], "")');
+  check('with no pieces, three deliberately different shapes', /Build 3 options that differ on purpose/.test(pn) && !/THEIR PIECES/.test(pn) && /When: any time/.test(pn));
+  check('a focused ask builds exactly one', /Build exactly ONE option now: Road trip → Cruise A/.test(run('tiAskPrompt_(ideaP, [], "", "Road trip → Cruise A")')));
+  S.ans = { options: [
+    { name: 'Swiss train → Cruise A', legs: [{ kind: 'move', mode: 'fly', from: 'Home', to: 'ZRH', vera: true }, { kind: 'stop', place: 'Zermatt', nights: 2, vera: true }], verdict: { level: 'fits', text: 'All trains.' }, source: 'chatgpt', flag: 'star', id: 'HACK' },
+    { name: 'No route', legs: [] }, { name: '', legs: [{ kind: 'stop', place: 'x', nights: 1 }] },
+    { name: 'B', legs: [{ kind: 'stop', place: 'x', nights: 1 }] }, { name: 'C', legs: [{ kind: 'stop', place: 'x', nights: 1 }] }, { name: 'D', legs: [{ kind: 'stop', place: 'x', nights: 1 }] }, { name: 'E', legs: [{ kind: 'stop', place: 'x', nights: 1 }] }],
+    alsoPossible: [{ name: 'Road trip → Cruise A', why: 'Marseille is a port.' }] };
+  const got = run('tiAskResult_(ans, "IDEA-X")');
+  check('VERA\'s options are cleaned: no route or no name is dropped, at most four', got.options.length === 4 && got.options.map(o => o.name).join() === 'Swiss train → Cruise A,B,C,D', got.options.map(o => o.name).join());
+  check('…and are VERA\'s, under this idea, with no id or flag of their own', got.options[0].source === 'vera' && got.options[0].ideaId === 'IDEA-X' && got.options[0].id === '' && got.options[0].flag === '' && got.options[0].verdict.level === 'fits');
+  check('what it saw but did not build is kept', got.alsoPossible.length === 1 && /Marseille/.test(got.alsoPossible[0].why));
+  check('no answer is no options, not a crash', run('tiAskResult_(null, "x")').options.length === 0);
+}
+
+console.log('\nAsk VERA, end to end');
+{
+  const cache = {}; let calls = 0;
+  S.CacheService = { getScriptCache: () => ({ get: k => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) };
+  S.getConfigValues = () => ({ weather_location: 'Washington, DC' });
+  S.callClaudeJson_ = (prompt, fb, opts) => { calls++; S.lastPrompt = prompt; S.lastOpts = opts; return S.reply; };
+  const made = run('webSaveTripIdea_({ idea: { title: "Alps & the Med", pieces: rp } })');
+  S.aid = made.idea.id;
+  S.reply = S.ans;
+  const before = S.sheets['Trip Idea Options'].rows.length;
+  const r = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask1" })');
+  check('Ask VERA saves its options under the idea', r.ok && r.options.length === 4 && S.sheets['Trip Idea Options'].rows.length === before + 4 && r.options.every(o => /^OPT-/.test(o.id) && o.source === 'vera'), JSON.stringify(r).slice(0, 200));
+  check('…with room for a long answer', S.lastOpts && S.lastOpts.maxTokens >= 4000);
+  check('…and keeps what it did not build on the idea', r.idea.alsoPossible.length === 1 && run('tiGetIdea_(aid)').alsoPossible[0].name === 'Road trip → Cruise A');
+  check('…its marks survive the sheet', run('webGetTripIdeas_()').options.filter(o => o.ideaId === S.aid)[0].legs[0].vera === true);
+  const again = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask1" })');
+  check('the same ask again (a retried request) returns the first answer and builds nothing', calls === 1 && again.ok && again.options.length === 4 && S.sheets['Trip Idea Options'].rows.length === before + 4);
+  S.reply = { options: [{ name: 'Road trip → Cruise A', legs: [{ kind: 'stop', place: 'Provence', nights: 4, piece: 'choice' }] }], alsoPossible: [] };
+  const f = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask2", focus: "Road trip → Cruise A" })');
+  check('building one of the "also possible" takes it off that list', f.ok && f.options.length === 1 && f.idea.alsoPossible.length === 0 && /Build exactly ONE option now: Road trip → Cruise A/.test(S.lastPrompt));
+  check('…and tells VERA what it already has', /do not repeat them\): Swiss train → Cruise A/.test(S.lastPrompt));
+  S.reply = null;
+  const rows = S.sheets['Trip Idea Options'].rows.length;
+  const bad = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask3" })');
+  check('no answer from VERA says so, and saves nothing', bad.ok === false && /could not build options/.test(bad.error) && S.sheets['Trip Idea Options'].rows.length === rows);
+  check('an idea that does not exist is refused', run('webAskVeraTripIdea_({ ideaId: "IDEA-NOPE" })').ok === false);
+}
+
 // ============ the dashboard block ===================================================
-const START = '// ---- TripIdeasView (Trip Ideas, stage 1) — SHARED VERBATIM', END = '// ---- /TripIdeasView ----';
+const START = '// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM', END = '// ---- /TripIdeasView ----';
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
 const A = block(APP), L = block(LITE);
 console.log('\nthe shared block');
@@ -158,10 +233,17 @@ const cr = code => vm.runInContext(code, C);
   const s = cr('tiIdeaSummary_({id:"a"}, opts)');
   check('a card counts the options still in play, and names the favourite', s.count === 2 && s.star === 'Train', JSON.stringify(s));
   check('…with the spread of nights and cost, ruled-out ones left out', s.nights.lo === 10 && s.nights.hi === 14 && s.cost.low === 1000 && s.cost.high === 4000, JSON.stringify(s));
+  C.pz = [{ kind: 'anchor', name: 'A Med cruise' }, { kind: 'choice', group: 'Which cruise', name: 'Cruise A' }, { kind: 'choice', group: 'Which cruise', name: 'Cruise B' }, { kind: 'wish', name: 'Lake Como' }, { kind: 'wish', name: 'Beach days' }];
+  const k = cr('tiPiecesByKind_(pz)');
+  check('pieces group by kind, either/or by slot', k.count === 5 && k.anchor.length === 1 && k.choice['Which cruise'].length === 2 && k.wish.length === 2);
+  check('the plan says what VERA will do with them', cr('tiAskPlan_(pz)') === 'VERA will build around A Med cruise, one option per choice for which cruise (Cruise A or Cruise B), fit your 2 wishes where they make sense, and say which it left out.', cr('tiAskPlan_(pz)'));
+  check('…and with none, that it builds from the brief', /three different shapes from the brief/.test(cr('tiAskPlan_([])')));
+  check('each ask gets its own id', cr('tiAskId_()') !== cr('tiAskId_()'));
   check('the quick route is fly in, stay, fly out', cr('tiSimpleLegs_().map(function(l){return l.kind==="stop"?"stop":l.mode;}).join()') === 'fly,stop,fly');
 }
 
 console.log('\nwiring');
+check('Ask VERA is wired', /case 'trip_idea_ask':\s+return jsonOut_\(webAskVeraTripIdea_\(body\)\);/.test(WEB));
 check('the five routes are wired', /case 'trip_ideas':\s+return jsonOut_\(webGetTripIdeas_\(\)\);/.test(WEB)
   && /case 'trip_idea_save':\s+return jsonOut_\(webSaveTripIdea_\(body\)\);/.test(WEB) && /case 'trip_idea_delete':\s+return jsonOut_\(webDeleteTripIdea_\(body\)\);/.test(WEB)
   && /case 'trip_option_save':\s+return jsonOut_\(webSaveTripIdeaOption_\(body\)\);/.test(WEB) && /case 'trip_option_delete':\s+return jsonOut_\(webDeleteTripIdeaOption_\(body\)\);/.test(WEB));
