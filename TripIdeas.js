@@ -449,6 +449,7 @@ function tiAskResult_(raw, ideaId) {
   return { options: options, alsoPossible: tiCleanAlso_(res.alsoPossible) };
 }
 
+// Worth one more try: rate-limited, or the service briefly down or overloaded.
 var TI_ASK_RETRY_CODES_ = [429, 500, 502, 503, 504, 529];
 
 /**
