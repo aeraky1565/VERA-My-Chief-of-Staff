@@ -365,3 +365,66 @@ function webGatheringToShopping_(body) {
   items.forEach(function(t) { addShoppingItem_(tabId, t); added++; });
   return { ok: true, added: added };
 }
+
+// ============================================================
+// COMING UP (top of Household): what needs doing soon, across Home Front.
+// ============================================================
+//
+// One summary, read from the sources already there: upkeep overdue or due soon,
+// today's daily chores left, a service due within 30 days, tonight's dinner, the
+// next guest stay, and a gathering in the next two weeks with its next to-do.
+// Each source is read on its own; one that fails is left out, never the card.
+
+var HF_COMING_MAX_ = 8;
+
+/** Pure: the Coming up items, overdue first, then by date. src: {chores, homeItems, meals, guests, gatherings}. */
+function hfComingUp_(src, today) {
+  src = src || {};
+  var out = [], soon30 = hfAddDays_(today, 30), soon14 = hfAddDays_(today, 14);
+  (src.chores || []).forEach(function(c) {
+    var s = hfUpkeepState_(c, today);
+    if (s && (s.status === 'overdue' || s.status === 'soon'))
+      out.push({ kind: 'upkeep', section: 'chores', label: String(c.Chore), detail: s.status === 'overdue' ? 'Overdue since ' + s.next : s.days === 0 ? 'Due today' : 'Due ' + s.next, date: s.next, tone: s.status });
+  });
+  var left = (src.chores || []).filter(function(c) { return c.Cadence === 'Daily' && !(c.Checked === true || String(c.Checked).toUpperCase() === 'TRUE'); }).length;
+  if (left) out.push({ kind: 'chores', section: 'chores', label: left + ' daily chore' + (left === 1 ? '' : 's') + ' left', detail: 'Today', date: today, tone: 'ok' });
+  (src.homeItems || []).forEach(function(it) {
+    var d = hfYmd_(it.nextService);
+    if (!d || d > soon30) return;
+    out.push({ kind: 'service', section: 'steward', label: String(it.item), detail: (d < today ? 'Service overdue since ' : 'Service due ') + d, date: d, tone: d < today ? 'overdue' : 'soon' });
+  });
+  (src.meals || []).forEach(function(m) {
+    if (hfYmd_(m.date) === today && String(m.mealName || '').trim()) out.push({ kind: 'meal', section: 'meal_plan', label: String(m.mealName).trim(), detail: 'Dinner tonight', date: today, tone: 'ok' });
+  });
+  var guest = (src.guests || []).filter(function(g) { return g.arrivalDate && (g.departureDate || g.arrivalDate) >= today && g.arrivalDate <= soon30; })[0];
+  if (guest) out.push({ kind: 'guests', section: 'guests', label: String(guest.label), detail: guest.arrivalDate <= today ? 'Staying until ' + (guest.departureDate || guest.arrivalDate) : 'Arrives ' + guest.arrivalDate, date: guest.arrivalDate < today ? today : guest.arrivalDate, tone: 'ok' });
+  (src.gatherings || []).filter(function(g) { return g.date && g.date >= today && g.date <= soon14; }).forEach(function(g) {
+    var next = (g.todos || []).filter(function(t) { return !t.done; }).map(function(t) { return { text: t.text, due: hfTodoDue_(g.date, t.before) }; })
+      .sort(function(a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; })[0];
+    out.push({ kind: 'gathering', section: 'gatherings', label: String(g.title), detail: next ? 'Next: ' + next.text + ' by ' + next.due : 'On ' + g.date + ', all set', date: next ? next.due : g.date,
+      tone: next && next.due < today ? 'overdue' : next && next.due <= hfAddDays_(today, 3) ? 'soon' : 'ok' });
+  });
+  var rank = { overdue: 0, soon: 1, ok: 2 };
+  out.sort(function(a, b) { return (rank[a.tone] - rank[b.tone]) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
+  return out.slice(0, HF_COMING_MAX_);
+}
+
+function hfTry_(name, fn, missing) { try { return fn(); } catch (e) { missing.push(name); Logger.log('homefront_coming_up: ' + name + ' skipped: ' + e.message); return []; } }
+
+/** GET homefront_coming_up → {ok, today, items, missing}: missing names a source that could not be read. */
+function webHomeFrontComingUp_() {
+  var today = hfToday_(), missing = [], ss = getSpreadsheet();
+  var src = {
+    chores: hfTry_('chores', function() { return hfReadChores_(ss.getSheetByName(TABS.CHORES), today); }, missing),
+    homeItems: hfTry_('service', function() {
+      var sh = ss.getSheetByName(TABS.HOME_ITEMS);
+      if (!sh || sh.getLastRow() < 2) return [];
+      return sh.getRange(2, 1, sh.getLastRow() - 1, HOME_ITEM_HEADERS.length).getValues().filter(function(r) { return String(r[0] || '').trim(); })
+        .map(function(r) { return { item: String(r[0]).trim(), nextService: r[5] }; });
+    }, missing),
+    meals: hfTry_('meals', function() { return getMealPlanWeek_(getCurrentWeekStart_()); }, missing),
+    guests: hfTry_('guests', function() { return getUpcomingGuests_(readPTOConfig_()); }, missing),
+    gatherings: hfTry_('gatherings', function() { return hfReadGatherings_(); }, missing),
+  };
+  return { ok: true, today: today, items: hfComingUp_(src, today), missing: missing };
+}

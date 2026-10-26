@@ -35,6 +35,29 @@ check('Household is first, and where Home Front opens (both dashboards)',
 check('the lite Home Front shows Household too', /\{sub === 'household' && \(\n        <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
 check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'🏘 Neighborhood'}") !== -1 && LITE.indexOf("{ id:'neighborhood_watch', label:'🏘 Neighborhood' }") !== -1);
 
+console.log('\nthe sitter & guest guide: the rules');
+C.HH = { sections: [
+  { section: 'Emergency', subsections: [{ subsection: '', rows: [{ label: 'Who to call first', value: 'Neighbor Dee 555-0100', notes: '' }] }] },
+  { section: 'Wi-Fi & codes', subsections: [{ subsection: 'Network', rows: [{ label: 'Wi-Fi password', value: 'blue-heron-42', notes: '' }, { label: 'Alarm PIN', value: '91827', notes: 'disarm by the door' }, { label: 'Spare', value: '', notes: '' }] }] },
+  { section: 'Utilities', subsections: [{ subsection: '', rows: [{ label: 'Provider', value: 'Example Power', notes: '' }, { label: 'Account number', value: '1234567890', notes: '' }] }] },
+  { section: 'Insurance', subsections: [{ subsection: '', rows: [{ label: 'Home policy #', value: 'HP-55512', notes: '' }] }] }] };
+C.names = C.HH.sections.map(x => x.section);
+check('the sitter preset ticks everything but money and paperwork', JSON.stringify(vm.runInContext('hfGuidePreset_(names, "sitter")', C)) === '{"Emergency":true,"Wi-Fi & codes":true,"Utilities":true,"Insurance":false}');
+check('the guests preset ticks only the practical bits', JSON.stringify(vm.runInContext('hfGuidePreset_(names, "guests")', C)) === '{"Emergency":true,"Wi-Fi & codes":true,"Utilities":false,"Insurance":false}');
+check('numbers, policies, accounts, IDs and PINs count as sensitive, by whole word; a password or a provider does not',
+  ['Account number', 'Home policy #', 'Alarm PIN', 'Member ID', 'VIN'].every(l => vm.runInContext('hfGuideSensitive_(' + JSON.stringify(l) + ')', C))
+  && !['Wi-Fi password', 'Provider', 'Spinach'].some(l => vm.runInContext('hfGuideSensitive_(' + JSON.stringify(l) + ')', C)));
+C.pk = { Emergency: true, 'Wi-Fi & codes': true, Utilities: true, Insurance: false };
+const gd = vm.runInContext('hfGuideBuild_(HH, pk, { note: "  Back Sunday  " })', C);
+check('the guide holds the sections picked, in order, without empty values', gd.sections.map(x => x.name).join() === 'Emergency,Wi-Fi & codes,Utilities' && gd.sections[1].subsections[0].rows.length === 2 && gd.note === 'Back Sunday', JSON.stringify(gd).slice(0, 300));
+check('…numbers masked by default, passwords as written', gd.sections[1].subsections[0].rows[0].value === 'blue-heron-42' && gd.sections[1].subsections[0].rows[1].value === '••••1827' && gd.sections[2].subsections[0].rows[1].value === '••••7890' && gd.sections[2].subsections[0].rows[0].value === 'Example Power');
+check('…and shown when switched on', vm.runInContext('hfGuideBuild_(HH, pk, { secrets: true })', C).sections[2].subsections[0].rows[1].value === '1234567890');
+const txt = vm.runInContext('hfGuideText_(hfGuideBuild_(HH, pk, { note: "Back Sunday" }))', C);
+check('as text: title, note, then each section with its rows', /^Our home: the guide\n\nBack Sunday\n\nEMERGENCY\n  Who to call first: Neighbor Dee 555-0100\n\nWI-FI & CODES\n  Network\n    Wi-Fi password: blue-heron-42\n    Alarm PIN: ••••1827 \(disarm by the door\)/.test(txt) && !/Insurance|HP-55512/i.test(txt), txt);
+C.evil = { sections: [{ section: '<b>x</b>', subsections: [{ subsection: '', rows: [{ label: 'a', value: '<script>alert(1)</script>', notes: '' }] }] }] };
+const html = vm.runInContext('hfGuideHtml_(hfGuideBuild_(evil, {"<b>x</b>": true}, {}))', C);
+check('as a page: printable, and every value escaped', /<!doctype html>/.test(html) && /&lt;script&gt;alert\(1\)&lt;\/script&gt;/.test(html) && !/<script>alert/.test(html) && /&lt;b&gt;x&lt;\/b&gt;/.test(html));
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -222,6 +245,43 @@ check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'�
       post = await page.evaluate(() => window.__posts.filter(p => p.action === 'gathering_save').pop());
       check(L + ': …and copies the menu only: who brings what cleared, no guests, no date, nothing to buy, fresh to-dos', post.gathering.title === 'Lunch with the neighbors' && post.gathering.menu.map(m => m.dish + '|' + m.who).join() === 'Quiche|,Salad|'
         && post.gathering.guests.length === 0 && post.gathering.date === '' && post.gathering.shopping.length === 0 && post.gathering.todos.length === 0, JSON.stringify(post.gathering));
+
+      // ---- Hosting › Sitter & guest guide ------------------------------------------------------
+      await page.evaluate(({ kind, HH }) => {
+        window.apiGet = (u, t, p) => Promise.resolve(p.action === 'get_household_info' ? JSON.parse(JSON.stringify(HH)) : { ok: true, items: [], recipes: [], takeouts: [], chores: [], vehicles: [], weeks: [], gatherings: [], templates: {} });
+        try { localStorage.removeItem('vera_guide_picks_v1'); } catch (e) {}
+        window.__clip = null; try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__clip = t; return Promise.resolve(); } } }); } catch (e) {}
+        window.__printed = null; window.open = () => ({ document: { open() {}, write(x) { window.__printed = x; }, close() {} }, focus() {}, print() { window.__didPrint = true; } });
+        document.querySelectorAll('#hfnprobe').forEach(x => x.remove());
+        const host = document.createElement('div'); host.id = 'hfnprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
+        ReactDOM.createRoot(host).render(React.createElement(kind === 'lite' ? HomeFrontLiteTab : HomeFrontTab, { apiUrl: 'https://vera.test/exec', apiToken: 't', features: {}, chores: [] }));
+      }, { kind, HH: { sections: [
+        { section: 'Emergency', subsections: [{ subsection: '', rows: [{ label: 'Who to call first', value: 'Neighbor Dee', notes: '' }] }] },
+        { section: 'Wi-Fi & codes', subsections: [{ subsection: '', rows: [{ label: 'Wi-Fi password', value: 'blue-heron-42', notes: '' }, { label: 'Alarm PIN', value: '91827', notes: '' }] }] },
+        { section: 'Utilities', subsections: [{ subsection: '', rows: [{ label: 'Account number', value: '1234567890', notes: '' }] }] },
+        { section: 'Insurance', subsections: [{ subsection: '', rows: [{ label: 'Home policy #', value: 'HP-55512', notes: '' }] }] }] } });
+      await wait(300);
+      await click('.hf-group', 'Hosting'); await wait(120); await click('.hf-tabs .subtab-btn', 'guide'); await wait(250);
+      check(L + ': the guide offers to make one from the cheat sheet', /4 sections to choose from/.test(await page.$eval('#hfnprobe .hf-guide', n => n.innerText).catch(() => '')));
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-guide-make').click()); await wait(150);
+      const boxes = () => page.$$eval('#hfnprobe .hf-guide-section', ls => ls.map(l => l.innerText.trim() + ':' + l.querySelector('input').checked).join());
+      check(L + ': it opens on Sitter: everything but Insurance', (await boxes()) === 'Emergency:true,Wi-Fi & codes:true,Utilities:true,Insurance:false' && /3 of 4 sections · numbers hidden/.test(await page.$eval('#hfnprobe .hf-guide-summary', n => n.innerText)), await boxes());
+      await page.evaluate(() => Array.from(document.querySelectorAll('#hfnprobe .hf-guide-preset')).find(b => b.innerText === 'Guests').click()); await wait(100);
+      check(L + ': Guests ticks just the practical sections', (await boxes()) === 'Emergency:true,Wi-Fi & codes:true,Utilities:false,Insurance:false');
+      await page.evaluate(() => Array.from(document.querySelectorAll('#hfnprobe .hf-guide-section')).find(l => /Emergency/.test(l.innerText)).querySelector('input').click()); await wait(100);
+      check(L + ': unticking one makes it Custom', /Custom/.test(await page.$eval('#hfnprobe .hf-guide-preset[aria-pressed="true"]', n => n.innerText)) && (await boxes()) === 'Emergency:false,Wi-Fi & codes:true,Utilities:false,Insurance:false');
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-guide-copy').click()); await wait(150);
+      let clip = await page.evaluate(() => window.__clip);
+      check(L + ': Copy text holds only what is ticked, with the PIN masked and the password as written', clip && /WI-FI & CODES/.test(clip) && /Wi-Fi password: blue-heron-42/.test(clip) && /Alarm PIN: ••••1827/.test(clip) && !/EMERGENCY|Neighbor Dee|1234567890|HP-55512/.test(clip), clip);
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-guide-secrets').click()); await wait(80);
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-guide-print').click()); await wait(400);
+      const pr = await page.evaluate(() => ({ html: window.__printed, did: !!window.__didPrint }));
+      check(L + ': Print / PDF opens the page and prints it; numbers shown once switched on', pr.did && /Alarm PIN<\/td><td>91827/.test(pr.html || ''), (pr.html || '').slice(0, 200));
+      check(L + ': no sideways scroll with the dialog open', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+      if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-guide-dialog'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfguide-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-guide-close').click()); await wait(80);
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-guide-make').click()); await wait(120);
+      check(L + ': the picks are remembered for next time', (await boxes()) === 'Emergency:false,Wi-Fi & codes:true,Utilities:false,Insurance:false' && /numbers shown/.test(await page.$eval('#hfnprobe .hf-guide-summary', n => n.innerText)));
 
       if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-nav'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfnav-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
       check(L + ': no page errors', errs.length === 0, errs.join(' | '));

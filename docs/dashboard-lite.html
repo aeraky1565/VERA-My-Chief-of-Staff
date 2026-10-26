@@ -4952,7 +4952,8 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
 // group's sections as chips. Household comes first and is where Home Front opens. Each group remembers
 // the section last opened in it. A section the dashboard doesn't offer (a feature switched off) is left
 // out, and a group with none left is hidden.
-// Also here, shared by both dashboards: upkeep in Chores (HfUpkeep), Hosting's Gatherings, and the sitter & guest guide.
+// Also here, shared by both dashboards: Coming up on Household, upkeep in Chores (HfUpkeep), Hosting's
+// Gatherings, and the sitter & guest guide.
 var HF_GROUPS=[
   {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch']},
   {id:'chores',label:'Chores',icon:'🧹',items:['chores','chores_for_others']},
@@ -5076,7 +5077,7 @@ function hfGatheringIcs_(g){var d=String(g.date||'').replace(/-/g,'');var stamp=
 function hfDownload_(name,text,type){try{var b=new Blob([text],{type:type||'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);}catch(e){}}
 var HF_CARD={display:'flex',flexDirection:'column',borderRadius:12,background:'#0d1528',border:'1px solid #1c2a48'};
-var HF_INP={minHeight:40,padding:'0 10px',borderRadius:8,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:14,boxSizing:'border-box',minWidth:0};
+var HF_INP={minHeight:40,padding:'0 10px',borderRadius:8,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:14,fontFamily:'inherit',boxSizing:'border-box',minWidth:0};
 function hfBtn_(kind){return {minHeight:40,padding:'0 14px',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600,whiteSpace:'nowrap',
   background:kind==='primary'?'#8ab4f8':'transparent',color:kind==='primary'?'#0b1430':kind==='danger'?'#ffb0b0':'#cfd8ef',border:kind==='primary'?'0':'1px solid '+(kind==='danger'?'#6a2a34':'#2a3a5c')};}
 var HF_EYE={fontSize:11,fontWeight:700,letterSpacing:'.08em',color:'#8a9abf'};
@@ -5305,6 +5306,23 @@ function HfGuide(props){var h=React.createElement;
           h('button',{type:'button',className:'hf-guide-download',disabled:!n,onClick:function(){act('download');},style:hfBtn_()},'Download')),
         msg&&h('span',{role:'status',className:'hf-guide-msg',style:{fontSize:13,color:/^✓/.test(msg)?'#8fe0a8':'#cfd8ef'}},msg),
         h('span',{style:{fontSize:12,color:'#8a9abf'}},'Your picks are remembered for next time, per preset, in this browser.'))));}
+
+// ---- Coming up (top of Household): what needs doing soon, from the other sections (HomeFront.js) ----
+var HF_CU_TONE={overdue:['#ffb0b0','OVERDUE'],soon:['#f6d27a','SOON'],ok:['#8a9abf','']};
+var HF_CU_WORD={upkeep:'Upkeep',chores:'Chores',service:'Service',meal:'Dinner',guests:'Guests',gathering:'Party'};
+function HfComingUp(props){var h=React.createElement;var _d=React.useState(null),d=_d[0],setD=_d[1];
+  React.useEffect(function(){apiGet(props.apiUrl,props.apiToken,{action:'homefront_coming_up'}).then(function(r){setD(r&&r.ok?r:{items:[],error:(r&&r.error)||'unavailable'});}).catch(function(e){setD({items:[],error:e.message});});},[props.apiUrl,props.apiToken]);
+  if(!d||(d.error&&!(d.items||[]).length))return null;
+  return h('section',{className:'hf-coming',style:{display:'flex',flexDirection:'column',gap:8,padding:'12px 14px',marginBottom:16,borderRadius:12,background:'#0b1630',border:'1px solid #2a3f6a',maxWidth:760}},
+    h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:'#e3c46a'}},'COMING UP ACROSS HOME FRONT'),
+    !(d.items||[]).length?h('span',{className:'hf-coming-none',style:{fontSize:13,color:'#8a9abf'}},'Nothing due soon. ✓')
+    :(d.items||[]).map(function(it,i){var t=HF_CU_TONE[it.tone]||HF_CU_TONE.ok;
+      return h('button',{key:i,type:'button',className:'hf-coming-item',onClick:function(){if(props.onPick)props.onPick(it.section);},
+        style:{display:'grid',gridTemplateColumns:'64px minmax(0,1fr) auto',gap:10,alignItems:'baseline',textAlign:'left',background:'transparent',border:0,borderTop:i?'1px solid #16223c':'none',padding:'8px 0',cursor:'pointer',color:'#dde1f0',fontSize:13,minHeight:40}},
+        h('span',{style:{color:'#8a9abf',fontSize:12}},HF_CU_WORD[it.kind]||''),
+        h('span',{style:{minWidth:0}},h('b',{style:{fontWeight:600}},it.label),h('span',{style:{color:'#aab6d6'}},' · '+it.detail)),
+        t[1]?h('span',{style:{fontSize:10,fontWeight:700,letterSpacing:'.06em',color:t[0]}},t[1]):h('span',{'aria-hidden':'true',style:{color:'#4d6080'}},'›'));}),
+    (d.missing||[]).length?h('span',{style:{fontSize:11,color:'#8a9abf'}},'Couldn’t read: '+d.missing.join(', ')):null);}
 // ---- /HfNav ----
 // ---- HomeFrontLiteTab -------------------------------------------------------
 
@@ -5570,7 +5588,10 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
       <HfNav tabs={SUBTABS} sub={sub} onPick={setSub} />
 
       {sub === 'household' && (
-        <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        <>
+          <HfComingUp apiUrl={apiUrl} apiToken={apiToken} onPick={setSub} />
+          <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+        </>
       )}
 
       {sub === 'gatherings' && (

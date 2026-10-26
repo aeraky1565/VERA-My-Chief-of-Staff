@@ -284,6 +284,7 @@ function doGet(e) {
       case 'chore_upkeep_set':      return jsonOut_(webUpkeepSet_(e));
       case 'chores_upkeep_starter': return jsonOut_(webUpkeepStarter_());
       case 'gatherings':            return jsonOut_(webGetGatherings_());
+      case 'homefront_coming_up':   return jsonOut_(webHomeFrontComingUp_());
       // Chores For Others (Issue #180)
       case 'get_chores_for_others':      return jsonOut_(webGetChoresForOthers_());
       case 'add_chore_for_others':       return jsonOut_(webAddChoreForOthers_(e));
