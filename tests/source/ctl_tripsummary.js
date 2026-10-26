@@ -20,6 +20,11 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripsummary.js';
 
 const CONTROLS = [
+  ['the plan\'s first flight ignores the Summary\'s arrival', both("if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=!!(ends&&ends.arrival);", "if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=true;")],
+  ['a plan stay is booked by any stay', both("booked=its.some(function(it){return TS_STAY_TYPES[it.type]&&named(it,w2);});", "booked=its.some(function(it){return TS_STAY_TYPES[it.type];});")],
+  ['a plan cruise needs no cruise', both("else if(l.kind==='move'&&l.mode==='ship')booked=cruise;", "else if(l.kind==='move'&&l.mode==='ship')booked=true;")],
+  ['synthetic items book the plan', both("var its=(items||[]).filter(function(it){return it&&!it._synthetic;});", "var its=(items||[]).filter(function(it){return it;});")],
+  ['place words keep filler', both("filter(function(x){return x.length>2&&['the','and','home','stay','nights','cruise','round','trip'].indexOf(x)===-1;});return w[0]||'';}", "filter(function(x){return x.length>2;});return w[0]||'';}")],
   ['an overnight flight\'s night counts as missing', both("if((m.endDate&&m.endDate>it.date)||(it.startTime&&it.endTime&&it.endTime<it.startTime))inAir[it.date]=it;", '')],
   ['the last night (at home) needs a stay', both('var nights=days.slice(0,-1);', 'var nights=days.slice(0);')],
   ['a Board … Disembark cruise covers nothing', both('if(board&&off&&board.date<off.date)for', 'if(false)for')],

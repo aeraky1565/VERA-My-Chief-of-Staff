@@ -386,6 +386,7 @@ function doGet(e) {
       case 'trip_ideas':            return jsonOut_(webGetTripIdeas_());
       case 'trip_idea_decide':      return jsonOut_(webTripIdeaDecide_(e.parameter));
       case 'aria_status':           return jsonOut_(webAriaStatus_(e.parameter));
+      case 'trip_aria':             return jsonOut_(webTripAria_(e.parameter));
       case 'trip_weather':          return jsonOut_(webTripWeather_(e.parameter));
       case 'trip_sheet':            return jsonOut_(webTripSheet_(e.parameter));
       case 'trip_ics':              return jsonOut_(webTripIcs_(e.parameter));
@@ -570,6 +571,7 @@ function doPost(e) {
       case 'trip_option_parse':          return jsonOut_(webParseTripIdeaOptions_(body));
       case 'aria_request_save':          return jsonOut_(webSaveAriaRequest_(body));
       case 'aria_request_withdraw':      return jsonOut_(webWithdrawAriaRequest_(body));
+      case 'aria_request_watch':         return jsonOut_(webWatchAriaRequest_(body));
       case 'career_resolve_suggestion':  return jsonOut_(webCareerResolveSuggestion_(body));
       // Phase 3: Network, Market, Brand, Exchange.
       case 'career_save_contact':        return jsonOut_(webCareerSaveContact_(body));

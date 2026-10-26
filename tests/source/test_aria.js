@@ -51,7 +51,7 @@ const S = vm.createContext({
   Logger: { log: m => { S.logs.push(String(m)); } },
   logs: [],
   TABS: { TRIP_META: 'TripMeta', ARIA_REQUESTS: 'ARIA Requests' }, TRIP_META_HEADERS: new Array(11).fill(''),
-  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
+  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
 });
 S.getSpreadsheet = () => ({ getSheetByName: () => tab([new Array(11).fill('h'), ['2027-07-01|Beach drive', '', '', '', '', '', '', 'Driving', '', '', '']]) });
 S.readTripRegistry_ = () => ({ rows: [
@@ -175,7 +175,7 @@ console.log('\nasking ARIA to scout an option');
   S.getSpreadsheet = () => ({ getSheetByName: n => n === 'ARIA Requests' ? rqTab : null });
   S.ensureSheet = (ss, n) => n === 'ARIA Requests' ? rqTab : null;
   S.getConfigValues = () => ({});
-  S.tiLocked_ = fn => fn(); S.tiNow_ = () => '2027-02-20T12:00:00.000Z'; let mint = 0; S.tiMintId_ = p => p + (++mint);
+  S.tiSchema_ = sh => sh;   S.tiLocked_ = fn => fn(); S.tiNow_ = () => '2027-02-20T12:00:00.000Z'; let mint = 0; S.tiMintId_ = p => p + (++mint);
   S.dateCellToIso_ = v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').trim();
   const opts = { 'OPT-ABC': S.opt };
   S.ariaIdeaOption_ = (i, o) => (S.ideasById[i] && opts[o.toUpperCase()]) ? { idea: S.ideasById[i], option: opts[o.toUpperCase()] } : null;
@@ -220,7 +220,7 @@ console.log('\nasking ARIA to scout an option');
   S.vtS = [{ tripId: 'TRIP-SET1', label: 'Spring in Europe', startDate: '2027-05-29' }];
   S.rqS = [{ ref: 'OPT-ABC', kind: 'watch', tripId: 'TRIP-SET1', status: 'active', created: '2027-02-20T00:00:00Z' }];
   check('while ARIA catches up, a trip a request names is not "ARIA has no row"', run('ariaGaps_(vtS, [], [], rqS, "2027-02-20")').noRow.length === 0 && run('ariaGaps_(vtS, [], [], [], "2027-02-20")').noRow.length === 1);
-  check('requests are written only to VERA\'s own tab', !/openById\([^)]*\)\.[^;]*(appendRow|setValues)/.test(SRC) && /function ariaRequestsSheet_\(\) \{ return ensureSheet\(getSpreadsheet\(\), TABS\.ARIA_REQUESTS/.test(SRC));
+  check('requests are written only to VERA\'s own tab', !/openById\([^)]*\)\.[^;]*(appendRow|setValues)/.test(SRC) && /function ariaRequestsSheet_\(\) \{ return tiSchema_\(ensureSheet\(getSpreadsheet\(\), TABS\.ARIA_REQUESTS/.test(SRC));
 }
 
 console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
@@ -326,6 +326,67 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   check('…and not after 22:00', due(22, 10, '') === false);
 }
 
+console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s booked');
+{
+  S.bud = [{ category: 'flights', budgeted: '$800' }, { category: 'Flights', budgeted: 120 }, { category: 'lodging', budgeted: 2000 }];
+  check('the ceiling is Trip Budget\'s flights line shared by the travelers', run('ariaCeilingFrom_(bud, 2)') === 460 && run('ariaCeilingFrom_([{category:"transport", budgeted: 900}], 2)') === null && run('ariaCeilingFrom_(bud, 0)') === null);
+  S.fl = [{ type: 'flight', date: '2027-04-06' }, { type: 'hotel', date: '2027-04-05' }, { type: 'flight', date: '2027-04-13' }];
+  check('flights out (on or a day after the start) and back (on or a day before the end) are booked', run('ariaFlightsBooked_(fl, "2027-04-05", "2027-04-13").both') === true);
+  check('…only the way out is not both', run('ariaFlightsBooked_([fl[0]], "2027-04-05", "2027-04-13").both') === false && run('ariaFlightsBooked_([{type:"flight",date:"2027-04-08"}], "2027-04-05", "2027-04-13").out') === false);
+
+  const RQ = [run('ARIA_REQUESTS_HEADERS').slice()];
+  const rq = { getLastRow: () => RQ.length, getRange: (r, c, nr, nc) => ({ getValues: () => RQ.slice(r - 1, r - 1 + nr).map(x => { const o = x.slice(c - 1, c - 1 + nc); while (o.length < nc) o.push(''); return o; }), setValues: v => v.forEach((x, i) => { RQ[r - 1 + i] = x.slice(); }) }), appendRow: v => RQ.push(v.slice()) };
+  const BUD = [['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes'], ['B1', '2027-04-05|Chicago Trip', 'flights', 'Flights', 720, '', ''], ['B2', 'other', 'flights', 'x', 99999, '', '']];
+  const budTab = { getLastRow: () => BUD.length, getRange: (r, c, nr, nc) => ({ getValues: () => BUD.slice(r - 1, r - 1 + nr).map(x => x.slice(c - 1, c - 1 + nc)) }) };
+  S.TABS.TRIP_BUDGET = 'Trip Budget'; S.TRIP_BUDGET_HEADERS = BUD[0];
+  S.getSpreadsheet = () => ({ getSheetByName: n => n === 'ARIA Requests' ? rq : n === 'Trip Budget' ? budTab : null });
+  S.ensureSheet = (ss, n) => n === 'ARIA Requests' ? rq : null;
+  S.tiSchema_ = sh => sh; S.tiLocked_ = fn => fn(); S.tiNow_ = () => '2027-02-20T12:00:00.000Z'; let mint = 100; S.tiMintId_ = p => p + (++mint);
+  S.getConfigValues = () => ({ home_airports: 'IAD, DCA' });
+  S.webGetTripMeta_ = () => ({ ok: true, tripTravellers: 2 });
+  S.resolveTripId_ = (t, o) => (o && o.mint === false && o.touch === false && t.label === 'Chicago Trip') ? 'TRIP-CHI' : '';
+  S.ariaPlanFor_ = () => null;
+  let status = { ok: true, configured: true, watchlist: [{ tripId: 'TRIP-CHI', label: 'Chicago Trip', status: 'draft', origins: '', dests: '', ceiling: null, travelers: null }], fares: [], requests: [] };
+  S.webAriaStatus_ = () => status;
+  const q = 'webTripAria_({ tripKey: "2027-04-05|Chicago Trip", label: "Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13" })';
+  let ta = run(q);
+  check('a trip\'s Trip ID is found from the trip, read only, nothing minted', ta.ok && ta.tripId === 'TRIP-CHI');
+  check('…its ARIA row (a Draft here) is found', ta.row && ta.row.status === 'draft' && ta.request === null);
+  check('the watch form comes prefilled: home airports, the trip\'s dates, travelers, the ceiling from Trip Budget\'s flights', ta.draft.origins === 'IAD, DCA' && ta.draft.earliest === '2027-04-05' && ta.draft.latest === '2027-04-13'
+    && ta.draft.travelers === 2 && ta.draft.ceiling === 360 && ta.draft.flexDays === 1 && ta.draft.dests === '', JSON.stringify(ta.draft));
+  S.ariaPlanFor_ = () => ({ idea: { id: 'IDEA-1', title: 'x' }, option: { id: 'OPT-9', legs: [{ kind: 'move', mode: 'fly', from: 'Home', to: 'ord' }] } });
+  check('…with where to fly from the settled plan when there is one', run(q).draft.dests === 'ORD');
+  S.ariaPlanFor_ = () => null;
+
+  check('asking needs where to fly to', /where you fly to/.test(run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", dests: " " })').error));
+  const w1 = run('webWatchAriaRequest_({ tripId: "trip-chi", tripKey: "2027-04-05|Chicago Trip", label: "Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", origins: "IAD", dests: "ORD", travelers: "2", ceiling: "$360", flexDays: "1" })');
+  check('Ask ARIA to watch writes a watch request for the trip, with no Ref', w1.ok && RQ.length === 2 && RQ[1][1] === 'watch' && RQ[1][2] === '' && RQ[1][3] === 'TRIP-CHI' && RQ[1][4] === '2027-04-05|Chicago Trip'
+    && RQ[1][7] === 'ORD' && RQ[1][15] === 360 && RQ[1][16] === 'active' && RQ[1][19] === 1, JSON.stringify(RQ[1]));
+  run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", origins: "IAD", dests: "MDW", ceiling: "400" })');
+  check('…asking again refreshes the one request', RQ.length === 2 && RQ[1][7] === 'MDW' && RQ[1][15] === 400);
+  status = Object.assign({}, status, { requests: run('ariaReadRequests_()') });
+  check('the trip then shows its request', run(q).request && run(q).request.dests === 'MDW');
+  run('webWatchAriaRequest_({ tripId: "TRIP-ZZZ", tripKey: "2027-08-01|Other", startDate: "2027-08-01", endDate: "2027-08-03", dests: "SEA" })');
+  check('Stop watching withdraws it by trip, and only that trip', run('webWithdrawAriaRequest_({ tripId: "TRIP-CHI" })').ok && RQ[1][16] === 'withdrawn' && RQ.find(r => r[3] === 'TRIP-ZZZ')[16] === 'active');
+  run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", dests: "ORD" })');
+
+  // VERA tells ARIA a trip is booked
+  S.readTripRegistry_ = () => ({ byId: { 'TRIP-CHI': { tripId: 'TRIP-CHI', label: 'Chicago Trip', startDate: '2027-04-05', endDate: '2027-04-13' },
+    'TRIP-LAX': { tripId: 'TRIP-LAX', label: 'LA', startDate: '2027-07-01', endDate: '2027-07-05' }, 'TRIP-NOPE': { tripId: 'TRIP-NOPE', label: 'Not yet', startDate: '2027-09-01', endDate: '2027-09-05' } }, rows: [] });
+  let asked = [];
+  const ITEMS = { 'TRIP-CHI': S.fl, 'TRIP-LAX': [{ type: 'flight', date: '2027-07-01' }, { type: 'flight', date: '2027-07-05' }], 'TRIP-NOPE': [{ type: 'flight', date: '2027-09-01' }] };
+  S.tripItemsFor_ = (key, a) => { asked.push(key); const id = Object.keys(S.readTripRegistry_().byId).find(k => S.readTripRegistry_().byId[k].startDate === a); return ITEMS[id] || []; };
+  S.wl = [{ tripId: 'TRIP-LAX', status: 'watching' }, { tripId: 'TRIP-NOPE', status: 'watching' }, { tripId: 'TRIP-OLD', status: 'booked' }];
+  const n = run('ariaMarkBooked_(wl)');
+  check('VERA marks a watched trip booked once its flights out and back are in', n === 2 && RQ.find(r => r[3] === 'TRIP-CHI')[16] === 'booked', n);
+  check('…and adds a booked request for a trip ARIA watches with no request (the parser\'s rows have no Trip Key)', RQ.some(r => r[3] === 'TRIP-LAX' && r[16] === 'booked' && r[1] === 'watch'));
+  check('…but not for a trip with only one way booked', !RQ.some(r => r[3] === 'TRIP-NOPE'));
+  const len = RQ.length; run('ariaMarkBooked_(wl)');
+  check('…and only once', RQ.length === len && RQ.filter(r => r[3] === 'TRIP-LAX').length === 1);
+  check('the booked check runs with the hourly ARIA sync', /try \{ ariaMarkBooked_\(t\.watch\); \}/.test(SRC));
+  check('the trip routes are wired', /case 'trip_aria':\s+return jsonOut_\(webTripAria_\(e\.parameter\)\);/.test(WEB) && /case 'aria_request_watch':\s+return jsonOut_\(webWatchAriaRequest_\(body\)\);/.test(WEB));
+}
+
 // ============ the dashboard block ===================================================
 const block = (s, a, b) => { const i = s.indexOf(a), j = s.indexOf(b); return i === -1 || j === -1 ? '' : s.slice(i, j + b.length); };
 const TS = '// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM', TE = '// ---- /TripIdeasView ----';
@@ -354,7 +415,7 @@ const cr = code => vm.runInContext(code, C);
 }
 
 console.log('\nwiring');
-check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated'];") !== -1);
+check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days'];") !== -1);
 check('ARIA\'s flags ride on the hourly trigger, ahead of the reminders switch', (() => { const R = fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8'); const i = R.indexOf('function hourlyCheck() {'), a = R.indexOf('maybeSyncAriaFlags_(new Date());', i), b = R.indexOf("reminders_enabled", i); return i !== -1 && a !== -1 && a < b; })());
 check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));

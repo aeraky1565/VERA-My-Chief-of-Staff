@@ -18,6 +18,16 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['the ceiling comes from transport, not flights', b => ({ [T]: swap(b[T], "if (String(r.category || '').toLowerCase() !== 'flights') return;", "if (String(r.category || '').toLowerCase() !== 'transport') return;") })],
+  ['the ceiling is not per person', b => ({ [T]: swap(b[T], "return any && travelers > 0 ? Math.round(total / travelers) : null;", "return any && travelers > 0 ? Math.round(total) : null;") })],
+  ['one way booked is booked', b => ({ [T]: swap(b[T], "return { out: out, back: back, both: out && back };", "return { out: out, back: back, both: out || back };") })],
+  ['a watch needs no destination', b => ({ [T]: swap(b[T], "  if (!dests) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };\n", "") })],
+  ['finding the trip mints an ID', b => ({ [T]: swap(b[T], "{ mint: false, touch: false }) || '').toUpperCase(); } catch (e) {} }", "{ mint: true }) || '').toUpperCase(); } catch (e) {} }") })],
+  ['asking again adds a second watch', b => ({ [T]: swap(b[T], "rows.map(ariaRequestFromRow_).forEach(function(r, i) { if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === tripId) at = i; });", "") })],
+  ['a trip ARIA watches on its own is never told booked', b => ({ [T]: swap(b[T], "if (w.status === 'watching' && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w };", "") })],
+  ['Stop watching by trip does nothing', b => ({ [T]: swap(b[T], "!(ref ? r.ref === ref : String(r.tripId).toUpperCase() === tid)", "!(r.ref === ref)") })],
+  ['the booked check never runs', b => ({ [T]: swap(b[T], "  try { ariaMarkBooked_(t.watch); }", "  try { }") })],
+  ['the watch form ignores Trip Budget', b => ({ [T]: swap(b[T], ": ariaCeilingFrom_(facts.budget, (row && row.travelers) || facts.travelers),", ": null,") })],
   ['settling leaves the request a scout', b => ({ [T]: swap(b[T], "r.kind = 'watch'; r.tripId = trip.tripId;", "r.kind = 'scout'; r.tripId = trip.tripId;") })],
   ['a requested trip shows as unwatched', b => ({ [T]: swap(b[T], "  (requests || []).forEach(function(r) { if (r.status === 'active' && r.tripId) has['id:' + String(r.tripId).toUpperCase()] = 1; });\n", "") })],
   ['the Config row is not read', b => ({ [T]: swap(b[T], "  try { return ariaSheetIdFrom_(getConfigValues()['roster_link_aria']); } catch (e) { return ''; }", "  return '';") })],

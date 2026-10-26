@@ -326,5 +326,21 @@ check('lite: the top-of-Agenda notices card is no longer shown', !/<VERANoticesC
   check(f + ': "No itinerary items" only when the day really has none', /!\(items\|\|\[\]\)\.some\(function\(i\)\{return i\.date===displayDay&&!i\._synthetic;\}\)&&/.test(card));
 });
 
+console.log('\nthe plan from a settled trip idea: booked ticks');
+{
+  S.legs = [{ kind: 'move', mode: 'fly', from: 'Home', to: 'LIS' }, { kind: 'stop', place: 'Lisbon', nights: 3 }, { kind: 'move', mode: 'car', from: 'Lisbon', to: 'Lagos' },
+    { kind: 'stop', place: 'Algarve', nights: 3 }, { kind: 'move', mode: 'ship', from: 'Cádiz', to: 'Barcelona' }, { kind: 'stop', place: 'Cruise', nights: 7 }, { kind: 'move', mode: 'fly', from: 'BCN', to: 'Home' }];
+  S.its = [{ type: 'hotel', title: 'Hotel Avenida', location: 'Av. da Liberdade, Lisboa, Portugal', date: '2027-05-29' },
+    { type: 'hotel', title: 'Casa Lisbon Baixa', location: 'Lisbon', date: '2027-05-30' },
+    { type: 'cruise', title: 'Board the ship', location: 'Cádiz', date: '2027-06-04' }, { type: 'hotel', title: 'Algarve villa (suggested)', location: 'Algarve', date: '2027-06-01', _synthetic: true }];
+  const t = run('tsPlanTicks_(legs, its, {arrival: true, departure: false})').map(x => x.booked);
+  check('the first flight is the way there, the last the way back (the Summary\'s own check)', t[0] === true && t[6] === false, JSON.stringify(t));
+  check('a stay is booked when a stay names its place; a suggestion (synthetic) is not a booking', t[1] === true && t[3] === false);
+  check('a drive with nothing named is not booked', t[2] === false);
+  check('a cruise leg and a cruise stop are booked by the trip\'s cruise', t[4] === true && t[5] === true);
+  check('nothing booked reads as nothing booked', run('tsPlanTicks_(legs, [], {arrival: false, departure: false})').every(x => !x.booked));
+  check('a place word skips filler and accents', run('tsPlaceWord_("Cádiz port")') === 'cadiz' && run('tsPlaceWord_("Home")') === '' && run('tsPlaceWord_("Cruise A · Genoa round trip")') === 'genoa');
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

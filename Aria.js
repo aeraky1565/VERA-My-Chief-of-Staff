@@ -485,13 +485,13 @@ function ariaRequestFromOption_(idea, option, homeAirports) {
   };
 }
 
-function ariaRequestsSheet_() { return ensureSheet(getSpreadsheet(), TABS.ARIA_REQUESTS, ARIA_REQUESTS_HEADERS); }
+function ariaRequestsSheet_() { return tiSchema_(ensureSheet(getSpreadsheet(), TABS.ARIA_REQUESTS, ARIA_REQUESTS_HEADERS), ARIA_REQUESTS_HEADERS); }
 
 /** Pure: a request → its row. */
 function ariaRequestToRow_(r) {
   var v = function(x) { return x == null ? '' : x; };
   return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
-    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), r.status, r.created, r.updated];
+    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), r.status, r.created, r.updated, v(r.flexDays)];
 }
 
 /** Pure: a row → a request. */
@@ -504,7 +504,7 @@ function ariaRequestFromRow_(row) {
     origins: String(row[6] || '').trim(), dests: String(row[7] || '').trim(), returnFrom: String(row[8] || '').trim(),
     earliest: d(row[9]), latest: d(row[10]), nightsMin: n(row[11]), nightsMax: n(row[12]), travelers: n(row[13]),
     bags: String(row[14] || '').trim(), ceiling: ariaMoney_(row[15]),
-    status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || '') };
+    status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || ''), flexDays: n(row[19]) };
 }
 
 /** Every request, from VERA's tab ([] when there is none yet). */
@@ -557,20 +557,20 @@ function webSaveAriaRequest_(body) {
   });
 }
 
-/** POST {action:'aria_request_withdraw', ref} → ARIA stops scouting it (its row goes to Dropped). */
+/** POST {action:'aria_request_withdraw', ref | tripId} → ARIA stops scouting or watching it (its row goes to Dropped). */
 function webWithdrawAriaRequest_(body) {
-  var ref = String((body && body.ref) || '').trim().toUpperCase();
-  if (!ref) return { ok: false, error: 'ref required' };
+  var ref = String((body && body.ref) || '').trim().toUpperCase(), tid = String((body && body.tripId) || '').trim().toUpperCase();
+  if (!ref && !tid) return { ok: false, error: 'ref or tripId required' };
   return tiLocked_(function() {
     var sh = ariaRequestsSheet_(), now = tiNow_(), n = 0, last = null;
     var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
     rows.forEach(function(row, i) {
       var r = ariaRequestFromRow_(row);
-      if (r.ref !== ref || r.status !== 'active') return;
+      if (r.status !== 'active' || !(ref ? r.ref === ref : String(r.tripId).toUpperCase() === tid)) return;
       r.status = 'withdrawn'; r.updated = now;
       sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++; last = r;
     });
-    if (!n) return { ok: false, error: 'ARIA isn’t scouting that option' };
+    if (!n) return { ok: false, error: ref ? 'ARIA isn’t scouting that option' : 'ARIA isn’t watching that trip for you' };
     ariaForget_();
     return { ok: true, request: last };
   });
@@ -606,6 +606,7 @@ function syncAriaFlags_() {
   }
   var wanted = ariaWantedFlags_(t.watch, t.runs, t.settings, new Date().toISOString());
   var opened = upsertKeyedFlags_(flagSheet, ARIA_FLAG_PREFIX_, 'ARIA', wanted, dateStr);
+  try { ariaMarkBooked_(t.watch); } catch (e) { Logger.log('aria booked: check skipped: ' + e.message); }
   ariaForget_();
   Logger.log('aria flags: ' + Object.keys(wanted).length + ' wanted, ' + opened + ' opened');
   return { ok: true, wanted: Object.keys(wanted).length, opened: opened };
@@ -656,4 +657,156 @@ function ariaWatchSettled_(optionId, trip) {
   });
   if (n) ariaForget_();
   return n;
+}
+
+// ---- One trip: ARIA on My Itinerary's Summary (trip_aria, aria_request_watch) ----------
+//
+// A calendar trip's Summary shows what ARIA has for it, and asks ARIA to watch its
+// flights. VERA fills the request in (decided Oct 25): home airports from Config,
+// travelers from TripMeta, the ceiling from Trip Budget's flights line shared by
+// the travelers; you check it and send it. ARIA fills only cells still blank in its
+// Watchlist, so nothing you typed there is overwritten.
+
+/** Pure: a Trip Budget's flights budget per person, or null. VERA files flights as category "flights". */
+function ariaCeilingFrom_(budgetRows, travelers) {
+  var total = 0, any = false;
+  (budgetRows || []).forEach(function(r) {
+    if (String(r.category || '').toLowerCase() !== 'flights') return;
+    var b = ariaMoney_(r.budgeted);
+    if (b != null && b > 0) { total += b; any = true; }
+  });
+  return any && travelers > 0 ? Math.round(total / travelers) : null;
+}
+
+/** Pure: did the flights out and back happen? A flight on or a day after the start, and on or a day before the end. */
+function ariaFlightsBooked_(items, start, end) {
+  var day = function(d, n) { var p = d.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); };
+  var flights = (items || []).filter(function(it) { return it && it.type === 'flight' && it.date; });
+  var out = flights.some(function(f) { return f.date >= start && f.date <= day(start, 1); });
+  var back = flights.some(function(f) { return f.date >= day(end, -1) && f.date <= end; });
+  return { out: out, back: back, both: out && back };
+}
+
+/** The trip's TripMeta travelers (2 when unset) and its Trip Budget rows. */
+function ariaTripFacts_(tripKey) {
+  var facts = { travelers: 2, budget: [] };
+  try { var m = webGetTripMeta_({ parameter: { tripKey: tripKey } }); if (m && m.tripTravellers) facts.travelers = Number(m.tripTravellers) || 2; } catch (e) {}
+  try {
+    var sh = getSpreadsheet().getSheetByName(TABS.TRIP_BUDGET);
+    if (sh && sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, TRIP_BUDGET_HEADERS.length).getValues().forEach(function(r) {
+      if (String(r[1]).trim() === tripKey) facts.budget.push({ category: r[2], label: r[3], budgeted: r[4] });
+    });
+  } catch (e) {}
+  return facts;
+}
+
+/** The settled trip idea for a Trip ID, with its chosen option: {idea, option} or null. */
+function ariaPlanFor_(tripId) {
+  if (!tripId) return null;
+  try {
+    var idea = tiRows_(tiIdeasSheet_(), TRIP_IDEAS_HEADERS.length).map(tiIdeaFromRow_).filter(function(i) { return String(i.tripId).toUpperCase() === tripId; })[0];
+    if (!idea) return null;
+    var oid = idea.chosenOption || (idea.settle && idea.settle.optionId);
+    var option = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_).filter(function(o) { return o.id === oid; })[0] || null;
+    return { idea: { id: idea.id, title: idea.title, budget: idea.budget, settle: idea.settle }, option: option };
+  } catch (e) { return null; }
+}
+
+/**
+ * GET trip_aria?tripId&tripKey&label&startDate&endDate → for one trip:
+ * {ok, tripId, configured, row, fares, request, draft, plan}. The Trip ID is
+ * resolved from the trip when the dashboard doesn't have it (read only: nothing minted).
+ */
+function webTripAria_(p) {
+  p = p || {};
+  var tripKey = String(p.tripKey || '').trim(), start = String(p.startDate || '').trim(), end = String(p.endDate || '').trim();
+  var label = String(p.label || tripKey.split('|')[1] || '').trim();
+  var tripId = String(p.tripId || '').trim().toUpperCase();
+  if (!tripId && label && start) { try { tripId = String(resolveTripId_({ label: label, startDate: start, endDate: end }, { mint: false, touch: false }) || '').toUpperCase(); } catch (e) {} }
+  var st = webAriaStatus_({});
+  var configured = !!(st && st.configured && st.ok);
+  var reqs = (st && st.requests) || ariaReadRequests_();
+  var plan = ariaPlanFor_(tripId);
+  var planRef = plan && plan.option ? plan.option.id.toUpperCase() : '';
+  var row = configured ? (st.watchlist || []).filter(function(w) { return (tripId && w.tripId === tripId) || (planRef && w.ref === planRef); })[0] || null : null;
+  var fares = configured && row ? (st.fares || []).filter(function(f) { return f.tripId === row.tripId || (row.ref && f.tripId === row.ref); }) : [];
+  var request = reqs.filter(function(r) { return r.status === 'active' && ((tripId && String(r.tripId).toUpperCase() === tripId) || (planRef && r.ref === planRef)); })[0] || null;
+  var facts = ariaTripFacts_(tripKey);
+  var firstFly = plan && plan.option ? (plan.option.legs || []).filter(function(l) { return l.kind === 'move' && l.mode === 'fly'; })[0] : null;
+  var draft = {
+    origins: (row && row.origins) || String(getConfigValues()['home_airports'] || 'IAD, DCA, BWI'),
+    dests: (row && row.dests) || (firstFly ? ariaAirport_(firstFly.to) : ''),
+    earliest: start, latest: end, flexDays: 1, travelers: (row && row.travelers) || facts.travelers,
+    ceiling: (row && row.ceiling) != null ? row.ceiling : ariaCeilingFrom_(facts.budget, (row && row.travelers) || facts.travelers),
+  };
+  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan };
+}
+
+/**
+ * POST {action:'aria_request_watch', tripId, tripKey, label, startDate, endDate,
+ * origins, dests, returnFrom, travelers, ceiling, flexDays} → asks ARIA to watch a
+ * calendar trip's flights. One watch request per trip: asking again refreshes it.
+ */
+function webWatchAriaRequest_(body) {
+  body = body || {};
+  var tripId = String(body.tripId || '').trim().toUpperCase(), tripKey = String(body.tripKey || '').trim();
+  var start = ariaYmd_(body.startDate), end = ariaYmd_(body.endDate), dests = String(body.dests || '').trim().slice(0, 60);
+  if (!tripId || !start || !end) return { ok: false, error: 'tripId and the trip dates are required' };
+  if (!dests) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };
+  var travelers = parseInt(body.travelers, 10), flex = parseInt(body.flexDays, 10), ceiling = ariaMoney_(body.ceiling);
+  var req = { kind: 'watch', ref: '', tripId: tripId, tripKey: tripKey, label: String(body.label || tripKey.split('|')[1] || '').trim().slice(0, 120),
+    origins: String(body.origins || '').trim().slice(0, 60), dests: dests, returnFrom: ariaAirport_(body.returnFrom),
+    earliest: start, latest: end, nightsMin: null, nightsMax: null, travelers: travelers >= 1 && travelers <= 12 ? travelers : null, bags: '',
+    ceiling: ceiling != null && ceiling > 0 ? ceiling : null, flexDays: flex >= 0 && flex <= 14 ? flex : null };
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_();
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    var at = -1;
+    rows.map(ariaRequestFromRow_).forEach(function(r, i) { if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === tripId) at = i; });
+    req.status = 'active'; req.updated = now;
+    if (at === -1) { req.id = tiMintId_('REQ-'); req.created = now; sh.appendRow(ariaRequestToRow_(req)); }
+    else { var old = ariaRequestFromRow_(rows[at]); req.id = old.id; req.created = old.created || now; req.ref = old.ref; sh.getRange(at + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(req)]); }
+    ariaForget_();
+    Logger.log('aria_request_watch: watch request ' + (at === -1 ? 'added' : 'refreshed'));
+    return { ok: true, request: req };
+  });
+}
+
+/**
+ * VERA says "booked": for each trip ARIA watches (an active watch request, or a
+ * Watching row on its Watchlist) whose flights out and back VERA now sees in the
+ * itinerary (parsed confirmations with or without a Trip Key, and calendar
+ * flights), write Status = Booked on its request, adding one if there is none.
+ * ARIA stops pricing it on its next run. Runs from syncAriaFlags_.
+ */
+function ariaMarkBooked_(watch) {
+  var reqs = ariaReadRequests_();
+  var reg = readTripRegistry_();
+  var targets = {};
+  reqs.forEach(function(r) { if (r.status === 'active' && r.kind === 'watch' && r.tripId) targets[String(r.tripId).toUpperCase()] = { req: r }; });
+  (watch || []).forEach(function(w) { if (w.status === 'watching' && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w }; });
+  var booked = Object.keys(targets).filter(function(id) {
+    var t = reg.byId[id];
+    if (!t || !t.startDate || !t.endDate) return false;
+    try { return ariaFlightsBooked_(tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate, 'aria booked'), t.startDate, t.endDate).both; } catch (e) { return false; }
+  });
+  if (!booked.length) return 0;
+  return tiLocked_(function() {
+    var sh = ariaRequestsSheet_(), now = tiNow_();
+    var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+    booked.forEach(function(id) {
+      var t = reg.byId[id], at = -1;
+      rows.forEach(function(row, i) { var r = ariaRequestFromRow_(row); if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === id) at = i; });
+      if (at !== -1) {
+        var r = ariaRequestFromRow_(rows[at]); if (r.status === 'booked') return;
+        r.status = 'booked'; r.updated = now; sh.getRange(at + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]);
+      } else {
+        sh.appendRow(ariaRequestToRow_({ id: tiMintId_('REQ-'), kind: 'watch', ref: '', tripId: id, tripKey: t.startDate + '|' + t.label, label: t.label,
+          earliest: t.startDate, latest: t.endDate, status: 'booked', created: now, updated: now }));
+      }
+    });
+    ariaForget_();
+    Logger.log('aria booked: ' + booked.length + ' trip(s) told to ARIA as booked');
+    return booked.length;
+  });
 }

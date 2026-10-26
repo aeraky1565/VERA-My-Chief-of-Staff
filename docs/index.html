@@ -2223,6 +2223,90 @@ function TsCardsToCarry(props){var h=React.createElement;var d=props.data;
       style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,width:'100%',minHeight:40,padding:0,background:'none',border:'none',color:'#cfe0ff',fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}},
       h('span',null,'Cards to carry · '+summary),h('span',{'aria-hidden':'true'},open?'▴':'▾')),
     open&&h('div',{style:{display:'flex',flexDirection:'column',gap:8,paddingBottom:12}},body));}
+// ── The plan (a settled trip idea) and ARIA, on a trip's Summary (trip_aria) ──
+// Pure: a word of a place worth matching on ("Lisbon" in "Hotel Avenida, Lisbon").
+function tsPlaceWord_(s){var w=String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]+/g,' ').trim().split(/\s+/)
+  .filter(function(x){return x.length>2&&['the','and','home','stay','nights','cruise','round','trip'].indexOf(x)===-1;});return w[0]||'';}
+// Pure: each leg of the settled option, booked or not. The first and last flights are the trip's way there and back
+// (the Summary's own check); any other move or stay is booked when an item of its kind names its place; a cruise
+// stop is booked when the trip has a cruise. A read-only overlay: nothing here is written anywhere.
+function tsPlanTicks_(legs,items,ends){var its=(items||[]).filter(function(it){return it&&!it._synthetic;});
+  var flies=(legs||[]).map(function(l,i){return l.kind==='move'&&l.mode==='fly'?i:-1;}).filter(function(i){return i!==-1;});
+  var named=function(it,w){return w&&(String(it.title||'')+' '+String(it.location||'')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').indexOf(w)!==-1;};
+  var cruise=its.some(function(it){return it.type==='cruise'||/\bboard\b/i.test(it.title||'');});
+  return (legs||[]).map(function(l,i){var booked=false;
+    if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=!!(ends&&ends.arrival);
+    else if(l.kind==='move'&&l.mode==='fly'&&i===flies[flies.length-1])booked=!!(ends&&ends.departure);
+    else if(l.kind==='move'&&l.mode==='ship')booked=cruise;
+    else if(l.kind==='move'){var w=tsPlaceWord_(l.to)||tsPlaceWord_(l.from);booked=its.some(function(it){return (TS_MOVE_TYPES[it.type]||it.type==='flight')&&named(it,w);});}
+    else if(/cruise/i.test(l.place||''))booked=cruise;
+    else{var w2=tsPlaceWord_(l.place);booked=its.some(function(it){return TS_STAY_TYPES[it.type]&&named(it,w2);});}
+    return {leg:l,booked:booked};});}
+var TS_MODE_WORD={fly:'FLY',train:'TRAIN',car:'CAR',ship:'SHIP',ferry:'FERRY',bus:'BUS',other:'MOVE'};
+function TsPlan(props){var h=React.createElement;var p=props.plan,o=p.option;if(!o)return null;var ticks=tsPlanTicks_(o.legs,props.items,props.ends);
+  var total=typeof tiCostTotal_==='function'?tiCostTotal_(o.cost):null,fit=total&&typeof tiBudgetFit_==='function'?tiBudgetFit_(total,p.idea.budget):'';
+  var nights=(o.legs||[]).reduce(function(n,l){return n+(l.kind==='stop'?Number(l.nights)||0:0);},0);
+  return h('section',{className:'ts-plan',style:props.card,'aria-label':'The plan'},
+    h('span',{style:props.label},'The plan · from Trip Ideas'),
+    h('span',{style:{fontSize:15,fontWeight:700,color:'#eef1fb'}},o.name+(nights?' · '+nights+' nights':'')),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4}},ticks.map(function(t,i){var l=t.leg;
+      return h('div',{key:i,className:'ts-plan-leg ts-plan-'+(t.booked?'booked':'open'),style:{display:'grid',gridTemplateColumns:'54px minmax(0,1fr) auto',gap:8,alignItems:'center',fontSize:13,padding:'4px 0',borderTop:i?'1px solid #1a2a52':'none'}},
+        h('span',{style:{fontSize:10,fontWeight:700,letterSpacing:'.06em',color:'#9aa9cc'}},l.kind==='stop'?'STAY':(TS_MODE_WORD[l.mode]||'MOVE')),
+        h('span',{style:{color:'#dde1f0',minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},l.kind==='stop'?l.place+' · '+(Number(l.nights)||0)+' night'+(Number(l.nights)===1?'':'s'):(l.from||'?')+' → '+(l.to||'?')),
+        h('span',{style:{fontSize:12,whiteSpace:'nowrap',color:t.booked?'#8fe0a8':'#f6d27a'}},t.booked?'✅ booked':'⏳ not booked'));})),
+    total&&h('span',{style:{fontSize:12,color:'#b8c3e0'}},'Planned '+tiRange_(total.low,total.high)+(p.idea.budget!=null?' · budget '+tiMoney_(p.idea.budget)+(fit==='within'?' (within)':fit==='over'?' (over)':fit==='close'?' (could go over)':''):'')),
+    h('span',{style:{fontSize:12,color:'#9aa9cc'}},'From the trip idea "'+p.idea.title+'" in Travel → Trip Ideas. Nothing is added to your itinerary; bookings tick these off as they arrive.'));}
+// ARIA on this trip's flights: its fares and verdict when it watches them, else a form to ask it to.
+function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=props.ends;var _f=React.useState(null),form=_f[0],setForm=_f[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var booked=ends&&ends.arrival===true&&ends.departure===true;var row=d.row,req=d.request;
+  var send=function(){setBusy('send');setErr('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'aria_request_watch',tripId:d.tripId,tripKey:props.trip.tripKey,label:props.trip.label,startDate:props.trip.startDate,endDate:props.trip.endDate},form))
+    .then(function(){setBusy('');setForm(null);props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t ask ARIA');});};
+  var stop=function(){setBusy('stop');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_withdraw',tripId:d.tripId}).then(function(){setBusy('');props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t stop it');});};
+  var inp=function(k,lbl,ph,type){return h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,fontWeight:600,color:'#9aa9cc',minWidth:0}},lbl,
+    h('input',{className:'ts-aria-'+k,type:type||'text',value:form[k]==null?'':form[k],placeholder:ph||'',onChange:function(e){var v=e.target.value;setForm(function(f){var n=Object.assign({},f);n[k]=v;return n;});},
+      style:{minHeight:40,padding:'0 10px',borderRadius:8,border:'1px solid #2a3f6f',background:'#06112a',color:'#eef1fb',fontSize:14,minWidth:0,boxSizing:'border-box',width:'100%'}}));};
+  var btn=function(t,cls,on,primary){return h('button',{type:'button',className:cls,disabled:!!busy,onClick:on,style:{alignSelf:'flex-start',minHeight:40,padding:'0 14px',borderRadius:10,fontSize:13,fontWeight:700,cursor:'pointer',border:primary?'none':'1px solid #24386a',background:primary?'#8ab4f8':'transparent',color:primary?'#0a1428':'#cfe0ff'}},t);};
+  var latest=row&&typeof ariaLatest_==='function'?ariaLatest_(d.fares||[]):null;var hist=row&&typeof ariaHistory_==='function'?ariaHistory_(d.fares||[]):[];
+  var urgent=row&&(row.actionType==='BOOK_NOW'||row.actionType==='UNDER_CEILING');
+  return h('div',{className:'ts-aria',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#0a1530',border:'1px solid #1e3060'}},
+    h('span',{style:{fontSize:12,color:'#9aa9cc',fontWeight:700,letterSpacing:'.06em'}},'✈️ FLIGHTS · 🧭 ARIA'),
+    booked?h('span',{className:'ts-aria-booked',style:{fontSize:13,color:'#8fe0a8'}},'✅ Booked out and back.'+(row&&row.status!=='booked'?' VERA tells ARIA, so it stops pricing them.':''))
+    :urgent&&typeof AriaBookCard==='function'?h(AriaBookCard,{row:row,fares:d.fares,ideas:{}})
+    :row&&row.status!=='dropped'&&row.status!=='draft'?h('div',{className:'ts-aria-row',style:{display:'flex',flexDirection:'column',gap:4,fontSize:13,color:'#dde1f0'}},
+        h('span',null,row.bestFare!=null?h('b',{style:{fontSize:16,color:'#eef1fb'}},'$'+String(row.bestFare).replace(/\B(?=(\d{3})+(?!\d))/g,',')):'No fare yet',
+          (row.bestFare!=null&&row.travelers?' for '+row.travelers:'')+(row.verdict?' · '+({book:'BOOK NOW',wait:'WAIT',skip:'SKIP'})[row.verdict]:'')+(row.lastChecked?' · checked '+row.lastChecked:'')+(row.ceiling!=null?' · ceiling $'+row.ceiling+' pp':'')),
+        row.actionNeeded&&h('span',{style:{fontSize:12,color:'#f6d27a'}},'→ '+row.actionNeeded),
+        hist.length>1&&typeof AriaSpark==='function'&&h(AriaSpark,{points:hist}),
+        req&&btn('Stop watching','ts-aria-stop',stop))
+    :req?h('div',{className:'ts-aria-asked',style:{display:'flex',flexDirection:'column',gap:6,fontSize:13,color:'#b8c3e0'}},
+        h('span',null,'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It starts on its next 06:52 run.'),
+        btn('Stop watching','ts-aria-stop',stop))
+    :!d.configured?h('span',{style:{fontSize:12,color:'#9aa9cc'}},'Connect ARIA (Config → roster_link_aria) and it can watch these fares.')
+    :form?h('div',{className:'ts-aria-form',style:{display:'flex',flexDirection:'column',gap:8}},
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 130px), 1fr))',gap:8}},
+          inp('origins','From','IAD, DCA, BWI'),inp('dests','To','e.g. ORD'),inp('returnFrom','Home from (if different)','optional'),
+          inp('travelers','Travelers','2','number'),inp('ceiling','Ceiling per person ($)','e.g. 360','number'),inp('flexDays','Flex (± days)','1','number')),
+        h('span',{style:{fontSize:12,color:'#9aa9cc'}},props.trip.startDate+' → '+props.trip.endDate+'. ARIA fills only what’s still blank in its Watchlist; anything you typed there stays.'),
+        err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?'Asking…':'Ask ARIA to watch','ts-aria-send',send,true),btn('Cancel','ts-aria-cancel',function(){setForm(null);setErr('');})))
+    :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
+        h('span',{style:{fontSize:13,color:'#b8c3e0'}},row&&row.status==='draft'?'ARIA has this trip as a Draft: it isn’t pricing it yet.':'ARIA isn’t watching these flights.'),
+        btn('🧭 Watch with ARIA','ts-aria-watch',function(){setForm(Object.assign({},d.draft||{}));},true)),
+    err&&!form&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
+// The two together: one read of trip_aria for the trip; nothing at all for a trip that's over.
+function TsTripAria(props){var h=React.createElement;var trip=props.trip||{};var _d=React.useState(null),data=_d[0],setData=_d[1];var _n=React.useState(0),n=_n[0],setN=_n[1];
+  var past=trip.endDate&&trip.endDate<props.today;
+  React.useEffect(function(){if(past||!props.apiUrl||!props.apiToken||!trip.tripKey)return;var dead=false;
+    try{var pr=apiGet(props.apiUrl,props.apiToken,{action:'trip_aria',tripId:trip.tripId||'',tripKey:trip.tripKey,label:trip.label||'',startDate:trip.startDate||'',endDate:trip.endDate||''});
+      if(pr&&pr.then)pr.then(function(r){if(!dead)setData(r&&r.ok?r:null);}).catch(function(){if(!dead)setData(null);});}catch(e){}
+    return function(){dead=true;};},[props.apiUrl,props.apiToken,trip.tripKey,n]);
+  if(past||!data)return null;var needFlights=props.ends&&(props.ends.arrival!==null||props.ends.departure!==null);
+  var openNights=(props.nights&&props.nights.missing||[]).length;
+  return h(React.Fragment,null,
+    data.plan&&data.plan.option&&h(TsPlan,{plan:data.plan,items:props.items,ends:props.ends,card:props.card,label:props.label}),
+    (needFlights||openNights>0)&&h('section',{className:'ts-still',style:props.card,'aria-label':'Still to book'},h('span',{style:props.label},'Still to book'),
+      needFlights&&h(TsAriaFlights,{data:data,ends:props.ends,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,reload:function(){setN(n+1);}}),
+      openNights>0&&h('span',{className:'ts-still-stays',style:{fontSize:13,color:'#f6d27a'}},'🏨 '+openNights+' night'+(openNights===1?'':'s')+' with no place to sleep · not watched (ARIA watches flights for now)')));}
 function TripSummaryView(props){
   var h=React.createElement;var trip=props.trip||{};
   var _o=React.useState(null),openMove=_o[0],setOpenMove=_o[1];
@@ -2306,6 +2390,7 @@ function TripSummaryView(props){
             h('span',{style:{flex:'0 0 auto',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999,background:red?'#e05a5a':'#e2b54a',color:red?'#1a0508':'#1f1604'}},
               new Date(a.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})),
             h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('strong',{style:{fontWeight:600}},a.title),h('span',{style:{fontSize:12,color:'#b8c3e0'}},a.detail)));}))),
+    h(TsTripAria,{trip:trip,items:props.items,ends:s.ends,nights:s.nights,today:todayIso,card:card,label:label,apiUrl:props.apiUrl,apiToken:props.apiToken}),
     // Where you sleep
     s.stays.length>0&&h('section',{style:card,'aria-label':'Where you sleep'},
       h('div',{style:{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap',alignItems:'baseline'}},
