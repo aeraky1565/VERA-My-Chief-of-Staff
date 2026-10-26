@@ -731,6 +731,8 @@ function webTripAria_(p) {
   var label = String(p.label || tripKey.split('|')[1] || '').trim();
   var tripId = String(p.tripId || '').trim().toUpperCase();
   if (!tripId && label && start) { try { tripId = String(resolveTripId_({ label: label, startDate: start, endDate: end }, { mint: false, touch: false }) || '').toUpperCase(); } catch (e) {} }
+  // Opening the trip re-totals what it actually cost, before its Budget is read below (TripActuals.js).
+  tripActualsOnView_(tripKey, tripId);
   var st = webAriaStatus_({});
   var configured = !!(st && st.configured && st.ok);
   var reqs = (st && st.requests) || ariaReadRequests_();

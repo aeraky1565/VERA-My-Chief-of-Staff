@@ -369,6 +369,12 @@ function enrichItineraryRow_(sheet, rowNum, enrichData, messageId) {
   merged.sourceEmailId = messageId;
 
   sheet.getRange(rowNum, 10).setValue(JSON.stringify(merged));
+
+  // The confirmation brought a total: the row's trip's Budget gets the Actual now (TripActuals.js).
+  if (merged.totalPaid != null && merged.totalPaid !== '') {
+    var cells = sheet.getRange(rowNum, 1, 1, 5).getValues()[0];
+    tripActualsOnBooking_(dateCellToIso_(cells[4]), String(cells[1] || '').trim());
+  }
 }
 
 // ─── MODE B — CREATE-AND-ENRICH ───────────────────────────────────────────────
@@ -455,6 +461,9 @@ function createItineraryRowFromEmail_(basic, rich, messageId) {
   const startRow = sheet.getLastRow() + 1;
   sheet.getRange(startRow, 5, 1, 3).setNumberFormat('@');
   sheet.getRange(startRow, 1, 1, ITINERARY_HEADERS.length).setValues([row]);
+
+  // A booking with its total: its trip's Budget gets the Actual now (TripActuals.js).
+  if (metadata.totalPaid != null && metadata.totalPaid !== '') tripActualsOnBooking_(basic.date || '', '');
 
   return id;
 }

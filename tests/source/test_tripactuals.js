@@ -1,7 +1,9 @@
 // What a trip actually cost (TripActuals.js): booking confirmations' totalPaid,
 // totalled by Trip Budget category and written as the Actual on the trip's Budget
 // lines, never over an amount Ahmed typed; a settled trip idea's WILLA reminder
-// refreshed with what has been booked. Every trip, booking and amount is invented.
+// refreshed with what has been booked. No timer: it runs when the parser saves a
+// booking with a total, and when a trip's Summary or Budget is opened, reading only
+// the Itinerary sheet. Every trip, booking and amount is invented.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
@@ -58,45 +60,67 @@ console.log('\nwhich Budget lines to write');
   check('nothing changed: nothing written', run('tripActualsWrites_(lines2, act2)').length === 0);
   const r = run('tripActualsWillaReason_({label:"Spring in Europe", startDate:"2027-05-29", endDate:"2027-06-11"}, {flights:{total:1640,count:1}, lodging:{total:4210.5,count:2}})');
   check('the WILLA reminder says what was booked so far, by category', r === 'Spring in Europe (2027-05-29–2027-06-11): booked so far $5,851 (flights $1,640, lodging $4,211). Send WILLA the final total once everything is booked.', r);
-  check('it runs every six hours', run('tripActualsDue_(Date.parse("2027-02-20T12:00:00Z"), "2027-02-20T07:00:00Z")') === false && run('tripActualsDue_(Date.parse("2027-02-20T13:00:00Z"), "2027-02-20T07:00:00Z")') === true && run('tripActualsDue_(0, "")') === true);
 }
 
-console.log('\nthe sync, over fake sheets');
+console.log('\nthe trip\'s rows, and its trip');
+{
+  S.trip = { tripId: 'TRIP-CHI', label: 'Chicago Trip', startDate: '2027-04-05', endDate: '2027-04-13' };
+  S.vals = [['I1', '', 'flight', 'UA 123', '2027-04-05', '', '', '', '', '{"totalPaid":1}'], ['I2', '2027-04-05|Chicago Trip', 'hotel', 'Lake', '2027-04-06', '', '', '', '', '{}'],
+    ['I3', '2027-04-05|Other Trip', 'hotel', 'Theirs', '2027-04-07', '', '', '', '', '{}'], ['I4', '', 'dining', 'Too late', '2027-04-14', '', '', '', '', '{}'], ['I5', 'old-alias', 'tour', 'Aliased', '2027-01-01', '', '', '', '', '{}']];
+  const it = run('tripActualsItems_(vals, trip, ["2027-04-05|Chicago Trip", "old-alias"], null)').map(x => x.title);
+  check('a trip\'s rows: its own key (or an alias), and keyless rows within its dates; not another trip\'s', JSON.stringify(it) === '["UA 123","Lake","Aliased"]', JSON.stringify(it));
+  S.reg = [{ tripId: 'A', label: 'Chicago Trip', startDate: '2027-04-05', endDate: '2027-04-13', aliases: ['old-alias'] }, { tripId: 'B', label: 'Overlap', startDate: '2027-04-12', endDate: '2027-04-20' },
+    { tripId: 'C', label: 'Gone', startDate: '2027-04-01', endDate: '2027-04-30', status: 'archived' }];
+  check('a booking\'s trip: the one its key names', run('tripActualsTripsFor_(reg, "2027-04-12", "old-alias").map(function(t){return t.tripId;}).join()') === 'A');
+  check('…else every trip whose dates hold it, archived ones aside', run('tripActualsTripsFor_(reg, "2027-04-12", "").map(function(t){return t.tripId;}).join()') === 'A,B' && run('tripActualsTripsFor_(reg, "2027-05-01", "").length') === 0);
+}
+
+console.log('\nthe update, over fake sheets');
 {
   const H = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes'];
   const BUD = [H.slice(), ['B1', '2027-04-05|Chicago Trip', 'flights', 'Flights', 720, '', ''], ['B2', '2027-04-05|Chicago Trip', 'lodging', 'Lodging', 1500, 1400, 'typed by me'], ['B3', 'other', 'flights', 'x', 1, '', '']];
+  const ITIN = [['ID', 'Trip Key', 'Type', 'Title', 'Date', 'Start', 'End', 'Location', 'Notes', 'Metadata']].concat(S.items.map((x, i) => ['I' + i, '', x.type, x.title, x.date, '', '', '', '', x.metadata]));
   const tab = rows => ({ getLastRow: () => rows.length, getRange: (r, c, nr, nc) => ({ getValues: () => rows.slice(r - 1, r - 1 + nr).map(x => { const o = x.slice(c - 1, c - 1 + nc); while (o.length < nc) o.push(''); return o; }),
     setValues: v => v.forEach((x, i) => x.forEach((y, j) => { rows[r - 1 + i][c - 1 + j] = y; })), setValue: v => { rows[r - 1][c - 1] = v; } }), appendRow: v => rows.push(v.slice()) });
   const FL = [['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Ack', 'Snooze', 'Resolved', 'Key', 'Esc'], ['F1', '2027-02-01', 'Trip Ideas', 'Send…', 'old reason', 'Low', 'No', '', 'No', 'trip_idea_willa|IDEA-1', ''],
     ['F2', '2027-02-01', 'Trip Ideas', 'Send…', 'resolved one', 'Low', 'No', '', 'Yes', 'trip_idea_willa|IDEA-2', '']];
+  let itinReads = 0;
+  const CHI = { tripId: 'TRIP-CHI', label: 'Chicago Trip', startDate: '2027-04-05', endDate: '2027-04-13', status: 'active', aliases: [] };
   Object.assign(S, {
-    TABS: { TRIP_BUDGET: 'Trip Budget', FLAGS: 'Flags' }, TRIP_BUDGET_HEADERS: H, FLAG_HEADERS: FL[0], TRIP_IDEAS_HEADERS: new Array(19).fill(''),
-    Session: { getScriptTimeZone: () => 'UTC' }, Utilities: { formatDate: d => d.toISOString().slice(0, 10) },
-    readTripRegistry_: () => ({ rows: [{ tripId: 'TRIP-CHI', label: 'Chicago Trip', startDate: '2027-04-05', endDate: '2027-04-13', status: 'active' },
-      { tripId: 'TRIP-OLD', label: 'Long ago', startDate: '2020-01-01', endDate: '2020-01-05', status: 'active' }] }),
-    tripItemsFor_: (key) => { S.asked = (S.asked || []).concat([key]); return key === '2027-04-05|Chicago Trip' ? S.items : []; },
+    TABS: { TRIP_BUDGET: 'Trip Budget', FLAGS: 'Flags', ITINERARY: 'Itinerary' }, TRIP_BUDGET_HEADERS: H, FLAG_HEADERS: FL[0], TRIP_IDEAS_HEADERS: new Array(19).fill(''), ITINERARY_HEADERS: ITIN[0],
+    Session: { getScriptTimeZone: () => 'UTC' }, Utilities: { formatDate: d => d.toISOString().slice(0, 10) }, dateCellToIso_: v => String(v || '').trim(),
+    readTripRegistry_: () => ({ rows: [CHI, { tripId: 'TRIP-OLD', label: 'Long ago', startDate: '2020-01-01', endDate: '2020-01-05', status: 'active', aliases: [] }], byId: { 'TRIP-CHI': CHI } }),
     tripKeysFor_: k => [k], tripRowMatches_: (cell, keys) => keys.indexOf(String(cell).trim()) !== -1,
-    tiLocked_: fn => fn(), getSpreadsheet: () => ({ getSheetByName: n => n === 'Flags' ? tab(FL) : n === 'Trip Budget' ? tab(BUD) : null }),
+    tiLocked_: fn => fn(), getSpreadsheet: () => ({ getSheetByName: n => n === 'Flags' ? tab(FL) : n === 'Trip Budget' ? tab(BUD) : n === 'Itinerary' ? (itinReads++, tab(ITIN)) : null }),
     ensureSheet: (ss, n) => tab(BUD),
     tiRows_: s => s, tiIdeasSheet_: () => [['IDEA-1'], ['IDEA-2']], tiIdeaFromRow_: r => ({ id: r[0], tripId: 'TRIP-CHI' }),
   });
-  const n = run('syncTripActuals_()');
-  check('only trips not long over are read', JSON.stringify(S.asked) === '["2027-04-05|Chicago Trip"]', JSON.stringify(S.asked));
-  check('the flights line gets what was paid', BUD[1][5] === 612.4 && BUD[1][6] === 'VERA: from 1 confirmation', JSON.stringify(BUD[1]));
-  check('the lodging you typed stays yours', BUD[2][5] === 1400 && BUD[2][6] === 'typed by me');
-  check('a missing category (food) gets its own line, on the trip\'s key', BUD.some(r => r[1] === '2027-04-05|Chicago Trip' && r[2] === 'food' && r[5] === 450));
-  check('another trip\'s line is untouched', BUD[3][5] === '');
-  check('the settled idea\'s open WILLA reminder now says what was booked', /^Chicago Trip \(2027-04-05–2027-04-13\): booked so far \$2,242 \(flights \$612, lodging \$1,180, food \$450\)/.test(FL[1][4]), FL[1][4]);
+  run('tripActualsOnBooking_("2027-04-05", "")');
+  check('a booking with a total updates its trip\'s Budget at once: the flights line', BUD[1][5] === 612.4 && BUD[1][6] === 'VERA: from 1 confirmation', JSON.stringify(BUD[1]));
+  check('…the lodging you typed stays yours', BUD[2][5] === 1400 && BUD[2][6] === 'typed by me');
+  check('…a missing category (food) gets its own line, on the trip\'s key', BUD.some(r => r[1] === '2027-04-05|Chicago Trip' && r[2] === 'food' && r[5] === 450));
+  check('…another trip\'s line is untouched', BUD[3][5] === '');
+  check('…the settled idea\'s open WILLA reminder says what was booked', /^Chicago Trip \(2027-04-05–2027-04-13\): booked so far \$2,242 \(flights \$612, lodging \$1,180, food \$450\)/.test(FL[1][4]), FL[1][4]);
   check('…a resolved one is left resolved and unchanged', FL[2][4] === 'resolved one' && FL[2][8] === 'Yes');
-  const len = BUD.length; run('syncTripActuals_()');
-  check('syncing again adds nothing', BUD.length === len && n >= 2);
+  check('…reading the Itinerary sheet once', itinReads === 1);
+  const len = BUD.length; run('tripActualsOnView_("2027-04-05|Chicago Trip", "TRIP-CHI")');
+  check('opening the trip re-totals it, and changes nothing that\'s current', BUD.length === len && itinReads === 2);
+  ITIN.push(['I9', '2027-04-05|Chicago Trip', 'tour', 'Architecture boat', '2027-04-08', '', '', '', '', '{"totalPaid":96}']);
+  run('tripActualsOnView_("", "TRIP-CHI")');
+  check('…and picks up a booking saved since, by the trip\'s ID alone', BUD.some(r => r[2] === 'activities' && r[5] === 96));
+  const reads = itinReads; run('tripActualsOnBooking_("2026-01-01", "")');
+  check('a booking on no trip\'s dates reads nothing', itinReads === reads, itinReads - reads);
+  S.readTripRegistry_ = () => { throw new Error('registry down'); };
+  check('a failure never throws out of the parser or the page', (() => { try { run('tripActualsOnBooking_("2027-04-05", ""); tripActualsOnView_("x", "y")'); return true; } catch (e) { return false; } })());
   check('the log is counts only', S.logs.every(l => !/Chicago|612|Alinea/.test(l)), S.logs.join(' | '));
 }
 
 console.log('\nwiring');
 check('the parser asks for the total paid, in both its prompts', (PARSER.match(/"totalPaid": "number or null: the total charged for this booking/g) || []).length === 2 && (PARSER.match(/"totalCurrency"/g) || []).length === 2);
 check('the import and the actuals share one type map', /var typeToCategory = TRIP_BUDGET_TYPE_MAP_;/.test(WEB) && /TRIP_BUDGET_TYPE_MAP_\[/.test(SRC));
-check('it runs from the hourly check, every six hours, and never throws', /maybeSyncTripActuals_\(new Date\(\)\);/.test(REM) && /function maybeSyncTripActuals_\(now\) \{\n  try \{/.test(SRC));
+check('no timer: nothing in the hourly check', !/TripActuals|tripActuals/.test(REM));
+check('the parser updates the trip when it saves a booking with a total (new rows and enriched ones)', (PARSER.match(/tripActualsOnBooking_\(/g) || []).length === 2);
+check('opening a trip\'s Summary (trip_aria) or Budget re-totals it', /tripActualsOnView_\(tripKey, p\.tripId\);/.test(WEB) && /tripActualsOnView_\(tripKey, tripId\);/.test(fs.readFileSync(path.join(ROOT, 'Aria.js'), 'utf8')));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

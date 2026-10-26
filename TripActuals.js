@@ -5,10 +5,16 @@
 //
 // The email parser (EmailParser.js) reads each travel confirmation and keeps what
 // it finds in the itinerary row's Metadata, now including totalPaid: the total
-// charged for that booking. Every six hours this totals the paid amounts of each
-// current or upcoming trip by Trip Budget category (flights, lodging, transport,
-// activities, food) and writes them as the Actual on the trip's Budget lines,
-// adding a line when the trip has none for that category.
+// charged for that booking. A trip's paid amounts are totalled by Trip Budget
+// category (flights, lodging, transport, activities, food) and written as the
+// Actual on the trip's Budget lines, adding a line when the trip has none.
+//
+// No timer (decided Oct 26). It runs only when something changed or you look:
+//   - when the parser saves a booking with a total (tripActualsOnBooking_), for
+//     the trip whose dates hold it;
+//   - when you open a trip's Summary or Budget (tripActualsOnView_), for that
+//     trip, which catches a booking saved before its trip was on the calendar.
+// Only the Itinerary sheet is read: calendar events never carry a total.
 //
 // An Actual you typed is never overwritten: VERA only writes a line whose Actual is
 // blank or that it wrote itself (its Notes start "VERA: from"). Amounts in another
@@ -18,13 +24,11 @@
 // has been booked so far, so the total sent to WILLA is the real one.
 //
 // Two layers, so the tests need no Google:
-//   tripActuals*_ (pure)   totals, and which Budget lines to write
-//   syncTripActuals_       the reads and writes, under the script lock
+//   tripActuals*_ (pure)   which rows are the trip's, totals, which Budget lines to write
+//   syncTripActualsFor_    the reads and writes, under the script lock
 // ============================================================
 
 var TRIP_ACTUALS_NOTE_ = 'VERA: from ';
-var TRIP_ACTUALS_EVERY_HOURS_ = 6;
-var TRIP_ACTUALS_PAST_DAYS_ = 30;   // a trip that ended within a month still gets its late confirmations
 
 function tripActualsMeta_(it) { try { return JSON.parse((it && it.metadata) || '{}') || {}; } catch (e) { return {}; } }
 
@@ -86,13 +90,6 @@ function tripActualsWillaReason_(trip, actuals) {
     + '. Send WILLA the final total once everything is booked.';
 }
 
-/** Pure: is it time? Every six hours. */
-function tripActualsDue_(nowMs, lastIso) {
-  if (!lastIso) return true;
-  var last = new Date(lastIso).getTime();
-  return !isFinite(last) || nowMs - last >= TRIP_ACTUALS_EVERY_HOURS_ * 36e5 - 5 * 6e4;
-}
-
 /** Trip Budget lines for one trip (by its keys), with their sheet rows. */
 function tripActualsLines_(values, tripKey) {
   var keys = tripKeysFor_(tripKey);
@@ -106,28 +103,47 @@ function tripActualsLines_(values, tripKey) {
 }
 
 /**
- * Totals each current or upcoming trip's paid bookings into Trip Budget, and
- * refreshes settled trip ideas' WILLA reminders. Returns how many lines it wrote.
+ * Pure: a trip's rows in the Itinerary sheet (header row excluded), as items:
+ * rows filed under one of the trip's keys, and rows with no Trip Key dated within
+ * its dates (the parser leaves the key blank). Another trip's rows are not its.
+ * dateText turns a date cell into 'yyyy-MM-dd'.
  */
-function syncTripActuals_() {
-  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-  var since = Utilities.formatDate(new Date(Date.now() - TRIP_ACTUALS_PAST_DAYS_ * 864e5), tz, 'yyyy-MM-dd');
-  var trips = readTripRegistry_().rows.filter(function(t) { return t.status !== 'archived' && t.startDate && t.endDate && t.endDate >= since; });
+function tripActualsItems_(values, trip, keys, dateText) {
+  var out = [];
+  (values || []).forEach(function(r) {
+    var key = String(r[1] || '').trim(), date = String(dateText ? dateText(r[4]) : r[4]).trim();
+    var mine = key ? keys.indexOf(key) !== -1 : (date && date >= trip.startDate && date <= trip.endDate);
+    if (mine) out.push({ type: String(r[2] || ''), title: String(r[3] || ''), date: date, metadata: String(r[9] || '') });
+  });
+  return out;
+}
+
+/**
+ * Totals these trips' paid bookings into Trip Budget and refreshes their settled
+ * ideas' WILLA reminders. One read of Itinerary and Trip Budget. Returns lines written.
+ */
+function syncTripActualsFor_(trips) {
+  trips = (trips || []).filter(function(t) { return t && t.startDate && t.endDate; });
+  if (!trips.length) return 0;
+  var ss = getSpreadsheet(), tz = Session.getScriptTimeZone();
+  var itin = ss.getSheetByName(TABS.ITINERARY);
+  if (!itin || itin.getLastRow() < 2) return 0;
+  var dateText = function(v) { return dateCellToIso_(v); };
+  var values = itin.getRange(2, 1, itin.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
   var found = [];
   trips.forEach(function(t) {
-    try {
-      var a = tripActualsFromItems_(tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate, 'trip actuals'));
-      if (Object.keys(a).length) found.push({ trip: t, actuals: a });
-    } catch (e) { Logger.log('trip actuals: one trip skipped'); }
+    var key = t.startDate + '|' + t.label;
+    var a = tripActualsFromItems_(tripActualsItems_(values, t, tripKeysFor_(key).concat([key]), dateText));
+    if (Object.keys(a).length) found.push({ trip: t, actuals: a });
   });
   if (!found.length) return 0;
-  var ss = getSpreadsheet(), written = 0;
+  var written = 0;
   tiLocked_(function() {
     var sheet = ensureSheet(ss, TABS.TRIP_BUDGET, TRIP_BUDGET_HEADERS);
     found.forEach(function(x) {
       var key = x.trip.startDate + '|' + x.trip.label;
-      var values = sheet.getLastRow() >= 1 ? sheet.getRange(1, 1, sheet.getLastRow(), TRIP_BUDGET_HEADERS.length).getValues() : [];
-      tripActualsWrites_(tripActualsLines_(values, key), x.actuals).forEach(function(w) {
+      var bvals = sheet.getLastRow() >= 1 ? sheet.getRange(1, 1, sheet.getLastRow(), TRIP_BUDGET_HEADERS.length).getValues() : [];
+      tripActualsWrites_(tripActualsLines_(bvals, key), x.actuals).forEach(function(w) {
         if (w.kind === 'update') {
           sheet.getRange(w.row, 6, 1, 2).setValues([[w.actual, w.notes]]);
         } else {
@@ -140,6 +156,32 @@ function syncTripActuals_() {
   });
   Logger.log('trip actuals: ' + found.length + ' trip(s) with paid bookings, ' + written + ' budget line(s) written');
   return written;
+}
+
+/** Pure: the trips a booking belongs to: the one its key names, else the ones whose dates hold its date. */
+function tripActualsTripsFor_(rows, date, key) {
+  if (key) {
+    var named = (rows || []).filter(function(t) { return t.startDate + '|' + t.label === key || (t.aliases || []).indexOf(key) !== -1; });
+    if (named.length) return named;
+  }
+  return date ? (rows || []).filter(function(t) { return t.status !== 'archived' && t.startDate && t.endDate && date >= t.startDate && date <= t.endDate; }) : [];
+}
+
+/** The parser just saved a booking with a total: update its trip's Budget. Never throws. */
+function tripActualsOnBooking_(date, key) {
+  try {
+    var trips = tripActualsTripsFor_(readTripRegistry_().rows, String(date || '').trim(), String(key || '').trim());
+    if (trips.length) syncTripActualsFor_(trips);
+  } catch (e) { Logger.log('trip actuals: booking update skipped: ' + e.message); }
+}
+
+/** A trip's Summary or Budget was opened: re-total that trip. Never throws. */
+function tripActualsOnView_(tripKey, tripId) {
+  try {
+    var reg = readTripRegistry_(), id = String(tripId || '').trim().toUpperCase();
+    var t = (id && reg.byId[id]) || tripActualsTripsFor_(reg.rows, '', String(tripKey || '').trim())[0];
+    if (t) syncTripActualsFor_([t]);
+  } catch (e) { Logger.log('trip actuals: view update skipped: ' + e.message); }
 }
 
 /** Each settled trip idea's open WILLA reminder gets the booked-so-far total in its reason. */
@@ -159,14 +201,4 @@ function tripActualsRefreshWilla_(ss, found) {
     if (!want[k] || String(r[8] || '').toLowerCase() === 'yes' || String(r[4]) === want[k]) return;
     flags.getRange(i + 2, 5).setValue(want[k]);
   });
-}
-
-/** Called from hourlyCheck: totals actuals when due. Never throws. */
-function maybeSyncTripActuals_(now) {
-  try {
-    var props = PropertiesService.getScriptProperties();
-    if (!tripActualsDue_((now || new Date()).getTime(), props.getProperty('TRIP_ACTUALS_SYNCED_AT'))) return;
-    props.setProperty('TRIP_ACTUALS_SYNCED_AT', new Date().toISOString());
-    syncTripActuals_();
-  } catch (e) { Logger.log('trip actuals: sync failed: ' + e.message); }
 }

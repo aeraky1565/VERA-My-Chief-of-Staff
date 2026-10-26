@@ -10374,6 +10374,9 @@ function webGetTripBudget_(e) {
   var tripKey = (p.tripKey || '').trim();
   if (!tripKey) return { ok: false, error: 'tripKey required' };
 
+  // Opening a trip's Budget re-totals what it actually cost first (TripActuals.js).
+  tripActualsOnView_(tripKey, p.tripId);
+
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.TRIP_BUDGET);
   if (!sheet) return { ok: true, tripKey: tripKey, items: [], summary: null };

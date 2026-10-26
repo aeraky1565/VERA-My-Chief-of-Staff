@@ -351,12 +351,13 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   S.getConfigValues = () => ({ home_airports: 'IAD, DCA' });
   S.webGetTripMeta_ = () => ({ ok: true, tripTravellers: 2 });
   S.resolveTripId_ = (t, o) => (o && o.mint === false && o.touch === false && t.label === 'Chicago Trip') ? 'TRIP-CHI' : '';
-  S.ariaPlanFor_ = () => null;
+  S.ariaPlanFor_ = () => null; S.viewed = []; S.tripActualsOnView_ = (k, id) => S.viewed.push([k, id]);
   let status = { ok: true, configured: true, watchlist: [{ tripId: 'TRIP-CHI', label: 'Chicago Trip', status: 'draft', origins: '', dests: '', ceiling: null, travelers: null }], fares: [], requests: [] };
   S.webAriaStatus_ = () => status;
   const q = 'webTripAria_({ tripKey: "2027-04-05|Chicago Trip", label: "Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13" })';
   let ta = run(q);
   check('a trip\'s Trip ID is found from the trip, read only, nothing minted', ta.ok && ta.tripId === 'TRIP-CHI');
+  check('opening the trip re-totals what it actually cost, for that trip', JSON.stringify(S.viewed[0]) === JSON.stringify(['2027-04-05|Chicago Trip', 'TRIP-CHI']), JSON.stringify(S.viewed));
   check('…its ARIA row (a Draft here) is found', ta.row && ta.row.status === 'draft' && ta.request === null);
   check('the watch form comes prefilled: home airports, the trip\'s dates, travelers, the ceiling from Trip Budget\'s flights', ta.draft.origins === 'IAD, DCA' && ta.draft.earliest === '2027-04-05' && ta.draft.latest === '2027-04-13'
     && ta.draft.travelers === 2 && ta.draft.ceiling === 360 && ta.draft.flexDays === 1 && ta.draft.dests === '', JSON.stringify(ta.draft));
