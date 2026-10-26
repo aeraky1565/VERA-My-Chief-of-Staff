@@ -358,7 +358,8 @@ console.log('\nGates 4 and 5 — never an empty section when access is genuinely
 
 console.log('\nThe shared Claude helper stays compatible');
 {
-  const fn = extractFn(EP, 'callClaudeJson_');
+  // callClaudeJson_ now hands the request to callClaudeJsonDetailed_; read both.
+  const fn = extractFn(EP, 'callClaudeJson_') + '\n' + extractFn(EP, 'callClaudeJsonDetailed_');
   // Every other caller passes two arguments. The default must still be 1024, or
   // this change silently alters cost and behaviour across the whole codebase.
   check('max_tokens is no longer a hardcoded literal in the body',
