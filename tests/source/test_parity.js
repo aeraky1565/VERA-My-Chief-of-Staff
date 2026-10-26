@@ -75,8 +75,9 @@ const RULES = [
   ['a dinner can be picked up',                s => /mp-handle/.test(s)],
   ['…and dropped on another day',              s => /mp-target/.test(s)],
   ['it calls move_meal',                       s => /move_meal/.test(s)],
-  ['Suggest Week names the week it fills',     s => /action\s*:\s*'suggest_meals',\s*weekStart/.test(s)
-                                                 || /action:'suggest_meals',weekStart/.test(s)],
+  // Suggest opens the shared MealHand sheet, which asks for the week it was opened on.
+  ['Suggest Week names the week it fills',     s => /props\.call\('suggest_week',\{weekStart:props\.weekStart\}\)/.test(s)
+                                                 && /setSheet\(\{\s*kind\s*:\s*'suggest',\s*weekStart\s*:\s*weekStart\s*\}\)/.test(s)],
   // The silent-failure path that hid the save bug for weeks: `if (r.ok) load()` with
   // no else, so a rejected write looked exactly like a successful one.
   ['a failed write is shown, not swallowed',   s => /mp-error/.test(s)],

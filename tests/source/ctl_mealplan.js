@@ -165,8 +165,8 @@ const CONTROLS = {
   }),
   'meal_plan stops returning the first week as `days`': b => ({
     'WebApp.js': swap(b['WebApp.js'],
-      '  return { ok: true, weekStart: weekStart, days: weeks[0].days, weeks: weeks };',
-      '  return { ok: true, weekStart: weekStart, weeks: weeks };'),
+      '  var res = { ok: true, weekStart: weekStart, days: weeks[0].days, weeks: weeks };',
+      '  var res = { ok: true, weekStart: weekStart, weeks: weeks };'),
   }),
   'move_meal loses its route': b => ({
     'WebApp.js': swap(b['WebApp.js'],
