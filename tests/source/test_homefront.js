@@ -139,7 +139,11 @@ check('the setting is read loosely, and anything unknown is a flag', run('hfUpke
 console.log('\ngatherings: the rules');
 const TI = fs.readFileSync(path.join(ROOT, 'TripIdeas.js'), 'utf8');
 ['tiRows_', 'tiRowOf_'].forEach(n => vm.runInContext(extract(TI, n), S));
-vm.runInContext(TI.match(/function tiMintId_\(prefix\) \{[^\n]*\n/)[0] + TI.match(/function tiNow_\(\) \{[^\n]*\n/)[0], S);
+vm.runInContext(TI.match(/function tiMintId_\(prefix\) \{[^\n]*\n/)[0], S);
+// A clock that moves a minute per call: on a fast runner a save and its update can land in the
+// same millisecond, and then "keeps when it was created" can't tell a kept time from a new one.
+let tick = 0;
+S.tiNow_ = () => new Date(Date.UTC(2026, 9, 26, 12, tick++)).toISOString();
 vm.runInContext(constLine(CODE, 'GATHERINGS_HEADERS'), S);
 let uuid = 0;
 S.Utilities.getUuid = () => String(++uuid).padStart(8, 'a') + '-3456-7890-0000-000000000000';
