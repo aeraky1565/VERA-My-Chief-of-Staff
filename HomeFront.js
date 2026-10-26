@@ -236,3 +236,132 @@ function hfSyncUpkeepTasks_(sheet, wanted, today) {
     sheet.appendRow(['TASK-' + stamp + '-U' + (++n) + String(Date.now()).slice(-3), w.flag, today, w.next, 'Open', '', HF_TASK_NOTE_ + w.id + ' · from Home Front → Chores', '']);
   });
 }
+
+// ============================================================
+// GATHERINGS (Hosting): dinner and lunch parties, birthdays, holidays.
+// ============================================================
+//
+// One row per gathering in the Gatherings tab; the guest list, menu, to-dos and
+// shopping list are JSON in their cells. A to-do is set relative to the day
+// ("3 weeks before"), so moving the date moves every to-do with it. A new
+// gathering starts with a few to-dos for its type. "Plan it again" copies the
+// menu only (decided Oct 26), with fresh to-dos and no date. Party to-dos show
+// under Coming up, never as flags (decided Oct 26). VERA writes to no calendar:
+// the dashboard offers an .ics download.
+
+var HF_GATHERING_TYPES_ = ['dinner', 'lunch', 'birthday', 'holiday', 'other'];
+var HF_GUEST_STATUSES_ = ['invited', 'coming', 'maybe', 'declined'];
+var HF_GATHERING_TEMPLATES_ = {
+  dinner:   [['Send invites', 21], ['Plan the menu', 7], ['Shop', 1], ['Set the table', 0]],
+  lunch:    [['Send invites', 14], ['Plan the menu', 7], ['Shop', 1]],
+  birthday: [['Send invites', 21], ['Order the cake', 3], ['Buy the gift', 2], ['Decorations', 1]],
+  holiday:  [['Send invites', 28], ['Plan the menu', 14], ['Ask who brings what', 10], ['Shop', 2]],
+  other:    [['Send invites', 14]],
+};
+
+function hfStr_(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
+function hfNum_(v) { if (v === '' || v == null) return null; var n = Number(String(v).replace(/[^0-9.\-]/g, '')); return isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null; }
+function hfTime_(v) { var m = String(v || '').trim().match(/^(\d{1,2}):(\d{2})$/); return m && Number(m[1]) < 24 && Number(m[2]) < 60 ? String(m[1]).padStart(2, '0') + ':' + m[2] : ''; }
+// Sheets turns a typed "19:00" into a time cell (a Date on 1899-12-30): read its hours and minutes back.
+function hfTimeCell_(v) { return v instanceof Date && !isNaN(v.getTime()) ? String(v.getHours()).padStart(2, '0') + ':' + String(v.getMinutes()).padStart(2, '0') : v; }
+function hfList_(v) { if (Array.isArray(v)) return v; try { var a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+
+/** Pure: the to-dos a new gathering of this type starts with. */
+function hfGatheringTemplate_(type) {
+  return (HF_GATHERING_TEMPLATES_[type] || HF_GATHERING_TEMPLATES_.other).map(function(t) { return { text: t[0], before: t[1], done: false }; });
+}
+
+/** Pure: a gathering as VERA keeps it: every field checked and capped. null without a title. */
+function hfCleanGathering_(g) {
+  g = g || {};
+  var title = hfStr_(g.title, 80);
+  if (!title) return null;
+  var type = HF_GATHERING_TYPES_.indexOf(String(g.type || '').toLowerCase()) !== -1 ? String(g.type).toLowerCase() : 'other';
+  return {
+    id: hfStr_(g.id, 40), title: title, type: type, date: hfYmd_(g.date), start: hfTime_(g.start), end: hfTime_(g.end), place: hfStr_(g.place, 120),
+    guests: hfList_(g.guests).map(function(x) { x = x || {}; var name = hfStr_(x.name, 60); if (!name) return null;
+      var st = String(x.status || '').toLowerCase(); return { name: name, status: HF_GUEST_STATUSES_.indexOf(st) !== -1 ? st : 'invited', diet: hfStr_(x.diet, 60) }; }).filter(Boolean).slice(0, 60),
+    menu: hfList_(g.menu).map(function(x) { x = x || {}; var dish = hfStr_(x.dish, 80); if (!dish) return null; return { dish: dish, who: hfStr_(x.who, 40), recipe: hfStr_(x.recipe, 80), note: hfStr_(x.note, 60) }; }).filter(Boolean).slice(0, 40),
+    todos: hfList_(g.todos).map(function(x) { x = x || {}; var text = hfStr_(x.text, 80); if (!text) return null; var b = parseInt(x.before, 10);
+      return { text: text, before: isFinite(b) ? Math.min(Math.max(b, 0), 120) : 0, done: x.done === true }; }).filter(Boolean).slice(0, 40),
+    shopping: hfList_(g.shopping).map(function(x) { return hfStr_(x, 80); }).filter(Boolean).slice(0, 60),
+    budget: hfNum_(g.budget), spent: hfNum_(g.spent), notes: String(g.notes == null ? '' : g.notes).trim().slice(0, 1000),
+  };
+}
+
+/** Pure: "Plan it again": the same kind of gathering, the menu only (who brings what cleared), fresh to-dos, no date. */
+function hfGatheringAgain_(g) {
+  var c = hfCleanGathering_(g);
+  if (!c) return null;
+  return { id: '', title: c.title, type: c.type, date: '', start: c.start, end: c.end, place: c.place, guests: [],
+    menu: c.menu.map(function(m) { return { dish: m.dish, who: '', recipe: m.recipe, note: m.note }; }),
+    todos: hfGatheringTemplate_(c.type), shopping: [], budget: c.budget, spent: null, notes: '' };
+}
+
+/** Pure: a to-do's date: the gathering's date less its days before. '' with no date. */
+function hfTodoDue_(date, before) { return date ? hfAddDays_(date, -(Number(before) || 0)) : ''; }
+function hfAddDays_(ymd, n) { var d = new Date(Date.parse(ymd + 'T00:00:00Z') + n * 864e5); return d.toISOString().slice(0, 10); }
+
+function hfGatheringToRow_(g, created, updated) {
+  return [g.id, g.title, g.type, g.date, g.start, g.end, g.place, JSON.stringify(g.guests), JSON.stringify(g.menu), JSON.stringify(g.todos),
+    JSON.stringify(g.shopping), g.budget == null ? '' : g.budget, g.spent == null ? '' : g.spent, g.notes, created, updated];
+}
+function hfGatheringFromRow_(r) {
+  var g = hfCleanGathering_({ id: r[0], title: r[1], type: r[2], date: r[3] instanceof Date ? hfYmd_(r[3]) : r[3], start: hfTimeCell_(r[4]), end: hfTimeCell_(r[5]),
+    place: r[6], guests: r[7], menu: r[8], todos: r[9], shopping: r[10], budget: r[11], spent: r[12], notes: r[13] });
+  if (g) { g.created = String(r[14] || ''); g.updated = String(r[15] || ''); }
+  return g;
+}
+
+function hfGatheringsSheet_() { return tiSchema_(ensureSheet(getSpreadsheet(), TABS.GATHERINGS, GATHERINGS_HEADERS), GATHERINGS_HEADERS); }
+function hfReadGatherings_() { return tiRows_(hfGatheringsSheet_(), GATHERINGS_HEADERS.length).map(hfGatheringFromRow_).filter(Boolean); }
+
+/** GET gatherings → {ok, gatherings, templates} */
+function webGetGatherings_() {
+  return { ok: true, gatherings: hfReadGatherings_(), templates: Object.keys(HF_GATHERING_TEMPLATES_).reduce(function(o, k) { o[k] = hfGatheringTemplate_(k); return o; }, {}) };
+}
+
+/** POST gathering_save {gathering} → {ok, gathering}. A new one (no id) gets an id, and its type's to-dos when it has none. */
+function webSaveGathering_(body) {
+  var g = hfCleanGathering_(body && body.gathering);
+  if (!g) return { ok: false, error: 'A gathering needs a name.' };
+  return tiLocked_(function() {
+    var sheet = hfGatheringsSheet_(), now = tiNow_(), w = GATHERINGS_HEADERS.length;
+    var row = g.id ? tiRowOf_(sheet, w, g.id) : -1;
+    if (g.id && row === -1) return { ok: false, error: 'That gathering no longer exists.' };
+    if (row === -1) {
+      g.id = tiMintId_('GATH-');
+      if (!g.todos.length && !(body.gathering && Array.isArray(body.gathering.todos))) g.todos = hfGatheringTemplate_(g.type);
+      sheet.appendRow(hfGatheringToRow_(g, now, now));
+      g.created = now; g.updated = now;
+    } else {
+      var created = String(sheet.getRange(row, 15).getValue() || now);
+      sheet.getRange(row, 1, 1, w).setValues([hfGatheringToRow_(g, created, now)]);
+      g.created = created; g.updated = now;
+    }
+    return { ok: true, gathering: g };
+  });
+}
+
+/** POST gathering_delete {id} */
+function webDeleteGathering_(body) {
+  var id = hfStr_(body && body.id, 40);
+  if (!id) return { ok: false, error: 'id required' };
+  return tiLocked_(function() {
+    var sheet = hfGatheringsSheet_(), row = tiRowOf_(sheet, GATHERINGS_HEADERS.length, id);
+    if (row === -1) return { ok: false, error: 'not found' };
+    sheet.deleteRow(row);
+    return { ok: true, id: id };
+  });
+}
+
+/** POST gathering_to_shopping {tabId, items[]} → {ok, added}: onto one store's list in the Shopping doc. */
+function webGatheringToShopping_(body) {
+  var tabId = hfStr_(body && body.tabId, 80);
+  var items = hfList_(body && body.items).map(function(x) { return hfStr_(x, 80); }).filter(Boolean).slice(0, 60);
+  if (!tabId) return { ok: false, error: 'Pick a store.' };
+  if (!items.length) return { ok: false, error: 'Nothing to send.' };
+  var added = 0;
+  items.forEach(function(t) { addShoppingItem_(tabId, t); added++; });
+  return { ok: true, added: added };
+}

@@ -20,8 +20,10 @@ function fakeSheet(rows) {
     getValues: () => { const out = []; for (let i = 0; i < (nr || 1); i++) { const row = sh.rows[r - 1 + i] || []; out.push(Array.from({ length: nc || 1 }, (x, j) => row[c - 1 + j] === undefined ? '' : row[c - 1 + j])); } return out; },
     setValues: v => { v.forEach((row, i) => { sh.rows[r - 1 + i] = sh.rows[r - 1 + i] || []; row.forEach((x, j) => { sh.rows[r - 1 + i][c - 1 + j] = x; }); }); },
     setValue: v => { sh.rows[r - 1] = sh.rows[r - 1] || []; sh.rows[r - 1][c - 1] = v; },
+    getValue: () => { const row = sh.rows[r - 1] || []; return row[c - 1] === undefined ? '' : row[c - 1]; },
   });
   sh.appendRow = v => sh.rows.push(v.slice());
+  sh.deleteRow = r => sh.rows.splice(r - 1, 1);
   return sh;
 }
 const extract = (src, name) => { const at = src.indexOf('function ' + name + '('); const end = src.indexOf('\n}\n', at) + 3; return src.slice(at, end); };
@@ -134,6 +136,59 @@ check('off: nothing at all', openFlags() === '' && openTasks().length === 0);
 cfg = { upkeep_reminders: 'Flag ' };
 check('the setting is read loosely, and anything unknown is a flag', run('hfUpkeepMode_()') === 'flag' && (cfg = { upkeep_reminders: 'nonsense' }, run('hfUpkeepMode_()')) === 'flag');
 
+console.log('\ngatherings: the rules');
+const TI = fs.readFileSync(path.join(ROOT, 'TripIdeas.js'), 'utf8');
+['tiRows_', 'tiRowOf_'].forEach(n => vm.runInContext(extract(TI, n), S));
+vm.runInContext(TI.match(/function tiMintId_\(prefix\) \{[^\n]*\n/)[0] + TI.match(/function tiNow_\(\) \{[^\n]*\n/)[0], S);
+vm.runInContext(constLine(CODE, 'GATHERINGS_HEADERS'), S);
+let uuid = 0;
+S.Utilities.getUuid = () => String(++uuid).padStart(8, 'a') + '-3456-7890-0000-000000000000';
+S.TABS.GATHERINGS = 'Gatherings';
+const gath = fakeSheet([]);
+const sheets0 = S.getSpreadsheet;
+S.getSpreadsheet = () => ({ getSheetByName: n => n === 'Gatherings' ? gath : sheets0().getSheetByName(n) });
+S.ensureSheet = (ss, n, h) => { const sh = ss.getSheetByName(n); if (sh && sh.getLastRow() === 0) sh.rows.push(h.slice()); return sh; };
+
+S.raw = { title: '  [Name]’s   birthday dinner ', type: 'BIRTHDAY', date: '2026-11-14', start: '7:00', end: '25:00', place: 'at home',
+  guests: [{ name: 'Ann', status: 'coming', diet: 'Vegetarian' }, { name: '' }, { name: 'Bea', status: 'sure!' }],
+  menu: [{ dish: 'Roast chicken', who: '' }, { dish: 'Salad', who: 'Ann' }, { dish: ' ' }],
+  todos: [{ text: 'Order the cake', before: 3 }, { text: 'Way early', before: 500, done: true }, { text: 'Bad', before: 'x' }],
+  shopping: ['candles', '', 'wine'], budget: '$400', spent: '-5', notes: 'n' };
+const c = run('hfCleanGathering_(raw)');
+check('a gathering is cleaned: spaces, type, times, and lists without blanks', c.title === '[Name]’s birthday dinner' && c.type === 'birthday' && c.start === '07:00' && c.end === ''
+  && c.guests.length === 2 && c.guests[1].status === 'invited' && c.menu.length === 2 && c.shopping.join() === 'candles,wine', JSON.stringify(c));
+check('…to-dos keep their days before, within 0–120', c.todos.map(t => t.before).join() === '3,120,0' && c.todos[1].done === true && c.todos[0].done === false);
+check('…money reads loosely and is never negative', c.budget === 400 && c.spent === null);
+check('…and a gathering needs a name', run('hfCleanGathering_({ title: "  " })') === null && run('hfCleanGathering_(null)') === null);
+check('each type starts with its own to-dos', run('hfGatheringTemplate_("birthday").map(function(t){return t.text;}).join()') === 'Send invites,Order the cake,Buy the gift,Decorations'
+  && run('hfGatheringTemplate_("dinner")[0].before') === 21 && run('hfGatheringTemplate_("nonsense")').length === 1);
+const again = run('hfGatheringAgain_(raw)');
+check('Plan it again copies the menu only: no who-brings, no guests, no date, fresh to-dos, nothing to buy', again.menu.map(m => m.dish + '|' + m.who).join() === 'Roast chicken|,Salad|'
+  && again.guests.length === 0 && again.date === '' && again.shopping.length === 0 && again.todos.map(t => t.text).join() === 'Send invites,Order the cake,Buy the gift,Decorations' && again.id === '' && again.title === c.title, JSON.stringify(again));
+check('a to-do is due its days before the gathering; none without a date', run('hfTodoDue_("2026-11-14", 3)') === '2026-11-11' && run('hfTodoDue_("2026-03-02", 2)') === '2026-02-28' && run('hfTodoDue_("", 3)') === '');
+check('a time Sheets made into a time cell reads back as HH:MM', run('hfTimeCell_(new Date(1899, 11, 30, 19, 5))') === '19:05' && run('hfTimeCell_("18:30")') === '18:30');
+
+console.log('\ngatherings: the sheet');
+let sv = run('webSaveGathering_({ gathering: { title: "Friendsgiving", type: "holiday", date: "2026-11-21" } })');
+check('a new gathering gets an id and its type\'s to-dos', sv.ok && /^GATH-[0-9A-F]{12}$/.test(sv.gathering.id) && sv.gathering.todos.length === 4 && gath.rows.length === 2 && gath.rows[0][0] === 'ID', JSON.stringify(sv).slice(0, 200));
+const gid = sv.gathering.id, created = gath.rows[1][14];
+sv = run('webSaveGathering_({ gathering: { title: "Lunch", type: "lunch", todos: [] } })');
+check('…but not when it is sent with its to-dos, even none', sv.ok && sv.gathering.todos.length === 0);
+S.upd = Object.assign({}, run('webGetGatherings_()').gatherings[0], { guests: [{ name: 'Cal', status: 'maybe' }], date: '2026-11-22' });
+sv = run('webSaveGathering_({ gathering: upd })');
+const back = run('webGetGatherings_()');
+check('saving again updates it in place and keeps when it was created', sv.ok && gath.rows.length === 3 && gath.rows[1][14] === created && back.gatherings[0].guests[0].name === 'Cal' && back.gatherings[0].date === '2026-11-22');
+check('…and the list comes back with the templates for a new one', back.gatherings.length === 2 && back.templates.birthday.length === 4);
+check('a gathering that no longer exists is not recreated', run('webSaveGathering_({ gathering: { id: "GATH-NOPE", title: "x" } })').ok === false && gath.rows.length === 3);
+check('a gathering needs a name to save', run('webSaveGathering_({ gathering: { title: "" } })').ok === false);
+gath.rows[1][4] = new Date(1899, 11, 30, 19, 0); gath.rows[1][3] = new Date(2026, 10, 22);
+check('dates and times Sheets reformatted read back as typed', run('webGetGatherings_()').gatherings[0].start === '19:00' && run('webGetGatherings_()').gatherings[0].date === '2026-11-22');
+check('delete removes the row', run('webDeleteGathering_({ id: "' + gid + '" })').ok && gath.rows.length === 2 && run('webDeleteGathering_({ id: "' + gid + '" })').ok === false);
+const shop = []; S.addShoppingItem_ = (tab, t) => shop.push(tab + ':' + t);
+const ts = run('webGatheringToShopping_({ tabId: "t.store1", items: ["candles", " ", "wine"] })');
+check('Send to Shopping puts each item on the store picked', ts.ok && ts.added === 2 && shop.join() === 't.store1:candles,t.store1:wine');
+check('…and asks for a store, and something to send', run('webGatheringToShopping_({ items: ["x"] })').ok === false && run('webGatheringToShopping_({ tabId: "t", items: [] })').ok === false && shop.length === 2);
+
 console.log('\nwiring');
 check('the routes', /case 'chore_upkeep_done':\s+return jsonOut_\(webUpkeepDone_\(e\)\);/.test(WEB) && /case 'chore_upkeep_set':\s+return jsonOut_\(webUpkeepSet_\(e\)\);/.test(WEB) && /case 'chores_upkeep_starter':\s+return jsonOut_\(webUpkeepStarter_\(\)\);/.test(WEB));
 check('the chores read carries each upkeep chore\'s state', /var up = hfUpkeepState_\(obj, today\);[^\n]*\n\s+if \(up\) obj\.upkeep = up;/.test(extract(WEB, 'webGetChores_')));
@@ -141,6 +196,9 @@ check('adding a chore can set its due-by date', /sheet\.appendRow\(\[id, chore, 
 const reset = extract(CODE, 'resetChoresByCadence_');
 check('the nightly reset no longer clears quarterly or yearly chores', !/push\('Quarterly'\)|push\('Annually'\)|push\('Seasonal'\)|push\('Semiannually'\)/.test(reset) && /push\('Monthly'\)/.test(reset));
 check('the nightly run raises upkeep reminders', /nightlyStep_\(ctx, 'hfSyncUpkeepReminders_', hfSyncUpkeepReminders_\);/.test(CODE));
+check('the gathering routes', /case 'gatherings':\s+return jsonOut_\(webGetGatherings_\(\)\);/.test(WEB) && /case 'gathering_save':\s+return jsonOut_\(webSaveGathering_\(body\)\);/.test(WEB)
+  && /case 'gathering_delete':\s+return jsonOut_\(webDeleteGathering_\(body\)\);/.test(WEB) && /case 'gathering_to_shopping':\s+return jsonOut_\(webGatheringToShopping_\(body\)\);/.test(WEB));
+check('nothing in Home Front writes to a calendar', !/CalendarApp|Calendar\.Events/.test(SRC));
 check('Config says how', /\['upkeep_reminders',\s+'flag'\],/.test(CODE));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

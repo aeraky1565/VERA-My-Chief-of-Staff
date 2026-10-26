@@ -283,6 +283,7 @@ function doGet(e) {
       case 'chore_upkeep_done':     return jsonOut_(webUpkeepDone_(e));
       case 'chore_upkeep_set':      return jsonOut_(webUpkeepSet_(e));
       case 'chores_upkeep_starter': return jsonOut_(webUpkeepStarter_());
+      case 'gatherings':            return jsonOut_(webGetGatherings_());
       // Chores For Others (Issue #180)
       case 'get_chores_for_others':      return jsonOut_(webGetChoresForOthers_());
       case 'add_chore_for_others':       return jsonOut_(webAddChoreForOthers_(e));
@@ -567,6 +568,9 @@ function doPost(e) {
       case 'trip_share_email':           return jsonOut_(webTripShareEmail_(body));
       // Trip Ideas (TripIdeas.js): POST, because a brief and an option's legs are free text.
       case 'trip_idea_save':             return jsonOut_(webSaveTripIdea_(body));
+      case 'gathering_save':             return jsonOut_(webSaveGathering_(body));
+      case 'gathering_delete':           return jsonOut_(webDeleteGathering_(body));
+      case 'gathering_to_shopping':      return jsonOut_(webGatheringToShopping_(body));
       case 'trip_idea_delete':           return jsonOut_(webDeleteTripIdea_(body));
       case 'trip_option_save':           return jsonOut_(webSaveTripIdeaOption_(body));
       case 'trip_option_delete':         return jsonOut_(webDeleteTripIdeaOption_(body));

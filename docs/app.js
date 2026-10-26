@@ -5392,7 +5392,7 @@ function HouseholdView({apiUrl,apiToken}){const[data,setData]=React.useState(nul
 // group's sections as chips. Household comes first and is where Home Front opens. Each group remembers
 // the section last opened in it. A section the dashboard doesn't offer (a feature switched off) is left
 // out, and a group with none left is hidden.
-// Also here, shared by both dashboards: upkeep in Chores (HfUpkeep).
+// Also here, shared by both dashboards: upkeep in Chores (HfUpkeep), Hosting's Gatherings, and the sitter & guest guide.
 var HF_GROUPS=[
   {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch']},
   {id:'chores',label:'Chores',icon:'🧹',items:['chores','chores_for_others']},
@@ -5482,10 +5482,273 @@ function HfUpkeep(props){var h=React.createElement;var today=props.today||hfLoca
     :h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
       h('button',{type:'button',className:'hf-upkeep-starter',disabled:!!busy,onClick:function(){call('starter',{action:'chores_upkeep_starter'},function(r){merge(r.chores||[]);if(!r.added)setErr('The common list is already in.');});},style:Object.assign(btn(false),{border:'1px dashed #3b5a8a'})},busy==='starter'?'Adding…':'+ Add common upkeep'),
       h('button',{type:'button',className:'hf-upkeep-add-btn',onClick:function(){setAdd({chore:'',cadence:'Quarterly',dueBy:''});},style:Object.assign(btn(false),{border:'1px solid #2a3a5c',color:'#cfd8ef'})},'+ Add upkeep')));}
+
+// ---- Gatherings (Hosting): parties, birthdays, holidays. HomeFront.js keeps and checks them. ----
+var HF_GTYPES=[['dinner','Dinner'],['lunch','Lunch'],['birthday','Birthday'],['holiday','Holiday'],['other','Other']];
+var HF_GSTATUS=[['invited','Invited'],['coming','Coming'],['maybe','Maybe'],['declined','Can’t come']];
+var HF_BEFORE=[[0,'the day'],[1,'1 day before'],[2,'2 days before'],[3,'3 days before'],[7,'1 week before'],[14,'2 weeks before'],[21,'3 weeks before'],[28,'4 weeks before']];
+function hfGtype_(t){return (HF_GTYPES.filter(function(x){return x[0]===t;})[0]||HF_GTYPES[4])[1];}
+function hfAddDaysC_(ymd,n){var p=ymd.split('-').map(Number);var d=new Date(Date.UTC(p[0],p[1]-1,p[2]+n));return d.toISOString().slice(0,10);}
+// Pure: a to-do's date, its days before the gathering ('' without a date).
+function hfTodoDueC_(date,before){return date?hfAddDaysC_(date,-(Number(before)||0)):'';}
+// Pure: how far along a gathering is: to-dos done of all, and the next one not done (by its date).
+function hfGatheringProgress_(g){var t=g.todos||[];var open=t.map(function(x,i){return {text:x.text,due:hfTodoDueC_(g.date,x.before),before:x.before,i:i,done:x.done};}).filter(function(x){return !x.done;})
+  .sort(function(a,b){return b.before-a.before||a.i-b.i;});return {done:t.filter(function(x){return x.done;}).length,total:t.length,next:open[0]||null};}
+// Pure: coming up (by date, undated last) and past (latest first).
+function hfGatheringSplit_(list,today){var up=[],past=[];(list||[]).forEach(function(g){(g.date&&g.date<today?past:up).push(g);});
+  up.sort(function(a,b){return (a.date||'9999')<(b.date||'9999')?-1:(a.date||'9999')>(b.date||'9999')?1:String(a.title).localeCompare(String(b.title));});
+  past.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0;});return {upcoming:up,past:past};}
+// Pure: "Plan it again" (decided Oct 26: the menu only): who brings what cleared, no guests or date, the type's to-dos.
+function hfAgainC_(g,templates){return {title:g.title,type:g.type,date:'',start:g.start||'',end:g.end||'',place:g.place||'',guests:[],
+  menu:(g.menu||[]).map(function(m){return {dish:m.dish,who:'',recipe:m.recipe||'',note:m.note||''};}),todos:((templates||{})[g.type]||[]).map(function(t){return {text:t.text,before:t.before,done:false};}),shopping:[],budget:g.budget,spent:null,notes:''};}
+function hfGuestLine_(g){var c={};(g.guests||[]).forEach(function(x){c[x.status]=(c[x.status]||0)+1;});var bits=[];if(c.coming)bits.push(c.coming+' coming');if(c.maybe)bits.push(c.maybe+' maybe');if(c.invited)bits.push(c.invited+' invited');return bits.join(', ');}
+function hfWhenLine_(g,today){return [g.date?hfWeekday_(g.date)+', '+hfDay_(g.date,today):'No date yet',g.start?hfClock_(g.start)+(g.end?'–'+hfClock_(g.end):''):'',g.place].filter(Boolean).join(' · ');}
+function hfWeekday_(ymd){var p=ymd.split('-').map(Number);return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(Date.UTC(p[0],p[1]-1,p[2])).getUTCDay()];}
+function hfClock_(hm){var p=String(hm).split(':').map(Number);var h=p[0]%12||12;return h+(p[1]?':'+String(p[1]).padStart(2,'0'):'')+(p[0]<12?' AM':' PM');}
+function hfIcsEsc_(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');}
+// Pure: the gathering as one calendar event: at its time when it has one (local, floating), else all day.
+function hfGatheringIcs_(g){var d=String(g.date||'').replace(/-/g,'');var stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+  var when=g.start?['DTSTART:'+d+'T'+g.start.replace(':','')+'00','DTEND:'+(g.end&&g.end>g.start?d+'T'+g.end.replace(':','')+'00':d+'T'+String(Math.min(Number(g.start.slice(0,2))+3,23)).padStart(2,'0')+g.start.slice(3)+'00')]
+    :['DTSTART;VALUE=DATE:'+d,'DTEND;VALUE=DATE:'+hfAddDaysC_(g.date,1).replace(/-/g,'')];
+  var notes=[(g.menu||[]).length?'Menu: '+g.menu.map(function(m){return m.dish+(m.who?' ('+m.who+')':'');}).join(', '):'',g.notes||''].filter(Boolean).join('\n');
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//VERA//Gatherings//EN','BEGIN:VEVENT','UID:'+String(g.id||'gathering').toLowerCase()+'@vera','DTSTAMP:'+stamp].concat(when,
+    ['SUMMARY:'+hfIcsEsc_(g.title),g.place?'LOCATION:'+hfIcsEsc_(g.place):'',notes?'DESCRIPTION:'+hfIcsEsc_(notes):'','END:VEVENT','END:VCALENDAR']).filter(Boolean).join('\r\n');}
+function hfDownload_(name,text,type){try{var b=new Blob([text],{type:type||'text/plain'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},500);}catch(e){}}
+var HF_CARD={display:'flex',flexDirection:'column',borderRadius:12,background:'#0d1528',border:'1px solid #1c2a48'};
+var HF_INP={minHeight:40,padding:'0 10px',borderRadius:8,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:14,boxSizing:'border-box',minWidth:0};
+function hfBtn_(kind){return {minHeight:40,padding:'0 14px',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600,whiteSpace:'nowrap',
+  background:kind==='primary'?'#8ab4f8':'transparent',color:kind==='primary'?'#0b1430':kind==='danger'?'#ffb0b0':'#cfd8ef',border:kind==='primary'?'0':'1px solid '+(kind==='danger'?'#6a2a34':'#2a3a5c')};}
+var HF_EYE={fontSize:11,fontWeight:700,letterSpacing:'.08em',color:'#8a9abf'};
+function HfAddRow(props){var h=React.createElement;var _v=React.useState(''),v=_v[0],setV=_v[1];
+  var go=function(){var t=v.trim();if(!t)return;props.onAdd(t);setV('');};
+  return h('div',{style:{display:'flex',gap:8,padding:'10px 14px',borderTop:props.first?'none':'1px solid #16223c',flexWrap:'wrap'}},
+    h('input',{value:v,placeholder:props.placeholder,'aria-label':props.label,className:props.className,onChange:function(e){setV(e.target.value);},onKeyDown:function(e){if(e.key==='Enter')go();},style:Object.assign({},HF_INP,{flex:'1 1 160px'})}),
+    props.extra||null,h('button',{type:'button',className:props.className+'-add',onClick:go,disabled:!v.trim(),style:hfBtn_()},'Add'));}
+function HfGathering(props){var h=React.createElement;var g=props.g,today=props.today;
+  var _e=React.useState(false),editing=_e[0],setEditing=_e[1];var _f=React.useState(null),form=_f[0],setForm=_f[1];
+  var _ab=React.useState(null),book=_ab[0],setBook=_ab[1];var _rc=React.useState(null),recipes=_rc[0],setRecipes=_rc[1];var _st=React.useState(null),stores=_st[0],setStores=_st[1];
+  var _sm=React.useState(''),shopMsg=_sm[0],setShopMsg=_sm[1];var _ts=React.useState(''),tab=_ts[0],setTab=_ts[1];
+  var save=function(patch){props.onSave(Object.assign({},g,patch));};
+  var list=function(k){return (g[k]||[]).slice();};
+  var setItem=function(k,i,patch){var l=list(k);l[i]=Object.assign({},l[i],patch);var o={};o[k]=l;save(o);};
+  var drop=function(k,i){var l=list(k);l.splice(i,1);var o={};o[k]=l;save(o);};
+  var push=function(k,item){var l=list(k);l.push(item);var o={};o[k]=l;save(o);};
+  var loadBook=function(){apiGet(props.apiUrl,props.apiToken,{action:'address_book'}).then(function(r){setBook(((r&&r.people)||[]).map(function(p){return p.name;}).filter(Boolean).sort());}).catch(function(){setBook([]);});};
+  var loadRecipes=function(){apiGet(props.apiUrl,props.apiToken,{action:'recipes'}).then(function(r){setRecipes(((r&&r.recipes)||[]).map(function(x){return x.name;}).filter(Boolean).sort());}).catch(function(){setRecipes([]);});};
+  var loadStores=function(){setShopMsg('');apiGet(props.apiUrl,props.apiToken,{action:'shopping'}).then(function(r){var s=((r&&r.stores)||[]).map(function(x){return {id:x.tabId,name:x.storeName};});setStores(s);if(s[0])setTab(s[0].id);}).catch(function(){setStores([]);});};
+  var sendShop=function(){setShopMsg('Sending…');apiPost(props.apiUrl,props.apiToken,{action:'gathering_to_shopping',tabId:tab,items:g.shopping}).then(function(r){
+    setShopMsg(r&&r.ok?'✓ '+r.added+' sent to '+((stores||[]).filter(function(x){return x.id===tab;})[0]||{}).name:'Couldn’t send: '+((r&&r.error)||'try again'));if(r&&r.ok)setStores(null);}).catch(function(e){setShopMsg('Couldn’t send: '+e.message);});};
+  var row=function(i){return {display:'flex',alignItems:'center',gap:8,padding:'8px 14px',borderTop:i?'1px solid #16223c':'none',flexWrap:'wrap'};};
+  var rm=function(label,on){return h('button',{type:'button','aria-label':label,onClick:on,style:{minWidth:40,minHeight:40,background:'transparent',border:0,color:'#8a9abf',cursor:'pointer',fontSize:16}},'×');};
+  var prog=hfGatheringProgress_(g);
+  var openForm=function(){setForm({title:g.title,type:g.type,date:g.date||'',start:g.start||'',end:g.end||'',place:g.place||'',budget:g.budget==null?'':String(g.budget),spent:g.spent==null?'':String(g.spent),notes:g.notes||''});setEditing(true);};
+  var fset=function(k){return function(e){var o={};o[k]=e.target.value;setForm(Object.assign({},form,o));};};
+  var field=function(label,k,type,extra){return h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf',flex:extra||'1 1 140px'}},label,
+    type==='select'?h('select',{value:form[k],onChange:fset(k),style:HF_INP},HF_GTYPES.map(function(t){return h('option',{key:t[0],value:t[0]},t[1]);}))
+    :type==='area'?h('textarea',{value:form[k],onChange:fset(k),rows:3,style:Object.assign({},HF_INP,{padding:10,minHeight:72})})
+    :h('input',{type:type||'text',value:form[k],onChange:fset(k),className:'hf-g-'+k,style:HF_INP}));};
+  return h('div',{className:'hf-gathering',style:{display:'flex',flexDirection:'column',gap:14}},
+    h('button',{type:'button',className:'hf-g-back',onClick:props.onBack,style:Object.assign(hfBtn_(),{alignSelf:'flex-start',border:0,padding:0,color:'#8ab4f8'})},'← Gatherings'),
+    h('section',{style:Object.assign({},HF_CARD,{gap:8,padding:14,border:'1px solid #2a3f6a'})},
+      h('span',{style:Object.assign({},HF_EYE,{color:'#e3c46a'})},hfGtype_(g.type).toUpperCase()),
+      h('h3',{className:'hf-g-title',style:{margin:0,fontSize:20,color:'#eef1fb'}},g.title),
+      h('span',{className:'hf-g-when',style:{fontSize:14,color:'#cfd8ef'}},hfWhenLine_(g,today)),
+      !editing&&h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}},
+        h('button',{type:'button',className:'hf-g-edit',onClick:openForm,style:hfBtn_()},'Edit details'),
+        g.date&&h('button',{type:'button',className:'hf-g-ics',onClick:function(){hfDownload_((g.title||'gathering').replace(/[^\w]+/g,'-').toLowerCase()+'.ics',hfGatheringIcs_(g),'text/calendar');},style:hfBtn_()},'Add to calendar (.ics)'),
+        h('button',{type:'button',className:'hf-g-delete',onClick:function(){if(window.confirm('Delete "'+g.title+'"?'))props.onDelete();},style:hfBtn_('danger')},'Delete')),
+      editing&&form&&h('div',{className:'hf-g-form',style:{display:'flex',flexWrap:'wrap',gap:10,marginTop:4}},
+        field('Name','title','text','1 1 100%'),field('Kind','type','select'),field('Date','date','date'),field('Starts','start','time'),field('Ends','end','time'),field('Where','place','text','1 1 100%'),
+        field('Budget ($)','budget','text'),field('Spent ($)','spent','text'),field('Notes','notes','area','1 1 100%'),
+        h('div',{style:{display:'flex',gap:8,flex:'1 1 100%'}},
+          h('button',{type:'button',className:'hf-g-form-save',disabled:!form.title.trim(),onClick:function(){save(form);setEditing(false);},style:hfBtn_('primary')},'Save'),
+          h('button',{type:'button',onClick:function(){setEditing(false);},style:hfBtn_()},'Cancel')))),
+    h('section',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:HF_EYE},'GUESTS'+(hfGuestLine_(g)?' · '+hfGuestLine_(g).toUpperCase():'')),
+      h('div',{className:'hf-g-guests',style:HF_CARD},
+        (g.guests||[]).map(function(x,i){return h('div',{key:i+x.name,className:'hf-g-guest',style:row(i)},
+          h('span',{style:{fontSize:14,flex:'1 1 120px',minWidth:0}},x.name),
+          h('input',{defaultValue:x.diet,placeholder:'Diet, allergies','aria-label':'Diet for '+x.name,onBlur:function(e){if(e.target.value!==x.diet)setItem('guests',i,{diet:e.target.value});},style:Object.assign({},HF_INP,{flex:'1 1 120px'})}),
+          h('select',{value:x.status,'aria-label':'Reply from '+x.name,onChange:function(e){setItem('guests',i,{status:e.target.value});},style:HF_INP},HF_GSTATUS.map(function(s){return h('option',{key:s[0],value:s[0]},s[1]);})),
+          rm('Remove '+x.name,function(){drop('guests',i);}));}),
+        h(HfAddRow,{first:!(g.guests||[]).length,className:'hf-g-guest-new',label:'Guest',placeholder:'Name',onAdd:function(t){push('guests',{name:t,status:'invited',diet:''});},
+          extra:book?h('select',{value:'','aria-label':'From Address Book',className:'hf-g-book',onChange:function(e){if(e.target.value)push('guests',{name:e.target.value,status:'invited',diet:''});},style:HF_INP},
+            [h('option',{key:'',value:''},book.length?'From Address Book…':'Address Book is empty')].concat(book.map(function(n){return h('option',{key:n,value:n},n);})))
+            :h('button',{type:'button',className:'hf-g-book-btn',onClick:loadBook,style:hfBtn_()},'From Address Book')}))),
+    h('section',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:HF_EYE},'MENU'),
+      h('div',{className:'hf-g-menu',style:HF_CARD},
+        (g.menu||[]).map(function(m,i){return h('div',{key:i+m.dish,className:'hf-g-dish',style:row(i)},
+          h('span',{style:{fontSize:14,flex:'1 1 140px',minWidth:0}},m.dish),
+          h('input',{defaultValue:m.who,placeholder:'We make it','aria-label':'Who brings '+m.dish,onBlur:function(e){if(e.target.value!==m.who)setItem('menu',i,{who:e.target.value});},style:Object.assign({},HF_INP,{flex:'0 1 150px'})}),
+          rm('Remove '+m.dish,function(){drop('menu',i);}));}),
+        h(HfAddRow,{first:!(g.menu||[]).length,className:'hf-g-dish-new',label:'Dish',placeholder:'A dish',onAdd:function(t){push('menu',{dish:t,who:'',recipe:'',note:''});},
+          extra:recipes?h('select',{value:'','aria-label':'From Recipes',className:'hf-g-recipes',onChange:function(e){if(e.target.value)push('menu',{dish:e.target.value,who:'',recipe:e.target.value,note:''});},style:HF_INP},
+            [h('option',{key:'',value:''},recipes.length?'From Recipes…':'No recipes yet')].concat(recipes.map(function(n){return h('option',{key:n,value:n},n);})))
+            :h('button',{type:'button',className:'hf-g-recipes-btn',onClick:loadRecipes,style:hfBtn_()},'From Recipes')}))),
+    h('section',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:HF_EYE},'TO DO BEFORE THE DAY · '+prog.done+' OF '+prog.total),
+      h('div',{className:'hf-g-todos',style:HF_CARD},
+        (g.todos||[]).map(function(t,i){var due=hfTodoDueC_(g.date,t.before);return h('div',{key:i+t.text,className:'hf-g-todo',style:row(i)},
+          h('input',{type:'checkbox',checked:!!t.done,'aria-label':t.text,onChange:function(){setItem('todos',i,{done:!t.done});},style:{width:20,height:20,accentColor:'#c9a84c'}}),
+          h('span',{style:{fontSize:14,flex:'1 1 120px',minWidth:0,color:t.done?'#8a9abf':'#dde1f0',textDecoration:t.done?'line-through':'none'}},t.text),
+          h('select',{value:t.before,'aria-label':'When: '+t.text,onChange:function(e){setItem('todos',i,{before:Number(e.target.value)});},style:HF_INP},
+            HF_BEFORE.concat(HF_BEFORE.some(function(b){return b[0]===t.before;})?[]:[[t.before,t.before+' days before']]).map(function(b){return h('option',{key:b[0],value:b[0]},b[1]);})),
+          due&&h('span',{className:'hf-g-due',style:{fontSize:12,color:!t.done&&due<today?'#ffb0b0':!t.done&&due<=hfAddDaysC_(today,3)?'#f6d27a':'#8a9abf',minWidth:56}},hfDay_(due,today)),
+          rm('Remove '+t.text,function(){drop('todos',i);}));}),
+        h(HfAddRow,{first:!(g.todos||[]).length,className:'hf-g-todo-new',label:'To-do',placeholder:'Something to do',onAdd:function(t){push('todos',{text:t,before:1,done:false});}})),
+      g.date?null:h('span',{style:{fontSize:12,color:'#8a9abf'}},'Set a date to see when each one is due.')),
+    h('section',{style:{display:'flex',flexDirection:'column',gap:8}},
+      h('span',{style:HF_EYE},'TO BUY'),
+      h('div',{className:'hf-g-shop',style:HF_CARD},
+        (g.shopping||[]).length?h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',padding:'10px 14px'}},(g.shopping||[]).map(function(s,i){return h('span',{key:i+s,className:'hf-g-item',style:{display:'inline-flex',alignItems:'center',gap:2,paddingLeft:12,borderRadius:999,border:'1px solid #2a3a5c',fontSize:13}},
+          s,rm('Remove '+s,function(){drop('shopping',i);}));})):null,
+        h(HfAddRow,{first:!(g.shopping||[]).length,className:'hf-g-item-new',label:'To buy',placeholder:'Candles, wine ×3',onAdd:function(t){push('shopping',t);}}),
+        (g.shopping||[]).length?h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',padding:'10px 14px',borderTop:'1px solid #16223c'}},
+          stores?(stores.length?[h('select',{key:'s',value:tab,'aria-label':'Store',className:'hf-g-store',onChange:function(e){setTab(e.target.value);},style:HF_INP},stores.map(function(s){return h('option',{key:s.id,value:s.id},s.name);})),
+              h('button',{key:'b',type:'button',className:'hf-g-send',onClick:sendShop,style:hfBtn_('primary')},'Send '+g.shopping.length)]
+            :h('span',{style:{fontSize:13,color:'#8a9abf'}},'No shopping list is set up.'))
+          :h('button',{type:'button',className:'hf-g-shop-btn',onClick:loadStores,style:hfBtn_('primary')},'Send to Shopping'),
+          shopMsg&&h('span',{role:'status',className:'hf-g-shop-msg',style:{fontSize:13,color:/^✓/.test(shopMsg)?'#8fe0a8':'#cfd8ef'}},shopMsg)):null)),
+    props.err&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},props.err));}
+function GatheringsView(props){var h=React.createElement;var today=props.today||hfLocalToday_();
+  var _d=React.useState({loading:true,gatherings:[],templates:{}}),data=_d[0],setData=_d[1];var _o=React.useState(''),openId=_o[0],setOpenId=_o[1];
+  var _n=React.useState(null),draft=_n[0],setDraft=_n[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  React.useEffect(function(){apiGet(props.apiUrl,props.apiToken,{action:'gatherings'}).then(function(r){setData({loading:false,gatherings:(r&&r.gatherings)||[],templates:(r&&r.templates)||{}});})
+    .catch(function(e){setData({loading:false,gatherings:[],templates:{},error:e.message});});},[props.apiUrl,props.apiToken]);
+  var put=function(g){setData(function(p){var l=p.gatherings.filter(function(x){return x.id!==g.id;});l.push(g);return Object.assign({},p,{gatherings:l});});};
+  var save=function(g){put(g);setErr('');apiPost(props.apiUrl,props.apiToken,{action:'gathering_save',gathering:g}).then(function(r){if(r&&r.ok)put(r.gathering);else setErr('Not saved: '+((r&&r.error)||'try again'));})
+    .catch(function(e){setErr('Not saved: '+e.message);});};
+  var create=function(){if(!draft.title.trim())return;setBusy(true);setErr('');
+    apiPost(props.apiUrl,props.apiToken,{action:'gathering_save',gathering:draft}).then(function(r){setBusy(false);if(r&&r.ok){put(r.gathering);setDraft(null);setOpenId(r.gathering.id);}else setErr((r&&r.error)||'Not saved');})
+    .catch(function(e){setBusy(false);setErr(e.message);});};
+  var del=function(id){apiPost(props.apiUrl,props.apiToken,{action:'gathering_delete',id:id}).then(function(r){if(r&&r.ok){setData(function(p){return Object.assign({},p,{gatherings:p.gatherings.filter(function(x){return x.id!==id;})});});setOpenId('');}
+    else setErr((r&&r.error)||'Not deleted');}).catch(function(e){setErr(e.message);});};
+  var open=data.gatherings.filter(function(x){return x.id===openId;})[0];
+  var wrap={className:'hf-gatherings',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:760}};
+  if(data.loading)return h('div',wrap,h('span',{style:{fontSize:13,color:'#8a9abf'}},'Loading gatherings…'));
+  if(open)return h('div',wrap,h(HfGathering,{g:open,today:today,apiUrl:props.apiUrl,apiToken:props.apiToken,err:err,onBack:function(){setOpenId('');},onSave:save,onDelete:function(){del(open.id);}}));
+  if(draft){var fs=function(k){return function(e){var o={};o[k]=e.target.value;setDraft(Object.assign({},draft,o));};};
+    return h('div',wrap,h('section',{className:'hf-g-new',style:Object.assign({},HF_CARD,{gap:10,padding:14})},
+      h('span',{style:Object.assign({},HF_EYE,{color:'#e3c46a'})},draft.menu&&draft.menu.length?'PLAN IT AGAIN · THE MENU COMES ALONG':'NEW GATHERING'),
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf'}},'Name',h('input',{value:draft.title,autoFocus:true,className:'hf-g-new-title',placeholder:'Friendsgiving',onChange:fs('title'),style:HF_INP})),
+      h('div',{style:{display:'flex',gap:10,flexWrap:'wrap'}},
+        h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf',flex:'1 1 140px'}},'Kind',h('select',{value:draft.type,className:'hf-g-new-type',
+          onChange:function(e){var t=e.target.value;setDraft(Object.assign({},draft,{type:t,todos:((data.templates||{})[t]||[]).map(function(x){return {text:x.text,before:x.before,done:false};})}));},style:HF_INP},
+          HF_GTYPES.map(function(t){return h('option',{key:t[0],value:t[0]},t[1]);}))),
+        h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf',flex:'1 1 140px'}},'Date',h('input',{type:'date',value:draft.date,className:'hf-g-new-date',onChange:fs('date'),style:HF_INP}))),
+      h('span',{style:{fontSize:12,color:'#8a9abf'}},'Starts with '+(draft.todos||[]).length+' to-dos for a '+hfGtype_(draft.type).toLowerCase()+(draft.menu&&draft.menu.length?' and '+draft.menu.length+' dishes from last time':'')+'; change them after.'),
+      err&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},err),
+      h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',className:'hf-g-create',disabled:busy||!draft.title.trim(),onClick:create,style:hfBtn_('primary')},busy?'Saving…':'Create'),
+        h('button',{type:'button',onClick:function(){setDraft(null);setErr('');},style:hfBtn_()},'Cancel'))));}
+  var sp=hfGatheringSplit_(data.gatherings,today);
+  var card=function(g,pastOne){var p=hfGatheringProgress_(g);
+    return h('div',{key:g.id,className:'hf-g-card'+(pastOne?' hf-g-past':''),style:Object.assign({},HF_CARD,{gap:6,padding:14,background:pastOne?'#0a1220':'#0d1528'})},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},
+        h('button',{type:'button',className:'hf-g-open',onClick:function(){setOpenId(g.id);},style:{background:'none',border:0,padding:0,cursor:'pointer',textAlign:'left',color:pastOne?'#cfd8ef':'#eef1fb',fontSize:16,fontWeight:700,minHeight:32}},g.title),
+        h('span',{style:Object.assign({},HF_EYE,{color:'#e3c46a'})},hfGtype_(g.type).toUpperCase())),
+      h('span',{style:{fontSize:13,color:'#aab6d6'}},[hfWhenLine_(g,today),hfGuestLine_(g)].filter(Boolean).join(' · ')),
+      !pastOne&&p.total>0&&h('div',{'aria-hidden':'true',style:{height:6,borderRadius:3,background:'#16223c',overflow:'hidden'}},h('div',{style:{width:Math.round(100*p.done/p.total)+'%',height:6,background:'#4d9f6a'}})),
+      !pastOne&&h('span',{className:'hf-g-next',style:{fontSize:12,color:'#8a9abf'}},p.done+' of '+p.total+' to-dos done'+(p.next?' · next: '+p.next.text+(p.next.due?' by '+hfWeekday_(p.next.due)+', '+hfDay_(p.next.due,today):''):'')),
+      pastOne&&h('button',{type:'button',className:'hf-g-again',onClick:function(){setErr('');setDraft(hfAgainC_(g,data.templates));},style:Object.assign(hfBtn_(),{alignSelf:'flex-start'})},'Plan it again'));};
+  return h('div',wrap,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},
+      h('span',{style:{fontSize:13,color:'#8a9abf',flex:'1 1 220px'}},'Dinner and lunch parties, birthdays, holidays: who’s coming, the menu, what to buy and what to do before the day.'),
+      h('button',{type:'button',className:'hf-g-new-btn',onClick:function(){setErr('');setDraft({title:'',type:'dinner',date:'',guests:[],menu:[],todos:((data.templates||{}).dinner||[]).map(function(x){return {text:x.text,before:x.before,done:false};}),shopping:[]});},style:hfBtn_('primary')},'+ New gathering')),
+    data.error&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},'Couldn’t load gatherings: '+data.error),
+    sp.upcoming.length?[h('span',{key:'u',style:HF_EYE},'COMING UP')].concat(sp.upcoming.map(function(g){return card(g,false);})):(!data.error&&h('span',{className:'hf-g-empty',style:{fontSize:13,color:'#8a9abf'}},'Nothing planned yet.')),
+    sp.past.length?[h('span',{key:'p',style:HF_EYE},'PAST')].concat(sp.past.map(function(g){return card(g,true);})):null);}
+
+// ---- Sitter & guest guide (Hosting): one page from the Household cheat sheet, built in the page ----
+// You pick which Household sections go in (decided Oct 26: through a dialog). Account, policy and ID
+// numbers and PINs print masked unless switched on; Wi-Fi passwords and door codes are what a sitter
+// needs, so they print as written. Nothing is sent anywhere: Print, Copy or Download.
+var HF_GUIDE_PRESETS=[['sitter','Sitter'],['guests','Guests'],['custom','Custom']];
+// Pure: a value printed masked unless numbers are switched on. Whole words, so "Provider" is not an "id".
+function hfGuideSensitive_(label){return /(^|[^a-z])(id|ssn|vin|pin)([^a-z]|$)|#|number|account|policy|member/i.test(String(label||''));}
+function hfGuideMask_(v){var t=String(v==null?'':v);return t.length<=4?'••••':'••••'+t.slice(-4);}
+// Pure: which sections a preset ticks. Sitter: everything but money and paperwork. Guests: the practical bits.
+function hfGuidePreset_(names,preset){var out={};(names||[]).forEach(function(n){
+  out[n]=preset==='guests'?/wi-?fi|internet|network|house|home|trash|recycl|rule|guest|parking|emergenc|kitchen|appliance|tv|access|door|entry/i.test(n)
+    :!/insur|financ|bank|tax|legal|account|invest|loan|mortgage|credit/i.test(n);});return out;}
+// Pure: the guide itself: the sections picked, in the cheat sheet's order, values masked as asked.
+function hfGuideBuild_(data,picked,opts){opts=opts||{};
+  var sections=((data&&data.sections)||[]).filter(function(s){return picked&&picked[s.section];}).map(function(s){
+    return {name:s.section,subsections:(s.subsections||[]).map(function(ss){return {name:ss.subsection||'',rows:(ss.rows||[]).filter(function(r){return String(r.value||'').trim();}).map(function(r){
+      return {label:r.label,value:!opts.secrets&&hfGuideSensitive_(r.label)?hfGuideMask_(r.value):String(r.value),notes:r.notes||''};})};}).filter(function(ss){return ss.rows.length;})};})
+    .filter(function(s){return s.subsections.length;});
+  return {title:opts.title||'Our home: the guide',note:String(opts.note||'').trim(),sections:sections};}
+// Pure: as plain text, for a message.
+function hfGuideText_(g){var out=[g.title,''];if(g.note)out.push(g.note,'');
+  g.sections.forEach(function(s){out.push(s.name.toUpperCase());s.subsections.forEach(function(ss){if(ss.name)out.push('  '+ss.name);
+    ss.rows.forEach(function(r){out.push((ss.name?'    ':'  ')+r.label+': '+r.value+(r.notes?' ('+r.notes+')':''));});});out.push('');});
+  return out.join('\n').trim()+'\n';}
+function hfEsc_(t){return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// Pure: a light, printable page.
+function hfGuideHtml_(g){return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+hfEsc_(g.title)+'</title>'
+  +'<style>body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1a1d24;background:#fff;max-width:720px;margin:24px auto;padding:0 16px;line-height:1.45}'
+  +'h1{font-size:24px;margin:0 0 8px}h2{font-size:15px;letter-spacing:.06em;text-transform:uppercase;border-bottom:2px solid #1a1d24;padding-bottom:4px;margin:24px 0 8px}h3{font-size:13px;color:#555;margin:12px 0 4px}'
+  +'.note{background:#f4f1e6;border-radius:8px;padding:10px 12px;white-space:pre-wrap}table{border-collapse:collapse;width:100%}td{padding:6px 8px 6px 0;border-bottom:1px solid #e3e3e3;vertical-align:top;font-size:14px}'
+  +'td.l{width:34%;color:#555;font-weight:600}small{color:#666}@media print{body{margin:0}h2{break-after:avoid}}</style></head><body>'
+  +'<h1>'+hfEsc_(g.title)+'</h1>'+(g.note?'<p class="note">'+hfEsc_(g.note)+'</p>':'')
+  +g.sections.map(function(s){return '<h2>'+hfEsc_(s.name)+'</h2>'+s.subsections.map(function(ss){return (ss.name?'<h3>'+hfEsc_(ss.name)+'</h3>':'')
+    +'<table>'+ss.rows.map(function(r){return '<tr><td class="l">'+hfEsc_(r.label)+'</td><td>'+hfEsc_(r.value)+(r.notes?'<br><small>'+hfEsc_(r.notes)+'</small>':'')+'</td></tr>';}).join('')+'</table>';}).join('');}).join('')
+  +'</body></html>';}
+var HF_GUIDE_KEY='vera_guide_picks_v1';
+function hfGuideLoad_(){try{return JSON.parse(localStorage.getItem(HF_GUIDE_KEY)||'{}')||{};}catch(e){return {};}}
+function hfGuideSave_(v){try{localStorage.setItem(HF_GUIDE_KEY,JSON.stringify(v));}catch(e){}}
+function HfGuide(props){var h=React.createElement;
+  var _d=React.useState(null),data=_d[0],setData=_d[1];var _o=React.useState(false),open=_o[0],setOpen=_o[1];
+  var _p=React.useState('sitter'),preset=_p[0],setPreset=_p[1];var _k=React.useState({}),picked=_k[0],setPicked=_k[1];
+  var _s=React.useState(false),secrets=_s[0],setSecrets=_s[1];var _n=React.useState(''),note=_n[0],setNote=_n[1];var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  React.useEffect(function(){apiGet(props.apiUrl,props.apiToken,{action:'get_household_info'}).then(function(r){setData(r&&r.sections?r:{sections:[]});}).catch(function(e){setData({sections:[],error:e.message});});},[props.apiUrl,props.apiToken]);
+  var names=((data&&data.sections)||[]).map(function(s){return s.section;});
+  var pickFor=function(p){var mem=hfGuideLoad_();var base=hfGuidePreset_(names,p==='custom'?'sitter':p);var keep=mem[p]||{};var out={};names.forEach(function(n){out[n]=n in keep?!!keep[n]:base[n];});return out;};
+  var start=function(){var mem=hfGuideLoad_();var p=mem._last||'sitter';setPreset(p);setPicked(pickFor(p));setSecrets(!!mem._secrets);setMsg('');setOpen(true);};
+  var remember=function(p,pk,sec){var mem=hfGuideLoad_();mem[p]=pk;mem._last=p;mem._secrets=!!sec;hfGuideSave_(mem);};
+  var guide=hfGuideBuild_(data,picked,{secrets:secrets,note:note});
+  var n=names.filter(function(x){return picked[x];}).length;
+  var act=function(kind){remember(preset,picked,secrets);setMsg('');
+    if(kind==='print'){var w=null;try{w=window.open('','_blank');}catch(e){}if(!w){setMsg('Your browser blocked the print window. Use Download, then print that.');return;}
+      w.document.open();w.document.write(hfGuideHtml_(guide));w.document.close();setTimeout(function(){try{w.focus();w.print();}catch(e){}},250);setMsg('Opened for printing: choose “Save as PDF” to keep a copy.');}
+    else if(kind==='copy'){var t=hfGuideText_(guide);var done=function(){setMsg('✓ Copied: paste it into a message.');};
+      try{navigator.clipboard.writeText(t).then(done,function(){setMsg('Couldn’t copy here. Use Download instead.');});}catch(e){setMsg('Couldn’t copy here. Use Download instead.');}}
+    else{hfDownload_('home-guide.html',hfGuideHtml_(guide),'text/html');setMsg('✓ Downloaded home-guide.html.');}};
+  var chip=function(on){return {flex:1,minHeight:40,borderRadius:999,cursor:'pointer',fontSize:13,fontWeight:600,background:on?'#c9a84c':'transparent',border:'1px solid '+(on?'#c9a84c':'#2a3a5c'),color:on?'#1a1405':'#cfd8ef'};};
+  return h('div',{className:'hf-guide',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:760}},
+    h('span',{style:{fontSize:13,color:'#8a9abf',lineHeight:1.45}},'One page for a sitter or visiting family, built from your Household cheat sheet: Wi-Fi, the house, who to call. You choose what goes in; nothing is shared until you print, copy or download it.'),
+    !data?h('span',{style:{fontSize:13,color:'#8a9abf'}},'Loading the cheat sheet…')
+    :!names.length?h('span',{className:'hf-guide-empty',style:{fontSize:13,color:'#8a9abf'}},data.error?'Couldn’t read the cheat sheet: '+data.error:'The Household cheat sheet is empty. Add sections there first.')
+    :h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}},
+      h('button',{type:'button',className:'hf-guide-make',onClick:start,style:hfBtn_('primary')},'Make a guide'),
+      h('span',{style:{fontSize:12,color:'#8a9abf'}},names.length+' sections to choose from')),
+    open&&h('div',{style:{position:'fixed',inset:0,zIndex:1000,background:'rgba(2,6,16,.7)',display:'flex',alignItems:'flex-end',justifyContent:'center'}},
+      h('div',{role:'dialog','aria-modal':'true','aria-label':'Make a guide',className:'hf-guide-dialog',style:{width:'100%',maxWidth:560,maxHeight:'90vh',overflowY:'auto',boxSizing:'border-box',background:'#0d1528',border:'1px solid #2a3a5c',borderRadius:'18px 18px 0 0',padding:'14px 16px 20px',display:'flex',flexDirection:'column',gap:14}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('span',{style:{fontSize:17,fontWeight:700,color:'#eef1fb'}},'Make a guide'),
+          h('button',{type:'button','aria-label':'Close',className:'hf-guide-close',onClick:function(){setOpen(false);},style:{minWidth:44,minHeight:44,background:'transparent',border:0,color:'#aab6d6',cursor:'pointer',fontSize:18}},'×')),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:HF_EYE},'WHO IT’S FOR'),
+          h('div',{role:'group','aria-label':'Who it’s for',style:{display:'flex',gap:6}},HF_GUIDE_PRESETS.map(function(p){return h('button',{key:p[0],type:'button',className:'hf-guide-preset','aria-pressed':preset===p[0],
+            onClick:function(){setPreset(p[0]);setPicked(pickFor(p[0]));},style:chip(preset===p[0])},p[1]);}))),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:HF_EYE},'SECTIONS FROM HOUSEHOLD'),
+          h('div',{style:Object.assign({},HF_CARD,{background:'#080f1e'})},names.map(function(nm,i){var on=!!picked[nm];
+            return h('label',{key:nm,className:'hf-guide-section',style:{display:'flex',alignItems:'center',gap:12,minHeight:48,padding:'4px 14px',cursor:'pointer',borderTop:i?'1px solid #16223c':'none',color:on?'#eef1fb':'#8a9abf',fontSize:14}},
+              h('input',{type:'checkbox',checked:on,onChange:function(){var o=Object.assign({},picked);o[nm]=!on;setPicked(o);setPreset('custom');},style:{width:20,height:20,accentColor:'#c9a84c'}}),nm);}))),
+        h('label',{style:{display:'flex',alignItems:'center',gap:10,fontSize:14,color:'#dde1f0'}},h('input',{type:'checkbox',className:'hf-guide-secrets',checked:secrets,onChange:function(){setSecrets(!secrets);},style:{width:20,height:20,accentColor:'#c9a84c'}}),
+          h('span',{style:{display:'flex',flexDirection:'column',gap:2}},h('span',null,'Include account, policy and ID numbers, and PINs'),h('span',{style:{fontSize:12,color:'#8a9abf'}},'Off: they print as ••••. Wi-Fi passwords and door codes print as written.'))),
+        h('label',{style:{display:'flex',flexDirection:'column',gap:6,fontSize:11,fontWeight:700,letterSpacing:'.08em',color:'#8a9abf'}},'A NOTE FOR THEM (OPTIONAL)',
+          h('textarea',{value:note,rows:2,className:'hf-guide-note',placeholder:'Feeding times, where the spare key is, when we’re back',onChange:function(e){setNote(e.target.value);},style:Object.assign({},HF_INP,{padding:10,minHeight:64,fontWeight:400,letterSpacing:0})})),
+        h('span',{className:'hf-guide-summary',style:{fontSize:13,color:'#cfd8ef'}},n+' of '+names.length+' sections · '+(secrets?'numbers shown':'numbers hidden')),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}},
+          h('button',{type:'button',className:'hf-guide-print',disabled:!n,onClick:function(){act('print');},style:hfBtn_('primary')},'Print / PDF'),
+          h('button',{type:'button',className:'hf-guide-copy',disabled:!n,onClick:function(){act('copy');},style:hfBtn_()},'Copy text'),
+          h('button',{type:'button',className:'hf-guide-download',disabled:!n,onClick:function(){act('download');},style:hfBtn_()},'Download')),
+        msg&&h('span',{role:'status',className:'hf-guide-msg',style:{fontSize:13,color:/^✓/.test(msg)?'#8fe0a8':'#cfd8ef'}},msg),
+        h('span',{style:{fontSize:12,color:'#8a9abf'}},'Your picks are remembered for next time, per preset, in this browser.'))));}
 // ---- /HfNav ----
 // ---- HomeFrontTab ------------------------------------------------------------
 function HomeFrontTab({onMergeChores,homeFront,loading,busy,onRecordService,onAddHomeItem,onDeleteHomeItem,onRecipeToShopping,purchaseHistory,onAddTakeoutRestaurant,onDeleteTakeoutRestaurant,onAddTakeoutItem,onDeleteTakeoutItem,chores,choresLoading,onToggleChore,onAddChore,onDeleteChore,onUpdateChoreCadence,choresForOthers,choresForOthersLoading,onAddChoreForOthers,onCompleteChoreForOthers,onEditChoreForOthers,onDeleteChoreForOthers,vehicles,vehiclesLoading,onVehicleOilChange,onVehicleService,onVehicleMileage,onAddVehicle,onDeleteVehicle,onVehicleTireChange,onVehicleEmissionInspect,onVehicleSafetyInspect,coupons,couponsLoading,onExtractCoupon,onSaveCoupon,onDeleteCoupon,onMarkCouponUsed,apiUrl,apiToken,features}){const feat=features||{};// Grouped by HfNav (House, Chores, Kitchen, Hosting, Savings); Household first, and where Home Front opens.
-const allSubTabs=[{id:'household',label:'🏡 Household'},{id:'steward',label:'🛡️ Warranties & Service'},{id:'vehicles',label:'🚗 Vehicles'},{id:'neighborhood_watch',label:'🏘 Neighborhood'},{id:'chores',label:'🧹 Chores'},{id:'chores_for_others',label:'🧒 For Others'},{id:'meal_plan',label:'🗓️ Meal Plan'},{id:'recipes',label:'🍽️ Recipes'},{id:'pantry',label:'📦 Pantry',featureKey:'pantry'},{id:'takeouts',label:'🥡 Takeouts',featureKey:'takeouts'},{id:'guests',label:'👥 Guests'},{id:'coupons',label:'🎟️ Coupons'},{id:'resell',label:'💰 Resell'}];const subTabs=allSubTabs.filter(function(t){return!t.featureKey||feat[t.featureKey]!==false;});const[sub,setSub]=React.useState('household');React.useEffect(function(){if(subTabs.length>0&&!subTabs.find(function(t){return t.id===sub;})){setSub(subTabs[0].id);}},[subTabs.map(function(t){return t.id;}).join(',')]);return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement(HfNav,{tabs:subTabs,sub:sub,onPick:setSub}),sub==='steward'&&/*#__PURE__*/React.createElement(HomestewardView,{items:homeFront&&homeFront.items||[],loading:loading,busy:busy,onRecordService:onRecordService,onAdd:onAddHomeItem,onDelete:onDeleteHomeItem}),sub==='vehicles'&&/*#__PURE__*/React.createElement(VehiclesView,{vehicles:vehicles,loading:vehiclesLoading,busy:busy,onOilChange:onVehicleOilChange,onService:onVehicleService,onMileage:onVehicleMileage,onAdd:onAddVehicle,onDelete:onDeleteVehicle,onTireChange:onVehicleTireChange,onEmissionInspect:onVehicleEmissionInspect,onSafetyInspect:onVehicleSafetyInspect}),sub==='chores'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement(ChoresView,{chores:hfRoutineChores_(chores),loading:choresLoading,busy:busy,onToggle:onToggleChore,onAdd:onAddChore,onDelete:onDeleteChore,onUpdateCadence:onUpdateChoreCadence}),!choresLoading&&/*#__PURE__*/React.createElement(HfUpkeep,{chores:chores||[],apiUrl:apiUrl,apiToken:apiToken,onMerge:onMergeChores})),sub==='chores_for_others'&&/*#__PURE__*/React.createElement(ChoresForOthersView,{chores:choresForOthers,loading:choresForOthersLoading,busy:busy,onAdd:onAddChoreForOthers,onComplete:onCompleteChoreForOthers,onEdit:onEditChoreForOthers,onDelete:onDeleteChoreForOthers}),sub==='recipes'&&/*#__PURE__*/React.createElement(RecipeView,{recipes:homeFront&&homeFront.recipes||[],loading:loading,busy:busy,onAddToShopping:onRecipeToShopping}),sub==='meal_plan'&&/*#__PURE__*/React.createElement(MealPlanSubTab,{apiUrl:apiUrl,apiToken:apiToken}),sub==='takeouts'&&/*#__PURE__*/React.createElement(TakeoutsView,{takeouts:homeFront&&homeFront.takeouts||[],loading:loading,busy:busy,onAddRestaurant:onAddTakeoutRestaurant,onDeleteRestaurant:onDeleteTakeoutRestaurant,onAddItem:onAddTakeoutItem,onDeleteItem:onDeleteTakeoutItem}),sub==='pantry'&&/*#__PURE__*/React.createElement(PurchaseHistoryTab,{items:purchaseHistory}),sub==='guests'&&/*#__PURE__*/React.createElement(GuestsView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='resell'&&/*#__PURE__*/React.createElement(ResellListView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='coupons'&&/*#__PURE__*/React.createElement(CouponsTab,{coupons:coupons||[],loading:couponsLoading,busy:busy,onExtract:onExtractCoupon,onSave:onSaveCoupon,onDelete:onDeleteCoupon,onMarkUsed:onMarkCouponUsed}),sub==='neighborhood_watch'&&/*#__PURE__*/React.createElement(NeighborhoodWatchView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='household'&&/*#__PURE__*/React.createElement(HouseholdView,{apiUrl:apiUrl,apiToken:apiToken}));}// ---- Career tab -------------------------------------------------------------
+const allSubTabs=[{id:'household',label:'🏡 Household'},{id:'steward',label:'🛡️ Warranties & Service'},{id:'vehicles',label:'🚗 Vehicles'},{id:'neighborhood_watch',label:'🏘 Neighborhood'},{id:'chores',label:'🧹 Chores'},{id:'chores_for_others',label:'🧒 For Others'},{id:'meal_plan',label:'🗓️ Meal Plan'},{id:'recipes',label:'🍽️ Recipes'},{id:'pantry',label:'📦 Pantry',featureKey:'pantry'},{id:'takeouts',label:'🥡 Takeouts',featureKey:'takeouts'},{id:'guests',label:'👥 Guests'},{id:'gatherings',label:'🎊 Gatherings'},{id:'guide',label:'🧾 Sitter & guest guide'},{id:'coupons',label:'🎟️ Coupons'},{id:'resell',label:'💰 Resell'}];const subTabs=allSubTabs.filter(function(t){return!t.featureKey||feat[t.featureKey]!==false;});const[sub,setSub]=React.useState('household');React.useEffect(function(){if(subTabs.length>0&&!subTabs.find(function(t){return t.id===sub;})){setSub(subTabs[0].id);}},[subTabs.map(function(t){return t.id;}).join(',')]);return/*#__PURE__*/React.createElement("div",null,/*#__PURE__*/React.createElement(HfNav,{tabs:subTabs,sub:sub,onPick:setSub}),sub==='gatherings'&&/*#__PURE__*/React.createElement(GatheringsView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='guide'&&/*#__PURE__*/React.createElement(HfGuide,{apiUrl:apiUrl,apiToken:apiToken}),sub==='steward'&&/*#__PURE__*/React.createElement(HomestewardView,{items:homeFront&&homeFront.items||[],loading:loading,busy:busy,onRecordService:onRecordService,onAdd:onAddHomeItem,onDelete:onDeleteHomeItem}),sub==='vehicles'&&/*#__PURE__*/React.createElement(VehiclesView,{vehicles:vehicles,loading:vehiclesLoading,busy:busy,onOilChange:onVehicleOilChange,onService:onVehicleService,onMileage:onVehicleMileage,onAdd:onAddVehicle,onDelete:onDeleteVehicle,onTireChange:onVehicleTireChange,onEmissionInspect:onVehicleEmissionInspect,onSafetyInspect:onVehicleSafetyInspect}),sub==='chores'&&/*#__PURE__*/React.createElement(React.Fragment,null,/*#__PURE__*/React.createElement(ChoresView,{chores:hfRoutineChores_(chores),loading:choresLoading,busy:busy,onToggle:onToggleChore,onAdd:onAddChore,onDelete:onDeleteChore,onUpdateCadence:onUpdateChoreCadence}),!choresLoading&&/*#__PURE__*/React.createElement(HfUpkeep,{chores:chores||[],apiUrl:apiUrl,apiToken:apiToken,onMerge:onMergeChores})),sub==='chores_for_others'&&/*#__PURE__*/React.createElement(ChoresForOthersView,{chores:choresForOthers,loading:choresForOthersLoading,busy:busy,onAdd:onAddChoreForOthers,onComplete:onCompleteChoreForOthers,onEdit:onEditChoreForOthers,onDelete:onDeleteChoreForOthers}),sub==='recipes'&&/*#__PURE__*/React.createElement(RecipeView,{recipes:homeFront&&homeFront.recipes||[],loading:loading,busy:busy,onAddToShopping:onRecipeToShopping}),sub==='meal_plan'&&/*#__PURE__*/React.createElement(MealPlanSubTab,{apiUrl:apiUrl,apiToken:apiToken}),sub==='takeouts'&&/*#__PURE__*/React.createElement(TakeoutsView,{takeouts:homeFront&&homeFront.takeouts||[],loading:loading,busy:busy,onAddRestaurant:onAddTakeoutRestaurant,onDeleteRestaurant:onDeleteTakeoutRestaurant,onAddItem:onAddTakeoutItem,onDeleteItem:onDeleteTakeoutItem}),sub==='pantry'&&/*#__PURE__*/React.createElement(PurchaseHistoryTab,{items:purchaseHistory}),sub==='guests'&&/*#__PURE__*/React.createElement(GuestsView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='resell'&&/*#__PURE__*/React.createElement(ResellListView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='coupons'&&/*#__PURE__*/React.createElement(CouponsTab,{coupons:coupons||[],loading:couponsLoading,busy:busy,onExtract:onExtractCoupon,onSave:onSaveCoupon,onDelete:onDeleteCoupon,onMarkUsed:onMarkCouponUsed}),sub==='neighborhood_watch'&&/*#__PURE__*/React.createElement(NeighborhoodWatchView,{apiUrl:apiUrl,apiToken:apiToken}),sub==='household'&&/*#__PURE__*/React.createElement(HouseholdView,{apiUrl:apiUrl,apiToken:apiToken}));}// ---- Career tab -------------------------------------------------------------
 /* ==== CAREER TAB BEGIN (issue #216, v2) ==== */
 // North Star (a ladder with tracks), Readiness (evidence-backed criteria and a
 // verdict per track), Evidence, Pipeline (the job agent's Tracker), Network,

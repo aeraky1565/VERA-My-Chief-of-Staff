@@ -91,6 +91,7 @@ const TABS = {
   GIFT_IDEAS:         'Gift Ideas',           // Individual gift ideas linked to people (Issue #105)
   IMPORTANT_DATES:    'Important Dates',      // Birthdays, anniversaries, meaningful dates (Issue #80)
   CHORES:             'Chores',              // Household chore checklist by cadence (Issue #124)
+  GATHERINGS:         'Gatherings',          // Hosting: parties, birthdays, holidays — guests, menu, to-dos, shopping (HomeFront.js)
   CHORES_FOR_OTHERS:  'ChoresForOthers',     // One-off tasks assigned to neighbor kids / helpers (Issue #180)
   TRAVELER_PROFILES:  'Traveler Profiles',   // Passport + traveler profiles for visa checking (Issue #123)
   CONTRACTS:          'Contracts',            // Active contract & agreement tracker (Issue #146)
@@ -300,6 +301,7 @@ const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
 // -6d". See the rule engine at the top of ImportantDates.js.
 // The last three columns are opt-in: blank means flags only, as before.
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year', 'Add to Calendar', 'Calendar Lead Days', 'Last Calendar Year'];
+const GATHERINGS_HEADERS         = ['ID', 'Title', 'Type', 'Date', 'Start', 'End', 'Place', 'Guests', 'Menu', 'Todos', 'Shopping', 'Budget', 'Spent', 'Notes', 'Created', 'Updated'];
 const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date', 'Last Done', 'Due By'];  // Last Done / Due By: upkeep (HomeFront.js)
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];

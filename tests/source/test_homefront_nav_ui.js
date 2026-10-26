@@ -151,6 +151,78 @@ check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'�
       check(L + ': no sideways scroll with upkeep', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
       if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-upkeep'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfupkeep-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 
+      // ---- Hosting › Gatherings --------------------------------------------------------------
+      await page.evaluate(({ kind }) => {
+        const T = { dinner: [{ text: 'Send invites', before: 21 }, { text: 'Plan the menu', before: 7 }, { text: 'Shop', before: 1 }, { text: 'Set the table', before: 0 }],
+          birthday: [{ text: 'Send invites', before: 21 }, { text: 'Order the cake', before: 3 }, { text: 'Buy the gift', before: 2 }, { text: 'Decorations', before: 1 }] };
+        const G = [
+          { id: 'GATH-UP', title: 'Friendsgiving', type: 'holiday', date: '2099-11-21', start: '14:00', place: 'at home', guests: [{ name: 'Ann', status: 'coming', diet: '' }, { name: 'Bea', status: 'maybe', diet: '' }],
+            menu: [], todos: [{ text: 'Send invites', before: 28, done: true }, { text: 'Shop', before: 2, done: false }], shopping: [] },
+          { id: 'GATH-PAST', title: 'Lunch with the neighbors', type: 'lunch', date: '2020-10-04', guests: [{ name: 'Cal', status: 'coming', diet: '' }],
+            menu: [{ dish: 'Quiche', who: 'Cal', recipe: '', note: '' }, { dish: 'Salad', who: '', recipe: '', note: '' }], todos: [], shopping: ['bread'] }];
+        let n = 0; window.__posts = []; window.__gets = [];
+        window.apiGet = (u, t, p) => { window.__gets.push(Object.assign({}, p));
+          if (p.action === 'gatherings') return Promise.resolve({ ok: true, gatherings: JSON.parse(JSON.stringify(G)), templates: T });
+          if (p.action === 'address_book') return Promise.resolve({ ok: true, people: [{ name: 'Dee' }, { name: 'Eve' }] });
+          if (p.action === 'recipes') return Promise.resolve({ ok: true, recipes: [{ name: 'Herb roast chicken' }] });
+          if (p.action === 'shopping') return Promise.resolve({ ok: true, stores: [{ tabId: 't.costco', storeName: 'Costco' }, { tabId: 't.giant', storeName: 'Giant' }] });
+          return Promise.resolve({ ok: true, items: [], recipes: [], takeouts: [], chores: [], vehicles: [], weeks: [] }); };
+        window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b)));
+          if (b.action === 'gathering_save') { const g = Object.assign({}, b.gathering); if (!g.id) g.id = 'GATH-N' + (++n); return Promise.resolve({ ok: true, gathering: g }); }
+          if (b.action === 'gathering_to_shopping') return Promise.resolve({ ok: true, added: b.items.length });
+          return Promise.resolve({ ok: true }); };
+        document.querySelectorAll('#hfnprobe').forEach(x => x.remove());
+        const host = document.createElement('div'); host.id = 'hfnprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
+        ReactDOM.createRoot(host).render(React.createElement(kind === 'lite' ? HomeFrontLiteTab : HomeFrontTab, { apiUrl: 'https://vera.test/exec', apiToken: 't', features: {}, chores: [] }));
+      }, { kind });
+      await wait(300);
+      await click('.hf-group', 'Hosting'); await wait(150);
+      s = await state();
+      check(L + ': Hosting holds Guests and Gatherings', s.tabs.some(t => /Guests/.test(t)) && s.tabs.some(t => /Gatherings/.test(t)), JSON.stringify(s.tabs));
+      await click('.hf-tabs .subtab-btn', 'Gatherings'); await wait(250);
+      const gt = () => page.$eval('#hfnprobe .hf-gatherings', n => n.innerText).catch(() => '');
+      let g = await gt();
+      check(L + ': coming up first, with progress and the next to-do; past below, offering to plan it again', /COMING UP[\s\S]*Friendsgiving[\s\S]*HOLIDAY[\s\S]*2 PM · at home · 1 coming, 1 maybe[\s\S]*1 of 2 to-dos done · next: Shop by/.test(g)
+        && /PAST[\s\S]*Lunch with the neighbors[\s\S]*Plan it again/.test(g), g.slice(0, 500));
+      const set = (sel, v) => page.evaluate(({ sel, v }) => { const el = document.querySelector('#hfnprobe ' + sel); const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); }, { sel, v });
+      const q = sel => page.evaluate(sel => { const el = document.querySelector('#hfnprobe ' + sel); if (el) el.click(); return !!el; }, sel);
+      await q('.hf-g-new-btn'); await wait(100);
+      await set('.hf-g-new-title', 'Birthday dinner'); await set('.hf-g-new-type', 'birthday'); await set('.hf-g-new-date', '2099-11-14'); await wait(80);
+      check(L + ': a new gathering starts with its kind\'s to-dos', /Starts with 4 to-dos for a birthday/.test(await gt()));
+      await q('.hf-g-create'); await wait(200);
+      let post = await page.evaluate(() => window.__posts.filter(p => p.action === 'gathering_save').pop());
+      check(L + ': Create saves it with those to-dos and opens it', post && post.gathering.title === 'Birthday dinner' && post.gathering.type === 'birthday' && post.gathering.date === '2099-11-14'
+        && post.gathering.todos.map(t => t.text).join() === 'Send invites,Order the cake,Buy the gift,Decorations' && /Birthday dinner/.test(await page.$eval('#hfnprobe .hf-g-title', n => n.innerText).catch(() => '')), JSON.stringify(post));
+      const last = () => page.evaluate(() => window.__posts.filter(p => p.action === 'gathering_save').pop().gathering);
+      await set('.hf-g-guest-new', 'Ann'); await q('.hf-g-guest-new-add'); await wait(120);
+      await q('.hf-g-book-btn'); await wait(150);
+      await set('.hf-g-book', 'Eve'); await wait(120);
+      let lg = await last();
+      check(L + ': guests are added by name or from the Address Book, invited to start', lg.guests.map(x => x.name + ':' + x.status).join() === 'Ann:invited,Eve:invited', JSON.stringify(lg.guests));
+      await set('.hf-g-dish-new', 'Salad'); await q('.hf-g-dish-new-add'); await wait(120);
+      await q('.hf-g-recipes-btn'); await wait(150); await set('.hf-g-recipes', 'Herb roast chicken'); await wait(120);
+      lg = await last();
+      check(L + ': dishes come typed or from Recipes', lg.menu.map(m => m.dish).join() === 'Salad,Herb roast chicken' && lg.menu[1].recipe === 'Herb roast chicken');
+      const due = await page.$$eval('#hfnprobe .hf-g-todo .hf-g-due', ns => ns.map(n => n.innerText));
+      check(L + ': each to-do shows its date, counted back from the day', due.join() === 'Oct 24, 2099,Nov 11, 2099,Nov 12, 2099,Nov 13, 2099', due.join());
+      await page.evaluate(() => document.querySelectorAll('#hfnprobe .hf-g-todo input[type=checkbox]')[1].click()); await wait(120);
+      lg = await last();
+      check(L + ': ticking a to-do saves it done', lg.todos[1].done === true && lg.todos[0].done === false && /1 OF 4/.test(await gt()));
+      await set('.hf-g-item-new', 'Candles'); await q('.hf-g-item-new-add'); await wait(120);
+      await q('.hf-g-shop-btn'); await wait(150); await set('.hf-g-store', 't.giant'); await q('.hf-g-send'); await wait(150);
+      const sp = await page.evaluate(() => window.__posts.filter(p => p.action === 'gathering_to_shopping').pop());
+      check(L + ': Send to Shopping sends what to buy to the store picked, and says so', sp && sp.tabId === 't.giant' && sp.items.join() === 'Candles' && /✓ 1 sent to Giant/.test(await gt()), JSON.stringify(sp));
+      check(L + ': no sideways scroll in a gathering', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+      if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-gatherings'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfgathering-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+      await q('.hf-g-back'); await wait(120);
+      await page.evaluate(() => Array.from(document.querySelectorAll('#hfnprobe .hf-g-card')).find(c => /neighbors/.test(c.innerText)).querySelector('.hf-g-again').click()); await wait(120);
+      check(L + ': Plan it again says the menu comes along', /PLAN IT AGAIN · THE MENU COMES ALONG/.test(await gt()) && /and 2 dishes from last time/.test(await gt()));
+      await q('.hf-g-create'); await wait(200);
+      post = await page.evaluate(() => window.__posts.filter(p => p.action === 'gathering_save').pop());
+      check(L + ': …and copies the menu only: who brings what cleared, no guests, no date, nothing to buy, fresh to-dos', post.gathering.title === 'Lunch with the neighbors' && post.gathering.menu.map(m => m.dish + '|' + m.who).join() === 'Quiche|,Salad|'
+        && post.gathering.guests.length === 0 && post.gathering.date === '' && post.gathering.shopping.length === 0 && post.gathering.todos.length === 0, JSON.stringify(post.gathering));
+
       if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-nav'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfnav-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
       check(L + ': no page errors', errs.length === 0, errs.join(' | '));
       await page.close();
