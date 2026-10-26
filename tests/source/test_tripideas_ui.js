@@ -297,6 +297,10 @@ async function scenario(page, label, width) {
   await page.evaluate((f) => eval(f)().querySelector('.ti-decide-btn').click(), ariaCard.toString()); await wait(450);
   const wtxt = await page.evaluate((f) => { const d = eval(f)().querySelector('.ti-decide'); return d ? d.innerText : ''; }, ariaCard.toString());
   check(label + ': a date window shows ARIA\'s fare for leaving near it', /Sat, May 29 → Fri, Jun 11[^\n]*\n[\s\S]*?🧭 ARIA: \$1,840 leaving Fri, May 28 · checked 2027-02-15/.test(wtxt), wtxt.slice(0, 500));
+  check(label + ': with ARIA\'s fares in, the windows can be sorted by PTO or by fare', /Sort by\s*Fewest PTO days\s*🧭 Cheapest fare/.test(wtxt) && /CHEAPEST\n/.test(wtxt), wtxt.slice(0, 300));
+  await page.evaluate((f) => Array.from(eval(f)().querySelectorAll('.ti-window-sort button')).find(b => /Cheapest fare/.test(b.innerText)).click(), ariaCard.toString()); await wait(80);
+  const ftxt = await page.evaluate((f) => { const d = eval(f)().querySelector('.ti-decide'); return d ? d.innerText : ''; }, ariaCard.toString());
+  check(label + ': …by fare, the cheapest priced window comes first and says so', /CHEAPEST FARE/.test(ftxt) && (await page.evaluate((f) => eval(f)().querySelector('.ti-window-sort button[aria-pressed="true"]').innerText, ariaCard.toString())) === '🧭 Cheapest fare', ftxt.slice(0, 300));
   await page.evaluate((f) => eval(f)().querySelector('.ti-decide-btn').click(), ariaCard.toString()); await wait(80);
   await page.evaluate((f) => eval(f)().querySelector('.ti-aria-stop').click(), ariaCard.toString()); await wait(200);
   const wd = await page.evaluate(() => window.__posts.filter(p => p.action === 'aria_request_withdraw').pop());
@@ -332,6 +336,17 @@ async function scenario(page, label, width) {
   check(label + ': Stop settling clears it', un && un.idea.settle === null && !(await page.$('#tiprobe .ti-settling')) && /Settle this trip/.test((await inCard('.ti-settle-btn')) || ''));
   if (process.env.SHOT_DIR) { await page.evaluate((f) => { eval(f)().id = 'aria-card-shot'; }, ariaCard.toString()); const ce = await page.$('#aria-card-shot'); if (ce) try { await ce.screenshot({ path: process.env.SHOT_DIR + '/tripideas-aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-ask-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+
+  // Opened from a trip's plan card: the view goes straight to that idea.
+  await page.evaluate(() => {
+    const id = window.__posts.filter(p => p.action === 'trip_idea_save').pop().idea.id || 'IDEA-1';
+    const host = document.createElement('div'); host.id = 'tiprobe2'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(TripIdeasView, { apiUrl: 'https://vera.test/exec', apiToken: 't', openIdea: { id: id, at: 1 } }));
+  });
+  await wait(250);
+  const op = await page.$eval('#tiprobe2', n => n.innerText).catch(() => '');
+  check(label + ': opened on an idea, Trip Ideas shows that idea, not the board', !!(await page.$('#tiprobe2 .ti-back')) && /Spring in Europe/.test(op) && !(await page.$('#tiprobe2 .ti-new-idea')), op.slice(0, 200));
+  await page.evaluate(() => document.getElementById('tiprobe2').remove());
 }
 
 (async () => {

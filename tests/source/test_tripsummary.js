@@ -344,6 +344,10 @@ console.log('\nthe plan from a settled trip idea: booked ticks');
   check('planned vs paid: stays and the cruise are both lodging; daily spend is food and activities', JSON.stringify(pm.rows.map(r => [r.label, r.low, r.high, r.paid])) === JSON.stringify([['Flights', 1400, 1800, 1640], ['Stays & cruise', 6000, 8500, 4210.5], ['Daily spend', 500, 700, 200]]), JSON.stringify(pm.rows));
   check('…totals, the paid one rounded', pm.low === 7900 && pm.high === 11000 && pm.paid === 6051, JSON.stringify(pm));
   check('…nothing paid yet is null, not $0', run('tsPlanMoney_(pc, {}).paid') === null && run('tsPlanMoney_(pc, null).rows.every(function(r){return r.paid===null;})') === true);
+  S.__ev = []; S.window = { dispatchEvent: e => { S.__ev.push(e); } }; S.CustomEvent = function(t, o) { this.type = t; this.detail = o && o.detail; };
+  run('tsOpenIdea_("IDEA-7"); tsOpenIdea_("")');
+  check('"Open the idea" asks the Travel tab for that idea, by an event both dashboards listen for', S.__ev.length === 1 && S.__ev[0].type === 'vera-open-idea' && S.__ev[0].detail.ideaId === 'IDEA-7');
+  check('…from the plan card\'s button', /className:'ts-plan-idea',onClick:function\(\)\{tsOpenIdea_\(p\.idea\.id\);\}/.test(fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8')));
   check('…a category paid but not planned still shows', run('tsPlanMoney_({flights:{low:1,high:2}}, {transport: 300}).rows.map(function(r){return r.label;}).join()') === 'Flights,Getting around');
   check('a place word skips filler and accents', run('tsPlaceWord_("Cádiz port")') === 'cadiz' && run('tsPlaceWord_("Home")') === '' && run('tsPlaceWord_("Cruise A · Genoa round trip")') === 'genoa');
 }

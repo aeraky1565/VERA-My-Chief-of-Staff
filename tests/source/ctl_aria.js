@@ -18,6 +18,9 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['a moved trip leaves its watch request behind', b => ({ 'Aria.js': swap(b['Aria.js'], "    r.earliest = trip.startDate; r.latest = trip.endDate; r.tripKey = key; r.updated = now;", "    r.updated = now;") })],
+  ['a move rewrites every request', b => ({ 'Aria.js': swap(b['Aria.js'], "    if (!id || String(r.tripId).toUpperCase() !== id || r.kind !== 'watch' || r.status !== 'active') return;", "    if (!id) return;") })],
+  ['a move rewrites a request already there', b => ({ 'Aria.js': swap(b['Aria.js'], "    if (r.earliest === trip.startDate && r.latest === trip.endDate && r.tripKey === key) return;\n", "") })],
   ['the ceiling comes from transport, not flights', b => ({ [T]: swap(b[T], "if (String(r.category || '').toLowerCase() !== 'flights') return;", "if (String(r.category || '').toLowerCase() !== 'transport') return;") })],
   ['the ceiling is not per person', b => ({ [T]: swap(b[T], "return any && travelers > 0 ? Math.round(total / travelers) : null;", "return any && travelers > 0 ? Math.round(total) : null;") })],
   ['one way booked is booked', b => ({ [T]: swap(b[T], "return { out: out, back: back, both: out && back };", "return { out: out, back: back, both: out || back };") })],

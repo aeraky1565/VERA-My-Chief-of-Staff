@@ -384,7 +384,7 @@ function tiMonthsWords_(months) {
  * option names are listed so VERA does not repeat them. Facts VERA can measure
  * (PTO, weather) are not asked for.
  */
-function tiAskPrompt_(idea, existing, home, focus) {
+function tiAskPrompt_(idea, existing, home, focus, measured) {
   var pieces = idea.pieces || [];
   var anchors = pieces.filter(function(p) { return p.kind === 'anchor'; });
   var wishes = pieces.filter(function(p) { return p.kind === 'wish'; });
@@ -417,13 +417,20 @@ function tiAskPrompt_(idea, existing, home, focus) {
   }
   if (focus) out.push('', 'Build exactly ONE option now: ' + focus);
   if ((existing || []).length) out.push('', 'Options they already have (do not repeat them): ' + existing.map(function(o) { return o.name; }).join('; '));
+  if ((measured || []).length) {
+    out.push('', 'FLIGHT PRICES ARIA MEASURED (real fares, not estimates)');
+    measured.forEach(function(m) {
+      out.push('- ' + m.route + ', ' + m.depart + ' to ' + m.ret + ': $' + m.amount + (m.perPerson ? ' per person' : ' for all travelers') + ' (checked ' + m.dateSeen + '; for "' + m.option + '")');
+    });
+    out.push('Where an option flies one of these routes, base its flights cost on that fare' + (measured.some(function(m) { return m.perPerson; }) ? ' (times the travelers where it is per person)' : '') + ', with basis "ARIA · checked <date>". Estimate the rest as usual.');
+  }
   out.push('',
     'RULES',
     '- Every route starts with a move from Home and ends with a move back to Home. Stops have whole nights; the stops\' nights add up inside the length.',
     '- Legs from their pieces: piece = "anchor", "choice" or "wish" and vera = false. Legs you added to join things up (flights, transfers, stays between pieces): vera = true.',
     '- Joins must make geographic sense; prefer trains over flights in between; avoid backtracking and one-way car fees unless worth it, and say so.',
     '- Do not invent specific sailings, flight numbers, prices you cannot know, or dates. Name ports and cities.',
-    '- Cost: a rough range in USD for all travelers together, per category; basis "VERA estimate". Leave out a category that does not apply.',
+    '- Cost: a rough range in USD for all travelers together, per category; basis "VERA estimate" (or ARIA\'s, for a measured fare). Leave out a category that does not apply.',
     '- verdict.level: "fits" (works well), "cost" (works, with a real cost or trade-off) or "awkward" (an awkward join). verdict.text: one or two plain sentences on why.',
     '- Be brief: a leg note at most 8 words (or empty), at most 3 pros and 3 cons of under 12 words each, verdict.text one sentence.',
     '',
@@ -437,6 +444,35 @@ function tiAskPrompt_(idea, existing, home, focus) {
     '  "wishes":{"fit":["Lake Como"],"left":[{"name":"Beach days","why":"…"}]}}],',
     ' "alsoPossible":[{"name":"Road trip → Cruise A","why":"…"}]}');
   return out.join('\n');
+}
+
+var TI_MEASURED_MAX_ = 6;
+
+/**
+ * Pure: the fares ARIA measured for this idea's options (its Fare Log rows are
+ * logged under the option's ID): per option, the cheapest from the latest day ARIA
+ * looked. → [{option, route, depart, ret, amount, perPerson, dateSeen}], at most six.
+ */
+function tiMeasuredFares_(options, fares) {
+  var out = [];
+  (options || []).forEach(function(o) {
+    var id = String(o && o.id || '').toUpperCase();
+    if (!id) return;
+    var mine = (fares || []).filter(function(f) { return String(f.tripId || '').toUpperCase() === id && f.dateSeen && (f.total != null || f.farePP != null); });
+    var last = mine.reduce(function(m, f) { return f.dateSeen > m ? f.dateSeen : m; }, '');
+    var amt = function(f) { return f.total != null ? f.total : f.farePP; };
+    var best = mine.filter(function(f) { return f.dateSeen === last; }).sort(function(a, b) { return amt(a) - amt(b); })[0];
+    if (!best) return;
+    out.push({ option: o.name, route: tiStr_(best.route, 60) || 'their route', depart: best.depart || '?', ret: best.ret || '?',
+      amount: Math.round(amt(best)), perPerson: best.total == null, dateSeen: best.dateSeen });
+  });
+  return out.slice(0, TI_MEASURED_MAX_);
+}
+
+/** ARIA's Fare Log, from the ten-minute aria_status cache when it is warm; [] when ARIA can't be read. */
+function tiAriaFares_() {
+  try { var s = webAriaStatus_({}); return s && s.ok && s.configured ? (s.fares || []) : []; }
+  catch (e) { Logger.log('trip_idea_ask: ARIA fares unavailable'); return []; }
 }
 
 /** Pure: VERA's answer → clean options (source vera) and what it saw but did not build. */
@@ -532,7 +568,8 @@ function tiAsk_(body) {
   var existing = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length)
     .filter(function(r) { return String(r[1]).trim() === id; }).map(tiOptionFromRow_);
   var home = String(getConfigValues()['weather_location'] || '').trim();
-  var started = Date.now(), prompt = tiAskPrompt_(idea, existing, home, focus);
+  var measured = existing.length ? tiMeasuredFares_(existing, tiAriaFares_()) : [];
+  var started = Date.now(), prompt = tiAskPrompt_(idea, existing, home, focus, measured);
   var r = callClaudeJsonDetailed_(prompt, { maxTokens: 8000 });
   // Busy or briefly down: one more try after a pause.
   if (r.kind === 'http' && TI_ASK_RETRY_CODES_.indexOf(r.code) !== -1) { Utilities.sleep(2500); r = callClaudeJsonDetailed_(prompt, { maxTokens: 8000 }); }
@@ -929,16 +966,35 @@ function tiWillaFlag_(idea, option, trip) {
 }
 
 /**
+ * Pure: linked ideas whose calendar trip has moved: the trip's dates differ from
+ * the settle's. → [{idea, trip}]. An archived or missing trip is left alone.
+ */
+function tiSettleDrift_(ideas, trips) {
+  var byId = {};
+  (trips || []).forEach(function(t) { if (t.tripId) byId[String(t.tripId).toUpperCase()] = t; });
+  return (ideas || []).filter(function(i) { return i.settle && i.tripId; }).map(function(i) {
+    return { idea: i, trip: byId[String(i.tripId).toUpperCase()] };
+  }).filter(function(x) {
+    var t = x.trip;
+    return t && t.status !== 'archived' && t.startDate && t.endDate && (t.startDate !== x.idea.settle.start || t.endDate !== x.idea.settle.end);
+  });
+}
+
+/**
  * Links every idea that is settling to its calendar trip, once the trip is in the
- * registry. Runs on the trip_ideas read and from hourlyCheck. Returns how many linked.
+ * registry, and moves a linked idea's dates when its trip moved on the calendar
+ * (its ARIA watch request follows). Runs on the trip_ideas read and from
+ * hourlyCheck. Returns how many ideas it linked or moved.
  */
 function tiLinkSettled_() {
   var sheet = tiIdeasSheet_(), w = TRIP_IDEAS_HEADERS.length;
-  var pending = tiRows_(sheet, w).map(tiIdeaFromRow_).filter(function(i) { return i.settle && !i.tripId; });
-  if (!pending.length) return 0;
+  var ideas = tiRows_(sheet, w).map(tiIdeaFromRow_);
+  var pending = ideas.filter(function(i) { return i.settle && !i.tripId; });
+  if (!ideas.some(function(i) { return i.settle; })) return 0;
   var trips = readTripRegistry_().rows.filter(function(t) { return t.status !== 'archived'; });
   var found = pending.map(function(i) { return { idea: i, trip: tiMatchSettled_(i.settle, trips) }; }).filter(function(x) { return x.trip; });
-  if (!found.length) return 0;
+  var moved = tiSettleDrift_(ideas, trips);
+  if (!found.length && !moved.length) return 0;
   return tiLocked_(function() {
     var now = tiNow_(), options = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_), flags = [];
     found.forEach(function(x) {
@@ -959,7 +1015,19 @@ function tiLinkSettled_() {
         if (fs) appendExactKeyFlags_(fs, flags, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'));
       } catch (e) { Logger.log('trip ideas: WILLA flag not written'); }
     }
-    Logger.log('trip ideas: linked ' + flags.length + ' settled idea(s)');
-    return flags.length;
+    var shifted = 0;
+    moved.forEach(function(x) {
+      var row = tiRowOf_(sheet, w, x.idea.id);
+      if (row === -1) return;
+      var idea = tiIdeaFromRow_(sheet.getRange(row, 1, 1, w).getValues()[0]);
+      if (!idea.settle || String(idea.tripId).toUpperCase() !== String(x.trip.tripId).toUpperCase()) return;
+      idea.settle.start = x.trip.startDate; idea.settle.end = x.trip.endDate;
+      var created = String(sheet.getRange(row, 15).getValue() || now);
+      sheet.getRange(row, 1, 1, w).setValues([tiIdeaToRow_(idea, created, now)]);
+      try { ariaFollowTrip_(x.trip); } catch (e) { Logger.log('trip ideas: watch request dates not moved'); }
+      shifted++;
+    });
+    Logger.log('trip ideas: linked ' + flags.length + ' settled idea(s), moved ' + shifted);
+    return flags.length + shifted;
   });
 }

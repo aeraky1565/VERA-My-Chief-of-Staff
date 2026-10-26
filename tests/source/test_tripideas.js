@@ -165,6 +165,25 @@ console.log('\nwhat VERA is asked');
   check('no answer is no options, not a crash', run('tiAskResult_(null, "x")').options.length === 0);
 }
 
+console.log('\nAsk VERA with ARIA\'s measured fares');
+{
+  S.mo = [{ id: 'OPT-A', name: 'Nice by air' }, { id: 'opt-b', name: 'Rome' }, { id: 'OPT-C', name: 'Never scouted' }];
+  S.mf = [{ tripId: 'OPT-A', dateSeen: '2027-02-10', route: 'IAD-NCE', depart: '2027-05-01', ret: '2027-05-10', total: 900 },
+    { tripId: 'OPT-A', dateSeen: '2027-02-15', route: 'IAD-NCE', depart: '2027-05-02', ret: '2027-05-11', total: 1300 },
+    { tripId: 'OPT-A', dateSeen: '2027-02-15', route: 'IAD-NCE', depart: '2027-05-03', ret: '2027-05-12', total: 1240.4 },
+    { tripId: 'OPT-B', dateSeen: '2027-02-14', route: 'IAD-FCO', depart: '2027-06-01', ret: '2027-06-08', farePP: 610 },
+    { tripId: 'OPT-C', dateSeen: '2027-02-14', route: 'IAD-ATH' }];
+  const m = run('tiMeasuredFares_(mo, mf)');
+  check('per option, the cheapest fare from the latest day ARIA looked', m.length === 2 && m[0].option === 'Nice by air' && m[0].amount === 1240 && m[0].dateSeen === '2027-02-15' && m[0].depart === '2027-05-03' && !m[0].perPerson, JSON.stringify(m));
+  check('…a per-person fare says so; a row with no price is skipped', m[1].option === 'Rome' && m[1].amount === 610 && m[1].perPerson === true && m[1].route === 'IAD-FCO');
+  check('…and no fares is nothing', run('tiMeasuredFares_(mo, [])').length === 0 && run('tiMeasuredFares_([], mf)').length === 0);
+  S.mm = m;
+  const p = run('tiAskPrompt_({ title: "Riviera" }, mo, "", "", mm)');
+  check('the prompt lists ARIA\'s fares as real, and asks VERA to use them for the same route', /FLIGHT PRICES ARIA MEASURED/.test(p) && /- IAD-NCE, 2027-05-03 to 2027-05-12: \$1240 for all travelers \(checked 2027-02-15; for "Nice by air"\)/.test(p)
+    && /- IAD-FCO, 2027-06-01 to 2027-06-08: \$610 per person/.test(p) && /basis "ARIA · checked <date>"/.test(p) && /times the travelers where it is per person/.test(p), p.slice(p.indexOf('FLIGHT'), p.indexOf('FLIGHT') + 500));
+  check('…and says nothing of ARIA with no fares', !/ARIA MEASURED/.test(run('tiAskPrompt_({ title: "Riviera" }, mo, "", "", [])')));
+}
+
 console.log('\nrescuing a cut-off answer');
 {
   const sv = t => run('tiSalvageOptions_(' + JSON.stringify(t) + ')');
@@ -196,12 +215,16 @@ console.log('\nAsk VERA, end to end');
   check('Ask VERA saves its options under the idea', r.ok && r.options.length === 4 && S.sheets['Trip Idea Options'].rows.length === before + 4 && r.options.every(o => /^OPT-/.test(o.id) && o.source === 'vera'), JSON.stringify(r).slice(0, 200));
   check('…with room for a long answer', S.lastOpts && S.lastOpts.maxTokens >= 4000);
   check('…and asked to keep it brief', /Be brief: a leg note at most 8 words/.test(S.lastPrompt));
+  check('…with no ARIA connected, the ask still runs', !/ARIA MEASURED/.test(S.lastPrompt));
   check('…and keeps what it did not build on the idea', r.idea.alsoPossible.length === 1 && run('tiGetIdea_(aid)').alsoPossible[0].name === 'Road trip → Cruise A');
   check('…its marks survive the sheet', run('webGetTripIdeas_()').options.filter(o => o.ideaId === S.aid)[0].legs[0].vera === true);
   const again = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask1" })');
   check('the same ask again (a retried request) returns the first answer and builds nothing', calls === 1 && again.ok && again.options.length === 4 && S.sheets['Trip Idea Options'].rows.length === before + 4);
   S.reply = { options: [{ name: 'Road trip → Cruise A', legs: [{ kind: 'stop', place: 'Provence', nights: 4, piece: 'choice' }] }], alsoPossible: [] };
+  S.webAriaStatus_ = () => ({ ok: true, configured: true, fares: [{ tripId: r.options[0].id, dateSeen: '2027-02-15', route: 'IAD-ZRH', depart: '2027-05-01', ret: '2027-05-15', total: 1500 }] });
   const f = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask2", focus: "Road trip → Cruise A" })');
+  check('asking again, VERA is given the fares ARIA measured for the options it has', /- IAD-ZRH, 2027-05-01 to 2027-05-15: \$1500 for all travelers/.test(S.lastPrompt));
+  S.webAriaStatus_ = () => { throw new Error('no sheet'); };
   check('building one of the "also possible" takes it off that list', f.ok && f.options.length === 1 && f.idea.alsoPossible.length === 0 && /Build exactly ONE option now: Road trip → Cruise A/.test(S.lastPrompt));
   check('…and tells VERA what it already has', /do not repeat them\): Swiss train → Cruise A/.test(S.lastPrompt));
   S.reply = null;
@@ -372,6 +395,19 @@ console.log('\nsettle: an idea becomes a calendar trip');
   check('…the option\'s scout request is told the real trip', JSON.stringify(watched) === JSON.stringify([[optSaved.id, 'TRIP-A']]));
   check('…and the WILLA flag is raised', flagged.length === 1 && flagged[0].key === 'trip_idea_willa|' + S.sid);
   check('linking again does nothing more', run('tiLinkSettled_()') === 0 && watched.length === 1 && flagged.length === 1);
+  // The calendar event moves: the idea follows, and so does its watch request.
+  let followed = [];
+  S.ariaFollowTrip_ = t => { followed.push([t.tripId, t.startDate, t.endDate]); return 1; };
+  registry = [{ tripId: 'TRIP-A', label: 'Vacation: Europe in spring', startDate: '2027-06-05', endDate: '2027-06-18', status: 'active' }];
+  check('when the trip moves on the calendar, the idea\'s dates follow', run('tiLinkSettled_()') === 1 && run('tiGetIdea_(sid)').settle.start === '2027-06-05' && run('tiGetIdea_(sid)').settle.end === '2027-06-18');
+  check('…and so does its watch request, with nothing re-linked or re-flagged', JSON.stringify(followed) === '[["TRIP-A","2027-06-05","2027-06-18"]]' && watched.length === 1 && flagged.length === 1 && run('tiGetIdea_(sid)').tripId === 'TRIP-A');
+  check('…once', run('tiLinkSettled_()') === 0 && followed.length === 1);
+  registry = [{ tripId: 'TRIP-A', label: 'x', startDate: '2027-07-01', endDate: '2027-07-09', status: 'archived' }];
+  check('an archived trip does not move its idea', run('tiLinkSettled_()') === 0 && run('tiGetIdea_(sid)').settle.start === '2027-06-05');
+  S.dIdeas = [{ id: 'I1', tripId: 'trip-a', settle: { start: '2027-06-05', end: '2027-06-18' } }, { id: 'I2', tripId: '', settle: { start: '2027-01-01', end: '2027-01-05' } }, { id: 'I3', tripId: 'TRIP-GONE', settle: { start: '2027-01-01', end: '2027-01-05' } }];
+  S.dTrips = [{ tripId: 'TRIP-A', startDate: '2027-06-05', endDate: '2027-06-19' }];
+  check('a moved trip is found by its ID in any case; unlinked ideas and trips no longer there are left alone', JSON.stringify(run('tiSettleDrift_(dIdeas, dTrips).map(function(x){return x.idea.id;})')) === '["I1"]');
+  check('…and a trip on the same dates has not moved', run('tiSettleDrift_(dIdeas, [{tripId:"TRIP-A", startDate:"2027-06-05", endDate:"2027-06-18"}])').length === 0);
   check('the trip_ideas read links too', /function webGetTripIdeas_\(\) \{\n  try \{ tiLinkSettled_\(\); \}/.test(SRC));
   check('…and so does the hourly check', /tiLinkSettled_\(\);/.test(fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8')));
 }
@@ -532,6 +568,12 @@ console.log('\nARIA in Trip Ideas: scouting an option\'s fares');
   C.wf = [{ depart: '2027-05-01', ret: '2027-05-14', total: 1500 }, { depart: '2027-05-29', ret: '2027-06-11', total: 1100 }, { depart: '2027-05-15', ret: '2027-05-28', total: 2400 }];
   const rk = cr('tiRankWindows_(wins, wf).map(function(w){return w.start;}).join()');
   check('windows stay ranked by PTO, and a fare only breaks a tie', rk === '2027-05-15,2027-05-29,2027-05-01', rk);
+  const rf = cr('tiRankWindows_(wins, wf, "fare").map(function(w){return w.start;}).join()');
+  check('sorted by fare, the cheapest priced window leads', rf === '2027-05-29,2027-05-01,2027-05-15', rf);
+  C.wins2 = C.wins.concat([{ start: '2027-05-08', nights: 13, clash: 'Beach week', people: [{ days: 1 }] }, { start: '2027-06-05', nights: 13, clash: '', people: [{ days: 1 }] }]);
+  C.wf2 = C.wf.concat([{ depart: '2027-05-08', ret: '2027-05-21', total: 300 }]);
+  const rf2 = cr('tiRankWindows_(wins2, wf2, "fare").map(function(w){return w.start;}).join()');
+  check('…a clash stays last however cheap, and windows with no fare follow in PTO order', rf2 === '2027-05-29,2027-05-01,2027-05-15,2027-06-05,2027-05-08', rf2);
   check('…with no fares the order is the server\'s', cr('tiRankWindows_(wins, []).map(function(w){return w.start;}).join()') === '2027-05-15,2027-05-01,2027-05-29');
   check('fares read in whole dollars', cr('tiUsd_(1240)') === '$1,240');
   C.sIdea = { id: 'IDEA-7', title: 'Spring in Europe' };
@@ -579,8 +621,12 @@ check('Ask VERA is wired', /case 'trip_idea_ask':\s+return jsonOut_\(webAskVeraT
 check('the five routes are wired', /case 'trip_ideas':\s+return jsonOut_\(webGetTripIdeas_\(\)\);/.test(WEB)
   && /case 'trip_idea_save':\s+return jsonOut_\(webSaveTripIdea_\(body\)\);/.test(WEB) && /case 'trip_idea_delete':\s+return jsonOut_\(webDeleteTripIdea_\(body\)\);/.test(WEB)
   && /case 'trip_option_save':\s+return jsonOut_\(webSaveTripIdeaOption_\(body\)\);/.test(WEB) && /case 'trip_option_delete':\s+return jsonOut_\(webDeleteTripIdeaOption_\(body\)\);/.test(WEB));
-check('full: Trip Ideas is the first Travel tab, and renders the view', /const subTabs=\[\{id:'ideas',label:'💡 Trip Ideas'/.test(APP) && /sub==='ideas'&&\/\*#__PURE__\*\/React\.createElement\(TripIdeasView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP));
-check('lite: Trip Ideas is the first Travel tab, and renders the view', /\{\[\['ideas','💡 Trip Ideas'\],\['trips','✈️ My Trips'\]/.test(LITE) && /\{travSub === 'ideas' && <TripIdeasView apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>\}/.test(LITE));
+check('full: Trip Ideas is the first Travel tab, and renders the view', /const subTabs=\[\{id:'ideas',label:'💡 Trip Ideas'/.test(APP) && /sub==='ideas'&&\/\*#__PURE__\*\/React\.createElement\(TripIdeasView,\{apiUrl:apiUrl,apiToken:apiToken,openIdea:openIdea\}\)/.test(APP));
+check('full: a plan card\'s "Open the idea" switches to Trip Ideas on that idea', /window\.addEventListener\('vera-open-idea',f\)/.test(APP) && /setOpenIdea\(\{id:id,at:Date\.now\(\)\}\);setSub\('ideas'\)/.test(APP));
+check('lite: Trip Ideas is the first Travel tab, and renders the view', /\{\[\['ideas','💡 Trip Ideas'\],\['trips','✈️ My Trips'\]/.test(LITE) && /\{travSub === 'ideas' && <TripIdeasView apiUrl=\{apiUrl\} apiToken=\{apiToken\} openIdea=\{openIdea\} \/>\}/.test(LITE));
+check('lite: a plan card\'s "Open the idea" switches to Trip Ideas on that idea', /window\.addEventListener\('vera-open-idea', f\)/.test(LITE) && /setOpenIdea\(\{ id, at: Date\.now\(\) \}\); setTravSub\('ideas'\)/.test(LITE));
+check('opened from a plan card, Trip Ideas goes to that idea once the ideas are in (both dashboards, via the shared block)', /var o=props\.openIdea;if\(!o\|\|!o\.id\|\|data\.loading\)return;\s*if\(\(data\.ideas\|\|\[\]\)\.some\(function\(i\)\{return i\.id===o\.id;\}\)\)setView\(\{mode:'idea',id:o\.id\}\);\},\[props\.openIdea&&props\.openIdea\.at,data\.loading\]\)/.test(A));
+check('the deciders offer a fare sort once ARIA has fares', /priced&&h\('div',\{role:'group','aria-label':'Sort the windows'/.test(A) && /tiChip_\(h,'s-fare','🧭 Cheapest fare',sortBy==='fare',function\(\)\{setBy\('fare'\);\}\)/.test(A));
 check('index.html carries the block, not a stale build', fs.readFileSync(path.join(ROOT, 'docs/index.html'), 'utf8').indexOf('function TripIdeasView(') !== -1);
 check('nothing in Trip Ideas writes to a calendar', !/CalendarApp|Calendar\.Events/.test(SRC));
 

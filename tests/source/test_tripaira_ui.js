@@ -80,6 +80,9 @@ async function scenario(page, label, width) {
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-plan'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-plan-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-still'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-still-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   check(label + ': no sideways scroll with the plan', await noScroll(page));
+  const opened = await page.evaluate(() => new Promise(r => { const f = e => { window.removeEventListener('vera-open-idea', f); r(e.detail); }; window.addEventListener('vera-open-idea', f);
+    window.__q('.ts-plan .ts-plan-idea').click(); setTimeout(() => r(null), 300); }));
+  check(label + ': "Open the idea" asks the Travel tab for that idea', opened && opened.ideaId === 'IDEA-1', JSON.stringify(opened));
 
   await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: watching, fares, request: null, draft: DRAFT, plan: PLAN, actuals: { flights: 1640, lodging: 4210.5 } }]);
   const paid = await page.$eval('#taprobe .ts-plan', n => n.innerText).catch(() => '');

@@ -221,6 +221,14 @@ console.log('\nasking ARIA to scout an option');
   check('settling turns the option\'s scout request into a watch request for the real trip', nw === 1 && wr[1] === 'watch' && wr[3] === 'TRIP-SET1' && wr[4] === '2027-05-29|Spring in Europe' && wr[9] === '2027-05-29' && wr[10] === '2027-06-11', JSON.stringify(wr));
   check('…keeping its Ref and its airports, so ARIA moves its row over with the fare history', wr[2] === 'OPT-ABC' && wr[7] === 'LIS' && wr[16] === 'Active');
   check('…and touches no other request', ARQ.filter(r => r[2] !== 'OPT-ABC').every(r => JSON.stringify(r) === JSON.stringify(before.find(b => b[0] === r[0]))));
+  const before2 = ARQ.map(r => r.slice());
+  const fl = run('ariaFollowTrip_({ tripId: "trip-set1", label: "Spring in Europe", startDate: "2027-06-05", endDate: "2027-06-18" })');
+  const fr = ARQ.find(r => r[2] === 'OPT-ABC');
+  check('a settled trip that moves takes its watch request with it: dates and Trip Key', fl === 1 && fr[9] === '2027-06-05' && fr[10] === '2027-06-18' && fr[4] === '2027-06-05|Spring in Europe' && fr[1] === 'watch' && fr[16] === 'Active', JSON.stringify(fr));
+  check('…touching no other request, and nothing when it is already there', ARQ.filter(r => r[2] !== 'OPT-ABC').every(r => JSON.stringify(r) === JSON.stringify(before2.find(b => b[0] === r[0])))
+    && run('ariaFollowTrip_({ tripId: "TRIP-SET1", label: "Spring in Europe", startDate: "2027-06-05", endDate: "2027-06-18" })') === 0);
+  check('…and a request that is not an active watch stays put', run('ariaFollowTrip_({ tripId: "TRIP-NONE", label: "x", startDate: "2027-01-01", endDate: "2027-01-02" })') === 0);
+  run('ariaFollowTrip_({ tripId: "TRIP-SET1", label: "Spring in Europe", startDate: "2027-05-29", endDate: "2027-06-11" })');
   check('an option never scouted has no request to change', run('ariaWatchSettled_("OPT-NEVER", { tripId: "T", label: "x", startDate: "2027-01-01", endDate: "2027-01-02" })') === 0);
   S.vtS = [{ tripId: 'TRIP-SET1', label: 'Spring in Europe', startDate: '2027-05-29' }];
   S.rqS = [{ ref: 'OPT-ABC', kind: 'watch', tripId: 'TRIP-SET1', status: 'active', created: '2027-02-20T00:00:00Z' }];

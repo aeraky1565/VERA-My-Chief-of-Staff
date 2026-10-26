@@ -667,6 +667,26 @@ function ariaWatchSettled_(optionId, trip) {
   return n;
 }
 
+/**
+ * A settled trip moved on the calendar: its active watch requests take the new
+ * dates and Trip Key. ARIA's own Date Change Flag covers its Watchlist row.
+ * Called under tiLinkSettled_'s lock. Returns rows changed.
+ */
+function ariaFollowTrip_(trip) {
+  var id = String(trip.tripId || '').toUpperCase(), sh = ariaRequestsSheet_(), now = tiNow_();
+  var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+  var key = trip.startDate + '|' + trip.label, n = 0;
+  rows.forEach(function(row, i) {
+    var r = ariaRequestFromRow_(row);
+    if (!id || String(r.tripId).toUpperCase() !== id || r.kind !== 'watch' || r.status !== 'active') return;
+    if (r.earliest === trip.startDate && r.latest === trip.endDate && r.tripKey === key) return;
+    r.earliest = trip.startDate; r.latest = trip.endDate; r.tripKey = key; r.updated = now;
+    sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++;
+  });
+  if (n) ariaForget_();
+  return n;
+}
+
 // ---- One trip: ARIA on My Itinerary's Summary (trip_aria, aria_request_watch) ----------
 //
 // A calendar trip's Summary shows what ARIA has for it, and asks ARIA to watch its

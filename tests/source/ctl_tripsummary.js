@@ -20,6 +20,8 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripsummary.js';
 
 const CONTROLS = [
+  ['Open the idea asks for nothing', both("try{window.dispatchEvent(new CustomEvent('vera-open-idea',{detail:{ideaId:id}}));}catch(e){}", "")],
+  ['Open the idea does nothing on click', both("onClick:function(){tsOpenIdea_(p.idea.id);}", "onClick:function(){}")],
   ['the cruise is not lodging', both("['Stays & cruise',['stays','cruise'],['lodging']]", "['Stays & cruise',['stays'],['lodging']]")],
   ['nothing paid reads as $0', both("return {rows:rows,low:lo,high:hi,paid:anyPaid?Math.round(paid):null};}", "return {rows:rows,low:lo,high:hi,paid:Math.round(paid)};}")],
   ['the plan\'s first flight ignores the Summary\'s arrival', both("if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=!!(ends&&ends.arrival);", "if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=true;")],
