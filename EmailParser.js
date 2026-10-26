@@ -331,6 +331,8 @@ function callClaudeEnrich_(signalText) {
     '  "dresscode": "string or null",\n' +
     '  "depositPaid": "number or null",\n' +
     '  "depositCurrency": "USD or null",\n' +
+    '  "totalPaid": "number or null: the total charged for this booking, all travelers, taxes and fees included (not a deposit)",\n' +
+    '  "totalCurrency": "3-letter currency code of totalPaid, or null",\n' +
     '  "partySize": "number or null",\n' +
     '  "specialRequests": "string or null",\n' +
     '  "parkingInfo": "string or null",\n' +
@@ -391,6 +393,8 @@ function callClaudeCreateEnrich_(signalText) {
     '    "dresscode": "string or null",\n' +
     '    "depositPaid": "number or null",\n' +
     '    "depositCurrency": "USD or null",\n' +
+    '    "totalPaid": "number or null: the total charged for this booking, all travelers, taxes and fees included (not a deposit)",\n' +
+    '    "totalCurrency": "3-letter currency code of totalPaid, or null",\n' +
     '    "partySize": "number or null",\n' +
     '    "specialRequests": "string or null",\n' +
     '    "parkingInfo": "string or null",\n' +

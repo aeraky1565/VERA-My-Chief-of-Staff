@@ -702,7 +702,7 @@ function ariaTripFacts_(tripKey) {
   try {
     var sh = getSpreadsheet().getSheetByName(TABS.TRIP_BUDGET);
     if (sh && sh.getLastRow() > 1) sh.getRange(2, 1, sh.getLastRow() - 1, TRIP_BUDGET_HEADERS.length).getValues().forEach(function(r) {
-      if (String(r[1]).trim() === tripKey) facts.budget.push({ category: r[2], label: r[3], budgeted: r[4] });
+      if (tripRowMatches_(r[1], tripKeysFor_(tripKey))) facts.budget.push({ category: r[2], label: r[3], budgeted: r[4], actual: r[5] });
     });
   } catch (e) {}
   return facts;
@@ -747,7 +747,10 @@ function webTripAria_(p) {
     earliest: start, latest: end, flexDays: 1, travelers: (row && row.travelers) || facts.travelers,
     ceiling: (row && row.ceiling) != null ? row.ceiling : ariaCeilingFrom_(facts.budget, (row && row.travelers) || facts.travelers),
   };
-  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan };
+  // What has actually been paid, per Trip Budget category (TripActuals.js fills these from confirmations).
+  var actuals = {};
+  facts.budget.forEach(function(b) { var v = ariaMoney_(b.actual), c = String(b.category || '').toLowerCase(); if (v != null && c) actuals[c] = (actuals[c] || 0) + v; });
+  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan, actuals: actuals };
 }
 
 /**

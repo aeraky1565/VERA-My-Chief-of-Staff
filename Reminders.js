@@ -44,6 +44,8 @@ function hourlyCheck() {
   maybeSyncAriaFlags_(new Date());
   // A settled trip idea links to its calendar trip once the event lands (TripIdeas.js).
   try { tiLinkSettled_(); } catch (tiErr) { Logger.log('tiLinkSettled_ (non-fatal): ' + tiErr.message); }
+  // What trips actually cost, from their confirmations, into Trip Budget (TripActuals.js). Six-hourly; never throws.
+  maybeSyncTripActuals_(new Date());
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {

@@ -10538,6 +10538,27 @@ function webSetTripBudgetSettings_(e) {
   return { ok: true };
 }
 
+/** Itinerary type → Trip Budget category and label. Used by the import below and by TripActuals.js. */
+var TRIP_BUDGET_TYPE_MAP_ = {
+  'flight':     { category: 'flights',   label: '\u2708\uFE0F Flights' },
+  'hotel':      { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
+  'stay':       { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
+  'car':        { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+  'transport':  { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+  'cruise':     { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
+  'train':      { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+  'bus':        { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+  'activity':   { category: 'activities', label: '\uD83C\uDFAD Activities' },
+  'tour':       { category: 'activities', label: '\uD83C\uDFAD Activities' },
+  'restaurant': { category: 'food',      label: '\uD83C\uDF7D Food & Dining' },
+  // The email parser's own type names (EmailParser.js callClaudeCreateEnrich_).
+  'dining':     { category: 'food',      label: '\uD83C\uDF7D Food & Dining' },
+  'car_rental': { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+  'rental_car': { category: 'transport', label: '\uD83D\uDE97 Transportation' },
+  'show':       { category: 'activities', label: '\uD83C\uDFAD Activities' },
+  'spa':        { category: 'activities', label: '\uD83C\uDFAD Activities' },
+};
+
 /**
  * GET import_budget_from_itinerary — params: tripKey
  * Reads itinerary items for the trip and creates blank budget line items per detected category.
@@ -10548,20 +10569,8 @@ function webImportBudgetFromItinerary_(e) {
   var tripKey = (p.tripKey || '').trim();
   if (!tripKey) return { ok: false, error: 'tripKey required' };
 
-  // Map itinerary types to budget categories
-  var typeToCategory = {
-    'flight':     { category: 'flights',   label: '\u2708\uFE0F Flights' },
-    'hotel':      { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
-    'stay':       { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
-    'car':        { category: 'transport', label: '\uD83D\uDE97 Transportation' },
-    'transport':  { category: 'transport', label: '\uD83D\uDE97 Transportation' },
-    'cruise':     { category: 'lodging',   label: '\uD83C\uDFE8 Lodging' },
-    'train':      { category: 'transport', label: '\uD83D\uDE97 Transportation' },
-    'bus':        { category: 'transport', label: '\uD83D\uDE97 Transportation' },
-    'activity':   { category: 'activities', label: '\uD83C\uDFAD Activities' },
-    'tour':       { category: 'activities', label: '\uD83C\uDFAD Activities' },
-    'restaurant': { category: 'food',      label: '\uD83C\uDF7D Food & Dining' },
-  };
+  // Map itinerary types to budget categories (shared with TripActuals.js)
+  var typeToCategory = TRIP_BUDGET_TYPE_MAP_;
 
   var ss         = getSpreadsheet();
   var itinSheet  = ss.getSheetByName(TABS.ITINERARY);

@@ -76,11 +76,18 @@ async function scenario(page, label, width) {
   const plan = await page.$eval('#taprobe .ts-plan', n => n.innerText).catch(() => '');
   check(label + ': the settled plan shows, each piece ticked by the trip\'s own bookings', /THE PLAN · FROM TRIP IDEAS/i.test(plan) && /Lisbon → Algarve → cruise · 13 nights/.test(plan)
     && /Home → LIS\s*✅ booked/.test(plan) && /Lisbon · 3 nights\s*✅ booked/.test(plan) && /Algarve · 3 nights\s*⏳ not booked/.test(plan) && /Cádiz → Barcelona\s*✅ booked/.test(plan) && /BCN → Home\s*⏳ not booked/.test(plan), plan);
-  check(label + ': …with the planned cost against the budget, and that nothing is added to the itinerary', /Planned \$5\.4k – \$7\.8k · budget \$13k \(within\)/.test(plan) && /Nothing is added to your itinerary/.test(plan), plan.slice(-300));
+  check(label + ': …with the planned cost by category against the budget, and that nothing is added to the itinerary', /Flights\s*\$1\.4k – \$1\.8k\s*—/.test(plan) && /Total\s*\$5\.4k – \$7\.8k\s*—/.test(plan) && /Budget \$13k · the plan fits/.test(plan) && /Nothing is added to your itinerary/.test(plan), plan.slice(-400));
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-plan'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-plan-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-still'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-still-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   check(label + ': no sideways scroll with the plan', await noScroll(page));
 
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: watching, fares, request: null, draft: DRAFT, plan: PLAN, actuals: { flights: 1640, lodging: 4210.5 } }]);
+  const paid = await page.$eval('#taprobe .ts-plan', n => n.innerText).catch(() => '');
+  check(label + ': once booked, what was paid sits beside the plan, and the budget left', /Flights\s*\$1\.4k – \$1\.8k\s*\$1,640/.test(paid) && /Stays & cruise\s*\$4k – \$6k\s*\$4,211/.test(paid) && /Total\s*\$5\.4k – \$7\.8k\s*\$5,851/.test(paid)
+    && /Budget \$13k · \$7,149 left · paid from your booking confirmations/.test(paid), paid.slice(-400));
+  if (process.env.SHOT_DIR) { const el = await page.$('#taprobe .ts-plan'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripaira-paid-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+  await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: watching, fares, request: null, draft: DRAFT, plan: Object.assign({}, PLAN, { idea: Object.assign({}, PLAN.idea, { budget: 5000 }) }), actuals: { flights: 1640, lodging: 4210.5 } }]);
+  check(label + ': …and says so plainly when it\'s already over', /Budget \$5k · over by \$851 already/.test(await page.$eval('#taprobe .ts-plan', n => n.innerText).catch(() => '')));
   const book = Object.assign({}, watching, { actionType: 'BOOK_NOW', actionUrgency: 'High', actionNeeded: 'Book now: $1,640 on TP', bestFare: 1640, bestLink: 'https://fares.example/best' });
   await mount(page, [{ ok: true, tripId: 'TRIP-SET1', configured: true, row: book, fares, request: null, draft: DRAFT, plan: null }]);
   check(label + ': Book now shows ARIA\'s Book card, with the Book button', /BOOK NOW/.test(await text(page)) && (await page.$eval('#taprobe .ts-aria .aria-book-btn', a => a.getAttribute('href')).catch(() => '')) === 'https://fares.example/best');

@@ -20,6 +20,8 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripsummary.js';
 
 const CONTROLS = [
+  ['the cruise is not lodging', both("['Stays & cruise',['stays','cruise'],['lodging']]", "['Stays & cruise',['stays'],['lodging']]")],
+  ['nothing paid reads as $0', both("return {rows:rows,low:lo,high:hi,paid:anyPaid?Math.round(paid):null};}", "return {rows:rows,low:lo,high:hi,paid:Math.round(paid)};}")],
   ['the plan\'s first flight ignores the Summary\'s arrival', both("if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=!!(ends&&ends.arrival);", "if(l.kind==='move'&&l.mode==='fly'&&i===flies[0])booked=true;")],
   ['a plan stay is booked by any stay', both("booked=its.some(function(it){return TS_STAY_TYPES[it.type]&&named(it,w2);});", "booked=its.some(function(it){return TS_STAY_TYPES[it.type];});")],
   ['a plan cruise needs no cruise', both("else if(l.kind==='move'&&l.mode==='ship')booked=cruise;", "else if(l.kind==='move'&&l.mode==='ship')booked=true;")],

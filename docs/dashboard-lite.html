@@ -7372,6 +7372,14 @@ function tsPlanTicks_(legs,items,ends){var its=(items||[]).filter(function(it){r
     else{var w2=tsPlaceWord_(l.place);booked=its.some(function(it){return TS_STAY_TYPES[it.type]&&named(it,w2);});}
     return {leg:l,booked:booked};});}
 var TS_MODE_WORD={fly:'FLY',train:'TRAIN',car:'CAR',ship:'SHIP',ferry:'FERRY',bus:'BUS',other:'MOVE'};
+// Pure: the plan's estimate beside what was paid, by Trip Budget category. A plan's stays and cruise are both
+// lodging; getting around is transport; daily spend is food and activities.
+var TS_PLAN_MONEY=[['Flights',['flights'],['flights']],['Stays & cruise',['stays','cruise'],['lodging']],['Getting around',['ground'],['transport']],['Daily spend',['daily'],['food','activities']]];
+function tsPlanMoney_(cost,actuals){var a=actuals||{},c=cost||{},rows=[],lo=0,hi=0,paid=0,anyPaid=false;
+  TS_PLAN_MONEY.forEach(function(m){var l=0,u=0,has=false;m[1].forEach(function(k){if(c[k]){l+=Number(c[k].low)||0;u+=Number(c[k].high)||0;has=true;}});
+    var p=null;m[2].forEach(function(k){if(a[k]!=null){p=(p||0)+Number(a[k]);}});
+    if(!has&&p==null)return;rows.push({label:m[0],low:has?l:null,high:has?u:null,paid:p});lo+=l;hi+=u;if(p!=null){paid+=p;anyPaid=true;}});
+  return {rows:rows,low:lo,high:hi,paid:anyPaid?Math.round(paid):null};}
 function TsPlan(props){var h=React.createElement;var p=props.plan,o=p.option;if(!o)return null;var ticks=tsPlanTicks_(o.legs,props.items,props.ends);
   var total=typeof tiCostTotal_==='function'?tiCostTotal_(o.cost):null,fit=total&&typeof tiBudgetFit_==='function'?tiBudgetFit_(total,p.idea.budget):'';
   var nights=(o.legs||[]).reduce(function(n,l){return n+(l.kind==='stop'?Number(l.nights)||0:0);},0);
@@ -7383,7 +7391,15 @@ function TsPlan(props){var h=React.createElement;var p=props.plan,o=p.option;if(
         h('span',{style:{fontSize:10,fontWeight:700,letterSpacing:'.06em',color:'#9aa9cc'}},l.kind==='stop'?'STAY':(TS_MODE_WORD[l.mode]||'MOVE')),
         h('span',{style:{color:'#dde1f0',minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},l.kind==='stop'?l.place+' · '+(Number(l.nights)||0)+' night'+(Number(l.nights)===1?'':'s'):(l.from||'?')+' → '+(l.to||'?')),
         h('span',{style:{fontSize:12,whiteSpace:'nowrap',color:t.booked?'#8fe0a8':'#f6d27a'}},t.booked?'✅ booked':'⏳ not booked'));})),
-    total&&h('span',{style:{fontSize:12,color:'#b8c3e0'}},'Planned '+tiRange_(total.low,total.high)+(p.idea.budget!=null?' · budget '+tiMoney_(p.idea.budget)+(fit==='within'?' (within)':fit==='over'?' (over)':fit==='close'?' (could go over)':''):'')),
+    (function(){var mny=tsPlanMoney_(o.cost,props.actuals);if(!mny.rows.length)return null;var usd=function(n){return '$'+String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,',');};
+      var over=mny.paid!=null&&p.idea.budget!=null&&mny.paid>p.idea.budget;
+      return h('div',{className:'ts-plan-money',style:{display:'flex',flexDirection:'column',gap:4,padding:'8px 10px',borderRadius:8,background:'#0a1530',border:'1px solid #1e3060',fontSize:12,fontVariantNumeric:'tabular-nums'}},
+        h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:'2px 12px',color:'#9aa9cc',fontWeight:600}},h('span',null,''),h('span',null,'Planned'),h('span',null,'Paid')),
+        mny.rows.map(function(r,i){return h('div',{key:i,style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:'2px 12px',color:'#dde1f0'}},
+          h('span',null,r.label),h('span',null,r.low!=null?tiRange_(r.low,r.high):'—'),h('span',{style:{color:r.paid!=null?'#eef1fb':'#6f7c9c'}},r.paid!=null?usd(r.paid):'—'));}),
+        h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:'2px 12px',borderTop:'1px solid #1e3060',paddingTop:4,fontWeight:700,color:'#eef1fb'}},
+          h('span',null,'Total'),h('span',null,tiRange_(mny.low,mny.high)),h('span',null,mny.paid!=null?usd(mny.paid):'—')),
+        h('span',{className:'ts-plan-budget',style:{color:over?'#ffb0b0':'#b8c3e0'}},(p.idea.budget!=null?'Budget '+tiMoney_(p.idea.budget)+(mny.paid!=null?(over?' · over by '+usd(mny.paid-p.idea.budget)+' already':' · '+usd(p.idea.budget-mny.paid)+' left'):(fit==='within'?' · the plan fits':fit==='over'?' · the plan is over':fit==='close'?' · the plan could go over':'')):'No WILLA budget on the idea')+(mny.paid!=null?' · paid from your booking confirmations':'')));})(),
     h('span',{style:{fontSize:12,color:'#9aa9cc'}},'From the trip idea "'+p.idea.title+'" in Travel → Trip Ideas. Nothing is added to your itinerary; bookings tick these off as they arrive.'));}
 // ARIA on this trip's flights: its fares and verdict when it watches them, else a form to ask it to.
 // initialForm opens the form already filled (the ARIA tab's Draft cards use it).
@@ -7433,7 +7449,7 @@ function TsTripAria(props){var h=React.createElement;var trip=props.trip||{};var
   if(past||!data)return null;var needFlights=props.ends&&(props.ends.arrival!==null||props.ends.departure!==null);
   var openNights=(props.nights&&props.nights.missing||[]).length;
   return h(React.Fragment,null,
-    data.plan&&data.plan.option&&h(TsPlan,{plan:data.plan,items:props.items,ends:props.ends,card:props.card,label:props.label}),
+    data.plan&&data.plan.option&&h(TsPlan,{plan:data.plan,actuals:data.actuals,items:props.items,ends:props.ends,card:props.card,label:props.label}),
     (needFlights||openNights>0)&&h('section',{className:'ts-still',style:props.card,'aria-label':'Still to book'},h('span',{style:props.label},'Still to book'),
       needFlights&&h(TsAriaFlights,{data:data,ends:props.ends,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,reload:function(){setN(n+1);}}),
       openNights>0&&h('span',{className:'ts-still-stays',style:{fontSize:13,color:'#f6d27a'}},'🏨 '+openNights+' night'+(openNights===1?'':'s')+' with no place to sleep · not watched (ARIA watches flights for now)')));}

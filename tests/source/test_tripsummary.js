@@ -339,6 +339,12 @@ console.log('\nthe plan from a settled trip idea: booked ticks');
   check('a drive with nothing named is not booked', t[2] === false);
   check('a cruise leg and a cruise stop are booked by the trip\'s cruise', t[4] === true && t[5] === true);
   check('nothing booked reads as nothing booked', run('tsPlanTicks_(legs, [], {arrival: false, departure: false})').every(x => !x.booked));
+  S.pc = { flights: { low: 1400, high: 1800 }, stays: { low: 2000, high: 2500 }, cruise: { low: 4000, high: 6000 }, daily: { low: 500, high: 700 } };
+  const pm = run('tsPlanMoney_(pc, {flights: 1640, lodging: 4210.5, food: 120, activities: 80})');
+  check('planned vs paid: stays and the cruise are both lodging; daily spend is food and activities', JSON.stringify(pm.rows.map(r => [r.label, r.low, r.high, r.paid])) === JSON.stringify([['Flights', 1400, 1800, 1640], ['Stays & cruise', 6000, 8500, 4210.5], ['Daily spend', 500, 700, 200]]), JSON.stringify(pm.rows));
+  check('…totals, the paid one rounded', pm.low === 7900 && pm.high === 11000 && pm.paid === 6051, JSON.stringify(pm));
+  check('…nothing paid yet is null, not $0', run('tsPlanMoney_(pc, {}).paid') === null && run('tsPlanMoney_(pc, null).rows.every(function(r){return r.paid===null;})') === true);
+  check('…a category paid but not planned still shows', run('tsPlanMoney_({flights:{low:1,high:2}}, {transport: 300}).rows.map(function(r){return r.label;}).join()') === 'Flights,Getting around');
   check('a place word skips filler and accents', run('tsPlaceWord_("Cádiz port")') === 'cadiz' && run('tsPlaceWord_("Home")') === '' && run('tsPlaceWord_("Cruise A · Genoa round trip")') === 'genoa');
 }
 
