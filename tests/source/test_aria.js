@@ -132,6 +132,7 @@ console.log('\nthe endpoint');
   const r = run('webAriaStatus_({})');
   check('it reads the Watchlist and the Fare Log', r.ok && r.configured && r.watchlist.length === 5 && r.fares.length === 4, JSON.stringify(r).slice(0, 200));
   check('VERA\'s future trips are set beside them; past ones and drives are not', r.gaps.noRow.map(x => x.id).join() === 'TRIP-0007', JSON.stringify(r.gaps.noRow));
+  check('only trips not yet over are read from VERA', !run('ariaVeraTrips_("2027-02-20")').some(function(t) { return t.tripId === 'TRIP-0011'; }) && run('ariaVeraTrips_("2027-02-20")').some(function(t) { return t.tripId === 'TRIP-0001'; }));
   check('scouted rows carry the idea and option they came from', r.ideas['OPT-ABC'].idea === 'Spring in Europe' && r.ideas['OPT-ABC'].option === 'Lisbon → Algarve → cruise');
   const n = opens; run('webAriaStatus_({})');
   check('a second read within ten minutes comes from the cache', opens === n);
