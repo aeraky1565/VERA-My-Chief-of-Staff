@@ -560,7 +560,7 @@ function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
           {checkedItems.map((text, i) => (
             <div key={i} onClick={() => toggle(i)} style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              fontSize: 13, padding: '6px 0', cursor: 'pointer',
+              fontSize: 15, padding: '6px 0', minHeight: 44, cursor: 'pointer',
               borderBottom: i < checkedItems.length - 1 ? '1px solid #1a2a50' : 'none',
               color: selected.has(i) ? '#dde1f0' : '#4a5a7a',
               textDecoration: selected.has(i) ? 'none' : 'line-through',
@@ -570,7 +570,7 @@ function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
                 checked={selected.has(i)}
                 onChange={() => toggle(i)}
                 onClick={(e) => e.stopPropagation()}
-                style={{ accentColor: '#c9a84c', width: 15, height: 15, flexShrink: 0 }}
+                style={{ accentColor: '#c9a84c', width: 20, height: 20, flexShrink: 0 }}
               />
               {cleanText(text)}
             </div>
@@ -596,6 +596,10 @@ function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
 }
 
 // ---- Shopping tab -----------------------------------------------------------
+
+// What a shopping line shows: VERA's restock lines ('🤖 milk (est. ~Oct 30)') read as the
+// item's name plus when VERA expects you to run out. The Doc's text is left as written.
+function shopItemView_(text){var t=String(text==null?'':text);var m=t.match(/\(est\.\s*~?\s*([^)]*)\)\s*$/);return {vera:/^🤖/.test(t),name:t.replace(/^🤖\s*/,'').replace(/\s*\(est\..*?\)\s*$/,'').trim(),est:m?m[1].trim():''};}
 
 function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLogRun }) {
   const [activeStore,   setActiveStore]   = React.useState(null);
@@ -645,7 +649,7 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
               style={{
                 background: isActive ? '#0d1b3e' : 'none',
                 border: 'none', cursor: 'pointer',
-                padding: '9px 16px', fontSize: 13, fontWeight: 600,
+                padding: '9px 16px', minHeight: 44, fontSize: 13, fontWeight: 600,
                 color: isActive ? '#c9a84c' : '#8a9abf',
                 borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
                 marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
@@ -700,19 +704,25 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
                                    editingIndex.tabId === current.tabId &&
                                    editingIndex.index === item.index;
                 const isVERA     = item.text.startsWith('🤖');
+                const view       = shopItemView_(item.text);
                 return (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '11px 16px', borderRadius: 8,
+                  <div key={i} className="shop-row" style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 6px 4px 2px', minHeight: 52, boxSizing: 'border-box', borderRadius: 10,
                     background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
                     border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
-                    opacity: isVERA && !item.done ? 0.82 : 1,
                     transition: 'background 0.15s',
                   }}>
-                    {/* Checkbox — disabled while editing */}
-                    <input type="checkbox" checked={item.done} readOnly
+                    {/* Check circle (a 44px target) — disabled while editing */}
+                    <button type="button" className="shop-check" role="checkbox" aria-checked={item.done}
+                      aria-label={(item.done ? 'Uncheck ' : 'Check ') + view.name} disabled={isEditing}
                       onClick={e => { e.stopPropagation(); if (!busy && !isEditing) onToggle(current.tabId, item.index, item.done); }}
-                      style={{ accentColor: '#43a047', width: 16, height: 16, flexShrink: 0, cursor: isEditing ? 'default' : 'pointer' }} />
+                      style={{ width: 44, height: 44, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                               background: 'none', border: 'none', padding: 0, cursor: isEditing ? 'default' : 'pointer' }}>
+                      <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', boxSizing: 'border-box',
+                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#06140c',
+                               background: item.done ? '#43a047' : 'transparent', border: item.done ? 'none' : '2px solid #4a5d8a' }}>{item.done ? '✓' : ''}</span>
+                    </button>
 
                     {/* Inline edit mode */}
                     {isEditing ? (
@@ -742,28 +752,25 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
                       </React.Fragment>
                     ) : (
                       <React.Fragment>
-                        <span style={{ flex: 1, fontSize: 14, color: item.done ? '#4a5a7a' : '#dde1f0',
+                        <span className="shop-name" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 0',
+                                       fontSize: 15, color: item.done ? '#4a5a7a' : '#dde1f0',
                                        textDecoration: item.done ? 'line-through' : 'none',
                                        cursor: busy ? 'wait' : 'pointer' }}
                               onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}>
-                          {item.text}
+                          {view.name}
+                          {/* VERA's restock line: when it expects you to run out */}
+                          {isVERA && !item.done && (
+                            <span className="shop-vera" style={{ fontSize: 11, color: '#e3c46a' }}>{'VERA added' + (view.est ? ' · runs out ~' + view.est : '')}</span>
+                          )}
                         </span>
-                        {/* VERA suggestion chip */}
-                        {isVERA && !item.done && (
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, color: '#c9a84c',
-                            background: 'rgba(201,168,76,0.12)', border: '1px solid rgba(201,168,76,0.3)',
-                            borderRadius: 20, padding: '1px 6px', flexShrink: 0, letterSpacing: '0.5px',
-                          }}>VERA</span>
-                        )}
                         {/* Edit button */}
-                        <button title="Edit" onClick={e => { e.stopPropagation(); setEditingIndex({ tabId: current.tabId, index: item.index }); setEditText(item.text); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6a8a',
-                                   fontSize: 13, padding: '0 4px', flexShrink: 0 }}>✎</button>
+                        <button title="Edit" aria-label={'Edit ' + view.name} onClick={e => { e.stopPropagation(); setEditingIndex({ tabId: current.tabId, index: item.index }); setEditText(item.text); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6f7fa6',
+                                   fontSize: 15, minWidth: 40, minHeight: 40, padding: 0, flexShrink: 0 }}>✎</button>
                         {/* Delete button */}
-                        <button title="Delete" onClick={e => { e.stopPropagation(); onDelete && onDelete(current.tabId, item.index); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5f6a8a',
-                                   fontSize: 13, padding: '0 4px', flexShrink: 0 }}>✕</button>
+                        <button title="Delete" aria-label={'Delete ' + view.name} onClick={e => { e.stopPropagation(); onDelete && onDelete(current.tabId, item.index); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6f7fa6',
+                                   fontSize: 15, minWidth: 40, minHeight: 40, padding: 0, flexShrink: 0 }}>✕</button>
                       </React.Fragment>
                     )}
                   </div>
