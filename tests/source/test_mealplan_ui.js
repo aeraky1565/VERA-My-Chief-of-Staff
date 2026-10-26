@@ -239,9 +239,14 @@ const THIS_MONDAY = isoOf(_mon), NEXT_MONDAY = isoOf(_next);
         const Tab = (kind === 'lite') ? HomeFrontLiteTab : HomeFrontTab;
         ReactDOM.createRoot(host).render(
           React.createElement(Tab, { apiUrl: 'https://vera.test/exec', apiToken: 't', features: features }));
+        // Home Front opens on Household (House group); Meal Plan and its neighbours are in Kitchen.
         return new Promise(r => setTimeout(() => {
-          const labels = Array.from(host.querySelectorAll('.subtab-btn')).map(b => b.textContent);
-          r({ labels: labels });
+          const kitchen = Array.from(host.querySelectorAll('.hf-group')).find(b => b.textContent.indexOf('Kitchen') !== -1);
+          if (kitchen) kitchen.click();
+          setTimeout(() => {
+            const labels = Array.from(host.querySelectorAll('.subtab-btn')).map(b => b.textContent);
+            r({ labels: labels });
+          }, 200);
         }, 500));
       }, { kind });
 

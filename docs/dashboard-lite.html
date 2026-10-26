@@ -4946,31 +4946,67 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
   );
 }
 
+// ---- HfNav (Home Front groups) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Home Front's sections, in five groups (decided Oct 26, option A): a row of group buttons, then that
+// group's sections as chips. Household comes first and is where Home Front opens. Each group remembers
+// the section last opened in it. A section the dashboard doesn't offer (a feature switched off) is left
+// out, and a group with none left is hidden.
+var HF_GROUPS=[
+  {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch','seasonal']},
+  {id:'chores',label:'Chores',icon:'🧹',items:['chores','chores_for_others']},
+  {id:'kitchen',label:'Kitchen',icon:'🍽️',items:['meal_plan','recipes','pantry','takeouts']},
+  {id:'hosting',label:'Hosting',icon:'🎉',items:['guests','gatherings','guide']},
+  {id:'savings',label:'Savings',icon:'💰',items:['coupons','resell']}];
+// Pure: the groups that have sections on offer, each with those sections in group order ({id,label} from tabs).
+function hfGroupsFor_(tabs){var by={};(tabs||[]).forEach(function(t){by[t.id]=t;});
+  return HF_GROUPS.map(function(g){return {id:g.id,label:g.label,icon:g.icon,tabs:g.items.filter(function(id){return by[id];}).map(function(id){return by[id];})};})
+    .filter(function(g){return g.tabs.length>0;});}
+// Pure: the group a section is in ('' when none).
+function hfGroupOf_(id){var g=HF_GROUPS.filter(function(x){return x.items.indexOf(id)!==-1;})[0];return g?g.id:'';}
+function HfNav(props){var h=React.createElement;var groups=hfGroupsFor_(props.tabs);
+  var _l=React.useState({}),last=_l[0],setLast=_l[1];
+  var gid=hfGroupOf_(props.sub),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
+  React.useEffect(function(){if(gid)setLast(function(p){if(p[gid]===props.sub)return p;var n=Object.assign({},p);n[gid]=props.sub;return n;});},[props.sub]);
+  if(!cur)return null;
+  var pickGroup=function(g){var keep=last[g.id];var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);};
+  return h('div',{className:'hf-nav',style:{display:'flex',flexDirection:'column',gap:10,marginBottom:14}},
+    h('div',{role:'group','aria-label':'Home Front groups',className:'hf-groups',style:{display:'grid',gridTemplateColumns:'repeat('+groups.length+', minmax(0, 1fr))',gap:6,maxWidth:620}},
+      groups.map(function(g){var on=g.id===cur.id;
+        return h('button',{key:g.id,type:'button',className:'hf-group'+(on?' on':''),'aria-pressed':on,onClick:function(){pickGroup(g);},
+          style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,minHeight:56,padding:'6px 2px',borderRadius:12,cursor:'pointer',fontSize:12,fontWeight:600,
+            background:on?'#1d1a0c':'#0d1528',border:'1px solid '+(on?'#c9a84c':'#1c2a48'),color:on?'#e3c46a':'#aab6d6'}},
+          h('span',{'aria-hidden':'true',style:{fontSize:18,lineHeight:1}},g.icon),h('span',null,g.label));})),
+    h('div',{role:'tablist','aria-label':cur.label+' sections',className:'subtab-row hf-tabs'},
+      cur.tabs.map(function(t){var on=t.id===props.sub;
+        return h('button',{key:t.id,type:'button',role:'tab','aria-selected':on,className:'subtab-btn'+(on?' active':''),onClick:function(){props.onPick(t.id);}},t.label);})));}
+// ---- /HfNav ----
 // ---- HomeFrontLiteTab -------------------------------------------------------
 
 function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
   const feat = features || {};
+  // Grouped by HfNav (House, Chores, Kitchen, Hosting, Savings); Household first, and where Home Front opens.
   const ALL_SUBTABS = [
+    { id:'household', label:'🏡 Household' },
     { id:'steward',   label:'🛡️ Warranties & Service' },
     { id:'vehicles',  label:'🚗 Vehicles'  },
+    { id:'neighborhood_watch', label:'🏘 Neighborhood' },
     { id:'chores',    label:'✅ Chores'    },
     { id:'chores_for_others', label:'🧒 For Others' },
-    { id:'recipes',   label:'🍽️ Recipes'   },
     // No featureKey. It had one, and a Config row set to 'false' silently removed the
     // tab from this page with nothing anywhere to say why — see test_mealplan_ui.js.
     { id:'meal_plan', label:'📅 Meal Plan' },
-    { id:'takeouts',  label:'🥡 Takeouts',  featureKey:'takeouts'     },
+    { id:'recipes',   label:'🍽️ Recipes'   },
     { id:'pantry',    label:'🛒 Pantry',    featureKey:'pantry'       },
+    { id:'takeouts',  label:'🥡 Takeouts',  featureKey:'takeouts'     },
     { id:'guests',    label:'👥 Guests'    },
-    { id:'resell',             label:'💰 Resell'             },
     { id:'coupons',            label:'🎟️ Coupons'            },
-    { id:'neighborhood_watch', label:'🏘 Watch'              },
+    { id:'resell',             label:'💰 Resell'             },
   ];
   const SUBTABS = ALL_SUBTABS.filter(function(t) {
     return !t.featureKey || feat[t.featureKey] !== false;
   });
 
-  const [sub,             setSub]             = React.useState('steward');
+  const [sub,             setSub]             = React.useState('household');
   const [homeFront,       setHomeFront]       = React.useState(null);
   const [chores,          setChores]          = React.useState(null);
   const [choresLoading,   setChoresLoading]   = React.useState(false);
@@ -5203,17 +5239,11 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
 
   return (
     <div>
-      <div className="subtab-row">
-        {SUBTABS.map(function(t) {
-          return (
-            <button key={t.id}
-              className={'subtab-btn' + (sub === t.id ? ' active' : '')}
-              onClick={function() { setSub(t.id); }}>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <HfNav tabs={SUBTABS} sub={sub} onPick={setSub} />
+
+      {sub === 'household' && (
+        <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
+      )}
 
       {sub === 'steward' && (
         <HomestewardView
