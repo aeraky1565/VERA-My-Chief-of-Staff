@@ -1,4 +1,5 @@
-// The Shopping list in BOTH real pages, at phone and desktop width: VERA's restock lines
+// The Shopping list in BOTH real pages, at phone and desktop width: pill store tabs, an add
+// box per store, aisles, the checked-off section and Done shopping with a receipt; VERA's restock lines
 // read as a name plus when it expects you to run out (the Doc's text untouched), every
 // check circle and row button is a 44px / 40px target, a tap still toggles the right item,
 // and the list says that a check-off is logged. Every value here is invented.
@@ -26,6 +27,24 @@ check('…without the tilde too', v('🤖 eggs (est. Nov 2)') === '{"vera":true,
 check('your own line is left as written, brackets and all', v('Tomatoes (Roma, 2 lb)') === '{"vera":false,"name":"Tomatoes (Roma, 2 lb)","est":""}', v('Tomatoes (Roma, 2 lb)'));
 check('nothing is an empty name, not an error', v(null) === '{"vera":false,"name":"","est":""}');
 
+console.log('\nthe shared block, aisles and receipt lines');
+const START = '// ---- ShopList (Shopping tab) — SHARED VERBATIM', END = '// ---- /ShopList ----';
+const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
+check('both dashboards carry the Shopping block, word for word', block(APP).length > 2000 && block(APP) === block(LITE));
+const B = vm.createContext({ React: { createElement: () => null, useState: x => [x, () => {}], useEffect: () => {}, Fragment: 'f' } });
+vm.runInContext(block(APP), B);
+const aisle = n => vm.runInContext('shopAisle_(' + JSON.stringify(n) + ')', B);
+check('aisles come from the name, by whole word', aisle('Bananas') === 'Produce' && aisle('Greek yogurt') === 'Dairy & Eggs' && aisle('Chicken thighs') === 'Meat & Fish'
+  && aisle('Olive oil') === 'Pantry' && aisle('Burger buns') === 'Bakery' && aisle('Paper towels') === 'Household', [aisle('Bananas'), aisle('Olive oil'), aisle('Burger buns')].join());
+check('first match wins (ice cream is Frozen, not Dairy); "soil" isn\'t oil; unknown is Other', aisle('Vanilla ice cream') === 'Frozen' && aisle('Potting soil') === 'Other' && aisle('Birthday card') === 'Other' && aisle('') === 'Other');
+B.items = [{ index: 0, text: 'Paper towels', done: false }, { index: 1, text: '🤖 milk (est. ~Oct 30)', done: false }, { index: 2, text: 'Bananas', done: false }, { index: 3, text: 'Olive oil', done: true }, { index: 4, text: 'Mystery thing', done: false }];
+const grp = vm.runInContext('shopGroup_(items)', B);
+check('groups in walking order, Other last; checked items apart', grp.groups.map(x => x.name + ':' + x.rows.map(r => r.view.name).join('+')).join(' ') === 'Produce:Bananas Dairy & Eggs:milk Household:Paper towels Other:Mystery thing'
+  && grp.done.length === 1 && grp.done[0].view.name === 'Olive oil', JSON.stringify(grp.groups.map(x => x.name)));
+const kind = l => JSON.stringify(vm.runInContext('shopReceiptKind_(' + JSON.stringify(l) + ', items)', B));
+check('a receipt line on a checked item is a match; on an unchecked one, a list item with its place', kind({ name: 'olive oil', match: 'Olive oil' }) === '{"kind":"match","index":3}' && kind({ name: 'milk', match: 'MILK' }) === '{"kind":"list","index":1}');
+check('…otherwise new, or non-food when the model says so', kind({ name: 'pears', match: '' }) === '{"kind":"new","index":-1}' && kind({ name: 'batteries', match: '', food: false }) === '{"kind":"nonfood","index":-1}');
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -33,8 +52,11 @@ check('nothing is an empty name, not an error', v(null) === '{"vera":false,"name
     'react-dom.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react-dom.min.js'), 'utf8'),
     'babel.min.js':                fs.readFileSync(require.resolve('@babel/standalone/babel.min.js'), 'utf8'),
   };
-  for (const kind of ['full', 'lite']) {
-    for (const width of [390, 1280]) {
+  // SHOP_QUICK (set by ctl_shopping.js): the full dashboard at phone width only, so the controls
+  // fit the runner's time. The lite copy of the shared block is checked word for word above.
+  const QUICK = !!process.env.SHOP_QUICK;
+  for (const kind of (QUICK ? ['full'] : ['full', 'lite'])) {
+    for (const width of (QUICK ? [390] : [390, 1280])) {
       const L = kind + ' ' + width;
       console.log('\n' + kind + ' dashboard @ ' + width + 'px');
       const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -64,9 +86,11 @@ check('nothing is an empty name, not an error', v(null) === '{"vera":false,"name
         document.querySelectorAll('#shopprobe').forEach(n => n.remove());
         const host = document.createElement('div'); host.id = 'shopprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
         ReactDOM.createRoot(host).render(React.createElement(ShoppingTab, { stores, busy: false,
-          onToggle: (tab, idx, done) => window.__calls.push(['toggle', tab, idx, done]),
+          onToggle: (tab, idx, done) => { window.__calls.push(['toggle', tab, idx, done]); },
           onAddItem: () => {}, onDelete: (tab, idx) => window.__calls.push(['delete', tab, idx]), onEdit: () => {},
-          }));
+          onAddText: (tab, text) => window.__calls.push(['add', tab, text]),
+          onScanReceipt: (tab, file) => { window.__calls.push(['scan', tab, file.name]); return Promise.resolve(window.__scan); },
+          onSaveReceipt: (tab, items) => { window.__calls.push(['save', tab, items]); return Promise.resolve({ ok: true, filled: 1, added: 2 }); } }));
       });
       await wait(400);
       const rows = await page.$$eval('#shopprobe .shop-row', rs => rs.map(r => r.innerText.replace(/\s+/g, ' ').trim()));
@@ -88,6 +112,51 @@ check('nothing is an empty name, not an error', v(null) === '{"vera":false,"name
       const hint = await page.$eval('#shopprobe .shop-hint', n => n.innerText).catch(() => '');
       check(L + ': under the list it says a check-off is logged, and an untick today takes it back', /logs it to Purchase History with today’s date\. Unchecking it the same day takes it back out\./.test(hint), hint);
       check(L + ': no Log Shopping Run button', !(await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe button')).some(b => /Log Shopping Run/.test(b.textContent)))));
+      // ---- pills, add per store, aisles, the checked section ----
+      const pills = await page.$$eval('#shopprobe .shop-pill', bs => bs.map(b => b.innerText.replace(/\s+/g, ' ').trim() + '|' + b.getAttribute('aria-pressed') + '|' + Math.round(b.getBoundingClientRect().height)));
+      check(L + ': a pill per store with what\'s left, the current one pressed, 44px tall', pills.join(',') === 'Store A 3|true|44,Store B 1|false|44', JSON.stringify(pills));
+      const heads = await page.$$eval('#shopprobe .shop-aisle-head', hs => hs.map(x => x.innerText.replace(/\s+/g, ' ').trim().toLowerCase()));
+      check(L + ': unchecked items sit under their aisles, each with what\'s left', heads.join(',') === 'produce 2 left,dairy & eggs 1 left', JSON.stringify(heads));
+      await page.fill('#shopprobe .shop-add-input', 'Garlic'); await page.press('#shopprobe .shop-add-input', 'Enter'); await wait(150);
+      let calls2 = await page.evaluate(() => window.__calls.filter(c => c[0] === 'add'));
+      check(L + ': the add box adds to the store you\'re on, and clears', JSON.stringify(calls2) === '[["add","t.a","Garlic"]]' && await page.$eval('#shopprobe .shop-add-input', n => n.value) === '', JSON.stringify(calls2));
+      check(L + ': …it says which store', await page.$eval('#shopprobe .shop-add-input', n => n.getAttribute('placeholder')) === 'Add to Store A…');
+      await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe .shop-pill')).find(b => /Store B/.test(b.textContent)).click()); await wait(150);
+      check(L + ': another pill shows that store\'s list and add box', /Lemons/.test(await page.$eval('#shopprobe .shop-tab', n => n.innerText)) && await page.$eval('#shopprobe .shop-add-input', n => n.getAttribute('placeholder')) === 'Add to Store B…');
+      await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe .shop-pill')).find(b => /Store A/.test(b.textContent)).click()); await wait(150);
+      const tog = () => page.$eval('#shopprobe .shop-checked-toggle', n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
+      check(L + ': checked items sit below, under Checked off', /^CHECKED OFF · 1 Hide$/.test(await tog()), await tog());
+      await page.$eval('#shopprobe .shop-checked-toggle', b => b.click()); await wait(100);
+      check(L + ': …and fold away', !(await page.$$eval('#shopprobe .shop-row', rs => rs.some(r => /olive oil/.test(r.innerText)))) && /Show$/.test(await tog()));
+      await page.$eval('#shopprobe .shop-checked-toggle', b => b.click()); await wait(100);
+      check(L + ': the bar says what\'s left and what\'s checked off', await page.$eval('#shopprobe .shop-bar-text', n => n.innerText) === '3 left · 1 checked off');
+      // ---- Done shopping and a receipt ----
+      await page.$eval('#shopprobe .shop-done-btn', b => b.click()); await wait(150);
+      const sheetText = await page.$eval('#shopprobe .shop-sheet', n => n.innerText).catch(() => '');
+      check(L + ': Done shopping lists what was checked off, with the receipt and no-receipt choices', /Done shopping at Store A/.test(sheetText) && /olive oil/.test(await page.$eval('#shopprobe .shop-sheet-done', n => n.innerText).catch(() => '')) && /Snap the receipt/.test(sheetText) && /Done, no receipt/.test(sheetText), sheetText.slice(0, 200));
+      check(L + ': …the sheet fits the screen', await page.$eval('#shopprobe .shop-sheet', n => n.getBoundingClientRect().width <= window.innerWidth));
+      await page.evaluate(() => { window.__scan = { ok: true, items: [
+        { name: 'olive oil', price: 12.99, qty: 1, food: true, match: 'olive oil' }, { name: 'bananas', price: 1.79, qty: null, food: true, match: 'Bananas' },
+        { name: 'blueberries', price: 4.99, qty: 1, food: true, match: '' }, { name: 'paper towels', price: 21.99, qty: 1, food: false, match: '' }] }; });
+      await page.setInputFiles('#shopprobe .shop-snap input[type=file]', { name: 'receipt.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([255, 216, 255, 217]) }); await wait(300);
+      const lines = await page.$$eval('#shopprobe .shop-receipt-line', bs => bs.map(b => b.getAttribute('aria-pressed') + '|' + b.innerText.replace(/\s+/g, ' ').trim()));
+      check(L + ': the photo goes to the scan for the store you\'re on', (await page.evaluate(() => JSON.stringify(window.__calls.find(c => c[0] === 'scan')))) === '["scan","t.a","receipt.jpg"]');
+      check(L + ': each line says what saving it will do; food picked, non-food not', lines.length === 4
+        && /^true\|✓ olive oil Already logged when you checked it off · adds the price \$12\.99$/.test(lines[0]) && /^true\|✓ Bananas On your list · checked off too \$1\.79$/.test(lines[1])
+        && /^true\|✓ blueberries Not on the list · a new pantry row \$4\.99$/.test(lines[2]) && /^false\|paper towels Not food · logged only if you tick it \$21\.99$/.test(lines[3]), JSON.stringify(lines));
+      check(L + ': the button counts what\'s picked', await page.$eval('#shopprobe .shop-receipt-save', n => n.innerText) === 'Add 3 to Pantry');
+      await page.$eval('#shopprobe .shop-receipt-save', b => b.click()); await wait(300);
+      const tail = await page.evaluate(() => window.__calls.filter(c => c[0] === 'toggle' || c[0] === 'save').slice(-2));
+      check(L + ': a picked line on the list is checked off first, then everything picked is saved by the list\'s name', JSON.stringify(tail) === JSON.stringify([['toggle', 't.a', 0, false], ['save', 't.a', [{ name: 'olive oil', qty: 1, price: 12.99 }, { name: 'Bananas', qty: null, price: 1.79 }, { name: 'blueberries', qty: 1, price: 4.99 }]]]), JSON.stringify(tail));
+      const saved = await page.$eval('#shopprobe .shop-sheet-saved', n => n.innerText).catch(() => '');
+      check(L + ': it says what happened', saved === 'Saved to Pantry: prices added to 1 you checked off, 1 more checked off on the list, 1 new item logged from the receipt.', saved);
+      await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe .shop-sheet button')).find(b => b.textContent === 'Done').click()); await wait(150);
+      check(L + ': Done closes the sheet; the list is as it was', !(await page.$('#shopprobe .shop-sheet')) && /olive oil/.test(await page.$eval('#shopprobe .shop-tab', n => n.innerText)));
+      await page.$eval('#shopprobe .shop-done-btn', b => b.click()); await wait(100);
+      await page.evaluate(() => { window.__scan = { ok: true, items: [] }; });
+      await page.setInputFiles('#shopprobe .shop-snap input[type=file]', { name: 'blur.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([255, 216, 255, 217]) }); await wait(300);
+      check(L + ': a photo with nothing readable says so and stays on the first step', /couldn’t read any items/.test(await page.$eval('#shopprobe .shop-sheet-msg', n => n.innerText).catch(() => '')) && !!(await page.$('#shopprobe .shop-snap')));
+      await page.$eval('#shopprobe .shop-sheet-close', b => b.click()); await wait(100);
       check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
       check(L + ': no page errors', errs.length === 0, errs.join(' | '));
       await page.close();

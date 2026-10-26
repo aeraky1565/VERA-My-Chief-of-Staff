@@ -1,5 +1,4 @@
-// Negative controls for the Shopping list's look (shopItemView_ and ShoppingTab in both
-// dashboards): revert ONE rule at a time and confirm test_shopping_ui.js catches it.
+// Negative controls for the Shopping list (the shared ShopList block in both dashboards): revert ONE rule at a time and confirm test_shopping_ui.js catches it.
 const fs = require('fs'), path = require('path'), cp = require('child_process');
 const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
@@ -20,15 +19,20 @@ const both = (from, to) => b => Object.assign(full(from, to)(b), { [L]: swap(b[L
 const pair = (fullFrom, fullTo, liteFrom, liteTo) => b => Object.assign(full(fullFrom, fullTo)(b), { [L]: swap(b[L], liteFrom, liteTo) });
 
 const CONTROLS = [
-  ['the estimate stays in the name', both(".replace(/\\s*\\(est\\..*?\\)\\s*$/,'').trim()", ".trim()")],
-  ['the restock date is not read', both("est:m?m[1].trim():''", "est:''")],
-  ['the raw line is shown', pair("},view.name,isVERA&&", "},item.text,isVERA&&", "                          {view.name}\n", "                          {item.text}\n")],
-  ['the restock note shows for items in the cart too', pair("isVERA&&!item.done&&/*#__PURE__*/React.createElement(\"span\",{className:\"shop-vera\"", "isVERA&&/*#__PURE__*/React.createElement(\"span\",{className:\"shop-vera\"",
-    "{isVERA && !item.done && (\n                            <span className=\"shop-vera\"", "{isVERA && (\n                            <span className=\"shop-vera\"")],
-  ['the check circle is a small target again', pair("style:{width:44,height:44,flexShrink:0,display:'inline-flex'", "style:{width:18,height:18,flexShrink:0,display:'inline-flex'",
-    "style={{ width: 44, height: 44, flexShrink: 0, display: 'inline-flex'", "style={{ width: 18, height: 18, flexShrink: 0, display: 'inline-flex'")],
-  ['edit and delete are small targets again', pair("fontSize:15,minWidth:40,minHeight:40,padding:0,flexShrink:0", "fontSize:15,padding:0,flexShrink:0",
-    "fontSize: 15, minWidth: 40, minHeight: 40, padding: 0, flexShrink: 0", "fontSize: 15, padding: 0, flexShrink: 0")],
+  ['the estimate stays in the name', both("name:t.replace(/^🤖\\s*/,'').replace(/\\s*\\(est\\..*?\\)\\s*$/,'').trim(),est:", "name:t.replace(/^🤖\\s*/,'').trim(),est:")],
+  ['the raw line is shown', both("cursor:busy?'wait':'pointer'},onClick:function(){if(!busy)props.onToggle(it.index,it.done);}},view.name,", "cursor:busy?'wait':'pointer'},onClick:function(){if(!busy)props.onToggle(it.index,it.done);}},it.text,")],
+  ['the restock note shows for checked items too', both("isVERA&&!it.done&&h('span',{className:'shop-vera'", "isVERA&&h('span',{className:'shop-vera'")],
+  ['the check circle is a small target again', both("style:{width:44,height:44,flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',background:'none'", "style:{width:18,height:18,flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',background:'none'")],
+  ['edit and delete are small targets again', both("fontSize:15,minWidth:40,minHeight:40,padding:0,flexShrink:0", "fontSize:15,padding:0,flexShrink:0")],
+  ['aisles in list order, not walking order', both("var order=SHOP_AISLES_.map(function(a){return a[0];}).concat(['Other']);", "var order=Object.keys(by);")],
+  ['the last matching aisle wins', both("for(var i=0;i<SHOP_AISLES_.length;i++){if(SHOP_AISLES_[i][2].test(t))", "for(var i=SHOP_AISLES_.length-1;i>=0;i--){if(SHOP_AISLES_[i][2].test(t))")],
+  ['pantry words match inside other words', both("['Pantry', '#e3c46a', /\\b(", "['Pantry', '#e3c46a', /(")],
+  ['the add box keeps the text', both("props.onAddText(current.tabId,t);setDraft('');", "props.onAddText(current.tabId,t);")],
+  ['Done shopping forgets what was checked off', both("var done=store.items.filter(function(i){return i.done;})", "var done=store.items.filter(function(i){return false;})")],
+  ['a checked item on the receipt counts as unchecked', both("kind:items[i].done?'match':'list'", "kind:'list'")],
+  ['non-food is picked by default', both("setPicks(ls.map(function(x){return x.kind!=='nonfood';}));", "setPicks(ls.map(function(x){return true;}));")],
+  ['a listed line is not checked off before saving', both("var tick=listed.reduce(function(p,x){return p.then(function(){return props.onToggle(x.index,false);});},Promise.resolve());", "var tick=Promise.resolve();")],
+  ['the receipt\'s spelling is saved, not the list\'s', both("{name:x.match||x.name,qty:x.qty,price:x.price}", "{name:x.name,qty:x.qty,price:x.price}")],
 ];
 
 // These drive a real browser. The CI job that runs controls has none (the browser job runs
@@ -54,7 +58,7 @@ CONTROLS.forEach(function(c) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, files[f]);
   });
-  const r = cp.spawnSync('node', ['test_shopping_ui.js'], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_PAGES_ROOT: OUT }) });
+  const r = cp.spawnSync('node', ['test_shopping_ui.js'], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_PAGES_ROOT: OUT, SHOP_QUICK: '1' }) });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).map(s => s.replace(/^  FAIL /, '').trim().split('  — ')[0]);
   const crashed = r.status !== 0 && fails.length === 0;

@@ -529,179 +529,146 @@ function ChatLiteView({ apiUrl, apiToken }) {
 
 // ---- Shopping tab -----------------------------------------------------------
 
+// ---- ShopList (Shopping tab) — SHARED VERBATIM in docs/app.js and docs/dashboard-lite.html ----
+// Pill store tabs, an add box per store, aisles worked out from each item's name, the
+// checked-off items below, and Done shopping: what was checked off, plus an optional
+// receipt photo whose items are picked into Purchase History. The Google Doc is the list;
+// nothing here changes how it is stored.
+
 // What a shopping line shows: VERA's restock lines ('🤖 milk (est. ~Oct 30)') read as the
 // item's name plus when VERA expects you to run out. The Doc's text is left as written.
 function shopItemView_(text){var t=String(text==null?'':text);var m=t.match(/\(est\.\s*~?\s*([^)]*)\)\s*$/);return {vera:/^🤖/.test(t),name:t.replace(/^🤖\s*/,'').replace(/\s*\(est\..*?\)\s*$/,'').trim(),est:m?m[1].trim():''};}
 
-function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
-  const [activeStore,   setActiveStore]   = React.useState(null);
-  const [editingIndex,  setEditingIndex]  = React.useState(null); // { tabId, index } | null
-  const [editText,      setEditText]      = React.useState('');
+// Aisles, in walking order. First match wins, so Frozen catches "ice cream" before Dairy.
+var SHOP_AISLES_ = [
+  ['Frozen', '#9fd8e8', /\b(frozen|ice cream|popsicles?)\b/i],
+  ['Produce', '#7fcf8f', /\b(bananas?|spinach|lemons?|limes?|lettuce|apples?|onions?|potato(es)?|cabbage|tomato(es)?|garlic|berr(y|ies)|blueberr(y|ies)|strawberr(y|ies)|avocados?|carrots?|cucumbers?|peppers?|broccoli|grapes?|oranges?|herbs?|cilantro|parsley|mint|kale|mushrooms?|celery|zucchini|ginger)\b/i],
+  ['Meat & Fish', '#e88f8f', /\b(chicken|beef|pork|lamb|salmon|fish|shrimp|turkey|steaks?|sausages?|bacon|ground meat)\b/i],
+  ['Dairy & Eggs', '#8ab4f8', /\b(milk|eggs?|yogh?urt|feta|cheese|butter|cream|labneh|halloumi)\b/i],
+  ['Bakery', '#e0b88a', /\b(bread|buns?|bagels?|tortillas?|pitas?|croissants?|rolls?)\b/i],
+  ['Pantry', '#e3c46a', /\b(rice|oil|pasta|flour|sugar|beans?|sauce|cereal|coffee|tea|spices?|salt|lentils?|oats|honey|nuts?|snacks?|chips|crackers|vinegar|stock|broth|tuna)\b/i],
+  ['Household', '#b9a3ff', /\b(towels?|soap|detergent|pods?|bags?|batter(y|ies)|paper|candles?|foil|wrap|sponges?|toilet|tissues?|shampoo|conditioner|toothpaste|cleaner|bleach|wipes)\b/i]];
+function shopAisle_(name){var t=String(name||'');for(var i=0;i<SHOP_AISLES_.length;i++){if(SHOP_AISLES_[i][2].test(t))return SHOP_AISLES_[i][0];}return 'Other';}
 
-  React.useEffect(() => {
-    if (stores.length > 0) {
-      setActiveStore(prev =>
-        stores.find(s => s.tabId === prev) ? prev : stores[0].tabId
-      );
-    } else {
-      setActiveStore(null);
-    }
-  }, [stores]);
+// Groups a store's items: unchecked ones by aisle in walking order (Other last), checked ones apart.
+function shopGroup_(items){var by={},done=[];(items||[]).forEach(function(it){var v=shopItemView_(it.text);var row={item:it,view:v};if(it.done){done.push(row);return;}var a=shopAisle_(v.name);(by[a]=by[a]||[]).push(row);});
+  var order=SHOP_AISLES_.map(function(a){return a[0];}).concat(['Other']);
+  return {groups:order.filter(function(n){return by[n];}).map(function(n){var a=SHOP_AISLES_.filter(function(x){return x[0]===n;})[0];return {name:n,color:a?a[1]:'#8a9abf',rows:by[n]};}),done:done};}
 
-  if (!stores.length) {
-    return (
-      <div className="empty-state">
-        <div style={{ fontSize: 32, marginBottom: 12 }}>🛒</div>
-        <div>No shopping list connected.</div>
-        <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
-          Set <code style={{ background: '#13244d', padding: '1px 6px', borderRadius: 4 }}>SHOPPING_LIST_DOC_ID</code> in Script Properties to connect your Google Doc.
-        </div>
-      </div>
-    );
-  }
+// A receipt line against the store's list: 'match' (checked off already: the row is there,
+// the receipt adds its price), 'list' (on the list, not checked yet), or new / non-food.
+function shopNorm_(t){return String(t||'').toLowerCase().replace(/^🤖\s*/,'').replace(/\s*\(est\..*?\)\s*$/,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();}
+function shopReceiptKind_(line,items){var m=shopNorm_(line&&line.match);if(m){for(var i=0;i<(items||[]).length;i++){if(shopNorm_(shopItemView_(items[i].text).name)===m)return {kind:items[i].done?'match':'list',index:items[i].index};}}return {kind:line&&line.food===false?'nonfood':'new',index:-1};}
+var SHOP_RECEIPT_NOTE_={match:'Already logged when you checked it off · adds the price',list:'On your list · checked off too',new:'Not on the list · a new pantry row',nonfood:'Not food · logged only if you tick it'};
 
-  const current      = stores.find(s => s.tabId === activeStore);
+function ShopRow(props){var h=React.createElement,it=props.row.item,view=props.row.view,isVERA=view.vera,busy=props.busy;
+  var editing=props.editing;
+  return h('div',{className:'shop-row',style:{display:'flex',alignItems:'center',gap:4,padding:'4px 4px 4px 2px',minHeight:52,boxSizing:'border-box',borderRadius:10,background:it.done?'rgba(67,160,71,0.05)':'#0d1b3e',border:'1px solid '+(it.done?'rgba(67,160,71,0.15)':'#1e3060')}},
+    h('button',{type:'button',className:'shop-check',role:'checkbox','aria-checked':it.done,'aria-label':(it.done?'Uncheck ':'Check ')+view.name,disabled:editing,onClick:function(e){e.stopPropagation();if(!busy&&!editing)props.onToggle(it.index,it.done);},style:{width:44,height:44,flexShrink:0,display:'inline-flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',padding:0,cursor:editing?'default':'pointer'}},
+      h('span',{'aria-hidden':true,style:{width:22,height:22,borderRadius:'50%',boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,color:'#06140c',background:it.done?'#43a047':'transparent',border:it.done?'none':'2px solid #4a5d8a'}},it.done?'✓':'')),
+    editing?h(React.Fragment,null,
+      h('input',{autoFocus:true,'aria-label':'Edit '+view.name,value:props.editText,onChange:function(e){props.setEditText(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'){e.preventDefault();props.saveEdit();}if(e.key==='Escape')props.cancelEdit();},style:{flex:1,minWidth:0,minHeight:40,background:'#13244d',border:'1px solid #c9a84c',borderRadius:6,color:'#e8eaed',padding:'0 10px',fontSize:15}}),
+      h('button',{type:'button',onClick:props.saveEdit,disabled:!String(props.editText||'').trim(),style:{minHeight:40,background:'#c9a84c',border:'none',borderRadius:6,color:'#0d1b3e',fontWeight:700,fontSize:13,padding:'0 12px',cursor:'pointer'}},'Save'),
+      h('button',{type:'button',onClick:props.cancelEdit,style:{minHeight:40,background:'none',border:'1px solid #2a3a60',borderRadius:6,color:'#8a9abf',fontSize:13,padding:'0 10px',cursor:'pointer'}},'Cancel'))
+    :h(React.Fragment,null,
+      h('span',{className:'shop-name',style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:2,padding:'8px 0',fontSize:15,color:it.done?'#4a5a7a':'#dde1f0',textDecoration:it.done?'line-through':'none',cursor:busy?'wait':'pointer'},onClick:function(){if(!busy)props.onToggle(it.index,it.done);}},view.name,
+        isVERA&&!it.done&&h('span',{className:'shop-vera',style:{fontSize:11,color:'#e3c46a'}},'VERA added'+(view.est?' · runs out ~'+view.est:''))),
+      h('button',{type:'button',title:'Edit','aria-label':'Edit '+view.name,onClick:function(e){e.stopPropagation();props.startEdit();},style:{background:'none',border:'none',cursor:'pointer',color:'#6f7fa6',fontSize:15,minWidth:40,minHeight:40,padding:0,flexShrink:0}},'✎'),
+      h('button',{type:'button',title:'Delete','aria-label':'Delete '+view.name,onClick:function(e){e.stopPropagation();props.onDelete(it.index);},style:{background:'none',border:'none',cursor:'pointer',color:'#6f7fa6',fontSize:15,minWidth:40,minHeight:40,padding:0,flexShrink:0}},'✕')));}
 
-  return (
-    <div>
-      {/* Store sub-tabs */}
-      <div style={{
-        display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center',
-        borderBottom: '1px solid #1e3060', marginBottom: 20,
-      }}>
-        {stores.map(s => {
-          const pending  = s.items.filter(i => !i.done).length;
-          const isActive = s.tabId === activeStore;
-          return (
-            <button
-              key={s.tabId}
-              onClick={() => setActiveStore(s.tabId)}
-              style={{
-                background: isActive ? '#0d1b3e' : 'none',
-                border: 'none', cursor: 'pointer',
-                padding: '9px 16px', minHeight: 44, fontSize: 13, fontWeight: 600,
-                color: isActive ? '#c9a84c' : '#8a9abf',
-                borderBottom: isActive ? '2px solid #c9a84c' : '2px solid transparent',
-                marginBottom: -1, display: 'flex', alignItems: 'center', gap: 7,
-                borderRadius: '4px 4px 0 0',
-              }}
-            >
-              {s.storeName}
-              <span style={{
-                background: pending === 0 ? 'rgba(67,160,71,0.2)' : 'rgba(201,168,76,0.15)',
-                color: pending === 0 ? '#43a047' : '#c9a84c',
-                borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
-              }}>
-                {pending === 0 ? '✓' : pending}
-              </span>
-            </button>
-          );
-        })}
-        {/* Add */}
-        <button
-          className="btn btn-primary"
-          style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
-          disabled={busy}
-          onClick={() => onAddItem && onAddItem(activeStore)}
-        >
-          + Add Item
-        </button>
-      </div>
+function ShopDoneSheet(props){var h=React.createElement,store=props.store;
+  var _s=React.useState('summary'),step=_s[0],setStep=_s[1];
+  var _l=React.useState([]),lines=_l[0],setLines=_l[1];
+  var _p=React.useState([]),picks=_p[0],setPicks=_p[1];
+  var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var done=store.items.filter(function(i){return i.done;}).map(function(i){return shopItemView_(i.text).name;});
+  function onFile(e){var f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;setMsg('');setStep('reading');
+    Promise.resolve(props.onScan(f)).then(function(r){var ls=((r&&r.items)||[]).map(function(x){var k=shopReceiptKind_(x,store.items);return Object.assign({},x,{kind:k.kind,index:k.index});});
+      if(!ls.length){setMsg('VERA couldn’t read any items on that photo. Try again in better light, or skip the receipt.');setStep('summary');return;}
+      setLines(ls);setPicks(ls.map(function(x){return x.kind!=='nonfood';}));setStep('review');})
+    .catch(function(err){setMsg('Couldn’t read the receipt: '+((err&&err.message)||err));setStep('summary');});}
+  function save(){var chosen=lines.filter(function(x,i){return picks[i];});if(!chosen.length)return;setStep('saving');setMsg('');
+    var listed=chosen.filter(function(x){return x.kind==='list';});
+    var tick=listed.reduce(function(p,x){return p.then(function(){return props.onToggle(x.index,false);});},Promise.resolve());
+    tick.then(function(){return props.onSave(chosen.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price};}));})
+    .then(function(r){var m=chosen.filter(function(x){return x.kind==='match';}).length,parts=[];
+      if(m)parts.push('prices added to '+m+' you checked off');if(listed.length)parts.push(listed.length+' more checked off on the list');
+      var nw=chosen.length-m-listed.length;if(nw)parts.push(nw+' new item'+(nw===1?'':'s')+' logged from the receipt');
+      setMsg('Saved to Pantry: '+parts.join(', ')+'.');setStep('saved');})
+    .catch(function(err){setMsg('Couldn’t save: '+((err&&err.message)||err));setStep('review');});}
+  var nPick=picks.filter(Boolean).length;
+  var btn=function(primary){return {minHeight:48,borderRadius:10,fontSize:15,fontWeight:700,cursor:'pointer',border:primary?'none':'1px solid #2a3a5c',background:primary?'#c9a84c':'transparent',color:primary?'#1a1405':'#cfd8ef'};};
+  return h('div',{className:'shop-sheet-backdrop',onClick:function(e){if(e.target===e.currentTarget&&step!=='saving'&&step!=='reading')props.onClose();},style:{position:'fixed',inset:0,background:'rgba(2,6,16,0.72)',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',zIndex:9999}},
+    h('div',{role:'dialog','aria-label':'Done shopping at '+store.storeName,className:'shop-sheet',style:{width:'100%',maxWidth:560,maxHeight:'88vh',overflowY:'auto',boxSizing:'border-box',background:'#0d1528',borderTop:'1px solid #2a3a5c',borderRadius:'18px 18px 0 0',padding:'14px 16px 20px',display:'flex',flexDirection:'column',gap:12}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        h('span',{style:{fontSize:17,fontWeight:700,color:'#eef1fb'}},step==='review'||step==='saving'?'Pick what goes to the pantry':'Done shopping at '+store.storeName),
+        h('button',{type:'button','aria-label':'Close',disabled:step==='saving'||step==='reading',onClick:props.onClose,style:{minWidth:44,minHeight:44,background:'transparent',border:0,color:'#aab6d6',fontSize:18,cursor:'pointer'}},'×')),
+      msg&&step!=='saved'&&h('div',{className:'shop-sheet-msg',role:'status',style:{fontSize:13,color:'#ffb3c0',lineHeight:1.5}},msg),
+      (step==='summary'||step==='reading')&&h(React.Fragment,null,
+        h('span',{style:{fontSize:13,color:'#aab6d6',lineHeight:1.5}},done.length?'Logged when you checked them off ('+done.length+'):':'Nothing checked off yet at '+store.storeName+'. A receipt can still log what you bought.'),
+        done.length?h('div',{className:'shop-sheet-done',style:{display:'flex',flexWrap:'wrap',gap:6}},done.map(function(n,i){return h('span',{key:i,style:{fontSize:13,padding:'6px 12px',borderRadius:999,background:'#0f2a1c',border:'1px solid #2f6b45',color:'#8fe0a8'}},n);})):null,
+        props.onScan&&h('label',{className:'shop-snap',style:{display:'flex',alignItems:'center',gap:12,minHeight:64,padding:'0 16px',borderRadius:12,background:'#0b1630',border:'1px solid #3a5bab',color:'#cfe0ff',cursor:step==='reading'?'wait':'pointer'}},
+          h('input',{type:'file',accept:'image/*',capture:'environment',onChange:onFile,disabled:step==='reading',style:{display:'none'}}),
+          h('svg',{'aria-hidden':true,width:24,height:24,viewBox:'0 0 24 24',fill:'none',stroke:'#8ab4f8',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('path',{d:'M4 8h3l2-3h6l2 3h3v11H4z'}),h('circle',{cx:12,cy:13,r:4})),
+          h('span',{style:{display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:15,fontWeight:700}},step==='reading'?'Reading the receipt…':'Snap the receipt'),h('span',{style:{fontSize:12,color:'#8a9abf'}},'Pick what goes to the pantry; prices fill in'))),
+        h('button',{type:'button',className:'shop-sheet-close',onClick:props.onClose,disabled:step==='reading',style:btn(true)},'Done, no receipt'),
+        h('span',{style:{fontSize:12,color:'#6f7fa6'}},'Checked items stay crossed out on the list.')),
+      (step==='review'||step==='saving')&&h(React.Fragment,null,
+        h('span',{style:{fontSize:12,color:'#8a9abf'}},'VERA read '+lines.length+' item'+(lines.length===1?'':'s')+' · the photo isn’t kept'),
+        h('div',{style:{display:'flex',flexDirection:'column',borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},lines.map(function(x,i){var on=picks[i];
+          return h('button',{key:i,type:'button',className:'shop-receipt-line','aria-pressed':on,onClick:function(){var p=picks.slice();p[i]=!p[i];setPicks(p);},style:{display:'flex',alignItems:'center',gap:12,width:'100%',minHeight:56,padding:'6px 14px',background:'transparent',border:0,borderTop:i?'1px solid #16223c':'none',cursor:'pointer',color:'inherit',textAlign:'left'}},
+            h('span',{'aria-hidden':true,style:{width:22,height:22,flexShrink:0,borderRadius:6,boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,background:on?'#c9a84c':'transparent',color:'#1a1405',border:on?'none':'2px solid #4a5d8a'}},on?'✓':''),
+            h('span',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:15,color:on?'#dde1f0':'#6f7fa6'}},x.match||x.name),h('span',{style:{fontSize:11,color:x.kind==='match'?'#8fe0a8':x.kind==='nonfood'?'#6f7fa6':'#aab6d6'}},SHOP_RECEIPT_NOTE_[x.kind])),
+            x.price!==''&&x.price!=null?h('span',{style:{fontSize:13,color:'#aab6d6',fontVariantNumeric:'tabular-nums'}},'$'+Number(x.price).toFixed(2)):null);})),
+        h('button',{type:'button',className:'shop-receipt-save',onClick:save,disabled:!nPick||step==='saving',style:btn(true)},step==='saving'?'Saving…':nPick?'Add '+nPick+' to Pantry':'Nothing picked'),
+        h('button',{type:'button',onClick:function(){setStep('summary');},disabled:step==='saving',style:btn(false)},'Back')),
+      step==='saved'&&h(React.Fragment,null,
+        h('div',{className:'shop-sheet-saved',role:'status',style:{padding:14,borderRadius:12,background:'#0f2a1c',border:'1px solid #2f6b45',color:'#8fe0a8',fontSize:14,lineHeight:1.5}},msg),
+        h('button',{type:'button',onClick:props.onClose,style:btn(true)},'Done'))));}
 
-      {/* Item list */}
-      {current && (
-        current.items.length === 0
-          ? <div className="empty-state" style={{ padding: 32 }}>This store has no items listed.</div>
-          : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[...current.items].sort((a, b) => a.done - b.done).map((item, i) => {
-                const isEditing  = editingIndex !== null &&
-                                   editingIndex.tabId === current.tabId &&
-                                   editingIndex.index === item.index;
-                const isVERA     = item.text.startsWith('🤖');
-                const view       = shopItemView_(item.text);
-                return (
-                  <div key={i} className="shop-row" style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '4px 6px 4px 2px', minHeight: 52, boxSizing: 'border-box', borderRadius: 10,
-                    background: item.done ? 'rgba(67,160,71,0.05)' : '#0d1b3e',
-                    border: '1px solid ' + (item.done ? 'rgba(67,160,71,0.15)' : '#1e3060'),
-                    transition: 'background 0.15s',
-                  }}>
-                    {/* Check circle (a 44px target) — disabled while editing */}
-                    <button type="button" className="shop-check" role="checkbox" aria-checked={item.done}
-                      aria-label={(item.done ? 'Uncheck ' : 'Check ') + view.name} disabled={isEditing}
-                      onClick={e => { e.stopPropagation(); if (!busy && !isEditing) onToggle(current.tabId, item.index, item.done); }}
-                      style={{ width: 44, height: 44, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                               background: 'none', border: 'none', padding: 0, cursor: isEditing ? 'default' : 'pointer' }}>
-                      <span aria-hidden="true" style={{ width: 22, height: 22, borderRadius: '50%', boxSizing: 'border-box',
-                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#06140c',
-                               background: item.done ? '#43a047' : 'transparent', border: item.done ? 'none' : '2px solid #4a5d8a' }}>{item.done ? '✓' : ''}</span>
-                    </button>
-
-                    {/* Inline edit mode */}
-                    {isEditing ? (
-                      <React.Fragment>
-                        <input
-                          autoFocus
-                          value={editText}
-                          onChange={e => setEditText(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') { e.preventDefault(); if (editText.trim()) { onEdit(current.tabId, item.index, editText); setEditingIndex(null); } }
-                            if (e.key === 'Escape') setEditingIndex(null);
-                          }}
-                          style={{ flex: 1, background: '#13244d', border: '1px solid #c9a84c', borderRadius: 4,
-                                   color: '#e8eaed', padding: '4px 8px', fontSize: 14 }}
-                        />
-                        <button onClick={() => { if (editText.trim()) { onEdit(current.tabId, item.index, editText); setEditingIndex(null); } }}
-                          disabled={!editText.trim()}
-                          style={{ background: '#c9a84c', border: 'none', borderRadius: 4, color: '#0d1b3e',
-                                   fontWeight: 700, fontSize: 12, padding: '4px 10px', cursor: editText.trim() ? 'pointer' : 'default' }}>
-                          Save
-                        </button>
-                        <button onClick={() => setEditingIndex(null)}
-                          style={{ background: 'none', border: '1px solid #2a3a60', borderRadius: 4,
-                                   color: '#8a9abf', fontSize: 12, padding: '4px 10px', cursor: 'pointer' }}>
-                          Cancel
-                        </button>
-                      </React.Fragment>
-                    ) : (
-                      <React.Fragment>
-                        <span className="shop-name" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 0',
-                                       fontSize: 15, color: item.done ? '#4a5a7a' : '#dde1f0',
-                                       textDecoration: item.done ? 'line-through' : 'none',
-                                       cursor: busy ? 'wait' : 'pointer' }}
-                              onClick={() => !busy && onToggle(current.tabId, item.index, item.done)}>
-                          {view.name}
-                          {/* VERA's restock line: when it expects you to run out */}
-                          {isVERA && !item.done && (
-                            <span className="shop-vera" style={{ fontSize: 11, color: '#e3c46a' }}>{'VERA added' + (view.est ? ' · runs out ~' + view.est : '')}</span>
-                          )}
-                        </span>
-                        {/* Edit button */}
-                        <button title="Edit" aria-label={'Edit ' + view.name} onClick={e => { e.stopPropagation(); setEditingIndex({ tabId: current.tabId, index: item.index }); setEditText(item.text); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6f7fa6',
-                                   fontSize: 15, minWidth: 40, minHeight: 40, padding: 0, flexShrink: 0 }}>✎</button>
-                        {/* Delete button */}
-                        <button title="Delete" aria-label={'Delete ' + view.name} onClick={e => { e.stopPropagation(); onDelete && onDelete(current.tabId, item.index); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6f7fa6',
-                                   fontSize: 15, minWidth: 40, minHeight: 40, padding: 0, flexShrink: 0 }}>✕</button>
-                      </React.Fragment>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-      )}
-
-      {/* A check-off is a purchase: say so where it happens */}
-      {current && current.items.length > 0 && (
-        <div className="shop-hint" style={{ fontSize: 12, color: '#8a9abf', lineHeight: 1.5, marginTop: 12 }}>
-          Checking an item off logs it to Purchase History with today’s date. Unchecking it the same day takes it back out.
-        </div>
-      )}
-    </div>
-  );
-}
+function ShoppingTab(props){var h=React.createElement,stores=props.stores||[],busy=props.busy;
+  var _a=React.useState(null),activeStore=_a[0],setActiveStore=_a[1];
+  var _e=React.useState(null),editingIndex=_e[0],setEditingIndex=_e[1];
+  var _t=React.useState(''),editText=_t[0],setEditText=_t[1];
+  var _d=React.useState(''),draft=_d[0],setDraft=_d[1];
+  var _o=React.useState(true),showDone=_o[0],setShowDone=_o[1];
+  var _sh=React.useState(false),sheet=_sh[0],setSheet=_sh[1];
+  React.useEffect(function(){if(stores.length>0){setActiveStore(function(prev){return stores.find(function(s){return s.tabId===prev;})?prev:stores[0].tabId;});}else{setActiveStore(null);}},[stores]);
+  if(!stores.length){return h('div',{className:'empty-state'},h('div',{style:{fontSize:32,marginBottom:12}},'🛒'),h('div',null,'No shopping list connected.'),h('div',{style:{fontSize:13,color:'#6b7fa8',marginTop:8}},'Set ',h('code',{style:{background:'#13244d',padding:'1px 6px',borderRadius:4}},'SHOPPING_LIST_DOC_ID'),' in Script Properties to connect your Google Doc.'));}
+  var current=stores.find(function(s){return s.tabId===activeStore;})||stores[0];
+  var g=shopGroup_(current.items);
+  var left=current.items.filter(function(i){return !i.done;}).length;
+  var toggle=function(index,done){return props.onToggle(current.tabId,index,done);};
+  var addNow=function(){var t=draft.trim();if(!t||busy)return;if(props.onAddText){props.onAddText(current.tabId,t);setDraft('');}else if(props.onAddItem)props.onAddItem(current.tabId);};
+  var rowProps=function(r){var editing=editingIndex!==null&&editingIndex.tabId===current.tabId&&editingIndex.index===r.item.index;
+    var saveEdit=function(){if(editText.trim()){props.onEdit(current.tabId,r.item.index,editText);setEditingIndex(null);}};
+    return {key:r.item.index,row:r,busy:busy,editing:editing,editText:editText,setEditText:setEditText,saveEdit:saveEdit,cancelEdit:function(){setEditingIndex(null);},
+      startEdit:function(){setEditingIndex({tabId:current.tabId,index:r.item.index});setEditText(r.item.text);},onToggle:toggle,onDelete:function(i){props.onDelete&&props.onDelete(current.tabId,i);}};};
+  return h('div',{className:'shop-tab'},
+    h('div',{className:'shop-pills',style:{display:'flex',gap:8,overflowX:'auto',paddingBottom:2,marginBottom:12}},stores.map(function(s){var pending=s.items.filter(function(i){return !i.done;}).length,on=s.tabId===current.tabId;
+      return h('button',{key:s.tabId,type:'button',className:'shop-pill'+(on?' on':''),'aria-pressed':on,onClick:function(){setActiveStore(s.tabId);setDraft('');},style:{flexShrink:0,display:'inline-flex',alignItems:'center',gap:8,minHeight:44,padding:'0 8px 0 16px',borderRadius:999,cursor:'pointer',fontSize:14,fontWeight:600,background:on?'#c9a84c':'#0d1528',color:on?'#1a1405':'#cfd8ef',border:'1px solid '+(on?'#c9a84c':'#2a3a5c')}},s.storeName,
+        h('span',{style:{minWidth:24,height:24,padding:'0 6px',boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',borderRadius:999,fontSize:12,fontWeight:700,background:on?'#1a1405':pending?'#1a2a52':'#123322',color:on?'#e3c46a':pending?'#cfe0ff':'#8fe0a8'}},pending===0?'✓':pending));})),
+    h('form',{className:'shop-add',onSubmit:function(e){e.preventDefault();addNow();},style:{display:'flex',gap:8,marginBottom:16}},
+      h('input',{className:'shop-add-input','aria-label':'Add to '+current.storeName,placeholder:'Add to '+current.storeName+'…',value:draft,onChange:function(e){setDraft(e.target.value);},style:{flex:1,minWidth:0,minHeight:44,padding:'0 14px',borderRadius:999,background:'#0d1528',border:'1px solid #2a3a5c',color:'#dde1f0',fontSize:15,boxSizing:'border-box'}}),
+      h('button',{type:'submit',className:'shop-add-btn','aria-label':'Add to '+current.storeName,disabled:busy||!draft.trim(),style:{width:44,height:44,flexShrink:0,borderRadius:999,background:'#c9a84c',color:'#1a1405',border:0,fontSize:22,fontWeight:700,cursor:'pointer',opacity:busy||!draft.trim()?0.6:1}},'+')),
+    current.items.length===0?h('div',{className:'empty-state',style:{padding:32}},'Nothing on the '+current.storeName+' list. Add something above.')
+    :h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      left===0&&h('div',{style:{padding:14,borderRadius:12,background:'#0f2a1c',border:'1px solid #2f6b45',color:'#8fe0a8',fontSize:14,fontWeight:600,textAlign:'center'}},'Everything at '+current.storeName+' is checked off.'),
+      g.groups.map(function(grp){return h('section',{key:grp.name,className:'shop-aisle',style:{display:'flex',flexDirection:'column',gap:6}},
+        h('div',{className:'shop-aisle-head',style:{display:'flex',alignItems:'center',gap:8}},h('span',{'aria-hidden':true,style:{width:8,height:8,borderRadius:999,background:grp.color}}),h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'0.08em',color:'#aab6d6',textTransform:'uppercase'}},grp.name),h('span',{style:{fontSize:11,color:'#6f7fa6'}},grp.rows.length+' left')),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:6}},grp.rows.map(function(r){return h(ShopRow,rowProps(r));})));}),
+      g.done.length>0&&h('section',{className:'shop-checked',style:{display:'flex',flexDirection:'column',gap:6}},
+        h('button',{type:'button',className:'shop-checked-toggle','aria-expanded':showDone,onClick:function(){setShowDone(!showDone);},style:{display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:44,padding:'0 2px',background:'transparent',border:0,borderTop:'1px solid #16223c',color:'#8fe0a8',fontSize:12,fontWeight:700,letterSpacing:'0.06em',cursor:'pointer'}},h('span',null,'CHECKED OFF · '+g.done.length),h('span',{style:{fontWeight:600,letterSpacing:0}},showDone?'Hide':'Show')),
+        showDone&&h('div',{style:{display:'flex',flexDirection:'column',gap:6}},g.done.map(function(r){return h(ShopRow,rowProps(r));}))),
+      h('div',{className:'shop-hint',style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},'Checking an item off logs it to Purchase History with today’s date. Unchecking it the same day takes it back out.')),
+    h('div',{className:'shop-bar',style:{position:'sticky',bottom:0,display:'flex',alignItems:'center',gap:12,marginTop:16,padding:'12px 14px',borderRadius:14,background:'#0a1326',border:'1px solid #1c2a48',zIndex:5}},
+      h('span',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:6}},h('span',{className:'shop-bar-text',style:{fontSize:14,fontWeight:600}},left+' left · '+g.done.length+' checked off'),
+        h('span',{'aria-hidden':true,style:{display:'block',height:6,borderRadius:999,background:'#1c2a48',overflow:'hidden'}},h('span',{style:{display:'block',height:'100%',background:'#43a047',width:(current.items.length?Math.round(g.done.length/current.items.length*100):0)+'%'}}))),
+      h('button',{type:'button',className:'shop-done-btn',onClick:function(){setSheet(true);},style:{minHeight:48,padding:'0 18px',borderRadius:12,background:'#c9a84c',color:'#1a1405',border:0,fontSize:15,fontWeight:800,cursor:'pointer',flexShrink:0}},'Done shopping')),
+    sheet&&h(ShopDoneSheet,{store:current,onClose:function(){setSheet(false);},onToggle:toggle,
+      onScan:props.onScanReceipt?function(file){return props.onScanReceipt(current.tabId,file);}:null,
+      onSave:function(items){return props.onSaveReceipt?props.onSaveReceipt(current.tabId,items):Promise.reject(new Error('Receipts are not connected.'));}}));}
+// ---- /ShopList ----
 
 // ---- Add shopping item modal ------------------------------------------------
 
@@ -11626,6 +11593,9 @@ function App() {
             onDelete={handleDeleteShoppingItem}
             onEdit={handleUpdateShoppingItem}
             busy={busy}
+            onAddText={handleAdd}
+            onScanReceipt={(tabId, file) => resizeImage(file, 1600).then(img => apiPost(apiUrl, apiToken, { action: 'receipt_scan', tabId, image: img.base64, mime: img.mimeType }))}
+            onSaveReceipt={(tabId, items) => apiPost(apiUrl, apiToken, { action: 'receipt_log', tabId, items })}
           />
         )}
 

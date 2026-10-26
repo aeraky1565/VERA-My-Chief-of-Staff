@@ -298,6 +298,112 @@ function logPurchaseItems_(items, source) {
   return { ok: true, count: rows.length };
 }
 
+// ─── RECEIPTS ("Done shopping") ──────────────────────────────
+
+var RECEIPT_MAX_B64_ = 8000000;   // ~6 MB of image; the dashboards resize to 1600px first
+var RECEIPT_MIMES_   = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+/**
+ * Reads a receipt photo with Claude and returns its items, each tied to the line on the
+ * store's list it is (or ''), so "KS ORG BANANAS 3LB" lands on "Bananas".
+ * listNames: the store's list as shown (VERA's markers stripped).
+ * @returns {Array<{name, qty, price, food, match}>}
+ */
+function readReceipt_(imageB64, mime, listNames) {
+  var b64 = String(imageB64 || '');
+  if (!b64) throw new Error('No photo came through.');
+  if (b64.length > RECEIPT_MAX_B64_) throw new Error('That photo is too large — try again closer to the receipt.');
+  if (RECEIPT_MIMES_.indexOf(mime) === -1) throw new Error('That file isn’t a photo.');
+  var names = (listNames || []).slice(0, 80);
+  var prompt =
+    'This is a grocery or store receipt. List every purchased item on it.\n' +
+    'Return ONLY a JSON array (no markdown fences), one object per item:\n' +
+    '{"name": plain lowercase item name without brand codes or sizes, "qty": number or null, ' +
+    '"price": the line total as a number or null, "food": true if it is food or drink, else false, ' +
+    '"match": the exact text of the matching entry from MY LIST below, or "" if none matches}.\n' +
+    'Skip totals, tax, discounts, bag fees and payment lines.\n' +
+    'MY LIST: ' + JSON.stringify(names);
+  var resp = fetchTracked_('anthropic', CLAUDE_API_URL, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': getApiKey(), 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 2048, messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } },
+      { type: 'text', text: prompt }] }] }),
+  });
+  if (resp.getResponseCode() !== 200) throw new Error('Couldn’t read the receipt right now (HTTP ' + resp.getResponseCode() + ').');
+  var json = JSON.parse(resp.getContentText());
+  var text = (json.content && json.content[0] && json.content[0].text) || '';
+  return receiptClean_(text, names);
+}
+
+/**
+ * Turns what the model wrote into clean receipt lines. Anything that isn't a named item is
+ * dropped; a match must be one of the list's own entries (or it is ''), so a made-up match
+ * can never tick something that isn't on the list.
+ */
+function receiptClean_(text, listNames) {
+  var raw = String(text || '').replace(/^```[a-z]*\s*/i, '').replace(/\s*```\s*$/, '').trim();
+  var arr;
+  try { arr = JSON.parse(raw); } catch (e) {
+    var m = raw.match(/\[[\s\S]*\]/);
+    try { arr = m ? JSON.parse(m[0]) : []; } catch (e2) { arr = []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  var allowed = {};
+  (listNames || []).forEach(function(n) { allowed[String(n).toLowerCase()] = String(n); });
+  var num = function(v) { if (v === null || v === undefined || v === '') return null; var n = Number(String(v).replace(/[^0-9.\-]/g, '')); return isFinite(n) && String(v).match(/\d/) ? n : null; };
+  return arr.filter(function(x) { return x && String(x.name || '').trim(); }).slice(0, 100).map(function(x) {
+    var match = allowed[String(x.match || '').trim().toLowerCase()] || '';
+    return { name: String(x.name).trim().slice(0, 80), qty: num(x.qty), price: num(x.price), food: x.food !== false, match: match };
+  });
+}
+
+/**
+ * Saves the receipt lines Ahmed picked. A line whose item was checked off today at this
+ * store (a 'checkout' row with no price yet) fills in that row's price and quantity: it is
+ * the same purchase. Anything else is a new row with source 'receipt'.
+ * items: [{ name, qty, price }]. Returns { ok, filled, added }.
+ */
+function receiptLog_(storeName, items) {
+  var store = String(storeName || '').trim();
+  var clean = (items || []).map(function(x) {
+    var name = String((x && x.name) || '').replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim();
+    var price = x && x.price !== null && x.price !== undefined && x.price !== '' && isFinite(Number(x.price)) ? Number(x.price) : null;
+    var qty   = x && x.qty   !== null && x.qty   !== undefined && x.qty   !== '' && isFinite(Number(x.qty))   ? Number(x.qty)   : null;
+    return { name: name, norm: normalizeItemName_(name), price: price, qty: qty };
+  }).filter(function(x) { return x.norm; });
+  if (!clean.length) return { ok: false, error: 'No items picked.' };
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Purchase History is busy — try again.');
+  try {
+    var sh = getPurchaseHistorySheet_(), last = sh.getLastRow();
+    var tz = Session.getScriptTimeZone();
+    var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    var rows = last >= 2 ? sh.getRange(2, 1, last - 1, PURCHASE_HISTORY_HEADERS.length).getValues() : [];
+    var used = {}, filled = 0, fresh = [];
+    clean.forEach(function(x) {
+      for (var i = rows.length - 1; i >= 0; i--) {
+        var c = rows[i];
+        if (used[i]) continue;
+        var day = c[4] instanceof Date ? Utilities.formatDate(c[4], tz, 'yyyy-MM-dd') : String(c[4] || '').slice(0, 10);
+        if (day === today && String(c[2] || '').trim() === x.norm && String(c[7] || '').trim() === store
+            && String(c[9] || '').trim() === 'checkout' && (c[8] === '' || c[8] === null)) {
+          used[i] = true;
+          if (x.price !== null) sh.getRange(i + 2, 9).setValue(x.price);
+          if (x.qty !== null) sh.getRange(i + 2, 6).setValue(x.qty);
+          filled++;
+          return;
+        }
+      }
+      fresh.push({ item: x.name, normalized: x.norm, category: 'Other', qty: x.qty, unit: '', store: store, price: x.price });
+    });
+    if (fresh.length) logPurchaseItems_(fresh, 'receipt');
+    return { ok: true, filled: filled, added: fresh.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /**
  * Logs a batch of checked-off items from the shopping list (the log_purchase_run route).
  * The dashboards no longer call it: a check-off now logs itself (shopCheckLog_).

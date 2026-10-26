@@ -544,6 +544,8 @@ function doPost(e) {
       case 'delete_takeout_item':        return jsonOut_(webDeleteTakeoutItem_(body));
       // Purchase History (Issue #111)
       case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
+      case 'receipt_scan':               return jsonOut_(webReceiptScan_(body));
+      case 'receipt_log':                return jsonOut_(webReceiptLog_(body));
       // Coupons (Issue #173)
       case 'extract_coupon':             return jsonOut_(webExtractCoupon_(body));
       case 'save_coupon':                return jsonOut_(webSaveCoupon_(body));
@@ -1242,6 +1244,29 @@ function webToggleShoppingItem_(e) {
     catch (err) { r.logError = err.message; }
   }
   return r;
+}
+
+// "Done shopping" receipts: the store comes from its Doc tab, so a row carries the same
+// store name a check-off does, and the scan can match lines to that store's list.
+function shopStoreOf_(tabId) {
+  var id = String(tabId || '');
+  var s = getShoppingList_().filter(function(x) { return x.tabId === id; })[0];
+  if (!s) throw new Error('That store’s list wasn’t found — reload and try again.');
+  return s;
+}
+
+function webReceiptScan_(body) {
+  var b = body || {};
+  var s = shopStoreOf_(b.tabId);
+  var names = s.items.map(function(i) { return String(i.text || '').replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim(); }).filter(String);
+  return { ok: true, store: s.storeName, items: readReceipt_(b.image, b.mime, names) };
+}
+
+function webReceiptLog_(body) {
+  var b = body || {};
+  var s = shopStoreOf_(b.tabId);
+  if (!Array.isArray(b.items) || !b.items.length) return { ok: false, error: 'No items picked.' };
+  return receiptLog_(s.storeName, b.items.slice(0, 100));
 }
 
 function webAddShoppingItem_(e) {
