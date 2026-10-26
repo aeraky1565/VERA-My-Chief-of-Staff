@@ -299,8 +299,8 @@ function logPurchaseItems_(items, source) {
 }
 
 /**
- * Logs a batch of checked-off items from the shopping list.
- * Called by the "📦 Log Run" button.
+ * Logs a batch of checked-off items from the shopping list (the log_purchase_run route).
+ * The dashboards no longer call it: a check-off now logs itself (shopCheckLog_).
  * itemTexts: array of raw text strings (item names from the Google Doc).
  * storeTabId: the Google Doc tab ID for the store.
  */
@@ -322,6 +322,45 @@ function logPurchaseRun_(storeTabId, itemTexts) {
   });
 
   return logPurchaseItems_(items, 'checkout');
+}
+
+/**
+ * A check-off is a purchase. Ticking an item on the shopping list logs it to Purchase
+ * History with today's date; unticking it the same day takes that row back out, so a
+ * mis-tap leaves nothing behind. Unticking on a later day leaves the history alone:
+ * the item simply goes back on the list.
+ * storeName: the store tab's title. rawText: the line as the Doc has it.
+ * @returns {{ logged?: boolean, unlogged?: boolean }}
+ */
+function shopCheckLog_(storeName, rawText, done) {
+  var raw  = String(rawText || '').replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim();
+  var norm = normalizeItemName_(raw);
+  if (!norm) return done ? { logged: false } : { unlogged: false };
+  var store = String(storeName || '').trim();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) throw new Error('Purchase History is busy — try again.');
+  try {
+    if (done) {
+      var r = logPurchaseItems_([{ item: raw, normalized: norm, category: 'Other', store: store }], 'checkout');
+      return { logged: !!r.ok };
+    }
+    var sh = getPurchaseHistorySheet_(), last = sh.getLastRow();
+    if (last < 2) return { unlogged: false };
+    var tz    = Session.getScriptTimeZone();
+    var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+    var rows  = sh.getRange(2, 1, last - 1, PURCHASE_HISTORY_HEADERS.length).getValues();
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var c = rows[i];
+      var day = c[4] instanceof Date ? Utilities.formatDate(c[4], tz, 'yyyy-MM-dd') : String(c[4] || '').slice(0, 10);
+      if (day === today && String(c[2] || '').trim() === norm && String(c[7] || '').trim() === store && String(c[9] || '').trim() === 'checkout') {
+        sh.deleteRow(i + 2);
+        return { unlogged: true };
+      }
+    }
+    return { unlogged: false };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ─── AUTO-RESTOCK ─────────────────────────────────────────────

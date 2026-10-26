@@ -1234,7 +1234,14 @@ function webGetShopping_() {
 function webToggleShoppingItem_(e) {
   const tabId = (e.parameter && e.parameter.tabId) || '';
   const index = (e.parameter && e.parameter.index) || 0;
-  return toggleShoppingItem_(tabId, index);
+  const r = toggleShoppingItem_(tabId, index);
+  // A check-off logs the purchase (an untick the same day takes it back). The tick itself
+  // has already landed in the Doc, so a history failure is reported, not thrown.
+  if (r && r.ok && r.text) {
+    try { Object.assign(r, shopCheckLog_(r.storeName, r.text, r.done)); }
+    catch (err) { r.logError = err.message; }
+  }
+  return r;
 }
 
 function webAddShoppingItem_(e) {

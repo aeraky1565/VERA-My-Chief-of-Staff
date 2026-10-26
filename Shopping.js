@@ -103,7 +103,7 @@ function toggleShoppingItem_(tabId, itemIndex) {
   textEl.setStrikethrough(0, text.length - 1, !currentlyDone);
 
   Logger.log('toggleShoppingItem_: tab=' + tabId + ' idx=' + idx + ' done=' + !currentlyDone);
-  return { ok: true, tabId: tabId, index: idx, done: !currentlyDone };
+  return { ok: true, tabId: tabId, index: idx, done: !currentlyDone, text: text, storeName: found.getTitle() };
 }
 
 // ---- Delete item -----------------------------------------------------------

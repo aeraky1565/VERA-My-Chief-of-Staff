@@ -1,7 +1,7 @@
 // The Shopping list in BOTH real pages, at phone and desktop width: VERA's restock lines
 // read as a name plus when it expects you to run out (the Doc's text untouched), every
 // check circle and row button is a 44px / 40px target, a tap still toggles the right item,
-// and Log run still sends the raw lines. Every value here is invented.
+// and the list says that a check-off is logged. Every value here is invented.
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const REPO = path.join(__dirname, '..', '..');
@@ -66,7 +66,7 @@ check('nothing is an empty name, not an error', v(null) === '{"vera":false,"name
         ReactDOM.createRoot(host).render(React.createElement(ShoppingTab, { stores, busy: false,
           onToggle: (tab, idx, done) => window.__calls.push(['toggle', tab, idx, done]),
           onAddItem: () => {}, onDelete: (tab, idx) => window.__calls.push(['delete', tab, idx]), onEdit: () => {},
-          onLogRun: (tab, items) => window.__calls.push(['log', tab, items]) }));
+          }));
       });
       await wait(400);
       const rows = await page.$$eval('#shopprobe .shop-row', rs => rs.map(r => r.innerText.replace(/\s+/g, ' ').trim()));
@@ -85,11 +85,9 @@ check('nothing is an empty name, not an error', v(null) === '{"vera":false,"name
       const calls = await page.evaluate(() => window.__calls);
       check(L + ': tapping a circle toggles that item, by its place in the Doc', JSON.stringify(calls[0]) === '["toggle","t.a",1,false]', JSON.stringify(calls));
       check(L + ': delete still names the right item', JSON.stringify(calls[1]) === '["delete","t.a",0]', JSON.stringify(calls));
-      await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe button')).find(b => /Log Shopping Run/.test(b.textContent)).click());
-      await wait(150);
-      await page.evaluate(() => Array.from(document.querySelectorAll('button')).find(b => /Log 1 Item/.test(b.textContent)).click());
-      const logged = await page.evaluate(() => window.__calls.find(c => c[0] === 'log'));
-      check(L + ': Log run still sends the line as the Doc has it', JSON.stringify(logged) === '["log","t.a",["🤖 olive oil (est. ~Nov 9)"]]', JSON.stringify(logged));
+      const hint = await page.$eval('#shopprobe .shop-hint', n => n.innerText).catch(() => '');
+      check(L + ': under the list it says a check-off is logged, and an untick today takes it back', /logs it to Purchase History with today’s date\. Unchecking it the same day takes it back out\./.test(hint), hint);
+      check(L + ': no Log Shopping Run button', !(await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe button')).some(b => /Log Shopping Run/.test(b.textContent)))));
       check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
       check(L + ': no page errors', errs.length === 0, errs.join(' | '));
       await page.close();

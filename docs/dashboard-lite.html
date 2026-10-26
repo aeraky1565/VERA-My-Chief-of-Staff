@@ -527,85 +527,16 @@ function ChatLiteView({ apiUrl, apiToken }) {
   );
 }
 
-// ---- Log Run Modal ----------------------------------------------------------
-
-function LogRunModal({ store, checkedItems, onConfirm, onClose, busy }) {
-  const [selected, setSelected] = React.useState(() => new Set(checkedItems.map((_, i) => i)));
-
-  const toggle = (i) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(i) ? next.delete(i) : next.add(i);
-    return next;
-  });
-
-  const selectedItems = checkedItems.filter((_, i) => selected.has(i));
-  const cleanText = (t) => t.replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim();
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
-    }} onClick={onClose}>
-      <div style={{
-        background: '#0d1b3e', border: '1px solid #1e3060', borderRadius: 12,
-        padding: '28px 32px', minWidth: 320, maxWidth: 440, width: '90%',
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#c9a84c', marginBottom: 6 }}>
-          📦 Log Shopping Run — {store}
-        </div>
-        <div style={{ fontSize: 13, color: '#8a9abf', marginBottom: 16 }}>
-          {selectedItems.length} of {checkedItems.length} item{checkedItems.length !== 1 ? 's' : ''} will be logged. Uncheck anything you didn't buy:
-        </div>
-        <div style={{ maxHeight: 240, overflowY: 'auto', marginBottom: 20 }}>
-          {checkedItems.map((text, i) => (
-            <div key={i} onClick={() => toggle(i)} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              fontSize: 15, padding: '6px 0', minHeight: 44, cursor: 'pointer',
-              borderBottom: i < checkedItems.length - 1 ? '1px solid #1a2a50' : 'none',
-              color: selected.has(i) ? '#dde1f0' : '#4a5a7a',
-              textDecoration: selected.has(i) ? 'none' : 'line-through',
-            }}>
-              <input
-                type="checkbox"
-                checked={selected.has(i)}
-                onChange={() => toggle(i)}
-                onClick={(e) => e.stopPropagation()}
-                style={{ accentColor: '#c9a84c', width: 20, height: 20, flexShrink: 0 }}
-              />
-              {cleanText(text)}
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} disabled={busy}
-            style={{ background: 'none', border: '1px solid #2a3a60', borderRadius: 6,
-                     color: '#8a9abf', padding: '7px 18px', fontSize: 13, cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button onClick={() => onConfirm(selectedItems)} disabled={busy || selectedItems.length === 0}
-            style={{ background: '#c9a84c', border: 'none', borderRadius: 6,
-                     color: '#0d1b3e', fontWeight: 700, padding: '7px 18px', fontSize: 13,
-                     cursor: (busy || selectedItems.length === 0) ? 'not-allowed' : 'pointer',
-                     opacity: (busy || selectedItems.length === 0) ? 0.5 : 1 }}>
-            {busy ? 'Logging…' : `✓ Log ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''}`}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ---- Shopping tab -----------------------------------------------------------
 
 // What a shopping line shows: VERA's restock lines ('🤖 milk (est. ~Oct 30)') read as the
 // item's name plus when VERA expects you to run out. The Doc's text is left as written.
 function shopItemView_(text){var t=String(text==null?'':text);var m=t.match(/\(est\.\s*~?\s*([^)]*)\)\s*$/);return {vera:/^🤖/.test(t),name:t.replace(/^🤖\s*/,'').replace(/\s*\(est\..*?\)\s*$/,'').trim(),est:m?m[1].trim():''};}
 
-function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLogRun }) {
+function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy }) {
   const [activeStore,   setActiveStore]   = React.useState(null);
   const [editingIndex,  setEditingIndex]  = React.useState(null); // { tabId, index } | null
   const [editText,      setEditText]      = React.useState('');
-  const [logRunModal,   setLogRunModal]   = React.useState(false);
 
   React.useEffect(() => {
     if (stores.length > 0) {
@@ -630,7 +561,6 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
   }
 
   const current      = stores.find(s => s.tabId === activeStore);
-  const checkedItems = current ? current.items.filter(i => i.done).map(i => i.text) : [];
 
   return (
     <div>
@@ -667,31 +597,15 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
             </button>
           );
         })}
-        {/* Action buttons */}
-        <React.Fragment>
-          {checkedItems.length > 0 && (
-            <button
-              style={{
-                background: 'none', border: '1px solid #c9a84c', borderRadius: 6,
-                color: '#c9a84c', fontSize: 12, fontWeight: 600,
-                padding: '5px 12px', cursor: busy ? 'wait' : 'pointer',
-                marginLeft: 4, marginBottom: 4, flexShrink: 0,
-              }}
-              disabled={busy}
-              onClick={() => setLogRunModal(true)}
-            >
-              📦 Log Shopping Run ({checkedItems.length})
-            </button>
-          )}
-          <button
-            className="btn btn-primary"
-            style={{ fontSize: 12, marginLeft: checkedItems.length > 0 ? 4 : 'auto', marginBottom: 4, flexShrink: 0 }}
-            disabled={busy}
-            onClick={() => onAddItem && onAddItem(activeStore)}
-          >
-            + Add Item
-          </button>
-        </React.Fragment>
+        {/* Add */}
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: 12, marginLeft: 'auto', marginBottom: 4, flexShrink: 0 }}
+          disabled={busy}
+          onClick={() => onAddItem && onAddItem(activeStore)}
+        >
+          + Add Item
+        </button>
       </div>
 
       {/* Item list */}
@@ -779,18 +693,11 @@ function ShoppingTab({ stores, onToggle, onAddItem, onDelete, onEdit, busy, onLo
             </div>
       )}
 
-      {/* Log Run confirmation modal */}
-      {logRunModal && current && (
-        <LogRunModal
-          store={current.storeName}
-          checkedItems={checkedItems}
-          busy={busy}
-          onClose={() => setLogRunModal(false)}
-          onConfirm={(selectedItems) => {
-            setLogRunModal(false);
-            onLogRun && onLogRun(current.tabId, selectedItems);
-          }}
-        />
+      {/* A check-off is a purchase: say so where it happens */}
+      {current && current.items.length > 0 && (
+        <div className="shop-hint" style={{ fontSize: 12, color: '#8a9abf', lineHeight: 1.5, marginTop: 12 }}>
+          Checking an item off logs it to Purchase History with today’s date. Unchecking it the same day takes it back out.
+        </div>
       )}
     </div>
   );
@@ -2896,7 +2803,7 @@ function PurchaseHistoryTab({ items }) {
         <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
         <div>No purchase history yet.</div>
         <div style={{ fontSize: 13, color: '#6b7fa8', marginTop: 8 }}>
-          Log a shopping run or scan a receipt in Chat to get started.
+          Check items off in Shopping, or scan a receipt in Chat, to get started.
         </div>
       </div>
     );
@@ -11550,7 +11457,8 @@ function App() {
       }
     ));
     try {
-      await apiAction(apiUrl, apiToken, 'shopping_toggle', { tabId, index: itemIndex });
+      const r = await apiAction(apiUrl, apiToken, 'shopping_toggle', { tabId, index: itemIndex });
+      if (r && r.logError) setError('Checked off, but not saved to Purchase History: ' + r.logError);
     } catch (err) {
       setError('Could not update item: ' + err.message);
       await loadShopping(apiUrl, apiToken); // revert on error
@@ -11602,20 +11510,6 @@ function App() {
       setError('Could not update item: ' + err.message);
       await loadShopping(apiUrl, apiToken); // revert
     }
-  }
-
-  async function handleLogRun(storeTabId, itemTexts) {
-    setBusy(true);
-    try {
-      await apiAction(apiUrl, apiToken, 'log_purchase_run', {
-        storeId: storeTabId,
-        items: JSON.stringify(itemTexts),
-      });
-      showToast('✓ Logged ' + itemTexts.length + ' item(s) to Purchase History');
-    } catch (err) {
-      showToast('⚠️ Log Run failed: ' + err.message, true);
-    }
-    setBusy(false);
   }
 
   return (
@@ -11731,7 +11625,6 @@ function App() {
             onAddItem={(storeId) => setAddItemModal(storeId || true)}
             onDelete={handleDeleteShoppingItem}
             onEdit={handleUpdateShoppingItem}
-            onLogRun={handleLogRun}
             busy={busy}
           />
         )}
