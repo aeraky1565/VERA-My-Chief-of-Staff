@@ -18,6 +18,8 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['settling leaves the request a scout', b => ({ [T]: swap(b[T], "r.kind = 'watch'; r.tripId = trip.tripId;", "r.kind = 'scout'; r.tripId = trip.tripId;") })],
+  ['a requested trip shows as unwatched', b => ({ [T]: swap(b[T], "  (requests || []).forEach(function(r) { if (r.status === 'active' && r.tripId) has['id:' + String(r.tripId).toUpperCase()] = 1; });\n", "") })],
   ['the Config row is not read', b => ({ [T]: swap(b[T], "  try { return ariaSheetIdFrom_(getConfigValues()['roster_link_aria']); } catch (e) { return ''; }", "  return '';") })],
   ['a link is taken as the ID', b => ({ [T]: swap(b[T], "return m ? m[1] : /^[A-Za-z0-9_-]{20,}$/.test(t) ? t : '';", "return m ? m[1] : t;") })],
   ['an unknown action type raises a flag', b => ({ [T]: swap(b[T], "    if (!ARIA_ACTIONS_[out.actionType]) out.actionType = '';\n", "") })],
@@ -36,7 +38,7 @@ const CONTROLS = [
   ['VERA reads ARIA before its morning run', b => ({ [T]: swap(b[T], "if (mins < 7 * 60 + 30 || now.getHours() >= 22) return false;", "if (now.getHours() >= 22) return false;") })],
   ['VERA reads ARIA every hour', b => ({ [T]: swap(b[T], "(now.getTime() - last.getTime()) >= ARIA_FLAG_EVERY_HOURS_ * 36e5 - 5 * 6e4", "true") })],
   ['the flag date override is ignored', b => ({ [K]: swap(b[K], "      wanted[key].date || dateStr, source,", "      dateStr, source,") })],
-  ['the reminders switch silences ARIA', b => ({ [R]: swap(b[R], "  maybeSyncAriaFlags_(new Date());\n  try {\n    var cfg = getConfigValues();", "  try {\n    var cfg = getConfigValues();") })],
+  ['the reminders switch silences ARIA', b => ({ [R]: swap(b[R], "  maybeSyncAriaFlags_(new Date());\n", "") })],
   ['the requests tab loses a column ARIA reads', b => ({ [K]: swap(b[K], "'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min'", "'Earliest Depart', 'Latest Return', 'Nights Min'") })],
   ['an open jaw is lost', b => ({ [T]: swap(b[T], "returnFrom: back && back !== to ? back : '',", "returnFrom: '',") })],
   ['"Home" is sent as a place', b => ({ [T]: swap(b[T], "return /^home$/i.test(t) ? '' :", "return false ? '' :") })],

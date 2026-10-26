@@ -281,6 +281,58 @@ console.log('\nthe deciders: the endpoint');
   check('…and so is a missing id', run('webTripIdeaDecide_({ ideaId: did })').ok === false);
 }
 
+console.log('\nsettle: an idea becomes a calendar trip');
+{
+  check('a settle keeps the option, the dates and the title', JSON.stringify(run('tiCleanSettle_({optionId:"OPT-1", start:"2027-05-29", end:"2027-06-11", label:"  Spring   in Europe ", at:"x"})')) === '{"optionId":"OPT-1","start":"2027-05-29","end":"2027-06-11","label":"Spring in Europe","at":"x"}');
+  check('…and is refused when the dates are backwards, missing, or past 90 nights', run('tiCleanSettle_({optionId:"OPT-1", start:"2027-06-11", end:"2027-05-29"})') === null
+    && run('tiCleanSettle_({optionId:"OPT-1", start:"2027-05-29"})') === null && run('tiCleanSettle_({start:"2027-05-29", end:"2027-06-01"})') === null
+    && run('tiCleanSettle_({optionId:"OPT-1", start:"2027-01-01", end:"2027-06-01"})') === null && run('tiCleanSettle_("nope")') === null);
+  const saved = run('webSaveTripIdea_({ idea: { title: "Spring in Europe", status: "shortlisted", settle: { optionId: "OPT-1", start: "2027-05-29", end: "2027-06-11", label: "Spring in Europe" } } })').idea;
+  S.sid = saved.id;
+  check('the settle survives the sheet', JSON.stringify(run('tiGetIdea_(sid)').settle) === JSON.stringify(saved.settle) && saved.settle.start === '2027-05-29');
+  check('…and an idea with none reads back null', run('tiGetIdea_(aid)').settle === null);
+
+  S.st = { optionId: 'OPT-1', start: '2027-05-29', end: '2027-06-11', label: 'Spring in Europe' };
+  S.tr = [{ tripId: 'TRIP-A', label: 'Vacation: Europe in spring', startDate: '2027-05-29', endDate: '2027-06-11' },
+    { tripId: 'TRIP-B', label: 'Dentist', startDate: '2027-05-29', endDate: '2027-05-29' },
+    { tripId: 'TRIP-C', label: 'Spring in Europe', startDate: '2027-05-30', endDate: '2027-06-12' }];
+  check('the calendar trip is found: the same dates, or a day off with a word of the title in common; the closest wins', run('tiMatchSettled_(st, tr).tripId') === 'TRIP-A');
+  S.tr2 = [S.tr[2], S.tr[1]];
+  check('…a day out still matches when the title shares a word', run('tiMatchSettled_(st, tr2).tripId') === 'TRIP-C');
+  S.tr3 = [{ tripId: 'TRIP-D', label: 'Cousin visit', startDate: '2027-05-30', endDate: '2027-06-12' }];
+  check('…but a different trip a day out does not', run('tiMatchSettled_(st, tr3)') === null);
+  S.tr4 = [{ tripId: 'TRIP-E', label: 'Something else', startDate: '2027-05-29', endDate: '2027-06-11' }];
+  check('…a renamed event on exactly those dates still matches', run('tiMatchSettled_(st, tr4).tripId') === 'TRIP-E');
+  check('…and two days out is a different trip', run('tiMatchSettled_(st, [{tripId:"T", label:"Spring in Europe", startDate:"2027-05-31", endDate:"2027-06-11"}])') === null);
+
+  S.wopt = { name: 'Lisbon → cruise', cost: { flights: { low: 1400, high: 1800 }, cruise: { low: 4000, high: 6000 } } };
+  const wf = run('tiWillaFlag_({id:"IDEA-9", title:"Spring in Europe", budget: 9000}, wopt, {label:"Spring in Europe", startDate:"2027-05-29", endDate:"2027-06-11"})');
+  check('settling asks for the final total to go to WILLA, once, as a Low flag', wf.key === 'trip_idea_willa|IDEA-9' && wf.urgency === 'Low' && wf.source === 'Trip Ideas'
+    && /Send the final total for Spring in Europe to WILLA/.test(wf.flag) && /planned \$5400–\$7800 against a \$9000 budget/.test(wf.reason), JSON.stringify(wf));
+
+  // Linking, end to end
+  const optSaved = run('webSaveTripIdeaOption_({ option: { ideaId: sid, name: "Lisbon → cruise", flag: "star", legs: [{kind:"stop",place:"Lisbon",nights:3}], cost: { flights: { low: 1400, high: 1800 } } } })').option;
+  S.sid2 = run('webSaveTripIdea_({ idea: Object.assign(tiGetIdea_(sid), { settle: { optionId: "' + optSaved.id + '", start: "2027-05-29", end: "2027-06-11", label: "Spring in Europe" } }) })').idea.id;
+  let registry = [], watched = [], flagged = [];
+  S.readTripRegistry_ = () => ({ rows: registry });
+  S.ariaWatchSettled_ = (ref, trip) => { watched.push([ref, trip.tripId]); return 1; };
+  S.appendExactKeyFlags_ = (sh, fl) => { flagged = flagged.concat(fl); return fl.length; };
+  S.getSpreadsheet = () => ({ getSheetByName: n => n === 'Flags' ? {} : null });
+  S.TABS.FLAGS = 'Flags';
+  S.Session = S.Session || { getScriptTimeZone: () => 'UTC' };
+  S.Utilities.formatDate = S.Utilities.formatDate || (() => '2027-02-20');
+  check('no calendar trip yet: nothing links', run('tiLinkSettled_()') === 0 && !run('tiGetIdea_(sid)').tripId);
+  registry = [{ tripId: 'TRIP-A', label: 'Vacation: Europe in spring', startDate: '2027-05-29', endDate: '2027-06-11', status: 'active' }];
+  check('once the event is in the registry, the idea links', run('tiLinkSettled_()') === 1);
+  const linked = run('tiGetIdea_(sid)');
+  check('…it carries the Trip ID, is Settled, and remembers the chosen option', linked.tripId === 'TRIP-A' && linked.status === 'settled' && linked.chosenOption === optSaved.id && linked.settle.start === '2027-05-29');
+  check('…the option\'s scout request is told the real trip', JSON.stringify(watched) === JSON.stringify([[optSaved.id, 'TRIP-A']]));
+  check('…and the WILLA flag is raised', flagged.length === 1 && flagged[0].key === 'trip_idea_willa|' + S.sid);
+  check('linking again does nothing more', run('tiLinkSettled_()') === 0 && watched.length === 1 && flagged.length === 1);
+  check('the trip_ideas read links too', /function webGetTripIdeas_\(\) \{\n  try \{ tiLinkSettled_\(\); \}/.test(SRC));
+  check('…and so does the hourly check', /tiLinkSettled_\(\);/.test(fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8')));
+}
+
 // ============ the dashboard block ===================================================
 const START = '// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM', END = '// ---- /TripIdeasView ----';
 const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
@@ -439,6 +491,18 @@ console.log('\nARIA in Trip Ideas: scouting an option\'s fares');
   check('windows stay ranked by PTO, and a fare only breaks a tie', rk === '2027-05-15,2027-05-29,2027-05-01', rk);
   check('…with no fares the order is the server\'s', cr('tiRankWindows_(wins, []).map(function(w){return w.start;}).join()') === '2027-05-15,2027-05-01,2027-05-29');
   check('fares read in whole dollars', cr('tiUsd_(1240)') === '$1,240');
+  C.sIdea = { id: 'IDEA-7', title: 'Spring in Europe' };
+  C.sOpt = { name: 'Lisbon, cruise', legs: [{ kind: 'move', mode: 'fly', from: 'Home', to: 'LIS' }, { kind: 'stop', place: 'Lisbon', nights: 3 }, { kind: 'move', mode: 'ship', from: 'Cádiz', to: 'Barcelona' }] };
+  C.sSet = { start: '2027-05-29', end: '2027-06-11', label: 'Spring; in Europe, 2027' };
+  const ics = cr('tiSettleIcs_(sIdea, sOpt, sSet)');
+  check('the settle event is one all-day event, start to end inclusive', /BEGIN:VEVENT[\s\S]*END:VEVENT/.test(ics) && (ics.match(/BEGIN:VEVENT/g) || []).length === 1
+    && /DTSTART;VALUE=DATE:20270529\r\n/.test(ics) && /DTEND;VALUE=DATE:20270612\r\n/.test(ics), ics);
+  check('…its title escaped as the format asks', /SUMMARY:Spring\; in Europe\\, 2027\r\n/.test(ics));
+  check('…with the option and its route in the notes', /DESCRIPTION:From the trip idea "Spring in Europe": Lisbon\\, cruise\\n\\nFly Home → LIS\\nLisbon · 3n\\nCruise Cádiz → Barcelona/.test(ics), ics);
+  check('…a stable id, so importing it twice updates one event', /UID:settle-idea-7-20270529@vera\r\n/.test(ics));
+  check('…lines end the way calendars expect', ics.split('\r\n').length > 10 && !/[^\r]\n/.test(ics));
+  check('the file is named for the event', cr('tiIcsName_(sSet)') === 'spring-in-europe-2027.ics');
+  check('a month end rolls the end date over', /DTEND;VALUE=DATE:20270701/.test(cr('tiSettleIcs_(sIdea, sOpt, {start:"2027-06-20", end:"2027-06-30", label:"x"})')));
 }
 
 console.log('\nwiring');

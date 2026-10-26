@@ -79,6 +79,19 @@ function tiCleanPieces_(pieces) {
   }).filter(Boolean).slice(0, 30);
 }
 
+/**
+ * Pure: how an idea is being settled: the option chosen, the dates (start ≤ end,
+ * at most 90 nights) and the calendar event's title; null when not settling.
+ */
+function tiCleanSettle_(v) {
+  if (!v || typeof v !== 'object') return null;
+  var ymd = function(x) { var t = String(x || '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ''; };
+  var start = ymd(v.start), end = ymd(v.end), optionId = tiStr_(v.optionId, 40);
+  if (!start || !end || !optionId || end < start) return null;
+  if ((Date.parse(end) - Date.parse(start)) / 864e5 > 90) return null;
+  return { optionId: optionId, start: start, end: end, label: tiStr_(v.label, 100), at: tiStr_(v.at, 40) };
+}
+
 /** Pure: combinations VERA saw but did not build: [{name, why}]. */
 function tiCleanAlso_(list) {
   return (Array.isArray(list) ? list : []).map(function(a) {
@@ -119,6 +132,7 @@ function tiCleanIdea_(raw) {
     tripId: tiStr_(raw.tripId, 40),
     pieces: tiCleanPieces_(raw.pieces),
     alsoPossible: tiCleanAlso_(raw.alsoPossible),
+    settle: tiCleanSettle_(raw.settle),
   };
 }
 
@@ -210,12 +224,12 @@ function tiParse_(s, fallback) { try { var v = JSON.parse(String(s || '')); retu
 function tiIdeaToRow_(i, created, updated) {
   return [i.id, i.title, i.where, JSON.stringify(i.months), i.nightsMin == null ? '' : i.nightsMin, i.nightsMax == null ? '' : i.nightsMax,
     i.travelers, i.budget == null ? '' : i.budget, i.pace, JSON.stringify(i.openTo), i.mustHaves, i.status, i.chosenOption, i.tripId, created, updated,
-    JSON.stringify(i.pieces || []), JSON.stringify(i.alsoPossible || [])];
+    JSON.stringify(i.pieces || []), JSON.stringify(i.alsoPossible || []), i.settle ? JSON.stringify(i.settle) : ''];
 }
 function tiIdeaFromRow_(r) {
   var i = tiCleanIdea_({ id: r[0], title: r[1], where: r[2], months: tiParse_(r[3], []), nightsMin: r[4], nightsMax: r[5],
     travelers: r[6], budget: r[7], pace: r[8], openTo: tiParse_(r[9], []), mustHaves: r[10], status: r[11], chosenOption: r[12], tripId: r[13],
-    pieces: tiParse_(r[16], []), alsoPossible: tiParse_(r[17], []) });
+    pieces: tiParse_(r[16], []), alsoPossible: tiParse_(r[17], []), settle: tiParse_(r[18], null) });
   i.created = String(r[14] || ''); i.updated = String(r[15] || '');
   return i;
 }
@@ -274,6 +288,7 @@ function tiLocked_(fn) {
 
 /** GET ?action=trip_ideas → every idea and every option. A handful of rows; no paging. */
 function webGetTripIdeas_() {
+  try { tiLinkSettled_(); } catch (e) { Logger.log('trip ideas: settle link skipped: ' + e.message); }
   var ideas = tiRows_(tiIdeasSheet_(), TRIP_IDEAS_HEADERS.length).filter(function(r) { return String(r[0]).trim(); }).map(tiIdeaFromRow_);
   var options = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).filter(function(r) { return String(r[0]).trim(); }).map(tiOptionFromRow_);
   return { ok: true, ideas: ideas, options: options };
@@ -813,4 +828,87 @@ function webParseTripIdeaOptions_(body) {
   Logger.log('trip_option_parse: ' + options.length + ' options (' + how + ')');
   if (!options.length) return { ok: false, error: 'No trip options found in that text. Ask the chat to reply in the VERA option format, then paste again.' };
   return { ok: true, options: options, how: how };
+}
+
+// ---- Settle: an idea becomes a calendar trip -------------------------------------
+//
+// Settling saves the chosen option and dates on the idea (its Settle column) and
+// hands Ahmed a one-event .ics for the shared calendar; VERA itself writes to no
+// calendar. When that event reaches VERA's Trips registry, tiLinkSettled_ links the
+// two: the idea gets the Trip ID and is Settled, the option's scout request becomes
+// a watch request for the real trip (so ARIA moves its row over and keeps the fare
+// history), and a flag asks for the final total to go to WILLA.
+
+/** Pure: whole-day distance between two 'yyyy-MM-dd' dates. */
+function tiDaysApart_(a, b) { return Math.round(Math.abs(Date.parse(a) - Date.parse(b)) / 864e5); }
+
+/** Pure: a title's words, for comparing an event title with the one settling asked for. */
+function tiTitleWords_(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
+    .filter(function(w) { return w.length > 2 && ['the', 'and', 'trip', 'vacation', 'for', 'with'].indexOf(w) === -1; });
+}
+
+/**
+ * Pure: the registry trip a pending settle became, or null. Both dates within a
+ * day, and either the same dates exactly or a word of the title in common (the
+ * event may have been renamed on the calendar). More than one: the closest dates.
+ */
+function tiMatchSettled_(settle, trips) {
+  if (!settle) return null;
+  var want = tiTitleWords_(settle.label);
+  var hits = (trips || []).filter(function(t) {
+    if (!t.startDate || !t.endDate || tiDaysApart_(t.startDate, settle.start) > 1 || tiDaysApart_(t.endDate, settle.end) > 1) return false;
+    var exact = t.startDate === settle.start && t.endDate === settle.end;
+    var words = tiTitleWords_(t.label);
+    return exact || want.some(function(w) { return words.indexOf(w) !== -1; });
+  });
+  hits.sort(function(a, b) { return (tiDaysApart_(a.startDate, settle.start) + tiDaysApart_(a.endDate, settle.end)) - (tiDaysApart_(b.startDate, settle.start) + tiDaysApart_(b.endDate, settle.end)); });
+  return hits[0] || null;
+}
+
+/** Pure: the WILLA flag for a settled idea: what to send once the trip is real. */
+function tiWillaFlag_(idea, option, trip) {
+  var total = null, cost = (option && option.cost) || {};
+  TI_COST_KEYS_.forEach(function(k) { var c = cost[k]; if (!c) return; total = total || { low: 0, high: 0 }; total.low += c.low || 0; total.high += c.high || 0; });
+  var money = total ? '$' + total.low + (total.high !== total.low ? '–$' + total.high : '') : 'no cost estimate yet';
+  return { key: 'trip_idea_willa|' + idea.id, source: 'Trip Ideas', urgency: 'Low',
+    flag: 'Send the final total for ' + (idea.title || 'the trip') + ' to WILLA',
+    reason: (trip.label || idea.title) + ' (' + trip.startDate + '–' + trip.endDate + '), ' + (option ? option.name : 'the chosen option') + ': planned ' + money
+      + (idea.budget != null ? ' against a $' + idea.budget + ' budget' : '') + '. Use the WILLA line on the option (↗ Hand off) once the bookings are in.' };
+}
+
+/**
+ * Links every idea that is settling to its calendar trip, once the trip is in the
+ * registry. Runs on the trip_ideas read and from hourlyCheck. Returns how many linked.
+ */
+function tiLinkSettled_() {
+  var sheet = tiIdeasSheet_(), w = TRIP_IDEAS_HEADERS.length;
+  var pending = tiRows_(sheet, w).map(tiIdeaFromRow_).filter(function(i) { return i.settle && !i.tripId; });
+  if (!pending.length) return 0;
+  var trips = readTripRegistry_().rows.filter(function(t) { return t.status !== 'archived'; });
+  var found = pending.map(function(i) { return { idea: i, trip: tiMatchSettled_(i.settle, trips) }; }).filter(function(x) { return x.trip; });
+  if (!found.length) return 0;
+  return tiLocked_(function() {
+    var now = tiNow_(), options = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_), flags = [];
+    found.forEach(function(x) {
+      var row = tiRowOf_(sheet, w, x.idea.id);
+      if (row === -1) return;
+      var idea = tiIdeaFromRow_(sheet.getRange(row, 1, 1, w).getValues()[0]);
+      if (!idea.settle || idea.tripId) return;
+      idea.tripId = x.trip.tripId; idea.status = 'settled'; idea.chosenOption = idea.settle.optionId;
+      var created = String(sheet.getRange(row, 15).getValue() || now);
+      sheet.getRange(row, 1, 1, w).setValues([tiIdeaToRow_(idea, created, now)]);
+      try { ariaWatchSettled_(idea.settle.optionId, x.trip); } catch (e) { Logger.log('trip ideas: settle request not updated'); }
+      var option = options.filter(function(o) { return o.id === idea.settle.optionId; })[0];
+      flags.push(tiWillaFlag_(idea, option, x.trip));
+    });
+    if (flags.length) {
+      try {
+        var fs = getSpreadsheet().getSheetByName(TABS.FLAGS);
+        if (fs) appendExactKeyFlags_(fs, flags, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'));
+      } catch (e) { Logger.log('trip ideas: WILLA flag not written'); }
+    }
+    Logger.log('trip ideas: linked ' + flags.length + ' settled idea(s)');
+    return flags.length;
+  });
 }

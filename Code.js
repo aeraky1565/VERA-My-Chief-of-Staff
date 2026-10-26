@@ -242,7 +242,7 @@ const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', '
 const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status'];
 // Trip Ideas (TripIdeas.js). Months is a JSON list of 'yyyy-MM'; empty means any time.
 // Pieces (anchors, either/or, wishes) and Also Possible are JSON lists.
-const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated', 'Pieces', 'Also Possible'];
+const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated', 'Pieces', 'Also Possible', 'Settle'];
 // Legs, Cost, Verdict and Wishes are JSON (see tiCleanOption_); Pros and Cons are newline lists.
 const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated', 'Verdict', 'Wishes'];
 const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated'];

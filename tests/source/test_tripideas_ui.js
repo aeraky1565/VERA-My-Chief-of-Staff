@@ -303,6 +303,33 @@ async function scenario(page, label, width) {
   check(label + ': Stop scouting withdraws the request', wd && wd.ref.toUpperCase() === (await page.evaluate(() => window.__ariaRan)));
   check(label + ': …and the card offers to scout again', /Scout again with ARIA/.test((await inCard('.ti-aria-scout')) || ''));
   check(label + ': no sideways scroll with ARIA on the card', await noScroll(page));
+
+  // Settle: pick a PTO window, name the event, save and download one calendar event; then stop settling
+  check(label + ': a starred option offers to settle the trip', /Settle this trip/.test((await inCard('.ti-settle-btn')) || ''));
+  await page.evaluate((f) => eval(f)().querySelector('.ti-settle-btn').click(), ariaCard.toString()); await wait(450);
+  let st = (await inCard('.ti-settle')) || '';
+  check(label + ': it offers the cheapest PTO windows for the route\'s length, the first picked', /Sat, May 29 → Fri, Jun 11/.test(st) && /Ann: 4 days off · 6 left/.test(st) && /Other dates/.test(st)
+    && (await page.evaluate((f) => { const b = eval(f)().querySelector('.ti-settle-window'); return b && b.getAttribute('aria-checked'); }, ariaCard.toString())) === 'true', st.slice(0, 400));
+  check(label + ': …and says VERA adds nothing to a calendar itself', /it adds nothing to a calendar itself/.test(st));
+  await page.evaluate((f) => window.__set(eval(f)().querySelector('.ti-settle-label'), 'Spring in Europe, 2027'), ariaCard.toString()); await wait(60);
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 4000 }).catch(() => null),
+    page.evaluate((f) => eval(f)().querySelector('.ti-settle-save').click(), ariaCard.toString())]);
+  await wait(150);
+  const ics = dl ? fs.readFileSync(await dl.path(), 'utf8') : '';
+  check(label + ': Save downloads one all-day event for those dates', dl && dl.suggestedFilename() === 'spring-in-europe-2027.ics' && /DTSTART;VALUE=DATE:20270529/.test(ics) && /DTEND;VALUE=DATE:20270612/.test(ics)
+    && /SUMMARY:Spring in Europe\\, 2027/.test(ics) && (ics.match(/BEGIN:VEVENT/g) || []).length === 1, dl ? dl.suggestedFilename() + ' ' + ics.slice(0, 300) : 'no download');
+  const sp = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_idea_save').pop());
+  check(label + ': …and saves the settle on the idea', sp && sp.idea.settle && /^OPT-/.test(sp.idea.settle.optionId) && sp.idea.settle.start === '2027-05-29' && sp.idea.settle.end === '2027-06-11' && sp.idea.settle.label === 'Spring in Europe, 2027', JSON.stringify(sp && sp.idea.settle));
+  st = await page.$eval('#tiprobe .ti-settling', n => n.innerText).catch(() => '');
+  check(label + ': the idea says it is waiting for the calendar event, with what to do', /SETTLING · WAITING FOR THE CALENDAR EVENT/i.test(st) && /Spring in Europe, 2027 · Sat, May 29 → Fri, Jun 11 2027 · Lisbon → Algarve → cruise/.test(st) && /Import the event into Our Joint Chaos/.test(st), st);
+  check(label + ': …and the option no longer offers to settle', (await inCard('.ti-settle-btn')) === null && (await inCard('.ti-settle')) === null);
+  const [dl2] = await Promise.all([page.waitForEvent('download', { timeout: 4000 }).catch(() => null), page.evaluate(() => window.__q('.ti-settle-again').click())]);
+  check(label + ': the event can be downloaded again, the same event', dl2 && /UID:settle-idea-\d+-20270529@vera/.test(fs.readFileSync(await dl2.path(), 'utf8')));
+  check(label + ': no sideways scroll while settling', await noScroll(page));
+  if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe .ti-settling'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-settling-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+  await page.evaluate(() => window.__q('.ti-settle-stop').click()); await wait(150);
+  const un = await page.evaluate(() => window.__posts.filter(p => p.action === 'trip_idea_save').pop());
+  check(label + ': Stop settling clears it', un && un.idea.settle === null && !(await page.$('#tiprobe .ti-settling')) && /Settle this trip/.test((await inCard('.ti-settle-btn')) || ''));
   if (process.env.SHOT_DIR) { await page.evaluate((f) => { eval(f)().id = 'aria-card-shot'; }, ariaCard.toString()); const ce = await page.$('#aria-card-shot'); if (ce) try { await ce.screenshot({ path: process.env.SHOT_DIR + '/tripideas-aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
   if (process.env.SHOT_DIR) { const el = await page.$('#tiprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/tripideas-ask-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 }

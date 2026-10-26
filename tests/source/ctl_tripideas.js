@@ -6,7 +6,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_tideas');
 
-const FILES = ['TripIdeas.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
+const FILES = ['TripIdeas.js', 'Code.js', 'Reminders.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -14,11 +14,24 @@ const swap = (src, from, to) => {
   if (src.indexOf(from) === -1) throw new Error('anchor moved: ' + from.slice(0, 70));
   return src.replace(from, function() { return to; });
 };
-const T = 'TripIdeas.js', W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
+const T = 'TripIdeas.js', R = 'Reminders.js', W = 'WebApp.js', A = 'docs/app.js', L = 'docs/dashboard-lite.html';
 const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], from, to) });
 const TEST = 'test_tripideas.js';
 
 const CONTROLS = [
+  ['a backwards settle is kept', b => ({ [T]: swap(b[T], "if (!start || !end || !optionId || end < start) return null;", "if (!start || !end || !optionId) return null;") })],
+  ['a settle can run past 90 nights', b => ({ [T]: swap(b[T], "  if ((Date.parse(end) - Date.parse(start)) / 864e5 > 90) return null;\n", "") })],
+  ['the settle is not saved', b => ({ [T]: swap(b[T], "i.settle ? JSON.stringify(i.settle) : ''];", "''];") })],
+  ['any trip on nearby dates matches', b => ({ [T]: swap(b[T], "    return exact || want.some(function(w) { return words.indexOf(w) !== -1; });", "    return true;") })],
+  ['three days off still matches', b => ({ [T]: swap(b[T], "tiDaysApart_(t.startDate, settle.start) > 1 || tiDaysApart_(t.endDate, settle.end) > 1) return false;", "tiDaysApart_(t.startDate, settle.start) > 3 || tiDaysApart_(t.endDate, settle.end) > 3) return false;") })],
+  ['a linked idea links again', b => ({ [T]: swap(swap(b[T], "filter(function(i) { return i.settle && !i.tripId; });", "filter(function(i) { return i.settle; });"), "      if (!idea.settle || idea.tripId) return;", "      if (!idea.settle) return;") })],
+  ['no WILLA flag on settle', b => ({ [T]: swap(b[T], "      flags.push(tiWillaFlag_(idea, option, x.trip));", "") })],
+  ['the scout request is not told', b => ({ [T]: swap(b[T], "      try { ariaWatchSettled_(idea.settle.optionId, x.trip); }", "      try { }") })],
+  ['the read does not link', b => ({ [T]: swap(b[T], "  try { tiLinkSettled_(); } catch (e) { Logger.log('trip ideas: settle link skipped: ' + e.message); }\n", "") })],
+  ['the hourly check does not link', b => ({ [R]: swap(b[R], "  try { tiLinkSettled_(); } catch (tiErr)", "  try { } catch (tiErr)") })],
+  ['the event ends a day early', both("'DTEND;VALUE=DATE:'+tiIcsDay_(settle.end,1)", "'DTEND;VALUE=DATE:'+tiIcsDay_(settle.end)")],
+  ['the title is not escaped', both(".replace(/;/g,'\\\;').replace(/,/g,'\\\\,')", "")],
+  ['each download is a new event', both("'UID:settle-'+String(idea.id||'idea').toLowerCase()+'-'+settle.start.replace(/-/g,'')+'@vera'", "'UID:'+Date.now()+'@vera'")],
   ['a fare outranks PTO', both("for(var j=0;j<3;j++)if(a.k[j]!==b.k[j])return a.k[j]-b.k[j];", "")],
   ['a fare of any length matches a window', both("if(tiDayNum_(f.ret)-d!==w.nights||Math.abs(d-s)>3)return;", "if(Math.abs(d-s)>3)return;")],
   ['a withdrawn scout reads as active', both("r.kind==='scout'&&r.status==='active';", "r.kind==='scout';")],

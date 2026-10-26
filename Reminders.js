@@ -42,6 +42,8 @@ function hourlyCheck() {
   // ARIA's flags (Aria.js) ride on this trigger, ahead of the reminders switch: turning
   // reminders off must not silence a Book now. It never throws.
   maybeSyncAriaFlags_(new Date());
+  // A settled trip idea links to its calendar trip once the event lands (TripIdeas.js).
+  try { tiLinkSettled_(); } catch (tiErr) { Logger.log('tiLinkSettled_ (non-fatal): ' + tiErr.message); }
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {

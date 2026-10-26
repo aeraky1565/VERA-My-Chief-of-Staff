@@ -210,6 +210,16 @@ console.log('\nasking ARIA to scout an option');
   delete props.ARIA_SHEET_ID;
   const nc = run('webAriaStatus_({})');
   check('with ARIA\'s sheet not connected, the requests still show', nc.configured === false && nc.requests.length === 4);
+  const before = ARQ.map(r => r.slice());
+  const nw = run('ariaWatchSettled_("opt-abc", { tripId: "TRIP-SET1", label: "Spring in Europe", startDate: "2027-05-29", endDate: "2027-06-11" })');
+  const wr = ARQ.find(r => r[2] === 'OPT-ABC');
+  check('settling turns the option\'s scout request into a watch request for the real trip', nw === 1 && wr[1] === 'watch' && wr[3] === 'TRIP-SET1' && wr[4] === '2027-05-29|Spring in Europe' && wr[9] === '2027-05-29' && wr[10] === '2027-06-11', JSON.stringify(wr));
+  check('…keeping its Ref and its airports, so ARIA moves its row over with the fare history', wr[2] === 'OPT-ABC' && wr[7] === 'LIS' && wr[16] === 'active');
+  check('…and touches no other request', ARQ.filter(r => r[2] !== 'OPT-ABC').every(r => JSON.stringify(r) === JSON.stringify(before.find(b => b[0] === r[0]))));
+  check('an option never scouted has no request to change', run('ariaWatchSettled_("OPT-NEVER", { tripId: "T", label: "x", startDate: "2027-01-01", endDate: "2027-01-02" })') === 0);
+  S.vtS = [{ tripId: 'TRIP-SET1', label: 'Spring in Europe', startDate: '2027-05-29' }];
+  S.rqS = [{ ref: 'OPT-ABC', kind: 'watch', tripId: 'TRIP-SET1', status: 'active', created: '2027-02-20T00:00:00Z' }];
+  check('while ARIA catches up, a trip a request names is not "ARIA has no row"', run('ariaGaps_(vtS, [], [], rqS, "2027-02-20")').noRow.length === 0 && run('ariaGaps_(vtS, [], [], [], "2027-02-20")').noRow.length === 1);
   check('requests are written only to VERA\'s own tab', !/openById\([^)]*\)\.[^;]*(appendRow|setValues)/.test(SRC) && /function ariaRequestsSheet_\(\) \{ return ensureSheet\(getSpreadsheet\(\), TABS\.ARIA_REQUESTS/.test(SRC));
 }
 

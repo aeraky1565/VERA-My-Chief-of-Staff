@@ -193,6 +193,8 @@ function ariaGaps_(veraTrips, watch, fares, requests, today) {
     if (w.ref) has['id:' + w.ref] = 1;
     if (w.label && w.earliest) has['lk:' + ariaSameTripKey_(w.label, w.earliest)] = 1;
   });
+  // A trip an active request already names is covered: ARIA picks it up on its next run.
+  (requests || []).forEach(function(r) { if (r.status === 'active' && r.tripId) has['id:' + String(r.tripId).toUpperCase()] = 1; });
   var noRow = [];
   (veraTrips || []).forEach(function(t) {
     var k = ariaSameTripKey_(t.label, t.startDate);
@@ -632,4 +634,26 @@ function maybeSyncAriaFlags_(now) {
     props.setProperty('ARIA_FLAGS_SYNCED_AT', new Date().toISOString());
     syncAriaFlags_();
   } catch (e) { Logger.log('aria flags: sync failed: ' + e.message); }
+}
+
+/**
+ * A settled option's scout request becomes a watch request for the real trip:
+ * Kind watch, the Trip ID and Trip Key, the trip's dates. The Ref stays, so ARIA
+ * moves its scouting row to the Trip ID and keeps the fares it logged. No scout
+ * request (the option was never scouted): nothing to do, ARIA adds the calendar
+ * trip as a Draft on its own. Called under tiLinkSettled_'s lock.
+ */
+function ariaWatchSettled_(optionId, trip) {
+  var ref = String(optionId || '').toUpperCase(), sh = ariaRequestsSheet_(), now = tiNow_();
+  var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
+  var n = 0;
+  rows.forEach(function(row, i) {
+    var r = ariaRequestFromRow_(row);
+    if (r.ref !== ref || r.kind !== 'scout' || r.status !== 'active') return;
+    r.kind = 'watch'; r.tripId = trip.tripId; r.tripKey = trip.startDate + '|' + trip.label;
+    r.earliest = trip.startDate; r.latest = trip.endDate; r.updated = now;
+    sh.getRange(i + 2, 1, 1, ARIA_REQUESTS_HEADERS.length).setValues([ariaRequestToRow_(r)]); n++;
+  });
+  if (n) ariaForget_();
+  return n;
 }
