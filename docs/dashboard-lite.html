@@ -3364,7 +3364,8 @@ function RecipeView({ recipes, loading, busy, onAddToShopping }) {
   );
 }
 
-const CADENCES = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Bimonthly', 'Quarterly', 'Annually', 'Seasonal'];
+// Routine chores only: quarterly, seasonal and yearly ones are upkeep, listed by date under them (HfUpkeep).
+const CADENCES = ['Daily', 'Weekly', 'Biweekly', 'Monthly', 'Bimonthly'];
 
 const CADENCE_META = {
   Daily:      { label: '☀️ Daily',      reset: 'Resets nightly'                    },
@@ -4951,8 +4952,9 @@ function NeighborhoodWatchView({ apiUrl, apiToken }) {
 // group's sections as chips. Household comes first and is where Home Front opens. Each group remembers
 // the section last opened in it. A section the dashboard doesn't offer (a feature switched off) is left
 // out, and a group with none left is hidden.
+// Also here, shared by both dashboards: upkeep in Chores (HfUpkeep).
 var HF_GROUPS=[
-  {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch','seasonal']},
+  {id:'house',label:'House',icon:'🏠',items:['household','steward','vehicles','neighborhood_watch']},
   {id:'chores',label:'Chores',icon:'🧹',items:['chores','chores_for_others']},
   {id:'kitchen',label:'Kitchen',icon:'🍽️',items:['meal_plan','recipes','pantry','takeouts']},
   {id:'hosting',label:'Hosting',icon:'🎉',items:['guests','gatherings','guide']},
@@ -4979,6 +4981,67 @@ function HfNav(props){var h=React.createElement;var groups=hfGroupsFor_(props.ta
     h('div',{role:'tablist','aria-label':cur.label+' sections',className:'subtab-row hf-tabs'},
       cur.tabs.map(function(t){var on=t.id===props.sub;
         return h('button',{key:t.id,type:'button',role:'tab','aria-selected':on,className:'subtab-btn'+(on?' active':''),onClick:function(){props.onPick(t.id);}},t.label);})));}
+
+// ---- Upkeep: quarterly, seasonal and yearly chores, tracked by date (HomeFront.js holds the rules) ----
+var HF_UPKEEP_CADENCES=[['Quarterly','Every 3 months'],['Semiannually','Every 6 months'],['Annually','Yearly'],['Seasonal','Seasonal']];
+function hfIsUpkeepCadence_(c){return HF_UPKEEP_CADENCES.some(function(x){return x[0]===c;});}
+// The chores the routine checklist shows: everything that isn't upkeep.
+function hfRoutineChores_(chores){return (chores||[]).filter(function(c){return !hfIsUpkeepCadence_(c.Cadence);});}
+// Pure: chores with these changed ones put in place (by ID) or added.
+function hfMergeChores_(prev,changed){var out=(prev||[]).slice();(changed||[]).forEach(function(c){var i=out.map(function(x){return x.ID;}).indexOf(c.ID);if(i===-1)out.push(c);else out[i]=c;});return out;}
+// Today as yyyy-mm-dd in this browser's time, not UTC (an evening in the US is tomorrow in UTC).
+function hfLocalToday_(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+var HF_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function hfDay_(ymd,today){if(!ymd)return '';var p=ymd.split('-');var s=HF_MON[Number(p[1])-1]+' '+Number(p[2]);return today&&p[0]===String(today).slice(0,4)?s:s+', '+p[0];}
+// Pure: the line under an upkeep chore, and its tone (overdue | soon | ok | unset).
+function hfUpkeepLine_(c,today){var u=c.upkeep||{},word=(HF_UPKEEP_CADENCES.filter(function(x){return x[0]===c.Cadence;})[0]||['',''])[1];
+  var when=u.status==='overdue'?'overdue since '+hfDay_(u.next,today):u.status==='soon'?(u.days===0?'due today':'due '+hfDay_(u.next,today)):u.status==='ok'?'next '+hfDay_(u.next,today):'not done yet';
+  return {text:[word,when,u.last?'last '+hfDay_(u.last,today):''].filter(Boolean).join(' · '),tone:u.status||'unset'};}
+// Overdue first, then due soon, then not set, then the rest by date.
+function hfUpkeepOrder_(chores){var rank={overdue:0,soon:1,unset:2,ok:3};
+  return (chores||[]).filter(function(c){return hfIsUpkeepCadence_(c.Cadence);}).slice().sort(function(a,b){var ua=a.upkeep||{},ub=b.upkeep||{};
+    var r=(rank[ua.status]==null?2:rank[ua.status])-(rank[ub.status]==null?2:rank[ub.status]);if(r)return r;return String(ua.next||'').localeCompare(String(ub.next||''))||String(a.Chore).localeCompare(String(b.Chore));});}
+var HF_TONE={overdue:'#ffb0b0',soon:'#f6d27a',ok:'#8a9abf',unset:'#8a9abf'};
+function HfUpkeep(props){var h=React.createElement;var today=props.today||hfLocalToday_();
+  var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _ed=React.useState(null),edit=_ed[0],setEdit=_ed[1];var _ad=React.useState(null),add=_ad[0],setAdd=_ad[1];
+  var list=hfUpkeepOrder_(props.chores);
+  var call=function(key,params,then){setBusy(key);setErr('');apiGet(props.apiUrl,props.apiToken,params).then(function(r){setBusy('');if(!r||r.ok===false){setErr((r&&r.error)||'That didn’t save.');return;}then(r);})
+    .catch(function(e){setBusy('');setErr(e.message||'That didn’t save.');});};
+  var merge=function(cs){if(props.onMerge)props.onMerge(cs);};
+  var inp={minHeight:40,padding:'0 10px',borderRadius:8,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:14,boxSizing:'border-box'};
+  var btn=function(primary){return {minHeight:40,padding:'0 14px',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600,background:primary?'#8ab4f8':'transparent',color:primary?'#0b1430':'#cfe0ff',border:primary?'0':'1px solid #3a5bab'};};
+  var cadenceSelect=function(v,on){return h('select',{value:v,onChange:function(e){on(e.target.value);},'aria-label':'How often',style:inp},HF_UPKEEP_CADENCES.map(function(x){return h('option',{key:x[0],value:x[0]},x[1]);}));};
+  return h('section',{className:'hf-upkeep',style:{marginTop:18,display:'flex',flexDirection:'column',gap:10}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
+      h('span',{style:{fontSize:12,fontWeight:700,letterSpacing:'.08em',color:'#e3c46a'}},'UPKEEP · BY DATE'),
+      h('span',{style:{fontSize:12,color:'#8a9abf'}},'Quarterly, seasonal and yearly chores')),
+    h('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.45}},'Done logs the date and sets the next one; nothing resets on a calendar day. Overdue ones '+(props.reminderWord||'raise a reminder')+'.'),
+    list.length?h('div',{className:'hf-upkeep-list',style:{display:'flex',flexDirection:'column',borderRadius:10,background:'#0e1e3a',border:'1px solid #1e3060'}},
+      list.map(function(c,i){var line=hfUpkeepLine_(c,today),editing=edit&&edit.id===c.ID;
+        return h('div',{key:c.ID,className:'hf-upkeep-row hf-upkeep-'+line.tone,style:{display:'flex',flexDirection:'column',gap:8,padding:'10px 14px',borderTop:i?'1px solid #16223c':'none'}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
+            h('span',{style:{display:'flex',flexDirection:'column',gap:2,flex:'1 1 180px',minWidth:0}},
+              h('span',{style:{fontSize:14,fontWeight:600,color:'#dde1f0'}},c.Chore),
+              h('span',{className:'hf-upkeep-line',style:{fontSize:12,color:HF_TONE[line.tone]}},line.text)),
+            h('button',{type:'button',className:'hf-upkeep-done',disabled:!!busy,onClick:function(){call('done'+c.ID,{action:'chore_upkeep_done',id:c.ID},function(r){merge([r.chore]);});},style:btn(false)},busy==='done'+c.ID?'Saving…':'✓ Done'),
+            h('button',{type:'button',className:'hf-upkeep-edit','aria-expanded':!!editing,onClick:function(){setEdit(editing?null:{id:c.ID,cadence:c.Cadence,dueBy:c['Due By']||'',lastDone:c['Last Done']||(c.upkeep&&c.upkeep.last)||''});},style:Object.assign(btn(false),{border:'1px solid #2a3a5c',color:'#cfd8ef'})},editing?'Close':'Edit')),
+          editing&&h('div',{className:'hf-upkeep-form',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end'}},
+            h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf'}},'How often',cadenceSelect(edit.cadence,function(v){setEdit(Object.assign({},edit,{cadence:v}));})),
+            h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf'}},'Due by (optional)',h('input',{type:'date',value:edit.dueBy,onChange:function(e){setEdit(Object.assign({},edit,{dueBy:e.target.value}));},style:inp})),
+            h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf'}},'Last done',h('input',{type:'date',max:today,value:edit.lastDone,onChange:function(e){setEdit(Object.assign({},edit,{lastDone:e.target.value}));},style:inp})),
+            h('button',{type:'button',className:'hf-upkeep-save',disabled:!!busy,onClick:function(){call('set'+c.ID,{action:'chore_upkeep_set',id:c.ID,cadence:edit.cadence,dueBy:edit.dueBy,lastDone:edit.lastDone},function(r){merge([r.chore]);setEdit(null);});},style:btn(true)},'Save')));}))
+    :h('span',{className:'hf-upkeep-empty',style:{fontSize:13,color:'#8a9abf'}},'No upkeep yet. Start with the common list, or add your own.'),
+    err&&h('span',{role:'alert',style:{fontSize:13,color:'#ffb0b0'}},err),
+    add?h('div',{className:'hf-upkeep-add',style:{display:'flex',gap:8,flexWrap:'wrap',alignItems:'flex-end',padding:12,borderRadius:10,background:'#0e1e3a',border:'1px solid #1e3060'}},
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf',flex:'1 1 200px'}},'Chore',h('input',{value:add.chore,autoFocus:true,placeholder:'Clean the dryer vent',onChange:function(e){setAdd(Object.assign({},add,{chore:e.target.value}));},style:inp})),
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf'}},'How often',cadenceSelect(add.cadence,function(v){setAdd(Object.assign({},add,{cadence:v}));})),
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf'}},'Due by (optional)',h('input',{type:'date',value:add.dueBy,onChange:function(e){setAdd(Object.assign({},add,{dueBy:e.target.value}));},style:inp})),
+      h('button',{type:'button',className:'hf-upkeep-add-save',disabled:!!busy||!add.chore.trim(),onClick:function(){call('add',{action:'add_chore',chore:add.chore.trim(),cadence:add.cadence,dueBy:add.dueBy},function(r){merge([r.chore]);setAdd(null);});},style:btn(true)},'Add'),
+      h('button',{type:'button',onClick:function(){setAdd(null);},style:Object.assign(btn(false),{border:'1px solid #2a3a5c',color:'#cfd8ef'})},'Cancel'))
+    :h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'hf-upkeep-starter',disabled:!!busy,onClick:function(){call('starter',{action:'chores_upkeep_starter'},function(r){merge(r.chores||[]);if(!r.added)setErr('The common list is already in.');});},style:Object.assign(btn(false),{border:'1px dashed #3b5a8a'})},busy==='starter'?'Adding…':'+ Add common upkeep'),
+      h('button',{type:'button',className:'hf-upkeep-add-btn',onClick:function(){setAdd({chore:'',cadence:'Quarterly',dueBy:''});},style:Object.assign(btn(false),{border:'1px solid #2a3a5c',color:'#cfd8ef'})},'+ Add upkeep')));}
 // ---- /HfNav ----
 // ---- HomeFrontLiteTab -------------------------------------------------------
 
@@ -5273,15 +5336,21 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features }) {
       )}
 
       {sub === 'chores' && (
-        <ChoresView
-          chores={chores || []}
-          loading={choresLoading}
-          busy={busy}
-          onToggle={handleToggleChore}
-          onAdd={handleAddChore}
-          onDelete={handleDeleteChore}
-          onUpdateCadence={handleUpdateChoreCadence}
-        />
+        <>
+          <ChoresView
+            chores={hfRoutineChores_(chores)}
+            loading={choresLoading}
+            busy={busy}
+            onToggle={handleToggleChore}
+            onAdd={handleAddChore}
+            onDelete={handleDeleteChore}
+            onUpdateCadence={handleUpdateChoreCadence}
+          />
+          {!choresLoading && (
+            <HfUpkeep chores={chores || []} apiUrl={apiUrl} apiToken={apiToken}
+              onMerge={function(cs) { setChores(function(p) { return hfMergeChores_(p, cs); }); }} />
+          )}
+        </>
       )}
 
       {sub === 'chores_for_others' && (

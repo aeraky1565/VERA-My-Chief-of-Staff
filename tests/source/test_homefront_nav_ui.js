@@ -97,6 +97,60 @@ check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'�
       s = await state();
       check(L + ': and Kitchen remembers Recipes', /Recipes/.test(s.active), s.active);
       check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+      // ---- Chores: routine chores above, upkeep by date below -------------------------------
+      await page.evaluate(({ kind }) => {
+        const CH = [
+          { ID: 'ch_9', Chore: 'Dishes', Cadence: 'Daily', Checked: false },
+          { ID: 'ch_1', Chore: 'Replace HVAC filter', Cadence: 'Quarterly', 'Last Done': '2026-07-02', upkeep: { status: 'overdue', next: '2026-10-02', last: '2026-07-02', days: -24, months: 3 } },
+          { ID: 'ch_2', Chore: 'Clean the gutters', Cadence: 'Seasonal', 'Due By': '2026-11-30', upkeep: { status: 'ok', next: '2026-11-30', last: '', days: 35, months: 12 } },
+          { ID: 'ch_3', Chore: 'Test smoke alarms', Cadence: 'Semiannually', upkeep: { status: 'unset', next: '', last: '', days: null, months: 6 } }];
+        window.__calls = [];
+        window.apiGet = (u, t, p) => { window.__calls.push(Object.assign({}, p));
+          if (p.action === 'get_chores') return Promise.resolve({ ok: true, chores: CH });
+          if (p.action === 'chore_upkeep_done') return Promise.resolve({ ok: true, chore: Object.assign({}, CH[1], { 'Last Done': '2026-10-26', upkeep: { status: 'ok', next: '2027-01-26', last: '2026-10-26', days: 92, months: 3 } }) });
+          if (p.action === 'chore_upkeep_set') return Promise.resolve({ ok: true, chore: Object.assign({}, CH[3], { Cadence: p.cadence, 'Last Done': p.lastDone, upkeep: { status: 'ok', next: '2027-04-01', last: p.lastDone, days: 157, months: 6 } }) });
+          if (p.action === 'chores_upkeep_starter') return Promise.resolve({ ok: true, added: 1, chores: [{ ID: 'ch_7', Chore: 'Check the sump pump', Cadence: 'Seasonal', 'Due By': '2027-03-01', upkeep: { status: 'ok', next: '2027-03-01', last: '', days: 126, months: 12 } }] });
+          return Promise.resolve({ ok: true, items: [], recipes: [], takeouts: [], vehicles: [], weeks: [] }); };
+        document.querySelectorAll('#hfnprobe').forEach(n => n.remove());
+        const host = document.createElement('div'); host.id = 'hfnprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
+        if (kind === 'lite') {
+          ReactDOM.createRoot(host).render(React.createElement(HomeFrontLiteTab, { apiUrl: 'https://vera.test/exec', apiToken: 't', features: {} }));
+        } else {
+          // The full dashboard keeps chores in App; this stands in for it.
+          const Wrap = () => { const [c, setC] = React.useState(CH); return React.createElement(HomeFrontTab, { apiUrl: 'https://vera.test/exec', apiToken: 't', features: {}, chores: c,
+            onMergeChores: cs => setC(p => hfMergeChores_(p, cs)), onToggleChore() {}, onAddChore() {}, onDeleteChore() {}, onUpdateChoreCadence() {} }); };
+          ReactDOM.createRoot(host).render(React.createElement(Wrap));
+        }
+      }, { kind });
+      await wait(300);
+      await click('.hf-group', 'Chores'); await wait(300);
+      const up = () => page.evaluate(() => { const u = document.querySelector('#hfnprobe .hf-upkeep'); const all = document.getElementById('hfnprobe').innerText;
+        return { text: u ? u.innerText : '', rows: u ? Array.from(u.querySelectorAll('.hf-upkeep-row')).map(r => r.innerText.replace(/\s+/g, ' ')) : [],
+          routine: u ? all.slice(0, all.indexOf(u.innerText.slice(0, 10))) : all }; });
+      let u = await up();
+      check(L + ': upkeep sits under the routine chores, which no longer list it', u.rows.length === 3 && /Dishes/.test(u.routine) && !/HVAC|gutters|smoke/i.test(u.routine), JSON.stringify(u.rows));
+      check(L + ': overdue first, then not set, then the rest; each says how often, when, and last done', /^Replace HVAC filter Every 3 months · overdue since Oct 2(, 2026)? · last Jul 2/.test(u.rows[0]) && /^Test smoke alarms Every 6 months · not done yet/.test(u.rows[1]) && /^Clean the gutters Seasonal · next Nov 30/.test(u.rows[2]), JSON.stringify(u.rows));
+      check(L + ': the "done today" count is routine chores only', /0\/1 chores done today/.test(u.routine), u.routine.slice(0, 300));
+      check(L + ': the routine list offers only routine cadences', await page.evaluate(() => !/Quarterly|Annually|Seasonal/.test(document.getElementById('hfnprobe').innerText.split('UPKEEP')[0])));
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-upkeep-row .hf-upkeep-done').click()); await wait(200);
+      u = await up();
+      check(L + ': ✓ Done logs it and the row moves on', (await page.evaluate(() => window.__calls.filter(c => c.action === 'chore_upkeep_done').pop() || {})).id === 'ch_1'
+        && u.rows.some(r => /^Replace HVAC filter Every 3 months · next Jan 26, 2027 · last Oct 26/.test(r)) && !/overdue/.test(u.text), JSON.stringify(u.rows));
+      await page.evaluate(() => Array.from(document.querySelectorAll('#hfnprobe .hf-upkeep-row')).find(r => /smoke/.test(r.innerText)).querySelector('.hf-upkeep-edit').click()); await wait(100);
+      await page.evaluate(() => { const f = document.querySelector('#hfnprobe .hf-upkeep-form'); const set = (el, v) => { const proto = el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); };
+        set(f.querySelector('select'), 'Semiannually'); set(f.querySelectorAll('input[type=date]')[1], '2026-10-01'); });
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-upkeep-save').click()); await wait(200);
+      const sc = await page.evaluate(() => window.__calls.filter(c => c.action === 'chore_upkeep_set').pop() || {});
+      u = await up();
+      check(L + ': Edit sends how often and the dates, and the row updates', sc.id === 'ch_3' && sc.cadence === 'Semiannually' && sc.lastDone === '2026-10-01' && sc.dueBy === ''
+        && u.rows.some(r => /^Test smoke alarms Every 6 months · next Apr 1, 2027 · last Oct 1/.test(r)) && !(await page.$('#hfnprobe .hf-upkeep-form')), JSON.stringify(sc) + JSON.stringify(u.rows));
+      await page.evaluate(() => document.querySelector('#hfnprobe .hf-upkeep-starter').click()); await wait(200);
+      u = await up();
+      check(L + ': + Add common upkeep adds the starter list', u.rows.some(r => /^Check the sump pump Seasonal/.test(r)) && u.rows.length === 4);
+      check(L + ': no sideways scroll with upkeep', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+      if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-upkeep'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfupkeep-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+
       if (process.env.SHOT_DIR) { const el = await page.$('#hfnprobe .hf-nav'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/hfnav-' + L.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
       check(L + ': no page errors', errs.length === 0, errs.join(' | '));
       await page.close();

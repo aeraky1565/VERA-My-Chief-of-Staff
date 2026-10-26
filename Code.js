@@ -300,7 +300,7 @@ const GIFT_IDEAS_HEADERS         = ['ID', 'Person', 'Idea', 'Added Date'];
 // -6d". See the rule engine at the top of ImportantDates.js.
 // The last three columns are opt-in: blank means flags only, as before.
 const IMPORTANT_DATES_HEADERS    = ['ID', 'Date', 'Label', 'Person', 'Recurring', 'Lead Time Days', 'Notes', 'Last Actioned Year', 'Add to Calendar', 'Calendar Lead Days', 'Last Calendar Year'];
-const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date'];
+const CHORES_HEADERS             = ['ID', 'Chore', 'Cadence', 'Sort', 'Checked', 'Checked At', 'Added Date', 'Last Done', 'Due By'];  // Last Done / Due By: upkeep (HomeFront.js)
 const TRAVELER_PROFILE_HEADERS   = ['ID', 'Name', 'Passport Country', 'Passport Expiry', 'Special Docs', 'Notes'];
 const CONTRACT_HEADERS           = ['ID', 'Name', 'Category', 'Counterparty', 'Start Date', 'End Date', 'Auto-Renews', 'Notice Period Days', 'Monthly Cost', 'Status', 'Document Link', 'Notes'];
 const VEHICLE_HEADERS            = ['ID', 'Nickname', 'Year', 'Make', 'Model', 'VIN', 'License Plate', 'State', 'Color', 'Driver', 'Purchase Date', 'Current Mileage', 'Oil Interval (mi)', 'Last Oil Change Date', 'Last Oil Change Mileage', 'Registration Expiry', 'Insurance Provider', 'Insurance Policy #', 'Insurance Expiry', 'Warranty Expiry (B2B)', 'Warranty Expiry (Powertrain)', 'Last Service', 'Next Service', 'Service Interval (mo)', 'Tire Size', 'Emission Inspection Expiry', 'Safety Inspection Expiry', 'Tires Last Replaced Date', 'Tires Last Replaced Mileage', 'Tire Interval (mi)', 'Tread Notes', 'Notes'];
@@ -444,7 +444,8 @@ function createSheetTabs(ss) {
     ['wellness_log_enabled',  'true'],    // master on/off for wellness logging
     ['day_sequencing_enabled','true'],    // set 'false' to disable "Your Day, Sequenced" in morning briefing (Issue #187)
     ['victoria_email',        ''],        // Victoria's email — set this to CC her on card perk expiry reminders (Issue #187)
-    ['system_log_retention_days', '45'],  // How long the System Log tab keeps entries before the nightly prune
+    ['system_log_retention_days', '45'],
+    ['upkeep_reminders',      'flag'],    // overdue upkeep in Home Front → Chores: 'flag' (Low flag), 'task' (a task in Tasks) or 'off'  // How long the System Log tab keeps entries before the nightly prune
   ];
 
   // Seed notif_*_enabled = TRUE for each registry entry if missing (Issue #188)
@@ -1245,6 +1246,8 @@ function nightlyRun() {
 
     // Step 0a-ii: Reset household chores by cadence (Issue #124)
     nightlyStep_(ctx, 'resetChoresByCadence_', resetChoresByCadence_);
+    // Upkeep (quarterly, seasonal, yearly chores) overdue or due within a week: a Low flag or a task.
+    nightlyStep_(ctx, 'hfSyncUpkeepReminders_', hfSyncUpkeepReminders_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);
@@ -5095,9 +5098,8 @@ function addBillTypeColumn() {
  *   Biweekly   — reset on even ISO-week Friday nights
  *   Monthly    — reset on last day of the month
  *   Bimonthly  — reset on last day of Feb, Apr, Jun, Aug, Oct, Dec
- *   Quarterly  — reset on last day of Mar, Jun, Sep, Dec
- *   Annually   — reset on Dec 31
- *   Seasonal   — never auto-reset
+ *   Quarterly, Semiannually, Annually, Seasonal — never: these are upkeep,
+ *              tracked by Last Done and Due By (HomeFront.js), not a checkbox
  */
 function resetChoresByCadence_() {
   var now    = new Date();
@@ -5117,18 +5119,12 @@ function resetChoresByCadence_() {
   var isLastDayOfMonth  = (dom === lastDom);
   // Bimonthly: last day of every other month (Feb/Apr/Jun/Aug/Oct/Dec = odd 0-indexed month)
   var isBimonthlyReset  = isLastDayOfMonth && (month % 2 === 1);
-  // Quarterly: last day of Mar(2), Jun(5), Sep(8), Dec(11)
-  var isQuarterlyReset  = isLastDayOfMonth && (month % 3 === 2);
-  // Annually: Dec 31
-  var isAnnualReset     = isLastDayOfMonth && (month === 11);
 
   var toReset = ['Daily'];
   if (isFriday)          toReset.push('Weekly');
   if (isBiweeklyFriday)  toReset.push('Biweekly');
   if (isLastDayOfMonth)  toReset.push('Monthly');
   if (isBimonthlyReset)  toReset.push('Bimonthly');
-  if (isQuarterlyReset)  toReset.push('Quarterly');
-  if (isAnnualReset)     toReset.push('Annually');
 
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);

@@ -280,6 +280,9 @@ function doGet(e) {
       case 'delete_chore':  return jsonOut_(webDeleteChore_(e));
       case 'toggle_chore':  return jsonOut_(webToggleChore_(e));
       case 'update_chore':  return jsonOut_(webUpdateChore_(e));
+      case 'chore_upkeep_done':     return jsonOut_(webUpkeepDone_(e));
+      case 'chore_upkeep_set':      return jsonOut_(webUpkeepSet_(e));
+      case 'chores_upkeep_starter': return jsonOut_(webUpkeepStarter_());
       // Chores For Others (Issue #180)
       case 'get_chores_for_others':      return jsonOut_(webGetChoresForOthers_());
       case 'add_chore_for_others':       return jsonOut_(webAddChoreForOthers_(e));
@@ -8447,14 +8450,16 @@ function webImportCalendarBirthdays_(e) {
 function webGetChores_() {
   var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
   var sheet = ss.getSheetByName(TABS.CHORES);
-  var chores = [];
+  var chores = [], today = hfToday_();
   if (sheet && sheet.getLastRow() >= 2) {
     var rows = sheet.getDataRange().getValues();
     var hdrs = rows[0];
     rows.slice(1).forEach(function(r) {
       if (!r[0]) return;
       var obj = {};
-      hdrs.forEach(function(h, i) { obj[h] = r[i]; });
+      hdrs.forEach(function(h, i) { obj[h] = (h === 'Last Done' || h === 'Due By') ? hfYmd_(r[i]) : r[i]; });
+      var up = hfUpkeepState_(obj, today);   // quarterly, seasonal, yearly: tracked by date (HomeFront.js)
+      if (up) obj.upkeep = up;
       chores.push(obj);
     });
   }
@@ -8466,14 +8471,16 @@ function webAddChore_(e) {
   var chore   = (p.chore   || '').trim();
   var cadence = (p.cadence || 'Daily').trim();
   if (!chore) return { ok: false, error: 'chore required' };
-  var ss    = SpreadsheetApp.openById(CONFIG.SHEET_ID);
-  var sheet = ss.getSheetByName(TABS.CHORES);
+  var dueBy = hfYmd_(p.dueBy || '');   // upkeep only: "by Nov 15"
+  var sheet = hfChoresSheet_();
   var sort  = sheet.getLastRow(); // append at end of cadence group
   var id    = 'ch_' + Date.now();
   var added = new Date().toISOString().slice(0, 10);
-  sheet.appendRow([id, chore, cadence, sort, false, '', added]);
-  return { ok: true, chore: { ID: id, Chore: chore, Cadence: cadence, Sort: sort,
-                               Checked: false, 'Checked At': '', 'Added Date': added } };
+  sheet.appendRow([id, chore, cadence, sort, false, '', added, '', dueBy]);
+  var out = { ID: id, Chore: chore, Cadence: cadence, Sort: sort, Checked: false, 'Checked At': '', 'Added Date': added, 'Last Done': '', 'Due By': dueBy };
+  var up = hfUpkeepState_(out, hfToday_());
+  if (up) out.upkeep = up;
+  return { ok: true, chore: out };
 }
 
 function webDeleteChore_(e) {
