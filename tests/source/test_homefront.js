@@ -189,6 +189,36 @@ const ts = run('webGatheringToShopping_({ tabId: "t.store1", items: ["candles", 
 check('Send to Shopping puts each item on the store picked', ts.ok && ts.added === 2 && shop.join() === 't.store1:candles,t.store1:wine');
 check('…and asks for a store, and something to send', run('webGatheringToShopping_({ items: ["x"] })').ok === false && run('webGatheringToShopping_({ tabId: "t", items: [] })').ok === false && shop.length === 2);
 
+console.log('\ncoming up on Household');
+S.src = {
+  chores: [{ ID: 'c1', Chore: 'Replace HVAC filter', Cadence: 'Quarterly', 'Last Done': '2026-07-02' },
+    { ID: 'c2', Chore: 'Gutters', Cadence: 'Seasonal', 'Due By': '2026-11-01' },
+    { ID: 'c3', Chore: 'Dishes', Cadence: 'Daily', Checked: false }, { ID: 'c4', Chore: 'Bed', Cadence: 'Daily', Checked: 'TRUE' }, { ID: 'c5', Chore: 'Plants', Cadence: 'Daily', Checked: false }],
+  homeItems: [{ item: 'Watch battery', nextService: '2026-11-20' }, { item: 'Fridge', nextService: '2027-03-01' }, { item: 'Furnace', nextService: new Date(2026, 8, 1) }],
+  meals: [{ date: '2026-10-26', mealName: 'Tacos' }, { date: '2026-10-27', mealName: 'Pasta' }],
+  guests: [{ label: 'Visit: [Name]', arrivalDate: '2026-11-03', departureDate: '2026-11-05' }],
+  gatherings: [{ title: 'Birthday dinner', date: '2026-11-04', todos: [{ text: 'Send invites', before: 21, done: true }, { text: 'Order the cake', before: 3, done: false }] },
+    { title: 'Far off', date: '2026-12-25', todos: [] }],
+};
+const cu = run('hfComingUp_(src, "' + T + '")');
+check('coming up: overdue first, then soon, then the rest by date', cu.map(x => x.kind + ':' + x.tone).join() === 'service:overdue,upkeep:overdue,upkeep:soon,service:soon,chores:ok,meal:ok,gathering:ok,guests:ok', cu.map(x => x.kind + ':' + x.tone).join());
+check('…upkeep says how late, a service when it is due', cu[1].label === 'Replace HVAC filter' && cu[1].detail === 'Overdue since 2026-10-02' && cu[1].section === 'chores' && cu[0].label === 'Furnace' && /Service overdue since 2026-09-01/.test(cu[0].detail) && cu[3].label === 'Watch battery' && cu[3].detail === 'Service due 2026-11-20');
+const gu = cu.find(x => x.kind === 'gathering');
+check('…the party\'s next to-do, with its date counted back', gu.label === 'Birthday dinner' && gu.detail === 'Next: Order the cake by 2026-11-01' && gu.section === 'gatherings' && gu.tone === 'ok');
+S.src3 = { gatherings: [{ title: 'Soon party', date: '2026-10-30', todos: [{ text: 'Shop', before: 2, done: false }] }] };
+check('…and marked soon when that to-do is within three days', run('hfComingUp_(src3, "' + T + '")')[0].tone === 'soon');
+check('…today\'s daily chores left, tonight\'s dinner, the next guest', cu.find(x => x.kind === 'chores').label === '2 daily chores left' && cu.find(x => x.kind === 'meal').label === 'Tacos' && cu.find(x => x.kind === 'guests').detail === 'Arrives 2026-11-03');
+check('…and nothing far off: a service months away, a party in two months', !cu.some(x => x.label === 'Fridge' || x.label === 'Far off'));
+S.src2 = { guests: [{ label: 'Stay', arrivalDate: '2026-10-24', departureDate: '2026-10-28' }] };
+check('a guest already here reads as staying', run('hfComingUp_(src2, "' + T + '")')[0].detail === 'Staying until 2026-10-28');
+check('nothing at all is an empty list, not an error', run('hfComingUp_({}, "' + T + '").length') === 0);
+S.getMealPlanWeek_ = () => { throw new Error('no sheet'); }; S.getCurrentWeekStart_ = () => '2026-10-26';
+S.getUpcomingGuests_ = () => []; S.readPTOConfig_ = () => ({});
+S.HOME_ITEM_HEADERS = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
+S.TABS.HOME_ITEMS = 'Home Items';
+const cr = run('webHomeFrontComingUp_()');
+check('the endpoint leaves out a source it can\'t read, and says which', cr.ok && cr.missing.join() === 'meals' && Array.isArray(cr.items), JSON.stringify(cr).slice(0, 200));
+
 console.log('\nwiring');
 check('the routes', /case 'chore_upkeep_done':\s+return jsonOut_\(webUpkeepDone_\(e\)\);/.test(WEB) && /case 'chore_upkeep_set':\s+return jsonOut_\(webUpkeepSet_\(e\)\);/.test(WEB) && /case 'chores_upkeep_starter':\s+return jsonOut_\(webUpkeepStarter_\(\)\);/.test(WEB));
 check('the chores read carries each upkeep chore\'s state', /var up = hfUpkeepState_\(obj, today\);[^\n]*\n\s+if \(up\) obj\.upkeep = up;/.test(extract(WEB, 'webGetChores_')));
@@ -199,6 +229,7 @@ check('the nightly run raises upkeep reminders', /nightlyStep_\(ctx, 'hfSyncUpke
 check('the gathering routes', /case 'gatherings':\s+return jsonOut_\(webGetGatherings_\(\)\);/.test(WEB) && /case 'gathering_save':\s+return jsonOut_\(webSaveGathering_\(body\)\);/.test(WEB)
   && /case 'gathering_delete':\s+return jsonOut_\(webDeleteGathering_\(body\)\);/.test(WEB) && /case 'gathering_to_shopping':\s+return jsonOut_\(webGatheringToShopping_\(body\)\);/.test(WEB));
 check('nothing in Home Front writes to a calendar', !/CalendarApp|Calendar\.Events/.test(SRC));
+check('the coming-up route', /case 'homefront_coming_up':\s+return jsonOut_\(webHomeFrontComingUp_\(\)\);/.test(WEB));
 check('Config says how', /\['upkeep_reminders',\s+'flag'\],/.test(CODE));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

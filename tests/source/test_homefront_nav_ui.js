@@ -32,7 +32,7 @@ check('every section belongs to one group, and an unknown one to none',
 check('Household is first, and where Home Front opens (both dashboards)',
   /const allSubTabs=\[\{id:'household',label:'🏡 Household'\}/.test(APP) && /const\[sub,setSub\]=React\.useState\('household'\);/.test(APP)
   && /const ALL_SUBTABS = \[\n    \{ id:'household', label:'🏡 Household' \},/.test(LITE) && /React\.useState\('household'\);/.test(LITE));
-check('the lite Home Front shows Household too', /\{sub === 'household' && \(\n        <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
+check('the lite Home Front shows Household too, under Coming up', /\{sub === 'household' && \(\n        <>\n          <HfComingUp apiUrl=\{apiUrl\} apiToken=\{apiToken\} onPick=\{setSub\} \/>\n          <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
 check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'🏘 Neighborhood'}") !== -1 && LITE.indexOf("{ id:'neighborhood_watch', label:'🏘 Neighborhood' }") !== -1);
 
 console.log('\nthe sitter & guest guide: the rules');
@@ -85,7 +85,9 @@ check('as a page: printable, and every value escaped', /<!doctype html>/.test(ht
       }
       await page.waitForFunction(() => typeof HfNav === 'function', null, { timeout: 15000 }).catch(() => {});
       await page.evaluate(({ kind }) => {
-        window.apiGet = (u, t, p) => Promise.resolve(p && p.action === 'get_household_info'
+        window.apiGet = (u, t, p) => p && p.action === 'homefront_coming_up' ? Promise.resolve({ ok: true, today: '2026-10-26', missing: [], items: [
+          { kind: 'upkeep', section: 'chores', label: 'Replace HVAC filter', detail: 'Overdue since 2026-10-02', date: '2026-10-02', tone: 'overdue' },
+          { kind: 'meal', section: 'meal_plan', label: 'Tacos', detail: 'Dinner tonight', date: '2026-10-26', tone: 'ok' }] }) : Promise.resolve(p && p.action === 'get_household_info'
           ? { ok: true, sections: [{ section: 'Utilities', subsections: [{ subsection: '', rows: [{ rowNum: 2, section: 'Utilities', subsection: '', label: 'Internet', value: 'Example ISP', notes: '' }] }] }] }
           : { ok: true, items: [], recipes: [], takeouts: [], chores: [], vehicles: [], weeks: [] });
         window.apiAction = () => Promise.resolve({ ok: true });
@@ -108,6 +110,11 @@ check('as a page: printable, and every value escaped', /<!doctype html>/.test(ht
       check(L + ': it opens on Household, in House', /House/.test(s.on) && /Household/.test(s.active)
         && s.tabs.join('|') === '🏡 Household|🛡️ Warranties & Service|🚗 Vehicles|🏘 Neighborhood', JSON.stringify(s.tabs));
       check(L + ': …showing the household cheat sheet', /Example ISP/.test(s.text), s.text.slice(0, 300));
+      const cuText = await page.$eval('#hfnprobe .hf-coming', n => n.innerText).catch(() => '');
+      check(L + ': Coming up sits above the cheat sheet, overdue marked', /COMING UP ACROSS HOME FRONT/.test(cuText) && /Replace HVAC filter · Overdue since 2026-10-02[\s\S]*OVERDUE/.test(cuText) && /Tacos · Dinner tonight/.test(cuText), cuText);
+      await page.evaluate(() => Array.from(document.querySelectorAll('#hfnprobe .hf-coming-item')).find(b => /Tacos/.test(b.innerText)).click()); await wait(200);
+      check(L + ': tapping an item opens its section', /Kitchen/.test((await state()).on) && /Meal Plan/.test((await state()).active));
+      await click('.hf-group', 'House'); await wait(150);
       await click('.hf-group', 'Kitchen'); await wait(150);
       s = await state();
       check(L + ': a group shows its own sections, the first one opened; a feature switched off is left out', /Kitchen/.test(s.on) && /Meal Plan/.test(s.active)
