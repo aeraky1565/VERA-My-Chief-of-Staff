@@ -22,6 +22,8 @@ const MAP = WEB.slice(mapAt, WEB.indexOf('\n};', mapAt) + 3);
 const S = vm.createContext({ console, JSON, Math, Number, String, Array, Date, Object, isFinite, logs: [] });
 S.Logger = { log: m => S.logs.push(String(m)) };
 vm.runInContext(MAP + '\n' + SRC, S);
+// The registry's own "still in play" test (Trips.js), so merged trips are skipped as in production.
+{ const T = fs.readFileSync(path.join(ROOT, 'Trips.js'), 'utf8'); const a = T.indexOf('function tripIsLive_('); vm.runInContext(T.slice(a, T.indexOf('\n}\n', a) + 3), S); }
 const run = code => vm.runInContext(code, S);
 const meta = o => JSON.stringify(o);
 

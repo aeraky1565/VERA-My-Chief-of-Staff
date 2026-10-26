@@ -63,6 +63,8 @@ S.readTripRegistry_ = () => ({ rows: [
 ] });
 S.tiRows_ = (sheet) => sheet; S.tiIdeasSheet_ = () => [['IDEA-1', 'Spring in Europe']]; S.tiOptionsSheet_ = () => [['OPT-ABC', 'IDEA-1', 'Lisbon → Algarve → cruise']];
 vm.runInContext(SRC, S);
+// The registry's own "still in play" test (Trips.js), so merged trips are skipped as in production.
+{ const T = fs.readFileSync(path.join(ROOT, 'Trips.js'), 'utf8'); const a = T.indexOf('function tripIsLive_('); vm.runInContext(T.slice(a, T.indexOf('\n}\n', a) + 3), S); }
 const run = code => vm.runInContext(code, S);
 
 console.log('reading by header name');
@@ -132,6 +134,9 @@ console.log('\nthe endpoint');
   const r = run('webAriaStatus_({})');
   check('it reads the Watchlist and the Fare Log', r.ok && r.configured && r.watchlist.length === 5 && r.fares.length === 4, JSON.stringify(r).slice(0, 200));
   check('VERA\'s future trips are set beside them; past ones and drives are not', r.gaps.noRow.map(x => x.id).join() === 'TRIP-0007', JSON.stringify(r.gaps.noRow));
+  { const reg0 = S.readTripRegistry_; S.readTripRegistry_ = () => { const r = reg0(); return Object.assign({}, r, { rows: r.rows.concat([{ tripId: 'TRIP-SHADOW', label: 'Copy', startDate: '2027-05-01', endDate: '2027-05-03', status: 'merged:TRIP-0001' }]) }); };
+    check('a trip merged into another is not read from VERA (no false "not watching" gap)', !run('ariaVeraTrips_("2027-02-20")').some(function(t) { return t.tripId === 'TRIP-SHADOW'; }));
+    S.readTripRegistry_ = reg0; }
   check('only trips not yet over are read from VERA', !run('ariaVeraTrips_("2027-02-20")').some(function(t) { return t.tripId === 'TRIP-0011'; }) && run('ariaVeraTrips_("2027-02-20")').some(function(t) { return t.tripId === 'TRIP-0001'; }));
   check('scouted rows carry the idea and option they came from', r.ideas['OPT-ABC'].idea === 'Spring in Europe' && r.ideas['OPT-ABC'].option === 'Lisbon → Algarve → cruise');
   const n = opens; run('webAriaStatus_({})');
@@ -419,6 +424,13 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   check('…but not for a trip with only one way booked', !RQ.some(r => r[3] === 'TRIP-NOPE'));
   const len = RQ.length; run('ariaMarkBooked_(wl)');
   check('…and only once', RQ.length === len && RQ.filter(r => r[3] === 'TRIP-LAX').length === 1);
+  // A Draft (ARIA adds one for every calendar trip) whose flights are already booked: VERA tells ARIA.
+  S.readTripRegistry_ = (function(prev) { return () => { const r = prev(); r.byId['TRIP-ANNIV'] = { tripId: 'TRIP-ANNIV', label: 'Anniversary', startDate: '2026-11-06', endDate: '2026-11-15' }; return r; }; })(S.readTripRegistry_);
+  ITEMS['TRIP-ANNIV'] = [{ type: 'flight', date: '2026-11-06' }, { type: 'flight', date: '2026-11-15' }];
+  S.wl2 = [{ tripId: 'TRIP-ANNIV', status: 'draft' }];
+  check('a Draft whose flights are booked is told booked too (ARIA can\'t see parsed bookings)', run('ariaMarkBooked_(wl2)') === 1 && RQ.some(r => r[3] === 'TRIP-ANNIV' && r[16] === 'Booked'));
+  S.wl3 = [{ tripId: 'TRIP-NOPE', status: 'draft' }];
+  check('…but not a Draft flown only one way', run('ariaMarkBooked_(wl3)') === 0 && !RQ.some(r => r[3] === 'TRIP-NOPE'));
   check('the booked check runs with the hourly ARIA sync', /try \{ ariaMarkBooked_\(t\.watch\); \}/.test(SRC));
   check('…which also makes sure the ARIA Requests tab exists, so ARIA can read it', /try \{ ariaRequestsSheet_\(\); \}/.test(SRC));
   check('the trip routes are wired', /case 'trip_aria':\s+return jsonOut_\(webTripAria_\(e\.parameter\)\);/.test(WEB) && /case 'aria_request_watch':\s+return jsonOut_\(webWatchAriaRequest_\(body\)\);/.test(WEB));

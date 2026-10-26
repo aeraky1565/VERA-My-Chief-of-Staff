@@ -383,7 +383,7 @@ function ariaVeraTrips_(today) {
       });
     }
   } catch (e) { Logger.log('aria_status: TripMeta unavailable'); }
-  return readTripRegistry_().rows.filter(function(t) { return t.status !== 'archived' && t.endDate && t.endDate >= today; }).map(function(t) {
+  return readTripRegistry_().rows.filter(function(t) { return tripIsLive_(t) && t.endDate && t.endDate >= today; }).map(function(t) {
     var keys = [t.startDate + '|' + t.label].concat(t.aliases || []);
     return { tripId: t.tripId, label: t.label, startDate: t.startDate, endDate: t.endDate, drive: keys.some(function(k) { return drive[k]; }) };
   });
@@ -860,7 +860,9 @@ function ariaMarkBooked_(watch) {
   var reg = readTripRegistry_();
   var targets = {};
   reqs.forEach(function(r) { if (r.status === 'active' && r.kind === 'watch' && r.tripId) targets[String(r.tripId).toUpperCase()] = { req: r }; });
-  (watch || []).forEach(function(w) { if (w.status === 'watching' && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w }; });
+  // Drafts too (live check, Oct 26): ARIA adds a Draft for every calendar trip, and can't see bookings the
+  // email parser filed without a Trip Key. VERA can, so a Draft whose flights are booked is told so.
+  (watch || []).forEach(function(w) { if (['watching', 'draft', 'scouting'].indexOf(w.status) !== -1 && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w }; });
   var booked = Object.keys(targets).filter(function(id) {
     var t = reg.byId[id];
     if (!t || !t.startDate || !t.endDate) return false;

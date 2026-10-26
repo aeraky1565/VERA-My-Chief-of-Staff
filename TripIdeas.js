@@ -991,7 +991,7 @@ function tiLinkSettled_() {
   var ideas = tiRows_(sheet, w).map(tiIdeaFromRow_);
   var pending = ideas.filter(function(i) { return i.settle && !i.tripId; });
   if (!ideas.some(function(i) { return i.settle; })) return 0;
-  var trips = readTripRegistry_().rows.filter(function(t) { return t.status !== 'archived'; });
+  var trips = readTripRegistry_().rows.filter(tripIsLive_);
   var found = pending.map(function(i) { return { idea: i, trip: tiMatchSettled_(i.settle, trips) }; }).filter(function(x) { return x.trip; });
   var moved = tiSettleDrift_(ideas, trips);
   if (!found.length && !moved.length) return 0;

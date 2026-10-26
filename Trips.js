@@ -684,12 +684,54 @@ function attachTripIds_(trips) {
         t.tripId = '';
       }
     });
+    try { mergeShadowTrips_(); } catch (e5) { Logger.log('attachTripIds_: shadow merge skipped — ' + e5.message); }
   } finally {
     try { lock.releaseLock(); } catch (e4) {}
   }
   return list;
 }
 
+
+/** A trip still in play: not archived, and not merged into another (status 'merged:<id>'). */
+function tripIsLive_(rec) {
+  var st = String((rec && rec.status) || 'active');
+  return st !== 'archived' && st.indexOf('merged:') !== 0;
+}
+
+/**
+ * Pure: shadow copies to fold away. A live trip is a shadow of another when the
+ * other is live, has the same label, holds every one of its calendar event ids,
+ * and was seen more recently: the calendar event moved to it and this one went
+ * stale (found by the Oct 26 ARIA live check: one weekend in the registry twice).
+ * → [{id, into}]. A trip with no event ids is never folded: there is no proof.
+ */
+function tripShadowMerges_(rows) {
+  var live = (rows || []).filter(tripIsLive_);
+  var out = [], gone = {};
+  live.forEach(function(rec) {
+    if (!rec.eventIds || !rec.eventIds.length || gone[rec.tripId]) return;
+    var into = live.filter(function(o) {
+      return o.tripId !== rec.tripId && !gone[o.tripId] && normaliseTripLabel_(o.label) === normaliseTripLabel_(rec.label)
+        && String(o.lastSeen) > String(rec.lastSeen) && rec.eventIds.every(function(e) { return (o.eventIds || []).indexOf(e) !== -1; });
+    }).sort(function(a, b) { return String(b.lastSeen).localeCompare(String(a.lastSeen)); })[0];
+    if (into) { out.push({ id: rec.tripId, into: into.tripId }); gone[rec.tripId] = 1; }
+  });
+  return out;
+}
+
+/** Marks shadow copies merged into the live trip (status 'merged:<id>'), so lookups forward. Call under the script lock. */
+function mergeShadowTrips_() {
+  var merges = tripShadowMerges_(readTripRegistry_().rows);
+  if (!merges.length) return 0;
+  var sheet = getTripsSheet_(), reg = readTripRegistry_();
+  merges.forEach(function(m) {
+    var rec = reg.byId[m.id];
+    if (rec) sheet.getRange(rec._row, 9).setValue('merged:' + m.into);
+    Logger.log('Trips: ' + m.id + ' "' + (rec && rec.label) + '" holds only events ' + m.into + ' holds; marked merged into it');
+  });
+  invalidateTripRegistry_();
+  return merges.length;
+}
 
 // ---- slugs, shared with the latch migration --------------------------------
 

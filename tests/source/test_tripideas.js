@@ -44,6 +44,8 @@ S.sheets = { 'Trip Ideas': fakeSheet(S.TRIP_IDEAS_HEADERS), 'Trip Idea Options':
 S.getSpreadsheet = () => ({});
 S.ensureSheet = (ss, name) => S.sheets[name];
 vm.runInContext(SRC, S);
+// The registry's own "still in play" test (Trips.js), so merged trips are skipped as in production.
+{ const T = fs.readFileSync(path.join(ROOT, 'Trips.js'), 'utf8'); const a = T.indexOf('function tripIsLive_('); vm.runInContext(T.slice(a, T.indexOf('\n}\n', a) + 3), S); }
 const run = code => vm.runInContext(code, S);
 
 console.log('cleaning an idea');

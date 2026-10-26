@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_tactuals');
 
-const FILES = ['TripActuals.js', 'WebApp.js', 'EmailParser.js', 'Reminders.js'];
+const FILES = ['Trips.js', 'TripActuals.js', 'WebApp.js', 'EmailParser.js', 'Reminders.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -21,7 +21,7 @@ const CONTROLS = [
   ['another trip\'s rows count', b => ({ [T]: swap(b[T], "var mine = key ? keys.indexOf(key) !== -1 : (date && date >= trip.startDate && date <= trip.endDate);", "var mine = key ? true : (date && date >= trip.startDate && date <= trip.endDate);") })],
   ['keyless rows outside the dates count', b => ({ [T]: swap(b[T], ": (date && date >= trip.startDate && date <= trip.endDate);", ": !!date;") })],
   ['a booking\'s key is ignored', b => ({ [T]: swap(b[T], "  if (key) {\n    var named", "  if (false) {\n    var named") })],
-  ['an archived trip takes bookings', b => ({ [T]: swap(b[T], "return t.status !== 'archived' && t.startDate && t.endDate && date >= t.startDate", "return t.startDate && t.endDate && date >= t.startDate") })],
+  ['an archived trip takes bookings', b => ({ [T]: swap(b[T], "return tripIsLive_(t) && t.startDate && t.endDate && date >= t.startDate", "return t.startDate && t.endDate && date >= t.startDate") })],
   ['the parser no longer updates the trip', b => ({ [P]: swap(b[P], "  if (metadata.totalPaid != null && metadata.totalPaid !== '') tripActualsOnBooking_(basic.date || '', '');\n", "") })],
   ['opening the Budget doesn\'t re-total', b => ({ [W]: swap(b[W], "  tripActualsOnView_(tripKey, p.tripId);\n", "") })],
   ['a failure escapes into the parser', b => ({ [T]: swap(b[T], "  } catch (e) { Logger.log('trip actuals: booking update skipped: ' + e.message); }", "  } finally {}") })],

@@ -123,6 +123,9 @@ function ctxFor(opts) {
     extractFn(TRP, 'appendTripAlias_'),
     extractFn(TRP, 'appendTripEventId_'),
     extractFn(TRP, 'attachTripIds_'),
+    extractFn(TRP, 'tripIsLive_'),
+    extractFn(TRP, 'tripShadowMerges_'),
+    extractFn(TRP, 'mergeShadowTrips_'),
     extractFn(TRP, 'tripIdSlugForProperty_'),
     extractFn(TRP, 'tripIdSlugForFlag_'),
     'var _tripsSheet_ = null, _tripRegistryCache_ = null;',
@@ -356,6 +359,37 @@ console.log('\n…and a merged trip forwards rather than vanishing');
   ]});
   check('a merge cycle terminates rather than hanging',
         vm.runInContext('getTripById_("TRIP-AAAAAAAAAAAA")', loop) === null);
+}
+
+console.log('\n…and a stale copy of a trip folds into the live one (the Oct 26 live check)');
+{
+  const old = '2026-10-12T16:15:42.168Z', now = '2026-10-26T00:07:00.122Z';
+  const rows = () => [
+    ['TRIP-2B52A169559B', 'Hold for Girls Trip Weekend', '2027-06-18', '2027-06-20', 'EVT-FFD1;EVT-76BC', '', old, now, 'active'],
+    ['TRIP-71B84C3111E5', 'Hold for Girls Trip Weekend', '2027-06-18', '2027-06-20', 'EVT-76BC', '', old, old, 'active'],
+    ['TRIP-CCCCCCCCCCCC', 'Other trip', '2027-06-18', '2027-06-20', 'EVT-76BC', '', old, old, 'active'],
+    ['TRIP-DDDDDDDDDDDD', 'Hold for Girls Trip Weekend', '2027-06-18', '2027-06-20', '', '', old, old, 'active'],
+  ];
+  const ctx = ctxFor({ rows: rows() });
+  const m = vm.runInContext('tripShadowMerges_(readTripRegistry_().rows)', ctx);
+  check('a live trip whose every event another newer one with its label holds is a shadow', JSON.stringify(m) === '[{"id":"TRIP-71B84C3111E5","into":"TRIP-2B52A169559B"}]', JSON.stringify(m));
+  check('…a different label, or no event ids to prove it, is left alone', !m.some(x => x.id === 'TRIP-CCCCCCCCCCCC' || x.id === 'TRIP-DDDDDDDDDDDD'));
+  check('merging marks it merged into the live one, which keeps forwarding', vm.runInContext('mergeShadowTrips_()', ctx) === 1
+    && registryRows(ctx)[1][8] === 'merged:TRIP-2B52A169559B' && registryRows(ctx)[0][8] === 'active'
+    && vm.runInContext('getTripById_("TRIP-71B84C3111E5").tripId', ctx) === 'TRIP-2B52A169559B');
+  check('…once', vm.runInContext('mergeShadowTrips_()', ctx) === 0);
+  check('a merged or archived trip is not live; an active one (or no status) is',
+    !vm.runInContext('tripIsLive_({status:"merged:TRIP-X"})', ctx) && !vm.runInContext('tripIsLive_({status:"archived"})', ctx)
+    && vm.runInContext('tripIsLive_({status:"active"})', ctx) && vm.runInContext('tripIsLive_({})', ctx));
+  const same = ctxFor({ rows: [
+    ['TRIP-AAAAAAAAAAAA', 'X', '2027-01-01', '2027-01-02', 'EVT-1', '', old, now, 'active'],
+    ['TRIP-BBBBBBBBBBBB', 'X', '2027-01-01', '2027-01-02', 'EVT-1', '', old, now, 'active'] ] });
+  const part = ctxFor({ rows: [
+    ['TRIP-AAAAAAAAAAAA', 'Y', '2027-01-01', '2027-01-09', 'EVT-1', '', old, now, 'active'],
+    ['TRIP-BBBBBBBBBBBB', 'Y', '2027-01-01', '2027-01-09', 'EVT-1;EVT-2', '', old, old, 'active'] ] });
+  check('a copy holding an event the newer one doesn\'t is kept: it may be a different leg', vm.runInContext('tripShadowMerges_(readTripRegistry_().rows).length', part) === 0);
+  check('two copies seen at the same time are not guessed between', vm.runInContext('tripShadowMerges_(readTripRegistry_().rows).length', same) === 0);
+  check('the sync folds shadows each time it attaches ids', /try \{ mergeShadowTrips_\(\); \}/.test(extractFn(TRP, 'attachTripIds_')));
 }
 
 // ============ aliases and lookups ==========================================

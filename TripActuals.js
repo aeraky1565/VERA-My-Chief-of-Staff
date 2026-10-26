@@ -164,7 +164,7 @@ function tripActualsTripsFor_(rows, date, key) {
     var named = (rows || []).filter(function(t) { return t.startDate + '|' + t.label === key || (t.aliases || []).indexOf(key) !== -1; });
     if (named.length) return named;
   }
-  return date ? (rows || []).filter(function(t) { return t.status !== 'archived' && t.startDate && t.endDate && date >= t.startDate && date <= t.endDate; }) : [];
+  return date ? (rows || []).filter(function(t) { return tripIsLive_(t) && t.startDate && t.endDate && date >= t.startDate && date <= t.endDate; }) : [];
 }
 
 /** The parser just saved a booking with a total: update its trip's Budget. Never throws. */

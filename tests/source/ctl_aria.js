@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_aria');
 
-const FILES = ['Aria.js', 'Code.js', 'Reminders.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
+const FILES = ['Trips.js', 'Aria.js', 'Code.js', 'Reminders.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -18,6 +18,8 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_aria.js';
 
 const CONTROLS = [
+  ['a merged trip is read from VERA', b => ({ 'Aria.js': swap(b['Aria.js'], "return tripIsLive_(t) && t.endDate && t.endDate >= today;", "return t.status !== 'archived' && t.endDate && t.endDate >= today;") })],
+  ['a Draft is never told booked', b => ({ 'Aria.js': swap(b['Aria.js'], "if (['watching', 'draft', 'scouting'].indexOf(w.status) !== -1 && w.tripId", "if (w.status === 'watching' && w.tripId") })],
   ['a moved trip leaves its watch request behind', b => ({ 'Aria.js': swap(b['Aria.js'], "    r.earliest = trip.startDate; r.latest = trip.endDate; r.tripKey = key; r.updated = now;", "    r.updated = now;") })],
   ['a move rewrites every request', b => ({ 'Aria.js': swap(b['Aria.js'], "    if (!id || String(r.tripId).toUpperCase() !== id || r.kind !== 'watch' || r.status !== 'active') return;", "    if (!id) return;") })],
   ['a move rewrites a request already there', b => ({ 'Aria.js': swap(b['Aria.js'], "    if (r.earliest === trip.startDate && r.latest === trip.endDate && r.tripKey === key) return;\n", "") })],
@@ -27,7 +29,7 @@ const CONTROLS = [
   ['a watch needs no destination', b => ({ [T]: swap(b[T], "  if (!dests) return { ok: false, error: 'Add where you fly to (an airport code like ORD).' };\n", "") })],
   ['finding the trip mints an ID', b => ({ [T]: swap(b[T], "{ mint: false, touch: false }) || '').toUpperCase(); } catch (e) {} }", "{ mint: true }) || '').toUpperCase(); } catch (e) {} }") })],
   ['asking again adds a second watch', b => ({ [T]: swap(b[T], "rows.map(ariaRequestFromRow_).forEach(function(r, i) { if (at === -1 && r.kind === 'watch' && String(r.tripId).toUpperCase() === tripId) at = i; });", "") })],
-  ['a trip ARIA watches on its own is never told booked', b => ({ [T]: swap(b[T], "if (w.status === 'watching' && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w };", "") })],
+  ['a trip ARIA watches on its own is never told booked', b => ({ [T]: swap(b[T], "if (['watching', 'draft', 'scouting'].indexOf(w.status) !== -1 && w.tripId && !targets[w.tripId] && reg.byId[w.tripId]) targets[w.tripId] = { row: w };", "") })],
   ['Stop watching by trip does nothing', b => ({ [T]: swap(b[T], "!(ref ? r.ref === ref : String(r.tripId).toUpperCase() === tid)", "!(r.ref === ref)") })],
   ['the booked check never runs', b => ({ [T]: swap(b[T], "  try { ariaMarkBooked_(t.watch); }", "  try { }") })],
   ['the watch form ignores Trip Budget', b => ({ [T]: swap(b[T], ": ariaCeilingFrom_(facts.budget, (row && row.travelers) || facts.travelers),", ": null,") })],
@@ -86,7 +88,7 @@ const CONTROLS = [
   ['a fresh request is already waiting', b => ({ [T]: swap(b[T], "ariaDays_(r.created.slice(0, 10), today) >= 2;", "true;") })],
   ['every old fare is sent', b => ({ [T]: swap(b[T], "return f.dateSeen && ariaDays_(f.dateSeen, today) <= ARIA_FARE_DAYS_; })", "return true; })") })],
   ['nothing is cached', b => ({ [T]: swap(b[T], "  if (!(p && p.refresh)) { try { var hit = cache.get(ARIA_CACHE_KEY_); if (hit) return JSON.parse(hit); } catch (e) {} }\n", "") })],
-  ['past trips are set beside ARIA', b => ({ [T]: swap(b[T], "return t.status !== 'archived' && t.endDate && t.endDate >= today; }).map", "return t.status !== 'archived'; }).map") })],
+  ['past trips are set beside ARIA', b => ({ [T]: swap(b[T], "return tripIsLive_(t) && t.endDate && t.endDate >= today; }).map", "return tripIsLive_(t); }).map") })],
   ['the log names trips', b => ({ [T]: swap(b[T], "Logger.log('aria_status: ' + watch.length + ' watchlist rows, '", "Logger.log('aria_status: ' + watch.map(function(w) { return w.label; }).join() + ' watchlist rows, '") })],
   ['the route is missing', b => ({ [W]: swap(b[W], "      case 'aria_status':           return jsonOut_(webAriaStatus_(e.parameter));\n", '') })],
   ['the line uses every fare, not the cheapest of each day', both("if(by[f.dateSeen]==null||v<by[f.dateSeen])by[f.dateSeen]=v;", "by[f.dateSeen]=v;")],
