@@ -165,12 +165,29 @@ console.log('\nwhat VERA is asked');
   check('no answer is no options, not a crash', run('tiAskResult_(null, "x")').options.length === 0);
 }
 
+console.log('\nrescuing a cut-off answer');
+{
+  const sv = t => run('tiSalvageOptions_(' + JSON.stringify(t) + ')');
+  check('every whole option is kept, the cut-off one is not', sv('{"options":[{"name":"A","legs":[]},{"name":"B {x}","legs":[{"k":"}"}]},{"name":"C"').map(o => o.name).join() === 'A,B {x}');
+  check('braces and quotes inside strings do not confuse it', sv('{"options":[{"name":"say \\"}\\" ok"}]}')[0].name === 'say "}" ok');
+  check('it stops at the end of the options list', sv('{"options":[{"name":"A"}],"alsoPossible":[{"name":"Z"}]}').length === 1);
+  check('no options list is nothing', sv('nothing here').length === 0 && sv('').length === 0 && run('tiSalvageOptions_(null)').length === 0);
+  check('a broken option is skipped, not fatal', sv('{"options":[{"name":A},{"name":"B"}]}').map(o => o.name).join() === 'B');
+  check('the reasons a reply came back empty', run('tiAskFailWords_({kind:"http",code:503})').code === 'busy' && run('tiAskFailWords_({kind:"http",code:403})').code === 'key'
+    && run('tiAskFailWords_({kind:"http",code:400})').code === 'http' && run('tiAskFailWords_({})').code === 'empty' && /none of its options had a route/.test(run('tiAskFailWords_({}, {options:[{}]})').text));
+}
+
 console.log('\nAsk VERA, end to end');
 {
   const cache = {}; let calls = 0;
   S.CacheService = { getScriptCache: () => ({ get: k => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) };
   S.getConfigValues = () => ({ weather_location: 'Washington, DC' });
-  S.callClaudeJson_ = (prompt, fb, opts) => { calls++; S.lastPrompt = prompt; S.lastOpts = opts; return S.reply; };
+  S.logs = [];
+  S.veraLog_ = function() { S.logs.push([].slice.call(arguments)); };
+  // S.queue: answers to hand out in turn; else the plain S.reply.
+  S.callClaudeJsonDetailed_ = (prompt, opts) => { calls++; S.lastPrompt = prompt; S.lastOpts = opts;
+    if (S.queue && S.queue.length) return S.queue.shift();
+    return S.reply ? { json: S.reply, error: '', kind: '' } : { json: null, error: 'parse', kind: 'parse', raw: '' }; };
   const made = run('webSaveTripIdea_({ idea: { title: "Alps & the Med", pieces: rp } })');
   S.aid = made.idea.id;
   S.reply = S.ans;
@@ -178,6 +195,7 @@ console.log('\nAsk VERA, end to end');
   const r = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask1" })');
   check('Ask VERA saves its options under the idea', r.ok && r.options.length === 4 && S.sheets['Trip Idea Options'].rows.length === before + 4 && r.options.every(o => /^OPT-/.test(o.id) && o.source === 'vera'), JSON.stringify(r).slice(0, 200));
   check('…with room for a long answer', S.lastOpts && S.lastOpts.maxTokens >= 4000);
+  check('…and asked to keep it brief', /Be brief: a leg note at most 8 words/.test(S.lastPrompt));
   check('…and keeps what it did not build on the idea', r.idea.alsoPossible.length === 1 && run('tiGetIdea_(aid)').alsoPossible[0].name === 'Road trip → Cruise A');
   check('…its marks survive the sheet', run('webGetTripIdeas_()').options.filter(o => o.ideaId === S.aid)[0].legs[0].vera === true);
   const again = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask1" })');
@@ -189,7 +207,32 @@ console.log('\nAsk VERA, end to end');
   S.reply = null;
   const rows = S.sheets['Trip Idea Options'].rows.length;
   const bad = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask3" })');
-  check('no answer from VERA says so, and saves nothing', bad.ok === false && /could not build options/.test(bad.error) && S.sheets['Trip Idea Options'].rows.length === rows);
+  check('an unreadable answer says so, and saves nothing', bad.ok === false && /couldn’t be read/.test(bad.error) && S.sheets['Trip Idea Options'].rows.length === rows, bad.error);
+  check('…and logs the kind of failure, never the brief', S.logs.length === 1 && S.logs[0][0] === 'trip_idea_ask' && S.logs[0][2] === 'Failed' && S.logs[0][3] === 'parse' && !/Alps/.test(JSON.stringify(S.logs)), JSON.stringify(S.logs));
+  // Busy, then fine: one more try.
+  const one = { name: 'Train → Cruise A', legs: [{ kind: 'stop', place: 'Zurich', nights: 3 }] };
+  S.queue = [{ json: null, kind: 'http', code: 529, error: 'HTTP 529' }, { json: { options: [one], alsoPossible: [] }, kind: '' }];
+  let c0 = calls;
+  const busy = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask4" })');
+  check('a busy AI is asked once more', busy.ok && busy.options.length === 1 && calls === c0 + 2, JSON.stringify(busy).slice(0, 200));
+  S.queue = [{ json: null, kind: 'http', code: 529, error: 'HTTP 529' }, { json: null, kind: 'http', code: 529, error: 'HTTP 529' }];
+  c0 = calls;
+  const busy2 = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask5" })');
+  check('…only once, then says it is busy', !busy2.ok && calls === c0 + 2 && /busy right now \(HTTP 529\)/.test(busy2.error), busy2.error);
+  S.queue = [{ json: null, kind: 'http', code: 401, error: 'HTTP 401' }];
+  c0 = calls;
+  const key = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask6" })');
+  check('a refused key is not retried, and says to check the key', !key.ok && calls === c0 + 1 && /refused VERA’s key/.test(key.error), key.error);
+  S.queue = [{ json: null, kind: 'network', error: 'Timeout' }];
+  check('a timeout says so', /timed out/.test(run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask7" })').error));
+  // Cut off after one whole option: that option is kept.
+  S.queue = [{ json: null, kind: 'cutoff', error: 'cut off', raw: '{"options":[' + JSON.stringify(one) + ',{"name":"Half {done","legs":[{"kind":"st' }];
+  const rows2 = S.sheets['Trip Idea Options'].rows.length;
+  const cut = run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask8" })');
+  check('a cut-off answer keeps the options that came through whole', cut.ok && cut.options.length === 1 && cut.options[0].name === 'Train → Cruise A' && S.sheets['Trip Idea Options'].rows.length === rows2 + 1, JSON.stringify(cut).slice(0, 200));
+  S.queue = [{ json: null, kind: 'cutoff', error: 'cut off', raw: '{"options":[{"name":"Half' }];
+  check('…and with none whole, says it was cut off', /cut off/.test(run('webAskVeraTripIdea_({ ideaId: aid, askId: "ask9" })').error));
+  S.queue = null;
   check('an idea that does not exist is refused', run('webAskVeraTripIdea_({ ideaId: "IDEA-NOPE" })').ok === false);
 }
 
@@ -503,6 +546,30 @@ console.log('\nARIA in Trip Ideas: scouting an option\'s fares');
   check('…lines end the way calendars expect', ics.split('\r\n').length > 10 && !/[^\r]\n/.test(ics));
   check('the file is named for the event', cr('tiIcsName_(sSet)') === 'spring-in-europe-2027.ics');
   check('a month end rolls the end date over', /DTEND;VALUE=DATE:20270701/.test(cr('tiSettleIcs_(sIdea, sOpt, {start:"2027-06-20", end:"2027-06-30", label:"x"})')));
+}
+
+console.log('\nthe AI call says what went wrong');
+{
+  const EP = fs.readFileSync(path.join(ROOT, 'EmailParser.js'), 'utf8');
+  const C = vm.createContext({ Logger: { log() {} }, CLAUDE_API_URL: 'u', CLAUDE_MODEL: 'm', getApiKey: () => 'k' });
+  vm.runInContext(EP, C);
+  const say = (code, body, stop) => { C.fetchTracked_ = (svc, url, o) => { C.sent = JSON.parse(o.payload);
+    return { getResponseCode: () => code, getContentText: () => JSON.stringify({ stop_reason: stop || 'end_turn', content: [{ type: 'text', text: body }] }) }; }; };
+  say(200, '```json\n{"a":1}\n```');
+  let d = vm.runInContext('callClaudeJsonDetailed_("p", {maxTokens: 8000})', C);
+  check('a good reply is read, fences and all, with the tokens asked for', d.json && d.json.a === 1 && d.kind === '' && C.sent.max_tokens === 8000);
+  check('…and the old call still returns the JSON', vm.runInContext('callClaudeJson_("p", null)', C).a === 1 && C.sent.max_tokens === 1024);
+  say(200, '{"options":[{"a":1},{"b', 'max_tokens');
+  d = vm.runInContext('callClaudeJsonDetailed_("p")', C);
+  check('a reply cut off at the limit is "cutoff", with the text kept', d.json === null && d.kind === 'cutoff' && /^\{"options"/.test(d.raw));
+  say(200, 'sorry, no');
+  check('a reply with no JSON is "parse"', vm.runInContext('callClaudeJsonDetailed_("p")', C).kind === 'parse');
+  check('…and the old call falls back', vm.runInContext('callClaudeJson_("p", "fb")', C) === 'fb');
+  say(529, '');
+  d = vm.runInContext('callClaudeJsonDetailed_("p")', C);
+  check('an HTTP error keeps its code', d.kind === 'http' && d.code === 529);
+  C.fetchTracked_ = () => { throw new Error('Timeout: u'); };
+  check('a fetch that throws (a timeout) is "network"', vm.runInContext('callClaudeJsonDetailed_("p")', C).kind === 'network');
 }
 
 console.log('\nwiring');

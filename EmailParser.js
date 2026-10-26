@@ -485,41 +485,51 @@ function createItineraryRowFromEmail_(basic, rich, messageId) {
  *        looks exactly like the model having nothing to say.
  */
 function callClaudeJson_(prompt, fallback, opts) {
+  var r = callClaudeJsonDetailed_(prompt, opts);
+  if (r.error) Logger.log('callClaudeJson_ ' + r.error);
+  return r.json != null ? r.json : fallback;
+}
+
+/**
+ * The same call, saying what went wrong instead of only falling back:
+ * {json, error, kind, code, stopReason, raw}. kind: 'network' (the request threw:
+ * a timeout or no connection), 'http' (a non-200; code says which), 'cutoff'
+ * (stopped at max_tokens), 'parse' (no readable JSON), or '' on success. raw is
+ * the reply text, so a caller can salvage what came through whole.
+ */
+function callClaudeJsonDetailed_(prompt, opts) {
+  var out = { json: null, error: '', kind: '', code: 0, stopReason: '', raw: '' };
+  var maxTokens = (opts && Number(opts.maxTokens) > 0) ? Math.floor(Number(opts.maxTokens)) : 1024;
+  var response;
   try {
-    var maxTokens = (opts && Number(opts.maxTokens) > 0) ? Math.floor(Number(opts.maxTokens)) : 1024;
-    const requestBody = {
-      model:      CLAUDE_MODEL,
-      max_tokens: maxTokens,
-      messages:   [{ role: 'user', content: prompt }],
-    };
-    const response = fetchTracked_('anthropic', CLAUDE_API_URL, {
+    response = fetchTracked_('anthropic', CLAUDE_API_URL, {
       method:  'post',
       headers: {
         'Content-Type':      'application/json',
         'x-api-key':         getApiKey(),
         'anthropic-version': '2023-06-01',
       },
-      payload:            JSON.stringify(requestBody),
+      payload:            JSON.stringify({ model: CLAUDE_MODEL, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
       muteHttpExceptions: true,
     });
-    if (response.getResponseCode() !== 200) {
-      Logger.log('callClaudeJson_ API error ' + response.getResponseCode());
-      return fallback;
-    }
-    const json    = JSON.parse(response.getContentText());
-    const rawText = (((json.content || [])[0]) || {}).text || '';
-    var cleaned   = rawText.trim()
-      .replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+  } catch (err) { out.kind = 'network'; out.error = 'request failed: ' + err.message; return out; }
+  out.code = response.getResponseCode();
+  if (out.code !== 200) { out.kind = 'http'; out.error = 'API error ' + out.code; return out; }
+  try {
+    var json = JSON.parse(response.getContentText());
+    out.stopReason = json.stop_reason || '';
+    out.raw = (((json.content || [])[0]) || {}).text || '';
+    var cleaned = out.raw.trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
     // Try object first, then array
-    var start = cleaned.indexOf('{');
-    var end   = cleaned.lastIndexOf('}');
+    var start = cleaned.indexOf('{'), end = cleaned.lastIndexOf('}');
     if (start === -1) { start = cleaned.indexOf('['); end = cleaned.lastIndexOf(']'); }
     if (start === -1 || end === -1) throw new Error('No JSON structure found');
-    return JSON.parse(cleaned.substring(start, end + 1));
-  } catch(err) {
-    Logger.log('callClaudeJson_ error: ' + err.message);
-    return fallback;
+    out.json = JSON.parse(cleaned.substring(start, end + 1));
+  } catch (err2) {
+    out.kind = out.stopReason === 'max_tokens' ? 'cutoff' : 'parse';
+    out.error = (out.kind === 'cutoff' ? 'reply cut off at max_tokens: ' : 'reply not JSON: ') + err2.message;
   }
+  return out;
 }
 
 // ─── FLAG BUILDERS ────────────────────────────────────────────────────────────

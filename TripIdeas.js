@@ -425,6 +425,7 @@ function tiAskPrompt_(idea, existing, home, focus) {
     '- Do not invent specific sailings, flight numbers, prices you cannot know, or dates. Name ports and cities.',
     '- Cost: a rough range in USD for all travelers together, per category; basis "VERA estimate". Leave out a category that does not apply.',
     '- verdict.level: "fits" (works well), "cost" (works, with a real cost or trade-off) or "awkward" (an awkward join). verdict.text: one or two plain sentences on why.',
+    '- Be brief: a leg note at most 8 words (or empty), at most 3 pros and 3 cons of under 12 words each, verdict.text one sentence.',
     '',
     'Return ONLY JSON, no prose:',
     '{"options":[{"name":"14 nights: Swiss train → Med cruise",',
@@ -446,6 +447,46 @@ function tiAskResult_(raw, ideaId) {
     return c.name && c.legs.length ? c : null;
   }).filter(Boolean).slice(0, TI_ASK_MAX_);
   return { options: options, alsoPossible: tiCleanAlso_(res.alsoPossible) };
+}
+
+var TI_ASK_RETRY_CODES_ = [429, 500, 502, 503, 504, 529];
+
+/**
+ * Pure: the whole option objects in a reply that was cut off or isn't quite JSON:
+ * every complete {...} inside its "options" array, parsed one by one. Strings
+ * (and the braces inside them) are respected.
+ */
+function tiSalvageOptions_(text) {
+  var t = String(text || ''), at = t.indexOf('"options"');
+  if (at === -1) return [];
+  var i = t.indexOf('[', at);
+  if (i === -1) return [];
+  var out = [], depth = 0, start = -1, inStr = false, esc = false;
+  for (i = i + 1; i < t.length; i++) {
+    var ch = t.charAt(i);
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{') { if (depth === 0) start = i; depth++; }
+    else if (ch === '}') { depth--; if (depth === 0 && start !== -1) { try { out.push(JSON.parse(t.slice(start, i + 1))); } catch (e) {} start = -1; } }
+    else if (ch === ']' && depth === 0) break;
+  }
+  return out;
+}
+
+/**
+ * Pure: why Ask VERA came back empty, in words Ahmed can act on, and a short code
+ * for the System Log. r is callClaudeJsonDetailed_'s answer; raw what was read from it.
+ */
+function tiAskFailWords_(r, raw) {
+  r = r || {};
+  if (r.kind === 'network') return { code: 'timeout', text: 'VERA’s request to the AI timed out: this brief asks for a long answer. Try again; adding a few pieces or fewer months makes the answer shorter.' };
+  if (r.kind === 'http' && (r.code === 401 || r.code === 403)) return { code: 'key', text: 'The AI service refused VERA’s key (HTTP ' + r.code + '). Check the Anthropic key in Script Properties.' };
+  if (r.kind === 'http' && TI_ASK_RETRY_CODES_.indexOf(r.code) !== -1) return { code: 'busy', text: 'The AI service is busy right now (HTTP ' + r.code + '), even after a second try. Try again in a few minutes.' };
+  if (r.kind === 'http') return { code: 'http', text: 'The AI service answered with an error (HTTP ' + r.code + '). Try again in a minute.' };
+  if (r.kind === 'cutoff') return { code: 'cutoff', text: 'VERA’s answer was cut off before a whole option came through. Try again, or add a few pieces to narrow it.' };
+  if (r.kind === 'parse') return { code: 'parse', text: 'VERA’s answer couldn’t be read. Try again in a minute.' };
+  var any = raw && Array.isArray(raw.options) && raw.options.length;
+  return { code: 'empty', text: any ? 'VERA answered, but none of its options had a route. Try again.' : 'VERA answered with no options. Try again, or add a few pieces to give it a starting point.' };
 }
 
 /** The idea with this id, or null. */
@@ -490,10 +531,19 @@ function tiAsk_(body) {
   var existing = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length)
     .filter(function(r) { return String(r[1]).trim() === id; }).map(tiOptionFromRow_);
   var home = String(getConfigValues()['weather_location'] || '').trim();
-  var raw = callClaudeJson_(tiAskPrompt_(idea, existing, home, focus), null, { maxTokens: 6000 });
+  var started = Date.now(), prompt = tiAskPrompt_(idea, existing, home, focus);
+  var r = callClaudeJsonDetailed_(prompt, { maxTokens: 8000 });
+  // Busy or briefly down: one more try after a pause.
+  if (r.kind === 'http' && TI_ASK_RETRY_CODES_.indexOf(r.code) !== -1) { Utilities.sleep(2500); r = callClaudeJsonDetailed_(prompt, { maxTokens: 8000 }); }
+  // Cut off, or not quite JSON: keep every option that came through whole.
+  var raw = r.json || (r.raw ? { options: tiSalvageOptions_(r.raw), alsoPossible: [] } : null);
   var got = tiAskResult_(raw, id);
-  Logger.log('trip_idea_ask: ' + got.options.length + ' options, ' + got.alsoPossible.length + ' also possible');
-  if (!got.options.length) return { ok: false, error: 'VERA could not build options just now. Try again in a minute.' };
+  Logger.log('trip_idea_ask: ' + got.options.length + ' options, ' + got.alsoPossible.length + ' also possible' + (r.kind ? ' (' + r.kind + ')' : ''));
+  if (!got.options.length) {
+    var why = tiAskFailWords_(r, raw);
+    try { veraLog_('trip_idea_ask', 'Travel', 'Failed', why.code, Date.now() - started, r.error); } catch (e) {}
+    return { ok: false, error: why.text };
+  }
   return tiLocked_(function() {
     var sheet = tiOptionsSheet_(), now = tiNow_(), order = existing.length;
     var saved = got.options.map(function(o) {
