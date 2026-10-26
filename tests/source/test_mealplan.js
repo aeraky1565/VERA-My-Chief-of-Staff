@@ -123,7 +123,9 @@ function harness(rows) {
   };
   vm.createContext(ctx);
   vm.runInContext("var MEAL_PLAN_DAYS_ = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];" +
-                  'var MP_COL_ = { ID:0, WEEK_START:1, DAY:2, DATE:3, MEAL_NAME:4, TYPE:5, STATUS:6, NOTES:7 };', ctx);
+                  'var MP_COL_ = { ID:0, WEEK_START:1, DAY:2, DATE:3, MEAL_NAME:4, TYPE:5, STATUS:6, NOTES:7, USES:8, RATING:9 };' +
+                  // The header-row check (TripIdeas.js) is not what these tests are about.
+                  'function tiSchema_(s) { return s; }', ctx);
   [extractFn(TRP, 'dateCellToIso_'),
    extractFn(MP,  'generateId_'),
    extractFn(MP,  'addWeeksToStart_'),
@@ -135,6 +137,7 @@ function harness(rows) {
    extractFn(MP,  'getMealPlanHistory_'),
    extractFn(MP,  'upsertMealPlanEntry_'),
    extractFn(MP,  'moveMealPlanEntry_'),
+   extractFn(MP,  'mpSetExtras_'),
    extractFn(MP,  'inspectMealPlanTab_'),
    extractFn(MP,  'purgeBlankMealPlanRows_')].forEach(s => vm.runInContext(s, ctx));
   return ctx;

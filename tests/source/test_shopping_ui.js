@@ -144,10 +144,11 @@ check('…otherwise new, or non-food when the model says so', kind({ name: 'pear
       check(L + ': each line says what saving it will do; food picked, non-food not', lines.length === 4
         && /^true\|✓ olive oil Already logged when you checked it off · adds the price \$12\.99$/.test(lines[0]) && /^true\|✓ Bananas On your list · checked off too \$1\.79$/.test(lines[1])
         && /^true\|✓ blueberries Not on the list · a new pantry row \$4\.99$/.test(lines[2]) && /^false\|paper towels Not food · logged only if you tick it \$21\.99$/.test(lines[3]), JSON.stringify(lines));
+      check(L + ': it says food picked also goes to this week\'s on hand', (await page.$eval('#shopprobe .shop-onhand-note', n => n.innerText).catch(() => '')) === 'Food you pick also goes to this week’s On hand in Meal Plan.');
       check(L + ': the button counts what\'s picked', await page.$eval('#shopprobe .shop-receipt-save', n => n.innerText) === 'Add 3 to Pantry');
       await page.$eval('#shopprobe .shop-receipt-save', b => b.click()); await wait(300);
       const tail = await page.evaluate(() => window.__calls.filter(c => c[0] === 'toggle' || c[0] === 'save').slice(-2));
-      check(L + ': a picked line on the list is checked off first, then everything picked is saved by the list\'s name', JSON.stringify(tail) === JSON.stringify([['toggle', 't.a', 0, false], ['save', 't.a', [{ name: 'olive oil', qty: 1, price: 12.99 }, { name: 'Bananas', qty: null, price: 1.79 }, { name: 'blueberries', qty: 1, price: 4.99 }]]]), JSON.stringify(tail));
+      check(L + ': a picked line on the list is checked off first, then everything picked is saved by the list\'s name', JSON.stringify(tail) === JSON.stringify([['toggle', 't.a', 0, false], ['save', 't.a', [{ name: 'olive oil', qty: 1, price: 12.99, food: true }, { name: 'Bananas', qty: null, price: 1.79, food: true }, { name: 'blueberries', qty: 1, price: 4.99, food: true }]]]), JSON.stringify(tail));
       const saved = await page.$eval('#shopprobe .shop-sheet-saved', n => n.innerText).catch(() => '');
       check(L + ': it says what happened', saved === 'Saved to Pantry: prices added to 1 you checked off, 1 more checked off on the list, 1 new item logged from the receipt.', saved);
       await page.evaluate(() => Array.from(document.querySelectorAll('#shopprobe .shop-sheet button')).find(b => b.textContent === 'Done').click()); await wait(150);

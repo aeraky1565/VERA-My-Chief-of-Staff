@@ -36,6 +36,7 @@ const S = vm.createContext({ console, Math, JSON, Date, Object, String, Number, 
 S.__fixedToday = TODAY;
 S.locks = 0; S.lockFree = true;
 S.LockService = { getScriptLock: () => ({ tryLock: () => { if (!S.lockFree) return false; S.locks++; return true; }, releaseLock: () => { S.locks--; } }) };
+vm.runInContext(PANTRY.match(/var PANTRY_AISLES_ = \[[\s\S]*?\]\];\n/)[0] + extract(PANTRY, 'pantryAisle_'), S);
 vm.runInContext(constLine(CODE, 'PURCHASE_HISTORY_HEADERS'), S);
 ['normalizeItemName_', 'getPurchaseHistorySheet_', 'logPurchaseItems_', 'shopCheckLog_'].forEach(n => vm.runInContext(extract(PANTRY, n), S));
 vm.runInContext(extract(SHOP, 'toggleShoppingItem_'), S);

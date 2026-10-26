@@ -110,6 +110,7 @@ const TABS = {
   BUCKET_ACTIVITIES:   'BucketActivities',     // Per-destination activity list (Issue #113)
   WISH_LIST:           'Wish List',            // Aspirational purchase tracker (Issue #131)
   MEAL_PLAN:           'Meal Plan',            // Weekly dinner planner (Issue #122)
+  ON_HAND:             'On Hand',              // Meal Plan: what's in the house this week (OnHand.js)
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
@@ -195,7 +196,8 @@ const PTO_MEMORY_HEADERS      = ['Start Date', 'End Date', 'Workdays', 'GCal Eve
 const REMINDERS_MEMORY_HEADERS  = ['Rule Key', 'Sent At', 'Message'];
 const INTEREST_LEDGER_HEADERS   = ['ID', 'Date Added', 'Person', 'Interest', 'Category', 'Source', 'Notes', 'Status'];
 const RECIPE_HEADERS            = ['Name', 'Cuisine', 'Servings', 'Prep Time', 'Link', 'Ingredients', 'Tags', 'Notes'];
-const MEAL_PLAN_HEADERS         = ['ID', 'Week Start', 'Day', 'Date', 'Meal Name', 'Type', 'Status', 'Notes'];
+const MEAL_PLAN_HEADERS         = ['ID', 'Week Start', 'Day', 'Date', 'Meal Name', 'Type', 'Status', 'Notes', 'Uses', 'Rating'];
+const ON_HAND_HEADERS           = ['ID', 'Week Start', 'Item', 'Normalized', 'Source', 'Purchase ID', 'Use Soon', 'Status', 'Added', 'Note'];
 const TAKEOUT_RESTAURANT_HEADERS = ['Name', 'Cuisine', 'Phone', 'Website', 'Rating', 'Notes'];
 const TAKEOUT_ITEM_HEADERS       = ['Restaurant', 'Item', 'Description', 'Rating', 'Notes'];
 const HOME_ITEM_HEADERS         = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
@@ -468,6 +470,7 @@ function createSheetTabs(ss) {
   ensureSheet(ss, TABS.BILLS,            BILL_HEADERS);
   ensureSheet(ss, TABS.RECIPES,             RECIPE_HEADERS);
   ensureSheet(ss, TABS.MEAL_PLAN,           MEAL_PLAN_HEADERS);
+  ensureSheet(ss, TABS.ON_HAND,             ON_HAND_HEADERS);
   ensureSheet(ss, TABS.TAKEOUT_RESTAURANTS, TAKEOUT_RESTAURANT_HEADERS);
   ensureSheet(ss, TABS.TAKEOUT_ITEMS,       TAKEOUT_ITEM_HEADERS);
   ensureSheet(ss, TABS.HOME_ITEMS,       HOME_ITEM_HEADERS);
@@ -1250,6 +1253,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'resetChoresByCadence_', resetChoresByCadence_);
     // Upkeep (quarterly, seasonal, yearly chores) overdue or due within a week: a Low flag or a task.
     nightlyStep_(ctx, 'hfSyncUpkeepReminders_', hfSyncUpkeepReminders_);
+    // Meal Plan: a use-soon item still in no dinner (Wed–Sat), and "prep tonight" for a dinner that needs thawing.
+    nightlyStep_(ctx, 'mpSyncNudges_', mpSyncNudges_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);

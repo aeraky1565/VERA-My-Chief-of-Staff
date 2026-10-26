@@ -32,7 +32,7 @@ const CONTROLS = [
   ['a checked item on the receipt counts as unchecked', both("kind:items[i].done?'match':'list'", "kind:'list'")],
   ['non-food is picked by default', both("setPicks(ls.map(function(x){return x.kind!=='nonfood';}));", "setPicks(ls.map(function(x){return true;}));")],
   ['a listed line is not checked off before saving', both("var tick=listed.reduce(function(p,x){return p.then(function(){return props.onToggle(x.index,false);});},Promise.resolve());", "var tick=Promise.resolve();")],
-  ['the receipt\'s spelling is saved, not the list\'s', both("{name:x.match||x.name,qty:x.qty,price:x.price}", "{name:x.name,qty:x.qty,price:x.price}")],
+  ['the receipt\'s spelling is saved, not the list\'s', both("{name:x.match||x.name,qty:x.qty,price:x.price,food:x.food!==false}", "{name:x.name,qty:x.qty,price:x.price,food:x.food!==false}")],
 ];
 
 // These drive a real browser. The CI job that runs controls has none (the browser job runs

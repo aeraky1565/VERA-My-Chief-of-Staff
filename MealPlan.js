@@ -24,7 +24,7 @@ function generateId_(prefix) {
 }
 
 // Column indices (0-based) matching MEAL_PLAN_HEADERS
-var MP_COL_ = { ID: 0, WEEK_START: 1, DAY: 2, DATE: 3, MEAL_NAME: 4, TYPE: 5, STATUS: 6, NOTES: 7 };
+var MP_COL_ = { ID: 0, WEEK_START: 1, DAY: 2, DATE: 3, MEAL_NAME: 4, TYPE: 5, STATUS: 6, NOTES: 7, USES: 8, RATING: 9 };
 
 // ============================================================
 // Helpers
@@ -176,6 +176,8 @@ function _readMealPlanRows_(sheet) {
         type:      String(r[MP_COL_.TYPE]       || ''),
         status:    String(r[MP_COL_.STATUS]     || 'Planned'),
         notes:     String(r[MP_COL_.NOTES]      || ''),
+        uses:      String(r[MP_COL_.USES]       || '').split(',').map(function(s) { return s.trim(); }).filter(String),
+        rating:    String(r[MP_COL_.RATING]     || '').trim().toLowerCase(),
       };
     });
 }
@@ -206,6 +208,22 @@ function upsertMealPlanEntry_(weekStart, day, date, mealName, type, status, note
     sheet.appendRow([id, weekStart, day, date, mealName || '', type || '', status || 'Planned', notes || '']);
     return id;
   }
+}
+
+/**
+ * Sets a dinner's Uses (on-hand ids) and/or Rating (again | skip | ''). Leaves a field
+ * alone when it is undefined. The two columns were added after the tab existed, so the
+ * header row is brought up to date first (tiSchema_). Returns false when the day has no row.
+ */
+function mpSetExtras_(weekStart, day, uses, rating) {
+  var sheet = getSpreadsheet().getSheetByName(TABS.MEAL_PLAN);
+  if (!sheet) throw new Error('Meal Plan tab not found');
+  tiSchema_(sheet, MEAL_PLAN_HEADERS);
+  var row = _readMealPlanRows_(sheet).find(function(r) { return r.weekStart === weekStart && r.day === day; });
+  if (!row) return false;
+  if (uses !== undefined) sheet.getRange(row.rowNum, MP_COL_.USES + 1).setValue((uses || []).join(','));
+  if (rating !== undefined) sheet.getRange(row.rowNum, MP_COL_.RATING + 1).setValue(String(rating || ''));
+  return true;
 }
 
 // ============================================================
@@ -334,6 +352,9 @@ function moveMealPlanEntry_(fromWeekStart, fromDay, toWeekStart, toDay) {
     carried.mealName, carried.type, carried.status, carried.notes);
   upsertMealPlanEntry_(fromWeekStart, fromDay, dayDateForWeek_(fromWeekStart, fromDay),
     returning.mealName, returning.type, returning.status, returning.notes);
+  // What a dinner uses, and how it was rated, go with it (or swap with it).
+  mpSetExtras_(toWeekStart, toDay, source.uses || [], source.rating || '');
+  mpSetExtras_(fromWeekStart, fromDay, swapped ? (target.uses || []) : [], swapped ? (target.rating || '') : '');
 
   return {
     moved:   true,

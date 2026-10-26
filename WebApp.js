@@ -156,6 +156,13 @@ function doGet(e) {
       case 'set_meal':              return jsonOut_(webSetMeal_(e));
       case 'update_meal_status':    return jsonOut_(webUpdateMealStatus_(e));
       case 'suggest_meals':         return jsonOut_(webSuggestMeals_(e));
+      // Meal Plan on hand (OnHand.js)
+      case 'suggest_week':          return jsonOut_(webSuggestWeek_(e));
+      case 'meal_cook':             return jsonOut_(webMealCook_(e));
+      case 'meal_extras':           return jsonOut_(webMealExtras_(e));
+      case 'made_extra':            return jsonOut_(webMadeExtra_(e));
+      case 'onhand_add':            return jsonOut_(webOnHandAdd_(e));
+      case 'onhand_set':            return jsonOut_(webOnHandSet_(e));
       case 'move_meal':             return jsonOut_(webMoveMeal_(e));
       case 'takeouts':              return jsonOut_(webGetTakeouts_());
       case 'homesteward':           return jsonOut_(webGetHomesteward_());
@@ -546,6 +553,7 @@ function doPost(e) {
       case 'log_purchase_run':           return jsonOut_(webLogPurchaseRun_(body));
       case 'receipt_scan':               return jsonOut_(webReceiptScan_(body));
       case 'receipt_log':                return jsonOut_(webReceiptLog_(body));
+      case 'meal_apply':                 return jsonOut_(webMealApply_(body));
       // Coupons (Issue #173)
       case 'extract_coupon':             return jsonOut_(webExtractCoupon_(body));
       case 'save_coupon':                return jsonOut_(webSaveCoupon_(body));
@@ -3411,7 +3419,11 @@ function webGetMealPlan_(e) {
     weeks.push({ weekStart: ws, days: getMealPlanWeek_(ws) });
   }
 
-  return { ok: true, weekStart: weekStart, days: weeks[0].days, weeks: weeks };
+  // This week's on hand rides along (synced from Shopping first). A failure there never
+  // costs the planner: it comes back as onHandError and the dinners still show.
+  var res = { ok: true, weekStart: weekStart, days: weeks[0].days, weeks: weeks };
+  try { weeks[0].onHand = ohWeek_(weeks[0].weekStart); } catch (err) { res.onHandError = err.message; }
+  return res;
 }
 
 function webMoveMeal_(e) {

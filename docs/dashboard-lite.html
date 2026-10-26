@@ -590,7 +590,7 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
   function save(){var chosen=lines.filter(function(x,i){return picks[i];});if(!chosen.length)return;setStep('saving');setMsg('');
     var listed=chosen.filter(function(x){return x.kind==='list';});
     var tick=listed.reduce(function(p,x){return p.then(function(){return props.onToggle(x.index,false);});},Promise.resolve());
-    tick.then(function(){return props.onSave(chosen.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price};}));})
+    tick.then(function(){return props.onSave(chosen.map(function(x){return {name:x.match||x.name,qty:x.qty,price:x.price,food:x.food!==false};}));})
     .then(function(r){var m=chosen.filter(function(x){return x.kind==='match';}).length,parts=[];
       if(m)parts.push('prices added to '+m+' you checked off');if(listed.length)parts.push(listed.length+' more checked off on the list');
       var nw=chosen.length-m-listed.length;if(nw)parts.push(nw+' new item'+(nw===1?'':'s')+' logged from the receipt');
@@ -615,6 +615,7 @@ function ShopDoneSheet(props){var h=React.createElement,store=props.store;
         h('span',{style:{fontSize:12,color:'#6f7fa6'}},'Checked items stay crossed out on the list.')),
       (step==='review'||step==='saving')&&h(React.Fragment,null,
         h('span',{style:{fontSize:12,color:'#8a9abf'}},'VERA read '+lines.length+' item'+(lines.length===1?'':'s')+' · the photo isn’t kept'),
+        h('span',{className:'shop-onhand-note',style:{fontSize:12,color:'#cfe0ff'}},'Food you pick also goes to this week’s On hand in Meal Plan.'),
         h('div',{style:{display:'flex',flexDirection:'column',borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},lines.map(function(x,i){var on=picks[i];
           return h('button',{key:i,type:'button',className:'shop-receipt-line','aria-pressed':on,onClick:function(){var p=picks.slice();p[i]=!p[i];setPicks(p);},style:{display:'flex',alignItems:'center',gap:12,width:'100%',minHeight:56,padding:'6px 14px',background:'transparent',border:0,borderTop:i?'1px solid #16223c':'none',cursor:'pointer',color:'inherit',textAlign:'left'}},
             h('span',{'aria-hidden':true,style:{width:22,height:22,flexShrink:0,borderRadius:6,boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,background:on?'#c9a84c':'transparent',color:'#1a1405',border:on?'none':'2px solid #4a5d8a'}},on?'✓':''),
@@ -3904,7 +3905,162 @@ function VehiclesView({ vehicles, loading, busy, onOilChange, onService, onMilea
   );
 }
 
+// ---- MealHand (Meal Plan: on hand) — SHARED VERBATIM in docs/app.js and docs/dashboard-lite.html ----
+// On hand this week (filled from Shopping), what each dinner uses, Again / Skip / Made
+// extra, Suggest the week and What can I make. MealPlanSubTab in each dashboard renders
+// these; props.call(action, params) is a GET to VERA and props.post(body) a POST.
+
+// Which dinner uses each on-hand item: {id: 'Tue'}.
+function mpCoverage_(days){var out={};(days||[]).forEach(function(d){if(!d||!d.mealName)return;(d.uses||[]).forEach(function(id){if(!out[id])out[id]=d.day;});});return out;}
+function mpSourceLabel_(x){return x.note||({checkout:'checked off',receipt:'receipt',manual:'added by you',leftover:'leftovers',carried:'from last week'}[x.source]||'');}
+var MP_BTN_={minHeight:40,padding:'0 12px',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer',background:'transparent',border:'1px solid #2a3a5c',color:'#cfd8ef'};
+var MP_BTN_GOLD_={minHeight:44,padding:'0 16px',borderRadius:10,fontSize:14,fontWeight:700,cursor:'pointer',background:'#c9a84c',border:'none',color:'#1a1405'};
+
+function MpOnHand(props){var h=React.createElement,items=props.items,days=props.days||[];
+  var _d=React.useState(''),draft=_d[0],setDraft=_d[1];
+  var _s=React.useState(false),soon=_s[0],setSoon=_s[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  if(!items)return h('div',{className:'mp-onhand',style:{padding:12,borderRadius:12,border:'1px solid #2a3f6a',background:'#0b1630',color:'#8a9abf',fontSize:13,marginBottom:12}},'On hand isn’t available right now.');
+  var cov=mpCoverage_(days);
+  var live=items.filter(function(x){return x.status==='on hand';}),pending=items.filter(function(x){return x.status==='pending';});
+  var covered=live.filter(function(x){return cov[x.id];}).length,soonLeft=live.filter(function(x){return x.useSoon&&!cov[x.id];}).length;
+  function run(action,params){setBusy(true);setErr('');return Promise.resolve(props.call(action,params)).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');props.reload();}).catch(function(e){setErr(e.message||String(e));}).then(function(){setBusy(false);});}
+  function add(e){if(e)e.preventDefault();var t=draft.trim();if(!t||busy)return;run('onhand_add',{weekStart:props.weekStart,item:t,useSoon:soon?'true':'false'}).then(function(){setDraft('');setSoon(false);});}
+  return h('section',{className:'mp-onhand','aria-label':'On hand this week',style:{display:'flex',flexDirection:'column',gap:10,padding:14,borderRadius:12,background:'#0b1630',border:'1px solid #2a3f6a',marginBottom:12}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
+      h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'0.08em',color:'#e3c46a'}},'ON HAND THIS WEEK'),
+      h('span',{className:'mp-onhand-count',style:{fontSize:12,color:'#8a9abf'}},live.length?covered+' of '+live.length+' in a dinner'+(soonLeft?' · '+soonLeft+' to use soon':''):'nothing yet')),
+    live.length?h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},live.map(function(x){var on=cov[x.id];
+      return h('span',{key:x.id,className:'mp-chip',style:{display:'inline-flex',alignItems:'center',gap:6,padding:'4px 2px 4px 6px',borderRadius:12,background:'#080f1e',border:'1px solid '+(on?'#2f6b45':x.useSoon?'#8a6d1f':'#2a3a5c'),maxWidth:'100%',boxSizing:'border-box'}},
+        h('button',{type:'button',className:'mp-soon','aria-pressed':!!x.useSoon,'aria-label':(x.useSoon?'Unmark ':'Mark ')+x.item+' as use soon',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,useSoon:x.useSoon?'false':'true'});},style:{width:32,height:32,flexShrink:0,borderRadius:999,cursor:'pointer',border:'2px solid '+(x.useSoon?'#f6d27a':'#3a4a6a'),background:x.useSoon?'#f6d27a':'transparent',boxShadow:'inset 0 0 0 5px #080f1e',padding:0}}),
+        h('span',{style:{display:'flex',flexDirection:'column',lineHeight:1.25,minWidth:0}},h('span',{style:{fontSize:13,fontWeight:600,color:'#dde1f0'}},x.item),
+          h('span',{style:{fontSize:11,color:on?'#8fe0a8':x.useSoon?'#f6d27a':'#8a9abf'}},on?'✓ in '+on+'’s dinner':x.useSoon?'use soon · no dinner yet':'no dinner yet'),
+          h('span',{style:{fontSize:10,color:'#6f7fa6'}},mpSourceLabel_(x))),
+        h('button',{type:'button',className:'mp-chip-x','aria-label':'Used up or not here: '+x.item,disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'removed'});},style:{minWidth:32,minHeight:32,background:'transparent',border:0,color:'#8a9abf',cursor:'pointer',fontSize:15}},'×'));})):
+      h('span',{style:{fontSize:12,color:'#8a9abf',lineHeight:1.5}},'Food you check off in Shopping, or pick from a receipt under Done shopping, shows up here. Add anything else you have.'),
+    pending.length?h('div',{className:'mp-carried',style:{display:'flex',flexDirection:'column',gap:6}},pending.map(function(x){
+      return h('div',{key:x.id,style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',fontSize:12,color:'#aab6d6'}},h('span',{style:{flex:1,minWidth:140}},'Carried over: ',h('b',{style:{fontWeight:600,color:'#dde1f0'}},x.item)),
+        h('button',{type:'button',className:'mp-keep',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'on hand'});},style:MP_BTN_},'Keep'),
+        h('button',{type:'button',className:'mp-usedit',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,status:'used'});},style:MP_BTN_},'Used it'));})):null,
+    h('form',{className:'mp-onhand-add',onSubmit:add,style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
+      h('input',{'aria-label':'Add something on hand',placeholder:'Cabbage, potatoes…',value:draft,onChange:function(e){setDraft(e.target.value);},style:{flex:'1 1 160px',minWidth:0,minHeight:44,padding:'0 12px',borderRadius:10,background:'#080f1e',border:'1px solid #2a3a5c',color:'#dde1f0',fontSize:14,boxSizing:'border-box'}}),
+      h('button',{type:'button','aria-pressed':soon,onClick:function(){setSoon(!soon);},style:Object.assign({},MP_BTN_,{minHeight:44},soon?{background:'#3a2e0c',border:'1px solid #f6d27a',color:'#f6d27a'}:{})},'Use soon'),
+      h('button',{type:'submit',disabled:busy||!draft.trim(),style:Object.assign({},MP_BTN_GOLD_,{opacity:busy||!draft.trim()?0.6:1})},'Add')),
+    err?h('div',{className:'mp-onhand-err',role:'status',style:{fontSize:12,color:'#ffb3c0'}},err):null,
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'mp-suggest-week',onClick:props.onSuggest,style:Object.assign({},MP_BTN_,{minHeight:44,flex:'1 1 160px',borderColor:'#3a5bab',color:'#cfe0ff'})},'Suggest the rest of the week'),
+      h('button',{type:'button',className:'mp-cook',onClick:props.onCook,style:Object.assign({},MP_BTN_,{minHeight:44,flex:'1 1 160px',borderColor:'#3a5bab',color:'#cfe0ff'})},'What can I make?')));}
+
+// Under a dinner: what it uses (a picker of on-hand items), and Again / Skip / Made extra once its day has passed.
+function MpDayHand(props){var h=React.createElement,e=props.entry,items=props.items;
+  var _o=React.useState(false),open=_o[0],setOpen=_o[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  if(!e||!e.mealName)return null;
+  var uses=e.uses||[],byId={};(items||[]).forEach(function(x){byId[x.id]=x;});
+  var names=uses.map(function(id){return byId[id]&&byId[id].item;}).filter(Boolean);
+  function run(action,params){setBusy(true);return Promise.resolve(props.call(action,Object.assign({weekStart:props.weekStart,day:e.day},params))).then(function(){props.reload();}).catch(function(){}).then(function(){setBusy(false);});}
+  function toggleUse(id){var next=uses.indexOf(id)===-1?uses.concat([id]):uses.filter(function(u){return u!==id;});run('meal_extras',{uses:next.join(',')});}
+  var extra=(items||[]).some(function(x){return x.pid==='LEFT:'+e.id;});
+  var pill=function(on,bad){return Object.assign({},MP_BTN_,{minHeight:36,fontSize:12},on?(bad?{background:'#3a1620',border:'1px solid #c9566b',color:'#ffb3c0'}:{background:'#123322',border:'1px solid #3f9a62',color:'#8fe0a8'}):{});};
+  var live=(items||[]).filter(function(x){return x.status==='on hand';});
+  return h('div',{className:'mp-dayhand',style:{display:'flex',flexDirection:'column',gap:6,marginTop:6}},
+    items&&(names.length||live.length)?h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',alignItems:'center'}},
+      names.map(function(n){return h('span',{key:n,className:'mp-uses',style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:'#13254f',color:'#cfe0ff'}},'uses '+n);}),
+      live.length?h('button',{type:'button',className:'mp-uses-edit','aria-expanded':open,onClick:function(){setOpen(!open);},style:{minHeight:32,padding:'0 8px',background:'transparent',border:0,color:'#8ab4f8',fontSize:12,cursor:'pointer'}},open?'Done':names.length?'Change':'+ What it uses'):null):null,
+    open?h('div',{className:'mp-uses-pick',style:{display:'flex',gap:6,flexWrap:'wrap'}},live.map(function(x){var on=uses.indexOf(x.id)!==-1;
+      return h('button',{key:x.id,type:'button','aria-pressed':on,disabled:busy,onClick:function(){toggleUse(x.id);},style:Object.assign({},MP_BTN_,{minHeight:36,fontSize:12},on?{background:'#13254f',border:'1px solid #3a5bab',color:'#cfe0ff'}:{})},(on?'✓ ':'')+x.item);})):null,
+    props.isPast?h('div',{className:'mp-rate',style:{display:'flex',gap:6,flexWrap:'wrap'}},
+      h('button',{type:'button',className:'mp-again','aria-pressed':e.rating==='again',disabled:busy,onClick:function(){run('meal_extras',{rating:e.rating==='again'?'':'again'});},style:pill(e.rating==='again')},'Again'),
+      h('button',{type:'button',className:'mp-skip','aria-pressed':e.rating==='skip',disabled:busy,onClick:function(){run('meal_extras',{rating:e.rating==='skip'?'':'skip'});},style:pill(e.rating==='skip',true)},'Skip'),
+      items?h('button',{type:'button',className:'mp-extra','aria-pressed':extra,disabled:busy,onClick:function(){run('made_extra',{});},style:pill(extra)},extra?'Made extra ✓':'Made extra'):null):null);}
+
+function MpSheet(props){var h=React.createElement;
+  return h('div',{className:'mp-sheet-backdrop',onClick:function(e){if(e.target===e.currentTarget&&!props.locked)props.onClose();},style:{position:'fixed',inset:0,background:'rgba(2,6,16,0.72)',display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',zIndex:9999}},
+    h('div',{role:'dialog','aria-label':props.title,className:'mp-sheet',style:{width:'100%',maxWidth:560,maxHeight:'88vh',overflowY:'auto',boxSizing:'border-box',background:'#0d1528',borderTop:'1px solid #2a3a5c',borderRadius:'18px 18px 0 0',padding:'14px 16px 20px',display:'flex',flexDirection:'column',gap:12,color:'#dde1f0'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('span',{style:{fontSize:17,fontWeight:700,color:'#eef1fb'}},props.title),
+        h('button',{type:'button','aria-label':'Close',disabled:props.locked,onClick:props.onClose,style:{minWidth:44,minHeight:44,background:'transparent',border:0,color:'#aab6d6',fontSize:18,cursor:'pointer'}},'×')),
+      props.children));}
+
+// Picks a store's list and adds items to it, one shopping_add each (they land in their aisles there).
+function MpSendToList(props){var h=React.createElement;
+  var _s=React.useState(null),stores=_s[0],setStores=_s[1];
+  var _p=React.useState(''),pick=_p[0],setPick=_p[1];
+  var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  React.useEffect(function(){Promise.resolve(props.call('shopping',{})).then(function(r){var s=((r&&r.stores)||[]).map(function(x){return {id:x.tabId,name:x.storeName};});setStores(s);if(s[0])setPick(s[0].id);}).catch(function(){setStores([]);});},[]);
+  function send(){if(!pick||busy)return;setBusy(true);setMsg('');var name=(stores.filter(function(s){return s.id===pick;})[0]||{}).name;
+    props.items.reduce(function(p,t){return p.then(function(){return props.call('shopping_add',{tabId:pick,text:t});});},Promise.resolve())
+    .then(function(){setMsg('Added '+props.items.length+' to the '+name+' list.');}).catch(function(e){setMsg('Couldn’t add them: '+(e.message||e));}).then(function(){setBusy(false);});}
+  if(!props.items.length)return null;
+  return h('div',{className:'mp-send',style:{display:'flex',flexDirection:'column',gap:8}},
+    stores===null?h('span',{style:{fontSize:12,color:'#8a9abf'}},'Loading your stores…'):!stores.length?h('span',{style:{fontSize:12,color:'#8a9abf'}},'No shopping list is connected.'):
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},h('span',{style:{fontSize:12,color:'#aab6d6'}},'Send to'),
+      stores.map(function(s){var on=s.id===pick;return h('button',{key:s.id,type:'button','aria-pressed':on,onClick:function(){setPick(s.id);},style:Object.assign({},MP_BTN_,{minHeight:36,borderRadius:999},on?{background:'#c9a84c',border:'1px solid #c9a84c',color:'#1a1405'}:{})},s.name);}),
+      h('button',{type:'button',className:'mp-send-go',disabled:busy,onClick:send,style:Object.assign({},MP_BTN_GOLD_,{minHeight:36})},busy?'Adding…':props.label||'Add')),
+    msg?h('span',{className:'mp-send-msg',role:'status',style:{fontSize:12,color:/^Added/.test(msg)?'#8fe0a8':'#ffb3c0'}},msg):null);}
+
+function MpSuggestSheet(props){var h=React.createElement;
+  var _r=React.useState(null),res=_r[0],setRes=_r[1];
+  var _k=React.useState({}),off=_k[0],setOff=_k[1];
+  var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _t=React.useState(0),tries=_t[0],setTries=_t[1];
+  React.useEffect(function(){setRes(null);setErr('');Promise.resolve(props.call('suggest_week',{weekStart:props.weekStart})).then(function(r){if(!r||r.ok===false)throw new Error((r&&r.error)||'No suggestions came back.');setRes({days:r.days||[],stillToBuy:r.stillToBuy||[]});setOff({});}).catch(function(e){setErr(e.message||String(e));});},[tries]);
+  var kept=res?res.days.filter(function(d){return !off[d.day];}):[];
+  function save(){if(!kept.length)return;setBusy(true);setErr('');Promise.resolve(props.post({action:'meal_apply',weekStart:props.weekStart,picks:kept})).then(function(){props.reload();props.onClose();}).catch(function(e){setErr('Couldn’t save: '+(e.message||e));setBusy(false);});}
+  return h(MpSheet,{title:'Suggested for the rest of the week',onClose:props.onClose,locked:busy},
+    h('span',{style:{fontSize:13,color:'#aab6d6',lineHeight:1.45}},'Built around what’s on hand and your week. Dinners you planned stay as they are.'),
+    err?h('div',{className:'mp-sheet-err',role:'status',style:{fontSize:13,color:'#ffb3c0'}},err):null,
+    !res&&!err?h('span',{className:'mp-sheet-wait',style:{fontSize:13,color:'#8a9abf'}},'Thinking about your week…'):null,
+    res&&!res.days.length?h('span',{style:{fontSize:13,color:'#8a9abf'}},'Every night left this week already has a dinner.'):null,
+    res&&res.days.length?h('div',{style:{display:'flex',flexDirection:'column',borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},res.days.map(function(d,i){var on=!off[d.day];
+      return h('button',{key:d.day,type:'button',className:'mp-pick','aria-pressed':on,onClick:function(){var o=Object.assign({},off);o[d.day]=on;setOff(o);},style:{display:'flex',gap:10,alignItems:'flex-start',width:'100%',padding:'12px 14px',background:'transparent',border:0,borderTop:i?'1px solid #16223c':'none',color:'inherit',cursor:'pointer',textAlign:'left',opacity:on?1:0.5}},
+        h('span',{'aria-hidden':true,style:{width:22,height:22,flexShrink:0,borderRadius:6,boxSizing:'border-box',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:800,background:on?'#c9a84c':'transparent',color:'#1a1405',border:on?'none':'2px solid #4a5d8a'}},on?'✓':''),
+        h('span',{style:{width:36,flexShrink:0,fontSize:12,fontWeight:700,color:'#8a9abf',paddingTop:3}},d.day.toUpperCase()),
+        h('span',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:4}},h('span',{style:{fontSize:14,fontWeight:600}},d.meal),
+          d.why?h('span',{style:{fontSize:12,color:'#aab6d6',lineHeight:1.35}},d.why):null,
+          d.uses.length?h('span',{style:{display:'flex',gap:4,flexWrap:'wrap'}},d.uses.map(function(u){var it=(props.items||[]).filter(function(x){return x.item===u;})[0];return h('span',{key:u,style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:it&&it.useSoon?'#3a2e0c':'#13254f',color:it&&it.useSoon?'#f6d27a':'#cfe0ff'}},'uses '+u+(it&&it.useSoon?' · use soon':''));})):null),
+        h('span',{style:{fontSize:11,color:'#8a9abf',whiteSpace:'nowrap'}},d.type));})):null,
+    res&&res.stillToBuy.length?h('div',{className:'mp-buy',style:{display:'flex',flexDirection:'column',gap:8,padding:12,borderRadius:10,background:'#1a1608',border:'1px solid #8a6d1f'}},
+      h('span',{style:{fontSize:13,color:'#f6d27a',lineHeight:1.45}},h('b',null,'Still to buy: '),res.stillToBuy.join(', ')),
+      h(MpSendToList,{call:props.call,items:res.stillToBuy,label:'Add '+res.stillToBuy.length})):null,
+    h('div',{style:{display:'flex',gap:8}},
+      h('button',{type:'button',className:'mp-use',disabled:busy||!kept.length,onClick:save,style:Object.assign({},MP_BTN_GOLD_,{flex:1,opacity:busy||!kept.length?0.6:1})},busy?'Saving…':kept.length?'Use these '+kept.length:'Nothing picked'),
+      h('button',{type:'button',className:'mp-again-suggest',disabled:busy||(!res&&!err),onClick:function(){setTries(tries+1);},style:Object.assign({},MP_BTN_,{flex:1,minHeight:44})},'Try again')));}
+
+function MpCookSheet(props){var h=React.createElement;
+  var _r=React.useState(null),res=_r[0],setRes=_r[1];
+  var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _o=React.useState(null),openSend=_o[0],setOpenSend=_o[1];
+  var _p=React.useState(''),planned=_p[0],setPlanned=_p[1];
+  React.useEffect(function(){Promise.resolve(props.call('meal_cook',{weekStart:props.weekStart})).then(function(r){if(!r||r.ok===false)throw new Error((r&&r.error)||'Couldn’t check your recipes.');setRes({recipes:r.recipes||[],open:r.open||[]});}).catch(function(e){setErr(e.message||String(e));});},[]);
+  function plan(rec,day){var ids=(props.items||[]).filter(function(x){return rec.have.some(function(hv){return hv.name===x.item;});}).map(function(x){return x.id;});
+    Promise.resolve(props.call('set_meal',{weekStart:props.weekStart,day:day,mealName:rec.name,type:'Home Cooked'}))
+    .then(function(){return ids.length?props.call('meal_extras',{weekStart:props.weekStart,day:day,uses:ids.join(',')}):null;})
+    .then(function(){setPlanned(rec.name+' is on '+day+'.');setRes(Object.assign({},res,{open:res.open.filter(function(d){return d!==day;})}));props.reload();})
+    .catch(function(e){setErr('Couldn’t plan it: '+(e.message||e));});}
+  var groups=res?[['YOU HAVE EVERYTHING','#8fe0a8',res.recipes.filter(function(r){return !r.missing.length;})],['MISSING 1–2 THINGS','#f6d27a',res.recipes.filter(function(r){return r.missing.length;})]]:[];
+  return h(MpSheet,{title:'What can I make?',onClose:props.onClose},
+    h('span',{style:{fontSize:13,color:'#aab6d6',lineHeight:1.45}},'Your recipes, checked against what’s on hand. Use-soon items count first.'),
+    err?h('div',{className:'mp-sheet-err',role:'status',style:{fontSize:13,color:'#ffb3c0'}},err):null,
+    planned?h('div',{className:'mp-planned',role:'status',style:{fontSize:13,color:'#8fe0a8'}},planned):null,
+    !res&&!err?h('span',{style:{fontSize:13,color:'#8a9abf'}},'Checking your recipes…'):null,
+    res&&!res.recipes.length?h('span',{style:{fontSize:13,color:'#8a9abf',lineHeight:1.45}},'No recipe matches what’s on hand yet. Recipes need their Ingredients filled in (Kitchen → Recipes) to be matched.'):null,
+    groups.map(function(g){if(!g[2].length)return null;return h('div',{key:g[0],style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'0.08em',color:g[1]}},g[0]),
+      g[2].map(function(rec){return h('div',{key:rec.name,className:'mp-recipe',style:{display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:'#080f1e',border:'1px solid #1c2a48'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',gap:8}},h('span',{style:{fontSize:15,fontWeight:700}},rec.name),rec.time?h('span',{style:{fontSize:12,color:'#8a9abf',whiteSpace:'nowrap'}},rec.time):null),
+        h('span',{style:{display:'flex',gap:4,flexWrap:'wrap'}},rec.have.map(function(x){return h('span',{key:x.name,style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:x.useSoon?'#3a2e0c':'#13254f',color:x.useSoon?'#f6d27a':'#cfe0ff'}},x.name+(x.useSoon?' · use soon':''));}),
+          rec.missing.map(function(m){return h('span',{key:m,style:{fontSize:11,padding:'2px 8px',borderRadius:999,border:'1px dashed #c9566b',color:'#ffb3c0'}},'need '+m);})),
+        h('div',{style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},res.open.length?h(React.Fragment,null,h('span',{style:{fontSize:12,color:'#aab6d6'}},'Plan it for'),res.open.map(function(d){return h('button',{key:d,type:'button',className:'mp-plan-day',onClick:function(){plan(rec,d);},style:Object.assign({},MP_BTN_,{minHeight:36})},d);})):h('span',{style:{fontSize:12,color:'#8a9abf'}},'Every night is planned.'),
+          rec.missing.length?h('button',{type:'button',className:'mp-missing','aria-expanded':openSend===rec.name,onClick:function(){setOpenSend(openSend===rec.name?null:rec.name);},style:Object.assign({},MP_BTN_,{minHeight:36})},'Add missing to a list'):null),
+        openSend===rec.name?h(MpSendToList,{call:props.call,items:rec.missing,label:'Add '+rec.missing.length}):null);}));}));}
+// ---- /MealHand ----
+
 function MealPlanSubTab({ apiUrl, apiToken }) {
+  const [sheet, setSheet] = React.useState(null);   // { kind: 'suggest' | 'cook', weekStart }
+  const mpCall = function(action, params) { return apiGet(apiUrl, apiToken, Object.assign({ action: action }, params || {})); };
+  const mpPost = function(body) { return apiPost(apiUrl, apiToken, body); };
   const DAYS      = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const TYPE_COLORS = {
     'Home Cooked': { bg:'rgba(102,187,106,.12)', color:'#66bb6a', border:'rgba(102,187,106,.3)' },
@@ -3981,14 +4137,10 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
       .finally(function() { setBusy(false); if (done) done(); });
   }
 
+  // Opens the suggestions for THAT week (suggest_week {weekStart}); nothing is saved until
+  // "Use these" — without weekStart the backend would default to the current week.
   function suggestWeek(weekStart) {
-    setSuggesting(weekStart);
-    // weekStart is passed explicitly: without it the backend defaults to the CURRENT
-    // week, so "Suggest Week" on next week silently filled this one.
-    apiGet(apiUrl, apiToken, { action:'suggest_meals', weekStart:weekStart })
-      .then(function(r) { if (r.ok) { setError(null); load(); } else setError(r.error || 'Suggest failed'); })
-      .catch(function(e) { setError(e.message); })
-      .finally(function() { setSuggesting(null); });
+    setSheet({ kind: 'suggest', weekStart: weekStart });
   }
 
   function openEdit(weekStart, day, entry) {
@@ -4031,6 +4183,9 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
 
   return (
     <div className="mp-root">
+      {sheet && React.createElement(sheet.kind === 'suggest' ? MpSuggestSheet : MpCookSheet, {
+        weekStart: sheet.weekStart, items: (weeks[0] && weeks[0].weekStart === sheet.weekStart && weeks[0].onHand) || [],
+        call: mpCall, post: mpPost, reload: load, onClose: function() { setSheet(null); } })}
       {error && <div className="mp-error" style={{ color:'#ef5350', fontSize:13, marginBottom:10 }}>{error}</div>}
 
       {moving && (
@@ -4072,6 +4227,12 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
                 {suggesting === wk.weekStart ? '✨ Suggesting…' : '✨ Suggest Week'}
               </button>
             </div>
+
+            {wi === 0 && (
+              <MpOnHand items={wk.onHand} days={days} weekStart={wk.weekStart} call={mpCall} reload={load}
+                onSuggest={function(){ suggestWeek(wk.weekStart); }}
+                onCook={function(){ setSheet({ kind: 'cook', weekStart: wk.weekStart }); }} />
+            )}
 
             {wi === 0 && pastDays.length > 0 && (
               <button className="mp-past-toggle" onClick={function(){ setShowPast(!showPast); }}
@@ -4161,6 +4322,10 @@ function MealPlanSubTab({ apiUrl, apiToken }) {
                             <span style={{ fontSize:11, color:'#c9a84c', fontWeight:600 }}>· tap to swap</span>
                           )}
                         </div>
+                      )}
+                      {!isEditing && !isEmpty && (
+                        <MpDayHand entry={entry} weekStart={wk.weekStart} isPast={isPast}
+                          items={wi === 0 ? wk.onHand : null} call={mpCall} reload={load} />
                       )}
                     </div>
 

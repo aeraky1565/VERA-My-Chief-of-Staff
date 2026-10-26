@@ -298,6 +298,24 @@ function logPurchaseItems_(items, source) {
   return { ok: true, count: rows.length };
 }
 
+// ─── AISLES ──────────────────────────────────────────────────
+// The server's copy of the Shopping tab's aisles (shopAisle_ in the dashboards' ShopList
+// block). New check-off and receipt rows carry it in Purchase History's Category, which
+// is how Meal Plan's on hand tells food from household things.
+var PANTRY_AISLES_ = [
+  ['Frozen', /\b(frozen|ice cream|popsicles?)\b/i],
+  ['Produce', /\b(bananas?|spinach|lemons?|limes?|lettuce|apples?|onions?|potato(es)?|cabbage|tomato(es)?|garlic|berr(y|ies)|blueberr(y|ies)|strawberr(y|ies)|avocados?|carrots?|cucumbers?|peppers?|broccoli|grapes?|oranges?|herbs?|cilantro|parsley|mint|kale|mushrooms?|celery|zucchini|ginger)\b/i],
+  ['Meat & Fish', /\b(chicken|beef|pork|lamb|salmon|fish|shrimp|turkey|steaks?|sausages?|bacon|ground meat)\b/i],
+  ['Dairy & Eggs', /\b(milk|eggs?|yogh?urt|feta|cheese|butter|cream|labneh|halloumi)\b/i],
+  ['Bakery', /\b(bread|buns?|bagels?|tortillas?|pitas?|croissants?|rolls?)\b/i],
+  ['Pantry', /\b(rice|oil|pasta|flour|sugar|beans?|sauce|cereal|coffee|tea|spices?|salt|lentils?|oats|honey|nuts?|snacks?|chips|crackers|vinegar|stock|broth|tuna)\b/i],
+  ['Household', /\b(towels?|soap|detergent|pods?|bags?|batter(y|ies)|paper|candles?|foil|wrap|sponges?|toilet|tissues?|shampoo|conditioner|toothpaste|cleaner|bleach|wipes)\b/i]];
+function pantryAisle_(name) {
+  var t = String(name || '');
+  for (var i = 0; i < PANTRY_AISLES_.length; i++) if (PANTRY_AISLES_[i][1].test(t)) return PANTRY_AISLES_[i][0];
+  return 'Other';
+}
+
 // ─── RECEIPTS ("Done shopping") ──────────────────────────────
 
 var RECEIPT_MAX_B64_ = 8000000;   // ~6 MB of image; the dashboards resize to 1600px first
@@ -370,7 +388,7 @@ function receiptLog_(storeName, items) {
     var name = String((x && x.name) || '').replace(/^🤖\s*/, '').replace(/\s*\(est\..*?\)$/, '').trim();
     var price = x && x.price !== null && x.price !== undefined && x.price !== '' && isFinite(Number(x.price)) ? Number(x.price) : null;
     var qty   = x && x.qty   !== null && x.qty   !== undefined && x.qty   !== '' && isFinite(Number(x.qty))   ? Number(x.qty)   : null;
-    return { name: name, norm: normalizeItemName_(name), price: price, qty: qty };
+    return { name: name, norm: normalizeItemName_(name), price: price, qty: qty, food: !(x && x.food === false) };
   }).filter(function(x) { return x.norm; });
   if (!clean.length) return { ok: false, error: 'No items picked.' };
   var lock = LockService.getScriptLock();
@@ -395,7 +413,7 @@ function receiptLog_(storeName, items) {
           return;
         }
       }
-      fresh.push({ item: x.name, normalized: x.norm, category: 'Other', qty: x.qty, unit: '', store: store, price: x.price });
+      fresh.push({ item: x.name, normalized: x.norm, category: x.food ? pantryAisle_(x.name) : 'Household', qty: x.qty, unit: '', store: store, price: x.price });
     });
     if (fresh.length) logPurchaseItems_(fresh, 'receipt');
     return { ok: true, filled: filled, added: fresh.length };
@@ -447,7 +465,7 @@ function shopCheckLog_(storeName, rawText, done) {
   if (!lock.tryLock(10000)) throw new Error('Purchase History is busy — try again.');
   try {
     if (done) {
-      var r = logPurchaseItems_([{ item: raw, normalized: norm, category: 'Other', store: store }], 'checkout');
+      var r = logPurchaseItems_([{ item: raw, normalized: norm, category: pantryAisle_(raw), store: store }], 'checkout');
       return { logged: !!r.ok };
     }
     var sh = getPurchaseHistorySheet_(), last = sh.getLastRow();

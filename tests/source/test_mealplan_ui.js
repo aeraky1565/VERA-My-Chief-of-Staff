@@ -208,7 +208,7 @@ const THIS_MONDAY = isoOf(_mon), NEXT_MONDAY = isoOf(_next);
         const btns = host.querySelectorAll('.mp-suggest');
         btns[btns.length - 1].click();                     // next week's button
         return new Promise(r => setTimeout(() => r(
-          window.__calls.filter(c => c.action === 'suggest_meals').pop() || null), 250));
+          window.__calls.filter(c => c.action === 'suggest_week').pop() || null), 250));
       });
       // Compared against the Monday computed HERE, not against the call's own value —
       // `call.weekStart === call.weekStart` would pass on the version that sends no

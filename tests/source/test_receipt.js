@@ -34,6 +34,7 @@ const S = vm.createContext({ console, Math, JSON, Date, Object, String, Number, 
 });
 S.locks = 0; S.lockFree = true;
 S.LockService = { getScriptLock: () => ({ tryLock: () => { if (!S.lockFree) return false; S.locks++; return true; }, releaseLock: () => { S.locks--; } }) };
+vm.runInContext(PANTRY.match(/var PANTRY_AISLES_ = \[[\s\S]*?\]\];\n/)[0] + extract(PANTRY, 'pantryAisle_'), S);
 vm.runInContext(constLine(CODE, 'PURCHASE_HISTORY_HEADERS') + varLine(PANTRY, 'RECEIPT_MAX_B64_') + varLine(PANTRY, 'RECEIPT_MIMES_'), S);
 ['normalizeItemName_', 'getPurchaseHistorySheet_', 'logPurchaseItems_', 'readReceipt_', 'receiptClean_', 'receiptLog_'].forEach(n => vm.runInContext(extract(PANTRY, n), S));
 ['shopStoreOf_', 'webReceiptScan_', 'webReceiptLog_'].forEach(n => vm.runInContext(extract(WEB, n), S));
