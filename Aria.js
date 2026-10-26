@@ -256,7 +256,8 @@ function ariaLatestRun_(runs) {
 
 /**
  * Pure: is ARIA running? From Settings (last_run_utc, last_run_status), else the
- * newest Run Log row. level: ok | partial | failed | stale (no run logged, or none in 26 hours).
+ * newest Run Log row. level: ok | partial | failed | stale (none in 26 hours) | never
+ * (no run logged yet: ARIA hasn't started, which isn't yet a failure).
  */
 function ariaRunHealth_(runs, settings, nowIso) {
   var latest = ariaLatestRun_(runs), st = settings || {};
@@ -264,7 +265,7 @@ function ariaRunHealth_(runs, settings, nowIso) {
   var status = String(st.last_run_status || (latest && latest.status) || '').trim();
   var said = status;   // last_run_status is "status + short reason"
   status = /^ok\b/i.test(status) ? 'OK' : /^partial/i.test(status) ? 'Partial' : /^fail/i.test(status) ? 'Failed' : status;
-  if (!last) return { level: 'stale', lastRun: '', status: '', text: 'ARIA did not run: no run is logged' };
+  if (!last) return { level: 'never', lastRun: '', status: '', text: 'ARIA hasn’t run yet: no run is logged. Its first run is at 06:52.' };
   var hours = (new Date(nowIso).getTime() - new Date(last).getTime()) / 36e5;
   var detail = latest && latest.runTime === last ? [latest.failures, latest.runId].filter(Boolean).join(' · ') : said.replace(/^(ok|partial|failed?)\W*/i, '');
   if (hours > ARIA_STALE_HOURS_) return { level: 'stale', lastRun: last, status: status, hours: Math.round(hours), text: 'ARIA did not run: its last run was ' + Math.round(hours) + ' hours ago' };
@@ -313,8 +314,9 @@ function ariaWantedFlags_(watch, runs, settings, nowIso) {
   });
   var h = ariaRunHealth_(runs, settings, nowIso);
   if (h.level !== 'ok') {
-    wanted['ARIA|RUN_HEALTH'] = { flag: h.level === 'stale' ? 'ARIA did not run' : h.level === 'failed' ? 'ARIA run failed' : 'ARIA run partially failed',
-      reason: h.text, urgency: h.level === 'partial' ? 'Medium' : 'High' };
+    // Before ARIA has ever logged a run, it is Medium: not started yet is not yet a failure.
+    wanted['ARIA|RUN_HEALTH'] = { flag: h.level === 'never' ? 'ARIA hasn’t run yet' : h.level === 'stale' ? 'ARIA did not run' : h.level === 'failed' ? 'ARIA run failed' : 'ARIA run partially failed',
+      reason: h.text, urgency: h.level === 'partial' || h.level === 'never' ? 'Medium' : 'High' };
   }
   var latest = ariaLatestRun_(runs);
   if (latest && ariaEmailState_(latest.emailSent) === 'failed') {
@@ -614,10 +616,51 @@ function syncAriaFlags_() {
   try { ariaRequestsSheet_(); } catch (e) { Logger.log('aria: ARIA Requests tab not ensured'); }
   var wanted = ariaWantedFlags_(t.watch, t.runs, t.settings, new Date().toISOString());
   var opened = upsertKeyedFlags_(flagSheet, ARIA_FLAG_PREFIX_, 'ARIA', wanted, dateStr);
+  try { ariaPostBookNow_(t.watch); } catch (e) { Logger.log('aria: Book now Slack post skipped: ' + e.message); }
   try { ariaMarkBooked_(t.watch); } catch (e) { Logger.log('aria booked: check skipped: ' + e.message); }
   ariaForget_();
   Logger.log('aria flags: ' + Object.keys(wanted).length + ' wanted, ' + opened + ' opened');
   return { ok: true, wanted: Object.keys(wanted).length, opened: opened };
+}
+
+var ARIA_POSTED_PROP_ = 'ARIA_BOOK_NOW_POSTED';
+var ARIA_POSTED_KEEP_ = 60;
+
+/**
+ * Pure: the Book now rows not yet posted to Slack. One post per Book now: its
+ * Action Key and the day it began (Action Since), so a trip that leaves Book now
+ * and comes back is posted again. → [{id, text}].
+ */
+function ariaBookNowPosts_(watch, posted) {
+  var seen = {};
+  (posted || []).forEach(function(k) { seen[k] = 1; });
+  return (watch || []).filter(function(w) { return w.actionType === 'BOOK_NOW'; }).map(function(w) {
+    var key = w.actionKey || ('ARIA|' + (w.tripId || w.ref) + '|BOOK_NOW');
+    var dates = w.earliest ? ' (' + w.earliest + (w.latest ? '–' + w.latest : '') + ')' : '';
+    var fare = w.bestFare != null ? ': best $' + String(Math.round(w.bestFare)).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (w.travelers ? ' for ' + w.travelers : '') : '';
+    return { id: key + '|' + (w.actionSince || ''), text: '🧭 ARIA says book now: ' + (w.label || w.tripId || w.ref) + dates + fare + '.'
+      + (w.actionNeeded ? ' ' + w.actionNeeded.replace(/\.$/, '') + '.' : '') + (w.bestLink ? ' <' + w.bestLink + '|Book>' : '') };
+  }).filter(function(p) { return !seen[p.id]; });
+}
+
+/**
+ * Posts each new Book now to Slack once (Notifications: "ARIA Book now", on by
+ * default). ARIA's own email still goes; this is the nudge on your phone. A post
+ * that Slack refuses is tried again on the next sync.
+ */
+function ariaPostBookNow_(watch) {
+  if (!isNotifEnabled_('aria_book_now') || !isSlackConfigured_()) return 0;
+  var ch = getNotifChannel_('aria_book_now');
+  if (!/^vera-/.test(ch)) return 0;
+  var props = PropertiesService.getScriptProperties(), posted = [];
+  try { posted = JSON.parse(props.getProperty(ARIA_POSTED_PROP_) || '[]') || []; } catch (e) { posted = []; }
+  var sent = 0;
+  ariaBookNowPosts_(watch, posted).forEach(function(p) {
+    if (sendSlack_(ch, p.text)) { posted.push(p.id); sent++; }
+  });
+  if (sent) props.setProperty(ARIA_POSTED_PROP_, JSON.stringify(posted.slice(-ARIA_POSTED_KEEP_)));
+  Logger.log('aria: ' + sent + ' Book now post(s) to Slack');
+  return sent;
 }
 
 /**

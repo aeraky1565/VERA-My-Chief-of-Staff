@@ -151,6 +151,7 @@ const NOTIF_REGISTRY = [
   // Travel
   { key: 'pretrip_briefing',    label: 'Pre-Trip Briefing',     emoji: '🗺️',  category: 'Travel',               channel: 'vera-notifications', description: 'Pre-departure travel briefing', locked: false },
   { key: 'travel_day_briefing', label: 'Travel Day Briefing',   emoji: '✈️',  category: 'Travel',               channel: 'vera-notifications', description: 'Day-of travel briefing', locked: false },
+  { key: 'aria_book_now',       label: 'ARIA Book Now',         emoji: '🧭', category: 'Travel',               channel: 'vera-notifications', description: 'ARIA says a watched fare is worth booking (once per trip)', locked: false },
   // Routines
   { key: 'gym_checkin',         label: 'Gym Check-in',          emoji: '🏋️',  category: 'Routines',             channel: 'vera-chat',          description: 'Post-gym session check-in', locked: false },
   { key: 'monthly_review',        label: 'Monthly Life Review',   emoji: '🌙', category: 'Routines',             channel: 'vera-notifications', description: 'Monthly reflection nudge', locked: false },

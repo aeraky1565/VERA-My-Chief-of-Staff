@@ -72,7 +72,15 @@ the answer.
 
 ## ARIA
 
-**↗ Hand off → Fare request for ARIA** appears on any option with flights. It
+ARIA usually needs no copy and paste. On a starred option of a shortlisted idea,
+**🧭 Scout** writes a request to VERA's "ARIA Requests" tab. ARIA reads it on its
+morning run, logs fares under the option, and VERA shows them on the option and
+in the date windows. Ask VERA also uses them for that route's flights.
+
+The manual hand-off below is a fallback for a one-off check in an ARIA chat.
+Both buttons are hidden while ARIA is scouting the option itself.
+
+**↗ Hand off → Copy for ARIA (manual)** appears on any option with flights. It
 copies:
 
 ```

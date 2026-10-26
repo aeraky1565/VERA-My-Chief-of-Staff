@@ -263,6 +263,7 @@ async function scenario(page, label, width) {
   await act(page, (f) => eval(f)().querySelector('.ti-to-willa').click(), mixedCard.toString());
   box = await page.evaluate((f) => { const c = eval(f)().querySelector('.ti-copyout textarea'); return c ? c.value : ''; }, mixedCard.toString());
   check(label + ': WILLA gets one line with the option and its money', /^VERA → WILLA · Trip idea "Spring in Europe": Lisbon → Algarve → cruise · 13 nights · Mar – May 20\d\d · estimated \$5\.4k – \$7\.8k total/.test(box) && /budget \$13k \(within\)/.test(box), box);
+  check(label + ': the manual ARIA hand-off says it is manual', (await page.evaluate((f) => eval(f)().querySelector('.ti-to-aria').innerText, mixedCard.toString())) === 'Copy for ARIA (manual)');
   await act(page, (f) => eval(f)().querySelector('.ti-to-aria').click(), mixedCard.toString());
   box = await page.evaluate((f) => { const c = eval(f)().querySelector('.ti-copyout textarea'); return c ? c.value : ''; }, mixedCard.toString());
   check(label + ': ARIA gets the route\'s flights and the answer to give', /=== VERA fare request v1 ===/.test(box) && /- Home → LIS\n- BCN → Home\n/.test(box) && /Fare: \$<total/.test(box), box);
@@ -288,6 +289,9 @@ async function scenario(page, label, width) {
   check(label + ': Scout asks ARIA for this option of this idea', sreq && /^IDEA-/.test(sreq.ideaId) && /^OPT-/.test(sreq.optionId), JSON.stringify(sreq));
   let ac = (await inCard('.ti-aria')) || '';
   check(label + ': …then says when ARIA will pick it up, and offers to stop', /ARIA · SCOUTING/i.test(ac) && /Asked 2026-10-25\. ARIA picks this up on its next morning run/.test(ac) && /Stop scouting/.test(ac), ac);
+  await page.evaluate((f) => { const c = eval(f)(); if (!c.querySelector('.ti-to-willa')) c.querySelector('.ti-handoff-btn').click(); }, ariaCard.toString()); await wait(80);
+  check(label + ': while ARIA scouts the option, the manual ARIA hand-off is hidden (WILLA stays)', (await inCard('.ti-to-willa')) !== null && (await inCard('.ti-to-aria')) === null && (await inCard('.ti-from-aria')) === null);
+  await page.evaluate((f) => eval(f)().querySelector('.ti-handoff-btn').click(), ariaCard.toString()); await wait(80);
   // ARIA's morning run: it picks the request up and logs fares under the option's ID.
   await page.evaluate(() => { window.__ariaRan = window.__posts.filter(p => p.action === 'aria_request_save').pop().optionId.toUpperCase(); });
   await page.evaluate(() => window.__q('.ti-back').click()); await wait(80);
@@ -347,6 +351,15 @@ async function scenario(page, label, width) {
   const op = await page.$eval('#tiprobe2', n => n.innerText).catch(() => '');
   check(label + ': opened on an idea, Trip Ideas shows that idea, not the board', !!(await page.$('#tiprobe2 .ti-back')) && /Spring in Europe/.test(op) && !(await page.$('#tiprobe2 .ti-new-idea')), op.slice(0, 200));
   await page.evaluate(() => document.getElementById('tiprobe2').remove());
+  // Started from a Bucket List place: a new brief, its title and where filled in.
+  await page.evaluate(() => {
+    const host = document.createElement('div'); host.id = 'tiprobe3'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(TripIdeasView, { apiUrl: 'https://vera.test/exec', apiToken: 't', openIdea: { seed: { title: 'Lyon', where: 'Lyon, France' }, at: 2 } }));
+  });
+  await wait(250);
+  const sd = await page.evaluate(() => { const t = document.querySelector('#tiprobe3 .ti-title'), w = document.querySelector('#tiprobe3 .ti-where'); return t && w ? t.value + '|' + w.value : ''; });
+  check(label + ': "Plan this" from the Bucket List opens a new brief with the place filled in', sd === 'Lyon|Lyon, France', sd);
+  await page.evaluate(() => document.getElementById('tiprobe3').remove());
 }
 
 (async () => {

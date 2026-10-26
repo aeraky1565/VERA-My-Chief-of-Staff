@@ -424,6 +424,11 @@ vm.runInContext(A, C);
 const cr = code => vm.runInContext(code, C);
 {
   const mt = m => { C.m = m; return cr('tiMonthsText_(m)'); };
+  check('a Bucket List city becomes the idea\'s title, with its country in where', JSON.stringify(cr('tiSeedFromBucket_({City:"Lyon", Country:"France"})')) === '{"title":"Lyon","where":"Lyon, France"}');
+  check('…a Dream Trip names the idea; a country-level place is just the country', cr('tiSeedFromBucket_({Country:"Japan", "Dream Trip":"Cherry blossoms"}).title') === 'Cherry blossoms' && cr('tiSeedFromBucket_({Country:"Japan"}).where') === 'Japan' && cr('tiSeedFromBucket_(null).title') === 'New trip');
+  C.__ev = []; C.window = { dispatchEvent: e => C.__ev.push(e) }; C.CustomEvent = function(t, o) { this.type = t; this.detail = o && o.detail; };
+  cr('tiPlanBucket_({City:"Lyon", Country:"France"})');
+  check('"Plan this" asks the Travel tab for a new brief, by the same event as "Open the idea"', C.__ev.length === 1 && C.__ev[0].type === 'vera-open-idea' && C.__ev[0].detail.seed.where === 'Lyon, France' && !C.__ev[0].detail.ideaId);
   check('months read as a range', mt(['2027-03', '2027-04', '2027-05']) === 'Mar – May 2027', mt(['2027-03', '2027-04', '2027-05']));
   check('…or a list when they skip', mt(['2027-03', '2027-06']) === 'Mar, Jun 2027', mt(['2027-03', '2027-06']));
   check('…across a new year', mt(['2026-12', '2027-01', '2027-02']) === 'Dec 2026 – Feb 2027', mt(['2026-12', '2027-01', '2027-02']));
@@ -622,10 +627,12 @@ check('the five routes are wired', /case 'trip_ideas':\s+return jsonOut_\(webGet
   && /case 'trip_idea_save':\s+return jsonOut_\(webSaveTripIdea_\(body\)\);/.test(WEB) && /case 'trip_idea_delete':\s+return jsonOut_\(webDeleteTripIdea_\(body\)\);/.test(WEB)
   && /case 'trip_option_save':\s+return jsonOut_\(webSaveTripIdeaOption_\(body\)\);/.test(WEB) && /case 'trip_option_delete':\s+return jsonOut_\(webDeleteTripIdeaOption_\(body\)\);/.test(WEB));
 check('full: Trip Ideas is the first Travel tab, and renders the view', /const subTabs=\[\{id:'ideas',label:'💡 Trip Ideas'/.test(APP) && /sub==='ideas'&&\/\*#__PURE__\*\/React\.createElement\(TripIdeasView,\{apiUrl:apiUrl,apiToken:apiToken,openIdea:openIdea\}\)/.test(APP));
-check('full: a plan card\'s "Open the idea" switches to Trip Ideas on that idea', /window\.addEventListener\('vera-open-idea',f\)/.test(APP) && /setOpenIdea\(\{id:id,at:Date\.now\(\)\}\);setSub\('ideas'\)/.test(APP));
+check('full: a plan card\'s "Open the idea" switches to Trip Ideas on that idea', /window\.addEventListener\('vera-open-idea',f\)/.test(APP) && /setOpenIdea\(\{id:d\.ideaId\|\|'',seed:d\.seed\|\|null,at:Date\.now\(\)\}\);setSub\('ideas'\)/.test(APP));
 check('lite: Trip Ideas is the first Travel tab, and renders the view', /\{\[\['ideas','💡 Trip Ideas'\],\['trips','✈️ My Trips'\]/.test(LITE) && /\{travSub === 'ideas' && <TripIdeasView apiUrl=\{apiUrl\} apiToken=\{apiToken\} openIdea=\{openIdea\} \/>\}/.test(LITE));
-check('lite: a plan card\'s "Open the idea" switches to Trip Ideas on that idea', /window\.addEventListener\('vera-open-idea', f\)/.test(LITE) && /setOpenIdea\(\{ id, at: Date\.now\(\) \}\); setTravSub\('ideas'\)/.test(LITE));
-check('opened from a plan card, Trip Ideas goes to that idea once the ideas are in (both dashboards, via the shared block)', /var o=props\.openIdea;if\(!o\|\|!o\.id\|\|data\.loading\)return;\s*if\(\(data\.ideas\|\|\[\]\)\.some\(function\(i\)\{return i\.id===o\.id;\}\)\)setView\(\{mode:'idea',id:o\.id\}\);\},\[props\.openIdea&&props\.openIdea\.at,data\.loading\]\)/.test(A));
+check('lite: a plan card\'s "Open the idea" switches to Trip Ideas on that idea', /window\.addEventListener\('vera-open-idea', f\)/.test(LITE) && /setOpenIdea\(\{ id: d\.ideaId \|\| '', seed: d\.seed \|\| null, at: Date\.now\(\) \}\); setTravSub\('ideas'\)/.test(LITE));
+check('opened from a plan card, Trip Ideas goes to that idea once the ideas are in (both dashboards, via the shared block)', /if\(o\.id&&\(data\.ideas\|\|\[\]\)\.some\(function\(i\)\{return i\.id===o\.id;\}\)\)setView\(\{mode:'idea',id:o\.id\}\);\},\[props\.openIdea&&props\.openIdea\.at,data\.loading\]\)/.test(A));
+check('…and from a Bucket List place, it starts a new brief with the place filled in', /if\(o\.seed\)\{setErr\(''\);setView\(\{mode:'brief',seed:o\.seed,at:o\.at\}\);return;\}/.test(A) && /:Object\.assign\(tiBlankIdea_\(\),view\.seed\|\|\{\}\),/.test(A));
+check('both Bucket Lists offer "Plan this" on a place still to visit', [APP, LITE].every(x => /React\.createElement\("button",\{className:'bucket-plan',onClick:function\(\)\{tiPlanBucket_\(e\);\}/.test(x) && x.indexOf("💡 Plan this") !== -1));
 check('the deciders offer a fare sort once ARIA has fares', /priced&&h\('div',\{role:'group','aria-label':'Sort the windows'/.test(A) && /tiChip_\(h,'s-fare','🧭 Cheapest fare',sortBy==='fare',function\(\)\{setBy\('fare'\);\}\)/.test(A));
 check('index.html carries the block, not a stale build', fs.readFileSync(path.join(ROOT, 'docs/index.html'), 'utf8').indexOf('function TripIdeasView(') !== -1);
 check('nothing in Trip Ideas writes to a calendar', !/CalendarApp|Calendar\.Events/.test(SRC));

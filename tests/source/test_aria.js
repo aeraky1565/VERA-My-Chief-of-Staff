@@ -43,7 +43,7 @@ function tab(values) { return { getLastRow: () => values.length, getLastColumn: 
 let props = {}, cache = {}, opens = 0, openFails = false;
 const S = vm.createContext({
   console, JSON, Math, Number, String, Array, Date, Object, isFinite, parseInt,
-  PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null }) },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = String(v); } }) },
   CacheService: { getScriptCache: () => ({ get: k => cache[k] || null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; } }) },
   SpreadsheetApp: { openById: id => { opens++; if (openFails) throw new Error('no access'); return { getSheetByName: n => n === 'Watchlist' ? tab(WATCH) : n === 'Fare Log' ? tab(FARES) : null }; } },
   Session: { getScriptTimeZone: () => 'UTC' },
@@ -268,7 +268,10 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   check('a failed run is red', run('ariaRunHealth_([], {last_run_utc:"2027-02-20T11:52:00Z", last_run_status:"Failed: Sheets error"}, "2027-02-20T15:00:00Z").level') === 'failed');
   check('an OK run is green', run('ariaRunHealth_([], {last_run_utc:"2027-02-20T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z").level') === 'ok');
   check('no run in 26 hours: ARIA did not run', run('ariaRunHealth_([], {last_run_utc:"2027-02-19T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z").level') === 'stale');
-  check('…and no run logged at all is the same', run('ariaRunHealth_([], {}, "2027-02-20T15:00:00Z").level') === 'stale');
+  check('no run logged at all: ARIA hasn\'t run yet, not "did not run"', run('ariaRunHealth_([], {}, "2027-02-20T15:00:00Z").level') === 'never' && /ARIA hasn’t run yet/.test(run('ariaRunHealth_([], {}, "2027-02-20T15:00:00Z").text')));
+  const nv = run('ariaWantedFlags_([], [], {}, "2027-02-20T15:00:00Z")')['ARIA|RUN_HEALTH'];
+  check('…a Medium flag until its first run; a run gone quiet after that is High', nv && nv.flag === 'ARIA hasn’t run yet' && nv.urgency === 'Medium'
+    && run('ariaWantedFlags_([], [], {last_run_utc:"2027-02-19T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z")["ARIA|RUN_HEALTH"].urgency') === 'High', JSON.stringify(nv));
   check('email states read from the Run Log words', run('[ariaEmailState_("Sent (2 trips)"), ariaEmailState_("Draft (send failed: x)"), ariaEmailState_("Failed: x"), ariaEmailState_("None"), ariaEmailState_("")].join()') === 'sent,failed,failed,none,none');
   S.w = w;
   const e = run('ariaEmailFor_(w[0], runs)');
@@ -292,6 +295,13 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   check('…and an OK, fresh run raises no health flag', !want2['ARIA|RUN_HEALTH']);
   S.wbad = [Object.assign({}, w[0], { actionKey: 'ARIA|TRIP-0001|UNDER_CEILING' })];
   check('a key that doesn\'t match its type is rebuilt from the row', Object.keys(run('ariaWantedFlags_(wbad, [], {last_run_utc:"2027-02-20T11:52:00Z", last_run_status:"OK"}, "2027-02-20T15:00:00Z")')).join() === 'ARIA|TRIP-0001|BOOK_NOW');
+  S.bn = [{ tripId: 'TRIP-0001', label: 'Chicago Trip', earliest: '2027-04-05', latest: '2027-04-13', actionType: 'BOOK_NOW', actionKey: 'ARIA|TRIP-0001|BOOK_NOW', actionSince: '2027-02-18',
+    actionNeeded: 'Book now: $704 on UA', bestFare: 1408, travelers: 2, bestLink: 'https://fares.example/x' }, { tripId: 'TRIP-0002', actionType: 'NEEDS_AIRPORTS' }];
+  const bp = run('ariaBookNowPosts_(bn, [])');
+  check('a Book now becomes one Slack post, with the trip, the fare and the Book link', bp.length === 1 && bp[0].id === 'ARIA|TRIP-0001|BOOK_NOW|2027-02-18'
+    && bp[0].text === '🧭 ARIA says book now: Chicago Trip (2027-04-05–2027-04-13): best $1,408 for 2. Book now: $704 on UA. <https://fares.example/x|Book>', bp[0] && bp[0].text);
+  check('…posted once, and again only when a new Book now begins', run('ariaBookNowPosts_(bn, ["ARIA|TRIP-0001|BOOK_NOW|2027-02-18"])').length === 0
+    && run('ariaBookNowPosts_([Object.assign({}, bn[0], {actionSince: "2027-03-02"})], ["ARIA|TRIP-0001|BOOK_NOW|2027-02-18"])').length === 1);
   const g = run('ariaGaps_([], w, [], [], "2027-02-20")');
   check('the gaps list what ARIA says it can\'t price, in its words', g.incomplete.some(x => x.id === 'TRIP-0002' && x.why === 'Needs airports'), JSON.stringify(g.incomplete));
 
@@ -310,6 +320,9 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   const tracker = { Watchlist: S.WV, 'Fare Log': FARES, 'Run Log': S.RL, Settings: S.SET };
   S.SpreadsheetApp = { openById: () => ({ getSheetByName: n => tracker[n] ? tab(tracker[n]) : null }) };
   S.Date = Date; vm.runInContext('Date = this.Date', S);
+  const slack = []; S.notifOn = true; S.slackOk = true;
+  S.isNotifEnabled_ = k => k === 'aria_book_now' && S.notifOn; S.isSlackConfigured_ = () => true; S.getNotifChannel_ = () => 'vera-notifications';
+  S.sendSlack_ = (ch, t) => { slack.push([ch, t]); return S.slackOk; };
   const r1 = run('syncAriaFlags_()');
   const open = () => FL.filter(x => x[2] === 'ARIA' && x[8] === 'No').map(x => x[9]).sort().join();
   check('a sync opens one flag per action and the health flag', r1.ok && open() === 'ARIA|RUN_HEALTH,ARIA|TRIP-0001|BOOK_NOW,ARIA|TRIP-0002|NEEDS_AIRPORTS,ARIA|TRIP-0003|DATE_CHANGED', open());
@@ -317,7 +330,14 @@ console.log('\nv3.1: actions, the Run Log, run health and the Book now email');
   check('…dated when the action began, sourced ARIA', bookRow[1] === '2027-02-18' && bookRow[2] === 'ARIA' && bookRow[3] === 'Book now: $704 on UA 2027-04-05–2027-04-13');
   check('…an ARIA flag whose key left the Watchlist is resolved', FL.find(x => x[9] === 'ARIA|TRIP-0009|CEILING_NOT_SET')[8] === 'Yes');
   check('…and other sources\' flags are untouched', FL.find(x => x[9] === 'watchdog_x')[8] === 'No');
+  check('the sync posts the new Book now to Slack', slack.length === 1 && slack[0][0] === 'vera-notifications' && /^🧭 ARIA says book now: Chicago Trip/.test(slack[0][1]), JSON.stringify(slack));
   const n = FL.length; run('syncAriaFlags_()');
+  check('…and not again on the next sync', slack.length === 1);
+  delete props.ARIA_BOOK_NOW_POSTED; S.slackOk = false; run('syncAriaFlags_()');
+  check('a post Slack refuses is tried again next time', slack.length === 2 && !props.ARIA_BOOK_NOW_POSTED);
+  S.slackOk = true; S.notifOn = false; run('syncAriaFlags_()');
+  check('switched off in Notifications, nothing is posted', slack.length === 2);
+  S.notifOn = true; run('syncAriaFlags_()'); S.notifOn = false;
   check('syncing again duplicates nothing', FL.length === n);
   S.WV[1][12] = ''; S.WV[1][14] = ''; S.WV[1][11] = '';
   run('syncAriaFlags_()');
