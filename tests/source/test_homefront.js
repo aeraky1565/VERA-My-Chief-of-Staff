@@ -216,8 +216,8 @@ S.getMealPlanWeek_ = () => { throw new Error('no sheet'); }; S.getCurrentWeekSta
 S.getUpcomingGuests_ = () => []; S.readPTOConfig_ = () => ({});
 S.HOME_ITEM_HEADERS = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 S.TABS.HOME_ITEMS = 'Home Items';
-const cr = run('webHomeFrontComingUp_()');
-check('the endpoint leaves out a source it can\'t read, and says which', cr.ok && cr.missing.join() === 'meals' && Array.isArray(cr.items), JSON.stringify(cr).slice(0, 200));
+let cr = {}; try { cr = run('webHomeFrontComingUp_()'); } catch (e) { cr = { threw: e.message }; }
+check('the endpoint leaves out a source it can\'t read, and says which', cr.ok && (cr.missing || []).join() === 'meals' && Array.isArray(cr.items), JSON.stringify(cr).slice(0, 200));
 
 console.log('\nwiring');
 check('the routes', /case 'chore_upkeep_done':\s+return jsonOut_\(webUpkeepDone_\(e\)\);/.test(WEB) && /case 'chore_upkeep_set':\s+return jsonOut_\(webUpkeepSet_\(e\)\);/.test(WEB) && /case 'chores_upkeep_starter':\s+return jsonOut_\(webUpkeepStarter_\(\)\);/.test(WEB));

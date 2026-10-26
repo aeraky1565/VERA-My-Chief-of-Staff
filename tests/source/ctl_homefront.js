@@ -93,7 +93,7 @@ CONTROLS.forEach(function(c) {
     fs.writeFileSync(dest, files[f]);
   });
   const test = c[2] || TEST;
-  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_PAGES_ROOT: OUT }) });
+  const r = cp.spawnSync('node', [test], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT, VERA_PAGES_ROOT: OUT }, c[2] ? { HF_QUICK: '1' } : {}) });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).map(s => s.replace(/^  FAIL /, '').trim().split('  — ')[0]);
   const crashed = r.status !== 0 && fails.length === 0;

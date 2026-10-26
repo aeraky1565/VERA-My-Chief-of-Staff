@@ -65,8 +65,11 @@ check('as a page: printable, and every value escaped', /<!doctype html>/.test(ht
     'react-dom.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react-dom.min.js'), 'utf8'),
     'babel.min.js':                fs.readFileSync(require.resolve('@babel/standalone/babel.min.js'), 'utf8'),
   };
-  for (const [label, kind] of [['full', 'full'], ['lite', 'lite']]) {
-    for (const width of [390, 1280]) {
+  // HF_QUICK (set by ctl_homefront.js): the full dashboard at phone width only, so the controls fit
+  // the runner's time. The lite copy of the shared block is checked word for word above.
+  const QUICK = !!process.env.HF_QUICK;
+  for (const [label, kind] of (QUICK ? [['full', 'full']] : [['full', 'full'], ['lite', 'lite']])) {
+    for (const width of (QUICK ? [390] : [390, 1280])) {
       const L = label + ' ' + width;
       console.log('\n' + label + ' dashboard @ ' + width + 'px');
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
