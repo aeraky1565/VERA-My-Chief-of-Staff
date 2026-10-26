@@ -335,6 +335,7 @@ function webSaveGathering_(body) {
       sheet.appendRow(hfGatheringToRow_(g, now, now));
       g.created = now; g.updated = now;
     } else {
+      // An edit keeps the original Created; only Updated moves.
       var created = String(sheet.getRange(row, 15).getValue() || now);
       sheet.getRange(row, 1, 1, w).setValues([hfGatheringToRow_(g, created, now)]);
       g.created = created; g.updated = now;
