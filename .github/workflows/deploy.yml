@@ -30,6 +30,10 @@ env:
 # Shares a group with regression.yml so the two never hold the live /exec at once —
 # see the comment there for what it cost. Queue, never cancel: a deploy interrupted
 # part way through re-pointing a deployment is the one outcome worse than a slow one.
+# But a group holds one running and ONE pending run: a third arrival replaces the
+# pending one, even with cancel-in-progress false. Two pushes to main a few seconds
+# apart (Oct 26: a test fix, then its [deploy]) lost the deploy that way — it showed
+# "cancelled" after a second. Push to main once the group is idle, not back to back.
 concurrency:
   group: vera-live-exec
   cancel-in-progress: false
