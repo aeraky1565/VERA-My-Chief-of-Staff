@@ -487,11 +487,15 @@ function ariaRequestFromOption_(idea, option, homeAirports) {
 
 function ariaRequestsSheet_() { return tiSchema_(ensureSheet(getSpreadsheet(), TABS.ARIA_REQUESTS, ARIA_REQUESTS_HEADERS), ARIA_REQUESTS_HEADERS); }
 
-/** Pure: a request → its row. */
+/**
+ * Pure: a request → its row. Status is written as ARIA's contract spells it
+ * (Active / Withdrawn / Booked); VERA reads it back in any case.
+ */
 function ariaRequestToRow_(r) {
   var v = function(x) { return x == null ? '' : x; };
+  var st = String(r.status || '').toLowerCase();
   return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
-    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), r.status, r.created, r.updated, v(r.flexDays)];
+    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), st ? st.charAt(0).toUpperCase() + st.slice(1) : '', r.created, r.updated, v(r.flexDays)];
 }
 
 /** Pure: a row → a request. */
@@ -604,6 +608,8 @@ function syncAriaFlags_() {
     Logger.log('aria flags: tracker unreadable');
     return { ok: false, error: why };
   }
+  // ARIA reads VERA's "ARIA Requests" tab only once it exists: make sure it does, with ARIA's headers.
+  try { ariaRequestsSheet_(); } catch (e) { Logger.log('aria: ARIA Requests tab not ensured'); }
   var wanted = ariaWantedFlags_(t.watch, t.runs, t.settings, new Date().toISOString());
   var opened = upsertKeyedFlags_(flagSheet, ARIA_FLAG_PREFIX_, 'ARIA', wanted, dateStr);
   try { ariaMarkBooked_(t.watch); } catch (e) { Logger.log('aria booked: check skipped: ' + e.message); }

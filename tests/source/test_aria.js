@@ -182,7 +182,7 @@ console.log('\nasking ARIA to scout an option');
   S.ideasById = { 'IDEA-1': S.idea };
   cache[run('ARIA_CACHE_KEY_')] = 'stale';
   const a = run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-ABC" })');
-  check('a starred option of a shortlisted idea is asked for', a.ok && ARQ.length === 2 && ARQ[1][1] === 'scout' && ARQ[1][2] === 'OPT-ABC' && ARQ[1][16] === 'active', JSON.stringify(ARQ[1]));
+  check('a starred option of a shortlisted idea is asked for', a.ok && ARQ.length === 2 && ARQ[1][1] === 'scout' && ARQ[1][2] === 'OPT-ABC' && ARQ[1][16] === 'Active', JSON.stringify(ARQ[1]));
   check('…with the home airports from VERA\'s default when Config has none', ARQ[1][6] === 'IAD, DCA, BWI');
   check('…and the next status read is fresh', !cache[run('ARIA_CACHE_KEY_')]);
   S.opt.cost = { flights: { low: 1000, high: 1200 } };
@@ -194,9 +194,9 @@ console.log('\nasking ARIA to scout an option');
   check('no more than three scouted at once', capped.ok === false && /already scouting 3/.test(capped.error) && ARQ.length === 4, ARQ.length);
   check('…refreshing one of the three is still fine', run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-B" })').ok === true);
   const w = run('webWithdrawAriaRequest_({ ref: "opt-c" })');
-  check('stopping a scout withdraws it; ARIA drops its row', w.ok && ARQ[3][16] === 'withdrawn');
+  check('stopping a scout withdraws it; ARIA drops its row', w.ok && ARQ[3][16] === 'Withdrawn');
   check('…which frees a place', run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-D" })').ok === true && ARQ.length === 5);
-  check('…and a withdrawn one can be asked for again, reusing its row', run('webWithdrawAriaRequest_({ ref: "OPT-D" })').ok && run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-C" })').ok && ARQ[3][16] === 'active' && ARQ.length === 5);
+  check('…and a withdrawn one can be asked for again, reusing its row', run('webWithdrawAriaRequest_({ ref: "OPT-D" })').ok && run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-C" })').ok && ARQ[3][16] === 'Active' && ARQ.length === 5);
   check('stopping what isn\'t scouted says so', run('webWithdrawAriaRequest_({ ref: "OPT-ZZZ" })').ok === false);
   S.idea.status = 'brainstorming';
   check('an idea not yet shortlisted is refused, with why', /Shortlist the idea first/.test(run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-ABC" })').error));
@@ -206,6 +206,7 @@ console.log('\nasking ARIA to scout an option');
   check('…and an option that doesn\'t exist', run('webSaveAriaRequest_({ ideaId: "IDEA-1", optionId: "OPT-NOPE" })').ok === false);
   ARQ[1][9] = new Date(Date.UTC(2027, 2, 1)); ARQ[1][15] = '$600';
   const rq = run('ariaReadRequests_()');
+  check('Status is written as ARIA\'s contract spells it, and read back in any case', ARQ[1][16] === 'Active' && run('ariaRequestFromRow_(' + JSON.stringify(ARQ[1]) + ').status') === 'active' && run('ariaRequestFromRow_(["x","scout","OPT-1","","","","","","","","","","","","","","BOOKED"]).status') === 'booked');
   check('requests read back, a date cell and a money cell included', rq.length === 4 && rq[0].earliest === '2027-03-01' && rq[0].ceiling === 600 && rq[0].ref === 'OPT-ABC', JSON.stringify(rq[0]));
   delete props.ARIA_SHEET_ID;
   const nc = run('webAriaStatus_({})');
@@ -214,7 +215,7 @@ console.log('\nasking ARIA to scout an option');
   const nw = run('ariaWatchSettled_("opt-abc", { tripId: "TRIP-SET1", label: "Spring in Europe", startDate: "2027-05-29", endDate: "2027-06-11" })');
   const wr = ARQ.find(r => r[2] === 'OPT-ABC');
   check('settling turns the option\'s scout request into a watch request for the real trip', nw === 1 && wr[1] === 'watch' && wr[3] === 'TRIP-SET1' && wr[4] === '2027-05-29|Spring in Europe' && wr[9] === '2027-05-29' && wr[10] === '2027-06-11', JSON.stringify(wr));
-  check('…keeping its Ref and its airports, so ARIA moves its row over with the fare history', wr[2] === 'OPT-ABC' && wr[7] === 'LIS' && wr[16] === 'active');
+  check('…keeping its Ref and its airports, so ARIA moves its row over with the fare history', wr[2] === 'OPT-ABC' && wr[7] === 'LIS' && wr[16] === 'Active');
   check('…and touches no other request', ARQ.filter(r => r[2] !== 'OPT-ABC').every(r => JSON.stringify(r) === JSON.stringify(before.find(b => b[0] === r[0]))));
   check('an option never scouted has no request to change', run('ariaWatchSettled_("OPT-NEVER", { tripId: "T", label: "x", startDate: "2027-01-01", endDate: "2027-01-02" })') === 0);
   S.vtS = [{ tripId: 'TRIP-SET1', label: 'Spring in Europe', startDate: '2027-05-29' }];
@@ -361,13 +362,13 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   check('asking needs where to fly to', /where you fly to/.test(run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", dests: " " })').error));
   const w1 = run('webWatchAriaRequest_({ tripId: "trip-chi", tripKey: "2027-04-05|Chicago Trip", label: "Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", origins: "IAD", dests: "ORD", travelers: "2", ceiling: "$360", flexDays: "1" })');
   check('Ask ARIA to watch writes a watch request for the trip, with no Ref', w1.ok && RQ.length === 2 && RQ[1][1] === 'watch' && RQ[1][2] === '' && RQ[1][3] === 'TRIP-CHI' && RQ[1][4] === '2027-04-05|Chicago Trip'
-    && RQ[1][7] === 'ORD' && RQ[1][15] === 360 && RQ[1][16] === 'active' && RQ[1][19] === 1, JSON.stringify(RQ[1]));
+    && RQ[1][7] === 'ORD' && RQ[1][15] === 360 && RQ[1][16] === 'Active' && RQ[1][19] === 1, JSON.stringify(RQ[1]));
   run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", origins: "IAD", dests: "MDW", ceiling: "400" })');
   check('…asking again refreshes the one request', RQ.length === 2 && RQ[1][7] === 'MDW' && RQ[1][15] === 400);
   status = Object.assign({}, status, { requests: run('ariaReadRequests_()') });
   check('the trip then shows its request', run(q).request && run(q).request.dests === 'MDW');
   run('webWatchAriaRequest_({ tripId: "TRIP-ZZZ", tripKey: "2027-08-01|Other", startDate: "2027-08-01", endDate: "2027-08-03", dests: "SEA" })');
-  check('Stop watching withdraws it by trip, and only that trip', run('webWithdrawAriaRequest_({ tripId: "TRIP-CHI" })').ok && RQ[1][16] === 'withdrawn' && RQ.find(r => r[3] === 'TRIP-ZZZ')[16] === 'active');
+  check('Stop watching withdraws it by trip, and only that trip', run('webWithdrawAriaRequest_({ tripId: "TRIP-CHI" })').ok && RQ[1][16] === 'Withdrawn' && RQ.find(r => r[3] === 'TRIP-ZZZ')[16] === 'Active');
   run('webWatchAriaRequest_({ tripId: "TRIP-CHI", tripKey: "2027-04-05|Chicago Trip", startDate: "2027-04-05", endDate: "2027-04-13", dests: "ORD" })');
 
   // VERA tells ARIA a trip is booked
@@ -378,12 +379,13 @@ console.log('\none trip: what ARIA has, asking it to watch, and telling it it\'s
   S.tripItemsFor_ = (key, a) => { asked.push(key); const id = Object.keys(S.readTripRegistry_().byId).find(k => S.readTripRegistry_().byId[k].startDate === a); return ITEMS[id] || []; };
   S.wl = [{ tripId: 'TRIP-LAX', status: 'watching' }, { tripId: 'TRIP-NOPE', status: 'watching' }, { tripId: 'TRIP-OLD', status: 'booked' }];
   const n = run('ariaMarkBooked_(wl)');
-  check('VERA marks a watched trip booked once its flights out and back are in', n === 2 && RQ.find(r => r[3] === 'TRIP-CHI')[16] === 'booked', n);
-  check('…and adds a booked request for a trip ARIA watches with no request (the parser\'s rows have no Trip Key)', RQ.some(r => r[3] === 'TRIP-LAX' && r[16] === 'booked' && r[1] === 'watch'));
+  check('VERA marks a watched trip booked once its flights out and back are in', n === 2 && RQ.find(r => r[3] === 'TRIP-CHI')[16] === 'Booked', n);
+  check('…and adds a booked request for a trip ARIA watches with no request (the parser\'s rows have no Trip Key)', RQ.some(r => r[3] === 'TRIP-LAX' && r[16] === 'Booked' && r[1] === 'watch'));
   check('…but not for a trip with only one way booked', !RQ.some(r => r[3] === 'TRIP-NOPE'));
   const len = RQ.length; run('ariaMarkBooked_(wl)');
   check('…and only once', RQ.length === len && RQ.filter(r => r[3] === 'TRIP-LAX').length === 1);
   check('the booked check runs with the hourly ARIA sync', /try \{ ariaMarkBooked_\(t\.watch\); \}/.test(SRC));
+  check('…which also makes sure the ARIA Requests tab exists, so ARIA can read it', /try \{ ariaRequestsSheet_\(\); \}/.test(SRC));
   check('the trip routes are wired', /case 'trip_aria':\s+return jsonOut_\(webTripAria_\(e\.parameter\)\);/.test(WEB) && /case 'aria_request_watch':\s+return jsonOut_\(webWatchAriaRequest_\(body\)\);/.test(WEB));
 }
 

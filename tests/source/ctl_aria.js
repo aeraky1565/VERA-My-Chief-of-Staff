@@ -28,6 +28,8 @@ const CONTROLS = [
   ['Stop watching by trip does nothing', b => ({ [T]: swap(b[T], "!(ref ? r.ref === ref : String(r.tripId).toUpperCase() === tid)", "!(r.ref === ref)") })],
   ['the booked check never runs', b => ({ [T]: swap(b[T], "  try { ariaMarkBooked_(t.watch); }", "  try { }") })],
   ['the watch form ignores Trip Budget', b => ({ [T]: swap(b[T], ": ariaCeilingFrom_(facts.budget, (row && row.travelers) || facts.travelers),", ": null,") })],
+  ['Status is written lower case', b => ({ [T]: swap(b[T], "st ? st.charAt(0).toUpperCase() + st.slice(1) : ''", "st") })],
+  ['the requests tab waits for a first request', b => ({ [T]: swap(b[T], "  try { ariaRequestsSheet_(); } catch (e) { Logger.log('aria: ARIA Requests tab not ensured'); }\n", "") })],
   ['settling leaves the request a scout', b => ({ [T]: swap(b[T], "r.kind = 'watch'; r.tripId = trip.tripId;", "r.kind = 'scout'; r.tripId = trip.tripId;") })],
   ['a requested trip shows as unwatched', b => ({ [T]: swap(b[T], "  (requests || []).forEach(function(r) { if (r.status === 'active' && r.tripId) has['id:' + String(r.tripId).toUpperCase()] = 1; });\n", "") })],
   ['the Config row is not read', b => ({ [T]: swap(b[T], "  try { return ariaSheetIdFrom_(getConfigValues()['roster_link_aria']); } catch (e) { return ''; }", "  return '';") })],
