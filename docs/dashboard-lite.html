@@ -7386,7 +7386,8 @@ function TsPlan(props){var h=React.createElement;var p=props.plan,o=p.option;if(
     total&&h('span',{style:{fontSize:12,color:'#b8c3e0'}},'Planned '+tiRange_(total.low,total.high)+(p.idea.budget!=null?' · budget '+tiMoney_(p.idea.budget)+(fit==='within'?' (within)':fit==='over'?' (over)':fit==='close'?' (could go over)':''):'')),
     h('span',{style:{fontSize:12,color:'#9aa9cc'}},'From the trip idea "'+p.idea.title+'" in Travel → Trip Ideas. Nothing is added to your itinerary; bookings tick these off as they arrive.'));}
 // ARIA on this trip's flights: its fares and verdict when it watches them, else a form to ask it to.
-function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=props.ends;var _f=React.useState(null),form=_f[0],setForm=_f[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+// initialForm opens the form already filled (the ARIA tab's Draft cards use it).
+function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=props.ends;var _f=React.useState(props.initialForm||null),form=_f[0],setForm=_f[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
   var booked=ends&&ends.arrival===true&&ends.departure===true;var row=d.row,req=d.request;
   var send=function(){setBusy('send');setErr('');apiPost(props.apiUrl,props.apiToken,Object.assign({action:'aria_request_watch',tripId:d.tripId,tripKey:props.trip.tripKey,label:props.trip.label,startDate:props.trip.startDate,endDate:props.trip.endDate},form))
     .then(function(){setBusy('');setForm(null);props.reload();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t ask ARIA');});};
@@ -7417,7 +7418,7 @@ function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=pr
           inp('travelers','Travelers','2','number'),inp('ceiling','Ceiling per person ($)','e.g. 360','number'),inp('flexDays','Flex (± days)','1','number')),
         h('span',{style:{fontSize:12,color:'#9aa9cc'}},props.trip.startDate+' → '+props.trip.endDate+'. ARIA fills only what’s still blank in its Watchlist; anything you typed there stays.'),
         err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err),
-        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?'Asking…':'Ask ARIA to watch','ts-aria-send',send,true),btn('Cancel','ts-aria-cancel',function(){setForm(null);setErr('');})))
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?'Asking…':'Ask ARIA to watch','ts-aria-send',send,true),btn('Cancel','ts-aria-cancel',function(){setForm(null);setErr('');if(props.onCancel)props.onCancel();})))
     :h('div',{style:{display:'flex',flexDirection:'column',gap:6}},
         h('span',{style:{fontSize:13,color:'#b8c3e0'}},row&&row.status==='draft'?'ARIA has this trip as a Draft: it isn’t pricing it yet.':'ARIA isn’t watching these flights.'),
         btn('🧭 Watch with ARIA','ts-aria-watch',function(){setForm(Object.assign({},d.draft||{}));},true)),
@@ -8429,7 +8430,26 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var fares=ari
     w.dateChange&&h('span',{className:'aria-date-change',style:{fontSize:12,color:TI.warn}},'⚠ The dates changed in VERA since ARIA set this up.'),
     idea&&idea.idea&&h('span',{style:{fontSize:12,color:TI.acc}},'From the trip idea "'+idea.idea+'"'),
     w.notes&&h('span',{style:{fontSize:12,lineHeight:1.45,color:TI.mute}},w.notes),
+    w.status==='draft'&&w.tripId&&props.apiUrl&&h(AriaDraftWatch,{row:w,requests:props.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:props.onChange||function(){}}),
     latest&&latest.link&&h('a',{href:latest.link,target:'_blank',rel:'noopener noreferrer',className:'aria-link',style:{fontSize:13,fontWeight:600,color:TI.acc,alignSelf:'flex-start',minHeight:32,display:'inline-flex',alignItems:'center'}},'Open this fare ↗'));}
+
+// A Draft card's way to watch: the trip Summary's own form (TsAriaFlights), filled by trip_aria on
+// demand. It writes a watch request to VERA's ARIA Requests tab, never to ARIA's tracker; ARIA moves the
+// row to Watching on its next run. A trip already asked for says so, with Stop watching.
+function AriaDraftWatch(props){var h=React.createElement;var w=props.row;var _d=React.useState(null),data=_d[0],setData=_d[1];var _b=React.useState(''),busy=_b[0],setBusy=_b[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var req=(props.requests||[]).filter(function(r){return r.status==='active'&&r.kind==='watch'&&String(r.tripId||'').toUpperCase()===w.tripId;})[0];
+  var trip={tripId:w.tripId,tripKey:w.tripKey||(w.earliest+'|'+w.label),label:w.label,startDate:w.earliest,endDate:w.latest||w.earliest};
+  var open=function(){setBusy('open');setErr('');apiGet(props.apiUrl,props.apiToken,{action:'trip_aria',tripId:trip.tripId,tripKey:trip.tripKey,label:trip.label,startDate:trip.startDate,endDate:trip.endDate})
+    .then(function(r){setBusy('');if(r&&r.ok)setData(r);else setErr((r&&r.error)||'Couldn’t open the form');}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t open the form');});};
+  var stop=function(){setBusy('stop');setErr('');apiPost(props.apiUrl,props.apiToken,{action:'aria_request_withdraw',tripId:w.tripId}).then(function(){setBusy('');props.onChange();}).catch(function(e){setBusy('');setErr(e.message||'Couldn’t stop it');});};
+  if(data)return h(TsAriaFlights,{data:Object.assign({},data,{row:null,request:null,configured:true}),ends:null,trip:trip,apiUrl:props.apiUrl,apiToken:props.apiToken,initialForm:Object.assign({},data.draft||{}),
+    onCancel:function(){setData(null);},reload:function(){setData(null);props.onChange();}});
+  return h('div',{className:'aria-draft-watch',style:{display:'flex',flexDirection:'column',gap:6}},
+    req?h('span',{className:'aria-draft-asked',style:{fontSize:13,lineHeight:1.45,color:TI.acc}},'Asked ARIA '+String(req.updated||req.created||'').slice(0,10)+(req.dests?' to watch '+(req.origins||'home')+' → '+req.dests:'')+'. It moves this to Watching on its next 06:52 run.'):null,
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      req?h('button',{type:'button',className:'aria-draft-stop',disabled:!!busy,onClick:stop,style:Object.assign(tiBtn_(),{minHeight:40})},busy==='stop'?'Stopping…':'Stop watching')
+      :h('button',{type:'button',className:'aria-draft-watch-btn',disabled:!!busy,onClick:open,style:Object.assign(tiBtn_('primary'),{minHeight:40})},busy==='open'?'Opening…':'🧭 Watch with ARIA')),
+    err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err));}
 
 function AriaBookCard(props){var h=React.createElement;var w=props.row,book=w.actionType==='BOOK_NOW';var fares=ariaFaresFor_(props.fares,w),latest=ariaLatest_(fares);
   var link=ariaBookLink_(w,latest),em=ariaEmailWords_(w.email),idea=(props.ideas||{})[w.ref];
@@ -8471,7 +8491,7 @@ function AriaView(props){var h=React.createElement;
   var wrap={className:'aria-view',style:{display:'flex',flexDirection:'column',gap:14,padding:'4px 0 16px',color:TI.txt}};
   var head=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',gap:12,flexWrap:'wrap'}},
     h('div',{style:{display:'flex',flexDirection:'column',gap:4}},h('span',{style:{fontSize:20,fontWeight:700,color:TI.hi}},'ARIA'),
-      h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.mute}},'The fares ARIA, your travel agent, has found. Read only: watches are set up in the ARIA Travel Tracker.')),
+      h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.mute}},'The fares ARIA, your travel agent, has found. VERA never edits ARIA’s tracker: Watch with ARIA sends ARIA a request, and it acts on its next morning run.')),
     h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},
       data.health&&h('span',{className:'aria-health aria-health-'+data.health.level,title:data.health.text,style:{fontSize:12,fontWeight:600,padding:'6px 10px',borderRadius:999,color:(ARIA_HEALTH[data.health.level]||ARIA_HEALTH.none)[0],background:(ARIA_HEALTH[data.health.level]||ARIA_HEALTH.none)[1]}},data.health.level==='ok'?'● '+data.health.text:'● '+data.health.text),
       data.configured&&h('button',{type:'button',className:'aria-refresh',disabled:!!data.loading,onClick:function(){load(true);},style:tiBtn_()},data.loading?'Reading…':'Read again')));
@@ -8484,7 +8504,7 @@ function AriaView(props){var h=React.createElement;
   var g=ariaGroup_(data.watchlist,data.ideas),gaps=data.gaps||{};
   var section=function(key,label,rows){if(!rows.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label+' · '+rows.length),
     h('div',{className:'aria-grid',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10,alignItems:'start'}},
-      rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas});})));};
+      rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas,requests:data.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:function(){load(true);}});})));};
   var gapLists=ARIA_GAPS.filter(function(x){return (gaps[x[0]]||[]).length;}),urgent=ariaUrgent_(data.watchlist);
   return h('div',wrap,head,
     urgent.length>0&&h('div',{className:'aria-urgent',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas});})),

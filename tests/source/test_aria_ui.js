@@ -3,7 +3,8 @@
 // connect one), then with a Watchlist and Fare Log: what needs a look, trips by
 // status with scouted ones under their idea, the best fare, the line of fares
 // seen, a flagged fare's warning, a safe link out, and reading again on request.
-// Read only: the view never posts. Every trip and fare here is invented.
+// The view never writes ARIA's tracker: the only posts are watch requests to VERA's
+// own tab, from a Draft card. Every trip and fare here is invented.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -103,6 +104,40 @@ async function scenario(page, label, width) {
     check(label + ': cards sit side by side on a desktop', tops[0] === tops[1], JSON.stringify(tops)); }
   check(label + ': no sideways scroll', await noScroll(page));
   if (process.env.SHOT_DIR) { const el = await page.$('#ariaprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
+
+  // A Draft card: Watch with ARIA opens the trip Summary's form, filled by trip_aria; it writes a request, never the tracker
+  await page.evaluate(() => {
+    document.querySelectorAll('#ariaprobe').forEach(n => n.remove());
+    window.__gets = []; window.__posts = []; window.__asked = false;
+    const draft = { tripId: 'TRIP-6BBE', label: 'Chicago Trip', status: 'draft', earliest: '2027-04-05', latest: '2027-04-13', tripKey: '2027-04-05|Chicago Trip', notes: 'Confirm airports', dateChange: false, ref: '' };
+    window.apiGet = (u, t, q) => { window.__gets.push(Object.assign({}, q));
+      if (q.action === 'trip_aria') return Promise.resolve({ ok: true, tripId: 'TRIP-6BBE', configured: true, row: draft, fares: [], request: null,
+        draft: { origins: 'IAD, DCA, BWI', dests: '', earliest: '2027-04-05', latest: '2027-04-13', flexDays: 1, travelers: 2, ceiling: 360 }, plan: null });
+      return Promise.resolve({ ok: true, configured: true, watchlist: [draft], fares: [], gaps: { count: 0 }, ideas: {}, health: { level: 'ok', text: 'ARIA ran' },
+        requests: window.__asked ? [{ kind: 'watch', status: 'active', tripId: 'TRIP-6BBE', origins: 'IAD, DCA, BWI', dests: 'ORD', updated: '2026-10-26T01:00:00Z' }] : [] }); };
+    window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b))); if (b.action === 'aria_request_watch') window.__asked = true; if (b.action === 'aria_request_withdraw') window.__asked = false; return Promise.resolve({ ok: true }); };
+    window.__set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+    const host = document.createElement('div'); host.id = 'ariaprobe'; host.style.padding = '0 12px'; document.body.appendChild(host);
+    ReactDOM.createRoot(host).render(React.createElement(AriaView, { apiUrl: 'https://vera.test/exec', apiToken: 't' }));
+  }); await wait(200);
+  check(label + ': a Draft card offers Watch with ARIA', !!(await page.$('#ariaprobe .aria-draft-watch-btn')));
+  await page.evaluate(() => window.__q('.aria-draft-watch-btn').click()); await wait(150);
+  const ta = await page.evaluate(() => window.__gets.find(q => q.action === 'trip_aria'));
+  check(label + ': …which asks VERA for this trip\'s prefilled form', ta && ta.tripId === 'TRIP-6BBE' && ta.tripKey === '2027-04-05|Chicago Trip' && ta.startDate === '2027-04-05' && ta.endDate === '2027-04-13', JSON.stringify(ta));
+  const fv = await page.evaluate(() => ['origins', 'dests', 'travelers', 'ceiling', 'flexDays'].map(k => (document.querySelector('#ariaprobe .ts-aria-' + k) || {}).value));
+  check(label + ': the form opens filled, on the card', JSON.stringify(fv) === JSON.stringify(['IAD, DCA, BWI', '', '2', '360', '1']), JSON.stringify(fv));
+  await page.evaluate(() => window.__set(window.__q('.ts-aria-dests'), 'ORD')); await wait(40);
+  await page.evaluate(() => window.__q('.ts-aria-send').click()); await wait(250);
+  const wp = await page.evaluate(() => window.__posts.find(p => p.action === 'aria_request_watch'));
+  check(label + ': Ask ARIA to watch sends a request for the trip (VERA\'s tab, not ARIA\'s tracker)', wp && wp.tripId === 'TRIP-6BBE' && wp.dests === 'ORD' && wp.startDate === '2027-04-05' && String(wp.ceiling) === '360', JSON.stringify(wp));
+  check(label + ': …the tab reads ARIA again, fresh', (await page.evaluate(() => window.__gets.filter(q => q.action === 'aria_status' && q.refresh === '1').length)) >= 1);
+  const asked = await page.$eval('#ariaprobe .aria-draft-asked', n => n.innerText).catch(() => '');
+  check(label + ': …and the card says it was asked, and when ARIA acts', /Asked ARIA 2026-10-26 to watch IAD, DCA, BWI → ORD\. It moves this to Watching on its next 06:52 run\./.test(asked), asked);
+  await page.evaluate(() => window.__q('.aria-draft-stop').click()); await wait(250);
+  const wd = await page.evaluate(() => window.__posts.find(p => p.action === 'aria_request_withdraw'));
+  check(label + ': Stop watching withdraws it by trip, and the button comes back', wd && wd.tripId === 'TRIP-6BBE' && !!(await page.$('#ariaprobe .aria-draft-watch-btn')));
+  check(label + ': no sideways scroll with the form on a card', await noScroll(page));
+  if (process.env.SHOT_DIR) { await page.evaluate(() => window.__q('.aria-draft-watch-btn').click()); await wait(150); const el = await page.$('#ariaprobe .aria-card'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-draft-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 
   // Home: the banner shows what to book, and nothing at all otherwise
   const banner = async (reply) => { await page.evaluate((reply) => {

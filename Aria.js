@@ -181,7 +181,8 @@ function ariaDays_(a, b) {
  * veraTrips: [{tripId, label, startDate, endDate, drive}] (future trips only)
  * Returns {noRow, draft, incomplete, stale, dateChanged, waiting}: lists of {id, label, why}.
  * - noRow: a VERA trip ARIA has no row for (one per label + start, so a
- *   duplicated calendar hold counts once); trips you drive to don't need one.
+ *   duplicated calendar hold counts once); trips you drive to, and trips already
+ *   under way, don't need one.
  * - incomplete: Watching with no airports or no ceiling: ARIA can't price it.
  * - stale: Watching with no fare in the Fare Log for 7 days.
  * - waiting: an active request ARIA hasn't picked up after 2 days.
@@ -199,6 +200,7 @@ function ariaGaps_(veraTrips, watch, fares, requests, today) {
   (veraTrips || []).forEach(function(t) {
     var k = ariaSameTripKey_(t.label, t.startDate);
     if (seen[k] || t.drive) return; seen[k] = 1;
+    if (t.startDate && t.startDate <= today) return;   // already under way: too late to watch its fares
     if (has['id:' + String(t.tripId || '').toUpperCase()] || has['lk:' + k]) return;
     noRow.push({ id: t.tripId, label: t.label, start: t.startDate, why: 'ARIA has no row for this trip yet' });
   });
@@ -208,7 +210,7 @@ function ariaGaps_(veraTrips, watch, fares, requests, today) {
   var live = (watch || []).filter(function(w) { return w.status === 'watching'; });
   var gaps = {
     noRow: noRow,
-    draft: (watch || []).filter(function(w) { return w.status === 'draft'; }).map(function(w) { return item(w, 'Still a draft: set it to Watching in the tracker when it’s ready'); }),
+    draft: (watch || []).filter(function(w) { return w.status === 'draft'; }).map(function(w) { return item(w, w.tripId ? 'Still a draft: use Watch with ARIA on its card below, or set it to Watching in the tracker' : 'Still a draft: set it to Watching in the tracker when it’s ready'); }),
     // Watching rows ARIA can't price or judge: what it says itself (NEEDS_*, CEILING_NOT_SET), else what VERA can see missing.
     incomplete: live.filter(function(w) { return /^(NEEDS_|CEILING_NOT_SET)/.test(w.actionType || '') || !w.origins || !w.dests || w.ceiling == null; }).map(function(w) {
       if (/^(NEEDS_|CEILING_NOT_SET)/.test(w.actionType || '')) return item(w, w.actionNeeded || w.actionType.replace(/_/g, ' ').toLowerCase());
