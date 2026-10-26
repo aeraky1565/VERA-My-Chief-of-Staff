@@ -45,9 +45,17 @@ const CONTROLS = [
   ['Home Front opens on Warranties again', b => ({ [A]: swap(b[A], "const[sub,setSub]=React.useState('household');", "const[sub,setSub]=React.useState('steward');"), [I]: swap(b[I], "const[sub,setSub]=React.useState('household');", "const[sub,setSub]=React.useState('steward');") }), UI],
 ];
 
+// The dashboard controls drive a real browser. The CI job that runs controls has none (the
+// browser job runs the screens themselves), so there they are skipped and said so; locally they run.
+const HAS_BROWSER = (() => {
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true;
+  try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; }
+})();
+
 let allBit = true;
 CONTROLS.forEach(function(c) {
   const name = c[0];
+  if (c[2] && !HAS_BROWSER) { console.log('\n=== CONTROL: ' + name + '  (skipped: no browser here)'); return; }
   fs.rmSync(OUT, { recursive: true, force: true });
   let patch;
   try { patch = c[1](BASE); }
