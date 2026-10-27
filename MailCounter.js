@@ -103,6 +103,8 @@ function parseMailArrivingToday_(body) {
  * due later in the week.
  * Called by a 10am daily trigger installed by setupTriggers().
  */
+// why: a reason the catch-up passes. A time-driven trigger passes its event object here,
+// which is not a reason, so only a string is logged.
 function scanUSPSMail_(why) {
   var _umStart = Date.now();
   // One run at a time: the trigger and the hourly catch-up can land together, and two
@@ -168,7 +170,7 @@ function scanUSPSMail_(why) {
     recordFeedResult_('gmail:usps', mailDelta + pkgDelta);
     veraLog_('scanUSPSMail', 'Email', 'Success',
       '+' + mailDelta + ' piece(s), +' + pkgDelta + ' package(s) from ' +
-      threads.length + ' thread(s)' + (why ? ' · ' + why : ''), Date.now() - _umStart);
+      threads.length + ' thread(s)' + (typeof why === 'string' && why ? ' · ' + why : ''), Date.now() - _umStart);
   } catch (err) {
     Logger.log('⚠ scanUSPSMail_ error: ' + err.message);
     veraLog_('scanUSPSMail', 'Email', 'Failed', '', Date.now() - _umStart, err.message);

@@ -136,6 +136,7 @@ console.log('\nthe hourly catch-up (uspsCatchUp_)');
   const REM = fs.readFileSync(ROOT + '/Reminders.js', 'utf8');
   check('hourlyCheck calls it before the reminders switch can return early', /uspsCatchUp_\(new Date\(\)\);[^]*reminders_enabled/.test(REM.slice(REM.indexOf('function hourlyCheck('))));
   const scan = extractFn('scanUSPSMail_');
+  check('a trigger\'s event object never reaches the log line, only a string reason', /\(typeof why === 'string' && why \? ' · ' \+ why : ''\)/.test(scan));
   check('the scan takes the script lock, so the trigger and the catch-up never count the same digest twice', /var lock = LockService\.getScriptLock\(\);\s*try \{\s*if \(!lock\.tryLock\(30000\)\)/.test(scan) && /lock\.releaseLock\(\)/.test(scan));
 }
 

@@ -28,6 +28,7 @@ const CONTROLS = [
   ['the repair adds a trigger that already exists', one(W, "    if (have[j.job]) return;\n    var s = specs", "    var s = specs"), WD],
   ['the repair forgets the other registrations', one(W, "    var map = getTriggerRegistrations_(), now = Date.now();", "    var map = {}, now = Date.now();"), WD],
   ['the flag still blames a trigger VERA just put back', one(W, "(j.repaired\n                 ? ' Its trigger was missing, so VERA put it back; it should run at its next time.'", "(false\n                 ? ' Its trigger was missing, so VERA put it back; it should run at its next time.'"), WD],
+  ['the trigger\'s event object is logged as the reason', one(M, "(typeof why === 'string' && why ? ' · ' + why : '')", "(why ? ' · ' + why : '')"), MC],
 ];
 
 let allBit = true;
