@@ -14,7 +14,16 @@
 //   MAIL_COUNTER_LAST_SCAN     — ISO timestamp of newest email already processed
 //   MAIL_COUNTER_LAST_SCAN_RUN — ISO timestamp of when scan last ran
 //   MAIL_COUNTER_LAST_RESET    — ISO timestamp of last user reset
+//   USPS_SCAN_START            — ISO timestamp a run began; later than the last
+//                                heartbeat means a run was killed partway (Watchdog.js)
 // ============================================================
+
+// The daily trigger fires between 10 and 11. If a day passes with no run at all —
+// Oct 26, 2026: no Success, no Failure, no heartbeat, while every other trigger ran —
+// the hourly check runs it instead (uspsCatchUp_). Counting twice is impossible either
+// way: MAIL_COUNTER_LAST_SCAN skips every digest already counted.
+var USPS_SCAN_HOUR_   = 10;
+var USPS_STALE_HOURS_ = 26;
 
 /**
  * Pulls the "arriving today" package count out of a USPS Daily Digest body.
@@ -94,10 +103,16 @@ function parseMailArrivingToday_(body) {
  * due later in the week.
  * Called by a 10am daily trigger installed by setupTriggers().
  */
-function scanUSPSMail_() {
+function scanUSPSMail_(why) {
   var _umStart = Date.now();
+  // One run at a time: the trigger and the hourly catch-up can land together, and two
+  // runs reading the same MAIL_COUNTER_LAST_SCAN would count the same digests twice.
+  // Inside the try, so a skipped run still records its heartbeat: the trigger fired.
+  var lock = LockService.getScriptLock();
   try {
+    if (!lock.tryLock(30000)) { Logger.log('scanUSPSMail_: another run holds the lock, skipping.'); return; }
     var props   = PropertiesService.getScriptProperties();
+    props.setProperty('USPS_SCAN_START', new Date().toISOString());
     var lastScan = props.getProperty('MAIL_COUNTER_LAST_SCAN') || '2000-01-01T00:00:00.000Z';
     var lastScanDate = new Date(lastScan);
 
@@ -153,13 +168,39 @@ function scanUSPSMail_() {
     recordFeedResult_('gmail:usps', mailDelta + pkgDelta);
     veraLog_('scanUSPSMail', 'Email', 'Success',
       '+' + mailDelta + ' piece(s), +' + pkgDelta + ' package(s) from ' +
-      threads.length + ' thread(s)', Date.now() - _umStart);
+      threads.length + ' thread(s)' + (why ? ' · ' + why : ''), Date.now() - _umStart);
   } catch (err) {
     Logger.log('⚠ scanUSPSMail_ error: ' + err.message);
     veraLog_('scanUSPSMail', 'Email', 'Failed', '', Date.now() - _umStart, err.message);
   } finally {
     try { recordHeartbeat_('scanUSPSMail_'); } catch (hbErr) {}
     try { flushSystemLog_(); } catch (flErr) {}
+    try { lock.releaseLock(); } catch (lkErr) {}
+  }
+}
+
+/** Pure: is a catch-up due? Past the scan hour, and no run in USPS_STALE_HOURS_. */
+function uspsCatchUpDue_(lastRunMs, nowMs, hour) {
+  if (hour < USPS_SCAN_HOUR_) return false;
+  return !lastRunMs || nowMs - lastRunMs > USPS_STALE_HOURS_ * 3600000;
+}
+
+/**
+ * Called by hourlyCheck: runs the scan when its own trigger has missed a day. A missing,
+ * disabled or killed trigger then costs at most an hour, and the digests it missed are
+ * still unread, so this run counts them. Never throws.
+ * @returns {boolean} whether it ran
+ */
+function uspsCatchUp_(now) {
+  try {
+    now = now || new Date();
+    var hb = (getHeartbeatState_()['scanUSPSMail_'] || {}).lastRun || 0;
+    if (!uspsCatchUpDue_(hb, now.getTime(), now.getHours())) return false;
+    scanUSPSMail_('catch-up: the 10:00 trigger had not run in ' + USPS_STALE_HOURS_ + 'h');
+    return true;
+  } catch (e) {
+    Logger.log('uspsCatchUp_ (non-fatal): ' + e.message);
+    return false;
   }
 }
 

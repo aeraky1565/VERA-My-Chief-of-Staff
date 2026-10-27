@@ -548,5 +548,45 @@ console.log('\nnightlyRun records both ends of the run');
   check('…and says so when it skips', /skipped — time budget exceeded/.test(runner));
 }
 
+console.log('\na job overdue because its trigger is gone gets it back (repairMissingTriggers_)');
+{
+  const now = Date.now();
+  const ctx = loadWatchdog({ scanUSPSMail_: { lastRun: now - 46 * HOUR }, hourlyCheck: { lastRun: now - 60 * 1000 } }, { scanUSPSMail_: now - 30 * DAY, hourlyCheck: now - 30 * DAY });
+  const created = [], deleted = [];
+  let existing = ['hourlyCheck', 'nightlyRun'];
+  const builder = h => { const b = { calls: [] }; ['atHour', 'everyDays', 'inTimezone', 'everyHours', 'everyMinutes', 'everyWeeks', 'onWeekDay'].forEach(m => { b[m] = (...a) => { b.calls.push(m + '(' + a.join(',') + ')'); return b; }; }); b.create = () => { created.push(h + ' ' + b.calls.join('.')); existing.push(h); }; return b; };
+  ctx.ScriptApp = { getProjectTriggers: () => existing.map(h => ({ getHandlerFunction: () => h })), newTrigger: h => ({ timeBased: () => builder(h) }), deleteTrigger: t => deleted.push(t), WeekDay: { MONDAY: 'MONDAY' } };
+  ctx.Session = { getScriptTimeZone: () => 'America/New_York' };
+  ctx.CONFIG = { NIGHTLY_RUN_HOUR: 23, MORNING_NUDGE_HOUR: 7 };
+  ctx.veraLog_ = () => {};
+  vm.runInContext(extract('Code.js', ['veraTriggerSpecs_']) + extract('Watchdog.js', ['repairMissingTriggers_']), ctx);
+  const jobs = vm.runInContext('getOverdueJobs_()', ctx);
+  check('the USPS scan two days quiet is overdue', jobs.map(j => j.job).join() === 'scanUSPSMail_', jobs.map(j => j.job).join());
+  ctx.__jobs = jobs;
+  const made = vm.runInContext('repairMissingTriggers_(__jobs)', ctx);
+  check('its missing trigger is recreated, exactly as setupTriggers builds it', JSON.stringify(made) === '["scanUSPSMail_"]' && created.length === 1 && created[0] === 'scanUSPSMail_ atHour(10).everyDays(1).inTimezone(America/New_York)', JSON.stringify(created));
+  check('…the job is marked repaired, and nothing is deleted', jobs[0].repaired === true && deleted.length === 0);
+  const regs = JSON.parse(ctx._props.TRIGGER_REGISTRATIONS);
+  check('…its registration is refreshed and the others kept', regs.scanUSPSMail_ > now - 5000 && regs.hourlyCheck === now - 30 * DAY, JSON.stringify(regs));
+  vm.runInContext('repairMissingTriggers_(__jobs)', ctx);
+  check('a trigger that exists is never added twice', created.length === 1, created.length);
+  ctx.__other = [{ job: 'delivery:morning_briefing' }];
+  check('a job VERA has no trigger for is left alone', vm.runInContext('repairMissingTriggers_(__other)', ctx).length === 0 && created.length === 1);
+  check('runWatchdog_ repairs before it flags, and the flag says so',
+    /var put = repairMissingTriggers_\(notices\.jobs\);[^]*syncWatchdogFlags_\(notices\)/.test(extract('Watchdog.js', ['runWatchdog_']))
+    && /j\.repaired\s*\? ' Its trigger was missing, so VERA put it back/.test(extract('Watchdog.js', ['syncWatchdogFlags_'])));
+}
+
+console.log('\nthe USPS scan leaves a start marker, so a killed run reads as one');
+{
+  const now = Date.now();
+  const ctx = loadWatchdog({ scanUSPSMail_: { lastRun: now - 30 * HOUR } });
+  ctx._props.USPS_SCAN_START = new Date(now - 29 * HOUR).toISOString();
+  const j = vm.runInContext('getOverdueJobs_()', ctx).find(x => x.job === 'scanUSPSMail_');
+  check('started after the last good run and never finished: says so', j && /started but did not finish/.test(j.verb), j && j.verb);
+  const src = fs.readFileSync(path.join(ROOT, 'MailCounter.js'), 'utf8');
+  check('the scan writes the marker before it reads Gmail', /props\.setProperty\('USPS_SCAN_START', new Date\(\)\.toISOString\(\)\);[^]*GmailApp\.search/.test(src));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

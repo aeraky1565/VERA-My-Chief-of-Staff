@@ -44,6 +44,8 @@ function hourlyCheck() {
   maybeSyncAriaFlags_(new Date());
   // A settled trip idea links to its calendar trip once the event lands (TripIdeas.js).
   try { tiLinkSettled_(); } catch (tiErr) { Logger.log('tiLinkSettled_ (non-fatal): ' + tiErr.message); }
+  // The USPS scan's own trigger missed a day (MailCounter.js): run it from here instead.
+  uspsCatchUp_(new Date());
   try {
     var cfg = getConfigValues();
     if (String(cfg['reminders_enabled'] || 'true').toLowerCase() === 'false') {

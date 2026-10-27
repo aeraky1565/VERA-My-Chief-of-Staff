@@ -112,5 +112,32 @@ console.log('\ndegenerate input');
         mail('MAIL DELIVERY NOTIFICATION Your mail has been delivered today, September 17!') === 0);
 }
 
+console.log('\nthe hourly catch-up (uspsCatchUp_)');
+{
+  const SRC2 = fs.readFileSync(ROOT + '/MailCounter.js', 'utf8');
+  const varLine = n => SRC2.match(new RegExp('^var ' + n + ' += .*;$', 'm'))[0];
+  const c2 = { Date, Math, String, Logger: { log: () => {} } };
+  vm.createContext(c2);
+  vm.runInContext(varLine('USPS_SCAN_HOUR_') + '\n' + varLine('USPS_STALE_HOURS_') + '\n' + extractFn('uspsCatchUpDue_') + extractFn('uspsCatchUp_'), c2);
+  const H = 3600000, now = Date.parse('2026-10-27T15:00:00Z');
+  const due = (last, hour) => vm.runInContext('uspsCatchUpDue_', c2)(last, now, hour);
+  check('not before 10:00, however stale', due(now - 50 * H, 9) === false);
+  check('a run inside the last 26 hours: no catch-up', due(now - 23 * H, 11) === false);
+  check('Monday missed (46h since the last run), at 10:00 or later: catch up', due(now - 46 * H, 10) === true && due(now - 46 * H, 14) === true);
+  check('never run at all: catch up', due(0, 12) === true);
+  let runs = []; let hb = now - 46 * H;
+  c2.getHeartbeatState_ = () => ({ scanUSPSMail_: { lastRun: hb } });
+  c2.scanUSPSMail_ = why => { runs.push(why); hb = now; };
+  const at = new Date(2026, 9, 27, 11, 5);
+  check('the catch-up runs the scan and says why', vm.runInContext('uspsCatchUp_', c2)(at) === true && runs.length === 1 && /catch-up/.test(runs[0]), JSON.stringify(runs));
+  check('…and an hour later, with a fresh heartbeat, does not run again', vm.runInContext('uspsCatchUp_', c2)(new Date(2026, 9, 27, 12, 5)) === false && runs.length === 1);
+  c2.getHeartbeatState_ = () => { throw new Error('properties unavailable'); };
+  check('it never throws into the hourly check', vm.runInContext('uspsCatchUp_', c2)(at) === false);
+  const REM = fs.readFileSync(ROOT + '/Reminders.js', 'utf8');
+  check('hourlyCheck calls it before the reminders switch can return early', /uspsCatchUp_\(new Date\(\)\);[^]*reminders_enabled/.test(REM.slice(REM.indexOf('function hourlyCheck('))));
+  const scan = extractFn('scanUSPSMail_');
+  check('the scan takes the script lock, so the trigger and the catch-up never count the same digest twice', /var lock = LockService\.getScriptLock\(\);\s*try \{\s*if \(!lock\.tryLock\(30000\)\)/.test(scan) && /lock\.releaseLock\(\)/.test(scan));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

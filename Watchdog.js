@@ -62,7 +62,7 @@ var HEARTBEAT_REGISTRY = [
   { job: 'hourlyCheck',           label: 'Hourly check',         maxAgeHours: 3  },
   { job: 'checkFlightStatuses_',  label: 'Flight status poll',   maxAgeHours: 2  },
   { job: 'runEmailScan_',         label: 'Travel email scan',    maxAgeHours: 3  },
-  { job: 'scanUSPSMail_',         label: 'USPS mail scan',       maxAgeHours: 26 },
+  { job: 'scanUSPSMail_',         label: 'USPS mail scan',       maxAgeHours: 26, startProp: 'USPS_SCAN_START' },
   { job: 'scanHoaWebsite_',       label: 'HOA website scan',     maxAgeHours: 8 * 24 },
   // Delivery, not execution. morningNudge's own heartbeat says the trigger
   // fired; this one says the briefing actually reached you, which is the part
@@ -484,6 +484,15 @@ var WATCHDOG_SLACK_COOLDOWN_MS_ = 12 * 60 * 60 * 1000;
 function runWatchdog_(exclude) {
   var notices = getWatchdogNotices_(exclude);
 
+  // A job overdue because its trigger is gone gets the trigger back. Done before the
+  // flag and Slack so both can say so.
+  try {
+    var put = repairMissingTriggers_(notices.jobs);
+    notices.jobs.forEach(function(j, i) {
+      if (put.indexOf(j.job) !== -1) notices.lines[i] += ' \u2014 its trigger was missing, so VERA put it back';
+    });
+  } catch (e) { Logger.log('runWatchdog_: trigger repair error — ' + e.message); }
+
   try { syncWatchdogFlags_(notices); }
   catch (e) { Logger.log('runWatchdog_: flag sync error — ' + e.message); }
 
@@ -598,7 +607,9 @@ function syncWatchdogFlags_(notices) {
                (j.neverRan
                  ? 'It has never run since being registered.'
                  : 'Last run ' + Utilities.formatDate(new Date(j.lastRun), tz, 'MMM d, h:mm a') + '.') +
-               ' Check the Apps Script trigger — Google disables triggers after repeated failures.';
+               (j.repaired
+                 ? ' Its trigger was missing, so VERA put it back; it should run at its next time.'
+                 : ' Check the Apps Script trigger — Google disables triggers after repeated failures.');
     var inc = incidents[j.job];
     if (!inc) {
       // A new incident never reuses an earlier one's key, even within the same minute.
@@ -674,6 +685,42 @@ function syncWatchdogFlags_(notices) {
     try { colorCodeFlags(sheet); } catch (e) {}
     Logger.log('syncWatchdogFlags_: wrote ' + appended + ' watchdog flag(s)');
   }
+}
+
+/**
+ * Recreates the trigger of each overdue job that VERA schedules (veraTriggerSpecs_,
+ * Code.js) and that has no trigger at all, exactly as setupTriggers would. It never
+ * deletes a trigger and never adds a second one; a job whose trigger exists but does
+ * not fire is left to the flag. Marks each repaired job `repaired: true` and adds it to
+ * the registrations, keeping the others.
+ *
+ * @param {Array<Object>} jobs  getOverdueJobs_ output
+ * @returns {Array<string>} the handlers it recreated
+ */
+function repairMissingTriggers_(jobs) {
+  if (!jobs || !jobs.length) return [];
+  var specs = veraTriggerSpecs_(), have = {}, made = [];
+  ScriptApp.getProjectTriggers().forEach(function(t) { have[t.getHandlerFunction()] = true; });
+  jobs.forEach(function(j) {
+    if (have[j.job]) return;
+    var s = specs.filter(function(x) { return x.handler === j.job; })[0];
+    if (!s) return;
+    try {
+      s.build(ScriptApp.newTrigger(s.handler).timeBased()).create();
+      have[j.job] = true;
+      j.repaired = true;
+      made.push(j.job);
+    } catch (e) {
+      Logger.log('repairMissingTriggers_: could not recreate ' + j.job + ' — ' + e.message);
+    }
+  });
+  if (made.length) {
+    var map = getTriggerRegistrations_(), now = Date.now();
+    made.forEach(function(h) { map[h] = now; });
+    PropertiesService.getScriptProperties().setProperty(TRIGGER_REGISTRY_KEY_, JSON.stringify(map));
+    try { veraLog_('watchdog', 'System', 'Success', 'Recreated missing trigger(s): ' + made.join(', ')); } catch (lgErr) {}
+  }
+  return made;
 }
 
 // ---- Incidents ---------------------------------------------------------------
