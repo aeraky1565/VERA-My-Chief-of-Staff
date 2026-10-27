@@ -60,7 +60,7 @@ const CONTROLS = [
   ['coming up shows every service, however far off', b => ({ [H]: swap(b[H], "    if (!d || d > soon30) return;\n", "    if (!d) return;\n") })],
   ['coming up is not sorted', b => ({ [H]: swap(b[H], "  out.sort(function(a, b) { return (rank[a.tone] - rank[b.tone]) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });\n", "") })],
   ['one bad source breaks the card', b => ({ [H]: swap(b[H], "function hfTry_(name, fn, missing) { try { return fn(); } catch (e) {", "function hfTry_(name, fn, missing) { return fn(); try { } catch (e) {") })],
-  ['tapping a coming-up item goes nowhere', both("onClick:function(){if(props.onPick)props.onPick(it.section);}", "onClick:function(){}"), UI],
+  ['tapping a coming-up item goes nowhere', both("if(props.onPick)props.onPick(it.section);},", "},"), UI],
   ['the routine list shows upkeep again', both("function hfRoutineChores_(chores){return (chores||[]).filter(function(c){return !hfIsUpkeepCadence_(c.Cadence);});}", "function hfRoutineChores_(chores){return (chores||[]);}"), UI],
   ['upkeep is listed in sheet order', both("var r=(rank[ua.status]==null?2:rank[ua.status])-(rank[ub.status]==null?2:rank[ub.status]);if(r)return r;", ""), UI],
   ['Done does not update the row', both("function(r){merge([r.chore]);});},style:btn(false)},busy==='done'+c.ID", "function(r){});},style:btn(false)},busy==='done'+c.ID"), UI],
