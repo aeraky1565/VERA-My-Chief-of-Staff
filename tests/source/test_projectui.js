@@ -1,10 +1,11 @@
-// Issue 199 — project ownership, in both REAL pages.
-//
-// Ahmed's dashboard gets an owner picker and filter chips. Victoria's gets a
-// Projects tab it never had, scoped to Shared + her own, with the task checkbox
-// as its only control. The scoping is the part worth proving: a filter that
-// silently lets an Ahmed-only project through would be the whole point of the
-// issue, undone.
+// The Projects board (the shared ProjBoard block), in BOTH real pages, at phone and desktop
+// width. Ahmed's dashboard: cards sorted by the server's verdict, owner pills, Next up across
+// projects, a project open with its Needed by date and pace, phases with progress, ticks, the
+// status chip and Waiting on, tap-to-move, dates that follow the target, adding a task, and
+// the dialogs only that page has. Victoria's: the same board scoped to Shared + her own, with
+// no create / edit / delete / close / Ask VERA. The scoping is the part worth proving: a
+// filter that lets an Ahmed-only project through would undo issue 199. Every value here is
+// invented. PROJ_QUICK (set by ctl_projects.js): the full dashboard at phone width only.
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path');
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
@@ -13,306 +14,215 @@ const ROOT = process.env.VERA_PAGES_ROOT || REPO;
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
                              : (fail++, console.log('  FAIL ' + n + (d !== undefined ? '  — ' + d : '')));
+const wait = ms => new Promise(r => setTimeout(r, ms));
 
-// Exactly the shape webGetProjects_ sends — including every DERIVED field, so
-// the pages are handed what the server actually computes rather than a
-// hand-waved subset. One project of each owner, so a filter that does nothing
-// and a filter that hides everything both show up.
+const APP  = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
+const LITE = fs.readFileSync(path.join(ROOT, 'docs/dashboard-lite.html'), 'utf8');
+const START = '// ---- ProjBoard (Projects) — SHARED VERBATIM', END = '// ---- /ProjBoard ----';
+const block = s => { const a = s.indexOf(START), b = s.indexOf(END); return a === -1 || b === -1 ? '' : s.slice(a, b + END.length); };
+console.log('\nthe shared block');
+check('both dashboards carry the ProjBoard block, word for word', block(APP).length > 5000 && block(APP) === block(LITE));
+check('a project task in Coming up opens Projects, in both pages',
+      [APP, LITE].every(x => x.indexOf("onClick:function(){if(it.section==='projects'){if(props.onOpenProjects)props.onOpenProjects();return;}") !== -1 && /project:'Project'\}/.test(x))
+      && APP.indexOf("onOpenProjects:function(){setActiveTab('projects');loadProjects(apiUrl,apiToken);}") !== -1 && LITE.indexOf("onOpenProjects={() => setActiveTab('projects')}") !== -1);
+check('the full page keeps the board mounted while it reloads', APP.indexOf("activeTab==='projects'&&(tabLoading.projects&&!projects.length?") !== -1);
+
+// Dates are relative to today, as the board reads them.
+const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const day = n => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return ymd(d); };
+const fmt = s => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+s.slice(5, 7) - 1] + ' ' + (+s.slice(8, 10));
+
+// Exactly the shape webGetProjects_ sends, derived fields included.
 const t = (rowNum, task, o) => Object.assign(
-  { rowNum, task, status:'Pending', priority:'Medium', dueDate:'', notes:'',
-    phase:'', sequence:null, completedOn:'', isOverdue:false, daysUntilDue:null }, o || {});
-
+  { rowNum, task, status:'Pending', priority:'Medium', dueDate:'', notes:'', phase:'', sequence:null,
+    completedOn:'', isOverdue:false, daysUntilDue:null, before:null, waitingOn:'' }, o || {});
 const A_TASKS = [
-  t(2, 'Pick tiles',    { priority:'High', phase:'Planning',  sequence:1, notes:'showroom Saturday' }),
-  t(3, 'Measure units', {                  phase:'Planning',  sequence:2 }),
-  t(7, 'Book fitter',   {                  phase:'Logistics', sequence:3 }),
-  t(8, 'Order sink',    { status:'Done',   phase:'Logistics', sequence:4, completedOn:'2026-09-10' }),
+  t(2, 'Pick tiles',    { phase:'Planning',  sequence:1, before:30, dueDate:day(6) }),
+  t(3, 'Measure units', { phase:'Planning',  sequence:2, dueDate:day(10) }),
+  t(7, 'Book fitter',   { phase:'Logistics', sequence:3, before:14, dueDate:day(22) }),
+  t(8, 'Order sink',    { status:'Done', phase:'Logistics', sequence:4, completedOn:day(-2) }),
 ];
-
-// A real DragEvent (not a generic Event) is what React's drag handlers listen
-// for, and dragstart has to land in its own turn so React can re-render with
-// the new dragRow before drop reads it.
-async function drag(page, fromRow, toRow) {
-  const mk = `(n) => new DragEvent(n, { bubbles:true, cancelable:true, dataTransfer:new DataTransfer() })`;
-  await page.evaluate(({ fromRow, mk }) => {
-    const ev = eval(mk);
-    document.querySelector('#pprobe [data-task-row="' + fromRow + '"]').dispatchEvent(ev('dragstart'));
-  }, { fromRow, mk });
-  await page.waitForTimeout(120);
-  await page.evaluate(({ toRow, mk }) => {
-    const ev = eval(mk);
-    const el = document.querySelector('#pprobe [data-task-row="' + toRow + '"]');
-    el.dispatchEvent(ev('dragover'));
-    el.dispatchEvent(ev('drop'));
-  }, { toRow, mk });
-}
-
 const FIXTURE = [
-  { projectId:'PROJ-A', projectName:'Kitchen refit', owner:'Shared', targetDate:'2026-12-01',
+  { projectId:'PROJ-A', projectName:'Kitchen refit', owner:'Shared', targetDate:day(36),
     context:'Replacing the units and worktop before the in-laws visit at Christmas.',
-    total:4, done:1, pending:3, pct:25, overdueCount:0, blockedCount:0,
-    health:'on_track', healthReason:'3 tasks to go',
+    total:4, done:1, pending:3, pct:25, health:'on_track', healthReason:'3 tasks to go', timePct:40, pace:'slightly',
     phases:['Planning','Logistics'], nextTask:A_TASKS[0], tasks:A_TASKS },
-
-  { projectId:'PROJ-B', projectName:'Tax filing', owner:'Ahmed', targetDate:'2026-09-25',
-    total:1, done:0, pending:1, pct:0, overdueCount:0, blockedCount:0,
-    health:'at_risk', healthReason:'Target in 3d, 100% left',
-    phases:[], nextTask:t(4, 'Gather 1099s', { priority:'High' }),
-    tasks:[ t(4, 'Gather 1099s', { priority:'High' }) ] },
-
-  // Every remaining task is blocked, so there is nothing to pick up and the
-  // server sends nextTask: null.
+  { projectId:'PROJ-B', projectName:'Tax filing', owner:'Ahmed', targetDate:day(3),
+    total:1, done:0, pending:1, pct:0, health:'at_risk', healthReason:'Target in 3d, 100% left', timePct:90, pace:'behind',
+    phases:[], nextTask:t(4, 'Gather 1099s', { dueDate:day(1) }), tasks:[ t(4, 'Gather 1099s', { dueDate:day(1) }) ] },
+  // Everything left is blocked: nothing to pick up.
   { projectId:'PROJ-C', projectName:'Baby registry', owner:'Victoria', targetDate:'',
-    total:1, done:0, pending:1, pct:0, overdueCount:0, blockedCount:1,
-    health:'blocked', healthReason:'All 1 remaining task is blocked',
-    phases:[], nextTask:null,
-    tasks:[ t(5, 'Shortlist prams', { priority:'Low', status:'Blocked', notes:'waiting on the registry list' }) ] },
-
-  // No owner at all — every project that pre-dates the column looks like this,
-  // and it has to read as Shared on both sides.
-  //
-  // It is ALSO the disagreement case: its one task is Pending with no due date,
-  // so raw task data implies a perfectly healthy project — but the server says
-  // overdue (its target date passed). The pages must render the server's
-  // verdict, not re-derive one. If a page ever computes health itself, this is
-  // the fixture that catches it.
-  { projectId:'PROJ-D', projectName:'Garage clear-out', targetDate:'2026-09-01',
-    total:1, done:0, pending:1, pct:0, overdueCount:0, blockedCount:0,
-    health:'overdue', healthReason:'Target date passed 3d ago, 1 task left',
-    phases:[], nextTask:null, tasks:[ t(6, 'Hire skip') ] },
+    total:1, done:0, pending:1, pct:0, health:'blocked', healthReason:'All 1 remaining task is blocked', timePct:null, pace:'',
+    phases:[], nextTask:null, tasks:[ t(5, 'Shortlist prams', { status:'Blocked', waitingOn:'the registry' }) ] },
+  // No owner (reads as Shared), and the disagreement case: its task looks healthy, but the
+  // server says overdue. The pages must show the server's verdict.
+  { projectId:'PROJ-D', projectName:'Garage clear-out', targetDate:'',
+    total:1, done:0, pending:1, pct:0, health:'overdue', healthReason:'Target date passed 3d ago, 1 task left', timePct:null, pace:'',
+    phases:[], nextTask:t(6, 'Hire skip'), tasks:[ t(6, 'Hire skip') ] },
+  { projectId:'PROJ-E', projectName:'Paint the hall', owner:'Shared', targetDate:'',
+    total:1, done:1, pending:0, pct:100, health:'done', healthReason:'All tasks complete', timePct:null, pace:'',
+    phases:[], nextTask:null, tasks:[ t(9, 'Paint', { status:'Done' }) ] },
 ];
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
+  const QUICK = !!process.env.PROJ_QUICK;
+  const ONLY = process.env.VERA_ONLY || '';
 
   // ======================= Ahmed's dashboard =============================
-  // ProjectsTab mounted directly with the fixture, so onSetOwner can be
-  // captured. The component is the real one from the real built page.
-  //
-  // VERA_ONLY exists for the negative control: pointed at the pre-change pages
-  // the full-dashboard half aborts on a chip that does not exist yet, which
-  // would hide whether the lite half is also load-bearing.
-  const ONLY = process.env.VERA_ONLY || '';
-  for (const width of (ONLY === 'lite' ? [] : [390, 1280])) {
+  for (const width of (ONLY === 'lite' ? [] : QUICK ? [390] : [390, 1280])) {
+    const L = 'full ' + width;
     console.log('\nfull dashboard @ ' + width + 'px');
     const page = await browser.newPage({ viewport:{ width, height:1000 } });
+    const errs = []; page.on('pageerror', e => errs.push(e.message));
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil:'domcontentloaded' });
+    await page.waitForFunction(() => typeof ProjectsBoard === 'function' && typeof ProjectsTab === 'function', null, { timeout:15000 }).catch(() => {});
+    const wide = width >= 900;
 
-    const mount = () => page.evaluate((projects) => {
+    // The real ProjectsTab from the built page, with a recording call and every dialog captured.
+    const mount = (projects) => page.evaluate((projects) => {
       document.querySelectorAll('.modal-overlay, #pprobe').forEach(n => n.remove());
-      const host = document.createElement('div'); host.id = 'pprobe';
-      document.body.appendChild(host);
-      window.__ownerCalls = []; window.__reorderCalls = []; window.__closeCalls = [];
-      ReactDOM.createRoot(host).render(React.createElement(ProjectsTab, {
-        projects,
-        onCompleteTask: () => {}, onAddTask: () => {}, onEditTask: () => {},
-        onDeleteTask: () => {},   onCreateProject: () => {},
-        onCloseProject: p => window.__closeCalls.push(p.projectId),
-        onSetOwner: (id, owner) => window.__ownerCalls.push([id, owner]),
-        onSetTarget: () => {},
-        onReorder: (id, rows) => window.__reorderCalls.push([id, rows]),
-        busy: false,
-      }));
-      return new Promise(r => setTimeout(r, 250));
-    }, FIXTURE);
-
-    const readState = () => page.evaluate(() => {
-      const host = document.getElementById('pprobe');
-      const chips = Array.from(host.querySelectorAll('[data-owner-filter]'));
-      // The project tab strip: every button that carries an owner dot.
-      const dots = Array.from(host.querySelectorAll('[data-owner-dot]'));
-      return {
-        chipLabels: chips.map(b => b.textContent.trim()),
-        tabs: dots.map(d => (d.parentElement.textContent || '').replace(/\s+/g,' ').trim()),
-        owners: dots.map(d => d.getAttribute('data-owner-dot')),
-        pickerOwners: Array.from(host.querySelectorAll('[data-set-owner]')).map(b => b.getAttribute('data-set-owner')),
-        pickerActive: Array.from(host.querySelectorAll('[data-set-owner]'))
-          .filter(b => b.disabled).map(b => b.getAttribute('data-set-owner')),
-        emptyNote: (host.querySelector('.proj-owner-empty') || {}).textContent || '',
-        calls: window.__ownerCalls,
+      const host = document.createElement('div'); host.id = 'pprobe'; host.style.padding = '0 16px';
+      document.body.prepend(host);
+      window.__calls = []; window.__reply = {}; window.__reloads = 0; window.__ui = [];
+      const C = ProjectsTab;
+      window.__props = {
+        projects, apiUrl:'https://vera.test/exec', apiToken:'t',
+        reload: () => { window.__reloads++; },
+        onCreateProject: () => window.__ui.push(['create']),
+        onSuggestTasks: p => window.__ui.push(['suggest', p.projectId]),
+        onEditTask: tk => window.__ui.push(['edit', tk.rowNum]),
+        onCloseProject: p => window.__ui.push(['close', p.projectId]),
+        onSetOwner: (p, o) => window.__ui.push(['owner', p.projectId, o]),
+        onSetContext: (p, c) => window.__ui.push(['context', p.projectId, c]),
       };
-    });
+      // The page's own call goes through apiGet; record what it would send instead.
+      window.apiGet = (u, tok, params) => { window.__calls.push(params); return Promise.resolve(window.__reply[params.action] || { ok:true }); };
+      ReactDOM.createRoot(host).render(React.createElement(C, window.__props));
+      return new Promise(r => setTimeout(r, 200));
+    }, projects);
+    const txt = (sel) => page.$$eval('#pprobe ' + sel, ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+    const click = (sel, re) => page.evaluate(({ sel, re }) => { const b = Array.from(document.querySelectorAll('#pprobe ' + sel)).find(x => !re || new RegExp(re).test((x.textContent || '') + '|' + (x.getAttribute('aria-label') || ''))); if (b) b.click(); return !!b; }, { sel, re }).then(r => wait(80).then(() => r));
+    const calls = () => page.evaluate(() => window.__calls);
+    const last = () => page.evaluate(() => JSON.stringify(window.__calls[window.__calls.length - 1] || null));
+    const cardNames = () => txt('.pj-card .pj-card-name');
 
-    await mount();
-    let s = await readState();
+    await mount(FIXTURE);
+    // ---- the list ----
+    check(L + ': cards are sorted by the server verdict — overdue, at risk, blocked, on track',
+          JSON.stringify(await cardNames()) === '["Garage clear-out","Tax filing","Baby registry","Kitchen refit"]', JSON.stringify(await cardNames()));
+    const chips = await txt('.pj-card .pj-health'), reasons = await txt('.pj-card .pj-reason');
+    check(L + ": each card shows the SERVER's verdict and reason, not its own",
+          chips.join(',') === 'Overdue,At risk,Blocked,On track' && reasons[0] === 'Target date passed 3d ago, 1 task left', JSON.stringify([chips, reasons[0]]));
+    check(L + ': a project with no owner is badged Shared', (await txt('.pj-card .pj-owner-badge'))[0] === 'Shared');
+    check(L + ': a card counts its tasks and its date', (await txt('.pj-card .pj-progress'))[3] === '1 of 4 done' && (await txt('.pj-card .pj-target-text'))[3] === 'Needed by ' + fmt(day(36)) + ' · 36d');
+    check(L + ': a card offers its next task; an all-blocked one offers none',
+          JSON.stringify(await txt('.pj-card-next-name')) === '["Hire skip","Gather 1099s","Pick tiles"]', JSON.stringify(await txt('.pj-card-next-name')));
+    check(L + ': the finished project is folded away under a count', (await txt('.pj-done-toggle'))[0] === '▸ Done projects (1)' && !(await cardNames()).includes('Paint the hall'));
+    await click('.pj-done-toggle');
+    check(L + ': …and opens on tap', (await cardNames()).includes('Paint the hall'));
+    check(L + ': owner pills are All plus the three owners', JSON.stringify(await txt('.pj-owner')) === '["All","Shared","Ahmed","Victoria"]');
+    await click('.pj-owner', '^Victoria');
+    check(L + ': Victoria leaves only her project', JSON.stringify(await cardNames()) === '["Baby registry"]', JSON.stringify(await cardNames()));
+    await click('.pj-owner', '^Shared');
+    check(L + ': Shared keeps the explicit one and the blank one (and the finished one)', JSON.stringify(await cardNames()) === '["Garage clear-out","Kitchen refit","Paint the hall"]', JSON.stringify(await cardNames()));
+    await click('.pj-owner', '^Ahmed'); await click('.pj-owner', '^Ahmed');
+    check(L + ': Ahmed leaves only his', JSON.stringify(await cardNames()) === '["Tax filing"]');
+    await click('.pj-owner', '^All');
+    await click('.pj-next-tick', 'Pick tiles');
+    check(L + ': ticking a card\'s Next up completes that row', await last() === '{"action":"complete_project_task","row":2}', await last());
+    check(L + ': …Next up moves on at once, and the page reloads', (await txt('.pj-card-next-name'))[2] === 'Measure units' && await page.evaluate(() => window.__reloads) === 1, JSON.stringify(await txt('.pj-card-next-name')));
+    await click('.pj-new');
+    check(L + ': + New project opens the page\'s dialog', JSON.stringify(await page.evaluate(() => window.__ui)) === '[["create"]]');
 
-    check('the filter offers All plus the three owners',
-          s.chipLabels.join(',') === 'All,Shared,Ahmed,Victoria', s.chipLabels.join(','));
-    check('All is the default — every project is listed',
-          s.tabs.length === 4, s.tabs.length + ': ' + s.tabs.join(' | '));
-    check('a project with no owner is drawn as Shared',
-          s.owners.filter(o => o === 'Shared').length === 2, s.owners.join(','));
+    // ---- Next up ----
+    await mount(FIXTURE);
+    check(L + ': the switch counts what can be picked up', (await txt('.pj-tab-next'))[0] === 'Next up · 3');
+    await click('.pj-tab-next');
+    check(L + ': Next up lists one task per project, soonest first, undated last',
+          JSON.stringify(await txt('.pj-next-task')) === '["Gather 1099s","Pick tiles","Hire skip"]' && (await txt('.pj-next-from'))[1] === 'Kitchen refit · Planning', JSON.stringify(await txt('.pj-next-task')));
+    await click('.pj-next-start', 'Start');
+    check(L + ': Start marks it in progress', await last() === '{"action":"update_project_task","row":4,"status":"In Progress"}' && (await txt('.pj-next-start'))[0] === 'In progress ✓', await last());
+    await click('.pj-next-done');
+    check(L + ': Done completes it', await last() === '{"action":"complete_project_task","row":4}', await last());
+    await page.evaluate(() => { window.__calls = []; });
+    await click('.pj-next-block');
+    check(L + ': Blocked… sets it Blocked and opens its project, asking who it waits on',
+          await last() === '{"action":"update_project_task","row":2,"status":"Blocked"}' && (await txt('.pj-title'))[0] === 'Kitchen refit' && (await page.$$('#pprobe .pj-wait')).length === 1, await last());
+    await click('.pj-wait-pick', '^Victoria');
+    check(L + ': picking a person saves Waiting on, and the row says so',
+          await last() === '{"action":"update_project_task","row":2,"waitingOn":"Victoria"}' && (await txt('.pj-waiting'))[0] === 'Waiting on Victoria' && (await page.$$('#pprobe .pj-wait')).length === 0, await last());
 
-    // Filtering.
-    const clickChip = o => page.click('#pprobe [data-owner-filter="' + o + '"]').then(() => page.waitForTimeout(200));
+    // ---- a project ----
+    await mount(FIXTURE);
+    await click('.pj-card-open', 'Kitchen refit');
+    check(L + (wide ? ': the open project sits beside the list' : ': a card opens its project in place of the list'),
+          (await txt('.pj-title'))[0] === 'Kitchen refit' && (wide ? (await cardNames()).length === 4 && (await page.$$('#pprobe .pj-back')).length === 0 : (await cardNames()).length === 0 && (await page.$$('#pprobe .pj-back')).length === 1));
+    check(L + ': phases in order, each with its count', JSON.stringify(await page.$$eval('#pprobe .pj-phase-name', ns => ns.map(n => n.textContent))) === '["Planning","Logistics"]' && JSON.stringify(await txt('.pj-phase-count')) === '["0 of 2","1 of 2"]', JSON.stringify(await txt('.pj-phase-count')));
+    const dues = await txt('.pj-due');
+    check(L + ': a task set days before says so; a fixed one does not',
+          dues[0] === fmt(day(6)) + ' · in 6d · 30d before' && dues[1] === fmt(day(10)) + ' · in 10d', JSON.stringify(dues));
+    check(L + ': Needed by shows the date and days left', (await txt('.pj-target-date'))[0] === fmt(day(36)) + ' · 36 days left');
+    check(L + ': the pace bar is the server\'s time used against work done', /^Time used 40% Work done 25%/.test((await txt('.pj-pace'))[0] || '') && (await txt('.pj-pace-word'))[0] === 'A little behind pace.', JSON.stringify(await txt('.pj-pace')));
+    await click('.pj-later');
+    check(L + ': +1 wk moves the target', await last() === JSON.stringify({ action:'set_project_target', projectId:'PROJ-A', targetDate:day(43) }), await last());
+    const dues2 = await txt('.pj-due');
+    check(L + ': …tasks set days before move with it; the fixed one stays', dues2[0].startsWith(fmt(day(13)) + ' ') && dues2[1].startsWith(fmt(day(10)) + ' '), JSON.stringify(dues2));
+    await click('.pj-earlier');
+    check(L + ': −1 wk moves it back', await last() === JSON.stringify({ action:'set_project_target', projectId:'PROJ-A', targetDate:day(36) }));
+    await page.evaluate(() => { const b = document.querySelectorAll('#pprobe .pj-status')[1]; b.click(); }); await wait(80);
+    const st = async () => (await txt('.pj-status'))[1];
+    check(L + ': the status chip cycles Pending → In progress', await last() === '{"action":"update_project_task","row":3,"status":"In Progress"}' && await st() === 'In progress', await last());
+    await page.evaluate(() => { const b = document.querySelectorAll('#pprobe .pj-status')[1]; b.click(); }); await wait(80);
+    check(L + ': …→ Blocked, which asks who it waits on', await last() === '{"action":"update_project_task","row":3,"status":"Blocked"}' && await st() === 'Blocked' && (await page.$$('#pprobe .pj-wait')).length === 1);
+    await page.fill('#pprobe .pj-wait-other input', 'the fitter'); await page.$eval('#pprobe .pj-wait-other', f => f.requestSubmit()); await wait(80);
+    check(L + ': someone not on the list can be typed in', await last() === '{"action":"update_project_task","row":3,"waitingOn":"the fitter"}' && (await txt('.pj-waiting'))[0] === 'Waiting on the fitter', await last());
+    await page.evaluate(() => { const b = document.querySelectorAll('#pprobe .pj-status')[1]; b.click(); }); await wait(80);
+    check(L + ': …→ Pending again, and Waiting on goes with it', await last() === '{"action":"update_project_task","row":3,"status":"Pending"}' && (await page.$$('#pprobe .pj-waiting')).length === 0, await last());
+    await click('.pj-check', 'Done: Measure units');
+    check(L + ': a tick completes the task', await last() === '{"action":"complete_project_task","row":3}' && (await page.$$eval('#pprobe .pj-check[aria-pressed="true"]', n => n.length)) === 2);
+    await click('.pj-check', 'Reopen: Measure units');
+    check(L + ': ticking a done task reopens it', await last() === '{"action":"update_project_task","row":3,"status":"Pending"}', await last());
+    await click('.pj-move', 'Move Measure units');
+    check(L + ': Move offers places only in its own phase', (await page.$$('#pprobe .pj-drop')).length === 1 && (await page.$$('#pprobe .pj-drop-end')).length === 0 && /Moving “Measure units”/.test((await txt('.pj-moving'))[0] || ''), (await page.$$('#pprobe .pj-drop')).length);
+    await click('.pj-drop');
+    check(L + ': Move here sends the whole project in its new order', await last() === '{"action":"reorder_project_tasks","projectId":"PROJ-A","rowOrder":"3,2,7,8"}' && (await txt('.pj-task-name'))[0] === 'Measure units', await last());
+    await click('.pj-move', 'Move Book fitter');
+    const inPlanning = await page.$$eval('#pprobe .pj-phase', ss => ss[0].querySelectorAll('.pj-drop, .pj-drop-end').length);
+    check(L + ': a task never moves across phases', inPlanning === 0 && (await page.$$('#pprobe .pj-drop-end')).length === 1, inPlanning);
+    await click('.pj-drop-end');
+    check(L + ': …Move to the end puts it last in its phase', await last() === '{"action":"reorder_project_tasks","projectId":"PROJ-A","rowOrder":"3,2,8,7"}', await last());
+    await click('.pj-add');
+    await page.fill('#pprobe .pj-add-form input[type="text"]', 'Order worktop');
+    await page.selectOption('#pprobe .pj-add-form select', 'Logistics');
+    await page.fill('#pprobe .pj-add-before', '10');
+    await page.$eval('#pprobe .pj-add-form', f => f.requestSubmit()); await wait(80);
+    check(L + ': adding a task sends its phase and days before', await last() === '{"action":"add_project_task","projectId":"PROJ-A","task":"Order worktop","phase":"Logistics","before":"10"}' && (await page.$$('#pprobe .pj-add-form')).length === 0, await last());
+    await page.evaluate(() => { window.__ui = []; });
+    await click('.pj-edit', 'Edit Pick tiles'); await click('.pj-suggest'); await click('.pj-close');
+    await page.selectOption('#pprobe .pj-owner-set', 'Victoria');
+    await click('.pj-context-edit');
+    await page.fill('#pprobe .pj-context-form textarea', 'Units and worktop.'); await page.$eval('#pprobe .pj-context-form', f => f.requestSubmit()); await wait(80);
+    check(L + ': Edit, Ask VERA, Close, the owner and the context reach the page\'s own handlers',
+          JSON.stringify(await page.evaluate(() => window.__ui)) === '[["edit",2],["suggest","PROJ-A"],["close","PROJ-A"],["owner","PROJ-A","Victoria"],["context","PROJ-A","Units and worktop."]]', JSON.stringify(await page.evaluate(() => window.__ui)));
+    await page.evaluate(() => { window.__reply.set_project_target = { ok:false, error:'The sheet is busy.' }; });
+    await click('.pj-later');
+    check(L + ': a failed save says why', (await txt('.pj-err'))[0] === 'The sheet is busy.', JSON.stringify(await txt('.pj-err')));
+    const tgt = await page.$$eval('#pprobe .pj-check, #pprobe .pj-card-open, #pprobe .pj-later, #pprobe .pj-add, #pprobe .pj-tab-list, #pprobe .pj-suggest', bs => bs.map(b => Math.round(b.getBoundingClientRect().height)));
+    check(L + ': ticks and buttons are at least 44px tall', tgt.length > 4 && tgt.every(x => x >= 44), JSON.stringify(tgt));
+    check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+    if (!wide) {
+      await click('.pj-back');
+      check(L + ': ‹ All projects goes back to the list', (await cardNames()).length === 4);
+    }
+    await mount(FIXTURE);
+    await click('.pj-card-open', 'Baby registry');
+    check(L + ': a project with no date offers to set one', (await page.$$('#pprobe .pj-target-set')).length === 1 && (await page.$$('#pprobe .pj-pace')).length === 0 && (await txt('.pj-waiting'))[0] === 'Waiting on the registry');
+    await mount([]);
+    check(L + ': no projects says how to start one', /^No projects yet\. Start one with \+ New project/.test((await txt('.pj-none'))[0] || ''), JSON.stringify(await txt('.pj-none')));
+    check(L + ': no page errors', errs.length === 0, errs.join(' | '));
 
-    await clickChip('Victoria');
-    s = await readState();
-    check('Victoria leaves exactly one project', s.tabs.length === 1, s.tabs.join(' | '));
-    check('…and it is the right one', /Baby registry/.test(s.tabs[0] || ''), s.tabs[0]);
-
-    await clickChip('Ahmed');
-    s = await readState();
-    check('Ahmed leaves exactly one project', s.tabs.length === 1, s.tabs.join(' | '));
-    check('…and it is the right one', /Tax filing/.test(s.tabs[0] || ''), s.tabs[0]);
-
-    await clickChip('Shared');
-    s = await readState();
-    check('Shared leaves two — the explicit one and the blank one',
-          s.tabs.length === 2, s.tabs.join(' | '));
-
-    await clickChip('All');
-    s = await readState();
-    check('All restores every project', s.tabs.length === 4, s.tabs.length);
-
-    // The picker reflects the selected project and only fires for a change.
-    check('the picker offers exactly the three owners',
-          s.pickerOwners.join(',') === 'Shared,Ahmed,Victoria', s.pickerOwners.join(','));
-    check("the selected project's own owner is the disabled one",
-          s.pickerActive.join(',') === 'Shared', s.pickerActive.join(','));
-
-    await page.click('#pprobe [data-set-owner="Victoria"]');
-    await page.waitForTimeout(150);
-    s = await readState();
-    check('clicking Victoria calls onSetOwner once', s.calls.length === 1, JSON.stringify(s.calls));
-    check('…with the selected project id and the new owner',
-          s.calls[0] && s.calls[0][0] === 'PROJ-A' && s.calls[0][1] === 'Victoria',
-          JSON.stringify(s.calls[0]));
-
-    // ---- health, next up, phases, collapse, drag ----------------------
-    await mount();
-    let h = await page.evaluate(() => {
-      const host = document.getElementById('pprobe');
-      const chip = host.querySelector('[data-health-chip]');
-      return {
-        chip:   chip && chip.getAttribute('data-health-chip'),
-        chipText: chip && chip.textContent.trim(),
-        reason: (host.querySelector('[data-health-reason]') || {}).textContent || '',
-        dots:   Array.from(host.querySelectorAll('[data-health-dot]')).map(d => d.getAttribute('data-health-dot')),
-        nextUp: (host.querySelector('[data-next-up]') || {}).textContent || '',
-        nextUpRow: (host.querySelector('[data-next-up]') || {}).getAttribute
-                    ? host.querySelector('[data-next-up]').getAttribute('data-next-up') : null,
-        phases: Array.from(host.querySelectorAll('[data-phase-header]')).map(d => d.getAttribute('data-phase-header')),
-        taskRows: Array.from(host.querySelectorAll('[data-task-row]')).map(d => d.getAttribute('data-task-row')),
-        doneRows: host.querySelectorAll('[data-done-row]').length,
-        doneToggle: (host.querySelector('[data-toggle-done]') || {}).textContent || '',
-        notes: Array.from(host.querySelectorAll('[data-task-notes]')).map(d => d.textContent.trim()),
-        target: (host.querySelector('[data-project-target]') || {}).value,
-      };
-    });
-
-    check('the selected project shows its health chip', h.chip === 'on_track', h.chip);
-    check('…labelled in words', h.chipText === 'On track', h.chipText);
-    check('…with the reason the server sent', h.reason === '3 tasks to go', h.reason);
-    check('every project tab carries a health dot', h.dots.length === 4, h.dots.join(','));
-    check('…and the dots are the four server verdicts',
-          h.dots.join(',') === 'on_track,at_risk,blocked,overdue', h.dots.join(','));
-
-    check('next up names the first pending task', /Pick tiles/.test(h.nextUp), h.nextUp.slice(0, 80));
-    check('…and points at its row', h.nextUpRow === '2', h.nextUpRow);
-    check('the target date input carries the project target', h.target === '2026-12-01', h.target);
-
-    check('phase headers appear in order', h.phases.join(',') === 'Planning,Logistics', h.phases.join(','));
-    check('only pending tasks are listed', h.taskRows.join(',') === '2,3,7', h.taskRows.join(','));
-    check('completed tasks are collapsed by default', h.doneRows === 0, h.doneRows);
-    check('…behind a count', /1 done/.test(h.doneToggle), h.doneToggle);
-    check('task notes are rendered', h.notes.indexOf('showroom Saturday') !== -1, JSON.stringify(h.notes));
-
-    await page.click('#pprobe [data-toggle-done]');
-    await page.waitForTimeout(200);
-    check('…and expand on click',
-          await page.evaluate(() => document.querySelectorAll('#pprobe [data-done-row]').length) === 1);
-
-    // The disagreement case: PROJ-D's only task is Pending with no due date, so
-    // raw task data implies a healthy project. The server says overdue. If the
-    // page re-derived health instead of rendering what it was given, this fails.
-    await page.evaluate(() => {
-      const tabs = Array.from(document.querySelectorAll('#pprobe button'));
-      const d = tabs.find(b => /Garage clear-out/.test(b.textContent));
-      d && d.click();
-    });
-    await page.waitForTimeout(250);
-    const dState = await page.evaluate(() => {
-      const host = document.getElementById('pprobe');
-      const chip = host.querySelector('[data-health-chip]');
-      return { chip: chip && chip.getAttribute('data-health-chip'),
-               text: chip && chip.textContent.trim(),
-               reason: (host.querySelector('[data-health-reason]') || {}).textContent || '' };
-    });
-    check("the page renders the SERVER's verdict, not its own", dState.chip === 'overdue', dState.chip);
-    check('…shown as Overdue', dState.text === 'Overdue', dState.text);
-    check('…with the server reason', /Target date passed 3d ago/.test(dState.reason), dState.reason);
-
-    // Blocked project: nothing to pick up, and it says so rather than showing
-    // a next action that cannot be started.
-    await page.evaluate(() => {
-      const tabs = Array.from(document.querySelectorAll('#pprobe button'));
-      const c = tabs.find(b => /Baby registry/.test(b.textContent));
-      c && c.click();
-    });
-    await page.waitForTimeout(250);
-    const cState = await page.evaluate(() => {
-      const host = document.getElementById('pprobe');
-      return { up: host.querySelectorAll('[data-next-up]').length,
-               blocked: (host.querySelector('[data-next-up-blocked]') || {}).textContent || '',
-               pill: (host.querySelector('[data-task-status-pill]') || {}).getAttribute
-                      ? host.querySelector('[data-task-status-pill]').getAttribute('data-task-status-pill') : null };
-    });
-    check('a fully blocked project offers no next action', cState.up === 0, cState.up);
-    check('…and says why', /blocked/i.test(cState.blocked), cState.blocked.slice(0, 90));
-    check('the blocked task carries a status pill', cState.pill === 'Blocked', cState.pill);
-
-    // Drag: move "Book fitter" (row 7) is in another phase, so the drag that
-    // must WORK is within Planning — row 3 onto row 2.
-    await mount();
-    // dragstart and drop must be in SEPARATE turns. Dispatched back to back in
-    // one synchronous block, React never re-renders between them, so the drop
-    // handler's closure still sees dragRow === null and nothing fires — the
-    // test would fail against a component that works perfectly in a real drag,
-    // where those events are milliseconds apart.
-    await drag(page, 3, 2);
-    await page.waitForTimeout(250);
-    const reorder = await page.evaluate(() => window.__reorderCalls || []);
-    check('a drag within a phase issues a reorder', reorder.length === 1, JSON.stringify(reorder));
-    check('…with the whole project in its new order',
-          reorder[0] && reorder[0][1].join(',') === '3,2,7,8', reorder[0] && reorder[0][1].join(','));
-
-    // Across phases it must do nothing — ordering and grouping would fight.
-    await mount();
-    await drag(page, 7, 2);   // Logistics -> Planning
-    await page.waitForTimeout(250);
-    check('a drag ACROSS phases is refused',
-          (await page.evaluate(() => (window.__reorderCalls || []).length)) === 0);
-
-    // Close project
-    await mount();
-    await page.click('#pprobe [data-close-project]');
-    await page.waitForTimeout(200);
-    const closed = await page.evaluate(() => window.__closeCalls || []);
-    check('the close button calls onCloseProject', closed.length === 1, JSON.stringify(closed));
-    check('…with the selected project', closed[0] === 'PROJ-A', closed[0]);
-
-    // A filter that matches nothing must say so rather than render blank.
-    // Mount a fixture holding only Ahmed's project, then ask for Victoria's.
-    await page.evaluate((only) => {
-      document.querySelectorAll('.modal-overlay, #pprobe').forEach(n => n.remove());
-      const host = document.createElement('div'); host.id = 'pprobe';
-      document.body.appendChild(host);
-      window.__ownerCalls = [];
-      ReactDOM.createRoot(host).render(React.createElement(ProjectsTab, {
-        projects: only, onCompleteTask:()=>{}, onAddTask:()=>{}, onEditTask:()=>{},
-        onDeleteTask:()=>{}, onCreateProject:()=>{}, onCloseProject:()=>{},
-        onSetOwner:()=>{}, busy:false,
-      }));
-      return new Promise(r => setTimeout(r, 250));
-    }, [FIXTURE[1]]); // Ahmed only
-    await clickChip('Victoria');
-    s = await readState();
-    check('a filter that matches nothing explains itself',
-          /No Victoria projects/.test(s.emptyNote), JSON.stringify(s.emptyNote.slice(0, 120)));
-    check('…and draws no project tabs', s.tabs.length === 0, s.tabs.length);
-
-
+    // The drafting checks below were written for the old tab and stand as they were.
     // ---- drafting: transport ------------------------------------------
     // The context is prose. The risk a query string carries is LENGTH, not
     // character corruption — Apps Script caps the request URL, and a long
@@ -477,133 +387,52 @@ const FIXTURE = [
   }
 
   // ======================= Victoria's dashboard ==========================
-  const liteHtml = fs.readFileSync(path.resolve(ROOT, 'docs/dashboard-lite.html'), 'utf8');
   const vendor = {
     'react.production.min.js':     fs.readFileSync(path.resolve(ROOT, 'docs/react.min.js'), 'utf8'),
     'react-dom.production.min.js': fs.readFileSync(path.resolve(ROOT, 'docs/react-dom.min.js'), 'utf8'),
     'babel.min.js':                fs.readFileSync(require.resolve('@babel/standalone/babel.min.js'), 'utf8'),
   };
-
-  for (const width of (ONLY === 'full' ? [] : [390, 1280])) {
+  for (const width of (ONLY === 'full' || QUICK ? [] : [390, 1280])) {
+    const L = 'lite ' + width;
     console.log('\ndashboard-lite @ ' + width + 'px');
     const page = await browser.newPage({ viewport:{ width, height:1000 } });
+    const errs = []; page.on('pageerror', e => errs.push(e.message));
     const seen = [];
-
     await page.route('**/*', r => {
       const u = r.request().url();
-      for (const n of Object.keys(vendor)) {
-        if (u.includes(n)) return r.fulfill({ contentType:'application/javascript', body: vendor[n] });
-      }
-      if (u.includes('dashboard-lite.html')) {
-        return r.fulfill({ contentType:'text/html', body: liteHtml });
-      }
+      for (const n of Object.keys(vendor)) if (u.includes(n)) return r.fulfill({ contentType:'application/javascript', body: vendor[n] });
+      if (u.includes('dashboard-lite.html')) return r.fulfill({ contentType:'text/html', body: LITE });
       if (u.startsWith('https://vera.test/')) {
-        const q = new URL(u).searchParams;
-        const action = q.get('action');
-        seen.push({ action, row: q.get('row') });
-        if (action === 'projects') {
-          return r.fulfill({ contentType:'application/json',
-                             body: JSON.stringify({ ok:true, count:FIXTURE.length, projects:FIXTURE }) });
-        }
+        const q = new URL(u).searchParams, o = {};
+        q.forEach((v, k) => { if (k !== 'token') o[k] = v; });
+        seen.push(o);
+        if (o.action === 'projects') return r.fulfill({ contentType:'application/json', body: JSON.stringify({ ok:true, count:FIXTURE.length, projects:FIXTURE }) });
         return r.fulfill({ contentType:'application/json', body: JSON.stringify({ ok:true }) });
       }
       return r.fulfill({ contentType:'application/json', body:'{"ok":false}' });
     });
-    await page.addInitScript(() => {
-      localStorage.setItem('vera_url', 'https://vera.test/exec');
-      localStorage.setItem('vera_token', 't');
-    });
+    await page.addInitScript(() => { localStorage.setItem('vera_url', 'https://vera.test/exec'); localStorage.setItem('vera_token', 't'); });
     await page.goto('https://vera.test/dashboard-lite.html', { waitUntil:'networkidle' });
-
-    const tabExists = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('button')).some(b => /Projects/.test(b.textContent)));
-    check('the Projects tab exists at all', tabExists);
-
+    check(L + ': the Projects tab exists', await page.evaluate(() => Array.from(document.querySelectorAll('button')).some(b => /Projects/.test(b.textContent))));
     await page.click('button:has-text("Projects")');
-    await page.waitForTimeout(600);
-
-    const s = await page.evaluate(() => {
-      const ids = Array.from(document.querySelectorAll('[data-project-id]'))
-        .map(d => d.getAttribute('data-project-id'));
-      const badges = Array.from(document.querySelectorAll('[data-owner-badge]'))
-        .map(b => b.getAttribute('data-owner-badge'));
-      const text = document.body.textContent || '';
-      const chipOf = id => {
-        const c = document.querySelector('[data-project-id="' + id + '"] [data-health-chip]');
-        return c ? c.getAttribute('data-health-chip') : null;
-      };
-      return {
-        ids, badges,
-        checkboxes: document.querySelectorAll('[data-project-id] input[type="checkbox"]').length,
-        buttons: Array.from(document.querySelectorAll('[data-project-id] button')).map(b => b.textContent.trim()),
-        mentionsAhmedProject: /Tax filing/.test(text),
-        mentionsShared: /Kitchen refit/.test(text),
-        mentionsVictoria: /Baby registry/.test(text),
-        mentionsBlankOwner: /Garage clear-out/.test(text),
-        chips: { A: chipOf('PROJ-A'), C: chipOf('PROJ-C'), D: chipOf('PROJ-D') },
-        chipTextD: (document.querySelector('[data-project-id="PROJ-D"] [data-health-chip]') || {}).textContent,
-        reasonD: (document.querySelector('[data-project-id="PROJ-D"] [data-health-reason]') || {}).textContent || '',
-        nextUpA: (document.querySelector('[data-project-id="PROJ-A"] [data-next-up]') || {}).textContent || '',
-        nextUpRowA: (document.querySelector('[data-project-id="PROJ-A"] [data-next-up]') || {}).getAttribute
-                      ? document.querySelector('[data-project-id="PROJ-A"] [data-next-up]').getAttribute('data-next-up') : null,
-        blockedC: (document.querySelector('[data-project-id="PROJ-C"] [data-next-up-blocked]') || {}).textContent || '',
-        nextUpCount: document.querySelectorAll('[data-project-id="PROJ-C"] [data-next-up]').length,
-        notes: Array.from(document.querySelectorAll('[data-task-notes]')).map(n => n.textContent.trim()),
-        statusPill: (document.querySelector('[data-project-id="PROJ-C"] [data-task-status-pill]') || {}).getAttribute
-                      ? document.querySelector('[data-project-id="PROJ-C"] [data-task-status-pill]').getAttribute('data-task-status-pill') : null,
-        contextA: (document.querySelector('[data-project-id="PROJ-A"] [data-project-context]') || {}).textContent || '',
-        contextDShown: !!document.querySelector('[data-project-id="PROJ-D"] [data-project-context]'),
-        draftControls: document.querySelectorAll('[data-draft-with-vera],[data-suggest-tasks],[data-edit-context],[data-draft-review]').length,
-      };
-    });
-
-    check('the projects endpoint was called', seen.some(x => x.action === 'projects'),
-          seen.map(x => x.action).join(','));
-    check('Shared, Victoria and the blank-owner project are shown',
-          s.mentionsShared && s.mentionsVictoria && s.mentionsBlankOwner,
-          JSON.stringify(s));
-    check("Ahmed's project is NOT shown", !s.mentionsAhmedProject);
-    check('three projects rendered, not four', s.ids.length === 3, s.ids.join(','));
-    check('PROJ-B is absent from the rendered ids', s.ids.indexOf('PROJ-B') === -1, s.ids.join(','));
-    check('each carries an owner badge', s.badges.length === 3, s.badges.join(','));
-    check('the blank-owner project is badged Shared',
-          s.badges.filter(b => b === 'Shared').length === 2, s.badges.join(','));
-
-    // Health, next up, notes — the same server verdict as the full dashboard.
-    check('each project carries a health chip',
-          s.chips.A === 'on_track' && s.chips.C === 'blocked' && s.chips.D === 'overdue',
-          JSON.stringify(s.chips));
-    check("the chip is the SERVER's verdict, not a re-derived one",
-          s.chipTextD && s.chipTextD.trim() === 'Overdue', s.chipTextD);
-    check('…with the server reason', /Target date passed 3d ago/.test(s.reasonD), s.reasonD);
-    check('next up names the first pending task', /Pick tiles/.test(s.nextUpA), s.nextUpA.slice(0, 80));
-    check('…and points at its row', s.nextUpRowA === '2', s.nextUpRowA);
-    check('a fully blocked project offers no next action', s.nextUpCount === 0, s.nextUpCount);
-    check('…and says so', /blocked/i.test(s.blockedC), s.blockedC.slice(0, 80));
-    check('the blocked task carries a status pill', s.statusPill === 'Blocked', s.statusPill);
-    check('task notes are rendered',
-          s.notes.indexOf('waiting on the registry list') !== -1, JSON.stringify(s.notes));
-    check('the project context is shown', /in-laws visit at Christmas/.test(s.contextA), s.contextA);
-    check('a project with no context renders no context block', s.contextDShown === false, s.contextDShown);
-    // Drafting, editing and appending stay in the full dashboard.
-    check('no drafting control on this page',
-          s.draftControls === 0, s.draftControls);
-
-    // Read-focused: a checkbox per task, and nothing else.
-    check('tasks are checkable', s.checkboxes >= 3, s.checkboxes);
-    check('no add / edit / delete / create control is rendered',
-          s.buttons.length === 0, JSON.stringify(s.buttons));
-
-    // Ticking a task hits the right row.
-    const before = seen.filter(x => x.action === 'complete_project_task').length;
-    await page.click('[data-project-id="PROJ-C"] input[type="checkbox"]');
-    await page.waitForTimeout(500);
-    const calls = seen.filter(x => x.action === 'complete_project_task');
-    check('ticking a task calls complete_project_task', calls.length === before + 1,
-          JSON.stringify(calls));
-    check('…with that task\'s row number', calls.length > 0 && calls[calls.length-1].row === '5',
-          calls.length ? calls[calls.length-1].row : 'none');
-
+    await page.waitForSelector('.pj-card', { timeout:5000 }).catch(() => {});
+    const txt = (sel) => page.$$eval(sel, ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+    const lastWrite = () => JSON.stringify(seen.filter(x => x.action !== 'projects').slice(-1)[0] || null);
+    const names = await txt('.pj-card .pj-card-name');
+    check(L + ': Shared, Victoria\'s and the blank-owner project are shown, sorted by verdict', JSON.stringify(names) === '["Garage clear-out","Baby registry","Kitchen refit"]', JSON.stringify(names));
+    check(L + ": Ahmed's project is NOT shown anywhere", !/Tax filing|Gather 1099s/.test(await page.evaluate(() => document.body.innerText)));
+    check(L + ': the owner pills are only hers and Shared', JSON.stringify(await txt('.pj-owner')) === '["All","Shared","Victoria"]', JSON.stringify(await txt('.pj-owner')));
+    check(L + ': Next up counts only her projects', (await txt('.pj-tab-next'))[0] === 'Next up · 2');
+    check(L + ': no create, edit, delete, close, owner or Ask VERA control', (await page.$$('.pj-new, .pj-edit, .pj-close, .pj-suggest, .pj-owner-set, .pj-context-edit')).length === 0);
+    await page.$eval('.pj-next-tick[aria-label="Done: Pick tiles"]', b => b.click()); await wait(400);
+    check(L + ': ticking a Next up completes that row', lastWrite() === '{"action":"complete_project_task","row":"2"}', lastWrite());
+    check(L + ': …and the page reloads', seen.filter(x => x.action === 'projects').length >= 2);
+    await page.$eval('.pj-card-open[aria-label="Open Baby registry"]', b => b.click()); await wait(200);
+    check(L + ': a blocked task says who it waits on', (await txt('.pj-waiting'))[0] === 'Waiting on the registry');
+    await page.$eval('.pj-status', b => b.click()); await wait(400);
+    check(L + ': the status chip works here too', lastWrite() === '{"action":"update_project_task","row":"5","status":"Pending"}', lastWrite());
+    check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+    check(L + ': no page errors', errs.length === 0, errs.join(' | '));
     await page.close();
   }
 

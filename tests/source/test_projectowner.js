@@ -132,6 +132,8 @@ const PRELUDE = [
   extractFn(PROJ, 'projToday_'),
   extractFn(PROJ, 'projDateStr_'),
   extractFn(PROJ, 'projDaysUntil_'),
+  extractFn(PROJ, 'projBeforeVal_'),
+  extractFn(PROJ, 'projShiftDate_'),
   extractFn(PROJ, 'projThreshold_'),
   extractFn(PROJ, 'ensureProjectsSchema_'),
   extractFn(PROJ, 'createProject_'),

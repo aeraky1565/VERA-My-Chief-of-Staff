@@ -32,7 +32,7 @@ check('every section belongs to one group, and an unknown one to none',
 check('Household is first, and where Home Front opens (both dashboards)',
   /const allSubTabs=\[\{id:'household',label:'🏡 Household'\}/.test(APP) && /const\[sub,setSub\]=React\.useState\('household'\);/.test(APP)
   && /const ALL_SUBTABS = \[\n    \{ id:'household', label:'🏡 Household' \},/.test(LITE) && /React\.useState\('household'\);/.test(LITE));
-check('the lite Home Front shows Household too, under Coming up', /\{sub === 'household' && \(\n        <>\n          <HfComingUp apiUrl=\{apiUrl\} apiToken=\{apiToken\} onPick=\{setSub\} \/>\n          <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
+check('the lite Home Front shows Household too, under Coming up', /\{sub === 'household' && \(\n        <>\n          <HfComingUp apiUrl=\{apiUrl\} apiToken=\{apiToken\} onPick=\{setSub\} onOpenProjects=\{onOpenProjects\} \/>\n          <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
 check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'🏘 Neighborhood'}") !== -1 && LITE.indexOf("{ id:'neighborhood_watch', label:'🏘 Neighborhood' }") !== -1);
 
 console.log('\nthe sitter & guest guide: the rules');

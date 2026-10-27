@@ -1316,6 +1316,7 @@ function webAddProjectTask_(e) {
   var dueDate   =  (e.parameter && e.parameter.dueDate)   || '';
   var notes     =  (e.parameter && e.parameter.notes)     || '';
   var phase     = ((e.parameter && e.parameter.phase)     || '').trim();
+  var before    = projBeforeVal_(e.parameter && e.parameter.before);
   if (!projectId) throw new Error('projectId is required');
   if (!taskText)  throw new Error('Task text is required');
 
@@ -1359,8 +1360,14 @@ function webAddProjectTask_(e) {
 
   // PROJECT_HEADERS: ID | Name | Task | Status | Priority | Due | Notes | Owner
   //                  | Completed On | Target Date | Phase | Sequence | Context
+  //                  | Days Before | Waiting On
+  // A task set "N days before" takes its date from the target, so the date it
+  // was sent with (if any) gives way to that.
+  var targetStr = projDateStr_(projectTarget);
+  if (before !== '' && targetStr) dueDate = projShiftDate_(targetStr, -before);
   var row = [projectId, projectName, taskText, 'Pending', priority, dueDate, notes,
-             normalizeProjectOwner_(projectOwner), '', projectTarget, phase, seq, projectContext];
+             normalizeProjectOwner_(projectOwner), '', projectTarget, phase, seq, projectContext,
+             before, ''];
   sheet.getRange(sheet.getLastRow() + 1, 1, 1, PROJECT_HEADERS.length).setValues([row]);
   return { ok: true, projectId: projectId, action: 'created' };
 }
@@ -1380,11 +1387,23 @@ function webUpdateProjectTask_(e) {
   if (e.parameter.dueDate  != null) sheet.getRange(rowNum, PROJ_COL.DUE      + 1).setValue(e.parameter.dueDate);
   if (e.parameter.notes    != null) sheet.getRange(rowNum, PROJ_COL.NOTES    + 1).setValue(e.parameter.notes);
   if (e.parameter.phase    != null) sheet.getRange(rowNum, PROJ_COL.PHASE    + 1).setValue(e.parameter.phase);
+  // Days before the target: blank makes the task a fixed date again.
+  if (e.parameter.before   != null) sheet.getRange(rowNum, PROJ_COL.BEFORE   + 1).setValue(projBeforeVal_(e.parameter.before));
 
   // Status goes through the shared writer, never a direct setValue, so the
-  // Completed On stamp cannot drift from the status it describes.
+  // Completed On stamp cannot drift from the status it describes. It also
+  // clears Waiting On off anything that is no longer Blocked, so Waiting On is
+  // written after it.
   var statusOut = null;
   if (e.parameter.status != null) statusOut = setProjectTaskStatus_(sheet, rowNum, e.parameter.status);
+  if (e.parameter.waitingOn != null) {
+    var st = normalizeProjectStatus_(sheet.getRange(rowNum, PROJ_COL.STATUS + 1).getValue());
+    sheet.getRange(rowNum, PROJ_COL.WAITING_ON + 1).setValue(st === 'Blocked' ? String(e.parameter.waitingOn).trim() : '');
+  }
+  if (e.parameter.before != null) {
+    var pid = String(sheet.getRange(rowNum, PROJ_COL.ID + 1).getValue() || '').trim();
+    if (pid) projRedate_(sheet, pid);
+  }
 
   return { ok: true, rowNum: rowNum, action: 'updated', status: statusOut };
 }
@@ -1618,7 +1637,7 @@ function webAppendProjectTasks_(e) {
     // webAddProjectTask_ holds back: a lone sequenced row jumps to the top.
     var seq = maxSeq > 0 ? maxSeq + idx + 1 : '';
     return [projectId, name, text, 'Pending', pri, '', String((t && t.notes) || '').trim(),
-            normalizeProjectOwner_(owner), '', target, String((t && t.phase) || '').trim(), seq, context];
+            normalizeProjectOwner_(owner), '', target, String((t && t.phase) || '').trim(), seq, context, '', ''];
   }).filter(Boolean);
 
   if (!rows.length) throw new Error('No usable tasks in the list');
@@ -1657,6 +1676,8 @@ function webSetProjectTarget_(e) {
 
   var res = setProjectFields_(projectId, { TARGET_DATE: targetDate });
   res.targetDate = targetDate;
+  // Tasks set "N days before" move with the target; fixed dates stay put.
+  res.redated = projRedate_(getSpreadsheet().getSheetByName(TABS.PROJECTS), projectId);
   return res;
 }
 

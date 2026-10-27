@@ -184,7 +184,7 @@ function getNotifChannel_(key) {
 }
 // ---- Column Headers --------------------------------------------------------
 const FLAG_HEADERS        = ['ID', 'Date', 'Source', 'Flag', 'Reason', 'Urgency', 'Acknowledged', 'Snoozed Until', 'Resolved', 'Key', 'Escalated'];
-const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes', 'Owner', 'Completed On', 'Target Date', 'Phase', 'Sequence', 'Context'];
+const PROJECT_HEADERS     = ['Project ID', 'Project Name', 'Task', 'Status', 'Priority', 'Due Date', 'Notes', 'Owner', 'Completed On', 'Target Date', 'Phase', 'Sequence', 'Context', 'Days Before', 'Waiting On'];
 const TASK_HEADERS        = ['ID', 'Task', 'Added Date', 'Due Date', 'Status', 'Recurring', 'Notes', 'Flagged'];
 const METRIC_HEADERS      = ['Source', 'Metric', 'Value', 'As Of'];  // Metrics tab
 const SUMMARY_HEADERS     = ['Source', 'Metric', 'Value', 'As Of'];  // Summaries tab
@@ -1255,6 +1255,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'hfSyncUpkeepReminders_', hfSyncUpkeepReminders_);
     // Meal Plan: a use-soon item still in no dinner (Wed–Sat), and "prep tonight" for a dinner that needs thawing.
     nightlyStep_(ctx, 'mpSyncNudges_', mpSyncNudges_);
+    // Projects: one flag per project with overdue tasks; closes itself (Projects.js).
+    nightlyStep_(ctx, 'projSyncOverdueFlags_', projSyncOverdueFlags_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);

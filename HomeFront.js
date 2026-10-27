@@ -373,12 +373,15 @@ function webGatheringToShopping_(body) {
 //
 // One summary, read from the sources already there: upkeep overdue or due soon,
 // today's daily chores left, a service due within 30 days, tonight's dinner, the
-// next guest stay, and a gathering in the next two weeks with its next to-do.
+// next guest stay, a gathering in the next two weeks with its next to-do, and
+// project tasks overdue or due within a week (at most HF_COMING_PROJ_MAX_, so
+// a big project can't crowd the house out).
 // Each source is read on its own; one that fails is left out, never the card.
 
 var HF_COMING_MAX_ = 8;
+var HF_COMING_PROJ_MAX_ = 4;
 
-/** Pure: the Coming up items, overdue first, then by date. src: {chores, homeItems, meals, guests, gatherings}. */
+/** Pure: the Coming up items, overdue first, then by date. src: {chores, homeItems, meals, guests, gatherings, projects}. */
 function hfComingUp_(src, today) {
   src = src || {};
   var out = [], soon30 = hfAddDays_(today, 30), soon14 = hfAddDays_(today, 14);
@@ -405,6 +408,16 @@ function hfComingUp_(src, today) {
     out.push({ kind: 'gathering', section: 'gatherings', label: String(g.title), detail: next ? 'Next: ' + next.text + ' by ' + next.due : 'On ' + g.date + ', all set', date: next ? next.due : g.date,
       tone: next && next.due < today ? 'overdue' : next && next.due <= hfAddDays_(today, 3) ? 'soon' : 'ok' });
   });
+  var soon7 = hfAddDays_(today, 7), projItems = [];
+  (src.projects || []).forEach(function(p) {
+    (p.tasks || []).forEach(function(t) {
+      var d = hfYmd_(t.dueDate);
+      if (t.status === 'Done' || !d || d > soon7) return;
+      projItems.push({ kind: 'project', section: 'projects', label: String(t.task), detail: String(p.projectName) + (d < today ? ' · overdue since ' : ' · due ') + d, date: d, tone: d < today ? 'overdue' : 'soon' });
+    });
+  });
+  projItems.sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  out = out.concat(projItems.slice(0, HF_COMING_PROJ_MAX_));
   var rank = { overdue: 0, soon: 1, ok: 2 };
   out.sort(function(a, b) { return (rank[a.tone] - rank[b.tone]) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
   return out.slice(0, HF_COMING_MAX_);
@@ -426,6 +439,7 @@ function webHomeFrontComingUp_() {
     meals: hfTry_('meals', function() { return getMealPlanWeek_(getCurrentWeekStart_()); }, missing),
     guests: hfTry_('guests', function() { return getUpcomingGuests_(readPTOConfig_()); }, missing),
     gatherings: hfTry_('gatherings', function() { return hfReadGatherings_(); }, missing),
+    projects: hfTry_('projects', function() { return getProjects_(); }, missing),
   };
   return { ok: true, today: today, items: hfComingUp_(src, today), missing: missing };
 }

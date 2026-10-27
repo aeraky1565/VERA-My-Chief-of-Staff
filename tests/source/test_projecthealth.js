@@ -120,6 +120,8 @@ const PRELUDE = [
   PROJ.match(/^var PROJECT_STATUSES_ +=.*;$/m)[0],
   PROJ.match(/^var PROJECT_STALL_DAYS_DEFAULT_ +=.*;$/m)[0],
   PROJ.match(/^var PROJECT_AT_RISK_DAYS_DEFAULT_ +=.*;$/m)[0],
+  PROJ.match(/^var PROJECT_PACE_BEHIND_ +=.*;$/m)[0],
+  PROJ.match(/^var PROJECT_FLAG_PREFIX_ +=.*;$/m)[0],
   extractVar(PROJ, 'var PROJ_COL = '),
   extractFn(TASKS, 'parseFlexibleDate'),
   extractFn(PROJ, 'normalizeProjectOwner_'),
@@ -127,6 +129,8 @@ const PRELUDE = [
   extractFn(PROJ, 'projToday_'),
   extractFn(PROJ, 'projDateStr_'),
   extractFn(PROJ, 'projDaysUntil_'),
+  extractFn(PROJ, 'projBeforeVal_'),
+  extractFn(PROJ, 'projShiftDate_'),
   extractFn(PROJ, 'projThreshold_'),
   extractFn(PROJ, 'ensureProjectsSchema_'),
   extractFn(PROJ, 'createProject_'),
@@ -137,6 +141,8 @@ const PRELUDE = [
   extractFn(PROJ, 'completeProjectTask_'),
   extractFn(PROJ, 'setProjectFields_'),
   extractFn(PROJ, 'reorderProjectTasks_'),
+  extractFn(PROJ, 'projRedate_'),
+  extractFn(PROJ, 'projOverdueFlagsWanted_'),
   extractFn(WEB,  'webAddProjectTask_'),
   extractFn(WEB,  'webUpdateProjectTask_'),
   extractFn(WEB,  'webSetProjectOwner_'),
@@ -171,6 +177,9 @@ function row(id, name, task, o) {
            o.notes || '', o.owner || 'Shared', o.completed || '', o.target || '',
            o.phase || '', o.seq === undefined ? '' : o.seq];
   while (r.length < WIDTH) r.push('');   // stays the right width as columns are appended
+  if (o.ctx !== undefined) r[12] = o.ctx;
+  if (o.before !== undefined) r[13] = o.before;
+  if (o.waiting !== undefined) r[14] = o.waiting;
   return r;
 }
 
@@ -570,6 +579,112 @@ console.log('\nderived counts');
   const q = healthOf([row('PROJ-A','X','a',{status:'Done',completed:iso(-1),due:iso(-9)})]);
   check('a completed task is not overdue', q.overdueCount === 0, q.overdueCount);
   check('…and has no daysUntilDue', q.tasks[0].daysUntilDue === null, q.tasks[0].daysUntilDue);
+}
+
+// ============================ dates that follow the target ===================
+
+console.log('\nDays Before and Waiting On');
+{
+  const ctx0 = ctxFor(makeSheet([H.slice()], WIDTH));
+  check('the two new columns follow Context', H.slice(12).join(',') === 'Context,Days Before,Waiting On', H.slice(12).join(','));
+  check('PROJ_COL points at them', vm.runInContext('[PROJ_COL.BEFORE, PROJ_COL.WAITING_ON].join()', ctx0) === '13,14');
+  check('Days Before reads whole numbers, negatives too, and nothing else',
+        JSON.stringify(vm.runInContext("[projBeforeVal_('7'), projBeforeVal_(3), projBeforeVal_('-2'), projBeforeVal_(''), projBeforeVal_('1.5'), projBeforeVal_('soon'), projBeforeVal_(null)]", ctx0)) === '[7,3,-2,"","","",""]');
+  check('dates shift across a month end', vm.runInContext("projShiftDate_('2026-12-13', -42)", ctx0) === '2026-11-01');
+
+  const tgt = iso(30);
+  const sheet = makeSheet([H.slice(),
+    row('PROJ-A','Move','Book movers',  { target:tgt, before:7,  due:'2020-01-01', seq:1 }),
+    row('PROJ-A','Move','Pick paint',   { target:tgt, due:iso(5), seq:2 }),
+    row('PROJ-A','Move','Keys',         { target:tgt, before:0, seq:3 }),
+    row('PROJ-B','Other','Elsewhere',   { target:iso(9), before:2, due:iso(1) })], WIDTH);
+  const ctx = ctxFor(sheet);
+  const a = vm.runInContext('getProjects_()', ctx).find(p => p.projectId === 'PROJ-A');
+  check('a task set days before takes its date from the target, whatever the cell said',
+        a.tasks[0].dueDate === iso(23) && a.tasks[0].before === 7, a.tasks[0].dueDate);
+  check('…so it is not overdue on a stale cell', a.tasks[0].isOverdue === false && a.overdueCount === 0);
+  check('a fixed-date task keeps its own date', a.tasks[1].dueDate === iso(5) && a.tasks[1].before === null);
+  check('"on the day" is 0 days before', a.tasks[2].dueDate === tgt);
+
+  sheet._setValuesCalls = 0;
+  const res = vm.runInContext("webSetProjectTarget_({ parameter: { projectId:'PROJ-A', targetDate:'" + iso(37) + "' } })", ctx);
+  check('moving the target re-dates the days-before tasks in the sheet', sheet._rows[1][5] === iso(30) && sheet._rows[3][5] === iso(37), sheet._rows[1][5] + ' / ' + sheet._rows[3][5]);
+  check('…leaves the fixed one and the other project alone', sheet._rows[2][5] === iso(5) && sheet._rows[4][5] === iso(1));
+  check('…says how many moved, in one write of the date column', res.redated === 2 && sheet._setValuesCalls === 2, JSON.stringify(res) + ' ' + sheet._setValuesCalls);
+
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'3', before:'10' } })", ctx);
+  check('setting days before on a fixed task re-dates it', sheet._rows[2][13] === 10 && sheet._rows[2][5] === iso(27), sheet._rows[2][13] + ' ' + sheet._rows[2][5]);
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'3', before:'', dueDate:'" + iso(12) + "' } })", ctx);
+  check('a blank days before makes it a fixed date again', sheet._rows[2][13] === '' && vm.runInContext('getProjects_()', ctx).find(p => p.projectId === 'PROJ-A').tasks[1].dueDate === iso(12));
+
+  vm.runInContext("webAddProjectTask_({ parameter: { projectId:'PROJ-A', task:'Pack', before:'14', dueDate:'2020-01-01' } })", ctx);
+  const added = sheet._rows[sheet._rows.length - 1];
+  check('a task added days before is dated from the target', added.length === WIDTH && added[13] === 14 && added[5] === iso(23) && added[14] === '', JSON.stringify(added));
+  vm.runInContext("webAddProjectTask_({ parameter: { projectId:'PROJ-A', task:'Call', dueDate:'" + iso(4) + "' } })", ctx);
+  const added2 = sheet._rows[sheet._rows.length - 1];
+  check('…and one with a date stays fixed', added2[13] === '' && added2[5] === iso(4), JSON.stringify(added2.slice(5, 15)));
+
+  // Waiting On lives only while Blocked.
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'2', status:'Blocked' } })", ctx);
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'2', waitingOn:'the landlord' } })", ctx);
+  check('a Blocked task keeps who it waits on', sheet._rows[1][14] === 'the landlord' &&
+        vm.runInContext('getProjects_()', ctx).find(p => p.projectId === 'PROJ-A').tasks[0].waitingOn === 'the landlord');
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'3', waitingOn:'nobody' } })", ctx);
+  check('Waiting On is not written onto a task that is not Blocked', sheet._rows[2][14] === '', sheet._rows[2][14]);
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'2', status:'In Progress' } })", ctx);
+  check('unblocking clears it', sheet._rows[1][14] === '', sheet._rows[1][14]);
+  vm.runInContext("webUpdateProjectTask_({ parameter: { row:'2', status:'Blocked', waitingOn:'the bank' } })", ctx);
+  check('Blocked and who in one call works', sheet._rows[1][3] === 'Blocked' && sheet._rows[1][14] === 'the bank');
+  vm.runInContext('completeProjectTask_(2)', ctx);
+  check('completing it clears it too', sheet._rows[1][14] === '');
+  check('createProject_ writes full-width rows with both blank',
+        (() => { vm.runInContext("createProject_('New', ['a|High|Plan'], 'Shared', 'ctx')", ctx); const r = sheet._rows[sheet._rows.length - 1]; return r.length === WIDTH && r[13] === '' && r[14] === ''; })());
+}
+
+console.log('\npace: time used against work done, decided on the server');
+{
+  const ymdc = n => iso(n).replace(/-/g, '');
+  const pace = (createdAgo, targetIn, done, total) => {
+    const rows = [];
+    for (let i = 0; i < total; i++) rows.push(row('PROJ-' + ymdc(-createdAgo) + '-01', 'P', 't' + i, { target: targetIn === null ? '' : iso(targetIn), status: i < done ? 'Done' : 'Pending', completed: i < done ? iso(-1) : '' }));
+    return healthOf(rows);
+  };
+  const a = pace(50, 50, 5, 10);
+  check('half the time gone, half the work done: on pace', a.timePct === 50 && a.pct === 50 && a.pace === 'on', JSON.stringify([a.timePct, a.pct, a.pace]));
+  const b = pace(60, 40, 5, 10);
+  check('a little more time gone than work: slightly behind', b.timePct === 60 && b.pace === 'slightly', JSON.stringify([b.timePct, b.pace]));
+  const c = pace(80, 20, 5, 10);
+  check('far more time gone than work: behind', c.timePct === 80 && c.pace === 'behind', JSON.stringify([c.timePct, c.pace]));
+  const d = pace(80, -5, 5, 10);
+  check('past the target, time used caps at 100', d.timePct === 100 && d.pace === 'behind');
+  const e = pace(10, null, 1, 4);
+  check('no target, no pace', e.timePct === null && e.pace === '');
+  const f = pace(80, 20, 4, 4);
+  check('a finished project has no pace to show', f.pace === '');
+}
+
+console.log('\nthe nightly flag: a project with overdue tasks');
+{
+  const sheet = makeSheet([H.slice(),
+    row('PROJ-A','Kitchen','Pick tile',  { due: iso(-6) }),
+    row('PROJ-A','Kitchen','Order grout',{ due: iso(-1) }),
+    row('PROJ-A','Kitchen','Tile',       { due: iso(5) }),
+    row('PROJ-A','Kitchen','Old one',    { due: iso(-30), status:'Done', completed: iso(-29) }),
+    row('PROJ-B','Garden','Plant',       { due: iso(3) })], WIDTH);
+  const ctx = ctxFor(sheet);
+  ctx.__p = vm.runInContext('getProjects_()', ctx);
+  const w = vm.runInContext('projOverdueFlagsWanted_(__p)', ctx);
+  check('one flag, for the project with overdue tasks, keyed by its id', JSON.stringify(Object.keys(w)) === '["PROJECT|PROJ-A"]', JSON.stringify(Object.keys(w)));
+  check('…naming the project and the count', w['PROJECT|PROJ-A'].flag === '🏗️ Kitchen: 2 tasks overdue' && w['PROJECT|PROJ-A'].urgency === 'Medium', w['PROJECT|PROJ-A'].flag);
+  check('…listing what is overdue, not what is done', w['PROJECT|PROJ-A'].reason === 'Overdue: Pick tile (' + iso(-6) + '), Order grout (' + iso(-1) + '). Tick them off, or move the date in Projects.', w['PROJECT|PROJ-A'].reason);
+  ctx.__p = ctx.__p.map(p => Object.assign({}, p, { tasks: p.tasks.map(t => Object.assign({}, t, { isOverdue: false })) }));
+  check('nothing overdue, nothing wanted (so upsertKeyedFlags_ closes it)', Object.keys(vm.runInContext('projOverdueFlagsWanted_(__p)', ctx)).length === 0);
+  const many = { projectId:'PROJ-C', projectName:'Big', tasks:[1,2,3,4,5,6].map(i => ({ task:'t' + i, status:'Pending', isOverdue:true, dueDate:iso(-i) })) };
+  ctx.__p = [many];
+  check('a long list is cut short', / and 2 more\. /.test(vm.runInContext('projOverdueFlagsWanted_(__p)', ctx)['PROJECT|PROJ-C'].reason));
+  check('the nightly step is wired after the meal nudges',
+        /nightlyStep_\(ctx, 'mpSyncNudges_', mpSyncNudges_\);[^]*?nightlyStep_\(ctx, 'projSyncOverdueFlags_', projSyncOverdueFlags_\);/.test(CODE));
+  check('…and syncs through the shared keyed upsert', /upsertKeyedFlags_\(flags, PROJECT_FLAG_PREFIX_, 'Projects', wanted,/.test(extractFn(PROJ, 'projSyncOverdueFlags_')));
 }
 
 // ============================ guards ========================================

@@ -216,12 +216,24 @@ check('…and nothing far off: a service months away, a party in two months', !c
 S.src2 = { guests: [{ label: 'Stay', arrivalDate: '2026-10-24', departureDate: '2026-10-28' }] };
 check('a guest already here reads as staying', run('hfComingUp_(src2, "' + T + '")')[0].detail === 'Staying until 2026-10-28');
 check('nothing at all is an empty list, not an error', run('hfComingUp_({}, "' + T + '").length') === 0);
+// Project tasks: overdue or due within a week, open ones only, at most four, soonest first.
+const pt = (task, dueDate, status) => ({ task, dueDate, status: status || 'Pending' });
+S.srcP = { projects: [
+  { projectName: 'Kitchen backsplash', tasks: [pt('Pick the tile', '2026-10-20'), pt('Grout', '2026-10-25'), pt('Old', '2026-10-01', 'Done'), pt('Tile the wall', '2026-11-15')] },
+  { projectName: 'Move', tasks: [pt('Book the movers', '2026-11-01'), pt('Boxes', '2026-11-02'), pt('Keys', '2026-10-30'), pt('Undated', '')] }] };
+const cp = run('hfComingUp_(srcP, "' + T + '")');
+check('coming up: project tasks overdue or due this week, the oldest kept when there are more than four',
+      cp.map(x => x.label).join() === 'Pick the tile,Grout,Keys,Book the movers', cp.map(x => x.label).join());
+check('…each named with its project and date, and opening Projects', cp[0].kind === 'project' && cp[0].section === 'projects' && cp[0].detail === 'Kitchen backsplash · overdue since 2026-10-20' && cp[0].tone === 'overdue' && cp[3].detail === 'Move · due 2026-11-01' && cp[3].tone === 'soon', JSON.stringify(cp[3]));
+check('…never a done task, one a month off, one with no date, or a fifth', !cp.some(x => /Old|Tile the wall|Undated|Boxes/.test(x.label)));
 S.getMealPlanWeek_ = () => { throw new Error('no sheet'); }; S.getCurrentWeekStart_ = () => '2026-10-26';
 S.getUpcomingGuests_ = () => []; S.readPTOConfig_ = () => ({});
 S.HOME_ITEM_HEADERS = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 S.TABS.HOME_ITEMS = 'Home Items';
+S.getProjects_ = () => [{ projectName: 'Move', tasks: [pt('Book the movers', '2026-10-28')] }];
 let cr = {}; try { cr = run('webHomeFrontComingUp_()'); } catch (e) { cr = { threw: e.message }; }
 check('the endpoint leaves out a source it can\'t read, and says which', cr.ok && (cr.missing || []).join() === 'meals' && Array.isArray(cr.items), JSON.stringify(cr).slice(0, 200));
+check('the endpoint reads projects too', (cr.items || []).some(x => x.kind === 'project' && x.label === 'Book the movers'), JSON.stringify(cr.items || []).slice(0, 300));
 
 console.log('\nwiring');
 check('the routes', /case 'chore_upkeep_done':\s+return jsonOut_\(webUpkeepDone_\(e\)\);/.test(WEB) && /case 'chore_upkeep_set':\s+return jsonOut_\(webUpkeepSet_\(e\)\);/.test(WEB) && /case 'chores_upkeep_starter':\s+return jsonOut_\(webUpkeepStarter_\(\)\);/.test(WEB));

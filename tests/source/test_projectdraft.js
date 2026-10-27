@@ -123,6 +123,8 @@ const PRELUDE = [
   extractFn(PROJ, 'projToday_'),
   extractFn(PROJ, 'projDateStr_'),
   extractFn(PROJ, 'projDaysUntil_'),
+  extractFn(PROJ, 'projBeforeVal_'),
+  extractFn(PROJ, 'projShiftDate_'),
   extractFn(PROJ, 'projThreshold_'),
   extractFn(PROJ, 'ensureProjectsSchema_'),
   extractFn(PROJ, 'createProject_'),
@@ -197,12 +199,12 @@ const QUESTIONS_REPLY = JSON.stringify({
 
 console.log('\nthe header constant');
 {
-  check('Context is appended last', HEADERS[WIDTH - 1] === 'Context', HEADERS.join(','));
+  check('Context follows the first twelve', HEADERS[12] === 'Context', HEADERS.join(','));
   check('every previous column is unchanged and in order',
         JSON.stringify(HEADERS.slice(0, 12)) === JSON.stringify(PREV12), HEADERS.slice(0, 12).join(','));
   const ctx = ctxFor(makeSheet([HEADERS.slice()], WIDTH));
   check('PROJ_COL.CONTEXT points at it',
-        vm.runInContext('PROJ_COL.CONTEXT', ctx) === WIDTH - 1, vm.runInContext('PROJ_COL.CONTEXT', ctx));
+        vm.runInContext('PROJ_COL.CONTEXT', ctx) === 12, vm.runInContext('PROJ_COL.CONTEXT', ctx));
 }
 
 console.log('\nwidening a 12-column sheet');
@@ -215,7 +217,7 @@ console.log('\nwidening a 12-column sheet');
   const ctx = ctxFor(sheet);
   vm.runInContext('ensureProjectsSchema_(getSpreadsheet().getSheetByName(TABS.PROJECTS));', ctx);
   check('widened to the full header width', sheet.getMaxColumns() === WIDTH, sheet.getMaxColumns());
-  check('the Context header is written', sheet._rows[0][WIDTH - 1] === 'Context', sheet._rows[0].join(','));
+  check('the Context header is written', sheet._rows[0][12] === 'Context', sheet._rows[0].join(','));
   check('existing rows are byte-identical in their first 12 columns',
         JSON.stringify(sheet._rows.slice(1).map(r => r.slice(0, 12).join('|'))) === JSON.stringify(before));
   const snap = JSON.stringify(sheet._rows), w = sheet._writes;

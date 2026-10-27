@@ -40,6 +40,8 @@ var PROJ_COL = {
   PHASE:        10,
   SEQUENCE:     11,
   CONTEXT:      12,
+  BEFORE:       13,   // Days Before the target; blank = a fixed date (or none)
+  WAITING_ON:   14,   // who a Blocked task waits on; cleared when it unblocks
 };
 
 var PROJECT_OWNERS_ = ['Shared', 'Ahmed', 'Victoria'];
@@ -49,13 +51,19 @@ var PROJECT_OWNERS_ = ['Shared', 'Ahmed', 'Victoria'];
 //
 // Blocked earns its place: without it a task waiting on someone else looks
 // identical to one being neglected, and a health verdict cannot tell the
-// difference between "you are behind" and "you are waiting". The reason goes in
-// Notes, which the dashboard now renders.
+// difference between "you are behind" and "you are waiting". Who it waits on
+// goes in Waiting On, which is cleared the moment the task stops being Blocked.
 var PROJECT_STATUSES_ = ['Pending', 'In Progress', 'Blocked', 'Done'];
 
 /** Defaults for the two Config keys this module reads. */
 var PROJECT_STALL_DAYS_DEFAULT_   = 14;
 var PROJECT_AT_RISK_DAYS_DEFAULT_ = 7;
+
+/** Pace reads "behind" once time used runs this many points ahead of work done. */
+var PROJECT_PACE_BEHIND_ = 15;
+
+/** Nightly flags for projects with overdue tasks: PROJECT|<project id>. */
+var PROJECT_FLAG_PREFIX_ = 'PROJECT|';
 
 /**
  * How VERA plans a project — the shared half of the instruction.
@@ -224,7 +232,7 @@ function createProject_(projectName, taskLines, owner, context) {
       // Sequence is written from the start so a project created today never
       // depends on the row-order fallback.
       return [projectId, projectName, taskText, 'Pending', priority, '', '', ownerVal,
-              '', '', phase, i + 1, contextVal];
+              '', '', phase, i + 1, contextVal, '', ''];
     });
 
   if (rows.length === 0) {
@@ -364,6 +372,7 @@ function getProjects_() {
 
     var dueStr = projDateStr_(row[PROJ_COL.DUE]);
     var seqRaw = parseInt(row[PROJ_COL.SEQUENCE], 10);
+    var before = projBeforeVal_(row[PROJ_COL.BEFORE]);
 
     proj.tasks.push({
       task:        String(row[PROJ_COL.TASK]     || '').trim(),
@@ -374,7 +383,20 @@ function getProjects_() {
       phase:       String(row[PROJ_COL.PHASE]    || '').trim(),
       completedOn: projDateStr_(row[PROJ_COL.COMPLETED_ON]),
       sequence:    isNaN(seqRaw) ? null : seqRaw,
+      before:      before === '' ? null : before,
+      waitingOn:   String(row[PROJ_COL.WAITING_ON] || '').trim(),
       rowNum:      idx + 2, // 1-based sheet row (header = row 1, data starts at row 2)
+    });
+  });
+
+  // A task set "N days before" takes its date from the target, whatever the
+  // Due Date cell last said, so a target moved by hand in the sheet still
+  // moves its tasks. projRedate_ keeps the cell itself in step.
+  order.forEach(function(id) {
+    var proj = projectMap[id];
+    if (!proj.targetDate) return;
+    proj.tasks.forEach(function(t) {
+      if (t.before !== null) t.dueDate = projShiftDate_(proj.targetDate, -t.before);
     });
   });
 
@@ -437,6 +459,18 @@ function decorateProject_(p, stallDays, atRiskDays) {
   p.daysSinceActivity = since === null ? null : Math.max(0, -since);
   p.daysUntilTarget   = projDaysUntil_(p.targetDate);
 
+  // ---- Pace ----------------------------------------------------------------
+  // How much of the time from creation to the target has gone, against how
+  // much of the work is done. Decided here so both pages say the same thing.
+  p.timePct = null;
+  p.pace    = '';
+  var sinceCreated = p.createdOn ? projDaysUntil_(p.createdOn) : null;
+  if (p.daysUntilTarget !== null && sinceCreated !== null && p.pending > 0) {
+    var span = p.daysUntilTarget - sinceCreated;
+    p.timePct = Math.min(100, Math.max(0, Math.round(-sinceCreated / Math.max(1, span) * 100)));
+    p.pace = p.timePct - p.pct > PROJECT_PACE_BEHIND_ ? 'behind' : p.timePct > p.pct ? 'slightly' : 'on';
+  }
+
   // ---- Next up -------------------------------------------------------------
   // Something already started beats something not started; Blocked is never
   // offered, because it is not something you can pick up.
@@ -490,6 +524,8 @@ function setProjectTaskStatus_(sheet, rn, status) {
     // Moved back out of Done: the stamp is now a lie, so clear it.
     sheet.getRange(rn, PROJ_COL.COMPLETED_ON + 1).setValue('');
   }
+  // Whom it waited on means nothing once it is not Blocked.
+  if (val !== 'Blocked') sheet.getRange(rn, PROJ_COL.WAITING_ON + 1).setValue('');
   return val;
 }
 
@@ -592,6 +628,76 @@ function reorderProjectTasks_(projectId, rowOrder) {
 
   sheet.getRange(2, PROJ_COL.SEQUENCE + 1, n, 1).setValues(seq);
   return { ok: true, projectId: projectId, ordered: wanted.length };
+}
+
+// ---- Dates that follow the target ------------------------------------------
+
+/** Days Before as a whole number (negative = after); '' when blank or not a number. */
+function projBeforeVal_(v) {
+  var str = String(v == null ? '' : v).trim();
+  if (!/^-?\d+$/.test(str)) return '';
+  return parseInt(str, 10);
+}
+
+/** Pure: yyyy-MM-dd moved by n days. */
+function projShiftDate_(ymd, n) {
+  var x = String(ymd).split('-').map(Number);
+  return new Date(Date.UTC(x[0], x[1] - 1, x[2] + n)).toISOString().slice(0, 10);
+}
+
+/**
+ * Writes target − Days Before into Due Date for every task of one project that
+ * is set relative to the target. Fixed-date tasks are untouched. One read and
+ * one write of the Due Date column.
+ * @returns {number} tasks re-dated
+ */
+function projRedate_(sheet, projectId) {
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  ensureProjectsSchema_(sheet);
+  var n    = sheet.getLastRow() - 1;
+  var data = sheet.getRange(2, 1, n, PROJECT_HEADERS.length).getValues();
+  var target = '';
+  data.forEach(function(r) {
+    if (!target && String(r[PROJ_COL.ID]).trim() === projectId) target = projDateStr_(r[PROJ_COL.TARGET_DATE]);
+  });
+  if (!target) return 0;
+  var due = sheet.getRange(2, PROJ_COL.DUE + 1, n, 1).getValues(), moved = 0;
+  data.forEach(function(r, i) {
+    if (String(r[PROJ_COL.ID]).trim() !== projectId) return;
+    var b = projBeforeVal_(r[PROJ_COL.BEFORE]);
+    if (b === '') return;
+    var d = projShiftDate_(target, -b);
+    if (projDateStr_(due[i][0]) !== d) { due[i][0] = d; moved++; }
+  });
+  if (moved) sheet.getRange(2, PROJ_COL.DUE + 1, n, 1).setValues(due);
+  return moved;
+}
+
+// ---- Nightly: a flag per project with overdue tasks ------------------------
+
+/** Pure: the flags wanted for these projects (getProjects_ shape). */
+function projOverdueFlagsWanted_(projects) {
+  var wanted = {};
+  (projects || []).forEach(function(p) {
+    var late = (p.tasks || []).filter(function(t) { return t.status !== 'Done' && t.isOverdue; });
+    if (!late.length) return;
+    var list = late.slice(0, 4).map(function(t) { return t.task + ' (' + t.dueDate + ')'; }).join(', ')
+             + (late.length > 4 ? ' and ' + (late.length - 4) + ' more' : '');
+    wanted[PROJECT_FLAG_PREFIX_ + p.projectId] = {
+      urgency: 'Medium',
+      flag:    '🏗️ ' + p.projectName + ': ' + late.length + ' task' + (late.length === 1 ? '' : 's') + ' overdue',
+      reason:  'Overdue: ' + list + '. Tick them off, or move the date in Projects.' };
+  });
+  return wanted;
+}
+
+/** Nightly step: refreshes the overdue-project flags; ones no longer wanted resolve. */
+function projSyncOverdueFlags_() {
+  var flags = getSpreadsheet().getSheetByName(TABS.FLAGS);
+  if (!flags) return { skipped: 'no Flags tab' };
+  var wanted = projOverdueFlagsWanted_(getProjects_());
+  upsertKeyedFlags_(flags, PROJECT_FLAG_PREFIX_, 'Projects', wanted, projDateStr_(projToday_()));
+  return { wanted: Object.keys(wanted).length };
 }
 
 // ---- Brief summary for Claude chat context ---------------------------------
