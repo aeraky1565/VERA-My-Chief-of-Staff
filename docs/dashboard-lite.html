@@ -7097,6 +7097,164 @@ function NetWorthTab(props) {
       'Read live from the planner sheet when this tab opens. VERA never writes to it.'));
 }
 // ---- /NetWorthTab ----
+// ---- HealthAcct (Finances: FSA & HSA) — SHARED VERBATIM in docs/app.js and docs/dashboard-lite.html ----
+// One card per account type for the household, never one per person. The FSA card: what's left
+// of the election (from the FSA sheet's claims, or a balance typed from the provider's site,
+// whichever is newer), spent against the election, the use-by date and what would be lost, and
+// the latest claims with who each was for. The HSA card: every HSA added into one balance, with
+// your and your employer's money against the one yearly limit. Server: HealthAccounts.js.
+
+var HA_C_ = { card: '#0d1528', line: '#1c2a48', ink: '#eef1fb', text: '#dde1f0', muted: '#aab6d6', faint: '#8a9abf', gold: '#c9a84c', warn: '#f6d27a' };
+var HA_MONTHS_ = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function haDate_(ymd, withYear) { var x = String(ymd || '').split('-').map(Number); return x.length === 3 && x[1] ? HA_MONTHS_[x[1] - 1] + ' ' + x[2] + (withYear ? ', ' + x[0] : '') : ''; }
+function haUsd_(n) { if (n === null || n === undefined || n === '' || isNaN(n)) return '—'; var v = Number(n); return (v < 0 ? '−$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: Math.abs(v) % 1 ? 2 : 0, maximumFractionDigits: 2 }); }
+function haAgo_(ymd, today) { if (!ymd) return ''; var p = function(s) { var x = s.split('-').map(Number); return Date.UTC(x[0], x[1] - 1, x[2]); }; var d = Math.round((p(today) - p(ymd)) / 86400000); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago'; }
+var HA_BTN_ = { minHeight: 44, padding: '0 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', background: 'transparent', border: '1px solid #2a3a5c', color: '#cfd8ef' };
+// Money boxes take cents (step any): with the default step a balance like 650.50 fails the
+// browser's own check and the form silently doesn't submit.
+var HA_INPUT_ = { minHeight: 44, boxSizing: 'border-box', padding: '0 10px', borderRadius: 8, background: '#060e24', border: '1px solid #2a3a5c', color: '#eef1fb', fontSize: 15, width: '100%' };
+
+function HaField(props) { var h = React.createElement; return h('label', { style: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: HA_C_.muted, flex: props.flex || '1 1 140px', minWidth: 0 } }, props.label, props.children); }
+function HaSeg(props) { var h = React.createElement;
+  return h('div', { role: 'radiogroup', 'aria-label': props.label, style: { display: 'grid', gridTemplateColumns: 'repeat(' + props.options.length + ',minmax(0,1fr))', gap: 4, padding: 4, borderRadius: 12, background: '#050b17', border: '1px solid ' + HA_C_.line } },
+    props.options.map(function(o) { var on = props.value === o[0];
+      return h('button', { key: o[0], type: 'button', role: 'radio', 'aria-checked': on, className: props.className, onClick: function() { props.onChange(o[0]); },
+        style: { minHeight: 44, borderRadius: 9, border: 0, cursor: 'pointer', fontSize: 13, fontWeight: 700, background: on ? '#1a2a52' : 'transparent', color: on ? HA_C_.ink : HA_C_.faint } }, o[1]); })); }
+
+// Add or edit an account. The fields follow the type: an FSA has an election and a year-end rule,
+// an HSA has coverage (which sets its limit) and contributions, yours and your employer's.
+function HaForm(props) { var h = React.createElement, a = props.account || {};
+  var _f = React.useState({ type: a.type || 'FSA', year: String(a.year || props.year), provider: a.provider || '', election: a.election === '' || a.election == null ? '' : String(a.election),
+    rule: a.rule || 'none', useBy: a.useBy || '', carryover: a.carryover === '' || a.carryover == null ? '' : String(a.carryover), coverage: a.coverage || 'self',
+    contributed: a.contributed === '' || a.contributed == null ? '' : String(a.contributed), employer: a.employer === '' || a.employer == null ? '' : String(a.employer),
+    employerName: a.employerName || '', balance: '' }), f = _f[0], setF = _f[1];
+  var set = function(k) { return function(e) { var v = e && e.target ? e.target.value : e; setF(function(p) { var n = Object.assign({}, p); n[k] = v; return n; }); }; };
+  var isFsa = f.type === 'FSA';
+  function save(e) { e.preventDefault(); var p = { type: f.type, year: f.year, provider: f.provider };
+    if (a.id) p.id = a.id;
+    if (isFsa) { p.election = f.election; p.rule = f.rule; p.useBy = f.rule === 'grace' ? f.useBy : ''; p.carryover = f.rule === 'carry' ? f.carryover : ''; }
+    else { p.coverage = f.coverage; p.contributed = f.contributed; p.employer = f.employer; p.employerName = f.employerName; }
+    if (f.balance !== '') p.balance = f.balance;
+    props.onSave(p); }
+  return h('form', { className: 'ha-form', onSubmit: save, style: { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 14, background: '#0b1630', border: '1px solid #2a3f6a' } },
+    h('span', { style: { fontSize: 15, fontWeight: 700, color: HA_C_.ink } }, a.id ? 'Edit the ' + a.type : 'Add an account'),
+    a.id ? null : h(HaSeg, { label: 'Account type', className: 'ha-type', value: f.type, onChange: set('type'), options: [['FSA', 'FSA'], ['HSA', 'HSA']] }),
+    h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+      h(HaField, { label: 'Plan year' }, h('input', { type: 'number', step: '1', className: 'ha-year', value: f.year, onChange: set('year'), style: HA_INPUT_ })),
+      h(HaField, { label: 'Provider (optional)' }, h('input', { type: 'text', value: f.provider, onChange: set('provider'), placeholder: 'Who runs it', style: HA_INPUT_ }))),
+    isFsa ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      h(HaField, { label: 'Election: what the household chose to put in for the year' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', className: 'ha-election', value: f.election, placeholder: String(props.limits ? props.limits.fsa : ''), onChange: set('election'), style: HA_INPUT_ })),
+      h('span', { style: { fontSize: 12, fontWeight: 700, color: HA_C_.muted } }, 'After the plan year ends'),
+      h(HaSeg, { label: 'After the plan year ends', className: 'ha-rule', value: f.rule, onChange: set('rule'), options: [['none', 'Nothing carries'], ['grace', 'Grace period'], ['carry', 'Carryover']] }),
+      f.rule === 'grace' ? h(HaField, { label: 'Spend by (end of the grace period)' }, h('input', { type: 'date', className: 'ha-useby', value: f.useBy, onChange: set('useBy'), style: HA_INPUT_ })) : null,
+      f.rule === 'carry' ? h(HaField, { label: 'Carries over, up to' }, h('input', { type: 'number', step: 'any', className: 'ha-carry', value: f.carryover, placeholder: String(props.limits ? props.limits.carry : ''), onChange: set('carryover'), style: HA_INPUT_ })) : null)
+    : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      h('span', { style: { fontSize: 12, fontWeight: 700, color: HA_C_.muted } }, 'Health plan coverage (sets the yearly limit)'),
+      h(HaSeg, { label: 'Coverage', className: 'ha-coverage', value: f.coverage, onChange: set('coverage'), options: [['self', 'Self-only'], ['family', 'Family']] }),
+      h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+        h(HaField, { label: 'You, this year' }, h('input', { type: 'number', step: 'any', className: 'ha-you', value: f.contributed, onChange: set('contributed'), style: HA_INPUT_ })),
+        h(HaField, { label: 'Employer, this year' }, h('input', { type: 'number', step: 'any', className: 'ha-employer', value: f.employer, onChange: set('employer'), style: HA_INPUT_ }))),
+      h(HaField, { label: 'Employer’s name' }, h('input', { type: 'text', className: 'ha-employer-name', value: f.employerName, placeholder: 'e.g. Verizon', onChange: set('employerName'), style: HA_INPUT_ })),
+      h('span', { style: { fontSize: 12, color: '#6f7fa6' } }, 'Your employer’s money counts toward the same yearly limit. More than one HSA? Add each; VERA adds them into one card.')),
+    h(HaField, { label: isFsa ? 'Balance today, from the provider’s site (optional when the FSA sheet is linked)' : 'Balance today' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', className: 'ha-balance', value: f.balance, onChange: set('balance'), style: HA_INPUT_ })),
+    h('div', { style: { display: 'flex', gap: 8 } },
+      h('button', { type: 'submit', style: Object.assign({}, HA_BTN_, { flex: 1, background: HA_C_.gold, border: 0, color: '#1a1405', fontWeight: 700 }) }, 'Save'),
+      h('button', { type: 'button', onClick: props.onCancel, style: HA_BTN_ }, 'Cancel')),
+    a.id ? h('button', { type: 'button', className: 'ha-remove', onClick: function() { props.onRemove(a.id); }, style: { alignSelf: 'flex-start', minHeight: 40, padding: '0 4px', background: 'transparent', border: 0, color: '#ff8a80', fontSize: 13, cursor: 'pointer' } }, 'Remove this account') : null); }
+
+// Type today's balance, from the provider's site.
+function HaUpdate(props) { var h = React.createElement; var _v = React.useState(''), v = _v[0], setV = _v[1]; var _y = React.useState(''), you = _y[0], setYou = _y[1];
+  return h('form', { className: 'ha-update', onSubmit: function(e) { e.preventDefault(); if (v === '') return; var p = { id: props.id, balance: v }; if (props.hsa && you !== '') p.contributed = you; props.onSave(p); },
+    style: { display: 'flex', flexDirection: 'column', gap: 8, padding: 12, borderRadius: 10, background: '#0b1630', border: '1px solid #2a3f6a' } },
+    h(HaField, { label: 'Balance today, from the provider’s site' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', autoFocus: true, value: v, onChange: function(e) { setV(e.target.value); }, style: HA_INPUT_ })),
+    props.hsa ? h(HaField, { label: 'Put in this year (you, so far)' }, h('input', { type: 'number', step: 'any', inputMode: 'decimal', value: you, onChange: function(e) { setYou(e.target.value); }, style: HA_INPUT_ })) : null,
+    h('div', { style: { display: 'flex', gap: 8 } },
+      h('button', { type: 'submit', disabled: v === '', style: Object.assign({}, HA_BTN_, { flex: 1, background: HA_C_.gold, border: 0, color: '#1a1405', fontWeight: 700 }) }, 'Save'),
+      h('button', { type: 'button', onClick: props.onCancel, style: HA_BTN_ }, 'Cancel'))); }
+
+function HaFsaCard(props) { var h = React.createElement, f = props.view, today = props.today, cl = f.claims || {};
+  var _o = React.useState(false), open = _o[0], setOpen = _o[1];
+  var src = f.source === 'sheet' ? 'From your FSA sheet · ' + cl.count + ' claim' + (cl.count === 1 ? '' : 's') + (f.balanceAsOf ? ' · newest ' + haDate_(f.balanceAsOf) : '')
+    : f.source === 'typed' ? 'Typed ' + haAgo_(f.balanceAsOf, today) + (f.stale ? ' · check it' : '') : 'No balance yet: link the FSA sheet or type one';
+  var pct = f.spent === null ? 0 : Math.max(0, Math.min(100, Math.round(f.spent / Math.max(1, f.election) * 100)));
+  var rule = f.rule === 'grace' ? 'Grace period: care up to ' + haDate_(f.useBy, true) + ' still counts.' : f.rule === 'carry' ? 'Up to ' + haUsd_(f.carryover) + ' carries into ' + (f.year + 1) + '; anything above that is lost.' : 'Anything left at year end is lost.';
+  return h('div', { className: 'ha-card ha-fsa', style: { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 14, background: HA_C_.card, border: '1px solid ' + HA_C_.line } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+      h('span', { style: { display: 'flex', gap: 8, alignItems: 'center' } }, h('span', { style: { fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: '#24163a', color: '#c9a8f2' } }, 'FSA'), h('span', { style: { fontSize: 15, fontWeight: 700, color: HA_C_.ink } }, 'Household')),
+      h('span', { style: { fontSize: 12, color: HA_C_.faint } }, 'Plan year ' + f.year + (f.provider ? ' · ' + f.provider : ''))),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+      h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: HA_C_.faint } }, 'LEFT TO SPEND'),
+      h('span', { className: 'ha-balance-left', style: { fontSize: 30, fontWeight: 700, color: HA_C_.ink, fontVariantNumeric: 'tabular-nums' } }, haUsd_(f.balance)),
+      h('span', { className: 'ha-source', style: { fontSize: 12, color: f.stale ? '#ffb74d' : HA_C_.faint } }, src)),
+    f.spent === null ? null : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+      h('div', { 'aria-hidden': 'true', style: { height: 10, borderRadius: 999, background: '#16223c', overflow: 'hidden' } }, h('span', { style: { display: 'block', height: '100%', borderRadius: 999, background: '#c9a8f2', width: pct + '%' } })),
+      h('div', { className: 'ha-spent', style: { display: 'flex', justifyContent: 'space-between', fontSize: 12, color: HA_C_.muted } }, h('span', null, haUsd_(f.spent) + ' spent'), h('span', null, 'of ' + haUsd_(f.election) + ' elected'))),
+    h('div', { className: 'ha-deadline', style: { display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderRadius: 10, background: f.warn ? 'rgba(246,182,77,0.08)' : '#0b1630', border: '1px solid ' + (f.warn ? '#8a6d1f' : HA_C_.line) } },
+      h('span', { style: { display: 'flex', justifyContent: 'space-between', gap: 8 } }, h('span', { style: { fontSize: 13, fontWeight: 700 } }, 'Use by ' + haDate_(f.useBy, true)), h('span', { style: { fontSize: 13, fontWeight: 700, color: f.warn ? '#ffb74d' : HA_C_.muted } }, f.daysLeft < 0 ? 'Passed' : f.daysLeft + ' days')),
+      h('span', { style: { fontSize: 12, color: HA_C_.muted, lineHeight: 1.45 } }, rule),
+      f.warn ? h('span', { className: 'ha-warn', style: { fontSize: 13, fontWeight: 600, color: '#ffb74d' } }, haUsd_(f.atRisk) + ' would be lost. Glasses, an eye exam or the first-aid kit are easy ways to use it.') : null),
+    cl.status === 'unavailable' ? h('span', { className: 'ha-sheet-problem', role: 'status', style: { fontSize: 12, color: '#ffb0b0', lineHeight: 1.45 } }, 'The FSA sheet: ' + cl.reason) : null,
+    cl.status === 'ok' && cl.unknownStatuses && cl.unknownStatuses.length ? h('span', { className: 'ha-unknown', style: { fontSize: 12, color: HA_C_.warn } }, 'Counted, though VERA doesn’t know the status: ' + cl.unknownStatuses.join(', ')) : null,
+    cl.status === 'ok' && cl.recent && cl.recent.length ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+      h('button', { type: 'button', className: 'ha-claims-toggle', 'aria-expanded': open, onClick: function() { setOpen(!open); }, style: { alignSelf: 'flex-start', minHeight: 40, padding: '0 4px', background: 'transparent', border: 0, color: '#8ab4f8', fontSize: 13, cursor: 'pointer' } }, (open ? '▾ ' : '▸ ') + 'Latest claims'),
+      open ? h('div', { className: 'ha-claims', style: { display: 'flex', flexDirection: 'column' } }, cl.recent.map(function(c, i) {
+        return h('div', { key: i, className: 'ha-claim', style: { display: 'grid', gridTemplateColumns: '52px minmax(0,1fr) auto', gap: 8, alignItems: 'baseline', padding: '8px 0', borderTop: i ? '1px solid #16223c' : 'none', fontSize: 13, opacity: c.counted ? 1 : 0.55 } },
+          h('span', { style: { color: HA_C_.faint, fontSize: 12 } }, haDate_(c.date)),
+          h('span', { style: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 } },
+            h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.provider || '—'),
+            c.recipient || !c.counted ? h('span', { style: { fontSize: 11, color: HA_C_.faint } }, [c.recipient, c.counted ? '' : c.status + ', not counted'].filter(Boolean).join(' · ')) : null),
+          h('span', { style: { fontVariantNumeric: 'tabular-nums', fontWeight: 600 } }, haUsd_(c.amount))); })) : null) : null,
+    props.updating ? h(HaUpdate, { id: f.id, onSave: props.onSave, onCancel: props.onCancel }) :
+    h('div', { style: { display: 'flex', gap: 8 } },
+      h('button', { type: 'button', className: 'ha-update-btn', onClick: props.onUpdate, style: Object.assign({}, HA_BTN_, { flex: 1, background: '#13254f', border: '1px solid #3a5bab', color: '#cfe0ff', fontWeight: 700 }) }, 'Update balance'),
+      h('button', { type: 'button', className: 'ha-edit', onClick: props.onEdit, style: HA_BTN_ }, 'Edit'))); }
+
+function HaHsaCard(props) { var h = React.createElement, v = props.view, today = props.today;
+  var you = Math.min(100, v.you / Math.max(1, v.limit) * 100), emp = Math.min(100 - you, v.employer / Math.max(1, v.limit) * 100);
+  return h('div', { className: 'ha-card ha-hsa', style: { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 14, background: HA_C_.card, border: '1px solid ' + HA_C_.line } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+      h('span', { style: { display: 'flex', gap: 8, alignItems: 'center' } }, h('span', { style: { fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 999, background: '#0f2a26', color: '#7fd8c6' } }, 'HSA'), h('span', { style: { fontSize: 15, fontWeight: 700, color: HA_C_.ink } }, 'Household')),
+      h('span', { style: { fontSize: 12, color: HA_C_.faint } }, v.year + ' · ' + (v.coverage === 'family' ? 'family' : 'self-only') + ' coverage' + (v.accounts > 1 ? ' · ' + v.accounts + ' accounts' : ''))),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 2 } },
+      h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: HA_C_.faint } }, 'BALANCE'),
+      h('span', { className: 'ha-hsa-balance', style: { fontSize: 30, fontWeight: 700, color: HA_C_.ink, fontVariantNumeric: 'tabular-nums' } }, haUsd_(v.balance)),
+      v.balanceAsOf ? h('span', { style: { fontSize: 12, color: v.stale ? '#ffb74d' : HA_C_.faint } }, 'Updated ' + haAgo_(v.balanceAsOf, today) + (v.stale ? ' · check it' : '')) : null),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+      h('span', { style: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: HA_C_.faint } }, 'PUT IN THIS YEAR'),
+      h('div', { 'aria-hidden': 'true', style: { position: 'relative', height: 10, borderRadius: 999, background: '#16223c', overflow: 'hidden' } },
+        h('span', { style: { position: 'absolute', left: 0, top: 0, bottom: 0, width: you + '%', background: HA_C_.gold } }), h('span', { style: { position: 'absolute', top: 0, bottom: 0, left: you + '%', width: emp + '%', background: '#7fd8c6' } })),
+      h('div', { className: 'ha-hsa-split', style: { display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: HA_C_.muted } }, h('span', null, 'You ' + haUsd_(v.you)), h('span', null, (v.employerName || 'Employer') + ' ' + haUsd_(v.employer))),
+      h('span', { className: 'ha-room', style: { fontSize: 13, fontWeight: 600, color: v.over ? '#ffb0b0' : '#8fe0a8' } }, v.over ? haUsd_(v.over) + ' over the ' + haUsd_(v.limit) + ' limit for ' + v.year : v.room ? haUsd_(v.room) + ' of room left under the ' + haUsd_(v.limit) + ' limit' : 'At the ' + haUsd_(v.limit) + ' limit for ' + v.year),
+      h('span', { style: { fontSize: 12, color: '#6f7fa6' } }, 'One limit for the household; HSA money never expires.')),
+    props.updating ? h(HaUpdate, { id: v.ids[0], hsa: true, onSave: props.onSave, onCancel: props.onCancel }) :
+    h('div', { style: { display: 'flex', gap: 8 } },
+      v.accounts === 1 ? h('button', { type: 'button', className: 'ha-update-btn', onClick: props.onUpdate, style: Object.assign({}, HA_BTN_, { flex: 1, background: '#13254f', border: '1px solid #3a5bab', color: '#cfe0ff', fontWeight: 700 }) }, 'Update balance') : null,
+      v.edits.map(function(a, i) { return h('button', { key: a.id, type: 'button', className: 'ha-edit', onClick: function() { props.onEdit(a); }, style: Object.assign({}, HA_BTN_, v.accounts === 1 ? {} : { flex: 1 }) }, v.accounts === 1 ? 'Edit' : 'Edit account ' + (i + 1)); }))); }
+
+function HealthAcctTab(props) { var h = React.createElement;
+  var _d = React.useState(null), data = _d[0], setData = _d[1]; var _e = React.useState(''), err = _e[0], setErr = _e[1];
+  var _m = React.useState(null), mode = _m[0], setMode = _m[1];
+  var call = function(action, params) { return apiGet(props.apiUrl, props.apiToken, Object.assign({ action: action }, params || {})); };
+  var load = function() { return call('health_accounts').then(function(r) { setData(r); }).catch(function(e) { setErr((e && e.message) || 'Couldn’t load FSA & HSA.'); }); };
+  React.useEffect(function() { if (props.apiUrl && props.apiToken) load(); }, [props.apiUrl, props.apiToken]);
+  var save = function(p) { setErr(''); setMode(null); return call('health_account_save', p).then(load).catch(function(e) { setErr((e && e.message) || 'That didn’t save.'); }); };
+  var remove = function(id) { setErr(''); setMode(null); return call('health_account_delete', { id: id }).then(load).catch(function(e) { setErr((e && e.message) || 'That didn’t save.'); }); };
+  if (!data && !err) return h('div', { style: { color: '#6b7fa8', padding: '24px 0' } }, 'Loading FSA & HSA…');
+  var fsa = (data && data.fsa) || [], hsa = data && data.hsa, today = (data && data.today) || '';
+  var year = today ? Number(today.slice(0, 4)) : new Date().getFullYear();
+  return h('div', { className: 'ha-tab', style: { display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 640, color: HA_C_.text } },
+    h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 } },
+      h('h2', { style: { margin: 0, fontSize: 18, fontWeight: 700, color: HA_C_.ink } }, 'FSA & HSA'),
+      mode && mode.kind === 'form' ? null : h('button', { type: 'button', className: 'ha-add', onClick: function() { setMode({ kind: 'form', account: null }); }, style: Object.assign({}, HA_BTN_, { background: HA_C_.gold, border: 0, color: '#1a1405', fontWeight: 700 }) }, '+ Add account')),
+    err ? h('span', { className: 'ha-err', role: 'status', style: { fontSize: 13, color: '#ffb0b0' } }, err) : null,
+    mode && mode.kind === 'form' ? h(HaForm, { account: mode.account, year: year, limits: data && data.limits, onSave: save, onRemove: remove, onCancel: function() { setMode(null); } }) : null,
+    !fsa.length && !hsa && !(mode && mode.kind === 'form') ? h('span', { className: 'ha-none', style: { fontSize: 13, color: HA_C_.faint, lineHeight: 1.5 } }, 'No accounts yet. Add your FSA or HSA to see what’s left, by when, and how much room is left this year.') : null,
+    fsa.map(function(f) { return h(HaFsaCard, { key: f.id, view: f, today: today, updating: mode && mode.kind === 'update' && mode.id === f.id,
+      onUpdate: function() { setMode({ kind: 'update', id: f.id }); }, onEdit: function() { setMode({ kind: 'form', account: f.edit }); }, onSave: save, onCancel: function() { setMode(null); } }); }),
+    hsa ? h(HaHsaCard, { view: hsa, today: today, updating: mode && mode.kind === 'update' && mode.id === 'HSA',
+      onUpdate: function() { setMode({ kind: 'update', id: 'HSA' }); }, onEdit: function(a) { setMode({ kind: 'form', account: a }); }, onSave: save, onCancel: function() { setMode(null); } }) : null,
+    data && fsa.length && !data.sheetLinked ? h('span', { className: 'ha-link-hint', style: { fontSize: 12, color: '#6f7fa6', lineHeight: 1.45 } }, 'To work the FSA balance out from your claims, share the FSA sheet with VERA’s Google account (Viewer is enough) and put its id in Config as fsa_sheet_id.') : null); }
+// ---- /HealthAcct ----
 
 function FinAccountsLiteTab({ apiUrl, apiToken }) {
   const [bills, setBills] = React.useState(null);
@@ -11259,6 +11417,7 @@ const FINANCE_TABS = [
   { id: 'fin_goals',    label: '🎯 Goals'    },
   { id: 'tax',          label: '🧾 Tax'      },
   { id: 'fin_networth', label: '📈 Net Worth' },
+  { id: 'fin_hsafsa',   label: '🩺 FSA & HSA' },
 ];
 
 // ---- Active travel card (ported verbatim from docs/app.js) ---------------
@@ -11841,6 +12000,7 @@ function App() {
             {activeFinanceTab === 'fin_goals'     && <FinGoalsLiteTab     apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'tax'         && <TaxTab            apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_networth' && <NetWorthTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_hsafsa'   && <HealthAcctTab apiUrl={apiUrl} apiToken={apiToken} />}
           </div>
         )}
       </div>

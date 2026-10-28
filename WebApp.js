@@ -182,6 +182,9 @@ function doGet(e) {
       case 'update_bank_account':   return jsonOut_(webUpdateBankAccount_(e));
       case 'delete_bank_account':   return jsonOut_(webDeleteBankAccount_(e));
       case 'net_worth':             return jsonOut_(webGetNetWorth_());   // NetWorth.js — reads the planner sheet, never writes it
+      case 'health_accounts':       return jsonOut_(webGetHealthAccounts_());       // HealthAccounts.js — reads the FSA sheet, never writes it
+      case 'health_account_save':   return jsonOut_(webSaveHealthAccount_(e));
+      case 'health_account_delete': return jsonOut_(webDeleteHealthAccount_(e));
       case 'generation_inputs':     return jsonOut_(webGetGenerationInputs_(e));   // GenerationInputs.js — what a packing list / Discover run was built from
       case 'add_recipe':            return jsonOut_(webAddRecipe_(e));
       case 'delete_recipe':         return jsonOut_(webDeleteRecipe_(e));
