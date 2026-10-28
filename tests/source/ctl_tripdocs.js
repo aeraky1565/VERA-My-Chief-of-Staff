@@ -39,7 +39,7 @@ const CONTROLS = [
   ['every country asks for 6 months', b => ({ [W]: swap(b[W], 'var ruleMonths = ruleKnown ? 3 : 6;', 'var ruleMonths = 6;') })],
   ['an expired passport only counts as short', b => ({ [W]: swap(b[W], "if (!tripEnd || expiry < tripEnd) return { status: 'expires'", "if (false) return { status: 'expires'") })],
   ['a partial month counts as a full one', b => ({ [W]: swap(b[W], " - (b[2] < a[2] ? 1 : 0);", ";") })],
-  ['another trip\'s rows are read', b => ({ [W]: swap(b[W], "      if (String(r[1]).trim() !== tripKey) return;\n      items.push({ type:", "      items.push({ type:") })],
+  ['another trip\'s rows are read', b => ({ [W]: swap(b[W], "      if (!tripKeyMatches_(r[1], tripKey)) return;\n      items.push({ type:", "      items.push({ type:") })],
   ['a country\'s chip ignores the passport', b => ({ [W]: swap(b[W], "  return TRIP_DOC_RANK_[pp] > TRIP_DOC_RANK_[v] ? pp : v;", "  return v;") })],
   ['an airport is looked up every time', b => ({ [W]: swap(b[W], '    if (memo[code] !== undefined) return memo[code];\n', '') })],
   ['the matrix is cached in one piece again', b => ({ [W]: swap(b[W], "try { cachePutChunked_(cache, 'passport_index_csv', csv, 21600); }", "try { cache.put('passport_index_csv', csv, 21600); }") })],

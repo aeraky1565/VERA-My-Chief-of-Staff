@@ -17,7 +17,7 @@ const T = 'TripShare.js', W = 'WebApp.js';
 const TEST = 'test_tripshare.js';
 
 const CONTROLS = [
-  ['another trip\'s rows go out', b => ({ [T]: swap(b[T], "if (!String(r[0]).trim() || String(r[1]).trim() !== tripKey) return;", "if (!String(r[0]).trim()) return;") })],
+  ['another trip\'s rows go out', b => ({ [T]: swap(b[T], "if (!String(r[0]).trim() || !tripKeyMatches_(r[1], tripKey)) return;", "if (!String(r[0]).trim()) return;") })],
   ['whose plans is ignored', b => ({ [T]: swap(b[T], "    if (who !== 'Both' && tv !== 'Both' && tv !== who) return false;\n", '') })],
   ['every option of a choice goes out', b => ({ [T]: swap(b[T], "    if (m.optionGroup && m.isRepresentative !== true) return false;\n", '') })],
   ['undecided choices go out by default', b => ({ [T]: swap(b[T], "    if (m.tentative === true && m.decisionStatus !== 'decided' && !opts.notes) return false;\n", '') })],
