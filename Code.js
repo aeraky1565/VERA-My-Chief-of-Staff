@@ -1262,6 +1262,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'projSyncOverdueFlags_', projSyncOverdueFlags_);
     // FSA money that would be lost, and a stale typed balance (HealthAccounts.js).
     nightlyStep_(ctx, 'haSyncFlags_', haSyncFlags_);
+    // Stored flights the calendar has moved or rebooked, trips within 30 days (WebApp.js).
+    nightlyStep_(ctx, 'flightChangesSyncFlags_', flightChangesSyncFlags_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);

@@ -87,7 +87,8 @@ function itinerary(o) {
     travelAirportGeo_: () => null,
   };
   vm.createContext(ctx);
-  vm.runInContext([extractFn(WEB, 'webGetItinerary_'), extractFn(TDB, 'airportTz_')].join('\n'), ctx);
+  vm.runInContext(['webGetItinerary_', 'flightKeyFor_', 'flightRouteKey_', 'flightConfOf_', 'reconcileChangedFlights_']
+    .map(n => extractFn(WEB, n)).concat([extractFn(TDB, 'airportTz_')]).join('\n'), ctx);
   ctx.__e = { parameter: { tripKey: '2026-10-21|Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28' } };
   ctx.__opts = o.opts;
   const res = vm.runInContext('webGetItinerary_(__e, __opts)', ctx);

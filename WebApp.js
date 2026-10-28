@@ -3899,6 +3899,141 @@ function flightKeyFor_(item) {
   return fm ? fm[1] + fm[2] : '';
 }
 
+/** A flight item's origin → destination ('IAD>MCO'), or '' when either end is unknown. */
+function flightRouteKey_(item) {
+  var meta = {};
+  var raw = item && item.metadata;
+  if (raw && typeof raw === 'object') meta = raw;
+  else if (raw) { try { meta = JSON.parse(String(raw)) || {}; } catch (e) { meta = {}; } }
+  var codes = (String(item.location || '') + ' ' + String(item.title || '')).match(/\b[A-Z]{3}\b/g) || [];
+  var o = String(meta.origin || codes[0] || '').trim().toUpperCase();
+  var d = String(meta.dest || (codes.length > 1 ? codes[codes.length - 1] : '') || '').trim().toUpperCase();
+  return o && d && o !== d ? o + '>' + d : '';
+}
+
+function flightConfOf_(item) {
+  var raw = item && item.metadata, meta = {};
+  if (raw && typeof raw === 'object') meta = raw;
+  else if (raw) { try { meta = JSON.parse(String(raw)) || {}; } catch (e) { meta = {}; } }
+  return String(meta.confirmationNumber || meta.confirmation || '').trim().toUpperCase();
+}
+
+/**
+ * Stored flight rows the calendar has since changed.
+ *
+ * suppressCalendarDuplicatesOfRows_ pairs a stored flight with its calendar
+ * copy only by date + flight number. When the airline moves the date or
+ * rebooks onto another flight, that pairing fails and BOTH used to show: the
+ * stale row and the live calendar flight. The calendar is the live one (it is
+ * what the airline's email updates), so here a stored flight with no exact
+ * match is paired with the calendar flight that is plainly the same trip leg:
+ *
+ *   - the same ROUTE, and either the same confirmation number (any date in the
+ *     trip read: a reschedule can move weeks), or no confirmation on either side
+ *     and a date within 3 days;
+ *   - with no route on either side, the same flight number within 3 days.
+ *
+ * A confirmation number alone is not enough: one booking usually covers the
+ * outbound AND the return, and pairing on it would replace the outbound with the
+ * return. Each calendar flight replaces at most one row, the nearest in date.
+ *
+ * Pure. calendarAll = the deduped calendar items (to see which rows matched
+ * exactly); calendarLive = what remains after suppression (the candidates).
+ *
+ * @returns {{ stored: Array, changed: Array<{row, by, reason}> }}
+ */
+function reconcileChangedFlights_(storedItems, calendarAll, calendarLive) {
+  var DAY = 86400000;
+  var dnum = function(d) { var t = Date.parse(String(d || '') + 'T12:00:00Z'); return isNaN(t) ? null : t / DAY; };
+  var exact = {};
+  (calendarAll || []).forEach(function(c) { var k = flightKeyFor_(c); if (k) exact[c.date + '|' + k] = true; });
+  var cands = (calendarLive || []).filter(function(c) { return String(c.type || '').toLowerCase() === 'flight'; });
+  var used = {};
+  var stored = [], changed = [];
+  (storedItems || []).forEach(function(row) {
+    if (String(row.type || '').toLowerCase() !== 'flight') { stored.push(row); return; }
+    var rk = flightKeyFor_(row);
+    if (rk && exact[row.date + '|' + rk]) { stored.push(row); return; }
+    var route = flightRouteKey_(row), conf = flightConfOf_(row), rd = dnum(row.date);
+    var best = -1, bestGap = Infinity;
+    cands.forEach(function(c, i) {
+      if (used[i]) return;
+      var cd = dnum(c.date);
+      var gap = (rd === null || cd === null) ? Infinity : Math.abs(cd - rd);
+      var croute = flightRouteKey_(c), cconf = flightConfOf_(c);
+      var ok = false;
+      if (route && croute) {
+        if (route !== croute) return;
+        if (conf && cconf) ok = conf === cconf;
+        else ok = gap <= 3;
+      } else {
+        ok = !!rk && rk === flightKeyFor_(c) && gap <= 3;
+      }
+      if (ok && gap < bestGap) { best = i; bestGap = gap; }
+    });
+    if (best === -1) { stored.push(row); return; }
+    used[best] = true;
+    var c = cands[best], ck = flightKeyFor_(c);
+    var reason = c.date !== row.date ? 'date' : (ck && rk && ck !== rk ? 'flight' : 'time');
+    changed.push({ row: row, reason: reason,
+      by: { title: c.title, date: c.date, startTime: c.startTime || '', endTime: c.endTime || '',
+            flight: ck, metadata: c.metadata || '' } });
+  });
+  return { stored: stored, changed: changed };
+}
+
+var FLIGHT_CHANGE_FLAG_PREFIX_ = 'FLIGHTCHG|';
+
+/**
+ * The flags for stored flights the calendar has changed, keyed by the stored
+ * row's id so a flag closes itself once that row is updated or removed. Pure.
+ */
+function flightChangesWanted_(tripLabel, changed) {
+  var wanted = {};
+  var mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var day = function(d) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); return m ? mon[+m[2] - 1] + ' ' + (+m[3]) : String(d || ''); };
+  (changed || []).forEach(function(c) {
+    if (!c || !c.row || !c.row.id) return;
+    var was = (flightKeyFor_(c.row) || c.row.title) + ' ' + day(c.row.date) + (c.row.startTime ? ' ' + c.row.startTime : '');
+    var now = (c.by.flight || c.by.title) + ' ' + day(c.by.date) + (c.by.startTime ? ' ' + c.by.startTime : '');
+    var what = c.reason === 'date' ? 'moved to ' + day(c.by.date)
+             : c.reason === 'flight' ? 'is now ' + (c.by.flight || c.by.title)
+             : 'changed time to ' + (c.by.startTime || '?');
+    wanted[FLIGHT_CHANGE_FLAG_PREFIX_ + c.row.id] = { urgency: 'Medium',
+      flag: '✈️ ' + (flightKeyFor_(c.row) || c.row.title) + ' on ' + tripLabel + ' ' + what,
+      reason: 'Your calendar has ' + now + '; the itinerary row still says ' + was +
+              '. Update or remove the old row in Travel → My Itinerary.' };
+  });
+  return wanted;
+}
+
+/**
+ * Nightly step: flags stored flights the calendar has moved or rebooked, for
+ * trips starting within 30 days, so a late change surfaces even when nobody
+ * opens the dashboard. Reads dates only (skipEventTz). Flags no longer wanted
+ * resolve themselves.
+ */
+function flightChangesSyncFlags_() {
+  var flags = getSpreadsheet().getSheetByName(TABS.FLAGS);
+  if (!flags) return { skipped: 'no Flags tab' };
+  var tz = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var horizon = Utilities.formatDate(new Date(Date.now() + 30 * 86400000), tz, 'yyyy-MM-dd');
+  var wanted = {}, trips = 0;
+  (getUpcomingTravel_(readPTOConfig_()) || []).forEach(function(t) {
+    if (!t || t.isExtendedFamily || !t.startDate) return;
+    var end = t.endDate || t.startDate;
+    if (end < today || t.startDate > horizon) return;
+    trips++;
+    var res = webGetItinerary_({ parameter: { tripKey: t.startDate + '|' + t.label, startDate: t.startDate, endDate: end } },
+                               { skipEventTz: true });
+    var w = flightChangesWanted_(t.label, (res && res.changedFlights) || []);
+    Object.keys(w).forEach(function(k) { wanted[k] = w[k]; });
+  });
+  upsertKeyedFlags_(flags, FLIGHT_CHANGE_FLAG_PREFIX_, 'Travel', wanted, today);
+  return { trips: trips, wanted: Object.keys(wanted).length };
+}
+
 /**
  * Drops calendar items that describe a flight a stored row already covers.
  *
@@ -4079,6 +4214,7 @@ function webGetItinerary_(e, opts) {
 
   const tz    = Session.getScriptTimeZone();
   const items = [];
+  var changedFlights = [];   // stored flights the calendar has moved — see reconcileChangedFlights_
 
   // 1. Stored itinerary items
   const sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
@@ -4350,8 +4486,16 @@ function webGetItinerary_(e, opts) {
       // the dashboard, the one EmailParser enriches, and the only one with a
       // stable id. Same precedent as TravelDayBriefing.js:242, which skips a
       // calendar event already logged manually.
-      items.push.apply(items, suppressCalendarDuplicatesOfRows_(
-        dedupeItineraryCalendarItems_(calendarItems), items));
+      var calAll  = dedupeItineraryCalendarItems_(calendarItems);
+      var calLive = suppressCalendarDuplicatesOfRows_(calAll, items);
+      // A stored flight the calendar has since moved or rebooked: the calendar
+      // copy is live, the stored row goes to changedFlights for the dashboard
+      // to offer Update / Remove. Nothing in the sheet is touched here.
+      var recon = reconcileChangedFlights_(items, calAll, calLive);
+      changedFlights = recon.changed;
+      items.length = 0;
+      items.push.apply(items, recon.stored);
+      items.push.apply(items, calLive);
     } catch (calEx) {
       Logger.log('Itinerary: calendar pull failed — ' + calEx.message);
     }
@@ -4393,7 +4537,7 @@ function webGetItinerary_(e, opts) {
   }
   catch (recErr) { Logger.log('Itinerary: recommendation failed — ' + recErr.message); }
 
-  return { ok: true, tripKey: tripKey, items: items };
+  return { ok: true, tripKey: tripKey, items: items, changedFlights: changedFlights };
 }
 
 /**
