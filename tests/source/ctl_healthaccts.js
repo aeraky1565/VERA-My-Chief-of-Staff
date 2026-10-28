@@ -33,6 +33,7 @@ const CONTROLS = [
   ['each HSA gets its own limit', one(S, "var limit = family ? lim.hsaFamily : lim.hsaSelf;", "var limit = (family ? lim.hsaFamily : lim.hsaSelf) * rows.length;")],
   ['a typed balance isn\'t dated', one(S, "balChanged ? hfToday_() :", "balChanged ? (prev.balanceAsOf || '') :")],
   ['the FSA sheet\'s id is ignored', one(S, "var sheetId = String((cfg || {})['fsa_sheet_id'] || '').trim();", "var sheetId = '';")],
+  ['2027 ignores its own limits', one(S, "  2027: { hsaFamily: 9000 },\n", "")],
   // the screen
   ['a balance with cents can\'t be saved', both("type: 'number', step: 'any', inputMode", "type: 'number', inputMode"), UI],
   ['Update balance forgets which account', both("var p = { id: props.id, balance: v };", "var p = { balance: v };"), UI],

@@ -121,7 +121,10 @@ console.log('\nthe household FSA card');
   const noElection = run(c, 'haFsaView_')(Object.assign({}, acct, { election: '' }), claims, TODAY, lim);
   check('no election typed: the year\'s FSA limit', noElection.election === 3400);
   check('Config overrides a year\'s limits', run(c, 'haLimits_')(2026, { fsa_limit_2026: '3,300', hsa_limit_family_2026: 9000 }).fsa === 3300 && run(c, 'haLimits_')(2026, { hsa_limit_family_2026: 9000 }).hsaFamily === 9000);
-  check('a year with no limits listed uses the latest', run(c, 'haLimits_')(2027, {}).fsa === 3400);
+  const l27 = run(c, 'haLimits_')(2027, {});
+  check('2027: the HSA family limit is $9,000; figures not yet listed carry on from 2026', l27.hsaFamily === 9000 && l27.fsa === 3400 && l27.carry === 680 && l27.hsaSelf === 4400, JSON.stringify(l27));
+  check('…2026 stays $8,750, a later year keeps the latest figures, and Config still wins',
+    run(c, 'haLimits_')(2026, {}).hsaFamily === 8750 && run(c, 'haLimits_')(2030, {}).hsaFamily === 9000 && run(c, 'haLimits_')(2027, { hsa_limit_self_2027: 4500 }).hsaSelf === 4500);
 }
 
 console.log('\nevery HSA in one household card');

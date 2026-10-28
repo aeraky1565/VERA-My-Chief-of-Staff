@@ -20,9 +20,11 @@
 // ============================================================
 
 // Yearly limits. Config overrides: fsa_limit_<year>, fsa_carryover_<year>,
-// hsa_limit_self_<year>, hsa_limit_family_<year>. A year not listed uses the latest one.
+// hsa_limit_self_<year>, hsa_limit_family_<year>. Each figure comes from the newest year at or
+// before the plan year that lists it, so a year can list only what has been announced.
 var HA_LIMITS_ = {
   2026: { fsa: 3400, carry: 680, hsaSelf: 4400, hsaFamily: 8750 },
+  2027: { hsaFamily: 9000 },
 };
 var HA_WARN_DAYS_  = 90;   // money that would be lost: flagged from this many days out
 var HA_STALE_DAYS_ = 45;   // a typed balance this old is worth checking
@@ -61,9 +63,13 @@ function haDays_(a, b) {
 
 /** The limits for a plan year, with Config overrides. */
 function haLimits_(year, cfg) {
-  var years = Object.keys(HA_LIMITS_).map(Number).sort();
-  var base = HA_LIMITS_[year] || HA_LIMITS_[years.filter(function(y) { return y <= year; }).pop() || years[years.length - 1]];
-  var out = { fsa: base.fsa, carry: base.carry, hsaSelf: base.hsaSelf, hsaFamily: base.hsaFamily };
+  var years = Object.keys(HA_LIMITS_).map(Number).sort(function(a, b) { return a - b; });
+  var upTo = years.filter(function(y) { return y <= year; });
+  if (!upTo.length) upTo = [years[0]];
+  var out = {};
+  ['fsa', 'carry', 'hsaSelf', 'hsaFamily'].forEach(function(k) {
+    for (var i = upTo.length - 1; i >= 0; i--) { if (HA_LIMITS_[upTo[i]][k] != null) { out[k] = HA_LIMITS_[upTo[i]][k]; return; } }
+  });
   var o = function(key, field) { var n = haMoney_((cfg || {})[key + '_' + year]); if (!isNaN(n) && n > 0) out[field] = n; };
   o('fsa_limit', 'fsa'); o('fsa_carryover', 'carry'); o('hsa_limit_self', 'hsaSelf'); o('hsa_limit_family', 'hsaFamily');
   return out;
