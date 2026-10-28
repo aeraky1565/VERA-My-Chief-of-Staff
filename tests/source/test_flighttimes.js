@@ -40,11 +40,14 @@ const GEO = {
   IAD: { lat: 38.95, lon: -77.46, timezone: 'America/New_York' },
   LAX: { lat: 33.94, lon: -118.41, timezone: 'America/Los_Angeles' },
   LHR: { lat: 51.47, lon: -0.45,   timezone: 'Europe/London' },
+  ORD: { lat: 41.98, lon: -87.90, timezone: 'America/Chicago' },
+  DCA: { lat: 38.85, lon: -77.04, timezone: 'America/New_York' },
 };
 const OFFSETS = {          // on the fixture date, 2026-09-21
   'America/New_York':    -4,
   'America/Los_Angeles': -7,
   'Europe/London':        1,
+  'America/Chicago':     -5,
 };
 
 function ctxFor(opts) {
@@ -68,9 +71,18 @@ function ctxFor(opts) {
       },
     },
     getConfigValues: () => ({}),
-    resolveIataToCity_: code => ({ TPA: 'Tampa', IAD: 'Washington', LAX: 'Los Angeles', LHR: 'London' }[code] || null),
+    CacheService: { getScriptCache: () => ({ get: () => null, put: () => {} }) },
+    // AirportGap: answers only for the codes a test gives it, else 404, which
+    // leaves airportTz_ to the city geocode below.
+    fetchTracked_: (svc, url) => {
+      const code = String(url).split('/').pop();
+      const z = (opts.airportGap || {})[code];
+      return { getResponseCode: () => (z ? 200 : 404),
+               getContentText: () => JSON.stringify({ data: { attributes: { iata: code, timezone: z } } }) };
+    },
+    resolveIataToCity_: code => ({ TPA: 'Tampa', IAD: 'Washington', LAX: 'Los Angeles', LHR: 'London', ORD: 'Chicago', DCA: 'Arlington' }[code] || null),
     geocodePackingDestination_: city => {
-      const byCity = { Tampa: 'TPA', Washington: 'IAD', 'Los Angeles': 'LAX', London: 'LHR' };
+      const byCity = { Tampa: 'TPA', Washington: 'IAD', 'Los Angeles': 'LAX', London: 'LHR', Chicago: 'ORD', Arlington: 'DCA' };
       const code = byCity[city];
       return code ? Object.assign({ name: city }, GEO[code]) : null;
     },
@@ -84,6 +96,7 @@ function ctxFor(opts) {
   vm.createContext(ctx);
   vm.runInContext([
     extractFn(TDB, 'travelAirportGeo_'),
+    extractFn(TDB, 'airportTz_'),
     extractFn(TDB, 'haversineMiles_'),
     extractFn(TDB, 'tzOffsetHoursOn_'),
     extractFn(TDB, 'tzOffsetLabel_'),

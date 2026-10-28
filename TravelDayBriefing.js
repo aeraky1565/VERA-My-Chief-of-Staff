@@ -1435,6 +1435,43 @@ function travelAirportGeo_(code) {
   }
 }
 
+/**
+ * An airport's own IANA timezone ("America/Chicago" for ORD), or ''.
+ *
+ * AirportGap's record carries it (the same endpoint resolveIataToCity_ reads);
+ * the city geocode's zone is the fallback. Cached for six hours per code.
+ * Used wherever a flight's zone matters, because a calendar event's own zone
+ * is only how it was saved: UA1369 ORD→DCA was saved with both ends in New
+ * York, and was reported as "same timezone".
+ */
+function airportTz_(code) {
+  var c = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(c)) return '';
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) {}
+  var key = 'airport_tz_' + c;
+  if (cache) {
+    try { var hit = cache.get(key); if (hit !== null && hit !== undefined) return hit === '-' ? '' : hit; } catch (e1) {}
+  }
+  var tzName = '';
+  try {
+    var resp = fetchTracked_('airportgap', 'https://airportgap.com/api/airports/' + encodeURIComponent(c),
+                             { muteHttpExceptions: true });
+    if (resp.getResponseCode() === 200) {
+      var a = ((JSON.parse(resp.getContentText()) || {}).data || {}).attributes || {};
+      if (/^[A-Za-z_]+\/[A-Za-z_\/+-]+$/.test(String(a.timezone || ''))) tzName = String(a.timezone);
+    }
+  } catch (e2) {
+    Logger.log('airportTz_("' + c + '") — ' + e2.message);
+  }
+  if (!tzName) {
+    var geo = travelAirportGeo_(c);
+    if (geo && geo.timezone) tzName = String(geo.timezone);
+  }
+  if (cache) { try { cache.put(key, tzName || '-', 21600); } catch (e3) {} }
+  return tzName;
+}
+
 /** Great-circle distance in statute miles. */
 function haversineMiles_(a, b) {
   if (!a || !b) return null;
@@ -1568,11 +1605,12 @@ function buildTravelFlightInsightsData_(sortedItems, homeCity) {
     var originGeo = travelAirportGeo_(origin);
     var destGeo   = travelAirportGeo_(dest);
 
-    // The calendar's own per-event zones are exact when present, so they win
-    // over a city-centroid lookup. endTz is omitted by webGetItinerary_ when it
-    // equals startTz, which is itself the "did not cross zones" signal.
-    var originTz = meta.startTz || (originGeo && originGeo.timezone) || '';
-    var destTz   = meta.endTz   || meta.startTz || (destGeo && destGeo.timezone) || '';
+    // The airports' own zones come first. The calendar's per-event zones are
+    // how the event was SAVED: UA1369 ORD→DCA was saved with both ends in New
+    // York, and this reported "same timezone". The event zones are only the
+    // fallback for an airport we cannot place.
+    var originTz = airportTz_(origin) || meta.startTz || (originGeo && originGeo.timezone) || '';
+    var destTz   = airportTz_(dest)   || meta.endTz   || meta.startTz || (destGeo && destGeo.timezone) || '';
 
     var originOff = tzOffsetHoursOn_(originTz, flightDate);
     var destOff   = tzOffsetHoursOn_(destTz,   flightDate);
@@ -2168,6 +2206,29 @@ function loungeNameIsGrounded_(name, corpus) {
   return String(corpus || '').indexOf(n) !== -1;
 }
 
+/**
+ * Is this "name" only the programme's own brand? "The Centurion® Lounge" for the
+ * Centurion Lounge programme says nothing about WHICH lounge, or where — and a
+ * brand name turns up in any airport's results (lists of its locations
+ * elsewhere, an article saying the airport has none). That is how a Centurion
+ * Lounge was printed for O'Hare, which has none: the brand was "verbatim" in
+ * ORD's results. Such a name must be confirmed at the airport instead.
+ *
+ * What is left after removing the programme's words, filler words, issuer
+ * words and the airport code must be a real distinguishing word.
+ */
+var LOUNGE_BRAND_FILLER_ = { the: 1, a: 1, an: 1, and: 1, of: 1, at: 1, by: 1, lounge: 1, lounges: 1,
+                             amex: 1, american: 1, express: 1 };
+function loungeNameIsBrandOnly_(name, program, code) {
+  var drop = {};
+  String(program || '').toLowerCase().split(/[^a-z0-9]+/).forEach(function(w) { if (w) drop[w] = 1; });
+  var ap = String(code || '').toLowerCase();
+  var rest = String(name || '').toLowerCase().split(/[^a-z0-9]+/).filter(function(w) {
+    return w && !drop[w] && !LOUNGE_BRAND_FILLER_[w] && w !== ap;
+  });
+  return rest.length === 0;
+}
+
 /** A name field carrying a caveat is not a name. */
 var LOUNGE_HEDGE_RE_ = /check|varies|excluded|unknown|n\/a|participating|verify|confirm/i;
 
@@ -2229,7 +2290,8 @@ function validateLounges_(lounges, candidates, airports, loungePerks) {
     // this airport at all? That is what separates the real DCA Centurion from the
     // invented ORD one, since "Centurion Lounge" appears in both corpora.
     var corpus = loungeCorpusFor_(candidates, code);
-    if (loungeNameIsGrounded_(name, corpus)) {
+    var brandOnly = loungeNameIsBrandOnly_(name, prog, code);
+    if (!brandOnly && loungeNameIsGrounded_(name, corpus)) {
       l.admittedBy = 'verbatim';
     } else {
       var verdict = 'UNKNOWN';
@@ -2237,8 +2299,9 @@ function validateLounges_(lounges, candidates, airports, loungePerks) {
         Logger.log('validateLounges_: verification threw — ' + ve.message);
       }
       if (verdict !== 'CONFIRMED') {
-        dropped.push(name + ' @ ' + code + ' — not in ' + code + '’s results, and "' +
-                     prog + ' at ' + code + '" came back ' + verdict);
+        dropped.push(name + ' @ ' + code + ' — ' +
+                     (brandOnly ? 'the brand name only' : 'not in ' + code + '’s results') +
+                     ', and "' + prog + ' at ' + code + '" came back ' + verdict);
         return;
       }
       l.admittedBy = 'verified';

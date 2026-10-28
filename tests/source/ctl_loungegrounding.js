@@ -15,6 +15,15 @@ function fnOf(src, name) {
 }
 
 const CONTROLS = {
+  'a brand-only name passes on the string (Oct 28: Centurion at O\'Hare)': b =>
+    b.replace('if (!brandOnly && loungeNameIsGrounded_(name, corpus)) {', 'if (loungeNameIsGrounded_(name, corpus)) {'),
+
+  'the brand words are not stripped': b =>
+    b.replace("  String(program || '').toLowerCase().split(/[^a-z0-9]+/).forEach(function(w) { if (w) drop[w] = 1; });\n", ''),
+
+  'the airport code counts as a distinguishing word': b =>
+    b.replace(' && w !== ap;', ';'),
+
   'grounding check removed (today\'s behaviour)': b =>
     b.replace(fnOf(b, 'loungeNameIsGrounded_'),
       'function loungeNameIsGrounded_(name, corpus) { return true; }'),
@@ -55,7 +64,7 @@ const CONTROLS = {
     b.replace("if (verdict !== 'CONFIRMED') {", "if (false) {"),
 
   'the verbatim fast path removed (every name needs a call)': b =>
-    b.replace('if (loungeNameIsGrounded_(name, corpus)) {', 'if (false) {'),
+    b.replace('if (!brandOnly && loungeNameIsGrounded_(name, corpus)) {', 'if (false) {'),
 
   'the 60-char cap restored, before grounding': b =>
     b.replace(/    \/\/ TWO WAYS IN[\s\S]*?var corpus = loungeCorpusFor_\(candidates, code\);/,

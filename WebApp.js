@@ -4198,9 +4198,10 @@ function webGetItinerary_(e, opts) {
             var evTzInfo  = eventTzMap[ev.getId()] || {};
             var evStartTz = evTzInfo.startTz || tz;
             var evEndTz   = evTzInfo.endTz   || tz;
-            const evDate  = Utilities.formatDate(evStart, evStartTz, 'yyyy-MM-dd');
-            const evTime  = ev.isAllDayEvent() ? '' : Utilities.formatDate(evStart, evStartTz, 'HH:mm');
-            const evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), evEndTz, 'HH:mm');
+            // var, not const: a flight's are re-read below in its airports' zones.
+            var evDate  = Utilities.formatDate(evStart, evStartTz, 'yyyy-MM-dd');
+            var evTime  = ev.isAllDayEvent() ? '' : Utilities.formatDate(evStart, evStartTz, 'HH:mm');
+            var evEnd   = ev.isAllDayEvent() ? '' : Utilities.formatDate(ev.getEndTime(), evEndTz, 'HH:mm');
             // Build metadata: always include calendarName; include startTz/endTz when available
             var evMeta = { calendarName: cal.getName() };
 
@@ -4247,6 +4248,26 @@ function webGetItinerary_(e, opts) {
               if (flightCodes.length >= 2 && flightCodes[0] !== flightCodes[1]) {
                 evMeta.origin = flightCodes[0];
                 evMeta.dest   = flightCodes[1];
+              }
+              // The event's zones are how it was SAVED, not where the airports
+              // are. UA1369 ORD→DCA was saved with both ends in New York, so it
+              // read 19:00 "at ORD" (really 18:00 Central) and the briefing told
+              // you ORD and DCA share a timezone. Where an airport's own zone is
+              // known it wins, and the clock times are re-read from the event's
+              // real instants in it. Only on the timezone pass: the generators
+              // that skip it want dates, not clocks, and no lookups.
+              if (!skipEventTz && evMeta.origin && typeof airportTz_ === 'function') {
+                var apStartTz = airportTz_(evMeta.origin);
+                var apEndTz   = airportTz_(evMeta.dest);
+                if (apStartTz) evStartTz = apStartTz;
+                if (apEndTz)   evEndTz   = apEndTz;
+                if (apStartTz || apEndTz) {
+                  evDate = Utilities.formatDate(evStart, evStartTz, 'yyyy-MM-dd');
+                  evTime = Utilities.formatDate(evStart, evStartTz, 'HH:mm');
+                  evEnd  = Utilities.formatDate(ev.getEndTime(), evEndTz, 'HH:mm');
+                  evMeta.startTz = evStartTz;
+                  if (evEndTz !== evStartTz) evMeta.endTz = evEndTz; else delete evMeta.endTz;
+                }
               }
               // Confirmation number, lifted from the description. Moved here from
               // TravelDayBriefing's own calendar pull, which this function now

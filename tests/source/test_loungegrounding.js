@@ -47,9 +47,10 @@ function extractVar(src, name) {
 
 const FNS  = ['loungeProgramQuery_', 'loungeAirportQuery_', 'searchLoungeCandidates_',
               'verifyLoungeProgramAtAirport_', 'loungeCorpusFor_', 'loungeNameIsGrounded_',
+              'loungeNameIsBrandOnly_',
               'loungeDetailOrNull_', 'validateLounges_', 'emptyLoungeData_',
               'buildTravelLoungeData_'];
-const VARS = ['LOUNGE_SEARCH_MAX_QUERIES_', 'LOUNGE_HEDGE_RE_', 'LOUNGE_NONANSWER_RE_'];
+const VARS = ['LOUNGE_SEARCH_MAX_QUERIES_', 'LOUNGE_HEDGE_RE_', 'LOUNGE_NONANSWER_RE_', 'LOUNGE_BRAND_FILLER_'];
 
 function ctxFor(opts) {
   opts = opts || {};
@@ -342,6 +343,49 @@ console.log('\nThe queries stopped duplicating "lounge"');
   check('no query says "lounge lounge"',
         !/lounge lounge/i.test(c.loungeProgramQuery_('Centurion Lounge', 'DCA')),
         'the exact defect seen in the live run');
+}
+
+console.log('\nA name that is only the brand must be confirmed at the airport (Oct 28: a Centurion at O’Hare)');
+{
+  // What the live run had: ORD's results mention the Centurion brand, so the
+  // bare brand name was "verbatim" in them and printed with no terminal or hours.
+  const cands = { ORD: [{ title: 'The Centurion® Lounge locations', snippet: 'The Centurion Lounge is in ATL, DFW, MIA. Chicago O’Hare has none.', link: '' },
+                        { title: 'Swissport Lounge ORD', snippet: 'Swissport Lounge, Terminal 5, Priority Pass.', link: '' }],
+                  DCA: [{ title: 'The Centurion Lounge DCA', snippet: 'The Centurion Lounge at Reagan National, Terminal 2.', link: '' }] };
+  const AP = [{ code: 'ORD', role: 'departure' }, { code: 'DCA', role: 'arrival' }];
+  const PK = [{ program: 'Priority Pass', card: 'AMEX Platinum' }, { program: 'Centurion Lounge', card: 'AMEX Platinum' }];
+  const run = verdict => {
+    const c = ctxFor({ verdict, search: q => [{ title: q, snippet: 'results for ' + q, link: '' }] });
+    const v = c.validateLounges_([
+      { airport_code: 'ORD', program: 'Centurion Lounge', lounge_name: 'The Centurion® Lounge' },
+      { airport_code: 'ORD', program: 'Priority Pass', lounge_name: 'Swissport Lounge', terminal: 'Terminal 5' },
+      { airport_code: 'DCA', program: 'Centurion Lounge', lounge_name: 'The Centurion® Lounge' },
+    ], cands, AP, PK);
+    return { c, v, names: v.kept.map(k => k.lounge_name + '@' + k.airport_code) };
+  };
+  const unk = run({ 'Centurion Lounge@DCA': 'CONFIRMED' });
+  check('the brand-only Centurion at ORD is dropped', unk.names.indexOf('The Centurion® Lounge@ORD') === -1,
+        JSON.stringify(unk.names));
+  check('…saying it was the brand name only', unk.v.dropped.some(d => /ORD — the brand name only/.test(d)),
+        JSON.stringify(unk.v.dropped));
+  check('…and NOT_FOUND drops it too', run({ 'Centurion Lounge@ORD': 'NOT_FOUND' }).names
+        .indexOf('The Centurion® Lounge@ORD') === -1);
+  check('the real one at DCA, confirmed, is kept', unk.names.indexOf('The Centurion® Lounge@DCA') !== -1,
+        JSON.stringify(unk.names));
+  check('…admitted by verification, not by the string', unk.v.kept.filter(k => k.airport_code === 'DCA')[0].admittedBy === 'verified');
+  check('a named lounge still passes on the string alone', unk.names.indexOf('Swissport Lounge@ORD') !== -1,
+        JSON.stringify(unk.names));
+  check('…with no verification call for it', !unk.c.verifyCalls.some(q => /Priority Pass/.test(q)),
+        JSON.stringify(unk.c.verifyCalls));
+
+  const c = ctxFor();
+  const b = (n, p, ap) => c.loungeNameIsBrandOnly_(n, p, ap);
+  check('"The Centurion® Lounge" is the brand only', b('The Centurion® Lounge', 'Centurion Lounge', 'ORD') === true);
+  check('"Amex Centurion Lounge ORD" is the brand only', b('Amex Centurion Lounge ORD', 'Centurion Lounge', 'ORD') === true);
+  check('"Swissport Lounge" is a name', b('Swissport Lounge', 'Priority Pass', 'ORD') === false);
+  check('"The Club DCA" is a name', b('The Club DCA', 'Priority Pass', 'DCA') === false);
+  check('"Centurion Lounge Chicago O’Hare" is a name (and goes to the string check)',
+        b('Centurion Lounge Chicago O’Hare', 'Centurion Lounge', 'ORD') === false);
 }
 
 console.log('\nNon-answers are nulled, not printed');

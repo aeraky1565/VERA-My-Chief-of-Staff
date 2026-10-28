@@ -122,13 +122,13 @@ function ctxFor(opts) {
   ['LOUNGE_PROGRAM_PATTERNS_', 'LOUNGE_GENERIC_WORDS_', 'LOUNGE_CAVEAT_'].forEach(n => {
     new vm.Script(extractVar(TDB, n)).runInContext(ctx);
   });
-  ['LOUNGE_SEARCH_MAX_QUERIES_', 'LOUNGE_HEDGE_RE_', 'LOUNGE_NONANSWER_RE_'].forEach(n => {
+  ['LOUNGE_SEARCH_MAX_QUERIES_', 'LOUNGE_HEDGE_RE_', 'LOUNGE_NONANSWER_RE_', 'LOUNGE_BRAND_FILLER_'].forEach(n => {
     new vm.Script(extractVar(TDB, n)).runInContext(ctx);
   });
   ['loungeProgramsForPerk_', 'getLoungePerkPrograms_', 'travelDayAirports_',
    'emptyLoungeData_', 'loungeProgramQuery_', 'loungeAirportQuery_',
    'searchLoungeCandidates_', 'verifyLoungeProgramAtAirport_', 'loungeCorpusFor_',
-   'loungeNameIsGrounded_', 'loungeDetailOrNull_', 'validateLounges_',
+   'loungeNameIsGrounded_', 'loungeNameIsBrandOnly_', 'loungeDetailOrNull_', 'validateLounges_',
    'buildTravelLoungeData_', 'buildTravelLoungeSection_',
    'loungeFallbackHtml_', 'buildTravelDayPlainText_'].forEach(n => {
     new vm.Script(extractFn(TDB, n)).runInContext(ctx);
