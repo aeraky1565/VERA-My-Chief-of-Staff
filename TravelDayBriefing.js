@@ -120,6 +120,18 @@ function travelRowDate_(v, tz) {
 }
 
 /**
+ * The key a sheet row's trip goes by NOW. A renamed or re-dated trip keeps its
+ * old key on rows written before the change ("2026-10-23|Potential Chicago
+ * Trip"); the Trips registry knows it as an alias of the current one, and
+ * canonicalTripKey_ says which. Unknown keys come back unchanged.
+ */
+function travelTripKey_(raw) {
+  var k = String(raw || '').trim();
+  if (!k || typeof canonicalTripKey_ !== 'function') return k;
+  try { return String(canonicalTripKey_(k) || k).trim(); } catch (e) { return k; }
+}
+
+/**
  * travelDayRanges_(sheetRows, calTrips, tz) → { tripKey: { min, max } }
  *
  * Which days each trip covers, from both places a trip lives:
@@ -136,12 +148,17 @@ function travelRowDate_(v, tz) {
  *    widening: it is part of the key, so a calendar trip that starts
  *    elsewhere is a different key.)
  *
+ * Rows are grouped under their trip's CURRENT key (travelTripKey_). Grouped by
+ * the raw cell, one leftover row under "Potential Chicago Trip" made a second
+ * trip of the renamed Chicago Trip, listed on the Test tab and briefable by the
+ * morning run on its own.
+ *
  * Used by the scheduled briefing and by the Test tab, so both agree.
  */
 function travelDayRanges_(sheetRows, calTrips, tz) {
   var ranges = {};
   (sheetRows || []).forEach(function(row) {
-    var tripKey = String(row[1] || '').trim();
+    var tripKey = travelTripKey_(row[1]);
     if (!tripKey) return;
     var rowDate = travelRowDate_(row[4], tz);
     if (!rowDate) return;
@@ -211,7 +228,7 @@ function checkAndSendTravelDayBriefings_(opts) {
   // tripMap: tripKey → rows for today (may be empty array for active trips with no items today)
   var tripMap = {};
   data.forEach(function(row) {
-    var tripKey = String(row[1] || '').trim();
+    var tripKey = travelTripKey_(row[1]);   // the same key travelDayRanges_ used
     if (!tripKey || travelRowDate_(row[4], tz) !== today) return;
     if (!tripMap[tripKey]) tripMap[tripKey] = [];
     tripMap[tripKey].push(row);

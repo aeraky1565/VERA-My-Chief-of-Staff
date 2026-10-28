@@ -536,7 +536,7 @@ function runBriefings(opts, o) {
     sendTravelDayBriefing_: (k, items) => { sends.push(k); },
   };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
     .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__o = opts || {};
   vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);
@@ -592,7 +592,7 @@ console.log('\n…while two genuinely different trips still both send');
     sendTravelDayBriefing_: k => { sends.push(k); },
   };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
     .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__o = { dateOverride: '2026-09-21' };
   vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);
@@ -635,7 +635,7 @@ function runRange(o) {
     sendTravelDayBriefing_: (k, items) => { sends.push([k, items.length]); },
   };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
     .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__o = { dateOverride: o.today };
   vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);

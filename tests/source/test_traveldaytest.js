@@ -63,7 +63,7 @@ const SHEET = [
 function rangesCtx() {
   const ctx = { String, Object, JSON, RegExp, Date: FakeDate, Utilities };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelDayRanges_'].map(n => extractFn(TDB, n)).join('\n'), ctx);
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_'].map(n => extractFn(TDB, n)).join('\n'), ctx);
   return ctx;
 }
 
@@ -88,6 +88,58 @@ console.log('\none helper decides which days a trip covers');
   check('…and passes the day and the trip\'s last day to the send',
         /sendTravelDayBriefing_\(tripKey, _rows, \{ date: today, lastDay: _range\.max \}\)/
           .test(extractFn(TDB, 'checkAndSendTravelDayBriefings_')));
+}
+
+console.log('\na renamed trip is one trip, under its current name');
+{
+  // An invented rename: rows written before it still carry the old key, and
+  // the registry knows it as an alias of the current one.
+  const ALIAS = { '2026-10-23|Maybe Lake Trip': '2026-10-21|Lake Trip' };
+  const rows = [
+    ['O-1', '2026-10-23|Maybe Lake Trip', 'arranged_stay', 'Old stay', '2026-10-23', '', '', '', '', '{"checkoutDate":"2026-10-30"}'],
+    ['N-1', '2026-10-21|Lake Trip', 'dining', 'Drinks', '2026-10-22', '18:00', '', '', '', ''],
+    ['X-1', '2026-12-01|Unrelated', 'dining', 'Lunch', '2026-12-01', '12:00', '', '', '', ''],
+  ];
+  const ctx = { String, Object, JSON, RegExp, Date: FakeDate, Utilities,
+                canonicalTripKey_: k => ALIAS[k] || k };
+  vm.createContext(ctx);
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_'].map(n => extractFn(TDB, n)).join('\n'), ctx);
+  ctx.__a = rows;
+  const r = vm.runInContext('travelDayRanges_(__a, [], "UTC")', ctx);
+  check('the old key is not a trip of its own', !r['2026-10-23|Maybe Lake Trip'], JSON.stringify(r));
+  check('…its rows widen the current trip', r['2026-10-21|Lake Trip'] &&
+        r['2026-10-21|Lake Trip'].min === '2026-10-22' && r['2026-10-21|Lake Trip'].max === '2026-10-30',
+        JSON.stringify(r));
+  check('an unknown key is left as it is', !!r['2026-12-01|Unrelated'], JSON.stringify(r));
+
+  const bare = { String, Object, JSON, RegExp, Date: FakeDate, Utilities };
+  vm.createContext(bare);
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_'].map(n => extractFn(TDB, n)).join('\n'), bare);
+  bare.__a = rows;
+  check('with no registry, keys are kept (nothing breaks)',
+        !!vm.runInContext('travelDayRanges_(__a, [], "UTC")', bare)['2026-10-23|Maybe Lake Trip']);
+
+  // The morning run, on a day the old key's row falls on.
+  const sends = [];
+  const run = { String, Array, Number, Object, Date: FakeDate, JSON, Math, RegExp, isFinite, Error, Utilities,
+    Logger: { log: () => {} }, Session: { getScriptTimeZone: () => 'UTC' },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) },
+    TABS: { ITINERARY: 'Itinerary' }, ITINERARY_HEADERS: new Array(10).fill('x'),
+    getConfigValues: () => ({}), readPTOConfig_: () => ({}), veraLog_: () => {},
+    canonicalTripKey_: k => ALIAS[k] || k,
+    getSpreadsheet: () => ({ getSheetByName: () => ({ getLastRow: () => rows.length + 1,
+      getRange: () => ({ getValues: () => rows.map(x => x.slice()) }) }) }),
+    getUpcomingTravel_: () => [{ label: 'Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28' }],
+    fetchTripDayItems_: () => [['x']],
+    sendTravelDayBriefing_: k => { sends.push(k); },
+  };
+  vm.createContext(run);
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+    .map(n => extractFn(TDB, n)).join('\n'), run);
+  run.__o = { dateOverride: '2026-10-23' };
+  vm.runInContext('checkAndSendTravelDayBriefings_(__o)', run);
+  check('the morning run sends one email, under the current name',
+        JSON.stringify(sends) === '["2026-10-21|Lake Trip"]', JSON.stringify(sends));
 }
 
 // ============ the send, for a chosen day ===================================
@@ -129,7 +181,7 @@ function runSend(items, opts, o) {
     sendSlack_: (ch, text) => { out.slack.push(ch); },
   };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'sendTravelDayBriefing_']
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'sendTravelDayBriefing_']
     .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__i = items; ctx.__o = opts;
   out.ret = vm.runInContext('sendTravelDayBriefing_("2026-10-21|Lake Trip", __i, __o)', ctx);
@@ -221,6 +273,7 @@ function webCtx(o) {
     getSpreadsheet: () => ({ getSheetByName: () => ({ getLastRow: () => SHEET.length + 1,
       getRange: () => ({ getValues: () => SHEET.map(r => r.slice()) }) }) }),
     readPTOConfig_: () => ({}),
+    canonicalTripKey_: k => (o.alias || {})[k] || k,
     getUpcomingTravel_: () => o.cal || [{ label: 'Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28' }],
     webGetItinerary_: e => { out.itin.push(e.parameter); return { ok: true, items: o.items || [] }; },
     fetchTripDayItems_: function() { out.fetches.push([].slice.call(arguments)); return [['row']]; },
@@ -229,7 +282,7 @@ function webCtx(o) {
     veraLog_: function() { out.logs.push([].slice.call(arguments)); },
   };
   vm.createContext(ctx);
-  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'travelTestRanges_', 'webTestTravelTrips_',
+  vm.runInContext(['travelRowDate_', 'travelTripKey_', 'travelDayRanges_', 'travelTestRanges_', 'webTestTravelTrips_',
                    'travelTestTime_', 'webTestTravelTrip_', 'webTestTravelSend_']
     .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__run = (expr, p) => { ctx.__e = { parameter: p || {} }; return vm.runInContext(expr, ctx); };
@@ -253,6 +306,13 @@ console.log('\nthe trip list');
     .run('webTestTravelTrips_()');
   check('a trip under two keys shows once', moved.trips.filter(t => t.label === 'Lake Trip').length === 1,
         JSON.stringify(moved.trips));
+
+  // The Island Trip's row renamed: the registry maps its old key onto a new name.
+  const renamed = webCtx({ alias: { '2026-11-06|Island Trip': '2026-11-06|Island Getaway' },
+    cal: [{ label: 'Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28' },
+          { label: 'Island Getaway', startDate: '2026-11-06', endDate: '2026-11-09' }] }).run('webTestTravelTrips_()');
+  check('a renamed trip is listed once, under its current name',
+        JSON.stringify(renamed.trips.map(t => t.label)) === '["Lake Trip","Island Getaway"]', JSON.stringify(renamed.trips));
 }
 
 console.log('\none trip, every day, with where each item came from');

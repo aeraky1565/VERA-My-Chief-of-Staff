@@ -40,6 +40,12 @@ const CONTROLS = [
   ['a test reads only the sheet', tdb("  var rows = fetchTripDayItems_(tripKey, r.min, r.max, date) || [];", "  var rows = [];")],
   ['every item is called sheet', tdb("      source: it.source === 'calendar' ? 'calendar' : 'sheet',", "      source: 'sheet',")],
   ['the trip range is the sheet\'s alone', tdb("    if (end > ranges[key].max) ranges[key].max = end;\n", "")],
+  ['a renamed trip\'s old rows make a trip of their own', tdb(
+    "    var tripKey = travelTripKey_(row[1]);\n    if (!tripKey) return;\n    var rowDate",
+    "    var tripKey = String(row[1] || '').trim();\n    if (!tripKey) return;\n    var rowDate")],
+  ['the morning run groups today\'s rows under the old key', tdb(
+    "    var tripKey = travelTripKey_(row[1]);   // the same key travelDayRanges_ used",
+    "    var tripKey = String(row[1] || '').trim();")],
   ['past trips are offered', tdb("    if (r.max < today) return;\n", "")],
   ['the preview tags every item sheet', ui('className:"test-src","data-src":it.source,', 'className:"test-src","data-src":"sheet",'), UI],
   ['the send button is not held while sending', ui('className:"test-send",onClick:send,disabled:sending,', 'className:"test-send",onClick:send,disabled:false,'), UI],
