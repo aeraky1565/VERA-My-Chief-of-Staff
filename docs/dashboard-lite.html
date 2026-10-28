@@ -9042,7 +9042,9 @@ function AriaSpark(props){var h=React.createElement;var pts=props.points||[];if(
       h('circle',{cx:end[0],cy:end[1],r:2.2,fill:TI.hi})),
     h('span',{style:{fontSize:11,color:TI.mute,whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}},ariaUsd_(lo)+'–'+ariaUsd_(hi)));}
 
-function AriaCard(props){var h=React.createElement;var w=props.row;var fares=ariaFaresFor_(props.fares,w),latest=ariaLatest_(fares),hist=ariaHistory_(fares);
+// A booked trip has no fare left to find: it says so, and drops the watch-only lines (ceiling, tier,
+// checks, the latest fare, ARIA's set-up note, which was about whether to watch it).
+function AriaCard(props){var h=React.createElement;var w=props.row;var booked=w.status==='booked';var fares=booked?[]:ariaFaresFor_(props.fares,w),latest=ariaLatest_(fares),hist=ariaHistory_(fares);
   var st=ARIA_STATUS[w.status]||ARIA_STATUS.other,v=ARIA_VERDICT[w.verdict];var idea=(props.ideas||{})[w.ref];
   var chip=function(t,c,bg,cls){return h('span',{className:cls,style:{fontSize:11,fontWeight:700,letterSpacing:'.05em',padding:'3px 8px',borderRadius:999,color:c,background:bg||'transparent',border:'1px solid '+c,whiteSpace:'nowrap'}},t);};
   return h('div',{className:'aria-card aria-'+w.status,style:{display:'flex',flexDirection:'column',gap:10,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(w.verdict==='book'?'#4d9f6a':TI.br),minWidth:0}},
@@ -9051,6 +9053,8 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var fares=ari
         h('span',{className:'aria-label',style:{fontSize:15,fontWeight:700,color:TI.hi}},idea&&idea.option?idea.option:(w.label||w.tripId||w.ref)),
         h('span',{style:{fontSize:12,color:TI.soft}},ariaWhen_(w)+(w.origins||w.dests?' · '+(w.origins||'?')+' → '+(w.dests||'?')+(w.returnFrom?', home from '+w.returnFrom:''):''))),
       h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end',flex:'none'}},chip(st[0],st[1],null,'aria-status'),v&&chip(v[0],v[3],v[1],'aria-verdict'))),
+    booked?h('div',{className:'aria-booked',style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('span',{style:{fontSize:15,fontWeight:700,color:TI.ok}},'✈️ Flights booked'),
+      w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'last fare ARIA saw '+ariaUsd_(w.bestFare))):
     h('div',{style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
       w.bestFare!=null?h('span',{className:'aria-best',style:{fontSize:22,fontWeight:700,color:TI.hi,fontVariantNumeric:'tabular-nums'}},ariaUsd_(w.bestFare)):h('span',{style:{fontSize:14,color:TI.mute}},'No fare yet'),
       w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'best seen'+(w.travelers>0?' for '+w.travelers+' ('+ariaUsd_(ariaPerPerson_(w))+' pp)':', total')+(w.bestSource?' · '+w.bestSource:'')),
@@ -9060,11 +9064,11 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var fares=ari
       +(latest.depart?' · '+tiDayText_(latest.depart)+(latest.ret?' → '+tiDayText_(latest.ret):''):'')),
     latest&&(latest.flags||[]).length>0&&h('div',{className:'aria-flags',style:{display:'flex',gap:6,flexWrap:'wrap'}},latest.flags.map(function(f){return h('span',{key:f,style:{fontSize:11,color:TI.warn,border:'1px dashed #a8862f',borderRadius:6,padding:'2px 6px'}},'⚠ '+(ARIA_FLAG_WORDS[f]||f));})),
     hist.length>1&&h(AriaSpark,{points:hist}),
-    h('span',{style:{fontSize:12,color:TI.mute}},[w.tier,w.nextCheck?'next check '+w.nextCheck:'',w.lastChecked?'checked '+w.lastChecked:'',w.forecast?'forecast: '+w.forecast:''].filter(Boolean).join(' · ')),
-    w.actionType&&w.actionType!=='BOOK_NOW'&&w.actionType!=='UNDER_CEILING'&&h('span',{className:'aria-action',style:{fontSize:12,lineHeight:1.45,color:w.actionUrgency==='High'?'#ffb0b0':w.actionUrgency==='Medium'?TI.warn:TI.soft}},'→ '+(w.actionNeeded||w.actionType.replace(/_/g,' ').toLowerCase())),
-    w.dateChange&&h('span',{className:'aria-date-change',style:{fontSize:12,color:TI.warn}},'⚠ The dates changed in VERA since ARIA set this up.'),
+    !booked&&h('span',{style:{fontSize:12,color:TI.mute}},[w.tier,w.nextCheck?'next check '+w.nextCheck:'',w.lastChecked?'checked '+w.lastChecked:'',w.forecast?'forecast: '+w.forecast:''].filter(Boolean).join(' · ')),
+    !booked&&w.actionType&&w.actionType!=='BOOK_NOW'&&w.actionType!=='UNDER_CEILING'&&h('span',{className:'aria-action',style:{fontSize:12,lineHeight:1.45,color:w.actionUrgency==='High'?'#ffb0b0':w.actionUrgency==='Medium'?TI.warn:TI.soft}},'→ '+(w.actionNeeded||w.actionType.replace(/_/g,' ').toLowerCase())),
+    !booked&&w.dateChange&&h('span',{className:'aria-date-change',style:{fontSize:12,color:TI.warn}},'⚠ The dates changed in VERA since ARIA set this up.'),
     idea&&idea.idea&&h('span',{style:{fontSize:12,color:TI.acc}},'From the trip idea "'+idea.idea+'"'),
-    w.notes&&h('span',{style:{fontSize:12,lineHeight:1.45,color:TI.mute}},w.notes),
+    !booked&&w.notes&&h('span',{className:'aria-notes',style:{fontSize:12,lineHeight:1.45,color:TI.mute}},w.notes),
     w.status==='draft'&&w.tripId&&props.apiUrl&&h(AriaDraftWatch,{row:w,requests:props.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:props.onChange||function(){}}),
     latest&&latest.link&&h('a',{href:latest.link,target:'_blank',rel:'noopener noreferrer',className:'aria-link',style:{fontSize:13,fontWeight:600,color:TI.acc,alignSelf:'flex-start',minHeight:32,display:'inline-flex',alignItems:'center'}},'Open this fare ↗'));}
 

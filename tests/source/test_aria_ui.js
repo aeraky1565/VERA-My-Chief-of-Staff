@@ -103,6 +103,15 @@ async function scenario(page, label, width) {
   if (width >= 900) { const tops = await page.$$eval('#ariaprobe .aria-card', ns => ns.slice(0, 2).map(n => Math.round(n.getBoundingClientRect().top)));
     check(label + ': cards sit side by side on a desktop', tops[0] === tops[1], JSON.stringify(tops)); }
   check(label + ': no sideways scroll', await noScroll(page));
+
+  // A booked trip: no fare to find, so no "No fare yet", ceiling or the note ARIA left while deciding.
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ceiling: 980, bestFare: null,
+    tier: 'Weekly', nextCheck: '2026-11-01', notes: 'Ceiling seeded from the flights budget. Likely booked, confirm before watching.', ref: '', dateChange: false }], fares: [], gaps: { count: 0 } }));
+  const bk = await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Anniversary trip/.test(n.innerText)) || { innerText: '' }).innerText);
+  check(label + ': a booked trip says its flights are booked, under Booked', /Booked · 1/i.test(await text(page)) && /✈️ Flights booked/.test(bk), bk);
+  check(label + ': …with no "No fare yet", ceiling, checks, or the note ARIA left before it was booked', !/No fare yet|ceiling|next check|Weekly|confirm before watching/.test(bk), bk);
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ceiling: 980, bestFare: 1700, travelers: 2, ref: '', dateChange: false, notes: '' }], fares: [], gaps: { count: 0 } }));
+  check(label + ': …and the last fare ARIA saw, if it saw one, as a quiet note', /✈️ Flights booked\s+last fare ARIA saw \$1,700/.test(await text(page)));
   if (process.env.SHOT_DIR) { const el = await page.$('#ariaprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 
   // A Draft card: Watch with ARIA opens the trip Summary's form, filled by trip_aria; it writes a request, never the tracker

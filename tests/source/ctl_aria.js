@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_aria');
 
-const FILES = ['Trips.js', 'Aria.js', 'Code.js', 'Reminders.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html'];
+const FILES = ['Trips.js', 'Aria.js', 'Code.js', 'Reminders.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -95,11 +95,19 @@ const CONTROLS = [
   ['scouted fares are left off the card', both("var ids=[w.tripId,w.ref].filter(Boolean);", "var ids=[w.tripId].filter(Boolean);")],
   ['a flagged fare reads as firm', both("function ariaFirm_(f){return !!f&&!(f.flags||[]).length;}", "function ariaFirm_(f){return !!f;}")],
   ['lite drifts from the full block', b => ({ [L]: swap(b[L], "function ariaFareTotal_(f){return f.total!=null?f.total:f.farePP;}", "function ariaFareTotal_(f){return f.farePP;}") })],
+  ['a booked trip still shows the watch card', both("var booked=w.status==='booked';", "var booked=false;"), 'test_aria_ui.js'],
 ];
+
+// Screen controls (third field) run test_aria_ui.js and need a browser.
+const HAS_BROWSER = (() => {
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true;
+  try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; }
+})();
 
 let allBit = true;
 CONTROLS.forEach(function(c) {
   const name = c[0];
+  if (c[2] && !HAS_BROWSER) { console.log('\n=== CONTROL: ' + name + '  (skipped: no browser here)'); return; }
   fs.rmSync(OUT, { recursive: true, force: true });
   let patch;
   try { patch = c[1](BASE); }
@@ -112,11 +120,11 @@ CONTROLS.forEach(function(c) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, files[f]);
   });
-  const r = cp.spawnSync('node', [TEST], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT }) });
+  const r = cp.spawnSync('node', [c[2] || TEST], { cwd: __dirname, encoding: 'utf8', env: Object.assign({}, process.env, { VERA_ROOT: OUT }) });
   const out = (r.stdout || '') + (r.stderr || '');
   const fails = (out.match(/^  FAIL .*$/gm) || []).map(s => s.replace(/^  FAIL /, '').trim().split('  — ')[0]);
   const crashed = r.status !== 0 && fails.length === 0;
-  console.log('\n=== CONTROL: ' + name + '  (' + TEST + ')');
+  console.log('\n=== CONTROL: ' + name + '  (' + (c[2] || TEST) + ')');
   if (!changed.length) { console.log('  !! MUTATION DID NOT APPLY — vacuous'); allBit = false; return; }
   if (crashed)         { console.log('  !! CRASHED with no clean assertion failure'); console.log(out.split('\n').slice(-6).join('\n')); allBit = false; return; }
   if (!fails.length)   { console.log('  !! NOTHING BIT (patched: ' + changed.join(', ') + ')'); allBit = false; return; }
