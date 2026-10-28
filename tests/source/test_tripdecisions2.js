@@ -4,6 +4,7 @@
 // plan you actually chose.
 
 const fs = require('fs'), vm = require('vm');
+require('./tripkey_helpers')(require('vm'));   // tripKeyMatches_ & co. in every context
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const ROOT = process.env.VERA_ROOT || REPO;
 const SRC  = fs.readFileSync(ROOT + '/TripDecisions.js', 'utf8');

@@ -13,6 +13,7 @@
 // flags — one per generation, exact keys, superseded ones closed, resolved ones left
 // resolved — the nightly forecast nudge, Discover's prompt, and lite's end date.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers')(require('vm'));   // tripKeyMatches_ & co. in every context
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');

@@ -379,6 +379,50 @@ function canonicalTripKey_(tripKey) {
 }
 
 /**
+ * Does this cell name the same trip as tripKey — under its current key or any
+ * key it has gone by (an old name, an old start date)? The one-call form of
+ * tripRowMatches_(cell, tripKeysFor_(tripKey)); tripKeysFor_ is cached per
+ * execution, so calling this per row is cheap. Without a registry (a test, a
+ * missing Trips tab) it is exactly the old `=== tripKey`.
+ *
+ * Read sites used to compare the raw cell to the key, so a renamed or re-dated
+ * trip silently lost every row written before the change.
+ */
+function tripKeyMatches_(cellValue, tripKey) {
+  var v = String(cellValue == null ? '' : cellValue).trim();
+  var k = String(tripKey == null ? '' : tripKey).trim();
+  if (!v || !k) return false;
+  if (v === k) return true;
+  if (typeof tripKeysFor_ !== 'function') return false;
+  return tripRowMatches_(v, tripKeysFor_(k));
+}
+
+/**
+ * The index of the ONE row for this trip in a single-row-per-trip tab (TripMeta),
+ * or -1. An exact key wins; otherwise the first row under any of the trip's keys.
+ */
+function tripKeyRowIndex_(cells, tripKey) {
+  var k = String(tripKey == null ? '' : tripKey).trim();
+  var alias = -1;
+  for (var i = 0; i < (cells || []).length; i++) {
+    var v = String(cells[i] == null ? '' : cells[i]).trim();
+    if (v === k) return i;
+    if (alias === -1 && tripKeyMatches_(v, k)) alias = i;
+  }
+  return alias;
+}
+
+/**
+ * The key to WRITE a new row under: the trip's current key, so new rows stop
+ * adding to a split. Unresolvable keys pass through unchanged.
+ */
+function tripKeyForWrite_(tripKey) {
+  var k = String(tripKey == null ? '' : tripKey).trim();
+  if (!k || typeof canonicalTripKey_ !== 'function') return k;
+  try { return String(canonicalTripKey_(k) || k).trim(); } catch (e) { return k; }
+}
+
+/**
  * Does this row's trip-key cell belong to the trip these keys describe?
  *
  * Replaces `String(row[n] || '').trim() === tripKey` at every read site. Pass the

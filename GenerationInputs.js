@@ -317,7 +317,7 @@ function readGenerationInputs_(tripKey, kind) {
   if (!sh || sh.getLastRow() < 2) return null;
   var rows = sh.getRange(2, 1, sh.getLastRow() - 1, GEN_INPUTS_HEADERS_.length).getValues();
   for (var i = 0; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() !== tripKey || String(rows[i][1]).trim() !== kind) continue;
+    if (!tripKeyMatches_(rows[i][0], tripKey) || String(rows[i][1]).trim() !== kind) continue;
     try { return JSON.parse(String(rows[i][3])); } catch (e) { return null; }
   }
   return null;
@@ -351,7 +351,7 @@ function recordGenerationInputs_(kind, tripKey, factors, extra) {
     if (sh.getLastRow() >= 2) {
       var keys = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
       for (var i = 0; i < keys.length; i++) {
-        if (String(keys[i][0]).trim() === tripKey && String(keys[i][1]).trim() === kind) { hit = i + 2; break; }
+        if (tripKeyMatches_(keys[i][0], tripKey) && String(keys[i][1]).trim() === kind) { hit = i + 2; break; }
       }
     }
     var row = [tripKey, kind, record.generatedAt, json];

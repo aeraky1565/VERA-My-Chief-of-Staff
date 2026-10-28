@@ -2269,7 +2269,7 @@ function executeActions_(rawText) {
         var tripRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
         var tripDates = [];
         tripRows.forEach(function(row) {
-          if (String(row[1] || '').trim() !== tripKey) return;
+          if (!tripKeyMatches_(row[1], tripKey)) return;
           var ds = String(row[4] || '').trim(); // col 4 = Date
           if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) tripDates.push(ds);
         });

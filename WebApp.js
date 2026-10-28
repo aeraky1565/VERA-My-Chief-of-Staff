@@ -3951,6 +3951,29 @@ function suppressCalendarDuplicatesOfRows_(calendarItems, storedItems) {
 }
 
 /**
+ * The same item stored under two of a trip's keys — the old one and the
+ * current one — is one item. Same type, title, date and start time; the row
+ * under `tripKey` (the current key) wins, else the first. Two copies under the
+ * SAME key are left alone: that is a choice someone made, not a rename.
+ *
+ * Pure, for the tests.
+ */
+function dedupeStoredRowsAcrossKeys_(items, tripKey) {
+  var byKey = {}, out = [];
+  (items || []).forEach(function(it) {
+    var k = [String(it.type || '').toLowerCase(), String(it.title || '').trim().toLowerCase(),
+             String(it.date || ''), String(it.startTime || '')].join('|');
+    var prev = byKey[k];
+    if (!prev) { byKey[k] = { it: it, at: out.length }; out.push(it); return; }
+    if (prev.it.tripKey === it.tripKey) { out.push(it); return; }   // same key: both stay
+    if (it.tripKey === tripKey && prev.it.tripKey !== tripKey) {
+      out[prev.at] = it; byKey[k] = { it: it, at: prev.at };
+    }
+  });
+  return out;
+}
+
+/**
  * Collapses duplicate calendar-sourced itinerary items — the same real-world
  * event (e.g. a flight) added to more than one trusted calendar produces one
  * item per calendar upstream; this merges each such group down to one.
@@ -4063,7 +4086,7 @@ function webGetItinerary_(e, opts) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
     data.forEach(function(row, idx) {
       if (!String(row[0]).trim()) return;           // blank row
-      if (String(row[1]).trim() !== tripKey) return; // different trip
+      if (!tripKeyMatches_(row[1], tripKey)) return; // different trip
       const meta = String(row[9] || '').trim();
       // Cells that were auto-converted to Date by Sheets must be re-formatted as strings
       function fmtDate_(v) {
@@ -4089,6 +4112,12 @@ function webGetItinerary_(e, opts) {
         row:       idx + 2,
       });
     });
+    // Rows are now read under every key the trip has gone by, so a stay that
+    // was entered again after a rename (once under the old key, once under the
+    // new) would show twice. Keep one: the row under the current key.
+    var keptStored = dedupeStoredRowsAcrossKeys_(items, tripKey);
+    items.length = 0;
+    Array.prototype.push.apply(items, keptStored);
   }
 
   // 2. Auto-pull calendar events within trip date range (smart-filtered, read-only)
@@ -4552,7 +4581,7 @@ function webReopenTripDecision_(e) {
 
 function webAddItineraryItem_(e) {
   const p       = e.parameter || {};
-  const tripKey = (p.tripKey || '').trim();
+  const tripKey = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   const title   = (p.title   || '').trim();
   if (!tripKey || !title) throw new Error('tripKey and title are required');
 
@@ -4646,8 +4675,9 @@ function webGetTripMeta_(e) {
 
   if (sheet.getLastRow() >= 2) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_META_HEADERS.length).getValues();
+    const metaIdx = tripKeyRowIndex_(data.map(function(r) { return r[0]; }), tripKey);
     for (let i = 0; i < data.length; i++) {
-      if (String(data[i][0]).trim() === tripKey) {
+      if (i === metaIdx) {
         return { ok: true, tripKey,
                  context:        String(data[i][1] || ''),
                  notes:          String(data[i][2] || ''),
@@ -4756,7 +4786,7 @@ function suggestTripCharacteristics_(briefing, activityTypes) {
 
 function webSetTripMeta_(e) {
   const p       = (e && e.parameter) ? e.parameter : {};
-  const tripKey = (p.tripKey || '').trim();
+  const tripKey = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   if (!tripKey) throw new Error('tripKey is required');
 
   const ss    = getSpreadsheet();
@@ -4768,9 +4798,12 @@ function webSetTripMeta_(e) {
 
   if (sheet.getLastRow() >= 2) {
     const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    const metaIdx = tripKeyRowIndex_(ids.map(function(r) { return r[0]; }), tripKey);
     for (let i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]).trim() === tripKey) {
+      if (i === metaIdx) {
         const rowNum = i + 2;
+        // Found under an old key: the row moves to the trip's current one.
+        if (String(ids[i][0]).trim() !== tripKey) sheet.getRange(rowNum, 1).setValue(tripKey);
         // Guarded the way outboundMode/returnMode below already are. These three
         // used to be written unconditionally, so a caller that sent only
         // { tripKey, notes } silently wiped the trip's context label AND its
@@ -4838,7 +4871,7 @@ function webSetTripMeta_(e) {
  * @param {string} text
  */
 function setTripBriefing_(tripKey, text) {
-  var key = String(tripKey || '').trim();
+  var key = tripKeyForWrite_(String(tripKey || '').trim());   // the trip's current key
   if (!key) throw new Error('tripKey is required');
 
   var ss    = getSpreadsheet();
@@ -4851,9 +4884,11 @@ function setTripBriefing_(tripKey, text) {
 
   if (sheet.getLastRow() >= 2) {
     var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    var metaIdx = tripKeyRowIndex_(ids.map(function(r) { return r[0]; }), key);
     for (var i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]).trim() !== key) continue;
+      if (i !== metaIdx) continue;
       var rowNum = i + 2;
+      if (String(ids[i][0]).trim() !== key) sheet.getRange(rowNum, 1).setValue(key);
       sheet.getRange(rowNum, 3).setValue(briefing);
       var dc = sheet.getRange(rowNum, 4);
       dc.setNumberFormat('@');
@@ -4912,7 +4947,7 @@ function webGetPacking_(e) {
   if (sheet.getLastRow() >= 2) {
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
     data.forEach(function(row) {
-      if (String(row[1]).trim() !== tripKey) return;
+      if (!tripKeyMatches_(row[1], tripKey)) return;
       items.push({
         id:        String(row[0]).trim(),
         tripKey:   String(row[1]).trim(),
@@ -5459,7 +5494,7 @@ function parsePackingResponse_(rawContent) {
  */
 function webGeneratePacking_(e) {
   const p         = (e && e.parameter) ? e.parameter : {};
-  const tripKey   = (p.tripKey   || '').trim();
+  const tripKey   = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   if (!tripKey) throw new Error('tripKey is required');
   // A missing end date is filled from the trip, not generated around: dashboard-lite
   // never sent one, and every list it made had no weather because of it.
@@ -5500,7 +5535,7 @@ function webGeneratePacking_(e) {
   }
 
   // How many itinerary items this trip has, for the "built from" record.
-  var itinCount = itinData.filter(function(row) { return String(row[1]).trim() === tripKey; }).length;
+  var itinCount = itinData.filter(function(row) { return tripKeyMatches_(row[1], tripKey); }).length;
 
   let itinerarySummary = '';
   var activityTypes = {};  // e.g. { beach: true, dining: true, flight: true }
@@ -5508,7 +5543,7 @@ function webGeneratePacking_(e) {
   if (itinData.length) {
     const lines = [];
     itinData.forEach(function(row) {
-      if (String(row[1]).trim() !== tripKey) return;
+      if (!tripKeyMatches_(row[1], tripKey)) return;
       const date  = String(row[4]).trim();
       const itype = String(row[2]).trim().toLowerCase();
       const title = String(row[3]).trim();
@@ -5640,7 +5675,7 @@ function webGeneratePacking_(e) {
   if (packSheet.getLastRow() >= 2) {
     const allRows = packSheet.getRange(2, 1, packSheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
     for (let i = 0; i < allRows.length; i++) {
-      if (String(allRows[i][1]).trim() !== tripKey) continue;
+      if (!tripKeyMatches_(allRows[i][1], tripKey)) continue;
       tripRows.push({
         rowNum:  i + 2,
         id:      String(allRows[i][0]).trim(),
@@ -5768,7 +5803,7 @@ function webGetRecommendations_(e) {
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
   const recs = [];
   data.forEach(function(row) {
-    if (String(row[1]).trim() !== tripKey) return;
+    if (!tripKeyMatches_(row[1], tripKey)) return;
     recs.push({
       id:          String(row[0]).trim(),
       tripKey:     String(row[1]).trim(),
@@ -6063,7 +6098,7 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
   var dateMap     = {};
   var flightsByDate = {};
   itinData.forEach(function(row) {
-    if (String(row[1]).trim() !== tripKey) return;
+    if (!tripKeyMatches_(row[1], tripKey)) return;
     var date = String(row[4]).trim();
     var type = String(row[2]).trim();
     if (!date) return;
@@ -6086,7 +6121,7 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
   var STAY_TYPES_GAP = { hotel: 1, cruise: 1, arranged_stay: 1 };
   var baseByDate = {};
   itinData.forEach(function(row) {
-    if (String(row[1]).trim() !== tripKey) return;
+    if (!tripKeyMatches_(row[1], tripKey)) return;
     if (!STAY_TYPES_GAP[String(row[2]).trim()]) return;
     var loc = String(row[7] || '').replace(/\s+/g, ' ').trim();
     var from = String(row[4] || '').trim();
@@ -6184,7 +6219,7 @@ function buildRecsGapSummary_(tripKey, startDate, endDate, itinData) {
  */
 function webGenerateRecommendations_(e) {
   const p         = (e && e.parameter) ? e.parameter : {};
-  const tripKey   = (p.tripKey   || '').trim();
+  const tripKey   = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   if (!tripKey) throw new Error('tripKey is required');
   const _dates    = genTripDates_(tripKey, (p.startDate || '').trim(), (p.endDate || '').trim());
   const startDate = _dates.startDate;
@@ -6229,7 +6264,7 @@ function webGenerateRecommendations_(e) {
 
   const lines = [];
   itinData.forEach(function(row) {
-    if (String(row[1]).trim() !== tripKey) return;
+    if (!tripKeyMatches_(row[1], tripKey)) return;
     const date  = String(row[4]).trim();
     const type  = String(row[2]).trim();
     const title = String(row[3]).trim();
@@ -6359,7 +6394,7 @@ function webGenerateRecommendations_(e) {
     const allRows = recSheet.getRange(2, 1, recSheet.getLastRow() - 1, TRIP_RECS_HEADERS.length).getValues();
     const toDelete = [];
     for (let i = 0; i < allRows.length; i++) {
-      if (String(allRows[i][1]).trim() === tripKey && String(allRows[i][10]).trim() === 'ai') {
+      if (tripKeyMatches_(allRows[i][1], tripKey) && String(allRows[i][10]).trim() === 'ai') {
         toDelete.push(i + 2);
       }
     }
@@ -6825,7 +6860,7 @@ function webGetFlightStatuses_(e) {
   if (sheet) {
     var rows = sheet.getDataRange().getValues();
     for (var i = 1; i < rows.length; i++) {
-      if (String(rows[i][1] || '').trim() !== tripKey) continue;   // col B = Trip Key
+      if (!tripKeyMatches_(rows[i][1], tripKey)) continue;   // col B = Trip Key
       if (String(rows[i][2] || '').trim() !== 'flight') continue;  // col C = Type
       var id   = String(rows[i][0] || '');                         // col A = ID
       var meta = {};
@@ -10199,7 +10234,7 @@ function tripItemsFor_(tripKey, startDate, endDate, logTag, withEventTz) {
   if (sheet && sheet.getLastRow() >= 2) {
     var tz = Session.getScriptTimeZone();
     sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
-      if (String(r[1]).trim() !== tripKey) return;
+      if (!tripKeyMatches_(r[1], tripKey)) return;
       items.push({ type: String(r[2] || ''), title: String(r[3] || ''),
         date: r[4] instanceof Date ? Utilities.formatDate(r[4], tz, 'yyyy-MM-dd') : String(r[4] || '').trim(),
         location: String(r[7] || ''), metadata: String(r[9] || '') });
@@ -10527,7 +10562,7 @@ function webGetTripBudget_(e) {
  */
 function webSaveBudgetItem_(e) {
   var p        = (e && e.parameter) ? e.parameter : {};
-  var tripKey  = (p.tripKey  || '').trim();
+  var tripKey  = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   var id       = (p.id       || '').trim();
   var category = (p.category || '').trim();
   var label    = (p.label    || '').trim();
@@ -10603,7 +10638,7 @@ function webDeleteBudgetItem_(e) {
  */
 function webSetTripBudgetSettings_(e) {
   var p            = (e && e.parameter) ? e.parameter : {};
-  var tripKey      = (p.tripKey || '').trim();
+  var tripKey      = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   if (!tripKey) return { ok: false, error: 'tripKey required' };
 
   var ss    = getSpreadsheet();
@@ -10626,9 +10661,11 @@ function webSetTripBudgetSettings_(e) {
 
   if (sheet.getLastRow() >= 2) {
     var ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    var metaIdx = tripKeyRowIndex_(ids.map(function(r) { return r[0]; }), tripKey);
     for (var i = 0; i < ids.length; i++) {
-      if (String(ids[i][0]).trim() === tripKey) {
+      if (i === metaIdx) {
         var rowNum = i + 2;
+        if (String(ids[i][0]).trim() !== tripKey) sheet.getRange(rowNum, 1).setValue(tripKey);
         if (p.tripBudget     !== undefined) sheet.getRange(rowNum, budgetCol).setValue(Number(p.tripBudget)     || '');
         if (p.tripTravellers !== undefined) sheet.getRange(rowNum, travCol).setValue(Number(p.tripTravellers)   || 2);
         return { ok: true };
@@ -10673,7 +10710,7 @@ var TRIP_BUDGET_TYPE_MAP_ = {
  */
 function webImportBudgetFromItinerary_(e) {
   var p       = (e && e.parameter) ? e.parameter : {};
-  var tripKey = (p.tripKey || '').trim();
+  var tripKey = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   if (!tripKey) return { ok: false, error: 'tripKey required' };
 
   // Map itinerary types to budget categories (shared with TripActuals.js)
@@ -10692,7 +10729,7 @@ function webImportBudgetFromItinerary_(e) {
     var bTkIdx = bHdrs.indexOf('Trip Key');
     var bCatIdx = bHdrs.indexOf('Category');
     bRows.slice(1).forEach(function(r) {
-      if (String(r[bTkIdx]).trim() === tripKey) existingCategories[r[bCatIdx]] = true;
+      if (tripKeyMatches_(r[bTkIdx], tripKey)) existingCategories[r[bCatIdx]] = true;
     });
   }
 
@@ -10703,7 +10740,7 @@ function webImportBudgetFromItinerary_(e) {
     var iRows = itinSheet.getRange(2, 1, itinSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
     iRows.forEach(function(r) {
       var rowTripKey = String(r[1]).trim();
-      if (rowTripKey !== tripKey) return;
+      if (!tripKeyMatches_(rowTripKey, tripKey)) return;
       var type    = String(r[2]).trim().toLowerCase();
       var mapping = typeToCategory[type];
       if (!mapping) return;
@@ -10727,7 +10764,7 @@ function webImportBudgetFromItinerary_(e) {
  */
 function webCopyTripBudget_(e) {
   var p             = (e && e.parameter) ? e.parameter : {};
-  var tripKey       = (p.tripKey       || '').trim();
+  var tripKey       = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   var sourceTripKey = (p.sourceTripKey || '').trim();
   if (!tripKey)       return { ok: false, error: 'tripKey required' };
   if (!sourceTripKey) return { ok: false, error: 'sourceTripKey required' };
@@ -10751,8 +10788,8 @@ function webCopyTripBudget_(e) {
 
     rows.slice(1).forEach(function(r) {
       var rk = String(r[tkIdx]).trim();
-      if (rk === tripKey)       existingCategories[r[catIdx]] = true;
-      if (rk === sourceTripKey) {
+      if (tripKeyMatches_(rk, tripKey))       existingCategories[r[catIdx]] = true;
+      if (tripKeyMatches_(rk, sourceTripKey)) {
         sourceItems.push({ category: String(r[catIdx]), label: String(r[labIdx]),
                            budgeted: r[budgIdx], notes: String(r[notIdx] || '') });
       }
@@ -11517,7 +11554,7 @@ function webGetTripGifts_(e) {
 
 function webAddTripGift_(e) {
   var p = e.parameter || {};
-  var tripKey   = (p.tripKey   || '').trim();
+  var tripKey   = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
   var recipient = (p.recipient || '').trim();
   var item      = (p.item      || '').trim();
   if (!tripKey || !item) return { ok: false, error: 'tripKey and item required' };

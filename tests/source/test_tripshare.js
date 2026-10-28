@@ -4,6 +4,7 @@
 // The real functions run in a vm over an invented trip. Nothing is sent: the
 // mail door is a recorder.
 const fs = require('fs'), vm = require('vm'), path = require('path');
+require('./tripkey_helpers')(require('vm'));   // tripKeyMatches_ & co. in every context
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');

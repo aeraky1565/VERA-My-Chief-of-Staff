@@ -61,7 +61,7 @@ function tripShareItems_(tripKey) {
   var d = function(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v || '').trim(); };
   var t = function(v) { return v instanceof Date ? Utilities.formatDate(v, tz, 'HH:mm') : String(v || '').trim(); };
   sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
-    if (!String(r[0]).trim() || String(r[1]).trim() !== tripKey) return;
+    if (!String(r[0]).trim() || !tripKeyMatches_(r[1], tripKey)) return;
     out.push({ id: String(r[0]).trim(), type: String(r[2] || ''), title: String(r[3] || ''), date: d(r[4]),
       startTime: t(r[5]), endTime: t(r[6]), location: String(r[7] || ''), notes: String(r[8] || ''), metadata: String(r[9] || '') });
   });

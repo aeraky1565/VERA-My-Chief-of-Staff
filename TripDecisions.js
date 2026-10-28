@@ -266,7 +266,7 @@ function loadTripDecisions_(tripKey) {
     var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_DECISION_HEADERS.length).getValues();
     rows.forEach(function(r) {
       if (!String(r[0] || '').trim()) return;
-      if (String(r[1] || '').trim() !== tripKey) return;
+      if (!tripKeyMatches_(r[1], tripKey)) return;
       out[String(r[2] || '').trim()] = {
         id:           String(r[0]).trim(),
         status:       String(r[4] || '').trim().toLowerCase(),

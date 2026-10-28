@@ -270,15 +270,22 @@ function checkAndSendTravelDayBriefings_(opts) {
   tripKeys.forEach(function(tripKey) {
     try {
       var _lbl  = String(tripKey.split('|').slice(1).join('|') || tripKey);
-      var _sKey = 'TDB_SENT_' + today.replace(/-/g, '') + '_' +
-                  _lbl.toUpperCase().replace(/[^A-Z0-9]/g, '_').substring(0, 60);
+      var _day  = 'TDB_SENT_' + today.replace(/-/g, '') + '_';
+      var _lKey = _day + _lbl.toUpperCase().replace(/[^A-Z0-9]/g, '_').substring(0, 60);
+      // Keyed on the trip's permanent ID when it resolves: a trip renamed on
+      // the day itself keeps its ID, where a label-keyed latch would let the
+      // new name send again. The label latch is still honoured (a latch
+      // written before this change, or a trip with no registry entry).
+      var _tid  = '';
+      try { _tid = typeof tripIdForKey_ === 'function' ? String(tripIdForKey_(tripKey) || '') : ''; } catch (_e) {}
+      var _sKey = _tid ? _day + _tid : _lKey;
 
       // Two guards, and they do different jobs.
       //
       // The in-run one collapses a trip that appears under two keys, and it is
       // NOT bypassable: forcing a re-send should re-send the briefing, not
       // reproduce the duplicate that started all this.
-      if (_tdbSeen[_sKey]) {
+      if (_tdbSeen[_sKey] || _tdbSeen[_lKey]) {
         Logger.log('TravelDayBriefing: "' + _lbl + '" already briefed this run — skipping ' +
                    tripKey + ' (same trip, second key)');
         return;
@@ -286,11 +293,12 @@ function checkAndSendTravelDayBriefings_(opts) {
       // The persisted one stops a second scheduled run the same day. TestBench
       // passes force to get past it, because a manual run that silently does
       // nothing looks exactly like "no trip today" and tells you nothing.
-      if (!_tdbForce && _tdbProps.getProperty(_sKey)) {
+      if (!_tdbForce && (_tdbProps.getProperty(_sKey) || _tdbProps.getProperty(_lKey))) {
         Logger.log('TravelDayBriefing: already sent today for "' + _lbl + '" — skipping ' + tripKey);
         return;
       }
       _tdbSeen[_sKey] = true;
+      _tdbSeen[_lKey] = true;
 
       // Fetch through webGetItinerary_ now that the latch has settled which key
       // wins. Falls back to the raw sheet rows gathered above if that throws —

@@ -378,7 +378,7 @@ function getPackingStatusForBriefing_(tripKey) {
 
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, PACKING_ITEM_HEADERS.length).getValues();
   data.forEach(function(row) {
-    if (String(row[1] || '').trim() !== tripKey) return;
+    if (!tripKeyMatches_(row[1], tripKey)) return;
     var person  = String(row[2] || '').trim().toLowerCase() || 'shared';
     var item    = String(row[4] || '').trim();
     var checked = String(row[5] || '').toUpperCase() === 'TRUE';
