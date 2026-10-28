@@ -2,6 +2,7 @@
 // payload, a decided group renders solid with the chosen plan, undo reopens.
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path'), vm = require('vm');
+require('./tripkey_helpers')(vm);   // tripKeyMatches_ & co. in every context
 const REPO = require('path').join(__dirname, '..', '..');   // this repo, wherever it happens to be checked out
 const ROOT = process.env.VERA_PAGES_ROOT || REPO;
 const ENGINE = process.env.VERA_ROOT || ROOT;
