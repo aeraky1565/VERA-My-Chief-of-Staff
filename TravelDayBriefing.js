@@ -110,6 +110,62 @@ function fetchTripDayItems_(tripKey, startDate, endDate, today) {
 // sheet properly and formats each end of a flight in its own zone.
 
 /**
+ * A row's Date cell as 'yyyy-MM-dd', or '' when it is not a date.
+ */
+function travelRowDate_(v, tz) {
+  var d = (v instanceof Date && !isNaN(v.getTime()))
+    ? Utilities.formatDate(v, tz, 'yyyy-MM-dd')
+    : String(v || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+}
+
+/**
+ * travelDayRanges_(sheetRows, calTrips, tz) → { tripKey: { min, max } }
+ *
+ * Which days each trip covers, from both places a trip lives:
+ *  - Itinerary rows, from the first row's date to the last — and a stay runs
+ *    to its checkout, which is in the metadata, not column E. "Staying at Ange
+ *    & Farai's" is one row dated the first night; without this the trip
+ *    appeared to end on the last row you happened to add.
+ *  - Calendar trips (extended family dropped). A calendar-only trip has no
+ *    rows at all, and webGetItinerary_ requires a start and an end. When the
+ *    sheet DOES have rows, the range widens to the calendar's end rather than
+ *    keeping the sheet's: the Chicago Trip's rows ran Oct 21-24, so the
+ *    calendar was asked about Oct 21-24 and the Oct 28 flight home, which
+ *    lived only on the calendar, was never read. (The start needs no
+ *    widening: it is part of the key, so a calendar trip that starts
+ *    elsewhere is a different key.)
+ *
+ * Used by the scheduled briefing and by the Test tab, so both agree.
+ */
+function travelDayRanges_(sheetRows, calTrips, tz) {
+  var ranges = {};
+  (sheetRows || []).forEach(function(row) {
+    var tripKey = String(row[1] || '').trim();
+    if (!tripKey) return;
+    var rowDate = travelRowDate_(row[4], tz);
+    if (!rowDate) return;
+    if (!ranges[tripKey]) ranges[tripKey] = { min: rowDate, max: rowDate };
+    if (rowDate < ranges[tripKey].min) ranges[tripKey].min = rowDate;
+    if (rowDate > ranges[tripKey].max) ranges[tripKey].max = rowDate;
+    var checkout = '';
+    try { checkout = String((JSON.parse(String(row[9] || '{}')) || {}).checkoutDate || ''); }
+    catch (metaErr) { /* not JSON — no checkout */ }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(checkout) && checkout > ranges[tripKey].max) {
+      ranges[tripKey].max = checkout;
+    }
+  });
+  (calTrips || []).forEach(function(t) {
+    if (!t || t.isExtendedFamily || !t.startDate) return;
+    var key = t.startDate + '|' + t.label;
+    var end = t.endDate || t.startDate;
+    if (!ranges[key]) ranges[key] = { min: t.startDate, max: end };
+    if (end > ranges[key].max) ranges[key].max = end;
+  });
+  return ranges;
+}
+
+/**
  * checkAndSendTravelDayBriefings_()
  * Entry point. Called from morningNudge() each morning.
  * Scans the Itinerary sheet for rows whose Date = today,
@@ -139,73 +195,32 @@ function checkAndSendTravelDayBriefings_(opts) {
   var today = _tdbDateOverride || Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   if (_tdbDateOverride) Logger.log('TravelDayBriefing: DATE OVERRIDE — treating ' + today + ' as today');
 
-  // tripMap: tripKey → rows for today (may be empty array for active trips with no items today)
-  var tripMap    = {};
-  var tripRanges = {}; // tripKey → { min, max } across all itinerary rows
-
-  if (sheet && sheet.getLastRow() >= 2) {
-    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-    data.forEach(function(row) {
-      var tripKey = String(row[1] || '').trim();
-      if (!tripKey) return;
-      var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
-        ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
-        : String(row[4] || '').trim();
-      if (!rowDate || !/^\d{4}-\d{2}-\d{2}$/.test(rowDate)) return;
-      // Track date range for this trip
-      if (!tripRanges[tripKey]) tripRanges[tripKey] = { min: rowDate, max: rowDate };
-      if (rowDate < tripRanges[tripKey].min) tripRanges[tripKey].min = rowDate;
-      if (rowDate > tripRanges[tripKey].max) tripRanges[tripKey].max = rowDate;
-      // A stay runs to its checkout, which is in the metadata, not column E.
-      // "Staying at Ange & Farai's" is one row dated the first night; without
-      // this the trip appeared to end on the last row you happened to add.
-      var checkout = '';
-      try { checkout = String((JSON.parse(String(row[9] || '{}')) || {}).checkoutDate || ''); }
-      catch (metaErr) { /* not JSON — no checkout */ }
-      if (/^\d{4}-\d{2}-\d{2}$/.test(checkout) && checkout > tripRanges[tripKey].max) {
-        tripRanges[tripKey].max = checkout;
-      }
-      // Collect today's rows
-      if (rowDate === today) {
-        if (!tripMap[tripKey]) tripMap[tripKey] = [];
-        tripMap[tripKey].push(row);
-      }
-    });
-    // Include active trips where today falls in their date range but no rows for today
-    Object.keys(tripRanges).forEach(function(tripKey) {
-      var r = tripRanges[tripKey];
-      if (!tripMap[tripKey] && today >= r.min && today <= r.max) {
-        tripMap[tripKey] = [];
-      }
-    });
-  }
-
-  // Also catch calendar-based trips with no itinerary rows at all
+  var data = (sheet && sheet.getLastRow() >= 2)
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues()
+    : [];
+  var calTrips = [];
   try {
-    var calCfg   = readPTOConfig_();
-    var calTrips = getUpcomingTravel_(calCfg);
-    calTrips.forEach(function(t) {
-      if (t.isExtendedFamily) return;
-      var key = t.startDate + '|' + t.label;
-      if (!tripMap[key] && today >= t.startDate && today <= t.endDate) {
-        tripMap[key] = [];
-      }
-      // A calendar-only trip has no tripRanges entry at all, and
-      // webGetItinerary_ requires a start and an end.
-      //
-      // When the sheet DOES have rows, widen to the calendar's end rather than
-      // keeping the sheet's. (The start needs no widening: it is part of the
-      // key, so a calendar trip that starts elsewhere is a different key.) The sheet's range is only where you happen
-      // to have logged things: the Chicago Trip's rows ran Oct 21-24, so the
-      // calendar was asked about Oct 21-24 and the Oct 28 flight home, which
-      // lives only on the calendar, was never read. The day's email said
-      // nothing had been logged.
-      if (!tripRanges[key]) tripRanges[key] = { min: t.startDate, max: t.endDate };
-      if (t.endDate   && t.endDate   > tripRanges[key].max) tripRanges[key].max = t.endDate;
-    });
+    calTrips = getUpcomingTravel_(readPTOConfig_());
   } catch (calErr) {
     Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);
   }
+  // tripKey → { min, max }. Shared with the dashboard's Test tab, so a test
+  // send sees exactly the trips and days this run does.
+  var tripRanges = travelDayRanges_(data, calTrips, tz);
+
+  // tripMap: tripKey → rows for today (may be empty array for active trips with no items today)
+  var tripMap = {};
+  data.forEach(function(row) {
+    var tripKey = String(row[1] || '').trim();
+    if (!tripKey || travelRowDate_(row[4], tz) !== today) return;
+    if (!tripMap[tripKey]) tripMap[tripKey] = [];
+    tripMap[tripKey].push(row);
+  });
+  // Include active trips where today falls in their date range but no rows for today
+  Object.keys(tripRanges).forEach(function(tripKey) {
+    var r = tripRanges[tripKey];
+    if (!tripMap[tripKey] && today >= r.min && today <= r.max) tripMap[tripKey] = [];
+  });
 
   // The merge of calendar events into today's rows used to happen here, with a
   // title-only dedupe. It is gone: webGetItinerary_ already merges the two
@@ -274,7 +289,7 @@ function checkAndSendTravelDayBriefings_(opts) {
                    ' — falling back to sheet rows. ' + itinErr.message);
       }
 
-      sendTravelDayBriefing_(tripKey, _rows);
+      sendTravelDayBriefing_(tripKey, _rows, { date: today, lastDay: _range.max });
       _tdbProps.setProperty(_sKey, new Date().toISOString());
       sent++;
     } catch (err) {
@@ -300,17 +315,33 @@ function checkAndSendTravelDayBriefings_(opts) {
  * Assembles and sends the travel day briefing email.
  *
  * @param {string} tripKey     — e.g. "2026-03-25|Paris"
- * @param {Array}  todayItems  — raw Itinerary sheet rows for today
+ * @param {Array}  todayItems  — Itinerary rows for the day
+ * @param {Object} [opts]
+ *   date    'yyyy-MM-dd' the email is about (default: today). Drives the date
+ *           in the subject, tomorrow's flights, the return-day check and the
+ *           open decisions — all of which used to read the real clock, so a
+ *           briefing previewed for another day was labelled and filled as today.
+ *   lastDay the trip's last day, when the caller knows it (travelDayRanges_).
+ *   test    the dashboard's Test tab: "TEST · " on the subject, always by
+ *           email, and sent even when the briefing is switched off.
+ *   to      with test: 'me' (default) or 'all' (everyone the real one goes to).
+ * @returns {Object|null} { to, subject, count }, or null when switched off
  */
-function sendTravelDayBriefing_(tripKey, todayItems) {
-  if (!isNotifEnabled_('travel_day_briefing')) {
+function sendTravelDayBriefing_(tripKey, todayItems, opts) {
+  opts = opts || {};
+  var isTest = !!opts.test;
+  if (!isTest && !isNotifEnabled_('travel_day_briefing')) {
     Logger.log('sendTravelDayBriefing_: skipped — travel_day_briefing disabled');
-    return;
+    return null;
   }
   var tz        = Session.getScriptTimeZone();
   var parts     = tripKey.split('|');
   var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
-  var dateLabel = Utilities.formatDate(new Date(), tz, 'EEEE, MMMM d'); // e.g. "Tuesday, March 25"
+  var dayStr    = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.date || ''))
+    ? String(opts.date) : Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  // Noon UTC is the same calendar day in every zone this runs in.
+  var dayNoon   = new Date(dayStr + 'T12:00:00Z');
+  var dateLabel = Utilities.formatDate(dayNoon, tz, 'EEEE, MMMM d'); // e.g. "Tuesday, March 25"
 
   // Sort items by Start Time ascending
   var sortedItems = todayItems.slice().sort(function(a, b) {
@@ -320,11 +351,10 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   });
 
   // Competing holds occupy ONE slot, here as everywhere else. Kept even though
-  // webGetItinerary_ now collapses server-side: webSendTravelBriefing_ calls this
-  // function directly with raw sheet rows, which have had no such pass. Collapsing
+  // webGetItinerary_ now collapses server-side: the scheduled run falls back to
+  // raw sheet rows when that fetch throws, and those have had no such pass. Collapsing
   // already-collapsed rows is a no-op, so both callers are safe.
-  sortedItems = collapseItineraryRows_(sortedItems, tripKey,
-                                       Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'));
+  sortedItems = collapseItineraryRows_(sortedItems, tripKey, dayStr);
 
   // ── Modular sections pipeline ──────────────────────────────────────────────
   // To add a new section, implement buildXxxSection_(data) → HTML string,
@@ -375,19 +405,22 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   try {
     var _itSheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
     if (_itSheet && _itSheet.getLastRow() >= 2) {
-      var _tomorrow = Utilities.formatDate(new Date(Date.now() + 86400000), tz, 'yyyy-MM-dd');
+      var _tomorrow = Utilities.formatDate(new Date(dayNoon.getTime() + 86400000), tz, 'yyyy-MM-dd');
       var _allRows  = _itSheet.getRange(2, 1, _itSheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
-      // Find the latest itinerary date for this trip → is today the final day?
-      var _maxDate = '';
-      _allRows.forEach(function(row) {
-        if (String(row[1]||'').trim() !== tripKey) return;
-        var rd = (row[4] instanceof Date && !isNaN(row[4].getTime()))
-          ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
-          : String(row[4]||'').trim();
-        if (rd && rd > _maxDate) _maxDate = rd;
-      });
-      isReturnDay = (_maxDate !== '' && _maxDate === today);
       var _tripKeys = tripKeysFor_(tripKey);
+      // Is this the trip's last day? This compared against a `today` that was
+      // never defined in this function, so it threw, the catch below swallowed
+      // it, and tomorrow's flights were never shown. The caller's range is the
+      // better answer (it includes the calendar); without one, the sheet's own,
+      // checkouts included — never the last row someone happened to add.
+      var _lastDay = String(opts.lastDay || '');
+      if (!_lastDay) {
+        var _own = travelDayRanges_(_allRows.filter(function(row) {
+          return tripRowMatches_(row[1], _tripKeys);
+        }).map(function(row) { var r = row.slice(); r[1] = tripKey; return r; }), [], tz)[tripKey];
+        _lastDay = _own ? _own.max : '';
+      }
+      isReturnDay = (_lastDay !== '' && _lastDay === dayStr);
       tomorrowFlights = _allRows.filter(function(row) {
         var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
           ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
@@ -413,8 +446,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
   // open, and the assembler drops an empty section.
   var openDecisions = [];
   try {
-    var _todayStr = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-    openDecisions = openDecisionsForTrip_(tripKey, _todayStr, _todayStr, _todayStr);
+    openDecisions = openDecisionsForTrip_(tripKey, dayStr, dayStr, dayStr);
   } catch (dErr) { Logger.log('TravelDay: decisions lookup failed — ' + dErr.message); }
 
   var sections = [
@@ -430,12 +462,17 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
     // Future: { id: 'group_notes',   builder: buildTravelGroupNotesSection_,   data: null },
   ];
 
-  var recipients = getTravelDayRecipients_(tripKey);
-  var subject    = '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
+  // A test goes to you unless you asked for everyone.
+  var recipients = (isTest && opts.to !== 'all')
+    ? [CONFIG.MORNING_NUDGE_EMAIL]
+    : getTravelDayRecipients_(tripKey);
+  var subject    = (isTest ? 'TEST \u00B7 ' : '') +
+                   '\u2708\uFE0F Travel Day \u2014 ' + tripLabel + ' \u00B7 ' + dateLabel;
   var htmlBody   = buildTravelDayEmailHtml_(tripLabel, dateLabel, sections);
   var plainText  = buildTravelDayPlainText_(tripLabel, dateLabel, sortedItems, insights, narrativeData, loungeData, directionsUrl);
 
-  var travelCh = getNotifChannel_('travel_day_briefing');
+  // A test is always an email: it is what you are checking.
+  var travelCh = isTest ? 'email' : getNotifChannel_('travel_day_briefing');
   if (travelCh === 'email') {
     sendVeraEmail_(recipients.join(','), subject, plainText, { name: 'Travel Briefing', htmlBody: htmlBody }, 'travel_day_briefing');
     Logger.log('TravelDayBriefing: sent email for "' + tripLabel + '" to ' + recipients.join(', '));
@@ -443,6 +480,7 @@ function sendTravelDayBriefing_(tripKey, todayItems) {
     sendSlack_(travelCh, '✈️ *' + subject + '*\n\n' + plainText);
     Logger.log('TravelDayBriefing: sent Slack/' + travelCh + ' for "' + tripLabel + '"');
   }
+  return { to: recipients, subject: subject, count: sortedItems.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -1223,52 +1261,124 @@ function buildTravelDayPlainText_(tripLabel, dateLabel, items, insights, narrati
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Settings › Test — send the travel-day email on demand from the dashboard
+// ---------------------------------------------------------------------------
+//
+// webSendTravelBriefing_ used to sit here: routed nowhere, and reading only the
+// sheet's rows, so it would have sent the Oct 28 email without the flight home
+// too. These go through the same range (travelDayRanges_) and the same item
+// fetch (fetchTripDayItems_ / webGetItinerary_) as the 6 AM run, so a test
+// shows what the real one will. None of them touch the TDB_SENT_ latch.
+
+/** Every trip key → range, exactly as the scheduled run sees them. */
+function travelTestRanges_() {
+  var tz    = Session.getScriptTimeZone();
+  var sheet = getSpreadsheet().getSheetByName(TABS.ITINERARY);
+  var data  = (sheet && sheet.getLastRow() >= 2)
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues()
+    : [];
+  var calTrips = [];
+  try { calTrips = getUpcomingTravel_(readPTOConfig_()); }
+  catch (calErr) { Logger.log('travelTestRanges_: calendar scan failed — ' + calErr.message); }
+  return travelDayRanges_(data, calTrips, tz);
+}
+
 /**
- * webSendTravelBriefing_(e)
- * Manual trigger from the dashboard or direct URL.
- * GET ?action=send_travel_briefing&tripKey=YYYY-MM-DD|TripLabel&token=...
- *
- * Sends the briefing for a specific tripKey using today's itinerary items.
- * Useful for testing, or resending after a recipient list change.
+ * GET ?action=test_travel_trips
+ * Trips that are on now or still ahead, soonest first: { trips: [{ key, label,
+ * start, end, current }] }. Two keys for one trip (a moved start date) show
+ * once, under the key whose range is wider.
  */
-function webSendTravelBriefing_(e) {
-  var tripKey = (e && e.parameter && e.parameter.tripKey) || '';
-  if (!tripKey) return { ok: false, error: 'Missing tripKey parameter' };
+function webTestTravelTrips_() {
+  var tz     = Session.getScriptTimeZone();
+  var today  = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var ranges = travelTestRanges_();
+  var byLabel = {};
+  Object.keys(ranges).forEach(function(key) {
+    var r = ranges[key];
+    if (r.max < today) return;
+    var label = key.split('|').slice(1).join('|') || key;
+    var prev  = byLabel[label];
+    if (prev && (prev.end > r.max || (prev.end === r.max && prev.start <= r.min))) return;
+    byLabel[label] = { key: key, label: label, start: r.min, end: r.max,
+                       current: today >= r.min && today <= r.max };
+  });
+  var trips = Object.keys(byLabel).map(function(l) { return byLabel[l]; })
+    .sort(function(a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+  return { ok: true, today: today, trips: trips };
+}
 
-  try {
-    var ss    = getSpreadsheet();
-    var sheet = ss.getSheetByName(TABS.ITINERARY);
-    if (!sheet || sheet.getLastRow() < 2) {
-      return { ok: false, error: 'Itinerary tab is empty' };
-    }
+/** 'HH:mm' or 'HH:mm – HH:mm', or 'all day'. */
+function travelTestTime_(start, end) {
+  start = String(start || '').trim(); end = String(end || '').trim();
+  if (!start) return 'all day';
+  return end && end !== start ? start + ' – ' + end : start;
+}
 
-    var tz    = Session.getScriptTimeZone();
-    var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
-    var data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, ITINERARY_HEADERS.length).getValues();
+/**
+ * GET ?action=test_travel_trip&tripKey=…
+ * One itinerary read for the whole trip, grouped by day — the day chips, their
+ * marks and the "What it will use" preview all come from this.
+ * { days: [{ date, items: [{ time, title, type, source: 'sheet'|'calendar' }] }] }
+ */
+function webTestTravelTrip_(e) {
+  var tripKey = String((e && e.parameter && e.parameter.tripKey) || '').trim();
+  if (!tripKey) return { ok: false, error: 'Pick a trip first.' };
+  var r = travelTestRanges_()[tripKey];
+  if (!r) return { ok: false, error: 'That trip is no longer on the sheet or the calendar.' };
 
-    // Every key this trip answers to: a trip whose start date moved owns two,
-    // and matching one returned half the itinerary.
-    var keys  = tripKeysFor_(tripKey);
-    var items = data.filter(function(row) {
-      var rowDate = (row[4] instanceof Date && !isNaN(row[4].getTime()))
-        ? Utilities.formatDate(row[4], tz, 'yyyy-MM-dd')
-        : String(row[4] || '').trim();
-      return tripRowMatches_(row[1], keys) && rowDate === today;
+  var res = webGetItinerary_({ parameter: { tripKey: tripKey, startDate: r.min, endDate: r.max } });
+  var byDate = {};
+  ((res && res.items) || []).forEach(function(it) {
+    var d = String(it.date || '').trim();
+    if (!byDate[d]) byDate[d] = [];
+    byDate[d].push({
+      time:   travelTestTime_(it.startTime, it.endTime),
+      sort:   String(it.startTime || ''),
+      title:  String(it.title || ''),
+      type:   String(it.type || ''),
+      source: it.source === 'calendar' ? 'calendar' : 'sheet',
     });
+  });
 
-    if (!items.length) {
-      return { ok: false, error: 'No itinerary items found for tripKey "' + tripKey + '" on ' + today };
-    }
-
-    sendTravelDayBriefing_(tripKey, items);
-
-    var parts     = tripKey.split('|');
-    var tripLabel = parts.length > 1 ? parts.slice(1).join('|') : tripKey;
-    return { ok: true, message: 'Travel Day Briefing sent for: ' + tripLabel };
-  } catch (err) {
-    Logger.log('webSendTravelBriefing_ error: ' + err.message);
-    return { ok: false, error: err.message };
+  var days = [];
+  var cur  = new Date(r.min + 'T12:00:00Z');
+  var end  = new Date(r.max + 'T12:00:00Z');
+  for (var n = 0; cur <= end && n < 60; n++) {
+    var iso = cur.toISOString().slice(0, 10);
+    var items = (byDate[iso] || []).sort(function(a, b) {
+      return a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0;
+    }).map(function(x) { return { time: x.time, title: x.title, type: x.type, source: x.source }; });
+    days.push({ date: iso, items: items });
+    cur = new Date(cur.getTime() + 86400000);
   }
+  return { ok: true, tripKey: tripKey, start: r.min, end: r.max, days: days };
+}
+
+/**
+ * GET ?action=test_travel_send&tripKey=…&date=yyyy-MM-dd&to=me|all
+ * Builds and sends that day's email now, marked TEST. Same items the 6 AM run
+ * would use for that day; never reads or writes the once-a-day latch, so the
+ * real one still goes out.
+ */
+function webTestTravelSend_(e) {
+  var p       = (e && e.parameter) || {};
+  var tripKey = String(p.tripKey || '').trim();
+  var date    = String(p.date || '').trim();
+  var to      = p.to === 'all' ? 'all' : 'me';
+  if (!tripKey) return { ok: false, error: 'Pick a trip first.' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: 'Pick a day of the trip.' };
+  var r = travelTestRanges_()[tripKey];
+  if (!r) return { ok: false, error: 'That trip is no longer on the sheet or the calendar.' };
+  if (date < r.min || date > r.max) return { ok: false, error: 'That day is outside the trip.' };
+
+  var _t0 = Date.now();
+  var rows = fetchTripDayItems_(tripKey, r.min, r.max, date) || [];
+  var sent = sendTravelDayBriefing_(tripKey, rows, { date: date, lastDay: r.max, test: true, to: to });
+  veraLog_('webTestTravelSend', 'Travel', 'Success',
+    'Test travel-day email for ' + tripKey + ' on ' + date + ' (' + to + ')', Date.now() - _t0);
+  return { ok: true, to: sent.to, subject: sent.subject, count: sent.count };
 }
 
 // ---------------------------------------------------------------------------

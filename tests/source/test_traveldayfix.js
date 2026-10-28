@@ -536,7 +536,8 @@ function runBriefings(opts, o) {
     sendTravelDayBriefing_: (k, items) => { sends.push(k); },
   };
   vm.createContext(ctx);
-  vm.runInContext(extractFn(TDB, 'checkAndSendTravelDayBriefings_'), ctx);
+  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+    .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__o = opts || {};
   vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);
   return { sends, props };
@@ -591,7 +592,8 @@ console.log('\n…while two genuinely different trips still both send');
     sendTravelDayBriefing_: k => { sends.push(k); },
   };
   vm.createContext(ctx);
-  vm.runInContext(extractFn(TDB, 'checkAndSendTravelDayBriefings_'), ctx);
+  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+    .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__o = { dateOverride: '2026-09-21' };
   vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);
   // Same day, different labels — the latch must not collapse them.
@@ -633,7 +635,8 @@ function runRange(o) {
     sendTravelDayBriefing_: (k, items) => { sends.push([k, items.length]); },
   };
   vm.createContext(ctx);
-  vm.runInContext(extractFn(TDB, 'checkAndSendTravelDayBriefings_'), ctx);
+  vm.runInContext(['travelRowDate_', 'travelDayRanges_', 'checkAndSendTravelDayBriefings_']
+    .map(n => extractFn(TDB, n)).join('\n'), ctx);
   ctx.__o = { dateOverride: o.today };
   vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);
   return { asked, sends };
