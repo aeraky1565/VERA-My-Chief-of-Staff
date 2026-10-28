@@ -945,6 +945,9 @@ function TsAriaFlights(props){var h=React.createElement;var d=props.data,ends=pr
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 130px), 1fr))',gap:8}},
           inp('origins','From','IAD, DCA, BWI'),inp('dests','To','e.g. ORD'),inp('returnFrom','Home from (if different)','optional'),
           inp('travelers','Travelers','2','number'),inp('ceiling','Ceiling per person ($)','e.g. 360','number'),inp('flexDays','Flex (± days)','1','number')),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 200px), 1fr))',gap:8}},
+          inp('airlinePref','Airlines (blank: your usual rule)',d.airlines?d.airlines.home+' · abroad: '+d.airlines.abroad:'United first, then any airline'),
+          inp('premium','Pay more for them, per person ($ or %)',d.airlines?d.airlines.premium.replace(' per person',''):'75')),
         h('span',{style:{fontSize:12,color:'#9aa9cc'}},props.trip.startDate+' → '+props.trip.endDate+'. ARIA fills only what’s still blank in its Watchlist; anything you typed there stays.'),
         err&&h('span',{role:'alert',style:{fontSize:12,color:'#ffb0b0'}},err),
         h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},btn(busy==='send'?'Asking…':'Ask ARIA to watch','ts-aria-send',send,true),btn('Cancel','ts-aria-cancel',function(){setForm(null);setErr('');if(props.onCancel)props.onCancel();})))
@@ -1933,6 +1936,28 @@ function ariaHistory_(fares){var by={};(fares||[]).forEach(function(f){var v=ari
 // The best fare from the latest day ARIA looked: what the card leads with.
 function ariaLatest_(fares){var last='';(fares||[]).forEach(function(f){if(f.dateSeen>last)last=f.dateSeen;});
   var day=(fares||[]).filter(function(f){return f.dateSeen===last&&ariaFareTotal_(f)!=null;});day.sort(function(a,b){return ariaFareTotal_(a)-ariaFareTotal_(b);});return day[0]||null;}
+// The household's airline rule (aria_status.airline: tiers in order, e.g. United, Star Alliance
+// abroad only, then anyone; and a premium per person). A fare's tier is found from its Airline cell,
+// by code ("UA 123") or by name ("United"). The pick is the first preferred tier whose best fare is
+// within the premium of the cheapest; else the cheapest. ARIA decides Book now; this only reads its fares.
+function ariaTierOf_(airline,cfg,abroad){var a=String(airline||'').trim(),lo=a.toLowerCase();if(!a||!cfg)return -1;var star=cfg.star||{};
+  var code=(a.match(/^([A-Z0-9]{2})(?:\s|$|\d)/)||[])[1]||'';if(!star[code]){var byName='';Object.keys(star).forEach(function(c){if(!byName&&lo.indexOf(String(star[c]).toLowerCase())!==-1)byName=c;});if(byName)code=byName;}
+  var tiers=(cfg.tiers||[]).filter(function(t){return abroad||!t.abroad;});
+  for(var i=0;i<tiers.length;i++){var t=tiers[i].code;if(t==='ANY')return -1;if(t==='STAR'?!!star[code]:t===code)return i;}return -1;}
+function ariaTierName_(code,cfg){return code==='STAR'?'Star Alliance':((cfg&&cfg.star)||{})[code]||code;}
+function ariaPP_(f,travelers){return f.farePP!=null?f.farePP:f.total!=null&&travelers>0?Math.round(f.total/travelers):f.total;}
+function ariaPick_(fares,cfg,abroad,travelers){if(!cfg||!(fares||[]).length)return null;var last='';fares.forEach(function(f){if(f.dateSeen>last)last=f.dateSeen;});
+  var day=fares.filter(function(f){return f.dateSeen===last&&ariaPP_(f,travelers)!=null;});if(!day.length)return null;
+  day.sort(function(a,b){return ariaPP_(a,travelers)-ariaPP_(b,travelers);});var cheap=day[0],cpp=ariaPP_(cheap,travelers);
+  var pr=cfg.premium||{},allow=pr.pct!=null?Math.round(cpp*pr.pct/100):(pr.pp!=null?pr.pp:0),allowText=pr.pct!=null?pr.pct+'%':ariaUsd_(allow);
+  var tiers=(cfg.tiers||[]).filter(function(t){return abroad||!t.abroad;}),best=null;
+  for(var i=0;i<tiers.length&&tiers[i].code!=='ANY';i++){var f=day.filter(function(x){return ariaTierOf_(x.airline,cfg,abroad)===i;})[0];if(!f)continue;
+    var diff=ariaPP_(f,travelers)-cpp;var r={fare:f,cheapest:cheap,tier:ariaTierName_(tiers[i].code,cfg),diff:diff,allowText:allowText,within:diff<=allow};if(!best)best=r;if(r.within)return r;}
+  return best||{fare:cheap,cheapest:cheap,tier:tiers.filter(function(t){return t.code!=='ANY';}).map(function(t){return ariaTierName_(t.code,cfg);}).join(' or '),diff:0,allowText:allowText,within:false,none:true};}
+function ariaPickWords_(p){if(!p)return '';var who=function(f){return f.airline||'an airline';};
+  if(p.none)return (p.tier?'No '+p.tier+' fare logged yet; c':'C')+'heapest is '+who(p.cheapest)+' '+ariaUsd_(ariaFareTotal_(p.cheapest))+'.';
+  if(p.within)return 'Pick: '+p.tier+' · '+who(p.fare)+' '+ariaUsd_(ariaFareTotal_(p.fare))+(p.diff>0?' (+'+ariaUsd_(p.diff)+' pp over the cheapest, within your '+p.allowText+')':' (also the cheapest)');
+  return 'Cheapest is '+who(p.cheapest)+' '+ariaUsd_(ariaFareTotal_(p.cheapest))+'; '+p.tier+' is '+ariaUsd_(p.diff)+' pp more (over your '+p.allowText+').';}
 // A fare is firm only when no flag says otherwise.
 function ariaFirm_(f){return !!f&&!(f.flags||[]).length;}
 function ariaWhen_(w){if(w.status==='scouting'){var span=w.earliest&&w.latest?tiDayText_(w.earliest).replace(/^\w+, /,'')+' – '+tiDayText_(w.latest).replace(/^\w+, /,''):'';
@@ -1978,6 +2003,9 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var booked=w.
     latest&&h('span',{className:'aria-latest',style:{fontSize:12,color:TI.soft,lineHeight:1.45}},'Latest, '+latest.dateSeen+': '+ariaUsd_(ariaFareTotal_(latest))+(latest.total!=null&&latest.farePP!=null?' total ('+ariaUsd_(latest.farePP)+' pp)':'')
       +(latest.airline?' · '+latest.airline:'')+(latest.stops!==''&&latest.stops!=null?' · '+(String(latest.stops)==='0'?'nonstop':latest.stops+' stop'+(String(latest.stops)==='1'?'':'s')):'')
       +(latest.depart?' · '+tiDayText_(latest.depart)+(latest.ret?' → '+tiDayText_(latest.ret):''):'')),
+    !booked&&latest&&props.airline&&ariaTierOf_(latest.airline,props.airline,w.abroad)!==-1&&h('span',{className:'aria-tier',style:{alignSelf:'flex-start',fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:999,color:'#cfe0ff',border:'1px solid #3a5bab'}},
+      ariaTierName_(((props.airline.tiers||[]).filter(function(t){return w.abroad||!t.abroad;})[ariaTierOf_(latest.airline,props.airline,w.abroad)]||{}).code,props.airline)),
+    !booked&&props.airline&&fares.length>0&&h('span',{className:'aria-pick',style:{fontSize:12,lineHeight:1.45,color:(ariaPick_(fares,props.airline,w.abroad,w.travelers)||{}).within?TI.ok:TI.soft}},ariaPickWords_(ariaPick_(fares,props.airline,w.abroad,w.travelers))),
     latest&&(latest.flags||[]).length>0&&h('div',{className:'aria-flags',style:{display:'flex',gap:6,flexWrap:'wrap'}},latest.flags.map(function(f){return h('span',{key:f,style:{fontSize:11,color:TI.warn,border:'1px dashed #a8862f',borderRadius:6,padding:'2px 6px'}},'⚠ '+(ARIA_FLAG_WORDS[f]||f));})),
     hist.length>1&&h(AriaSpark,{points:hist}),
     !booked&&h('span',{style:{fontSize:12,color:TI.mute}},[w.tier,w.nextCheck?'next check '+w.nextCheck:'',w.lastChecked?'checked '+w.lastChecked:'',w.forecast?'forecast: '+w.forecast:''].filter(Boolean).join(' · ')),
@@ -2020,6 +2048,7 @@ function AriaBookCard(props){var h=React.createElement;var w=props.row,book=w.ac
       w.ceiling!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'ceiling '+ariaUsd_(w.ceiling)+' pp'),
       w.bestSource&&h('span',{style:{fontSize:12,color:TI.mute}},'from '+w.bestSource)),
     w.actionNeeded&&h('span',{style:{fontSize:13,lineHeight:1.45,color:TI.txt}},w.actionNeeded),
+    props.airline&&fares.length>0&&h('span',{className:'aria-pick',style:{fontSize:12,lineHeight:1.45,color:TI.soft}},ariaPickWords_(ariaPick_(fares,props.airline,w.abroad,w.travelers))),
     w.email&&w.email.state==='failed'&&h('span',{style:{fontSize:12,color:TI.warn,lineHeight:1.45}},'ARIA’s email didn’t send ('+w.email.text+'). This card and the flag on Home still carry it.'),
     link?h('a',{href:link,target:'_blank',rel:'noopener noreferrer',className:'aria-book-btn',style:Object.assign(tiBtn_(book?'good':''),{display:'inline-flex',alignItems:'center',justifyContent:'center',textDecoration:'none',alignSelf:'flex-start'})},'Book ↗')
       :h('span',{style:{fontSize:12,color:TI.mute}},'No booking link from ARIA yet.'),
@@ -2035,7 +2064,7 @@ function AriaBookBanner(props){var h=React.createElement;var _d=React.useState(n
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},
       h('span',{style:Object.assign({},TI_EYEBROW,{color:'#8fe0a8'})},'🧭 ARIA · '+urgent.length+' fare'+(urgent.length===1?'':'s')+' to look at'),
       props.onNavigate&&h('button',{type:'button',className:'aria-banner-open',onClick:function(){props.onNavigate('travel');},style:Object.assign(tiBtn_(),{minHeight:36})},'Open Travel →')),
-    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas});})));}
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas,airline:data.airline});})));}
 
 function AriaView(props){var h=React.createElement;
   var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];var _o=React.useState(false),showOld=_o[0],setShowOld=_o[1];
@@ -2059,10 +2088,10 @@ function AriaView(props){var h=React.createElement;
   var g=ariaGroup_(data.watchlist,data.ideas),gaps=data.gaps||{};
   var section=function(key,label,rows){if(!rows.length)return null;return h('div',{key:key,style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:TI_EYEBROW},label+' · '+rows.length),
     h('div',{className:'aria-grid',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10,alignItems:'start'}},
-      rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas,requests:data.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:function(){load(true);}});})));};
+      rows.map(function(w,i){return h(AriaCard,{key:(w.tripId||w.ref||'')+i,row:w,fares:data.fares,ideas:data.ideas,airline:data.airline,requests:data.requests,apiUrl:props.apiUrl,apiToken:props.apiToken,onChange:function(){load(true);}});})));};
   var gapLists=ARIA_GAPS.filter(function(x){return (gaps[x[0]]||[]).length;}),urgent=ariaUrgent_(data.watchlist);
   return h('div',wrap,head,
-    urgent.length>0&&h('div',{className:'aria-urgent',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas});})),
+    urgent.length>0&&h('div',{className:'aria-urgent',style:{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',gap:10}},urgent.map(function(w,i){return h(AriaBookCard,{key:(w.actionKey||w.tripId||w.ref)+i,row:w,fares:data.fares,ideas:data.ideas,airline:data.airline});})),
     gapLists.length>0&&h('div',{className:'aria-gaps',style:{display:'flex',flexDirection:'column',gap:10,padding:12,borderRadius:12,border:'1px solid #a8862f',background:'#1d1a10'}},
       h('span',{style:Object.assign({},TI_EYEBROW,{color:TI.warn})},'Needs a look · '+gaps.count),
       gapLists.map(function(x){return h('div',{key:x[0],className:'aria-gap-'+x[0],style:{display:'flex',flexDirection:'column',gap:4}},

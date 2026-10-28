@@ -51,7 +51,7 @@ const S = vm.createContext({
   Logger: { log: m => { S.logs.push(String(m)); } },
   logs: [],
   TABS: { TRIP_META: 'TripMeta', ARIA_REQUESTS: 'ARIA Requests' }, TRIP_META_HEADERS: new Array(11).fill(''),
-  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
+  TRIP_IDEAS_HEADERS: new Array(18).fill(''), ARIA_REQUESTS_HEADERS: ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP'], TRIP_IDEA_OPTIONS_HEADERS: new Array(14).fill(''),
 });
 S.getSpreadsheet = () => ({ getSheetByName: () => tab([new Array(11).fill('h'), ['2027-07-01|Beach drive', '', '', '', '', '', '', 'Driving', '', '', '']]) });
 S.readTripRegistry_ = () => ({ rows: [
@@ -461,7 +461,28 @@ console.log('\na Booked card\'s lodging: VERA\'s nights with a place to sleep');
   S.tripItemsFor_ = () => { throw new Error('calendar down'); }; S.__w2 = [{ tripId: 'TRIP-0009', status: 'booked' }];
   run('ariaAttachLodging_(__w2, "2026-10-28")');
   check('a read that fails leaves lodging off rather than failing the status', !S.__w2[0].lodging);
-  check('aria_status attaches it, inside the cached read', /ariaAttachLodging_\(watch, today\);\n  var out = \{ ok: true, configured: true/.test(SRC));
+  check('aria_status attaches it, inside the cached read', /ariaAttachLodging_\(watch, today\);[^]*?var out = \{ ok: true, configured: true/.test(SRC));
+}
+
+console.log('\nairline preference: United first, Star Alliance abroad, within a premium');
+{
+  const P = t => JSON.stringify(run('ariaAirlinePref_(' + JSON.stringify(t) + ')'));
+  check('the default: United, Star Alliance abroad only, then anyone', P('') === '[{"code":"UA","abroad":false},{"code":"STAR","abroad":true},{"code":"ANY","abroad":false}]', P(''));
+  check('…in plain words too', P('United first, then Star Alliance abroad, then anyone') === P('UA > STAR abroad > ANY'));
+  check('another airline by name or code; "any" is added at the end when left out', P('Lufthansa > DL') === '[{"code":"LH","abroad":false},{"code":"DL","abroad":false},{"code":"ANY","abroad":false}]', P('Lufthansa > DL'));
+  check('the premium: dollars per person, a percentage, or the $75 default', JSON.stringify([run('ariaPremium_("$100")'), run('ariaPremium_("15%")'), run('ariaPremium_("")'), run('ariaPremium_("lots")')]) === '[{"pp":100},{"pct":15},{"pp":75},{"pp":75}]');
+  check('worded for ARIA: at home and abroad', run('ariaPrefWords_(ariaAirlinePref_(""), false)') === 'United (UA) first, then any airline' && run('ariaPrefWords_(ariaAirlinePref_(""), true)') === 'United (UA) first, then Star Alliance, then any airline');
+  S.resolveIataCountry_ = c => ({ ORD: 'United States', MDW: 'United States', LHR: 'United Kingdom', FRA: 'Germany' })[c] || null;
+  check('abroad: any destination outside home_country; an unknown airport counts as home',
+    run('ariaAbroad_("LHR", {})') === true && run('ariaAbroad_("ORD, MDW", {})') === false && run('ariaAbroad_("ORD FRA", {})') === true && run('ariaAbroad_("XXX", {})') === false && run('ariaAbroad_("LHR", { home_country: "United Kingdom" })') === false);
+  S.getConfigValues = () => ({ aria_airline_premium: '15%' });
+  const ap = run('ariaPrefFor_("FRA", "", "")');
+  check('a request carries the rule worded for its trip, and the premium', ap.airlinePref === 'United (UA) first, then Star Alliance, then any airline' && ap.premium === '15% per person', JSON.stringify(ap));
+  check('…or what was typed for this trip', run('ariaPrefFor_("FRA", "Lufthansa only", "$50")').airlinePref === 'Lufthansa only' && run('ariaPrefFor_("FRA", "Lufthansa only", "$50")').premium === '$50 per person');
+  S.getConfigValues = () => ({});
+  const row = run('ariaRequestToRow_({ id: "REQ-1", kind: "watch", status: "active", airlinePref: "United (UA) first, then any airline", premium: "$75 per person" })');
+  check('the request row ends with the two columns ARIA reads', row.length === 22 && row[20] === 'United (UA) first, then any airline' && row[21] === '$75 per person' && run('ariaRequestFromRow_')(row).airlinePref === 'United (UA) first, then any airline');
+  check('the watch and scout requests are given the rule', /ariaPrefFor_\(dests, String\(body\.airlinePref/.test(SRC) && /var ap = ariaPrefFor_\(req\.dests, '', ''\)/.test(SRC));
 }
 
 console.log('\nthe shared block');
@@ -487,7 +508,7 @@ const cr = code => vm.runInContext(code, C);
 }
 
 console.log('\nwiring');
-check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days'];") !== -1);
+check('the requests tab is the one ARIA reads, with the columns it reads', /ARIA_REQUESTS: +'ARIA Requests'/.test(CODE) && CODE.indexOf("const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP'];") !== -1);
 check('ARIA\'s flags ride on the hourly trigger, ahead of the reminders switch', (() => { const R = fs.readFileSync(path.join(ROOT, 'Reminders.js'), 'utf8'); const i = R.indexOf('function hourlyCheck() {'), a = R.indexOf('maybeSyncAriaFlags_(new Date());', i), b = R.indexOf("reminders_enabled", i); return i !== -1 && a !== -1 && a < b; })());
 check('the request routes are wired', /case 'aria_request_save':\s+return jsonOut_\(webSaveAriaRequest_\(body\)\);/.test(WEB) && /case 'aria_request_withdraw':\s+return jsonOut_\(webWithdrawAriaRequest_\(body\)\);/.test(WEB));
 check('the route is wired', /case 'aria_status':\s+return jsonOut_\(webAriaStatus_\(e\.parameter\)\);/.test(WEB));
@@ -495,6 +516,25 @@ check('full: ARIA is a Travel tab, and renders the view', /\{id:'aria',label:'�
 check('lite: ARIA is a Travel tab, and renders the view', /\['aria','🧭 ARIA'\]/.test(LITE) && /\{travSub === 'aria' && <AriaView apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>\}/.test(LITE));
 check('index.html carries the block, not a stale build', fs.readFileSync(path.join(ROOT, 'docs/index.html'), 'utf8').indexOf('function AriaView(') !== -1);
 check('the dashboard opens a fare link safely', /rel:'noopener noreferrer'/.test(A));
+
+console.log('\nthe pick, on the cards');
+{
+  const cfg = { tiers: [{ code: 'UA', abroad: false }, { code: 'STAR', abroad: true }, { code: 'ANY', abroad: false }], premium: { pp: 75 }, star: { UA: 'United', LH: 'Lufthansa', LX: 'Swiss' } };
+  C.__cfg = cfg;
+  check('a fare\'s tier by code or by name; Star only abroad; anyone else none',
+    cr('ariaTierOf_("UA 921", __cfg, false)') === 0 && cr('ariaTierOf_("United", __cfg, false)') === 0 && cr('ariaTierOf_("Lufthansa", __cfg, true)') === 1 && cr('ariaTierOf_("Lufthansa", __cfg, false)') === -1 && cr('ariaTierOf_("Delta", __cfg, true)') === -1 && cr('ariaTierOf_("UNITED", __cfg, false)') === 0);
+  C.__f = [{ dateSeen: '2027-02-18', airline: 'Delta', total: 1040, farePP: 520 }, { dateSeen: '2027-02-18', airline: 'Lufthansa', total: 1100, farePP: 550 }, { dateSeen: '2027-02-18', airline: 'United', total: 1230, farePP: 615 }, { dateSeen: '2027-02-10', airline: 'United', total: 900, farePP: 450 }];
+  const abroad = cr('ariaPickWords_(ariaPick_(__f, __cfg, true, 2))');
+  check('abroad: United is $95 pp over, so the pick is the Star Alliance fare within $75', abroad === 'Pick: Star Alliance · Lufthansa $1,100 (+$30 pp over the cheapest, within your $75)', abroad);
+  const home = cr('ariaPickWords_(ariaPick_(__f, __cfg, false, 2))');
+  check('at home: no Star tier, and United is over the premium, so it says so', home === 'Cheapest is Delta $1,040; United is $95 pp more (over your $75).', home);
+  C.__cfg2 = Object.assign({}, cfg, { premium: { pct: 20 } });
+  check('a % premium is a share of the cheapest fare', cr('ariaPickWords_(ariaPick_(__f, __cfg2, false, 2))') === 'Pick: United · United $1,230 (+$95 pp over the cheapest, within your 20%)', cr('ariaPickWords_(ariaPick_(__f, __cfg2, false, 2))'));
+  check('only the latest day counts, and a preferred fare that is cheapest says so',
+    cr('ariaPickWords_(ariaPick_([{dateSeen:"2027-02-18",airline:"UA",total:800,farePP:400},{dateSeen:"2027-02-18",airline:"DL",total:900,farePP:450}], __cfg, false, 2))') === 'Pick: United · UA $800 (also the cheapest)');
+  check('no preferred fare at all: says what the cheapest is', /^No United or Star Alliance fare logged yet; cheapest is Delta \$1,040\.$/.test(cr('ariaPickWords_(ariaPick_([{dateSeen:"2027-02-18",airline:"Delta",total:1040,farePP:520}], __cfg, true, 2))')));
+  check('nothing logged, nothing said', cr('ariaPick_([], __cfg, true, 2)') === null);
+}
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

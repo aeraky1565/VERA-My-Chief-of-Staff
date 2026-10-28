@@ -40,6 +40,7 @@ const STATUS = {
     stale: [], dateChanged: [{ id: 'TRIP-0002', label: 'Coast hop', start: '2027-05-01', why: 'The dates changed in VERA: check the airports and the window' }], waiting: [], count: 3 },
   ideas: { 'OPT-ABC': { ideaId: 'IDEA-1', idea: 'Spring in Europe', option: 'Lisbon → Algarve → cruise' } },
   health: { level: 'partial', text: 'ARIA’s last run was partial: Expedia timed out', lastRun: '2027-02-20T11:52:00.000Z' },
+  airline: { tiers: [{ code: 'UA', abroad: false }, { code: 'STAR', abroad: true }, { code: 'ANY', abroad: false }], premium: { pp: 75 }, star: { UA: 'United', TP: 'TAP Air Portugal', LH: 'Lufthansa' } },
 };
 
 async function mount(page, reply) {
@@ -84,6 +85,9 @@ async function scenario(page, label, width) {
   const lake = await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Lake week/.test(n.innerText)) || { innerText: '' }).innerText);
   check(label + ': a watched trip shows its dates, airports, verdict and best fare', /Mon, Apr 5 → Tue, Apr 13 · IAD → ORD/.test(lake) && /BOOK NOW/i.test(lake) && /\$612\s+best seen for 2 \(\$306 pp\) · SlickTrip/.test(lake) && /ceiling \$450 pp/.test(lake), lake);
   check(label + ': …the latest fare in full', /Latest, 2027-02-18: \$612 total \(\$280 pp\) · UA · nonstop · Mon, Apr 5 → Tue, Apr 13/.test(lake), lake);
+  check(label + ': a United fare is tagged, and the card names the pick by your airline rule', /\bUnited\b/.test(await page.$$eval('#ariaprobe .aria-card .aria-tier', ns => ns.map(n => n.innerText).join('|'))) && /Pick: United · UA \$612 \(also the cheapest\)/.test(lake), lake);
+  const scoutPick = await page.$$eval('#ariaprobe .aria-card', ns => (ns.find(n => /Lisbon → Algarve → cruise/.test(n.innerText)) || { innerText: '' }).innerText);
+  check(label + ': …a trip with only a partner’s fare, read as home, says there’s no United fare yet', /No United fare logged yet; cheapest is TP \$1,240\./.test(scoutPick), scoutPick);
   check(label + ': …and the line of fares seen', !!(await page.$('#ariaprobe .aria-card .aria-spark')) && /\$612–\$692/.test(lake));
   const href = await page.$eval('#ariaprobe .aria-link', a => [a.getAttribute('href'), a.getAttribute('target'), a.getAttribute('rel')]).catch(() => []);
   check(label + ': a fare link opens safely in a new tab', href[0] === 'https://fares.example/abc' && href[1] === '_blank' && href[2] === 'noopener noreferrer', JSON.stringify(href));
@@ -125,7 +129,8 @@ async function scenario(page, label, width) {
     const draft = { tripId: 'TRIP-6BBE', label: 'Chicago Trip', status: 'draft', earliest: '2027-04-05', latest: '2027-04-13', tripKey: '2027-04-05|Chicago Trip', notes: 'Confirm airports', dateChange: false, ref: '' };
     window.apiGet = (u, t, q) => { window.__gets.push(Object.assign({}, q));
       if (q.action === 'trip_aria') return Promise.resolve({ ok: true, tripId: 'TRIP-6BBE', configured: true, row: draft, fares: [], request: null,
-        draft: { origins: 'IAD, DCA, BWI', dests: '', earliest: '2027-04-05', latest: '2027-04-13', flexDays: 1, travelers: 2, ceiling: 360 }, plan: null });
+        draft: { origins: 'IAD, DCA, BWI', dests: '', earliest: '2027-04-05', latest: '2027-04-13', flexDays: 1, travelers: 2, ceiling: 360 }, plan: null,
+        airlines: { home: 'United (UA) first, then any airline', abroad: 'United (UA) first, then Star Alliance, then any airline', premium: '$75 per person' } });
       return Promise.resolve({ ok: true, configured: true, watchlist: [draft], fares: [], gaps: { count: 0 }, ideas: {}, health: { level: 'ok', text: 'ARIA ran' },
         requests: window.__asked ? [{ kind: 'watch', status: 'active', tripId: 'TRIP-6BBE', origins: 'IAD, DCA, BWI', dests: 'ORD', updated: '2026-10-26T01:00:00Z' }] : [] }); };
     window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b))); if (b.action === 'aria_request_watch') window.__asked = true; if (b.action === 'aria_request_withdraw') window.__asked = false; return Promise.resolve({ ok: true }); };
@@ -139,10 +144,13 @@ async function scenario(page, label, width) {
   check(label + ': …which asks VERA for this trip\'s prefilled form', ta && ta.tripId === 'TRIP-6BBE' && ta.tripKey === '2027-04-05|Chicago Trip' && ta.startDate === '2027-04-05' && ta.endDate === '2027-04-13', JSON.stringify(ta));
   const fv = await page.evaluate(() => ['origins', 'dests', 'travelers', 'ceiling', 'flexDays'].map(k => (document.querySelector('#ariaprobe .ts-aria-' + k) || {}).value));
   check(label + ': the form opens filled, on the card', JSON.stringify(fv) === JSON.stringify(['IAD, DCA, BWI', '', '2', '360', '1']), JSON.stringify(fv));
+  const ph = await page.evaluate(() => [window.__q('.ts-aria-airlinePref').placeholder, window.__q('.ts-aria-premium').placeholder, window.__q('.ts-aria-airlinePref').value]);
+  check(label + ': the form shows your airline rule for home and abroad, blank to keep it', ph[0] === 'United (UA) first, then any airline · abroad: United (UA) first, then Star Alliance, then any airline' && ph[1] === '$75' && ph[2] === '', JSON.stringify(ph));
   await page.evaluate(() => window.__set(window.__q('.ts-aria-dests'), 'ORD')); await wait(40);
+  await page.evaluate(() => window.__set(window.__q('.ts-aria-airlinePref'), 'United only')); await wait(40);
   await page.evaluate(() => window.__q('.ts-aria-send').click()); await wait(250);
   const wp = await page.evaluate(() => window.__posts.find(p => p.action === 'aria_request_watch'));
-  check(label + ': Ask ARIA to watch sends a request for the trip (VERA\'s tab, not ARIA\'s tracker)', wp && wp.tripId === 'TRIP-6BBE' && wp.dests === 'ORD' && wp.startDate === '2027-04-05' && String(wp.ceiling) === '360', JSON.stringify(wp));
+  check(label + ': Ask ARIA to watch sends a request for the trip (VERA\'s tab, not ARIA\'s tracker)', wp && wp.tripId === 'TRIP-6BBE' && wp.dests === 'ORD' && wp.startDate === '2027-04-05' && String(wp.ceiling) === '360' && wp.airlinePref === 'United only', JSON.stringify(wp));
   check(label + ': …the tab reads ARIA again, fresh', (await page.evaluate(() => window.__gets.filter(q => q.action === 'aria_status' && q.refresh === '1').length)) >= 1);
   const asked = await page.$eval('#ariaprobe .aria-draft-asked', n => n.innerText).catch(() => '');
   check(label + ': …and the card says it was asked, and when ARIA acts', /Asked ARIA 2026-10-26 to watch IAD, DCA, BWI → ORD\. It moves this to Watching on its next 06:52 run\./.test(asked), asked);

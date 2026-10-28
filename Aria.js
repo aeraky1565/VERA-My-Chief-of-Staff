@@ -427,7 +427,10 @@ function webAriaStatus_(p) {
   watch.forEach(function(w) { var e = ariaEmailFor_(w, t.runs); if (e) w.email = e; });
   // A Booked trip's card also says how many nights have a place to sleep: VERA's itinerary, not ARIA's.
   ariaAttachLodging_(watch, today);
-  var out = { ok: true, configured: true, today: today, read: now, watchlist: watch,
+  // The cards judge fares by the household rule; a row is abroad when any of its destinations is.
+  var cfgA = {}; try { cfgA = getConfigValues(); } catch (e) {}
+  watch.forEach(function(w) { if (w.dests && w.status !== 'booked' && w.status !== 'dropped') { try { w.abroad = ariaAbroad_(w.dests, cfgA); } catch (e) {} } });
+  var out = { ok: true, configured: true, today: today, airline: { tiers: ariaAirlinePref_(cfgA['aria_airline_pref']), premium: ariaPremium_(cfgA['aria_airline_premium']), star: ARIA_STAR_ }, read: now, watchlist: watch,
     fares: ariaRecentFares_(fares, today), requests: requests, gaps: gaps, ideas: ariaIdeaNames_(),
     health: ariaRunHealth_(t.runs, t.settings, now), runs: t.runs.slice().sort(function(a, b) { return a.runTime < b.runTime ? 1 : -1; }).slice(0, 7) };
   Logger.log('aria_status: ' + watch.length + ' watchlist rows, ' + out.fares.length + ' fares, ' + gaps.count + ' gaps');
@@ -447,6 +450,88 @@ function ariaAttachLodging_(watch, today) {
       w.lodging = ariaNightsCovered_(tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate, 'aria lodging'), t.startDate, t.endDate);
     } catch (e) { Logger.log('aria lodging: ' + w.tripId + ' skipped: ' + e.message); }
   });
+}
+
+// ---- Airline preference ----------------------------------------------------------
+//
+// The household's rule, from Config aria_airline_pref (default: United first; Star Alliance
+// partners next, abroad only; then any airline) and aria_airline_premium (default $75 per
+// person; "15%" works too): a preferred airline is the pick unless another is cheaper by more
+// than that. VERA sends the rule, worded for each trip, in the request's Airline Preference
+// and Airline Premium PP columns; ARIA's own instructions decide how it searches. The cards
+// judge ARIA's logged fares by the same rule either way (ariaPick_, in the shared block).
+
+var ARIA_PREF_DEFAULT_ = 'UA > STAR abroad > ANY';
+var ARIA_PREMIUM_DEFAULT_ = '75';
+// Star Alliance: code → name. Matched by code ("UA", "UA 123") or by name ("United").
+var ARIA_STAR_ = { UA: 'United', AC: 'Air Canada', LH: 'Lufthansa', LX: 'Swiss', OS: 'Austrian', SN: 'Brussels Airlines', NH: 'ANA', SQ: 'Singapore Airlines',
+  TK: 'Turkish Airlines', TP: 'TAP Air Portugal', A3: 'Aegean', LO: 'LOT', SK: 'SAS', TG: 'Thai Airways', BR: 'EVA Air', NZ: 'Air New Zealand',
+  ET: 'Ethiopian', MS: 'EgyptAir', CA: 'Air China', AI: 'Air India', OZ: 'Asiana', AV: 'Avianca', CM: 'Copa', SA: 'South African', ZH: 'Shenzhen Airlines', OU: 'Croatia Airlines' };
+
+/**
+ * Pure: the rule as ordered tiers. "UA > STAR abroad > ANY", or in words ("United first, then
+ * Star Alliance abroad, then anyone"). A tier is an airline code, STAR or ANY; abroad marks a
+ * tier that applies only on trips abroad.
+ * @returns {Array<{code:string, abroad:boolean}>}
+ */
+function ariaAirlinePref_(text) {
+  var parts = String(text == null || String(text).trim() === '' ? ARIA_PREF_DEFAULT_ : text).split(/\s*(?:>|,|;|\bthen\b)\s*/i);
+  var byName = {};
+  Object.keys(ARIA_STAR_).forEach(function(c) { byName[ARIA_STAR_[c].toLowerCase()] = c; });
+  var out = [];
+  parts.forEach(function(p) {
+    var s = p.trim().toLowerCase(); if (!s) return;
+    var abroad = /\babroad\b|\binternational/.test(s);
+    var code = /star/.test(s) ? 'STAR' : /\b(any|anyone|anything|other|else)\b/.test(s) ? 'ANY' : '';
+    if (!code) { var m = s.match(/\b([a-z0-9]{2})\b/); Object.keys(byName).forEach(function(n) { if (!code && s.indexOf(n) !== -1) code = byName[n]; }); if (!code && m) code = m[1].toUpperCase(); }
+    if (code && !out.some(function(t) { return t.code === code; })) out.push({ code: code, abroad: abroad });
+  });
+  if (!out.some(function(t) { return t.code === 'ANY'; })) out.push({ code: 'ANY', abroad: false });
+  return out;
+}
+
+/** Pure: "75" → {pp:75}; "15%" → {pct:15}; blank or nonsense → the default. */
+function ariaPremium_(text) {
+  var s = String(text == null ? '' : text).trim();
+  var m = s.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  if (m) return { pct: Number(m[1]) };
+  var n = ariaMoney_(s);
+  return n != null && n >= 0 ? { pp: n } : ariaPremium_(ARIA_PREMIUM_DEFAULT_);
+}
+
+/** Pure: the rule worded for one trip, as ARIA reads it: "United (UA) first, then Star Alliance, then any airline". */
+function ariaPrefWords_(tiers, abroad) {
+  var names = (tiers || []).filter(function(t) { return abroad || !t.abroad; }).map(function(t) {
+    return t.code === 'ANY' ? 'any airline' : t.code === 'STAR' ? 'Star Alliance' : (ARIA_STAR_[t.code] ? ARIA_STAR_[t.code] + ' (' + t.code + ')' : t.code);
+  });
+  return names.length ? names[0] + ' first' + names.slice(1).map(function(n) { return ', then ' + n; }).join('') : 'any airline';
+}
+
+/** Pure: the premium worded for ARIA: "$75 per person" / "15% per person". */
+function ariaPremiumWords_(pr) { return pr.pct != null ? pr.pct + '% per person' : '$' + pr.pp + ' per person'; }
+
+/**
+ * Is a trip abroad: any destination airport outside home_country? Looked up once per airport
+ * (resolveIataCountry_, WebApp.js) and remembered for a day. An airport it can't look up
+ * counts as home, so the abroad-only tier isn't used on a guess.
+ */
+function ariaAbroad_(dests, cfg) {
+  var home = String((cfg || {})['home_country'] || 'United States');
+  var cache = null; try { cache = CacheService.getScriptCache(); } catch (e) {}
+  return String(dests || '').split(/[,\s]+/).filter(function(c) { return /^[A-Za-z]{3}$/.test(c); }).some(function(c) {
+    c = c.toUpperCase(); var k = 'iata_country_' + c, country = null;
+    try { country = cache ? cache.get(k) : null; } catch (e) {}
+    if (country == null) { country = resolveIataCountry_(c, {}) || ''; try { if (cache) cache.put(k, country, 86400); } catch (e) {} }
+    return !!country && country !== home;
+  });
+}
+
+/** The household rule for one request: Airline Preference and Airline Premium PP, worded for its trip. */
+function ariaPrefFor_(dests, overridePref, overridePremium) {
+  var cfg = getConfigValues();
+  var pref = String(overridePref || '').trim(), prem = String(overridePremium || '').trim();
+  return { airlinePref: pref || ariaPrefWords_(ariaAirlinePref_(cfg['aria_airline_pref']), ariaAbroad_(dests, cfg)),
+    premium: ariaPremiumWords_(ariaPremium_(prem || cfg['aria_airline_premium'])) };
 }
 
 // ---- ARIA Requests (VERA's tab; ARIA reads it) -----------------------------------
@@ -515,7 +600,8 @@ function ariaRequestToRow_(r) {
   var v = function(x) { return x == null ? '' : x; };
   var st = String(r.status || '').toLowerCase();
   return [r.id, r.kind, r.ref, v(r.tripId), v(r.tripKey), r.label, v(r.origins), v(r.dests), v(r.returnFrom), r.earliest, r.latest,
-    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), st ? st.charAt(0).toUpperCase() + st.slice(1) : '', r.created, r.updated, v(r.flexDays)];
+    v(r.nightsMin), v(r.nightsMax), v(r.travelers), v(r.bags), v(r.ceiling), st ? st.charAt(0).toUpperCase() + st.slice(1) : '', r.created, r.updated, v(r.flexDays),
+    v(r.airlinePref), v(r.premium)];
 }
 
 /** Pure: a row → a request. */
@@ -528,7 +614,8 @@ function ariaRequestFromRow_(row) {
     origins: String(row[6] || '').trim(), dests: String(row[7] || '').trim(), returnFrom: String(row[8] || '').trim(),
     earliest: d(row[9]), latest: d(row[10]), nightsMin: n(row[11]), nightsMax: n(row[12]), travelers: n(row[13]),
     bags: String(row[14] || '').trim(), ceiling: ariaMoney_(row[15]),
-    status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || ''), flexDays: n(row[19]) };
+    status: ARIA_REQUEST_STATUSES_.indexOf(st) !== -1 ? st : 'active', created: String(row[17] || ''), updated: String(row[18] || ''), flexDays: n(row[19]),
+    airlinePref: String(row[20] || '').trim(), premium: String(row[21] || '').trim() };
 }
 
 /** Every request, from VERA's tab ([] when there is none yet). */
@@ -565,6 +652,7 @@ function webSaveAriaRequest_(body) {
   if (io.option.flag !== 'star') return { ok: false, error: 'Star this option first: ARIA scouts starred options only.' };
   var req = ariaRequestFromOption_(io.idea, io.option, String(getConfigValues()['home_airports'] || 'IAD, DCA, BWI'));
   if (req.error) return { ok: false, error: req.error };
+  try { var ap = ariaPrefFor_(req.dests, '', ''); req.airlinePref = ap.airlinePref; req.premium = ap.premium; } catch (e) { Logger.log('aria pref: ' + e.message); }
   return tiLocked_(function() {
     var sh = ariaRequestsSheet_(), now = tiNow_();
     var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];
@@ -855,7 +943,10 @@ function webTripAria_(p) {
   // What has actually been paid, per Trip Budget category (TripActuals.js fills these from confirmations).
   var actuals = {};
   facts.budget.forEach(function(b) { var v = ariaMoney_(b.actual), c = String(b.category || '').toLowerCase(); if (v != null && c) actuals[c] = (actuals[c] || 0) + v; });
-  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan, actuals: actuals };
+  var cfgP = getConfigValues();
+  var household = { tiers: ariaAirlinePref_(cfgP['aria_airline_pref']), premium: ariaPremium_(cfgP['aria_airline_premium']) };
+  var airlines = { home: ariaPrefWords_(household.tiers, false), abroad: ariaPrefWords_(household.tiers, true), premium: ariaPremiumWords_(household.premium) };
+  return { ok: true, tripId: tripId, configured: configured, row: row, fares: fares, request: request, draft: draft, plan: plan, actuals: actuals, airlines: airlines };
 }
 
 /**
@@ -874,6 +965,8 @@ function webWatchAriaRequest_(body) {
     origins: String(body.origins || '').trim().slice(0, 60), dests: dests, returnFrom: ariaAirport_(body.returnFrom),
     earliest: start, latest: end, nightsMin: null, nightsMax: null, travelers: travelers >= 1 && travelers <= 12 ? travelers : null, bags: '',
     ceiling: ceiling != null && ceiling > 0 ? ceiling : null, flexDays: flex >= 0 && flex <= 14 ? flex : null };
+  // Airlines: as typed on the form for this trip, else the household rule worded for where it goes.
+  try { var ap = ariaPrefFor_(dests, String(body.airlinePref || '').slice(0, 160), String(body.premium || '').slice(0, 20)); req.airlinePref = ap.airlinePref; req.premium = ap.premium; } catch (e) { Logger.log('aria pref: ' + e.message); }
   return tiLocked_(function() {
     var sh = ariaRequestsSheet_(), now = tiNow_();
     var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, ARIA_REQUESTS_HEADERS.length).getValues() : [];

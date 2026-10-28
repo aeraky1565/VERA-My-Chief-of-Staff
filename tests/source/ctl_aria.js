@@ -100,6 +100,11 @@ const CONTROLS = [
   ['a stay\'s checkout is ignored', b => ({ [T]: swap(b[T], "    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(out) || out <= it.date) out = day(it.date, 1);", "    out = day(it.date, 1);") })],
   ['lodging is added to watched trips too', b => ({ [T]: swap(b[T], "    if (w.status !== 'booked' || !w.tripId) return;\n    try {\n      reg = reg", "    if (!w.tripId) return;\n    try {\n      reg = reg") })],
   ['a lodging gap shows green', both("color:w.lodging.have>=w.lodging.total?TI.ok:TI.warn", "color:TI.ok"), 'test_aria_ui.js'],
+  ['Star Alliance counts at home too', both("var tiers=(cfg.tiers||[]).filter(function(t){return abroad||!t.abroad;});\n  for(var i=0;i<tiers.length;i++){var t=tiers[i].code;", "var tiers=(cfg.tiers||[]);\n  for(var i=0;i<tiers.length;i++){var t=tiers[i].code;")],
+  ['the premium is ignored', both("var r={fare:f,cheapest:cheap,tier:ariaTierName_(tiers[i].code,cfg),diff:diff,allowText:allowText,within:diff<=allow};", "var r={fare:f,cheapest:cheap,tier:ariaTierName_(tiers[i].code,cfg),diff:diff,allowText:allowText,within:true};")],
+  ['an airline written by name isn\'t matched', both("if(!star[code]){var byName='';", "if(false){var byName='';")],
+  ['what was typed for the trip isn\'t sent', b => ({ [T]: swap(b[T], "  var pref = String(overridePref || '').trim(), prem = String(overridePremium || '').trim();", "  var pref = '', prem = '';") })],
+  ['the rule leaves out "abroad"', b => ({ [T]: swap(b[T], "    var abroad = /\\babroad\\b|\\binternational/.test(s);", "    var abroad = false;") })],
 ];
 
 // Screen controls (third field) run test_aria_ui.js and need a browser.
