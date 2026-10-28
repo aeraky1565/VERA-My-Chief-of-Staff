@@ -3335,8 +3335,12 @@ function AriaCard(props){var h=React.createElement;var w=props.row;var booked=w.
         h('span',{className:'aria-label',style:{fontSize:15,fontWeight:700,color:TI.hi}},idea&&idea.option?idea.option:(w.label||w.tripId||w.ref)),
         h('span',{style:{fontSize:12,color:TI.soft}},ariaWhen_(w)+(w.origins||w.dests?' · '+(w.origins||'?')+' → '+(w.dests||'?')+(w.returnFrom?', home from '+w.returnFrom:''):''))),
       h('div',{style:{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end',flex:'none'}},chip(st[0],st[1],null,'aria-status'),v&&chip(v[0],v[3],v[1],'aria-verdict'))),
-    booked?h('div',{className:'aria-booked',style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('span',{style:{fontSize:15,fontWeight:700,color:TI.ok}},'✈️ Flights booked'),
-      w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'last fare ARIA saw '+ariaUsd_(w.bestFare))):
+    booked?h('div',{className:'aria-booked',style:{display:'flex',flexDirection:'column',gap:4}},
+      h('div',{style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('span',{style:{fontSize:15,fontWeight:700,color:TI.ok}},'✈️ Flights booked'),
+        w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'last fare ARIA saw '+ariaUsd_(w.bestFare))),
+      // Lodging is VERA's (the trip Summary's nights with a place to sleep); ARIA only does flights.
+      w.lodging&&w.lodging.total>0&&h('span',{className:'aria-lodging',style:{fontSize:14,fontWeight:600,color:w.lodging.have>=w.lodging.total?TI.ok:TI.warn}},
+        '🛏️ '+w.lodging.have+' of '+w.lodging.total+' night'+(w.lodging.total===1?'':'s')+' covered'+(w.lodging.have>=w.lodging.total?(w.lodging.kinds&&w.lodging.kinds.length?' ('+w.lodging.kinds.map(function(k){return k==='arranged_stay'?'arranged stay':k;}).join(', ')+')':''):': see the trip’s Summary'))):
     h('div',{style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
       w.bestFare!=null?h('span',{className:'aria-best',style:{fontSize:22,fontWeight:700,color:TI.hi,fontVariantNumeric:'tabular-nums'}},ariaUsd_(w.bestFare)):h('span',{style:{fontSize:14,color:TI.mute}},'No fare yet'),
       w.bestFare!=null&&h('span',{style:{fontSize:12,color:TI.mute}},'best seen'+(w.travelers>0?' for '+w.travelers+' ('+ariaUsd_(ariaPerPerson_(w))+' pp)':', total')+(w.bestSource?' · '+w.bestSource:'')),

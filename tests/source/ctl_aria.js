@@ -96,6 +96,10 @@ const CONTROLS = [
   ['a flagged fare reads as firm', both("function ariaFirm_(f){return !!f&&!(f.flags||[]).length;}", "function ariaFirm_(f){return !!f;}")],
   ['lite drifts from the full block', b => ({ [L]: swap(b[L], "function ariaFareTotal_(f){return f.total!=null?f.total:f.farePP;}", "function ariaFareTotal_(f){return f.farePP;}") })],
   ['a booked trip still shows the watch card', both("var booked=w.status==='booked';", "var booked=false;"), 'test_aria_ui.js'],
+  ['a cruise isn\'t a place to sleep', b => ({ [T]: swap(b[T], "['hotel', 'arranged_stay', 'cruise'].indexOf(it.type) === -1", "['hotel', 'arranged_stay'].indexOf(it.type) === -1") })],
+  ['a stay\'s checkout is ignored', b => ({ [T]: swap(b[T], "    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(out) || out <= it.date) out = day(it.date, 1);", "    out = day(it.date, 1);") })],
+  ['lodging is added to watched trips too', b => ({ [T]: swap(b[T], "    if (w.status !== 'booked' || !w.tripId) return;\n    try {\n      reg = reg", "    if (!w.tripId) return;\n    try {\n      reg = reg") })],
+  ['a lodging gap shows green', both("color:w.lodging.have>=w.lodging.total?TI.ok:TI.warn", "color:TI.ok"), 'test_aria_ui.js'],
 ];
 
 // Screen controls (third field) run test_aria_ui.js and need a browser.

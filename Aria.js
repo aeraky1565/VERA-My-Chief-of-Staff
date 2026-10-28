@@ -425,12 +425,28 @@ function webAriaStatus_(p) {
   var gaps = ariaGaps_(ariaVeraTrips_(today), watch, fares, requests, today);
   var now = new Date().toISOString();
   watch.forEach(function(w) { var e = ariaEmailFor_(w, t.runs); if (e) w.email = e; });
+  // A Booked trip's card also says how many nights have a place to sleep: VERA's itinerary, not ARIA's.
+  ariaAttachLodging_(watch, today);
   var out = { ok: true, configured: true, today: today, read: now, watchlist: watch,
     fares: ariaRecentFares_(fares, today), requests: requests, gaps: gaps, ideas: ariaIdeaNames_(),
     health: ariaRunHealth_(t.runs, t.settings, now), runs: t.runs.slice().sort(function(a, b) { return a.runTime < b.runTime ? 1 : -1; }).slice(0, 7) };
   Logger.log('aria_status: ' + watch.length + ' watchlist rows, ' + out.fares.length + ' fares, ' + gaps.count + ' gaps');
   try { cache.put(ARIA_CACHE_KEY_, JSON.stringify(out), 600); } catch (e) {}
   return out;
+}
+
+/** Adds `lodging` to each Booked row whose trip is in VERA and not over. A failure leaves it off. */
+function ariaAttachLodging_(watch, today) {
+  var reg = null;
+  (watch || []).forEach(function(w) {
+    if (w.status !== 'booked' || !w.tripId) return;
+    try {
+      reg = reg || readTripRegistry_();
+      var t = reg.byId[String(w.tripId).toUpperCase()];
+      if (!t || !t.startDate || !t.endDate || t.endDate < today) return;
+      w.lodging = ariaNightsCovered_(tripItemsFor_(t.startDate + '|' + t.label, t.startDate, t.endDate, 'aria lodging'), t.startDate, t.endDate);
+    } catch (e) { Logger.log('aria lodging: ' + w.tripId + ' skipped: ' + e.message); }
+  });
 }
 
 // ---- ARIA Requests (VERA's tab; ARIA reads it) -----------------------------------
@@ -756,6 +772,30 @@ function ariaFlightsBooked_(items, start, end) {
   var out = flights.some(function(f) { return f.date >= start && f.date <= day(start, 1); });
   var back = flights.some(function(f) { return f.date >= day(end, -1) && f.date <= end; });
   return { out: out, back: back, both: out && back };
+}
+
+/**
+ * Pure: how many of a trip's nights (start … end−1) have a place to sleep in VERA's itinerary.
+ * A hotel, an arranged stay or a cruise covers each night from its date up to its checkout
+ * (checkoutDate in its metadata), else one night: the trip Summary's rule (TS_STAY_TYPES), so
+ * ARIA's Booked card can say what ARIA itself never looks at.
+ * @returns {{have:number, total:number, kinds:Array<string>}}
+ */
+function ariaNightsCovered_(items, start, end) {
+  var day = function(d, n) { var p = d.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10); };
+  var nights = [];
+  for (var d = start; d < end; d = day(d, 1)) nights.push(d);
+  var covered = {}, kinds = [];
+  (items || []).forEach(function(it) {
+    if (!it || !it.date || ['hotel', 'arranged_stay', 'cruise'].indexOf(it.type) === -1) return;
+    var out = '';
+    try { out = String((JSON.parse(it.metadata || '{}') || {}).checkoutDate || ''); } catch (e) {}
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(out) || out <= it.date) out = day(it.date, 1);
+    var used = false;
+    nights.forEach(function(n) { if (n >= it.date && n < out) { covered[n] = true; used = true; } });
+    if (used && kinds.indexOf(it.type) === -1) kinds.push(it.type);
+  });
+  return { have: nights.filter(function(n) { return covered[n]; }).length, total: nights.length, kinds: kinds };
 }
 
 /** The trip's TripMeta travelers (2 when unset) and its Trip Budget rows. */

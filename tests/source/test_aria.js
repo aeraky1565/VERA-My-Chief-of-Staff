@@ -441,6 +441,29 @@ const block = (s, a, b) => { const i = s.indexOf(a), j = s.indexOf(b); return i 
 const TS = '// ---- TripIdeasView (Trip Ideas) — SHARED VERBATIM', TE = '// ---- /TripIdeasView ----';
 const AS = '// ---- AriaView (ARIA) — SHARED VERBATIM', AE = '// ---- /AriaView ----';
 const A = block(APP, AS, AE), L = block(LITE, AS, AE);
+console.log('\na Booked card\'s lodging: VERA\'s nights with a place to sleep');
+{
+  const meta = o => JSON.stringify(o);
+  S.cruise = [{ type: 'flight', date: '2026-11-06' }, { type: 'cruise', date: '2026-11-07', metadata: meta({ checkoutDate: '2026-11-14' }) }, { type: 'hotel', date: '2026-11-06', metadata: meta({ checkoutDate: '2026-11-07' }) }, { type: 'hotel', date: '2026-11-14', metadata: meta({ checkoutDate: '2026-11-15' }) }];
+  const all = run('ariaNightsCovered_(cruise, "2026-11-06", "2026-11-15")');
+  check('a cruise covers every night aboard, hotels either side: 9 of 9', all.have === 9 && all.total === 9 && JSON.stringify(all.kinds) === '["cruise","hotel"]', JSON.stringify(all));
+  const gap = run('ariaNightsCovered_(cruise.slice(0, 2), "2026-11-06", "2026-11-15")');
+  check('without the hotels, the first and last nights are gaps: 7 of 9', gap.have === 7 && gap.total === 9 && JSON.stringify(gap.kinds) === '["cruise"]', JSON.stringify(gap));
+  check('a stay with no checkout covers one night; a flight covers none',
+    run('ariaNightsCovered_([{type:"hotel",date:"2026-11-06"},{type:"flight",date:"2026-11-07"}], "2026-11-06", "2026-11-09")').have === 1);
+  check('a checkout before the stay\'s own date is read as one night', run('ariaNightsCovered_([{type:"arranged_stay",date:"2026-11-06",metadata:\'{"checkoutDate":"2026-11-01"}\'}], "2026-11-06", "2026-11-09")').have === 1);
+  check('a day trip has no nights to cover', run('ariaNightsCovered_([], "2026-11-06", "2026-11-06")').total === 0);
+  S.readTripRegistry_ = () => ({ byId: { 'TRIP-0009': { startDate: '2026-11-06', endDate: '2026-11-15', label: 'Anniversary' }, 'TRIP-0001': { startDate: '2026-11-06', endDate: '2026-11-15', label: 'Lake' }, 'TRIP-OLD': { startDate: '2026-01-01', endDate: '2026-01-05', label: 'Old' } } });
+  S.__reads = 0; S.tripItemsFor_ = () => { S.__reads++; return S.cruise; };
+  S.__w = [{ tripId: 'trip-0009', status: 'booked' }, { tripId: 'TRIP-0001', status: 'watching' }, { tripId: 'TRIP-OLD', status: 'booked' }, { tripId: 'TRIP-NONE', status: 'booked' }];
+  run('ariaAttachLodging_(__w, "2026-10-28")');
+  check('only a Booked row of a VERA trip that hasn\'t ended gets its lodging', S.__w[0].lodging && S.__w[0].lodging.have === 9 && !S.__w[1].lodging && !S.__w[2].lodging && !S.__w[3].lodging && S.__reads === 1, JSON.stringify(S.__w));
+  S.tripItemsFor_ = () => { throw new Error('calendar down'); }; S.__w2 = [{ tripId: 'TRIP-0009', status: 'booked' }];
+  run('ariaAttachLodging_(__w2, "2026-10-28")');
+  check('a read that fails leaves lodging off rather than failing the status', !S.__w2[0].lodging);
+  check('aria_status attaches it, inside the cached read', /ariaAttachLodging_\(watch, today\);\n  var out = \{ ok: true, configured: true/.test(SRC));
+}
+
 console.log('\nthe shared block');
 check('both dashboards carry it', A.length > 1000 && L.length > 1000);
 check('…word for word', A === L);

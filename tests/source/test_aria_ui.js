@@ -112,6 +112,10 @@ async function scenario(page, label, width) {
   check(label + ': …with no "No fare yet", ceiling, checks, or the note ARIA left before it was booked', !/No fare yet|ceiling|next check|Weekly|confirm before watching/.test(bk), bk);
   await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ceiling: 980, bestFare: 1700, travelers: 2, ref: '', dateChange: false, notes: '' }], fares: [], gaps: { count: 0 } }));
   check(label + ': …and the last fare ARIA saw, if it saw one, as a quiet note', /✈️ Flights booked\s+last fare ARIA saw \$1,700/.test(await text(page)));
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ref: '', dateChange: false, notes: '', lodging: { have: 9, total: 9, kinds: ['cruise'] } }], fares: [], gaps: { count: 0 } }));
+  check(label + ': lodging from VERA shows under the flights, all nights covered', /✈️ Flights booked\s+🛏️ 9 of 9 nights covered \(cruise\)/.test(await text(page)), await text(page));
+  await mount(page, Object.assign({}, STATUS, { watchlist: [{ tripId: 'TRIP-0009', label: 'Anniversary trip', status: 'booked', earliest: '2026-11-06', latest: '2026-11-15', ref: '', dateChange: false, notes: '', lodging: { have: 7, total: 9, kinds: ['cruise', 'arranged_stay'] } }], fares: [], gaps: { count: 0 } }));
+  check(label + ': …and a gap points to the trip\'s Summary, in amber', /🛏️ 7 of 9 nights covered: see the trip’s Summary/.test(await text(page)) && await page.$eval('#ariaprobe .aria-lodging', n => getComputedStyle(n).color) === 'rgb(246, 210, 122)');
   if (process.env.SHOT_DIR) { const el = await page.$('#ariaprobe'); if (el) try { await el.screenshot({ path: process.env.SHOT_DIR + '/aria-' + label.replace(/\s+/g, '-') + '.png' }); } catch (e) {} }
 
   // A Draft card: Watch with ARIA opens the trip Summary's form, filled by trip_aria; it writes a request, never the tracker
