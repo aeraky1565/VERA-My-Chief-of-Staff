@@ -69,8 +69,8 @@ const CONTROLS = {
   }),
   'the travel-day read matches one key again': b => ({
     'TravelDayBriefing.js': b['TravelDayBriefing.js']
-      .replace('return tripRowMatches_(row[1], keys) && rowDate === today;',
-               'return String(row[1] || "").trim() === tripKey && rowDate === today;'),
+      .replace('return tripRowMatches_(row[1], _tripKeys) &&\n               rowDate === _tomorrow &&',
+               'return String(row[1] || "").trim() === tripKey &&\n               rowDate === _tomorrow &&'),
   }),
   'Chat trusts the transcript key': b => ({
     'Chat.js': b['Chat.js']

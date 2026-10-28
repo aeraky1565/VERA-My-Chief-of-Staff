@@ -605,8 +605,10 @@ console.log('\nThe call sites actually moved');
   check('post-trip groups by Trip ID, not the key string',
         /tripIdForKey_\(tripKey\) \|\| tripKey/.test(SRC.PostTrip));
   check('readTripRows_ matches the key set', /tripRowMatches_\(row\[1\], keys\)/.test(SRC.PostTrip));
+  // The dashboard's old sheet-only sender was removed; the travel-day email's
+  // own sheet read (tomorrow's flights) is the one that must match every key.
   check('the travel-day itinerary read does too',
-        /tripRowMatches_\(row\[1\], keys\)/.test(SRC.TravelDay));
+        /return tripRowMatches_\(row\[1\], _tripKeys\) &&\s*rowDate === _tomorrow/.test(SRC.TravelDay));
   check('post-trip seeds its bounds from the registry',
         /tripDateRangeFor_/.test(SRC.PostTrip));
 
