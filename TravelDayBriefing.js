@@ -156,6 +156,15 @@ function checkAndSendTravelDayBriefings_(opts) {
       if (!tripRanges[tripKey]) tripRanges[tripKey] = { min: rowDate, max: rowDate };
       if (rowDate < tripRanges[tripKey].min) tripRanges[tripKey].min = rowDate;
       if (rowDate > tripRanges[tripKey].max) tripRanges[tripKey].max = rowDate;
+      // A stay runs to its checkout, which is in the metadata, not column E.
+      // "Staying at Ange & Farai's" is one row dated the first night; without
+      // this the trip appeared to end on the last row you happened to add.
+      var checkout = '';
+      try { checkout = String((JSON.parse(String(row[9] || '{}')) || {}).checkoutDate || ''); }
+      catch (metaErr) { /* not JSON — no checkout */ }
+      if (/^\d{4}-\d{2}-\d{2}$/.test(checkout) && checkout > tripRanges[tripKey].max) {
+        tripRanges[tripKey].max = checkout;
+      }
       // Collect today's rows
       if (rowDate === today) {
         if (!tripMap[tripKey]) tripMap[tripKey] = [];
@@ -181,10 +190,18 @@ function checkAndSendTravelDayBriefings_(opts) {
       if (!tripMap[key] && today >= t.startDate && today <= t.endDate) {
         tripMap[key] = [];
       }
-      // Retain the range even when the trip already had sheet rows: a
-      // calendar-only trip has no tripRanges entry at all, and webGetItinerary_
-      // requires a start and an end.
+      // A calendar-only trip has no tripRanges entry at all, and
+      // webGetItinerary_ requires a start and an end.
+      //
+      // When the sheet DOES have rows, widen to the calendar's end rather than
+      // keeping the sheet's. (The start needs no widening: it is part of the
+      // key, so a calendar trip that starts elsewhere is a different key.) The sheet's range is only where you happen
+      // to have logged things: the Chicago Trip's rows ran Oct 21-24, so the
+      // calendar was asked about Oct 21-24 and the Oct 28 flight home, which
+      // lives only on the calendar, was never read. The day's email said
+      // nothing had been logged.
       if (!tripRanges[key]) tripRanges[key] = { min: t.startDate, max: t.endDate };
+      if (t.endDate   && t.endDate   > tripRanges[key].max) tripRanges[key].max = t.endDate;
     });
   } catch (calErr) {
     Logger.log('TravelDayBriefing: calendar scan error (non-fatal) — ' + calErr.message);

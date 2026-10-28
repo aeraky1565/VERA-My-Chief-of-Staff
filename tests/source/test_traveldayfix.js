@@ -599,5 +599,73 @@ console.log('\n…while two genuinely different trips still both send');
   check('…and each has its own latch', Object.keys(props).length === 2, JSON.stringify(Object.keys(props)));
 }
 
+// ============ the range asked of the itinerary =============================
+//
+// The Chicago Trip: the sheet had a stay dated Oct 21 (checkout Oct 28 in its
+// metadata) and two dinners on Oct 23-24. The calendar trip ran Oct 21-28. The
+// flight home on Oct 28 lived only on the calendar. The briefing kept the
+// sheet's Oct 21-24 as the trip's range, asked the itinerary about those days,
+// and the Oct 28 email said nothing had been logged.
+
+function runRange(o) {
+  const asked = [];
+  const sends = [];
+  const ctx = {
+    String, Array, Number, Object, Date, JSON, Math, RegExp, isFinite, Error,
+    Logger: { log: () => {} },
+    Session: { getScriptTimeZone: () => 'UTC' },
+    Utilities: { formatDate: (d, tz, f) => d.toISOString().slice(0, 10) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) },
+    TABS: { ITINERARY: 'Itinerary' },
+    ITINERARY_HEADERS: new Array(10).fill('x'),
+    getConfigValues: () => ({}), readPTOConfig_: () => ({}), veraLog_: () => {},
+    getSpreadsheet: () => ({ getSheetByName: () => ({
+      getLastRow: () => 4,
+      getRange: () => ({ getValues: () => [
+        ['ITIN-1', '2026-10-21|Lake Trip', 'arranged_stay', 'Staying with friends', '2026-10-21',
+         '', '', '', '', o.meta === undefined ? '{"checkoutDate":"2026-10-28"}' : o.meta],
+        ['ITIN-2', '2026-10-21|Lake Trip', 'dining', 'Drinks', '2026-10-23', '18:00', '', '', '', ''],
+        ['ITIN-3', '2026-10-21|Lake Trip', 'dining', 'Brunch', '2026-10-24', '12:30', '', '', '', ''],
+      ] }),
+    })}),
+    getUpcomingTravel_: () => o.cal || [],
+    fetchTripDayItems_: (k, a, b, today) => { asked.push([k, a, b]); return [['x']]; },
+    sendTravelDayBriefing_: (k, items) => { sends.push([k, items.length]); },
+  };
+  vm.createContext(ctx);
+  vm.runInContext(extractFn(TDB, 'checkAndSendTravelDayBriefings_'), ctx);
+  ctx.__o = { dateOverride: o.today };
+  vm.runInContext('checkAndSendTravelDayBriefings_(__o)', ctx);
+  return { asked, sends };
+}
+
+console.log('\nthe last day of a trip is asked about, not just the days with rows');
+{
+  const cal = [{ label: 'Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28', daysAway: 0 }];
+  const r = runRange({ today: '2026-10-28', cal, meta: '' });
+  check('a briefing goes out on the last day', r.sends.length === 1, JSON.stringify(r.sends));
+  check('…and the itinerary is asked through the calendar trip\'s end',
+        r.asked.length === 1 && r.asked[0][2] === '2026-10-28', JSON.stringify(r.asked));
+  check('…from its start', r.asked.length === 1 && r.asked[0][1] === '2026-10-21', JSON.stringify(r.asked));
+
+  const mid = runRange({ today: '2026-10-23', cal, meta: '' });
+  check('a mid-trip day still asks for the whole trip',
+        mid.asked.length === 1 && mid.asked[0][2] === '2026-10-28', JSON.stringify(mid.asked));
+}
+
+console.log('\n…and a stay\'s checkout counts as part of the trip, calendar or not');
+{
+  const r = runRange({ today: '2026-10-28' });
+  check('checkout day gets a briefing with no calendar trip at all', r.sends.length === 1, JSON.stringify(r.sends));
+  check('…asked through the checkout', r.asked.length === 1 && r.asked[0][2] === '2026-10-28',
+        JSON.stringify(r.asked));
+
+  const after = runRange({ today: '2026-10-29' });
+  check('the day after checkout is not a travel day', after.sends.length === 0, JSON.stringify(after.sends));
+
+  const bad = runRange({ today: '2026-10-28', meta: 'not json' });
+  check('metadata that is not JSON is ignored, not fatal', bad.sends.length === 0, JSON.stringify(bad.sends));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

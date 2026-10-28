@@ -30,6 +30,21 @@ const swapTdb = (b, from, to) => {
 };
 
 const CONTROLS = {
+  // ---- the trip's range (the Oct 28 flight home) ---------------------------
+  'the calendar trip only fills a range the sheet left empty (the reported bug)': b => ({
+    'TravelDayBriefing.js': swapTdb(b,
+      "      if (t.endDate   && t.endDate   > tripRanges[key].max) tripRanges[key].max = t.endDate;\n", ''),
+  }),
+  'a stay\'s checkout is not part of the trip': b => ({
+    'TravelDayBriefing.js': swapTdb(b,
+      "checkout > tripRanges[tripKey].max) {", "checkout > tripRanges[tripKey].max && false) {"),
+  }),
+  'a stay runs one day past its checkout': b => ({
+    'TravelDayBriefing.js': swapTdb(b,
+      "        tripRanges[tripKey].max = checkout;\n",
+      "        tripRanges[tripKey].max = checkout.slice(0, 8) + ('0' + (+checkout.slice(8) + 1)).slice(-2);\n"),
+  }),
+
   // ---- the bug itself, restored --------------------------------------------
   // The wording list moved to googleApiNotEnabled_ (ApiHealth.js) when the Calendar
   // advanced service needed the same answer, so these three now mutate it there. The
