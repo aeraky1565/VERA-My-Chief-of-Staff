@@ -1311,18 +1311,27 @@ function webTestTravelTrips_() {
   var tz     = Session.getScriptTimeZone();
   var today  = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   var ranges = travelTestRanges_();
-  var byLabel = {};
+  // Two keys collapse only when they are the same trip: the same label AND
+  // overlapping dates (a start date that moved). The same label alone is not
+  // enough — there are two "Chicago Trip"s, Oct 2026 and Apr 2027, and
+  // collapsing by label kept April's and hid the one under way.
+  var trips = [];
   Object.keys(ranges).forEach(function(key) {
     var r = ranges[key];
     if (r.max < today) return;
     var label = key.split('|').slice(1).join('|') || key;
-    var prev  = byLabel[label];
-    if (prev && (prev.end > r.max || (prev.end === r.max && prev.start <= r.min))) return;
-    byLabel[label] = { key: key, label: label, start: r.min, end: r.max,
-                       current: today >= r.min && today <= r.max };
+    var t = { key: key, label: label, start: r.min, end: r.max,
+              current: today >= r.min && today <= r.max };
+    for (var i = 0; i < trips.length; i++) {
+      var p = trips[i];
+      if (p.label !== label || p.end < t.start || t.end < p.start) continue;
+      // Same trip: keep the key whose range is wider.
+      if (t.end > p.end || (t.end === p.end && t.start < p.start)) trips[i] = t;
+      return;
+    }
+    trips.push(t);
   });
-  var trips = Object.keys(byLabel).map(function(l) { return byLabel[l]; })
-    .sort(function(a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
+  trips.sort(function(a, b) { return a.start < b.start ? -1 : a.start > b.start ? 1 : 0; });
   return { ok: true, today: today, trips: trips };
 }
 

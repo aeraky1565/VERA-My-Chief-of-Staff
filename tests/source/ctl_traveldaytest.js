@@ -46,6 +46,9 @@ const CONTROLS = [
   ['the morning run groups today\'s rows under the old key', tdb(
     "    var tripKey = travelTripKey_(row[1]);   // the same key travelDayRanges_ used",
     "    var tripKey = String(row[1] || '').trim();")],
+  ['two trips with one name collapse into one', tdb(
+    "      if (p.label !== label || p.end < t.start || t.end < p.start) continue;",
+    "      if (p.label !== label) continue;")],
   ['past trips are offered', tdb("    if (r.max < today) return;\n", "")],
   ['the preview tags every item sheet', ui('className:"test-src","data-src":it.source,', 'className:"test-src","data-src":"sheet",'), UI],
   ['the send button is not held while sending', ui('className:"test-send",onClick:send,disabled:sending,', 'className:"test-send",onClick:send,disabled:false,'), UI],

@@ -307,6 +307,16 @@ console.log('\nthe trip list');
   check('a trip under two keys shows once', moved.trips.filter(t => t.label === 'Lake Trip').length === 1,
         JSON.stringify(moved.trips));
 
+  // Two different trips with the same name (Oct 2026 and Apr 2027): both are
+  // listed. Collapsing by name alone kept April's and hid the one under way.
+  const twins = webCtx({ cal: [{ label: 'Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28' },
+                               { label: 'Lake Trip', startDate: '2027-04-05', endDate: '2027-04-13' }] })
+    .run('webTestTravelTrips_()');
+  const lakes = twins.trips.filter(t => t.label === 'Lake Trip');
+  check('two trips with one name are both listed', lakes.length === 2, JSON.stringify(twins.trips));
+  check('…the one under way first, and marked as on now',
+        lakes[0] && lakes[0].key === '2026-10-21|Lake Trip' && lakes[0].current === true, JSON.stringify(lakes));
+
   // The Island Trip's row renamed: the registry maps its old key onto a new name.
   const renamed = webCtx({ alias: { '2026-11-06|Island Trip': '2026-11-06|Island Getaway' },
     cal: [{ label: 'Lake Trip', startDate: '2026-10-21', endDate: '2026-10-28' },
