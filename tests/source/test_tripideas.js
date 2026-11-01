@@ -353,8 +353,10 @@ console.log('\nsettle: an idea becomes a calendar trip');
 {
   check('a settle keeps the option, the dates and the title', JSON.stringify(run('tiCleanSettle_({optionId:"OPT-1", start:"2027-05-29", end:"2027-06-11", label:"  Spring   in Europe ", at:"x"})')) === '{"optionId":"OPT-1","start":"2027-05-29","end":"2027-06-11","label":"Spring in Europe","at":"x"}');
   check('…and is refused when the dates are backwards, missing, or past 90 nights', run('tiCleanSettle_({optionId:"OPT-1", start:"2027-06-11", end:"2027-05-29"})') === null
-    && run('tiCleanSettle_({optionId:"OPT-1", start:"2027-05-29"})') === null && run('tiCleanSettle_({start:"2027-05-29", end:"2027-06-01"})') === null
+    && run('tiCleanSettle_({optionId:"OPT-1", start:"2027-05-29"})') === null
     && run('tiCleanSettle_({optionId:"OPT-1", start:"2027-01-01", end:"2027-06-01"})') === null && run('tiCleanSettle_("nope")') === null);
+  // A pencilled trip on My Trips (issue #220) settles with no option chosen.
+  check('…but a settle with no option is kept, for a pencilled trip', JSON.stringify(run('tiCleanSettle_({start:"2027-05-29", end:"2027-06-01"})')) === '{"optionId":"","start":"2027-05-29","end":"2027-06-01","label":"","at":""}');
   const saved = run('webSaveTripIdea_({ idea: { title: "Spring in Europe", status: "shortlisted", settle: { optionId: "OPT-1", start: "2027-05-29", end: "2027-06-11", label: "Spring in Europe" } } })').idea;
   S.sid = saved.id;
   check('the settle survives the sheet', JSON.stringify(run('tiGetIdea_(sid)').settle) === JSON.stringify(saved.settle) && saved.settle.start === '2027-05-29');

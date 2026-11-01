@@ -247,7 +247,9 @@ const TRIP_DECISION_HEADERS     = ['ID', 'Trip Key', 'Group Key', 'Slot Date', '
 const TRIPS_HEADERS             = ['Trip ID', 'Label', 'Start Date', 'End Date', 'Calendar Event IDs', 'Aliases', 'Created', 'Last Seen', 'Status'];
 // Trip Ideas (TripIdeas.js). Months is a JSON list of 'yyyy-MM'; empty means any time.
 // Pieces (anchors, either/or, wishes) and Also Possible are JSON lists.
-const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated', 'Pieces', 'Also Possible', 'Settle'];
+const TRIP_IDEAS_HEADERS        = ['Idea ID', 'Title', 'Where', 'Months', 'Nights Min', 'Nights Max', 'Travelers', 'Budget', 'Pace', 'Open To', 'Must Haves', 'Status', 'Chosen Option', 'Trip ID', 'Created', 'Updated', 'Pieces', 'Also Possible', 'Settle', 'Pulled In', 'Exact Start', 'Exact End', 'Not Same'];
+// Pulled In: shown on My Trips (issue #220). Exact Start/End: dates known but not booked. Not Same: calendar
+// Trip IDs Ahmed said are a different trip, so the match is never offered again.
 // Legs, Cost, Verdict and Wishes are JSON (see tiCleanOption_); Pros and Cons are newline lists.
 const TRIP_IDEA_OPTIONS_HEADERS = ['Option ID', 'Idea ID', 'Name', 'Source', 'Flag', 'Legs', 'Cost', 'Pros', 'Cons', 'Order', 'Created', 'Updated', 'Verdict', 'Wishes'];
 const ARIA_REQUESTS_HEADERS = ['Request ID', 'Kind', 'Ref', 'Trip ID', 'Trip Key', 'Label', 'Origin Airports', 'Destination Airports', 'Return-From Airports', 'Earliest Depart', 'Latest Return', 'Nights Min', 'Nights Max', 'Travelers', 'Bags', 'Ceiling Per Person', 'Status', 'Created', 'Updated', 'Flex Days', 'Airline Preference', 'Airline Premium PP'];
@@ -1264,6 +1266,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'haSyncFlags_', haSyncFlags_);
     // Stored flights the calendar has moved or rebooked, trips within 30 days (WebApp.js).
     nightlyStep_(ctx, 'flightChangesSyncFlags_', flightChangesSyncFlags_);
+    // Pencilled trips: pick dates 12 weeks out, and months that passed (MyTrips.js).
+    nightlyStep_(ctx, 'myTripsSyncFlags_', myTripsSyncFlags_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);

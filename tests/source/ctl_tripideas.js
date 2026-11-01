@@ -19,9 +19,9 @@ const both = (from, to) => b => ({ [A]: swap(b[A], from, to), [L]: swap(b[L], fr
 const TEST = 'test_tripideas.js';
 
 const CONTROLS = [
-  ['a backwards settle is kept', b => ({ [T]: swap(b[T], "if (!start || !end || !optionId || end < start) return null;", "if (!start || !end || !optionId) return null;") })],
+  ['a backwards settle is kept', b => ({ [T]: swap(b[T], "if (!start || !end || end < start) return null;", "if (!start || !end) return null;") })],
   ['a settle can run past 90 nights', b => ({ [T]: swap(b[T], "  if ((Date.parse(end) - Date.parse(start)) / 864e5 > 90) return null;\n", "") })],
-  ['the settle is not saved', b => ({ [T]: swap(b[T], "i.settle ? JSON.stringify(i.settle) : ''];", "''];") })],
+  ['the settle is not saved', b => ({ [T]: swap(b[T], "i.settle ? JSON.stringify(i.settle) : '',\n", "'',\n") })],
   ['any trip on nearby dates matches', b => ({ [T]: swap(b[T], "    return exact || want.some(function(w) { return words.indexOf(w) !== -1; });", "    return true;") })],
   ['three days off still matches', b => ({ [T]: swap(b[T], "tiDaysApart_(t.startDate, settle.start) > 1 || tiDaysApart_(t.endDate, settle.end) > 1) return false;", "tiDaysApart_(t.startDate, settle.start) > 3 || tiDaysApart_(t.endDate, settle.end) > 3) return false;") })],
   ['a linked idea links again', b => ({ [T]: swap(swap(b[T], "filter(function(i) { return i.settle && !i.tripId; });", "filter(function(i) { return i.settle; });"), "      if (!idea.settle || idea.tripId) return;", "      if (!idea.settle) return;") })],

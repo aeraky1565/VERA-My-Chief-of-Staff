@@ -86,8 +86,9 @@ function tiCleanPieces_(pieces) {
 function tiCleanSettle_(v) {
   if (!v || typeof v !== 'object') return null;
   var ymd = function(x) { var t = String(x || '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ''; };
+  // A pencilled trip (My Trips) settles with no option chosen, so optionId may be blank.
   var start = ymd(v.start), end = ymd(v.end), optionId = tiStr_(v.optionId, 40);
-  if (!start || !end || !optionId || end < start) return null;
+  if (!start || !end || end < start) return null;
   if ((Date.parse(end) - Date.parse(start)) / 864e5 > 90) return null;
   return { optionId: optionId, start: start, end: end, label: tiStr_(v.label, 100), at: tiStr_(v.at, 40) };
 }
@@ -115,6 +116,7 @@ function tiCleanIdea_(raw) {
   if (!isFinite(budget) || budget < 0) budget = null;
   var openTo = (Array.isArray(raw.openTo) ? raw.openTo : []).map(function(x) { return String(x).trim().toLowerCase(); })
     .filter(function(x, i, a) { return TI_OPEN_TO_.indexOf(x) !== -1 && a.indexOf(x) === i; });
+  var ex = tiCleanExact_(raw.exactStart, raw.exactEnd);
   return {
     id: tiStr_(raw.id, 40),
     title: tiStr_(raw.title, 80),
@@ -133,7 +135,22 @@ function tiCleanIdea_(raw) {
     pieces: tiCleanPieces_(raw.pieces),
     alsoPossible: tiCleanAlso_(raw.alsoPossible),
     settle: tiCleanSettle_(raw.settle),
+    pulledIn: raw.pulledIn === true || String(raw.pulledIn).toLowerCase() === 'yes' || String(raw.pulledIn) === 'true',
+    exactStart: ex.start,
+    exactEnd: ex.end,
+    notSame: (Array.isArray(raw.notSame) ? raw.notSame : []).map(function(x) { return tiStr_(x, 40); })
+      .filter(function(x, i, a) { return x && a.indexOf(x) === i; }).slice(0, 40),
   };
+}
+
+/** Pure: a pencilled trip's known dates: both or neither, in order, at most 90 nights. */
+function tiCleanExact_(a, b) {
+  var ymd = function(x) { var t = String(x || '').trim(); return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : ''; };
+  var s = ymd(a), e = ymd(b);
+  if (!s || !e) return { start: '', end: '' };
+  if (e < s) { var t = s; s = e; e = t; }
+  if ((Date.parse(e) - Date.parse(s)) / 864e5 > 90) return { start: '', end: '' };
+  return { start: s, end: e };
 }
 
 /**
@@ -224,15 +241,29 @@ function tiParse_(s, fallback) { try { var v = JSON.parse(String(s || '')); retu
 function tiIdeaToRow_(i, created, updated) {
   return [i.id, i.title, i.where, JSON.stringify(i.months), i.nightsMin == null ? '' : i.nightsMin, i.nightsMax == null ? '' : i.nightsMax,
     i.travelers, i.budget == null ? '' : i.budget, i.pace, JSON.stringify(i.openTo), i.mustHaves, i.status, i.chosenOption, i.tripId, created, updated,
-    JSON.stringify(i.pieces || []), JSON.stringify(i.alsoPossible || []), i.settle ? JSON.stringify(i.settle) : ''];
+    JSON.stringify(i.pieces || []), JSON.stringify(i.alsoPossible || []), i.settle ? JSON.stringify(i.settle) : '',
+    i.pulledIn ? 'yes' : '', i.exactStart || '', i.exactEnd || '', (i.notSame || []).length ? JSON.stringify(i.notSame) : ''];
 }
 function tiIdeaFromRow_(r) {
   var i = tiCleanIdea_({ id: r[0], title: r[1], where: r[2], months: tiParse_(r[3], []), nightsMin: r[4], nightsMax: r[5],
     travelers: r[6], budget: r[7], pace: r[8], openTo: tiParse_(r[9], []), mustHaves: r[10], status: r[11], chosenOption: r[12], tripId: r[13],
-    pieces: tiParse_(r[16], []), alsoPossible: tiParse_(r[17], []), settle: tiParse_(r[18], null) });
+    pieces: tiParse_(r[16], []), alsoPossible: tiParse_(r[17], []), settle: tiParse_(r[18], null),
+    pulledIn: r[19], exactStart: tiCellYmd_(r[20]), exactEnd: tiCellYmd_(r[21]), notSame: tiParse_(r[22], []) });
   i.created = String(r[14] || ''); i.updated = String(r[15] || '');
   return i;
 }
+
+/** Pure: a sheet cell that may hold a Date or text → 'yyyy-MM-dd' or ''. */
+function tiCellYmd_(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0');
+  }
+  return String(v == null ? '' : v).trim().slice(0, 10);
+}
+
+// Fields only My Trips edits. A save that leaves one out (the Trip Ideas board does
+// not know them) keeps what the sheet has, so editing an idea never un-pulls it.
+var TI_KEEP_IF_MISSING_ = ['pulledIn', 'exactStart', 'exactEnd', 'notSame'];
 
 /** Pure: an option ↔ its sheet row, in TRIP_IDEA_OPTIONS_HEADERS order. */
 function tiOptionToRow_(o, created, updated) {
@@ -308,6 +339,8 @@ function webSaveTripIdea_(body) {
       idea.created = now;
     } else {
       var created = String(sheet.getRange(row, 15).getValue() || now);
+      var raw = (body && body.idea) || {}, stored = tiIdeaFromRow_(sheet.getRange(row, 1, 1, w).getValues()[0]);
+      TI_KEEP_IF_MISSING_.forEach(function(k) { if (raw[k] === undefined) idea[k] = stored[k]; });
       sheet.getRange(row, 1, 1, w).setValues([tiIdeaToRow_(idea, created, now)]);
       idea.created = created;
     }
@@ -996,7 +1029,7 @@ function tiLinkSettled_() {
   var moved = tiSettleDrift_(ideas, trips);
   if (!found.length && !moved.length) return 0;
   return tiLocked_(function() {
-    var now = tiNow_(), options = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_), flags = [];
+    var now = tiNow_(), options = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).map(tiOptionFromRow_), flags = [], linkedPencilled = 0;
     found.forEach(function(x) {
       var row = tiRowOf_(sheet, w, x.idea.id);
       if (row === -1) return;
@@ -1005,9 +1038,14 @@ function tiLinkSettled_() {
       idea.tripId = x.trip.tripId; idea.status = 'settled'; idea.chosenOption = idea.settle.optionId;
       var created = String(sheet.getRange(row, 15).getValue() || now);
       sheet.getRange(row, 1, 1, w).setValues([tiIdeaToRow_(idea, created, now)]);
-      try { ariaWatchSettled_(idea.settle.optionId, x.trip); } catch (e) { Logger.log('trip ideas: settle request not updated'); }
-      var option = options.filter(function(o) { return o.id === idea.settle.optionId; })[0];
-      flags.push(tiWillaFlag_(idea, option, x.trip));
+      // A pencilled trip settles with no option: no scout request to move, no
+      // planned total for WILLA; its note and travellers go to the trip instead.
+      if (idea.settle.optionId) {
+        try { ariaWatchSettled_(idea.settle.optionId, x.trip); } catch (e) { Logger.log('trip ideas: settle request not updated'); }
+        var option = options.filter(function(o) { return o.id === idea.settle.optionId; })[0];
+        flags.push(tiWillaFlag_(idea, option, x.trip));
+      }
+      if (idea.pulledIn) { try { mtCarryToTrip_(idea, x.trip); } catch (e) { Logger.log('trip ideas: note not carried to the trip'); } linkedPencilled++; }
     });
     if (flags.length) {
       try {
@@ -1027,7 +1065,7 @@ function tiLinkSettled_() {
       try { ariaFollowTrip_(x.trip); } catch (e) { Logger.log('trip ideas: watch request dates not moved'); }
       shifted++;
     });
-    Logger.log('trip ideas: linked ' + flags.length + ' settled idea(s), moved ' + shifted);
-    return flags.length + shifted;
+    Logger.log('trip ideas: linked ' + (flags.length + linkedPencilled) + ' settled idea(s), moved ' + shifted);
+    return flags.length + linkedPencilled + shifted;
   });
 }

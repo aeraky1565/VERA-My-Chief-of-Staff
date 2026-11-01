@@ -400,6 +400,8 @@ function doGet(e) {
       case 'trip_reach':            return jsonOut_(webTripReach_(e.parameter));
       case 'trip_ideas':            return jsonOut_(webGetTripIdeas_());
       case 'trip_idea_decide':      return jsonOut_(webTripIdeaDecide_(e.parameter));
+      case 'my_trips':              return jsonOut_(webMyTrips_());
+      case 'my_trip_windows':       return jsonOut_(webMyTripWindows_(e.parameter));
       case 'aria_status':           return jsonOut_(webAriaStatus_(e.parameter));
       case 'trip_aria':             return jsonOut_(webTripAria_(e.parameter));
       case 'trip_weather':          return jsonOut_(webTripWeather_(e.parameter));
@@ -590,6 +592,8 @@ function doPost(e) {
       case 'gathering_delete':           return jsonOut_(webDeleteGathering_(body));
       case 'gathering_to_shopping':      return jsonOut_(webGatheringToShopping_(body));
       case 'trip_idea_delete':           return jsonOut_(webDeleteTripIdea_(body));
+      case 'my_trip_pencil':             return jsonOut_(webMyTripPencil_(body));
+      case 'my_trip_update':             return jsonOut_(webMyTripUpdate_(body));
       case 'trip_option_save':           return jsonOut_(webSaveTripIdeaOption_(body));
       case 'trip_option_delete':         return jsonOut_(webDeleteTripIdeaOption_(body));
       case 'trip_idea_ask':              return jsonOut_(webAskVeraTripIdea_(body));
