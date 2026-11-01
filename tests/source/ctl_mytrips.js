@@ -43,9 +43,14 @@ const CONTROLS = [
   [UI, 'a lite tentative trip is not marked', b => ({ [L]: swap(b[L], "{myTripsTentative(t.label) && <span className=\"mt-tentative-chip\"", "{false && <span className=\"mt-tentative-chip\"") })],
 ];
 
+// The deploy gate (node tests + controls) runs where no browser is installed. A
+// control on the dashboard runs the browser test, so there it is skipped and said
+// so; the full suite (tests/run.js finds Chromium and sets CHROMIUM_PATH) runs it.
+const HAVE_BROWSER = !!process.env.CHROMIUM_PATH;
 let allBit = true;
 CONTROLS.forEach(function(c) {
   const test = c[0], name = c[1];
+  if (test === UI && !HAVE_BROWSER) { console.log('\n=== CONTROL: ' + name + '\n  skipped: no browser here (the full suite runs it)'); return; }
   fs.rmSync(OUT, { recursive: true, force: true });
   let patch;
   try { patch = c[2](BASE); }
