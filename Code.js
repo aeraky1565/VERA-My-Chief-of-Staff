@@ -116,6 +116,8 @@ const TABS = {
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
+  PLANNED_PURCHASES:  'Planned Purchases',    // Big buys being researched, saved for and bought (Finances)
+  PP_OPTIONS:         'Planned Purchase Options', // The options compared for each planned purchase
   COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
   NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board
   NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log
@@ -325,6 +327,11 @@ const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category
 const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes'];
 // Experiments (Issue #130) — column order matches row[] offsets used in Experiments.js
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
+// Planned Purchases (Finances). Must / Nice / No and Notes are JSON lists; Bought is the
+// purchase as made (JSON). Set-aside money is never stored here: it is the linked goal's balance.
+const PLANNED_PURCHASE_HEADERS   = ['ID', 'Item', 'For', 'Why', 'Budget', 'Need By', 'Need Note', 'Goal ID', 'Stage', 'Must', 'Nice', 'No', 'Target Price', 'Chosen Option', 'Bought', 'Old Item', 'Old Plan', 'Notes', 'Created', 'Updated'];
+// Prices keeps every price entered, newest last; Checks is {requirement: 'yes' | 'no'}.
+const PP_OPTION_HEADERS          = ['Option ID', 'Purchase ID', 'Name', 'Store', 'Link', 'Prices', 'Checks', 'Delivery', 'Lead Days', 'Returns', 'Return Days', 'Notes', 'Ruled Out', 'Created', 'Updated'];
 const RESELL_LIST_HEADERS        = ['ID', 'Item', 'Category', 'Asking Price', 'Original Price', 'Platform', 'Priority', 'Status', 'Notes', 'Added Date'];
 const EXPERIMENT_CHECKIN_HEADERS = ['ID', 'Experiment ID', 'Date', 'Note'];
 const RESOURCE_HEADERS           = ['ID', 'Name', 'Category', 'Applies To', 'Description', 'URL', 'Tags', 'Drive File ID'];
@@ -1268,6 +1275,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'flightChangesSyncFlags_', flightChangesSyncFlags_);
     // Pencilled trips: pick dates 12 weeks out, and months that passed (MyTrips.js).
     nightlyStep_(ctx, 'myTripsSyncFlags_', myTripsSyncFlags_);
+    // Planned purchases: a delivery tomorrow, an order-by date close, a return window closing (PlannedPurchases.js).
+    nightlyStep_(ctx, 'ppSyncFlags_', ppSyncFlags_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);

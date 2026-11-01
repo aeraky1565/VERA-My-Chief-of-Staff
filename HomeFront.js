@@ -416,6 +416,8 @@ function hfComingUp_(src, today) {
       projItems.push({ kind: 'project', section: 'projects', label: String(t.task), detail: String(p.projectName) + (d < today ? ' · overdue since ' : ' · due ') + d, date: d, tone: d < today ? 'overdue' : 'soon' });
     });
   });
+  // Planned Purchases: deliveries and return windows, already shaped by ppComingUp_.
+  (src.purchases || []).forEach(function(x) { if (x && x.label && x.date) out.push(x); });
   projItems.sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
   out = out.concat(projItems.slice(0, HF_COMING_PROJ_MAX_));
   var rank = { overdue: 0, soon: 1, ok: 2 };
@@ -440,6 +442,7 @@ function webHomeFrontComingUp_() {
     guests: hfTry_('guests', function() { return getUpcomingGuests_(readPTOConfig_()); }, missing),
     gatherings: hfTry_('gatherings', function() { return hfReadGatherings_(); }, missing),
     projects: hfTry_('projects', function() { return getProjects_(); }, missing),
+    purchases: hfTry_('purchases', function() { return ppComingUp_(today); }, missing),
   };
   return { ok: true, today: today, items: hfComingUp_(src, today), missing: missing };
 }

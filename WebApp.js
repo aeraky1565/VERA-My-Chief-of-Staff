@@ -401,6 +401,7 @@ function doGet(e) {
       case 'trip_ideas':            return jsonOut_(webGetTripIdeas_());
       case 'trip_idea_decide':      return jsonOut_(webTripIdeaDecide_(e.parameter));
       case 'my_trips':              return jsonOut_(webMyTrips_());
+      case 'planned_purchases':     return jsonOut_(webPlannedPurchases_());
       case 'my_trip_windows':       return jsonOut_(webMyTripWindows_(e.parameter));
       case 'aria_status':           return jsonOut_(webAriaStatus_(e.parameter));
       case 'trip_aria':             return jsonOut_(webTripAria_(e.parameter));
@@ -594,6 +595,13 @@ function doPost(e) {
       case 'trip_idea_delete':           return jsonOut_(webDeleteTripIdea_(body));
       case 'my_trip_pencil':             return jsonOut_(webMyTripPencil_(body));
       case 'my_trip_update':             return jsonOut_(webMyTripUpdate_(body));
+      case 'pp_save':                    return jsonOut_(webPpSave_(body));
+      case 'pp_note_add':                return jsonOut_(webPpNoteAdd_(body));
+      case 'pp_option_save':             return jsonOut_(webPpOptionSave_(body));
+      case 'pp_option_delete':           return jsonOut_(webPpOptionDelete_(body));
+      case 'pp_mark_bought':             return jsonOut_(webPpMarkBought_(body));
+      case 'pp_old_plan':                return jsonOut_(webPpOldPlan_(body));
+      case 'pp_delete':                  return jsonOut_(webPpDelete_(body));
       case 'trip_option_save':           return jsonOut_(webSaveTripIdeaOption_(body));
       case 'trip_option_delete':         return jsonOut_(webDeleteTripIdeaOption_(body));
       case 'trip_idea_ask':              return jsonOut_(webAskVeraTripIdea_(body));

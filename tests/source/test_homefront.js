@@ -231,8 +231,11 @@ S.getUpcomingGuests_ = () => []; S.readPTOConfig_ = () => ({});
 S.HOME_ITEM_HEADERS = ['Item', 'Category', 'Purchase Date', 'Warranty Expiry', 'Last Service', 'Next Service', 'Interval (mo)', 'Notes'];
 S.TABS.HOME_ITEMS = 'Home Items';
 S.getProjects_ = () => [{ projectName: 'Move', tasks: [pt('Book the movers', '2026-10-28')] }];
+// Planned Purchases' deliveries arrive already shaped (PlannedPurchases.js, ppComingUp_).
+S.ppComingUp_ = () => [{ kind: 'delivery', section: 'steward', label: 'Couch', detail: 'Delivery 2026-10-27', date: '2026-10-27', tone: 'soon' }];
 let cr = {}; try { cr = run('webHomeFrontComingUp_()'); } catch (e) { cr = { threw: e.message }; }
 check('the endpoint leaves out a source it can\'t read, and says which', cr.ok && (cr.missing || []).join() === 'meals' && Array.isArray(cr.items), JSON.stringify(cr).slice(0, 200));
+check('the endpoint reads planned-purchase deliveries too', (cr.items || []).some(x => x.kind === 'delivery' && x.label === 'Couch'), JSON.stringify(cr.items || []).slice(0, 300));
 check('the endpoint reads projects too', (cr.items || []).some(x => x.kind === 'project' && x.label === 'Book the movers'), JSON.stringify(cr.items || []).slice(0, 300));
 
 console.log('\nwiring');
