@@ -122,6 +122,7 @@ const TABS = {
   FP_LEAVE_BLOCKS:    'FP Leave Blocks',      // Each block of leave, by parent, in weeks from the birth
   FP_POLICY:          'FP Policy',            // Each parent's leave policy, read from Resources or typed in
   FP_ITEMS:           'FP Items',             // Childcare options, checklists, gear and paperwork, with their dates
+  GROCERY_RUNS:       'Grocery Runs',         // Each Done shopping run: store, who, card, total (Groceries in Finances)
   COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
   NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board
   NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log
@@ -331,6 +332,8 @@ const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category
 const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes'];
 // Experiments (Issue #130) — column order matches row[] offsets used in Experiments.js
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
+// Grocery Runs: Total is the sum of the receipt's lines (or typed); Items Total is every line, for a run that counted only the food.
+const GROCERY_RUN_HEADERS        = ['ID', 'Date', 'Store', 'Who', 'Card', 'Total', 'Source', 'Counted', 'Items Total', 'Created', 'Updated'];
 // Family Planning (Health). Shared by both of you; every write records who made it.
 const FP_SETTING_HEADERS         = ['Key', 'Value', 'Updated By', 'Updated At'];
 // Start Week counts from the birth (week 1 is the birth week). Pay % blank = the policy's rate for that kind.

@@ -403,6 +403,8 @@ function doGet(e) {
       case 'my_trips':              return jsonOut_(webMyTrips_());
       case 'planned_purchases':     return jsonOut_(webPlannedPurchases_());
       case 'fp_get':                return jsonOut_(webFpGet_(e.parameter));
+      case 'grocery_setup':         return jsonOut_(webGrocerySetup_(e.parameter));
+      case 'grocery_month':         return jsonOut_(webGroceryMonth_(e.parameter));
       case 'my_trip_windows':       return jsonOut_(webMyTripWindows_(e.parameter));
       case 'aria_status':           return jsonOut_(webAriaStatus_(e.parameter));
       case 'trip_aria':             return jsonOut_(webTripAria_(e.parameter));
@@ -611,6 +613,10 @@ function doPost(e) {
       case 'fp_item_save':               return jsonOut_(webFpItemSave_(body));
       case 'fp_item_delete':             return jsonOut_(webFpItemDelete_(body));
       case 'fp_gear_to_pp':              return jsonOut_(webFpGearToPp_(body));
+      case 'grocery_log':                return jsonOut_(webGroceryLog_(body));
+      case 'grocery_update':             return jsonOut_(webGroceryUpdate_(body));
+      case 'grocery_delete':             return jsonOut_(webGroceryDelete_(body));
+      case 'grocery_stores_save':        return jsonOut_(webGroceryStoresSave_(body));
       case 'trip_option_save':           return jsonOut_(webSaveTripIdeaOption_(body));
       case 'trip_option_delete':         return jsonOut_(webDeleteTripIdeaOption_(body));
       case 'trip_idea_ask':              return jsonOut_(webAskVeraTripIdea_(body));
