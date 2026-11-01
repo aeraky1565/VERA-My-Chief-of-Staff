@@ -313,8 +313,11 @@ function getTripBoundsByKey_(tripKey) {
  * Templated prose — no Claude call needed.
  * Dedup: POSTTRIP_NUDGE_{key} Script Property.
  */
-function sendPostTripNudgeEmail_(trip) {
-  if (tripLatchSeen_('POSTTRIP_NUDGE_', trip)) {
+function sendPostTripNudgeEmail_(trip, opts) {
+  // opts.test (Settings › Test): "TEST · " on the subject, and the send latch is
+  // neither read nor written, so the real one still goes out.
+  var isTest = !!(opts && opts.test);
+  if (!isTest && tripLatchSeen_('POSTTRIP_NUDGE_', trip)) {
     Logger.log('sendPostTripNudgeEmail_: already sent for ' + trip.tripKey);
     return;
   }
@@ -323,6 +326,7 @@ function sendPostTripNudgeEmail_(trip) {
   var BLUE          = '#1565c0';
 
   var subject = '🧳 ' + trip.tripLabel + ' — Capture the Memories';
+  if (isTest) subject = 'TEST \u00B7 ' + subject;
 
   var bodyHtml =
     '<p style="margin:0 0 14px;font-size:14px;color:#333;line-height:1.65;">' +
@@ -353,8 +357,9 @@ function sendPostTripNudgeEmail_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain,
     { name: 'VERA Travel', htmlBody: htmlBody }, 'posttrip_nudge');
-  tripLatchMark_('POSTTRIP_NUDGE_', trip);
+  if (!isTest) tripLatchMark_('POSTTRIP_NUDGE_', trip);
   Logger.log('sendPostTripNudgeEmail_: sent for ' + trip.tripKey);
+  return { to: [CONFIG.MORNING_NUDGE_EMAIL], subject: subject, count: 0 };
 }
 
 /**
@@ -363,8 +368,11 @@ function sendPostTripNudgeEmail_(trip) {
  * Uses Chat debrief data when available; falls back to itinerary-only mode.
  * Dedup: POSTTRIP_RECAP_{key} Script Property.
  */
-function sendPostTripRecapEmail_(trip) {
-  if (tripLatchSeen_('POSTTRIP_RECAP_', trip)) {
+function sendPostTripRecapEmail_(trip, opts) {
+  // opts.test (Settings › Test): "TEST · " on the subject, and the send latch is
+  // neither read nor written, so the real one still goes out.
+  var isTest = !!(opts && opts.test);
+  if (!isTest && tripLatchSeen_('POSTTRIP_RECAP_', trip)) {
     Logger.log('sendPostTripRecapEmail_: already sent for ' + trip.tripKey);
     return;
   }
@@ -453,6 +461,7 @@ function sendPostTripRecapEmail_(trip) {
   var narrative = String(claudeResult.narrative || '').trim();
 
   var subject = '📸 ' + trip.tripLabel + ' — Trip Recap';
+  if (isTest) subject = 'TEST \u00B7 ' + subject;
 
   // ── Section HTML builders ─────────────────────────────────────────────────
   var taglineNarrativeHtml = (function() {
@@ -555,6 +564,7 @@ function sendPostTripRecapEmail_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
     { name: 'VERA Travel', htmlBody: htmlBody }, 'posttrip_recap');
-  tripLatchMark_('POSTTRIP_RECAP_', trip);
+  if (!isTest) tripLatchMark_('POSTTRIP_RECAP_', trip);
   Logger.log('sendPostTripRecapEmail_: sent for ' + trip.tripKey + (hasDebrief ? ' (with debrief)' : ' (itinerary-only)'));
+  return { to: [CONFIG.MORNING_NUDGE_EMAIL], subject: subject, count: rows.length };
 }

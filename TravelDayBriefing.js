@@ -1415,6 +1415,67 @@ function webTestTravelSend_(e) {
   return { ok: true, to: sent.to, subject: sent.subject, count: sent.count };
 }
 
+/** The four trip emails the Test tab can send: which sender, and before or after. */
+var TRIP_TEST_KINDS_ = {
+  pretrip_48h:    { when: 'pre',  hours: 48, label: 'Pre-trip brief' },
+  pretrip_nb:     { when: 'pre',  hours: 12, label: 'Night-before checklist' },
+  posttrip_nudge: { when: 'post', label: 'Debrief nudge' },
+  posttrip_recap: { when: 'post', label: 'Trip recap' },
+};
+
+/**
+ * Pure: the trip object a pre- or post-trip sender expects, for a test of one
+ * trip. A pre-trip test is built as if departure were the kind's usual lead
+ * (48h, or the night before) unless the trip really is closer than that.
+ */
+function tripTestTrip_(kind, tripKey, startIso, endIso, rows, now) {
+  var k = TRIP_TEST_KINDS_[kind];
+  var label = String(tripKey).split('|').slice(1).join('|') || tripKey;
+  var dep = new Date(startIso + 'T00:00:00'), end = new Date((endIso || startIso) + 'T00:00:00');
+  var trip = { tripKey: tripKey, tripLabel: label, departureDate: dep, endDate: end < dep ? dep : end, rows: rows || [] };
+  if (k && k.when === 'pre') {
+    var real = (dep.getTime() - (now || new Date()).getTime()) / 3600000;
+    trip.hoursUntil = real > 0 && real < k.hours ? real : k.hours;
+  }
+  return trip;
+}
+
+/**
+ * GET ?action=test_trip_email_send&kind=pretrip_48h|pretrip_nb|posttrip_nudge|posttrip_recap&tripKey=…
+ * Sends that trip email now, marked TEST, to you (the real ones only go to you
+ * too). The send latch is neither read nor written, so the real one still goes out.
+ */
+function webTestTripEmailSend_(e) {
+  var p = (e && e.parameter) || {};
+  var kind = String(p.kind || '').trim(), tripKey = String(p.tripKey || '').trim();
+  var k = TRIP_TEST_KINDS_[kind];
+  if (!k) return { ok: false, error: 'Pick which email to send.' };
+  if (!tripKey) return { ok: false, error: 'Pick a trip first.' };
+  var rows = readTripRows_(tripKey) || [];
+  var trip;
+  if (k.when === 'pre') {
+    var r = travelTestRanges_()[tripKey];
+    if (!r) return { ok: false, error: 'That trip is no longer on the sheet or the calendar.' };
+    trip = tripTestTrip_(kind, tripKey, r.min, r.max, rows, new Date());
+  } else {
+    var b = getTripBoundsByKey_(tripKey);
+    if (b) trip = { tripKey: b.tripKey, tripLabel: b.tripLabel, departureDate: b.departureDate, endDate: b.endDate, rows: rows };
+    else {
+      var past = (webListPastTrips_().trips || []).filter(function(t) { return t.key === tripKey; })[0];
+      if (!past) return { ok: false, error: 'That trip is no longer on the sheet or the calendar.' };
+      trip = tripTestTrip_(kind, tripKey, past.startDate, past.endDate || past.startDate, rows);
+      trip.tripLabel = past.label || trip.tripLabel;
+    }
+  }
+  var _t0 = Date.now();
+  var send = { pretrip_48h: sendPreTripEmail_48h_, pretrip_nb: sendPreTripEmail_NightBefore_,
+               posttrip_nudge: sendPostTripNudgeEmail_, posttrip_recap: sendPostTripRecapEmail_ }[kind];
+  var sent = send(trip, { test: true });
+  if (!sent) return { ok: false, error: 'VERA didn’t build that email. Check the log.' };
+  veraLog_('webTestTripEmailSend', 'Travel', 'Success', 'Test ' + k.label + ' for ' + tripKey, Date.now() - _t0);
+  return { ok: true, to: sent.to, subject: sent.subject, count: sent.count };
+}
+
 // ---------------------------------------------------------------------------
 
 

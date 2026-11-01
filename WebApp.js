@@ -469,6 +469,7 @@ function doGet(e) {
       case 'test_travel_trips':  return jsonOut_(webTestTravelTrips_());
       case 'test_travel_trip':   return jsonOut_(webTestTravelTrip_(e));
       case 'test_travel_send':   return jsonOut_(webTestTravelSend_(e));
+      case 'test_trip_email_send': return jsonOut_(webTestTripEmailSend_(e));
       case 'set_config_value': return jsonOut_(webSetConfigValue_(e));
       // Regression testing
       case 'regression_test':  return handleRegressionTest_(e);

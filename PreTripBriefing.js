@@ -456,11 +456,14 @@ function buildPreTripEmailHtml_(eyebrow, tripLabel, subLabel, sections) {
  * flights, packing status, and destination weather.
  * Dedup: one send per trip via PRETRIP_48H_{key} Script Property.
  */
-function sendPreTripEmail_48h_(trip) {
+function sendPreTripEmail_48h_(trip, opts) {
+  // opts.test (Settings › Test): "TEST · " on the subject, and the send latch is
+  // neither read nor written, so the real one still goes out.
+  var isTest = !!(opts && opts.test);
   // Latched on the Trip ID, which survives a date change; tripLatchSeen_ also
   // honours the legacy key and any older key this trip answered to, so a trip
   // in flight across this change cannot be mailed twice.
-  if (tripLatchSeen_('PRETRIP_48H_', trip)) {
+  if (!isTest && tripLatchSeen_('PRETRIP_48H_', trip)) {
     Logger.log('sendPreTripEmail_48h_: already sent for ' + trip.tripKey);
     return;
   }
@@ -541,6 +544,7 @@ function sendPreTripEmail_48h_(trip) {
 
   var BLUE    = '#1565c0';
   var subject = '🗺️ Pre-Trip Brief — ' + trip.tripLabel + ' · Departing ' + depLabel;
+  if (isTest) subject = 'TEST \u00B7 ' + subject;
 
   // ── Section HTML builders ─────────────────────────────────────────────────
   var taglineOpenerHtml = (function() {
@@ -727,8 +731,9 @@ function sendPreTripEmail_48h_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
     { name: 'VERA Travel', htmlBody: htmlBody }, 'pretrip_48h');
-  tripLatchMark_('PRETRIP_48H_', trip);
+  if (!isTest) tripLatchMark_('PRETRIP_48H_', trip);
   Logger.log('sendPreTripEmail_48h_: sent for ' + trip.tripKey);
+  return { to: [CONFIG.MORNING_NUDGE_EMAIL], subject: subject, count: rows.length };
 }
 
 /**
@@ -737,8 +742,11 @@ function sendPreTripEmail_48h_(trip) {
  * Covers the departure sequence, open packing items, and an AI-written tip.
  * Dedup: one send per trip via PRETRIP_NB_{key} Script Property.
  */
-function sendPreTripEmail_NightBefore_(trip) {
-  if (tripLatchSeen_('PRETRIP_NB_', trip)) {
+function sendPreTripEmail_NightBefore_(trip, opts) {
+  // opts.test (Settings › Test): "TEST · " on the subject, and the send latch is
+  // neither read nor written, so the real one still goes out.
+  var isTest = !!(opts && opts.test);
+  if (!isTest && tripLatchSeen_('PRETRIP_NB_', trip)) {
     Logger.log('sendPreTripEmail_NightBefore_: already sent for ' + trip.tripKey);
     return;
   }
@@ -792,6 +800,7 @@ function sendPreTripEmail_NightBefore_(trip) {
 
   var BLUE    = '#1565c0';
   var subject = '📋 Tomorrow — ' + trip.tripLabel + ' · Last Things';
+  if (isTest) subject = 'TEST \u00B7 ' + subject;
 
   var noteHtml = (function() {
     var html = '';
@@ -935,7 +944,8 @@ function sendPreTripEmail_NightBefore_(trip) {
   sendVeraEmail_(
     CONFIG.MORNING_NUDGE_EMAIL, subject, plain.join('\n'),
     { name: 'VERA Travel', htmlBody: htmlBody }, 'pretrip_night_before');
-  tripLatchMark_('PRETRIP_NB_', trip);
+  if (!isTest) tripLatchMark_('PRETRIP_NB_', trip);
   Logger.log('sendPreTripEmail_NightBefore_: sent for ' + trip.tripKey);
+  return { to: [CONFIG.MORNING_NUDGE_EMAIL], subject: subject, count: day0Items.length };
 }
 
