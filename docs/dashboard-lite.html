@@ -10214,6 +10214,319 @@ function PpBoughtForm(props){var h=React.createElement,p=props.p;
       onClick:function(){var o=opts.filter(function(x){return x.id===f.optionId;})[0];props.onSave({optionId:f.optionId,store:o?o.store:'',price:f.price,orderedOn:f.orderedOn,card:f.card,deliveryFrom:f.deliveryFrom,deliveryTo:f.deliveryTo,
         returnDays:f.returnDays,warrantyYears:f.warrantyYears,warrantyNote:f.warrantyNote,receipt:f.receipt});}},props.busy?'Saving…':'Save as bought'));}
 // ---- end PlannedPurchasesPanel ----
+// ---- FamilyPlanningPanel (Health → Family Planning) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// One plan for leave, money, health, childcare and paperwork, shared by the two
+// of you: the full dashboard passes who="Ahmed", lite passes who="Victoria", and
+// every change records who made it. The server (FamilyPlanning.js) works out the
+// dates, lanes, pay and checks; this block draws them and sends the changes.
+var FP_C={card:'#0d1b3e',br:'#1e3060',deep:'#0a1220',line:'#1c2a48',txt:'#dde1f0',mute:'#8a9abf',soft:'#aab6d6',acc:'#8ab4f8',ok:'#8fe3c4',warn:'#f6d27a',bad:'#ffb4a9',info:'#a9c2ff'};
+var FP_KIND_COLOR={std:'#c4869b',parental:'#6f8fd8',pto:'#5fae97',unpaid:'#6b6f80',state:'#c9a84c'};
+var FP_KIND_LABEL={std:'Short-term disability',parental:'Parental leave',pto:'PTO',unpaid:'Unpaid (FMLA)',state:'State paid leave'};
+var FP_KIND_SHORT={std:'STD',parental:'Parental',pto:'PTO',unpaid:'Unpaid',state:'State'};
+var FP_PHASE_LIST=[['plan','Thinking about it'],['trying','Trying'],['pregnant','Pregnant'],['leave','On leave'],['back','Back at work']];
+var FP_PHASE_NOTE={plan:'Before trying: the decisions with the longest lead times: benefits enrollment, leave eligibility, savings, a preconception check-up.',
+  trying:'Keep the money and leave plan current; nothing here needs a date yet.',pregnant:'Everything now keys off the due date: appointments, leave notice, waitlists, nursery, the hospital bag.',
+  leave:'The first weeks: claims, paperwork deadlines and who is home when.',back:'Childcare, the new budget and the long-term paperwork.'};
+var FP_AREA_LIST=[['leave','Leave plan','Who is home when: short-term disability, parental leave, FMLA and PTO for both of you, and your pay each week.','Uses PTO Planner balances'],
+  ['money','Money','One-time costs, the monthly change, leave pay gaps and the baby fund.','Links to Savings goals and FSA & HSA'],
+  ['pregnancy','Health & pregnancy','Week-by-week milestones, prenatal appointments, the birth plan, the hospital bag, recovery.','Appointments · Prescriptions'],
+  ['childcare','Childcare','Daycare, nanny, nanny share or family: tours, waitlists with join-by dates, costs and start dates.','Join-by dates become reminders'],
+  ['gear','Home & gear','What you need, with a link to your registry.','Send any item to Planned Purchases when you’re ready'],
+  ['paperwork','Paperwork','Insurance enrollment window, birth certificate, SSN, beneficiaries, will and guardianship, tax changes.','Dated checklist with reminders'],
+  ['support','Support & visitors','Who comes to help and when, a meal train, postpartum support, pets and the house.','Visits go to People › Guests']];
+var FP_STATUS_STYLE={'Not yet':['#1f2533','#aab6d6'],'Started':['#1d2c55','#a9c2ff'],'Needs info':['#2a2410','#f6d27a'],'Ready':['#13302a','#8fe3c4']};
+var FP_INPUT={minHeight:44,boxSizing:'border-box',padding:'0 12px',borderRadius:10,background:'#0a1628',border:'1px solid '+FP_C.br,color:FP_C.txt,fontSize:15,width:'100%'};
+var FP_LABEL={fontSize:12,fontWeight:700,letterSpacing:'0.06em',textTransform:'uppercase',color:FP_C.soft};
+function fpDay(ymd){if(!ymd)return '';var p=ymd.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});}
+function fpMoneyFmt(n){return n==null||n===''?'—':'$'+Math.round(Number(n)).toLocaleString('en-US');}
+function fpBtn(kind){var b={minHeight:44,borderRadius:10,fontSize:13,cursor:'pointer',padding:'0 12px'};
+  if(kind==='primary')return Object.assign(b,{background:FP_C.acc,border:'0',color:'#080f1e',fontWeight:700,fontSize:14});
+  if(kind==='blue')return Object.assign(b,{background:'#0d2040',border:'1px solid #5c9eff',color:FP_C.acc,fontWeight:600});
+  if(kind==='plain')return Object.assign(b,{background:'transparent',border:'0',color:FP_C.acc});
+  if(kind==='danger')return Object.assign(b,{background:'transparent',border:'0',color:'#f08a8a'});
+  return Object.assign(b,{background:'transparent',border:'1px solid '+FP_C.br,color:FP_C.soft});}
+function fpChip(on){return {minHeight:40,padding:'0 12px',borderRadius:20,cursor:'pointer',fontSize:12,fontWeight:600,background:on?'#1a3060':FP_C.deep,color:on?FP_C.txt:FP_C.soft,border:on?'1px solid #4a6db0':'1px solid '+FP_C.line,whiteSpace:'nowrap'};}
+function fpSeg(on){return {flex:1,minHeight:44,borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:600,background:on?'#1a3060':FP_C.deep,color:on?FP_C.txt:FP_C.soft,border:on?'1px solid #4a6db0':'1px solid '+FP_C.line};}
+function fpField(id,label,input){return React.createElement('div',{style:{display:'flex',flexDirection:'column',gap:6,minWidth:0}},React.createElement('label',{htmlFor:id,style:{fontSize:12,color:FP_C.soft}},label),input);}
+function fpMarkGlyph(m){return m==='ok'?'✓':m==='bad'?'✕':m==='warn'?'!':'i';}
+function fpMarkColor(m){return m==='ok'?FP_C.ok:m==='bad'?FP_C.bad:m==='warn'?FP_C.warn:FP_C.info;}
+function fpOther(who){return who==='Victoria'?'Ahmed':'Victoria';}
+// Pure: blocks that fit both policies, for the chosen split. The birth parent takes
+// short-term disability then parental leave; the other parent takes all their
+// parental weeks at the birth ("together"), or the smallest block at the birth and
+// the rest when the birth parent goes back ("stagger").
+function fpSuggestBlocks(policy,settings,split){var bp=settings.birthParent||'Victoria',op=fpOther(bp),pb=(policy[bp]||{}),po=(policy[op]||{});
+  var v=function(p,k){var x=p[k];return x&&x.value!==''&&x.value!=null?Number(x.value):null;};
+  var out=[],w=1,std=v(pb,'stdWeeks'),par=v(pb,'parentalWeeks');
+  if(std){out.push({parent:bp,kind:'std',startWeek:w,weeks:std});w+=std;}
+  if(par){out.push({parent:bp,kind:'parental',startWeek:w,weeks:par});w+=par;}
+  var opar=v(po,'parentalWeeks'),min=v(po,'minBlockWeeks')||2;
+  if(opar){if(split==='together'||opar<=min||w===1)out.push({parent:op,kind:'parental',startWeek:1,weeks:opar});
+    else{out.push({parent:op,kind:'parental',startWeek:1,weeks:min});out.push({parent:op,kind:'parental',startWeek:w,weeks:opar-min});}}
+  return out;}
+
+function FamilyPlanningPanel(props){
+  var h=React.createElement,who=props.who==='Victoria'?'Victoria':'Ahmed';
+  var _d=React.useState({loading:true}),data=_d[0],setData=_d[1];
+  var _v=React.useState({mode:'overview'}),view=_v[0],setView=_v[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _c=React.useState(null),conflicts=_c[0],setConflicts=_c[1];
+  var load=function(){if(!props.apiUrl||!props.apiToken){setData({loading:false,error:'Connect VERA first.'});return;}
+    apiGet(props.apiUrl,props.apiToken,{action:'fp_get',by:who}).then(function(r){setData(Object.assign({loading:false},r));}).catch(function(e){setData({loading:false,error:e.message||'Could not load'});});};
+  React.useEffect(function(){load();},[props.apiUrl,props.apiToken]);
+  var post=function(body,then){setBusy(true);setErr('');return apiPost(props.apiUrl,props.apiToken,Object.assign({by:who},body)).then(function(r){setBusy(false);if(r&&r.ok===false){setErr(r.error||'Could not save');return r;}if(then)then(r);load();return r;})
+    .catch(function(e){setBusy(false);setErr(e.message||'Could not save');});};
+  var go=function(v){setErr('');setView(v);try{window.scrollTo(0,0);}catch(x){}};
+  if(data.loading)return h('div',{className:'loading-text fp-panel'},'Loading Family Planning…');
+  if(data.error)return h('div',{className:'fp-panel',style:{color:'#f08a8a',fontSize:13,padding:12}},data.error);
+  var s=data.settings||{};
+  var errBox=err?h('div',{className:'fp-err',style:{background:'#2a0d0d',border:'1px solid #7a2020',borderRadius:8,padding:'8px 12px',color:'#f8a1a1',fontSize:13}},err):null;
+  var wrap=function(k){return h('div',{className:'fp-panel',style:{display:'flex',flexDirection:'column',gap:16,maxWidth:760,color:FP_C.txt}},errBox,k);};
+  var back=function(to){return h('button',{key:'back',type:'button',style:Object.assign(fpBtn('plain'),{alignSelf:'flex-start',padding:0}),onClick:function(){go({mode:to||'overview'});}},to==='leave'?'‹ Leave plan':'‹ Family Planning');};
+  var saveItem=function(item,then){return post({action:'fp_item_save',item:item},then);};
+  if(view.mode==='setup')return wrap([back(),h(FpSetup,{key:'su',data:data,busy:busy,onSave:function(st){post({action:'fp_setup_save',settings:st},function(){go({mode:'overview'});});},onOwner:function(i,o){saveItem({id:i.id,owner:o});}})]);
+  if(view.mode==='block'){var blk=view.id?(data.blocks||[]).filter(function(b){return b.id===view.id;})[0]:null;
+    return wrap([back('leave'),h(FpBlockEdit,{key:'be',block:blk,who:who,data:data,busy:busy,onSave:function(b){post({action:'fp_block_save',block:b},function(){go({mode:'leave'});});},
+      onDelete:function(id){if(!window.confirm('Remove this block?'))return;post({action:'fp_block_delete',id:id},function(){go({mode:'leave'});});}})]);}
+  if(view.mode==='leave')return wrap([back(),h(FpLeave,{key:'lv',data:data,busy:busy,conflicts:conflicts,onBlock:function(id){go({mode:'block',id:id||''});},
+    onSplit:function(sp){post({action:'fp_setup_save',settings:{split:sp}});},
+    onSuggest:function(){var sug=fpSuggestBlocks(data.policy||{},s,s.split||'stagger');if(!sug.length){setErr('Enter the leave weeks in both policies first.');return;}
+      if((data.blocks||[]).length&&!window.confirm('Add '+sug.length+' blocks from the policies? The blocks you have stay; remove any you don’t want.'))return;
+      var chain=Promise.resolve();sug.forEach(function(b){chain=chain.then(function(){return apiPost(props.apiUrl,props.apiToken,{action:'fp_block_save',by:who,block:b});});});
+      setBusy(true);chain.then(function(){setBusy(false);load();}).catch(function(e){setBusy(false);setErr(e.message||'Could not save');});},
+    onPolicy:function(parent,values){post({action:'fp_policy_save',parent:parent,values:values});},
+    onReread:function(parent){post({action:'fp_policy_reread',parent:parent},function(r){setConflicts(r&&r.conflicts&&r.conflicts.length?{parent:parent,list:r.conflicts,doc:r.document}:null);});},
+    onResolve:function(parent,field,value){setConflicts(function(c){if(!c)return c;var l=c.list.filter(function(x){return x.field!==field;});return l.length?Object.assign({},c,{list:l}):null;});
+      if(value!==undefined)post({action:'fp_policy_save',parent:parent,values:(function(){var o={};o[field]=value;return o;})()});}})]);
+  if(view.mode==='care')return wrap([back(),h(FpCare,{key:'ca',data:data,area:view.area,busy:busy,onItem:saveItem,
+    onDelete:function(id){if(!window.confirm('Remove this?'))return;post({action:'fp_item_delete',id:id});},
+    onGear:function(id){post({action:'fp_gear_to_pp',id:id});}})]);
+
+  // ---- overview ----
+  var phase=s.phase||'plan',le=s.lastEdit;
+  var ago=function(iso){var d=Math.floor((Date.now()-Date.parse(iso))/864e5);return d<=0?'today':d===1?'yesterday':d+' days ago';};
+  return wrap([
+    h('div',{key:'hd',style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}},
+      h('span',{style:{fontSize:13,color:FP_C.mute,lineHeight:1.5}},'One plan for leave, money, health, childcare and paperwork. Pick where you are, and VERA shows what matters now and what to start early.'),
+      h('button',{type:'button',className:'fp-setup-btn',style:fpBtn(),onClick:function(){go({mode:'setup'});}},'Setup')),
+    h('div',{key:'ph',style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Where you are'),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},FP_PHASE_LIST.map(function(p){return h('button',{key:p[0],type:'button',className:'fp-phase','aria-pressed':phase===p[0],disabled:busy,style:fpChip(phase===p[0]),
+        onClick:function(){if(phase!==p[0])post({action:'fp_setup_save',settings:{phase:p[0]}});}},p[1]);})),
+      h('span',{style:{fontSize:13,color:'#c9cfe3',lineHeight:1.5}},FP_PHASE_NOTE[phase]),
+      data.weekToday?h('span',{className:'fp-week',style:{fontSize:13,color:FP_C.acc}},'Week '+data.weekToday+' today · due '+fpDay(s.dueDate)):s.whatIf?h('span',{style:{fontSize:13,color:FP_C.mute}},'Planning around a “what if” date of '+fpDay(s.whatIf)+'.'):null),
+    h('div',{key:'nx',className:'fp-next',style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Next 3 things'),
+      (data.next||[]).length?(data.next||[]).map(function(n,i){return h('div',{key:i,style:{display:'flex',gap:12,background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:'12px 14px'}},
+        h('span',{style:{flexShrink:0,minWidth:72,fontSize:12,fontWeight:700,color:FP_C.acc}},/^\d{4}-/.test(n.when)?fpDay(n.when):n.when),h('span',{style:{fontSize:13,lineHeight:1.45}},n.what));}):
+        h('span',{style:{fontSize:13,color:FP_C.mute}},'Nothing dated is coming up.')),
+    h('div',{key:'ar',style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'The plan, by area'),
+      FP_AREA_LIST.map(function(a){var st=(data.areas||{})[a[0]]||'Not yet',c=FP_STATUS_STYLE[st]||FP_STATUS_STYLE['Not yet'];
+        return h('button',{key:a[0],type:'button',className:'fp-area','data-area':a[0],onClick:function(){go(a[0]==='leave'?{mode:'leave'}:{mode:'care',area:a[0]});},
+          style:{display:'flex',flexDirection:'column',gap:6,textAlign:'left',background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:'12px 14px',color:FP_C.txt,cursor:'pointer',width:'100%'}},
+          h('span',{style:{display:'flex',justifyContent:'space-between',gap:10,width:'100%'}},h('span',{style:{fontSize:15,fontWeight:700}},a[1]),
+            h('span',{className:'fp-status',style:{flexShrink:0,fontSize:11,fontWeight:700,padding:'3px 9px',borderRadius:10,background:c[0],color:c[1]}},st)),
+          h('span',{style:{fontSize:13,color:'#c9cfe3',lineHeight:1.45}},a[2]),h('span',{style:{fontSize:11,color:FP_C.mute}},a[3]));})),
+    h('div',{key:'sh',style:{display:'flex',flexDirection:'column',gap:6,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12,fontSize:12,color:FP_C.mute,lineHeight:1.55}},
+      h('span',{style:{fontWeight:700,color:FP_C.soft}},'Shared by the two of you'),
+      h('span',null,'You and '+fpOther(who)+' can both see and edit everything here; each change shows who made it. Reminders go to both of you unless an item names one of you. Nothing here goes to ARIA or trip emails.'),
+      le&&le.who?h('span',{className:'fp-lastedit',style:{color:FP_C.soft}},'Last edit: '+le.who+' · '+le.what+' · '+ago(le.at)):null),
+  ]);
+}
+
+function FpSetup(props){var h=React.createElement,d=props.data,s=d.settings||{};
+  var _f=React.useState(function(){var o={};['dueDate','whatIf','birthParent','state','statePflWeeks','statePflPay','oopMax','fundGoalId','registry',
+    'employer_Ahmed','employer_Victoria','policyDoc_Ahmed','policyDoc_Victoria','employStart_Ahmed','employStart_Victoria','hours_Ahmed','hours_Victoria'].forEach(function(k){o[k]=s[k]==null?'':String(s[k]);});
+    o.dated=!!s.dueDate;return o;}),f=_f[0],setF=_f[1];
+  var set=function(k,v){setF(function(x){var n=Object.assign({},x);n[k]=v;return n;});};
+  var inp=function(k,id,extra){return h('input',Object.assign({id:id,className:'fp-in-'+k,value:f[k],onChange:function(e){set(k,e.target.value);},style:FP_INPUT},extra||{}));};
+  var dated=(d.items||[]).filter(function(i){return i.anchor&&i.status!=='done';});
+  return h('div',{className:'fp-setup',style:{display:'flex',flexDirection:'column',gap:16}},
+    h('span',{style:{fontSize:20,fontWeight:700}},'Setup'),h('span',{style:{fontSize:13,color:FP_C.mute}},'The few facts everything else hangs off. Either of you can change them.'),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Due date'),
+      h('div',{style:{display:'flex',gap:6}},h('button',{type:'button',className:'fp-notyet','aria-pressed':!f.dated,style:fpSeg(!f.dated),onClick:function(){set('dated',false);}},'Not yet'),
+        h('button',{type:'button',className:'fp-hasdate','aria-pressed':f.dated,style:fpSeg(f.dated),onClick:function(){set('dated',true);}},'We have a date')),
+      f.dated?fpField('fp-due','Due date',inp('dueDate','fp-due',{type:'date'})):fpField('fp-whatif','A “what if” date to plan around (optional)',inp('whatIf','fp-whatif',{type:'date'})),
+      h('span',{style:{fontSize:12,color:FP_C.mute}},f.dated?'Every deadline is counted from this date, and moves if it moves.':'Leave and childcare use the “what if” date until there is a due date.'),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:FP_C.soft}},'Birth parent'),
+        h('div',{style:{display:'flex',gap:6}},['Ahmed','Victoria'].map(function(p){return h('button',{key:p,type:'button','aria-pressed':f.birthParent===p,style:fpSeg(f.birthParent===p),onClick:function(){set('birthParent',p);}},p);})))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:10}},h('span',{style:FP_LABEL},'Who works where'),
+      ['Ahmed','Victoria'].map(function(p){return h('div',{key:p,style:{display:'flex',flexDirection:'column',gap:8,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12}},
+        h('span',{style:{fontWeight:700}},p),
+        fpField('fp-emp-'+p,'Employer',inp('employer_'+p,'fp-emp-'+p)),
+        fpField('fp-doc-'+p,'Leave policy in Resources (its name or ID)',inp('policyDoc_'+p,'fp-doc-'+p,{placeholder:'e.g. Parental Leave Policy'})),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+          fpField('fp-start-'+p,'Started there',inp('employStart_'+p,'fp-start-'+p,{type:'date'})),
+          fpField('fp-hours-'+p,'1,250+ hours a year?',h('select',{id:'fp-hours-'+p,value:f['hours_'+p],onChange:function(e){set('hours_'+p,e.target.value);},style:FP_INPUT},
+            h('option',{value:''},'Not sure'),h('option',{value:'yes'},'Yes'),h('option',{value:'no'},'No')))));}),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:10}},
+        fpField('fp-state','State',inp('state','fp-state')),fpField('fp-pflw','State paid leave (weeks)',inp('statePflWeeks','fp-pflw',{inputMode:'numeric'})),fpField('fp-pflp','…pay (%)',inp('statePflPay','fp-pflp',{inputMode:'numeric'})))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:10}},h('span',{style:FP_LABEL},'Money'),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        fpField('fp-oop','Out-of-pocket max for the birth',inp('oopMax','fp-oop',{inputMode:'decimal',placeholder:'$'})),
+        fpField('fp-fund','Baby fund',h('select',{id:'fp-fund',className:'fp-in-fund',value:f.fundGoalId,onChange:function(e){set('fundGoalId',e.target.value);},style:FP_INPUT},
+          h('option',{value:''},'No savings goal'),(d.goals||[]).map(function(g){return h('option',{key:g.id,value:g.id},g.name);})))),
+      fpField('fp-reg','Registry link (optional)',inp('registry','fp-reg',{placeholder:'https://'}))),
+    h('button',{type:'button',className:'fp-setup-save',disabled:props.busy,style:Object.assign(fpBtn('primary'),{minHeight:48}),onClick:function(){var o=Object.assign({},f);
+      if(o.dated)o.whatIf='';else o.dueDate='';delete o.dated;props.onSave(o);}},props.busy?'Saving…':'Save setup'),
+    h('div',{className:'fp-reminders',style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Reminders'),
+      h('span',{style:{fontSize:12,color:FP_C.mute}},'As a flag, two weeks ahead. Each goes to both of you unless you pick one of you here.'),
+      dated.map(function(i){return h('div',{key:i.id,className:'fp-remind',style:{display:'flex',flexDirection:'column',gap:6,borderBottom:'1px solid #13203a',padding:'8px 0'}},
+        h('span',{style:{fontSize:13}},i.title,h('span',{style:{color:FP_C.mute}},' · '+(i.when||'')+(i.date?' ('+fpDay(i.date)+')':''))),
+        h('div',{style:{display:'flex',gap:6}},['Both','Ahmed','Victoria'].map(function(o){return h('button',{key:o,type:'button',className:'fp-owner','aria-pressed':i.owner===o,disabled:props.busy,
+          style:Object.assign(fpChip(i.owner===o),{minHeight:36}),onClick:function(){if(i.owner!==o)props.onOwner(i,o);}},o);})));})));}
+
+function FpLeave(props){var h=React.createElement,d=props.data,s=d.settings||{},lanes=d.lanes||[];
+  var maxW=Math.max(26,(d.homeUntil||0)+4,Math.max.apply(null,[0].concat(lanes.map(function(l){return (l.back||0)+2;}))));
+  var pct=function(w){return (w/maxW*100).toFixed(2)+'%';};
+  var ticks=[];for(var t=8;t<maxW;t+=8)ticks.push(t);
+  var split=s.split||'stagger';
+  var payCell=function(v){return v==null?'?':v+'%';};
+  return h('div',{className:'fp-leave',style:{display:'flex',flexDirection:'column',gap:16}},
+    h('span',{style:{fontSize:20,fontWeight:700}},'Leave plan'),
+    h('span',{style:{fontSize:13,color:FP_C.mute,lineHeight:1.5}},(d.birth?(s.dueDate?'Due date ':'“What if” date ')+fpDay(d.birth)+'. ':'Add a due date or a “what if” date in Setup to see real dates. ')+'Every kind of leave for both of you on one line, with pay for each week.'),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'How you split it'),
+      h('div',{style:{display:'flex',gap:6}},[['stagger','Staggered'],['together','Together']].map(function(x){return h('button',{key:x[0],type:'button',className:'fp-split','aria-pressed':split===x[0],disabled:props.busy,style:fpSeg(split===x[0]),onClick:function(){if(split!==x[0])props.onSplit(x[0]);}},x[1]);})),
+      h('span',{style:{fontSize:12,color:FP_C.mute,lineHeight:1.5}},split==='stagger'?'One of you takes the smallest block at the birth and the rest when the other goes back, so a parent is home longer and childcare starts later.':'Both of you are home together at the start; childcare starts sooner.'),
+      h('button',{type:'button',className:'fp-suggest',disabled:props.busy,style:Object.assign(fpBtn(),{color:FP_C.acc,fontWeight:600}),onClick:props.onSuggest},'Fill in blocks from the policies')),
+    h('div',{className:'fp-timeline',style:{display:'flex',flexDirection:'column',gap:10,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12,overflowX:'auto'}},
+      h('div',{style:{position:'relative',height:14,fontSize:10,color:FP_C.mute,minWidth:300}},h('span',{style:{position:'absolute',left:0}},'Birth'),
+        ticks.map(function(t){return h('span',{key:t,style:{position:'absolute',left:pct(t-1)}},'wk '+t);})),
+      lanes.map(function(l){return h('div',{key:l.parent,className:'fp-lane','data-parent':l.parent,style:{display:'flex',flexDirection:'column',gap:4,minWidth:300}},
+        h('span',{style:{fontSize:12,fontWeight:600}},l.parent),
+        h('div',{style:{position:'relative',height:26,background:'#111c33',borderRadius:6}},l.blocks.map(function(b){
+          return h('button',{key:b.id,type:'button',className:'fp-seg','data-kind':b.kind,title:FP_KIND_LABEL[b.kind]+': weeks '+b.startWeek+'–'+b.end,'aria-label':l.parent+': '+FP_KIND_LABEL[b.kind]+', weeks '+b.startWeek+' to '+b.end,
+            onClick:function(){props.onBlock(b.id);},style:{position:'absolute',left:pct(b.startWeek-1),width:pct(b.weeks),top:0,bottom:0,background:FP_KIND_COLOR[b.kind],border:'1px solid #0b1430',borderRadius:4,cursor:'pointer',
+              fontSize:10,fontWeight:700,color:'#0b1430',padding:0,overflow:'hidden',whiteSpace:'nowrap'}},b.weeks>=3?FP_KIND_SHORT[b.kind]:'');})),
+        h('span',{style:{fontSize:12,color:FP_C.mute}},l.summary));}),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:4,minWidth:300}},h('span',{style:{fontSize:12,fontWeight:600}},'Baby’s care'),
+        h('div',{style:{display:'flex',height:22,borderRadius:6,overflow:'hidden',background:'#111c33'}},
+          d.homeUntil?h('div',{style:{width:pct(d.homeUntil),background:'#a9c2ff',color:'#0b1430',fontSize:10,fontWeight:700,display:'flex',alignItems:'center',paddingLeft:6}},'A parent at home'):null,
+          h('div',{style:{flex:1,background:'#f6d27a',color:'#0b1430',fontSize:10,fontWeight:700,display:'flex',alignItems:'center',paddingLeft:6}},'Childcare')),
+        h('span',{className:'fp-carenote',style:{fontSize:12,color:FP_C.mute}},d.careFrom?'Childcare needed from week '+d.careFrom+(d.careFromDate?' · about '+fpDay(d.careFromDate):'')+'.':'Childcare is needed from the birth until leave is planned.')),
+      h('div',{style:{display:'flex',gap:10,flexWrap:'wrap',fontSize:11,color:FP_C.soft}},Object.keys(FP_KIND_LABEL).map(function(k){return h('span',{key:k,style:{display:'flex',alignItems:'center',gap:5}},
+        h('span',{style:{width:12,height:10,borderRadius:2,background:FP_KIND_COLOR[k],display:'inline-block'}}),FP_KIND_LABEL[k]);}))),
+    h('button',{type:'button',className:'fp-add-block',style:Object.assign(fpBtn(),{color:FP_C.acc,fontWeight:600}),onClick:function(){props.onBlock('');}},'＋ Add a block'),
+    (d.payTable||[]).length?h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Pay while on leave'),
+      h('div',{style:{overflowX:'auto',border:'1px solid '+FP_C.line,borderRadius:12}},h('table',{className:'fp-pay',style:{borderCollapse:'collapse',width:'100%',fontSize:13}},
+        h('thead',null,h('tr',null,['Weeks','Ahmed','Victoria'].map(function(x){return h('th',{key:x,scope:'col',style:{padding:'8px 10px',textAlign:x==='Weeks'?'left':'right',color:FP_C.soft,fontSize:12}},x);}))),
+        h('tbody',null,(d.payTable||[]).map(function(r){return h('tr',{key:r.from,style:{borderTop:'1px solid #13203a'}},h('td',{style:{padding:'8px 10px'}},r.from===r.to?String(r.from):r.from+'–'+r.to),
+          ['Ahmed','Victoria'].map(function(p){var v=r.pay[p];return h('td',{key:p,style:{padding:'8px 10px',textAlign:'right',fontWeight:600,color:v==null?FP_C.warn:v<100?FP_C.bad:FP_C.txt}},payCell(v));}));})))),
+      h('span',{style:{fontSize:12,color:FP_C.mute}},'Weeks not shown for one of you are at work, at 100%. A “?” is a rate the policy doesn’t give yet.')):null,
+    h('div',{className:'fp-checks',style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:FP_LABEL},'Checks'),
+      ['Ahmed','Victoria'].map(function(p){return ((d.checks||{})[p]||[]).map(function(c,i){return h('div',{key:p+i,className:'fp-check','data-mark':c.mark,style:{display:'flex',gap:8,fontSize:13,lineHeight:1.45}},
+        h('span',{style:{flexShrink:0,width:14,fontWeight:700,color:fpMarkColor(c.mark)}},fpMarkGlyph(c.mark)),h('span',null,c.text));});})),
+    props.conflicts?h('div',{className:'fp-conflicts',style:{display:'flex',flexDirection:'column',gap:8,background:'rgba(246,210,122,0.08)',border:'1px solid rgba(246,210,122,0.35)',borderRadius:12,padding:12}},
+      h('span',{style:{fontSize:13,fontWeight:700,color:FP_C.warn}},'“'+(props.conflicts.doc||'The document')+'” says something different from what you typed'),
+      props.conflicts.list.map(function(c){var f=(d.policyFields||[]).filter(function(x){return x[0]===c.field;})[0];return h('div',{key:c.field,style:{display:'flex',flexDirection:'column',gap:6}},
+        h('span',{style:{fontSize:13}},(f?f[1]:c.field)+': you typed '+c.typed+', the document says '+c.read+'.'),
+        h('div',{style:{display:'flex',gap:6}},h('button',{type:'button',className:'fp-keep',style:fpBtn(),onClick:function(){props.onResolve(props.conflicts.parent,c.field);}},'Keep '+c.typed),
+          h('button',{type:'button',className:'fp-use-read',style:fpBtn('blue'),onClick:function(){props.onResolve(props.conflicts.parent,c.field,c.read);}},'Use '+c.read)));})):null,
+    h('div',{style:{display:'flex',flexDirection:'column',gap:10}},h('span',{style:FP_LABEL},'Your policies · editable'),
+      ['Ahmed','Victoria'].map(function(p){return h(FpPolicyCard,{key:p,parent:p,data:d,busy:props.busy,onSave:props.onPolicy,onReread:props.onReread});}),
+      h('span',{style:{fontSize:12,color:FP_C.mute,lineHeight:1.5}},'Your edits win over what VERA read. If the document changes later, VERA shows what’s different and lets you choose.')));}
+
+function FpPolicyCard(props){var h=React.createElement,d=props.data,s=d.settings||{},p=props.parent,pol=(d.policy||{})[p]||{};
+  var _f=React.useState(function(){var o={};(d.policyFields||[]).forEach(function(f){o[f[0]]=pol[f[0]]?String(pol[f[0]].value):'';});return o;}),f=_f[0],setF=_f[1];
+  React.useEffect(function(){var o={};(d.policyFields||[]).forEach(function(x){o[x[0]]=pol[x[0]]?String(pol[x[0]].value):'';});setF(o);},[JSON.stringify(pol)]);
+  var read=Object.keys(pol).filter(function(k){return pol[k].source==='doc';}).map(function(k){return pol[k].readAt;}).sort().pop();
+  var changed=Object.keys(f).filter(function(k){return f[k]!==(pol[k]?String(pol[k].value):'');});
+  return h('div',{className:'fp-policy','data-parent':p,style:{display:'flex',flexDirection:'column',gap:10,background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:14}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:{fontWeight:700}},p+(s['employer_'+p]?' · '+s['employer_'+p]:'')),
+      s['policyDoc_'+p]?h('button',{type:'button',className:'fp-reread',disabled:props.busy,style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onReread(p);}},'Re-read from Resources'):null),
+    h('span',{style:{fontSize:12,color:FP_C.mute}},s['policyDoc_'+p]?(read?'Read from Resources › “'+s['policyDoc_'+p]+'” · '+fpDay(read.slice(0,10)):'Resources › “'+s['policyDoc_'+p]+'” not read yet.'):'No policy document chosen in Setup. Type it in here, or choose one in Setup and VERA will read it.'),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},(d.policyFields||[]).map(function(x){var id='fp-pol-'+p+'-'+x[0];
+      var input=x[2]==='yesno'?h('select',{id:id,className:'fp-pol-in','data-field':x[0],value:f[x[0]],onChange:function(e){var v=e.target.value;setF(function(o){var n=Object.assign({},o);n[x[0]]=v;return n;});},style:FP_INPUT},
+          h('option',{value:''},'Not stated'),h('option',{value:'yes'},'Yes'),h('option',{value:'no'},'No'))
+        :h('input',{id:id,className:'fp-pol-in','data-field':x[0],inputMode:x[2]==='number'?'decimal':undefined,value:f[x[0]],onChange:function(e){var v=e.target.value;setF(function(o){var n=Object.assign({},o);n[x[0]]=v;return n;});},style:FP_INPUT});
+      return h('div',{key:x[0],style:{gridColumn:x[0]==='notes'||x[0]==='claimsAdmin'?'1 / -1':'auto'}},fpField(id,x[1]+(pol[x[0]]&&pol[x[0]].source==='typed'?' · typed':pol[x[0]]?' · from the document':''),input));})),
+    changed.length?h('button',{type:'button',className:'fp-pol-save',disabled:props.busy,style:fpBtn('blue'),onClick:function(){var o={};changed.forEach(function(k){o[k]=f[k];});props.onSave(p,o);}},'Save '+changed.length+' change'+(changed.length===1?'':'s')):null);}
+
+function FpBlockEdit(props){var h=React.createElement,b=props.block,d=props.data;
+  var _f=React.useState(function(){return {parent:b?b.parent:props.who,kind:b?b.kind:'parental',startWeek:b?b.startWeek:1,weeks:b?b.weeks:2,payPct:b&&b.payPct!=null?String(b.payPct):''};}),f=_f[0],setF=_f[1];
+  var set=function(k,v){setF(function(x){var n=Object.assign({},x);n[k]=v;return n;});};
+  var pol=((d.policy||{})[f.parent])||{},allowed=pol.parentalWeeks?Number(pol.parentalWeeks.value):null;
+  var others=(d.blocks||[]).filter(function(x){return x.parent===f.parent&&(!b||x.id!==b.id);});
+  var usedPar=others.filter(function(x){return x.kind==='parental';}).reduce(function(n,x){return n+x.weeks;},0)+(f.kind==='parental'?f.weeks:0);
+  var end=Number(f.startWeek)+f.weeks-1,ptoDays=others.filter(function(x){return x.kind==='pto';}).reduce(function(n,x){return n+x.weeks*5;},0)+(f.kind==='pto'?f.weeks*5:0);
+  var date=function(w){return d.birth?(function(){var p=d.birth.split('-').map(Number);var x=new Date(p[0],p[1]-1,p[2]+(w-1)*7);return x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});})():'';};
+  return h('div',{className:'fp-block-edit',style:{display:'flex',flexDirection:'column',gap:16}},
+    h('span',{style:{fontSize:20,fontWeight:700}},b?'Edit a leave block':'Add a leave block'),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:FP_C.soft}},'Whose'),
+      h('div',{style:{display:'flex',gap:6}},['Ahmed','Victoria'].map(function(p){return h('button',{key:p,type:'button','aria-pressed':f.parent===p,className:'fp-be-parent',style:fpSeg(f.parent===p),onClick:function(){set('parent',p);}},p);}))),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:FP_C.soft}},'Kind'),
+      h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},Object.keys(FP_KIND_LABEL).map(function(k){return h('button',{key:k,type:'button','aria-pressed':f.kind===k,className:'fp-be-kind','data-kind':k,style:fpChip(f.kind===k),onClick:function(){set('kind',k);}},FP_KIND_LABEL[k]);}))),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+      fpField('fp-be-start','Starts in week (1 is the birth week)',h('input',{id:'fp-be-start',className:'fp-be-start',inputMode:'numeric',value:f.startWeek,onChange:function(e){set('startWeek',e.target.value.replace(/[^0-9]/g,''));},style:FP_INPUT})),
+      fpField('fp-be-pay','Pay % (blank: the policy’s)',h('input',{id:'fp-be-pay',inputMode:'numeric',value:f.payPct,onChange:function(e){set('payPct',e.target.value);},style:FP_INPUT}))),
+    d.birth&&f.startWeek?h('span',{style:{fontSize:12,color:FP_C.mute,marginTop:-8}},'Week '+f.startWeek+' starts '+date(Number(f.startWeek))+'.'):null,
+    h('div',{style:{display:'flex',flexDirection:'column',gap:8}},h('span',{style:{fontSize:12,color:FP_C.soft}},'Weeks'),
+      h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('button',{type:'button',className:'fp-be-less','aria-label':'Fewer weeks',style:Object.assign(fpBtn(),{width:44,padding:0,fontSize:20,color:FP_C.txt}),onClick:function(){set('weeks',Math.max(1,f.weeks-1));}},'−'),
+        h('span',{className:'fp-be-weeks',style:{flex:1,textAlign:'center',fontSize:16,fontWeight:600}},f.weeks+' week'+(f.weeks===1?'':'s')),
+        h('button',{type:'button',className:'fp-be-more','aria-label':'More weeks',style:Object.assign(fpBtn(),{width:44,padding:0,fontSize:20,color:FP_C.txt}),onClick:function(){set('weeks',Math.min(52,f.weeks+1));}},'+'))),
+    h('div',{className:'fp-be-result',style:{display:'grid',gridTemplateColumns:'auto 1fr',gap:'6px 14px',fontSize:13,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12}},
+      h('span',{style:{color:FP_C.mute}},'Back at work'),h('span',null,'Week '+(end+1)+(d.birth?' · '+date(end+1):'')),
+      allowed!=null?h('span',{style:{color:FP_C.mute}},'Parental weeks used'):null,allowed!=null?h('span',{style:{color:usedPar>allowed?FP_C.bad:FP_C.txt}},usedPar+' of '+allowed):null,
+      ptoDays?h('span',{style:{color:FP_C.mute}},'PTO days in the plan'):null,ptoDays?h('span',null,String(ptoDays)):null),
+    h('span',{style:{fontSize:12,color:FP_C.mute,lineHeight:1.5}},'The checks on the leave plan update when you save. Nothing is booked with HR or the claims administrator; VERA reminds you to do that.'),
+    h('button',{type:'button',className:'fp-be-save',disabled:props.busy||!f.startWeek,style:Object.assign(fpBtn('primary'),{minHeight:48}),
+      onClick:function(){props.onSave({id:b?b.id:'',parent:f.parent,kind:f.kind,startWeek:Number(f.startWeek),weeks:f.weeks,payPct:f.payPct});}},'Save'),
+    b?h('button',{type:'button',className:'fp-be-delete',style:fpBtn('danger'),onClick:function(){props.onDelete(b.id);}},'Remove block'):null);}
+
+function FpCare(props){var h=React.createElement,d=props.data,s=d.settings||{},items=d.items||[],m=d.money||{};
+  var _a=React.useState(null),adding=_a[0],setAdding=_a[1];
+  var areas=['childcare','pregnancy','money','gear','paperwork','support'];
+  var titles={childcare:'Childcare',pregnancy:'Pregnancy',money:'Money',gear:'Home & gear',paperwork:'Paperwork',support:'Support & visitors'};
+  var cycle=function(i){props.onItem({id:i.id,status:i.status==='todo'?'started':i.status==='started'?'done':'todo'});};
+  var statusWord={todo:'To do',started:'Started',done:'Done'};
+  React.useEffect(function(){if(!props.area)return;var n=document.getElementById('fp-area-'+props.area);if(n&&n.scrollIntoView)try{n.scrollIntoView();}catch(x){}},[props.area]);
+  var row=function(i){return h('div',{key:i.id,className:'fp-item','data-area':i.area,style:{display:'flex',flexDirection:'column',gap:6,borderBottom:'1px solid #13203a',padding:'10px 0'}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',gap:10,alignItems:'flex-start'}},
+      h('span',{style:{fontSize:14,lineHeight:1.4,textDecoration:i.status==='done'?'line-through':'none',color:i.status==='done'?FP_C.mute:FP_C.txt}},i.title),
+      h('button',{type:'button',className:'fp-item-status','data-status':i.status,disabled:props.busy,onClick:function(){cycle(i);},style:Object.assign(fpChip(i.status!=='todo'),{minHeight:36,flexShrink:0})},statusWord[i.status])),
+    h('span',{style:{fontSize:12,color:FP_C.mute}},[i.when?i.when+(i.date?' · '+fpDay(i.date):''):'',i.cost!=null?fpMoneyFmt(i.cost)+(i.area==='childcare'?' a month':''):'',i.owner!=='Both'?'for '+i.owner:''].filter(Boolean).join(' · ')),
+    h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+      i.area==='gear'?(i.ppId?h('span',{className:'fp-in-pp',style:{fontSize:12,color:FP_C.ok}},'In Planned Purchases'):h('button',{type:'button',className:'fp-to-pp',disabled:props.busy,style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onGear(i.id);}},'Plan this purchase ›')):null,
+      i.link?h('a',{href:i.link,target:'_blank',rel:'noopener noreferrer',style:{fontSize:12,color:FP_C.acc,alignSelf:'center'}},'Link ↗'):null,
+      h('button',{type:'button',className:'fp-item-edit',style:Object.assign(fpBtn('plain'),{minHeight:36,padding:'0 4px'}),onClick:function(){setAdding({area:i.area,item:i});}},'Edit'),
+      h('button',{type:'button',className:'fp-item-delete',style:Object.assign(fpBtn('danger'),{minHeight:36,padding:'0 4px'}),onClick:function(){props.onDelete(i.id);}},'Remove')));};
+  return h('div',{className:'fp-care',style:{display:'flex',flexDirection:'column',gap:22}},
+    areas.map(function(a){var mine=items.filter(function(i){return i.area===a;}).sort(function(x,y){return (x.date||'9')<(y.date||'9')?-1:(x.date||'9')>(y.date||'9')?1:0;});
+      return h('section',{key:a,id:'fp-area-'+a,className:'fp-section','data-area':a,style:{display:'flex',flexDirection:'column',gap:6}},
+        h('span',{style:{fontSize:17,fontWeight:700}},titles[a]),
+        a==='childcare'&&d.careFrom?h('span',{style:{fontSize:13,color:FP_C.mute}},'Needed from week '+d.careFrom+(d.careFromDate?' · about '+fpDay(d.careFromDate):'')+', from the leave plan.'):null,
+        a==='money'?h('div',{className:'fp-money',style:{display:'grid',gridTemplateColumns:'1fr auto',gap:'6px 14px',fontSize:13,background:FP_C.card,border:'1px solid '+FP_C.br,borderRadius:12,padding:12}},
+          h('span',{style:{color:FP_C.mute}},'Birth, after insurance'),h('span',null,m.oopMax!=null?'up to '+fpMoneyFmt(m.oopMax):'set the out-of-pocket max in Setup'),
+          h('span',{style:{color:FP_C.mute}},'Gear and nursery'),h('span',null,fpMoneyFmt(m.gear)),
+          h('span',{style:{color:FP_C.mute}},'Weeks below full pay'),h('span',null,String(m.belowFullPayWeeks||0)),
+          h('span',{style:{color:FP_C.mute}},'Childcare, monthly'),h('span',null,m.childcareMonthly!=null?'from '+fpMoneyFmt(m.childcareMonthly):'—'),
+          h('span',{style:{color:FP_C.mute}},'Baby fund so far'),h('span',null,m.fund?fpMoneyFmt(m.fund.saved)+' of '+fpMoneyFmt(m.fund.target):'choose a savings goal in Setup')):null,
+        a==='money'?h('span',{style:{fontSize:12,color:FP_C.mute,lineHeight:1.5}},'Dependent Care FSA: elect it at open enrollment, or within the plan’s window after the birth, to pay daycare pre-tax. It shows in Finances › FSA & HSA.'):null,
+        a==='gear'&&s.registry?h('a',{href:s.registry,target:'_blank',rel:'noopener noreferrer',className:'fp-registry',style:{fontSize:13,color:FP_C.acc}},'Open the registry ↗'):null,
+        a==='gear'?h('span',{style:{fontSize:12,color:FP_C.mute}},'The registry stays with its provider; VERA keeps only the link.'):null,
+        mine.map(row),
+        adding&&adding.area===a?h(FpItemForm,{item:adding.item,area:a,busy:props.busy,onCancel:function(){setAdding(null);},onSave:function(it){props.onItem(it,function(){setAdding(null);});}}):
+          h('button',{type:'button',className:'fp-add-item','data-area':a,style:Object.assign(fpBtn('plain'),{alignSelf:'flex-start',padding:0}),onClick:function(){setAdding({area:a,item:null});}},a==='childcare'?'＋ Add an option':'＋ Add'));}));}
+
+function FpItemForm(props){var h=React.createElement,i=props.item;
+  var parse=function(a){var m;if((m=/^week:(\d+)$/.exec(a||'')))return ['week',m[1]];if((m=/^birth\+(\d+)$/.exec(a||'')))return ['birth',m[1]];if((m=/^leave\+(\d+)$/.exec(a||'')))return ['leave',m[1]];if((m=/^date:(.+)$/.exec(a||'')))return ['date',m[1]];return ['none',''];};
+  var p0=parse(i&&i.anchor);
+  var _f=React.useState({title:i?i.title:'',when:p0[0],n:p0[1],cost:i&&i.cost!=null?String(i.cost):'',owner:i?i.owner:'Both',link:i?i.link:'',notes:i?i.notes:''}),f=_f[0],setF=_f[1];
+  var set=function(k,v){setF(function(x){var n=Object.assign({},x);n[k]=v;return n;});};
+  var anchor=f.when==='week'&&f.n?'week:'+f.n:f.when==='birth'&&f.n!==''?'birth+'+f.n:f.when==='leave'&&f.n?'leave+'+f.n:f.when==='date'&&f.n?'date:'+f.n:'';
+  return h('div',{className:'fp-item-form',style:{display:'flex',flexDirection:'column',gap:10,background:FP_C.deep,border:'1px solid '+FP_C.line,borderRadius:12,padding:12}},
+    fpField('fp-it-title',props.area==='childcare'?'Option (a daycare, a nanny share, family help)':'What',h('input',{id:'fp-it-title',className:'fp-it-title',value:f.title,onChange:function(e){set('title',e.target.value);},style:FP_INPUT})),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+      fpField('fp-it-when','When',h('select',{id:'fp-it-when',className:'fp-it-when',value:f.when,onChange:function(e){set('when',e.target.value);set('n','');},style:FP_INPUT},
+        h('option',{value:'none'},'No date'),h('option',{value:'week'},'By a week of pregnancy'),h('option',{value:'birth'},'Days after the birth'),h('option',{value:'leave'},'Day of parental leave'),h('option',{value:'date'},'A fixed date'))),
+      f.when==='none'?h('span'):fpField('fp-it-n',f.when==='week'?'Week':f.when==='date'?'Date':'Days',h('input',{id:'fp-it-n',className:'fp-it-n',type:f.when==='date'?'date':'text',inputMode:f.when==='date'?undefined:'numeric',value:f.n,onChange:function(e){set('n',e.target.value);},style:FP_INPUT}))),
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+      fpField('fp-it-cost',props.area==='childcare'?'Per month':'Cost (optional)',h('input',{id:'fp-it-cost',className:'fp-it-cost',inputMode:'decimal',value:f.cost,onChange:function(e){set('cost',e.target.value);},style:FP_INPUT,placeholder:'$'})),
+      fpField('fp-it-owner','Remind',h('select',{id:'fp-it-owner',value:f.owner,onChange:function(e){set('owner',e.target.value);},style:FP_INPUT},['Both','Ahmed','Victoria'].map(function(o){return h('option',{key:o,value:o},o==='Both'?'Both of you':o);})))),
+    fpField('fp-it-link','Link (optional)',h('input',{id:'fp-it-link',value:f.link,onChange:function(e){set('link',e.target.value);},style:FP_INPUT,placeholder:'https://'})),
+    h('div',{style:{display:'flex',gap:8}},h('button',{type:'button',className:'fp-it-save',disabled:!f.title.trim()||props.busy,style:Object.assign(fpBtn('blue'),{flex:1}),
+      onClick:function(){props.onSave({id:i?i.id:'',area:props.area,title:f.title,anchor:anchor,cost:f.cost,owner:f.owner,link:f.link,notes:f.notes});}},'Save'),
+      h('button',{type:'button',style:fpBtn(),onClick:props.onCancel},'Cancel')));}
+// ---- end FamilyPlanningPanel ----
 function TripGiftsPanel({trips,apiUrl,apiToken}){var[selectedKey,setSelectedKey]=React.useState(null);var[pastTrips,setPastTrips]=React.useState([]);var[gifts,setGifts]=React.useState({});var[busy,setBusy]=React.useState(false);var[addForm,setAddForm]=React.useState(null);function api(params){var qs=Object.entries(Object.assign({token:apiToken},params)).map(function(kv){return encodeURIComponent(kv[0])+'='+encodeURIComponent(kv[1]);}).join('&');return fetch(apiUrl+'?'+qs).then(function(r){return r.json();});}function loadGifts(tripKey){if(!tripKey||gifts[tripKey]==='loading')return;setGifts(function(prev){return Object.assign({},prev,{[tripKey]:'loading'});});api({action:'get_trip_gifts',tripKey:tripKey}).then(function(d){setGifts(function(prev){return Object.assign({},prev,{[tripKey]:d.ok?d.gifts:[]});});}).catch(function(){setGifts(function(prev){return Object.assign({},prev,{[tripKey]:[]});});});}React.useEffect(function(){if(selectedKey)loadGifts(selectedKey);},[selectedKey]);// Past trips too (issue #219): gifts are often bought on the trip and logged after it.
 React.useEffect(function(){if(!apiUrl||!apiToken)return;api({action:'past_trips'}).then(function(d){if(d&&d.ok)setPastTrips(d.trips||[]);}).catch(function(){});},[apiUrl,apiToken]);function handleDelete(id){if(!window.confirm('Remove this gift?'))return;setBusy(true);api({action:'delete_trip_gift',id:id}).then(function(){loadGifts(selectedKey);setBusy(false);}).catch(function(){setBusy(false);});}function handleToggle(id,purchased){setBusy(true);api({action:'update_trip_gift',id:id,purchased:purchased?'false':'true'}).then(function(){loadGifts(selectedKey);setBusy(false);}).catch(function(){setBusy(false);});}function handleAdd(){if(!addForm||!addForm.item.trim())return;setBusy(true);api({action:'add_trip_gift',tripKey:selectedKey,recipient:addForm.recipient,item:addForm.item,amount:addForm.amount,notes:addForm.notes}).then(function(){setAddForm(null);loadGifts(selectedKey);setBusy(false);}).catch(function(){setBusy(false);});}var upKeys={};(trips||[]).forEach(function(t){upKeys[t.startDate+'|'+t.label]=1;});var pastShown=(pastTrips||[]).filter(function(t){return !upKeys[t.key];});var data=selectedKey?gifts[selectedKey]:null;var giftList=Array.isArray(data)?data:[];var purchasedCount=giftList.filter(function(g){return g.purchased;}).length;var INP={background:'#060f20',border:'1px solid #1e3060',borderRadius:6,color:'#dde1f0',padding:'6px 10px',fontSize:13,width:'100%',boxSizing:'border-box'};return React.createElement("div",null,React.createElement("div",{style:{marginBottom:16,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},React.createElement("select",{value:selectedKey||'',onChange:function(e){setSelectedKey(e.target.value||null);},style:Object.assign({},INP,{width:'auto',minWidth:200})},[React.createElement("option",{key:'_',value:''},'— Select a trip —')].concat((trips||[]).length?[React.createElement("optgroup",{key:'up',label:'Upcoming'},(trips||[]).map(function(t){var k=t.startDate+'|'+t.label;return React.createElement("option",{key:k,value:k},t.label,' (',t.startDate,')');}))]:[]).concat(pastShown.length?[React.createElement("optgroup",{key:'past',label:'Past'},pastShown.map(function(t){return React.createElement("option",{key:t.key,value:t.key},t.label,' (',t.startDate,')');}))]:[]))),!selectedKey&&React.createElement("div",{className:"empty-state"},React.createElement("div",{style:{fontSize:32,marginBottom:10}},"🎁"),React.createElement("div",null,"Select a trip to view its gift list.")),selectedKey&&data==='loading'&&React.createElement("div",{className:"loading-text"},"Loading gifts…"),selectedKey&&Array.isArray(data)&&React.createElement("div",null,giftList.length>0&&React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',marginBottom:8}},purchasedCount,'/',giftList.length,' purchased'),giftList.length===0&&React.createElement("div",{style:{fontSize:13,color:'#4d6080',padding:'16px 0',textAlign:'center'}},"No gifts recorded yet for this trip."),giftList.map(function(g){return React.createElement("div",{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'9px 0',borderBottom:'1px solid #1a2435',opacity:g.purchased?0.55:1}},React.createElement("input",{type:"checkbox",checked:g.purchased,onChange:function(){handleToggle(g.id,g.purchased);},disabled:busy,style:{accentColor:'#5c9eff',cursor:'pointer',flexShrink:0,width:16,height:16}}),React.createElement("div",{style:{flex:1,minWidth:0}},React.createElement("div",{style:{fontSize:13,color:'#dde1f0',fontWeight:600,textDecoration:g.purchased?'line-through':'none'}},g.item),g.recipient&&React.createElement("div",{style:{fontSize:11,color:'#8ab4f8',marginTop:1}},"For: ",g.recipient),g.notes&&React.createElement("div",{style:{fontSize:11,color:'#5c7080',marginTop:1}},g.notes)),g.amount!=null&&React.createElement("div",{style:{fontSize:12,color:'#4ade80',fontWeight:600,flexShrink:0}},"$",g.amount),React.createElement("button",{onClick:function(){handleDelete(g.id);},disabled:busy,style:{background:'none',border:'none',color:'#4d6080',cursor:'pointer',fontSize:14,padding:'0 4px'}},"🗑"));}),addForm?React.createElement("div",{style:{background:'#0a1628',border:'1px solid #1e3060',borderRadius:10,padding:'14px 16px',marginTop:12}},React.createElement("div",{style:{fontWeight:600,color:'#c9a84c',marginBottom:10,fontSize:13}},"Add Gift"),React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}},React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"Item *"),React.createElement("input",{value:addForm.item,onChange:function(e){setAddForm(Object.assign({},addForm,{item:e.target.value}));},style:INP,placeholder:"e.g. Scarf"})),React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"For (recipient)"),React.createElement("input",{value:addForm.recipient,onChange:function(e){setAddForm(Object.assign({},addForm,{recipient:e.target.value}));},style:INP,placeholder:"e.g. Victoria"}))),React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}},React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"Amount ($)"),React.createElement("input",{type:"number",value:addForm.amount,onChange:function(e){setAddForm(Object.assign({},addForm,{amount:e.target.value}));},style:INP,placeholder:"optional"})),React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"Notes"),React.createElement("input",{value:addForm.notes,onChange:function(e){setAddForm(Object.assign({},addForm,{notes:e.target.value}));},style:INP,placeholder:"optional"}))),React.createElement("div",{style:{display:'flex',gap:8}},React.createElement("button",{onClick:handleAdd,disabled:busy||!addForm.item.trim(),style:{background:'#1a3a6e',color:'#fff',border:'none',borderRadius:8,padding:'7px 16px',fontSize:13,fontWeight:600,cursor:busy||!addForm.item.trim()?'not-allowed':'pointer',opacity:busy||!addForm.item.trim()?0.5:1}},busy?'Saving…':'Add Gift'),React.createElement("button",{onClick:function(){setAddForm(null);},style:{background:'none',border:'1px solid #2a3a4a',color:'#6b7fa8',borderRadius:8,padding:'7px 16px',fontSize:13,cursor:'pointer'}},"Cancel"))):React.createElement("button",{onClick:function(){setAddForm({recipient:'',item:'',amount:'',notes:''});},disabled:busy,style:{marginTop:12,background:'rgba(92,158,255,0.08)',border:'1px solid rgba(92,158,255,0.2)',color:'#5c9eff',borderRadius:8,padding:'7px 16px',fontSize:13,cursor:busy?'not-allowed':'pointer'}},"＋ Add Gift")));}
 
@@ -12032,6 +12345,7 @@ const TOP_TABS = [
   { id: 'cards',         label: '💳 Cards'          },
   { id: 'coupons',       label: '🎟️ Coupons'        },
   { id: 'prescriptions', label: '💊 Prescriptions' },
+  { id: 'family',        label: '👶 Family Planning' },
   { id: 'travel',        label: '✈️ Travel'         },
   { id: 'finances',      label: '💰 Finances'       },
   { id: 'home_front',    label: '🏡 Home Front'     },
@@ -12587,6 +12901,10 @@ function App() {
 
         {activeTab === 'prescriptions' && (
           <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />
+        )}
+
+        {activeTab === 'family' && (
+          <FamilyPlanningPanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />
         )}
 
         {activeTab === 'cards' && (

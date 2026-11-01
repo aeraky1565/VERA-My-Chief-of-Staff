@@ -118,6 +118,10 @@ const TABS = {
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
   PLANNED_PURCHASES:  'Planned Purchases',    // Big buys being researched, saved for and bought (Finances)
   PP_OPTIONS:         'Planned Purchase Options', // The options compared for each planned purchase
+  FAMILY_PLANNING:    'Family Planning',      // Family Planning settings: due date, employers, reminders (key / value)
+  FP_LEAVE_BLOCKS:    'FP Leave Blocks',      // Each block of leave, by parent, in weeks from the birth
+  FP_POLICY:          'FP Policy',            // Each parent's leave policy, read from Resources or typed in
+  FP_ITEMS:           'FP Items',             // Childcare options, checklists, gear and paperwork, with their dates
   COUPONS:            'Coupons',              // Coupon & deal tracker with photo extraction (Issue #173)
   NEIGHBORHOOD_FLYERS:    'NEIGHBORHOOD_FLYERS',    // Neighborhood flyer board
   NEIGHBORHOOD_HOA_SCANS: 'NEIGHBORHOOD_HOA_SCANS', // HOA website scan audit log
@@ -327,6 +331,14 @@ const COURSE_HEADERS             = ['ID', 'Person', 'Title', 'Source', 'Category
 const SKILL_HEADERS              = ['ID', 'Person', 'Skill', 'Category', 'Level', 'Goal Link', 'Last Practiced', 'Notes'];
 // Experiments (Issue #130) — column order matches row[] offsets used in Experiments.js
 const EXPERIMENT_HEADERS         = ['ID', 'Person', 'Title', 'Category', 'Hypothesis', 'Start Date', 'End Date', 'Status', 'Outcome', 'Notes'];
+// Family Planning (Health). Shared by both of you; every write records who made it.
+const FP_SETTING_HEADERS         = ['Key', 'Value', 'Updated By', 'Updated At'];
+// Start Week counts from the birth (week 1 is the birth week). Pay % blank = the policy's rate for that kind.
+const FP_BLOCK_HEADERS           = ['ID', 'Parent', 'Kind', 'Start Week', 'Weeks', 'Pay %', 'Notes', 'Updated By', 'Updated At'];
+// Source: 'doc' (read from the Resources document) or 'typed'. A typed value is never overwritten by a re-read.
+const FP_POLICY_HEADERS          = ['Parent', 'Field', 'Value', 'Source', 'Read At', 'Updated By', 'Updated At'];
+// Anchor dates an item: 'week:12' (of pregnancy), 'birth+30' (days after), 'leave+8' (days into parental leave), 'date:yyyy-MM-dd', or blank.
+const FP_ITEM_HEADERS            = ['ID', 'Area', 'Title', 'Anchor', 'Status', 'Cost', 'Owner', 'Link', 'Planned Purchase ID', 'Notes', 'Updated By', 'Updated At'];
 // Planned Purchases (Finances). Must / Nice / No and Notes are JSON lists; Bought is the
 // purchase as made (JSON). Set-aside money is never stored here: it is the linked goal's balance.
 const PLANNED_PURCHASE_HEADERS   = ['ID', 'Item', 'For', 'Why', 'Budget', 'Need By', 'Need Note', 'Goal ID', 'Stage', 'Must', 'Nice', 'No', 'Target Price', 'Chosen Option', 'Bought', 'Old Item', 'Old Plan', 'Notes', 'Created', 'Updated'];
@@ -1277,6 +1289,8 @@ function nightlyRun() {
     nightlyStep_(ctx, 'myTripsSyncFlags_', myTripsSyncFlags_);
     // Planned purchases: a delivery tomorrow, an order-by date close, a return window closing (PlannedPurchases.js).
     nightlyStep_(ctx, 'ppSyncFlags_', ppSyncFlags_);
+    // Family Planning: dated items due within two weeks (FamilyPlanning.js).
+    nightlyStep_(ctx, 'fpSyncFlags_', fpSyncFlags_);
 
     // Step 0a-iii: Memory — weekly snapshot + log pruning + Sunday trend review (Issue #9)
     nightlyStep_(ctx, 'writeWeeklySnapshot_', writeWeeklySnapshot_);
