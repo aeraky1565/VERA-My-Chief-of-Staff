@@ -399,7 +399,14 @@ function getPTOEvents_(cfg) {
 
   var tz    = Session.getScriptTimeZone();
   var start = new Date(cfg.year, 0, 1);    // Jan 1
-  var end   = new Date(cfg.year, 11, 31);  // Dec 31
+  // Up to the START of next Jan 1. This was `new Date(year, 11, 31)`, the
+  // first moment of Dec 31, and getEvents only returns events that begin
+  // before the end of the window — so a Dec 31 vacation (or PTO, or holiday)
+  // was never read, in any year.
+  var end   = new Date(cfg.year + 1, 0, 1);
+  // A block that crosses New Year counts only its days in this year.
+  var yearFirst = new Date(cfg.year, 0, 1);
+  var yearLast  = new Date(cfg.year, 11, 31);
 
   var allEvents  = cal.getEvents(start, end);
   // ONE read of each getter per event, not one per pass. The two passes below each
@@ -473,6 +480,8 @@ function getPTOEvents_(cfg) {
         var vStart   = ev2.getAllDayStartDate();
         var vEndExcl = ev2.getAllDayEndDate(); // exclusive
         var vEndIncl = new Date(vEndExcl.getTime() - 24 * 60 * 60 * 1000);
+        if (vStart < yearFirst)  vStart   = yearFirst;
+        if (vEndIncl > yearLast) vEndIncl = yearLast;
 
         if (vEndIncl < today) {
           // Entirely past → Used
@@ -531,6 +540,8 @@ function getPTOEvents_(cfg) {
         var pStart   = ev2.getAllDayStartDate();
         var pEndExcl = ev2.getAllDayEndDate();
         var pEndIncl = new Date(pEndExcl.getTime() - 24 * 60 * 60 * 1000);
+        if (pStart < yearFirst)  pStart   = yearFirst;
+        if (pEndIncl > yearLast) pEndIncl = yearLast;
 
         /** Count calendar days from d1 to d2 inclusive. */
         function countCalDays_(d1, d2) {
