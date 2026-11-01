@@ -3970,11 +3970,22 @@ function MpOnHand(props){var h=React.createElement,items=props.items,days=props.
   var _s=React.useState(false),soon=_s[0],setSoon=_s[1];
   var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
   var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  // Use soon shows the moment it's tapped and saves in the background, so a slow
+  // save never locks the other chips. Taps on one item save in order; a failed
+  // save puts the circle back and says why. {id: true|false} until the list agrees.
+  var _o=React.useState({}),soonOver=_o[0],setSoonOver=_o[1];
+  var soonQ=React.useRef({});
+  React.useEffect(function(){setSoonOver(function(o){var n={},by={};(items||[]).forEach(function(x){by[x.id]=x;});Object.keys(o).forEach(function(id){if(by[id]&&by[id].useSoon!==o[id])n[id]=o[id];});return n;});},[items]);
   if(!items)return h('div',{className:'mp-onhand',style:{padding:12,borderRadius:12,border:'1px solid #2a3f6a',background:'#0b1630',color:'#8a9abf',fontSize:13,marginBottom:12}},'On hand isn’t available right now.');
   var cov=mpCoverage_(days);
+  items=items.map(function(x){return x.id in soonOver?Object.assign({},x,{useSoon:soonOver[x.id]}):x;});
   var live=items.filter(function(x){return x.status==='on hand';}),pending=items.filter(function(x){return x.status==='pending';});
   var covered=live.filter(function(x){return cov[x.id];}).length,soonLeft=live.filter(function(x){return x.useSoon&&!cov[x.id];}).length;
   function run(action,params){setBusy(true);setErr('');return Promise.resolve(props.call(action,params)).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');props.reload();}).catch(function(e){setErr(e.message||String(e));}).then(function(){setBusy(false);});}
+  function toggleSoon(x){var want=!x.useSoon,id=x.id;setErr('');setSoonOver(function(o){var n=Object.assign({},o);n[id]=want;return n;});
+    var prev=soonQ.current[id]||Promise.resolve();
+    soonQ.current[id]=prev.then(function(){return Promise.resolve(props.call('onhand_set',{id:id,useSoon:want?'true':'false'})).then(function(r){if(r&&r.ok===false)throw new Error(r.error||'That didn’t save.');});})
+      .catch(function(e){setSoonOver(function(o){var n=Object.assign({},o);if(n[id]===want)n[id]=!want;return n;});setErr('Couldn’t change “'+x.item+'”: '+(e.message||String(e)));});}
   function add(e){if(e)e.preventDefault();var t=draft.trim();if(!t||busy)return;run('onhand_add',{weekStart:props.weekStart,item:t,useSoon:soon?'true':'false'}).then(function(){setDraft('');setSoon(false);});}
   return h('section',{className:'mp-onhand','aria-label':'On hand this week',style:{display:'flex',flexDirection:'column',gap:10,padding:14,borderRadius:12,background:'#0b1630',border:'1px solid #2a3f6a',marginBottom:12}},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
@@ -3982,7 +3993,7 @@ function MpOnHand(props){var h=React.createElement,items=props.items,days=props.
       h('span',{className:'mp-onhand-count',style:{fontSize:12,color:'#8a9abf'}},live.length?covered+' of '+live.length+' in a dinner'+(soonLeft?' · '+soonLeft+' to use soon':''):'nothing yet')),
     live.length?h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},live.map(function(x){var on=cov[x.id];
       return h('span',{key:x.id,className:'mp-chip',style:{display:'inline-flex',alignItems:'center',gap:6,padding:'4px 2px 4px 6px',borderRadius:12,background:'#080f1e',border:'1px solid '+(on?'#2f6b45':x.useSoon?'#8a6d1f':'#2a3a5c'),maxWidth:'100%',boxSizing:'border-box'}},
-        h('button',{type:'button',className:'mp-soon','aria-pressed':!!x.useSoon,'aria-label':(x.useSoon?'Unmark ':'Mark ')+x.item+' as use soon',disabled:busy,onClick:function(){run('onhand_set',{id:x.id,useSoon:x.useSoon?'false':'true'});},style:{width:32,height:32,flexShrink:0,borderRadius:999,cursor:'pointer',border:'2px solid '+(x.useSoon?'#f6d27a':'#3a4a6a'),background:x.useSoon?'#f6d27a':'transparent',boxShadow:'inset 0 0 0 5px #080f1e',padding:0}}),
+        h('button',{type:'button',className:'mp-soon','aria-pressed':!!x.useSoon,'aria-label':(x.useSoon?'Unmark ':'Mark ')+x.item+' as use soon',onClick:function(){toggleSoon(x);},style:{width:32,height:32,flexShrink:0,borderRadius:999,cursor:'pointer',border:'2px solid '+(x.useSoon?'#f6d27a':'#3a4a6a'),background:x.useSoon?'#f6d27a':'transparent',boxShadow:'inset 0 0 0 5px #080f1e',padding:0}}),
         h('span',{style:{display:'flex',flexDirection:'column',lineHeight:1.25,minWidth:0}},h('span',{style:{fontSize:13,fontWeight:600,color:'#dde1f0'}},x.item),
           h('span',{style:{fontSize:11,color:on?'#8fe0a8':x.useSoon?'#f6d27a':'#8a9abf'}},on?'✓ in '+on+'’s dinner':x.useSoon?'use soon · no dinner yet':'no dinner yet'),
           h('span',{style:{fontSize:10,color:'#6f7fa6'}},mpSourceLabel_(x))),

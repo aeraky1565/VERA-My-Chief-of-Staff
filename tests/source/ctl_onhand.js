@@ -43,6 +43,10 @@ const CONTROLS = [
   // the screens
   ['coverage ignores the dinners', both("function mpCoverage_(days){var out={};", "function mpCoverage_(days){return {};var out={};"), UI],
   ['adding forgets use soon', both("useSoon:soon?'true':'false'", "useSoon:'false'"), UI],
+  ['use soon waits for the save to show', both("  items=items.map(function(x){return x.id in soonOver?Object.assign({},x,{useSoon:soonOver[x.id]}):x;});\n", ""), UI],
+  ['a failed use soon stays as tapped', both("if(n[id]===want)n[id]=!want;return n;", "return n;"), UI],
+  ['use soon taps race each other', both("soonQ.current[id]=prev.then(function(){return Promise.resolve(", "soonQ.current[id]=Promise.resolve().then(function(){return Promise.resolve("), UI],
+  ['use soon locks the chips while it saves', both("',onClick:function(){toggleSoon(x);},", "',disabled:busy,onClick:function(){setBusy(true);Promise.resolve(toggleSoon(x)).then(function(){return soonQ.current[x.id];}).then(function(){setBusy(false);});},"), UI],
   ['a carry-over shows as on hand', both("var live=items.filter(function(x){return x.status==='on hand';}),pending=", "var live=items.filter(function(x){return x.status!=='removed';}),pending="), UI],
   ['Suggest saves the picks you untick', both("var kept=res?res.days.filter(function(d){return !off[d.day];}):[];", "var kept=res?res.days:[];"), UI],
   ['still to buy goes to the first store', both("return props.call('shopping_add',{tabId:pick,text:t});", "return props.call('shopping_add',{tabId:stores[0].id,text:t});"), UI],
