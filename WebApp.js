@@ -3948,16 +3948,16 @@ function reconcileChangedFlights_(storedItems, calendarAll, calendarLive) {
   var exact = {};
   (calendarAll || []).forEach(function(c) { var k = flightKeyFor_(c); if (k) exact[c.date + '|' + k] = true; });
   var cands = (calendarLive || []).filter(function(c) { return String(c.type || '').toLowerCase() === 'flight'; });
-  var used = {};
-  var stored = [], changed = [];
-  (storedItems || []).forEach(function(row) {
-    if (String(row.type || '').toLowerCase() !== 'flight') { stored.push(row); return; }
+  // Every acceptable (row, calendar flight) pair, then the closest dates win:
+  // taking rows in sheet order let an earlier row two days off claim the
+  // calendar flight before a row on the very same date was looked at.
+  var pairs = [];
+  (storedItems || []).forEach(function(row, ri) {
+    if (String(row.type || '').toLowerCase() !== 'flight') return;
     var rk = flightKeyFor_(row);
-    if (rk && exact[row.date + '|' + rk]) { stored.push(row); return; }
+    if (rk && exact[row.date + '|' + rk]) return;
     var route = flightRouteKey_(row), conf = flightConfOf_(row), rd = dnum(row.date);
-    var best = -1, bestGap = Infinity;
-    cands.forEach(function(c, i) {
-      if (used[i]) return;
+    cands.forEach(function(c, ci) {
       var cd = dnum(c.date);
       var gap = (rd === null || cd === null) ? Infinity : Math.abs(cd - rd);
       var croute = flightRouteKey_(c), cconf = flightConfOf_(c);
@@ -3969,11 +3969,20 @@ function reconcileChangedFlights_(storedItems, calendarAll, calendarLive) {
       } else {
         ok = !!rk && rk === flightKeyFor_(c) && gap <= 3;
       }
-      if (ok && gap < bestGap) { best = i; bestGap = gap; }
+      if (ok) pairs.push({ ri: ri, ci: ci, gap: gap });
     });
-    if (best === -1) { stored.push(row); return; }
-    used[best] = true;
-    var c = cands[best], ck = flightKeyFor_(c);
+  });
+  pairs.sort(function(x, y) { return x.gap - y.gap || x.ri - y.ri; });
+  var rowTaken = {}, calTaken = {}, byRow = {};
+  pairs.forEach(function(p) {
+    if (rowTaken[p.ri] || calTaken[p.ci]) return;
+    rowTaken[p.ri] = calTaken[p.ci] = true;
+    byRow[p.ri] = p.ci;
+  });
+  var stored = [], changed = [];
+  (storedItems || []).forEach(function(row, ri) {
+    if (byRow[ri] === undefined) { stored.push(row); return; }
+    var c = cands[byRow[ri]], ck = flightKeyFor_(c), rk = flightKeyFor_(row);
     var reason = c.date !== row.date ? 'date' : (ck && rk && ck !== rk ? 'flight' : 'time');
     changed.push({ row: row, reason: reason,
       by: { title: c.title, date: c.date, startTime: c.startTime || '', endTime: c.endTime || '',
@@ -4439,9 +4448,15 @@ function webGetItinerary_(e, opts) {
               // replaces — the briefing renders metadata.confirmationNumber in
               // its Details block, and without this it would lose it for every
               // calendar-derived flight. Both consumers get it from one place.
+              // "Confirmation number: ABC123" is how United writes it; the
+              // old pattern stopped after "Confirmation" and kept the word
+              // "number" as the code.
               var confMatch = (ev.getDescription() || '')
-                .match(/conf(?:irmation)?[#:\s]+([A-Z0-9]{5,8})/i);
-              if (confMatch) evMeta.confirmationNumber = confMatch[1];
+                .match(/conf(?:irmation)?(?:\s*(?:number|no\.?|code))?[#:\s]+([A-Z0-9]{5,8})\b/i);
+              // A code has a digit or is written in capitals; a plain word
+              // ("pending") is not one.
+              var confCode = confMatch ? confMatch[1] : '';
+              if (/\d/.test(confCode) || /^[A-Z]{5,8}$/.test(confCode)) evMeta.confirmationNumber = confCode.toUpperCase();
             }
             // For multi-day events (e.g. hotel stays spanning several nights), store the checkout
             // date in metadata so the frontend gap detector covers the full date range.

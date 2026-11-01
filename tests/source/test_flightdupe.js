@@ -163,6 +163,23 @@ console.log('\nnon-flights behave exactly as before');
         ctx.dedupeItineraryCalendarItems_([dinner1, dinner2]).length === 2);
 }
 
+console.log('\nevents that share a name stay separate unless they are the same slot');
+{
+  // Two "Dinner" events: different days, or the same day at different times.
+  const d1 = calItem({ id:'CAL-N1', type:'dining', title:'Dinner', date:'2026-09-27', startTime:'19:00', endTime:'21:00' });
+  const d2 = calItem({ id:'CAL-N2', type:'dining', title:'Dinner', date:'2026-09-28', startTime:'19:00', endTime:'21:00' });
+  const d3 = calItem({ id:'CAL-N3', type:'dining', title:'Dinner', date:'2026-09-27', startTime:'12:30', endTime:'13:30' });
+  check('the same name on another day is another event', ctx.dedupeItineraryCalendarItems_([d1, d2]).length === 2);
+  check('the same name at another time that day is another event', ctx.dedupeItineraryCalendarItems_([d1, d3]).length === 2);
+  // The same event on two calendars (personal and shared): one item.
+  const shared = calItem({ id:'CAL-N4', type:'dining', title:'Dinner', date:'2026-09-27', startTime:'19:00', endTime:'21:00',
+                           _isPersonal: false, metadata: JSON.stringify({ calendarName: 'Joint' }) });
+  check('the same name, day and times on two calendars is one event', ctx.dedupeItineraryCalendarItems_([d1, shared]).length === 1);
+  check('…and letter case does not split it',
+        ctx.dedupeItineraryCalendarItems_([d1, calItem({ id:'CAL-N5', type:'dining', title:'dinner', date:'2026-09-27',
+          startTime:'19:00', endTime:'21:00' })]).length === 1);
+}
+
 console.log('\nwithin the calendar — differing titles now merge');
 {
   // The same flight on three calendars, titled inconsistently.

@@ -319,8 +319,8 @@ console.log('\nthe briefing consumes the path the dashboard card uses');
 
   // Ported rather than duplicated.
   check('confirmationNumber now comes from webGetItinerary_',
-        /evMeta\.confirmationNumber = confMatch\[1\]/.test(WEB));
-  check('…in the flight branch', /conf\(\?:irmation\)\?\[#:\\s\]\+/.test(WEB));
+        /evMeta\.confirmationNumber = confCode\.toUpperCase\(\)/.test(WEB));
+  check('…in the flight branch', /match\(\/conf\(\?:irmation\)\?/.test(WEB));
 
   // The line that makes the computed timezone possible at all.
   check('the geocoder stops discarding the timezone',
