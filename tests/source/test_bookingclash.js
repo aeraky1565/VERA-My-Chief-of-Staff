@@ -119,7 +119,7 @@ console.log('\nholds work exactly as before');
 console.log('\nthe dashboard shows the choice');
 {
   check('the options chip shows for a group led by a booking, not just for holds',
-        /function itinOptionsChip\(item\)\{var n=optionCountOf\(item\);if\(!isTentativeItem\(item\)&&!\(n>1\)\)return null;/.test(APP));
+        /function itinOptionsChip\(item\)\{var n=optionCountOf\(item\);if\(!isTentativeItem\(item\)&&!\(n>1&&!isDecidedItem\(item\)\)\)return null;/.test(APP));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

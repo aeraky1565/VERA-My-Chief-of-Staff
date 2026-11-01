@@ -33,7 +33,7 @@ const CONTROLS = [
     "      if (span) { it._booked = true; it._span = span; candidates.push(it); }",
     "      if (span) { it._booked = true; it._span = span; meta.tentative = true; tdWriteMeta_(it, meta); candidates.push(it); }") })],
   ['the chip shows only for holds again', b => ({ [A]: swap(b[A],
-    "function itinOptionsChip(item){var n=optionCountOf(item);if(!isTentativeItem(item)&&!(n>1))return null;",
+    "function itinOptionsChip(item){var n=optionCountOf(item);if(!isTentativeItem(item)&&!(n>1&&!isDecidedItem(item)))return null;",
     "function itinOptionsChip(item){var n=optionCountOf(item);if(!isTentativeItem(item))return null;") })],
 ];
 

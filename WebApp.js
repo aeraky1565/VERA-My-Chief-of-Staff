@@ -450,6 +450,7 @@ function doGet(e) {
       case 'delete_household_row':  return jsonOut_(webDeleteHouseholdRow_(e));
       // Trip Gift List (Issue #187)
       case 'get_trip_gifts':    return jsonOut_(webGetTripGifts_(e));
+      case 'past_trips':        return jsonOut_(webListPastTrips_());
       case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));
       case 'update_trip_gift':  return jsonOut_(webUpdateTripGift_(e));
       case 'delete_trip_gift':  return jsonOut_(webDeleteTripGift_(e));
@@ -11687,6 +11688,62 @@ function webRunHoaScan_() {
 // ============================================================
 // Trip Gift List (Issue #187)
 // ============================================================
+
+/**
+ * GET ?action=past_trips — trips that have ended, most recent first:
+ * { trips: [{ key, label, startDate, endDate }] }.
+ *
+ * The gift picker only listed upcoming trips (issue #219), so gifts bought on a
+ * trip could not be recorded once it was over. Three sources, because no one
+ * of them has every trip: the Trips registry (only since it existed), the
+ * Itinerary sheet's own trips, and any trip that already has gifts. Each is
+ * folded onto the trip's current key, so a renamed trip appears once.
+ */
+function webListPastTrips_() {
+  var tz = Session.getScriptTimeZone();
+  var today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var iso = function(v) {
+    var d = (v instanceof Date && !isNaN(v.getTime())) ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '';
+  };
+  var byKey = {};
+  var add = function(rawKey, start, end) {
+    var key = tripKeyForWrite_(rawKey);
+    if (!key || key.indexOf('|') === -1) return;
+    var t = byKey[key];
+    if (!t) t = byKey[key] = { key: key, label: key.split('|').slice(1).join('|'), startDate: start || '', endDate: end || '' };
+    if (start && (!t.startDate || start < t.startDate)) t.startDate = start;
+    if (end && (!t.endDate || end > t.endDate)) t.endDate = end;
+  };
+
+  try {
+    (readTripRegistry_().rows || []).forEach(function(r) {
+      if (r.status !== 'active' || !r.startDate || !r.label) return;
+      add(r.startDate + '|' + r.label, r.startDate, r.endDate || r.startDate);
+    });
+  } catch (e) { Logger.log('webListPastTrips_: registry — ' + e.message); }
+
+  var ss = getSpreadsheet();
+  var itin = ss.getSheetByName(TABS.ITINERARY);
+  if (itin && itin.getLastRow() >= 2) {
+    itin.getRange(2, 1, itin.getLastRow() - 1, ITINERARY_HEADERS.length).getValues().forEach(function(r) {
+      var k = String(r[1] || '').trim(), d = iso(r[4]);
+      if (k && d) add(k, d, d);
+    });
+  }
+  var gifts = ss.getSheetByName(TABS.TRIP_GIFTS);
+  if (gifts && gifts.getLastRow() >= 2) {
+    gifts.getRange(2, 2, gifts.getLastRow() - 1, 1).getValues().forEach(function(r) {
+      var k = String(r[0] || '').trim(), d = iso(k.split('|')[0]);
+      if (k && d) add(k, d, '');
+    });
+  }
+
+  var trips = Object.keys(byKey).map(function(k) { return byKey[k]; }).filter(function(t) {
+    return t.startDate && (t.endDate || t.startDate) < today;
+  }).sort(function(a, b) { return a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0; });
+  return { ok: true, today: today, trips: trips.slice(0, 40) };
+}
 
 function webGetTripGifts_(e) {
   var tripKey = ((e.parameter || {}).tripKey || '').trim();
