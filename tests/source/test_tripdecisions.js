@@ -143,10 +143,14 @@ console.log('\nwhat must never be absorbed');
     item({ title: 'Komi (tentative)', type: 'dining', startTime: '19:30', endTime: '21:30' }),
   ];
   annotateOptionGroups_(items);
-  check('a confirmed booking is never grouped', !meta(items[0]).optionGroup,
-        JSON.stringify(meta(items[0])));
+  // Changed by issue #221: a booking that overlaps another plan for the same
+  // slot is one of the plans. It used to stay out, so a booked dinner and a
+  // second dinner at the same time read as two dinners, not a choice.
+  check('a booking that overlaps a hold is one of the plans',
+        meta(items[0]).optionGroup && meta(items[0]).optionGroup === meta(items[1]).optionGroup,
+        JSON.stringify([meta(items[0]), meta(items[1])]));
+  check('…the booking is listed first', meta(items[0]).isRepresentative === true);
   check('…and is not marked tentative', meta(items[0]).tentative !== true);
-  check('the hold beside it still gets a group', !!meta(items[1]).optionGroup);
 
   const allDay = [
     item({ title: 'Maybe a day trip', type: 'calendar', startTime: '', allDay: true }),

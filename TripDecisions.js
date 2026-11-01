@@ -129,6 +129,32 @@ function tdAreAlternatives_(a, b) {
  *
  * Mutates and returns `items`.
  */
+/**
+ * Bookings, not holds, that still compete when they land on the same slot
+ * (issue #221: a booked 8pm dinner at The Joyce and a suggested 8pm dinner at
+ * Tropezón on the same night showed as two separate dinners, not two plans).
+ *
+ * Never grouped: getting somewhere and sleeping somewhere — those are the
+ * frame of a day, not a choice inside it.
+ */
+var TD_NEVER_CLASH_TYPES_ = { flight: 1, plane: 1, hotel: 1, arranged_stay: 1, cruise: 1, transport: 1,
+                              train: 1, bus: 1, ferry: 1, car_rental: 1 };
+/** Longer than this, an event is a span (a port day, a day trip), not a slot. */
+var TD_CLASH_MAX_MINS_ = 240;
+/** A booking with no end time is assumed to last this long. */
+var TD_CLASH_DEFAULT_MINS_ = 90;
+
+/** [start, end) in minutes for a booked item that can clash, or null. */
+function tdClashSpan_(it) {
+  var start = tdTimeToMins_(it.startTime);
+  if (start === null || !it.date || it.allDay) return null;
+  if (TD_NEVER_CLASH_TYPES_[String(it.type || '').toLowerCase()]) return null;
+  var end = tdTimeToMins_(it.endTime);
+  if (end === null || end <= start) end = start + TD_CLASH_DEFAULT_MINS_;
+  if (end - start > TD_CLASH_MAX_MINS_) return null;
+  return [start, end];
+}
+
 function annotateOptionGroups_(items) {
   if (!items || !items.length) return items;
 
@@ -138,7 +164,12 @@ function annotateOptionGroups_(items) {
   items.forEach(function(it) {
     var meta = tdReadMeta_(it);
     var tentative = isTentativeText_(it.title, it.notes) || meta.tentative === true;
-    if (!tentative) return;
+    if (!tentative) {
+      // A booking takes part only through an actual clash (Pass 2).
+      var span = tdClashSpan_(it);
+      if (span) { it._booked = true; it._span = span; candidates.push(it); }
+      return;
+    }
 
     meta.tentative = true;
     tdWriteMeta_(it, meta);
@@ -157,7 +188,15 @@ function annotateOptionGroups_(items) {
 
   for (var i = 0; i < candidates.length; i++) {
     for (var j = i + 1; j < candidates.length; j++) {
-      if (tdAreAlternatives_(candidates[i], candidates[j])) union(i, j);
+      var ci = candidates[i], cj = candidates[j];
+      if (ci._booked || cj._booked) {
+        // A booking competes only with what genuinely overlaps it.
+        if (ci.date !== cj.date) continue;
+        var si = ci._span || tdClashSpan_(ci), sj = cj._span || tdClashSpan_(cj);
+        if (si && sj && si[0] < sj[1] && sj[0] < si[1]) union(i, j);
+      } else if (tdAreAlternatives_(ci, cj)) {
+        union(i, j);
+      }
     }
   }
 
@@ -171,7 +210,14 @@ function annotateOptionGroups_(items) {
   // Pass 3 — key, count, representative. Earliest start wins, ties broken by id
   // so repeated reads of the same data produce identical output.
   Object.keys(groups).forEach(function(root) {
+    // A booking on its own is just a booking: nothing competes with it.
+    if (groups[root].length === 1 && groups[root][0]._booked) return;
+    // Bookings before holds, and a real reservation before a suggestion VERA
+    // added (ITIN-REC-…), so the plan you actually made is the one shown first.
+    var rank = function(it) { return (it._booked ? 0 : 2) + (/^ITIN-REC-/.test(String(it.id || '')) ? 1 : 0); };
     var members = groups[root].sort(function(a, b) {
+      var ar = rank(a), br = rank(b);
+      if (ar !== br) return ar - br;
       var am = tdTimeToMins_(a.startTime), bm = tdTimeToMins_(b.startTime);
       if (am !== bm) return am - bm;
       return String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0;
@@ -186,7 +232,7 @@ function annotateOptionGroups_(items) {
     });
   });
 
-  items.forEach(function(it) { delete it._explicit; });
+  items.forEach(function(it) { delete it._explicit; delete it._booked; delete it._span; });
   return items;
 }
 

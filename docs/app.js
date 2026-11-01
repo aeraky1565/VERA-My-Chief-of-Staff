@@ -265,7 +265,9 @@ return items.filter(function(it){var m=itinMeta(it);return !m.optionGroup||m.isR
 function recommendedIdOf(item){return itinMeta(item).recommendedId||'';}
 function recommendBecauseOf(item){return itinMeta(item).recommendBecause||'';}
 function itinHoldStyle(item){return isTentativeItem(item)?{backgroundImage:'repeating-linear-gradient(45deg, rgba(122,131,150,0.16) 0 4px, transparent 4px 8px)'}:{};}
-function itinOptionsChip(item){if(!isTentativeItem(item))return null;var n=optionCountOf(item);
+// A group led by a booking (issue #221: a booked dinner and a second dinner at the
+// same time) is not a hold, but it is still a choice: the chip shows for it too.
+function itinOptionsChip(item){var n=optionCountOf(item);if(!isTentativeItem(item)&&!(n>1))return null;
 var st=decisionStatusOf(item);var overdue=isOverdueDecision(item);
 var label=st==='snoozed'?'snoozed':overdue?'decide now':n>1?n+' options':'tentative';
 var c=overdue?{fg:'#d08a3a',bg:'rgba(208,138,58,0.16)',br:'rgba(208,138,58,0.45)'}
