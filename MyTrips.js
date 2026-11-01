@@ -20,6 +20,7 @@
 //   webMyTrips* the reads and writes
 //
 // Routes: GET my_trips, my_trip_windows; POST my_trip_pencil, my_trip_update (WebApp.js).
+// Nightly: myTripsSyncFlags_ (Code.js).
 // ============================================================
 
 var MT_MONTHS_AHEAD_   = 15;                // the strip: this month and the next 14
