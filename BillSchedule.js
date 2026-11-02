@@ -11,12 +11,15 @@
 //   2. Card payments are their own kind: listed, linked to Cards, NEVER counted as spending.
 //   3. Budget lines (the Household category: groceries, cleaning, tips…) are not bills; they
 //      stay in Budget, though Reconcile still checks them against what was spent.
-//   4. The old Bills sheet is only read here (the one-time migration). Its readers — Cashflow,
-//      the checkpoint card, calendar bills, bill flags — keep working until they move over.
+//   4. The old Bills sheet is only read: the one-time migration, and its Income rows (the tracker has
+//      no paydays). Every bill reader — the bills route, Cashflow, calendar bills, the bill nudge, the
+//      morning email, Chat and Claude's context, the weekly snapshot — takes bsBillRows_ (the bills in
+//      the old row layout, built from here), and falls back to the old sheet only when the tracker
+//      can't be read. Paid this month is kept in Bill Schedule's Paid column.
 // ============================================================
 
 var BS_TAB_ = 'Bill Schedule';
-var BS_HEADERS_ = ['Tracker Line', 'Due Day', 'Account Override', 'Autopay', 'Card Link', 'Kind', 'Notes'];
+var BS_HEADERS_ = ['Tracker Line', 'Due Day', 'Account Override', 'Autopay', 'Card Link', 'Kind', 'Notes', 'Paid'];
 // Words too common in line names to match a transaction on their own.
 var BS_STOP_ = { utilities: 1, utility: 1, health: 1, insurance: 1, subscription: 1, plan: 1, payment: 1, family: 1, membership: 1, home: 1, monthly: 1, basic: 1, bill: 1 };
 
@@ -31,8 +34,9 @@ function bsScheduleMap_(rows) {
   (rows || []).forEach(function(r) {
     var line = bsText_(r[0]);
     if (!line) return;
+    var k = bsText_(r[5]);
     out[line.toLowerCase()] = { line: line, dueDay: bsDay_(r[1]), account: bsText_(r[2]), autopay: bsBool_(r[3]),
-      cardLink: bsText_(r[4]), kind: /card/i.test(bsText_(r[5])) ? 'card payment' : 'bill', notes: bsText_(r[6]) };
+      cardLink: bsText_(r[4]), kind: /card/i.test(k) ? 'card payment' : /calendar/i.test(k) ? 'calendar' : 'bill', notes: bsText_(r[6]), paid: bsText_(r[7]) };
   });
   return out;
 }
@@ -64,12 +68,18 @@ function bsBills_(computed, schedule) {
     if (into) { into.credit = Math.round((into.credit - c.amount) * 100) / 100; into.amount = Math.round((into.amount + c.amount) * 100) / 100; }
     else bills.push({ line: c.name, amount: c.amount, gross: c.amount, credit: 0, account: c.account, trackerAccount: c.account, dueDay: c.dueDay, dueFrom: c.dueDay ? 'name' : '', autopay: false, notes: '', category: c.category, kind: c.kind });
   });
+  var trackerNames = {};
+  lines.forEach(function(x) { trackerNames[x.name.toLowerCase()] = 1; });
+  Object.keys(schedule).forEach(function(k) { var s = schedule[k];
+    if (s.kind !== 'bill' || trackerNames[k]) return;
+    bills.push({ line: s.line, amount: null, gross: null, credit: 0, account: s.account, trackerAccount: '', dueDay: s.dueDay, dueFrom: s.dueDay ? 'set' : '',
+      autopay: !!s.autopay, notes: s.notes || '', category: '', kind: 'fixed', notInTracker: true }); });
   bills.sort(function(a, b) { return (a.dueDay || 99) - (b.dueDay || 99) || a.line.localeCompare(b.line); });
   var cards = Object.keys(schedule).map(function(k) { return schedule[k]; }).filter(function(s) { return s.kind === 'card payment'; })
     .map(function(s) { return { line: s.line, dueDay: s.dueDay, account: s.account, autopay: s.autopay, cardLink: s.cardLink, notes: s.notes }; })
     .sort(function(a, b) { return (a.dueDay || 99) - (b.dueDay || 99) || a.line.localeCompare(b.line); });
   return { bills: bills, cards: cards, budgetLines: budgetLines,
-    total: Math.round(bills.reduce(function(s, b) { return s + b.amount; }, 0) * 100) / 100 };
+    total: Math.round(bills.reduce(function(s, b) { return s + (b.amount || 0); }, 0) * 100) / 100 };
 }
 
 /** Pure: the checkpoint window a due day falls in (the joint-balance checkpoints: days 1–7, 8–20, 21+). */
@@ -84,7 +94,7 @@ function bsTimeline_(list, computed, opts) {
   opts = opts || {};
   var tday = bsDay_(opts.transferDay) || 1, open = Number(opts.opening) || 0, ev = [];
   computed.people.forEach(function(p) { if (p.checking) ev.push({ day: tday, what: p.name + ' → AMEX Checking', amount: p.checking, kind: 'in' }); });
-  var joint = list.bills.filter(function(b) { return /joint/i.test(b.account); });
+  var joint = list.bills.filter(function(b) { return /joint/i.test(b.account) && b.amount != null; });
   joint.filter(function(b) { return b.dueDay; }).forEach(function(b) {
     if (b.credit) ev.push({ day: b.dueDay, what: b.line + ': money back, before it’s due', amount: b.credit, kind: 'in' });
     ev.push({ day: b.dueDay, what: b.line, amount: -(b.credit ? b.gross : b.amount), kind: 'out', autopay: b.autopay });
@@ -159,7 +169,7 @@ function bsQuarterTx_(tx, months, cardNames) {
 function bsReconcile_(computed, list, tx, quarter, aliasMap) {
   var months = bsQuarterMonths_(quarter) || [];
   var inQ = bsQuarterTx_(tx, months, list.cards.map(function(c) { return c.line.toLowerCase(); }));
-  var lines = list.bills.map(function(b) { return { line: b.line, plan: b.amount, kind: 'bill' }; })
+  var lines = list.bills.filter(function(b) { return b.amount != null; }).map(function(b) { return { line: b.line, plan: b.amount, kind: 'bill' }; })
     .concat(computed.shared.lines.filter(function(x) { return x.category === 'Household' && x.amount; }).map(function(x) { return { line: x.name, plan: x.amount, kind: 'budget line' }; }));
   var rows = bsMatchLines_(lines, inQ, aliasMap, 3);
   var covered = rows.filter(function(r) { return r.actual != null; });
@@ -212,7 +222,7 @@ function bsMigrate_(billRows, computed, existing) {
     if (seen[key] || existing[key]) return;
     if (!line && !isCard) { out.unmatched.push({ bill: bill, amount: r[1] === '' ? null : Number(r[1]), why: 'no tracker line by that name' }); return; }
     seen[key] = 1;
-    out.rows.push([line || bill, bsDay_(r[2]) || '', bsText_(r[5]), false, isCard ? bill : '', isCard ? 'card payment' : 'bill', bsText_(r[7])]);
+    out.rows.push([line || bill, bsDay_(r[2]) || '', bsText_(r[5]), false, isCard ? bill : '', isCard ? 'card payment' : 'bill', bsText_(r[7]), bsText_(r[6])]);
     if (isCard) out.cards.push(bill); else out.matched.push({ bill: bill, line: line });
   });
   return out;
@@ -281,10 +291,10 @@ function webSaveBillSchedule_(body) {
   if (!line) return { ok: false, error: 'Which bill?' };
   var due = body.dueDay === '' || body.dueDay == null ? '' : bsDay_(body.dueDay);
   if (due === null) return { ok: false, error: 'A due day is 1 to 31.' };
-  var row = [line, due, bsText_(body.account).slice(0, 60), !!body.autopay, bsText_(body.cardLink).slice(0, 80), /card/i.test(bsText_(body.kind)) ? 'card payment' : 'bill', bsText_(body.notes).slice(0, 300)];
+  var row = [line, due, bsText_(body.account).slice(0, 60), !!body.autopay, bsText_(body.cardLink).slice(0, 80), /card/i.test(bsText_(body.kind)) ? 'card payment' : 'bill', bsText_(body.notes).slice(0, 300), ''];
   return tiLocked_(function() {
     var sheet = bsSheet_(), rows = tiRows_(sheet, BS_HEADERS_.length), at = -1;
-    for (var i = 0; i < rows.length; i++) if (bsText_(rows[i][0]).toLowerCase() === line.toLowerCase()) { at = i + 2; break; }
+    for (var i = 0; i < rows.length; i++) if (bsText_(rows[i][0]).toLowerCase() === line.toLowerCase()) { at = i + 2; row[7] = rows[i][7] || ''; break; }
     if (at === -1) sheet.appendRow(row); else sheet.getRange(at, 1, 1, BS_HEADERS_.length).setValues([row]);
     return { ok: true, entry: bsScheduleMap_([row])[line.toLowerCase()] };
   });
@@ -329,4 +339,70 @@ function webGetBudgetActuals_(e) {
   var aliases = {};
   try { aliases = getConfigAliases_() || {}; } catch (err) {}
   return Object.assign({ ok: true }, bsBudgetActuals_(plan.computed, bsBills_(plan.computed, bsReadSchedule_()), tx, q, aliases));
+}
+
+// ---- the bills every reader takes ------------------------------------------------------------
+
+/**
+ * The bills this month in the old Bills row layout (Bill | Amount | Due Day | Frequency | Category |
+ * Account | Paid | Notes | Type | Budget Entry), built from the tracker and Bill Schedule; Paid holds
+ * the month when it's paid. Card payments come with no amount; the old sheet's Income rows are added
+ * as they are. null when the tracker can't be read — the caller then reads the old sheet itself.
+ */
+function bsBillRows_(month) {
+  try {
+    var plan = bsPlan_();
+    if (plan.error) return null;
+    var sched = bsReadSchedule_(), list = bsBills_(plan.computed, sched);
+    var paid = function(n) { var x = sched[String(n).toLowerCase()]; return x && x.paid === month ? month : ''; };
+    var rows = list.bills.map(function(b) { return [b.line, b.amount == null ? '' : b.amount, b.dueDay || '', 'Monthly', b.category || '', b.account || '', paid(b.line), b.notes || '', 'Expense', b.notInTracker ? '' : b.line]; });
+    list.cards.forEach(function(c) { rows.push([c.line, '', c.dueDay || '', 'Monthly', 'Credit Card', c.account || '', paid(c.line), c.notes || '', 'Expense', '']); });
+    var old = getSpreadsheet().getSheetByName(TABS.BILLS);
+    if (old && old.getLastRow() >= 2) {
+      old.getRange(2, 1, old.getLastRow() - 1, Math.min(old.getLastColumn(), BILL_HEADERS.length)).getValues().forEach(function(r) {
+        if (!bsText_(r[0]) || !/income/i.test(bsText_(r[8]))) return;
+        var x = r.slice(); while (x.length < 10) x.push(''); rows.push(x);
+      });
+    }
+    return rows;
+  } catch (e) { Logger.log('bsBillRows_: ' + e.message); return null; }
+}
+
+/** Marks a bill paid (or not) for a month in Bill Schedule, adding a row for it when there's none. → paid now? */
+function bsSetPaid_(line, month, paid, kind) {
+  line = bsText_(line);
+  return tiLocked_(function() {
+    var sheet = bsSheet_(), rows = tiRows_(sheet, BS_HEADERS_.length);
+    for (var i = 0; i < rows.length; i++) {
+      if (bsText_(rows[i][0]).toLowerCase() !== line.toLowerCase()) continue;
+      var now = paid == null ? bsText_(rows[i][7]) !== month : !!paid;
+      sheet.getRange(i + 2, 8).setValue(now ? month : '');
+      return now;
+    }
+    var on = paid == null ? true : !!paid;
+    sheet.appendRow([line, '', '', false, '', kind || 'bill', '', on ? month : '']);
+    return on;
+  });
+}
+
+/** The bill whose name best fits some text (exact, then contained either way), from rows. */
+function bsFindBill_(rows, text) {
+  var t = bsText_(text).toLowerCase();
+  if (!t) return null;
+  var names = (rows || []).map(function(r) { return bsText_(r[0]); }).filter(Boolean);
+  return names.filter(function(n) { return n.toLowerCase() === t; })[0]
+    || names.filter(function(n) { var l = n.toLowerCase(); return (l.length >= 4 && t.indexOf(l) !== -1) || (t.length >= 4 && l.indexOf(t) !== -1); })[0] || null;
+}
+
+/** Removes a bill VERA holds itself (a Bill Schedule row that isn't a tracker line). Tracker lines stay. */
+function bsDeleteScheduleBill_(line) {
+  var plan = bsPlan_();
+  if (plan.error) return { ok: false, error: plan.error };
+  var low = bsText_(line).toLowerCase();
+  if (plan.computed.shared.lines.some(function(x) { return x.name.toLowerCase() === low; })) return { ok: false, error: line + ' comes from the budget tracker; remove the line there.' };
+  return tiLocked_(function() {
+    var sheet = bsSheet_(), rows = tiRows_(sheet, BS_HEADERS_.length);
+    for (var i = rows.length - 1; i >= 0; i--) if (bsText_(rows[i][0]).toLowerCase() === low) { sheet.deleteRow(i + 2); return { ok: true }; }
+    return { ok: false, error: 'Bill not found: ' + line };
+  });
 }

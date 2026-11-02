@@ -182,7 +182,7 @@ console.log('\nThe bill nudge');
 console.log('\nClaude’s prompt');
 {
   const src  = CL;
-  const from = src.indexOf('    if (billsSheet && billsSheet.getLastRow() >= 2) {');
+  const from = src.indexOf('    if (billsData || (billsSheet && billsSheet.getLastRow() >= 2)) {');
   const to   = src.indexOf('  } catch (billErr) {', from);
   if (from === -1 || to === -1) throw new Error('the bills section moved');
 
@@ -190,6 +190,8 @@ console.log('\nClaude’s prompt');
   ctx.billsForPrompt  = [];
   ctx.billsSectionStr = '';
   ctx.billsSheet      = ctx.getSpreadsheet();
+  ctx.billsData       = null;
+  ctx.currMonth      = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0');   // no tracker here: the old Bills sheet (see test_billsreaders.js for the tracker)
   vm.runInContext(src.slice(from, to), ctx);
   const out = ctx.billsSectionStr;
 

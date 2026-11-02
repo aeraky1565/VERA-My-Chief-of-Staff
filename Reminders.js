@@ -348,14 +348,16 @@ function checkBillsDue_(now, hour, cfg) {
   var dayOfMonth = today.getDate();
 
   var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BILLS);
-  if (!sheet || sheet.getLastRow() < 2) return;
-
   var currMonth    = Utilities.formatDate(now, tz, 'yyyy-MM');
+  // The tracker and Bill Schedule (BillSchedule.js); the old Bills sheet only when the tracker can't be read.
+  var data = (typeof bsBillRows_ === 'function' && bsBillRows_(currMonth));
+  if (!data) {
+    var sheet = ss.getSheetByName(TABS.BILLS);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    data = sheet.getRange(2, 1, sheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+  }
   var suppressed   = [];
   try { suppressed = getSuppressedKeyPatterns_(); } catch(e) {}
-
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
 
   data.forEach(function(row) {
     var billName = String(row[0] || '').trim();

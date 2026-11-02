@@ -140,14 +140,14 @@ let M = run('bsMigrate_(OLD, C, {})');
 check('matched by Budget Entry, then by name', J(M.matched) === J([{ bill: 'Rent', line: 'Rent' }, { bill: 'Electricity', line: 'Utilities - Electric' }, { bill: 'Internet bill', line: 'Internet' }]), J(M.matched));
 check('a card becomes a card payment; income is skipped; duplicates once', J(M.cards) === J(['Gold Card']) && J(M.skipped) === J(['Paycheck']) && M.rows.length === 4);
 check('anything else is listed for a decision', J(M.unmatched.map(u => u.bill)) === J(['Gym']));
-check('the rows carry due day, account and notes, never an amount', J(M.rows[0]) === J(['Rent', 1, 'Joint', false, '', 'bill', 'landlord portal']) && J(M.rows[3]) === J(['Gold Card', 30, 'Pat checking', false, 'Gold Card', 'card payment', 'pay in full']), J(M.rows));
+check('the rows carry due day, account and notes, never an amount', J(M.rows[0]) === J(['Rent', 1, 'Joint', false, '', 'bill', 'landlord portal', '']) && J(M.rows[3]) === J(['Gold Card', 30, 'Pat checking', false, 'Gold Card', 'card payment', 'pay in full', '']), J(M.rows));
 check('a line already in Bill Schedule isn’t added again', run('bsMigrate_(OLD, C, { internet: {} })').rows.length === 3);
 
 console.log('\nthe server');
 let r = run('webGetBillsSchedule_()');
 check('bills_schedule: bills, cards, timeline, and the migration offered while Bill Schedule is empty', r.ok && r.bills.length === 7 && r.timeline.events.length === 7 && r.migration && r.migration.matched.length === 3 && r.migration.unmatched.length === 1, J(Object.keys(r)));
 r = run('webMigrateBillSchedule_({ apply: true })');
-check('migrate writes Bill Schedule only', r.ok && r.written === 4 && VERA['Bill Schedule'].length === 5 && J(VERA['Bill Schedule'][0]) === J(['Tracker Line', 'Due Day', 'Account Override', 'Autopay', 'Card Link', 'Kind', 'Notes']), J(r));
+check('migrate writes Bill Schedule only', r.ok && r.written === 4 && VERA['Bill Schedule'].length === 5 && J(VERA['Bill Schedule'][0]) === J(['Tracker Line', 'Due Day', 'Account Override', 'Autopay', 'Card Link', 'Kind', 'Notes', 'Paid']), J(r));
 check('…and twice adds nothing', run('webMigrateBillSchedule_({ apply: true })').written === 0 && VERA['Bill Schedule'].length === 5);
 r = run('webGetBillsSchedule_()');
 check('then the list has the card payment and no migration offer', r.cards.length === 1 && r.migration === null);

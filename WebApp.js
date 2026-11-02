@@ -2369,6 +2369,15 @@ function buildTxMatchMap_(billRows, txList, aliasMap) {
  * paid = true when Paid column equals current YYYY-MM (auto-resets each month).
  */
 function webGetBills_() {
+  // The tracker and Bill Schedule (BillSchedule.js), when the tracker can be read.
+  var tzN = Session.getScriptTimeZone(), monN = Utilities.formatDate(new Date(), tzN, 'yyyy-MM');
+  var fresh = (typeof bsBillRows_ === 'function' && bsBillRows_(monN));
+  if (fresh) {
+    return { ok: true, currentMonth: monN, source: 'tracker', bills: fresh.filter(function(r) { return String(r[0] || '').trim(); }).map(function(r) {
+      return { row: null, key: String(r[0]).trim(), bill: String(r[0]).trim(), amount: r[1] !== '' ? Number(r[1]) : null, dueDay: r[2] !== '' ? Number(r[2]) : null,
+        frequency: String(r[3] || 'Monthly').trim(), category: String(r[4] || '').trim(), account: String(r[5] || '').trim(), paid: String(r[6] || '').trim() === monN,
+        notes: String(r[7] || '').trim(), type: String(r[8] || 'Expense').trim() || 'Expense', budgetEntry: String(r[9] || '').trim(), txMatch: null, txCandidates: [] }; }) };
+  }
   var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(TABS.BILLS);
   if (!sheet || sheet.getLastRow() < 2) return { ok: true, bills: [] };
@@ -2416,6 +2425,12 @@ function webGetBills_() {
  * If not paid → sets to current YYYY-MM.
  */
 function webToggleBill_(e) {
+  // By name: Bill Schedule's Paid column (the bills come from the tracker now).
+  var lineP = e && e.parameter && String(e.parameter.line || '').trim();
+  if (lineP && typeof bsSetPaid_ === 'function') {
+    var monT = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+    return { ok: true, line: lineP, paid: bsSetPaid_(lineP, monT, null) };
+  }
   var rowNum = parseInt((e.parameter && e.parameter.row) || '0', 10);
   if (isNaN(rowNum) || rowNum < 2) throw new Error('Invalid row: ' + e.parameter.row);
 
@@ -2990,8 +3005,8 @@ function webGetCashflow_(e) {
 
   // ---- 1. Read Bills sheet -----------------------------------------------
   var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BILLS);
-  var billsData = [];
+  var billsData = (typeof bsBillRows_ === 'function' && bsBillRows_(month)) || [];
+  var sheet = billsData.length ? null : ss.getSheetByName(TABS.BILLS);
   if (sheet && sheet.getLastRow() >= 2) {
     var numCols = Math.min(sheet.getLastColumn(), BILL_HEADERS.length);
     billsData = sheet.getRange(2, 1, sheet.getLastRow() - 1, numCols).getValues();
@@ -3261,7 +3276,13 @@ function webGetCalendarBills_() {
 
   // Cross-reference Bills sheet for paid status
   var paidMap = {};
-  try {
+  var monC = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var freshC = (typeof bsBillRows_ === 'function' && bsBillRows_(monC));
+  if (freshC) {
+    freshC.forEach(function(r) { var n = String(r[0] || '').trim().toLowerCase(); if (n) paidMap[n] = String(r[6] || '').trim() === monC; });
+    try { var schC = bsReadSchedule_(); Object.keys(schC).forEach(function(k) { if (schC[k].paid === monC) paidMap[k] = true; }); } catch (eC) {}
+  }
+  else try {
     var bSheet = ss.getSheetByName(TABS.BILLS);
     if (bSheet && bSheet.getLastRow() >= 2) {
       var bData = bSheet.getRange(2, 1, bSheet.getLastRow() - 1,
@@ -3333,6 +3354,9 @@ function webToggleCalBill_(e) {
   var p     = e.parameter || {};
   var title = (p.title || '').trim();
   if (!title) throw new Error('title is required');
+  // With the tracker readable, paid is kept in Bill Schedule (a calendar title gets a row of its own).
+  var monCal = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+  if (typeof bsBillRows_ === 'function' && bsBillRows_(monCal)) return { ok: true, row: null, paid: bsSetPaid_(title, monCal, null, 'calendar') };
 
   var ss        = getSpreadsheet();
   var sheet     = ss.getSheetByName(TABS.BILLS);

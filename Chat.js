@@ -413,7 +413,7 @@ function buildChatSystemPrompt_(context) {
   var billLines = (!context.bills || context.bills.length === 0)
     ? '  (none)'
     : context.bills.map(function(b) {
-        return '  [row:' + b.row + '] ' + b.bill +
+        return '  ' + (b.row ? '[row:' + b.row + '] ' : '[bill] ') + b.bill +
                (b.isIncome ? ' [INCOME, not a bill]' : '') +
                (b.amount ? ' ' + fmtMoney_(b.amount) : '') +
                ' (' + b.frequency + ')' +
@@ -929,7 +929,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:add_interest|{person}|{interest}|{category}|{notes}\n' +
     '  \u2014 person = Ahmed or Victoria; category = Food/Travel/Fitness/Culture/Hobbies/Learning/Other\n' +
     // Bills
-    'ACTION:delete_bill|{row_number}  \u2014 row from BILLS context above (e.g. "3" for [row:3]). Always confirm the bill name first.\n' +
+    'ACTION:delete_bill|{row_number_or_bill_name}  \u2014 the row from BILLS above (e.g. "3" for [row:3]), or the bill\u2019s name when BILLS shows [bill]. Always confirm the bill name first.\n' +
     // Countries
     'ACTION:add_country|{country}|{city}|{year}|{traveller}|{notes}\n' +
     '  \u2014 traveller = Ahmed / Victoria / Both. year = YYYY or blank.\n' +
@@ -1008,7 +1008,7 @@ function buildChatSystemPrompt_(context) {
     ' Separate tasks with ~ and append |Priority|Phase to each task. Example: "Book the venue|High|Logistics".\n' +
     '- For log_interest: when Ahmed or Victoria mentions liking something, wanting to try something, or expresses interest in a place, food, activity, or experience, log it automatically with ACTION:log_interest. Use person "Ahmed" or "Victoria". Pick the best category from: Food, Travel, Fitness, Culture, Hobbies, Learning, Other. Example: "Victoria mentioned she wants to visit Wimberley" → ACTION:log_interest|Victoria|visit Wimberley TX|Travel\n' +
     '- For add_bill: use empty string for optional fields (amount, dueDay, category, account) when not provided.\n' +
-    '- For mark_bill_paid: pass the row number from BILLS above (e.g., "2" for [row:2]). This toggles: paid→unpaid, unpaid→paid.\n' +
+    '- For mark_bill_paid: pass the row number from BILLS above (e.g., "2" for [row:2]), or the bill\u2019s exact name when BILLS shows [bill]. This toggles: paid→unpaid, unpaid→paid.\n' +
     '- For add_recipe: ingredients must be semicolon-separated (e.g., "Pasta 400g; Beef 500g; Tomatoes 2 cans"). Use empty string for unknown fields.\n' +
     '- For delete_recipe: use the row number from RECIPES above. Always confirm the recipe name with Ahmed before deleting.\n' +
     '- For add_home_item: use empty string for warranty_expiry and interval_months if not provided. When Ahmed\n' +
@@ -1038,7 +1038,7 @@ function buildChatSystemPrompt_(context) {
     '- For delete_home_item: use the row number from HOME ITEMS above. Always confirm the item with Ahmed before deleting.\n' +
     '- For toggle_shopping_item: store_name must partially match one of the SHOPPING STORES above. item_text must partially match the item. This toggles purchased/unpurchased.\n' +
     '- For add_interest: use this (not log_interest) when Ahmed explicitly asks to "add" or "save" an interest. log_interest is for auto-capturing mentions mid-conversation.\n' +
-    '- For delete_bill: pass the row number from BILLS above (e.g., "3" for [row:3]). Always confirm the bill name with Ahmed before deleting.\n' +
+    '- For delete_bill: pass the row number from BILLS above (e.g., "3" for [row:3]), or the bill\u2019s name when BILLS shows [bill]; a bill from the budget tracker is removed there, not in VERA. Always confirm the bill name with Ahmed before deleting.\n' +
     '- For add_country: log a country Ahmed or Victoria has visited. year is optional. traveller = Ahmed/Victoria/Both.\n' +
     '- For delete_country: use the ID from COUNTRIES VISITED above. Always confirm the country with Ahmed before deleting.\n' +
     '- For add_bucket_item: stars is 1–5 (5 = dream destination). dreamTrip = "yes" or a short description like "Cherry blossom season". Use blank for unknown fields.\n' +
@@ -1195,7 +1195,14 @@ function buildChatContext_() {
   // Bills (for chat context)
   var bills = [];
   try {
-    var billSheet = ss.getSheetByName(TABS.BILLS);
+    // The tracker and Bill Schedule (BillSchedule.js): no sheet rows, so Claude refers to a bill by name.
+    var monCtx = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+    var freshB = (typeof bsBillRows_ === 'function' && bsBillRows_(monCtx));
+    if (freshB) bills = freshB.filter(function(r) { return String(r[0] || '').trim(); }).map(function(r) {
+      return { row: null, bill: String(r[0]).trim(), amount: r[1] !== '' ? Number(r[1]) : null, dueDay: r[2] !== '' ? Number(r[2]) : null,
+               frequency: String(r[3] || 'Monthly').trim(), paid: String(r[6] || '').trim() === monCtx, isIncome: isIncomeBillRow_(r[8]) };
+    });
+    var billSheet = freshB ? null : ss.getSheetByName(TABS.BILLS);
     if (billSheet && billSheet.getLastRow() >= 2) {
       var billData  = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
       var tzB       = Session.getScriptTimeZone();
@@ -1797,6 +1804,15 @@ function executeActions_(rawText) {
       }
 
       // ---- Bills ------------------------------------------------------------
+      else if (type === 'add_bill' && typeof bsBillRows_ === 'function' && bsBillRows_(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM'))) {
+        // Amounts live in the budget tracker; VERA keeps the bill's due day and account in Bill Schedule.
+        var abN = (args[0] || '').trim();
+        if (!abN) throw new Error('Bill name required');
+        var abR = webSaveBillSchedule_({ line: abN, dueDay: args[2] ? Number(args[2]) || '' : '', account: args[5] || '', kind: 'bill',
+          notes: 'Added in chat' + (args[1] ? '; amount ' + args[1] + ' belongs in the budget tracker' : '') });
+        if (!abR.ok) throw new Error(abR.error);
+        executed.push(type + ' (' + abN + '; add its amount as a line in the budget tracker)');
+      }
       else if (type === 'add_bill') {
         var abName = (args[0] || '').trim();
         if (!abName) throw new Error('Bill name required');
@@ -1813,6 +1829,13 @@ function executeActions_(rawText) {
           '', ''
         ]]);
         executed.push(type + ' (' + abName + ')');
+      }
+      else if (type === 'mark_bill_paid' && typeof bsBillRows_ === 'function' && bsBillRows_(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM'))) {
+        // The bills come from the tracker: find it by name, keep paid in Bill Schedule.
+        var mbM = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+        var mbName = bsFindBill_(bsBillRows_(mbM), args[0]);
+        if (!mbName) throw new Error('Bill not found: ' + (args[0] || ''));
+        executed.push(type + ' (' + mbName + ': ' + (bsSetPaid_(mbName, mbM, null) ? 'paid' : 'not paid') + ')');
       }
       else if (type === 'mark_bill_paid') {
         var mbArg   = (args[0] || '').trim();
@@ -2197,6 +2220,14 @@ function executeActions_(rawText) {
       }
 
       // ---- Bills (delete) -----------------------------------------------------
+      else if (type === 'delete_bill' && isNaN(parseInt(args[0], 10)) && typeof bsBillRows_ === 'function' && bsBillRows_(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM'))) {
+        // Only a bill VERA itself holds (Bill Schedule, not a tracker line) can go from here.
+        var dbName = bsFindBill_(bsBillRows_(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM')), args[0]);
+        if (!dbName) throw new Error('Bill not found: ' + (args[0] || ''));
+        var dbOut = bsDeleteScheduleBill_(dbName);
+        if (!dbOut.ok) throw new Error(dbOut.error);
+        executed.push(type + ' (' + dbName + ')');
+      }
       else if (type === 'delete_bill') {
         var dbRow = parseInt(args[0], 10);
         if (isNaN(dbRow) || dbRow < 2) throw new Error('Invalid bill row: ' + args[0]);

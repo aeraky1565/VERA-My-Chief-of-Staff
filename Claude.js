@@ -142,11 +142,12 @@ function buildPrompt(events, tasks, summaries, ptoStats, ledger, suppressedPatte
   var billsForPrompt = [];
   var billsSectionStr = '';
   try {
-    var billsSheet = getSpreadsheet().getSheetByName(TABS.BILLS);
-    if (billsSheet && billsSheet.getLastRow() >= 2) {
-      var tz_b     = Session.getScriptTimeZone();
-      var currMonth = Utilities.formatDate(new Date(), tz_b, 'yyyy-MM');
-      var billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+    var tz_b     = Session.getScriptTimeZone();
+    var currMonth = Utilities.formatDate(new Date(), tz_b, 'yyyy-MM');
+    var billsData = (typeof bsBillRows_ === 'function' && bsBillRows_(currMonth));
+    var billsSheet = billsData ? null : getSpreadsheet().getSheetByName(TABS.BILLS);
+    if (billsData || (billsSheet && billsSheet.getLastRow() >= 2)) {
+      if (!billsData) billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
       billsData.forEach(function(r) {
         var name = String(r[0] || '').trim();
         if (!name) return;

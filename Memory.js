@@ -293,13 +293,18 @@ function writeWeeklySnapshot_() {
 
     // ── Bills unpaid ──────────────────────────────────────────────────────────
     try {
-      var billSheet = ss.getSheetByName(TABS.BILLS);
-      if (billSheet && billSheet.getLastRow() >= 2) {
+      // Bills not yet paid this month, money going out only. The tracker and Bill Schedule
+      // (BillSchedule.js) when the tracker can be read, else the old Bills sheet.
+      var monS = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+      var billRowsS = (typeof bsBillRows_ === 'function' && bsBillRows_(monS));
+      var billSheet = billRowsS ? null : ss.getSheetByName(TABS.BILLS);
+      if (!billRowsS && billSheet && billSheet.getLastRow() >= 2) billRowsS = billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+      if (billRowsS) {
         var unpaidCount = 0;
-        billSheet.getRange(2, 1, billSheet.getLastRow() - 1, BILL_HEADERS.length).getValues()
-          .forEach(function(r) {
-            if (String(r[6] || '').toLowerCase() !== 'yes') unpaidCount++; // Paid column
-          });
+        billRowsS.forEach(function(r) {
+          if (!String(r[0] || '').trim() || /income/i.test(String(r[8] || ''))) return;
+          if (String(r[6] || '').trim() !== monS) unpaidCount++; // Paid holds the month it was paid
+        });
         snap('bills_unpaid', 'System', unpaidCount);
       }
     } catch (billErr) {

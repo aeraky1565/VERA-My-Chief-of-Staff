@@ -2265,10 +2265,12 @@ function buildMorningIntelligence_(allEvents, openTasks, capMode, subTimings) {
 
   // ---- Today's Focus: Bills due within 5 days -----------------------------
   sub_('bills', function() {
-    var billsSheet = ss_().getSheetByName(TABS.BILLS);
-    if (billsSheet && billsSheet.getLastRow() >= 2) {
-      var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
-      var billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
+    var currMonth = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+    // The tracker and Bill Schedule (BillSchedule.js); the old Bills sheet only when the tracker can't be read.
+    var billsData = (typeof bsBillRows_ === 'function' && bsBillRows_(currMonth));
+    var billsSheet = billsData ? null : ss_().getSheetByName(TABS.BILLS);
+    if (billsData || (billsSheet && billsSheet.getLastRow() >= 2)) {
+      if (!billsData) billsData = billsSheet.getRange(2, 1, billsSheet.getLastRow() - 1, BILL_HEADERS.length).getValues();
       billsData.forEach(function(r) {
         var name   = String(r[0] || '').trim();
         if (!name) return;
