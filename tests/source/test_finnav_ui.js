@@ -41,7 +41,7 @@ check('every Finances subtab in both dashboards is in a group',
 check('both dashboards mount the full Groceries card on its own subtab, and keep it on Summary',
   APP.indexOf("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1
   && LITE.indexOf("{activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1
-  && LITE.indexOf("{activeFinanceTab === 'fin_summary' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1);
+  && LITE.indexOf("groceriesCard={<GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1 && APP.indexOf("groceriesCard:React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1);
 check('the lite Finances uses FinNav', LITE.indexOf('<FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />') !== -1);
 
 const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget: 800,

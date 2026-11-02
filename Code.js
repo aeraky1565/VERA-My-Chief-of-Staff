@@ -154,6 +154,7 @@ const NOTIF_REGISTRY = [
   { key: 'flag_medium',         label: 'Medium Urgency Flags',  emoji: '🟡', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly medium-urgency flag alerts', locked: false },
   { key: 'flag_low',            label: 'Low Urgency Flags',     emoji: '🟢', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly low-urgency flag alerts', locked: false },
   { key: 'bill_due',            label: 'Bill Due',              emoji: '💳', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Upcoming bill due reminders', locked: false },
+  { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false },
   { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false },
   { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false },
   { key: 'contract_expiry',     label: 'Contract Expiry',       emoji: '📋', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Contract approaching expiry', locked: false },
@@ -1366,6 +1367,9 @@ function nightlyRun() {
     // sheet (NetWorth.js). The mapping seed is a no-op after its first run.
     nightlyStep_(ctx, 'seedNetWorthMappingConfig_', seedNetWorthMappingConfig_);
     nightlyStep_(ctx, 'checkPlannerCdMaturity_', checkPlannerCdMaturity_);
+    // Finances › Summary (#224): this quarter's snapshot (once; caught up after a missed night), then the
+    // check-in reminder before each quarter and reminders for decisions coming due.
+    nightlyStep_(ctx, 'fsNightly_', fsNightly_);
     // Packing lists and Discover runs: flag a list built before VERA recorded its
     // inputs, and one built on last year's weather once a forecast exists (GenerationInputs.js).
     nightlyStep_(ctx, 'checkGenerationInputs_', checkGenerationInputs_);

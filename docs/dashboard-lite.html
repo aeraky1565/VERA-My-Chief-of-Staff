@@ -11370,7 +11370,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
 
 // ---- Finance Summary Lite tab -----------------------------------------------
 
-function FinSummaryLiteTab({ apiUrl, apiToken }) {
+function FinSummaryLiteTab({ apiUrl, apiToken, part }) {
   const [tb, loading, reload] = useTrackerBudget(apiUrl, apiToken);
   const split = getSplit();
   const blue = '#5c9eff', purple = '#c97ef2', teal = '#2bb5a0', gold = '#c9a84c';
@@ -11405,13 +11405,13 @@ function FinSummaryLiteTab({ apiUrl, apiToken }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+      {!part && <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <span style={{ fontSize: 11, color: '#4d6080' }}>Based on Tracker</span>
         <button onClick={reload} style={{ fontSize: 10, color: blue, background: 'none', border: '1px solid #2a3a4a', borderRadius: 5, cursor: 'pointer', padding: '1px 8px' }}>↻ Refresh</button>
-      </div>
+      </div>}
 
       {/* Transfer calculator */}
-      <div style={cardStyle}>
+      {(!part || part === 'transfer') && <div style={cardStyle}>
         <div style={{ fontWeight: 700, fontSize: 13, color: '#dde1f0', marginBottom: 14 }}>💸 Monthly Transfers</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px' }}>
           <div>
@@ -11437,9 +11437,10 @@ function FinSummaryLiteTab({ apiUrl, apiToken }) {
           &nbsp;→&nbsp;<span style={{ color: blue }}>Ahmed {fmtMny(s.totalShared * ahmedPct)}</span>
           &nbsp;|&nbsp;<span style={{ color: purple }}>Victoria {fmtMny(s.totalShared * victoriaPct)}</span>
         </div>
-      </div>
+      </div>}
 
       {/* Balance checkpoints */}
+      {(!part || part === 'checkpoints') && <>
       <div style={{ fontWeight: 600, fontSize: 12, color: '#6b7fa8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Joint Account Balance Checkpoints</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         {checkpoints.map(cp => (
@@ -11462,6 +11463,7 @@ function FinSummaryLiteTab({ apiUrl, apiToken }) {
           </div>
         ))}
       </div>
+      </>}
     </div>
   );
 }
@@ -12962,6 +12964,128 @@ function PhonePlanCard(props){var h=React.createElement;var C=BGC;
     p.checks===false?h('span',{style:{fontSize:12,color:C.warn}},'Ours plus the money back doesn’t add up to the bill in the phone tracker; worth a look.'):null,
     h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.5}},'The family pays by bill; their money comes to you and goes on to Joint. The Budget uses this month’s bill and money back in place of the budget tracker’s family plan lines.'));}
 // ---- /PhonePlanCard ----
+// ---- FinSummary (Finances › Overview › Summary, issue #224) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// This month: four tiles (each opens its tab), the Transfer Calculator, Groceries and the Joint
+// checkpoints as one line each with Details ▾ (the dashboard's own card, unchanged, passed in),
+// Needs attention, and FSA & HSA. Quarter check-in: what changed since the last snapshot, spending
+// against the Budget (actual or expected), suggested topics, decisions (shared by both dashboards)
+// and notes. Record a decision opens on the page, from a topic or on its own.
+function fsuMoney_(n){return n==null||isNaN(n)?'—':(n<0?'−':'')+'$'+Math.abs(Math.round(Number(n))).toLocaleString('en-US');}
+function fsuDelta_(n){return n==null||!n?'':(n>0?'+':'−')+'$'+Math.abs(Math.round(n)).toLocaleString('en-US');}
+function fsuDay_(iso){if(!iso)return '';var d=new Date(String(iso).slice(0,10)+'T12:00:00');return isNaN(d.getTime())?String(iso):d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+var FSU_ICON={bill:'🧾',over:'📈',planned:'🗓️',fsa:'🩺',cd:'🏦',fee:'💳',return:'↩️'};
+function FinSummary(props){var h=React.createElement;var C=BGC;
+  var _v=React.useState('month'),view=_v[0],setView=_v[1];
+  var _d=React.useState(null),d=_d[0],setD=_d[1];
+  var _b=React.useState(null),bm=_b[0],setBm=_b[1];
+  var _g=React.useState(null),gr=_g[0],setGr=_g[1];
+  var _s=React.useState(null),bs=_s[0],setBs=_s[1];
+  var _o=React.useState({}),open=_o[0],setOpen=_o[1];
+  var _f=React.useState(null),form=_f[0],setForm=_f[1];
+  var _n=React.useState(null),notes=_n[0],setNotes=_n[1];
+  var _m=React.useState(''),msg=_m[0],setMsg=_m[1];
+  var _y=React.useState(false),busy=_y[0],setBusy=_y[1];
+  var get=function(action,set){if(!props.apiUrl||!props.apiToken)return;apiGet(props.apiUrl,props.apiToken,{action:action}).then(function(r){set(r||{ok:false});}).catch(function(e){set({ok:false,error:e.message});});};
+  React.useEffect(function(){get('checkin',setD);get('budget_model',setBm);get('grocery_month',setGr);get('bills_schedule',setBs);},[props.apiUrl,props.apiToken]);
+  var go=function(k){if(props.onOpenTab)props.onOpenTab(props.tabId?props.tabId(k):k);};
+  var post=function(body,then){setBusy(true);setMsg('');apiPost(props.apiUrl,props.apiToken,body).then(function(r){setBusy(false);if(!r||r.ok===false){setMsg((r&&r.error)||'That didn’t save.');return;}then(r);})
+    .catch(function(e){setBusy(false);setMsg(e.message||'That didn’t save.');});};
+  var card=function(cls,kids,extra){return h('section',{className:'fsu-card '+cls,style:Object.assign({display:'flex',flexDirection:'column',gap:10,background:C.card,border:'1px solid '+C.br,borderRadius:14,padding:14},extra||{})},kids);};
+  var head=function(t,sub){return h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('span',{style:{fontSize:15,fontWeight:700}},t),sub?h('span',{style:{fontSize:12,color:C.mute}},sub):null);};
+  var btn=function(primary){return {minHeight:40,padding:'0 14px',borderRadius:10,cursor:'pointer',fontSize:13,fontWeight:600,background:primary?C.acc:'transparent',color:primary?'#0b1430':C.txt,border:primary?0:'1px solid #3a5bab'};};
+  var seg=function(on){return {minHeight:40,borderRadius:9,cursor:'pointer',fontSize:13,border:'1px solid '+(on?'#4a6db0':'transparent'),background:on?'#1a3060':'transparent',color:on?C.txt:C.soft,fontWeight:on?600:400};};
+  if(!d)return h('div',{className:'fsu',style:{color:C.mute,fontSize:13,padding:'12px 0'}},'Reading where we stand…');
+  if(!d.ok)return h('div',{className:'fsu fsu-unavailable',style:{padding:14,borderRadius:12,background:C.card,border:'1px solid '+C.br,color:C.soft,fontSize:13}},d.error||'The summary couldn’t be read.');
+  var T=d.tiles||{};
+  // ---- This month ----
+  var tile=function(k,label,value,sub,tab,extra){return h('button',{key:k,type:'button',className:'fsu-tile fsu-tile-'+k,onClick:function(){go(tab);},style:{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:3,minHeight:92,padding:'10px 12px',borderRadius:12,background:C.deep,border:'1px solid '+C.line,color:C.txt,cursor:'pointer',textAlign:'left'}},
+    h('span',{style:{fontSize:11,color:C.mute}},label),h('span',{style:{fontSize:18,fontWeight:700,fontVariantNumeric:'tabular-nums'}},value),sub?h('span',{style:{fontSize:11,color:C.soft,lineHeight:1.35}},sub):null,extra||null);};
+  var status=String(T.planStatus||''),statusWord=status.split(':')[0],statusCol=/green/i.test(statusWord)?C.ok:/amber|yellow/i.test(statusWord)?C.warn:/red/i.test(statusWord)?C.bad:C.soft;
+  var sp=T.spend;
+  var tiles=h('div',{className:'fsu-tiles',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',gap:8}},
+    tile('networth','Net worth',fsuMoney_(T.netWorth),statusWord?null:'from the planner','networth',statusWord?h('span',{className:'fsu-status',style:{fontSize:11,fontWeight:700,color:statusCol}},'Plan: '+statusWord):null),
+    tile('cash','Cash & CDs',fsuMoney_(T.cash),T.cashLow!=null?'12-month low '+fsuMoney_(T.cashLow)+(T.cashLowWhen?' ('+T.cashLowWhen+')':'')+(T.floor!=null?' · floor '+fsuMoney_(T.floor):''):'','networth'),
+    tile('spend','Spent this month',sp?(sp.source==='actual'?fsuMoney_(sp.actual):fsuMoney_(sp.plan)):'—',sp?(sp.source==='actual'?'of '+fsuMoney_(sp.plan)+' budgeted':'expected · nothing uploaded yet'):'','budget'),
+    tile('goals','Goals',T.goals?fsuMoney_(T.goals.setAside)+' set aside':'—',T.goals?T.goals.done+' of '+T.goals.count+' done':'','goals'));
+  var people=bm&&bm.ok&&bm.model?budgetCompute_(bm.model,{},bm.categoryMap||{}).people:null;
+  var line=function(id,label,summary,el){var on=!!open[id];return h('div',{key:id,className:'fsu-line fsu-line-'+id,style:{display:'flex',flexDirection:'column',gap:8,background:C.card,border:'1px solid '+C.br,borderRadius:14,padding:'4px 14px'}},
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,minHeight:48,flexWrap:'wrap'}},
+      h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:'1 1 200px'}},h('span',{style:{fontSize:14,fontWeight:600}},label),h('span',{className:'fsu-line-sum',style:{fontSize:12,color:C.soft}},summary)),
+      el?h('button',{type:'button',className:'fsu-details','aria-expanded':on,onClick:function(){setOpen(function(p){var n=Object.assign({},p);n[id]=!p[id];return n;});},style:{minHeight:36,padding:'0 10px',borderRadius:8,cursor:'pointer',background:'transparent',border:'1px solid '+C.line,color:C.acc,fontSize:13}},on?'Details ▴':'Details ▾'):null),
+    on&&el?h('div',{className:'fsu-full',style:{paddingBottom:10}},el):null);};
+  var g=gr&&gr.ok?gr:null,tl=bs&&bs.ok&&bs.timeline;
+  var lines=h('div',{style:{display:'flex',flexDirection:'column',gap:8}},
+    line('transfer','Transfer Calculator',people?people.map(function(p){return p.name+' → AMEX Checking '+fsuMoney_(p.checking)+', Savings '+fsuMoney_(p.savings);}).join(' · '):'From the Budget',props.transferCard),
+    line('groceries','Groceries',g?fsuMoney_(g.total)+' of '+fsuMoney_(g.budget)+(g.pace&&g.pace.left!=null?' · '+fsuMoney_(g.pace.left)+' left':''):'This month’s runs',props.groceriesCard),
+    line('checkpoints','Joint account checkpoints',tl?tl.windows.filter(function(w){return w.need;}).map(function(w){return 'keep '+fsuMoney_(w.need)+' from day '+({'1–7':1,'8–20':8,'21+':21}[w.window]);}).join(' · ')||'no Joint bills dated':'From Bills & cashflow',props.checkpointsCard));
+  var att=d.attention||{items:[],unavailable:[]};
+  var attention=card('fsu-attention',[head('Needs attention',att.items.length?att.items.length+' soonest first':''),
+    att.items.length?h('div',{style:{display:'flex',flexDirection:'column'}},att.items.map(function(x,i){return h('button',{key:i,type:'button',className:'fsu-att fsu-att-'+x.kind,onClick:function(){go(x.tab);},
+        style:{display:'grid',gridTemplateColumns:'24px minmax(0,1fr) auto',gap:10,alignItems:'center',minHeight:48,padding:'4px 0',background:'transparent',border:0,borderBottom:'1px solid '+C.line,color:C.txt,cursor:'pointer',textAlign:'left'}},
+        h('span',{'aria-hidden':'true'},FSU_ICON[x.kind]||'•'),h('span',{style:{display:'flex',flexDirection:'column',gap:1,minWidth:0}},h('span',{style:{fontSize:14}},x.title),h('span',{style:{fontSize:12,color:C.mute}},x.detail)),h('span',{style:{fontSize:12,color:C.soft}},fsuDay_(x.date)));})):
+      h('span',{style:{fontSize:13,color:C.ok}},'Nothing needs attention right now.'),
+    att.unavailable.length?h('span',{className:'fsu-att-missing',style:{fontSize:12,color:C.warn}},'Couldn’t check: '+att.unavailable.map(function(u){return {bills:'bills',spend:'spending',plans:'planned spends',fsa:'FSA',cds:'CDs',cards:'card fees',returns:'return windows'}[u]||u;}).join(', ')+'.'):null]);
+  var H=d.health||{};
+  var health=card('fsu-health',[head('FSA & HSA'),
+    (H.fsa||[]).length?(H.fsa||[]).map(function(f){return h('div',{key:f.year,className:'fsu-fsa',style:{display:'flex',justifyContent:'space-between',gap:8,fontSize:14}},h('span',null,'FSA '+f.year+': '+fsuMoney_(f.balance)+' left'),h('span',{style:{color:f.atRisk>0&&f.daysLeft<=90?C.warn:C.mute,fontSize:12}},'use by '+fsuDay_(f.useBy)+(f.daysLeft!=null&&f.daysLeft>=0?' · '+f.daysLeft+' days':'')));}):h('span',{style:{fontSize:13,color:C.mute}},'No FSA this year.'),
+    H.hsa?h('div',{className:'fsu-hsa',style:{display:'flex',flexDirection:'column',gap:6}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:14}},h('span',null,'HSA '+H.hsa.year+': '+fsuMoney_(H.hsa.put)+' of '+fsuMoney_(H.hsa.limit)),h('span',{style:{color:C.ok,fontSize:12}},fsuMoney_(H.hsa.room)+' room left')),
+      h('div',{'aria-hidden':'true',style:{height:6,borderRadius:3,background:C.deep,overflow:'hidden'}},h('div',{style:{height:6,width:Math.min(100,H.hsa.limit?H.hsa.put/H.hsa.limit*100:0)+'%',background:C.acc}}))):null,
+    h('button',{type:'button',className:'fsu-to-hsafsa',onClick:function(){go('hsafsa');},style:{alignSelf:'flex-start',minHeight:36,background:'transparent',border:0,color:C.acc,cursor:'pointer',padding:0,fontSize:13}},'Open FSA & HSA')]);
+  var monthView=h('div',{className:'fsu-month',style:{display:'flex',flexDirection:'column',gap:12}},tiles,lines,attention,health);
+  // ---- Quarter check-in ----
+  var Q=d.checkin||{};
+  var changes=card('fsu-changes',[head('What changed',Q.since?'since the '+Q.since:'no snapshot yet: the first is today’s'),
+    h('div',{style:{display:'flex',flexDirection:'column'}},(Q.changes||[]).map(function(c){return h('div',{key:c.key,className:'fsu-change',style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:10,alignItems:'baseline',minHeight:36,borderBottom:'1px solid '+C.line,fontSize:14}},
+      h('span',{style:{color:C.soft}},c.label),h('span',{style:{fontVariantNumeric:'tabular-nums'}},c.key==='planStatus'?String(c.now||'—').split(':')[0]:fsuMoney_(c.now)),
+      h('span',{style:{fontSize:12,fontVariantNumeric:'tabular-nums',color:c.delta>0?C.ok:c.delta<0?C.bad:C.mute,minWidth:70,textAlign:'right'}},c.key==='planStatus'?(c.prev&&c.prev!==c.now?'was '+String(c.prev).split(':')[0]:''):(c.delta==null?'—':fsuDelta_(c.delta)||'no change')));}))]);
+  var S2=Q.spending||{};
+  var spending=card('fsu-spending',[head('Spending this quarter',S2.error?'':S2.source==='actual'?'actual, from the uploads':'expected: the Budget’s plan, no uploads yet'),
+    S2.error?h('span',{style:{fontSize:13,color:C.mute}},S2.error):h('div',{style:{display:'flex',flexDirection:'column'}},(S2.categories||[]).map(function(c){var over=c.actual!=null&&c.actual>c.plan*1.02+1;
+      return h('div',{key:c.name,className:'fsu-cat'+(over?' over':''),style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto auto',gap:10,alignItems:'baseline',minHeight:36,borderBottom:'1px solid '+C.line,fontSize:14}},
+        h('span',null,c.name),h('span',{style:{fontSize:12,color:C.mute}},'plan '+fsuMoney_(c.plan)),h('span',{style:{fontWeight:600,color:over?C.warn:C.txt}},c.actual==null?'expected':fsuMoney_(c.actual)+(over?' over':'')));}))]);
+  var people2=bm&&bm.ok&&bm.model?bm.model.people.map(function(p){return p.name;}):[];
+  var startForm=function(topic){setForm({text:topic?topic.text:'',owner:'Both',due:'',next:true,topic:topic?topic.id:'',tab:topic?topic.tab:''});setMsg('');};
+  var discuss=card('fsu-discuss',[head('Suggested to discuss',(Q.discuss||[]).length?'':'nothing flagged'),
+    (Q.discuss||[]).map(function(t){return h('div',{key:t.id,className:'fsu-topic',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,minHeight:48,borderBottom:'1px solid '+C.line,flexWrap:'wrap'}},
+      h('span',{style:{display:'flex',flexDirection:'column',gap:1,minWidth:0,flex:'1 1 200px'}},h('span',{style:{fontSize:14}},t.text),t.why?h('span',{style:{fontSize:12,color:C.mute}},t.why):null),
+      h('button',{type:'button',className:'fsu-record','aria-label':'Record a decision: '+t.text,onClick:function(){startForm(t);},style:btn(false)},'Record a decision'));})]);
+  var decs=(Q.decisions||[]);
+  var toggle=function(x){post({action:'checkin_decision_toggle',id:x.id},function(r){var n=Object.assign({},d);n.checkin=Object.assign({},Q,{decisions:decs.map(function(y){return y.id===x.id?r.decision:y;})});setD(n);});};
+  var decisions=card('fsu-decisions',[head('Decisions',decs.filter(function(x){return x.status==='open';}).length+' open'),
+    decs.length?h('div',{style:{display:'flex',flexDirection:'column'}},decs.map(function(x){var done=x.status==='done';return h('div',{key:x.id,className:'fsu-decision'+(done?' done':''),style:{display:'flex',alignItems:'center',gap:10,minHeight:52,borderBottom:'1px solid '+C.line}},
+      h('button',{type:'button',className:'fsu-tick','aria-pressed':done,'aria-label':(done?'Reopen: ':'Done: ')+x.text,disabled:busy,onClick:function(){toggle(x);},style:{width:32,height:32,flexShrink:0,borderRadius:8,cursor:'pointer',background:done?'#12352c':'transparent',border:'1px solid '+(done?C.ok:'#3a5bab'),color:C.ok,fontSize:16}},done?'✓':''),
+      h('span',{style:{display:'flex',flexDirection:'column',gap:1,minWidth:0}},h('span',{style:{fontSize:14,textDecoration:done?'line-through':'none',color:done?C.mute:C.txt}},x.text),
+        h('span',{style:{fontSize:12,color:C.mute}},[x.owner,x.due?'due '+fsuDay_(x.due):'',x.quarter!==d.quarter?'from '+x.quarter:'',done&&x.doneOn?'done '+fsuDay_(x.doneOn):''].filter(Boolean).join(' · '))));})):h('span',{style:{fontSize:13,color:C.mute}},'None yet.'),
+    h('button',{type:'button',className:'fsu-add-decision',onClick:function(){startForm(null);},style:Object.assign(btn(false),{alignSelf:'flex-start'})},'+ Decision')]);
+  var noteVal=notes==null?(Q.notes||''):notes;
+  var notesCard=card('fsu-notes',[head('Notes',d.quarter),
+    h('textarea',{className:'fsu-notes-text','aria-label':'Check-in notes',value:noteVal,rows:4,onChange:function(e){setNotes(e.target.value);},style:{width:'100%',boxSizing:'border-box',minHeight:96,padding:10,borderRadius:10,background:C.deep,border:'1px solid '+C.br,color:C.txt,fontSize:14,fontFamily:'inherit'}}),
+    h('button',{type:'button',className:'fsu-notes-save',disabled:busy||notes==null,onClick:function(){post({action:'checkin_notes_save',quarter:d.quarter,notes:noteVal},function(){var n=Object.assign({},d);n.checkin=Object.assign({},Q,{notes:noteVal});setD(n);setNotes(null);setMsg('Notes saved.');});},style:Object.assign(btn(true),{alignSelf:'flex-start'})},'Save notes')]);
+  var inp={minHeight:40,padding:'0 10px',borderRadius:8,background:C.deep,border:'1px solid '+C.br,color:C.txt,fontSize:14,boxSizing:'border-box'};
+  var sheet=form?card('fsu-sheet',[head('Record a decision',form.topic?'from a suggested topic':''),
+    h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:C.mute}},'What we decided',h('input',{type:'text',className:'fsu-f-text',value:form.text,onChange:function(e){setForm(Object.assign({},form,{text:e.target.value}));},style:inp})),
+    h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:C.mute}},'Who',h('select',{className:'fsu-f-owner',value:form.owner,onChange:function(e){setForm(Object.assign({},form,{owner:e.target.value}));},style:inp},
+        people2.concat(['Both']).map(function(n){return h('option',{key:n,value:n},n);}))),
+      h('label',{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:C.mute}},'Due',h('input',{type:'date',className:'fsu-f-due',value:form.due,disabled:form.next,onChange:function(e){setForm(Object.assign({},form,{due:e.target.value}));},style:inp})),
+      h('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:13,minHeight:40,alignSelf:'flex-end'}},h('input',{type:'checkbox',className:'fsu-f-next',checked:form.next,onChange:function(e){setForm(Object.assign({},form,{next:e.target.checked}));},style:{width:20,height:20}}),'Next check-in')),
+    h('div',{className:'fsu-shortcuts',style:{display:'flex',gap:6,flexWrap:'wrap'}},
+      [['budget','Change a budget line'],['goals','Adjust a savings goal']].map(function(x){return h('button',{key:x[0],type:'button',className:'fsu-short-'+x[0],onClick:function(){go(x[0]);},style:{minHeight:36,padding:'0 10px',borderRadius:18,cursor:'pointer',background:'transparent',border:'1px solid '+C.line,color:C.acc,fontSize:12}},x[1]+' ›');})),
+    h('span',{style:{fontSize:12,color:C.mute}},'Whoever owns it gets a reminder three days before it’s due, and on the day.'),
+    h('div',{style:{display:'flex',gap:8}},
+      h('button',{type:'button',className:'fsu-f-save',style:btn(true),disabled:busy||!form.text.trim(),onClick:function(){post({action:'checkin_decision_save',text:form.text,owner:form.owner,due:form.next?'next check-in':form.due,topic:form.topic},function(r){
+        var n=Object.assign({},d);n.checkin=Object.assign({},Q,{decisions:[r.decision].concat(decs)});setD(n);setForm(null);setMsg('Recorded.');});}},'Save decision'),
+      h('button',{type:'button',className:'fsu-f-cancel',style:btn(false),onClick:function(){setForm(null);}},'Cancel'))],{border:'1px solid '+C.acc}):null;
+  var miss=Object.keys(d.unavailable||{});
+  var checkinView=h('div',{className:'fsu-checkin',style:{display:'flex',flexDirection:'column',gap:12}},sheet,changes,spending,discuss,decisions,notesCard);
+  return h('div',{className:'fsu',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:760}},
+    h('div',{role:'tablist','aria-label':'Summary views',style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:6,background:C.deep,border:'1px solid '+C.line,borderRadius:12,padding:4}},
+      [['month','This month'],['checkin','Quarter check-in · '+d.quarter]].map(function(x){var on=view===x[0];return h('button',{key:x[0],type:'button',role:'tab','aria-selected':on,className:'fsu-view'+(on?' on':''),onClick:function(){setView(x[0]);},style:seg(on)},x[1]);})),
+    msg?h('div',{className:'fsu-msg',role:'status',style:{fontSize:13,color:C.soft}},msg):null,
+    miss.length?h('span',{className:'fsu-missing',style:{fontSize:12,color:C.warn}},'Not read just now: '+miss.join(', ')+'.'):null,
+    view==='month'?monthView:checkinView);}
+// ---- /FinSummary ----
 // ---- FinNav (Finances groups, issue #225) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Finances' subtabs in four groups: a row of group buttons, then that group's subtabs. Overview is
 // Summary alone, so it has no subtab row. Each group remembers the subtab last opened in it, in this
@@ -13584,8 +13708,10 @@ function App() {
         {activeTab === 'finances' && (
           <div>
             <FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />
-            {activeFinanceTab === 'fin_summary' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}
-            {activeFinanceTab === 'fin_summary' && <FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_summary' && <FinSummary apiUrl={apiUrl} apiToken={apiToken} onOpenTab={setActiveFinanceTab} tabId={k => k === 'tax' ? 'tax' : 'fin_' + k}
+              transferCard={<FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} part="transfer" />}
+              checkpointsCard={<FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} part="checkpoints" />}
+              groceriesCard={<GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />} />}
             {activeFinanceTab === 'fin_budget' && <BudgetTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_billscash' && <BillsCashflowTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}

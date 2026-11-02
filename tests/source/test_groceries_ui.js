@@ -19,8 +19,8 @@ check('the Shopping block matches in both dashboards', !!cut(APP, '// ---- ShopL
 check('the Groceries card matches', !!cut(APP, '// ---- GroceriesCard', '// ---- end GroceriesCard ----') &&
       cut(APP, '// ---- GroceriesCard', '// ---- end GroceriesCard ----') === cut(LITE, '// ---- GroceriesCard', '// ---- end GroceriesCard ----'));
 check('Shopping knows whose dashboard it is', /createElement\(ShoppingTab,\{grocery:\{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'\}/.test(APP) && /grocery=\{\{ apiUrl, apiToken, who: 'Victoria' \}\}/.test(LITE));
-check('Finances › Summary shows the card in both', /sub==='summary'&&React\.createElement\(GroceriesCard,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP) &&
-      /activeFinanceTab === 'fin_summary' && <GroceriesCard apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
+check('Finances › Summary shows the card in both (behind the Groceries line’s Details)', /groceriesCard:React\.createElement\(GroceriesCard,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP) &&
+      /groceriesCard=\{<GroceriesCard apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>\}/.test(LITE));
 
 const SETUP = s => ({ ok: true, store: s, counts: s === 'Store B' ? false : true,
   people: { Ahmed: { suggested: { card: 'Gold Card', why: '4x points at US supermarkets · best of yours here' }, cards: ['Gold Card', 'Shared Card'] },

@@ -152,6 +152,7 @@ function doGet(e) {
       case 'bills_schedule':          return jsonOut_(webGetBillsSchedule_()); // BillSchedule.js — tracker amounts + VERA's Bill Schedule
       case 'bills_reconcile':         return jsonOut_(webGetBillsReconcile_(e));
       case 'budget_actuals':          return jsonOut_(webGetBudgetActuals_(e)); // plan vs actual per Budget line, from the uploads
+      case 'checkin':                 return jsonOut_(webGetCheckin_()); // FinSummary.js — the Summary page and the quarterly check-in
       case 'phone_plan':              return jsonOut_(webGetPhonePlan_()); // PhonePlan.js — reads the phone tracker, never writes it
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
@@ -605,6 +606,9 @@ function doPost(e) {
       case 'bills_schedule_save':        return jsonOut_(webSaveBillSchedule_(body));
       case 'bills_schedule_migrate':     return jsonOut_(webMigrateBillSchedule_(body));
       case 'phone_payback_mark':         return jsonOut_(webMarkPhonePayback_(body));
+      case 'checkin_decision_save':      return jsonOut_(webSaveCheckinDecision_(body));
+      case 'checkin_decision_toggle':    return jsonOut_(webToggleCheckinDecision_(body));
+      case 'checkin_notes_save':         return jsonOut_(webSaveCheckinNotes_(body));
       case 'gathering_delete':           return jsonOut_(webDeleteGathering_(body));
       case 'gathering_to_shopping':      return jsonOut_(webGatheringToShopping_(body));
       case 'trip_idea_delete':           return jsonOut_(webDeleteTripIdea_(body));
