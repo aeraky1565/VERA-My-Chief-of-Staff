@@ -283,6 +283,7 @@ check('two evening plans that overlap clash, both ways', byId('e2').clash === 'O
 check('a plan during a trip says so', byId('e9').clash === 'During Example Lake Trip');
 check('no clash, no line', byId('e1').clash === '');
 check('two daytime plans that overlap don\'t clash (only evenings do)', L.cuCards_([ev('l1', 'Lunch with Kim', '2026-11-05T12:00', '2026-11-05T13:00', { guests: 1 }), ev('l2', 'Brunch with Lee', '2026-11-05T12:30', '2026-11-05T13:30', { guests: 1 })], [], CO).every(c => c.clash === ''));
+check('home comes from home_address, else the weekend planner\'s city, else the weather place', L.cuHomeCity_({ home_address: '1 Example St, Town, VA', weekend_planner_home_city: 'X' }) === '1 Example St, Town, VA' && L.cuHomeCity_({ weekend_planner_home_city: 'Town, VA', weather_location: 'Y' }) === 'Town, VA' && L.cuHomeCity_({ weather_location: 'Town, VA' }) === 'Town, VA' && L.cuHomeCity_({}) === '');
 check('leave-by: start less the drive and ten minutes', L.cuLeaveBy_('19:00', 35) === '18:15' && L.cuLeaveBy_('', 35) === '' && L.cuLeaveBy_('19:00', null) === '');
 
 console.log('\nComing up: wiring');

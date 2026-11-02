@@ -52,6 +52,8 @@ function cuTypes_(cfg) {
   var d = {}; CU_DEFAULTS_.forEach(function(p) { d[p[0]] = p[1]; });
   return cuTypes_(d);
 }
+/** Pure: where home is, from the rows Config already has. */
+function cuHomeCity_(cfg) { cfg = cfg || {}; return String(cfg['home_address'] || cfg['weekend_planner_home_city'] || cfg['weather_location'] || cfg['home_city'] || '').trim(); }
 function cuDays_(cfg) { var n = Number((cfg || {})['coming_up_days']); return isFinite(n) && n > 0 ? Math.round(n) : CU_DEFAULT_DAYS_; }
 /** Pure: an event's type — every type whose word is in the title (as a word); the longest lead wins. */
 function cuTypeFor_(title, types) {
@@ -187,14 +189,14 @@ function webComingUp_() {
   var events = [], err = '';
   try { events = lgEvents_(from, to); } catch (e) { err = 'The calendar could not be read just now.'; }
   var dates = []; try { dates = cuDatesFrom_(getUpcomingImportantDates_(days), today); } catch (e) {}
-  var cards = cuCards_(events, dates, { types: types, days: days, today: today, done: cuDone_(), trips: cuTripsWindow_(), homeCity: cfg['home_city'] || '' });
+  var cards = cuCards_(events, dates, { types: types, days: days, today: today, done: cuDone_(), trips: cuTripsWindow_(), homeCity: cuHomeCity_(cfg) });
   return { ok: true, today: today, days: days, cards: cards, error: err };
 }
 
 /** GET coming_up_leave_by&id&location&time → the drive and the time to leave (Distance Matrix, cached). */
 function webComingUpLeaveBy_(p) {
   var cfg = {}; try { cfg = getConfigValues() || {}; } catch (e) {}
-  var from = String(cfg['home_address'] || cfg['home_city'] || '').trim(), to = lfStr_(p && p.location, 200), time = lfStr_(p && p.time, 5);
+  var from = String(cfg['home_address'] || cuHomeCity_(cfg) || '').trim(), to = lfStr_(p && p.location, 200), time = lfStr_(p && p.time, 5);
   if (!from) return { ok: false, error: 'Add home_address to Config so VERA knows where you leave from.' };
   if (!to) return { ok: false, error: 'This plan has no place on it.' };
   var cache = loadTravelLegCache_(), key = travelLegKey_(from, to, 'driving'), leg = cache[key];
