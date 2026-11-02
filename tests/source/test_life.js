@@ -6,7 +6,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const LIFE = read('Life.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), WP = read('WeekendPlanner.js'), PP = read('PlannedPurchases.js');
+const LIFE = read('Life.js'), LG = read('LifeGrowth.js'), MR = read('MonthlyReview.js'), CODE = read('Code.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), WP = read('WeekendPlanner.js'), PP = read('PlannedPurchases.js');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -24,7 +24,7 @@ function extractFn(src, name) {
 }
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(LIFE, ctx);
+vm.runInContext(LIFE + '\n' + LG, ctx);
 const L = ctx;
 
 // ============ Explore: interests ============
@@ -124,6 +124,109 @@ check('Chat\'s giving reads amount for a donation, hours for volunteering', /if 
 check('a place becomes a Trip Ideas brief', /webSaveTripIdea_\(\{ idea: \{ title: lfStr_\(it\.interest, 80\)/.test(LIFE));
 check('an idea becomes a goal or a project, and is marked Promoted', /createGoal_\(i\.text/.test(extractFn(LIFE, 'webLifeIdeaToGoal_')) && /createProject_\(i\.text/.test(extractFn(LIFE, 'webLifeIdeaToProject_')) && (LIFE.match(/setValue\('Promoted'\)/g) || []).length === 2);
 check('the Tag and Trip columns are added only when tagging', /lfCol_\(sh, 'Tag', false\)/.test(extractFn(LIFE, 'lfInterestTags_')) && /lfCol_\(sh, 'Tag', true\)/.test(extractFn(LIFE, 'webLifeInterestTag_')));
+
+
+// ============ Growth ============
+console.log('\nrhythm and focus');
+check('rhythms read as times a week', [['3× a week', 3], ['3x a week', 3], ['3 times per week', 3], ['daily', 7], ['every day', 7], ['twice a week', 2], ['weekly', 1], ['once a week', 1], ['weekdays', 5], ['', 0], ['whenever', 0], ['8x a week', 7]].every(c => L.lgPerWeek_(c[0]) === c[1]),
+  J([['3× a week'], ['daily'], ['twice a week'], ['weekly'], ['8x a week']].map(c => [c[0], L.lgPerWeek_(c[0])])));
+check('a monthly rhythm is a fraction of a week', L.lgPerWeek_('4 times a month') === 0.9);
+check('focus: stored wins, else the old status', L.lgFocus_('now', 'To Do') === 'now' && L.lgFocus_('', 'Doing') === 'now' && L.lgFocus_('', 'Done') === 'done' && L.lgFocus_('', 'To Do') === 'waiting' && L.lgFocus_('bogus', 'Parked') === 'waiting');
+check('milestones: kept tidy, blanks dropped', J(L.lgMilestones_('[{"text":" 5k ","done":1},{"text":""},{"x":1}]')) === J([{ text: '5k', done: true }]) && J(L.lgMilestones_('not json')) === '[]');
+check('Now holds three at most', L.lgNowProblem_([{ id: 'a', focus: 'now' }, { id: 'b', focus: 'now' }, { id: 'c', focus: 'now' }], 'd') !== '' && L.lgNowProblem_([{ id: 'a', focus: 'now' }, { id: 'b', focus: 'now' }], 'c') === '' && L.lgNowProblem_([{ id: 'a', focus: 'now' }, { id: 'b', focus: 'now' }, { id: 'c', focus: 'now' }], 'c') === '');
+
+console.log('\npractice');
+check('minutes come from the log note', L.lgMinutes_('30 min · pool') === 30 && L.lgMinutes_('from the calendar') === 0);
+check('weeks start on Monday', L.lgMonday_('2026-11-04') === '2026-11-02' && L.lgMonday_('2026-11-08') === '2026-11-02' && L.lgMonday_('2026-11-02') === '2026-11-02');
+const LOG = ['2026-10-26', '2026-10-28', '2026-10-30', '2026-10-19', '2026-10-21', '2026-10-23', '2026-10-13', '2026-11-03'].map((d, i) => ({ date: d, notes: i === 0 ? '30 min' : i === 7 ? '20 min · lake' : '' }));
+LOG.push({ date: '2026-11-09', notes: '' });   // after today: ignored
+const pr = L.lgPractice_(LOG, 3, '2026-11-04');
+check('8 weeks, oldest first, this week last', pr.weeks.length === 8 && pr.weeks[7].start === '2026-11-02' && pr.weeks[0].start === '2026-09-14');
+check('counts per week', J(pr.weeks.slice(4).map(w => w.count)) === J([1, 3, 3, 1]), J(pr.weeks.map(w => w.count)));
+check('a week meets the rhythm at 3 of 3', J(pr.weeks.slice(4).map(w => w.met)) === J([false, true, true, false]));
+check('the streak counts back from last week; this week still open', pr.streak === 2, pr.streak);
+check('this week, last date, days since, minutes this year', pr.thisWeek === 1 && pr.lastDate === '2026-11-03' && pr.daysSince === 1 && pr.minutesYear === 50 && pr.practisedToday === false, J(pr));
+check('no rhythm: any practice meets the week', L.lgPractice_([{ date: '2026-11-03', notes: '' }], 0, '2026-11-04').weeks[7].met === true);
+check('never practised', L.lgPractice_([], 3, '2026-11-04').daysSince === null && L.lgPractice_([], 3, '2026-11-04').streak === 0);
+check('practised today', L.lgPractice_([{ date: '2026-11-04', notes: '' }], 3, '2026-11-04').practisedToday === true);
+
+console.log('\nyear-end review');
+const GO = [{ id: 'g1', title: 'Swim', year: 2025, focus: 'now' }, { id: 'g2', title: 'Read', year: 2025, focus: 'done' }, { id: 'g3', title: 'Sail', year: 2026, focus: 'waiting' }];
+check('last year’s unfinished goals are offered to this year', J(L.lgCarryOver_(GO, '2026-03-01')) === J([{ id: 'g1', title: 'Swim', year: 2025, toYear: 2026 }]));
+check('in December, this year’s unfinished goals are offered to next year', J(L.lgCarryOver_(GO, '2026-12-05').map(c => [c.id, c.toYear])) === J([['g1', 2026], ['g3', 2027]]));
+
+console.log('\ntrials');
+const TR = { start: '2026-10-01', end: '2026-10-28', status: 'Active' };
+const TL = [{ date: '2026-09-30' }, { date: '2026-10-02' }, { date: '2026-10-20' }, { date: '2026-10-28' }, { date: '2026-10-29' }];
+let ts = L.lgTrialState_(TR, TL, '2026-10-21');
+check('while it runs: check-ins so far and days left', ts.state === 'active' && ts.checkins === 2 && ts.daysLeft === 7 && ts.weeks === 4, J(ts));
+ts = L.lgTrialState_(TR, TL, '2026-10-29');
+check('the day after it ends it asks', ts.state === 'ended' && ts.checkins === 3 && ts.daysLeft === null, J(ts));
+check('once answered it is decided', L.lgTrialState_(Object.assign({}, TR, { status: 'Kept' }), TL, '2026-11-01').state === 'decided' && L.lgTrialState_(Object.assign({}, TR, { status: 'dropped' }), TL, '2026-11-01').state === 'decided');
+check('an old experiment with no end stays active', L.lgTrialState_({ start: '2026-01-01', end: '', status: 'Active' }, [], '2026-11-01').state === 'active');
+
+console.log('\nLife balance');
+const bal = L.lgBalance_([{ month: '2026-05', health: 4, relationships: 4, career: 3, money: 3, growth: 3, fun: 2 },
+  { month: '2026-09', health: 2, relationships: 4, career: 2, money: 3, growth: 1, fun: 2 },
+  { month: '2026-10', health: 2, relationships: 5, career: 3, money: 3, growth: 2, fun: 3 }, { month: 'junk' }]);
+check('months oldest first, junk dropped', J(bal.months.map(m => m.month)) === J(['2026-05', '2026-09', '2026-10']));
+check('low two months running: ≤ 2 both times', J(bal.low) === J(['health', 'growth']), J(bal.low));
+check('one month is not a run', J(L.lgBalance_([{ month: '2026-10', health: 1 }]).low) === '[]');
+check('ratings must be 1 to 5', J(L.lgCleanBalance_({ month: '2026-10', health: '5', fun: 9, money: 0 })) === J({ month: '2026-10', health: 5, relationships: null, career: null, money: null, growth: null, fun: null }));
+check('the month to rate is last month', L.lgRateMonth_('2026-11-02') === '2026-10' && L.lgRateMonth_('2027-01-15') === '2026-12');
+check('the Monthly Life Review asks for it, linking to Review', /sections\.push\(buildLifeBalanceAsk_\(label\)\);/.test(MR) && /'\?tab=life&sub=review'/.test(MR));
+
+console.log('\nwhere my time went');
+const EV = [
+  { title: 'Dinner with friends', start: '2026-10-07T19:00', end: '2026-10-07T21:30', allDay: false },          // Wed evening, 2.5 h
+  { title: 'Swim', start: '2026-10-08T18:00', end: '2026-10-08T19:00', allDay: false },                          // practice 1 h
+  { title: 'Groceries', start: '2026-10-10T10:00', end: '2026-10-10T11:00', allDay: false },                     // Sat chores 1 h
+  { title: 'Example Coast Trip', start: '2026-10-17T00:00', end: '2026-10-19T00:00', allDay: true },             // Sat+Sun 24 h
+  { title: 'Office', start: '2026-10-06T09:00', end: '2026-10-06T17:00', allDay: false },                        // outside free time
+  { title: 'Late call', start: '2026-10-06T21:00', end: '2026-10-06T23:00', allDay: false },                     // 1 h counted (to 22:00)
+  { title: 'Dinner again', start: '2026-10-07T20:00', end: '2026-10-07T21:00', allDay: false },                  // overlaps: not counted twice
+  { title: 'Out of office', start: '2026-10-20T00:00', end: '2026-10-21T00:00', allDay: true },                  // a marker: fills nothing
+];
+const tb = L.lgTimeBuckets_(EV, '2026-10', [['swim']]), hrs = id => tb.buckets.find(b => b.id === id).hours;
+check('free hours: 22 weekday evenings × 4 h + 9 weekend days × 12 h', tb.freeHours === 22 * 4 + 9 * 12, tb.freeHours);
+check('friends & family, trips, chores, goal practice, other', hrs('people') === 2.5 && hrs('trips') === 24 && hrs('home') === 1 && hrs('practice') === 1 && hrs('other') === 1, J(tb.buckets));
+check('what is left is unplanned', hrs('unplanned') === Math.round((196 - 29.5) * 10) / 10, hrs('unplanned'));
+check('six buckets in order', J(tb.buckets.map(b => b.id)) === J(['people', 'trips', 'home', 'practice', 'other', 'unplanned']));
+
+console.log('\nDid it? and nudges');
+check('goal words drop filler', J(L.lgGoalWords_('Swim twice a week')) === J(['swim']) && J(L.lgGoalWords_('Learn Spanish better')) === J(['spanish']));
+const GN = [{ id: 'g1', title: 'Swim more', focus: 'now' }, { id: 'g2', title: 'Spanish', focus: 'now' }, { id: 'g3', title: 'Pottery', focus: 'waiting' }];
+const asks = L.lgDidItAsks_([{ title: 'Swim at the Y' }, { title: 'Pottery wheel' }, { title: 'Spanish class' }], GN, { g2: [{ date: '2026-11-01' }] }, '2026-11-01');
+check('a matching event asks for a Now goal not yet logged that day', J(asks) === J([{ goalId: 'g1', goal: 'Swim more', day: '2026-11-01', event: 'Swim at the Y' }]), J(asks));
+check('a word inside another word does not match', L.lgDidItAsks_([{ title: 'Unswimmable' }], GN, {}, '2026-11-01').length === 0);
+const busy = [{ start: '2026-11-03T18:00', end: '2026-11-03T20:30' }, { start: '2026-11-04T17:00', end: '2026-11-04T21:00' }];
+check('a free slot: the first evening with room (30 min fits after 20:30)', J(L.lgFreeSlot_(busy, '2026-11-02', 30)) === J({ day: '2026-11-03', from: '20:30' }), J(L.lgFreeSlot_(busy, '2026-11-02', 30)));
+check('…and 45 min does not, so it is the next free evening', J(L.lgFreeSlot_(busy, '2026-11-02', 45)) === J({ day: '2026-11-05', from: '18:00' }));
+check('…skipping a full evening', J(L.lgFreeSlot_(busy.concat([{ start: '2026-11-03T20:00', end: '2026-11-03T22:00' }]), '2026-11-02', 45)) === J({ day: '2026-11-05', from: '18:00' }));
+check('weekends start at 9', J(L.lgFreeSlot_([], '2026-11-06', 45)) === J({ day: '2026-11-07', from: '09:00' }));
+const nd = L.lgNudgesDue_(GN, { g1: { daysSince: 9 }, g2: { daysSince: 2 } }, '2026-11-04', 7);
+check('nudge a Now goal quiet 7+ days, keyed by week; not a busy one, not a waiting one', J(nd) === J([{ goalId: 'g1', title: 'Swim more', key: 'growth_nudge_g1_2026-11-02', since: 9 }]), J(nd));
+check('never practised counts as quiet', L.lgNudgesDue_([{ id: 'x', title: 'X', focus: 'now' }], {}, '2026-11-04', 7)[0].since === null);
+
+console.log('\nChat and goal lookup');
+const GF = [{ id: 'g1', title: 'Swim more', focus: 'now' }, { id: 'g2', title: 'Learn Spanish', focus: 'waiting' }, { id: 'g3', title: 'Spanish', focus: 'done' }];
+check('a goal by its words', L.lgFindGoal_(GF, 'spanish').id === 'g2' && L.lgFindGoal_(GF, 'swim').id === 'g1' && L.lgFindGoal_(GF, 'Swim more').id === 'g1');
+check('a done goal is not found', L.lgFindGoal_([{ id: 'g3', title: 'Spanish', focus: 'done' }], 'spanish') === null && L.lgFindGoal_(GF, '') === null);
+check('learning kinds and statuses', J(L.lgCleanLearning_({ kind: 'APP', title: ' Duo ', status: 'nope' })) === J({ id: '', kind: 'app', title: 'Duo', by: '', goalId: '', status: 'In Progress' }));
+check('Chat: log_practice, add_learning, start_trial', /else if \(type === 'log_practice'\) \{\s+var lpOut = lgChatLogPractice_\(args\);/.test(CHAT) && /else if \(type === 'add_learning'\) \{\s+var alOut = lgChatAddLearning_\(args\);/.test(CHAT) && /else if \(type === 'start_trial'\) \{\s+var stOut = lgChatStartTrial_\(args\);/.test(CHAT)
+  && /'ACTION:log_practice\|\{goal\}\|\{minutes or blank\}\|\{note\}/.test(CHAT));
+check('Chat sees the Now goals', /growthNow:\s+\(function\(\) \{ try \{ return lgContextLines_\(\); \}/.test(CHAT) && /'GROWTH GOALS IN NOW \(Life \\u203a Growth; log practice with log_practice\):\\n'/.test(CHAT));
+
+console.log('\nGrowth wiring');
+['life_growth', 'life_review'].forEach(a => check('GET ' + a, new RegExp("case '" + a + "':\\s+return jsonOut_\\(webLife").test(WEB)));
+['life_goal_save', 'life_goal_carry', 'life_practice_log', 'life_practice_undo', 'life_learning_save', 'life_trial_start', 'life_trial_decide', 'life_did_it', 'life_balance_save']
+  .forEach(a => check('POST ' + a, new RegExp("case '" + a + "':\\s+return jsonOut_\\(webLife[A-Za-z]+_\\(body\\)\\);").test(WEB)));
+check('practice is the Habits log: one habit per goal, made on first log', /var res = addHabit_\(g\.title/.test(extractFn(LG, 'lgEnsureHabit_')) && /logHabitCompletion_\(hid, d,/.test(extractFn(LG, 'lgLogPractice_')));
+check('a second log the same day adds minutes, it is not a second row', /var total = lgMinutes_\(existing\.notes\) \+ m/.test(extractFn(LG, 'lgLogPractice_')));
+check('focus keeps the old status in step', /updateGoal_\(goalId, \{ status: fields\.focus === 'now' \? 'Doing' : fields\.focus === 'done' \? 'Done' : 'To Do' \}\)/.test(LG));
+check('the nudge is in Notifications and runs nightly', /\{ key: 'growth_nudge',/.test(CODE) && /nightlyStep_\(ctx, 'lgNightly_', lgNightly_\);/.test(CODE) && /sendNudge_\(d\.key, 'Growth: ' \+ d\.title, msg, 'growth_nudge'\)/.test(LG));
+check('…at most once a week per goal', /wasRecentlySent_\(d\.key, 60 \* 24 \* 8\)/.test(LG));
+check('VERA writes no calendar', !/createEvent|createAllDayEvent|setTitle|deleteEvent/.test(LG + LIFE));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

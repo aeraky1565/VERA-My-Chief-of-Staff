@@ -18,7 +18,9 @@ const part = p => !ONLY || ONLY === p;
 console.log('\nthe wiring');
 check('Life replaces Growth and Explore in the top tabs', /'career','life','system'\]\.map\(tab=>/.test(APP) && /tab==='life'\?`🌿 Life`/.test(APP) && !/tab==='growth'\?`🌱 Growth`/.test(APP) && !/tab==='explore'\?`🔭 Explore`/.test(APP));
 check('anything still sending you to Growth or Explore lands on Life', /if\(activeTab==='growth'\|\|activeTab==='explore'\)setActiveTab\('life'\);/.test(APP));
-check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\/\*#__PURE__\*\/React\.createElement\(LifeTab,\{apiUrl:apiUrl,apiToken:apiToken,onAddInterest:/.test(APP) && /action:'life_idea_to_goal',id:id/.test(APP) && /action:'life_idea_to_project',id:id/.test(APP));
+check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\/\*#__PURE__\*\/React\.createElement\(LifeTab,\{apiUrl:apiUrl,apiToken:apiToken,initialSub:lifeDeepLink&&lifeDeepLink\.sub,onAddInterest:/.test(APP) && /action:'life_idea_to_goal',id:id/.test(APP) && /action:'life_idea_to_project',id:id/.test(APP));
+check('?tab=life&sub=review opens Life on that subtab (the monthly review links to it)', /return q\.get\('tab'\)==='life'\?\{sub:q\.get\('sub'\)\|\|''\}:null;/.test(APP) && /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(lfInit\)o\[lfInit\.id\]=props\.initialSub;/.test(APP));
+check('Health no longer has Year in Review (it is Growth › Habits)', !/id:'year_in_review'/.test(APP) && /if\(sub==='habits'\)return h\(YearInReviewTab,/.test(APP));
 check('My Trips’ upcoming cards and the Trip Idea page show lessons', /t\.label\),\/\*#__PURE__\*\/React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:t\.label\}\)/.test(APP) && /renderLessons:function\(idea\)\{return React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:\[idea\.title,idea\.where\]\.join\(' '\)\}\)/.test(APP));
 check('Finances › Tax is offered the year’s receipted donations', /React\.createElement\(LifeTaxGiving,\{apiUrl:apiUrl,apiToken:apiToken,year:year\}\)/.test(APP));
 
@@ -33,24 +35,43 @@ const GIVING = { ok: true, today: '2026-11-02', totals: [{ year: 2026, donated: 
             { id: 'G2', kind: 'volunteering', organisation: 'Example Park', date: '2026-05-01', amount: null, hours: 3, receipt: '', notes: 'trail day' }] };
 const IDEAS = [{ id: 'IDEA-1', idea: 'Learn to sail', category: 'Growth', tags: '', notes: '', status: 'New', dateAdded: '2026-10-01' }];
 
+
+const W = (start, count, met) => ({ start, count, met });
+const GROWTH = { ok: true, today: '2026-11-04',
+  goals: [
+    { id: 'g1', title: 'Swim more', focus: 'now', rhythm: '3× a week', perWeek: 3, year: 2026, category: 'Health', description: '', milestones: [{ text: 'Swim 1k', done: true }, { text: 'Swim 2k', done: false }], habitId: 'HAB-1',
+      practice: { weeks: [W('2026-09-14', 0, false), W('2026-09-21', 0, false), W('2026-09-28', 1, false), W('2026-10-05', 0, false), W('2026-10-12', 1, false), W('2026-10-19', 3, true), W('2026-10-26', 3, true), W('2026-11-02', 1, false)], thisWeek: 1, target: 3, lastDate: '2026-11-03', daysSince: 1, minutesYear: 90, streak: 2, practisedToday: false } },
+    { id: 'g2', title: 'Spanish', focus: 'waiting', rhythm: '', perWeek: 0, year: 2026, category: 'Growth', description: 'For the trip', milestones: [], habitId: '', practice: { weeks: [], thisWeek: 0, lastDate: '', daysSince: null, minutesYear: 0, streak: 0 } },
+    { id: 'g3', title: 'Read 12 books', focus: 'done', rhythm: '', perWeek: 0, year: 2026, category: '', description: '', milestones: [], habitId: '', practice: { weeks: [], thisWeek: 0 } }],
+  carryOver: [{ id: 'g9', title: 'Learn to sail', year: 2025, toYear: 2026 }],
+  didIt: [{ goalId: 'g1', goal: 'Swim more', day: '2026-11-03', event: 'Swim at the Y' }],
+  learning: [{ id: 'B1', kind: 'book', title: 'Example Swim Book', by: 'A. Writer', status: 'In Progress', goalId: 'g1' }, { id: 'C1', kind: 'app', title: 'Example Lingo', by: 'App', status: 'In Progress', goalId: 'g2' }],
+  trials: [{ id: 'T1', title: 'Swim before work', goalId: 'g1', goal: 'Swim more', start: '2026-10-01', end: '2026-10-28', state: 'ended', checkins: 6, status: 'Active' },
+           { id: 'T2', title: 'Night reading', goalId: '', goal: '', start: '2026-11-01', end: '2026-11-21', state: 'active', checkins: 0, daysLeft: 17, status: 'Active' }] };
+const REVIEW = { ok: true, today: '2026-11-04', rateMonth: '2026-10', rated: false, areas: ['health', 'relationships', 'career', 'money', 'growth', 'fun'],
+  balance: [{ month: '2026-08', health: 2, relationships: 4, career: 3, money: 3, growth: 2, fun: 4 }, { month: '2026-09', health: 2, relationships: 5, career: 3, money: 4, growth: 3, fun: 4 }], low: ['health'],
+  time: { month: '2026-10', freeHours: 196, buckets: [{ id: 'people', label: 'Friends & family', hours: 12 }, { id: 'trips', label: 'Trips', hours: 24 }, { id: 'home', label: 'Home & chores', hours: 6 }, { id: 'practice', label: 'Goal practice', hours: 4 }, { id: 'other', label: 'Other plans', hours: 10 }, { id: 'unplanned', label: 'Unplanned', hours: 140 }] } };
 async function mount(page, props) {
   await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof LifeTab === 'function', null, { timeout: 15000 }).catch(() => {});
-  await page.evaluate(({ INTERESTS, GIVING, IDEAS, props }) => {
-    window.__posts = []; window.__gets = []; window.__toGoal = []; window.__toProject = [];
+  await page.evaluate(({ INTERESTS, GIVING, IDEAS, props, GROWTH, REVIEW }) => {
+    window.__posts = []; window.__gets = []; window.__GROWTH = GROWTH; window.__REVIEW = REVIEW; window.__toGoal = []; window.__toProject = [];
     LF_INT_P = null;
     window.apiGet = (u, t, p) => { window.__gets.push(p.action);
-      const r = { life_interests: INTERESTS, life_giving: GIVING, life_tax_giving: { ok: true, year: 2025, count: 1, total: 40, items: [{ organisation: 'Example Library', amount: 40 }] } }[p.action];
+      const r = { life_growth: GROWTH, life_review: REVIEW, get_year_review: { ok: true, year: 2026, habits: [{ id: 'HAB-1', name: 'Swim more', cadence: '3× a week', color: '#8ab4f8', active: true }], completions: { 'HAB-1': { '2026-11-03': true } } }, life_interests: INTERESTS, life_giving: GIVING, life_tax_giving: { ok: true, year: 2025, count: 1, total: 40, items: [{ organisation: 'Example Library', amount: 40 }] } }[p.action];
       return r ? Promise.resolve(JSON.parse(JSON.stringify(r))) : (window.__life_get ? window.__life_get(p) : Promise.resolve({ ok: true })); };
     window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b)));
       if (b.action === 'life_place_to_trip_idea') return Promise.resolve({ ok: true, title: 'Old harbour walk' });
+      if (b.action === 'life_practice_log') return Promise.resolve({ ok: true, goal: 'Swim more', minutes: b.minutes || 0, added: true });
+      if (b.action === 'life_trial_decide') return Promise.resolve({ ok: true, status: 'Kept' });
+      if (b.action === 'life_trial_start') return Promise.resolve({ ok: true, end: '2026-12-01', weeks: 4 });
       return window.__life_post ? window.__life_post(b) : Promise.resolve({ ok: true, entry: b.entry }); };
     document.querySelectorAll('#lfprobe').forEach(n => n.remove());
     const host = document.createElement('div'); host.id = 'lfprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
     window.__lfRoot = ReactDOM.createRoot(host);
     window.__lfRoot.render(React.createElement(LifeTab, Object.assign({ apiUrl: 'https://vera.test/exec', apiToken: 't', ideas: IDEAS, busy: false,
       onToGoal: null, onIdeaToGoal: id => window.__toGoal.push(id), onIdeaToProject: id => window.__toProject.push(id), onAddIdea() {}, onPromoteIdea() {}, onArchiveIdea() {}, onShelveIdea() {} }, props || {})));
-  }, { INTERESTS, GIVING, IDEAS, props });
+  }, { INTERESTS, GIVING, IDEAS, props, GROWTH, REVIEW });
   await wait(350);
 }
 const T = page => sel => page.$eval('#lfprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
@@ -127,7 +148,93 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       const ls = await page.$$eval('#lfprobe2 .lf-trip-lessons', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': a trip to the same place shows last time’s lessons; another shows nothing', ls.length === 1 && /Seafood shack, Example Coast \(Example Coast Trip\)/.test(ls[0]), JSON.stringify(ls));
     }
-    check(L + ': buttons big enough to tap', await page.$$eval('#lfprobe .lf-group, #lfprobe .lf-subs .subtab-btn, #lfprobe .lf-to-trip, #lfprobe .lf-give-add, #lfprobe .lf-give-edit', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
+
+    if (part('growth')) {
+      await clickText(page, '.lf-group', '🌱 Growth'); await wait(300);
+      // Now
+      const nc = await page.$$eval('#lfprobe .lf-now-card', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+      check(L + ': Now shows only Now goals', nc.length === 1 && /^Swim more This week 1 of 3 · 3× a week/.test(nc[0]), JSON.stringify(nc));
+      const strip = await page.$$eval('#lfprobe .lf-now-card .lf-week', ns => ns.map(n => n.className.replace('lf-week', '').trim() || '-'));
+      check(L + ': the 8-week strip: met weeks, some, none', JSON.stringify(strip) === JSON.stringify(['-', '-', 'some', '-', 'some', 'met', 'met', 'some']), JSON.stringify(strip));
+      check(L + ': streak, hours, last practised', /2-week streak · 1\.5 h this year · last practised 1 day ago/.test(nc[0]));
+      check(L + ': its book and its trial are on the card', /📖 Book Example Swim Book · In Progress/.test(nc[0]) && !/Night reading/.test(nc[0]) && !/Example Lingo/.test(nc[0]));
+      check(L + ': Did it? asks about yesterday’s event', /Did it\? “Swim at the Y” was on the calendar 2026-11-03 — practice for Swim more\?/.test(await txt('.lf-didit')));
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-didit-yes').click()); await wait(250);
+      let posts = await page.evaluate(() => window.__posts);
+      check(L + ': Yes logs it for that day', posts[posts.length - 1].action === 'life_did_it' && posts[posts.length - 1].yes === true && posts[posts.length - 1].day === '2026-11-03');
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-did-today').click()); await wait(250);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': Did it today logs today', posts[posts.length - 1].action === 'life_practice_log' && posts[posts.length - 1].goalId === 'g1' && posts[posts.length - 1].day === '2026-11-04');
+      check(L + ': …and offers an undo', /Logged Swim more for today\./.test(await txt('.lf-msg')) && (await page.$('#lfprobe .lf-undo')) !== null);
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-undo').click()); await wait(250);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': Undo removes that day’s log', posts[posts.length - 1].action === 'life_practice_undo' && posts[posts.length - 1].day === '2026-11-04');
+      check(L + ': Log minutes waits for a number', await page.$eval('#lfprobe .lf-log-min', n => n.disabled));
+      await page.evaluate(() => { const n = document.querySelector('#lfprobe .lf-min-input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(n, '30m'); n.dispatchEvent(new Event('input', { bubbles: true })); }); await wait(50);
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-log-min').click()); await wait(250);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': Log minutes sends just the number', posts[posts.length - 1].action === 'life_practice_log' && posts[posts.length - 1].minutes === 30, JSON.stringify(posts[posts.length - 1]));
+      // Goals
+      await clickText(page, '.lf-subs .subtab-btn', 'Goals'); await wait(250);
+      const cols = await page.$$eval('#lfprobe .lf-goal-col-h', ns => ns.map(n => n.textContent));
+      check(L + ': Goals grouped Now / Waiting / Done', JSON.stringify(cols) === JSON.stringify(['Now · 1', 'Waiting · 1', 'Done this year · 1']), JSON.stringify(cols));
+      check(L + ': no % slider any more', (await page.$('#lfprobe .lf-goals input[type=range]')) === null);
+      check(L + ': the year-end review offers last year’s', /Learn to sail \(2025\)/.test(await txt('.lf-carry')) && /Carry into 2026/.test(await txt('.lf-carry')));
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-carry-yes').click()); await wait(200);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': Carry over', posts[posts.length - 1].action === 'life_goal_carry' && posts[posts.length - 1].carry === true && posts[posts.length - 1].id === 'g9');
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-col-waiting .lf-start-now').click()); await wait(200);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': Start now moves a waiting goal to Now', posts[posts.length - 1].action === 'life_goal_save' && posts[posts.length - 1].goal.id === 'g2' && posts[posts.length - 1].goal.focus === 'now');
+      await page.evaluate(() => document.querySelectorAll('#lfprobe .lf-col-now .lf-ms-check')[1].click()); await wait(200);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': ticking a milestone saves the list', JSON.stringify(posts[posts.length - 1].goal.milestones) === JSON.stringify([{ text: 'Swim 1k', done: true }, { text: 'Swim 2k', done: true }]), JSON.stringify(posts[posts.length - 1]));
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-goal-new').click()); await wait(100);
+      const fillI = (sel, v) => page.evaluate(({ sel, v }) => { const n = document.querySelector('#lfprobe ' + sel); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(n, v); n.dispatchEvent(new Event('input', { bubbles: true })); }, { sel, v });
+      await fillI('.lf-goal-f-title', 'Run a 10k'); await fillI('.lf-goal-f-rhythm', '2× a week'); await wait(50);
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-goal-save').click()); await wait(200);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': + New goal with a rhythm', posts[posts.length - 1].action === 'life_goal_save' && posts[posts.length - 1].goal.title === 'Run a 10k' && posts[posts.length - 1].goal.rhythm === '2× a week' && !posts[posts.length - 1].goal.id);
+      // Habits
+      await clickText(page, '.lf-subs .subtab-btn', 'Habits'); await wait(400);
+      check(L + ': Habits is the year grid from Health', (await page.evaluate(() => window.__gets)).includes('get_year_review'));
+      // Learning
+      await clickText(page, '.lf-subs .subtab-btn', 'Learning'); await wait(250);
+      let lr = await page.$$eval('#lfprobe .lf-learn-row', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+      check(L + ': learning, each tied to its goal', lr.length === 2 && /📖 Book Example Swim Book A\. Writer · In Progress · for Swim more/.test(lr[0]) && /for Spanish/.test(lr[1]), JSON.stringify(lr));
+      await clickText(page, '.lf-learn-filter', 'Apps & classes'); await wait(100);
+      lr = await page.$$eval('#lfprobe .lf-learn-row', ns => ns.map(n => n.innerText));
+      check(L + ': filters: Apps & classes', lr.length === 1 && /Example Lingo/.test(lr[0]));
+      await clickText(page, '.lf-learn-filter', 'Books'); await wait(100);
+      check(L + ': filters: Books', (await page.$$('#lfprobe .lf-learn-row')).length === 1);
+      // Trials
+      await clickText(page, '.lf-subs .subtab-btn', 'Trials'); await wait(250);
+      const tr = await page.$$eval('#lfprobe .lf-trial', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+      check(L + ': an ended trial first, asking how it went', /^Swim before work Swim more · 2026-10-01 → 2026-10-28 Done: 6 check-ins\. How did it go\? Keep it Change it Drop it$/.test(tr[0]), JSON.stringify(tr));
+      check(L + ': an active one shows days left', /Night reading/.test(tr[1]) && /17 days left/.test(tr[1]));
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-trial-keep').click()); await wait(200);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': Keep it', posts[posts.length - 1].action === 'life_trial_decide' && posts[posts.length - 1].decision === 'keep' && posts[posts.length - 1].id === 'T1');
+      // Review
+      await clickText(page, '.lf-subs .subtab-btn', 'Review'); await wait(350);
+      check(L + ': Life balance asks about last month', /How did 2026-10 feel\?/.test(await txt('.lf-rate')));
+      check(L + ': Save waits for all six', await page.$eval('#lfprobe .lf-rate-save', n => n.disabled));
+      for (const k of ['health', 'relationships', 'career', 'money', 'growth', 'fun']) await page.evaluate(k => document.querySelector('#lfprobe .lf-rate-' + k + '-4').click(), k);
+      await wait(50);
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-rate-save').click()); await wait(250);
+      posts = await page.evaluate(() => window.__posts);
+      const rp = posts[posts.length - 1];
+      check(L + ': the month is saved', rp.action === 'life_balance_save' && rp.rating.month === '2026-10' && rp.rating.health === 4 && rp.rating.fun === 4, JSON.stringify(rp));
+      check(L + ': the trend table', /Health 2 2/.test(await txt('.lf-balance-table')));
+      check(L + ': a low area offers a goal', /Health has been low two months running\./.test(await txt('.lf-low')));
+      const tb = await page.$$eval('#lfprobe .lf-time-row', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+      check(L + ': where the time went, by bucket', tb.length === 6 && tb[0] === 'Friends & family 12 h' && tb[5] === 'Unplanned 140 h', JSON.stringify(tb));
+    }
+    if (part('deeplink')) {
+      await mount(page, { initialSub: 'giving' });
+      check(L + ': a deep link opens its group and subtab', (await txt('.lf-group.active')) === '🔭 Explore' && (await txt('.lf-subs .subtab-btn.active')) === 'Giving' && (await page.$('#lfprobe .lf-giving')) !== null);
+    }
+    check(L + ': buttons big enough to tap', await page.$$eval('#lfprobe .lf-group, #lfprobe .lf-subs .subtab-btn, #lfprobe .lf-to-trip, #lfprobe .lf-give-add, #lfprobe .lf-give-edit, #lfprobe .lf-did-today, #lfprobe .lf-start-now, #lfprobe .lf-trial-keep, #lfprobe .lf-rate-save', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
     check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
     check(L + ': no page errors', errs.length === 0, errs.join(' | '));
     await page.close();

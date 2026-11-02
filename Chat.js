@@ -563,6 +563,7 @@ function buildChatSystemPrompt_(context) {
     'FAVORITE TAKEOUTS (' + (context.takeouts ? context.takeouts.length : 0) + '):\n' + takeoutLines + '\n\n' +
     'PANTRY — ITEMS DUE SOON (next 14 days):\n' + pantryLines + '\n\n' +
     'CAREER PROFILE:\n' + careerLines + '\n\n' +
+    'GROWTH GOALS IN NOW (Life \u203a Growth; log practice with log_practice):\n' + ((context.growthNow && context.growthNow.length) ? context.growthNow.map(function(l) { return '  ' + l; }).join('\n') : '  (none)') + '\n\n' +
     (function() {
       var od = context.openDecisions || [];
       if (!od.length) return '';
@@ -955,6 +956,10 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_career_position|{field}|{value}  \u2014 update position; field = title/company/department/workStyle/focusAreas/notes\n' +
     'ACTION:renew_credential|{name}|{new expiry YYYY-MM-DD}  \u2014 a certification was renewed (Career › Credentials)\n' +
     'ACTION:log_credits|{name}|{n}  \u2014 log renewal credits (PDUs) earned toward a certification\n' +
+    // Life › Growth
+    'ACTION:log_practice|{goal}|{minutes or blank}|{note}  \u2014 practice on a Growth goal today ("did 30 min French"); goal = its name from GROWTH GOALS\n' +
+    'ACTION:add_learning|{book|course|app|class}|{title}|{goal or blank}  \u2014 something he is learning from, tied to a goal\n' +
+    'ACTION:start_trial|{goal or blank}|{what he will try}|{weeks}  \u2014 "try X for N weeks"\n' +
     // Life › Giving
     'ACTION:log_giving|{donation or volunteering}|{organisation}|{amount in dollars, or hours}|{date YYYY-MM-DD or blank}|{notes}  \u2014 a donation or volunteering time (Life \u203a Giving)\n' +
     // Prescriptions (Issue #116)
@@ -1528,6 +1533,7 @@ function buildChatContext_() {
     takeouts:        takeouts,
     pantryDue:       pantryDue,
     career:          career,
+    growthNow:       (function() { try { return lgContextLines_(); } catch (eG) { return []; } })(),
     prescriptions:   prescriptions,
     importantDates:  importantDates,
     openDecisions:   openDecisions,
@@ -2426,6 +2432,21 @@ function executeActions_(rawText) {
         var rcOut = carCredRenew_(args[0] || '', (args[1] || '').trim());
         if (!rcOut.ok) throw new Error(rcOut.error);
         executed.push(type + ' (' + rcOut.name + ' to ' + rcOut.expires + ')');
+      }
+      else if (type === 'log_practice') {
+        var lpOut = lgChatLogPractice_(args);
+        if (!lpOut.ok) throw new Error(lpOut.error);
+        executed.push(type + ' (' + lpOut.goal + (lpOut.minutes ? ', ' + lpOut.minutes + ' min' : '') + ')');
+      }
+      else if (type === 'add_learning') {
+        var alOut = lgChatAddLearning_(args);
+        if (!alOut.ok) throw new Error(alOut.error);
+        executed.push(type + ' (' + alOut.item.title + ')');
+      }
+      else if (type === 'start_trial') {
+        var stOut = lgChatStartTrial_(args);
+        if (!stOut.ok) throw new Error(stOut.error);
+        executed.push(type + ' (' + stOut.weeks + ' weeks)');
       }
       else if (type === 'log_giving') {
         var lgOut = lfChatLogGiving_(args);

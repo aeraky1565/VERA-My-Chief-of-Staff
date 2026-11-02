@@ -404,5 +404,3 @@ function lfMigrateWishList_() {
   return { moved: moved };
 }
 
-/** Placeholder until Growth's goal columns are written (stage 3 replaces it). */
-function lfSetGoalExtra_(goalId, fields) { return null; }

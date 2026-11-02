@@ -112,6 +112,7 @@ function buildMonthlyReview_(label, priorMonth, ptoStats) {
   sections.push(buildPTOSection_(ptoStats));
   sections.push(buildTravelSection_(monthStart, monthEnd, tz));
   sections.push(buildFlagsSection_(monthStart, monthEnd, tz));
+  sections.push(buildLifeBalanceAsk_(label));   // Life › Growth › Review (#222)
 
   var bodyText = sections.join('\n');
 
@@ -130,6 +131,15 @@ function buildMonthlyReview_(label, priorMonth, ptoStats) {
 // ============================================================
 // Section builders
 // ============================================================
+
+/** The Life balance ask: rate the month, 1 to 5, for six areas, in Life › Growth › Review. */
+function buildLifeBalanceAsk_(label) {
+  var url = '';
+  try { url = PropertiesService.getScriptProperties().getProperty('VERA_DASHBOARD_URL') || ''; } catch (e) {}
+  return '🌿 How did ' + label + ' feel?\n' +
+    '   Rate health, relationships, career, money, growth and fun, 1 to 5' +
+    (url ? ': ' + url.replace(/[?#].*$/, '') + '?tab=life&sub=review' : ', in VERA › Life › Growth › Review') + '\n';
+}
 
 function buildGoalsSection_() {
   try {

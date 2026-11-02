@@ -257,6 +257,8 @@ function doGet(e) {
       case 'life_giving':                return jsonOut_(webLifeGiving_());             // Life.js
       case 'life_tax_giving':            return jsonOut_(webLifeTaxGiving_(e.parameter)); // Life.js
       case 'life_weekend_wishes':        return jsonOut_(webLifeWeekendWishes_());      // Life.js
+      case 'life_growth':                return jsonOut_(webLifeGrowth_());             // LifeGrowth.js
+      case 'life_review':                return jsonOut_(webLifeReview_());             // LifeGrowth.js
       // Every career write is a POST (career_* below); the v1 GET writers are gone.
       // Prescriptions tab (Issue #116)
       case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
@@ -612,6 +614,15 @@ function doPost(e) {
       case 'life_idea_to_project':       return jsonOut_(webLifeIdeaToProject_(body));    // Life.js
       case 'life_giving_save':           return jsonOut_(webLifeGivingSave_(body));       // Life.js
       case 'life_giving_delete':         return jsonOut_(webLifeGivingDelete_(body));     // Life.js
+      case 'life_goal_save':             return jsonOut_(webLifeGoalSave_(body));         // LifeGrowth.js
+      case 'life_goal_carry':            return jsonOut_(webLifeGoalCarry_(body));        // LifeGrowth.js
+      case 'life_practice_log':          return jsonOut_(webLifePracticeLog_(body));      // LifeGrowth.js
+      case 'life_practice_undo':         return jsonOut_(webLifePracticeUndo_(body));     // LifeGrowth.js
+      case 'life_learning_save':         return jsonOut_(webLifeLearningSave_(body));     // LifeGrowth.js
+      case 'life_trial_start':           return jsonOut_(webLifeTrialStart_(body));       // LifeGrowth.js
+      case 'life_trial_decide':          return jsonOut_(webLifeTrialDecide_(body));      // LifeGrowth.js
+      case 'life_did_it':                return jsonOut_(webLifeDidIt_(body));            // LifeGrowth.js
+      case 'life_balance_save':          return jsonOut_(webLifeBalanceSave_(body));      // LifeGrowth.js
       case 'career_credential_delete':   return jsonOut_(webCareerDeleteCredential_(body));
       case 'career_credential_log_credits': return jsonOut_(webCareerLogCredits_(body));
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());

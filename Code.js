@@ -155,6 +155,7 @@ const NOTIF_REGISTRY = [
   { key: 'flag_low',            label: 'Low Urgency Flags',     emoji: '🟢', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Nightly low-urgency flag alerts', locked: false },
   { key: 'bill_due',            label: 'Bill Due',              emoji: '💳', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Upcoming bill due reminders', locked: false },
   { key: 'career_cert_expiry',  label: 'Certification Expiry',  emoji: '🎓', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'A certification 90, 30 and 7 days before it expires, and renewal credits behind pace', locked: false },
+  { key: 'growth_nudge',        label: 'Growth Nudge',          emoji: '🌱', category: 'Planning Nudges',      channel: 'vera-notifications', description: 'Weekly, for a Now goal in Life › Growth with no practice in a week (Config growth_nudge_days), with a free slot', locked: false },
   { key: 'quarterly_checkin',   label: 'Quarterly Money Check-in', emoji: '🗓️', category: 'Planning Nudges',  channel: 'vera-notifications', description: 'Before each quarter: the money check-in and what to discuss; decisions coming due', locked: false },
   { key: 'packing_reminder',    label: 'Packing Reminder',      emoji: '🎒', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Pre-trip packing checklist nudge', locked: false },
   { key: 'home_service',        label: 'Home Service Due',      emoji: '🏠', category: 'Flags & Alerts',       channel: 'vera-notifications', description: 'Home maintenance service alert', locked: false },
@@ -1374,6 +1375,9 @@ function nightlyRun() {
     // Career › Credentials (#223): import once, keep the job agent's line current, and raise the
     // expiry and pace reminders. It writes flags, so it runs before checkCrossPatternFlags_.
     nightlyStep_(ctx, 'carCredNightly_', carCredNightly_);
+    // Life › Growth (#222): yesterday's "Did it?" asks from the calendar, and the weekly nudge for a
+    // Now goal gone quiet. Writes no flags, but stays with the other planning steps.
+    nightlyStep_(ctx, 'lgNightly_', lgNightly_);
     // Packing lists and Discover runs: flag a list built before VERA recorded its
     // inputs, and one built on last year's weather once a forecast exists (GenerationInputs.js).
     nightlyStep_(ctx, 'checkGenerationInputs_', checkGenerationInputs_);
