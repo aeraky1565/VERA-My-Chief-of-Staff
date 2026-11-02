@@ -6,7 +6,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const LIFE = read('Life.js'), LG = read('LifeGrowth.js'), MR = read('MonthlyReview.js'), CODE = read('Code.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), WP = read('WeekendPlanner.js'), PP = read('PlannedPurchases.js');
+const LIFE = read('Life.js'), LG = read('LifeGrowth.js'), CU = read('ComingUp.js'), MR = read('MonthlyReview.js'), CODE = read('Code.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), WP = read('WeekendPlanner.js'), PP = read('PlannedPurchases.js');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -24,7 +24,7 @@ function extractFn(src, name) {
 }
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(LIFE + '\n' + LG, ctx);
+vm.runInContext(LIFE + '\n' + LG + '\n' + CU, ctx);
 const L = ctx;
 
 // ============ Explore: interests ============
@@ -227,6 +227,68 @@ check('focus keeps the old status in step', /updateGoal_\(goalId, \{ status: fie
 check('the nudge is in Notifications and runs nightly', /\{ key: 'growth_nudge',/.test(CODE) && /nightlyStep_\(ctx, 'lgNightly_', lgNightly_\);/.test(CODE) && /sendNudge_\(d\.key, 'Growth: ' \+ d\.title, msg, 'growth_nudge'\)/.test(LG));
 check('…at most once a week per goal', /wasRecentlySent_\(d\.key, 60 \* 24 \* 8\)/.test(LG));
 check('VERA writes no calendar', !/createEvent|createAllDayEvent|setTitle|deleteEvent/.test(LG + LIFE));
+
+
+// ============ Coming up ============
+console.log('\nComing up: types and leads from Config');
+const TY = L.cuTypes_({});
+check('no rows: the five defaults', J(TY.map(t => [t.name, t.lead])) === J([['wedding', 60], ['big_event', 30], ['show', 21], ['party', 14], ['dinner', 7]]) && J(TY[0].words) === J(['wedding', 'reception', 'ceremony']));
+const TY2 = L.cuTypes_({ 'coming_up_type:recital': 'Recital, Play | 10', 'coming_up_type:broken': 'no lead here', 'coming_up_type:neg': 'x | -3', other: 'y' });
+check('rows from Config replace the defaults; bad rows are skipped', J(TY2) === J([{ name: 'recital', words: ['recital', 'play'], lead: 10 }]), J(TY2));
+check('coming_up_days, 60 by default', L.cuDays_({}) === 60 && L.cuDays_({ coming_up_days: '45' }) === 45 && L.cuDays_({ coming_up_days: 'soon' }) === 60);
+check('a title matches a type by word', L.cuTypeFor_('Sam & Alex Wedding', TY).name === 'wedding' && L.cuTypeFor_('Dinner at Example Bistro', TY).name === 'dinner' && L.cuTypeFor_('Showroom visit', TY) === null);
+check('two types: the longer lead wins', L.cuTypeFor_('Wedding dinner', TY).name === 'wedding' && L.cuTypeFor_('Birthday party and concert', TY).name === 'show');
+check('kept: a location or guests; otherwise not recurring and not his own', L.cuKeep_({ location: 'X', recurring: true, mine: true }) && L.cuKeep_({ guests: 2, recurring: true, mine: true }) && L.cuKeep_({ recurring: false, mine: false }) && !L.cuKeep_({ recurring: true, mine: false }) && !L.cuKeep_({ recurring: false, mine: true }));
+
+console.log('\nComing up: the cards');
+const ev = (id, title, start, end, x) => Object.assign({ id, title, start, end: end || start, allDay: false, location: '', guests: 0, recurring: false, mine: false, description: '' }, x || {});
+const EVS = [
+  ev('e1', 'Wedding of Example Pair', '2026-12-20T15:00', '2026-12-20T23:00', { location: 'Example Hall, Far Town, VA', guests: 40 }),
+  ev('e2', 'Dinner with Sam', '2026-11-06T19:00', '2026-11-06T21:00', { location: 'Example Bistro, Home City', description: 'Potluck. RSVP by Nov 3 please' }),
+  ev('e3', 'Concert', '2026-11-06T20:00', '2026-11-06T23:00', { location: 'Example Arena' }),
+  ev('e4', 'Brunch', '2026-12-30T11:00', '2026-12-30T12:00', { guests: 3 }),                 // dinner type, 26 days away > 7: not yet
+  ev('e5', 'Team lunch', '2026-11-05T12:00', '2026-11-05T13:00', { recurring: true }),     // recurring, no place: skipped
+  ev('e6', 'Focus block', '2026-11-05T09:00', '2026-11-05T10:00', { mine: true }),          // untyped
+  ev('e7', 'Dinner at ours', '2026-11-01T19:00', '2026-11-01T22:00', { guests: 4 }),        // 3 days ago: How was it?
+  ev('e8', 'Old party', '2026-10-25T19:00', '2026-10-25T22:00', { guests: 4 }),             // 9 days ago: gone
+  ev('e9', 'Party at Example Lake', '2026-11-10T18:00', '2026-11-10T22:00', { guests: 6 }),// during a trip
+];
+const DATES = [{ day: '2026-11-06', label: 'Sam birthday', person: 'Sam Example', lead: 14, kind: 'birthday' }, { day: '2026-11-20', label: 'Our anniversary', person: 'Victoria', lead: 21, kind: 'anniversary' }, { day: '2027-03-01', label: 'Far birthday', person: 'Far', lead: 14, kind: 'birthday' }];
+const CO = { types: TY, days: 60, today: '2026-11-04', done: {}, trips: [{ label: 'Example Lake Trip', start: '2026-11-09', end: '2026-11-12' }], homeCity: 'Home City' };
+let cards = L.cuCards_(EVS, DATES, CO), byId = id => cards.find(c => c.id === id);
+check('typed, kept, within their lead; How was it? last', J(cards.map(c => c.id)) === J(['e2', 'e3', 'e9', 'date:2026-11-20:our-anniversary', 'e1', 'e7']), J(cards.map(c => c.id)));
+check('a wedding 46 days out shows (lead 60); brunch 26 days out does not (lead 7)', !!byId('e1') && !byId('e4'));
+check('recurring with no place, and untyped events, stay out', !byId('e5') && !byId('e6'));
+check('a birthday merges into the same-day plan naming that person', J(byId('e2').dates) === J([{ label: 'Sam birthday', person: 'Sam Example', kind: 'birthday' }]) && !cards.some(c => c.id.indexOf('date:2026-11-06') === 0));
+check('…and a date with no plan is its own card', byId('date:2026-11-20:our-anniversary').type === 'anniversary' && byId('date:2026-11-20:our-anniversary').daysAway === 16);
+check('a date past its own lead waits', !cards.some(c => /Far birthday/.test(c.title)));
+check('three days after, How was it?; older ones are gone', byId('e7').after === true && byId('e7').daysAway === -3 && !byId('e8'));
+check('answered once, it is gone', !L.cuCards_(EVS, DATES, Object.assign({}, CO, { done: { e7: '2026-11-03' } })).some(c => c.id === 'e7'));
+check('the horizon caps a long lead', !L.cuCards_(EVS, [], Object.assign({}, CO, { days: 30 })).some(c => c.id === 'e1'));
+
+console.log('\nComing up: prep and clashes');
+const kinds = id => byId(id).prep.map(p => p.kind);
+check('dinner: gift for the merged birthday, RSVP, leave-by, bring', J(kinds('e2')) === J(['gift', 'rsvp', 'leave_by', 'bring']), J(byId('e2').prep));
+check('the gift names the person, RSVP quotes the description', byId('e2').prep[0].label === 'Plan a gift for Sam Example' && byId('e2').prep[1].label === 'RSVP by Nov 3 please');
+check('a wedding out of town: gift and a trip, no leave-by that far ahead', J(kinds('e1')) === J(['gift', 'trip']), J(kinds('e1')));
+check('a show near home: leave-by only', J(kinds('e3')) === J(['leave_by']), J(kinds('e3')));
+check('an anniversary: a gift', J(kinds('date:2026-11-20:our-anniversary')) === J(['gift']));
+check('a party: gift and bring', J(kinds('e9')) === J(['gift', 'bring']));
+check('How was it? has no prep', byId('e7').prep.length === 0);
+check('hosting at ours opens Hosting', L.cuCards_([ev('h', 'Hosting game night party', '2026-11-08T19:00', '2026-11-08T23:00', { guests: 5 })], [], CO)[0].prep.some(p => p.kind === 'hosting'));
+check('two evening plans that overlap clash, both ways', byId('e2').clash === 'Overlaps Concert at 20:00' && byId('e3').clash === 'Overlaps Dinner with Sam at 19:00', byId('e2').clash + ' / ' + byId('e3').clash);
+check('a plan during a trip says so', byId('e9').clash === 'During Example Lake Trip');
+check('no clash, no line', byId('e1').clash === '');
+check('leave-by: start less the drive and ten minutes', L.cuLeaveBy_('19:00', 35) === '18:15' && L.cuLeaveBy_('', 35) === '' && L.cuLeaveBy_('19:00', null) === '');
+
+console.log('\nComing up: wiring');
+check('GET coming_up and coming_up_leave_by', /case 'coming_up':\s+return jsonOut_\(webComingUp_\(\)\);/.test(WEB) && /case 'coming_up_leave_by':\s+return jsonOut_\(webComingUpLeaveBy_\(e\.parameter\)\);/.test(WEB));
+check('POST coming_up_debrief and coming_up_bring', /case 'coming_up_debrief':\s+return jsonOut_\(webComingUpDebrief_\(body\)\);/.test(WEB) && /case 'coming_up_bring':\s+return jsonOut_\(webComingUpBring_\(body\)\);/.test(WEB));
+check('the Config rows are seeded once, never over a row you have', /if \(props\.getProperty\(CU_SEEDED_PROP_\)\) return 0;/.test(CU) && /if \(!have\[p\[0\]\]\) \{ sheet\.appendRow\(p\); added\+\+; \}/.test(CU));
+check('separate from the PTO milestones', !/getMilestones_/.test(CU.replace(/^ \*.*$/gm, '')));
+check('How was it? logs a note or a favourite', /createInterest_\('Ahmed', text, 'Other', 'Manual', 'After ' \+ title\)/.test(CU) && /webAddNote_\(\{ parameter: \{ title: 'After ' \+ title/.test(CU));
+check('leave-by reuses the trips drive-time cache', /loadTravelLegCache_\(\)/.test(CU) && /fetchTravelLeg_\(from, to, 'driving', apiKey\)/.test(CU));
+check('VERA writes no calendar here either', !/createEvent|createAllDayEvent|setTitle|deleteEvent/.test(CU));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

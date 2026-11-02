@@ -18,7 +18,7 @@ const part = p => !ONLY || ONLY === p;
 console.log('\nthe wiring');
 check('Life replaces Growth and Explore in the top tabs', /'career','life','system'\]\.map\(tab=>/.test(APP) && /tab==='life'\?`🌿 Life`/.test(APP) && !/tab==='growth'\?`🌱 Growth`/.test(APP) && !/tab==='explore'\?`🔭 Explore`/.test(APP));
 check('anything still sending you to Growth or Explore lands on Life', /if\(activeTab==='growth'\|\|activeTab==='explore'\)setActiveTab\('life'\);/.test(APP));
-check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\/\*#__PURE__\*\/React\.createElement\(LifeTab,\{apiUrl:apiUrl,apiToken:apiToken,initialSub:lifeDeepLink&&lifeDeepLink\.sub,onAddInterest:/.test(APP) && /action:'life_idea_to_goal',id:id/.test(APP) && /action:'life_idea_to_project',id:id/.test(APP));
+check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\/\*#__PURE__\*\/React\.createElement\(LifeTab,\{apiUrl:apiUrl,apiToken:apiToken,onNavigate:setActiveTab,initialSub:lifeDeepLink&&lifeDeepLink\.sub,onAddInterest:/.test(APP) && /action:'life_idea_to_goal',id:id/.test(APP) && /action:'life_idea_to_project',id:id/.test(APP));
 check('?tab=life&sub=review opens Life on that subtab (the monthly review links to it)', /return q\.get\('tab'\)==='life'\?\{sub:q\.get\('sub'\)\|\|''\}:null;/.test(APP) && /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(lfInit\)o\[lfInit\.id\]=props\.initialSub;/.test(APP));
 check('Health no longer has Year in Review (it is Growth › Habits)', !/id:'year_in_review'/.test(APP) && /if\(sub==='habits'\)return h\(YearInReviewTab,/.test(APP));
 check('My Trips’ upcoming cards and the Trip Idea page show lessons', /t\.label\),\/\*#__PURE__\*\/React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:t\.label\}\)/.test(APP) && /renderLessons:function\(idea\)\{return React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:\[idea\.title,idea\.where\]\.join\(' '\)\}\)/.test(APP));
@@ -51,14 +51,21 @@ const GROWTH = { ok: true, today: '2026-11-04',
 const REVIEW = { ok: true, today: '2026-11-04', rateMonth: '2026-10', rated: false, areas: ['health', 'relationships', 'career', 'money', 'growth', 'fun'],
   balance: [{ month: '2026-08', health: 2, relationships: 4, career: 3, money: 3, growth: 2, fun: 4 }, { month: '2026-09', health: 2, relationships: 5, career: 3, money: 4, growth: 3, fun: 4 }], low: ['health'],
   time: { month: '2026-10', freeHours: 196, buckets: [{ id: 'people', label: 'Friends & family', hours: 12 }, { id: 'trips', label: 'Trips', hours: 24 }, { id: 'home', label: 'Home & chores', hours: 6 }, { id: 'practice', label: 'Goal practice', hours: 4 }, { id: 'other', label: 'Other plans', hours: 10 }, { id: 'unplanned', label: 'Unplanned', hours: 140 }] } };
+
+const CUP = { ok: true, today: '2026-11-04', days: 60, cards: [
+  { id: 'e2', title: 'Dinner with Sam', day: '2026-11-06', time: '19:00', type: 'dinner', daysAway: 2, location: 'Example Bistro, Home City', after: false,
+    dates: [{ label: 'Sam birthday', person: 'Sam Example', kind: 'birthday' }], clash: 'Overlaps Concert at 20:00',
+    prep: [{ kind: 'gift', label: 'Plan a gift for Sam Example' }, { kind: 'rsvp', label: 'RSVP by Nov 3 please' }, { kind: 'leave_by', label: 'Leave-by time' }, { kind: 'bring', label: 'Bring something?' }] },
+  { id: 'e1', title: 'Wedding of Example Pair', day: '2026-12-20', time: '15:00', type: 'wedding', daysAway: 46, location: 'Example Hall, Far Town, VA', after: false, dates: [], clash: '', prep: [{ kind: 'gift', label: 'Plan a gift' }, { kind: 'trip', label: 'Pencil in a trip' }] },
+  { id: 'e7', title: 'Dinner at ours', day: '2026-11-01', time: '19:00', type: 'dinner', daysAway: -3, location: '', after: true, dates: [], clash: '', prep: [] }] };
 async function mount(page, props) {
   await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof LifeTab === 'function', null, { timeout: 15000 }).catch(() => {});
-  await page.evaluate(({ INTERESTS, GIVING, IDEAS, props, GROWTH, REVIEW }) => {
-    window.__posts = []; window.__gets = []; window.__GROWTH = GROWTH; window.__REVIEW = REVIEW; window.__toGoal = []; window.__toProject = [];
+  await page.evaluate(({ INTERESTS, GIVING, IDEAS, props, GROWTH, REVIEW, CUP }) => {
+    window.__posts = []; window.__gets = []; window.__GROWTH = GROWTH; window.__nav = []; window.__REVIEW = REVIEW; window.__toGoal = []; window.__toProject = [];
     LF_INT_P = null;
     window.apiGet = (u, t, p) => { window.__gets.push(p.action);
-      const r = { life_growth: GROWTH, life_review: REVIEW, get_year_review: { ok: true, year: 2026, habits: [{ id: 'HAB-1', name: 'Swim more', cadence: '3× a week', color: '#8ab4f8', active: true }], completions: { 'HAB-1': { '2026-11-03': true } } }, life_interests: INTERESTS, life_giving: GIVING, life_tax_giving: { ok: true, year: 2025, count: 1, total: 40, items: [{ organisation: 'Example Library', amount: 40 }] } }[p.action];
+      const r = { coming_up: CUP, coming_up_leave_by: { ok: true, minutes: 35, leaveBy: '18:15' }, life_growth: GROWTH, life_review: REVIEW, get_year_review: { ok: true, year: 2026, habits: [{ id: 'HAB-1', name: 'Swim more', cadence: '3× a week', color: '#8ab4f8', active: true }], completions: { 'HAB-1': { '2026-11-03': true } } }, life_interests: INTERESTS, life_giving: GIVING, life_tax_giving: { ok: true, year: 2025, count: 1, total: 40, items: [{ organisation: 'Example Library', amount: 40 }] } }[p.action];
       return r ? Promise.resolve(JSON.parse(JSON.stringify(r))) : (window.__life_get ? window.__life_get(p) : Promise.resolve({ ok: true })); };
     window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b)));
       if (b.action === 'life_place_to_trip_idea') return Promise.resolve({ ok: true, title: 'Old harbour walk' });
@@ -70,8 +77,8 @@ async function mount(page, props) {
     const host = document.createElement('div'); host.id = 'lfprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
     window.__lfRoot = ReactDOM.createRoot(host);
     window.__lfRoot.render(React.createElement(LifeTab, Object.assign({ apiUrl: 'https://vera.test/exec', apiToken: 't', ideas: IDEAS, busy: false,
-      onToGoal: null, onIdeaToGoal: id => window.__toGoal.push(id), onIdeaToProject: id => window.__toProject.push(id), onAddIdea() {}, onPromoteIdea() {}, onArchiveIdea() {}, onShelveIdea() {} }, props || {})));
-  }, { INTERESTS, GIVING, IDEAS, props, GROWTH, REVIEW });
+      onToGoal: null, onNavigate: t => window.__nav.push(t), onIdeaToGoal: id => window.__toGoal.push(id), onIdeaToProject: id => window.__toProject.push(id), onAddIdea() {}, onPromoteIdea() {}, onArchiveIdea() {}, onShelveIdea() {} }, props || {})));
+  }, { INTERESTS, GIVING, IDEAS, props, GROWTH, REVIEW, CUP });
   await wait(350);
 }
 const T = page => sel => page.$eval('#lfprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
@@ -93,6 +100,28 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
     const gsubs = await page.$$eval('#lfprobe .lf-subs .subtab-btn', ns => ns.map(n => n.textContent));
     check(L + ': Growth’s subtabs', JSON.stringify(gsubs) === JSON.stringify(['Now', 'Goals', 'Habits', 'Learning', 'Trials', 'Review']), JSON.stringify(gsubs));
 
+
+    if (part('comingup')) {
+      const cc = await page.$$eval('#lfprobe .cu-card', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
+      check(L + ': Coming up sits at the top of Life, a card per plan', cc.length === 3 && (await page.$('#lfprobe .life-tab > .cu-strip')) !== null, JSON.stringify(cc));
+      check(L + ': when, how soon, where, the merged birthday, the clash', /^Fri, Nov 6 · 19:00 in 2 days 🍽️ Dinner with Sam 📍 Example Bistro, Home City 🎂 Sam birthday ⚠ Overlaps Concert at 20:00/.test(cc[0]), cc[0]);
+      check(L + ': prep actions by type, RSVP as a note', /Plan a gift for Sam Example RSVP by Nov 3 please Leave-by time Bring something\?/.test(cc[0]) && (await page.$('#lfprobe .cu-rsvp')) !== null);
+      await page.evaluate(() => document.querySelector('#lfprobe .cu-prep-leave_by').click()); await wait(250);
+      check(L + ': Leave-by works out the time', /Leave by 18:15 \(35 min drive\)/.test(cc[0] + (await txt('.cu-msg'))));
+      await page.evaluate(() => document.querySelector('#lfprobe .cu-prep-bring').click()); await wait(250);
+      let posts = await page.evaluate(() => window.__posts);
+      check(L + ': Bring something adds a task for the day before', posts[posts.length - 1].action === 'coming_up_bring' && posts[posts.length - 1].day === '2026-11-06');
+      await page.evaluate(() => document.querySelector('#lfprobe .cu-prep-gift').click());
+      await page.evaluate(() => document.querySelector('#lfprobe .cu-prep-trip').click()); await wait(100);
+      check(L + ': a gift opens People, a trip opens Travel', JSON.stringify(await page.evaluate(() => window.__nav)) === JSON.stringify(['people', 'travel']));
+      check(L + ': after the day it asks how it was', /^Sun, Nov 1 · 19:00 3 days ago 🍽️ Dinner at ours How was it\?/.test(cc[2]), cc[2]);
+      check(L + ': saving waits for a word', await page.$eval('#lfprobe .cu-how-note', n => n.disabled));
+      await page.evaluate(() => { const n = document.querySelector('#lfprobe .cu-how-text'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(n, 'The lamb was great'); n.dispatchEvent(new Event('input', { bubbles: true })); }); await wait(50);
+      await page.evaluate(() => document.querySelector('#lfprobe .cu-how-interest').click()); await wait(250);
+      posts = await page.evaluate(() => window.__posts);
+      check(L + ': How was it? saves a favourite, and the card goes', posts[posts.length - 1].action === 'coming_up_debrief' && posts[posts.length - 1].kind === 'interest' && posts[posts.length - 1].text === 'The lamb was great' && (await page.$$('#lfprobe .cu-card')).length === 2);
+      check(L + ': the strip scrolls inside itself', await page.$eval('#lfprobe .cu-row', n => getComputedStyle(n).overflowX === 'auto'));
+    }
     if (part('explore')) {
       await clickText(page, '.lf-group', '🔭 Explore'); await wait(300);
       const esubs = await page.$$eval('#lfprobe .lf-subs .subtab-btn', ns => ns.map(n => n.textContent));
@@ -104,10 +133,10 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       await clickText(page, '.lf-person', 'Ahmed'); await wait(100);
       cards = await page.$$eval('#lfprobe .lf-int-card .lf-int-text', ns => ns.map(n => n.textContent));
       check(L + ': filtered by person', JSON.stringify(cards) === JSON.stringify(['Old harbour walk']), JSON.stringify(cards));
-      await page.evaluate(() => document.querySelector('#lfprobe .lf-to-trip').click()); await wait(250);
+      await page.evaluate(() => { window.__posts = []; document.querySelector('#lfprobe .lf-to-trip').click(); }); await wait(250);
       let posts = await page.evaluate(() => window.__posts);
       check(L + ': Plan a trip sends the place to Trip Ideas', posts[0] && posts[0].action === 'life_place_to_trip_idea' && posts[0].id === 'I8');
-      check(L + ': …and says where it went', /Added “Old harbour walk” to Travel › Trip Ideas\./.test(await txt('.lf-msg')));
+      check(L + ': …and says where it went', /Added “Old harbour walk” to Travel › Trip Ideas\./.test(await txt('.lf-interests .lf-msg')));
       await page.evaluate(() => document.querySelector('#lfprobe .lf-to-weekend').click()); await wait(250);
       posts = await page.evaluate(() => window.__posts);
       check(L + ': Add to a weekend', posts[1] && posts[1].action === 'life_add_to_weekend' && posts[1].id === 'I8');
@@ -165,7 +194,7 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       await page.evaluate(() => document.querySelector('#lfprobe .lf-did-today').click()); await wait(250);
       posts = await page.evaluate(() => window.__posts);
       check(L + ': Did it today logs today', posts[posts.length - 1].action === 'life_practice_log' && posts[posts.length - 1].goalId === 'g1' && posts[posts.length - 1].day === '2026-11-04');
-      check(L + ': …and offers an undo', /Logged Swim more for today\./.test(await txt('.lf-msg')) && (await page.$('#lfprobe .lf-undo')) !== null);
+      check(L + ': …and offers an undo', /Logged Swim more for today\./.test(await txt('.lf-now .lf-msg')) && (await page.$('#lfprobe .lf-undo')) !== null);
       await page.evaluate(() => document.querySelector('#lfprobe .lf-undo').click()); await wait(250);
       posts = await page.evaluate(() => window.__posts);
       check(L + ': Undo removes that day’s log', posts[posts.length - 1].action === 'life_practice_undo' && posts[posts.length - 1].day === '2026-11-04');
@@ -234,7 +263,7 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       await mount(page, { initialSub: 'giving' });
       check(L + ': a deep link opens its group and subtab', (await txt('.lf-group.active')) === '🔭 Explore' && (await txt('.lf-subs .subtab-btn.active')) === 'Giving' && (await page.$('#lfprobe .lf-giving')) !== null);
     }
-    check(L + ': buttons big enough to tap', await page.$$eval('#lfprobe .lf-group, #lfprobe .lf-subs .subtab-btn, #lfprobe .lf-to-trip, #lfprobe .lf-give-add, #lfprobe .lf-give-edit, #lfprobe .lf-did-today, #lfprobe .lf-start-now, #lfprobe .lf-trial-keep, #lfprobe .lf-rate-save', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
+    check(L + ': buttons big enough to tap', await page.$$eval('#lfprobe .lf-group, #lfprobe .lf-subs .subtab-btn, #lfprobe .lf-to-trip, #lfprobe .lf-give-add, #lfprobe .lf-give-edit, #lfprobe .lf-did-today, #lfprobe .lf-start-now, #lfprobe .lf-trial-keep, #lfprobe .lf-rate-save, #lfprobe .cu-prep-gift', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
     check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
     check(L + ': no page errors', errs.length === 0, errs.join(' | '));
     await page.close();

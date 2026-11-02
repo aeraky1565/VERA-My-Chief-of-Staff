@@ -259,6 +259,8 @@ function doGet(e) {
       case 'life_weekend_wishes':        return jsonOut_(webLifeWeekendWishes_());      // Life.js
       case 'life_growth':                return jsonOut_(webLifeGrowth_());             // LifeGrowth.js
       case 'life_review':                return jsonOut_(webLifeReview_());             // LifeGrowth.js
+      case 'coming_up':                  return jsonOut_(webComingUp_());               // ComingUp.js
+      case 'coming_up_leave_by':         return jsonOut_(webComingUpLeaveBy_(e.parameter)); // ComingUp.js
       // Every career write is a POST (career_* below); the v1 GET writers are gone.
       // Prescriptions tab (Issue #116)
       case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
@@ -623,6 +625,8 @@ function doPost(e) {
       case 'life_trial_decide':          return jsonOut_(webLifeTrialDecide_(body));      // LifeGrowth.js
       case 'life_did_it':                return jsonOut_(webLifeDidIt_(body));            // LifeGrowth.js
       case 'life_balance_save':          return jsonOut_(webLifeBalanceSave_(body));      // LifeGrowth.js
+      case 'coming_up_debrief':          return jsonOut_(webComingUpDebrief_(body));      // ComingUp.js
+      case 'coming_up_bring':            return jsonOut_(webComingUpBring_(body));        // ComingUp.js
       case 'career_credential_delete':   return jsonOut_(webCareerDeleteCredential_(body));
       case 'career_credential_log_credits': return jsonOut_(webCareerLogCredits_(body));
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());
