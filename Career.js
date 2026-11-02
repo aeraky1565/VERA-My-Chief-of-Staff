@@ -890,6 +890,8 @@ function carCleanRoleCheck_(r, criteria) {
 
 /** Nightly: a no-op once migrated; picks up the baseline import once its doc is set. */
 function carNightly_() {
+  // Credentials (#223): import once, keep the agent's line current, expiry and pace reminders.
+  try { carCredNightly_(); } catch (e) { Logger.log('carCredNightly_: ' + e.message); }
   var res = carEnsureMigrated_();
   return res && res.migrated ? 'migrated' : 'ok';
 }
@@ -916,7 +918,8 @@ var CAR_AGENT_STALE_KEY_  = 'career-agent-stale';
 var CAR_AGENT_OWNED_LABELS_ = ['Target level', 'Levels to consider', 'Minimum base salary (USD)',
   'Minimum base salary outside the DC area (USD)', 'Minimum total compensation (USD)',
   'Work mode', 'Home location', 'Willing to relocate', 'Max days onsite per week', 'Target relocation areas',
-  'Deal-breakers', 'Companies to exclude', 'VERA Inbox link'];
+  'Deal-breakers', 'Companies to exclude', 'VERA Inbox link',
+  'Credentials held'];   // Career › Credentials (CareerCredentials.js, #223)
 /**
  * North Star's constraints. They live in the agent's Settings sheet, the one
  * source of truth: VERA shows what is there and writes edits straight back.

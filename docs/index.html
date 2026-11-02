@@ -8171,7 +8171,7 @@ function CarEvidence({data,post,busy}){
 
 // ---- Pipeline (phase 2): the job agent's Tracker, read live. Not an application
 // tracker: one status per match, written to the Tracker's Status cell.
-var CAR_SUBS=['northstar','readiness','evidence','pipeline','network','market','brand','exchange'];
+var CAR_SUBS=['northstar','readiness','evidence','credentials','pipeline','network','market','brand','exchange'];
 // ?tab=career&sub=pipeline (the digest's "Triage in VERA" link). Only the Career tab
 // and its known subtabs are honoured; any other parameter, a token included, is ignored.
 function carParseDeepLink(search){try{var q=new URLSearchParams(search||'');if(q.get('tab')!=='career')return null;var sub=q.get('sub');return{tab:'career',sub:CAR_SUBS.indexOf(sub)!==-1?sub:null};}catch(e){return null;}}
@@ -8434,8 +8434,87 @@ function CarConnects({onClose}){
     carH("section",{style:CAR_CARD},carH("h4",{style:{margin:'0 0 8px',fontSize:15}},"Rules"),carH("ul",{style:{margin:0,paddingLeft:18,fontSize:13,lineHeight:1.7}},CAR_RULES.map(function(r,ix){return carH("li",{key:ix},r);}))),
     carH("section",{style:CAR_CARD},carH("h4",{style:{margin:'0 0 8px',fontSize:15}},"Where each file lives"),carH("div",{style:{overflowX:'auto'}},carH("table",{style:{width:'100%',borderCollapse:'collapse',fontSize:13}},carH("thead",null,carH("tr",null,['File','Owner','Holds'].map(function(h){return carH("th",{key:h,style:th},h);}))),carH("tbody",null,CAR_FILES.map(function(f){return carH("tr",{key:f[0]},f.map(function(v,ix){return carH("td",{key:ix,style:td},v);}));}))))));
 }
+// ---- CarCredentials (Career › Credentials, issue #223) ----
+// Certifications and degrees, the exact line the job agent gets, and each certification's renewal:
+// by credits (a bar and a pace line, with Log), by a fee, or never. Saving sends the line on.
+var CAR_CRED_TRACKS=['FP&A','Program & Project Management'];
+var CAR_CRED_BADGE={active:{background:'#12352c',color:'#8fe3c4',border:'1px solid #2b6b55'},none:{background:'#14213f',color:'#aab6d6',border:'1px solid #2a3a5e'},soon:{background:'#3a2f10',color:'#f6d27a',border:'1px solid #8a6d1f'},expired:{background:'#3a1414',color:'#ffb4a9',border:'1px solid #7a2e2e'},degree:{background:'#1a2547',color:'#8ab4f8',border:'1px solid #3a5bab'}};
+function carCredBlank_(kind){return {kind:kind||'cert',name:'',issuer:'',field:'',earned:'',expires:'',renewal:'none',creditsNeeded:'',creditsEarned:'',fee:'',credentialId:'',verifyUrl:'',tracks:[],sendToAgent:true,notes:''};}
+function CarCredentials({apiUrl,apiToken}){
+  var[d,setD]=React.useState(null);var[edit,setEdit]=React.useState(null);var[busy,setBusy]=React.useState(false);var[msg,setMsg]=React.useState('');
+  var[logFor,setLogFor]=React.useState('');var[logN,setLogN]=React.useState('');var[renewFor,setRenewFor]=React.useState('');var[renewDate,setRenewDate]=React.useState('');
+  function load(){if(!apiUrl||!apiToken)return;apiGet(apiUrl,apiToken,{action:'career_credentials'}).then(function(r){setD(r||{ok:false});}).catch(function(e){setD({ok:false,error:e.message});});}
+  React.useEffect(load,[apiUrl,apiToken]);
+  function post(body,ok){setBusy(true);setMsg('');apiPost(apiUrl,apiToken,body).then(function(r){setBusy(false);if(!r||r.ok===false){setMsg((r&&r.error)||'That didn’t save.');return;}
+    if(r.sync&&r.sync.ok===false)setMsg('Saved. The job agent wasn’t updated: '+(r.sync.error||'it couldn’t be reached')+'.');else if(r.sync&&r.sync.written)setMsg('Saved, and sent to the job agent.');else setMsg('Saved.');
+    if(ok)ok(r);load();}).catch(function(e){setBusy(false);setMsg(e.message||'That didn’t save.');});}
+  if(!d)return carH("div",{style:CAR_MUTED},"Reading your credentials…");
+  if(!d.ok)return carH("div",{className:'car-cred-unavailable',style:CAR_CARD},d.error||'Credentials couldn’t be read.');
+  var certs=d.credentials.filter(function(c){return c.kind==='cert';}),degrees=d.credentials.filter(function(c){return c.kind==='degree';});
+  var badge=function(c){return carH("span",{className:'car-cred-badge car-cred-'+c.state.status,style:Object.assign({fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:10,whiteSpace:'nowrap'},CAR_CRED_BADGE[c.state.status]||{})},c.state.label);};
+  var inp={minHeight:40,padding:'0 10px',borderRadius:8,background:'#0a1628',border:'1px solid #1e3060',color:'#dde1f0',fontSize:14,boxSizing:'border-box'};
+  var tile=function(k,label,n){return carH("div",{key:k,className:'car-cred-total',style:{display:'flex',flexDirection:'column',gap:2,padding:'10px 12px',borderRadius:10,background:'#0a1220',border:'1px solid #1c2a48'}},carH("span",{style:{fontSize:11,color:'#8a9abf'}},label),carH("span",{style:{fontSize:20,fontWeight:700}},n));};
+  var certCard=function(c){var p=c.pace;
+    return carH("li",{key:c.id,className:'car-cred-card',style:{display:'flex',flexDirection:'column',gap:8,padding:'12px 14px',border:'1px solid #1e3060',borderRadius:10,background:'#0d1b3e'}},
+      carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}},
+        carH("span",{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},carH("span",{style:{fontSize:15,fontWeight:600}},c.name),carH("span",{style:CAR_MUTED},[c.issuer,c.earned?'earned '+String(c.earned).slice(0,4):''].filter(Boolean).join(' · ')||' ')),badge(c)),
+      c.renewal==='credits'&&p?carH("div",{className:'car-cred-pace',style:{display:'flex',flexDirection:'column',gap:4}},
+        carH("div",{'aria-hidden':'true',style:{height:8,borderRadius:4,background:'#13203a',overflow:'hidden'}},carH("div",{className:'car-cred-bar',style:{height:8,width:p.pct+'%',background:'#8ab4f8'}})),
+        carH("span",{style:{fontSize:12,color:p.left&&p.perMonth>4?'#f6d27a':'#aab6d6'}},p.text)):
+      carH("span",{className:'car-cred-renew',style:CAR_MUTED},c.renewal==='fee'?'Renews by fee'+(c.fee!=null?' · $'+c.fee:'')+(c.expires?' · next '+c.expires:''):c.expires?'Expires '+c.expires:'Doesn’t renew'),
+      c.tracks.length?carH("div",{style:{display:'flex',gap:6,flexWrap:'wrap'}},c.tracks.map(function(t){return carH(React.Fragment,{key:t},carChip(t));})):null,
+      logFor===c.id?carH("div",{className:'car-cred-log',style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},carH("input",{type:'number',min:1,className:'car-cred-log-n','aria-label':'Credits to log for '+c.name,value:logN,onChange:function(e){setLogN(e.target.value);},style:Object.assign({},inp,{width:90})}),
+          carH("button",{className:'btn btn-primary car-cred-log-save',style:{fontSize:12},disabled:busy||!(Number(logN)>0),onClick:function(){post({action:'career_credential_log_credits',id:c.id,n:Number(logN)},function(){setLogFor('');setLogN('');});}},'Add '+(p?p.unit:'credits')),
+          carH("button",{className:'btn btn-ghost',style:{fontSize:12},onClick:function(){setLogFor('');}},'Cancel')):null,
+      renewFor===c.id?carH("div",{className:'car-cred-renewing',style:{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}},carH("label",{style:CAR_MUTED},'New expiry ',carH("input",{type:'date',className:'car-cred-renew-date',value:renewDate,onChange:function(e){setRenewDate(e.target.value);},style:inp})),
+          carH("button",{className:'btn btn-primary car-cred-renew-save',style:{fontSize:12},disabled:busy||!renewDate,onClick:function(){post({action:'career_credential_save',credential:Object.assign({},c,{expires:renewDate,creditsEarned:c.renewal==='credits'?0:c.creditsEarned})},function(){setRenewFor('');setRenewDate('');});}},'Save renewal'),
+          carH("button",{className:'btn btn-ghost',style:{fontSize:12},onClick:function(){setRenewFor('');}},'Cancel')):null,
+      carH("div",{style:{display:'flex',gap:6,flexWrap:'wrap'}},
+        c.renewal==='credits'?carH("button",{className:'btn btn-ghost car-cred-log-btn',style:{fontSize:12},onClick:function(){setLogFor(c.id);setRenewFor('');}},'Log '+(p?p.unit:'credits')):null,
+        c.expires?carH("button",{className:'btn btn-ghost car-cred-renew-btn',style:{fontSize:12},onClick:function(){setRenewFor(c.id);setLogFor('');}},'Renew'):null,
+        carH("button",{className:'btn btn-ghost car-cred-edit',style:{fontSize:12},'aria-label':'Edit '+c.name,onClick:function(){setEdit(Object.assign({},c));}},'Edit')));};
+  var f=edit,set=function(k,v){var n=Object.assign({},f);n[k]=v;setEdit(n);};
+  var field=function(label,el){return carH("label",{style:{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:'#8a9abf',flex:'1 1 160px'}},label,el);};
+  var editor=f?carH("section",{className:'car-cred-editor',style:Object.assign({},CAR_CARD,{display:'flex',flexDirection:'column',gap:10,border:'1px solid #8ab4f8'})},
+    carH("div",{role:'group','aria-label':'Type',style:{display:'flex',gap:6}},[['cert','Certification'],['degree','Degree']].map(function(x){var on=f.kind===x[0];return carH("button",{key:x[0],type:'button',className:'car-cred-kind'+(on?' on':''),'aria-pressed':on,onClick:function(){set('kind',x[0]);},style:{minHeight:40,padding:'0 14px',borderRadius:20,cursor:'pointer',background:on?'#1a3060':'transparent',border:'1px solid '+(on?'#4a6db0':'#2a3a5e'),color:on?'#dde1f0':'#aab6d6',fontSize:13,fontWeight:600}},x[1]);})),
+    carH("div",{style:{display:'flex',gap:8,flexWrap:'wrap'}},field('Name',carH("input",{className:'car-cred-f-name',value:f.name,onChange:function(e){set('name',e.target.value);},style:inp})),
+      field(f.kind==='degree'?'School':'Issuer',carH("input",{className:'car-cred-f-issuer',value:f.issuer,onChange:function(e){set('issuer',e.target.value);},style:inp})),
+      f.kind==='degree'?field('Field',carH("input",{className:'car-cred-f-field',value:f.field,onChange:function(e){set('field',e.target.value);},style:inp})):null,
+      field('Earned (year or date)',carH("input",{className:'car-cred-f-earned',value:f.earned,placeholder:'2019',onChange:function(e){set('earned',e.target.value);},style:inp}))),
+    f.kind==='cert'?carH("div",{role:'group','aria-label':'Renews by',style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},carH("span",{style:{fontSize:12,color:'#8a9abf'}},'Renews by'),
+      [['credits','Credits'],['fee','Fee'],['none','Never']].map(function(x){var on=f.renewal===x[0];return carH("button",{key:x[0],type:'button',className:'car-cred-renewal car-cred-renewal-'+x[0]+(on?' on':''),'aria-pressed':on,onClick:function(){set('renewal',x[0]);},style:{minHeight:36,padding:'0 12px',borderRadius:18,cursor:'pointer',background:on?'#1a3060':'transparent',border:'1px solid '+(on?'#4a6db0':'#2a3a5e'),color:on?'#dde1f0':'#aab6d6',fontSize:12}},x[1]);})):null,
+    f.kind==='cert'&&f.renewal!=='none'||f.kind==='cert'&&f.expires?carH("div",{style:{display:'flex',gap:8,flexWrap:'wrap'}},field('Expires',carH("input",{type:'date',className:'car-cred-f-expires',value:f.expires,onChange:function(e){set('expires',e.target.value);},style:inp})),
+      f.renewal==='credits'?field('Credits needed',carH("input",{type:'number',className:'car-cred-f-needed',value:f.creditsNeeded==null?'':f.creditsNeeded,onChange:function(e){set('creditsNeeded',e.target.value);},style:inp})):null,
+      f.renewal==='credits'?field('Credits earned',carH("input",{type:'number',className:'car-cred-f-earnedcredits',value:f.creditsEarned==null?'':f.creditsEarned,onChange:function(e){set('creditsEarned',e.target.value);},style:inp})):null,
+      f.renewal==='fee'?field('Fee ($)',carH("input",{type:'number',className:'car-cred-f-fee',value:f.fee==null?'':f.fee,onChange:function(e){set('fee',e.target.value);},style:inp})):null):
+      f.kind==='cert'?carH("button",{type:'button',className:'btn btn-ghost car-cred-add-expiry',style:{fontSize:12,alignSelf:'flex-start'},onClick:function(){set('expires',' ');}},'It has an expiry date'):null,
+    carH("div",{style:{display:'flex',gap:8,flexWrap:'wrap'}},field('Credential ID (kept in VERA only)',carH("input",{className:'car-cred-f-id',value:f.credentialId,onChange:function(e){set('credentialId',e.target.value);},style:inp})),
+      field('Verification link',carH("input",{className:'car-cred-f-url',value:f.verifyUrl,placeholder:'https://',onChange:function(e){set('verifyUrl',e.target.value);},style:inp}))),
+    carH("div",{role:'group','aria-label':'Tracks',style:{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}},carH("span",{style:{fontSize:12,color:'#8a9abf'}},'Supports'),CAR_CRED_TRACKS.map(function(t){var on=(f.tracks||[]).indexOf(t)!==-1;return carH("button",{key:t,type:'button',className:'car-cred-track'+(on?' on':''),'aria-pressed':on,onClick:function(){set('tracks',on?f.tracks.filter(function(x){return x!==t;}):(f.tracks||[]).concat([t]));},style:{minHeight:36,padding:'0 12px',borderRadius:18,cursor:'pointer',background:on?'#1a3060':'transparent',border:'1px solid '+(on?'#4a6db0':'#2a3a5e'),color:on?'#dde1f0':'#aab6d6',fontSize:12}},t);})),
+    carH("label",{style:{display:'flex',alignItems:'center',gap:8,fontSize:13,minHeight:40}},carH("input",{type:'checkbox',role:'switch',className:'car-cred-f-agent',checked:f.sendToAgent!==false,onChange:function(e){set('sendToAgent',e.target.checked);},style:{width:20,height:20}}),'Send to the job agent'),
+    carH("div",{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+      carH("button",{className:'btn btn-primary car-cred-save',disabled:busy||!String(f.name||'').trim(),onClick:function(){post({action:'career_credential_save',credential:Object.assign({},f,{expires:String(f.expires||'').trim()})},function(){setEdit(null);});}},'Save'),
+      f.id?carH("button",{className:'btn btn-ghost car-cred-delete',onClick:function(){if(confirm('Delete '+f.name+'?'))post({action:'career_credential_delete',id:f.id},function(){setEdit(null);});}},'Delete'):null,
+      carH("button",{className:'btn btn-ghost car-cred-cancel',onClick:function(){setEdit(null);}},'Cancel'))):null;
+  return carH("div",{className:'car-creds',style:{display:'flex',flexDirection:'column',gap:12}},
+    carH("div",{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}},carH("p",{style:Object.assign({},CAR_MUTED,{margin:0})},"Certifications and degrees. The job agent matches roles on these."),
+      carH("span",{style:{display:'flex',gap:6}},carH("button",{className:'btn btn-ghost car-cred-add',style:{fontSize:12},onClick:function(){setEdit(carCredBlank_('cert'));}},'+ Certification'),carH("button",{className:'btn btn-ghost car-cred-add-degree',style:{fontSize:12},onClick:function(){setEdit(carCredBlank_('degree'));}},'+ Degree'))),
+    msg?carH("div",{className:'car-cred-msg',role:'status',style:{fontSize:13,color:'#aab6d6'}},msg):null,
+    carH("div",{className:'car-cred-totals',style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}},tile('active','Active',d.totals.active),tile('soon','Renew soon',d.totals.soon),tile('degrees','Degrees',d.totals.degrees)),
+    carH("section",{className:'car-cred-agent',style:Object.assign({},CAR_CARD,{display:'flex',flexDirection:'column',gap:6})},carH("span",{style:{fontSize:12,fontWeight:700,letterSpacing:'.06em',color:'#8a9abf'}},'WHAT THE JOB AGENT SEES'),
+      carH("code",{className:'car-cred-line',style:{fontSize:13,lineHeight:1.6,whiteSpace:'pre-wrap',wordBreak:'break-word',color:'#dde1f0',fontFamily:'inherit'}},d.line||'(nothing yet)'),
+      carH("span",{className:'car-cred-sent',style:CAR_MUTED},!d.agentConnected?'The job agent isn’t connected (Config career_alert_sheet_id).':d.lastSent&&d.lastSent.line===d.line?'Sent '+String(d.lastSent.at||'').slice(0,10):d.lastSent?'Changed since it was last sent ('+String(d.lastSent.at||'').slice(0,10)+'); it goes on the next save or tonight.':'Not sent yet; it goes on the next save or tonight.')),
+    editor,
+    carH("h3",{style:{margin:'4px 0 0',fontSize:14}},'Certifications'),
+    certs.length?carH("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:8}},certs.map(certCard)):carH("div",{style:CAR_MUTED},'None yet.'),
+    carH("h3",{style:{margin:'4px 0 0',fontSize:14}},'Degrees'),
+    degrees.length?carH("ul",{style:{listStyle:'none',margin:0,padding:0,display:'flex',flexDirection:'column',gap:8}},degrees.map(function(c){return carH("li",{key:c.id,className:'car-cred-degree',style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,padding:'10px 14px',border:'1px solid #1e3060',borderRadius:10,background:'#0d1b3e',flexWrap:'wrap'}},
+      carH("span",{style:{display:'flex',flexDirection:'column',gap:2}},carH("span",{style:{fontSize:14,fontWeight:600}},c.name),carH("span",{style:CAR_MUTED},[c.field,c.issuer,c.earned?String(c.earned).slice(0,4):''].filter(Boolean).join(' · ')||' ')),
+      carH("span",{style:{display:'flex',gap:6,alignItems:'center'}},badge(c),carH("button",{className:'btn btn-ghost car-cred-edit',style:{fontSize:12},'aria-label':'Edit '+c.name,onClick:function(){setEdit(Object.assign({},c));}},'Edit')));})):carH("div",{style:CAR_MUTED},'None yet.'));
+}
+// ---- /CarCredentials ----
 function CareerTab({career,loading,busy,apiUrl,apiToken,onReload,initialSub}){
-  var subTabs=[{id:'northstar',label:'🧭 North Star'},{id:'readiness',label:'✅ Readiness'},{id:'evidence',label:'📎 Evidence'},{id:'pipeline',label:'📥 Pipeline'},{id:'network',label:'🤝 Network'},{id:'market',label:'💵 Market'},{id:'brand',label:'🪪 Brand'},{id:'exchange',label:'🔁 Exchange'}];
+  var subTabs=[{id:'northstar',label:'🧭 North Star'},{id:'readiness',label:'✅ Readiness'},{id:'evidence',label:'📎 Evidence'},{id:'credentials',label:'🎓 Credentials'},{id:'pipeline',label:'📥 Pipeline'},{id:'network',label:'🤝 Network'},{id:'market',label:'💵 Market'},{id:'brand',label:'🪪 Brand'},{id:'exchange',label:'🔁 Exchange'}];
   var[sub,setSub]=React.useState(subTabs.some(function(s){return s.id===initialSub;})?initialSub:'northstar');
   var[showMap,setShowMap]=React.useState(false);
   var[posting,setPosting]=React.useState(false);
@@ -8454,6 +8533,7 @@ function CareerTab({career,loading,busy,apiUrl,apiToken,onReload,initialSub}){
     !loading&&!showMap&&sub==='northstar'&&carH(CarNorthStar,{data:data,post:safePost,busy:b}),
     !loading&&!showMap&&sub==='readiness'&&carH(CarReadiness,{data:data,post:safePost,busy:b,apiUrl:apiUrl,apiToken:apiToken}),
     !loading&&!showMap&&sub==='evidence'&&carH(CarEvidence,{data:data,post:safePost,busy:b}),
+    !showMap&&sub==='credentials'&&carH(CarCredentials,{apiUrl:apiUrl,apiToken:apiToken}),
     !loading&&!showMap&&sub==='pipeline'&&carH(CarPipeline,{apiUrl:apiUrl,apiToken:apiToken,onReload:onReload}),
     !loading&&!showMap&&sub==='network'&&carH(CarNetwork,{data:data,post:safePost,busy:b}),
     !loading&&!showMap&&sub==='market'&&carH(CarMarket,{data:data,post:safePost,busy:b,apiUrl:apiUrl,apiToken:apiToken}),

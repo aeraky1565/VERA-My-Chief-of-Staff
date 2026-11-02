@@ -492,6 +492,7 @@ function buildChatSystemPrompt_(context) {
           lines += '    [' + g.id + '] ' + g.title + ' [' + g.horizon + '] — ' + g.status + '\n';
         });
     }
+    if (c.credentials && c.credentials.length) lines += '  Credentials (Career › Credentials; the job agent gets these):\n' + c.credentials.join('\n') + '\n';
     if (c.wins && c.wins.length > 0) {
       var recentWins = c.wins.slice(0, 5);
       lines += '  Recent wins:\n';
@@ -952,6 +953,8 @@ function buildChatSystemPrompt_(context) {
     'ACTION:add_career_win|{win}|{impact}|{category}|{date YYYY-MM-DD or blank}  \u2014 log a professional achievement\n' +
     'ACTION:add_career_goal|{title}|{horizon 1yr/3yr/5yr/10yr}|{category}|{notes}  \u2014 record a career goal\n' +
     'ACTION:update_career_position|{field}|{value}  \u2014 update position; field = title/company/department/workStyle/focusAreas/notes\n' +
+    'ACTION:renew_credential|{name}|{new expiry YYYY-MM-DD}  \u2014 a certification was renewed (Career › Credentials)\n' +
+    'ACTION:log_credits|{name}|{n}  \u2014 log renewal credits (PDUs) earned toward a certification\n' +
     // Prescriptions (Issue #116)
     'ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes}  \u2014 add a prescription for Ahmed or Victoria\n' +
     'ACTION:mark_prescription_refilled|{person}|{medication}|{newRefillDate YYYY-MM-DD}  \u2014 update lastFilled=today and refillDate for a prescription\n' +
@@ -1422,6 +1425,7 @@ function buildChatContext_() {
   try {
     var carRes = webGetCareer_();
     if (carRes && carRes.ok) career = carRes;
+    if (career) { try { career.credentials = carCredContextLines_(); } catch (eCred) {} }
   } catch(e) { Logger.log('Chat context: career — ' + e.message); }
 
   // Prescriptions (Issue #116)
@@ -2416,6 +2420,16 @@ function executeActions_(rawText) {
       }
 
       // Career
+      else if (type === 'renew_credential') {
+        var rcOut = carCredRenew_(args[0] || '', (args[1] || '').trim());
+        if (!rcOut.ok) throw new Error(rcOut.error);
+        executed.push(type + ' (' + rcOut.name + ' to ' + rcOut.expires + ')');
+      }
+      else if (type === 'log_credits') {
+        var lcOut = webCareerLogCredits_({ name: args[0] || '', n: args[1] });
+        if (!lcOut.ok) throw new Error(lcOut.error);
+        executed.push(type + ' (' + lcOut.name + ': ' + lcOut.creditsEarned + ')');
+      }
       else if (type === 'add_career_win') {
         var cwWin    = (args[0] || '').trim();
         var cwImpact = (args[1] || '').trim();

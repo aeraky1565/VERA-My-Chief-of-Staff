@@ -250,6 +250,7 @@ function doGet(e) {
       // Career tab
       case 'career':                     return jsonOut_(webGetCareer_());
       case 'career_pipeline':            return jsonOut_(webGetCareerPipeline_());
+      case 'career_credentials':         return jsonOut_(webCareerCredentials_()); // CareerCredentials.js
       // Every career write is a POST (career_* below); the v1 GET writers are gone.
       // Prescriptions tab (Issue #116)
       case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
@@ -596,6 +597,9 @@ function doPost(e) {
       // The job agent link (phase 2): Tracker status, Settings sync, Wins bank, suggestions.
       case 'career_set_status':          return jsonOut_(webCareerSetStatus_(body));
       case 'career_sync_agent':          return jsonOut_(webCareerSyncAgent_());
+      case 'career_credential_save':     return jsonOut_(webCareerSaveCredential_(body));
+      case 'career_credential_delete':   return jsonOut_(webCareerDeleteCredential_(body));
+      case 'career_credential_log_credits': return jsonOut_(webCareerLogCredits_(body));
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());
       case 'trip_share_email':           return jsonOut_(webTripShareEmail_(body));
       // Trip Ideas (TripIdeas.js): POST, because a brief and an option's legs are free text.
