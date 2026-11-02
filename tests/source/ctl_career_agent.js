@@ -59,7 +59,7 @@ const CONTROLS = [
   ['the health check is dropped from the nightly run', b => ({ 'Code.js': swap(b['Code.js'], "    nightlyStep_(ctx, 'carCheckAgentHealth_', carCheckAgentHealth_);\n", '') })],
   // ---- the dashboard -------------------------------------------------------------------
   ['any tab can be deep-linked', b => ({ [APP]: swap(b[APP], "if(q.get('tab')!=='career')return null;", '') })],
-  ['the deep link stays in the address bar', b => ({ [APP]: swap(b[APP], "try{window.history.replaceState(null,'',window.location.pathname+window.location.hash);}catch(e){}", '') })],
+  ['the deep link stays in the address bar', b => ({ [APP]: swap(b[APP], "if(!careerDeepLink)return;try{window.history.replaceState(null,'',window.location.pathname+window.location.hash);}catch(e){}", "if(!careerDeepLink)return;") })],
   ['the status route is missing', b => ({ 'WebApp.js': swap(b['WebApp.js'], "      case 'career_set_status':          return jsonOut_(webCareerSetStatus_(body));\n", '') })],
 ];
 

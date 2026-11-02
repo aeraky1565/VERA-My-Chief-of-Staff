@@ -320,7 +320,7 @@ console.log('\nthe deep link');
   check('other tabs are not deep-linkable', dl('?tab=finances') === 'null');
   check('a token in the link is never read', !/t0ken/.test(dl('?tab=career&sub=pipeline&token=t0ken')));
   check('every subtab can be deep-linked', ['market', 'brand', 'exchange', 'network'].every(s => JSON.parse(dl('?tab=career&sub=' + s)).sub === s));
-  check('the app strips the link after reading it', /history\.replaceState\(null,'',window\.location\.pathname\+window\.location\.hash\)/.test(APP));
+  check('the app strips the link after reading it', /if\(!careerDeepLink\)return;try\{window\.history\.replaceState\(null,'',window\.location\.pathname\+window\.location\.hash\)/.test(APP));
   check('the page opens on Career when deep-linked, and loads it', /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(apiUrl&&apiToken\)loadCareer\(apiUrl,apiToken\);\},\[apiUrl,apiToken\]\)/.test(APP));
 }
 
