@@ -15,7 +15,7 @@ const APP = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
 console.log('\nthe wiring');
 check('the settings window is retired', !/NotifSettingsModal|setNotifSettingsOpen/.test(APP));
 check('🔔 opens System on Notifications', /onClick:\(\)=>\{setSystemSub\('notifications'\);setActiveTab\('system'\);loadResources\(apiUrl,apiToken\);\}/.test(APP));
-check('System is a top tab, and opening it loads the documents', /'explore','system'\]\.map\(tab=>/.test(APP) && /if\(tab==='system'\)\{loadResources\(apiUrl,apiToken\);\}/.test(APP) && /tab==='system'\?`🛠 System`/.test(APP));
+check('System is a top tab, and opening it loads the documents', /'life','system'\]\.map\(tab=>/.test(APP) && /if\(tab==='system'\)\{loadResources\(apiUrl,apiToken\);\}/.test(APP) && /tab==='system'\?`🛠 System`/.test(APP));
 check('Documents load with their used-by lines', /apiGet\(url,token,\{action:'system_documents'\}\)/.test(APP));
 check('the ⚙ connection settings stay', /className:"btn-settings",onClick:\(\)=>setShowSettings\(true\)/.test(APP));
 
