@@ -263,7 +263,7 @@ function nwParseRsus_(grid) {
   return { status: 'ok', items: items };
 }
 
-/** Plan items: Item | Month | Amount | Category | Confidence | Can defer. All rows, month order. */
+/** Plan items: Item | Month | Amount | Category | Confidence | Can defer [| Goal]. All rows, month order. */
 function nwParsePlans_(grid) {
   if (!grid || grid.length < 1) return nwUnavailable_('the Plan items tab is empty');
   var h = grid[0];
@@ -272,6 +272,7 @@ function nwParsePlans_(grid) {
                canDefer: nwCol_(h, 'Can defer') };
   var missing = Object.keys(cols).filter(function(k) { return cols[k] === -1; });
   if (missing.length) return nwUnavailable_('the Plan items tab has no ' + missing.join(', ') + ' column');
+  var goalCol = nwCol_(h, 'Goal');   // optional: which planner goal a spend counts against
   var items = [];
   for (var r = 1; r < grid.length; r++) {
     var item = String(grid[r][cols.item] == null ? '' : grid[r][cols.item]).trim();
@@ -283,6 +284,7 @@ function nwParsePlans_(grid) {
       category:   String(grid[r][cols.category] == null ? '' : grid[r][cols.category]).trim(),
       confidence: nwNorm_(grid[r][cols.confidence]),
       canDefer:   nwBool_(grid[r][cols.canDefer]),
+      goal:       goalCol === -1 ? '' : String(grid[r][goalCol] == null ? '' : grid[r][goalCol]).trim(),
     });
   }
   items.sort(function(a, b) { return a.month < b.month ? -1 : a.month > b.month ? 1 : 0; });

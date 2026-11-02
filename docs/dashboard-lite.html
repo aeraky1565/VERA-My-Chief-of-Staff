@@ -6861,6 +6861,110 @@ function WishListsView(props) {
 // return anything, so the only time the card seeds the cache on its own.
 function flightInWindowNow(items){var now=Date.now();return(items||[]).some(function(it){if(it.type!=='flight'||it._synthetic)return false;var dep=new Date((it.date||'')+'T'+(it.startTime||'00:00')+':00').getTime();return!isNaN(dep)&&dep>=now&&dep-now<=6*3600000;});}
 function flightLiveFromText(it){var dep=new Date((it.date||'')+'T'+(it.startTime||'00:00')+':00').getTime();if(isNaN(dep))return'';var from=new Date(dep-6*3600000);if(from.getTime()<=Date.now())return'';var sameDay=from.toDateString()===new Date().toDateString();return'Live status from '+(sameDay?'':from.toLocaleDateString('en-US',{month:'short',day:'numeric'})+', ')+from.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});}
+// ---- PlannerGoalsTab (Finances › Goals, from the planner) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Both dashboards carry this block byte-for-byte; test_plannergoals_ui.js fails if they
+// drift. The server (PlannerGoals.js) reads the planner's Goals tab, house plan and Plan
+// items; VERA never writes the planner, so goals are changed there.
+var PG_C = { card: '#0d1b3e', br: '#1e3060', deep: '#0a1220', line: '#1c2a48', txt: '#dde1f0', mute: '#8a9abf', soft: '#aab6d6',
+             acc: '#8ab4f8', ok: '#8fe3c4', okBg: '#0f2a1c', warn: '#f6d27a', warnBg: '#2a2410', must: '#f4c27a', mustBg: '#2a1d10' };
+var PG_KIND_LABEL = { 'one-off': 'One-off', reserve: 'Reserve', yearly: 'Yearly budget' };
+var PG_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var PG_MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function pgMoney(n) { return n == null || !isFinite(n) ? '—' : (n < 0 ? '-$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-US'); }
+function pgMon(ym, long) { if (!ym) return ''; var p = ym.split('-').map(Number); return (long ? PG_MONTH : PG_MON)[p[1] - 1] + ' ' + p[0]; }
+function pgDay(iso) { if (!iso) return ''; var p = iso.split('-').map(Number); return PG_MON[p[1] - 1] + ' ' + p[2]; }
+function pgCap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+/** Pure: the badge on a goal: [label, tone]. */
+function pgBadge(g) {
+  if (g.state === 'reached') return ['REACHED', 'ok'];
+  if (g.state === 'ready') return ['READY', 'ok'];
+  if (g.state === 'paused') return ['PAUSED', 'mute'];
+  if (g.kind === 'yearly') { var y = g.years && g.years[0]; return y && y.left != null ? (y.left < 0 ? [pgMoney(-y.left) + ' OVER', 'warn'] : [pgMoney(y.left) + ' LEFT', 'warn']) : ['', 'mute']; }
+  return g.target > 0 ? [pgMoney(Math.max(0, g.target - (g.saved || 0))) + ' TO GO', 'warn'] : ['', 'mute'];
+}
+function PlannerGoalsTab(props) {
+  var h = React.createElement, C = PG_C;
+  var _d = React.useState(null), d = _d[0], setD = _d[1];
+  var _e = React.useState(''), err = _e[0], setErr = _e[1];
+  var _f = React.useState('all'), filter = _f[0], setFilter = _f[1];
+  var _y = React.useState({}), yearPick = _y[0], setYearPick = _y[1];
+  React.useEffect(function() {
+    if (!props.apiUrl || !props.apiToken) return undefined;
+    var live = true;
+    apiGet(props.apiUrl, props.apiToken, { action: 'planner_goals' })
+      .then(function(r) { if (live) setD(r); }).catch(function(x) { if (live) setErr((x && x.message) || String(x)); });
+    return function() { live = false; };
+  }, [props.apiUrl, props.apiToken]);
+  var box = { display: 'flex', flexDirection: 'column', gap: 10, background: C.card, border: '1px solid ' + C.br, borderRadius: 14, padding: 14, color: C.txt };
+  if (err) return h('div', { className: 'pg-tab pg-error', style: box }, 'Couldn’t read the planner: ' + err);
+  if (!d) return h('div', { className: 'pg-tab pg-loading', style: Object.assign({}, box, { color: C.mute }) }, 'Reading the planner…');
+  if (!d.configured) return h('div', { className: 'pg-tab pg-setup', style: box }, 'Not set up yet. Add a planner_sheet_id row to VERA’s Config tab, with the planner sheet’s ID as its value.');
+  if (d.status !== 'ok') return h('div', { className: 'pg-tab pg-unavailable', style: box }, 'Goals are unavailable: ' + d.reason + '.');
+  var goals = d.goals || [], s = d.summary || {};
+  var shown = goals.filter(function(g) { var done = g.state === 'ready' || g.state === 'reached'; return filter === 'all' || (filter === 'done' ? done : !done); });
+  var pill = function(on) { return { minHeight: 40, padding: '0 14px', borderRadius: 20, cursor: 'pointer', fontSize: 13, background: on ? '#1a3060' : C.deep, border: '1px solid ' + (on ? '#4a6db0' : C.line), color: on ? C.txt : C.soft, fontWeight: on ? 600 : 400 }; };
+  var chip = function(text, tone) { var t = { kind: ['#13254f', '#b6c8f0'], must: [C.mustBg, C.must], plain: ['#1a2238', C.soft] }[tone]; return h('span', { key: text, className: 'pg-chip', style: { fontSize: 11, padding: '2px 8px', borderRadius: 999, background: t[0], color: t[1] } }, text); };
+  var tile = function(label, value, cls) { return h('div', { key: label, className: cls, style: { display: 'flex', flexDirection: 'column', gap: 3, background: C.card, border: '1px solid ' + C.br, borderRadius: 12, padding: '10px 12px', minWidth: 0 } },
+    h('span', { style: { fontSize: 11, letterSpacing: '0.06em', color: C.mute } }, label), h('span', { style: { fontSize: 18, fontWeight: 700, fontVariantNumeric: 'tabular-nums' } }, value)); };
+  var bar = function(pct, color) { return h('div', { style: { height: 8, borderRadius: 4, background: '#13203a', overflow: 'hidden' } }, h('div', { className: 'pg-bar', style: { height: 8, width: Math.max(0, Math.min(100, pct || 0)) + '%', background: color } })); };
+  var shares = function(g) { return g.shares && g.shares.length ? h('div', { className: 'pg-shares', style: { display: 'grid', gridTemplateColumns: 'repeat(' + Math.min(g.shares.length, 3) + ', minmax(0, 1fr))', gap: 8 } }, g.shares.map(function(x, i) {
+    return h('div', { key: x.who, className: 'pg-share', style: { display: 'flex', flexDirection: 'column', gap: 2, background: C.deep, border: '1px solid ' + C.line, borderRadius: 10, padding: '8px 10px', minWidth: 0 } },
+      h('span', { style: { fontSize: 11, color: C.mute, textTransform: 'uppercase', letterSpacing: '0.04em' } }, x.who + '’s share' + (i === 0 ? ' of target' : '')), h('span', { style: { fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, pgMoney(x.amount))); })) : null; };
+  function card(g) {
+    var b = pgBadge(g), tone = { ok: [C.okBg, C.ok], warn: [C.warnBg, C.warn], mute: ['#1a2238', C.soft] }[b[1]];
+    var head = h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 } },
+      h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 } }, h('span', { className: 'pg-name', style: { fontSize: 16, fontWeight: 700 } }, g.name),
+        h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } }, [chip(PG_KIND_LABEL[g.kind] || pgCap(g.kind), 'kind'), g.priority ? chip(pgCap(g.priority), g.priority === 'must' ? 'must' : 'plain') : null, g.targetFrom === 'house' ? chip('House plan', 'plain') : null])),
+      b[0] ? h('span', { className: 'pg-badge', style: { flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: tone[0], color: tone[1] } }, b[0]) : null);
+    var body;
+    if (g.kind === 'yearly') {
+      var ys = g.years || [], yr = yearPick[g.name] || (ys[0] && ys[0].year), y = ys.filter(function(x) { return x.year === yr; })[0] || ys[0] || { items: [], planned: 0 };
+      var line = y.left == null ? '' : (y.left >= 0 ? pgMoney(y.left) + ' left' : pgMoney(-y.left) + ' over') + (y.next ? ' · next: ' + y.next.item + ' in ' + PG_MON[Number(y.next.month.slice(5, 7)) - 1] : '');
+      body = [
+        h('div', { key: 'yrs', style: { display: 'flex', gap: 6 } }, ys.map(function(x) { var on = x.year === y.year; return h('button', { key: x.year, type: 'button', className: 'pg-year', 'aria-pressed': on, onClick: function() { var n = Object.assign({}, yearPick); n[g.name] = x.year; setYearPick(n); }, style: pill(on) }, String(x.year)); })),
+        h('div', { key: 'amt', style: { display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } }, h('span', { className: 'pg-amount', style: { fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' } }, pgMoney(y.planned)),
+          h('span', { style: { fontSize: 13, color: C.soft } }, 'planned of ' + pgMoney(g.target) + ' for ' + y.year)),
+        h('div', { key: 'bar' }, bar(g.target ? y.planned / g.target * 100 : 0, y.left < 0 ? C.warn : C.acc)),
+        line ? h('span', { key: 'line', className: 'pg-line', style: { fontSize: 13, color: C.soft } }, line) : null,
+        y.items.length ? h('div', { key: 'items', style: { display: 'flex', flexDirection: 'column' } }, y.items.map(function(it, i) {
+          return h('div', { key: i, className: 'pg-item', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, minHeight: 48, borderTop: '1px solid #13203a', opacity: it.past ? 0.6 : 1 } },
+            h('span', { style: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 } }, h('span', { style: { fontSize: 14 } }, it.item), h('span', { style: { fontSize: 12, color: C.mute } }, pgMon(it.month) + (it.confidence ? ' · ' + it.confidence : ''))),
+            h('span', { style: { fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, pgMoney(it.amount))); }))
+          : h('span', { key: 'none', style: { fontSize: 13, color: C.mute } }, 'Nothing planned for ' + y.year + ' yet.'),
+        h('span', { key: 'src', style: { fontSize: 12, color: C.mute, lineHeight: 1.5 } }, d.plansAvailable ? 'Every trip in the planner’s Plan items for that year, and anything whose Goal is ' + g.name + '.' : 'The planner’s Plan items couldn’t be read, so nothing planned shows.')];
+    } else {
+      var note = null;
+      if (g.houseLine) {
+        var hl = g.houseLine, over = (g.saved || 0) - (g.target || 0);
+        note = hl.downPct + '% down on a ' + pgMoney(hl.price) + ' house' + (hl.month ? ' in ' + pgMon(hl.month, true) : '') + (hl.extra ? ', plus ' + pgMoney(hl.extra) + ' closing costs' : '') + ' · ' + (over >= 0 ? pgMoney(over) + ' more than it needs.' : pgMoney(-over) + ' still to save.');
+      } else if (g.cashLow && g.cashLow.amount != null) {
+        var cl = g.cashLow;
+        note = 'Cash is projected to bottom out at ' + pgMoney(cl.amount) + (cl.when ? ' on ' + cl.when : '') + (cl.floor != null ? (cl.amount >= cl.floor ? ', above your ' : ', below your ') + pgMoney(cl.floor) + ' floor.' : '.');
+      } else if (g.month && g.state === 'active') note = 'Target ' + pgMon(g.month, true) + '.';
+      body = [
+        h('div', { key: 'amt', style: { display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } }, h('span', { className: 'pg-amount', style: { fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' } }, pgMoney(g.saved)),
+          h('span', { style: { fontSize: 13, color: C.soft } }, g.target > 0 ? 'of ' + pgMoney(g.target) + ' · ' + g.pct + '%' + (g.kind === 'reserve' ? ' · kept, not spent' : '') : 'saved · no target set')),
+        g.target > 0 ? h('div', { key: 'bar' }, bar(g.pct, g.state === 'active' || g.state === 'paused' ? C.acc : C.ok)) : null,
+        note ? h('span', { key: 'note', className: 'pg-note', style: { fontSize: 13, color: C.soft, lineHeight: 1.5 } }, note) : null];
+    }
+    return h('section', { key: g.name, className: 'pg-goal', 'data-state': g.state, 'aria-label': g.name, style: box }, head, body, shares(g),
+      g.targetFrom === 'house' ? h('span', { style: { fontSize: 12, color: C.mute, lineHeight: 1.5 } }, 'The target follows the house plan (price × down payment, plus closing costs). Change it there and this follows.') : null);
+  }
+  return h('div', { className: 'pg-tab', style: { display: 'flex', flexDirection: 'column', gap: 14, color: C.txt, maxWidth: 720 } },
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 } }, h('span', { style: { fontSize: 20, fontWeight: 700 } }, 'Goals'), h('span', { style: { fontSize: 12, color: C.mute } }, 'from the planner')),
+      h('span', { className: 'pg-asof', style: { fontSize: 12, color: C.mute } }, [d.calculated ? 'Calculated ' + d.calculated : '', d.asOf ? 'balances as of ' + pgDay(d.asOf) : ''].filter(Boolean).join(' · '))),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 } },
+      tile('SET ASIDE', pgMoney(s.setAside), 'pg-tile pg-setaside'), tile('DONE', s.done + ' of ' + s.count, 'pg-tile pg-done'), tile('STILL TO GO', pgMoney(s.toGo), 'pg-tile pg-togo')),
+    goals.length ? h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } }, [['all', 'All ' + goals.length], ['active', 'In progress'], ['done', 'Reached or ready']].map(function(x) {
+      return h('button', { key: x[0], type: 'button', className: 'pg-filter', 'data-filter': x[0], 'aria-pressed': filter === x[0], onClick: function() { setFilter(x[0]); }, style: pill(filter === x[0]) }, x[1]); })) : null,
+    goals.length ? (shown.length ? shown.map(card) : h('span', { className: 'pg-empty', style: { fontSize: 13, color: C.mute } }, filter === 'done' ? 'No goals reached yet.' : 'Every goal is reached or ready.'))
+      : h('span', { className: 'pg-empty', style: { fontSize: 13, color: C.mute } }, 'The planner’s Goals tab has no goals yet.'),
+    h('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, padding: '12px 14px', borderRadius: 12, border: '1px dashed #22345a' } },
+      h('span', { style: { fontSize: 13, color: C.soft, lineHeight: 1.5 } }, 'VERA only reads the planner. To add or change a goal, edit its Goals tab.'),
+      d.plannerUrl ? h('a', { className: 'pg-open', href: d.plannerUrl, target: '_blank', rel: 'noopener', style: { fontSize: 13, minHeight: 44, display: 'flex', alignItems: 'center', color: C.acc } }, 'Open the planner') : null));
+}
+// ---- end PlannerGoalsTab ----
 // ---- NetWorthTab (issue #126) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
 // Both dashboards carry this block byte-for-byte; test_networth_ui.js fails if they
 // drift. Change it in one file, then paste the whole block into the other.
@@ -13078,7 +13182,7 @@ function App() {
             {activeFinanceTab === 'fin_accounts'  && <FinAccountsLiteTab  apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_contracts' && <FinContractsLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_planned'   && <PlannedPurchasesPanel apiUrl={apiUrl} apiToken={apiToken} />}
-            {activeFinanceTab === 'fin_goals'     && <FinGoalsLiteTab     apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_goals'     && <PlannerGoalsTab     apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'tax'         && <TaxTab            apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_networth' && <NetWorthTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_hsafsa'   && <HealthAcctTab apiUrl={apiUrl} apiToken={apiToken} />}
