@@ -12584,11 +12584,51 @@ const TOP_TABS = [
   { id: 'wishlists',     label: '🎄 Wish Lists'     },
 ];
 
+// ---- FinNav (Finances groups, issue #225) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// Finances' subtabs in four groups: a row of group buttons, then that group's subtabs. Overview is
+// Summary alone, so it has no subtab row. Each group remembers the subtab last opened in it, in this
+// browser (vera_fin_last). A subtab the dashboard doesn't offer is left out, and a group with none is
+// hidden. Tabs are matched by key: the lite dashboard's ids carry a fin_ prefix, which is dropped.
+var FIN_GROUPS=[
+  {id:'overview',label:'Overview',hint:'where we stand',items:['summary']},
+  {id:'day',label:'Day to day',hint:'this month',items:['budget','bills','cashflow','groceries']},
+  {id:'long',label:'Long term',hint:'building toward',items:['networth','goals','planned','hsafsa']},
+  {id:'paper',label:'Accounts & paperwork',hint:'set up once',items:['accounts','cards','contracts','tax']}];
+// Pure: a tab id's key ('fin_budget' → 'budget').
+function finKey_(id){return String(id||'').replace(/^fin_/,'');}
+// Pure: the groups that have subtabs on offer, each with those tabs in group order ({id,label} from tabs).
+function finGroupsFor_(tabs){var by={};(tabs||[]).forEach(function(t){by[finKey_(t.id)]=t;});
+  return FIN_GROUPS.map(function(g){return {id:g.id,label:g.label,hint:g.hint,tabs:g.items.filter(function(k){return by[k];}).map(function(k){return by[k];})};})
+    .filter(function(g){return g.tabs.length>0;});}
+// Pure: the group a tab id is in ('' when none).
+function finGroupOf_(id){var k=finKey_(id);var g=FIN_GROUPS.filter(function(x){return x.items.indexOf(k)!==-1;})[0];return g?g.id:'';}
+function finLastRead_(){try{var v=JSON.parse(localStorage.getItem('vera_fin_last')||'{}');return v&&typeof v==='object'?v:{};}catch(e){return {};}}
+function finLastWrite_(v){try{localStorage.setItem('vera_fin_last',JSON.stringify(v));}catch(e){}}
+function FinNav(props){var h=React.createElement;var groups=finGroupsFor_(props.tabs);
+  var _l=React.useState(finLastRead_),last=_l[0],setLast=_l[1];
+  var gid=finGroupOf_(props.sub),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
+  React.useEffect(function(){if(gid)setLast(function(p){if(p[gid]===props.sub)return p;var n=Object.assign({},p);n[gid]=props.sub;finLastWrite_(n);return n;});},[props.sub]);
+  if(!cur)return null;
+  var pickGroup=function(g){var keep=last[g.id];var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);};
+  return h('div',{className:'fin-nav',style:{display:'flex',flexDirection:'column',gap:10,marginBottom:16}},
+    h('div',{role:'group','aria-label':'Finances groups',className:'fin-groups',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',gap:6,maxWidth:760}},
+      groups.map(function(g){var on=g.id===cur.id;
+        return h('button',{key:g.id,type:'button',className:'fin-group'+(on?' on':''),'aria-pressed':on,onClick:function(){pickGroup(g);},
+          style:{display:'flex',flexDirection:'column',alignItems:'flex-start',justifyContent:'center',gap:2,minHeight:56,padding:'8px 12px',borderRadius:12,cursor:'pointer',textAlign:'left',
+            background:on?'#1a3060':'#0a1220',border:'1px solid '+(on?'#4a6db0':'#1c2a48'),color:on?'#dde1f0':'#aab6d6'}},
+          h('span',{style:{fontSize:14,fontWeight:600}},g.label),h('span',{style:{fontSize:11,opacity:0.8}},g.hint));})),
+    cur.tabs.length>1?h('div',{role:'tablist','aria-label':cur.label+' subtabs',className:'subtab-row fin-tabs',style:{display:'flex',alignItems:'center'}},
+      cur.tabs.map(function(t){var on=t.id===props.sub;
+        return h('button',{key:t.id,type:'button',role:'tab','aria-selected':on,className:'subtab-btn'+(on?' active':''),onClick:function(){props.onPick(t.id);}},t.label);}),
+      props.after||null):(props.after||null));}
+// ---- /FinNav ----
+
 const FINANCE_TABS = [
   { id: 'fin_summary',  label: '💰 Summary'  },
   { id: 'fin_budget',   label: '📊 Budget'   },
   { id: 'fin_bills',    label: '🧾 Bills'    },
   { id: 'fin_cashflow', label: '💰 Cashflow' },
+  { id: 'fin_groceries', label: '🛒 Groceries' },
   { id: 'fin_accounts', label: '🏦 Accounts' },
   { id: 'fin_contracts', label: '📋 Contracts' },
   { id: 'fin_planned',  label: '🛒 Planned Purchases' },
@@ -13165,18 +13205,11 @@ function App() {
 
         {activeTab === 'finances' && (
           <div>
-            <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
-              {FINANCE_TABS.map(t => (
-                <button key={t.id}
-                  className={'subtab-btn' + (activeFinanceTab === t.id ? ' active' : '')}
-                  onClick={() => setActiveFinanceTab(t.id)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />
             {activeFinanceTab === 'fin_summary' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_summary' && <FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_budget'  && <FinBudgetLiteTab  apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_bills'    && <FinBillsLiteTab    apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_cashflow' && <FinCashflowLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_accounts'  && <FinAccountsLiteTab  apiUrl={apiUrl} apiToken={apiToken} />}
