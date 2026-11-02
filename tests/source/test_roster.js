@@ -104,8 +104,9 @@ check('no sheet id is written in the block', A && !/(?=[A-Za-z0-9_-]*[A-Za-z0-9]
 
 // ============ wiring ============================================================
 console.log('\nwiring');
-check('Home renders the roster with status’s links and this page as VERA',
-      /React\.createElement\(VeraRoster,\{links:status&&status\.rosterLinks,veraHref:window\.location\.origin\+window\.location\.pathname\}\)/.test(fnBody(APP, 'HomeTab')));
+check('System › Assistants renders the roster with status’s links and this page as VERA',
+      /cur==='assistants'&&h\(VeraRoster,\{links:status&&status\.rosterLinks,veraHref:window\.location\.origin\+window\.location\.pathname\}\)/.test(fnBody(APP, 'SystemTab')));
+check('Home no longer renders it (it moved to System)', !/VeraRoster/.test(fnBody(APP, 'HomeTab')));
 check('lite’s Overview renders it with VERA pointing at the full dashboard',
       /<VeraRoster links=\{status && status\.rosterLinks\} veraHref="\.\/" \/>/.test(fnBody(LITE, 'OverviewLiteTab')));
 

@@ -30,7 +30,7 @@ const CONTROLS = [
   ['links hand over the opener', b => { const f = s => swap(s, "target:'_blank',rel:'noopener'", "target:'_blank'"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['VERA ignores its Config row', b => { const f = s => swap(s, "var href=L[r.name]||(r.name==='VERA'?veraHref:'');", "var href=r.name==='VERA'?veraHref:(L[r.name]||'');"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
   ['a sheet id is written into the roster', b => { const f = s => swap(s, "{name:'WILLA',", "{name:'WILLA',id:'InventedPlannerId_0123456789abcdefgh',"); return { [A]: f(b[A]), [L]: f(b[L]) }; }],
-  ['Home stops rendering the roster', b => ({ [A]: swap(b[A], '/*#__PURE__*/React.createElement(VeraRoster,{links:status&&status.rosterLinks,veraHref:window.location.origin+window.location.pathname}),', '') })],
+  ['System stops rendering the roster', b => ({ [A]: swap(b[A], "cur==='assistants'&&h(VeraRoster,", "cur==='assistants'&&h(VeraRosterGone,") })],
   ['lite’s VERA links back to itself', b => ({ [L]: swap(b[L], 'veraHref="./"', 'veraHref=""') })],
 ];
 

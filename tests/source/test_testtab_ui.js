@@ -1,4 +1,4 @@
-// Settings › Test, rendered for real: the Test tab is in the modal, a trip
+// System › Test, rendered for real: the Test tab is in System, a trip
 // loads its days, the preview tags each item with where it came from, an
 // empty day warns, and Send passes the trip, the day and the recipients — and
 // can't be pressed twice while it runs.
@@ -51,8 +51,8 @@ async function mount(page, which, sendReply) {
       }
       return Promise.resolve({ json: () => Promise.resolve(body) });
     };
-    const comp = which === 'modal' ? NotifSettingsModal : TestEmailsPanel;
-    if (typeof comp !== 'function') return { error: (which === 'modal' ? 'NotifSettingsModal' : 'TestEmailsPanel') + ' is not defined' };
+    const comp = which === 'modal' ? SystemTab : TestEmailsPanel;
+    if (typeof comp !== 'function') return { error: (which === 'modal' ? 'SystemTab' : 'TestEmailsPanel') + ' is not defined' };
     const host = document.createElement('div'); host.id = 'tprobe'; document.body.appendChild(host);
     ReactDOM.createRoot(host).render(React.createElement(comp,
       { apiUrl: 'https://vera.example.test/exec', apiToken: 'tok', onClose: () => {} }));
@@ -66,17 +66,17 @@ const calls = page => page.evaluate(() => window.__calls);
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
 
-  console.log('\nthe settings modal has a Test tab');
+  console.log('\nSystem has a Test tab');
   {
     const page = await browser.newPage({ viewport: { width: 390, height: 1000 } });
     const m = await mount(page, 'modal', { ok: true });
     if (m.error) { fail++; console.log('  FAIL ' + m.error); }
     await settle(page);
-    const tabs = await all(page, '.modal-box button');
+    const tabs = await all(page, '.sys-tabs button');
     check('a Test tab sits beside Notifications and Config',
           tabs.some(t => /Notifications/.test(t)) && tabs.some(t => /Config/.test(t)) && tabs.some(t => /Test$/.test(t.trim())),
           JSON.stringify(tabs));
-    await page.evaluate(() => [...document.querySelectorAll('.modal-box button')].filter(b => /Test$/.test(b.textContent.trim()))[0].click());
+    await page.evaluate(() => [...document.querySelectorAll('.sys-tabs button')].filter(b => /Test$/.test(b.textContent.trim()))[0].click());
     await settle(page, 400);
     check('opening it shows the travel day card', /Travel day email/.test(await text(page, '.test-emails') || ''));
     const noScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);

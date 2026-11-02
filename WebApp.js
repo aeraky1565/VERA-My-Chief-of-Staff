@@ -138,6 +138,8 @@ function doGet(e) {
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
       case 'debug_slack':           return jsonOut_(webDebugSlack_());
       case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
+      case 'system_documents':      return jsonOut_(webSystemDocuments_());  // System.js
+      case 'system_api_health':     return jsonOut_(webSystemApiHealth_());  // System.js
       case 'update_tracker_entry':  return jsonOut_(webUpdateTrackerEntry_(e));
       case 'bills':                 return jsonOut_(webGetBills_());
       case 'bills_toggle':          return jsonOut_(webToggleBill_(e));
