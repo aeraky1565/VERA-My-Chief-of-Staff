@@ -134,6 +134,7 @@ function doGet(e) {
       case 'pto_trigger_buffer':    return jsonOut_(webTriggerBuffer_(e));
       case 'budget':                return jsonOut_(webGetBudget_());
       case 'budget_tracker':        return jsonOut_(webGetTrackerBudget_());
+      case 'budget_model':          return jsonOut_(webGetBudgetModel_()); // Budget.js — reads the budget tracker by label, never writes it
       case 'debug_tracker':         return jsonOut_(webDebugTracker_());
       case 'debug_slack':           return jsonOut_(webDebugSlack_());
       case 'debug_api_health':      return jsonOut_(webDebugApiHealth_());
@@ -595,6 +596,8 @@ function doPost(e) {
       // Trip Ideas (TripIdeas.js): POST, because a brief and an option's legs are free text.
       case 'trip_idea_save':             return jsonOut_(webSaveTripIdea_(body));
       case 'gathering_save':             return jsonOut_(webSaveGathering_(body));
+      case 'budget_scenario_save':       return jsonOut_(webSaveBudgetScenario_(body));
+      case 'budget_scenario_delete':     return jsonOut_(webDeleteBudgetScenario_(body));
       case 'gathering_delete':           return jsonOut_(webDeleteGathering_(body));
       case 'gathering_to_shopping':      return jsonOut_(webGatheringToShopping_(body));
       case 'trip_idea_delete':           return jsonOut_(webDeleteTripIdea_(body));
