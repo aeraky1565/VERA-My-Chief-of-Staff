@@ -26,7 +26,7 @@ const CONTROLS = [
   ['a credit stays a line of its own', srv("    var into = bills.filter(function(b) { return bsStem_(b.line) === bsStem_(c.name); })[0];", "    var into = null;")],
   ['a set due day doesn’t win', srv("var due = s.dueDay || x.dueDay || null;", "var due = x.dueDay || s.dueDay || null;")],
   ['card payments count as bills', srv("    if (s.kind === 'card payment') return;\n", "")],
-  ['every bill goes on the Joint timeline', srv("var joint = list.bills.filter(function(b) { return /joint/i.test(b.account); });", "var joint = list.bills;")],
+  ['every bill goes on the Joint timeline', srv("var joint = list.bills.filter(function(b) { return /joint/i.test(b.account) && b.amount != null; });", "var joint = list.bills.filter(function(b) { return b.amount != null; });")],
   ['the transfer day is ignored', srv("var tday = bsDay_(opts.transferDay) || 1,", "var tday = 1,")],
   ['a window’s need leaves out later bills', srv("return b.dueDay && b.dueDay >= from; })", "return bsWindow_(b.dueDay) === w; })")],
   ['reconcile compares one month, not three', srv("var rows = bsMatchLines_(lines, inQ, aliasMap, 3);", "var rows = bsMatchLines_(lines, inQ, aliasMap, 1);")],
