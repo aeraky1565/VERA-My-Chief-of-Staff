@@ -26,9 +26,9 @@ check('Phone plan is a Day to day subtab in both', /items:\['budget','billscash'
   && LITE.indexOf("{ id: 'fin_phone',    label: '📱 Phone plan' }") !== -1 && LITE.indexOf("{activeFinanceTab === 'fin_phone' && <PhonePlanCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1);
 
 const E = vm.createContext({});
-vm.runInContext(PPS.slice(PPS.indexOf('function ppText_'), PPS.indexOf("/** The phone tracker's first tab")), E);
+vm.runInContext(PPS.slice(PPS.indexOf('function phnText_'), PPS.indexOf("/** The phone tracker's first tab")), E);
 E.G = phoneTracker();
-const plan = vm.runInContext('ppParse_(G, "2026-11-02", ["Pat", "Sam"])', E);
+const plan = vm.runInContext('phnParse_(G, "2026-11-02", ["Pat", "Sam"])', E);
 plan.name = 'Example Mobile · Unlimited Plus';
 const PAYLOAD = { ok: true, configured: true, plan, received: { 'group (robin & lee)': '2026-11-03T15:00:00.000Z' } };
 

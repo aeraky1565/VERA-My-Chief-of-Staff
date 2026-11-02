@@ -232,8 +232,8 @@ function bgWithPhone_(model, plan) {
 /** The budget tracker's model, with the phone plan applied when its tracker is connected. */
 function bgModel_(grid) {
   var model = budgetModel_(grid);
-  if (!model.ok || typeof ppPlan_ !== 'function') return model;
-  try { var plan = ppPlan_(model.people.map(function(p) { return p.name; })); if (plan && plan.ok) bgWithPhone_(model, plan); } catch (e) {}
+  if (!model.ok || typeof phnPlan_ !== 'function') return model;
+  try { var plan = phnPlan_(model.people.map(function(p) { return p.name; })); if (plan && plan.ok) bgWithPhone_(model, plan); } catch (e) {}
   return model;
 }
 

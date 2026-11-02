@@ -12874,16 +12874,16 @@ function BillsCashflowTab(props){var h=React.createElement;var C=BGC;
 // The family phone plan this month, from its own tracker (read only): the bill, our share, and the
 // money back from the rest of the family, paid by bill (one payment per "Bill N" row), each ticked
 // off when it arrives. Only the ticks are VERA's (Phone Paybacks).
-function ppMoney_(n){return n==null||isNaN(n)?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
-function ppMonthName_(ym){var p=String(ym||'').split('-');var M=['January','February','March','April','May','June','July','August','September','October','November','December'];return p.length===2?M[Number(p[1])-1]+' '+p[0]:ym;}
-function ppDayName_(iso){if(!iso)return '';var d=new Date(iso);return isNaN(d.getTime())?'':d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+function phnMoney_(n){return n==null||isNaN(n)?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function phnMonthName_(ym){var p=String(ym||'').split('-');var M=['January','February','March','April','May','June','July','August','September','October','November','December'];return p.length===2?M[Number(p[1])-1]+' '+p[0]:ym;}
+function phnDayName_(iso){if(!iso)return '';var d=new Date(iso);return isNaN(d.getTime())?'':d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 // Pure: a month as text for the family chat.
-function ppShareText_(m,name){var L=[name+' · bill due '+m.label.replace(/^bill due /i,''),''];
-  m.people.forEach(function(x){L.push(x.name+'  '+ppMoney_(x.amount));});L.push('Total Plan Due  '+ppMoney_(m.total));
-  if(m.bills.length){L.push('','What each payment is');m.bills.forEach(function(b){L.push((b.label||b.name)+'  '+ppMoney_(b.amount));});}
+function phnShareText_(m,name){var L=[name+' · bill due '+m.label.replace(/^bill due /i,''),''];
+  m.people.forEach(function(x){L.push(x.name+'  '+phnMoney_(x.amount));});L.push('Total Plan Due  '+phnMoney_(m.total));
+  if(m.bills.length){L.push('','What each payment is');m.bills.forEach(function(b){L.push((b.label||b.name)+'  '+phnMoney_(b.amount));});}
   return L.join('\n');}
 // The share card, drawn for a picture: VERA's colours, the month's two tables, 2× for a sharp image.
-function ppDrawCard_(m,name){var W=360,pad=18,row=26,rows=m.people.length+1+(m.bills.length?m.bills.length+1:0),H=pad+14+22+20+rows*row+(m.bills.length?22:0)+12+pad,k=2;
+function phnDrawCard_(m,name){var W=360,pad=18,row=26,rows=m.people.length+1+(m.bills.length?m.bills.length+1:0),H=pad+14+22+20+rows*row+(m.bills.length?22:0)+12+pad,k=2;
   var cv=document.createElement('canvas');cv.width=W*k;cv.height=H*k;var g=cv.getContext('2d');g.scale(k,k);
   var font=function(px,w){g.font=(w||400)+' '+px+'px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';};
   g.fillStyle='#080f1e';g.fillRect(0,0,W,H);g.fillStyle='#0d1b3e';g.strokeStyle='#1e3060';g.lineWidth=1;
@@ -12893,9 +12893,9 @@ function ppDrawCard_(m,name){var W=360,pad=18,row=26,rows=m.people.length+1+(m.b
   y+=20;font(13,600);g.fillStyle='#8ab4f8';g.fillText(m.label.replace(/^bill due /i,'Due '),pad,y);
   y+=4;var line=function(label,amt,o){y+=row;font(14,o.bold?700:400);g.fillStyle=o.color||'#dde1f0';g.fillText(label,pad,y-8);g.textAlign='right';g.fillText(amt,W-pad,y-8);g.textAlign='left';
     g.fillStyle=o.bold?'#4a6db0':'#1c2a48';g.fillRect(pad,y-1,W-pad*2,o.bold?0:1);};
-  m.people.forEach(function(x){line(x.name,ppMoney_(x.amount),{});});
-  g.fillStyle='#4a6db0';g.fillRect(pad,y+1,W-pad*2,1.5);line('Total Plan Due',ppMoney_(m.total),{bold:true});
-  if(m.bills.length){y+=22;font(11,700);g.fillStyle='#8a9abf';g.fillText('WHAT EACH PAYMENT IS',pad,y);m.bills.forEach(function(b){line(b.label||b.name,ppMoney_(b.amount),{});});}
+  m.people.forEach(function(x){line(x.name,phnMoney_(x.amount),{});});
+  g.fillStyle='#4a6db0';g.fillRect(pad,y+1,W-pad*2,1.5);line('Total Plan Due',phnMoney_(m.total),{bold:true});
+  if(m.bills.length){y+=22;font(11,700);g.fillStyle='#8a9abf';g.fillText('WHAT EACH PAYMENT IS',pad,y);m.bills.forEach(function(b){line(b.label||b.name,phnMoney_(b.amount),{});});}
   return cv;}
 function PhonePlanCard(props){var h=React.createElement;var C=BGC;
   var _d=React.useState(null),d=_d[0],setD=_d[1];
@@ -12913,20 +12913,20 @@ function PhonePlanCard(props){var h=React.createElement;var C=BGC;
       if(!r||r.ok===false){setMsg((r&&r.error)||'That didn’t save.');return;}var n=Object.assign({},rec);if(on)n[x.name.toLowerCase()]=r.receivedAt||new Date().toISOString();else delete n[x.name.toLowerCase()];setD(Object.assign({},d,{received:n}));})
     .catch(function(e){setBusy('');setMsg(e.message||'That didn’t save.');});};
   var tile=function(label,v,sub,col){return h('div',{key:label,className:'pp-tile',style:{display:'flex',flexDirection:'column',gap:2,padding:'10px 12px',borderRadius:10,background:C.deep,border:'1px solid '+C.line}},
-    h('span',{style:{fontSize:11,color:C.mute}},label),h('span',{style:{fontSize:17,fontWeight:700,fontVariantNumeric:'tabular-nums',color:col||C.txt}},ppMoney_(v)),sub?h('span',{style:{fontSize:11,color:C.mute}},sub):null);};
+    h('span',{style:{fontSize:11,color:C.mute}},label),h('span',{style:{fontSize:17,fontWeight:700,fontVariantNumeric:'tabular-nums',color:col||C.txt}},phnMoney_(v)),sub?h('span',{style:{fontSize:11,color:C.mute}},sub):null);};
   var pct=p.credit?Math.min(100,got/p.credit*100):0,all=p.payers.length&&p.payers.every(function(x){return rec[x.name.toLowerCase()];});
   return h('section',{className:'pp-card',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:760,background:C.card,border:'1px solid '+C.br,borderRadius:14,padding:14}},
     h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},
-      h('span',{style:{fontSize:16,fontWeight:700}},(p.name||'Family phone plan')+' · '+ppMonthName_(p.month)),h('span',{style:{fontSize:12,color:C.mute}},'from the phone tracker · due the '+(p.dueDay?bgOrd_(p.dueDay):'—')+' from Joint')),
+      h('span',{style:{fontSize:16,fontWeight:700}},(p.name||'Family phone plan')+' · '+phnMonthName_(p.month)),h('span',{style:{fontSize:12,color:C.mute}},'from the phone tracker · due the '+(p.dueDay?bgOrd_(p.dueDay):'—')+' from Joint')),
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(100px, 1fr))',gap:8}},
       tile('The bill',p.total,'leaves Joint on the '+bgOrd_(p.dueDay)),tile('Ours',p.ours,'what the Budget counts',C.acc),tile('Back from family',p.credit,'by the '+bgOrd_(p.dueDay),C.ok)),
     h('div',{className:'pp-progress',style:{display:'flex',flexDirection:'column',gap:6}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:13}},h('span',{style:{color:C.soft}},'Received this month'),h('b',{style:{fontVariantNumeric:'tabular-nums',color:all?C.ok:C.txt}},ppMoney_(got)+' of '+ppMoney_(p.credit))),
+      h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:13}},h('span',{style:{color:C.soft}},'Received this month'),h('b',{style:{fontVariantNumeric:'tabular-nums',color:all?C.ok:C.txt}},phnMoney_(got)+' of '+phnMoney_(p.credit))),
       h('div',{'aria-hidden':'true',style:{height:8,borderRadius:4,background:'#13203a',overflow:'hidden'}},h('div',{style:{height:8,width:pct+'%',background:C.ok}}))),
     h('div',{className:'pp-payers',style:{display:'flex',flexDirection:'column'}},p.payers.map(function(x){var at=rec[x.name.toLowerCase()],on=!!at;
       return h('div',{key:x.name,className:'pp-payer'+(on?' got':''),style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,minHeight:52,borderBottom:'1px solid '+C.line}},
-        h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14}},x.name),h('span',{style:{fontSize:12,color:on?C.ok:C.mute}},on?'received '+ppDayName_(at):'not yet')),
-        h('span',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:14,fontWeight:600,fontVariantNumeric:'tabular-nums'}},ppMoney_(x.amount)),
+        h('span',{style:{display:'flex',flexDirection:'column',gap:2,minWidth:0}},h('span',{style:{fontSize:14}},x.name),h('span',{style:{fontSize:12,color:on?C.ok:C.mute}},on?'received '+phnDayName_(at):'not yet')),
+        h('span',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:14,fontWeight:600,fontVariantNumeric:'tabular-nums'}},phnMoney_(x.amount)),
           h('button',{type:'button',className:'pp-mark','aria-pressed':on,'aria-label':(on?'Undo received: ':'Mark received: ')+x.name,disabled:busy===x.name,onClick:function(){mark(x,!on);},
             style:{minHeight:40,minWidth:96,padding:'0 12px',borderRadius:20,whiteSpace:'nowrap',cursor:'pointer',fontSize:13,fontWeight:600,background:on?'#12352c':'transparent',color:on?C.ok:C.txt,border:'1px solid '+(on?C.ok:'#3a5bab')}},on?'Received ✓':'Mark received')));})),
     msg?h('div',{className:'pp-msg',role:'status',style:{fontSize:13,color:C.bad}},msg):null,
@@ -12935,30 +12935,30 @@ function PhonePlanCard(props){var h=React.createElement;var C=BGC;
       var go=function(by){setSel(Math.min(ms.length-1,Math.max(0,i+by)));setNote('');};
       var rowEl=function(key,a,b,o){o=o||{};return h('div',{key:key,style:{display:'flex',justifyContent:'space-between',alignItems:'center',minHeight:30,fontSize:14,fontVariantNumeric:'tabular-nums',
         borderBottom:o.bold?0:'1px solid '+C.line,borderTop:o.bold?'2px solid #4a6db0':0,fontWeight:o.bold?700:400,color:o.ours?C.acc:C.txt}},h('span',null,a),h('span',null,b));};
-      var share=function(){try{var cv=ppDrawCard_(m,name);cv.toBlob(function(blob){if(!blob){setNote('The picture couldn’t be made here; a screenshot of the card works too.');return;}
+      var share=function(){try{var cv=phnDrawCard_(m,name);cv.toBlob(function(blob){if(!blob){setNote('The picture couldn’t be made here; a screenshot of the card works too.');return;}
           var file=typeof File==='function'?new File([blob],'phone-plan-'+m.month+'.png',{type:'image/png'}):null;
           if(file&&navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:name}).then(function(){setNote('Shared.');}).catch(function(){});return;}
           var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='phone-plan-'+m.month+'.png';document.body.appendChild(a);a.click();a.remove();setNote('Saved the picture: phone-plan-'+m.month+'.png.');},'image/png');}
         catch(e){setNote('The picture couldn’t be made here; a screenshot of the card works too.');}};
-      var copy=function(){var t=ppShareText_(m,name);var ok=function(){setNote('Copied as text.');};
+      var copy=function(){var t=phnShareText_(m,name);var ok=function(){setNote('Copied as text.');};
         if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok).catch(function(){setNote('Couldn’t copy here; a screenshot of the card works too.');});else setNote('Couldn’t copy here; a screenshot of the card works too.');};
       var nav=function(lab,by,dis){return h('button',{type:'button',className:'pp-month-'+(by<0?'prev':'next'),'aria-label':lab,disabled:dis,onClick:function(){go(by);},style:{minHeight:40,minWidth:40,borderRadius:10,cursor:dis?'default':'pointer',background:'transparent',border:'1px solid #3a5bab',color:dis?C.mute:C.txt,opacity:dis?0.5:1}},by<0?'‹':'›');};
       return h('div',{className:'pp-share',style:{display:'flex',flexDirection:'column',gap:10,paddingTop:6}},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:{fontSize:15,fontWeight:700}},'For the family chat'),
-          h('span',{style:{display:'flex',alignItems:'center',gap:6}},nav('Earlier month',-1,i<=0),h('span',{className:'pp-month',style:{fontSize:13,fontWeight:600,minWidth:110,textAlign:'center'}},ppMonthName_(m.month)),nav('Later month',1,i>=ms.length-1))),
+          h('span',{style:{display:'flex',alignItems:'center',gap:6}},nav('Earlier month',-1,i<=0),h('span',{className:'pp-month',style:{fontSize:13,fontWeight:600,minWidth:110,textAlign:'center'}},phnMonthName_(m.month)),nav('Later month',1,i>=ms.length-1))),
         h('div',{className:'pp-share-card',style:{display:'flex',flexDirection:'column',gap:10,padding:16,borderRadius:14,background:'#0b1730',border:'1px solid '+C.br}},
           h('div',{style:{display:'flex',flexDirection:'column',gap:2}},h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:C.mute}},'PHONE PLAN'),
             h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,flexWrap:'wrap'}},h('span',{style:{fontSize:16,fontWeight:700}},name),h('span',{style:{fontSize:13,fontWeight:600,color:C.acc}},m.label.replace(/^bill due /i,'Due ')))),
-          h('div',{style:{display:'flex',flexDirection:'column'}},m.people.map(function(x){return rowEl(x.name,x.name,ppMoney_(x.amount),{});}).concat([rowEl('total','Total Plan Due',ppMoney_(m.total),{bold:true})])),
+          h('div',{style:{display:'flex',flexDirection:'column'}},m.people.map(function(x){return rowEl(x.name,x.name,phnMoney_(x.amount),{});}).concat([rowEl('total','Total Plan Due',phnMoney_(m.total),{bold:true})])),
           m.bills.length?h('div',{style:{display:'flex',flexDirection:'column'}},h('span',{style:{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:C.mute,paddingBottom:2}},'WHAT EACH PAYMENT IS'),
-            m.bills.map(function(b){return rowEl(b.label||b.name,b.label||b.name,ppMoney_(b.amount),{});})):null),
+            m.bills.map(function(b){return rowEl(b.label||b.name,b.label||b.name,phnMoney_(b.amount),{});})):null),
         h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
           h('button',{type:'button',className:'pp-share-image',onClick:share,style:{minHeight:44,padding:'0 16px',borderRadius:10,cursor:'pointer',fontSize:14,fontWeight:600,background:C.acc,color:'#0b1430',border:0}},'Share image'),
           h('button',{type:'button',className:'pp-copy',onClick:copy,style:{minHeight:44,padding:'0 16px',borderRadius:10,cursor:'pointer',fontSize:14,fontWeight:600,background:'transparent',color:C.txt,border:'1px solid #3a5bab'}},'Copy as text')),
         note?h('span',{className:'pp-note',role:'status',style:{fontSize:12,color:C.ok}},note):null);})(),
     h('button',{type:'button',className:'pp-who','aria-expanded':who,onClick:function(){setWho(!who);},style:{alignSelf:'flex-start',minHeight:36,background:'transparent',border:0,color:C.acc,cursor:'pointer',fontSize:13,padding:0}},who?'Hide the split by person':'The split by person'),
     who?h('div',{className:'pp-members',style:{display:'flex',flexDirection:'column'}},p.members.map(function(x){return h('div',{key:x.name,style:{display:'flex',justifyContent:'space-between',minHeight:32,alignItems:'center',fontSize:13,color:x.ours?C.acc:C.soft}},
-      h('span',null,x.name+(x.ours?' · ours':'')),h('span',{style:{fontVariantNumeric:'tabular-nums'}},ppMoney_(x.amount)));})):null,
+      h('span',null,x.name+(x.ours?' · ours':'')),h('span',{style:{fontVariantNumeric:'tabular-nums'}},phnMoney_(x.amount)));})):null,
     p.checks===false?h('span',{style:{fontSize:12,color:C.warn}},'Ours plus the money back doesn’t add up to the bill in the phone tracker; worth a look.'):null,
     h('span',{style:{fontSize:12,color:C.mute,lineHeight:1.5}},'The family pays by bill; their money comes to you and goes on to Joint. The Budget uses this month’s bill and money back in place of the budget tracker’s family plan lines.'));}
 // ---- /PhonePlanCard ----

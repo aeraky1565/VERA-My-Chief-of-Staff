@@ -27,12 +27,12 @@ const CONTROLS = [
   ['the latest month is always picked', srv("var cur = months.filter(function(m) { return Number(m.month.slice(5)) === mo && m.totalFound; })[0] || ", "var cur = ")],
   ['a missing Our total isn’t worked out', srv("if (ours == null) ours = bills.length ?", "if (false) ours = bills.length ?")],
   ['the plan’s name ignores Config', srv("if (plan.ok) plan.name = name || g.title || 'Family phone plan';", "if (plan.ok) plan.name = g.title || 'Family phone plan';")],
-  ['marking twice adds a second tick', srv("    for (var i = rows.length - 1; i >= 0; i--) if (ppText_(rows[i][0]) === month && ppText_(rows[i][1]).toLowerCase() === payer.toLowerCase()) sheet.deleteRow(i + 2);\n", "")],
+  ['marking twice adds a second tick', srv("    for (var i = rows.length - 1; i >= 0; i--) if (phnText_(rows[i][0]) === month && phnText_(rows[i][1]).toLowerCase() === payer.toLowerCase()) sheet.deleteRow(i + 2);\n", "")],
   ['undo keeps the tick', srv("    if (!body.received) return { ok: true, receivedAt: '' };\n", "")],
   ['the Budget ignores the phone plan', b => ({ [B]: swap(b[B], "if (plan && plan.ok) bgWithPhone_(model, plan);", "") })],
   ['the share card shows the wrong month', both("var i=sel==null?Math.max(0,ms.map(function(x){return x.month;}).indexOf(p.month)):sel", "var i=sel==null?0:sel"), UI],
   ['Share image always downloads', both("if(file&&navigator.canShare&&navigator.canShare({files:[file]}))", "if(false)"), UI],
-  ['Copy leaves out the payments', both("  if(m.bills.length){L.push('','What each payment is');m.bills.forEach(function(b){L.push((b.label||b.name)+'  '+ppMoney_(b.amount));});}\n", ""), UI],
+  ['Copy leaves out the payments', both("  if(m.bills.length){L.push('','What each payment is');m.bills.forEach(function(b){L.push((b.label||b.name)+'  '+phnMoney_(b.amount));});}\n", ""), UI],
   ['a tap marks the wrong month', both("{action:'phone_payback_mark',month:p.month,", "{action:'phone_payback_mark',month:'',"), UI],
 ];
 

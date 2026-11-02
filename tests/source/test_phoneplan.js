@@ -54,7 +54,7 @@ vm.runInContext(BG, S); vm.runInContext(PP, S);
 const run = (expr, vars) => { Object.assign(S, vars || {}); return vm.runInContext(expr, S); };
 
 console.log('\nreading the phone tracker by label');
-let P = run('ppParse_(G, "2026-11-02", ["Pat", "Sam"])', { G: phoneTracker() });
+let P = run('phnParse_(G, "2026-11-02", ["Pat", "Sam"])', { G: phoneTracker() });
 check('this month picked from the “Bill due” headings', P.ok && P.month === '2026-11' && P.dueDay === 12 && P.dueLabel === 'Bill due 11/12', J([P.month, P.dueDay]));
 check('total, ours and the money back as the tracker has them', P.total === 168.5 && P.ours === 72 && P.credit === 96.5 && P.checks === true);
 check('payers by bill, not by person, and never ours', J(P.payers) === J([{ name: 'Group (Robin & Lee)', amount: 71 }, { name: 'Kim', amount: 25.5 }]), J(P.payers));
@@ -63,10 +63,10 @@ check('every month it has', J(P.months.map(m => m.month)) === J(['2026-09', '202
 const oct = P.months[1], sep = P.months[0];
 check('a month without “Our total”: ours and money back from the payments', oct.ours === 71 && oct.credit === 95 && oct.bills.length === 4 && oct.bills[2].label === 'Bill 3 - Group (Robin & Lee)');
 check('a month without payments: ours from the people, the rest is money back', sep.ours === 70 && sep.credit === 95 && sep.bills.length === 0);
-check('another day picks its month', run('ppParse_(G, "2026-10-20", ["Pat", "Sam"]).month', { G: phoneTracker() }) === '2026-10');
-check('a month the tracker doesn’t have yet: the latest it does', run('ppParse_(G, "2027-02-01", ["Pat", "Sam"]).month', { G: phoneTracker() }) === '2026-11');
-check('labels, not positions: a column added in front still reads', run('ppParse_(G, "2026-11-02", ["Pat", "Sam"]).total', { G: phoneTracker().map(r => [''].concat(r)) }) === 168.5);
-check('no “Bill due” headings: unavailable, with why', /Bill due/.test(run('ppParse_([["x"]], "2026-11-02", []).error')));
+check('another day picks its month', run('phnParse_(G, "2026-10-20", ["Pat", "Sam"]).month', { G: phoneTracker() }) === '2026-10');
+check('a month the tracker doesn’t have yet: the latest it does', run('phnParse_(G, "2027-02-01", ["Pat", "Sam"]).month', { G: phoneTracker() }) === '2026-11');
+check('labels, not positions: a column added in front still reads', run('phnParse_(G, "2026-11-02", ["Pat", "Sam"]).total', { G: phoneTracker().map(r => [''].concat(r)) }) === 168.5);
+check('no “Bill due” headings: unavailable, with why', /Bill due/.test(run('phnParse_([["x"]], "2026-11-02", []).error')));
 
 console.log('\nthe Budget uses the plan');
 let r = run('webGetBudgetModel_()');
