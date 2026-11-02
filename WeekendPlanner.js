@@ -232,6 +232,7 @@ function runWeekendPlanner_(opts) {
     locationPlan:     locationPlan,
     localEvents:      localEventCandidates,
     carryNote:        carryNote,
+    weekendWishes:    (function() { try { return lfWeekendWishLines_(); } catch (e) { return []; } })(),   // Life.js
   });
 
   var claudeResult = callClaudeWeekendPlanner_(prompt);
@@ -887,6 +888,14 @@ function buildWeekendPlannerPrompt_(ctx) {
         sections.push('Important: Sunday outdoor window is limited. Factor this into your outing timing suggestion.');
       }
     }
+  }
+
+  // ---- Things we said we'd like to do on a weekend (Life › Add to a weekend) ----
+  if (ctx.weekendWishes && ctx.weekendWishes.length) {
+    sections.push('');
+    sections.push('=== THINGS WE SAID WE\'D LIKE TO DO ON A WEEKEND ===');
+    ctx.weekendWishes.forEach(function(w) { sections.push('- ' + w); });
+    sections.push('If one of these fits this weekend\'s weather, place and capacity, suggest it by name. Never more than one, and never force it.');
   }
 
   // ---- Continuity from last week --------------------------------------------

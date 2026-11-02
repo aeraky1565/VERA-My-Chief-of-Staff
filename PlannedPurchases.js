@@ -296,6 +296,7 @@ function ppCardsAndPerks_() {
 
 /** GET planned_purchases → every purchase with its options, score, money, timing and alerts. */
 function webPlannedPurchases_() {
+  try { lfMigrateWishList_(); } catch (e) { Logger.log('planned purchases: wish list move skipped: ' + e.message); }   // Life.js, once ever
   var today = ppToday_(), goals = ppGoalsById_(), list = ppAll_(), opts = ppAllOptions_(), by = {};
   opts.forEach(function(o) { (by[o.purchaseId] = by[o.purchaseId] || []).push(o); });
   var cp = ppCardsAndPerks_();

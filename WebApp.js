@@ -253,6 +253,10 @@ function doGet(e) {
       case 'career':                     return jsonOut_(webGetCareer_());
       case 'career_pipeline':            return jsonOut_(webGetCareerPipeline_());
       case 'career_credentials':         return jsonOut_(webCareerCredentials_()); // CareerCredentials.js
+      case 'life_interests':             return jsonOut_(webLifeInterests_());          // Life.js
+      case 'life_giving':                return jsonOut_(webLifeGiving_());             // Life.js
+      case 'life_tax_giving':            return jsonOut_(webLifeTaxGiving_(e.parameter)); // Life.js
+      case 'life_weekend_wishes':        return jsonOut_(webLifeWeekendWishes_());      // Life.js
       // Every career write is a POST (career_* below); the v1 GET writers are gone.
       // Prescriptions tab (Issue #116)
       case 'prescriptions':              return jsonOut_(webGetPrescriptions_());
@@ -600,6 +604,14 @@ function doPost(e) {
       case 'career_set_status':          return jsonOut_(webCareerSetStatus_(body));
       case 'career_sync_agent':          return jsonOut_(webCareerSyncAgent_());
       case 'career_credential_save':     return jsonOut_(webCareerSaveCredential_(body));
+      case 'life_interest_tag':          return jsonOut_(webLifeInterestTag_(body));      // Life.js
+      case 'life_place_to_trip_idea':    return jsonOut_(webLifePlaceToTripIdea_(body));  // Life.js
+      case 'life_add_to_weekend':        return jsonOut_(webLifeAddToWeekend_(body));     // Life.js
+      case 'life_weekend_wish_remove':   return jsonOut_(webLifeWeekendWishRemove_(body)); // Life.js
+      case 'life_idea_to_goal':          return jsonOut_(webLifeIdeaToGoal_(body));       // Life.js
+      case 'life_idea_to_project':       return jsonOut_(webLifeIdeaToProject_(body));    // Life.js
+      case 'life_giving_save':           return jsonOut_(webLifeGivingSave_(body));       // Life.js
+      case 'life_giving_delete':         return jsonOut_(webLifeGivingDelete_(body));     // Life.js
       case 'career_credential_delete':   return jsonOut_(webCareerDeleteCredential_(body));
       case 'career_credential_log_credits': return jsonOut_(webCareerLogCredits_(body));
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());

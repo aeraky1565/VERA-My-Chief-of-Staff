@@ -955,6 +955,8 @@ function buildChatSystemPrompt_(context) {
     'ACTION:update_career_position|{field}|{value}  \u2014 update position; field = title/company/department/workStyle/focusAreas/notes\n' +
     'ACTION:renew_credential|{name}|{new expiry YYYY-MM-DD}  \u2014 a certification was renewed (Career › Credentials)\n' +
     'ACTION:log_credits|{name}|{n}  \u2014 log renewal credits (PDUs) earned toward a certification\n' +
+    // Life › Giving
+    'ACTION:log_giving|{donation or volunteering}|{organisation}|{amount in dollars, or hours}|{date YYYY-MM-DD or blank}|{notes}  \u2014 a donation or volunteering time (Life \u203a Giving)\n' +
     // Prescriptions (Issue #116)
     'ACTION:add_prescription|{person}|{medication}|{dosage}|{frequency}|{refillDate YYYY-MM-DD or blank}|{notes}  \u2014 add a prescription for Ahmed or Victoria\n' +
     'ACTION:mark_prescription_refilled|{person}|{medication}|{newRefillDate YYYY-MM-DD}  \u2014 update lastFilled=today and refillDate for a prescription\n' +
@@ -2424,6 +2426,11 @@ function executeActions_(rawText) {
         var rcOut = carCredRenew_(args[0] || '', (args[1] || '').trim());
         if (!rcOut.ok) throw new Error(rcOut.error);
         executed.push(type + ' (' + rcOut.name + ' to ' + rcOut.expires + ')');
+      }
+      else if (type === 'log_giving') {
+        var lgOut = lfChatLogGiving_(args);
+        if (!lgOut.ok) throw new Error(lgOut.error);
+        executed.push(type + ' (' + lgOut.entry.organisation + ')');
       }
       else if (type === 'log_credits') {
         var lcOut = webCareerLogCredits_({ name: args[0] || '', n: args[1] });
