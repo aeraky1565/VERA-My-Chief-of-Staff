@@ -237,6 +237,21 @@ function bgModel_(grid) {
   return model;
 }
 
+/**
+ * A shared line no category covers is flagged once (writeFlags never writes a key twice), with how to
+ * place it: a Config row budget_category:<line>.
+ */
+function bgFlagUncategorized_(names) {
+  if (!names || !names.length || typeof writeFlags !== 'function') return;
+  try {
+    writeFlags(names.map(function(n) {
+      return { source: 'Budget', flag: 'Budget line “' + n + '” has no category',
+        reason: 'It shows under Other on Finances › Budget. Add a Config row budget_category:' + n + ' (for example Utilities) to place it.',
+        urgency: 'Low', key: 'budget_uncategorized_' + bgLow_(n).replace(/[^a-z0-9]+/g, '_') };
+    }));
+  } catch (e) {}
+}
+
 /** GET budget_model → { ok, model, computed, match, categoryMap, scenarios, quarter }. */
 function webGetBudgetModel_() {
   var t = bgReadTracker_();
@@ -245,6 +260,7 @@ function webGetBudgetModel_() {
   if (!model.ok) return { ok: true, configured: true, unavailable: true, error: model.error };
   var catMap = bgCategoryMap_();
   var computed = budgetCompute_(model, {}, catMap);
+  bgFlagUncategorized_(computed.shared.other);
   var scenarios = [];
   try { scenarios = bgListScenarios_(); } catch (e) {}
   return { ok: true, configured: true, model: model, computed: computed, match: budgetMatch_(model, computed, model.phone ? budgetCompute_(model, {}, catMap, true) : null),

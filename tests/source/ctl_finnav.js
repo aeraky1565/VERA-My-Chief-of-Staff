@@ -20,13 +20,13 @@ const full = (from, to) => b => ({ [A]: swap(b[A], from, to), [I]: swap(b[I], fr
 const UI = 'test_finnav_ui.js';
 
 const CONTROLS = [
-  ['Groceries is not in Day to day', both("items:['budget','bills','cashflow','groceries']", "items:['budget','bills','cashflow']")],
+  ['Groceries is not in Day to day', both("items:['budget','billscash','groceries','phone']", "items:['budget','billscash','phone']")],
   ['the lite ids keep their fin_ prefix', both("function finKey_(id){return String(id||'').replace(/^fin_/,'');}", "function finKey_(id){return String(id||'');}")],
   ['a group with nothing on offer still shows', both("    .filter(function(g){return g.tabs.length>0;});}\n// Pure: the group a tab id is in", "    ;}\n// Pure: the group a tab id is in")],
   ['a group forgets its last subtab', both("var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);", "props.onPick(g.tabs[0].id);")],
   ['the memory is not kept in this browser', both("function finLastWrite_(v){try{localStorage.setItem('vera_fin_last',JSON.stringify(v));}catch(e){}}", "function finLastWrite_(v){}")],
   ['Overview shows a subtab row', both("cur.tabs.length>1?h('div',{role:'tablist'", "cur.tabs.length>0?h('div',{role:'tablist'")],
-  ['the full dashboard has no Groceries subtab', full("{id:'cashflow',label:'💰 Cashflow'},{id:'groceries',label:'🛒 Groceries'},", "{id:'cashflow',label:'💰 Cashflow'},")],
+  ['the full dashboard has no Groceries subtab', full("{id:'billscash',label:'🧾 Bills & cashflow'},{id:'groceries',label:'🛒 Groceries'},", "{id:'billscash',label:'🧾 Bills & cashflow'},")],
   ['the full Groceries subtab is empty', full("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken}),", "")],
   ['the lite Groceries subtab is empty', b => ({ [L]: swap(b[L], "            {activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}\n", "") })],
   ['the lite Finances keeps the flat row', b => ({ [L]: swap(b[L], "<FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />", "<div>{FINANCE_TABS.map(t => <button key={t.id} className=\"subtab-btn\" onClick={() => setActiveFinanceTab(t.id)}>{t.label}</button>)}</div>") })],

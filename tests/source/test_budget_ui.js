@@ -34,6 +34,9 @@ const computed = vm.runInContext('budgetCompute_(M, {}, {})', E); E.C = computed
 const PAYLOAD = { ok: true, configured: true, model, computed, match: vm.runInContext('budgetMatch_(M, C)', E), categoryMap: {}, quarter: '2026-Q4',
   scenarios: [{ id: 'BGS-OLD', name: 'Cheaper flat', changes: { 'shared.fixed:Rent': 1800 }, results: { totalShared: 2950, totalDisposable: 6850 }, created: '2026-10-01T00:00:00Z', quarter: '2026-Q4' }] };
 
+const window_ACTS = { ok: true, quarter: '2026-Q3', uploads: 20, lines: { 'shared.fixed:Rent': { plan: 2000, actual: 2003.33 }, 'shared.fixed:Utilities - Electric': { plan: 90, actual: 110.67 },
+  'shared.fixed:Internet': { plan: 60, actual: null }, 'pat.nice:Music': { plan: 10, actual: 11 }, 'pat.fixed:Phone - Pat': { plan: 50, actual: null } } };
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
   const vendor = {
@@ -61,16 +64,16 @@ const PAYLOAD = { ok: true, configured: true, model, computed, match: vm.runInCo
         await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
       }
       await page.waitForFunction(() => typeof BudgetTab === 'function', null, { timeout: 15000 }).catch(() => {});
-      const mount = () => page.evaluate(PAYLOAD => {
+      const mount = () => page.evaluate(({ PAYLOAD, ACTS }) => {
         window.__posts = [];
-        window.apiGet = (u, t, p) => Promise.resolve(p && p.action === 'budget_model' ? JSON.parse(JSON.stringify(PAYLOAD)) : { ok: false });
+        window.apiGet = (u, t, p) => Promise.resolve(p && p.action === 'budget_model' ? JSON.parse(JSON.stringify(PAYLOAD)) : p && p.action === 'budget_actuals' ? JSON.parse(JSON.stringify(ACTS)) : { ok: false });
         window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b)));
           if (b.action === 'budget_scenario_save') return Promise.resolve({ ok: true, scenario: { id: 'BGS-NEW', name: b.name, changes: b.changes, results: { totalShared: 3650 }, quarter: '2026-Q4' } });
           return Promise.resolve({ ok: true }); };
         document.querySelectorAll('#bgprobe').forEach(n => n.remove());
         const host = document.createElement('div'); host.id = 'bgprobe'; host.style.padding = '0 12px'; document.body.prepend(host);
         ReactDOM.createRoot(host).render(React.createElement(BudgetTab, { apiUrl: 'https://vera.test/exec', apiToken: 't' }));
-      }, PAYLOAD);
+      }, { PAYLOAD, ACTS: window_ACTS });
       await page.evaluate(() => { try { localStorage.removeItem('vera_budget_open'); } catch (e) {} });
       await mount(); await wait(400);
       const txt = sel => page.$eval('#bgprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
@@ -87,12 +90,15 @@ const PAYLOAD = { ok: true, configured: true, model, computed, match: vm.runInCo
       check(L + ': a person collapsed: net income, groups, disposable', /\$7,000 net/.test(pat) && /Net income \$7,000/.test(pat) && /Fixed \$150/.test(pat) && /Nice to have \$50/.test(pat) && /Contributions \$2,790/.test(pat) && /Disposable \$4,010/.test(pat), pat);
       check(L + ': …with the thin bar, and no lines yet', await page.$('#bgprobe .bg-card-pat .bg-bar') !== null && !/Car Insurance/.test(pat));
       let sh = await txt('.bg-card-shared');
-      check(L + ': shared collapsed: totals by category, in order', /Housing Joint \$2,000 \$2,000 Utilities Joint \$300 \$300 Health Pat \$100 \$100 Household Sam \$600 Pat \$100 \$700/.test(sh), sh);
+      check(L + ': shared collapsed: totals by category, in order', /Housing Joint \$2,000 \$2,000( actual \$[\d,]+)? Utilities Joint \$300 \$300( actual \$[\d,]+)? Health Pat \$100 \$100 Household Sam \$600 Pat \$100 \$700/.test(sh), sh);
       check(L + ': …a line with no category is under Other, named', /Other\s*no category yet/.test(sh) && /Not in a category yet: Dog Walker/.test(sh));
       check(L + ': …and the total shared', /Total shared \$3,150\.00/.test(sh));
+      check(L + ': plan vs actual: the quarter named, and actuals per category', /actuals: 2026-Q3, a month on average/.test(await txt('.bg-sub')) && /Housing Joint \$2,000 \$2,000 actual \$2,003/.test(sh) && /Utilities Joint \$300 \$300 actual \$111/.test(sh), sh.slice(0, 200));
+      check(L + ': …over plan marked', await page.$eval('#bgprobe .bg-card-shared', n => Array.from(n.querySelectorAll('.bg-actual.over')).some(x => /\$111/.test(x.textContent))));
+      check(L + ': …a person’s groups with actuals, or none', /Nice to have \$50\s*actual \$11/.test(pat) && /Fixed \$150\s*no actuals/.test(pat), pat);
       await clickHead('shared'); await wait(150);
       sh = await txt('.bg-card-shared');
-      check(L + ': expanded: every line, with account and due day', (await head('shared')) === 'true' && /Rent Joint · due 1st \$2,000\.00/.test(sh) && /Family Plan Credit Joint \$-?−?\$?50\.00|Family Plan Credit Joint −\$50\.00/.test(sh) && /Dog Walker Joint · nice to have \$40\.00/.test(sh), sh.slice(0, 400));
+      check(L + ': expanded: every line, with account, due day and its actual', (await head('shared')) === 'true' && /Rent Joint · due 1st · actual \$2,003\.33\/mo \$2,000\.00/.test(sh) && /Family Plan Credit Joint \$-?−?\$?50\.00|Family Plan Credit Joint −\$50\.00/.test(sh) && /Dog Walker Joint · nice to have \$40\.00/.test(sh), sh.slice(0, 400));
       check(L + ': …the tracker’s What If rows left out', !/New Rent Delta/.test(sh) && /What If rows are left out/.test(sh));
       await mount(); await wait(300);
       check(L + ': open or closed is remembered', (await head('shared')) === 'true' && (await head('pat')) === 'false');
@@ -134,6 +140,7 @@ const PAYLOAD = { ok: true, configured: true, model, computed, match: vm.runInCo
       await page.evaluate(() => Array.from(document.querySelectorAll('#bgprobe .bg-scenario')).find(n => /Cheaper flat/.test(n.innerText)).querySelector('.bg-scenario-open').click()); await wait(150);
       bar = await txt('.bg-whatif-bar');
       check(L + ': Open in What if loads a saved scenario', /Shared \$2,950 −\$200\.00/.test(bar), bar);
+      check(L + ': …and opens the card it changes', (await head('shared')) === 'true');
       await page.evaluate(() => Array.from(document.querySelectorAll('#bgprobe .bg-scenario')).find(n => /Cheaper flat/.test(n.innerText)).querySelector('.bg-scenario-del').click()); await wait(100);
       check(L + ': delete asks once more first', (await page.evaluate(() => window.__posts.length)) === 1 && await page.$('#bgprobe .bg-scenario-del-yes') !== null);
       await click('.bg-scenario-del-yes'); await wait(150);

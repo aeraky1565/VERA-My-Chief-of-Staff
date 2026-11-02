@@ -149,6 +149,10 @@ function doGet(e) {
       case 'dest_weather':            return jsonOut_(webGetDestWeather_(e));
       case 'get_flight_insights':     return jsonOut_(webGetFlightInsights_(e));
       case 'cashflow':                return jsonOut_(webGetCashflow_(e));
+      case 'bills_schedule':          return jsonOut_(webGetBillsSchedule_()); // BillSchedule.js — tracker amounts + VERA's Bill Schedule
+      case 'bills_reconcile':         return jsonOut_(webGetBillsReconcile_(e));
+      case 'budget_actuals':          return jsonOut_(webGetBudgetActuals_(e)); // plan vs actual per Budget line, from the uploads
+      case 'phone_plan':              return jsonOut_(webGetPhonePlan_()); // PhonePlan.js — reads the phone tracker, never writes it
       case 'tx_aliases':              return jsonOut_(webGetTxAliases_());
       case 'set_tx_alias':            return jsonOut_(webSetTxAlias_(e));
       case 'recipes':               return jsonOut_(webGetRecipes_());
@@ -598,6 +602,9 @@ function doPost(e) {
       case 'gathering_save':             return jsonOut_(webSaveGathering_(body));
       case 'budget_scenario_save':       return jsonOut_(webSaveBudgetScenario_(body));
       case 'budget_scenario_delete':     return jsonOut_(webDeleteBudgetScenario_(body));
+      case 'bills_schedule_save':        return jsonOut_(webSaveBillSchedule_(body));
+      case 'bills_schedule_migrate':     return jsonOut_(webMigrateBillSchedule_(body));
+      case 'phone_payback_mark':         return jsonOut_(webMarkPhonePayback_(body));
       case 'gathering_delete':           return jsonOut_(webDeleteGathering_(body));
       case 'gathering_to_shopping':      return jsonOut_(webGatheringToShopping_(body));
       case 'trip_idea_delete':           return jsonOut_(webDeleteTripIdea_(body));

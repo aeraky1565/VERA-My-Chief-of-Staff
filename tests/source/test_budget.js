@@ -172,6 +172,14 @@ check('the tracker was never written', writes.length === 0, J(writes));
 check('Budget.js never calls a write on the tracker', !/openById[\s\S]{0,400}?(setValue|appendRow|deleteRow|insertSheet)/.test(extractFn(BG, 'bgReadTracker_')));
 check('the routes are wired', /case 'budget_model':\s+return jsonOut_\(webGetBudgetModel_\(\)\)/.test(WEB) && /case 'budget_scenario_save':\s+return jsonOut_\(webSaveBudgetScenario_\(body\)\)/.test(WEB)
   && /case 'budget_scenario_delete':\s+return jsonOut_\(webDeleteBudgetScenario_\(body\)\)/.test(WEB));
+const FLAGS = [], everKeys = {};
+S.writeFlags = fl => fl.forEach(f => { if (!everKeys[f.key]) { everKeys[f.key] = 1; FLAGS.push(f); } });
+run('webGetBudgetModel_()'); run('webGetBudgetModel_()');
+check('a line with no category is flagged once, with how to place it', FLAGS.length === 1 && FLAGS[0].key === 'budget_uncategorized_dog_walker' && /budget_category:Dog Walker/.test(FLAGS[0].reason) && FLAGS[0].source === 'Budget', JSON.stringify(FLAGS));
+CONFIG['budget_category:Dog Walker'] = 'Household'; FLAGS.length = 0; delete everKeys.budget_uncategorized_dog_walker;
+run('webGetBudgetModel_()');
+check('…and not once it has one', FLAGS.length === 0);
+delete CONFIG['budget_category:Dog Walker']; delete S.writeFlags;
 S.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
 r = run('webGetBudgetModel_()');
 check('no tracker connected: says so', r.ok && r.configured === false && /SAT_SHEET_ID/.test(r.error));

@@ -30,13 +30,13 @@ check('groups keep their order, subtabs in group order, lite ids matched without
 check('a group with nothing on offer is hidden',
   vm.runInContext('finGroupsFor_([{id:"summary",label:"S"},{id:"tax",label:"T"}]).map(function(g){return g.id;}).join()', C) === 'overview,paper');
 check('every old subtab id lands in its group; an unknown one in none',
-  [['summary', 'overview'], ['fin_summary', 'overview'], ['budget', 'day'], ['fin_bills', 'day'], ['cashflow', 'day'], ['groceries', 'day'],
+  [['summary', 'overview'], ['fin_summary', 'overview'], ['budget', 'day'], ['fin_billscash', 'day'], ['billscash', 'day'], ['groceries', 'day'], ['fin_phone', 'day'], ['bills', ''], ['cashflow', ''],
    ['networth', 'long'], ['fin_goals', 'long'], ['planned', 'long'], ['hsafsa', 'long'], ['accounts', 'paper'], ['cards', 'paper'], ['fin_contracts', 'paper'], ['tax', 'paper'], ['nope', '']]
     .every(([id, g]) => vm.runInContext('finGroupOf_(' + JSON.stringify(id) + ')', C) === g));
 const appIds = (APP.match(/const subTabs=\[\{id:'summary'[^\n]*?\];/) || [''])[0].match(/id:'(\w+)'/g) || [];
 const liteIds = (LITE.match(/const FINANCE_TABS = \[[\s\S]*?\];/) || [''])[0].match(/id: '(\w+)'/g) || [];
 check('every Finances subtab in both dashboards is in a group',
-  appIds.length === 13 && liteIds.length === 12
+  appIds.length === 13 && liteIds.length === 12 && /phone/.test(appIds.join()) && /fin_phone/.test(liteIds.join())
   && appIds.concat(liteIds).every(x => vm.runInContext('finGroupOf_(' + JSON.stringify(x.replace(/^id: ?'|'$/g, '')) + ')', C) !== ''), appIds.length + ' ' + liteIds.length);
 check('both dashboards mount the full Groceries card on its own subtab, and keep it on Summary',
   APP.indexOf("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1
@@ -110,8 +110,8 @@ const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget
       check(L + ': it opens on Overview, with no subtab row', /Overview/.test(s.on) && s.tabs.length === 0, JSON.stringify(s.tabs));
       await click('.fin-group', 'Day to day'); await wait(200);
       s = await state();
-      check(L + ': Day to day: Budget · Bills · Cashflow · Groceries, Budget first', /Day to day/.test(s.on) && /Budget/.test(s.active)
-        && s.tabs.map(t => t.replace(/^\S+\s/, '')).join('|') === 'Budget|Bills|Cashflow|Groceries', JSON.stringify(s.tabs));
+      check(L + ': Day to day: Budget · Bills & cashflow · Groceries · Phone plan, Budget first', /Day to day/.test(s.on) && /Budget/.test(s.active)
+        && s.tabs.map(t => t.replace(/^\S+\s/, '')).join('|') === 'Budget|Bills & cashflow|Groceries|Phone plan', JSON.stringify(s.tabs));
       await click('.fin-tabs .subtab-btn', 'Groceries'); await wait(400);
       s = await state();
       check(L + ': Groceries opens the full card', /Groceries/.test(s.active) && /Groceries · November 2026/.test(s.text) && /Store A/.test(s.text), s.text.slice(0, 300));

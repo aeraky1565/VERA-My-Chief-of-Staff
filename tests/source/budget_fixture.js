@@ -45,3 +45,19 @@ function tracker(opts) {
 }
 
 module.exports = { tracker };
+
+// An invented family phone plan tracker, laid out like the real one: a by-person table under
+// "Bill due M/D" headings, then a by-payment table ("Bill N - who"), "Our total" and "Credit".
+function phoneTracker() {
+  return [['Bill breakdown by person'],
+    ['', 'Bill due 9/12', 'Bill due 10/12', 'Bill due 11/12'],
+    ['Pat', '$40.00', '$41.00', '$42.00'], ['Sam', '$30.00', '$30.00', '$30.00'],
+    ['Robin', '$50.00', '$50.00', '$51.00'], ['Lee', '$20.00', '$20.00', '$20.00'], ['Kim', '$25.00', '$25.00', '$25.50'],
+    ['Insurance', '$0.00', '$0.00', '$0.00'], ['Total Plan Due', '$165.00', '$166.00', '$168.50'], ['Insurance Share', '$1.00', '$1.00', '$1.00'],
+    [], ['If it makes it easier, the total due for each payment'],
+    ['', '', 'Bill due 10/12', 'Bill due 11/12'],
+    ['Bill 1 - Pat', '', '$41.00', '$42.00'], ['Bill 2 - Sam', '', '$30.00', '$30.00'],
+    ['Bill 3 - Group (Robin & Lee)', '', '$70.00', '$71.00'], ['Bill 4 - Kim', '', '$25.00', '$25.50'],
+    [], ['Our total', '', '', '$72.00'], ['Credit', '', '', '$96.50']];
+}
+module.exports.phoneTracker = phoneTracker;
