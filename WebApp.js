@@ -627,6 +627,7 @@ function doPost(e) {
       case 'life_balance_save':          return jsonOut_(webLifeBalanceSave_(body));      // LifeGrowth.js
       case 'coming_up_debrief':          return jsonOut_(webComingUpDebrief_(body));      // ComingUp.js
       case 'coming_up_bring':            return jsonOut_(webComingUpBring_(body));        // ComingUp.js
+      case 'life_quick_capture':         return jsonOut_(webLifeQuickCapture_(body));     // QuickCapture.js
       case 'career_credential_delete':   return jsonOut_(webCareerDeleteCredential_(body));
       case 'career_credential_log_credits': return jsonOut_(webCareerLogCredits_(body));
       case 'career_wins_bank':           return jsonOut_(webCareerWinsBank_());

@@ -6,7 +6,7 @@ const fs = require('fs'), vm = require('vm'), path = require('path');
 const REPO = path.join(__dirname, '..', '..');
 const ROOT = process.env.VERA_ROOT || REPO;
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
-const LIFE = read('Life.js'), LG = read('LifeGrowth.js'), CU = read('ComingUp.js'), MR = read('MonthlyReview.js'), CODE = read('Code.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), WP = read('WeekendPlanner.js'), PP = read('PlannedPurchases.js');
+const LIFE = read('Life.js'), LG = read('LifeGrowth.js'), CU = read('ComingUp.js'), QC = read('QuickCapture.js'), MR = read('MonthlyReview.js'), CODE = read('Code.js'), WEB = read('WebApp.js'), CHAT = read('Chat.js'), WP = read('WeekendPlanner.js'), PP = read('PlannedPurchases.js');
 
 let pass = 0, fail = 0;
 const check = (n, c, d) => c ? (pass++, console.log('  ok   ' + n))
@@ -24,7 +24,7 @@ function extractFn(src, name) {
 }
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(LIFE + '\n' + LG + '\n' + CU, ctx);
+vm.runInContext(LIFE + '\n' + LG + '\n' + CU + '\n' + QC, ctx);
 const L = ctx;
 
 // ============ Explore: interests ============
@@ -102,6 +102,7 @@ w = L.lfAddWish_(w, '   ', '2026-11-03');
 w = L.lfAddWish_(w, 'Jazz nights', '2026-11-04');
 check('a wish is added once, blanks never', J(w) === J([{ text: 'Corner bakery', added: '2026-11-02' }, { text: 'Jazz nights', added: '2026-11-04' }]), J(w));
 check('the Weekend Planner gets them in its prompt', /weekendWishes:\s+\(function\(\) \{ try \{ return lfWeekendWishLines_\(\); \}/.test(WP) && /=== THINGS WE SAID WE\\'D LIKE TO DO ON A WEEKEND ===/.test(WP) && /Never more than one, and never force it\./.test(WP));
+check('…only when there are some', /  if \(ctx\.weekendWishes && ctx\.weekendWishes\.length\) \{\n    sections\.push\(''\);\n    sections\.push\('=== THINGS WE SAID/.test(WP));
 
 // ============ Wish List move ============
 console.log('\nthe Wish List moves to Planned Purchases');
@@ -172,6 +173,7 @@ const bal = L.lgBalance_([{ month: '2026-05', health: 4, relationships: 4, caree
 check('months oldest first, junk dropped', J(bal.months.map(m => m.month)) === J(['2026-05', '2026-09', '2026-10']));
 check('low two months running: ≤ 2 both times', J(bal.low) === J(['health', 'growth']), J(bal.low));
 check('one month is not a run', J(L.lgBalance_([{ month: '2026-10', health: 1 }]).low) === '[]');
+check('low last month but fine the month before is not a run', J(L.lgBalance_([{ month: '2026-09', health: 4 }, { month: '2026-10', health: 2 }]).low) === '[]');
 check('ratings must be 1 to 5', J(L.lgCleanBalance_({ month: '2026-10', health: '5', fun: 9, money: 0 })) === J({ month: '2026-10', health: 5, relationships: null, career: null, money: null, growth: null, fun: null }));
 check('the month to rate is last month', L.lgRateMonth_('2026-11-02') === '2026-10' && L.lgRateMonth_('2027-01-15') === '2026-12');
 check('the Monthly Life Review asks for it, linking to Review', /sections\.push\(buildLifeBalanceAsk_\(label\)\);/.test(MR) && /'\?tab=life&sub=review'/.test(MR));
@@ -207,6 +209,7 @@ check('weekends start at 9', J(L.lgFreeSlot_([], '2026-11-06', 45)) === J({ day:
 const nd = L.lgNudgesDue_(GN, { g1: { daysSince: 9 }, g2: { daysSince: 2 } }, '2026-11-04', 7);
 check('nudge a Now goal quiet 7+ days, keyed by week; not a busy one, not a waiting one', J(nd) === J([{ goalId: 'g1', title: 'Swim more', key: 'growth_nudge_g1_2026-11-02', since: 9 }]), J(nd));
 check('never practised counts as quiet', L.lgNudgesDue_([{ id: 'x', title: 'X', focus: 'now' }], {}, '2026-11-04', 7)[0].since === null);
+check('six quiet days is not yet a nudge at seven', L.lgNudgesDue_([{ id: 'x', title: 'X', focus: 'now' }], { x: { daysSince: 6 } }, '2026-11-04', 7).length === 0);
 
 console.log('\nChat and goal lookup');
 const GF = [{ id: 'g1', title: 'Swim more', focus: 'now' }, { id: 'g2', title: 'Learn Spanish', focus: 'waiting' }, { id: 'g3', title: 'Spanish', focus: 'done' }];
@@ -279,6 +282,7 @@ check('hosting at ours opens Hosting', L.cuCards_([ev('h', 'Hosting game night p
 check('two evening plans that overlap clash, both ways', byId('e2').clash === 'Overlaps Concert at 20:00' && byId('e3').clash === 'Overlaps Dinner with Sam at 19:00', byId('e2').clash + ' / ' + byId('e3').clash);
 check('a plan during a trip says so', byId('e9').clash === 'During Example Lake Trip');
 check('no clash, no line', byId('e1').clash === '');
+check('two daytime plans that overlap don\'t clash (only evenings do)', L.cuCards_([ev('l1', 'Lunch with Kim', '2026-11-05T12:00', '2026-11-05T13:00', { guests: 1 }), ev('l2', 'Brunch with Lee', '2026-11-05T12:30', '2026-11-05T13:30', { guests: 1 })], [], CO).every(c => c.clash === ''));
 check('leave-by: start less the drive and ten minutes', L.cuLeaveBy_('19:00', 35) === '18:15' && L.cuLeaveBy_('', 35) === '' && L.cuLeaveBy_('19:00', null) === '');
 
 console.log('\nComing up: wiring');
@@ -289,6 +293,23 @@ check('separate from the PTO milestones', !/getMilestones_/.test(CU.replace(/^ \
 check('How was it? logs a note or a favourite', /createInterest_\('Ahmed', text, 'Other', 'Manual', 'After ' \+ title\)/.test(CU) && /webAddNote_\(\{ parameter: \{ title: 'After ' \+ title/.test(CU));
 check('leave-by reuses the trips drive-time cache', /loadTravelLegCache_\(\)/.test(CU) && /fetchTravelLeg_\(from, to, 'driving', apiKey\)/.test(CU));
 check('VERA writes no calendar here either', !/createEvent|createAllDayEvent|setTitle|deleteEvent/.test(CU));
+
+
+// ============ Quick capture ============
+console.log('\nQuick capture');
+check('reads the one action line, as Chat does', J(L.qcParse_('Sure!\n`ACTION:log_practice|Spanish|30|app lesson`')) === J({ type: 'log_practice', args: ['Spanish', '30', 'app lesson'] }));
+check('only the five kinds are filed', L.qcParse_('ACTION:delete_bill|3') === null && L.qcParse_('ACTION:complete_task|T1') === null && L.qcParse_('no action here') === null);
+check('the first allowed line wins', L.qcParse_('ACTION:resolve_flag|F1\nACTION:add_idea|Sail club|Growth|') .type === 'add_idea');
+const qp = L.qcPrompt_('did 20 min spanish', ['Spanish', 'Swim more'], '2026-11-04');
+check('the prompt names the Now goals, the date and all five lines', /Today is 2026-11-04/.test(qp) && /His Growth goals in Now: Spanish; Swim more\./.test(qp) && ['log_practice', 'log_interest', 'add_idea', 'log_giving', 'add_note'].every(k => qp.indexOf('ACTION:' + k + '|') !== -1) && /Never invent details/.test(qp));
+check('the prompt uses Chat\'s own grammar for each', /ACTION:log_interest\|\{Ahmed or Victoria\}\|/.test(qp) && /ACTION:log_giving\|\{donation or volunteering\}\|\{organisation\}\|\{amount in dollars, or hours\}/.test(qp));
+check('without VERA: practice when he says he did a goal', J(L.qcFallback_('did 25 min of Spanish', ['Spanish'])) === J({ type: 'log_practice', args: ['Spanish', '25', ''] }));
+check('…otherwise a note', L.qcFallback_('remember the blue paint', ['Spanish']).type === 'add_note' && L.qcFallback_('spanish movie night', ['Spanish']).type === 'add_note');
+check('practice for a goal that isn\'t there becomes a note', /if \(act\.type === 'log_practice' && !lgFindGoal_\(lgGoals_\(\), act\.args\[0\]\)\) act = \{ type: 'add_note'/.test(QC));
+check('each kind is filed by the function Chat uses, with its undo', /lgChatLogPractice_\(a\)/.test(QC) && /createInterest_\(a\[0\] \|\| 'Ahmed'/.test(QC) && /webAddIdea_\(\{ parameter:/.test(QC) && /lfChatLogGiving_\(a\)/.test(QC) && /webAddNote_\(\{ parameter:/.test(QC)
+  && /action: 'life_practice_undo'/.test(QC) && /action: 'interests_delete', id: it\.id, via: 'get'/.test(QC) && /action: 'delete_idea', id: idea\.id, via: 'get'/.test(QC) && /action: 'life_giving_delete', id: g\.entry\.id/.test(QC) && /action: 'delete_note', id: n\.id, via: 'get'/.test(QC));
+check('a practice already logged today can\'t be undone from here (it merged minutes)', /undo: p\.added \?/.test(QC));
+check('POST life_quick_capture', /case 'life_quick_capture':\s+return jsonOut_\(webLifeQuickCapture_\(body\)\);/.test(WEB));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

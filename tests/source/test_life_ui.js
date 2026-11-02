@@ -69,6 +69,7 @@ async function mount(page, props) {
       return r ? Promise.resolve(JSON.parse(JSON.stringify(r))) : (window.__life_get ? window.__life_get(p) : Promise.resolve({ ok: true })); };
     window.apiPost = (u, t, b) => { window.__posts.push(JSON.parse(JSON.stringify(b)));
       if (b.action === 'life_place_to_trip_idea') return Promise.resolve({ ok: true, title: 'Old harbour walk' });
+      if (b.action === 'life_quick_capture') return Promise.resolve({ ok: true, kind: 'idea', said: 'Added the idea “Sail club”.', undo: { action: 'delete_idea', id: 'IDEA-9', via: 'get' } });
       if (b.action === 'life_practice_log') return Promise.resolve({ ok: true, goal: 'Swim more', minutes: b.minutes || 0, added: true });
       if (b.action === 'life_trial_decide') return Promise.resolve({ ok: true, status: 'Kept' });
       if (b.action === 'life_trial_start') return Promise.resolve({ ok: true, end: '2026-12-01', weeks: 4 });
@@ -101,6 +102,20 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
     check(L + ': Growth’s subtabs', JSON.stringify(gsubs) === JSON.stringify(['Now', 'Goals', 'Habits', 'Learning', 'Trials', 'Review']), JSON.stringify(gsubs));
 
 
+
+    if (part('quick')) {
+      check(L + ': Quick capture sits at the top of Life', (await page.$('#lfprobe .life-tab > .qc')) !== null);
+      check(L + ': File it waits for text', await page.$eval('#lfprobe .qc-file', n => n.disabled));
+      await page.evaluate(() => { const n = document.querySelector('#lfprobe .qc-text'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(n, 'sail club idea'); n.dispatchEvent(new Event('input', { bubbles: true })); }); await wait(50);
+      await page.evaluate(() => document.querySelector('#lfprobe .qc-text').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))); await wait(250);
+      let posts = await page.evaluate(() => window.__posts);
+      check(L + ': Enter files it', posts[posts.length - 1].action === 'life_quick_capture' && posts[posts.length - 1].text === 'sail club idea');
+      check(L + ': it says what it filed, and clears the box', /Added the idea “Sail club”\./.test(await txt('.qc-result')) && await page.$eval('#lfprobe .qc-text', n => n.value) === '');
+      const getsBefore = (await page.evaluate(() => window.__gets)).length;
+      await page.evaluate(() => { window.__undoGet = null; const g = window.apiGet; window.apiGet = (u, t, p) => { if (p.action === 'delete_idea') { window.__undoGet = p; return Promise.resolve({ ok: true }); } return g(u, t, p); }; });
+      await page.evaluate(() => document.querySelector('#lfprobe .qc-undo').click()); await wait(250);
+      check(L + ': Undo removes it the way that kind is removed', JSON.stringify(await page.evaluate(() => window.__undoGet)) === JSON.stringify({ action: 'delete_idea', id: 'IDEA-9' }) && /Undone\./.test(await txt('.qc-result')));
+    }
     if (part('comingup')) {
       const cc = await page.$$eval('#lfprobe .cu-card', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': Coming up sits at the top of Life, a card per plan', cc.length === 3 && (await page.$('#lfprobe .life-tab > .cu-strip')) !== null, JSON.stringify(cc));
@@ -248,6 +263,8 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       await clickText(page, '.lf-subs .subtab-btn', 'Review'); await wait(350);
       check(L + ': Life balance asks about last month', /How did 2026-10 feel\?/.test(await txt('.lf-rate')));
       check(L + ': Save waits for all six', await page.$eval('#lfprobe .lf-rate-save', n => n.disabled));
+      await page.evaluate(() => document.querySelector('#lfprobe .lf-rate-health-4').click()); await wait(50);
+      check(L + ': …still waiting with one rated', await page.$eval('#lfprobe .lf-rate-save', n => n.disabled));
       for (const k of ['health', 'relationships', 'career', 'money', 'growth', 'fun']) await page.evaluate(k => document.querySelector('#lfprobe .lf-rate-' + k + '-4').click(), k);
       await wait(50);
       await page.evaluate(() => document.querySelector('#lfprobe .lf-rate-save').click()); await wait(250);
