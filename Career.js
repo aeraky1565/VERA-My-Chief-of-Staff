@@ -890,8 +890,6 @@ function carCleanRoleCheck_(r, criteria) {
 
 /** Nightly: a no-op once migrated; picks up the baseline import once its doc is set. */
 function carNightly_() {
-  // Credentials (#223): import once, keep the agent's line current, expiry and pace reminders.
-  try { carCredNightly_(); } catch (e) { Logger.log('carCredNightly_: ' + e.message); }
   var res = carEnsureMigrated_();
   return res && res.migrated ? 'migrated' : 'ok';
 }

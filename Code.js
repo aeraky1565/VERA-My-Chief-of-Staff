@@ -1371,6 +1371,9 @@ function nightlyRun() {
     // Finances › Summary (#224): this quarter's snapshot (once; caught up after a missed night), then the
     // check-in reminder before each quarter and reminders for decisions coming due.
     nightlyStep_(ctx, 'fsNightly_', fsNightly_);
+    // Career › Credentials (#223): import once, keep the job agent's line current, and raise the
+    // expiry and pace reminders. It writes flags, so it runs before checkCrossPatternFlags_.
+    nightlyStep_(ctx, 'carCredNightly_', carCredNightly_);
     // Packing lists and Discover runs: flag a list built before VERA recorded its
     // inputs, and one built on last year's weather once a forecast exists (GenerationInputs.js).
     nightlyStep_(ctx, 'checkGenerationInputs_', checkGenerationInputs_);
