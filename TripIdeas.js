@@ -322,6 +322,9 @@ function webGetTripIdeas_() {
   try { tiLinkSettled_(); } catch (e) { Logger.log('trip ideas: settle link skipped: ' + e.message); }
   var ideas = tiRows_(tiIdeasSheet_(), TRIP_IDEAS_HEADERS.length).filter(function(r) { return String(r[0]).trim(); }).map(tiIdeaFromRow_);
   var options = tiRows_(tiOptionsSheet_(), TRIP_IDEA_OPTIONS_HEADERS.length).filter(function(r) { return String(r[0]).trim(); }).map(tiOptionFromRow_);
+  // #228: the bucket list places an idea was planned from (the link lives on the Bucket List)
+  var fromBucket = typeof plBucketForIdeas_ === 'function' ? plBucketForIdeas_() : {};
+  ideas.forEach(function(i) { if (fromBucket[i.id]) i.fromBucket = fromBucket[i.id]; });
   return { ok: true, ideas: ideas, options: options };
 }
 

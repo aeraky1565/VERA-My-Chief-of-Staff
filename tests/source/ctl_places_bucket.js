@@ -5,7 +5,7 @@ const REPO = path.join(__dirname, '..', '..');
 const SRC_DIR = process.env.VERA_ROOT || REPO;
 const OUT = path.join(__dirname, 'ctl_places_bucket_out');
 
-const FILES = ['Places.js', 'Code.js', 'WebApp.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
+const FILES = ['Places.js', 'Code.js', 'WebApp.js', 'TripIdeas.js', 'docs/app.js', 'docs/dashboard-lite.html', 'docs/index.html', 'docs/react.min.js', 'docs/react-dom.min.js'];
 const BASE = {};
 FILES.forEach(f => { BASE[f] = fs.readFileSync(path.join(SRC_DIR, f), 'utf8'); });
 
@@ -34,6 +34,17 @@ const CONTROLS = [
   ['Mark visited sends nothing', full("visited:String(new Date().getFullYear())", "visited:''")],
   ['a visited place can be ticked for a trip', full("b.visited?null:h('button',{type:'button',className:'pb-pick'", "h('button',{type:'button',className:'pb-pick'")],
   ['Add a place doesn’t reload', full("onSave:function(f){Promise.resolve(props.onAdd&&props.onAdd(f)).then(function(){setAdding(false);load();});}}):null;\n  if(!d)return h('div',{className:'pb-panel'", "onSave:function(f){Promise.resolve(props.onAdd&&props.onAdd(f)).then(function(){setAdding(false);});}}):null;\n  if(!d)return h('div',{className:'pb-panel'")],
+  ['the brief ignores the occasion', srv("var lead = occasion ? occasion.charAt(0).toUpperCase() + occasion.slice(1) + ' in ' + countries.join(' & ') : countries.join(' & ');", "var lead = countries.join(' & ');"), SRV],
+  ['this year’s months start in January', srv("for (var m = years[0] === ty ? tm + 1 : 1; m <= 12; m++)", "for (var m = 1; m <= 12; m++)"), SRV],
+  ['done things to do become wishes', srv("if (!a.done && plStr_(a.activity, 100)) pieces.push(", "if (plStr_(a.activity, 100)) pieces.push("), SRV],
+  ['no anniversary dinner', srv("if (group === 'Anniversary') musts.push('Anniversary dinner on the night itself.');", ""), SRV],
+  ['the edits are ignored', srv("var idea = { title: e.title !== undefined ? e.title : b.title,", "var idea = { title: b.title,"), SRV],
+  ['places aren’t linked to the idea', srv("plSetBucket_(String(id), 'Trip Idea', r.idea.id);", ""), SRV],
+  ['places close before the trip ends', srv("(t.endDate || t.startDate) < today) tripOf[i.id] = t;", "true) tripOf[i.id] = t;"), SRV],
+  ['a second visit is added every read', srv("if (!dup) cs.appendRow(", "cs.appendRow("), SRV],
+  ['the sheet doesn’t send the edits', full("edits:{title:plan.title,where:plan.where,travelers:plan.travelers,mustHaves:plan.mustHaves}", "edits:{}")],
+  ['saving doesn’t open Trip Ideas', full("if(props.onGoIdeas)props.onGoIdeas(r.idea.id);}else setErr", "}else setErr")],
+  ['Trip Ideas doesn’t show the bucket places', both("i.fromBucket&&i.fromBucket.length?h('span',{className:'ti-from-bucket'", "false?h('span',{className:'ti-from-bucket'")],
   ['the add form has no occasion', full("dreamTrip:dreamTrip.trim(),notes:notes.trim(),occasion:occasion.trim()});}", "dreamTrip:dreamTrip.trim(),notes:notes.trim()});}"), SRV],
 ];
 

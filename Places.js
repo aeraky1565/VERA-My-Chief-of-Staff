@@ -151,6 +151,69 @@ function plBucketView_(items, filter) {
   });
 }
 
+/** A place's name as shown: "Lisbon, Portugal", or the country alone. */
+function plPlaceName_(b) { var c = plStr_(b.City, 60), k = plStr_(b.Country, 60); return c ? c + ', ' + k : k; }
+
+/**
+ * The Trip Idea brief a set of bucket places makes (#228). items: bucket rows with their
+ * activities; today: 'yyyy-mm-dd'; picks: the occasion quick picks.
+ * → {title, where, months, travelers, mustHaves, pieces, occasion}. Everything is editable after.
+ */
+function plBriefFrom_(items, today, picks) {
+  items = items || [];
+  var countries = [], cities = [];
+  items.forEach(function(b) {
+    var k = plStr_(b.Country, 60), c = plStr_(b.City, 60);
+    if (k && countries.indexOf(k) === -1) countries.push(k);
+    if (c && cities.indexOf(c) === -1) cities.push(c);
+  });
+  var occasion = '';
+  items.forEach(function(b) { if (!occasion && plStr_(b.Occasion, 60)) occasion = plStr_(b.Occasion, 60); });
+  var placeList = cities.length ? cities.join(', ') : countries.join(', ');
+  var lead = occasion ? occasion.charAt(0).toUpperCase() + occasion.slice(1) + ' in ' + countries.join(' & ') : countries.join(' & ');
+  var title = cities.length ? lead + ': ' + cities.join(', ') : (occasion ? lead : placeList);
+  var where = countries.length === 1 ? placeList + (cities.length ? ' (' + countries[0] + ')' : '')
+    : items.map(function(b) { return plStr_(b.City, 60) ? plStr_(b.City, 60) + ' (' + plStr_(b.Country, 60) + ')' : plStr_(b.Country, 60); })
+        .filter(function(x, i, a) { return x && a.indexOf(x) === i; }).join(', ');
+  // when: the earliest target year; this year means from next month on
+  var years = items.map(function(b) { return parseInt(b['Target Year'], 10); }).filter(function(y) { return y > 1900; }).sort();
+  var months = [], ty = Number(String(today).slice(0, 4)), tm = Number(String(today).slice(5, 7));
+  if (years.length && years[0] >= ty) {
+    for (var m = years[0] === ty ? tm + 1 : 1; m <= 12; m++) months.push(years[0] + '-' + (m < 10 ? '0' : '') + m);
+  }
+  var who = items.map(function(b) { return plStr_(b.Traveller, 20) || 'Both'; }).filter(function(x, i, a) { return a.indexOf(x) === i; });
+  var travelers = who.length === 1 && who[0] !== 'Both' ? who[0] : 'Ahmed and Victoria';
+  var musts = [];
+  var group = occasion ? plOccasionGroup_(occasion, picks || PL_OCCASIONS_DEFAULT_) : '';
+  if (group === 'Anniversary') musts.push('Anniversary dinner on the night itself.');
+  if (group === 'Birthday') musts.push('Birthday dinner on the day itself.');
+  items.forEach(function(b) { var n = plStr_(b.Notes, 200); if (n) musts.push(items.length > 1 ? (plStr_(b.City, 60) || plStr_(b.Country, 60)) + ': ' + n : n); });
+  var pieces = [];
+  items.forEach(function(b) {
+    (b.activities || []).forEach(function(a) { if (!a.done && plStr_(a.activity, 100)) pieces.push({ kind: 'wish', name: plStr_(a.activity, 100), detail: plPlaceName_(b) }); });
+  });
+  return { title: title.slice(0, 80), where: where.slice(0, 160), months: months, travelers: travelers, mustHaves: musts.join(' ').slice(0, 1000), pieces: pieces.slice(0, 30), occasion: occasion };
+}
+
+/** Bucket rows → {ideaId: ['Lisbon, Portugal', …]} for the places a Trip Idea came from. */
+function plBucketByIdea_(bucket) {
+  var out = {};
+  (bucket || []).forEach(function(b) { var id = plStr_(b['Trip Idea'], 40); if (id) (out[id] = out[id] || []).push(plPlaceName_(b)); });
+  return out;
+}
+
+/**
+ * After the trip: bucket places linked to an idea that became a trip which has ended.
+ * ideas: [{id, tripId}]; tripsById: {TRIP-ID: {startDate, endDate, label}}; today.
+ * → [{bucket row, trip}] still to close (places not yet visited).
+ */
+function plToClose_(bucket, ideas, tripsById, today) {
+  var tripOf = {};
+  (ideas || []).forEach(function(i) { var t = i.tripId && tripsById[String(i.tripId).toUpperCase()]; if (t && (t.endDate || t.startDate) && (t.endDate || t.startDate) < today) tripOf[i.id] = t; });
+  return (bucket || []).filter(function(b) { return !String(b.Visited || '').trim() && tripOf[plStr_(b['Trip Idea'], 40)]; })
+    .map(function(b) { return { item: b, trip: tripOf[plStr_(b['Trip Idea'], 40)] }; });
+}
+
 // ---- sheets -------------------------------------------------------------------
 
 /** A tab made before a column was added gets the new headers (ensureSheet only writes them on a blank tab). */
@@ -231,6 +294,7 @@ function plPlanned_() {
 /** GET places → {visits, bucket, planned, notes, occasions, picks}. */
 function webGetPlaces_() {
   plMoveOccasionsOnce_();
+  try { plCloseVisited_(); } catch (e) { Logger.log('webGetPlaces_: close visited — ' + e.message); }
   var ss = getSpreadsheet();
   var cs = plCountriesSheet_();
   var visits = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
@@ -250,4 +314,79 @@ function webGetPlaces_() {
   var picks = plPicks_(getConfigValues()['places_occasions']);
   var used = visits.map(function(x) { return x.Occasion; }).concat(bucket.map(function(x) { return x.Occasion; }));
   return { ok: true, visits: visits, bucket: bucket, planned: planned, notes: notes, picks: picks, occasions: plSuggestions_(picks, used) };
+}
+
+/** Bucket rows with their things to do, by header. */
+function plBucketRows_() {
+  var bs = plBucketSheet_(), ss = getSpreadsheet();
+  var acts = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  var actBy = acts && acts.getLastRow() >= 2 ? plActivitiesBy_(acts.getDataRange().getValues()) : {};
+  return bs.getLastRow() >= 2 ? plObjects_(bs.getRange(1, 1, bs.getLastRow(), BUCKET_LIST_HEADERS.length).getValues()).map(function(b) {
+    b.activities = actBy[String(b.ID)] || []; return b; }) : [];
+}
+
+/** Writes one column of a bucket row by ID and header. */
+function plSetBucket_(id, header, value) {
+  var bs = plBucketSheet_(), col = BUCKET_LIST_HEADERS.indexOf(header) + 1;
+  if (!col || bs.getLastRow() < 2) return false;
+  var ids = bs.getRange(2, 1, bs.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) if (String(ids[i][0]).trim() === id) { bs.getRange(i + 2, col).setValue(value); return true; }
+  return false;
+}
+
+/** POST places_plan_preview {bucketIds} → {brief, places}. */
+function webPlacesPlanPreview_(body) {
+  var ids = (body && body.bucketIds) || [];
+  var items = plBucketRows_().filter(function(b) { return ids.indexOf(String(b.ID)) !== -1; });
+  if (!items.length) return { ok: false, error: 'Choose at least one place.' };
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  return { ok: true, brief: plBriefFrom_(items, today, plPicks_(getConfigValues()['places_occasions'])), places: items.map(plPlaceName_) };
+}
+
+/**
+ * POST places_plan_idea {bucketIds, edits:{title, where, travelers, mustHaves}} → saves the brief as a
+ * Trip Idea (through webSaveTripIdea_, so every field is bounded there) and links each place to it.
+ */
+function webPlacesPlanIdea_(body) {
+  var pv = webPlacesPlanPreview_(body);
+  if (!pv.ok) return pv;
+  var e = (body && body.edits) || {}, b = pv.brief;
+  var idea = { title: e.title !== undefined ? e.title : b.title, where: e.where !== undefined ? e.where : b.where, months: b.months,
+    travelers: e.travelers !== undefined ? e.travelers : b.travelers, mustHaves: e.mustHaves !== undefined ? e.mustHaves : b.mustHaves,
+    pieces: b.pieces, status: 'brainstorming', pace: 'balanced', openTo: [] };
+  var r = webSaveTripIdea_({ idea: idea });
+  if (!r || !r.ok) return r || { ok: false, error: 'The idea didn’t save.' };
+  plLocked_(function() { (body.bucketIds || []).forEach(function(id) { plSetBucket_(String(id), 'Trip Idea', r.idea.id); }); });
+  return { ok: true, idea: r.idea };
+}
+
+/** Trip Ideas' "From your bucket list" line: {ideaId: [place names]}. Never throws. */
+function plBucketForIdeas_() {
+  try { return plBucketByIdea_(plBucketRows_()); } catch (e) { Logger.log('plBucketForIdeas_: ' + e.message); return {}; }
+}
+
+/**
+ * Places planned into an idea that became a trip which has ended are marked visited (the trip's
+ * year), and each gets a Countries visit unless one for that trip is already there. Runs on
+ * every places read; a place already visited is never touched again.
+ */
+function plCloseVisited_() {
+  var bucket = plBucketRows_().filter(function(b) { return plStr_(b['Trip Idea'], 40) && !String(b.Visited || '').trim(); });
+  if (!bucket.length) return 0;
+  var ideas = tiRows_(tiIdeasSheet_(), TRIP_IDEAS_HEADERS.length).filter(function(r) { return String(r[0]).trim(); }).map(tiIdeaFromRow_);
+  var byId = {}; (readTripRegistry_().rows || []).forEach(function(t) { byId[t.tripId] = t; });
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var todo = plToClose_(bucket, ideas, byId, today);
+  if (!todo.length) return 0;
+  return plLocked_(function() {
+    var cs = plCountriesSheet_();
+    var have = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
+    todo.forEach(function(x) {
+      var b = x.item, t = x.trip, key = t.startDate + '|' + t.label, year = String(t.endDate || t.startDate).slice(0, 4);
+      plSetBucket_(String(b.ID), 'Visited', year);
+      var dup = have.some(function(v) { return String(v.Country) === String(b.Country) && String(v.City || '') === String(b.City || '') && String(v['Trip Key'] || '') === key; });
+      if (!dup) cs.appendRow(['c_' + Date.now() + '_' + b.ID, b.Country, b.City || '', Number(year), b.Traveller || 'Both', key, '', b.Occasion || '']);
+    });
+    return todo.length;
+  });
 }

@@ -9026,6 +9026,7 @@ function TiIdeaCard(props){var h=React.createElement;var i=props.idea;var s=tiId
     style:{textAlign:'left',display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(i.status==='brainstorming'?'#2f5ea8':TI.br),color:TI.txt,cursor:'pointer',font:'inherit',width:'100%'}},
     h('span',{style:{fontSize:17,fontWeight:700,color:TI.hi}},i.title),
     h('span',{style:{fontSize:13,color:TI.soft}},[tiMonthsText_(i.months),tiNightsText_(i.nightsMin,i.nightsMax),i.travelers].filter(Boolean).join(' · ')),
+    i.fromBucket&&i.fromBucket.length?h('span',{className:'ti-from-bucket',style:{fontSize:12,color:'#e3c46a'}},'From your bucket list: '+i.fromBucket.join(' · ')):null,
     h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},pill('n',s.count+(s.count===1?' option':' options'),TI.pill,'#cfe0ff'),
       s.star&&pill('s','★ '+s.star,'#33280f','#f6dc97'),
       s.nights&&pill('ni',s.nights.lo===s.nights.hi?s.nights.lo+' nights':s.nights.lo+'–'+s.nights.hi+' nights',TI.pill,'#cfe0ff'),

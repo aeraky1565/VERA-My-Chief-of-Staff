@@ -23,6 +23,7 @@ function makeSheet(rows) {
   s.getRange = (r, c, n, w) => ({
     getValues: () => s.rows.slice(r - 1, r - 1 + (n || 1)).map(x => { const o = []; for (let i = 0; i < (w || 1); i++) o.push(x[c - 1 + i] === undefined ? '' : x[c - 1 + i]); return o; }),
     setValues: v => v.forEach((row, i) => { const t = s.rows[r - 1 + i] = s.rows[r - 1 + i] || []; row.forEach((x, j) => { t[c - 1 + j] = x; }); }),
+    setValue: v => { const t = s.rows[r - 1] = s.rows[r - 1] || []; t[c - 1] = v; },
   });
   s.appendRow = row => s.rows.push(row.slice());
   return s;
@@ -51,10 +52,12 @@ function ctx(o) {
     tripItemsFor_: key => (o.items || {})[key] || [],
     tripCountries_: (items, names, airport) => items.map(it => ({ country: airport(it.code), role: it.role || 'stay' })).filter(x => x.country && x.country !== 'United States'),
     lfViews_: () => o.views || { places: [], things: [], lessons: [] },
+    TRIP_IDEAS_HEADERS: ['Idea ID', 'Title'], tiIdeasSheet_: () => null, tiRows_: () => (o.ideas || []).map(i => [i.id, i]), tiIdeaFromRow_: r => r[1],
+    webSaveTripIdea_: body => { (o.saved = o.saved || []).push(body.idea); return o.saveFails ? { ok: false, error: 'Give the idea a name' } : { ok: true, idea: Object.assign({ id: 'IDEA-NEW' }, body.idea) }; },
     lfPlaceWords_: s => String(s).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 2 && ['trip', 'the', 'and'].indexOf(w) === -1),
   };
   vm.createContext(c); vm.runInContext(SRC, c);
-  c.__sheets = sheets; c.__props = props; c.__cache = cache;
+  c.__sheets = sheets; c.__props = props; c.__cache = cache; c.__o = o;
   return c;
 }
 
@@ -159,6 +162,69 @@ console.log('\nthe Bucket List');
   check('filters: not yet visited', ids('open') === '1,2,4');
   check('filters: dream trips, for an occasion, 4★ and up leave visited ones out', ids('dream') === '2' && ids('occasion') === '4' && ids('stars') === '1,2');
   check('filters: all', ids('all') === '1,2,3,4');
+}
+
+console.log('\nplan as one trip: the brief');
+{
+  const c = ctx();
+  const items = [
+    { ID: 'b1', Country: 'Portugal', City: 'Lisbon', 'Target Year': 2027, Traveller: 'Both', Notes: 'stay in Alfama', Occasion: '10th anniversary',
+      activities: [{ activity: 'Tram 28', done: false }, { activity: 'Pastéis in Belém', done: true }] },
+    { ID: 'b2', Country: 'Portugal', City: 'Porto', 'Target Year': 2028, Traveller: 'Both', Notes: '', Occasion: '', activities: [{ activity: 'Port lodges', done: false }] },
+    { ID: 'b3', Country: 'Portugal', City: 'Douro Valley', 'Target Year': '', Traveller: 'Victoria', Notes: 'a night at a quinta', Occasion: '', activities: [] },
+  ];
+  const b = c.plBriefFrom_(items, '2026-11-03', c.plPicks_(''));
+  check('title: the occasion leads, then the country and cities', b.title === '10th anniversary in Portugal: Lisbon, Porto, Douro Valley', b.title);
+  check('where: the cities, with the country once', b.where === 'Lisbon, Porto, Douro Valley (Portugal)', b.where);
+  check('months: all of the earliest target year', b.months.length === 12 && b.months[0] === '2027-01' && b.months[11] === '2027-12');
+  check('who: mixed means both of us', b.travelers === 'Ahmed and Victoria');
+  check('must haves: the anniversary dinner, then each place’s notes', b.mustHaves === 'Anniversary dinner on the night itself. Lisbon: stay in Alfama Douro Valley: a night at a quinta', b.mustHaves);
+  check('wishes: things not done yet, tagged with their place', JSON.stringify(b.pieces) === JSON.stringify([{ kind: 'wish', name: 'Tram 28', detail: 'Lisbon, Portugal' }, { kind: 'wish', name: 'Port lodges', detail: 'Porto, Portugal' }]), JSON.stringify(b.pieces));
+  check('the occasion comes along', b.occasion === '10th anniversary');
+  const one = c.plBriefFrom_([{ Country: 'Norway', 'Target Year': 2026, Traveller: 'Ahmed', Notes: 'by train', activities: [] }], '2026-11-03', []);
+  check('one place, no city: the country; this year means from next month', one.title === 'Norway' && one.where === 'Norway' && one.months.join() === '2026-12' && one.travelers === 'Ahmed' && one.mustHaves === 'by train', JSON.stringify(one));
+  check('a past target year gives no months', c.plBriefFrom_([{ Country: 'Peru', 'Target Year': 2020 }], '2026-11-03', []).months.length === 0);
+  const two = c.plBriefFrom_([{ Country: 'Spain', City: 'Seville' }, { Country: 'Portugal', City: 'Lisbon', Occasion: 'Mom’s 70th birthday' }], '2026-11-03', c.plPicks_(''));
+  check('two countries: each city with its country; a birthday dinner', two.where === 'Seville (Spain), Lisbon (Portugal)' && /^Mom’s 70th birthday in Spain & Portugal/.test(two.title) && /^Birthday dinner/.test(two.mustHaves), JSON.stringify(two));
+}
+
+console.log('\nplan as one trip: saving');
+{
+  const c = ctx({ bucket: [['b1', 'Portugal', 'Lisbon', 2027, 'Both', 4, '', 'stay in Alfama', '', '10th anniversary', ''], ['b2', 'Portugal', 'Porto', 2027, 'Both', 4, '', '', '', '', ''], ['b3', 'Peru', '', '', 'Both', 3, '', '', '', '', '']],
+    acts: [['a1', 'b1', 'Tram 28', '', '']] });
+  const pv = c.webPlacesPlanPreview_({ bucketIds: ['b1', 'b2'] });
+  check('preview: the brief and the places', pv.ok && pv.places.join('|') === 'Lisbon, Portugal|Porto, Portugal' && pv.brief.pieces.length === 1);
+  check('preview: nothing chosen is an error', c.webPlacesPlanPreview_({ bucketIds: [] }).ok === false);
+  const r = c.webPlacesPlanIdea_({ bucketIds: ['b1', 'b2'], edits: { title: 'Portugal for our 10th', mustHaves: 'Alfama' } });
+  const saved = c.__o.saved[0];
+  check('saves through Trip Ideas, with the edits over the brief', r.ok && saved.title === 'Portugal for our 10th' && saved.mustHaves === 'Alfama' && saved.where === 'Lisbon, Porto (Portugal)' && saved.status === 'brainstorming' && saved.pieces[0].name === 'Tram 28', JSON.stringify(saved));
+  const rows = c.__sheets['Bucket List'].rows, col = BHEAD.indexOf('Trip Idea');
+  check('each chosen place links to the new idea; others don’t', rows[1][col] === 'IDEA-NEW' && rows[2][col] === 'IDEA-NEW' && !rows[3][col]);
+  check('Trip Ideas reads the link back: places by idea', JSON.stringify(c.plBucketForIdeas_()) === JSON.stringify({ 'IDEA-NEW': ['Lisbon, Portugal', 'Porto, Portugal'] }));
+  const bad = ctx({ saveFails: true, bucket: [['b1', 'Peru', '', '', 'Both', 3, '', '', '', '', '']] });
+  check('a failed save links nothing', bad.webPlacesPlanIdea_({ bucketIds: ['b1'], edits: { title: '' } }).ok === false && !bad.__sheets['Bucket List'].rows[1][col]);
+  check('the routes and the Trip Ideas join are wired', /case 'places_plan_preview':\s*return jsonOut_\(webPlacesPlanPreview_\(body\)\)/.test(WEB) && /case 'places_plan_idea':\s*return jsonOut_\(webPlacesPlanIdea_\(body\)\)/.test(WEB)
+    && /if \(fromBucket\[i\.id\]\) i\.fromBucket = fromBucket\[i\.id\];/.test(fs.readFileSync(path.join(ROOT, 'TripIdeas.js'), 'utf8')));
+}
+
+console.log('\nafter the trip');
+{
+  const c = ctx();
+  const bucket = [{ ID: 'b1', 'Trip Idea': 'I1' }, { ID: 'b2', 'Trip Idea': 'I1', Visited: '2027' }, { ID: 'b3', 'Trip Idea': 'I2' }, { ID: 'b4', 'Trip Idea': '' }, { ID: 'b5', 'Trip Idea': 'I3' }];
+  const ideas = [{ id: 'I1', tripId: 'TRIP-1' }, { id: 'I2', tripId: 'TRIP-2' }, { id: 'I3', tripId: '' }];
+  const trips = { 'TRIP-1': { startDate: '2027-06-12', endDate: '2027-06-22', label: 'Lisbon & Porto' }, 'TRIP-2': { startDate: '2027-09-01', endDate: '2027-09-09', label: 'Later' } };
+  const todo = c.plToClose_(bucket, ideas, trips, '2027-07-01');
+  check('only places whose idea’s trip has ended, not yet visited', todo.map(x => x.item.ID).join() === 'b1' && todo[0].trip.label === 'Lisbon & Porto');
+  const s = ctx({ today: '2027-07-01', registry: [{ tripId: 'TRIP-1', status: 'active', startDate: '2027-06-12', endDate: '2027-06-22', label: 'Lisbon & Porto' }], ideas: [{ id: 'I1', tripId: 'TRIP-1' }],
+    bucket: [['b1', 'Portugal', 'Lisbon', 2027, 'Both', 4, '', '', '', '10th anniversary', 'I1'], ['b2', 'Portugal', 'Porto', 2027, 'Both', 4, '', '', '', '', 'I1']],
+    visits: [['c1', 'Portugal', 'Porto', 2027, 'Both', '2027-06-12|Lisbon & Porto', '', '']] });
+  s.webGetPlaces_();
+  const rows = s.__sheets['Bucket List'].rows, v = BHEAD.indexOf('Visited');
+  check('they’re marked visited with the trip’s year', rows[1][v] === '2027' && rows[2][v] === '2027');
+  const cs = s.__sheets.Countries.rows;
+  check('a visit is added for Lisbon, with its occasion; Porto already had one', cs.length === 3 && cs[2][1] === 'Portugal' && cs[2][2] === 'Lisbon' && cs[2][5] === '2027-06-12|Lisbon & Porto' && cs[2][7] === '10th anniversary', JSON.stringify(cs));
+  s.webGetPlaces_();
+  check('…and only once', s.__sheets.Countries.rows.length === 3);
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

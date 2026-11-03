@@ -16,6 +16,10 @@ const APP = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
 const cut = (a, b) => { const i = APP.indexOf(a), j = APP.indexOf(b); return i === -1 || j === -1 ? '' : APP.slice(i, j + b.length); };
 const PC = cut('// ---- PlacesCountries (Travel › Countries, issue #228) ----', '// ---- /PlacesCountries ----');
 const PB = cut('// ---- PlacesBucket (Travel › Bucket List, issue #228) ----', '// ---- /PlacesBucket ----');
+const tiMonths = (() => { const i = APP.indexOf('function tiMonthsText_('); let d = 0;
+  for (let j = APP.indexOf('{', i); j < APP.length; j++) { if (APP[j] === '{') d++; else if (APP[j] === '}' && --d === 0) return APP.slice(i, j + 1); } return ''; })();
+const tiMonthsVar = (APP.match(/var TI_MONTHS=[^;]*;/) || [''])[0];
+const LITE = fs.readFileSync(path.join(ROOT, 'docs/dashboard-lite.html'), 'utf8');
 const isoMap = (APP.match(/const COUNTRY_ISO_MAP=\{[^\n]*?\};/) || [''])[0];
 const isoFn = (() => { const i = APP.indexOf('function countryToIso('); let d = 0;
   for (let j = APP.indexOf('{', i); j < APP.length; j++) { if (APP[j] === '{') d++; else if (APP[j] === '}' && --d === 0) return APP.slice(i, j + 1); } return ''; })();
@@ -24,6 +28,7 @@ console.log('\nthe source');
 check('the block is in app.js', PB.length > 4000 && PC.length > 4000);
 check('Travel › Bucket List mounts it, with Add a place and the way to Trip Ideas', APP.indexOf("React.createElement(PlacesBucket,{apiUrl:apiUrl,apiToken:apiToken,busy:busy,onAdd:onAddBucketItem,onGoIdeas:function(){setSub('ideas');}") !== -1);
 check('the old Bucket List panel is no longer mounted', APP.indexOf('React.createElement(BucketListPanel,') === -1);
+check('Trip Ideas cards say which bucket places an idea came from, in both dashboards', [APP, LITE].every(s => s.indexOf("i.fromBucket&&i.fromBucket.length?h('span',{className:'ti-from-bucket',style:{fontSize:12,color:'#e3c46a'}},'From your bucket list: '+i.fromBucket.join(' · ')):null,") !== -1));
 check('the add form has an Occasion field', /className:"form-input bucket-occasion",value:occasion,onChange:function\(e\)\{setOccasion\(e\.target\.value\);\}/.test(APP));
 
 const DATA = { ok: true, visits: [], planned: [], notes: {},
@@ -53,6 +58,15 @@ function apiGet(u, t, p) { CALLS.push(p); var a = p.action;
   if (a === 'toggle_bucket_activity') DATA.bucket.forEach(function(b) { b.activities.forEach(function(x) { if (x.id === p.id) x.done = !!p.done; }); });
   if (a === 'delete_bucket_activity') DATA.bucket.forEach(function(b) { b.activities = b.activities.filter(function(x) { return x.id !== p.id; }); });
   return Promise.resolve({ ok: true }); }
+window.POSTS = [];
+function apiPost(u, t, b) { POSTS.push(b);
+  if (b.action === 'places_plan_preview') return Promise.resolve({ ok: true, places: ['Lisbon, Portugal', 'Hanoi, Vietnam'], brief: { title: '10th anniversary in Portugal & Vietnam: Lisbon, Hanoi', where: 'Lisbon (Portugal), Hanoi (Vietnam)',
+    months: ['2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07', '2027-08', '2027-09', '2027-10', '2027-11', '2027-12'], travelers: 'Ahmed and Victoria', mustHaves: 'Anniversary dinner on the night itself.',
+    pieces: [{ kind: 'wish', name: 'Tram 28', detail: 'Lisbon, Portugal' }], occasion: '10th anniversary' } });
+  if (b.action === 'places_plan_idea') { b.bucketIds.forEach(function(id) { find(id)['Trip Idea'] = 'IDEA-NEW'; }); return Promise.resolve({ ok: true, idea: { id: 'IDEA-NEW' } }); }
+  return Promise.resolve({ ok: false }); }
+${tiMonthsVar}
+${tiMonths}
 window.confirm = function() { return true; };
 function AddBucketItemModal(p) { return React.createElement('div', { className: 'stub-add' }, React.createElement('button', { className: 'stub-save', onClick: function() { p.onSave({ country: 'Peru', city: 'Cusco', occasion: 'Honeymoon redo' }); } }, 'save')); }
 ${isoMap}
@@ -105,6 +119,22 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
     await page.click('.pb-card[data-id="b1"] .pb-pick'); await page.click('.pb-card[data-id="b3"] .pb-pick'); await wait(60);
     check(L + ': ticking places marks them chosen', (await page.$$eval('.pb-pick[aria-pressed="true"]', ns => ns.length)) === 2);
 
+    check(L + ': a bar offers to plan them as one trip', /2 places chosen/.test(await page.$eval('.pb-bar', n => n.innerText)) && (await page.$eval('.pb-plan', n => n.textContent)) === 'Plan as one trip');
+    await page.click('.pb-plan'); await wait(200);
+    check(L + ': the brief comes from those places', (await page.evaluate(() => JSON.stringify(POSTS[0]))) === JSON.stringify({ action: 'places_plan_preview', bucketIds: ['b1', 'b3'] }));
+    check(L + ': the sheet shows the places, title, where, when, who, occasion and wishes', (await page.$$eval('.pb-plan-place', ns => ns.map(n => n.textContent))).join('|') === 'Lisbon, Portugal|Hanoi, Vietnam'
+      && (await page.inputValue('.pb-plan-title')) === '10th anniversary in Portugal & Vietnam: Lisbon, Hanoi' && (await page.inputValue('.pb-plan-where')) === 'Lisbon (Portugal), Hanoi (Vietnam)'
+      && /2027/.test(await page.$eval('.pb-plan-when', n => n.textContent)) && (await page.inputValue('.pb-plan-who')) === 'Ahmed and Victoria' && (await page.$eval('.pb-plan-occ', n => n.textContent)) === '10th anniversary'
+      && /Tram 28[\s\S]*Lisbon, Portugal/.test(await page.$eval('.pb-plan-wish', n => n.innerText)) && !(await page.$('.pb-bar')));
+    await page.fill('.pb-plan-title', 'Our 10th'); await page.fill('.pb-plan-must', 'Dinner at the quinta'); await page.click('.pb-plan-save'); await wait(300);
+    const sp = await page.evaluate(() => POSTS.filter(p => p.action === 'places_plan_idea').pop());
+    check(L + ': Add to Trip Ideas sends the edits for those places', sp && sp.bucketIds.join() === 'b1,b3' && sp.edits.title === 'Our 10th' && sp.edits.mustHaves === 'Dinner at the quinta' && sp.edits.where === 'Lisbon (Portugal), Hanoi (Vietnam)', JSON.stringify(sp));
+    check(L + ': then opens Trip Ideas, clears the choice, and the places show their idea', (await page.evaluate(() => IDEAS.slice(-1)[0])) === 'IDEA-NEW' && !(await page.$('.pb-plansheet')) && (await page.$$('.pb-pick[aria-pressed="true"]')).length === 0
+      && !!(await page.$('.pb-card[data-id="b1"] .pb-idea')));
+    await page.click('.pb-card[data-id="b3"] .pb-pick'); await wait(50);
+    check(L + ': one place says Plan a trip', (await page.$eval('.pb-plan', n => n.textContent)) === 'Plan a trip');
+    await page.click('.pb-plan'); await wait(150); await page.click('.pb-plan-cancel'); await wait(50);
+    check(L + ': Cancel closes the sheet and keeps the choice', !(await page.$('.pb-plansheet')) && !!(await page.$('.pb-bar')));
     await page.click('.pb-card[data-id="b3"] .pb-visited'); await wait(200);
     check(L + ': Mark visited moves it out of Not yet visited', !(await ids()).includes('b3') && (await page.evaluate(() => /^\d{4}$/.test(CALLS.filter(c => c.action === 'update_bucket_item').pop().visited))));
     await page.click('.pb-card[data-id="b2"] .pb-remove'); await wait(200);

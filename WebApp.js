@@ -639,6 +639,8 @@ function doPost(e) {
       case 'trip_share_email':           return jsonOut_(webTripShareEmail_(body));
       // Trip Ideas (TripIdeas.js): POST, because a brief and an option's legs are free text.
       case 'trip_idea_save':             return jsonOut_(webSaveTripIdea_(body));
+      case 'places_plan_preview':        return jsonOut_(webPlacesPlanPreview_(body));
+      case 'places_plan_idea':           return jsonOut_(webPlacesPlanIdea_(body));
       case 'gathering_save':             return jsonOut_(webSaveGathering_(body));
       case 'budget_scenario_save':       return jsonOut_(webSaveBudgetScenario_(body));
       case 'budget_scenario_delete':     return jsonOut_(webDeleteBudgetScenario_(body));

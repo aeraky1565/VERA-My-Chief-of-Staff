@@ -1777,6 +1777,7 @@ function TiIdeaCard(props){var h=React.createElement;var i=props.idea;var s=tiId
     style:{textAlign:'left',display:'flex',flexDirection:'column',gap:8,padding:14,borderRadius:12,background:TI.card,border:'1px solid '+(i.status==='brainstorming'?'#2f5ea8':TI.br),color:TI.txt,cursor:'pointer',font:'inherit',width:'100%'}},
     h('span',{style:{fontSize:17,fontWeight:700,color:TI.hi}},i.title),
     h('span',{style:{fontSize:13,color:TI.soft}},[tiMonthsText_(i.months),tiNightsText_(i.nightsMin,i.nightsMax),i.travelers].filter(Boolean).join(' · ')),
+    i.fromBucket&&i.fromBucket.length?h('span',{className:'ti-from-bucket',style:{fontSize:12,color:'#e3c46a'}},'From your bucket list: '+i.fromBucket.join(' · ')):null,
     h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},pill('n',s.count+(s.count===1?' option':' options'),TI.pill,'#cfe0ff'),
       s.star&&pill('s','★ '+s.star,'#33280f','#f6dc97'),
       s.nights&&pill('ni',s.nights.lo===s.nights.hi?s.nights.lo+' nights':s.nights.lo+'–'+s.nights.hi+' nights',TI.pill,'#cfe0ff'),
@@ -3325,7 +3326,7 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
   var _d=React.useState(null),d=_d[0],setD=_d[1];var _e=React.useState(''),err=_e[0],setErr=_e[1];
   var _f=React.useState('open'),filter=_f[0],setFilter=_f[1];var _ed=React.useState(null),edit=_ed[0],setEdit=_ed[1];
   var _a=React.useState(false),adding=_a[0],setAdding=_a[1];var _n=React.useState({}),newAct=_n[0],setNewAct=_n[1];var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
-  var _s=React.useState({}),sel=_s[0],setSel=_s[1];
+  var _s=React.useState({}),sel=_s[0],setSel=_s[1];var _pl=React.useState(null),plan=_pl[0],setPlan=_pl[1];
   function load(){if(!apiUrl||!apiToken)return;apiGet(apiUrl,apiToken,{action:'places'}).then(function(r){if(r&&r.ok)setD(r);else setErr((r&&r.error)||'Could not load the bucket list.');}).catch(function(e){setErr(e.message||'Could not load the bucket list.');});}
   React.useEffect(load,[apiUrl,apiToken]);
   function call(p){setBusy(true);return apiGet(apiUrl,apiToken,p).then(function(r){if(r&&r.ok===false)setErr(r.error||'That didn’t save.');return r;}).catch(function(e){setErr(e.message||'That didn’t save.');}).then(function(r){setBusy(false);load();return r;});}
@@ -3340,6 +3341,11 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
   if(!d)return h('div',{className:'pb-panel',style:{display:'flex',flexDirection:'column',gap:12}},head,err?h('div',{style:{color:'#f87171',fontSize:13}},err):h('div',{className:'loading-text'},'Loading the bucket list…'),modal);
   var shown=pbView_(d.bucket,filter);var picks=d.occasions||d.picks||[];
   var nSel=Object.keys(sel).filter(function(k){return sel[k]&&(d.bucket||[]).some(function(b){return b.ID===k&&!b.visited;});});
+  function openPlan(){setPlan({loading:true});setErr('');apiPost(apiUrl,apiToken,{action:'places_plan_preview',bucketIds:nSel}).then(function(r){
+    if(r&&r.ok)setPlan({brief:r.brief,places:r.places,title:r.brief.title,where:r.brief.where,travelers:r.brief.travelers,mustHaves:r.brief.mustHaves});else{setPlan(null);setErr((r&&r.error)||'Could not build the brief.');}})
+    .catch(function(e){setPlan(null);setErr(e.message||'Could not build the brief.');});}
+  function savePlan(){setBusy(true);apiPost(apiUrl,apiToken,{action:'places_plan_idea',bucketIds:nSel,edits:{title:plan.title,where:plan.where,travelers:plan.travelers,mustHaves:plan.mustHaves}}).then(function(r){
+    setBusy(false);if(r&&r.ok){setPlan(null);setSel({});load();if(props.onGoIdeas)props.onGoIdeas(r.idea.id);}else setErr((r&&r.error)||'The idea didn’t save.');}).catch(function(e){setBusy(false);setErr(e.message||'The idea didn’t save.');});}
   function saveEdit(){var b=edit;call({action:'update_bucket_item',id:b.ID,occasion:b.occasion,notes:b.notes,targetYear:b.targetYear,traveller:b.traveller}).then(function(r){if(!r||r.ok!==false)setEdit(null);});}
   var cards=shown.map(function(b){var iso=pcIso_(b.Country);var on=!!sel[b.ID];var dream=String(b['Dream Trip']||'').trim();var acts=b.activities||[];var isEdit=edit&&edit.ID===b.ID;
     var meta=[b['Target Year']?String(b['Target Year']):'Any year',b.Traveller||'Both'].concat(b.visited?['Visited '+(String(b.Visited).match(/\d{4}/)||[''])[0]]:[]).filter(Boolean).join(' · ');
@@ -3384,7 +3390,25 @@ function PlacesBucket(props){var h=React.createElement;var apiUrl=props.apiUrl,a
     err?h('div',{role:'alert',style:{color:'#f87171',fontSize:13}},err):null,
     shown.length?h('span',{style:{fontSize:12,color:C.mute}},'Tick places that would make one trip, then plan them together.'):h('div',{style:{color:C.mute,fontSize:13}},(d.bucket||[]).length?'Nothing matches this filter.':'No places yet. Add one to start the list.'),
     cards,
-    nSel.length&&props.renderPlan?props.renderPlan(nSel.map(function(id){return (d.bucket||[]).filter(function(b){return b.ID===id;})[0];}),function(){setSel({});load();}):null,
+    nSel.length&&!plan?h('div',{className:'pb-bar',style:{position:'sticky',bottom:12,zIndex:5,background:'#1d1a0c',border:'1px solid '+C.gold,borderRadius:14,padding:'10px 12px',display:'flex',alignItems:'center',gap:10}},
+      h('span',{style:{flex:1,fontSize:13,color:'#f0d78a'}},nSel.length+' place'+(nSel.length===1?'':'s')+' chosen'),
+      h('button',{type:'button',className:'pb-plan',onClick:openPlan,style:{minHeight:44,padding:'0 16px',borderRadius:10,background:C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer'}},nSel.length>1?'Plan as one trip':'Plan a trip')):null,
+    plan?h('div',{className:'pb-plansheet',role:'dialog','aria-label':'Plan as one trip',style:Object.assign({},card,{border:'1px solid '+C.gold,gap:12,padding:14})},
+      h('h3',{style:{margin:0,fontSize:16,fontWeight:700}},nSel.length>1?'Plan as one trip':'Plan a trip'),
+      plan.loading?h('div',{className:'loading-text'},'Building the brief…'):[
+      h('div',{key:'pl',style:{display:'flex',flexWrap:'wrap',gap:6}},plan.places.map(function(p){return h('span',{key:p,className:'pb-plan-place',style:{fontSize:12,padding:'6px 10px',borderRadius:999,background:'#1d1a0c',border:'1px solid #6b5a10',color:C.goldT}},p);})),
+      h('label',{key:'t',style:lab},'Title',h('input',{className:'pb-plan-title',value:plan.title,onChange:function(e){setPlan(Object.assign({},plan,{title:e.target.value}));},style:inp})),
+      h('label',{key:'w',style:lab},'Where',h('input',{className:'pb-plan-where',value:plan.where,onChange:function(e){setPlan(Object.assign({},plan,{where:e.target.value}));},style:inp})),
+      h('div',{key:'ww',style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        h('div',{style:lab},'When',h('span',{className:'pb-plan-when',style:Object.assign({},inp,{display:'flex',alignItems:'center',color:'#c4cde4'})},tiMonthsText_(plan.brief.months))),
+        h('label',{style:lab},'Who',h('input',{className:'pb-plan-who',value:plan.travelers,onChange:function(e){setPlan(Object.assign({},plan,{travelers:e.target.value}));},style:inp}))),
+      plan.brief.occasion?h('div',{key:'o',style:{fontSize:12,color:C.mute,display:'flex',gap:8,alignItems:'center'}},'Occasion',h('span',{className:'pb-plan-occ',style:{fontSize:12,padding:'3px 9px',borderRadius:999,background:'#2a1a24',color:C.pink}},plan.brief.occasion)):null,
+      h('label',{key:'m',style:lab},'Must haves',h('textarea',{className:'pb-plan-must',rows:3,value:plan.mustHaves,onChange:function(e){setPlan(Object.assign({},plan,{mustHaves:e.target.value}));},style:Object.assign({},inp,{padding:'10px 12px',lineHeight:1.45,resize:'vertical'})})),
+      plan.brief.pieces.length?h('div',{key:'p',style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:C.mute}},'Wishes, from the things to do (Ask VERA fits these in)'),
+        plan.brief.pieces.map(function(x,i){return h('div',{key:i,className:'pb-plan-wish',style:{display:'flex',justifyContent:'space-between',gap:8,padding:'8px 10px',borderRadius:10,background:C.deep,border:'1px solid #1c2a48',fontSize:13}},h('span',null,x.name),h('span',{style:{fontSize:11,color:C.blue,flexShrink:0}},x.detail));})):null,
+      h('span',{key:'n',style:{fontSize:12,color:C.mute,lineHeight:1.5}},'Nights, budget, pace and travel modes stay for you to set in Trip Ideas. The places stay on the Bucket List, linked to the idea.'),
+      h('div',{key:'b',style:{display:'flex',gap:10}},h('button',{type:'button',className:'pb-plan-cancel',onClick:function(){setPlan(null);},style:Object.assign({},small,{flex:1,minHeight:48,color:'#aab6d6'})},'Cancel'),
+        h('button',{type:'button',className:'pb-plan-save',disabled:busy||!String(plan.title||'').trim(),onClick:savePlan,style:{flex:2,minHeight:48,borderRadius:12,background:C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer'}},'Add to Trip Ideas'))]):null,
     modal);}
 // ---- /PlacesBucket ----
 // ---- TripGiftsPanel (Travel › Gifts, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
