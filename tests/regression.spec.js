@@ -12,7 +12,7 @@ const HAS_CREDS = !!VERA_URL && !!VERA_TOKEN;
 const TAB_LABELS = [
   'home', 'chat', 'flags', 'tasks', 'projects', 'shopping',
   'Home Front', 'people', 'pto', 'travel', 'finances', 'health',
-  'career', 'growth', 'explore'
+  'career', 'life', 'system'
 ];
 
 // ─── Endpoint timing ────────────────────────────────────────────────────────
@@ -132,13 +132,13 @@ test.describe('Tier 2 — Authenticated UI', () => {
     await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
   });
 
-  test('notification/config modal opens via bell icon', async ({ page }) => {
+  test('bell icon opens System › Notifications', async ({ page }) => {
     await page.goto(BASE_URL, { waitUntil: 'load', timeout: 20000 });
     await page.waitForSelector('button.btn-settings', { timeout: 30000 });
-    // Click the 🔔 button (first .btn-settings)
+    // Click the 🔔 button (first .btn-settings): it opens the System tab, not a modal
     const settingsBtns = page.locator('button.btn-settings');
     await settingsBtns.first().click();
-    await expect(page.locator('.modal-overlay')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.system-tab')).toBeVisible({ timeout: 5000 });
     // Modal should not show a hard error — loading state is OK
     await expect(page.locator('text=Error loading')).not.toBeVisible({ timeout: 3000 });
   });
