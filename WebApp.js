@@ -7030,15 +7030,14 @@ function webAddBucketItem_(e) {
   var stars      = parseInt(p.stars, 10) || '';
   var dreamTrip  = (p.dreamTrip  || '').trim();
   var notes      = (p.notes      || '').trim();
+  var occasion   = (p.occasion   || '').trim();
   if (!country) throw new Error('Country is required.');
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
-  if (!sheet) throw new Error('Bucket List tab not found. Run setupVERA() first.');
+  var sheet = plBucketSheet_();   // Places.js: adds Occasion and Trip Idea to an older tab
   var id = 'b_' + Date.now();
-  sheet.appendRow([id, country, city, targetYear, traveller, stars, dreamTrip, notes, '']);
+  sheet.appendRow([id, country, city, targetYear, traveller, stars, dreamTrip, notes, '', occasion, '']);
   return { ok: true, entry: { ID: id, Country: country, City: city,
     'Target Year': targetYear, Traveller: traveller, Stars: stars,
-    'Dream Trip': dreamTrip, Notes: notes, Visited: '' } };
+    'Dream Trip': dreamTrip, Notes: notes, Visited: '', Occasion: occasion, 'Trip Idea': '' } };
 }
 
 function webUpdateBucketItem_(e) {
@@ -7046,10 +7045,10 @@ function webUpdateBucketItem_(e) {
   var id = (p.id || '').trim();
   if (!id) throw new Error('Bucket item ID is required.');
   var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.BUCKET_LIST);
+  var sheet = plBucketSheet_();
   if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'Entry not found.' };
   var rows    = sheet.getDataRange().getValues();
-  var headers = rows[0];
+  var headers = rows[0].map(function(h) { return String(h).trim(); });
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === id) {
       // Update only the fields present in params
@@ -7061,6 +7060,12 @@ function webUpdateBucketItem_(e) {
         var starsCol = headers.indexOf('Stars');
         if (starsCol >= 0) sheet.getRange(i + 1, starsCol + 1).setValue(parseInt(p.stars, 10) || '');
       }
+      // #228: the rest of a place, by header, only the fields sent
+      [['occasion', 'Occasion'], ['notes', 'Notes'], ['city', 'City'], ['traveller', 'Traveller'], ['dreamTrip', 'Dream Trip'], ['targetYear', 'Target Year']].forEach(function(f) {
+        if (p[f[0]] === undefined) return;
+        var col = headers.indexOf(f[1]);
+        if (col >= 0) sheet.getRange(i + 1, col + 1).setValue(f[0] === 'targetYear' ? (parseInt(p.targetYear, 10) || '') : String(p[f[0]]).trim());
+      });
       return { ok: true, id: id };
     }
   }

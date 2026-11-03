@@ -30,12 +30,12 @@ function makeSheet(rows) {
 function ctx(o) {
   o = o || {};
   const props = Object.assign({}, o.props || {});
-  const sheets = { Countries: makeSheet([o.oldHeaders ? HEAD.slice(0, 7) : HEAD].concat(o.visits || [])), 'Bucket List': makeSheet([BHEAD].concat(o.bucket || [])) };
+  const sheets = { Countries: makeSheet([o.oldHeaders ? HEAD.slice(0, 7) : HEAD].concat(o.visits || [])), 'Bucket List': makeSheet([o.oldBucket ? BHEAD.slice(0, 9) : BHEAD].concat(o.bucket || [])), BucketActivities: makeSheet([['ID', 'Bucket ID', 'Activity', 'Done', 'Added Date']].concat(o.acts || [])) };
   const cache = Object.assign({}, o.cache || {});
   const c = {
     String, Number, Object, Array, Date, JSON, Math, RegExp, isNaN, isFinite, Error,
     Logger: { log: () => {} },
-    TABS: { COUNTRIES: 'Countries', BUCKET_LIST: 'Bucket List' }, COUNTRIES_HEADERS: HEAD,
+    TABS: { COUNTRIES: 'Countries', BUCKET_LIST: 'Bucket List', BUCKET_ACTIVITIES: 'BucketActivities' }, COUNTRIES_HEADERS: HEAD, BUCKET_LIST_HEADERS: BHEAD,
     LockService: { getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
     CacheService: { getScriptCache: () => ({ get: k => cache[k] === undefined ? null : cache[k], put: (k, v) => { cache[k] = v; } }) },
@@ -135,10 +135,30 @@ console.log('\nthe endpoint');
     views: { places: [{ text: 'Rome at night' }], things: [], lessons: [] } });
   const r = c.webGetPlaces_();
   check('visits by header, with Occasion', r.visits.length === 1 && r.visits[0].Country === 'Italy' && r.visits[0].Occasion === '10th anniversary');
-  check('bucket: only places not yet visited', r.bucket.map(b => b.Country).join() === 'Norway');
+  check('bucket: every place, visited ones flagged', r.bucket.map(b => b.Country + ':' + b.visited).join() === 'Norway:false,Japan:true');
   check('planned comes along', r.planned.length === 1 && r.planned[0].country === 'Costa Rica');
   check('notes per country', r.notes.Italy && r.notes.Italy.loved[0] === 'Rome at night');
   check('occasion suggestions include what was used', r.occasions.indexOf('10th anniversary') !== -1 && r.picks[0] === 'Anniversary');
+}
+
+console.log('\nthe Bucket List');
+{
+  check('Bucket List gains Occasion and Trip Idea at the end', BHEAD.slice(9).join() === 'Occasion,Trip Idea' && BHEAD.slice(0, 9).join() === 'ID,Country,City,Target Year,Traveller,Stars,Dream Trip,Notes,Visited');
+  check('add_bucket_item writes the occasion, Trip Idea blank', /sheet\.appendRow\(\[id, country, city, targetYear, traveller, stars, dreamTrip, notes, '', occasion, ''\]\);/.test(WEB) && /var occasion   = \(p\.occasion   \|\| ''\)\.trim\(\);/.test(WEB));
+  check('update_bucket_item edits the rest by header', /\[\['occasion', 'Occasion'\], \['notes', 'Notes'\], \['city', 'City'\], \['traveller', 'Traveller'\], \['dreamTrip', 'Dream Trip'\], \['targetYear', 'Target Year'\]\]/.test(WEB));
+  check('the add form sends the occasion', APP.indexOf("dreamTrip:fields.dreamTrip||'',notes:fields.notes||'',occasion:fields.occasion||''}") !== -1 && APP.indexOf("notes:notes.trim(),occasion:occasion.trim()});}") !== -1);
+  const c = ctx({ oldBucket: true, bucket: [['b1', 'Portugal', 'Lisbon', 2027, 'Both', 4, '', 'stay in Alfama', ''], ['b2', 'Norway', '', 2028, 'Both', 5, 'Fjords by train', '', ''], ['b3', 'Japan', 'Kyoto', '', 'Both', 3, '', '', '2024']],
+    acts: [['a1', 'b1', 'Tram 28', '', ''], ['a2', 'b1', 'Pastéis in Belém', 'yes', ''], ['a3', 'b9', 'orphan', '', ''], ['a4', 'b2', 'Flåm railway', 'FALSE', '']] });
+  const r = c.webGetPlaces_();
+  check('an older tab gets the two new headers', c.__sheets['Bucket List'].rows[0].join() === BHEAD.join());
+  const b1 = r.bucket.find(b => b.ID === 'b1');
+  check('each place carries its things to do, in order, done read as yes', JSON.stringify(b1.activities.map(a => a.activity + ':' + a.done)) === JSON.stringify(['Tram 28:false', 'Pastéis in Belém:true']));
+  check('"FALSE" is not done; an orphan activity goes nowhere', r.bucket.find(b => b.ID === 'b2').activities[0].done === false && !JSON.stringify(r.bucket).includes('orphan'));
+  const items = [{ ID: '1', visited: false, Stars: 4 }, { ID: '2', visited: false, 'Dream Trip': 'Fjords', Stars: 5 }, { ID: '3', visited: true, Stars: 5, Occasion: 'Birthday' }, { ID: '4', visited: false, Occasion: 'Honeymoon redo', Stars: 2 }];
+  const ids = f => c.plBucketView_(items, f).map(x => x.ID).join();
+  check('filters: not yet visited', ids('open') === '1,2,4');
+  check('filters: dream trips, for an occasion, 4★ and up leave visited ones out', ids('dream') === '2' && ids('occasion') === '4' && ids('stars') === '1,2');
+  check('filters: all', ids('all') === '1,2,3,4');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

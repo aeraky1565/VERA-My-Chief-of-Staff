@@ -127,6 +127,30 @@ function plUpcoming_(rows, today) {
   }).sort(function(a, b) { return a.startDate < b.startDate ? -1 : 1; }).slice(0, 6);
 }
 
+/** Activities rows (with headers) → {bucketId: [{id, activity, done}]} in sheet order. */
+function plActivitiesBy_(rows) {
+  var out = {};
+  plObjects_(rows).forEach(function(a) {
+    var b = String(a['Bucket ID'] || '').trim(); if (!b) return;
+    var done = String(a.Done || '').trim().toLowerCase();
+    (out[b] = out[b] || []).push({ id: String(a.ID), activity: String(a.Activity || ''), done: !!done && done !== 'no' && done !== 'false' });
+  });
+  return out;
+}
+
+/** The Bucket List filters: open (not yet visited), dream, occasion, stars (4 and up), all. */
+function plBucketView_(items, filter) {
+  return (items || []).filter(function(b) {
+    if (filter === 'all') return true;
+    if (filter !== 'open' && b.visited) return false;
+    if (filter === 'open') return !b.visited;
+    if (filter === 'dream') return !!String(b['Dream Trip'] || '').trim();
+    if (filter === 'occasion') return !!String(b.Occasion || '').trim();
+    if (filter === 'stars') return Number(b.Stars) >= 4;
+    return true;
+  });
+}
+
 // ---- sheets -------------------------------------------------------------------
 
 /** A tab made before a column was added gets the new headers (ensureSheet only writes them on a blank tab). */
@@ -138,6 +162,8 @@ function plSchema_(sheet, headers) {
   }
   return sheet;
 }
+
+function plBucketSheet_() { return plSchema_(ensureSheet(getSpreadsheet(), TABS.BUCKET_LIST, BUCKET_LIST_HEADERS), BUCKET_LIST_HEADERS); }
 
 function plCountriesSheet_() { return plSchema_(ensureSheet(getSpreadsheet(), TABS.COUNTRIES, COUNTRIES_HEADERS), COUNTRIES_HEADERS); }
 
@@ -208,8 +234,12 @@ function webGetPlaces_() {
   var ss = getSpreadsheet();
   var cs = plCountriesSheet_();
   var visits = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
-  var bs = ss.getSheetByName(TABS.BUCKET_LIST);
-  var bucket = bs && bs.getLastRow() >= 2 ? plObjects_(bs.getDataRange().getValues()).filter(function(b) { return !String(b.Visited || '').trim(); }) : [];
+  var bs = plBucketSheet_();
+  var acts = ss.getSheetByName(TABS.BUCKET_ACTIVITIES);
+  var actBy = acts && acts.getLastRow() >= 2 ? plActivitiesBy_(acts.getDataRange().getValues()) : {};
+  var bucket = bs.getLastRow() >= 2 ? plObjects_(bs.getRange(1, 1, bs.getLastRow(), BUCKET_LIST_HEADERS.length).getValues()).map(function(b) {
+    b.visited = !!String(b.Visited || '').trim(); b.activities = actBy[String(b.ID)] || []; return b;
+  }) : [];
   var planned = [];
   try { planned = plPlanned_(); } catch (e) { Logger.log('webGetPlaces_: planned — ' + e.message); }
   var notes = {};

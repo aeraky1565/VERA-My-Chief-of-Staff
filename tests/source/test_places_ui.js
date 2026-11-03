@@ -34,7 +34,7 @@ const DATA = {
     { ID: 'c5', Country: 'Morocco', City: 'Marrakech', Year: 2025, Traveller: 'Ahmed', 'Trip Key': '2025-02-14|Marrakech', Occasion: 'Birthday' },
     { ID: 'c6', Country: 'United Kingdom', City: 'London', Year: 2023, Traveller: 'Both', 'Trip Key': '', Occasion: 'Work' },
   ],
-  bucket: [{ ID: 'b1', Country: 'Norway' }, { ID: 'b2', Country: 'Portugal' }],
+  bucket: [{ ID: 'b1', Country: 'Norway' }, { ID: 'b2', Country: 'Portugal' }, { ID: 'b3', Country: 'Peru', visited: true }],
   planned: [{ country: 'Portugal', tripKey: '2027-06-12|Lisbon & Porto', label: 'Lisbon & Porto', startDate: '2027-06-12', endDate: '2027-06-22' },
     { country: 'Japan', tripKey: '2027-03-01|Tokyo again', label: 'Tokyo again', startDate: '2027-03-01', endDate: '2027-03-09' }],
   notes: { Japan: { loved: ['depachika food halls'], next: ['autumn in Kyoto, and fewer cities'] } },
@@ -70,6 +70,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(
       [await stat('countries'), await stat('continents'), await stat('cities'), await stat('planned')].join());
     const tiles = await page.$$eval('.pc-tile', ns => ns.map(n => n.title + ':' + n.dataset.state));
     check(L + ': the map: been, planned and bucket, been wins', tiles.indexOf('Japan:been') !== -1 && tiles.indexOf('Portugal:planned') !== -1 && tiles.indexOf('Norway:bucket') !== -1 && tiles.filter(t => /^Portugal/.test(t)).length === 1, tiles.join());
+    check(L + ': a visited bucket place isn’t on the map', tiles.every(t => !/^Peru/.test(t)));
     check(L + ': tiles carry the flag and the code', /🇯🇵\s*JP/.test(await page.$eval('.pc-tile[title="Japan"]', n => n.textContent)));
     check(L + ': the UK tile is GB', /GB/.test(await page.$eval('.pc-tile[title="United Kingdom"]', n => n.textContent)));
     { const eu = await page.$eval('.pc-cont[data-cont="Europe"]', n => n.textContent); check(L + ': continents count each state', /2 been · 1 planned · 1 to go/.test(eu), eu); }
