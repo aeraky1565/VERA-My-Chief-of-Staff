@@ -18,9 +18,9 @@ const APP = fs.readFileSync(path.join(ROOT, 'docs/app.js'), 'utf8');
 const LITE = fs.readFileSync(path.join(ROOT, 'docs/dashboard-lite.html'), 'utf8');
 const BS = fs.readFileSync(path.join(ROOT, 'BillSchedule.js'), 'utf8');
 console.log('\nthe wiring');
-check('Bills and Cashflow are one subtab in both dashboards',
+check('Bills and Cashflow are one subtab in the full dashboard, and Victoria’s Money has no Bills',
   APP.indexOf("{id:'billscash',label:'🧾 Bills & cashflow'}") !== -1 && !/\{id:'bills',label:'🧾 Bills'\}/.test(APP) && !/\{id:'cashflow',label:'💰 Cashflow'\}/.test(APP)
-  && LITE.indexOf("{ id: 'fin_billscash', label: '🧾 Bills & cashflow' }") !== -1 && LITE.indexOf("{ id: 'fin_bills',") === -1);
+  && LITE.indexOf("{ id: 'fin_billscash', label: '🧾 Bills & cashflow' }") === -1 && LITE.indexOf("{ id: 'fin_bills',") === -1);
 check('…mounting BillsCashflowTab', APP.indexOf("sub==='billscash'&&React.createElement(BillsCashflowTab,{apiUrl:apiUrl,apiToken:apiToken})") !== -1
   && LITE.indexOf("{activeFinanceTab === 'fin_billscash' && <BillsCashflowTab apiUrl={apiUrl} apiToken={apiToken} />}") !== -1);
 

@@ -18,7 +18,7 @@ console.log('\nthe shared block');
 check('both dashboards carry the block', !!block(APP) && !!block(LITE));
 check('…and the two copies match', block(APP) === block(LITE));
 check('Health has the subtab, as Ahmed', /\{id:'family_planning',label:'👶 Family Planning'/.test(APP) && /sub==='family_planning'&&React\.createElement\(FamilyPlanningPanel,\{apiUrl:apiUrl,apiToken:apiToken,who:'Ahmed'\}\)/.test(APP));
-check('lite has its own top tab, as Victoria', /\{ id: 'family',        label: '👶 Family Planning' \}/.test(LITE) && /<FamilyPlanningPanel apiUrl=\{apiUrl\} apiToken=\{apiToken\} who="Victoria" \/>/.test(LITE));
+check('lite has it under Family › Family Planning, as Victoria', /\{ id: 'planning', label: '👶 Family Planning' \}/.test(LITE) && /familySub === 'planning' && <FamilyPlanningPanel apiUrl=\{apiUrl\} apiToken=\{apiToken\} who="Victoria" \/>/.test(LITE));
 
 // ---- the page's data, from the server's own code ----
 function serverData() {
