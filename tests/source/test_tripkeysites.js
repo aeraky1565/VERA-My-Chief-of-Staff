@@ -227,8 +227,12 @@ console.log('\nno read site compares the raw trip key any more');
   check('every trip-key read goes through tripKeyMatches_', hits.length === 0, hits.join(', '));
   ['webAddItineraryItem_', 'webSetTripMeta_', 'webGeneratePacking_', 'webGenerateRecommendations_',
    'webSaveBudgetItem_', 'webSetTripBudgetSettings_', 'webImportBudgetFromItinerary_', 'webCopyTripBudget_',
-   'webAddTripGift_'].forEach(fn => {
+   ].forEach(fn => {
     check(fn + ' writes under the current key', /tripKeyForWrite_\(/.test(extractFn(WEB, fn)));
+  });
+  // Trip gifts moved to TripGifts.js (#227); they still write under the current key.
+  ['webAddTripGift_', 'webSetTripGiftBudget_'].forEach(fn => {
+    check(fn + ' writes under the current key', /tripKeyForWrite_\(/.test(extractFn(read('TripGifts.js'), fn)));
   });
 }
 
