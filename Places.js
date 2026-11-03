@@ -1,0 +1,223 @@
+// ============================================================
+// VERA — Places.js
+// Travel › Places (issue #228): Countries and the Bucket List, read together.
+// ============================================================
+//
+// GET places returns what the Countries views need in one answer:
+//   visits     the Countries rows (one per city visited), with Occasion
+//   bucket     the Bucket List rows not yet visited, for the map's dashed tiles
+//   planned    countries on upcoming trips, worked out from each trip's
+//              itinerary (flights and addresses, no geocoding); cached 6 hours
+//   notes      per country: what we loved and what to do next time, from Life ›
+//              Explore (places and things we love, and trip lessons) that share
+//              a word with the country, its cities or its trips
+//   occasions  the quick picks (Config places_occasions) plus what's been used
+//
+// Occasion is a new column on Countries, after Notes. Until now the add form
+// saved its Occasion box into Notes, so a one-time move (Script Property
+// PL_OCCASION_MOVED) copies Notes into Occasion where Occasion is blank.
+//
+// Two layers: pl*_ pure helpers, then the sheet reads and the endpoint.
+// ============================================================
+
+var PL_OCCASIONS_DEFAULT_ = ['Anniversary', 'Birthday', 'Honeymoon', 'Family visit', 'Wedding', 'Holiday', 'Work', 'Just because'];
+var PL_MOVED_PROP_ = 'PL_OCCASION_MOVED';
+var PL_PLANNED_CACHE_ = 'pl_planned_v1';
+
+// ---- pure ---------------------------------------------------------------------
+
+function plStr_(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max || 200); }
+
+/** Config places_occasions (comma list) or the defaults. */
+function plPicks_(cfgValue) {
+  var list = String(cfgValue || '').split(',').map(function(s) { return plStr_(s, 40); }).filter(Boolean);
+  return list.length ? list : PL_OCCASIONS_DEFAULT_.slice();
+}
+
+/** The picks, then every other occasion already used (first spelling kept), no repeats ignoring case. */
+function plSuggestions_(picks, used) {
+  var seen = {}, out = [];
+  (picks || []).concat(used || []).forEach(function(s) {
+    s = plStr_(s, 60); var k = s.toLowerCase();
+    if (!s || seen[k]) return; seen[k] = 1; out.push(s);
+  });
+  return out;
+}
+
+/** The pick a free-text occasion counts under ("10th anniversary" → Anniversary), else Other. */
+function plOccasionGroup_(text, picks) {
+  var t = String(text || '').toLowerCase();
+  if (!t.trim()) return '';
+  for (var i = 0; i < (picks || []).length; i++) {
+    var p = String(picks[i]).toLowerCase();
+    if (t === p || t.indexOf(p) !== -1) return picks[i];
+    var stem = p.replace(/s$/, '');
+    if (stem.length >= 4 && t.indexOf(stem) !== -1) return picks[i];
+  }
+  return 'Other';
+}
+
+/**
+ * The one-time move: rows (with headers) → the rows to write, and how many moved.
+ * A row with Notes and no Occasion gets Notes as its Occasion and Notes cleared.
+ * A row that already has an Occasion is left exactly as it is.
+ */
+function plMoveOccasions_(rows) {
+  if (!rows || !rows.length) return { rows: rows || [], moved: 0 };
+  var h = rows[0].map(function(x) { return String(x).trim(); });
+  var n = h.indexOf('Notes'), o = h.indexOf('Occasion'), moved = 0;
+  if (n === -1 || o === -1) return { rows: rows, moved: 0 };
+  var out = rows.map(function(r, i) {
+    if (i === 0 || !String(r[0] || '').trim()) return r;
+    var notes = plStr_(r[n], 120), occ = plStr_(r[o], 120);
+    if (occ || !notes) return r;
+    var c = r.slice(); c[o] = notes; c[n] = ''; moved++; return c;
+  });
+  return { rows: out, moved: moved };
+}
+
+/** Rows with headers → objects by header. Rows without an ID are skipped. */
+function plObjects_(rows) {
+  if (!rows || rows.length < 2) return [];
+  var h = rows[0].map(function(x) { return String(x).trim(); });
+  return rows.slice(1).filter(function(r) { return String(r[0] || '').trim(); }).map(function(r) {
+    var o = {}; h.forEach(function(k, i) { if (k) o[k] = r[i] instanceof Date ? r[i].toISOString().slice(0, 10) : r[i]; }); return o;
+  });
+}
+
+/**
+ * What we thought, per visited country: loved (places and things we love) and next
+ * time (trip lessons), each an interest whose words meet the country's, its cities'
+ * or its trips' names. words(s) gives the place words; interests: {loved:[{text}], lessons:[{text,trip}]}.
+ */
+function plNotesFor_(visits, interests, words) {
+  var by = {};
+  (visits || []).forEach(function(v) {
+    var c = plStr_(v.Country, 80); if (!c) return;
+    var e = by[c] || (by[c] = { names: [c] });
+    if (v.City) e.names.push(String(v.City));
+    var trip = String(v['Trip Key'] || '').split('|').slice(1).join('|');
+    if (trip) e.names.push(trip);
+  });
+  var out = {};
+  Object.keys(by).forEach(function(c) {
+    var want = {}; by[c].names.forEach(function(n) { words(n).forEach(function(w) { want[w] = 1; }); });
+    var hits = function(list, withTrip) {
+      var seen = {};
+      return (list || []).filter(function(it) {
+        var have = words((withTrip ? (it.trip || '') + ' ' : '') + it.text);
+        var k = String(it.text).toLowerCase();
+        if (seen[k] || !have.some(function(w) { return want[w]; })) return false;
+        seen[k] = 1; return true;
+      }).slice(0, 3).map(function(it) { return it.text; });
+    };
+    var loved = hits(interests.loved, false), next = hits(interests.lessons, true);
+    if (loved.length || next.length) out[c] = { loved: loved, next: next };
+  });
+  return out;
+}
+
+/** Upcoming trips worth checking for countries: active, not ended, starting within 18 months; at most 6, soonest first. */
+function plUpcoming_(rows, today) {
+  var t0 = Date.parse(today + 'T00:00:00Z'), limit = t0 + 548 * 864e5;
+  return (rows || []).filter(function(r) {
+    if (r.status !== 'active' || !r.startDate || !r.label) return false;
+    if ((r.endDate || r.startDate) < today) return false;
+    return Date.parse(r.startDate + 'T00:00:00Z') <= limit;
+  }).sort(function(a, b) { return a.startDate < b.startDate ? -1 : 1; }).slice(0, 6);
+}
+
+// ---- sheets -------------------------------------------------------------------
+
+/** A tab made before a column was added gets the new headers (ensureSheet only writes them on a blank tab). */
+function plSchema_(sheet, headers) {
+  if (!sheet) return sheet;
+  var have = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
+  for (var i = 0; i < headers.length; i++) {
+    if (String(have[i] == null ? '' : have[i]).trim() !== headers[i]) { sheet.getRange(1, 1, 1, headers.length).setValues([headers]); break; }
+  }
+  return sheet;
+}
+
+function plCountriesSheet_() { return plSchema_(ensureSheet(getSpreadsheet(), TABS.COUNTRIES, COUNTRIES_HEADERS), COUNTRIES_HEADERS); }
+
+function plLocked_(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
+
+/** The one-time Notes → Occasion move on Countries. Safe to call every time: it runs once. */
+function plMoveOccasionsOnce_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(PL_MOVED_PROP_)) return 0;
+  return plLocked_(function() {
+    if (props.getProperty(PL_MOVED_PROP_)) return 0;
+    var sheet = plCountriesSheet_(), moved = 0;
+    if (sheet.getLastRow() >= 2) {
+      var rows = sheet.getRange(1, 1, sheet.getLastRow(), COUNTRIES_HEADERS.length).getValues();
+      var r = plMoveOccasions_(rows);
+      if (r.moved) sheet.getRange(1, 1, r.rows.length, COUNTRIES_HEADERS.length).setValues(r.rows);
+      moved = r.moved;
+    }
+    props.setProperty(PL_MOVED_PROP_, new Date().toISOString() + ' moved ' + moved);
+    return moved;
+  });
+}
+
+/** Countries on upcoming trips: [{country, tripKey, label, startDate, endDate}]. Cached 6 hours. */
+function plPlanned_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get(PL_PLANNED_CACHE_);
+  if (hit) { try { return JSON.parse(hit); } catch (e) {} }
+  var tz = Session.getScriptTimeZone(), today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var trips = plUpcoming_((readTripRegistry_().rows || []), today);
+  var out = [];
+  if (trips.length) {
+    var countryNames = {};
+    try { passportIndexCsv_().split('\n')[0].split(',').slice(1).forEach(function(h) { if (h.trim()) countryNames[visaNorm_(h)] = h.trim(); }); } catch (e) {}
+    var memo = {};
+    var airportCountry = function(code) {
+      if (!/^[A-Z]{3}$/.test(code || '')) return '';
+      if (memo[code] !== undefined) return memo[code];
+      var c = cache.get('iata_country_' + code);
+      if (c === null) { c = resolveIataCountry_(code, null) || ''; cache.put('iata_country_' + code, c, 21600); }
+      return (memo[code] = c);
+    };
+    var home = String(getConfigValues()['home_country'] || 'United States');
+    trips.forEach(function(t) {
+      var key = t.startDate + '|' + t.label;
+      try {
+        var items = tripItemsFor_(key, t.startDate, t.endDate || t.startDate, 'places');
+        tripCountries_(items, countryNames, airportCountry, home, null).forEach(function(c) {
+          if (c.role !== 'stay') return;
+          out.push({ country: c.country, tripKey: key, label: t.label, startDate: t.startDate, endDate: t.endDate || t.startDate });
+        });
+      } catch (e) { Logger.log('plPlanned_: ' + key + ' — ' + e.message); }
+    });
+  }
+  try { cache.put(PL_PLANNED_CACHE_, JSON.stringify(out), 21600); } catch (e) {}
+  return out;
+}
+
+// ---- endpoint -----------------------------------------------------------------
+
+/** GET places → {visits, bucket, planned, notes, occasions, picks}. */
+function webGetPlaces_() {
+  plMoveOccasionsOnce_();
+  var ss = getSpreadsheet();
+  var cs = plCountriesSheet_();
+  var visits = cs.getLastRow() >= 2 ? plObjects_(cs.getRange(1, 1, cs.getLastRow(), COUNTRIES_HEADERS.length).getValues()) : [];
+  var bs = ss.getSheetByName(TABS.BUCKET_LIST);
+  var bucket = bs && bs.getLastRow() >= 2 ? plObjects_(bs.getDataRange().getValues()).filter(function(b) { return !String(b.Visited || '').trim(); }) : [];
+  var planned = [];
+  try { planned = plPlanned_(); } catch (e) { Logger.log('webGetPlaces_: planned — ' + e.message); }
+  var notes = {};
+  try {
+    var v = lfViews_();
+    notes = plNotesFor_(visits, { loved: (v.places || []).concat(v.things || []), lessons: v.lessons || [] }, lfPlaceWords_);
+  } catch (e) { Logger.log('webGetPlaces_: notes — ' + e.message); }
+  var picks = plPicks_(getConfigValues()['places_occasions']);
+  var used = visits.map(function(x) { return x.Occasion; }).concat(bucket.map(function(x) { return x.Occasion; }));
+  return { ok: true, visits: visits, bucket: bucket, planned: planned, notes: notes, picks: picks, occasions: plSuggestions_(picks, used) };
+}

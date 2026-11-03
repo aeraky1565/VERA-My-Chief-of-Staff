@@ -214,6 +214,7 @@ function doGet(e) {
       case 'delete_packing_item':   return jsonOut_(webDeletePackingItem_(e));
       case 'generate_packing':      return jsonOut_(webGeneratePacking_(e));
       case 'countries':             return jsonOut_(webGetCountries_());
+      case 'places':                return jsonOut_(webGetPlaces_());
       case 'add_country':           return jsonOut_(webAddCountry_(e));
       case 'delete_country':        return jsonOut_(webDeleteCountry_(e));
       case 'get_bucket_list':       return jsonOut_(webGetBucketList_());
@@ -6977,14 +6978,13 @@ function webAddCountry_(e) {
   var traveller = (p.traveller || 'Both').trim();
   var tripKey   = (p.tripKey   || '').trim();
   var notes     = (p.notes     || '').trim();
+  var occasion  = (p.occasion  || '').trim();
   if (!country) throw new Error('Country is required.');
-  var ss    = getSpreadsheet();
-  var sheet = ss.getSheetByName(TABS.COUNTRIES);
-  if (!sheet) throw new Error('Countries tab not found. Run setupVERA() first.');
+  var sheet = plCountriesSheet_();   // Places.js: adds the Occasion header to an older tab
   var id = 'c_' + Date.now();
-  sheet.appendRow([id, country, city, year, traveller, tripKey, notes]);
+  sheet.appendRow([id, country, city, year, traveller, tripKey, notes, occasion]);
   return { ok: true, entry: { ID: id, Country: country, City: city, Year: year,
-                               Traveller: traveller, 'Trip Key': tripKey, Notes: notes } };
+                               Traveller: traveller, 'Trip Key': tripKey, Notes: notes, Occasion: occasion } };
 }
 
 function webDeleteCountry_(e) {

@@ -228,7 +228,7 @@ const TRIP_META_HEADERS         = ['Trip Key', 'Context', 'Notes', 'Updated Date
  */
 const TRIP_CHARACTERISTICS      = ['beach', 'city', 'resort', 'ski', 'outdoors', 'roadtrip', 'cruise', 'themepark'];
 const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item', 'Checked', 'Source', 'Added Date'];
-const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
+const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes', 'Occasion']; // Occasion: #228
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
 const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As']; // Issue #187; Kind/Status/Packs As #227
