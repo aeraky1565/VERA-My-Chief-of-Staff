@@ -84,8 +84,7 @@ console.log('\nthe route and the picker');
   const a = panel(APP), l = panel(LITE);
   check('both dashboards have the same panel', a === l, 'the full and lite copies differ');
   check('it asks for past trips', /api\(\{action:'past_trips'\}\)/.test(a));
-  check('…and lists them under Past, after Upcoming', /label:'Upcoming'/.test(a) && /label:'Past'/.test(a) &&
-        a.indexOf("label:'Upcoming'") < a.indexOf("label:'Past'"));
+  check('…and lists them after the upcoming ones (the trip chips, issue #227)', /var trips=tgTripList_\(props.trips,past\);/.test(a) && APP.indexOf("(past||[]).forEach") > APP.indexOf("(upcoming||[]).forEach(function(t){var k=t.key"));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

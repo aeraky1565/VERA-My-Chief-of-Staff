@@ -10759,8 +10759,150 @@ function GroceriesCard(props){var h=React.createElement;
           style:{flexShrink:0,width:52,height:32,borderRadius:16,border:0,padding:3,cursor:'pointer',display:'flex',justifyContent:st.counts?'flex-end':'flex-start',background:st.counts?GRC.acc:'#2a3a5c'}},
           h('span',{style:{width:26,height:26,borderRadius:13,background:'#0d1528',display:'block'}})));})):null);}
 // ---- end GroceriesCard ----
-function TripGiftsPanel({trips,apiUrl,apiToken}){var[selectedKey,setSelectedKey]=React.useState(null);var[pastTrips,setPastTrips]=React.useState([]);var[gifts,setGifts]=React.useState({});var[busy,setBusy]=React.useState(false);var[addForm,setAddForm]=React.useState(null);function api(params){var qs=Object.entries(Object.assign({token:apiToken},params)).map(function(kv){return encodeURIComponent(kv[0])+'='+encodeURIComponent(kv[1]);}).join('&');return fetch(apiUrl+'?'+qs).then(function(r){return r.json();});}function loadGifts(tripKey){if(!tripKey||gifts[tripKey]==='loading')return;setGifts(function(prev){return Object.assign({},prev,{[tripKey]:'loading'});});api({action:'get_trip_gifts',tripKey:tripKey}).then(function(d){setGifts(function(prev){return Object.assign({},prev,{[tripKey]:d.ok?d.gifts:[]});});}).catch(function(){setGifts(function(prev){return Object.assign({},prev,{[tripKey]:[]});});});}React.useEffect(function(){if(selectedKey)loadGifts(selectedKey);},[selectedKey]);// Past trips too (issue #219): gifts are often bought on the trip and logged after it.
-React.useEffect(function(){if(!apiUrl||!apiToken)return;api({action:'past_trips'}).then(function(d){if(d&&d.ok)setPastTrips(d.trips||[]);}).catch(function(){});},[apiUrl,apiToken]);function handleDelete(id){if(!window.confirm('Remove this gift?'))return;setBusy(true);api({action:'delete_trip_gift',id:id}).then(function(){loadGifts(selectedKey);setBusy(false);}).catch(function(){setBusy(false);});}function handleToggle(id,purchased){setBusy(true);api({action:'update_trip_gift',id:id,purchased:purchased?'false':'true'}).then(function(){loadGifts(selectedKey);setBusy(false);}).catch(function(){setBusy(false);});}function handleAdd(){if(!addForm||!addForm.item.trim())return;setBusy(true);api({action:'add_trip_gift',tripKey:selectedKey,recipient:addForm.recipient,item:addForm.item,amount:addForm.amount,notes:addForm.notes}).then(function(){setAddForm(null);loadGifts(selectedKey);setBusy(false);}).catch(function(){setBusy(false);});}var upKeys={};(trips||[]).forEach(function(t){upKeys[t.startDate+'|'+t.label]=1;});var pastShown=(pastTrips||[]).filter(function(t){return !upKeys[t.key];});var data=selectedKey?gifts[selectedKey]:null;var giftList=Array.isArray(data)?data:[];var purchasedCount=giftList.filter(function(g){return g.purchased;}).length;var INP={background:'#060f20',border:'1px solid #1e3060',borderRadius:6,color:'#dde1f0',padding:'6px 10px',fontSize:13,width:'100%',boxSizing:'border-box'};return React.createElement("div",null,React.createElement("div",{style:{marginBottom:16,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},React.createElement("select",{value:selectedKey||'',onChange:function(e){setSelectedKey(e.target.value||null);},style:Object.assign({},INP,{width:'auto',minWidth:200})},[React.createElement("option",{key:'_',value:''},'— Select a trip —')].concat((trips||[]).length?[React.createElement("optgroup",{key:'up',label:'Upcoming'},(trips||[]).map(function(t){var k=t.startDate+'|'+t.label;return React.createElement("option",{key:k,value:k},t.label,' (',t.startDate,')');}))]:[]).concat(pastShown.length?[React.createElement("optgroup",{key:'past',label:'Past'},pastShown.map(function(t){return React.createElement("option",{key:t.key,value:t.key},t.label,' (',t.startDate,')');}))]:[]))),!selectedKey&&React.createElement("div",{className:"empty-state"},React.createElement("div",{style:{fontSize:32,marginBottom:10}},"🎁"),React.createElement("div",null,"Select a trip to view its gift list.")),selectedKey&&data==='loading'&&React.createElement("div",{className:"loading-text"},"Loading gifts…"),selectedKey&&Array.isArray(data)&&React.createElement("div",null,giftList.length>0&&React.createElement("div",{style:{fontSize:12,color:'#6b7fa8',marginBottom:8}},purchasedCount,'/',giftList.length,' purchased'),giftList.length===0&&React.createElement("div",{style:{fontSize:13,color:'#4d6080',padding:'16px 0',textAlign:'center'}},"No gifts recorded yet for this trip."),giftList.map(function(g){return React.createElement("div",{key:g.id,style:{display:'flex',alignItems:'center',gap:10,padding:'9px 0',borderBottom:'1px solid #1a2435',opacity:g.purchased?0.55:1}},React.createElement("input",{type:"checkbox",checked:g.purchased,onChange:function(){handleToggle(g.id,g.purchased);},disabled:busy,style:{accentColor:'#5c9eff',cursor:'pointer',flexShrink:0,width:16,height:16}}),React.createElement("div",{style:{flex:1,minWidth:0}},React.createElement("div",{style:{fontSize:13,color:'#dde1f0',fontWeight:600,textDecoration:g.purchased?'line-through':'none'}},g.item),g.recipient&&React.createElement("div",{style:{fontSize:11,color:'#8ab4f8',marginTop:1}},"For: ",g.recipient),g.notes&&React.createElement("div",{style:{fontSize:11,color:'#5c7080',marginTop:1}},g.notes)),g.amount!=null&&React.createElement("div",{style:{fontSize:12,color:'#4ade80',fontWeight:600,flexShrink:0}},"$",g.amount),React.createElement("button",{onClick:function(){handleDelete(g.id);},disabled:busy,style:{background:'none',border:'none',color:'#4d6080',cursor:'pointer',fontSize:14,padding:'0 4px'}},"🗑"));}),addForm?React.createElement("div",{style:{background:'#0a1628',border:'1px solid #1e3060',borderRadius:10,padding:'14px 16px',marginTop:12}},React.createElement("div",{style:{fontWeight:600,color:'#c9a84c',marginBottom:10,fontSize:13}},"Add Gift"),React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}},React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"Item *"),React.createElement("input",{value:addForm.item,onChange:function(e){setAddForm(Object.assign({},addForm,{item:e.target.value}));},style:INP,placeholder:"e.g. Scarf"})),React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"For (recipient)"),React.createElement("input",{value:addForm.recipient,onChange:function(e){setAddForm(Object.assign({},addForm,{recipient:e.target.value}));},style:INP,placeholder:"e.g. Victoria"}))),React.createElement("div",{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:12}},React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"Amount ($)"),React.createElement("input",{type:"number",value:addForm.amount,onChange:function(e){setAddForm(Object.assign({},addForm,{amount:e.target.value}));},style:INP,placeholder:"optional"})),React.createElement("div",null,React.createElement("div",{style:{fontSize:11,color:'#5c9eff',marginBottom:4}},"Notes"),React.createElement("input",{value:addForm.notes,onChange:function(e){setAddForm(Object.assign({},addForm,{notes:e.target.value}));},style:INP,placeholder:"optional"}))),React.createElement("div",{style:{display:'flex',gap:8}},React.createElement("button",{onClick:handleAdd,disabled:busy||!addForm.item.trim(),style:{background:'#1a3a6e',color:'#fff',border:'none',borderRadius:8,padding:'7px 16px',fontSize:13,fontWeight:600,cursor:busy||!addForm.item.trim()?'not-allowed':'pointer',opacity:busy||!addForm.item.trim()?0.5:1}},busy?'Saving…':'Add Gift'),React.createElement("button",{onClick:function(){setAddForm(null);},style:{background:'none',border:'1px solid #2a3a4a',color:'#6b7fa8',borderRadius:8,padding:'7px 16px',fontSize:13,cursor:'pointer'}},"Cancel"))):React.createElement("button",{onClick:function(){setAddForm({recipient:'',item:'',amount:'',notes:''});},disabled:busy,style:{marginTop:12,background:'rgba(92,158,255,0.08)',border:'1px solid rgba(92,158,255,0.2)',color:'#5c9eff',borderRadius:8,padding:'7px 16px',fontSize:13,cursor:busy?'not-allowed':'pointer'}},"＋ Add Gift")));}
+// ---- TripGiftsPanel (Travel › Gifts, issue #227) — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// A trip's gifts in three groups (for our hosts: bought before going; souvenirs; for us), each moving
+// To buy → Bought → Packed with one tap; the trip's gift budget; ideas for the place; a warning when the
+// same name got something alike before; getting it home (bags, alcohol, food, duty-free); and every gift
+// ever given, by who it went to. Trips are chips, upcoming first, then past; the last one picked is kept.
+var TG_C={card:'#0d1526',line:'#1e2a44',deep:'#0a1220',text:'#dde1f0',mute:'#9aa8c8',gold:'#c9a84c',goldT:'#e3c46a',blue:'#8ab4f8',green:'#6fcf97',amber:'#f0c040',red:'#f87171'};
+var TG_KINDS=[{id:'host',label:'For our hosts',short:'For a host',when:'buy before we go'},{id:'souvenir',label:'Souvenirs to bring back',short:'Souvenir',when:'buy there'},{id:'us',label:'Shopping for us',short:'For us',when:'buy there'}];
+var TG_NEXT={'To buy':'Bought','Bought':'Packed','Packed':'To buy'};
+var TG_PILL={'To buy':{bg:'#14203a',fg:'#8ab4f8'},'Bought':{bg:'#0f2a1c',fg:'#6fcf97'},'Packed':{bg:'#1d1a0c',fg:'#e3c46a'}};
+var TG_RULE={checkin:{bg:'#2a2410',fg:'#f0c040',tag:'CHECK IN'},ok:{bg:'#0f2a1c',fg:'#6fcf97',tag:'OK'},declare:{bg:'#14203a',fg:'#8ab4f8',tag:'DECLARE'},avoid:{bg:'#2a1414',fg:'#f87171',tag:'LEAVE IT'}};
+function tgMoney_(n){if(n==null||n==='')return '';var v=Math.round(Number(n)*100)/100;return '$'+(v%1?v.toFixed(2):String(v)).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+// Pure: the trips to pick from — upcoming first (as given), then past ones not already listed.
+function tgTripList_(upcoming,past){var seen={},out=[];(upcoming||[]).forEach(function(t){var k=t.key||(t.startDate+'|'+t.label);if(seen[k])return;seen[k]=1;out.push({key:k,label:t.label,startDate:t.startDate,past:false});});
+  (past||[]).forEach(function(t){if(seen[t.key])return;seen[t.key]=1;out.push({key:t.key,label:t.label,startDate:t.startDate,past:true});});return out;}
+function tgTripChip_(t){var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(String(t.startDate||'').slice(5,7))-1]||'';var y=String(t.startDate||'').slice(0,4);
+  return t.label+(t.past?' · '+y:(m?' · '+m:''));}
+function TripGiftsPanel(props){var h=React.createElement;var apiUrl=props.apiUrl,apiToken=props.apiToken;
+  var _p=React.useState([]),past=_p[0],setPast=_p[1];
+  var _k=React.useState(function(){if(props.tripKey)return props.tripKey;try{return localStorage.getItem('vera_gifts_trip')||'';}catch(e){return '';}}),key=_k[0],setKey=_k[1];
+  var _d=React.useState({}),data=_d[0],setData=_d[1];
+  var _v=React.useState('list'),view=_v[0],setView=_v[1];
+  var _f=React.useState(null),form=_f[0],setForm=_f[1];
+  var _b=React.useState(false),busy=_b[0],setBusy=_b[1];
+  var _e=React.useState(''),err=_e[0],setErr=_e[1];
+  var _i=React.useState({}),ideas=_i[0],setIdeas=_i[1];
+  var _r=React.useState([]),repeats=_r[0],setRepeats=_r[1];
+  var _hi=React.useState(null),hist=_hi[0],setHist=_hi[1];
+  var _q=React.useState(''),q=_q[0],setQ=_q[1];
+  var _be=React.useState(null),budgetEdit=_be[0],setBudgetEdit=_be[1];
+  function api(params){var qs=Object.entries(Object.assign({token:apiToken},params)).map(function(kv){return encodeURIComponent(kv[0])+'='+encodeURIComponent(kv[1]==null?'':kv[1]);}).join('&');
+    return fetch(apiUrl+'?'+qs).then(function(r){return r.json();});}
+  React.useEffect(function(){if(!apiUrl||!apiToken)return;api({action:'past_trips'}).then(function(d){if(d&&d.ok)setPast(d.trips||[]);}).catch(function(){});},[apiUrl,apiToken]);
+  var trips=tgTripList_(props.trips,past);
+  var cur=trips.filter(function(t){return t.key===key;})[0]||trips[0]||null;var ck=cur?cur.key:'';
+  function load(k){if(!k||!apiUrl)return;api({action:'get_trip_gifts',tripKey:k}).then(function(d){setData(function(p){var n=Object.assign({},p);n[k]=d&&d.ok?d:{gifts:[],error:(d&&d.error)||'Could not load gifts.'};return n;});})
+    .catch(function(){setData(function(p){var n=Object.assign({},p);n[k]={gifts:[],error:'Could not load gifts.'};return n;});});}
+  React.useEffect(function(){if(ck&&!data[ck])load(ck);},[ck]);
+  function pick(k){setKey(k);setForm(null);setErr('');try{localStorage.setItem('vera_gifts_trip',k);}catch(e){}}
+  function run(p,after){setBusy(true);setErr('');return api(p).then(function(d){if(!d||d.ok===false)setErr((d&&d.error)||'That didn’t save. Try again.');load(ck);setHist(null);if(after)after(d);}).catch(function(){setErr('That didn’t save. Try again.');}).then(function(){setBusy(false);});}
+  var d=ck?data[ck]:null;var gifts=d&&d.gifts||[];var budget=d&&d.budget||null;var home=d&&d.home||null;
+  // the add / edit form: ideas for the place, and the repeat warning as names and gifts are typed
+  function openForm(g){setForm(g?{id:g.id,kind:g.kind,item:g.item,recipient:g.recipient,amount:g.amount==null?'':String(g.amount),packsAs:g.packsAs,notes:g.notes||'',status:g.status}
+    :{id:'',kind:'souvenir',item:'',recipient:'',amount:'',packsAs:'none',notes:'',status:'To buy'});setRepeats([]);
+    if(ck&&!ideas[ck])api({action:'trip_gift_ideas',tripKey:ck}).then(function(r){setIdeas(function(p){var n=Object.assign({},p);n[ck]=r&&r.ok?r.ideas:[];return n;});}).catch(function(){});}
+  React.useEffect(function(){if(!form||!form.item.trim()||!form.recipient.trim())return setRepeats([]);
+    var t=setTimeout(function(){api({action:'trip_gift_check',tripKey:ck,item:form.item,recipient:form.recipient}).then(function(r){setRepeats(r&&r.ok?r.repeats:[]);}).catch(function(){});},400);
+    return function(){clearTimeout(t);};},[form&&form.item,form&&form.recipient]);
+  function save(){if(!form.item.trim())return;var p={tripKey:ck,item:form.item.trim(),recipient:form.recipient.trim(),amount:form.amount,kind:form.kind,packsAs:form.packsAs,notes:form.notes};
+    if(form.id)run(Object.assign({action:'update_trip_gift',id:form.id},p),function(){setForm(null);});else run(Object.assign({action:'add_trip_gift',status:'To buy'},p),function(){setForm(null);});}
+  function setF(k,v){setForm(function(f){var n=Object.assign({},f);n[k]=v;return n;});}
+  React.useEffect(function(){if(view==='history'&&!hist)api({action:'trip_gift_history'}).then(function(r){setHist(r&&r.ok?r.people:[]);}).catch(function(){setHist([]);});},[view,hist]);
+  var seg=function(on){return {flex:1,minHeight:40,borderRadius:9,border:'none',cursor:'pointer',fontSize:13,fontWeight:600,background:on?'#1d1a0c':'transparent',color:on?TG_C.goldT:'#aab6d6',boxShadow:on?'inset 0 0 0 1px '+TG_C.gold:'none'};};
+  var chip=function(on){return {minHeight:40,padding:'8px 14px',borderRadius:999,fontSize:13,cursor:'pointer',whiteSpace:'nowrap',flexShrink:0,background:on?'#1a3060':TG_C.deep,border:'1px solid '+(on?'#3a5aa0':'#1c2a48'),color:on?TG_C.text:'#aab6d6'};};
+  var card={background:TG_C.card,border:'1px solid '+TG_C.line,borderRadius:14,padding:14,display:'flex',flexDirection:'column',gap:8};
+  var inp={minHeight:44,borderRadius:10,background:TG_C.deep,border:'1px solid #2a3f6f',color:TG_C.text,padding:'0 12px',fontSize:14,width:'100%',boxSizing:'border-box'};
+  var lab={display:'flex',flexDirection:'column',gap:6,fontSize:12,color:TG_C.mute,minWidth:0};
+  if(!trips.length)return h('div',{className:'tg-panel empty-state'},'No trips yet. Add one in My Trips, then its gifts live here.');
+  var top=[h('div',{key:'trips',role:'tablist','aria-label':'Trip',className:'tg-trips',style:{display:'flex',gap:6,overflowX:'auto',paddingBottom:2}},
+      trips.map(function(t){var on=t.key===ck;return h('button',{key:t.key,type:'button',role:'tab','aria-selected':on,className:'tg-trip'+(on?' on':''),onClick:function(){pick(t.key);},style:chip(on)},tgTripChip_(t));})),
+    h('div',{key:'views',role:'tablist','aria-label':'Gifts view',className:'tg-views',style:{display:'flex',gap:4,background:TG_C.deep,border:'1px solid #1c2a48',borderRadius:12,padding:4}},
+      [['list','The list'],['home','Getting it home'],['history','Given before']].map(function(v){var on=view===v[0];return h('button',{key:v[0],type:'button',role:'tab','aria-selected':on,className:'tg-view'+(on?' on':''),'data-view':v[0],onClick:function(){setView(v[0]);setForm(null);},style:seg(on)},v[1]);}))];
+  var body=null;
+  if(view==='history'){var people=(hist||[]).filter(function(p){var s=q.trim().toLowerCase();return !s||p.name.toLowerCase().indexOf(s)!==-1||p.gifts.some(function(g){return g.item.toLowerCase().indexOf(s)!==-1;});});
+    body=h('div',{className:'tg-history',style:{display:'flex',flexDirection:'column',gap:12}},
+      h('label',{style:lab},'Find a person or a gift',h('input',{className:'tg-search',value:q,onChange:function(e){setQ(e.target.value);},placeholder:'e.g. Mom, port, tiles',style:inp})),
+      hist==null?h('div',{className:'loading-text'},'Loading…'):people.length===0?h('div',{style:{fontSize:13,color:TG_C.mute}},hist.length?'Nothing matches.':'No gifts bought yet. They show here once ticked as bought.'):
+      people.map(function(p){return h('section',{key:p.name,className:'tg-person',style:card},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}},h('h3',{style:{margin:0,fontSize:15,fontWeight:700}},p.name),h('span',{style:{fontSize:12,color:TG_C.mute}},p.gifts.length+' gift'+(p.gifts.length===1?'':'s'))),
+        p.gifts.map(function(g){return h('div',{key:g.id,style:{display:'flex',justifyContent:'space-between',gap:10,padding:'7px 0',borderTop:'1px solid #16213a',fontSize:13}},
+          h('span',{style:{color:TG_C.text}},g.item),h('span',{style:{color:TG_C.mute,flexShrink:0}},g.trip+(g.year?' · '+g.year:'')));}));}));}
+  else if(!d)body=h('div',{className:'loading-text'},'Loading gifts…');
+  else if(view==='home'){var hc=home||{counts:{},rules:[]};
+    body=h('div',{className:'tg-home',style:{display:'flex',flexDirection:'column',gap:12}},
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:8}},
+        [['liquid','liquids'],['fragile','fragile'],['food','food']].map(function(x){return h('div',{key:x[0],className:'tg-count',style:{background:TG_C.card,border:'1px solid '+TG_C.line,borderRadius:12,padding:10,display:'flex',flexDirection:'column',gap:2}},
+          h('span',{style:{fontSize:20,fontWeight:700}},String((hc.counts||{})[x[0]]||0)),h('span',{style:{fontSize:11,color:TG_C.mute}},x[1]));})),
+      h('section',{style:card},h('h3',{style:{margin:0,fontSize:15,fontWeight:700}},'Rules that apply'),
+        (hc.rules||[]).length===0?h('div',{style:{fontSize:13,color:TG_C.mute}},'Nothing to watch for with what’s on the list.'):
+        hc.rules.map(function(r,i){var s=TG_RULE[r.kind]||TG_RULE.ok;return h('div',{key:i,className:'tg-rule','data-kind':r.kind,style:{display:'flex',gap:10,alignItems:'flex-start',padding:'8px 0',borderTop:'1px solid #16213a'}},
+          h('span',{style:{fontSize:11,fontWeight:700,padding:'3px 7px',borderRadius:6,flexShrink:0,minWidth:52,textAlign:'center',background:s.bg,color:s.fg}},s.tag),
+          h('div',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:3}},h('span',{style:{fontSize:13}},r.title),h('span',{style:{fontSize:12,color:TG_C.mute,lineHeight:1.45}},r.text)));})),
+      hc.declare?h('section',{className:'tg-declare',style:card},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}},h('h3',{style:{margin:0,fontSize:15,fontWeight:700}},'To declare'),
+          h('span',{style:{fontSize:13}},h('b',null,tgMoney_(hc.declare.total)),' of '+tgMoney_(hc.declare.allowance))),
+        h('div',{style:{height:8,borderRadius:4,background:'#14203a',overflow:'hidden'}},h('span',{style:{display:'block',height:'100%',width:Math.min(100,Math.round(hc.declare.total/Math.max(1,hc.declare.allowance)*100))+'%',background:hc.declare.total>hc.declare.allowance?TG_C.red:TG_C.green}})),
+        h('span',{style:{fontSize:12,color:TG_C.mute,lineHeight:1.5}},'Gifts and shopping bought abroad, against your duty-free allowance ($800 each).')):null,
+      h('span',{style:{fontSize:11,color:'#8a9bc4',lineHeight:1.5}},'A reminder: the airline and customs sites have the final word.'));}
+  else{var byKind=function(k){return gifts.filter(function(g){return g.kind===k;});};var warn=home&&(home.rules||[]).filter(function(r){return r.kind==='checkin'||r.kind==='avoid';})[0];
+    var bb=budget||{};var pct=function(n){return bb.budget?Math.min(100,Math.round(n/bb.budget*100))+'%':'0%';};
+    body=h('div',{className:'tg-list',style:{display:'flex',flexDirection:'column',gap:12}},
+      h('section',{className:'tg-budget',style:card},
+        budgetEdit!=null?h('div',{style:{display:'flex',gap:8,alignItems:'flex-end'}},h('label',{style:Object.assign({},lab,{flex:1})},'Gift budget for this trip',h('input',{className:'tg-budget-input',inputMode:'decimal',value:budgetEdit,onChange:function(e){setBudgetEdit(e.target.value);},style:inp})),
+            h('button',{type:'button',className:'tg-budget-save',disabled:busy,onClick:function(){run({action:'set_trip_gift_budget',tripKey:ck,budget:budgetEdit},function(){setBudgetEdit(null);});},style:{minHeight:44,padding:'0 16px',borderRadius:10,background:TG_C.gold,border:'none',color:'#14120a',fontWeight:700,cursor:'pointer'}},'Save'))
+        :bb.budget?[h('div',{key:'a',style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}},h('span',{style:{fontSize:13,color:TG_C.mute}},'Gift budget'),
+              h('span',{style:{fontSize:13}},h('b',{style:{fontSize:18}},tgMoney_(bb.bought+bb.planned)),' of '+tgMoney_(bb.budget))),
+            h('div',{key:'b',style:{height:8,borderRadius:4,background:'#14203a',overflow:'hidden',display:'flex'}},h('span',{style:{width:pct(bb.bought),background:TG_C.green}}),h('span',{style:{width:pct(bb.planned),background:TG_C.green,opacity:0.45}})),
+            h('div',{key:'c',style:{display:'flex',gap:14,flexWrap:'wrap',fontSize:12,color:TG_C.mute,alignItems:'center'}},h('span',null,'Bought '+tgMoney_(bb.bought)),h('span',null,'Planned '+tgMoney_(bb.planned)),
+              h('span',{className:'tg-left',style:{color:bb.left<0?TG_C.red:TG_C.mute}},bb.left<0?tgMoney_(-bb.left)+' over':tgMoney_(bb.left)+' left'),
+              h('button',{type:'button',className:'tg-budget-edit',onClick:function(){setBudgetEdit(String(bb.budget));},style:{marginLeft:'auto',background:'none',border:'none',color:TG_C.blue,fontSize:12,cursor:'pointer',minHeight:32}},'Change'))]
+        :h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}},h('span',{style:{fontSize:13,color:TG_C.mute}},(bb.bought||bb.planned)?'Spent '+tgMoney_(bb.bought)+', planned '+tgMoney_(bb.planned)+'. No budget set.':'No gift budget for this trip.'),
+            h('button',{type:'button',className:'tg-budget-edit',onClick:function(){setBudgetEdit('');},style:{minHeight:40,padding:'0 12px',borderRadius:10,background:'transparent',border:'1px solid #2a3f6f',color:TG_C.blue,fontSize:12,cursor:'pointer',flexShrink:0}},'Set a budget'))),
+      warn?h('button',{type:'button',className:'tg-warn',onClick:function(){setView('home');},style:{display:'flex',alignItems:'center',gap:10,textAlign:'left',background:'#1d1a0c',border:'1px solid #6b5a10',borderRadius:12,padding:'10px 12px',fontSize:13,color:'#f0d78a',cursor:'pointer',minHeight:44}},
+        h('span',{'aria-hidden':'true',style:{width:8,height:8,borderRadius:'50%',background:TG_C.amber,flexShrink:0}}),h('span',{style:{flex:1}},warn.title+': '+warn.text),h('span',{style:{color:TG_C.goldT,fontSize:12}},'Getting it home →')):null,
+      d.error?h('div',{style:{fontSize:13,color:TG_C.red}},d.error):null,
+      TG_KINDS.map(function(k){var list=byKind(k.id);if(!list.length)return null;
+        return h('section',{key:k.id,className:'tg-group','data-kind':k.id,style:card},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8}},h('h3',{style:{margin:0,fontSize:15,fontWeight:700}},k.label),h('span',{style:{fontSize:12,color:'#8a9bc4'}},k.when)),
+          list.map(function(g){var pl=TG_PILL[g.status]||TG_PILL['To buy'];return h('div',{key:g.id,className:'tg-row','data-id':g.id,style:{display:'flex',gap:10,alignItems:'center',padding:'8px 0',borderTop:'1px solid #16213a'}},
+            h('button',{type:'button',className:'tg-edit',onClick:function(){openForm(g);},style:{flex:1,minWidth:0,display:'flex',flexDirection:'column',gap:2,background:'none',border:'none',padding:0,textAlign:'left',cursor:'pointer',color:TG_C.text,minHeight:40,justifyContent:'center'}},
+              h('span',{style:{fontSize:14}},g.item),g.recipient?h('span',{style:{fontSize:12,color:TG_C.mute}},g.recipient):null),
+            g.amount!=null?h('span',{style:{fontSize:13,color:'#c4cde4',fontVariantNumeric:'tabular-nums'}},tgMoney_(g.amount)):null,
+            h('button',{type:'button',className:'tg-status','data-status':g.status,'aria-label':g.item+': '+g.status+'. Tap for '+TG_NEXT[g.status],disabled:busy,onClick:function(){run({action:'update_trip_gift',id:g.id,status:TG_NEXT[g.status]});},
+              style:{fontSize:11,fontWeight:700,padding:'0 10px',minHeight:32,minWidth:64,borderRadius:999,border:'none',cursor:'pointer',background:pl.bg,color:pl.fg}},g.status));}));}),
+      gifts.length===0?h('div',{style:{fontSize:13,color:TG_C.mute,padding:'4px 2px'}},'No gifts on this trip yet.'):null,
+      h('button',{type:'button',className:'tg-add',onClick:function(){openForm(null);},style:{minHeight:48,borderRadius:12,background:TG_C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer'}},'+ Add a gift'),
+      h('div',{style:{fontSize:12,color:TG_C.mute,background:TG_C.deep,border:'1px solid #1c2a48',borderRadius:10,padding:'10px 12px'}},'In the shop? Tell Chat “bought a cork wallet for Dad, 28” and it’s ticked off here.'));}
+  var sheet=null;
+  if(form){var ideaList=(ideas[ck]||[]).filter(function(x){return !gifts.some(function(g){return g.item.toLowerCase()===x.item.toLowerCase();});});
+    sheet=h('div',{className:'tg-form',role:'dialog','aria-label':form.id?'Edit gift':'Add a gift',style:Object.assign({},card,{border:'1px solid '+TG_C.gold,gap:12})},
+      h('h3',{style:{margin:0,fontSize:16,fontWeight:700}},(form.id?'Edit gift':'Add a gift')+(cur?' · '+cur.label:'')),
+      h('div',{role:'group','aria-label':'Kind',style:{display:'grid',gridTemplateColumns:'repeat(3, minmax(0, 1fr))',gap:6}},
+        TG_KINDS.map(function(k){var on=form.kind===k.id;return h('button',{key:k.id,type:'button','aria-pressed':on,className:'tg-kind'+(on?' on':''),'data-kind':k.id,onClick:function(){setF('kind',k.id);},
+          style:{minHeight:44,borderRadius:10,fontSize:12,fontWeight:600,cursor:'pointer',background:on?'#1d1a0c':TG_C.deep,border:'1px solid '+(on?TG_C.gold:'#1c2a48'),color:on?TG_C.goldT:'#aab6d6'}},k.short);})),
+      !form.id&&ideaList.length?h('div',{style:{display:'flex',flexDirection:'column',gap:6}},h('span',{style:{fontSize:12,color:TG_C.mute}},'Known for'),
+        h('div',{style:{display:'flex',flexWrap:'wrap',gap:6}},ideaList.map(function(x){return h('button',{key:x.item,type:'button',className:'tg-idea',title:x.note||'',onClick:function(){setForm(function(f){return Object.assign({},f,{item:x.item,packsAs:x.packsAs||f.packsAs});});},
+          style:{minHeight:36,padding:'6px 12px',borderRadius:999,fontSize:12,cursor:'pointer',background:TG_C.deep,border:'1px solid #1c2a48',color:'#c4cde4'}},'+ '+x.item);}))):null,
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        h('label',{style:lab},'Gift',h('input',{className:'tg-in-item',value:form.item,onChange:function(e){setF('item',e.target.value);},style:inp})),
+        h('label',{style:lab},'For',h('input',{className:'tg-in-for',value:form.recipient,placeholder:form.kind==='us'?'Us':'Name',onChange:function(e){setF('recipient',e.target.value);},style:inp}))),
+      repeats.length?h('div',{className:'tg-repeat',role:'status',style:{display:'flex',gap:10,alignItems:'flex-start',fontSize:12,lineHeight:1.5,color:'#f0d78a',background:'#1d1a0c',border:'1px solid #6b5a10',borderRadius:10,padding:'10px 12px'}},
+        h('span',{'aria-hidden':'true',style:{width:8,height:8,borderRadius:'50%',background:TG_C.amber,flexShrink:0,marginTop:4}}),
+        h('span',null,form.recipient.trim()+' got '+repeats.map(function(r){return r.item+' ('+r.trip+(r.year?' '+r.year:'')+')';}).join(', ')+'. Something else this time?')):null,
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:10}},
+        h('label',{style:lab},'About ($)',h('input',{className:'tg-in-amount',inputMode:'decimal',value:form.amount,onChange:function(e){setF('amount',e.target.value);},style:inp})),
+        h('label',{style:lab},'Packs as',h('select',{className:'tg-in-packs',value:form.packsAs,onChange:function(e){setF('packsAs',e.target.value);},style:inp},
+          [['none','Nothing special'],['fragile','Fragile'],['liquid','Liquid'],['food','Food']].map(function(o){return h('option',{key:o[0],value:o[0]},o[1]);})))),
+      h('label',{style:lab},'Notes',h('input',{className:'tg-in-notes',value:form.notes,onChange:function(e){setF('notes',e.target.value);},style:inp})),
+      h('div',{style:{display:'flex',gap:10}},
+        form.id?h('button',{type:'button',className:'tg-delete',disabled:busy,onClick:function(){if(!window.confirm('Remove this gift?'))return;run({action:'delete_trip_gift',id:form.id},function(){setForm(null);});},
+          style:{minHeight:48,padding:'0 14px',borderRadius:12,background:'transparent',border:'1px solid #6b2a2a',color:TG_C.red,fontSize:14,cursor:'pointer'}},'Remove'):null,
+        h('button',{type:'button',className:'tg-cancel',onClick:function(){setForm(null);},style:{flex:1,minHeight:48,borderRadius:12,background:'transparent',border:'1px solid #2a3f6f',color:'#aab6d6',fontSize:14,cursor:'pointer'}},'Cancel'),
+        h('button',{type:'button',className:'tg-save',disabled:busy||!form.item.trim(),onClick:save,style:{flex:1,minHeight:48,borderRadius:12,background:TG_C.gold,border:'none',color:'#14120a',fontSize:14,fontWeight:700,cursor:'pointer',opacity:form.item.trim()?1:0.5}},form.id?'Save':'Add')));}
+  return h('div',{className:'tg-panel',style:{display:'flex',flexDirection:'column',gap:12,maxWidth:640}},top,err?h('div',{role:'alert',style:{fontSize:13,color:TG_C.red}},err):null,sheet||body);}
+// ---- /TripGiftsPanel ----
 
 function ProfilesView({profiles,loading,busy,onSave,onDelete}){var[modal,setModal]=React.useState(null);// null | 'new' | profile-obj
 var[form,setForm]=React.useState({});// Group by name
@@ -11199,7 +11341,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
 
       {travSub === 'ideas' && <TripIdeasView apiUrl={apiUrl} apiToken={apiToken} openIdea={openIdea} />}
       {travSub === 'aria' && <AriaView apiUrl={apiUrl} apiToken={apiToken} />}
-      {travSub === 'trips' && <MyTripsPanel apiUrl={apiUrl} apiToken={apiToken} onGoGifts={() => setTravSub('gifts')} renderUpcoming={() => (trips.length === 0 ? (
+      {travSub === 'trips' && <MyTripsPanel apiUrl={apiUrl} apiToken={apiToken} onGoGifts={k => { try { if (k) localStorage.setItem('vera_gifts_trip', k); } catch (e) {} setTravSub('gifts'); }} renderUpcoming={() => (trips.length === 0 ? (
         <div style={{textAlign:'center',padding:'60px 20px'}}>
           <div style={{fontSize:40,marginBottom:12}}>✈️</div>
           <div style={{color:'#6b7fa8',fontSize:14}}>No upcoming trips found.</div>

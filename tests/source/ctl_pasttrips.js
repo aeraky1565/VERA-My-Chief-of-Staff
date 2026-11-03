@@ -32,7 +32,7 @@ const CONTROLS = [
     "return a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0;", "return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0;") })],
   ['the route is missing', b => ({ [W]: swap(b[W], "case 'past_trips':", "case 'past_trips_x':") })],
   ['the lite dashboard does not ask for past trips', b => ({ [L]: swap(b[L], "api({action:'past_trips'})", "api({action:'trips'})") })],
-  ['the full dashboard has no Past group', b => ({ [A]: swap(b[A], "label:'Past'", "label:'Earlier'") })],
+  ['the full dashboard lists past trips before upcoming ones', b => ({ [A]: swap(b[A], "(upcoming||[]).forEach(function(t){var k=t.key||(t.startDate+'|'+t.label);if(seen[k])return;seen[k]=1;out.push({key:k,label:t.label,startDate:t.startDate,past:false});});\n  (past||[]).forEach(function(t){if(seen[t.key])return;seen[t.key]=1;out.push({key:t.key,label:t.label,startDate:t.startDate,past:true});});", "(past||[]).forEach(function(t){if(seen[t.key])return;seen[t.key]=1;out.push({key:t.key,label:t.label,startDate:t.startDate,past:true});});\n  (upcoming||[]).forEach(function(t){var k=t.key||(t.startDate+'|'+t.label);if(seen[k])return;seen[k]=1;out.push({key:k,label:t.label,startDate:t.startDate,past:false});});") })],
 ];
 
 let allBit = true;
