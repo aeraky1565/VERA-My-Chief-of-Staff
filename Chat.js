@@ -989,6 +989,7 @@ function buildChatSystemPrompt_(context) {
     'ACTION:log_card_used|{card_name}  \u2014 mark a credit card as used today (sets Last Used = today)\n' +
     'ACTION:mark_perk_used|{perk}|{card_name or blank}  \u2014 mark a card perk used for its CURRENT period (month/quarter/half/year, per the perk\'s frequency)\n' +
     'ACTION:update_loyalty_points|{program}|{new_total}  \u2014 update a loyalty program\'s point balance\n' +
+    'ACTION:gift_bought|{item}|{for whom, or blank}|{amount, or blank}  \u2014 a gift or souvenir bought on the trip under way (or just ended): ticks it off Travel \u203a Gifts, or adds it\n' +
     // Reference documents
     'ACTION:read_resource|{resource_name_or_id}  \u2014 fetch and read the full content of a reference document. Only use when Ahmed specifically asks about the contents of a document or policy.\n' +
     'ACTION:complete_debrief|{tripKey}  \u2014 log that a post-trip debrief conversation has been completed for {tripKey}. Emit once, at the very end of a debrief session after all items are logged.\n' +
@@ -1077,6 +1078,7 @@ function buildChatSystemPrompt_(context) {
     '- For read_resource: ONLY use when Ahmed explicitly asks about the contents of a specific document or policy (e.g. "what does my insurance doc say about X", "read my Verizon policy"). Pass the resource name or ID from REFERENCE DOCUMENTS above. Do not use proactively.\n' +
     '- For log_card_used: use when Ahmed says "I used my X card", "paid with my X", or "charged it to X". Confirm the card was logged. Card name can be partial (e.g. "Amex" matches "Amex Gold").\n' +
     '- For mark_perk_used: use when Ahmed says "I used the Uber credit", "redeemed the Saks credit", "used the airline fee credit". {perk} is the perk TEXT as shown under CREDIT CARDS above \u2014 partial is fine. Fill the 2nd slot with the card name ONLY if he named one; otherwise leave it blank. BEFORE emitting this: if the same perk text appears under more than one card above and he did not say which, ASK which card instead of emitting the action. Never pick one for him. Perks on autopay are not tracked \u2014 if he says he used one, tell him it is on autopay and nothing needs marking. This is per PERIOD, not per day: a quarterly perk stays marked for the whole quarter, so do not re-mark it.\n' +
+    '- For gift_bought: use when Ahmed or Victoria says they bought a gift or souvenir on a trip ("bought a cork wallet for Dad, 28 euros"). Item is what was bought, for whom is the person\'s name as said (blank for "us" or unknown), amount is a number or blank. Confirm what was ticked off or added.\n' +
     '- For update_loyalty_points: use when Ahmed says "I have N points in X now", "my X balance is N", or "I earned N more X points". new_total should be the absolute balance (not a delta). Confirm the update.\n' +
     '- VERA should proactively mention: (1) any credit card unused >60 days when discussing spending/finances, (2) unused monthly perks during current month when relevant, (3) loyalty program points expiring within 90 days.\n' +
     '- VERA can answer "which card should I use for X?" directly from CREDIT CARDS context — no ACTION needed; just explain the best option and why.\n' +
@@ -2784,6 +2786,11 @@ function executeActions_(rawText) {
                         (mpCard ? ' on a card matching "' + mpCard + '"' : ''));
           }
         }
+      }
+
+      else if (type === 'gift_bought') {
+        try { executed.push(tgChatBought_(args[0], args[1], args[2])); }
+        catch (gbErr) { errors.push(gbErr.message); }
       }
 
       else if (type === 'update_loyalty_points') {

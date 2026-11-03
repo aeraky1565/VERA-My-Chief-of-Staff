@@ -115,6 +115,7 @@ const TABS = {
   // HEALTH_APPOINTMENTS tab removed (Issue #85): appointments read from Google Calendar (DR: prefix)
   TRIP_BUDGET:        'Trip Budget',         // Per-trip budget line items (Issue #96)
   TRIP_GIFTS:         'Trip Gifts',          // Gifts/souvenirs purchased per trip (Issue #187)
+  GIFT_PLACE_IDEAS:   'Gift Place Ideas',    // Gift ideas per place, asked once (#227)
   RESELL_LIST:        'Resell List',          // Items to sell tracker (Issue #170)
   PLANNED_PURCHASES:  'Planned Purchases',    // Big buys being researched, saved for and bought (Finances)
   PP_OPTIONS:         'Planned Purchase Options', // The options compared for each planned purchase
@@ -230,7 +231,8 @@ const PACKING_ITEM_HEADERS      = ['ID', 'Trip Key', 'Person', 'Category', 'Item
 const COUNTRIES_HEADERS         = ['ID', 'Country', 'City', 'Year', 'Traveller', 'Trip Key', 'Notes'];
 const BUCKET_LIST_HEADERS       = ['ID', 'Country', 'City', 'Target Year', 'Traveller', 'Stars', 'Dream Trip', 'Notes', 'Visited'];
 const TRIP_BUDGET_HEADERS       = ['ID', 'Trip Key', 'Category', 'Label', 'Budgeted', 'Actual', 'Notes']; // Issue #96
-const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes']; // Issue #187
+const TRIP_GIFT_HEADERS         = ['ID', 'Trip Key', 'Recipient', 'Item', 'Amount', 'Purchased', 'Notes', 'Kind', 'Status', 'Packs As']; // Issue #187; Kind/Status/Packs As #227
+const GIFT_PLACE_IDEAS_HEADERS  = ['Place', 'Ideas', 'Updated']; // #227: gift ideas per place, one Claude call each
 const TRIP_RECS_HEADERS         = ['ID', 'Trip Key', 'Suggested Date', 'Type', 'Title', 'Description', 'Rationale', 'Price Range', 'Link', 'Status', 'Source', 'Generated At', 'Address'];
 // Cache of point-to-point travel times, keyed on From|To|Mode — NOT on itinerary
 // item IDs, so an entry survives edits and is reused across trips forever.

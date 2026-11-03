@@ -478,6 +478,10 @@ function doGet(e) {
       case 'add_trip_gift':     return jsonOut_(webAddTripGift_(e));
       case 'update_trip_gift':  return jsonOut_(webUpdateTripGift_(e));
       case 'delete_trip_gift':  return jsonOut_(webDeleteTripGift_(e));
+      case 'set_trip_gift_budget': return jsonOut_(webSetTripGiftBudget_(e));
+      case 'trip_gift_history': return jsonOut_(webTripGiftHistory_());
+      case 'trip_gift_check':   return jsonOut_(webTripGiftCheck_(e));
+      case 'trip_gift_ideas':   return jsonOut_(webTripGiftIdeas_(e));
       // Notification Map (Issue #188)
       case 'get_notification_map': return jsonOut_(webGetNotificationMap_());
       case 'set_notif_enabled':    return jsonOut_(webSetNotifEnabled_(e));
@@ -11844,77 +11848,6 @@ function webListPastTrips_() {
     return t.startDate && (t.endDate || t.startDate) < today;
   }).sort(function(a, b) { return a.startDate < b.startDate ? 1 : a.startDate > b.startDate ? -1 : 0; });
   return { ok: true, today: today, trips: trips.slice(0, 40) };
-}
-
-function webGetTripGifts_(e) {
-  var tripKey = ((e.parameter || {}).tripKey || '').trim();
-  if (!tripKey) return { ok: false, error: 'tripKey required' };
-  var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: true, gifts: [] };
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_GIFT_HEADERS.length).getValues();
-  var giftKeys = tripKeysFor_(tripKey);
-  var gifts = data
-    .filter(function(r) { return String(r[0]).trim() && tripRowMatches_(r[1], giftKeys); })
-    .map(function(r, i) {
-      return {
-        id:        String(r[0]).trim(),
-        tripKey:   String(r[1]).trim(),
-        recipient: String(r[2]).trim(),
-        item:      String(r[3]).trim(),
-        amount:    r[4] !== '' ? Number(r[4]) : null,
-        purchased: String(r[5]).toLowerCase() === 'yes',
-        notes:     String(r[6]).trim(),
-      };
-    });
-  return { ok: true, gifts: gifts };
-}
-
-function webAddTripGift_(e) {
-  var p = e.parameter || {};
-  var tripKey   = tripKeyForWrite_((p.tripKey || '').trim());   // the trip's current key
-  var recipient = (p.recipient || '').trim();
-  var item      = (p.item      || '').trim();
-  if (!tripKey || !item) return { ok: false, error: 'tripKey and item required' };
-  var id     = 'GIFT-' + Date.now();
-  var amount = p.amount !== undefined && p.amount !== '' ? Number(p.amount) : '';
-  var sheet  = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
-  sheet.appendRow([id, tripKey, recipient, item, amount, 'No', p.notes || '']);
-  return { ok: true, id: id };
-}
-
-function webUpdateTripGift_(e) {
-  var p  = e.parameter || {};
-  var id = (p.id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'not found' };
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, TRIP_GIFT_HEADERS.length).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]).trim() !== id) continue;
-    var row = i + 2;
-    if (p.recipient !== undefined) sheet.getRange(row, 3).setValue(p.recipient);
-    if (p.item      !== undefined) sheet.getRange(row, 4).setValue(p.item);
-    if (p.amount    !== undefined) sheet.getRange(row, 5).setValue(p.amount !== '' ? Number(p.amount) : '');
-    if (p.purchased !== undefined) sheet.getRange(row, 6).setValue(p.purchased === 'true' ? 'Yes' : 'No');
-    if (p.notes     !== undefined) sheet.getRange(row, 7).setValue(p.notes);
-    return { ok: true };
-  }
-  return { ok: false, error: 'not found' };
-}
-
-function webDeleteTripGift_(e) {
-  var id = ((e.parameter || {}).id || '').trim();
-  if (!id) return { ok: false, error: 'id required' };
-  var sheet = getSpreadsheet().getSheetByName(TABS.TRIP_GIFTS);
-  if (!sheet || sheet.getLastRow() < 2) return { ok: false, error: 'not found' };
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
-  for (var i = data.length - 1; i >= 0; i--) {
-    if (String(data[i][0]).trim() === id) {
-      sheet.deleteRow(i + 2);
-      return { ok: true };
-    }
-  }
-  return { ok: false, error: 'not found' };
 }
 
 // ---- Notification Map (Issue #188) -----------------------------------------
