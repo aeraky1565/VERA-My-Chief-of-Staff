@@ -29,9 +29,10 @@ check('groups keep their order, sections in group order, empty groups hidden',
 check('every section belongs to one group, and an unknown one to none',
   vm.runInContext('hfGroupOf_("guests")', C) === 'hosting' && vm.runInContext('hfGroupOf_("nope")', C) === ''
   && vm.runInContext('HF_GROUPS.reduce(function(a,g){return a.concat(g.items);},[]).length', C) === vm.runInContext('Object.keys(HF_GROUPS.reduce(function(a,g){g.items.forEach(function(i){a[i]=1;});return a;},{})).length', C));
-check('Household is first, and where Home Front opens (both dashboards)',
+check('Household is first, and where Home Front opens; Victoria’s opens on the Meal Plan, Kitchen first',
   /const allSubTabs=\[\{id:'household',label:'🏡 Household'\}/.test(APP) && /const\[sub,setSub\]=React\.useState\('household'\);/.test(APP)
-  && /const ALL_SUBTABS = \[\n    \{ id:'household', label:'🏡 Household' \},/.test(LITE) && /React\.useState\('household'\);/.test(LITE));
+  && /const ALL_SUBTABS = \[\n    \{ id:'household', label:'🏡 Household' \},/.test(LITE) && /React\.useState\('meal_plan'\);/.test(LITE)
+  && /<HfNav tabs=\{SUBTABS\} groups=\{HF_GROUPS_LITE\} sub=\{sub\} onPick=\{setSub\} \/>/.test(LITE));
 check('the lite Home Front shows Household too, under Coming up', /\{sub === 'household' && \(\n        <>\n          <HfComingUp apiUrl=\{apiUrl\} apiToken=\{apiToken\} onPick=\{setSub\} onOpenProjects=\{onOpenProjects\} \/>\n          <HouseholdLiteTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
 check('Watch reads Neighborhood', APP.indexOf("{id:'neighborhood_watch',label:'🏘 Neighborhood'}") !== -1 && LITE.indexOf("{ id:'neighborhood_watch', label:'🏘 Neighborhood' }") !== -1);
 
@@ -109,7 +110,14 @@ check('as a page: printable, and every value escaped', /<!doctype html>/.test(ht
       });
       const click = (sel, txt) => page.evaluate(({ sel, txt }) => { const b = Array.from(document.querySelectorAll('#hfnprobe ' + sel)).find(x => x.textContent.indexOf(txt) !== -1); if (b) b.click(); return !!b; }, { sel, txt });
       let s = await state();
-      check(L + ': five groups', s.groups.map(g => g.replace(/^\S+\s/, '')).join() === 'House,Chores,Kitchen,Hosting,Savings', JSON.stringify(s.groups));
+      if (kind === 'lite') {
+        check(L + ': four groups, Kitchen first (Coupons lives in Shopping, Resell in Hosting)', s.groups.map(g => g.replace(/^\S+\s/, '')).join() === 'Kitchen,House,Chores,Hosting', JSON.stringify(s.groups));
+        check(L + ': it opens on the Meal Plan, in Kitchen', /Kitchen/.test(s.on) && /Meal Plan/.test(s.active), JSON.stringify([s.on, s.active]));
+        await click('.hf-group', 'Hosting'); await wait(150);
+        check(L + ': Hosting holds Resell', (await state()).tabs.some(t => /Resell/.test(t)));
+        await click('.hf-group', 'House'); await wait(200);
+        s = await state();
+      } else check(L + ': five groups', s.groups.map(g => g.replace(/^\S+\s/, '')).join() === 'House,Chores,Kitchen,Hosting,Savings', JSON.stringify(s.groups));
       check(L + ': it opens on Household, in House', /House/.test(s.on) && /Household/.test(s.active)
         && s.tabs.join('|') === '🏡 Household|🛡️ Warranties & Service|🚗 Vehicles|🏘 Neighborhood', JSON.stringify(s.tabs));
       check(L + ': …showing the household cheat sheet', /Example ISP/.test(s.text), s.text.slice(0, 300));

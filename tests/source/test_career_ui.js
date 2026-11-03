@@ -75,10 +75,23 @@ async function mount(page) {
 }
 
 const text = page => page.$eval('#carprobe', n => n.innerText);
-const clickText = (page, sel, t) => page.evaluate(([sel, t]) => {
+// Career's subtabs sit in groups (VeraTileNav): a subtab not on show is reached through its group's tile.
+const clickOnce = (page, sel, t) => page.evaluate(([sel, t]) => {
   const el = Array.from(document.querySelectorAll('#carprobe ' + sel)).find(n => n.textContent.trim() === t || n.textContent.includes(t));
   if (!el) return false; el.click(); return true;
 }, [sel, t]);
+const clickText = async (page, sel, t) => {
+  if (await clickOnce(page, sel, t)) return true;
+  if (sel !== '.subtab-btn') return false;
+  const plain = t.replace(/^[^A-Za-z]+/, '');
+  const hit = await page.evaluate(p => { const el = Array.from(document.querySelectorAll('#carprobe .vn-tile')).find(n => (n.title || '').indexOf(p) !== -1); if (!el) return false; el.click(); return true; }, plain);
+  if (!hit) return false;
+  await new Promise(r => setTimeout(r, 120));
+  await clickOnce(page, sel, t);
+  return true;
+};
+// Every subtab's name, whether its chip is on show or not (tiles carry their subtabs as a title).
+const subNames = page => page.evaluate(() => Array.from(document.querySelectorAll('#carprobe .vn-tile')).map(n => n.title).join(' · '));
 const posts = page => page.evaluate(() => window.__posts);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -91,7 +104,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     await mount(page);
 
     let t = await text(page);
-    check('the four phase-1 subtabs', ['North Star', 'Readiness', 'Evidence', 'Network'].every(s => t.includes(s)), t.slice(0, 200));
+    const names = await subNames(page);
+    check('the four phase-1 subtabs', ['North Star', 'Readiness', 'Evidence', 'Network'].every(s => names.includes(s)), names);
     check('both next steps show, each with its verdict', t.includes('Associate Director, FP&A') && t.includes('Stretch · 75%') && t.includes('Not ready · 50%'));
     check('a rung’s details start folded, its target date showing', t.includes('Target 2027-10') && t.includes('Details ▸') && !t.includes('Owns an invented plan'));
     await page.evaluate(() => { const c = Array.from(document.querySelectorAll('#carprobe .car-rung')).find(n => n.textContent.includes('Associate Director, FP&A')); c.querySelector('.car-details-btn').click(); });

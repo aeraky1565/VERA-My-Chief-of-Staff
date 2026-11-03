@@ -72,11 +72,13 @@ const calls = page => page.evaluate(() => window.__calls);
     const m = await mount(page, 'modal', { ok: true });
     if (m.error) { fail++; console.log('  FAIL ' + m.error); }
     await settle(page);
-    const tabs = await all(page, '.sys-tabs button');
+    const tabs = await page.evaluate(() => [...document.querySelectorAll('.sys-tabs .vn-tile')].map(b => b.title).join(' · ').split(' · '));
     check('a Test tab sits beside Notifications and Config',
           tabs.some(t => /Notifications/.test(t)) && tabs.some(t => /Config/.test(t)) && tabs.some(t => /Test$/.test(t.trim())),
           JSON.stringify(tabs));
-    await page.evaluate(() => [...document.querySelectorAll('.sys-tabs button')].filter(b => /Test$/.test(b.textContent.trim()))[0].click());
+    await page.evaluate(() => [...document.querySelectorAll('.sys-tabs .vn-tile')].filter(b => /Test/.test(b.title))[0].click());
+    await settle(page, 200);
+    await page.evaluate(() => [...document.querySelectorAll('.sys-tabs .subtab-btn')].filter(b => /Test$/.test(b.textContent.trim()))[0].click());
     await settle(page, 400);
     check('opening it shows the travel day card', /Travel day email/.test(await text(page, '.test-emails') || ''));
     const noScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);

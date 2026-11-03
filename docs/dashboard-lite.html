@@ -1548,7 +1548,7 @@ function RewardsGoalModal({ mode, goal, programs, onSave, onClose, busy }) {
   );
 }
 
-function CardsTab({ apiUrl, apiToken }) {
+function CardsTab({ apiUrl, apiToken, part }) {
   const [cards,     setCards]     = React.useState([]);
   const [rewards,   setRewards]   = React.useState([]);
   const [perks,     setPerks]     = React.useState([]);
@@ -1910,10 +1910,10 @@ function CardsTab({ apiUrl, apiToken }) {
       {error && <div style={{ color:'#ef4444', marginBottom:12, fontSize:13 }}>{error}</div>}
 
       {/* 2-column grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 3fr', gap:16, alignItems:'start' }}>
+      <div style={{ display:'grid', gridTemplateColumns: part ? 'minmax(0, 1fr)' : '2fr 3fr', gap:16, alignItems:'start' }}>
 
-        {/* LEFT: Quick-Reference Cheat Sheet */}
-        <div style={{ background:'#1a2744', border:'1px solid #2a3f6f', borderRadius:12, padding:16 }}>
+        {/* LEFT: Quick-Reference Cheat Sheet (Shopping › Card cheat sheet in Victoria's view; hidden in Money › Cards) */}
+        <div className="cards-cheat" style={{ background:'#1a2744', border:'1px solid #2a3f6f', borderRadius:12, padding:16, display: part === 'cards' ? 'none' : undefined }}>
           {panelHead('💳 Quick-Reference Cheat Sheet',
             [<span key="sub" style={{ fontSize:11, color:'#6b7280', marginRight:6 }}>(Where to Use Which Card)</span>,
              pillBtn('📋 Copy', copyCheatSheet)]
@@ -1938,8 +1938,8 @@ function CardsTab({ apiUrl, apiToken }) {
           }
         </div>
 
-        {/* RIGHT: stacked panels */}
-        <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        {/* RIGHT: stacked panels (hidden in Shopping › Card cheat sheet) */}
+        <div className="cards-panels" style={{ display: part === 'cheat' ? 'none' : 'flex', flexDirection:'column', gap:16 }}>
 
           {/* Card Tracker */}
           <div style={{ background:'#183028', border:'1px solid #1f4033', borderRadius:12, padding:16 }}>
@@ -5067,14 +5067,14 @@ var HF_GROUPS=[
   {id:'hosting',label:'Hosting',icon:'🎉',items:['guests','gatherings','guide']},
   {id:'savings',label:'Savings',icon:'💰',items:['coupons','resell']}];
 // Pure: the groups that have sections on offer, each with those sections in group order ({id,label} from tabs).
-function hfGroupsFor_(tabs){var by={};(tabs||[]).forEach(function(t){by[t.id]=t;});
-  return HF_GROUPS.map(function(g){return {id:g.id,label:g.label,icon:g.icon,tabs:g.items.filter(function(id){return by[id];}).map(function(id){return by[id];})};})
+function hfGroupsFor_(tabs,groups){var by={};(tabs||[]).forEach(function(t){by[t.id]=t;});
+  return (groups||HF_GROUPS).map(function(g){return {id:g.id,label:g.label,icon:g.icon,tabs:g.items.filter(function(id){return by[id];}).map(function(id){return by[id];})};})
     .filter(function(g){return g.tabs.length>0;});}
 // Pure: the group a section is in ('' when none).
-function hfGroupOf_(id){var g=HF_GROUPS.filter(function(x){return x.items.indexOf(id)!==-1;})[0];return g?g.id:'';}
-function HfNav(props){var h=React.createElement;var groups=hfGroupsFor_(props.tabs);
+function hfGroupOf_(id,groups){var g=(groups||HF_GROUPS).filter(function(x){return x.items.indexOf(id)!==-1;})[0];return g?g.id:'';}
+function HfNav(props){var h=React.createElement;var groups=hfGroupsFor_(props.tabs,props.groups);
   var _l=React.useState({}),last=_l[0],setLast=_l[1];
-  var gid=hfGroupOf_(props.sub),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
+  var gid=hfGroupOf_(props.sub,props.groups),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
   React.useEffect(function(){if(gid)setLast(function(p){if(p[gid]===props.sub)return p;var n=Object.assign({},p);n[gid]=props.sub;return n;});},[props.sub]);
   if(!cur)return null;
   var pickGroup=function(g){var keep=last[g.id];var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);};
@@ -5458,7 +5458,7 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects }) {
     return !t.featureKey || feat[t.featureKey] !== false;
   });
 
-  const [sub,             setSub]             = React.useState('household');
+  const [sub,             setSub]             = React.useState('meal_plan');
   const [homeFront,       setHomeFront]       = React.useState(null);
   const [chores,          setChores]          = React.useState(null);
   const [choresLoading,   setChoresLoading]   = React.useState(false);
@@ -5691,7 +5691,7 @@ function HomeFrontLiteTab({ apiUrl, apiToken, features, onOpenProjects }) {
 
   return (
     <div>
-      <HfNav tabs={SUBTABS} sub={sub} onPick={setSub} />
+      <HfNav tabs={SUBTABS} groups={HF_GROUPS_LITE} sub={sub} onPick={setSub} />
 
       {sub === 'household' && (
         <>
@@ -11151,15 +11151,7 @@ function TravelLiteTab({ apiUrl, apiToken }) {
         </div>
       )}
 
-      <div className="subtab-row">
-        {[['ideas','💡 Trip Ideas'],['trips','✈️ My Trips'],['aria','🧭 ARIA'],['countries','🌍 Countries'],['bucketlist','🪣 Bucket List'],['gifts','🎁 Gifts'],['profiles','👤 Profiles']].map(([id,label]) => (
-          <button key={id}
-            className={'subtab-btn' + (travSub === id ? ' active' : '')}
-            onClick={() => setTravSub(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <VeraTileNav name="lite_travel" label="Travel" tabs={LITE_TRAVEL_TABS} sub={travSub} onPick={setTravSub} />
 
       {travSub === 'countries' && (
         <CountriesVisitedPanel
@@ -12434,22 +12426,85 @@ function AddressBookContactModal({ form, setForm, onSave, busy }) {
 
 // ---- App --------------------------------------------------------------------
 
+// ---- VeraTileNav — SHARED VERBATIM by docs/app.js and docs/dashboard-lite.html ----
+// One way through every tab with more than three subtabs (Household's pattern): a row of icon tiles for
+// the groups, then that group's subtabs as chips. A group with one subtab opens straight to it, no chips.
+// Each group remembers the subtab last opened in it (per tab, in this browser). A subtab the dashboard
+// doesn't offer is left out, and a group with none left is hidden.
+var VN_GROUPS={
+  travel:[{id:'plan',label:'Plan',icon:'🗺️',items:['ideas','aria']},{id:'trips',label:'Trips',icon:'✈️',items:['trips','itinerary']},
+    {id:'places',label:'Places',icon:'🌍',items:['countries','bucketlist']},{id:'travelers',label:'Travelers',icon:'🎒',items:['profiles','gifts']}],
+  career:[{id:'direction',label:'Direction',icon:'🧭',items:['northstar','readiness']},{id:'proof',label:'Proof',icon:'📎',items:['evidence','credentials']},
+    {id:'search',label:'Search',icon:'🔍',items:['brand','market']},{id:'agents',label:'Agents',icon:'🔁',items:['pipeline','exchange']},{id:'network',label:'Network',icon:'🤝',items:['network']}],
+  health:[{id:'body',label:'Body',icon:'💪',items:['fitness','morning_routine']},{id:'care',label:'Care',icon:'🩺',items:['prescriptions','appointments']},
+    {id:'family',label:'Family',icon:'👶',items:['family_planning']}],
+  people:[{id:'people',label:'People',icon:'👤',items:['people']},{id:'dates',label:'Dates',icon:'📅',items:['dates']},
+    {id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']},{id:'wishlists',label:'Wish Lists',icon:'🎄',items:['wishlists']}],
+  system:[{id:'reference',label:'Reference',icon:'📖',items:['assistants','documents']},{id:'checks',label:'Checks',icon:'🧪',items:['test','api_health']},
+    {id:'settings',label:'Settings',icon:'⚙️',items:['notifications','config','flags']}],
+  life:[{id:'grow',label:'Grow',icon:'🌱',items:['now','goals','habits']},{id:'learn',label:'Learn',icon:'🧪',items:['learning','trials','review']},
+    {id:'explore',label:'Explore',icon:'🔭',items:['places','lessons','things']},{id:'keep',label:'Keep',icon:'💡',items:['ideas','giving','notes']}],
+  // dashboard-lite (Victoria): only what she uses, one tap down
+  lite_shopping:[{id:'lists',label:'Lists',icon:'🛒',items:['lists']},{id:'cheat',label:'Which card',icon:'💳',items:['cheat']},{id:'coupons',label:'Coupons',icon:'🎟️',items:['coupons']}],
+  lite_travel:[{id:'trips',label:'My Trips',icon:'✈️',items:['trips']},{id:'gifts',label:'Gifts',icon:'🎁',items:['gifts']}],
+  lite_family:[{id:'planning',label:'Planning',icon:'👶',items:['planning']},{id:'health',label:'Health',icon:'💊',items:['prescriptions']},
+    {id:'gifts',label:'Gifts',icon:'🎄',items:['wishlists']},{id:'contacts',label:'Contacts',icon:'📒',items:['contacts']}]};
+// Pure: the groups that have subtabs on offer, each with those subtabs in group order ({id,label} from tabs).
+function vnGroupsFor_(name,tabs){var by={};(tabs||[]).forEach(function(t){by[t.id]=t;});
+  return (VN_GROUPS[name]||[]).map(function(g){return {id:g.id,label:g.label,icon:g.icon,tabs:g.items.filter(function(id){return by[id];}).map(function(id){return by[id];})};})
+    .filter(function(g){return g.tabs.length>0;});}
+// Pure: the group a subtab is in ('' when none).
+function vnGroupOf_(name,id){var g=(VN_GROUPS[name]||[]).filter(function(x){return x.items.indexOf(id)!==-1;})[0];return g?g.id:'';}
+function vnLastRead_(name){try{var v=JSON.parse(localStorage.getItem('vera_vn_'+name)||'{}');return v&&typeof v==='object'?v:{};}catch(e){return {};}}
+function vnLastWrite_(name,v){try{localStorage.setItem('vera_vn_'+name,JSON.stringify(v));}catch(e){}}
+function VeraTileNav(props){var h=React.createElement;var name=props.name;var groups=vnGroupsFor_(name,props.tabs);
+  var _l=React.useState(function(){return vnLastRead_(name);}),last=_l[0],setLast=_l[1];
+  var gid=vnGroupOf_(name,props.sub),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
+  React.useEffect(function(){if(gid)setLast(function(p){if(p[gid]===props.sub)return p;var n=Object.assign({},p);n[gid]=props.sub;vnLastWrite_(name,n);return n;});},[props.sub]);
+  if(!cur)return null;
+  var pickGroup=function(g){var keep=last[g.id];var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);};
+  return h('div',{className:'vn-nav vn-'+name,style:{display:'flex',flexDirection:'column',gap:10,marginBottom:14}},
+    h('div',{role:'group','aria-label':(props.label||name)+' groups',className:'vn-tiles',style:{display:'grid',gridTemplateColumns:'repeat('+groups.length+', minmax(0, 1fr))',gap:6,maxWidth:Math.min(760,groups.length*124)}},
+      groups.map(function(g){var on=g.id===cur.id&&!props.none;
+        return h('button',{key:g.id,type:'button',className:'vn-tile'+(on?' on':''),'aria-pressed':on,title:g.tabs.map(function(t){return t.label;}).join(' · '),onClick:function(){pickGroup(g);},
+          style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,minHeight:56,padding:'6px 2px',borderRadius:12,cursor:'pointer',fontSize:12,fontWeight:600,minWidth:0,
+            background:on?'#1d1a0c':'#0d1528',border:'1px solid '+(on?'#c9a84c':'#1c2a48'),color:on?'#e3c46a':'#aab6d6'}},
+          h('span',{'aria-hidden':'true',style:{fontSize:18,lineHeight:1}},g.icon),h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}},g.label));})),
+    cur.tabs.length>1||props.after?h('div',{role:'tablist','aria-label':cur.label+' subtabs',className:'subtab-row vn-chips',style:{display:'flex',alignItems:'center',flexWrap:'wrap'}},
+      cur.tabs.length>1?cur.tabs.map(function(t){var on=t.id===props.sub&&!props.none;
+        return h('button',{key:t.id,type:'button',role:'tab','aria-selected':on,className:'subtab-btn'+(on?' active':''),style:{minHeight:36},onClick:function(){props.onPick(t.id);}},t.label);}):null,
+      props.after||null):null);}
+// ---- /VeraTileNav ----
+// Victoria's tabs (dashboard-lite): what she opens VERA for, the rest one tap down. Old tab ids
+// still land in the right place (LITE_OLD_TABS) — Cards is in Money, Coupons and the card cheat sheet in
+// Shopping, Prescriptions, Family Planning, Wish Lists and the Address Book in Family, and the house book
+// (the old Household tab) is Home › House › Household.
 const TOP_TABS = [
-  { id: 'overview',      label: '🌅 Overview'      },
-  { id: 'chat',          label: '💬 Chat'          },
-  { id: 'household',     label: '🏠 Household'      },
-  { id: 'projects',      label: '🏗️ Projects'      },
-  { id: 'shopping',      label: '🛒 Shopping'      },
-  { id: 'cards',         label: '💳 Cards'          },
-  { id: 'coupons',       label: '🎟️ Coupons'        },
-  { id: 'prescriptions', label: '💊 Prescriptions' },
-  { id: 'family',        label: '👶 Family Planning' },
-  { id: 'travel',        label: '✈️ Travel'         },
-  { id: 'finances',      label: '💰 Finances'       },
-  { id: 'home_front',    label: '🏡 Home Front'     },
-  { id: 'people',        label: '📒 Address Book'   },
-  { id: 'wishlists',     label: '🎄 Wish Lists'     },
+  { id: 'overview',      label: '🌅 Today'    },
+  { id: 'chat',          label: '💬 Chat'     },
+  { id: 'shopping',      label: '🛒 Shopping' },
+  { id: 'home_front',    label: '🏡 Home'     },
+  { id: 'travel',        label: '✈️ Travel'   },
+  { id: 'finances',      label: '💰 Money'    },
+  { id: 'family',        label: '👪 Family'   },
+  { id: 'projects',      label: '🏗️ Projects' },
 ];
+const LITE_OLD_TABS = { cards: ['finances', 'fin_cards'], coupons: ['shopping', 'coupons'], prescriptions: ['family', 'prescriptions'],
+  wishlists: ['family', 'wishlists'], people: ['family', 'contacts'], household: ['home_front', ''] };
+const LITE_SHOP_TABS = [{ id: 'lists', label: '🛒 Lists' }, { id: 'cheat', label: '💳 Card cheat sheet' }, { id: 'coupons', label: '🎟️ Coupons' }];
+const LITE_FAMILY_TABS = [{ id: 'planning', label: '👶 Family Planning' }, { id: 'prescriptions', label: '💊 Prescriptions' }, { id: 'wishlists', label: '🎄 Wish Lists' }, { id: 'contacts', label: '📒 Address Book' }];
+const LITE_TRAVEL_TABS = [{ id: 'trips', label: '✈️ My Trips' }, { id: 'gifts', label: '🎁 Gifts' }];
+// Home Front, her way: Kitchen first; Coupons lives in Shopping, so Resell joins Hosting.
+const HF_GROUPS_LITE = [
+  { id: 'kitchen', label: 'Kitchen', icon: '🍽️', items: ['meal_plan', 'recipes', 'pantry', 'takeouts'] },
+  { id: 'house',   label: 'House',   icon: '🏠', items: ['household', 'steward', 'vehicles', 'neighborhood_watch'] },
+  { id: 'chores',  label: 'Chores',  icon: '🧹', items: ['chores', 'chores_for_others'] },
+  { id: 'hosting', label: 'Hosting', icon: '🎉', items: ['guests', 'gatherings', 'guide', 'resell'] }];
+// Money, her way: what this month costs, what we're saving toward, and the cards.
+const FIN_GROUPS_LITE = [
+  { id: 'month',  label: 'This month', icon: '🗓️', hint: 'where we stand', items: ['summary', 'budget', 'groceries', 'phone'] },
+  { id: 'saving', label: 'Saving',     icon: '🎯', hint: 'building toward', items: ['goals', 'planned', 'hsafsa', 'networth'] },
+  { id: 'cards',  label: 'Cards',      icon: '💳', hint: 'perks and rewards', items: ['cards'] }];
 
 // ---- BudgetEngine (Finances › Budget, issue #226) — SHARED VERBATIM by Budget.js, docs/app.js and docs/dashboard-lite.html ----
 // Reads the budget tracker's Tracker tab BY LABEL (never by cell position) and works the summary out
@@ -13093,33 +13148,33 @@ function FinSummary(props){var h=React.createElement;var C=BGC;
 // browser (vera_fin_last). A subtab the dashboard doesn't offer is left out, and a group with none is
 // hidden. Tabs are matched by key: the lite dashboard's ids carry a fin_ prefix, which is dropped.
 var FIN_GROUPS=[
-  {id:'overview',label:'Overview',hint:'where we stand',items:['summary']},
-  {id:'day',label:'Day to day',hint:'this month',items:['budget','billscash','groceries','phone']},
-  {id:'long',label:'Long term',hint:'building toward',items:['networth','goals','planned','hsafsa']},
-  {id:'paper',label:'Accounts & paperwork',hint:'set up once',items:['accounts','cards','contracts','tax']}];
+  {id:'overview',label:'Overview',icon:'📊',hint:'where we stand',items:['summary']},
+  {id:'day',label:'Day to day',icon:'🗓️',hint:'this month',items:['budget','billscash','groceries','phone']},
+  {id:'long',label:'Long term',icon:'📈',hint:'building toward',items:['networth','goals','planned','hsafsa']},
+  {id:'paper',label:'Paperwork',icon:'🗂️',hint:'set up once',items:['accounts','cards','contracts','tax']}];
 // Pure: a tab id's key ('fin_budget' → 'budget').
 function finKey_(id){return String(id||'').replace(/^fin_/,'');}
 // Pure: the groups that have subtabs on offer, each with those tabs in group order ({id,label} from tabs).
-function finGroupsFor_(tabs){var by={};(tabs||[]).forEach(function(t){by[finKey_(t.id)]=t;});
-  return FIN_GROUPS.map(function(g){return {id:g.id,label:g.label,hint:g.hint,tabs:g.items.filter(function(k){return by[k];}).map(function(k){return by[k];})};})
+function finGroupsFor_(tabs,groups){var by={};(tabs||[]).forEach(function(t){by[finKey_(t.id)]=t;});
+  return (groups||FIN_GROUPS).map(function(g){return {id:g.id,label:g.label,icon:g.icon,hint:g.hint,tabs:g.items.filter(function(k){return by[k];}).map(function(k){return by[k];})};})
     .filter(function(g){return g.tabs.length>0;});}
 // Pure: the group a tab id is in ('' when none).
-function finGroupOf_(id){var k=finKey_(id);var g=FIN_GROUPS.filter(function(x){return x.items.indexOf(k)!==-1;})[0];return g?g.id:'';}
+function finGroupOf_(id,groups){var k=finKey_(id);var g=(groups||FIN_GROUPS).filter(function(x){return x.items.indexOf(k)!==-1;})[0];return g?g.id:'';}
 function finLastRead_(){try{var v=JSON.parse(localStorage.getItem('vera_fin_last')||'{}');return v&&typeof v==='object'?v:{};}catch(e){return {};}}
 function finLastWrite_(v){try{localStorage.setItem('vera_fin_last',JSON.stringify(v));}catch(e){}}
-function FinNav(props){var h=React.createElement;var groups=finGroupsFor_(props.tabs);
+function FinNav(props){var h=React.createElement;var groups=finGroupsFor_(props.tabs,props.groups);
   var _l=React.useState(finLastRead_),last=_l[0],setLast=_l[1];
-  var gid=finGroupOf_(props.sub),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
+  var gid=finGroupOf_(props.sub,props.groups),cur=groups.filter(function(g){return g.id===gid;})[0]||groups[0];
   React.useEffect(function(){if(gid)setLast(function(p){if(p[gid]===props.sub)return p;var n=Object.assign({},p);n[gid]=props.sub;finLastWrite_(n);return n;});},[props.sub]);
   if(!cur)return null;
   var pickGroup=function(g){var keep=last[g.id];var to=g.tabs.some(function(t){return t.id===keep;})?keep:g.tabs[0].id;props.onPick(to);};
   return h('div',{className:'fin-nav',style:{display:'flex',flexDirection:'column',gap:10,marginBottom:16}},
-    h('div',{role:'group','aria-label':'Finances groups',className:'fin-groups',style:{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',gap:6,maxWidth:760}},
+    h('div',{role:'group','aria-label':'Finances groups',className:'fin-groups',style:{display:'grid',gridTemplateColumns:'repeat('+groups.length+', minmax(0, 1fr))',gap:6,maxWidth:Math.min(760,groups.length*124)}},
       groups.map(function(g){var on=g.id===cur.id;
         return h('button',{key:g.id,type:'button',className:'fin-group'+(on?' on':''),'aria-pressed':on,onClick:function(){pickGroup(g);},
-          style:{display:'flex',flexDirection:'column',alignItems:'flex-start',justifyContent:'center',gap:2,minHeight:56,padding:'8px 12px',borderRadius:12,cursor:'pointer',textAlign:'left',
-            background:on?'#1a3060':'#0a1220',border:'1px solid '+(on?'#4a6db0':'#1c2a48'),color:on?'#dde1f0':'#aab6d6'}},
-          h('span',{style:{fontSize:14,fontWeight:600}},g.label),h('span',{style:{fontSize:11,opacity:0.8}},g.hint));})),
+          title:g.hint,style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,minHeight:56,padding:'6px 2px',borderRadius:12,cursor:'pointer',fontSize:12,fontWeight:600,minWidth:0,
+            background:on?'#1d1a0c':'#0d1528',border:'1px solid '+(on?'#c9a84c':'#1c2a48'),color:on?'#e3c46a':'#aab6d6'}},
+          h('span',{'aria-hidden':'true',style:{fontSize:18,lineHeight:1}},g.icon),h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}},g.label));})),
     cur.tabs.length>1?h('div',{role:'tablist','aria-label':cur.label+' subtabs',className:'subtab-row fin-tabs',style:{display:'flex',alignItems:'center'}},
       cur.tabs.map(function(t){var on=t.id===props.sub;
         return h('button',{key:t.id,type:'button',role:'tab','aria-selected':on,className:'subtab-btn'+(on?' active':''),onClick:function(){props.onPick(t.id);}},t.label);}),
@@ -13129,16 +13184,13 @@ function FinNav(props){var h=React.createElement;var groups=finGroupsFor_(props.
 const FINANCE_TABS = [
   { id: 'fin_summary',  label: '💰 Summary'  },
   { id: 'fin_budget',   label: '📊 Budget'   },
-  { id: 'fin_billscash', label: '🧾 Bills & cashflow' },
   { id: 'fin_groceries', label: '🛒 Groceries' },
   { id: 'fin_phone',    label: '📱 Phone plan' },
-  { id: 'fin_accounts', label: '🏦 Accounts' },
-  { id: 'fin_contracts', label: '📋 Contracts' },
-  { id: 'fin_planned',  label: '🛒 Planned Purchases' },
   { id: 'fin_goals',    label: '🎯 Goals'    },
-  { id: 'tax',          label: '🧾 Tax'      },
-  { id: 'fin_networth', label: '📈 Net Worth' },
+  { id: 'fin_planned',  label: '🛒 Planned Purchases' },
   { id: 'fin_hsafsa',   label: '🩺 FSA & HSA' },
+  { id: 'fin_networth', label: '📈 Net Worth' },
+  { id: 'fin_cards',    label: '💳 Cards' },
 ];
 
 // ---- Active travel card (ported verbatim from docs/app.js) ---------------
@@ -13442,7 +13494,18 @@ function App() {
   const [apiUrl,       setApiUrl]       = useState(() => stored('vera_url'));
   const [apiToken,     setApiToken]     = useState(() => stored('vera_token'));
   const [showSettings, setShowSettings] = useState(() => !stored('vera_url'));
-  const [activeTab,       setActiveTab]       = useState('overview');
+  const [activeTab,       setActiveTabRaw]    = useState('overview');
+  const [shopSub,   setShopSub]   = useState('lists');
+  const [familySub, setFamilySub] = useState('planning');
+  // Old tab ids (Overview links, saved links) still open the right place.
+  const setActiveTab = function(id) {
+    var to = LITE_OLD_TABS[id];
+    if (!to) { setActiveTabRaw(id); return; }
+    setActiveTabRaw(to[0]);
+    if (to[0] === 'finances') setActiveFinanceTab(to[1]);
+    if (to[0] === 'shopping') setShopSub(to[1]);
+    if (to[0] === 'family') setFamilySub(to[1]);
+  };
   const [activeFinanceTab, setActiveFinanceTab] = useState('fin_summary');
   const [shopping,     setShopping]     = useState([]);
   const [busy,         setBusy]         = useState(false);
@@ -13647,19 +13710,16 @@ function App() {
           />
         )}
 
-        {activeTab === 'people' && (
-          <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />
-        )}
-
-        {activeTab === 'wishlists' && (
-          <WishListsView apiUrl={apiUrl} apiToken={apiToken} />
-        )}
-
         {activeTab === 'chat' && (
           <ChatLiteView apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
         {activeTab === 'shopping' && (
+          <VeraTileNav name="lite_shopping" label="Shopping" tabs={LITE_SHOP_TABS} sub={shopSub} onPick={setShopSub} />
+        )}
+        {activeTab === 'shopping' && shopSub === 'cheat' && <CardsTab apiUrl={apiUrl} apiToken={apiToken} part="cheat" />}
+        {activeTab === 'shopping' && shopSub === 'coupons' && <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />}
+        {activeTab === 'shopping' && shopSub === 'lists' && (
           <ShoppingTab
             grocery={{ apiUrl, apiToken, who: 'Victoria' }}
             stores={shopping}
@@ -13674,28 +13734,16 @@ function App() {
           />
         )}
 
-        {activeTab === 'prescriptions' && (
-          <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />
-        )}
-
         {activeTab === 'family' && (
-          <FamilyPlanningPanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />
+          <VeraTileNav name="lite_family" label="Family" tabs={LITE_FAMILY_TABS} sub={familySub} onPick={setFamilySub} />
         )}
-
-        {activeTab === 'cards' && (
-          <CardsTab apiUrl={apiUrl} apiToken={apiToken} />
-        )}
-
-        {activeTab === 'coupons' && (
-          <CouponsLiteTab apiUrl={apiUrl} apiToken={apiToken} />
-        )}
+        {activeTab === 'family' && familySub === 'planning' && <FamilyPlanningPanel apiUrl={apiUrl} apiToken={apiToken} who="Victoria" />}
+        {activeTab === 'family' && familySub === 'prescriptions' && <PrescriptionsTab apiUrl={apiUrl} apiToken={apiToken} />}
+        {activeTab === 'family' && familySub === 'wishlists' && <WishListsView apiUrl={apiUrl} apiToken={apiToken} />}
+        {activeTab === 'family' && familySub === 'contacts' && <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />}
 
         {activeTab === 'home_front' && (
           <HomeFrontLiteTab apiUrl={apiUrl} apiToken={apiToken} features={status && status.features} onOpenProjects={() => setActiveTab('projects')} />
-        )}
-
-        {activeTab === 'household' && (
-          <HouseholdLiteTab apiUrl={apiUrl} apiToken={apiToken} />
         )}
 
         {activeTab === 'projects' && (
@@ -13708,7 +13756,7 @@ function App() {
 
         {activeTab === 'finances' && (
           <div>
-            <FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />
+            <FinNav tabs={FINANCE_TABS} groups={FIN_GROUPS_LITE} sub={activeFinanceTab} onPick={setActiveFinanceTab} />
             {activeFinanceTab === 'fin_summary' && <FinSummary apiUrl={apiUrl} apiToken={apiToken} onOpenTab={setActiveFinanceTab} tabId={k => k === 'tax' ? 'tax' : 'fin_' + k}
               transferCard={<FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} part="transfer" />}
               checkpointsCard={<FinSummaryLiteTab apiUrl={apiUrl} apiToken={apiToken} part="checkpoints" />}
@@ -13726,6 +13774,7 @@ function App() {
             {activeFinanceTab === 'tax'         && <TaxTab            apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_networth' && <NetWorthTab apiUrl={apiUrl} apiToken={apiToken} />}
             {activeFinanceTab === 'fin_hsafsa'   && <HealthAcctTab apiUrl={apiUrl} apiToken={apiToken} />}
+            {activeFinanceTab === 'fin_cards'    && <CardsTab apiUrl={apiUrl} apiToken={apiToken} part="cards" />}
           </div>
         )}
       </div>

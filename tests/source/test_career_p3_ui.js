@@ -79,10 +79,23 @@ async function mount(page) {
 }
 
 const text = page => page.$eval('#carprobe', n => n.innerText);
-const clickText = (page, sel, t) => page.evaluate(([sel, t]) => {
-  const el = Array.from(document.querySelectorAll('#carprobe ' + sel)).find(n => n.textContent.trim() === t);
+// Career's subtabs sit in groups (VeraTileNav): a subtab not on show is reached through its group's tile.
+const clickOnce = (page, sel, t) => page.evaluate(([sel, t]) => {
+  const el = Array.from(document.querySelectorAll('#carprobe ' + sel)).find(n => n.textContent.trim() === t || n.textContent.includes(t));
   if (!el) return false; el.click(); return true;
 }, [sel, t]);
+const clickText = async (page, sel, t) => {
+  if (await clickOnce(page, sel, t)) return true;
+  if (sel !== '.subtab-btn') return false;
+  const plain = t.replace(/^[^A-Za-z]+/, '');
+  const hit = await page.evaluate(p => { const el = Array.from(document.querySelectorAll('#carprobe .vn-tile')).find(n => (n.title || '').indexOf(p) !== -1); if (!el) return false; el.click(); return true; }, plain);
+  if (!hit) return false;
+  await new Promise(r => setTimeout(r, 120));
+  await clickOnce(page, sel, t);
+  return true;
+};
+// Every subtab's name, whether its chip is on show or not (tiles carry their subtabs as a title).
+const subNames = page => page.evaluate(() => Array.from(document.querySelectorAll('#carprobe .vn-tile')).map(n => n.title).join(' · '));
 const posts = page => page.evaluate(() => window.__posts);
 const J = v => JSON.stringify(v);
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -104,7 +117,9 @@ const saveModal = page => page.evaluate(() => Array.from(document.querySelectorA
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
     await mount(page);
     let t = await text(page);
-    check('all eight subtabs', ['North Star', 'Readiness', 'Evidence', 'Pipeline', 'Network', 'Market', 'Brand', 'Exchange'].every(s => t.includes(s)));
+    const names = await subNames(page);
+    check('all eight subtabs', ['North Star', 'Readiness', 'Evidence', 'Pipeline', 'Network', 'Market', 'Brand', 'Exchange'].every(s => names.includes(s)), names);
+    check('in five groups: Direction, Proof, Search, Agents, Network', JSON.stringify(await page.evaluate(() => Array.from(document.querySelectorAll('#carprobe .vn-tile')).map(n => n.textContent))) === JSON.stringify(['🧭Direction', '📎Proof', '🔍Search', '🔁Agents', '🤝Network']));
 
     // ---- Readiness: the PIES signal beside its criterion
     await clickText(page, '.subtab-btn', '✅ Readiness');

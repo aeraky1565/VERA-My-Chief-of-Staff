@@ -36,13 +36,14 @@ check('every old subtab id lands in its group; an unknown one in none',
 const appIds = (APP.match(/const subTabs=\[\{id:'summary'[^\n]*?\];/) || [''])[0].match(/id:'(\w+)'/g) || [];
 const liteIds = (LITE.match(/const FINANCE_TABS = \[[\s\S]*?\];/) || [''])[0].match(/id: '(\w+)'/g) || [];
 check('every Finances subtab in both dashboards is in a group',
-  appIds.length === 13 && liteIds.length === 12 && /phone/.test(appIds.join()) && /fin_phone/.test(liteIds.join())
+  appIds.length === 13 && liteIds.length === 9 && /phone/.test(appIds.join()) && /fin_phone/.test(liteIds.join())
   && appIds.concat(liteIds).every(x => vm.runInContext('finGroupOf_(' + JSON.stringify(x.replace(/^id: ?'|'$/g, '')) + ')', C) !== ''), appIds.length + ' ' + liteIds.length);
 check('both dashboards mount the full Groceries card on its own subtab, and keep it on Summary',
   APP.indexOf("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1
   && LITE.indexOf("{activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1
   && LITE.indexOf("groceriesCard={<GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}") !== -1 && APP.indexOf("groceriesCard:React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken})") !== -1);
-check('the lite Finances uses FinNav', LITE.indexOf('<FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />') !== -1);
+check('the lite Finances uses FinNav, with Victoria’s own groups', LITE.indexOf('<FinNav tabs={FINANCE_TABS} groups={FIN_GROUPS_LITE} sub={activeFinanceTab} onPick={setActiveFinanceTab} />') !== -1);
+check('Victoria’s Money has no Bills, Accounts, Contracts or Tax, and Cards is in it', !/fin_billscash|fin_accounts|fin_contracts|id: 'tax'/.test((LITE.match(/const FINANCE_TABS = \[[\s\S]*?\];/) || [''])[0]) && /\{ id: 'fin_cards',    label: '💳 Cards' \}/.test(LITE) && /activeFinanceTab === 'fin_cards'    && <CardsTab apiUrl=\{apiUrl\} apiToken=\{apiToken\} part="cards" \/>/.test(LITE));
 
 const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget: 800,
   byWho: { Ahmed: { total: 389, runs: 4 }, Victoria: { total: 223, runs: 3 } },
@@ -87,7 +88,7 @@ const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget
           // The lite Finances lives inside its App; this probe is FinNav over the lite's own tab list,
           // switching what the App switches (the mounts are checked in the source above).
           const Probe = () => { const [s, setS] = React.useState('fin_summary');
-            return React.createElement('div', null, React.createElement(FinNav, { tabs: FINANCE_TABS, sub: s, onPick: setS }),
+            return React.createElement('div', null, React.createElement(FinNav, { tabs: FINANCE_TABS, groups: FIN_GROUPS_LITE, sub: s, onPick: setS }),
               React.createElement('div', { className: 'fin-probe-sub' }, s), s === 'fin_groceries' ? React.createElement(GroceriesCard, { apiUrl: 'https://vera.test/exec', apiToken: 't' }) : null); };
           ReactDOM.createRoot(host).render(React.createElement(Probe));
         } else {
@@ -106,7 +107,23 @@ const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget
       });
       const click = (sel, txt) => page.evaluate(({ sel, txt }) => { const b = Array.from(document.querySelectorAll('#finprobe ' + sel)).find(x => x.textContent.indexOf(txt) !== -1); if (b) b.click(); return !!b; }, { sel, txt });
       let s = await state();
-      check(L + ': four groups, each with what it is for', s.groups.join('|') === 'Overview where we stand|Day to day this month|Long term building toward|Accounts & paperwork set up once', JSON.stringify(s.groups));
+      if (kind === 'lite') {
+        check(L + ': Victoria’s three groups: This month, Saving, Cards', s.groups.join('|') === '🗓️ This month|🎯 Saving|💳 Cards', JSON.stringify(s.groups));
+        check(L + ': it opens on Summary, in This month', /This month/.test(s.on) && /Summary/.test(s.active) && s.tabs.map(t => t.replace(/^\S+\s/, '')).join('|') === 'Summary|Budget|Groceries|Phone plan', JSON.stringify(s.tabs));
+        await click('.fin-group', 'Saving'); await wait(200); s = await state();
+        check(L + ': Saving: Goals · Planned Purchases · FSA & HSA · Net Worth', s.tabs.map(t => t.replace(/^\S+\s/, '')).join('|') === 'Goals|Planned Purchases|FSA & HSA|Net Worth', JSON.stringify(s.tabs));
+        await click('.fin-tabs .subtab-btn', 'Net Worth'); await wait(150);
+        await click('.fin-group', 'Cards'); await wait(200); s = await state();
+        check(L + ': Cards opens straight to the cards, no chips', /Cards/.test(s.on) && s.tabs.length === 0 && /fin_cards/.test(s.text), JSON.stringify(s));
+        await click('.fin-group', 'Saving'); await wait(200);
+        check(L + ': and Saving remembers Net Worth', /Net Worth/.test((await state()).active));
+        check(L + ': the group buttons are big enough to tap', await page.$$eval('#finprobe .fin-group', ns => ns.every(n => n.getBoundingClientRect().height >= 44)));
+        check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+        check(L + ': no page errors', errs.length === 0, errs.join(' | '));
+        await page.close();
+        continue;
+      }
+      check(L + ': four groups, as icon tiles (what each is for is its tooltip)', s.groups.join('|') === '📊 Overview|🗓️ Day to day|📈 Long term|🗂️ Paperwork', JSON.stringify(s.groups));
       check(L + ': it opens on Overview, with no subtab row', /Overview/.test(s.on) && s.tabs.length === 0, JSON.stringify(s.tabs));
       await click('.fin-group', 'Day to day'); await wait(200);
       s = await state();
@@ -118,16 +135,16 @@ const MONTH = { ok: true, ym: '2026-11', today: '2026-11-20', total: 612, budget
       await click('.fin-group', 'Long term'); await wait(200);
       s = await state();
       check(L + ': Long term: Net Worth · Goals · Planned Purchases · FSA & HSA', s.tabs.map(t => t.replace(/^\S+\s/, '')).join('|') === 'Net Worth|Goals|Planned Purchases|FSA & HSA', JSON.stringify(s.tabs));
-      await click('.fin-group', 'Accounts'); await wait(200);
+      await click('.fin-group', 'Paperwork'); await wait(200);
       s = await state();
-      check(L + ': Accounts & paperwork: ' + (kind === 'lite' ? 'Accounts · Contracts · Tax (no Cards here)' : 'Accounts · Cards · Contracts · Tax'),
+      check(L + ': Paperwork: ' + (kind === 'lite' ? 'Accounts · Contracts · Tax (no Cards here)' : 'Accounts · Cards · Contracts · Tax'),
         s.tabs.map(t => t.replace(/^\S+\s/, '')).join('|') === (kind === 'lite' ? 'Accounts|Contracts|Tax' : 'Accounts|Cards|Contracts|Tax'), JSON.stringify(s.tabs));
       await click('.fin-tabs .subtab-btn', 'Contracts'); await wait(150);
       await click('.fin-group', 'Day to day'); await wait(200);
       s = await state();
       check(L + ': back in Day to day, Groceries again', /Groceries/.test(s.active), s.active);
-      await click('.fin-group', 'Accounts'); await wait(200);
-      check(L + ': and Accounts & paperwork remembers Contracts', /Contracts/.test((await state()).active));
+      await click('.fin-group', 'Paperwork'); await wait(200);
+      check(L + ': and Paperwork remembers Contracts', /Contracts/.test((await state()).active));
       await click('.fin-group', 'Overview'); await wait(200);
       s = await state();
       check(L + ': Overview again: no subtab row', /Overview/.test(s.on) && s.tabs.length === 0);

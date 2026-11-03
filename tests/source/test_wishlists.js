@@ -252,7 +252,7 @@ check('the view is one block, identical in both dashboards', block(APP).length >
       block(APP) === block(LITE) ? '' : 'the two copies have drifted — paste the whole block across');
 check('the full dashboard hands it the API settings, and no longer pre-loads every doc',
       /React\.createElement\(WishListsView,\{apiUrl:apiUrl,apiToken:apiToken\}\)/.test(APP) && !/loadWishListsData\(apiUrl,apiToken\);\}/.test(APP));
-check('dashboard-lite has a Wish Lists tab', /\{ id: 'wishlists',\s+label: '🎄 Wish Lists'\s+\}/.test(LITE) && /activeTab === 'wishlists' && \(\s+<WishListsView apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
+check('dashboard-lite has Wish Lists, under Family › Gifts', /\{ id: 'wishlists', label: '🎄 Wish Lists' \}/.test(LITE) && /activeTab === 'family' && familySub === 'wishlists' && <WishListsView apiUrl=\{apiUrl\} apiToken=\{apiToken\} \/>/.test(LITE));
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

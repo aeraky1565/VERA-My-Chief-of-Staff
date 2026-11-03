@@ -19,7 +19,7 @@ console.log('\nthe wiring');
 check('Life replaces Growth and Explore in the top tabs', /'career','life','system'\]\.map\(tab=>/.test(APP) && /tab==='life'\?`🌿 Life`/.test(APP) && !/tab==='growth'\?`🌱 Growth`/.test(APP) && !/tab==='explore'\?`🔭 Explore`/.test(APP));
 check('anything still sending you to Growth or Explore lands on Life', /if\(activeTab==='growth'\|\|activeTab==='explore'\)setActiveTab\('life'\);/.test(APP));
 check('Life is mounted with the ideas and their actions', /activeTab==='life'&&\/\*#__PURE__\*\/React\.createElement\(LifeTab,\{apiUrl:apiUrl,apiToken:apiToken,onNavigate:setActiveTab,initialSub:lifeDeepLink&&lifeDeepLink\.sub,onAddInterest:/.test(APP) && /action:'life_idea_to_goal',id:id/.test(APP) && /action:'life_idea_to_project',id:id/.test(APP));
-check('?tab=life&sub=review opens Life on that subtab (the monthly review links to it)', /return q\.get\('tab'\)==='life'\?\{sub:q\.get\('sub'\)\|\|''\}:null;/.test(APP) && /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(lfInit\)o\[lfInit\.id\]=props\.initialSub;/.test(APP));
+check('?tab=life&sub=review opens Life on that subtab (the monthly review links to it)', /return q\.get\('tab'\)==='life'\?\{sub:q\.get\('sub'\)\|\|''\}:null;/.test(APP) && /useState\(careerDeepLink\?'career':lifeDeepLink\?'life':'home'\)/.test(APP) && /if\(props\.initialSub&&LF_SUBS\.some\(function\(x\)\{return x\.id===props\.initialSub;\}\)\)return props\.initialSub;/.test(APP));
 check('Health no longer has Year in Review (it is Growth › Habits)', !/id:'year_in_review'/.test(APP) && /if\(sub==='habits'\)return h\(YearInReviewTab,/.test(APP));
 check('My Trips’ upcoming cards and the Trip Idea page show lessons', /t\.label\),\/\*#__PURE__\*\/React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:t\.label\}\)/.test(APP) && /renderLessons:function\(idea\)\{return React\.createElement\(LifeTripLessons,\{apiUrl:apiUrl,apiToken:apiToken,name:\[idea\.title,idea\.where\]\.join\(' '\)\}\)/.test(APP));
 check('Finances › Tax is offered the year’s receipted donations', /React\.createElement\(LifeTaxGiving,\{apiUrl:apiUrl,apiToken:apiToken,year:year\}\)/.test(APP));
@@ -83,7 +83,17 @@ async function mount(page, props) {
   await wait(350);
 }
 const T = page => sel => page.$eval('#lfprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
-const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const b = Array.from(document.querySelectorAll('#lfprobe ' + sel)).find(n => n.textContent.trim() === text); if (b) b.click(); return !!b; }, { sel, text });
+const clickOnce = (page, sel, text) => page.evaluate(({ sel, text }) => { const b = Array.from(document.querySelectorAll('#lfprobe ' + sel)).find(n => n.textContent.trim() === text); if (b) b.click(); return !!b; }, { sel, text });
+// Life's subtabs sit in four groups (VeraTileNav): a chip not on show is reached through its group's tile.
+const clickText = async (page, sel, text) => {
+  if (await clickOnce(page, sel, text)) return true;
+  if (!/subtab-btn/.test(sel)) return false;
+  const hit = await page.evaluate(t => { const el = Array.from(document.querySelectorAll('#lfprobe .vn-tile')).find(n => (n.title || '').split(' · ').indexOf(t) !== -1); if (!el) return false; el.click(); return true; }, text);
+  if (!hit) return false;
+  await new Promise(r => setTimeout(r, 150));
+  await clickOnce(page, sel, text);
+  return true;
+};
 
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
@@ -93,13 +103,15 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
     const page = await browser.newPage({ viewport: { width, height: 1100 } });
     const errs = []; page.on('pageerror', e => errs.push(e.message));
     page.on('dialog', d => d.accept());
-    await page.evaluate(() => { try { localStorage.removeItem('vera_life_group'); } catch (e) {} }).catch(() => {});
+    await page.evaluate(() => { try { localStorage.removeItem('vera_life_sub'); localStorage.removeItem('vera_vn_life'); } catch (e) {} }).catch(() => {});
     await mount(page);
     const txt = T(page);
-    const groups = await page.$$eval('#lfprobe .lf-group', ns => ns.map(n => n.textContent));
-    check(L + ': Growth | Explore', JSON.stringify(groups) === JSON.stringify(['🌱 Growth', '🔭 Explore']), JSON.stringify(groups));
-    const gsubs = await page.$$eval('#lfprobe .lf-subs .subtab-btn', ns => ns.map(n => n.textContent));
-    check(L + ': Growth’s subtabs', JSON.stringify(gsubs) === JSON.stringify(['Now', 'Goals', 'Habits', 'Learning', 'Trials', 'Review']), JSON.stringify(gsubs));
+    const groups = await page.$$eval('#lfprobe .vn-tile', ns => ns.map(n => n.textContent));
+    check(L + ': four groups: Grow, Learn, Explore, Keep', JSON.stringify(groups) === JSON.stringify(['🌱Grow', '🧪Learn', '🔭Explore', '💡Keep']), JSON.stringify(groups));
+    const gsubs = await page.$$eval('#lfprobe .vn-chips .subtab-btn', ns => ns.map(n => n.textContent));
+    check(L + ': Grow’s subtabs, opening on Now', JSON.stringify(gsubs) === JSON.stringify(['Now', 'Goals', 'Habits']) && (await txt('.vn-chips .subtab-btn.active')) === 'Now', JSON.stringify(gsubs));
+    const allSubs = await page.$$eval('#lfprobe .vn-tile', ns => ns.map(n => n.title));
+    check(L + ': every subtab in a group of three', JSON.stringify(allSubs) === JSON.stringify(['Now · Goals · Habits', 'Learning · Trials · Review', 'Places · Trip lessons · Things we love', 'Ideas · Giving · Notes']), JSON.stringify(allSubs));
 
 
 
@@ -138,10 +150,10 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       check(L + ': the strip scrolls inside itself', await page.$eval('#lfprobe .cu-row', n => getComputedStyle(n).overflowX === 'auto'));
     }
     if (part('explore')) {
-      await clickText(page, '.lf-group', '🔭 Explore'); await wait(300);
-      const esubs = await page.$$eval('#lfprobe .lf-subs .subtab-btn', ns => ns.map(n => n.textContent));
-      check(L + ': Explore’s subtabs', JSON.stringify(esubs) === JSON.stringify(['Places', 'Trip lessons', 'Things we love', 'Ideas', 'Giving', 'Notes']), JSON.stringify(esubs));
-      check(L + ': the group is remembered', await page.evaluate(() => localStorage.getItem('vera_life_group')) === 'explore');
+      await clickText(page, '.vn-tile', '🔭Explore'); await wait(300);
+      const esubs = await page.$$eval('#lfprobe .vn-chips .subtab-btn', ns => ns.map(n => n.textContent));
+      check(L + ': Explore’s subtabs', JSON.stringify(esubs) === JSON.stringify(['Places', 'Trip lessons', 'Things we love']), JSON.stringify(esubs));
+      check(L + ': the subtab is remembered', await page.evaluate(() => localStorage.getItem('vera_life_sub')) === 'places');
       let cards = await page.$$eval('#lfprobe .lf-int-card', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': Places lists places, a repeat shown once with its count', cards.length === 2 && /^Corner bakery Victoria · Food · 2026-04-01 the almond one ×2/.test(cards[0]), JSON.stringify(cards));
       check(L + ': a place can be planned as a trip or added to a weekend', /✈️ Plan a trip/.test(cards[0]) && /🗓 Add to a weekend/.test(cards[0]));
@@ -159,16 +171,16 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       await page.evaluate(() => { const s = document.querySelector('#lfprobe .lf-move'); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; set.call(s, 'thing'); s.dispatchEvent(new Event('change', { bubbles: true })); }); await wait(250);
       posts = await page.evaluate(() => window.__posts);
       check(L + ': Move to… moves every copy', posts[2] && posts[2].action === 'life_interest_tag' && posts[2].tag === 'thing' && JSON.stringify(posts[2].ids) === JSON.stringify(['I2', 'I3']), JSON.stringify(posts[2]));
-      await clickText(page, '.lf-subs .subtab-btn', 'Trip lessons'); await wait(250);
+      await clickText(page, '.vn-chips .subtab-btn', 'Trip lessons'); await wait(250);
       check(L + ': Trip lessons are grouped by trip', (await txt('.lf-lesson-trip')) === 'EXAMPLE COAST TRIP' || (await txt('.lf-lesson-trip')) === 'Example Coast Trip', await txt('.lf-lesson-trip'));
       check(L + ': a lesson can’t be sent to a weekend', (await page.$('#lfprobe .lf-view-lessons .lf-to-weekend')) === null);
-      await clickText(page, '.lf-subs .subtab-btn', 'Things we love'); await wait(250);
+      await clickText(page, '.vn-chips .subtab-btn', 'Things we love'); await wait(250);
       check(L + ': Things we love', JSON.stringify(await page.$$eval('#lfprobe .lf-int-text', ns => ns.map(n => n.textContent))) === JSON.stringify(['Jazz nights']) && (await page.$('#lfprobe .lf-to-trip')) === null);
-      await clickText(page, '.lf-subs .subtab-btn', 'Ideas'); await wait(200);
+      await clickText(page, '.vn-chips .subtab-btn', 'Ideas'); await wait(200);
       await page.evaluate(() => document.querySelector('#lfprobe .idea-to-goal').click());
       await page.evaluate(() => document.querySelector('#lfprobe .idea-to-project').click());
       check(L + ': an idea can become a goal or a project', JSON.stringify(await page.evaluate(() => [window.__toGoal, window.__toProject])) === JSON.stringify([['IDEA-1'], ['IDEA-1']]));
-      await clickText(page, '.lf-subs .subtab-btn', 'Giving'); await wait(250);
+      await clickText(page, '.vn-chips .subtab-btn', 'Giving'); await wait(250);
       check(L + ': Giving shows the year’s totals', /^2026 \$1,350\.50 4\.5 hours volunteered · 1 with a receipt$/.test(await txt('.lf-give-year')), await txt('.lf-give-year'));
       const rows = await page.$$eval('#lfprobe .lf-give-row', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': each entry, money or hours', /Example Food Bank 2026-03-04 · \$1,250\.50 · receipt ✓/.test(rows[0]) && /Example Park 2026-05-01 · 3 h · trail day/.test(rows[1]), JSON.stringify(rows));
@@ -194,7 +206,7 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
     }
 
     if (part('growth')) {
-      await clickText(page, '.lf-group', '🌱 Growth'); await wait(300);
+      await clickText(page, '.vn-tile', '🌱Grow'); await wait(300);
       // Now
       const nc = await page.$$eval('#lfprobe .lf-now-card', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': Now shows only Now goals', nc.length === 1 && /^Swim more This week 1 of 3 · 3× a week/.test(nc[0]), JSON.stringify(nc));
@@ -219,7 +231,7 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       posts = await page.evaluate(() => window.__posts);
       check(L + ': Log minutes sends just the number', posts[posts.length - 1].action === 'life_practice_log' && posts[posts.length - 1].minutes === 30, JSON.stringify(posts[posts.length - 1]));
       // Goals
-      await clickText(page, '.lf-subs .subtab-btn', 'Goals'); await wait(250);
+      await clickText(page, '.vn-chips .subtab-btn', 'Goals'); await wait(250);
       const cols = await page.$$eval('#lfprobe .lf-goal-col-h', ns => ns.map(n => n.textContent));
       check(L + ': Goals grouped Now / Waiting / Done', JSON.stringify(cols) === JSON.stringify(['Now · 1', 'Waiting · 1', 'Done this year · 1']), JSON.stringify(cols));
       check(L + ': no % slider any more', (await page.$('#lfprobe .lf-goals input[type=range]')) === null);
@@ -240,10 +252,10 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       posts = await page.evaluate(() => window.__posts);
       check(L + ': + New goal with a rhythm', posts[posts.length - 1].action === 'life_goal_save' && posts[posts.length - 1].goal.title === 'Run a 10k' && posts[posts.length - 1].goal.rhythm === '2× a week' && !posts[posts.length - 1].goal.id);
       // Habits
-      await clickText(page, '.lf-subs .subtab-btn', 'Habits'); await wait(400);
+      await clickText(page, '.vn-chips .subtab-btn', 'Habits'); await wait(400);
       check(L + ': Habits is the year grid from Health', (await page.evaluate(() => window.__gets)).includes('get_year_review'));
       // Learning
-      await clickText(page, '.lf-subs .subtab-btn', 'Learning'); await wait(250);
+      await clickText(page, '.vn-chips .subtab-btn', 'Learning'); await wait(250);
       let lr = await page.$$eval('#lfprobe .lf-learn-row', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': learning, each tied to its goal', lr.length === 2 && /📖 Book Example Swim Book A\. Writer · In Progress · for Swim more/.test(lr[0]) && /for Spanish/.test(lr[1]), JSON.stringify(lr));
       await clickText(page, '.lf-learn-filter', 'Apps & classes'); await wait(100);
@@ -252,7 +264,7 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       await clickText(page, '.lf-learn-filter', 'Books'); await wait(100);
       check(L + ': filters: Books', (await page.$$('#lfprobe .lf-learn-row')).length === 1);
       // Trials
-      await clickText(page, '.lf-subs .subtab-btn', 'Trials'); await wait(250);
+      await clickText(page, '.vn-chips .subtab-btn', 'Trials'); await wait(250);
       const tr = await page.$$eval('#lfprobe .lf-trial', ns => ns.map(n => n.innerText.replace(/\s+/g, ' ').trim()));
       check(L + ': an ended trial first, asking how it went', /^Swim before work Swim more · 2026-10-01 → 2026-10-28 Done: 6 check-ins\. How did it go\? Keep it Change it Drop it$/.test(tr[0]), JSON.stringify(tr));
       check(L + ': an active one shows days left', /Night reading/.test(tr[1]) && /17 days left/.test(tr[1]));
@@ -260,7 +272,7 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
       posts = await page.evaluate(() => window.__posts);
       check(L + ': Keep it', posts[posts.length - 1].action === 'life_trial_decide' && posts[posts.length - 1].decision === 'keep' && posts[posts.length - 1].id === 'T1');
       // Review
-      await clickText(page, '.lf-subs .subtab-btn', 'Review'); await wait(350);
+      await clickText(page, '.vn-chips .subtab-btn', 'Review'); await wait(350);
       check(L + ': Life balance asks about last month', /How did 2026-10 feel\?/.test(await txt('.lf-rate')));
       check(L + ': Save waits for all six', await page.$eval('#lfprobe .lf-rate-save', n => n.disabled));
       await page.evaluate(() => document.querySelector('#lfprobe .lf-rate-health-4').click()); await wait(50);
@@ -278,9 +290,9 @@ const clickText = (page, sel, text) => page.evaluate(({ sel, text }) => { const 
     }
     if (part('deeplink')) {
       await mount(page, { initialSub: 'giving' });
-      check(L + ': a deep link opens its group and subtab', (await txt('.lf-group.active')) === '🔭 Explore' && (await txt('.lf-subs .subtab-btn.active')) === 'Giving' && (await page.$('#lfprobe .lf-giving')) !== null);
+      check(L + ': a deep link opens its group and subtab', (await txt('.vn-tile.on')) === '💡 Keep' && (await txt('.vn-chips .subtab-btn.active')) === 'Giving' && (await page.$('#lfprobe .lf-giving')) !== null);
     }
-    check(L + ': buttons big enough to tap', await page.$$eval('#lfprobe .lf-group, #lfprobe .lf-subs .subtab-btn, #lfprobe .lf-to-trip, #lfprobe .lf-give-add, #lfprobe .lf-give-edit, #lfprobe .lf-did-today, #lfprobe .lf-start-now, #lfprobe .lf-trial-keep, #lfprobe .lf-rate-save, #lfprobe .cu-prep-gift', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
+    check(L + ': buttons big enough to tap', await page.$$eval('#lfprobe .vn-tile, #lfprobe .vn-chips .subtab-btn, #lfprobe .lf-to-trip, #lfprobe .lf-give-add, #lfprobe .lf-give-edit, #lfprobe .lf-did-today, #lfprobe .lf-start-now, #lfprobe .lf-trial-keep, #lfprobe .lf-rate-save, #lfprobe .cu-prep-gift', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
     check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
     check(L + ': no page errors', errs.length === 0, errs.join(' | '));
     await page.close();

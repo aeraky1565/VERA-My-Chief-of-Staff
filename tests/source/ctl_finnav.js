@@ -29,7 +29,8 @@ const CONTROLS = [
   ['the full dashboard has no Groceries subtab', full("{id:'billscash',label:'🧾 Bills & cashflow'},{id:'groceries',label:'🛒 Groceries'},", "{id:'billscash',label:'🧾 Bills & cashflow'},")],
   ['the full Groceries subtab is empty', full("sub==='groceries'&&React.createElement(GroceriesCard,{apiUrl:apiUrl,apiToken:apiToken}),", "")],
   ['the lite Groceries subtab is empty', b => ({ [L]: swap(b[L], "            {activeFinanceTab === 'fin_groceries' && <GroceriesCard apiUrl={apiUrl} apiToken={apiToken} />}\n", "") })],
-  ['the lite Finances keeps the flat row', b => ({ [L]: swap(b[L], "<FinNav tabs={FINANCE_TABS} sub={activeFinanceTab} onPick={setActiveFinanceTab} />", "<div>{FINANCE_TABS.map(t => <button key={t.id} className=\"subtab-btn\" onClick={() => setActiveFinanceTab(t.id)}>{t.label}</button>)}</div>") })],
+  ['Paperwork loses its icon', both("{id:'paper',label:'Paperwork',icon:'🗂️'", "{id:'paper',label:'Paperwork',icon:''")],
+  ['the lite Finances keeps the flat row', b => ({ [L]: swap(b[L], "<FinNav tabs={FINANCE_TABS} groups={FIN_GROUPS_LITE} sub={activeFinanceTab} onPick={setActiveFinanceTab} />", "<div>{FINANCE_TABS.map(t => <button key={t.id} className=\"subtab-btn\" onClick={() => setActiveFinanceTab(t.id)}>{t.label}</button>)}</div>") })],
 ];
 
 const HAS_BROWSER = (() => {

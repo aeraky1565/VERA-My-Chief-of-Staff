@@ -38,7 +38,10 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     const errs = []; page.on('pageerror', e => errs.push(e.message));
     await page.goto('file://' + path.resolve(ROOT, 'docs/index.html'), { waitUntil: 'domcontentloaded' });
-    const clickTab0 = label => page.evaluate(l => { const b = Array.from(document.querySelectorAll('#sysprobe .sys-tabs .subtab-btn')).find(n => n.textContent === l); if (b) b.click(); return !!b; }, label);
+    const clickTab0 = label => page.evaluate(async l => {
+      const chip = () => Array.from(document.querySelectorAll('#sysprobe .vn-chips .subtab-btn')).find(n => n.textContent === l);
+      if (!chip()) { const t = Array.from(document.querySelectorAll('#sysprobe .vn-tile')).find(n => (n.title || '').split(' · ').indexOf(l) !== -1); if (!t) return false; t.click(); await new Promise(r => setTimeout(r, 120)); }
+      const c = chip(); if (c) c.click(); return !!c; }, label);
     await page.waitForFunction(() => typeof SystemTab === 'function', null, { timeout: 15000 }).catch(() => {});
     await page.evaluate(({ DOCS, HEALTH }) => {
       window.__calls = [];
@@ -52,13 +55,13 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     }, { DOCS, HEALTH });
     await wait(300);
     const txt = sel => page.$eval('#sysprobe ' + sel, n => n.innerText.replace(/\s+/g, ' ').trim()).catch(() => '');
-    const tabs = await page.$$eval('#sysprobe .sys-tabs .subtab-btn', ns => ns.map(n => n.textContent));
-    check(L + ': subtabs in order: Assistants, Test, Notifications, Config, API health, Feature Flags, then Documents', JSON.stringify(tabs) === JSON.stringify(['🤖 Assistants', '🧪 Test', '🔔 Notifications', '⚙️ Config', '🩺 API health', '🚩 Feature Flags', '📚 Documents']), JSON.stringify(tabs));
-    check(L + ': opens on Assistants', (await txt('.sys-tabs .subtab-btn.active')) === '🤖 Assistants');
+    const tiles = await page.$$eval('#sysprobe .vn-tile', ns => ns.map(n => n.textContent + ': ' + n.title));
+    check(L + ': three groups: Reference, Checks, Settings', JSON.stringify(tiles) === JSON.stringify(['📖Reference: 🤖 Assistants · 📚 Documents', '🧪Checks: 🧪 Test · 🩺 API health', '⚙️Settings: 🔔 Notifications · ⚙️ Config · 🚩 Feature Flags']), JSON.stringify(tiles));
+    check(L + ': opens on Assistants, in Reference', (await txt('.vn-chips .subtab-btn.active')) === '🤖 Assistants' && (await txt('.vn-tile.on')) === '📖 Reference');
     await clickTab0('📚 Documents'); await wait(150);
     const used = await page.$$eval('#sysprobe .sys-used-by', ns => ns.map(n => n.textContent));
     check(L + ': each document says what uses it', used.length === 2 && used[0] === 'Used by: Family Planning: Ahmed’s leave policy · Chat: VERA can read it when you ask' && used[1] === 'Used by: Chat: VERA can read it when you ask', JSON.stringify(used));
-    const clickTab = label => page.evaluate(l => { const b = Array.from(document.querySelectorAll('#sysprobe .sys-tabs .subtab-btn')).find(n => n.textContent === l); if (b) b.click(); return !!b; }, label);
+    const clickTab = clickTab0;
     await clickTab('🩺 API health'); await wait(300);
     check(L + ': API health asks the server', (await page.evaluate(() => window.__calls)).includes('system_api_health'));
     check(L + ': OK / slow / failing counts', (await txt('.sys-health-counts')) === 'OK 1 SLOW 1 FAILING 1' || (await txt('.sys-health-counts')) === 'OK 1 Slow 1 Failing 1', await txt('.sys-health-counts'));
@@ -71,7 +74,7 @@ const HEALTH = { ok: true, counts: { ok: 1, slow: 1, failing: 1 }, sources: [
     check(L + ': Feature Flags shows tabs and features, on and off', /Feature Flags/i.test(flags) && /Tabs/i.test(flags) && /📦 Pantry/.test(flags) && /📅 Weekend Planner/.test(flags), flags.slice(0, 120));
     await clickTab('🧪 Test'); await wait(200);
     check(L + ': Test mounts the test emails panel', (await page.$('#sysprobe .test-emails')) !== null);
-    check(L + ': buttons big enough to tap', await page.$$eval('#sysprobe .sys-tabs .subtab-btn', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
+    check(L + ': buttons big enough to tap', await page.$$eval('#sysprobe .vn-tile, #sysprobe .vn-chips .subtab-btn', ns => ns.every(n => n.getBoundingClientRect().height >= 36)));
     check(L + ': no sideways scroll', await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
     check(L + ': no page errors', errs.length === 0, errs.join(' | '));
     await page.close();

@@ -75,8 +75,8 @@ const CONTROLS = [
   ['Coming up: How was it? saves an empty line', ui("disabled:busy||!note.trim(),onClick:function(){debrief('note');}", "disabled:busy,onClick:function(){debrief('note');}"), UI, 'comingup'],
   ['Coming up: the strip scrolls the page sideways', ui("className:\"cu-row\",style:{display:'flex',gap:10,overflowX:'auto'", "className:\"cu-row\",style:{display:'flex',gap:10,overflowX:'visible'"), UI, 'comingup'],
   ['Quick capture: undo always posts', ui("(u.via==='get'?apiGet(apiUrl,apiToken,p):apiPost(apiUrl,apiToken,p))", "apiPost(apiUrl,apiToken,p)"), UI, 'quick'],
-  ['Life: the group is not remembered', ui("try{localStorage.setItem('vera_life_group',id);}catch(e){}", ""), UI, 'explore'],
-  ['Life: a deep link is ignored', ui("if(lfInit)o[lfInit.id]=props.initialSub;", ""), UI, 'deeplink'],
+  ['Life: the subtab is not remembered', ui("function pick(id){setSub(id);try{localStorage.setItem('vera_life_sub',id);}catch(e){}}", "function pick(id){setSub(id);}"), UI, 'explore'],
+  ['Life: a deep link is ignored', ui("if(props.initialSub&&LF_SUBS.some(function(x){return x.id===props.initialSub;}))return props.initialSub;", ""), UI, 'deeplink'],
 ];
 const HAS_BROWSER = (() => { if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) return true; try { return fs.existsSync(require('playwright').chromium.executablePath()); } catch (e) { return false; } })();
 let allBit = true;

@@ -1965,9 +1965,9 @@ console.log('\nThe dashboards');
   check('…and the parent passes them down',
         /React\.createElement\(PeopleTab,\{apiUrl:apiUrl,apiToken:apiToken,/.test(SRC.App));
 
-  check('the lite dashboard has an Address Book tab',
-        /\{ id: 'people',\s*label: '📒 Address Book'\s*\}/.test(SRC.Lite));
-  check('…and renders the same view', /activeTab === 'people' && \(\s*<AddressBookView/.test(SRC.Lite));
+  check('the lite dashboard has the Address Book, under Family › Contacts',
+        /\{ id: 'contacts', label: '📒 Address Book' \}/.test(SRC.Lite) && /people: \['family', 'contacts'\]/.test(SRC.Lite));
+  check('…and renders the same view', /activeTab === 'family' && familySub === 'contacts' && <AddressBookView/.test(SRC.Lite));
 
   ['docs/app.js', 'docs/dashboard-lite.html'].forEach((label, i) => {
     const s = [SRC.App, SRC.Lite][i];

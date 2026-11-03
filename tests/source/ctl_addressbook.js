@@ -429,11 +429,11 @@ const CONTROLS = {
   }),
   'the lite dashboard loses its tab': b => ({
     'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
-      "  { id: 'people',        label: '📒 Address Book'   },\n", ''),
+      ", { id: 'contacts', label: '📒 Address Book' }", ''),
   }),
   'the lite dashboard never renders the view': b => ({
     'docs/dashboard-lite.html': b['docs/dashboard-lite.html'].replace(
-      /\{activeTab === 'people' && \(\s*<AddressBookView[\s\S]*?\)\}/, ''),
+      "{activeTab === 'family' && familySub === 'contacts' && <AddressBookView apiUrl={apiUrl} apiToken={apiToken} />}", ''),
   }),
   'an empty household goes back to dead "0 people" text': b => eachDoc(b, s =>
     s.replace(/\+ Add the names/g, '0 people')),
